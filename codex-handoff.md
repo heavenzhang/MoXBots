@@ -214,3 +214,9 @@ BOTS-CLOUD-EXEC-001：用户已确认Host所有者有限指定Bot委派方案，
 - MOXBOTS-ASK-QUESTION-FIX-20261013：PR #21源fc4e664c、6项current-head CI成功，main `d9749998f743707074d6d42dc5344bcb724d55a8` verified；422项相称用例、原生SDK+loopback provider普通/bypass模式均收到tool_result。源树与merge tree一致。
 - SDK会先补multiSelect，所以截图缺字段不直接证明原事故根因；本次修复防输入边界错误与FIFO覆盖。
 - 当前客户端仍由Host/钥匙串owner统一合包；已获用户跨聊天授权并发送冻结源。Mac锁定，待用户手动解锁和统一包回执，完成原生表单/真实caller及配置回归后才能关闭任务。主代理不得假报已安装或触发系统授权绕过。
+# 2026-10-13 — MOXBOTS-HOST-CONFIG-20261013 development checkpoint
+
+- 用户明确当前Agent实现，来源为当前MoXBots桌面主Agent，并授权与“评估 MyAgents 精简为 Linux Host”协调接口与统一安装。范围是模型配置复用、远端目录选择，不修改原凭据reader方案。
+- 分支codex/host-config-20261013，从main2a241591起；本地merge冻结Host依赖9149753c（5a9dd9b0）。远端main e9767263仍无Host管理基础，不能独自发布其未完成凭据实验。后续将本任务提交应用到原owner已验证基础。
+- 封闭扩展DTO、非秘密profile回显、不可变version ID、Provider私有key绑定、Linux fd目录选择/注册已实现；主核验unit16、Node42pass/13Linux skip、协议19、Headless125、范围lint通过。UI七项独立发现待修复冻结与主IAB验收；native/真实Host/模型路径仍开放。
+- 当前安装仍b116404e，统一安装由原凭据owner控制；主Agent不并发换包。接续清单及证据见任务记录、specs/tech_docs/host_configuration_reuse.md、dev-docs/host-config-independent-review.md。
