@@ -29,11 +29,13 @@ Git project-sync observe/start/task-init通过。当前main不含固定reader实
 
 ## Blockers and unknowns
 
-公证凭据已就绪。原生资源下载曾partial-file失败，HTTP/1.1已恢复子模块；原始ORT冷源码传输持续中断，改用精确匹配当前编译输入的已验证prepared产物重签投影；保留原缓存、模型及许可摘要，记录原fingerprint与新可复算projection身份。系统CLT混有Swift5.10 private interface与Swift6.3.2 dylib，任务专用SwiftPM库副本移除旧private interface后dump-package通过；任务专用SwiftPM overlay下主应用Release编译已通过，未修改系统工具或依赖源码。真实Host凭据恢复等未合入功能不属于本包。当前 installed MoXBots由其他owner用于联调，原生安装/启动验收必须避免争抢既有实例；不能用签名/公证代替业务路径通过。
+唯一正式分发阻断是完整App公证大文件上传在本机系统代理路径持续失败/未完成；凭据与小型已签文件上传、公证均已验证。未获完整App/DMG Apple Accepted；staple与Gatekeeper门禁开放。系统代理未改，临时notary timeout/chunk偏好恢复，等待用户稳定网络接续。
+
+真实Host凭据恢复等未合入功能不属于本包。当前 installed MoXBots由其他owner用于联调；本任务未替换或启动实例。新机器安装、真实模型/Host路径与完整ASR仍未验证，不能用签名/公证代替业务通过。
 
 ## Next step
 
-完成固定版本资源与签名构建后，核验用户配置的moxbots-notary profile，提交Apple公证并独立验证最终制品。
+稳定上传网络到位后，复用moxbots-notary钥匙串profile与已签App/ZIP，取得完整App Accepted并staple/validate；然后重建正式DMG，签名、公证Accepted、staple/Gatekeeper和独立只读内容核验。不再请求密码，不套用小型probe的Accepted。候选已可审阅，当前不是正式分发完成。
 
 ## Packaging progress
 
@@ -44,3 +46,13 @@ Node24隔离依赖和assets构建通过；typecheck、许可、theme检查通过
 原生文档projection已统一QJ重签并重生成sha/size/signing元数据，所有Mach-O UUID与文件映射sections保持不变；未写入或伪装QJ官方prepared cache。speech用最终QJ ORT真实摘要重新走官方helper并成功。文档OCR实测识别MOXBOTS 2026 TEST；最终包内media worker能完成1000ms PCM解码，hardened无额外entitlement探针真实加载三原生库并取得ABI2；ASR模型未安装，完整识别未测。最终App已于/private/tmp/moxbots-release-ydtxfo9m封装并严格Developer ID签名验证通过（Documents同步元信息不参与最终包）；ZIP生成及公证待完成。
 
 独立candidate审计已通过；App公证上传已分别使用默认S3 acceleration和普通通道，但均deadlineExceeded且completedParts为空；并非Apple Accepted。仅notary upload timeout临时提高900s并备份，上传结束finally恢复原设置；第三次上传继续。工作目录受同步FinderInfo影响，最终App位于/private/tmp/moxbots-release-ydtxfo9m，完整证据与交付草稿位于项目work/mac-release。候选未安装、未公开发布；当前主干已并发推进至fb92ce9c，不追溯夹带其新代码到冻结包。
+
+## Candidate and pending notarization handoff
+
+可审阅Developer ID签名候选：项目output/mac-release/MoxBots-0.5.2-macOS-arm64-candidate.dmg，393006841 bytes，SHA256 56bc9953647ab1c35c67cf243cf5923247eb62d7a84d0b37be2bb85d7f316085。codesign strict及hdiutil verify通过；独立DMG mounted内容核验进行中。candidate-provenance.json与SHA256SUMS-candidate.txt同目录。
+
+小型已签native-load-probe上传成功并获Apple Accepted（70d885f2-c8b6-49f1-85d1-956bea07eb25），只证明认证和小文件通道，不代表完整App。整包第三次延长timeout后20min未完成，主负责人停止自身任务进程，已finally恢复原notary timeout偏好。第四次App仅移除task进程代理env并明确5MB chunk/900s timeout，但lsof仍实证经过系统代理127.0.0.1:7897；App ID d58ed8f2-13d4-4c60-a6f7-06e4443c858d仍处于上传，尚无Successfully uploaded/Accepted证据。已请求用户切稳定上传节点或保留candidate稍后公证；未修改全局系统代理、不停止用户自有notary终端进程。
+
+下一步：用户网络解除后完成完整App上传并取得Apple Accepted，staple/validate App；重建含stapled App且说明更新的正式DMG，DMG签名、公证Accepted、staple、Gatekeeper与readonly内容独立验收。若用户选择延期，停止自身剩余上传并恢复timeout/chunk偏好，仅交付candidate和明确待验边界。源代码无需重构；不得把小型probe的Accepted套用于完整包。
+
+最终candidate独立DMG核验通过：签名/Team/secure timestamp、hdiutil VALID、readonly挂载14843项内容与已审计App完全一致，自有mount已卸载。正式App/DMG AppleAccepted/staple/Gatekeeper仍开放。第四次task-env去代理仍经过系统代理，已停止自身上传，timeout/chunk偏好已恢复；没有后台上传遗留，没有动用户自有notary终端或现有安装。等待用户网络动作接续；交付与接续在docs/MOXBOTS-MAC-DELIVERY.md及output/mac-release/DELIVERY.md，独立报告同目录留存。
