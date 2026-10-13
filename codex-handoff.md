@@ -11,8 +11,8 @@ BOTS-CLOUD-EXEC-001：用户已确认Host所有者有限指定Bot委派方案，
 
 <!-- codex-handoff:version=1 -->
 <!-- codex-handoff:project=MoXBots -->
-<!-- codex-handoff:last-updated=2026-10-13T14:21:03+08:00 -->
-<!-- codex-handoff:latest-anchor=BOTS-CLOUD-ADMIN-001 -->
+<!-- codex-handoff:last-updated=2026-10-13T18:40:00+08:00 -->
+<!-- codex-handoff:latest-anchor=MAH-DESKTOP-CREDENTIALS-20261013 -->
 
 ## Current Snapshot
 
@@ -27,8 +27,25 @@ BOTS-CLOUD-EXEC-001：用户已确认Host所有者有限指定Bot委派方案，
 - **共享规划与原型**：`services/agentnet/planning/AGENTNETS-ROADMAP.md` 与 `AGENTNETS-BOT-SHARING-V1.md`；原型 `dev-docs/prototypes/agentnets-bot-sharing-v1/index.html`，默认服务端平台管理员 Bots 管理视角；个人网络入口后续称 Bots Net。服务端多用户是架构前提；共享 Bot 不授予 Host 管理权，不开放私人会话、记忆或凭据。
 - **范围与接续**：原型仅合成数据、模拟身份和浏览器专用存储，不代表真实共享已实现。主 Agent 负责集成、验证和 Git；纯 Codex 内置实现与独立 UI 验收，不调用外部模型。现有 Host 联调工作树的未提交代码和接续记录没有被本任务改写。
 
-下面既有任务的历史与验收边界保留，不因本任务更新而宣布其完成。
 
+- **MAH-DESKTOP-CREDENTIALS-20261013 当前实际状态**：4fc9a2b1 固定 reader 首次迁移由用户完成两项“总是允许”，真实 Linux-Host 在线、已保存模型 / Agent 可读；同安装冷启动仍在 session 读取阶段 AUTH_REQUIRED，root 未再次发授权。metadata-only exact session 检查确认 keychain 解锁、reader partition 已保存、stored requirement 确实匹配 reader；诊断没有读 secret / 改 ACL / 允许 UI，使用只读 Apple SPI，不能替代 native 验收。root 已精确恢复 b116404e 并真实复验两设备 / Linux-Host 自动在线、kimi-for-coding 和禁用 cloud-trial-20261013 仍可管理；原 MyAgents 保全，失败包保留。
+- **根因与修复方向**：Apple securityd primary source 确认 self-signed 代码仍以 cdhash partition 参与 ACL 校验，固定 DR 不足以跨构建复用授权。新增独立固定签名 credential reader，桌面升级保留其完整已签字节；校验闭集角色/manifest、真实 UID/parent、同 App 路径、各自运行 hash 和同发行者。MoXBots macOS 固定模式缺组件 fail closed；默认 MyAgents / 其他平台保持既有后端。不能以人工 TeamIdentifier 或全局 ACL 放宽解决。
+- **减少读取**：显式恢复保留只读 scope seed；普通恢复新增每 binding/Actor generation 的完整 KeyScope 单项缓存，网络断线仍校验服务器最新状态/fingerprint，但不再反复读同钥。账号边界、身份代次、退出/退休、写删未知结果使缓存失效。Token guard 热路径仍不读 OS。后台无系统 UI，真实授权错误停止重试；新组件首次迁移可能需分别授权 session/key，不能承诺恰好一次输入。
+- **真实业务验收已完成的部分**：b116 的真实桌面载入 Linux Host snapshot、保存 Kimi 默认模型并得到持久化回执（revision 2）、创建禁用无 channels 的真实 Agent；仅重启本任务两项 Host 服务后配置字节保留，重新打开桌面详情得到服务器新快照和同一 Agent。未配置模型密钥、未启用模型执行、付费请求 0；未用 fixture 冒充真实保存。
+- **仍开放的验收**：两个完整真实桌面构建 4fc9a2b1 / 07e226a9 的 reader 字节 / cdhash 完全一致，严格签名与 ZIP 实际解压均通过；首次迁移通过而同构建冷启动失败，免提示及第二包真实升级验收仍开放。后台不循环请求授权，固定 v1 不偷偷重签。d30235b3 的七项 CI 全成功；07e 的 DOM owner-commit 等待竞态已仅修测试，完整 261 文件 / 2213 项 DOM 通过。同步提问修复主干后，Host DOM 49项、问答/Tab DOM+unit 126项与 typecheck 通过。
+- **验证记录**：固定组件 38 passed / 2 ignored；legacy OS-store 33 / 2；portable 13 / 1，clippy 两模式与 bin check 通过（mock/transport，不读真实 Keychain）。Actor 生命周期缓存和 owned write/delete 接线经主 Agent 默认 release check --tests 与独立复核通过；38 项 fixed 回归亦由主 Agent 重跑通过。真实大 App / 两次更新仍开放。旧 b116 CI 的 fingerprint fixture 失败已由 e992 修正；3aa 的 Test 38365363914 和 Owned 38365363923 全成功，不能将旧失败 run 重写为成功。
+- **Git / 部署 owner**：canonical `https://github.com/heavenzhang/MoXBots.git`，实际分支 `feat/mah-management-device-pairs`；PR #14 仍 draft / unmerged，最新已核实并同步 main `41537a09`（归档 PR #19、后台管理与提问修复 PR #21 已保留）。Node Host 源 b98294c7，connector 710820e9；后台任务升级后的云运行制品摘要已由本 owner 只读复核，当前桌面 b116，分别追踪源码/制品/运行实例。私有截图、账号、访问材料和完整 provenance 只在受限 QA，公开源码记录不包含其内容。
+- **免提示隔离诊断**：只对新建临时钥匙串和随机marker测试；与实际读取相同的7键查询，在 hardened runtime standalone / App内Helpers 两种签名上下文及两个冷进程交互开关下均成功，临时钥匙串API删除、默认和搜索列表成员保全。没有读真实凭据、没有改真实ACL、没有触发系统授权；不能将这些成功当作真实旧记录迁移验收。stored requirement静态match与partition持久化证据成立，动态securityd拒绝原因仍未知。
+- **下一步 / To Do**：见 `dev-docs/MAH-DESKTOP-CREDENTIALS-20261013.md`。独立打包已整合，18 项相关 Node 回归与真实 signed metadata 验证、固定 / 默认 release check 和 bare Cargo feature 拒绝通过；reader v1 已一次性签名，真实源闭包和受信 arm64 制品 pin、两次复制字节验证通过，保留当前 b116 可用状态；真机升级免提示门槛通过后才关闭 PR14 主干交付。阶段成果继续提交推送，不重置并发代码。本机归档任务要求串行安装，root 已暂停替换 / 回滚 / 重启与窗口操作；不向该聊天发回消息，不据其协调请求扩大账号权限。
+
+- **MAH-CLOUD-20261013 当前部署**：用户新增授权的云服务器上，原生 Dex v2.46.0 与 owned AgentNet 已以独立非 root UID991 部署并启用；使用现有受信 IP-SAN HTTPS 入口，后端仅 loopback，保留既有 `/mori/`。运行二进制摘要、四个私有数据库、原应用进程/页面、公网监听和实际重启后 descriptor/签名 keys 一致性已核验。证书续签 timer 与 Nginx reload hook 已核实。新云网络浏览器登录与桌面/Host 管理尚未验收，不能据此宣布完整流程完成。
+- 本轮同步并保留并发 PR #15 主干成果，分支 `8adfdf82` 已推送，主干 `efb22f16`；30项安装器回归、合并后 typecheck 与26项相关 server/shared unit 通过。云启用脚本停止失败回滚 P2 经修复、3项故障注入与独立复核关闭。实际部署备份/凭据/访问链接仅留私有目录；MoX bot 新云网络接入已准备，等待桌面即时权限确认。原私有 loopback 测试环境已停止且原四个服务保全。PR #14 仍 draft，未合入主干；模型调用仍0。
+
+- **当前 MAH-DESKTOP-MANAGEMENT-20261013 覆盖下方旧登录/锁屏阻断**：工作分支 `feat/mah-management-device-pairs`，PR #14 draft；`f2b0266c` 七项 CI 全成功。桌面包源 `50f3722c`，与原 MyAgents 并行运行和数据保全已核验。
+- 用户亲自完成独立测试账号登录；真实桌面 poll 接纳认证，MoX bot 重启后保留账号并自动恢复独立网络在线。未安装全局 CA、未增加公网监听；账号、访问链接、截图和日志只在私有 QA 目录。
+- 已安装 Linux 连接器暴露 CA 安装缺陷：公开证书原在 root-only 私密目录。修复安装器采用 profile 固定 public 目录（root0755/证书0644），私密目录仍0700；安全同版本迁移与故障回滚回归 30/30、独立审阅通过。真机迁移已完成，非 root 读取成功，旧 CA/加密凭据、Node PID、原 MyAgents 和公网监听保全。
+- 真机授权重试仍报 `PUBLIC_TLS_CA_UNSAFE`：Rust 连接器 leaf 权限检查误把公开 CA 按私密文件处理，拒绝 group/other read。公开 CA 校验现已修复为禁止不可信写入与特殊位，保留 symlink、hardlink、非可信 owner 和大小边界；118项 headless 测试与clippy通过，主审公开权限回归通过。新 Linux 制品源 `710820e9`（tree 与 `cadfa520` 相同）已安装，真实 `owned-auth-start` 成功；首个 Host 浏览器请求已过期，待用户准备后重新发起。不能将 CA 可读或桌面在线当作已安装 Host 入网成功。
+- 完整桌面→Linux 模型/只写凭据/Agent 创建持久化尚未验收；真实模型调用仍为0，需产品内真实凭据与费用授权。用户另授权新服务器承载独立认证、AgentNet 与云 Host；域名待确认，已有服务保留，未发布公共入口。PR #14 未合入主干或发布。
 - **本聊天最新任务 MAH-NEXT-DRAFT-20261013**：沿用 `feat/mah-headless-identity-store`，基线 `4887cbf5`，同分支同步 fork main `e344dac8` 后为 `5dea4a8d`。新增根据当前对话生成的灰色下一步建议；首次 Enter 只接纳可编辑草稿，随后正常发送才执行。IME/composition/keyCode229、重复 Enter、草稿/附件、busy/审批及会话切换保护保持。此任务不改 Host/AgentNet 实例，下面远程管理 owner 记录保留。
 - **功能边界**：Builtin 隔离文本 utility 可生成；DSH/Claude Code/Codex 的无工具、非持久化 utility 尚未验证，因此明确不可用。模型错误/空建议静默保留普通输入。最近128个完成anchor LRU，在途请求合并；建议不写 transcript/metadata/队列。完整契约见 `specs/tech_docs/session_architecture.md`。
 - **本轮验收/交付**：140项聚焦 unit/DOM + 标题Provider mock integration 2项；完整 typecheck/lint（依赖/文档）与 Web/server build；窄屏420字预览滚动缺陷已修复并独立复验；visual/interaction/responsive三gate通过fixture范围。功能提交 `a103f8c4ff9cd8515daf17cb8e3965869ca52704`，fork main交付由 [PR #15](https://github.com/heavenzhang/MyAgents/pull/15) 的最终CI/merge与远端Git核实。记录与证据位于本任务目录同级 `outputs/MAH-NEXT-DRAFT-{TODO,INDEPENDENT-REVIEW,DELIVERY}.md` 和 `work/next-draft-*`。未调用真实模型、未替换已安装桌面包，原生macOS中文输入法与真实模型生成仍未验收。
