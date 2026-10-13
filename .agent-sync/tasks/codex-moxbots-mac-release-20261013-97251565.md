@@ -1,58 +1,57 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/moxbots-mac-release-20261013 -->
 <!-- git-project-sync-task:base=e976726355918cd37fa832641028c84b78786234 -->
-<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:status=complete -->
 
+# MOXBOTS-MAC-RELEASE-20261013
 
-# Task: MoxBots Developer ID signed notarized macOS arm64 package
+目标：以用户确认的 https://github.com/heavenzhang/MoXBots.git main 冻结快照 e976726355918cd37fa832641028c84b78786234 制作 MoxBots 0.5.2 macOS arm64 Developer ID 签名、Apple 公证安装包。并行 main 新成果不追溯夹带；只打包，不替换或启动现有安装，不公开发布上游更新或网站。
 
-## Objective
+## 验收清单
 
-MOXBOTS-MAC-RELEASE-20261013：用户确认MoxBots名称和canonical main，从e9767263生成macOS arm64 Developer ID签名/Apple公证包。只打包客户端，官网候选不纳入；不发布上游MyAgents更新，不替换当前安装实例或并行凭据修改。
+- [x] 源码/main/独立工作树/签名身份核实；产品源码没有修改。
+- [x] 依赖隔离安装、typecheck、license/theme/assets 与 Release 构建。
+- [x] 23 项 Mach-O 与 81 项资源摘要独立验收，hardened runtime、secure timestamp、签名及来源通过。
+- [x] OCR、Node/Claude 版本启动、media worker PCM/WAV 解码、原生库加载 ABI2 验证。
+- [x] 签名候选 DMG 的只读挂载、14843 项内容对应性、镜像校验通过。
+- [x] 用户授权 Clash Verge 配置最小调整，完整 App ZIP 成功上传 Apple。
+- [x] 完整 App Accepted、staple、Gatekeeper。
+- [x] 正式 DMG 重建、签名、Accepted、staple、Gatekeeper、独立内容验收。
+- [x] 正式制品、摘要、交付和接续记录。
 
-## Acceptance criteria
+## 构建与来源
 
-- [x] 权威仓库/main、并发变更、独立工作树和签名身份核实。
-- [x] 依赖隔离安装；源码/现有签名脚本独立审阅。
-- [x] 原生资源/源码检查/品牌profile构建与Developer ID签名。
-- [x] 资源闭集、架构、嵌套签名/hardened runtime及来源独立验证（23个MachO、81项摘要通过；完整ASR未测）。
-- [ ] Apple公证Accepted、staple和Gatekeeper/DMG解包验证。
-- [ ] 可用制品与摘要、发行边界和接续记录。
+构建 checkout 506be6de097af17af5623d1afebca42bdb08cb09 仅增加任务记录，产品输入仍为冻结 main。实际 MoX profile、工具链、环境覆盖记录在 build-execution-receipt.json，区别于进程环境 dump。task-local SwiftPM overlay 修正系统 CLT stale private interface，public/dylib 保持原字节；未改系统工具链或依赖源码。
 
-## Completed
+文档投影精确命中冻结源码输入编译 cache，保留原 cache；在独立副本重签为 QJ5URBG9AP 并更新实际清单摘要，所有 Mach-O UUID 与文件映射 sections 不变，没有伪装官方 QJ prepared cache。speech 用最终 QJ ORT 摘要按官方 helper 编译。DSH0.1.17、CLIProxy8.0.13、Cuse0.4.0 正式原始档案核验；Cuse 保留有效 PMSG2Y8C6Z vendor 签名及原清单。
 
-冻结base e976726355918cd37fa832641028c84b78786234；原工作树credential_slots等并行未提交改动未触碰。证书团队QJ5URBG9AP有效身份已在钥匙串。Apple公证是独立认证，证书名称不是notarytool profile；公证profile moxbots-notary已在钥匙串配置并通过Apple验证；原始凭据不写入项目、记录或构建命令。
+## 网络修复与公证
 
-## Verification
+公证认证已验证，复用钥匙串 profile moxbots-notary，不再请求密码；记录不含原始秘密。先前大文件 S3 上传 deadlineExceeded，小文件 Accepted 仅为诊断。用户明确授权修改 Clash Verge 配置，persistent Merge.yaml 和 effective clash-verge.yaml 新增 DOMAIN-KEYWORD,notary-submissions-prod,DIRECT；mihomo -t 与 Unix API 热加载通过，实时连接链为 DIRECT，未更改全局模式/TUN/节点/其他逻辑规则。原配置备份 0700/0600 私有目录，位置与回滚方法见 clash-notary-change.json，不提交备份内容。
 
-Git project-sync observe/start/task-init通过。当前main不含固定reader实验；不得从试验分支夹带。build_macos.sh pkill/默认MyAgents调用不直接执行。签名改动只发生在构建资源副本，原资源/应用保留。
+完整 App submission 06c69914-5587-4baf-97a6-d01941e24da4 与正式 DMG submission 05b34298-9d78-406c-a6c3-c643c9ec827f 均 Apple Accepted、issues=null，分别 staple/validate 与 Gatekeeper Notarized Developer ID 通过；正式 DMG 从已附票 App 重建，最终输出 signature/hdiutil/stapler/spctl 全0。独立最终输出验收通过，最终只读挂载14844项App inventory完全一致，App/DMG实签名与Apple票据CDHash匹配；自有mount已卸载并清理。
 
-## Blockers and unknowns
+Clash 原配置备份 /Users/zhangshaohua/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/moxbots-notary-backup-2026-10-13T15-35-04-541Z，权限0700/0600；不提交备份内容。备份文件恢复后通过现有 Unix API 热加载即可回滚。配置语义对比证明唯一改动是上述新规则，其余配置完全一致。
 
-唯一正式分发阻断是完整App公证大文件上传在本机系统代理路径持续失败/未完成；凭据与小型已签文件上传、公证均已验证。未获完整App/DMG Apple Accepted；staple与Gatekeeper门禁开放。系统代理未改，临时notary timeout/chunk偏好恢复，等待用户稳定网络接续。
+## 制品与证据
 
-真实Host凭据恢复等未合入功能不属于本包。当前 installed MoXBots由其他owner用于联调；本任务未替换或启动实例。新机器安装、真实模型/Host路径与完整ASR仍未验证，不能用签名/公证代替业务通过。
+项目根目录 /Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot。
+签名 App /private/tmp/moxbots-release-ydtxfo9m/MoXBots.app；已Accepted ZIP 同临时目录。
+候选 output/mac-release/MoxBots-0.5.2-macOS-arm64-candidate.dmg，393006841 bytes，SHA256 56bc9953647ab1c35c67cf243cf5923247eb62d7a84d0b37be2bb85d7f316085。
+交付 docs/MOXBOTS-MAC-DELIVERY.md；独立审计 docs/MOXBOTS-MAC-INDEPENDENT-AUDIT.md；完整本机证据 work/mac-release；输出 output/mac-release。
 
-## Next step
+正式包 output/mac-release/MoxBots-0.5.2-macOS-arm64.dmg，377076306 bytes，SHA256 d199f85c71b78614dd56c16d6e7f355fe17cb18bd80f5dc481fc790352f24fc1。provenance.json、SHA256SUMS.txt 同目录；App 与最终DMG的Apple日志、票据及Gatekeeper实证在work/mac-release。
 
-稳定上传网络到位后，复用moxbots-notary钥匙串profile与已签App/ZIP，取得完整App Accepted并staple/validate；然后重建正式DMG，签名、公证Accepted、staple/Gatekeeper和独立只读内容核验。不再请求密码，不套用小型probe的Accepted。候选已可审阅，当前不是正式分发完成。
+ZIP内 CLIProxy 为额外第24项原生代码：保留有效PMSG vendor签名，正式来源/原档案摘要与Apple代码票据关联独立验证；此前23项仅指直接Mach-O，Cuse亦保留PMSG签名。
 
-## Packaging progress
+## 真实业务与发布边界
 
-Node24隔离依赖和assets构建通过；typecheck、许可、theme检查通过。DSH0.1.17 release、CLIProxy8.0.13、Cuse0.4.0原始档案已校验。15个独立projection Mach-O已按QJ5URBG9AP签名，Node/Claude保留源码JIT权限；Cuse独立已公证vendor App保留PMSG2Y8C6Z签名与原始清单。文档PMSG预签cache虽精确命中当前输入，但与QJ speech跨Team Library Validation冲突，正式包必须完成QJ document与speech一致构建。当前没有可交付App/DMG，也未提交本包公证。
+未验收新机器安装/首次启动/登录、真实模型、真实 Host 入网/桌面在线、完整 ASR（模型包未安装）。签名/公证不替代上述业务验收。当前安装实例由另一 owner 联调，未替换、启动或退出。官网、生产更新服务、公开 GitHub Release 不在本任务范围；正式协议/credential-reader 实验不因打包而视为实现或验收。临时 notary timeout/chunk 偏好均恢复，未停止用户自有终端。
 
-本机证据位于项目work/mac-release；Swift overlay位于Documents/Codex/2026-10-13/moxbots-release-toolchain，未修改系统CLT或Cargo依赖源码。原生资源与主应用的独立target/cache不影响正在联调的现有安装实例。
+## 最终交付与接续
 
-原生文档projection已统一QJ重签并重生成sha/size/signing元数据，所有Mach-O UUID与文件映射sections保持不变；未写入或伪装QJ官方prepared cache。speech用最终QJ ORT真实摘要重新走官方helper并成功。文档OCR实测识别MOXBOTS 2026 TEST；最终包内media worker能完成1000ms PCM解码，hardened无额外entitlement探针真实加载三原生库并取得ABI2；ASR模型未安装，完整识别未测。最终App已于/private/tmp/moxbots-release-ydtxfo9m封装并严格Developer ID签名验证通过（Documents同步元信息不参与最终包）；ZIP生成及公证待完成。
+正式分发包独立验收通过；原candidate为历史未公证结果，不用作正式交付。正式App/DMG完整公证、票据、Gatekeeper及最终输出独立内容/哈希验证全部通过。交付文件与摘要、报告已保存到上列本机位置。
 
-独立candidate审计已通过；App公证上传已分别使用默认S3 acceleration和普通通道，但均deadlineExceeded且completedParts为空；并非Apple Accepted。仅notary upload timeout临时提高900s并备份，上传结束finally恢复原设置；第三次上传继续。工作目录受同步FinderInfo影响，最终App位于/private/tmp/moxbots-release-ydtxfo9m，完整证据与交付草稿位于项目work/mac-release。候选未安装、未公开发布；当前主干已并发推进至fb92ce9c，不追溯夹带其新代码到冻结包。
+最终只读同步origin/main为20e89b6f2ac4de297205d168f0bb72614486e899，并验证冻结base e9767263仍为其祖先。本次不改产品源码，打包冻结输入不夹带main并行新成果；任务记录提交/推送本工作分支，未公开上传安装包。
 
-## Candidate and pending notarization handoff
-
-可审阅Developer ID签名候选：项目output/mac-release/MoxBots-0.5.2-macOS-arm64-candidate.dmg，393006841 bytes，SHA256 56bc9953647ab1c35c67cf243cf5923247eb62d7a84d0b37be2bb85d7f316085。codesign strict及hdiutil verify通过；独立DMG mounted内容核验进行中。candidate-provenance.json与SHA256SUMS-candidate.txt同目录。
-
-小型已签native-load-probe上传成功并获Apple Accepted（70d885f2-c8b6-49f1-85d1-956bea07eb25），只证明认证和小文件通道，不代表完整App。整包第三次延长timeout后20min未完成，主负责人停止自身任务进程，已finally恢复原notary timeout偏好。第四次App仅移除task进程代理env并明确5MB chunk/900s timeout，但lsof仍实证经过系统代理127.0.0.1:7897；App ID d58ed8f2-13d4-4c60-a6f7-06e4443c858d仍处于上传，尚无Successfully uploaded/Accepted证据。已请求用户切稳定上传节点或保留candidate稍后公证；未修改全局系统代理、不停止用户自有notary终端进程。
-
-下一步：用户网络解除后完成完整App上传并取得Apple Accepted，staple/validate App；重建含stapled App且说明更新的正式DMG，DMG签名、公证Accepted、staple、Gatekeeper与readonly内容独立验收。若用户选择延期，停止自身剩余上传并恢复timeout/chunk偏好，仅交付candidate和明确待验边界。源代码无需重构；不得把小型probe的Accepted套用于完整包。
-
-最终candidate独立DMG核验通过：签名/Team/secure timestamp、hdiutil VALID、readonly挂载14843项内容与已审计App完全一致，自有mount已卸载。正式App/DMG AppleAccepted/staple/Gatekeeper仍开放。第四次task-env去代理仍经过系统代理，已停止自身上传，timeout/chunk偏好已恢复；没有后台上传遗留，没有动用户自有notary终端或现有安装。等待用户网络动作接续；交付与接续在docs/MOXBOTS-MAC-DELIVERY.md及output/mac-release/DELIVERY.md，独立报告同目录留存。
+接续：获授权独立机器安装正式DMG，验证首次启动/登录/真实模型与Host/完整ASR；后续main成果要另按明确SHA重新打包。Clash公证桶DIRECT规则保留，其他配置语义相同，私有备份可回滚。当前运行安装实例和他人工作树保留。
