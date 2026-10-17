@@ -8,9 +8,12 @@ final class NativeSpeech {
     let state: String
     let text: String
     let final: Bool
+    let code: String? = nil
 
     var projection: [String: Any] {
-      ["kind": "speech", "state": state, "text": text, "final": final]
+      var value: [String: Any] = ["kind": "speech", "state": state, "text": text, "final": final]
+      if let code { value["code"] = code }
+      return value
     }
   }
 
@@ -27,6 +30,8 @@ final class NativeSpeech {
   private var request: SFSpeechAudioBufferRecognitionRequest?
   private var task: SFSpeechRecognitionTask?
   private var stopTimer: DispatchWorkItem?
+  private var captureTimer: DispatchWorkItem?
+  private var tapInstalled = false
   private var generation = 0
   private var isStarting = false
   private var startCompletion: ((Result<Void, Failure>) -> Void)?
@@ -63,11 +68,14 @@ final class NativeSpeech {
       return
     }
     stopCompletion = completion
+    let token = generation
     emit(state: "transcribing", text: current.text, final: false)
+    guard generation == token, current.state == "transcribing" else { return }
+    captureTimer?.cancel()
+    captureTimer = nil
     request.endAudio()
     engine.stop()
-    engine.inputNode.removeTap(onBus: 0)
-    let token = generation
+    removeInputTap(from: engine)
     let timeout = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token, self.current.state == "transcribing" else { return }
       self.finishStop(.failure(Failure("MOBILE_SPEECH_TIMEOUT")), final: false)
@@ -83,12 +91,14 @@ final class NativeSpeech {
     isStarting = false
     stopTimer?.cancel()
     stopTimer = nil
+    let startCompletion = self.startCompletion
+    let stopCompletion = self.stopCompletion
+    self.startCompletion = nil
+    self.stopCompletion = nil
+    tearDown()
+    emit(state: "idle", text: current.text, final: false, code: "MOBILE_SPEECH_CANCELLED")
     startCompletion?(.failure(Failure("MOBILE_SPEECH_CANCELLED")))
     stopCompletion?(.failure(Failure("MOBILE_SPEECH_CANCELLED")))
-    startCompletion = nil
-    stopCompletion = nil
-    tearDown()
-    emit(state: "idle", text: current.text, final: false)
   }
 
   private func requestSpeechAuthorization(token: Int) {
@@ -154,18 +164,19 @@ final class NativeSpeech {
         failStart("MOBILE_SPEECH_AUDIO_INPUT_UNAVAILABLE")
         return
       }
-      input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-        request.append(buffer)
-      }
-      engine.prepare()
-      try engine.start()
-
       self.recognizer = recognizer
       self.engine = engine
       self.request = request
+      input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        request.append(buffer)
+      }
+      tapInstalled = true
+      engine.prepare()
+      try engine.start()
+
       self.task = recognizer.recognitionTask(with: request) { [weak self] result, error in
         DispatchQueue.main.async {
-          guard let self, self.generation == token else { return }
+          guard let self, self.generation == token, self.current.state != "idle" else { return }
           if let result {
             let text = result.bestTranscription.formattedString
             if result.isFinal {
@@ -175,45 +186,70 @@ final class NativeSpeech {
             }
           }
           if let error, self.current.state != "idle" {
-            self.finishStop(.failure(Failure("MOBILE_SPEECH_RECOGNITION_FAILED")), final: false)
+            self.finishStop(.failure(Failure("MOBILE_SPEECH_RECOGNITION_FAILED")), final: false,
+              code: "MOBILE_SPEECH_RECOGNITION_FAILED")
           }
         }
       }
       emit(state: "recording", text: "", final: false)
+      guard generation == token, current.state == "recording" else { return }
       isStarting = false
+      let startCompletion = self.startCompletion
+      self.startCompletion = nil
       startCompletion?(.success(()))
-      startCompletion = nil
+      guard generation == token, current.state == "recording" else { return }
+      let timeout = DispatchWorkItem { [weak self] in
+        guard let self, self.generation == token, self.current.state == "recording" else { return }
+        self.stop { _ in }
+      }
+      captureTimer = timeout
+      DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: timeout)
     } catch {
       failStart("MOBILE_SPEECH_START_FAILED")
     }
   }
 
   private func failStart(_ code: String) {
+    generation += 1
     isStarting = false
+    let startCompletion = self.startCompletion
+    let stopCompletion = self.stopCompletion
+    self.startCompletion = nil
+    self.stopCompletion = nil
     tearDown()
-    emit(state: "idle", text: current.text, final: false)
+    emit(state: "idle", text: current.text, final: false, code: code)
     startCompletion?(.failure(Failure(code)))
-    startCompletion = nil
+    stopCompletion?(.failure(Failure(code)))
   }
 
-  private func finishStop(_ result: Result<Void, Failure>, text: String? = nil, final: Bool) {
+  private func finishStop(_ result: Result<Void, Failure>, text: String? = nil, final: Bool, code: String? = nil) {
+    generation += 1
+    isStarting = false
+    let startCompletion = self.startCompletion
+    let stopCompletion = self.stopCompletion
+    self.startCompletion = nil
+    self.stopCompletion = nil
     stopTimer?.cancel()
     stopTimer = nil
+    captureTimer?.cancel()
+    captureTimer = nil
     let transcript = text ?? current.text
     tearDown()
-    emit(state: "idle", text: transcript, final: final)
+    emit(state: "idle", text: transcript, final: final, code: code ?? (result.failureCode))
     stopCompletion?(result)
-    stopCompletion = nil
+    if let startCompletion { startCompletion(result) }
   }
 
   private func tearDown() {
     stopTimer?.cancel()
     stopTimer = nil
+    captureTimer?.cancel()
+    captureTimer = nil
     task?.cancel()
     task = nil
     if let engine {
       engine.stop()
-      engine.inputNode.removeTap(onBus: 0)
+      removeInputTap(from: engine)
     }
     engine = nil
     request = nil
@@ -221,8 +257,21 @@ final class NativeSpeech {
     try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
   }
 
-  private func emit(state: String, text: String, final: Bool) {
-    current = Event(state: state, text: text, final: final)
+  private func removeInputTap(from engine: AVAudioEngine) {
+    guard tapInstalled else { return }
+    engine.inputNode.removeTap(onBus: 0)
+    tapInstalled = false
+  }
+
+  private func emit(state: String, text: String, final: Bool, code: String? = nil) {
+    current = Event(state: state, text: text, final: final, code: code)
     onEvent(current)
+  }
+}
+
+private extension Result where Failure == NativeSpeech.Failure {
+  var failureCode: String? {
+    guard case let .failure(error) = self else { return nil }
+    return error.code
   }
 }

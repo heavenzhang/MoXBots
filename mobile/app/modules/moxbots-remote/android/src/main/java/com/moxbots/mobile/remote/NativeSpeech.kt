@@ -57,8 +57,11 @@ internal class NativeSpeech(
       }
       recognizer.startListening(intent)
       emit("recording", "", false)
-      startCompletion?.invoke(Result.success(Unit))
+      if (!isCurrent(token) || current.state != "recording") return
+      val callback = startCompletion
       startCompletion = null
+      callback?.invoke(Result.success(Unit))
+      if (!isCurrent(token) || current.state != "recording") return
       val timeout = Runnable {
         if (generation == token && current.state == "recording") stop {}
       }
@@ -77,9 +80,11 @@ internal class NativeSpeech(
     checkMainThread()
     if (current.state != "recording") return completion(Result.failure(SpeechFailure("MOBILE_SPEECH_NOT_RECORDING")))
     stopCompletion = completion
+    val token = generation
     captureTimeout?.let(main::removeCallbacks)
     captureTimeout = null
     emit("transcribing", current.text, false)
+    if (!isCurrent(token) || current.state != "transcribing") return
     try {
       recognizer?.stopListening() ?: run { finishStop(Result.failure(SpeechFailure("MOBILE_SPEECH_SERVICE_UNAVAILABLE")), current.text, false); return }
     } catch (_: Exception) {
@@ -87,7 +92,6 @@ internal class NativeSpeech(
       return
     }
 
-    val token = generation
     val timeout = Runnable {
       if (generation == token && current.state == "transcribing") {
         finishStop(Result.failure(SpeechFailure("MOBILE_SPEECH_TIMEOUT")), current.text, false)
@@ -101,12 +105,14 @@ internal class NativeSpeech(
     checkMainThread()
     if (current.state == "idle") return
     generation += 1
-    startCompletion?.invoke(Result.failure(SpeechFailure("MOBILE_SPEECH_CANCELLED")))
-    stopCompletion?.invoke(Result.failure(SpeechFailure("MOBILE_SPEECH_CANCELLED")))
+    val startCallback = startCompletion
+    val stopCallback = stopCompletion
     startCompletion = null
     stopCompletion = null
     releaseRecognizer()
-    emit("idle", current.text, false)
+    emit("idle", current.text, false, "MOBILE_SPEECH_CANCELLED")
+    startCallback?.invoke(Result.failure(SpeechFailure("MOBILE_SPEECH_CANCELLED")))
+    stopCallback?.invoke(Result.failure(SpeechFailure("MOBILE_SPEECH_CANCELLED")))
   }
 
   private fun listener(token: Long) = object : RecognitionListener {
@@ -158,21 +164,32 @@ internal class NativeSpeech(
 
   private fun failStart(token: Long, code: String) {
     if (!isCurrent(token)) return
-    releaseRecognizer()
-    emit("idle", current.text, false)
-    startCompletion?.invoke(Result.failure(SpeechFailure(code)))
+    generation += 1
+    val startCallback = startCompletion
+    val stopCallback = stopCompletion
     startCompletion = null
+    stopCompletion = null
+    releaseRecognizer()
+    emit("idle", current.text, false, code)
+    startCallback?.invoke(Result.failure(SpeechFailure(code)))
+    stopCallback?.invoke(Result.failure(SpeechFailure(code)))
   }
 
   private fun finishStop(result: Result<Unit>, text: String, final: Boolean) {
+    generation += 1
+    val startCallback = startCompletion
+    val stopCallback = stopCompletion
+    startCompletion = null
+    stopCompletion = null
     stopTimeout?.let(main::removeCallbacks)
     stopTimeout = null
     captureTimeout?.let(main::removeCallbacks)
     captureTimeout = null
     releaseRecognizer()
-    emit("idle", text, final)
-    stopCompletion?.invoke(result)
-    stopCompletion = null
+    val code = (result.exceptionOrNull() as? SpeechFailure)?.code
+    emit("idle", text, final, code)
+    stopCallback?.invoke(result)
+    startCallback?.invoke(result)
   }
 
   private fun releaseRecognizer() {
@@ -185,8 +202,8 @@ internal class NativeSpeech(
     recognizer = null
   }
 
-  private fun emit(state: String, text: String, final: Boolean) {
-    current = SpeechEvent(state, text, final)
+  private fun emit(state: String, text: String, final: Boolean, code: String? = null) {
+    current = SpeechEvent(state, text, final, code)
     onEvent(current)
   }
 
@@ -208,8 +225,14 @@ internal class NativeSpeech(
   }
 }
 
-internal data class SpeechEvent(val state: String, val text: String, val final: Boolean) {
-  fun projection(): Map<String, Any> = mapOf("kind" to "speech", "state" to state, "text" to text, "final" to final)
+internal data class SpeechEvent(val state: String, val text: String, val final: Boolean, val code: String? = null) {
+  fun projection(): Map<String, Any> = buildMap {
+    put("kind", "speech")
+    put("state", state)
+    put("text", text)
+    put("final", final)
+    code?.let { put("code", it) }
+  }
 }
 
 internal class SpeechFailure(val code: String) : Exception(code)
