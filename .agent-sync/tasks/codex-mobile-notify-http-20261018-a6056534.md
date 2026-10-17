@@ -2,7 +2,6 @@
 <!-- git-project-sync-task:branch=codex/mobile-notify-http-20261018 -->
 <!-- git-project-sync-task:base=9269dd8c52c423a180bfba366c8f0434a90db005 -->
 <!-- git-project-sync-task:status=in-progress -->
-<!-- git-project-sync-task:scaffold=true -->
 
 # Task: Add AuthStore-bound internal mobile notification HTTP adapter
 
@@ -43,5 +42,8 @@ delivery worker, public route wiring, or cold-start behavior.
 
 ## Next step
 
-- Review exact diff, commit this task's files, and provide the commit SHA for
-  root to cherry-pick and independently re-test.
+- Root integrated owned commit as f95f0231 and reviewed the authority boundary.
+  Primary core13 tests and strict clippy pass; both HTTP adapter tests pass in
+  the primary full service run. Overall160 tests pass (5 existing ignored),
+  with strict clippy passing; `/tmp/moxbots-mobile-notify-http-primary-full.log`.
+  Provider delivery and route mounting remain separate gates.
