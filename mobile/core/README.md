@@ -33,8 +33,11 @@ Native-only constructor JSON (camelCase):
 
 ```
 issuer, local, target, channelId, localEpoch, targetEpoch,
-jwks, bootstrap, localSignedPeer, targetSignedPeer, certificate, trustExpiresAt
+jwks, bootstrap, localSignedPeer, targetSignedPeer, certificate, trustExpiresAt, tlsInitiator
 ```
+
+`tlsInitiator` must match the validated relay Offer initiator (device ordering),
+independent of the management Controller role; both TLS directions are supported.
 
 `local`/`target` are exact protocol `DeviceScope` objects:
 `serviceId`, `environment`, `networkId`, `principalId`, `deviceId`, `keyGeneration`.
