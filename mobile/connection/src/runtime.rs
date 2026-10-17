@@ -1,3 +1,5 @@
+#[path = "drafts.rs"]
+mod drafts;
 #[path = "peer.rs"]
 mod peer;
 use crate::agent_network::{
@@ -185,7 +187,19 @@ impl MobileConnection {
         let kind = intent["kind"]
             .as_str()
             .ok_or_else(|| err("MOBILE_INTENT_INVALID"))?;
-        let allowed = if kind == "session" || kind == "assets" {
+        let allowed = if kind == "draft.read" {
+            &["version", "kind", "targetId", "sessionId"][..]
+        } else if kind == "draft.write" {
+            &[
+                "version",
+                "kind",
+                "targetId",
+                "sessionId",
+                "expectedRevision",
+                "writeId",
+                "text",
+            ][..]
+        } else if kind == "session" || kind == "assets" {
             &["version", "kind", "targetId", "request"][..]
         } else {
             &["version", "kind"][..]
@@ -199,6 +213,8 @@ impl MobileConnection {
             return Err(err("MOBILE_INTENT_INVALID"));
         }
         match kind {
+            "draft.read" => self.draft(&intent, false),
+            "draft.write" => self.draft(&intent, true),
             "account.status" => {
                 self.restore().await?;
                 Ok(self.account_view())
@@ -584,7 +600,16 @@ impl MobileConnection {
                         agent: id.into(),
                     },
                 );
-                items.push(json!({"targetId":opaque,"agentId":id,"name":agent["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"deviceName":device["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"online":device["connectionState"]=="ready","runtime":Value::Null}));
+                let identity_key = drafts::identity(
+                    self.saved
+                        .as_ref()
+                        .ok_or_else(|| err("OWNED_LOGIN_REQUIRED"))?,
+                    &Target {
+                        device: device_id.into(),
+                        agent: id.into(),
+                    },
+                )?;
+                items.push(json!({"identityKey":identity_key,"targetId":opaque,"agentId":id,"name":agent["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"deviceName":device["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"online":device["connectionState"]=="ready","runtime":Value::Null}));
             }
             if items.len() >= 100 {
                 has_more = true;
