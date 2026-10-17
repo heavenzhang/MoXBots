@@ -28,7 +28,7 @@ interface ConfirmationState {
   resolve: (result: TabCloseAdmission) => void;
 }
 
-export type RecordTabCloseReason = 'user' | 'record-deleted';
+export type RecordTabCloseReason = 'user' | 'record-deleted' | 'cache';
 
 export function useRecordTabLifecycle(dependencies: RecordLifecycleDependencies): {
   adapter: TabLifecycleAdapter<RecordTab, RecordTabCloseReason>;
@@ -60,7 +60,12 @@ export function useRecordTabLifecycle(dependencies: RecordLifecycleDependencies)
         showStatusError();
         return 'blocked';
       }
-      if (active?.recordId !== tab.recordId) return 'allow';
+      if (active?.recordId !== tab.recordId) {
+        return reason === 'cache' && !(await dependenciesRef.current.flushPendingNote(tab.recordId)) ? 'blocked' : 'allow';
+      }
+      // Automatic resource reclamation must never stop a live recording or
+      // open a confirmation dialog for an invisible page.
+      if (reason === 'cache') return 'blocked';
       return new Promise<TabCloseAdmission>((resolve) => {
         setConfirmation({ tab, snapshot: active, loading: false, resolve });
       });

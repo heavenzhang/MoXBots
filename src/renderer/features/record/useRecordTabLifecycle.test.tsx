@@ -68,12 +68,27 @@ function dependencies(overrides: Partial<Dependencies> = {}): Dependencies {
   };
 }
 
-async function requestAdmission(reason: 'user' | 'record-deleted' = 'user'): Promise<TabCloseAdmission> {
+async function requestAdmission(reason: RecordTabCloseReason = 'user'): Promise<TabCloseAdmission> {
   const result = adapterRef.current?.prepareClose?.(tab, reason) ?? 'allow';
   return Promise.resolve(result);
 }
 
 describe('useRecordTabLifecycle', () => {
+  it('refuses automatic eviction of a live capture without showing a stop dialog', async () => {
+    const deps = dependencies();
+    render(<Harness dependencies={deps} lifecycleRef={adapterRef} />);
+    await expect(requestAdmission('cache')).resolves.toBe('blocked');
+    expect(deps.stopRecording).not.toHaveBeenCalled();
+    expect(screen.queryByText('Close recording')).not.toBeInTheDocument();
+  });
+
+  it('flushes an inactive recording note and keeps its page on failed save', async () => {
+    const deps = dependencies({ getRecordingSnapshot: vi.fn(async () => null), flushPendingNote: vi.fn(async () => false) });
+    render(<Harness dependencies={deps} lifecycleRef={adapterRef} />);
+    await expect(requestAdmission('cache')).resolves.toBe('blocked');
+    expect(deps.flushPendingNote).toHaveBeenCalledWith('record-1');
+    expect(deps.stopRecording).not.toHaveBeenCalled();
+  });
   it.each([
     ['Cancel', 'blocked'],
     ['Stop', 'allow'],

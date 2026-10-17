@@ -917,8 +917,9 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     }
   }, [composerTabId, composerDiscussionId, sessionId, workspacePath, isLauncherMode, setInputValue,
     getImageCount, goalDraftActive, cronModeEnabled, cronTask, onRestoreWorkflowDraft]);
+  // The live owner also attests cache eviction in every renderer profile.
+  // Durable update handoff restoration above remains MoXBots-specific.
   useLayoutEffect(() => {
-    if (APP_BUILD_PROFILE !== 'moxbot') return;
     return registerComposerUpdateOwner({
       snapshot: () => ({ ...checkpointSnapshotRef.current!,
         text: textareaRef.current?.value ?? inputValueRef.current,

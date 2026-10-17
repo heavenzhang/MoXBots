@@ -27,6 +27,23 @@ async function owner(patch: Partial<ComposerSnapshot> = {}) {
 }
 
 describe('MoxBots composer update checkpoint', () => {
+  it('attests automatic cache eviction using the live composer without discarding drafts or in-flight work', async () => {
+    const { api, state } = await owner({ text: '' });
+    expect(api.canEvictComposerTab(tab.id)).toBe(true);
+    state.text = 'unsent';
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    expect(api.canEvictComposerTab('another-tab')).toBe(true);
+    state.text = ''; state.imageCount = 1;
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    state.imageCount = 0; state.sending = true;
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    state.sending = false; state.composing = true;
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    state.composing = false; state.pendingAttachments = true;
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    state.pendingAttachments = false;
+    expect(api.canEvictComposerTab(tab.id)).toBe(true);
+  });
   it('refuses unverified remote tabs before persistence and final install, retaining live drafts', async () => {
     const { api, state, freeze } = await owner();
     expect(() => api.assertUpdateTabsSafe([{ view: 'remote-session' }])).toThrow('尚未接入安全更新检查');

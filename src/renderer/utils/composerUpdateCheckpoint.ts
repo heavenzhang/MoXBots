@@ -126,6 +126,22 @@ export function registerComposerUpdateOwner(owner: ComposerOwner): () => void {
   return () => { owners.delete(owner); ownerRevision++; };
 }
 
+/** Read the existing live composer owner; automatic cache eviction must never
+ * discard input, attachments, IME composition or an in-flight send. */
+export function canEvictComposerTab(tabId: string): boolean {
+  if (locked) return false;
+  try {
+    for (const owner of owners) {
+      const snapshot = owner.snapshot();
+      if (snapshot.scope.tabId === tabId && (hasDraft(snapshot) || snapshot.composing
+        || snapshot.sending || snapshot.pendingAttachments || snapshot.blockingReason)) return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Freeze synchronously before any await: input cannot move past the snapshot. */
 // App owns the edition composition. Accept its existing codec rather than
 // importing the UI composition root back into a leaf composer dependency.

@@ -345,3 +345,8 @@ User authorized owned relay terminal recovery first, then DSH child approval gui
 ## MOXBOTS-BROWSER-001 — 2026-10-17
 
 补齐可自动发现的产品浏览器Skill（系统同步v61），让对话工具菜单在未安装/全局未开启时也能定位浏览器资源卡片；明确资源、选择与实际连接，增加读失败重查与事件/查询竞态保护。CLI project browser选择与UI共用互斥规则，不修改全局peer。531项定向回归、实际合成IAB交互与真实Kimi k3→生产SessionEngine/SDK→Browser Host/Registry→锁定Chromium中文表单/截图及新Session合成Cookie恢复通过；Rust authority为测试替身、headless，不冒充原生生产验收。任务 `.agent-sync/tasks/codex-browser-001-20261017-ef4fc5b6.md`；证据 `dev-docs/browser-001/acceptance.md`。主干/CI与下一未冻结桌面发行分别追踪，唯一既定发布owner不变，不并发操作日常App或通知其它聊天。
+
+
+## MOXBOTS-SESSION-WINDOWS-001 — 2026-10-17
+
+按用户要求移除全局浏览器式TabBar，以当前会话页面/侧栏为导航；沿原Chat保存与后台继续owner做12页FIFO有界回收，保护输入/录音和活动页面。验收与发布请求见 `dev-docs/session-windows/acceptance.md`，分支任务 `.agent-sync/tasks/codex-session-windows-20261017-31ed5a11.md`。156项定向回归、实际renderer三尺寸与独立代码/截图审阅通过；CI/main以PR为准，原生包/真实会话仍待既定唯一发布owner下一未冻结候选，不操作日常App，不把main合并当已发布。
