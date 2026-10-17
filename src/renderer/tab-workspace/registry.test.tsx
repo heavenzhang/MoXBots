@@ -265,7 +265,7 @@ describe('tab module registry', () => {
     expect(reopened.id).toBe(opened.id);
     expect(reopened.generation).toBe(2);
 
-    act(() => hook.result.current.close(reopened.id));
+    act(() => { void hook.result.current.close(reopened.id); });
     expect(hook.result.current.state.tabs).toEqual([dashboard]);
   });
 });

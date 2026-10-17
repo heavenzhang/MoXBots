@@ -232,7 +232,7 @@ Tip 在悬停或聚焦时显示；触发动作后立即关闭，保留按钮焦�
 
 `--breakpoint-mobile: 640px` 是共享窄窗断点，但桌面布局不能只依赖单一媒体查询。宽度不足时按优先级处理：先压缩弹性空白，再让次级栏变为 Sheet/Overlay，最后才隐藏非关键说明；主内容和主动作始终可达。
 
-App Shell 使用“全局侧栏 + 顶部 Tab”的双层注意力模型，完整交互见 [`design/app_shell.md`](design/app_shell.md)。页面遵循：
+App Shell 使用“全局侧栏 + 当前会话页面”的导航模型，完整交互见 [`design/app_shell.md`](design/app_shell.md)。页面遵循：
 
 - 主内容 `min-width: 0`，长标题省略；代码、表格和媒体自己承担横向滚动。
 - 页面只有一个主滚动 owner；固定 Header、吸底 Composer 和内部预览需要明确各自边界。

@@ -47,6 +47,8 @@ export const BuiltinTabSlot = memo(
   function BuiltinTabSlot({ tab, isActive, isDeferred, bindings }: BuiltinTabSlotProps) {
     return (
       <div
+        data-cached-page-id={tab.id}
+        data-cached-page-view={tab.view}
         className={`absolute inset-0 ${isActive ? '' : 'pointer-events-none invisible'}`}
         style={isActive ? undefined : { contentVisibility: 'hidden' }}
       >

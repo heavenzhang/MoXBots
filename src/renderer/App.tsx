@@ -59,7 +59,9 @@ import { DispatchTaskDialog } from '@/components/task-center/DispatchTaskDialog'
 import CustomTitleBar from '@/components/CustomTitleBar';
 import GlobalSidebar from '@/components/global-sidebar/GlobalSidebar';
 import LinkContextMenuProvider from '@/components/LinkContextMenuProvider';
-import TabBar from '@/components/TabBar';
+import CurrentPageHeader from '@/components/CurrentPageHeader';
+import { resolveTabChrome } from '@/tab-workspace/registry';
+import { useWorkspaceCacheLimit } from '@/tab-workspace/useWorkspaceCacheLimit';
 import { SessionDeletionContext } from '@/context/SessionDeletionContext';
 import type { AdoptMigratedSessionOptions } from '@/context/TabContext';
 import { useToast } from '@/components/Toast';
@@ -69,7 +71,6 @@ import { useTrayEvents } from '@/hooks/useTrayEvents';
 import { useHelperAgentModelDefaults } from '@/hooks/useHelperAgentModelDefaults';
 import { useConfig } from '@/hooks/useConfig';
 import { useSpaceBuildCapability } from '@/hooks/useSpaceBuildCapability';
-import { useTabSwipeGesture } from '@/hooks/useTabSwipeGesture';
 import { actions as taskCenterActions } from '@/hooks/taskCenterStore';
 import { isProjectVisibleToUser, type Project } from '@/config/types';
 import {
@@ -86,6 +87,7 @@ import {
   buildChatFlipPatch,
   generateTabId,
   MAX_TABS,
+  TAB_ADMISSION_LIMIT,
 } from '@/types/tab';
 import { BuiltinTabSlot } from '@/tab-workspace/BuiltinTabSlot';
 import {
@@ -120,7 +122,7 @@ import {
   loadAndClearOpenTabsDurable,
   clearOpenTabsDurable,
 } from '@/utils/tabPersistenceDurable';
-import { beginComposerUpdateCheckpoint, loadComposerUpdateHandoff, dismissLoadedComposerUpdateHandoff, assertUpdateTabsSafe, isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
+import { canEvictComposerTab, beginComposerUpdateCheckpoint, loadComposerUpdateHandoff, dismissLoadedComposerUpdateHandoff, assertUpdateTabsSafe, isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
 import { consumeCleanExitMarker } from '@/utils/lastExitMarker';
 import { perfMark } from '@/utils/perfMark';
 import { RENDERER_PERF_PHASE } from '../shared/perfTrace';
@@ -461,7 +463,7 @@ export default function App() {
     toastRef.current.info(t('appChrome.maxTabsReached'));
   }, [t]);
 
-  // Multi-tab state.
+  // Session-scoped pages, kept warm in a bounded FIFO cache.
   //
   // Startup behaviour (Issue #309): boot is ALWAYS a clean new launcher — we no
   // longer auto-restore the previous session. Restoring is opt-in via the
@@ -483,7 +485,7 @@ export default function App() {
       modules: builtinTabModules,
       initialTabs: initialWorkspace.tabs,
       initialActiveTabId: initialWorkspace.activeTabId,
-      maxTabs: MAX_TABS,
+      maxTabs: TAB_ADMISSION_LIMIT,
       onCapacityRejected: handleTabCapacityRejected,
       createId: generateTabId,
       isLastTabProtected: builtinTabWorkspacePolicy.isLastTabProtected,
@@ -954,15 +956,15 @@ export default function App() {
 
   // Same admission boundary as Record notes: only callbacks live here. The
   // mounted preview retains the draft and owns its IO/transition decision.
-  const fileEditSubmittersRef = useRef(new Map<string, () => Promise<boolean>>());
-  const registerFileEditSubmitter = useCallback((tabId: string, submit: () => Promise<boolean>) => {
-    fileEditSubmittersRef.current.set(tabId, submit);
-    return () => { if (fileEditSubmittersRef.current.get(tabId) === submit) fileEditSubmittersRef.current.delete(tabId); };
+  const fileEditSubmittersRef = useRef(new Map<string, { submit: () => Promise<boolean>; canEvict?: () => boolean }>());
+  const registerFileEditSubmitter = useCallback((tabId: string, submit: () => Promise<boolean>, canEvict?: () => boolean) => {
+    fileEditSubmittersRef.current.set(tabId, { submit, canEvict });
+    return () => { if (fileEditSubmittersRef.current.get(tabId)?.submit === submit) fileEditSubmittersRef.current.delete(tabId); };
   }, []);
   const chatTabLifecycle = useMemo(
     () =>
       createChatTabLifecycle({
-        flushFileEdits: async tabId => fileEditSubmittersRef.current.get(tabId)?.() ?? true,
+        flushFileEdits: async tabId => fileEditSubmittersRef.current.get(tabId)?.submit() ?? true,
         startBackgroundCompletion,
         stopSseProxy,
         releaseTabSession,
@@ -1000,11 +1002,27 @@ export default function App() {
       }),
     [chatTabLifecycle, recordTabLifecycle],
   );
+  const canEvictCachedPage = useCallback((tab: Tab): boolean => {
+    if (loadingTabs[tab.id] || recordingAdmissionTabsRef.current.has(tab.id)
+      || !canEvictComposerTab(tab.id)) return false;
+    if (tab.view === 'chat') return fileEditSubmittersRef.current.get(tab.id)?.canEvict?.() === true && !!tab.sessionId && !isPendingSessionId(tab.sessionId)
+      && !tab.initialMessage && !tab.pendingFilePreview;
+    // Remote interaction cards keep their own unsent answers. Until that
+    // owner attests safe eviction, preserve the page (like other live forms).
+    if (tab.view === 'remote-session') return false;
+    if (tab.view === 'record') return !tab.recordingStatus || !['recording', 'paused', 'preparing', 'stopping'].includes(tab.recordingStatus);
+    // Configuration/community forms have no automatic-close attestation.
+    // Keep their singleton views mounted rather than guessing that a form is clean.
+    return tab.view === 'launcher' || tab.view === 'projectboard';
+  }, [loadingTabs]);
   const requestCloseTab = useTabCloseController({
     workspace: tabWorkspaceController,
     lifecycle: tabLifecycle,
     defaultReason: builtinTabWorkspacePolicy.defaultCloseReason,
     createFallback: builtinTabWorkspacePolicy.createFallback,
+    canDetach: (tab, reason) => reason !== 'cache' || (
+      tabWorkspaceController.getSnapshot().tabs.length > MAX_TABS &&
+      tabWorkspaceController.getSnapshot().activeTabId !== tab.id && canEvictCachedPage(tab)),
     onBeforeDetach: (tab) => clearPendingSessionBirth(tab.id),
     onDetached: (result) =>
       track('tab_close', {
@@ -1015,7 +1033,16 @@ export default function App() {
       console.error(`[App] Tab cleanup failed for ${tab.id}`, error),
   });
 
-  // Content container ref for tab swipe gesture
+  useWorkspaceCacheLimit({
+    state: tabWorkspace,
+    getSnapshot: tabWorkspaceController.getSnapshot,
+    limit: MAX_TABS,
+    canEvict: canEvictCachedPage,
+    close: tabId => requestCloseTab(tabId, 'cache'),
+    onBlocked: () => toastRef.current.info(t('appChrome.cacheProtected')),
+  });
+
+  // Current-page content container (also used by app overlays).
   const contentRef = useRef<HTMLDivElement>(null);
 
   // Per-tab launch guard — prevents concurrent launches overwriting each other's state
@@ -1806,13 +1833,6 @@ export default function App() {
     [tabWorkspaceController],
   );
 
-  const performCloseTab = useCallback(
-    (tabId: string) => requestCloseTab(tabId, 'user'),
-    [requestCloseTab],
-  );
-
-  const closeTabWithConfirmation = performCloseTab;
-
   const closeCurrentTab = useCallback(() => {
     requestCloseTab(tabWorkspaceController.getSnapshot().activeTabId, 'user');
   }, [requestCloseTab, tabWorkspaceController]);
@@ -1975,7 +1995,7 @@ export default function App() {
           `[App][launch] persistent-owner-check ${activeTab?.view === 'chat' && activeTab.sessionId ? `present=${currentSessionHasPersistentOwners}` : 'skipped(no-session)'}`,
         );
         if (currentSessionHasPersistentOwners) {
-          if (tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS) {
+          if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
             toastRef.current.info(t('appChrome.maxTabsReached'));
             return false;
           }
@@ -2306,7 +2326,7 @@ export default function App() {
       },
       title: string,
     ): Promise<string | null> => {
-      if (tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS) {
+      if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
         return null;
       }
@@ -2469,7 +2489,7 @@ export default function App() {
       context?: import("../shared/agentMentions").QueryMentionContext,
     ) => {
       // Check tab limit
-      if (tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS) {
+      if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
         return false;
       }
@@ -2675,7 +2695,7 @@ export default function App() {
       title: string,
       opts?: { pendingFilePreview?: FilePreviewIntent },
     ): Promise<boolean> => {
-      if (tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS) {
+      if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
         return false;
       }
@@ -3185,26 +3205,6 @@ export default function App() {
     }
   }, [acknowledgeNotificationTarget, activeTabView]);
 
-  // Trackpad two-finger horizontal swipe to switch tabs (follow-along animation)
-  useTabSwipeGesture({
-    contentRef,
-    getTabs: () => tabWorkspaceController.getSnapshot().tabs,
-    getActiveTabId: () => tabWorkspaceController.getSnapshot().activeTabId,
-    onSwitchTab: handleSelectTab,
-  });
-
-  const handleCloseTab = useCallback((tabId: string) => {
-    // Special case: If only one launcher tab, do nothing
-    const currentTabs = tabWorkspaceController.getSnapshot().tabs;
-    const tab = currentTabs.find((t) => t.id === tabId);
-    if (currentTabs.length === 1 && tab?.view === 'launcher') {
-      return;
-    }
-
-    void closeTabWithConfirmation(tabId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace commands and callbacks are stable
-  }, []);
-
   const handleNewTab = useCallback(() => {
     const currentLength = tabWorkspaceController.getSnapshot().tabs.length;
     const result = tabWorkspaceController.open('launcher', {
@@ -3235,7 +3235,7 @@ export default function App() {
       initialMessage?: InitialMessage,
       entryIntent: 'open_workspace' | 'workspace_init' = 'open_workspace',
     ): Promise<boolean> => {
-      if (tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS) {
+      if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
         return false;
       }
@@ -3266,14 +3266,6 @@ export default function App() {
       t,
       tabWorkspaceController,
     ],
-  );
-
-  // Handle tab reordering via drag and drop
-  const handleReorderTabs = useCallback(
-    (activeId: string, overId: string) => {
-      tabWorkspaceController.reorder(activeId, overId);
-    },
-    [tabWorkspaceController],
   );
 
   // Open Settings as a new tab (or switch to existing one)
@@ -3433,7 +3425,7 @@ export default function App() {
           )
         : undefined;
       const mustReuseStopSurface =
-        Boolean(options.activeRecording) && currentTabs.length >= MAX_TABS;
+        Boolean(options.activeRecording) && currentTabs.length >= TAB_ADMISSION_LIMIT;
       const reusable =
         options.openInNewTab && !mustReuseStopSurface
           ? undefined
@@ -3460,7 +3452,7 @@ export default function App() {
         );
         if (replaced.kind === 'rejected') return false;
       } else {
-        if (currentTabs.length >= MAX_TABS) {
+        if (currentTabs.length >= TAB_ADMISSION_LIMIT) {
           if (!options.activeRecording) {
             toastRef.current.info(t('appChrome.maxTabsReached'));
             return false;
@@ -3804,7 +3796,7 @@ export default function App() {
       if (route.name === 'task.comment') {
         const currentTabs = tabWorkspaceController.getSnapshot().tabs;
         const existing = currentTabs.find((tab) => tab.view === 'taskcenter');
-        if (!existing && currentTabs.length >= MAX_TABS) {
+        if (!existing && currentTabs.length >= TAB_ADMISSION_LIMIT) {
           toastRef.current.info(t('appChrome.maxTabsReached'));
           return false;
         }
@@ -3845,7 +3837,7 @@ export default function App() {
         .tabs.find((tab) => tab.view === 'space');
       if (
         !existing &&
-        tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS
+        tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT
       ) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
         return false;
@@ -4032,7 +4024,7 @@ export default function App() {
 
       try {
         const currentTabs = tabWorkspaceController.getSnapshot().tabs;
-        if (currentTabs.length >= MAX_TABS) {
+        if (currentTabs.length >= TAB_ADMISSION_LIMIT) {
           toastRef.current.info(t('appChrome.maxTabsReached'));
           return false;
         }
@@ -4356,7 +4348,7 @@ export default function App() {
           return;
         }
 
-        if (tabWorkspaceController.getSnapshot().tabs.length >= MAX_TABS) {
+        if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
           console.warn(
             `[App] Max tabs (${MAX_TABS}) reached, cannot open bug report`,
           );
@@ -4739,8 +4731,8 @@ export default function App() {
         for (const submit of pendingRecordNoteSubmittersRef.current.values()) {
           if (!(await submit())) return;
         }
-        for (const submit of fileEditSubmittersRef.current.values()) {
-          if (!(await submit())) return;
+        for (const editor of fileEditSubmittersRef.current.values()) {
+          if (!(await editor.submit())) return;
         }
         await checkpoint.persist(tabWorkspaceController.getSnapshot().tabs, tabWorkspaceController.getSnapshot().activeTabId);
         restarting = (await performRestartAndUpdate(checkpoint, interruptWork)) === 'ok';
@@ -5095,13 +5087,9 @@ export default function App() {
               onRestoreSession={handleRestoreLastSession}
               onDismissRestore={handleDismissRestore}
             >
-              <TabBar
-                tabs={tabs}
-                activeTabId={activeTabId}
-                onSelectTab={handleSelectTab}
-                onCloseTab={handleCloseTab}
-                onNewTab={handleNewTab}
-                onReorderTabs={handleReorderTabs}
+              <CurrentPageHeader
+                chrome={activeTab ? resolveTabChrome(builtinTabModules, activeTab, { t }) : { title: '' }}
+                onClose={tabs.length === 1 && activeTab?.view === 'launcher' ? undefined : closeCurrentTab}
               />
             </CustomTitleBar>
 
