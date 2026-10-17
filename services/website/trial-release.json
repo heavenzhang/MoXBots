@@ -10,5 +10,17 @@
     "signed": true,
     "notarized": true,
     "url": "https://github.com/heavenzhang/MoXBots/releases/download/moxbots-trial-0.5.6-a81d2509/MoxBots-0.5.6-macOS-arm64.zip"
+  },
+  "windowsX64": {
+    "status": "ready",
+    "version": "0.5.9",
+    "sourceCommit": "9f93b3304ee6f06434d8d09754d3e59d4d676d0d",
+    "installer": "MoXBots_0.5.9_x64-setup.exe",
+    "bytes": 339742567,
+    "sha256": "4db0581ec68a27de136e4d7c2ba2c712a90cfa3d47fba602db4a4b6f54aa18fc",
+    "authenticodeStatus": "NotSigned",
+    "analyticsEnabled": false,
+    "windowsUpdaterSupported": false,
+    "url": "/download/packages/MoXBots_0.5.9_x64-setup.exe"
   }
 }
