@@ -20,13 +20,15 @@ class MoxBotsRemoteModule : Module() {
   private val main = Handler(Looper.getMainLooper())
   private var connection: NativeConnection? = null
   @Volatile private var ownerActive = true
+  @Volatile private var appForeground = true
   private var speech: NativeSpeech? = null
+  private var uploads: NativeUploadScheduler? = null // owner-thread only
   private data class Picker(val scope: String, val image: Boolean, val promise: Promise)
   private var picker: Picker? = null // main-thread owned
   private val pickerCode = 0x4d58
   override fun definition() = ModuleDefinition {
     Name("MoxBotsRemote")
-    Events("snapshotChanged", "speechChanged")
+    Events("snapshotChanged", "speechChanged", "attachmentUploadChanged")
     AsyncFunction("request") { input: String, promise: Promise ->
       val intent = try { if (input.toByteArray(Charsets.UTF_8).size <= 64 * 1024) JSONObject(input) else null } catch (_: Exception) { null }
       val kind = intent?.optString("kind")
@@ -38,7 +40,28 @@ class MoxBotsRemoteModule : Module() {
         handleAttachmentIntent(intent, promise)
       } else enqueue(promise) {
         try {
-          promise.resolve(ensureConnection().request(input))
+          val parsed = intent
+          val parsedKind = parsed?.optString("kind")
+          if (parsedKind in setOf("account.login.start", "account.login.poll", "account.logout", "connection.suspend")) {
+            uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+          }
+          if (parsedKind == "session") {
+            val targetId = parsed.optString("targetId")
+            if (targetId.isNotBlank()) uploads?.pauseForTarget(targetId)
+            if (parsed.optJSONObject("request")?.optString("kind")?.contains("cancel", ignoreCase = true) == true) {
+              uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+            }
+          }
+          val response = ensureConnection().request(input)
+          when (parsedKind) {
+            "targets.list" -> runCatching {
+              val scope = accountScope()
+              uploads?.validateTargets(scope, JSONObject(response).getJSONArray("items"))
+            }.onFailure { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED") }
+            "account.status" -> runCatching { uploads?.pauseUnlessScope(accountScope()) }
+              .onFailure { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED") }
+          }
+          promise.resolve(response)
         } catch (_: Exception) { promise.resolve(failure("MOBILE_CONNECTION_UNAVAILABLE")) }
       }
     }
@@ -68,16 +91,25 @@ class MoxBotsRemoteModule : Module() {
       }
     }
     OnActivityEntersBackground {
+      appForeground = false
       main.post { speech?.cancel() }
-      owner.execute { try { connection?.request("{\"version\":1,\"kind\":\"connection.suspend\"}") } catch (_: Exception) { } }
+      owner.execute {
+        try { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED") } catch (_: Exception) { }
+        try { connection?.request("{\"version\":1,\"kind\":\"connection.suspend\"}") } catch (_: Exception) { }
+      }
     }
     OnDestroy {
       ownerActive = false
+      appForeground = false
       main.post {
         speech?.cancel(); speech = null
         picker?.promise?.resolve(failure("MOBILE_ATTACHMENT_CANCELLED")); picker = null
       }
-      owner.execute { connection?.close(); connection = null }
+      owner.execute {
+        try { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED") } catch (_: Exception) { }
+        try { connection?.close() } catch (_: Exception) { }
+        connection = null; uploads = null
+      }
       owner.shutdown()
     }
   }
@@ -120,16 +152,45 @@ class MoxBotsRemoteModule : Module() {
       "attachment.pick" -> intent.length() == 3 && intent.optString("source") in setOf("file", "image")
       "attachment.list" -> intent.length() == 2
       "attachment.remove" -> intent.length() == 3 && intent.optString("localId").length == 36
+      "attachment.upload", "attachment.upload.status", "attachment.upload.cancel", "attachment.upload.pause" ->
+        intent.length() == 4 && isCanonicalUuid(intent.optString("localId")) &&
+          intent.optString("targetId").matches(Regex("[A-Za-z0-9._:-]{1,256}"))
       else -> false
     }
     if (!valid) { promise.resolve(failure("MOBILE_INTENT_INVALID")); return }
+    if (kind.startsWith("attachment.upload") && (appContext.currentActivity?.hasWindowFocus() != true)) {
+      promise.resolve(failure("MOBILE_ATTACHMENT_UPLOAD_FOREGROUND_REQUIRED")); return
+    }
+    if (kind.startsWith("attachment.upload")) appForeground = true
     enqueue(promise) {
       try {
         val scope = accountScope()
         val context = requireNotNull(appContext.reactContext)
+        if (kind.startsWith("attachment.upload")) {
+          val scheduler = uploadScheduler(scope, context)
+          scheduler.pauseUnlessScope(scope)
+          val (target, targetItems) = currentUploadTarget(intent.getString("targetId"))
+          scheduler.validateTargets(scope, targetItems)
+          scheduler.pauseForTarget(target.targetId)
+          val localId = intent.getString("localId")
+          val projection = when (kind) {
+            "attachment.upload" -> scheduler.start(scope, target, localId)
+            "attachment.upload.status" -> scheduler.status(scope, target, localId)
+            "attachment.upload.cancel" -> scheduler.cancel(scope, target, localId)
+            else -> scheduler.pause(scope, target, localId)
+          }
+          promise.resolve(projection.toString())
+          return@enqueue
+        }
         when (kind) {
           "attachment.list" -> promise.resolve(NativeAttachments(context, scope).list().toString())
-          "attachment.remove" -> promise.resolve(NativeAttachments(context, scope).remove(intent.getString("localId")).toString())
+          "attachment.remove" -> {
+            val localId = intent.getString("localId")
+            val scheduler = uploadScheduler(scope, context)
+            check(!scheduler.blocksRemoval(scope, localId)) { "MOBILE_ATTACHMENT_UPLOAD_ACTIVE" }
+            scheduler.clearRemovedSource(scope, localId)
+            promise.resolve(NativeAttachments(context, scope).remove(localId).toString())
+          }
           else -> main.post {
             val activity = appContext.currentActivity
             if (activity == null || activity.isFinishing || !activity.hasWindowFocus()) {
@@ -157,6 +218,44 @@ class MoxBotsRemoteModule : Module() {
   }
   private fun attachmentError(error: Exception): String = error.message
     ?.takeIf { it.matches(Regex("MOBILE_[A-Z0-9_]{1,110}")) } ?: "MOBILE_ATTACHMENT_UNAVAILABLE"
+  private fun currentUploadTarget(targetId: String): Pair<UploadTarget, org.json.JSONArray> {
+    val items = JSONObject(ensureConnection().request("{\"version\":1,\"kind\":\"targets.list\"}"))
+      .getJSONArray("items")
+    val target = (0 until items.length()).mapNotNull { items.optJSONObject(it) }
+      .firstOrNull { it.optString("targetId") == targetId }
+      ?: error("MOBILE_TARGET_INVALID")
+    return UploadTarget(targetId, target.getString("identityKey"), target.getString("agentId")) to items
+  }
+  private fun uploadScheduler(scope: String, context: android.content.Context): NativeUploadScheduler {
+    uploads?.let { return it }
+    val records = SecureRecords(context)
+    val scheduler = NativeUploadScheduler(
+      io = object : NativeUploadScheduler.IO {
+        override fun readRecord(scope: String, name: String) = records.read(scope, name)
+        override fun writeRecord(scope: String, name: String, bytes: ByteArray) = records.write(scope, name, bytes)
+        override fun removeRecord(scope: String, name: String) = records.remove(scope, name)
+        override fun source(scope: String, localId: String): UploadSource? {
+          val items = NativeAttachments(context, scope).list().getJSONArray("items")
+          val item = (0 until items.length()).mapNotNull { items.optJSONObject(it) }
+            .firstOrNull { it.optString("localId") == localId } ?: return null
+          return UploadSource(localId, item.getString("name"), item.getString("mimeType"), item.getLong("sizeBytes"), item.getString("sha256"))
+        }
+        override fun readChunk(scope: String, localId: String, offset: Long): UploadChunk {
+          val (metadata, bytes) = NativeAttachments(context, scope).readChunk(localId, offset)
+          val source = UploadSource(localId, metadata.getString("name"), metadata.getString("mimeType"),
+            metadata.getLong("sizeBytes"), metadata.getString("sha256"))
+          return UploadChunk(source, bytes)
+        }
+        override fun request(targetId: String, request: JSONObject) = ensureConnection().request(request.toString())
+      },
+      schedule = { next -> owner.execute(next) },
+      allowed = { ownerActive && appForeground },
+      onChanged = { event -> if (ownerActive) sendEvent("attachmentUploadChanged", event.toMap()) },
+    )
+    uploads = scheduler
+    return scheduler
+  }
+  private fun isCanonicalUuid(value: String) = runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false)
   private fun handleSpeech(kind: String, promise: Promise) {
     val context = appContext.reactContext ?: run { promise.resolve(failure("MOBILE_SPEECH_SERVICE_UNAVAILABLE")); return }
     if (kind == "speech.start" && appContext.currentActivity?.hasWindowFocus() != true) {
