@@ -982,7 +982,7 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "jsonwebtoken",
- "myagents-agent-network-crypto",
+ "moxbots-mobile-crypto",
  "myagents-agent-network-protocol",
  "myagents-host-management-protocol",
  "p256",
@@ -999,7 +999,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "myagents-agent-network-crypto"
+name = "moxbots-mobile-crypto"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",

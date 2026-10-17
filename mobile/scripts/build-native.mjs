@@ -18,7 +18,7 @@ function run(command, args, env = {}) {
 }
 function check(file, label) { if (!existsSync(file)) throw new Error(`${label} missing: ${file}`); }
 function provenance(triple, library) {
-  const inputs = ['mobile/connection', 'mobile/core', 'src-tauri/agent-network-crypto', 'src-tauri/agent-network-protocol', 'src-tauri/host-management-protocol'];
+  const inputs = ['mobile/connection', 'mobile/core', 'mobile/crypto', 'src-tauri/agent-network-crypto', 'src-tauri/agent-network-protocol', 'src-tauri/host-management-protocol'];
   const git = args => {
     const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
     if (result.status !== 0) throw new Error('Cannot record native source provenance');

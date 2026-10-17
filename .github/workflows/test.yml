@@ -35,12 +35,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
+            mobile/crypto
             mobile/core
             mobile/connection
             mobile/asset-store
             src-tauri/host-management-protocol
       - name: Validate portable controller, journal, wire and byte owners
         run: |
+          cargo test --manifest-path mobile/crypto/Cargo.toml --locked --features native-store
+          cargo clippy --manifest-path mobile/crypto/Cargo.toml --locked --features native-store --all-targets -- -D warnings
           cargo test --manifest-path mobile/core/Cargo.toml --locked
           cargo clippy --manifest-path mobile/core/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path mobile/connection/Cargo.toml --locked

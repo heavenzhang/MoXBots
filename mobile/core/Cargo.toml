@@ -9,7 +9,7 @@ license = "AGPL-3.0-only"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [dependencies]
-myagents-agent-network-crypto = { path = "../../src-tauri/agent-network-crypto", features = ["native-store"] }
+myagents-agent-network-crypto = { package = "moxbots-mobile-crypto", path = "../crypto", features = ["native-store"] }
 myagents-agent-network-protocol = { path = "../../src-tauri/agent-network-protocol" }
 myagents-host-management-protocol = { path = "../../src-tauri/host-management-protocol" }
 base64 = "0.22"
@@ -24,7 +24,7 @@ rustls = { version = "=0.23.45", default-features = false, features = ["ring", "
 tokio = { version = "1", features = ["sync", "rt"] }
 
 [dev-dependencies]
-myagents-agent-network-crypto = { path = "../../src-tauri/agent-network-crypto", features = ["native-store", "test-support"] }
+myagents-agent-network-crypto = { package = "moxbots-mobile-crypto", path = "../crypto", features = ["native-store", "test-support"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 p256 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 rcgen = { version = "=0.14.10", default-features = false, features = ["ring", "pem"] }
