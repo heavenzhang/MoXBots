@@ -1,9 +1,9 @@
-import type { Account, PendingOperation, SessionRequest, Snapshot, Target } from '../src/native';
+import type { Account, NativeIntent, PendingOperation, SessionRequest, Snapshot, Target } from '../src/native';
 
-export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error';
+export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error';
 
-const target: Target = { targetId: 'qa-target-internal-only', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
-const offlineTarget: Target = { targetId: 'qa-offline-target', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
+const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-identity-main', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
+const offlineTarget: Target = { targetId: 'qa-offline-target', identityKey: 'qa-identity-offline', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
 const account: Account = { kind: 'account', state: 'signed-in', displayName: '演示账号', principalId: 'qa-principal' };
 let scenario: QaScenario = 'conversation';
 let active: Snapshot | null = null;
@@ -20,7 +20,7 @@ export function armStaleApproval(): void {
   staleApprovalNextRead = true;
 }
 
-export function fixtureReply(intent: { kind: string; request?: SessionRequest; targetId?: string }): unknown {
+export function fixtureReply(intent: NativeIntent): unknown {
   if (intent.kind === 'account.status' || intent.kind === 'account.login.poll' || intent.kind === 'account.logout') return intent.kind === 'account.logout' ? { kind: 'account', state: 'signed-out', displayName: null, principalId: null } : account;
   if (intent.kind === 'account.login.start') return { kind: 'login', authorizationUrl: 'https://example.invalid/qa-only', expiresAt: 0 };
   if (intent.kind === 'targets.list') {
@@ -28,8 +28,37 @@ export function fixtureReply(intent: { kind: string; request?: SessionRequest; t
     return { kind: 'targets', items: scenario === 'multi-bot' ? [target, offlineTarget] : scenario === 'offline' ? [offlineTarget] : [target], hasMore: false };
   }
   if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [{ targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' }] : [] as PendingOperation[] };
+  if (intent.kind === 'draft.read' || intent.kind === 'draft.write') return fixtureDraftReply(intent);
   if (intent.kind === 'session' && intent.request) return sessionReply(intent.request);
   return { kind: 'error', code: 'QA_FIXTURE_OPERATION_UNSUPPORTED' };
+}
+
+type FixtureDraft = { identityKey: string; agentId: string; sessionId: string | null; text: string; revision: number; lastWriteId: string | null };
+const fixtureDraftStorageKey = 'moxbots-mobile-qa-fixture-drafts';
+let draftsLoaded = false;
+let fixtureDrafts = new Map<string, FixtureDraft>();
+function getFixtureDrafts(): Map<string, FixtureDraft> {
+  if (draftsLoaded) return fixtureDrafts;
+  draftsLoaded = true;
+  try {
+    const stored: unknown = typeof localStorage === 'undefined' ? null : JSON.parse(localStorage.getItem(fixtureDraftStorageKey) ?? 'null');
+    if (Array.isArray(stored)) fixtureDrafts = new Map(stored.filter((entry): entry is FixtureDraft => !!entry && typeof entry === 'object' && typeof entry.identityKey === 'string' && typeof entry.agentId === 'string' && typeof entry.text === 'string' && typeof entry.revision === 'number').map((entry) => [JSON.stringify([entry.identityKey, entry.sessionId]), entry]));
+  } catch { fixtureDrafts = new Map(); }
+  return fixtureDrafts;
+}
+function fixtureDraftReply(intent: Extract<NativeIntent, { kind: 'draft.read' | 'draft.write' }>): unknown {
+  const approvedTarget = [target, offlineTarget].find((entry) => entry.targetId === intent.targetId);
+  if (!approvedTarget) return { kind: 'error', code: 'TARGET_UNAVAILABLE' };
+  if (scenario === 'draft-error') return { kind: 'error', code: 'MOBILE_DRAFT_STORE_UNAVAILABLE' };
+  const key = JSON.stringify([approvedTarget.identityKey, intent.sessionId]);
+  const drafts = getFixtureDrafts();
+  const current = drafts.get(key) ?? { identityKey: approvedTarget.identityKey, agentId: approvedTarget.agentId, sessionId: intent.sessionId, text: '', revision: 0, lastWriteId: null };
+  if (intent.kind === 'draft.read') return { kind: 'draft', ...current };
+  if (intent.expectedRevision !== current.revision) return { kind: 'error', code: 'MOBILE_DRAFT_CONFLICT' };
+  const updated = { ...current, text: intent.text ?? '', revision: current.revision + 1, lastWriteId: intent.writeId ?? null };
+  drafts.set(key, updated);
+  try { if (typeof localStorage !== 'undefined') localStorage.setItem(fixtureDraftStorageKey, JSON.stringify([...drafts.values()])); } catch { return { kind: 'error', code: 'MOBILE_DRAFT_STORE_UNAVAILABLE' }; }
+  return { kind: 'draft', ...updated };
 }
 
 function makeSnapshot(sessionId: string, agentId: string, state: Snapshot['state'] = 'idle', generation = 'qa-generation-1', turnId: string | null = null, includeApproval = false): Snapshot {
