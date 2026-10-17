@@ -25,7 +25,7 @@ const legacy=await prepareDesktopRemoteSession({request:{kind:'start',agentId:re
 await writeFile(${JSON.stringify(resultPath)},JSON.stringify({first,duplicate,receipt,legacy}));`);
  await symlink(resolve('node_modules'),join(directory,'node_modules'));
  await build({entryPoints:[source],outfile:entry,bundle:true,platform:'node',target:'node24',format:'esm',logLevel:'silent',define:{__MYAGENTS_BUILD_PROFILE__:'"moxbot-updaterqa"',__MYAGENTS_UPDATER_QA__:'true'},external:['@playwright/mcp','@playwright/mcp/*','playwright','playwright/*','playwright-core','playwright-core/*','fsevents','chromium-bidi/*'],banner:{js:'import {createRequire as __mobileRequire} from "node:module";const require=__mobileRequire(import.meta.url);'}});
- const env={...process.env,HOME:directory,USERPROFILE:directory,MYAGENTS_SIDECAR_GENERATION:'gen'};for(const key of Object.keys(env))if(/API_KEY|AUTH_TOKEN|ACCESS_TOKEN/.test(key))delete env[key as keyof typeof env];
+ const env={PATH:process.env.PATH,HOME:directory,USERPROFILE:directory,MYAGENTS_SIDECAR_GENERATION:'gen'};
  await promisify(execFile)(process.execPath,[entry],{env,timeout:30_000,maxBuffer:16384});
  const result=JSON.parse(await readFile(resultPath,'utf8'));expect(result.first).toMatchObject({success:true,data:{agentId:agent.id}});const sessionId=result.first.data.sessionId;
  expect(result.duplicate).toMatchObject({data:{receipt:{kind:'mobile.receipt',version:1,status:'processing',sessionId}}});
