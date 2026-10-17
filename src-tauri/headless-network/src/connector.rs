@@ -167,6 +167,14 @@ fn require_captured_binding(actual: &str, captured: &str) -> Result<(), NetworkE
         Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"))
     }
 }
+fn verify_binding_snapshot(
+    account_binding: &str,
+    management_binding: &str,
+    captured_binding: &str,
+) -> Result<(), NetworkError> {
+    require_captured_binding(account_binding, captured_binding)?;
+    require_captured_binding(management_binding, captured_binding)
+}
 fn mobile_asset_scope(
     identity: &NetworkIdentity,
     peer: &myagents_agent_network_protocol::DeviceScope,
@@ -266,8 +274,44 @@ async fn store_execute(
         .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
         .map_err(|error| NetworkError::new(error.code))
 }
+
+fn verify_mobile_authority(
+    runtime: ManagementRuntime<'_>,
+    identity: &NetworkIdentity,
+    captured_binding: &str,
+) -> Result<(), NetworkError> {
+    identity.account.ensure_current()?;
+    runtime.binding.verify()?;
+    verify_binding_snapshot(
+        identity.account.binding_id(),
+        runtime.binding.account_binding(),
+        captured_binding,
+    )
+}
+
+async fn mobile_internal_request(
+    runtime: ManagementRuntime<'_>,
+    identity: &NetworkIdentity,
+    captured_binding: &str,
+    request_id: myagents_host_management_protocol::CanonicalUuid,
+    authority: crate::management_ipc::InternalAuthority,
+    operation: crate::management_ipc::InternalOperation,
+) -> Result<serde_json::Value, NetworkError> {
+    verify_mobile_authority(runtime, identity, captured_binding)?;
+    let result = runtime
+        .ipc
+        .request_internal(request_id, authority, operation)
+        .await;
+    // Preserve the post-call authority gate even when Node/IPC returned an
+    // error. Any account switch or revoked local grant takes precedence.
+    verify_mobile_authority(runtime, identity, captured_binding)?;
+    result
+}
+
 async fn owner_list(
-    ipc: &crate::management_ipc::ManagementIpc,
+    runtime: ManagementRuntime<'_>,
+    identity: &NetworkIdentity,
+    captured_binding: &str,
     request_id: myagents_host_management_protocol::CanonicalUuid,
     authority: crate::management_ipc::InternalAuthority,
     scope: moxbots_asset_store::AssetScope,
@@ -286,21 +330,23 @@ async fn owner_list(
     else {
         return Err(NetworkError::new("ASSET_REQUEST_INVALID"));
     };
-    let store = ipc.asset_store();
+    let store = runtime.ipc.asset_store();
     let scope_copy = scope.clone();
     let session_copy = session_id.clone();
-    let page_value = ipc
-        .request_internal(
-            request_id,
-            authority.clone(),
-            crate::management_ipc::InternalOperation::OwnerList {
-                agent_id: agent_id.clone(),
-                session_id: session_id.clone(),
-                limit,
-                before,
-            },
-        )
-        .await?;
+    let page_value = mobile_internal_request(
+        runtime,
+        identity,
+        captured_binding,
+        request_id,
+        authority.clone(),
+        crate::management_ipc::InternalOperation::OwnerList {
+            agent_id: agent_id.clone(),
+            session_id: session_id.clone(),
+            limit,
+            before,
+        },
+    )
+    .await?;
     if page_value.get("kind").and_then(serde_json::Value::as_str) == Some("error") {
         let code = page_value
             .get("code")
@@ -369,19 +415,21 @@ async fn owner_list(
             .await?;
             let mut offset = 0u64;
             while offset < item.size_bytes {
-                let chunk_value = ipc
-                    .request_internal(
-                        request_id,
-                        authority.clone(),
-                        crate::management_ipc::InternalOperation::OwnerRead {
-                            agent_id: agent_id.clone(),
-                            session_id: session_id.clone(),
-                            source_id: item.source_id.clone(),
-                            offset,
-                            max_bytes: 24 * 1024,
-                        },
-                    )
-                    .await?;
+                let chunk_value = mobile_internal_request(
+                    runtime,
+                    identity,
+                    captured_binding,
+                    request_id,
+                    authority.clone(),
+                    crate::management_ipc::InternalOperation::OwnerRead {
+                        agent_id: agent_id.clone(),
+                        session_id: session_id.clone(),
+                        source_id: item.source_id.clone(),
+                        offset,
+                        max_bytes: 24 * 1024,
+                    },
+                )
+                .await?;
                 let chunk: OwnerChunk = serde_json::from_value(chunk_value)
                     .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
                 if chunk.kind != "owner-chunk"
@@ -698,6 +746,10 @@ async fn handle_management_events(
                 identity.account.ensure_current()?;
                 if let Some(runtime) = management {
                     runtime.binding.verify()?;
+                    require_captured_binding(
+                        identity.account.binding_id(),
+                        runtime.binding.account_binding(),
+                    )?;
                 }
                 let result = match management {
                     Some(runtime) => {
@@ -709,12 +761,13 @@ async fn handle_management_events(
                                 },
                             ) => {
                                 let (peer, peer_epoch) = pairs.peer(channel_id)?;
+                                let captured_binding = identity.account.binding_id().to_owned();
                                 let authority = crate::management_ipc::InternalAuthority {
                                     connection: scope.clone(),
                                     peer: peer.clone(),
                                     peer_epoch: peer_epoch.to_owned(),
                                     local: local.clone(),
-                                    account_binding: identity.account.binding_id().to_owned(),
+                                    account_binding: captured_binding.clone(),
                                     management_binding: runtime
                                         .binding
                                         .account_binding()
@@ -726,17 +779,17 @@ async fn handle_management_events(
                                 ) {
                                     let asset_scope = mobile_asset_scope(
                                         identity,
-                                        &peer,
+                                        peer,
                                         local,
                                         scope,
                                         remote_assets.agent_id(),
                                     )?;
-                                    owner_list(runtime.ipc,request_id,authority,asset_scope,remote_assets).await
+                                    owner_list(runtime,identity,&captured_binding,request_id,authority,asset_scope,remote_assets).await
                                     .map(|data|myagents_host_management_protocol::ResponseResult::RemoteAssets{data})
                                 } else {
                                     let asset_scope = mobile_asset_scope(
                                         identity,
-                                        &peer,
+                                        peer,
                                         local,
                                         scope,
                                         remote_assets.agent_id(),
@@ -756,12 +809,13 @@ async fn handle_management_events(
                                 },
                             ) => {
                                 let (peer, peer_epoch) = pairs.peer(channel_id)?;
+                                let captured_binding = identity.account.binding_id().to_owned();
                                 let authority = crate::management_ipc::InternalAuthority {
                                     connection: scope.clone(),
                                     peer: peer.clone(),
                                     peer_epoch: peer_epoch.to_owned(),
                                     local: local.clone(),
-                                    account_binding: identity.account.binding_id().to_owned(),
+                                    account_binding: captured_binding.clone(),
                                     management_binding: runtime
                                         .binding
                                         .account_binding()
@@ -775,7 +829,7 @@ async fn handle_management_events(
                                 if let Some((agent_id, session_id, asset_ids)) = staged_mobile {
                                     if !asset_ids.is_empty() {
                                         let asset_scope = mobile_asset_scope(
-                                            identity, &peer, local, scope, agent_id,
+                                            identity, peer, local, scope, agent_id,
                                         )?;
                                         let store = runtime.ipc.asset_store();
                                         for asset in asset_ids {
@@ -792,14 +846,15 @@ async fn handle_management_events(
                                             .map_err(|error| NetworkError::new(error.code))?;
                                             let asset_id = asset.as_uuid().to_string();
                                             let stage=crate::management_ipc::InternalOperation::StageBegin{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone(),name:lease.name.clone(),mime_type:lease.mime_type.clone(),size_bytes:lease.size_bytes,sha256:lease.sha256.clone()};
-                                            let begin_ack = runtime
-                                                .ipc
-                                                .request_internal(
-                                                    request_id,
-                                                    authority.clone(),
-                                                    stage,
-                                                )
-                                                .await?;
+                                            let begin_ack = mobile_internal_request(
+                                                runtime,
+                                                identity,
+                                                &captured_binding,
+                                                request_id,
+                                                authority.clone(),
+                                                stage,
+                                            )
+                                            .await?;
                                             validate_stage_ack(begin_ack, &asset_id, 0, false)?;
                                             let mut file =
                                                 lease.file().try_clone().map_err(|_| {
@@ -824,19 +879,20 @@ async fn handle_management_events(
                                                     &bytes,
                                                 );
                                                 offset += len as u64;
-                                                let ack=runtime.ipc.request_internal(request_id,authority.clone(),crate::management_ipc::InternalOperation::StageChunk{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone(),offset:offset-len as u64,data_base64,sha256}).await?;
+                                                let ack=mobile_internal_request(runtime,identity,&captured_binding,request_id,authority.clone(),crate::management_ipc::InternalOperation::StageChunk{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone(),offset:offset-len as u64,data_base64,sha256}).await?;
                                                 validate_stage_ack(ack, &asset_id, offset, false)?;
                                             }
-                                            let finish_ack=runtime.ipc.request_internal(request_id,authority.clone(),crate::management_ipc::InternalOperation::StageFinish{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone()}).await?;
+                                            let finish_ack=mobile_internal_request(runtime,identity,&captured_binding,request_id,authority.clone(),crate::management_ipc::InternalOperation::StageFinish{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone()}).await?;
                                             validate_stage_ack(
                                                 finish_ack, &asset_id, offset, true,
                                             )?;
                                         }
                                     }
                                 }
-                                runtime
-                                    .ipc
-                                    .request_internal(
+                                mobile_internal_request(
+                                        runtime,
+                                        identity,
+                                        &captured_binding,
                                         request_id,
                                         authority,
                                         crate::management_ipc::InternalOperation::Mobile {
@@ -1159,6 +1215,27 @@ mod tests {
         assert!(require_captured_binding(&captured, &captured).is_ok());
         assert_eq!(
             require_captured_binding(&uuid::Uuid::new_v4().to_string(), &captured)
+                .unwrap_err()
+                .code,
+            "ACCOUNT_BINDING_CHANGED"
+        );
+    }
+
+    #[test]
+    fn binding_change_after_staging_prevents_mobile_dispatch() {
+        let captured = uuid::Uuid::new_v4().to_string();
+        let management = captured.clone();
+        assert!(verify_binding_snapshot(&captured, &management, &captured).is_ok());
+        let account = uuid::Uuid::new_v4().to_string();
+        let mut dispatched = false;
+        // Staging may have completed under the original binding. The final
+        // dispatch gate must observe a subsequent account replacement.
+        if verify_binding_snapshot(&account, &management, &captured).is_ok() {
+            dispatched = true;
+        }
+        assert!(!dispatched);
+        assert_eq!(
+            verify_binding_snapshot(&account, &management, &captured)
                 .unwrap_err()
                 .code,
             "ACCOUNT_BINDING_CHANGED"
