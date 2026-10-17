@@ -116,7 +116,11 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
       if (!restore) await assertSessionsIdle([...new Set(row.task?.sessionIds ?? row.sessions.map(s => s.id))], 'projectBoard.archiveBusy');
       if (row.task) {
         if (restore) await taskUpdateStatus({ id: row.task.id, status: 'done' });
-        else await taskArchive(row.task.id);
+        else {
+          // Only a Done Task can be archived; archiving a finished-run row is the acceptance, so settle it first.
+          if (row.task.status === 'verifying' || row.task.status === 'running') await taskUpdateStatus({ id: row.task.id, status: 'done', message: drafts[row.id]?.trim() || undefined });
+          await taskArchive(row.task.id);
+        }
       } else {
         const session = row.sessions[0];
         if (!session) throw new Error(t('projectBoard.unavailable'));
@@ -147,7 +151,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
         {t('projectBoard.updated')} {formatTime(new Date(row.updatedAt).toISOString())}
       </time>
       <div className="pb-card-bottom">
-        <button type="button" className="pb-card-action" onClick={() => select(row)}>{t(row.confirmationReason === 'verification' ? 'projectBoard.inspect' : row.group === 'needs' ? 'projectBoard.handle' : 'projectBoard.details')} ↗</button>
+        <button type="button" className="pb-card-action" onClick={() => select(row)}>{t(row.group === 'needs' ? 'projectBoard.handle' : 'projectBoard.details')} ↗</button>
         {canConvert(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={t('projectBoard.convertHint')} onClick={() => { void convertToTask(row); }}>{t('projectBoard.convert')}</button>}
         {canOrganize(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={row.group === 'archived' ? undefined : t('projectBoard.archiveHint')} onClick={() => { void organize(row); }}>{t(row.group === 'archived' ? 'projectBoard.restore' : 'projectBoard.archive')}</button>}
         {row.sessions.length === 1 && <button type="button" className="pb-card-action pb-enter-session" onClick={() => openSession(row.sessions[0].id)} aria-label={t('projectBoard.enterSessionFor', { title: row.sessions[0].title })}>{t('projectBoard.enterSession')} ↗</button>}

@@ -84,17 +84,20 @@ describe('project board stages and archive history',()=>{
   fireEvent.click(within(done).getByRole('button',{name:'projectBoard.archive'}));
   expect(await screen.findByRole('alert')).toHaveTextContent('projectBoard.archiveBusy');expect(mocks.archive).not.toHaveBeenCalled();
  });
- it('can confirm actual results but exposes no completion action for a blocked task',async()=>{
+ it('has no completion action for a blocked task, and archiving a task awaiting review settles it as done first',async()=>{
   mocks.data.tasks.push(task('blocked','blocked'));
   const {container}=render(<ProjectBoard workspacePath='/work'/>);
   fireEvent.click(container.querySelector('[data-board-row="task:blocked"]')!);
-  await act(async()=>{});expect(screen.queryByRole('button',{name:'projectBoard.accept'})).toBeNull();
+  await act(async()=>{});expect(within(container.querySelector('[data-board-row="task:blocked"]')!.closest('article')!).queryByRole('button',{name:'projectBoard.archive'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'projectBoard.close'}));
-  fireEvent.click(container.querySelector('[data-board-row="task:review"]')!);
-  await waitFor(()=>expect(screen.getByRole('button',{name:'projectBoard.inspect'})).toBeEnabled());
-  fireEvent.click(screen.getByRole('button',{name:'projectBoard.inspect'}));
-  fireEvent.click(screen.getByRole('button',{name:'projectBoard.accept'}));
-  await waitFor(()=>expect(mocks.status).toHaveBeenCalledWith({id:'review',status:'done',message:undefined}));
+  fireEvent.click(within(container.querySelector('[data-board-row="task:review"]')!.closest('article')!).getByRole('button',{name:'projectBoard.archive'}));
+  await waitFor(()=>expect(mocks.archive).toHaveBeenCalledWith('review'));
+  expect(mocks.status).toHaveBeenCalledWith({id:'review',status:'done',message:undefined});
+  expect(mocks.status.mock.invocationCallOrder[0]).toBeLessThan(mocks.archive.mock.invocationCallOrder[0]);
+  mocks.status.mockClear();mocks.archive.mockClear();
+  fireEvent.click(within(container.querySelector('[data-board-row="task:done"]')!.closest('article')!).getByRole('button',{name:'projectBoard.archive'}));
+  await waitFor(()=>expect(mocks.archive).toHaveBeenCalledWith('done'));
+  expect(mocks.status).not.toHaveBeenCalled();
  });
  it('orders waiting, continue and inactive pools and lets inactive conversations be archived',async()=>{
   const old=new Date(100000-8*24*3600*1000).toISOString();
