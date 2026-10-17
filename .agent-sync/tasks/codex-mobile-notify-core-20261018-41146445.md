@@ -16,6 +16,9 @@ Add an isolated AgentNet notification storage/contract crate for later authentic
 - Provider payload contains only a server-generated event ID; redemption returns a private target/session pointer to the exact fresh endpoint.
 - Endpoint, event, fanout, attempt, lease, and expiry bounds are enforced with private SQLite storage.
 - Focused crate tests pass; no frozen reader closure files are modified.
+- Same-installation token rotation remains under endpoint quotas and invalidates previous delivery claims.
+- Host hint resolution distinguishes a bounded Agent ID from the Host device target.
+- Global endpoint/event/delivery counts are capped and per-operation cleanup uses bounded batches.
 
 ## Completed
 
@@ -24,6 +27,10 @@ Add an isolated AgentNet notification storage/contract crate for later authentic
 - Added `services/agentnet/mobile-notify-core` with a strict contract, private SQLite endpoint/outbox, delivery lifecycle, dedupe, fresh-scope matching, revocation, quota/expiry handling, and 8 focused tests.
 - Added README documenting the authority boundary and future AuthStore/DeviceStore/provider/HTTP integration gates.
 - No route, production, provider credentials, mobile, WSS protocol, or frozen reader closure changes.
+- Added stable installation UUID to registration v1; token rotations for the same authority/provider/installation reuse the endpoint, invalidate outstanding claims, and enforce quotas on token rebind paths.
+- Added non-deserializable `TargetScope` derived from Host authority plus Agent ID (1–256 Unicode scalar values, no controls); target device and Agent ID now participate in the dedupe digest and private redemption pointer.
+- Added global row caps (10,000 endpoints, 20,000 events, 100,000 deliveries) and bounded cleanup batches (250 event updates, 1,000 delivery deletes, 250 event deletes, 250 revoked endpoint deletes).
+- Added quota-rebind, repeated token-rotation, Agent-target, global-cap, and bounded-cleanup regression tests (12 total).
 
 ## Verification
 
@@ -31,6 +38,9 @@ Add an isolated AgentNet notification storage/contract crate for later authentic
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo fmt --manifest-path services/agentnet/mobile-notify-core/Cargo.toml` — passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/mobile-notify-core/Cargo.toml` — passed, 8 unit tests and 0 doc tests; macOS host target only.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/mobile-notify-core/Cargo.toml` after review fixes — passed, 12 unit tests and 0 doc tests.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo clippy --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --all-targets -- -D warnings` — passed.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools git diff --check` — passed.
 
 ## Blockers and unknowns
 

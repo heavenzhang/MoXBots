@@ -23,6 +23,12 @@ const MAX_ENDPOINTS_ACCOUNT: i64 = 10;
 const MAX_ENDPOINTS_DEVICE: i64 = 3;
 const MAX_ACTIVE_EVENTS_ACCOUNT: i64 = 128;
 const MAX_OUTSTANDING_DELIVERIES_ACCOUNT: i64 = 2048;
+const MAX_ENDPOINT_ROWS_GLOBAL: i64 = 10_000;
+const MAX_EVENT_ROWS_GLOBAL: i64 = 20_000;
+const MAX_DELIVERY_ROWS_GLOBAL: i64 = 100_000;
+const CLEANUP_DELIVERY_BATCH: i64 = 1_000;
+const CLEANUP_EVENT_BATCH: i64 = 250;
+const CLEANUP_ENDPOINT_BATCH: i64 = 250;
 const MAX_CLAIMS_PER_CALL: usize = 20;
 const MAX_ATTEMPTS: i64 = 5;
 const MAX_LEASE_SECONDS: i64 = 300;
@@ -115,6 +121,8 @@ impl<'de> Deserialize<'de> for ProviderToken {
 pub struct RegisterEndpointV1 {
     pub version: u8,
     pub provider: Provider,
+    #[serde(rename = "installationId")]
+    installation_id: String,
     token: ProviderToken,
 }
 
@@ -123,16 +131,22 @@ impl fmt::Debug for RegisterEndpointV1 {
         f.debug_struct("RegisterEndpointV1")
             .field("version", &self.version)
             .field("provider", &self.provider)
+            .field("installation_id", &self.installation_id)
             .field("token", &"[redacted]")
             .finish()
     }
 }
 
 impl RegisterEndpointV1 {
-    pub fn new(provider: Provider, token: impl Into<String>) -> Result<Self, NotifyError> {
+    pub fn new(
+        provider: Provider,
+        installation_id: impl Into<String>,
+        token: impl Into<String>,
+    ) -> Result<Self, NotifyError> {
         let value = Self {
             version: 1,
             provider,
+            installation_id: installation_id.into(),
             token: ProviderToken(Zeroizing::new(token.into())),
         };
         value.validate()?;
@@ -142,11 +156,45 @@ impl RegisterEndpointV1 {
     fn validate(&self) -> Result<(), NotifyError> {
         let token = self.token.as_str();
         if self.version != 1
+            || !canonical_uuid(&self.installation_id)
             || token.is_empty()
             || token.len() > MAX_TOKEN_BYTES
             || token.chars().any(char::is_control)
         {
             return Err(NotifyError::InvalidInput);
+        }
+        Ok(())
+    }
+}
+
+/// Private Host target derived from a freshly verified Host authority and the
+/// verified Agent that owns the Session. The target device cannot differ from
+/// the authenticated Host authority passed to the constructor.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TargetScope {
+    target_device_id: String,
+    agent_id: String,
+}
+
+impl TargetScope {
+    pub fn from_validated_host_session(
+        host: &Authority,
+        agent_id: impl Into<String>,
+    ) -> Result<Self, NotifyError> {
+        host.validate()?;
+        let agent_id = agent_id.into();
+        if !valid_agent_id(&agent_id) {
+            return Err(NotifyError::InvalidInput);
+        }
+        Ok(Self {
+            target_device_id: host.device_id.clone(),
+            agent_id,
+        })
+    }
+
+    fn validate_for_host(&self, host: &Authority) -> Result<(), NotifyError> {
+        if self.target_device_id != host.device_id || !valid_agent_id(&self.agent_id) {
+            return Err(NotifyError::Unauthorized);
         }
         Ok(())
     }
@@ -346,7 +394,8 @@ impl PushEnvelope {
 /// before presenting any actionable UI.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SessionPointer {
-    pub target_id: String,
+    pub target_device_id: String,
+    pub agent_id: String,
     pub session_id: String,
 }
 
@@ -440,13 +489,18 @@ impl Store {
                    device_id TEXT NOT NULL,
                    identity_binding_id TEXT NOT NULL,
                    key_generation INTEGER NOT NULL CHECK(key_generation > 0),
+                   installation_id TEXT NOT NULL,
                    provider TEXT NOT NULL CHECK(provider IN ('apns-sandbox','apns-production','fcm')),
                    token_hash BLOB NOT NULL,
                    token TEXT NOT NULL,
                    created_at INTEGER NOT NULL,
-                   revoked_at INTEGER,
-                   UNIQUE(provider, token_hash)
+                   revoked_at INTEGER
                  );
+                 CREATE UNIQUE INDEX IF NOT EXISTS endpoints_active_token
+                   ON endpoints(provider, token_hash) WHERE revoked_at IS NULL;
+                 CREATE UNIQUE INDEX IF NOT EXISTS endpoints_active_installation
+                   ON endpoints(principal_id,network_id,device_id,identity_binding_id,provider,installation_id)
+                   WHERE revoked_at IS NULL;
                  CREATE INDEX IF NOT EXISTS endpoints_account_active
                    ON endpoints(principal_id, network_id, revoked_at);
                  CREATE INDEX IF NOT EXISTS endpoints_device_active
@@ -460,7 +514,8 @@ impl Store {
                    source_generation INTEGER NOT NULL CHECK(source_generation > 0),
                    source_event_id TEXT NOT NULL,
                    content_digest BLOB NOT NULL,
-                   target_id TEXT NOT NULL,
+                   target_device_id TEXT NOT NULL,
+                   agent_id TEXT NOT NULL,
                    session_id TEXT NOT NULL,
                    kind TEXT NOT NULL CHECK(kind='attention-required'),
                    created_at INTEGER NOT NULL,
@@ -470,6 +525,12 @@ impl Store {
                  );
                  CREATE INDEX IF NOT EXISTS hint_events_account_active
                    ON hint_events(principal_id, network_id, state, expires_at);
+                 CREATE INDEX IF NOT EXISTS hint_events_cleanup
+                   ON hint_events(state, created_at, event_id);
+                 CREATE INDEX IF NOT EXISTS hint_events_expiry
+                   ON hint_events(state, expires_at, event_id);
+                 CREATE INDEX IF NOT EXISTS endpoints_cleanup
+                   ON endpoints(revoked_at, endpoint_id);
                  CREATE TABLE IF NOT EXISTS deliveries (
                    event_id TEXT NOT NULL REFERENCES hint_events(event_id) ON DELETE CASCADE,
                    endpoint_id TEXT NOT NULL REFERENCES endpoints(endpoint_id) ON DELETE CASCADE,
@@ -482,6 +543,8 @@ impl Store {
                  );
                  CREATE INDEX IF NOT EXISTS deliveries_due
                    ON deliveries(endpoint_id, state, next_attempt_at, lease_until);
+                 CREATE INDEX IF NOT EXISTS deliveries_cleanup
+                   ON deliveries(state, event_id, endpoint_id);
                  PRAGMA user_version=1;",
             )
             .map_err(|_| NotifyError::Storage)?;
@@ -495,9 +558,9 @@ impl Store {
         &self.state_dir
     }
 
-    /// Idempotently register a provider token for the current device binding.
-    /// A globally duplicate provider token is moved atomically to the current
-    /// authenticated owner, revoking any old pending deliveries first.
+    /// Register or rotate a token for one stable app installation. Rotation
+    /// retains the endpoint row while invalidating claims made with its old
+    /// token. A provider token already active elsewhere is atomically detached.
     pub fn register_endpoint(
         &self,
         authority: &Authority,
@@ -516,82 +579,81 @@ impl Store {
         prune(&tx, now)?;
         retire_stale_endpoints(&tx, authority, now)?;
 
-        let existing: Option<(String, String, String, String, i64, Option<i64>)> = tx
+        let installation_endpoint: Option<String> = tx
             .query_row(
-                "SELECT endpoint_id,principal_id,network_id,device_id, key_generation,revoked_at
-                 FROM endpoints WHERE provider=?1 AND token_hash=?2",
+                "SELECT endpoint_id FROM endpoints WHERE principal_id=?1 AND network_id=?2
+                   AND device_id=?3 AND identity_binding_id=?4 AND provider=?5 AND installation_id=?6
+                   AND revoked_at IS NULL",
+                params![authority.principal_id, authority.network_id, authority.device_id,
+                    authority.identity_binding_id, request.provider.as_str(), request.installation_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| NotifyError::Storage)?;
+        let token_endpoint: Option<String> = tx
+            .query_row(
+                "SELECT endpoint_id FROM endpoints WHERE provider=?1 AND token_hash=?2 AND revoked_at IS NULL",
                 params![request.provider.as_str(), token_hash.as_slice()],
-                |row| {
-                    Ok((
-                        row.get(0)?,
-                        row.get(1)?,
-                        row.get(2)?,
-                        row.get(3)?,
-                        row.get(4)?,
-                        row.get(5)?,
-                    ))
-                },
+                |row| row.get(0),
             )
             .optional()
             .map_err(|_| NotifyError::Storage)?;
 
-        let endpoint_id = if let Some((id, principal, network, device, generation, revoked_at)) =
-            existing
-        {
-            let same_owner = principal == authority.principal_id
-                && network == authority.network_id
-                && device == authority.device_id
-                && generation == authority.key_generation as i64
-                && revoked_at.is_none();
-            if !same_owner {
-                revoke_deliveries_for_endpoint(&tx, &id)?;
-                tx.execute(
-                    "UPDATE endpoints SET principal_id=?2,network_id=?3,device_id=?4,
-                       identity_binding_id=?5,key_generation=?6,token=?7,created_at=?8,revoked_at=NULL
-                     WHERE endpoint_id=?1",
-                    params![
-                        id,
-                        authority.principal_id,
-                        authority.network_id,
-                        authority.device_id,
-                        authority.identity_binding_id,
-                        authority.key_generation as i64,
-                        token,
-                        now
-                    ],
+        let endpoint_id = if let Some(id) = installation_endpoint {
+            let current_hash: Vec<u8> = tx
+                .query_row(
+                    "SELECT token_hash FROM endpoints WHERE endpoint_id=?1",
+                    params![id],
+                    |row| row.get(0),
                 )
                 .map_err(|_| NotifyError::Storage)?;
+            if current_hash.as_slice() == token_hash {
+                id
+            } else {
+                if let Some(other_id) = token_endpoint.as_deref().filter(|other| *other != id) {
+                    revoke_deliveries_for_endpoint(&tx, other_id)?;
+                    tx.execute(
+                        "UPDATE endpoints SET revoked_at=?2 WHERE endpoint_id=?1",
+                        params![other_id, now],
+                    )
+                    .map_err(|_| NotifyError::Storage)?;
+                }
+                revoke_deliveries_for_endpoint(&tx, &id)?;
+                tx.execute(
+                    "UPDATE endpoints SET token_hash=?2,token=?3,created_at=?4 WHERE endpoint_id=?1",
+                    params![id, token_hash.as_slice(), token, now],
+                )
+                .map_err(|_| NotifyError::Storage)?;
+                id
             }
+        } else if let Some(id) = token_endpoint {
+            check_endpoint_capacity(&tx, authority, Some(&id))?;
+            revoke_deliveries_for_endpoint(&tx, &id)?;
+            tx.execute(
+                "UPDATE endpoints SET principal_id=?2,network_id=?3,device_id=?4,identity_binding_id=?5,
+                   key_generation=?6,installation_id=?7,token=?8,created_at=?9
+                 WHERE endpoint_id=?1 AND revoked_at IS NULL",
+                params![id, authority.principal_id, authority.network_id, authority.device_id,
+                    authority.identity_binding_id, authority.key_generation as i64, request.installation_id, token, now],
+            )
+            .map_err(|_| NotifyError::Storage)?;
             id
         } else {
-            let account_count =
-                count_active_endpoints(&tx, &authority.principal_id, &authority.network_id, None)?;
-            let device_count = count_active_endpoints(
-                &tx,
-                &authority.principal_id,
-                &authority.network_id,
-                Some(&authority.device_id),
-            )?;
-            if account_count >= MAX_ENDPOINTS_ACCOUNT || device_count >= MAX_ENDPOINTS_DEVICE {
+            check_endpoint_capacity(&tx, authority, None)?;
+            let global_count: i64 = tx
+                .query_row("SELECT COUNT(*) FROM endpoints", [], |row| row.get(0))
+                .map_err(|_| NotifyError::Storage)?;
+            if global_count >= MAX_ENDPOINT_ROWS_GLOBAL {
                 return Err(NotifyError::Capacity);
             }
             let id = Uuid::new_v4().to_string();
             tx.execute(
                 "INSERT INTO endpoints(endpoint_id,principal_id,network_id,device_id,identity_binding_id,
-                   key_generation,provider,token_hash,token,created_at,revoked_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,NULL)",
-                params![
-                    id,
-                    authority.principal_id,
-                    authority.network_id,
-                    authority.device_id,
-                    authority.identity_binding_id,
-                    authority.key_generation as i64,
-                    request.provider.as_str(),
-                    token_hash.as_slice(),
-                    token,
-                    now
-                ],
+                   key_generation,installation_id,provider,token_hash,token,created_at,revoked_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL)",
+                params![id, authority.principal_id, authority.network_id, authority.device_id,
+                    authority.identity_binding_id, authority.key_generation as i64, request.installation_id,
+                    request.provider.as_str(), token_hash.as_slice(), token, now],
             )
             .map_err(|_| NotifyError::Storage)?;
             id
@@ -723,12 +785,14 @@ impl Store {
     pub fn enqueue_hint(
         &self,
         host: &Authority,
+        target: &TargetScope,
         connection_epoch: &str,
         hint: &HostHintV1,
         now: i64,
         ttl_seconds: i64,
     ) -> Result<PushEnvelope, NotifyError> {
         host.validate()?;
+        target.validate_for_host(host)?;
         hint.validate()?;
         validate_time(now)?;
         if !canonical_uuid(connection_epoch) || !(1..=MAX_EVENT_TTL_SECONDS).contains(&ttl_seconds)
@@ -738,8 +802,12 @@ impl Store {
         let expires_at = now
             .checked_add(ttl_seconds)
             .ok_or(NotifyError::InvalidInput)?;
-        let target_id = host.device_id.clone();
-        let content_digest = hint_digest(&target_id, &hint.session_id, hint.kind);
+        let content_digest = hint_digest(
+            &target.target_device_id,
+            &target.agent_id,
+            &hint.session_id,
+            hint.kind,
+        );
 
         let mut connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
         let tx = connection
@@ -783,6 +851,12 @@ impl Store {
         if active_count >= MAX_ACTIVE_EVENTS_ACCOUNT {
             return Err(NotifyError::Capacity);
         }
+        let global_event_count: i64 = tx
+            .query_row("SELECT COUNT(*) FROM hint_events", [], |row| row.get(0))
+            .map_err(|_| NotifyError::Storage)?;
+        if global_event_count >= MAX_EVENT_ROWS_GLOBAL {
+            return Err(NotifyError::Capacity);
+        }
         let outstanding: i64 = tx
             .query_row(
                 "SELECT COUNT(*) FROM deliveries d JOIN hint_events h ON h.event_id=d.event_id
@@ -803,11 +877,19 @@ impl Store {
             return Err(NotifyError::Capacity);
         }
 
+        let fanout = endpoint_count;
+        let global_delivery_count: i64 = tx
+            .query_row("SELECT COUNT(*) FROM deliveries", [], |row| row.get(0))
+            .map_err(|_| NotifyError::Storage)?;
+        if global_delivery_count.saturating_add(fanout) > MAX_DELIVERY_ROWS_GLOBAL {
+            return Err(NotifyError::Capacity);
+        }
+
         let event_id = Uuid::new_v4().to_string();
         tx.execute(
             "INSERT INTO hint_events(event_id,principal_id,network_id,source_device_id,source_binding_id,
-               source_generation,source_event_id,content_digest,target_id,session_id,kind,created_at,expires_at,state)
-             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?4,?9,'attention-required',?10,?11,'active')",
+               source_generation,source_event_id,content_digest,target_device_id,agent_id,session_id,kind,created_at,expires_at,state)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,'attention-required',?12,?13,'active')",
             params![
                 event_id,
                 host.principal_id,
@@ -817,6 +899,8 @@ impl Store {
                 host.key_generation as i64,
                 hint.source_event_id,
                 content_digest.as_slice(),
+                target.target_device_id,
+                target.agent_id,
                 hint.session_id,
                 now,
                 expires_at
@@ -990,20 +1074,21 @@ impl Store {
             .map_err(|_| NotifyError::Storage)?;
         prune(&tx, now)?;
         require_endpoint(&tx, endpoint)?;
-        let pointer: Option<(String, String)> = tx
+        let pointer: Option<(String, String, String)> = tx
             .query_row(
-                "SELECT h.target_id,h.session_id FROM hint_events h JOIN deliveries d ON d.event_id=h.event_id
+                "SELECT h.target_device_id,h.agent_id,h.session_id FROM hint_events h JOIN deliveries d ON d.event_id=h.event_id
                  WHERE h.event_id=?1 AND d.endpoint_id=?2 AND h.principal_id=?3 AND h.network_id=?4
                    AND h.state='active' AND h.expires_at>?5 AND d.state IN ('pending','leased','sent','unknown')",
                 params![event_id, endpoint.endpoint_id, endpoint.authority.principal_id, endpoint.authority.network_id, now],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .optional()
             .map_err(|_| NotifyError::Storage)?;
         tx.commit().map_err(|_| NotifyError::Storage)?;
         pointer
-            .map(|(target_id, session_id)| SessionPointer {
-                target_id,
+            .map(|(target_device_id, agent_id, session_id)| SessionPointer {
+                target_device_id,
+                agent_id,
                 session_id,
             })
             .ok_or(NotifyError::NotFound)
@@ -1083,27 +1168,31 @@ fn require_endpoint(
     }
 }
 
-fn count_active_endpoints(
+fn check_endpoint_capacity(
     tx: &rusqlite::Transaction<'_>,
-    principal_id: &str,
-    network_id: &str,
-    device_id: Option<&str>,
-) -> Result<i64, NotifyError> {
-    let count: i64 = if let Some(device_id) = device_id {
-        tx.query_row(
-            "SELECT COUNT(*) FROM endpoints WHERE principal_id=?1 AND network_id=?2 AND device_id=?3 AND revoked_at IS NULL",
-            params![principal_id, network_id, device_id],
+    authority: &Authority,
+    endpoint_being_reused: Option<&str>,
+) -> Result<(), NotifyError> {
+    let account_count: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM endpoints WHERE principal_id=?1 AND network_id=?2 AND revoked_at IS NULL
+               AND (?3 IS NULL OR endpoint_id<>?3)",
+            params![authority.principal_id, authority.network_id, endpoint_being_reused],
             |row| row.get(0),
         )
-    } else {
-        tx.query_row(
-            "SELECT COUNT(*) FROM endpoints WHERE principal_id=?1 AND network_id=?2 AND revoked_at IS NULL",
-            params![principal_id, network_id],
+        .map_err(|_| NotifyError::Storage)?;
+    let device_count: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM endpoints WHERE principal_id=?1 AND network_id=?2 AND device_id=?3
+               AND revoked_at IS NULL AND (?4 IS NULL OR endpoint_id<>?4)",
+            params![authority.principal_id, authority.network_id, authority.device_id, endpoint_being_reused],
             |row| row.get(0),
         )
+        .map_err(|_| NotifyError::Storage)?;
+    if account_count >= MAX_ENDPOINTS_ACCOUNT || device_count >= MAX_ENDPOINTS_DEVICE {
+        return Err(NotifyError::Capacity);
     }
-    .map_err(|_| NotifyError::Storage)?;
-    Ok(count)
+    Ok(())
 }
 
 fn stale_endpoint_ids(
@@ -1163,21 +1252,43 @@ fn revoke_deliveries_for_endpoint(
 
 fn prune(tx: &rusqlite::Transaction<'_>, now: i64) -> Result<(), NotifyError> {
     tx.execute(
-        "UPDATE hint_events SET state='expired' WHERE state='active' AND expires_at<=?1",
-        params![now],
+        "UPDATE hint_events SET state='expired' WHERE event_id IN
+           (SELECT event_id FROM hint_events WHERE state='active' AND expires_at<=?1
+             ORDER BY expires_at,event_id LIMIT ?2)",
+        params![now, CLEANUP_EVENT_BATCH],
     )
     .map_err(|_| NotifyError::Storage)?;
     tx.execute(
         "UPDATE deliveries SET state='expired',lease_id=NULL,lease_until=NULL
-         WHERE state IN ('pending','leased','unknown') AND event_id IN
-           (SELECT event_id FROM hint_events WHERE state='expired')",
-        [],
+         WHERE rowid IN (SELECT d.rowid FROM deliveries d JOIN hint_events h ON h.event_id=d.event_id
+           WHERE d.state IN ('pending','leased','unknown') AND h.state='expired'
+           ORDER BY h.expires_at,d.event_id,d.endpoint_id LIMIT ?1)",
+        params![CLEANUP_DELIVERY_BATCH],
     )
     .map_err(|_| NotifyError::Storage)?;
     let cutoff = now.saturating_sub(DEDUPE_RETENTION_SECONDS);
     tx.execute(
-        "DELETE FROM hint_events WHERE created_at<?1 AND state IN ('expired','revoked')",
-        params![cutoff],
+        "DELETE FROM deliveries WHERE rowid IN
+           (SELECT d.rowid FROM deliveries d JOIN hint_events h ON h.event_id=d.event_id
+             WHERE h.created_at<?1 AND h.state IN ('expired','revoked')
+             ORDER BY h.created_at,d.event_id,d.endpoint_id LIMIT ?2)",
+        params![cutoff, CLEANUP_DELIVERY_BATCH],
+    )
+    .map_err(|_| NotifyError::Storage)?;
+    tx.execute(
+        "DELETE FROM hint_events WHERE event_id IN
+           (SELECT h.event_id FROM hint_events h WHERE h.created_at<?1 AND h.state IN ('expired','revoked')
+             AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.event_id=h.event_id)
+             ORDER BY h.created_at,h.event_id LIMIT ?2)",
+        params![cutoff, CLEANUP_EVENT_BATCH],
+    )
+    .map_err(|_| NotifyError::Storage)?;
+    tx.execute(
+        "DELETE FROM endpoints WHERE endpoint_id IN
+           (SELECT e.endpoint_id FROM endpoints e WHERE e.revoked_at<?1
+             AND NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.endpoint_id=e.endpoint_id)
+             ORDER BY e.revoked_at,e.endpoint_id LIMIT ?2)",
+        params![cutoff, CLEANUP_ENDPOINT_BATCH],
     )
     .map_err(|_| NotifyError::Storage)?;
     Ok(())
@@ -1269,6 +1380,10 @@ fn valid_session_id(value: &str) -> bool {
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 }
 
+fn valid_agent_id(value: &str) -> bool {
+    !value.is_empty() && value.chars().count() <= 256 && !value.chars().any(char::is_control)
+}
+
 fn validate_time(now: i64) -> Result<(), NotifyError> {
     if now < 0 {
         Err(NotifyError::InvalidInput)
@@ -1285,7 +1400,7 @@ fn token_digest(provider: Provider, token: &str) -> [u8; 32] {
     digest.finalize().into()
 }
 
-fn hint_digest(target_id: &str, session_id: &str, kind: HintKind) -> [u8; 32] {
+fn hint_digest(target_id: &str, agent_id: &str, session_id: &str, kind: HintKind) -> [u8; 32] {
     let mut digest = Sha256::new();
     digest.update(b"moxbots-agentnet-mobile-hint-v1\0");
     digest.update(match kind {
@@ -1293,6 +1408,8 @@ fn hint_digest(target_id: &str, session_id: &str, kind: HintKind) -> [u8; 32] {
     });
     digest.update([0]);
     digest.update(target_id.as_bytes());
+    digest.update([0]);
+    digest.update(agent_id.as_bytes());
     digest.update([0]);
     digest.update(session_id.as_bytes());
     digest.finalize().into()
@@ -1327,13 +1444,35 @@ mod tests {
     }
 
     fn register(store: &Store, auth: &Authority, token: &str, now: i64) -> EndpointId {
+        register_install(store, auth, &installation_id(token), token, now)
+    }
+
+    fn register_install(
+        store: &Store,
+        auth: &Authority,
+        installation_id: &str,
+        token: &str,
+        now: i64,
+    ) -> EndpointId {
         store
             .register_endpoint(
                 auth,
-                RegisterEndpointV1::new(Provider::Fcm, token).unwrap(),
+                RegisterEndpointV1::new(Provider::Fcm, installation_id, token).unwrap(),
                 now,
             )
             .unwrap()
+    }
+
+    fn installation_id(label: &str) -> String {
+        let digest = Sha256::digest(label.as_bytes());
+        format!(
+            "aaaaaaaa-aaaa-4aaa-8aaa-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            digest[0], digest[1], digest[2], digest[3], digest[4], digest[5]
+        )
+    }
+
+    fn target(auth: &Authority, agent_id: &str) -> TargetScope {
+        TargetScope::from_validated_host_session(auth, agent_id).unwrap()
     }
 
     fn hint(source_event_id: &str, session_id: &str) -> HostHintV1 {
@@ -1344,7 +1483,7 @@ mod tests {
     fn registration_contract_is_strict_and_redacts_tokens() {
         let token = "opaque-device-token-do-not-log";
         let request: RegisterEndpointV1 = serde_json::from_str(&format!(
-            r#"{{"version":1,"provider":"fcm","token":"{token}"}}"#
+            r#"{{"version":1,"provider":"fcm","installationId":"{DEVICE}","token":"{token}"}}"#
         ))
         .unwrap();
         assert!(!format!("{request:?}").contains(token));
@@ -1356,14 +1495,18 @@ mod tests {
         );
         assert!(
             serde_json::from_str::<RegisterEndpointV1>(
-                r#"{"version":2,"provider":"fcm","token":"token"}"#
+                r#"{"version":2,"provider":"fcm","installationId":"{DEVICE}","token":"token"}"#
             )
             .unwrap()
             .validate()
             .is_err()
         );
-        assert!(RegisterEndpointV1::new(Provider::Fcm, "bad\ntoken").is_err());
-        assert!(RegisterEndpointV1::new(Provider::Fcm, "x".repeat(MAX_TOKEN_BYTES + 1)).is_err());
+        assert!(RegisterEndpointV1::new(Provider::Fcm, DEVICE, "bad\ntoken").is_err());
+        assert!(RegisterEndpointV1::new(Provider::Fcm, "not-a-uuid", "token").is_err());
+        assert!(
+            RegisterEndpointV1::new(Provider::Fcm, DEVICE, "x".repeat(MAX_TOKEN_BYTES + 1))
+                .is_err()
+        );
     }
 
     #[test]
@@ -1388,6 +1531,166 @@ mod tests {
     }
 
     #[test]
+    fn token_rotation_reuses_installation_and_invalidates_old_claims() {
+        let (_dir, store) = open();
+        let auth = authority(DEVICE, BINDING, 1);
+        let installation = installation_id("stable-installation");
+        let endpoint = register_install(&store, &auth, &installation, "token-0", 10);
+        let first = store
+            .enqueue_hint(
+                &auth,
+                &target(&auth, "agent-main"),
+                "77777777-7777-4777-8777-777777777777",
+                &hint("88888888-8888-4888-8888-888888888888", "session-a"),
+                11,
+                100,
+            )
+            .unwrap();
+        let recipient = fresh(&endpoint, auth.clone());
+        let old_claim = store.claim_due(&recipient, 12, 1).unwrap().remove(0);
+        for index in 1..=8 {
+            let rotated = register_install(
+                &store,
+                &auth,
+                &installation,
+                &format!("token-{index}"),
+                12 + index,
+            );
+            assert_eq!(rotated, endpoint);
+        }
+        assert!(matches!(
+            store.settle_delivery(&recipient, &old_claim, DeliveryOutcome::Accepted, 30),
+            Err(NotifyError::ClaimExpired)
+        ));
+        assert_eq!(
+            store.endpoint_candidates(PRINCIPAL, NETWORK).unwrap().len(),
+            1
+        );
+
+        let next = store
+            .enqueue_hint(
+                &auth,
+                &target(&auth, "agent-main"),
+                "77777777-7777-4777-8777-777777777777",
+                &hint("99999999-9999-4999-8999-999999999999", "session-b"),
+                40,
+                100,
+            )
+            .unwrap();
+        let new_claim = store.claim_due(&recipient, 41, 1).unwrap().remove(0);
+        assert_eq!(new_claim.envelope().event_id(), next.event_id());
+        assert_eq!(new_claim.token(), "token-8");
+        assert_ne!(first.event_id(), next.event_id());
+    }
+
+    #[test]
+    fn existing_token_rebind_checks_target_device_and_account_quotas() {
+        let (_dir, store) = open();
+        let external = Authority::from_validated_service_state(
+            "99999999-9999-4999-8999-999999999999",
+            NETWORK,
+            OTHER_DEVICE,
+            OTHER_BINDING,
+            1,
+        )
+        .unwrap();
+        let shared = register(&store, &external, "shared-device-token", 1);
+        let target_auth = authority(DEVICE, BINDING, 1);
+        for index in 0..MAX_ENDPOINTS_DEVICE {
+            register_install(
+                &store,
+                &target_auth,
+                &installation_id(&format!("device-fill-{index}")),
+                &format!("device-fill-token-{index}"),
+                2 + index,
+            );
+        }
+        assert!(matches!(
+            store.register_endpoint(
+                &target_auth,
+                RegisterEndpointV1::new(
+                    Provider::Fcm,
+                    installation_id("rebound-device"),
+                    "shared-device-token"
+                )
+                .unwrap(),
+                10,
+            ),
+            Err(NotifyError::Capacity)
+        ));
+        assert_eq!(
+            store
+                .endpoint_candidates(&external.principal_id, NETWORK)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            store.endpoint_candidates(PRINCIPAL, NETWORK).unwrap().len(),
+            3
+        );
+        assert!(
+            store
+                .redeem_hint(
+                    &fresh(&shared, external),
+                    "88888888-8888-4888-8888-888888888888",
+                    11
+                )
+                .is_err()
+        );
+
+        let (_dir, store) = open();
+        for index in 0..MAX_ENDPOINTS_ACCOUNT {
+            let device = format!("aaaaaaaa-aaaa-4aaa-8aaa-{index:012}");
+            let binding = format!("bbbbbbbb-bbbb-4bbb-8bbb-{index:012}");
+            register_install(
+                &store,
+                &authority(&device, &binding, 1),
+                &installation_id(&format!("account-fill-{index}")),
+                &format!("account-fill-token-{index}"),
+                index,
+            );
+        }
+        let external_same_network = Authority::from_validated_service_state(
+            "99999999-9999-4999-8999-999999999999",
+            NETWORK,
+            OTHER_DEVICE,
+            OTHER_BINDING,
+            1,
+        )
+        .unwrap();
+        register(&store, &external_same_network, "shared-account-token", 20);
+        assert!(matches!(
+            store.register_endpoint(
+                &authority(
+                    "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                    "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                    1
+                ),
+                RegisterEndpointV1::new(
+                    Provider::Fcm,
+                    installation_id("rebound-account"),
+                    "shared-account-token"
+                )
+                .unwrap(),
+                21,
+            ),
+            Err(NotifyError::Capacity)
+        ));
+        assert_eq!(
+            store.endpoint_candidates(PRINCIPAL, NETWORK).unwrap().len(),
+            10
+        );
+        assert_eq!(
+            store
+                .endpoint_candidates(&external_same_network.principal_id, NETWORK)
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    #[test]
     fn provider_token_rebinding_revokes_old_owner_delivery() {
         let (_dir, store) = open();
         let old = authority(DEVICE, BINDING, 1);
@@ -1395,6 +1698,7 @@ mod tests {
         let event = store
             .enqueue_hint(
                 &old,
+                &target(&old, "agent-main"),
                 "77777777-7777-4777-8777-777777777777",
                 &hint("88888888-8888-4888-8888-888888888888", "session-a"),
                 11,
@@ -1445,7 +1749,8 @@ mod tests {
         assert!(matches!(
             store.register_endpoint(
                 &authority(DEVICE, BINDING, 1),
-                RegisterEndpointV1::new(Provider::Fcm, "too-many").unwrap(),
+                RegisterEndpointV1::new(Provider::Fcm, installation_id("too-many"), "too-many")
+                    .unwrap(),
                 20
             ),
             Err(NotifyError::Capacity)
@@ -1463,7 +1768,12 @@ mod tests {
         assert!(matches!(
             store.register_endpoint(
                 &authority(OTHER_DEVICE, OTHER_BINDING, 1),
-                RegisterEndpointV1::new(Provider::Fcm, "account-overflow").unwrap(),
+                RegisterEndpointV1::new(
+                    Provider::Fcm,
+                    installation_id("account-overflow"),
+                    "account-overflow"
+                )
+                .unwrap(),
                 99
             ),
             Err(NotifyError::Capacity)
@@ -1478,23 +1788,56 @@ mod tests {
         let source = "88888888-8888-4888-8888-888888888888";
         let epoch = "77777777-7777-4777-8777-777777777777";
         let first = store
-            .enqueue_hint(&auth, epoch, &hint(source, "session-a"), 11, 100)
+            .enqueue_hint(
+                &auth,
+                &target(&auth, "agent-main"),
+                epoch,
+                &hint(source, "session-a"),
+                11,
+                100,
+            )
             .unwrap();
         let repeated = store
-            .enqueue_hint(&auth, epoch, &hint(source, "session-a"), 12, 100)
+            .enqueue_hint(
+                &auth,
+                &target(&auth, "agent-main"),
+                epoch,
+                &hint(source, "session-a"),
+                12,
+                100,
+            )
             .unwrap();
         assert_eq!(first, repeated);
         assert!(matches!(
-            store.enqueue_hint(&auth, epoch, &hint(source, "session-b"), 12, 100),
+            store.enqueue_hint(
+                &auth,
+                &target(&auth, "agent-main"),
+                epoch,
+                &hint(source, "session-b"),
+                12,
+                100
+            ),
             Err(NotifyError::Conflict)
         ));
-        let fresh = fresh(&endpoint, auth);
+        let fresh = fresh(&endpoint, auth.clone());
         let claim = store.claim_due(&fresh, 13, 1).unwrap().remove(0);
         assert_eq!(claim.token(), "token-one");
         assert!(!format!("{claim:?}").contains("token-one"));
         let envelope = serde_json::to_value(claim.envelope()).unwrap();
         assert_eq!(envelope, serde_json::json!({"eventId": first.event_id()}));
         assert!(!envelope.to_string().contains("session-a"));
+        let other_agent = target(&auth, "another-agent");
+        assert!(matches!(
+            store.enqueue_hint(
+                &auth,
+                &other_agent,
+                epoch,
+                &hint(source, "session-a"),
+                14,
+                100
+            ),
+            Err(NotifyError::Conflict)
+        ));
     }
 
     #[test]
@@ -1505,6 +1848,7 @@ mod tests {
         let event = store
             .enqueue_hint(
                 &auth,
+                &target(&auth, "agent-main"),
                 "77777777-7777-4777-8777-777777777777",
                 &hint("88888888-8888-4888-8888-888888888888", "session-a"),
                 11,
@@ -1548,7 +1892,8 @@ mod tests {
         let pointer = store
             .redeem_hint(&recipient, event.event_id(), first.lease_until() + 21)
             .unwrap();
-        assert_eq!(pointer.target_id, DEVICE);
+        assert_eq!(pointer.target_device_id, DEVICE);
+        assert_eq!(pointer.agent_id, "agent-main");
         assert_eq!(pointer.session_id, "session-a");
     }
 
@@ -1560,6 +1905,7 @@ mod tests {
         let event = store
             .enqueue_hint(
                 &auth,
+                &target(&auth, "agent-main"),
                 "77777777-7777-4777-8777-777777777777",
                 &hint("88888888-8888-4888-8888-888888888888", "session-a"),
                 11,
@@ -1576,6 +1922,7 @@ mod tests {
         let event2 = store
             .enqueue_hint(
                 &auth,
+                &target(&auth, "agent-main"),
                 "77777777-7777-4777-8777-777777777777",
                 &hint("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "session-b"),
                 20,
@@ -1596,6 +1943,151 @@ mod tests {
     }
 
     #[test]
+    fn global_endpoint_event_and_delivery_caps_reject_growth() {
+        let (_dir, store) = open();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<{MAX_ENDPOINT_ROWS_GLOBAL})
+                 INSERT INTO endpoints(endpoint_id,principal_id,network_id,device_id,identity_binding_id,key_generation,
+                   installation_id,provider,token_hash,token,created_at,revoked_at)
+                 SELECT printf('10000000-0000-4000-8000-%012x',x),'{PRINCIPAL}','{NETWORK}','{DEVICE}','{BINDING}',1,
+                   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','fcm',randomblob(32),'revoked',0,0 FROM n;"
+            ))
+            .unwrap();
+        assert!(matches!(
+            store.register_endpoint(
+                &authority(DEVICE, BINDING, 1),
+                RegisterEndpointV1::new(
+                    Provider::Fcm,
+                    installation_id("global-endpoint"),
+                    "new-token"
+                )
+                .unwrap(),
+                0
+            ),
+            Err(NotifyError::Capacity)
+        ));
+
+        let (_dir, store) = open();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<{MAX_EVENT_ROWS_GLOBAL})
+                 INSERT INTO hint_events(event_id,principal_id,network_id,source_device_id,source_binding_id,
+                   source_generation,source_event_id,content_digest,target_device_id,agent_id,session_id,kind,
+                   created_at,expires_at,state)
+                 SELECT printf('20000000-0000-4000-8000-%012x',x),printf('30000000-0000-4000-8000-%012x',x),
+                   '{NETWORK}','{DEVICE}','{BINDING}',1,printf('40000000-0000-4000-8000-%012x',x),zeroblob(32),
+                   '{DEVICE}','agent-main','s','attention-required',0,100,'active' FROM n;"
+            ))
+            .unwrap();
+        let host = authority(DEVICE, BINDING, 1);
+        assert!(matches!(
+            store.enqueue_hint(
+                &host,
+                &target(&host, "agent-main"),
+                "77777777-7777-4777-8777-777777777777",
+                &hint("88888888-8888-4888-8888-888888888888", "session"),
+                0,
+                50
+            ),
+            Err(NotifyError::Capacity)
+        ));
+
+        let (_dir, store) = open();
+        let host = authority(DEVICE, BINDING, 1);
+        register(&store, &host, "global-delivery-endpoint", 0);
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1000)
+                 INSERT INTO endpoints(endpoint_id,principal_id,network_id,device_id,identity_binding_id,key_generation,
+                   installation_id,provider,token_hash,token,created_at,revoked_at)
+                 SELECT printf('50000000-0000-4000-8000-%012x',x),
+                   printf('30000000-0000-4000-8000-%012x',((x-1)/10)+1),'{NETWORK}',
+                   printf('60000000-0000-4000-8000-%012x',x),'{BINDING}',1,
+                   printf('70000000-0000-4000-8000-%012x',x),'fcm',randomblob(32),'seed',0,NULL FROM n;
+                 WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<10000)
+                 INSERT INTO hint_events(event_id,principal_id,network_id,source_device_id,source_binding_id,
+                   source_generation,source_event_id,content_digest,target_device_id,agent_id,session_id,kind,
+                   created_at,expires_at,state)
+                 SELECT printf('80000000-0000-4000-8000-%012x',x),
+                   printf('30000000-0000-4000-8000-%012x',((x-1)/100)+1),'{NETWORK}',
+                   printf('60000000-0000-4000-8000-%012x',((x-1)/100)+1),'{BINDING}',1,
+                   printf('90000000-0000-4000-8000-%012x',x),zeroblob(32),'{DEVICE}','agent-main','s',
+                   'attention-required',0,1000,'active' FROM n;
+                 INSERT INTO deliveries(event_id,endpoint_id,state,attempts,next_attempt_at,lease_id,lease_until)
+                 SELECT h.event_id,e.endpoint_id,'sent',1,0,NULL,NULL FROM hint_events h
+                   JOIN endpoints e ON e.principal_id=h.principal_id AND e.network_id=h.network_id
+                   WHERE h.principal_id LIKE '30000000-%';"
+            ))
+            .unwrap();
+        assert!(matches!(
+            store.enqueue_hint(
+                &host,
+                &target(&host, "agent-main"),
+                "77777777-7777-4777-8777-777777777777",
+                &hint("88888888-8888-4888-8888-888888888888", "session"),
+                10,
+                50
+            ),
+            Err(NotifyError::Capacity)
+        ));
+    }
+
+    #[test]
+    fn pruning_deletes_only_bounded_batches_of_old_rows() {
+        let (_dir, store) = open();
+        let auth = authority(DEVICE, BINDING, 1);
+        let endpoint = register(&store, &auth, "cleanup-token", 0);
+        let endpoint_id = endpoint.as_str();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute_batch(&format!(
+                "WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1500)
+                 INSERT INTO hint_events(event_id,principal_id,network_id,source_device_id,source_binding_id,
+                   source_generation,source_event_id,content_digest,target_device_id,agent_id,session_id,kind,
+                   created_at,expires_at,state)
+                 SELECT printf('a0000000-0000-4000-8000-%012x',x),'{PRINCIPAL}','{NETWORK}','{DEVICE}','{BINDING}',
+                   1,printf('b0000000-0000-4000-8000-%012x',x),zeroblob(32),'{DEVICE}','agent-main','s',
+                   'attention-required',0,1,'expired' FROM n;
+                 INSERT INTO deliveries(event_id,endpoint_id,state,attempts,next_attempt_at,lease_id,lease_until)
+                 SELECT event_id,'{endpoint_id}','revoked',1,0,NULL,NULL FROM hint_events
+                   WHERE event_id LIKE 'a0000000-%';
+                 WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<1500)
+                 INSERT INTO endpoints(endpoint_id,principal_id,network_id,device_id,identity_binding_id,key_generation,
+                   installation_id,provider,token_hash,token,created_at,revoked_at)
+                 SELECT printf('c0000000-0000-4000-8000-%012x',x),'{PRINCIPAL}','{NETWORK}',
+                   printf('d0000000-0000-4000-8000-%012x',x),'{BINDING}',1,
+                   printf('e0000000-0000-4000-8000-%012x',x),'fcm',randomblob(32),'old',0,1 FROM n;"
+            ))
+            .unwrap();
+        let connection = store.connection.lock().unwrap();
+        let tx = connection.unchecked_transaction().unwrap();
+        prune(&tx, DEDUPE_RETENTION_SECONDS + 2).unwrap();
+        tx.commit().unwrap();
+        let counts: (i64, i64, i64) = connection
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM deliveries WHERE event_id LIKE 'a0000000-%'),
+                   (SELECT COUNT(*) FROM hint_events WHERE event_id LIKE 'a0000000-%'),
+                   (SELECT COUNT(*) FROM endpoints WHERE endpoint_id LIKE 'c0000000-%')",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(counts, (500, 1250, 1250));
+    }
+
+    #[test]
     fn storage_file_has_private_permissions_and_input_bounds_hold() {
         let (dir, store) = open();
         let metadata = fs::metadata(dir.path().join(DATABASE_NAME)).unwrap();
@@ -1604,6 +2096,7 @@ mod tests {
             store
                 .enqueue_hint(
                     &authority(DEVICE, BINDING, 1),
+                    &target(&authority(DEVICE, BINDING, 1), "agent-main"),
                     "bad-epoch",
                     &hint("88888888-8888-4888-8888-888888888888", "session"),
                     1,
@@ -1613,5 +2106,22 @@ mod tests {
         );
         assert!(HostHintV1::new("not-a-uuid", "session").is_err());
         assert!(HostHintV1::new("88888888-8888-4888-8888-888888888888", "bad/session").is_err());
+        assert!(
+            TargetScope::from_validated_host_session(&authority(DEVICE, BINDING, 1), "").is_err()
+        );
+        assert!(
+            TargetScope::from_validated_host_session(
+                &authority(DEVICE, BINDING, 1),
+                "x".repeat(257)
+            )
+            .is_err()
+        );
+        assert!(
+            TargetScope::from_validated_host_session(
+                &authority(DEVICE, BINDING, 1),
+                "x".repeat(256)
+            )
+            .is_ok()
+        );
     }
 }
