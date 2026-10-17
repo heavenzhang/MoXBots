@@ -1,7 +1,41 @@
-const { withAndroidManifest, withInfoPlist } = require('expo/config-plugins');
+const { withAndroidManifest, withInfoPlist, withProjectBuildGradle, withGradleProperties } = require('expo/config-plugins');
 
 /** Permissions belong to the installed internal app, requested only on a mic tap. */
 module.exports = function withMoxBotsRemote(config) {
+  config = withGradleProperties(config, (entry) => {
+    // The internal Rust/JNI artifact and dedicated test AVD are arm64. Do not
+    // advertise installable ABIs for which the app has no native controller.
+    entry.modResults = entry.modResults.filter((item) => item.type !== 'property' || item.key !== 'reactNativeArchitectures');
+    entry.modResults.push({ type: 'property', key: 'reactNativeArchitectures', value: 'arm64-v8a' });
+    return entry;
+  });
+  config = withProjectBuildGradle(config, (entry) => {
+    // App runtime dependencies resolve in the consuming application project,
+    // so a Maven declaration in the native library alone is insufficient.
+    const block = `// moxbots-verifier-repository:start
+def moxMetadata = new groovy.json.JsonSlurper().parseText(providers.exec {
+  commandLine 'cargo', 'metadata', '--locked', '--format-version', '1', '--filter-platform',
+    'aarch64-linux-android', '--manifest-path', new File(rootDir, '../../connection/Cargo.toml').canonicalPath
+}.standardOutput.asText.get())
+def moxVerifiers = moxMetadata.packages.findAll { it.name == 'rustls-platform-verifier-android' }
+if (moxVerifiers.size() != 1) throw new GradleException('Expected one locked Android TLS verifier')
+def moxVerifierMaven = new File(new File(moxVerifiers.first().manifest_path).parentFile, 'maven')
+allprojects {
+  repositories {
+    maven {
+      url = moxVerifierMaven.toURI()
+      content { includeModule('rustls', 'rustls-platform-verifier') }
+      metadataSources { mavenPom(); artifact() }
+    }
+  }
+}
+// moxbots-verifier-repository:end`;
+    const marker = /\/\/ moxbots-verifier-repository:start[\s\S]*?\/\/ moxbots-verifier-repository:end/g;
+    entry.modResults.contents = marker.test(entry.modResults.contents)
+      ? entry.modResults.contents.replace(marker, block)
+      : entry.modResults.contents + '\n' + block + '\n';
+    return entry;
+  });
   config = withInfoPlist(config, (entry) => {
     entry.modResults.NSMicrophoneUsageDescription = '用于录制你主动发起的语音输入。';
     entry.modResults.NSSpeechRecognitionUsageDescription = '将语音转换为可编辑的消息草稿。';
