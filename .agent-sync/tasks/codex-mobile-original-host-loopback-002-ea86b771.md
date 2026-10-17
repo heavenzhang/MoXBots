@@ -50,3 +50,28 @@ supplier and actual installed SDK/native child. No production changes or calls.
   then integrate under the parent task's PR/main gates. No deployment authorized.
 - Requested model 6.1-sol/medium inherited from assignment; actual serving model,
   tokens and money cost unknown. No external model calls or further delegation.
+
+## Successor stage: actual permission, Stop and tool artifacts
+
+Parent authorized this test-only continuation on the same already gated tree;
+starting owned-diff checkpoint b65f8ac0, same canonical926 and parent f6/shared
+production repair dependencies. Do not count dependency commits as owned.
+
+- [x] Read actual custom permission/pending/fresh projection/respond/stop and
+  persisted tool attachment/list/read entry points.
+- [x] New independent original Host script: wrong generation/turn/request reject,
+  fresh explicit denial without file, fresh allow_once actual Bash file creation,
+  actual SDK Read → original artifact list/read exact68 bytes, settled approval
+  rejection, exact Stop and later stale approval rejection without file.
+- [x] Original pending read-only observation emits generic source, no SDK dispatch.
+- [x] Corrected PNG fixture CRC; final actual Node24 run PASS4781ms, six local
+  supplier calls; private evidence and limits in interactions-acceptance.md.
+- [x] Final eslint/root+script tsc all exit0; exact task branch handoff checked separately.
+- [ ] Primary independent acceptance and main integration; no deployment.
+
+Owned stage files only: scripts/verify-mobile-original-host-interactions.ts,
+src/test/fixtures/mobile-original-host-interactions-tsconfig.json, new independent
+interactions acceptance/evidence, and this task record. Existing passing script,
+passing evidence, production owner/protocol, dependencies, parent plan and shared
+workflow are unchanged. Follow-up entry: run the exact new script command from
+dev-docs/mobile-002/original-host-loopback/interactions-acceptance.md.

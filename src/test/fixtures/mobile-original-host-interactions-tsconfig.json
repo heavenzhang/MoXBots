@@ -1,0 +1,5 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["../../**/*", "../../../scripts/verify-mobile-original-host-interactions.ts"]
+}
