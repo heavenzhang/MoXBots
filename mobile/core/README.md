@@ -109,14 +109,48 @@ Apple's iOS SDK or Android NDK and target-specific linkers; inspect the task rec
 for actual outcomes instead of inferring them from the crate types or installed
 Rust targets.
 
-## Owned assets data profile
+## Native profiles and one relay owner
 
-Native config `profile:"assets"` creates a separate logical encrypted channel for
-`session.assets.v1`; absent `profile` preserves the existing session profile.
-`{kind:"asset-request",request:<RemoteAssetRequest>}` is native-only, requires an
-authenticated capabilities response first, and binds this channel to that Agent.
-It cannot execute a `session.remote` intent. Responses use `asset-response` events
-and are matched by exact request method, Agent, upload/artifact/session/offset scope.
-Chunks are canonical base64 for at most 24 KiB; request IDs/chunks never imply full
-file completion. Explicit upload.status and matching offsets/hash govern resumption;
-there is no new automatic execution replay or weakening of session v1 journaling.
+Native config accepts exactly `profile:"session"` (default), `"assets"`, or
+`"combined"`. Session-only and assets-only restrictions remain unchanged. The
+Combined profile exposes only the existing `session.remote` and owned
+`session.assets.v1` typed methods; it is not an arbitrary management-method port.
+Choose the profile in trusted native provisioning, never from a JavaScript intent.
+
+The actual relay allows one outer WSS per device and one channel per device pair.
+An additional socket would replace the device connection, and a second channel for
+that pair is rejected with `CHANNEL_PAIR_EXISTS`. Therefore the native connection
+owner must create one Combined MobileClient for the authenticated device pair and
+outer connection epoch, retaining its original Channel, PairSequences, pending
+request table and cumulative relay credit across asset/session/asset operations.
+Do not recreate a handle or reset pair/management sequences between methods. A new
+handle still requires a fresh authenticated outer epoch under the existing recovery
+contract. The SDK does not create an extra socket, identity, or cloud protocol.
+
+In Combined mode the first valid session Prepare/Request, initial asset capabilities
+request, or atomically recovered journal binds the owner to one Agent. Subsequent
+session requests, asset requests and every recovered record must match that Agent;
+otherwise the request is rejected without emitting bytes. Mixed-agent recovery
+fails atomically without altering the active journal or binding. The existing
+Recover-before-first-RPC rule remains: restore only this Agent's unknown records
+before even sending asset capabilities. Commit uses the immutable matching journal;
+recovered effects still require receipt queries and cannot be automatically resent.
+Changing the selected Agent requires the native owner to end/recover its lifecycle,
+not to replace only the SDK while keeping the old outer epoch.
+
+`{kind:"asset-request",request:<RemoteAssetRequest>}` is native-only. Asset data
+still requires an authenticated matching capabilities response first; session
+operations never grant that capability. Assets-only mode cannot execute a session
+intent; Session-only mode cannot send assets. Responses retain `asset-response` or
+`response` events and exact requestId/method/Agent/upload/artifact/session/offset
+correlation even when the peer returns mixed outstanding requests out of order.
+All methods share the existing bounded 64-request pending table and relay windows.
+Native should keep sequential chunk scheduling bounded so user control work can
+progress on this same encrypted stream.
+
+Chunks remain canonical base64 for at most 24 KiB. Request IDs and queued chunks
+never imply full file or turn completion. Explicit upload.status and matching
+byte offsets/hash govern resumption; session v1 wire shapes and execution journal
+semantics are unchanged. Combined tests use actual TLS against the existing Host
+channel implementation and its strict sequence validation; actual outer relay and
+native platform integration remain separate parent-owned acceptance gates.
