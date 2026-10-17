@@ -36,9 +36,13 @@ android {
     consumerProguardFiles 'consumer-rules.pro'
   }
   externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt' } }
-  // Library instrumentation has its own APK; AGP otherwise omits the imported
-  // Rust runtime even though the consuming application packages it.
-  sourceSets { androidTest { jniLibs.srcDirs = ['native'] } }
+  // CMake links the Rust connection as DT_NEEDED but does not copy imported
+  // shared objects into this AAR. Package it in both the app APK and the
+  // library's independent instrumentation APK.
+  sourceSets {
+    main { jniLibs.srcDirs = ['native'] }
+    androidTest { jniLibs.srcDirs = ['native'] }
+  }
 }
 
 dependencies {
