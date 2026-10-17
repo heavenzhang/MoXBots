@@ -1,6 +1,7 @@
 package com.moxbots.mobile.remote
 
 import android.content.Context
+import android.provider.OpenableColumns
 import android.util.Base64
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -11,6 +12,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.security.MessageDigest
 import java.util.ArrayDeque
+import java.io.File
 import java.util.UUID
 
 /** Native-only cache and scheduler policy tests. All content and RPC replies are synthetic. */
@@ -165,6 +167,131 @@ class NativeArtifactSchedulerInstrumentedTest {
     } finally { cleanup(f, session) }
   }
 
+  @Test fun readOnlyProviderUsesVerifiedDisplayMetadataAndNoBackupFiles() {
+    val file = File(context.noBackupFilesDir, "artifacts-v1/provider-test-${UUID.randomUUID()}").apply {
+      parentFile?.mkdirs(); writeBytes(bytes)
+    }
+    val ready = ReadyArtifactFile(file, "synthetic-name.txt", "text/plain", bytes.size.toLong(), bytes.sha256())
+    val authority = context.packageName + ".moxbots.artifacts"
+    try {
+      assertTrue(file.canonicalPath.startsWith(context.noBackupFilesDir.canonicalPath + File.separator))
+      val providerInfo = context.packageManager.resolveContentProvider(authority, 0)
+      assertNotNull("native artifact provider must be declared by the Expo config plugin", providerInfo)
+      assertEquals(false, providerInfo!!.exported)
+      assertTrue(providerInfo.grantUriPermissions)
+      val uri = NativeArtifactProviderUris.issue(context, authority, ready)
+      assertEquals("text/plain", context.contentResolver.getType(uri))
+      context.contentResolver.query(uri, null, null, null, null)!!.use { cursor ->
+        val nameColumn = cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)
+        val sizeColumn = cursor.getColumnIndexOrThrow(OpenableColumns.SIZE)
+        assertTrue(cursor.moveToFirst())
+        assertEquals("synthetic-name.txt", cursor.getString(nameColumn))
+        assertEquals(bytes.size.toLong(), cursor.getLong(sizeColumn))
+      }
+      val opened = context.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+      assertArrayEquals(bytes, opened)
+      try { context.contentResolver.query(uri, arrayOf("_data"), null, null, null)?.close(); fail("provider must not disclose paths") }
+      catch (_: IllegalArgumentException) { }
+      try { context.contentResolver.openFileDescriptor(uri, "w")?.close(); fail("provider must reject write modes") }
+      catch (_: java.io.FileNotFoundException) { }
+      try { context.contentResolver.insert(uri, android.content.ContentValues()); fail("provider must reject insert") }
+      catch (_: UnsupportedOperationException) { }
+      try { context.contentResolver.update(uri, android.content.ContentValues(), null, null); fail("provider must reject update") }
+      catch (_: UnsupportedOperationException) { }
+      try { context.contentResolver.delete(uri, null, null); fail("provider must reject delete") }
+      catch (_: UnsupportedOperationException) { }
+      val forged = uri.buildUpon().appendPath("..\\secret").build()
+      try { context.contentResolver.openInputStream(forged)?.close(); fail("provider must reject path traversal") }
+      catch (_: java.io.FileNotFoundException) { }
+    } finally { file.delete() }
+  }
+
+  @Test fun legacyFilesDirArtifactIsMigratedWithoutLosingVerifiedMetadata() {
+    val scope = "https://synthetic.invalid\u0000" + UUID.randomUUID()
+    val cache = NativeArtifactCache(context, SecureRecords(context), scope)
+    val item = descriptor.copy(artifactId = UUID.randomUUID().toString())
+    val legacyScope = scope.sha256()
+    val legacyKey = "$scope\u0000${target.identityKey}\u0000migration-session\u0000${item.artifactId}"
+    val legacyName = legacyKey.toByteArray().sha256()
+    val old = File(File(File(context.filesDir, "artifacts-v1"), legacyScope), legacyName)
+    old.parentFile?.mkdirs(); old.writeBytes(bytes)
+    val records = SecureRecords(context)
+    try {
+      cache.reserve(scope, target.identityKey, "migration-session", item, target.agentId)
+      assertArrayEquals(bytes, cache.localFile(target.identityKey, "migration-session", item.artifactId).readBytes())
+      assertFalse("legacy backup-eligible copy must be removed after migration", old.exists())
+      assertEquals("paused", cache.read(scope, target.identityKey, "migration-session", item.artifactId)!!.getString("state"))
+    } finally {
+      runCatching { cache.delete(scope, target.identityKey, "migration-session", item.artifactId) }
+      runCatching { cache.localFile(target.identityKey, "migration-session", item.artifactId).delete() }
+      runCatching { records.remove(scope, "artifact-cache-index-v1") }
+      old.delete()
+    }
+  }
+
+  @Test fun cacheRecoversEveryReservationAndRemovalCrashBoundary() {
+    class SimulatedProcessStop : Error()
+    fun scope() = "https://synthetic.invalid\u0000" + UUID.randomUUID()
+    fun cache(scope: String, stopAt: String? = null) = NativeArtifactCache(context, SecureRecords(context), scope) { boundary ->
+      if (boundary == stopAt) throw SimulatedProcessStop()
+    }
+
+    val reservationScope = scope()
+    val second = descriptor.copy(artifactId = UUID.randomUUID().toString())
+    try {
+      try { cache(reservationScope, "reserve.index").reserve(reservationScope, target.identityKey, "crash-session", descriptor, target.agentId); fail("simulate process stop after index commit") }
+      catch (_: SimulatedProcessStop) { }
+      val afterIndexStop = cache(reservationScope)
+      val recovered = afterIndexStop.reserve(reservationScope, target.identityKey, "crash-session", descriptor, target.agentId)
+      assertEquals("paused", recovered.getString("state"))
+      assertTrue("index reservation without a sealed job must be discarded", afterIndexStop.read(reservationScope, target.identityKey, "crash-session", descriptor.artifactId) != null)
+
+      try { cache(reservationScope, "reserve.job").reserve(reservationScope, target.identityKey, "crash-session", second, target.agentId); fail("simulate process stop after job commit") }
+      catch (_: SimulatedProcessStop) { }
+      val afterJobStop = cache(reservationScope)
+      afterJobStop.recover(reservationScope)
+      assertEquals("paused", afterJobStop.read(reservationScope, target.identityKey, "crash-session", second.artifactId)!!.getString("state"))
+      val active = afterJobStop.read(reservationScope, target.identityKey, "crash-session", second.artifactId)!!
+      active.put("state", "downloading")
+      afterJobStop.write(reservationScope, active)
+      afterJobStop.recover(reservationScope)
+      assertEquals("downloading", afterJobStop.read(reservationScope, target.identityKey, "crash-session", second.artifactId)!!.getString("state"))
+      afterJobStop.append(target.identityKey, "crash-session", descriptor.artifactId, 0, bytes)
+      val ready = afterJobStop.read(reservationScope, target.identityKey, "crash-session", descriptor.artifactId)!!
+      ready.put("state", "ready").put("receivedBytes", descriptor.sizeBytes)
+      afterJobStop.write(reservationScope, ready)
+      afterJobStop.recover(reservationScope)
+      assertEquals("ready", afterJobStop.read(reservationScope, target.identityKey, "crash-session", descriptor.artifactId)!!.getString("state"))
+      assertEquals(descriptor.sha256, afterJobStop.hash(target.identityKey, "crash-session", descriptor.artifactId))
+    } finally {
+      runCatching { cache(reservationScope).delete(reservationScope, target.identityKey, "crash-session", descriptor.artifactId) }
+      runCatching { cache(reservationScope).delete(reservationScope, target.identityKey, "crash-session", second.artifactId) }
+      runCatching { SecureRecords(context).remove(reservationScope, "artifact-cache-index-v1") }
+    }
+
+    listOf("delete.marker", "delete.file", "delete.record", "delete.index").forEach { boundary ->
+      val deletionScope = scope()
+      val records = SecureRecords(context)
+      val initial = NativeArtifactCache(context, records, deletionScope)
+      val item = descriptor.copy(artifactId = UUID.randomUUID().toString())
+      initial.reserve(deletionScope, target.identityKey, "delete-session", item, target.agentId)
+      initial.append(target.identityKey, "delete-session", item.artifactId, 0, bytes)
+      try {
+        try { cache(deletionScope, boundary).delete(deletionScope, target.identityKey, "delete-session", item.artifactId); fail("simulate process stop at $boundary") }
+        catch (_: SimulatedProcessStop) { }
+        val restarted = cache(deletionScope)
+        restarted.recover(deletionScope)
+        assertNull("deleting entries must be completed during recovery at $boundary",
+          restarted.read(deletionScope, target.identityKey, "delete-session", item.artifactId))
+        assertEquals("paused", restarted.reserve(deletionScope, target.identityKey, "delete-session", item, target.agentId).getString("state"))
+      } finally {
+        runCatching { cache(deletionScope).delete(deletionScope, target.identityKey, "delete-session", item.artifactId) }
+        runCatching { cache(deletionScope).localFile(target.identityKey, "delete-session", item.artifactId).delete() }
+        runCatching { records.remove(deletionScope, "artifact-cache-index-v1") }
+      }
+    }
+  }
+
   @Test fun targetLossAndDigestMismatchNeverProduceAReadyProjection() {
     val f = fixture()
     val session = "synthetic-session"
@@ -258,4 +385,5 @@ class NativeArtifactSchedulerInstrumentedTest {
 
   private fun ByteArray.sha256() = MessageDigest.getInstance("SHA-256").digest(this)
     .joinToString("") { "%02x".format(it.toInt() and 255) }
+  private fun String.sha256() = toByteArray(Charsets.UTF_8).sha256()
 }

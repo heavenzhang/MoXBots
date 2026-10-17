@@ -46,8 +46,6 @@ allprojects {
     const manifest = entry.modResults.manifest;
     const application = manifest.application?.[0];
     if (!application) throw new Error('MoxBots native application manifest missing');
-    application.$['android:allowBackup'] = 'false';
-    application.$['android:fullBackupContent'] = 'false';
     const permissions = manifest['uses-permission'] ?? [];
     if (!permissions.some((item) => item.$?.['android:name'] === 'android.permission.RECORD_AUDIO')) {
       permissions.push({ $: { 'android:name': 'android.permission.RECORD_AUDIO' } });
@@ -66,9 +64,12 @@ allprojects {
     else metadata.push({ $: { 'android:name': key, 'android:value': 'https://140.143.183.232' } });
     application['meta-data'] = metadata;
     const providers = application.provider ?? [];
-    const providerName = 'androidx.core.content.FileProvider';
+    const providerName = 'com.moxbots.mobile.remote.NativeArtifactProvider';
     const providerAuthority = '${applicationId}.moxbots.artifacts';
-    const existingProvider = providers.find((item) => item.$?.['android:name'] === providerName &&
+    // Replace the earlier FileProvider registration (if prebuild is incremental).
+    application.provider = providers.filter((item) => !(item.$?.['android:authorities'] === providerAuthority &&
+      item.$?.['android:name'] === 'androidx.core.content.FileProvider'));
+    const existingProvider = application.provider.find((item) => item.$?.['android:name'] === providerName &&
       item.$?.['android:authorities'] === providerAuthority);
     const artifactProvider = existingProvider ?? { $: {
       'android:name': providerName,
@@ -78,14 +79,7 @@ allprojects {
     } };
     artifactProvider.$['android:exported'] = 'false';
     artifactProvider.$['android:grantUriPermissions'] = 'true';
-    artifactProvider['meta-data'] = (artifactProvider['meta-data'] ?? []).filter((item) =>
-      item.$?.['android:name'] !== 'android.support.FILE_PROVIDER_PATHS');
-    artifactProvider['meta-data'].push({ $: {
-      'android:name': 'android.support.FILE_PROVIDER_PATHS',
-      'android:resource': '@xml/moxbots_artifact_paths',
-    } });
-    if (!existingProvider) providers.push(artifactProvider);
-    application.provider = providers;
+    if (!existingProvider) application.provider.push(artifactProvider);
     return entry;
   });
 };

@@ -10,12 +10,34 @@ import java.util.UUID
 
 internal data class ArtifactTarget(val targetId: String, val identityKey: String, val agentId: String)
 internal data class ArtifactDescriptor(val artifactId: String, val name: String, val mimeType: String, val sizeBytes: Long, val sha256: String)
-internal data class ReadyArtifactFile(val file: File, val name: String, val mimeType: String)
+internal data class ReadyArtifactFile(val file: File, val name: String, val mimeType: String, val sizeBytes: Long, val sha256: String)
 private fun strictArtifactLong(value: Any?): Long? = when (value) { is Int -> value.toLong(); is Long -> value; else -> null }
+private fun artifactDescriptorJson(d: ArtifactDescriptor) = JSONObject().put("artifactId", d.artifactId).put("name", d.name)
+  .put("mimeType", d.mimeType).put("sizeBytes", d.sizeBytes).put("sha256", d.sha256)
+private fun parseArtifactDescriptor(value: JSONObject): ArtifactDescriptor {
+  check(value.keys().asSequence().toSet() == setOf("artifactId", "name", "mimeType", "sizeBytes", "sha256") &&
+    value.opt("artifactId") is String && value.opt("name") is String && value.opt("mimeType") is String && value.opt("sha256") is String) {
+    "MOBILE_ARTIFACT_RESPONSE_INVALID"
+  }
+  val id = value.getString("artifactId")
+  val name = value.getString("name")
+  val mime = value.getString("mimeType")
+  val size = strictArtifactLong(value.opt("sizeBytes")) ?: -1
+  val sha = value.getString("sha256")
+  check(runCatching { UUID.fromString(id).toString() == id }.getOrDefault(false) && name.length in 1..256 &&
+    name.toByteArray(Charsets.UTF_8).size <= 1024 && name !in setOf(".", "..") &&
+    !name.any { it.isISOControl() || it == '/' || it == '\\' } && mime.toByteArray(Charsets.UTF_8).size <= 128 &&
+    mime.matches(Regex("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+")) &&
+    size in 1..(20L * 1024 * 1024) && sha.matches(Regex("[0-9a-f]{64}"))) { "MOBILE_ARTIFACT_RESPONSE_INVALID" }
+  return ArtifactDescriptor(id, name, mime, size, sha)
+}
 
 /** Private account-scoped disk cache plus encrypted, read-back-verified metadata. */
-internal class NativeArtifactCache(private val context: android.content.Context, private val records: SecureRecords, private val scope: String) {
-  private val root = File(File(context.filesDir, "artifacts-v1"), MessageDigest.getInstance("SHA-256").digest(scope.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) })
+internal class NativeArtifactCache(private val context: android.content.Context, private val records: SecureRecords, private val scope: String,
+  private val fault: (String) -> Unit = {}) {
+  private val scopeHash = MessageDigest.getInstance("SHA-256").digest(scope.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 255) }
+  private val root = File(File(context.noBackupFilesDir, "artifacts-v1"), scopeHash)
+  private val legacyRoot = File(File(context.filesDir, "artifacts-v1"), scopeHash)
   private val indexName = "artifact-cache-index-v1"
   init { check(root.isDirectory || root.mkdirs()) { "MOBILE_ARTIFACT_CACHE_UNAVAILABLE" }; android.system.Os.chmod(root.absolutePath, 448) }
 
@@ -32,7 +54,7 @@ internal class NativeArtifactCache(private val context: android.content.Context,
     val all = LinkedHashMap<String, ArtifactDescriptor>()
     if (existing != null) {
       val old = existing.optJSONArray("items") ?: error("MOBILE_ARTIFACT_CACHE_INVALID")
-      for (i in 0 until old.length()) { val d = parseDescriptor(old.getJSONObject(i)); all[d.artifactId] = d }
+      for (i in 0 until old.length()) { val d = parseArtifactDescriptor(old.getJSONObject(i)); all[d.artifactId] = d }
     }
     for (d in items) {
       val old = all[d.artifactId]
@@ -42,7 +64,7 @@ internal class NativeArtifactCache(private val context: android.content.Context,
     check(all.size <= 128) { "MOBILE_ARTIFACT_CACHE_LIMIT" }
     val value = JSONObject().put("version", 1).put("identityKey", identity).put("agentId", agent)
       .put("sessionId", session).put("nextBefore", next ?: JSONObject.NULL)
-      .put("items", JSONArray(all.values.map(::descriptorJson)))
+      .put("items", JSONArray(all.values.map(::artifactDescriptorJson)))
     val bytes = value.toString().toByteArray(Charsets.UTF_8)
     try {
       check(bytes.size <= 220 * 1024) { "MOBILE_ARTIFACT_CACHE_LIMIT" }
@@ -59,7 +81,7 @@ internal class NativeArtifactCache(private val context: android.content.Context,
       check(value.optInt("version") == 1 && value.optString("identityKey") == identity &&
         value.optString("agentId") == agent && value.optString("sessionId") == session) { "MOBILE_ARTIFACT_REFRESH_REQUIRED" }
       val items = value.optJSONArray("items") ?: error("MOBILE_ARTIFACT_CACHE_INVALID")
-      val found = (0 until items.length()).map { parseDescriptor(items.getJSONObject(it)) }.firstOrNull { it.artifactId == descriptor.artifactId }
+      val found = (0 until items.length()).map { parseArtifactDescriptor(items.getJSONObject(it)) }.firstOrNull { it.artifactId == descriptor.artifactId }
       check(found != null) { "MOBILE_ARTIFACT_REFRESH_REQUIRED" }
       check(found == descriptor) { "MOBILE_ARTIFACT_DESCRIPTOR_CHANGED" }
     } finally { bytes.fill(0) }
@@ -67,7 +89,17 @@ internal class NativeArtifactCache(private val context: android.content.Context,
   private fun file(identity: String, session: String, id: String): File {
     val key = "$scope\u0000$identity\u0000$session\u0000$id".toByteArray(Charsets.UTF_8)
     val hash = MessageDigest.getInstance("SHA-256").digest(key).joinToString("") { "%02x".format(it.toInt() and 255) }
-    return File(root, hash)
+    val target = File(root, hash)
+    val legacy = File(legacyRoot, hash)
+    if (legacy.isFile) {
+      if (target.exists()) check(target.delete()) { "MOBILE_ARTIFACT_CACHE_UNAVAILABLE" }
+      if (!legacy.renameTo(target)) {
+        legacy.copyTo(target, overwrite = true)
+        check(target.length() == legacy.length() && legacy.delete()) { "MOBILE_ARTIFACT_CACHE_UNAVAILABLE" }
+      }
+      android.system.Os.chmod(target.absolutePath, 384)
+    }
+    return target
   }
   private fun index(scope: String): MutableList<String> {
     val bytes = records.read(scope, indexName) ?: return mutableListOf()
@@ -76,7 +108,24 @@ internal class NativeArtifactCache(private val context: android.content.Context,
       check(arr.length() <= 256) { "MOBILE_ARTIFACT_CACHE_INVALID" }
       val values = (0 until arr.length()).map { arr.getString(it) }
       check(values.toSet().size == values.size && values.all { it.matches(Regex("artifact-v1:[0-9a-f]{64}:[A-Za-z0-9-]{1,99}:[0-9a-f-]{36}")) }) { "MOBILE_ARTIFACT_CACHE_INVALID" }
-      return values.toMutableList()
+      val recovered = mutableListOf<String>()
+      var changed = false
+      values.forEach { entry ->
+        val parts = entry.split(":")
+        val job = read(scope, parts[1], parts[2], parts[3])
+        if (job == null) {
+          val orphan = file(parts[1], parts[2], parts[3])
+          check(!orphan.exists() || orphan.delete()) { "MOBILE_ARTIFACT_CACHE_UNAVAILABLE" }
+          changed = true // A process may have stopped after reserving the index but before its sealed job.
+        } else if (job.optString("state") == "deleting") {
+          val file = file(parts[1], parts[2], parts[3])
+          check(!file.exists() || file.delete()) { "MOBILE_ARTIFACT_CACHE_UNAVAILABLE" }
+          records.remove(scope, entry)
+          changed = true
+        } else recovered += entry // Keep sealed paused, active, and ready jobs reachable.
+      }
+      if (changed) saveIndex(scope, recovered)
+      return recovered
     } finally { bytes.fill(0) }
   }
   private fun saveIndex(scope: String, values: List<String>) {
@@ -107,6 +156,7 @@ internal class NativeArtifactCache(private val context: android.content.Context,
       check(existing.getString("name") == descriptor.name && existing.getString("mimeType") == descriptor.mimeType &&
         existing.getLong("sizeBytes") == descriptor.sizeBytes && existing.getString("sha256") == descriptor.sha256 &&
         existing.getString("agentId") == agentId) { "MOBILE_ARTIFACT_DESCRIPTOR_CHANGED" }
+      if (key !in entries) saveIndex(scope, entries + key)
       return existing
     }
     val targetCount = entries.count { it.startsWith("artifact-v1:$identity:") }
@@ -115,8 +165,7 @@ internal class NativeArtifactCache(private val context: android.content.Context,
       val parts = entry.split(":")
       if (parts.size != 4) error("MOBILE_ARTIFACT_CACHE_INVALID")
       val old = read(scope, parts[1], parts[2], parts[3]) ?: error("MOBILE_ARTIFACT_CACHE_INVALID")
-      if (old.getString("state") != "ready" && old.getString("state") != "paused") descriptor.sizeBytes
-      else old.getLong("sizeBytes")
+      old.getLong("sizeBytes")
     }
     check(used + descriptor.sizeBytes <= 200L * 1024 * 1024) { "MOBILE_ARTIFACT_CACHE_LIMIT" }
     val job = JSONObject().put("version", 1).put("record", key).put("identityKey", identity).put("agentId", agentId)
@@ -125,12 +174,12 @@ internal class NativeArtifactCache(private val context: android.content.Context,
       .put("receivedBytes", 0).put("state", "paused").put("errorCode", JSONObject.NULL)
     // Reserve the index first; only a confirmed metadata record can authorize an assets.read.
     saveIndex(scope, entries + key)
-    try { write(scope, job) } catch (failure: Exception) {
-      runCatching { saveIndex(scope, entries) }
-      throw failure
-    }
+    fault("reserve.index")
+    write(scope, job)
+    fault("reserve.job")
     return job
   }
+  fun recover(scope: String) { index(scope) }
   fun write(scope: String, job: JSONObject) {
     val bytes = job.toString().toByteArray(Charsets.UTF_8)
     try {
@@ -166,11 +215,21 @@ internal class NativeArtifactCache(private val context: android.content.Context,
   fun delete(scope: String, identity: String, session: String, id: String) {
     val key = record(identity, session, id)
     val entries = index(scope)
-    check(key in entries) { "MOBILE_ARTIFACT_NOT_FOUND" }
+    val job = read(scope, identity, session, id)
+    check(key in entries || job != null) { "MOBILE_ARTIFACT_NOT_FOUND" }
+    if (key !in entries && job != null) saveIndex(scope, entries + key)
+    if (job != null) {
+      job.put("state", "deleting")
+      write(scope, job)
+      fault("delete.marker")
+    }
     val f = file(identity, session, id)
     check(!f.exists() || f.delete()) { "MOBILE_ARTIFACT_CACHE_UNAVAILABLE" }
+    fault("delete.file")
     records.remove(scope, key)
+    fault("delete.record")
     saveIndex(scope, entries.filterNot { it == key })
+    fault("delete.index")
   }
   fun localFile(identity: String, session: String, id: String) = file(identity, session, id)
   companion object { private val FIELDS = setOf("version", "record", "identityKey", "agentId", "sessionId", "artifactId", "name", "mimeType", "sizeBytes", "sha256", "receivedBytes", "state", "errorCode") }
@@ -243,6 +302,7 @@ internal class NativeArtifactScheduler(
   }
 
   fun status(target: ArtifactTarget, session: String, id: String): JSONObject {
+    cache.recover(scope)
     validateTarget(target); validateSession(session); validateUuid(id)
     val job = cache.read(scope, target.identityKey, session, id) ?: error("MOBILE_ARTIFACT_NOT_FOUND")
     check(job.getString("agentId") == target.agentId) { "MOBILE_ARTIFACT_SCOPE_CHANGED" }
@@ -282,7 +342,8 @@ internal class NativeArtifactScheduler(
       cache.length(target.identityKey, session, id) == job.getLong("sizeBytes") && cache.hash(target.identityKey, session, id) == job.getString("sha256")) {
       "MOBILE_ARTIFACT_NOT_READY"
     }
-    return ReadyArtifactFile(cache.localFile(target.identityKey, session, id), job.getString("name"), job.getString("mimeType"))
+    return ReadyArtifactFile(cache.localFile(target.identityKey, session, id), job.getString("name"), job.getString("mimeType"),
+      job.getLong("sizeBytes"), job.getString("sha256"))
   }
 
   fun pause() {
@@ -308,6 +369,7 @@ internal class NativeArtifactScheduler(
   }
 
   private fun localJob(target: ArtifactTarget, session: String, id: String): JSONObject {
+    cache.recover(scope)
     validateTarget(target); validateSession(session); validateUuid(id)
     val job = cache.read(scope, target.identityKey, session, id) ?: error("MOBILE_ARTIFACT_NOT_FOUND")
     check(job.optString("agentId") == target.agentId) { "MOBILE_ARTIFACT_SCOPE_CHANGED" }
