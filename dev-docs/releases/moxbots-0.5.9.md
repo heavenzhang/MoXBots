@@ -13,6 +13,7 @@ This release note describes code included in the signed package. It does not cla
 ## Release provenance
 
 - Canonical repository: `https://github.com/heavenzhang/MoXBots.git`
-- Frozen source: to be recorded after the release PR is merged to `main`.
-- macOS arm64 artifact, notarization, updater signature and public download evidence: to be recorded in the task handoff and private release receipt after verification.
-- Rollback target: the previously published 0.5.8 archive and stable manifest, retained by the updater publication process.
+- Frozen source: tag `v0.5.9` at commit `9f93b3304ee6f06434d8d09754d3e59d4d676d0d`, contained in remote `main` at `54456225412e892a6ad15704cdf6dc4acffce8e1`.
+- Published macOS arm64 updater archive: [MoXBots 0.5.9](https://140.143.183.232/updates/releases/0.5.9/9a23e0b1cd59135b079bcf58082cde85cce814f948f5d9e2e9d8c76ed7d2189c-MoXBots.app.tar.gz), 343,650,367 bytes, SHA-256 `9a23e0b1cd59135b079bcf58082cde85cce814f948f5d9e2e9d8c76ed7d2189c`. The Developer ID-signed app passed strict signature verification, Apple notarization and Gatekeeper assessment; the updater signature and archive identity were verified before publication.
+- Current stable feed: [darwin-aarch64.json](https://140.143.183.232/updates/stable/darwin-aarch64.json), SHA-256 `38c2443567b6ab4167797066ae56b6c751aed3e7bba9afe9cf3139909950c014`. The 2026-10-18 read-only recheck passed normal TLS, HTTP 200 with `no-store`, and a 1 KiB range request. The complete archive GET, size/hash and signature had passed in the original publication acceptance; that full download was not repeated during the read-only recheck.
+- Rollback target: the previously published 0.5.8 archive and stable manifest remain retained by the updater publication process.

@@ -286,6 +286,7 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 - **Deployment designation:** 用户在当前任务明确要求“同步发一个 Windows 的包到下载页面”；当前任务 `MOXBOTS-059-WINDOWS-DOWNLOAD-20261017` 负责这一次受限网站发布。该委托仅覆盖本任务下的 Windows 0.5.9 下载页变更。
 - **Targets and limits:** 仅官网静态下载页 `https://140.143.183.232/download/`、其 `/download/packages/` 下的不可变 Windows 安装包，以及页面 HTML/CSS/JS/内容寻址版本清单。冻结源码为 `v0.5.9` / `9f93b3304ee6f06434d8d09754d3e59d4d676d0d`。Actions 私有短期 artifact 只作传输，不创建 GitHub Release；页面须显示实际 Authenticode 状态和 Windows 自动更新暂不支持。
 - **Runbook and exclusions:** 复用官网现有维护锁、备份、不可变 release 目录、symlink CAS 原子切换及选择性回滚。不得改 `/updates/*`、updater manifest/stable、Nginx/TLS、auth、Host、其他网站服务、macOS 下载资产或日常客户端；不扩大权限或中断任务。
+- **Current state:** PR #110 的 Windows 0.5.9 metadata 已经六项常规 CI 通过并正常合入 `main`，合并 SHA 为 `54456225412e892a6ad15704cdf6dc4acffce8e1`；冻结源码、页面文案与移动/桌面本地验收记录见 `.agent-sync/tasks/codex-moxbots-windows-download-20261017.md` 和 `dev-docs/moxbots-059-windows-download.md`。线上页面经正常 TLS 复核仍只有 macOS 0.5.6，Windows 包尚未上传。用户确认本机没有服务器 SSH Host alias，仓库也没有现存部署身份；下一步须先配置安全授权的上传通道，再按既有官网锁、备份、不可变目录和 symlink CAS runbook 发布并复验。GitHub 一日传输 artifact 已过期，本地已校验安装包保存在私有任务工作区。Windows 未签名、自动更新不支持，未作 Windows 安装/运行验收。
 
 - **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`，MoxBots桌面端统一打包负责人。
 - **Designation:** 既定唯一发布owner仍为本聊天。最新用户于2026-10-16在修复聊天`01a1420f-245b-7f22-8a0f-4caaaf31b91b`明确回复“授权发送并安排修复版”；Root实际核读human message`01a142d4-9285-7c93-a968-52d61de5ab7d`，覆盖下一未冻结修复版及任务空闲后启用、不中断任务。原056授权和交付保持其发行记录，不将开发者转述自身当新增授权。
