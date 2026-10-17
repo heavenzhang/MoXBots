@@ -1164,7 +1164,11 @@ impl OwnedLoginManager {
             uuid::Uuid::new_v4().to_string()
         };
         let (verifier, challenge) = pkce();
-        let started = client.start(&device_id, &challenge).await?;
+        let started = if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
+            client.start_desktop(&device_id, &challenge).await?
+        } else {
+            client.start(&device_id, &challenge).await?
+        };
         let attempt_id = uuid::Uuid::new_v4().to_string();
         let attempt = Attempt {
             client,
@@ -1389,7 +1393,11 @@ impl OwnedLoginManager {
                     current_child(&mut state, &scope, attempt_id, epoch)?.staged_session = None;
                 }
                 let (next_verifier, challenge) = pkce();
-                let started = client.start(&candidate.device_id, &challenge).await?;
+                let started = if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
+                    client.start_desktop(&candidate.device_id, &challenge).await?
+                } else {
+                    client.start(&candidate.device_id, &challenge).await?
+                };
                 let mut state = self.state.lock().await;
                 let attempt = match current_child(&mut state, &scope, attempt_id, epoch) {
                     Ok(attempt) => attempt,

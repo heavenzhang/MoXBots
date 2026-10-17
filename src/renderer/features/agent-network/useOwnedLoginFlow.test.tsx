@@ -3,6 +3,14 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useOwnedLoginFlow, type OwnedLoginActions } from "./useOwnedLoginFlow";
 import type { OwnedLoginAttempt } from "@/api/agentNetwork";
+const nativeEvents = vi.hoisted(() => new Map<string, () => void>());
+vi.mock("@/utils/browserMock", () => ({ isTauriEnvironment: () => true }));
+vi.mock("@/utils/tauriListen", () => ({
+  listenWithCleanup: vi.fn(async (name: string, handler: () => void, signal: AbortSignal) => {
+    nativeEvents.set(name, handler);
+    signal.addEventListener("abort", () => nativeEvents.delete(name), { once: true });
+  }),
+}));
 const attempt: OwnedLoginAttempt = {
   attemptId: "attempt-1",
   authorizationUrl: "https://cloud.test/authorize?state=synthetic",
@@ -32,7 +40,30 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  nativeEvents.clear();
   vi.useRealTimers();
+});
+it("immediately verifies the current PKCE attempt on native browser return and closes only after authentication", async () => {
+  const poll = vi.fn().mockResolvedValue("pending");
+  const { result, actions } = setup({ onOwnedPoll: poll });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  expect(actions.onOwnedPoll).toHaveBeenCalledExactlyOnceWith("attempt-1");
+  expect(actions.onCancel).not.toHaveBeenCalled();
+  poll.mockResolvedValueOnce("authenticated");
+  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  expect(actions.onCancel).toHaveBeenCalledOnce();
+});
+it("ignores browser returns without a pending attempt and after cancellation, and removes its listener on unmount", async () => {
+  const { result, actions, unmount } = setup();
+  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  expect(actions.onOwnedPoll).not.toHaveBeenCalled();
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await act(async () => { await result.current.cancel(); });
+  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  expect(actions.onOwnedPoll).not.toHaveBeenCalled();
+  unmount();
+  expect(nativeEvents.has("owned-login:browser-return")).toBe(false);
 });
 const tick = async (ms = 2000) => {
   await act(async () => {
