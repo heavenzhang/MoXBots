@@ -146,3 +146,29 @@ Protocol/core/store strict clippy passed. Final Rust linking explicitly selected
 previously installed CommandLineTools for macOS because the newly active Xcode
 SDK license prompt blocks default tools; no unlicensed Xcode/iOS SDK was used.
 Parent retains the system license flow and actual Android/iOS/Host integration.
+
+## Combined owner — actual relay constraint correction
+
+The actual relay replaces an existing WSS for the same device (relay_controller.rs
+hello connection ownership) and rejects a second same-pair channel with
+CHANNEL_PAIR_EXISTS (relay_recovery_tests.rs actual_same_pair_open_race...). This
+supersedes the earlier separate-channel asset proposal; no cloud behavior changes.
+
+- [x] Resume gate passed against d8899836 after authorized SDK feature-branch push.
+- [x] Native-only profile combined permits exactly the original two closed methods;
+  default Session and explicit Assets restrictions remain intact.
+- [x] One MobileClient/Channel/PairSequences/pending map/credit lifecycle is retained
+  across mixed methods; no second socket or identity is created by SDK changes.
+- [x] Core binds a single Agent on first valid session/asset/recovered record;
+  mixed/foreign recovery is atomic and fails without journal/binding mutation.
+- [x] Actual TLS tests cover capabilities→upload→session read→journalled mutation→
+  asset continuation, reversed mixed responses, continuous original peer sequence
+  acceptance, cross-Agent/profile rejection, and receipt-only recovered effects.
+- [x] Core 32 tests, all-targets clippy -D warnings and release build passed on
+  existing CLT macOS tools. No iOS SDK license acceptance or build was attempted.
+- [ ] Parent native connection/actual relay single-owner integration and native
+  platform acceptance remain outside this worker's claim.
+
+Connection owner was informed: choose profile combined at construction, restore
+only that Agent's unknown journal BEFORE any RPC/capabilities, then keep the same
+SDK and outer connection epoch throughout. No public DTO or v1 wire edits.
