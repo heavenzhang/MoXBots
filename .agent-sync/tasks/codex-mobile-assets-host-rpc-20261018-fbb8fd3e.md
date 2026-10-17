@@ -21,23 +21,25 @@ Connect `session.assets.v1` to the existing Host owner and private native AssetS
 
 ## Completed
 
-- Added `src/server/remote-session/assets.ts`: checks exact current SessionEngine session, visible SessionStore history, enabled/visible Agent and workspace association; resolves only attachment references in original assistant tool blocks; canonicalizes trusted-root paths, checks external registry entries, regular-file type and 20 MiB bounds; uses opaque owner message-anchor cursors.
-- Added `src-tauri/src/agent_network/remote_assets_target.rs`: validates request/account lifetime and authenticated scope; prechecks Agent/session on every request; runs Store I/O in `spawn_blocking`; List resolves through the original session owner, registers outputs idempotently, and returns the owner cursor.
+- Added `src/server/remote-session/assets.ts`: checks exact current SessionEngine session, visible SessionStore history, enabled/visible Agent and workspace association; resolves only attachment references in original assistant tool blocks; binds trusted-root file paths to the exact sanitized session/turn/filename in `refPath`, canonicalizes within that root, checks external registry entries, regular-file type and 20 MiB bounds; uses opaque owner message-anchor cursors.
+- Added `src-tauri/src/agent_network/remote_assets_target.rs`: imports `AssetScope` from its actual `moxbots_asset_store` owner, preserves session id ownership across `spawn_blocking`, validates request/account lifetime and authenticated scope, prechecks Agent/session on every request, and runs Store I/O in blocking workers. List resolves through original session owner, registers outputs idempotently, and returns owner cursor. Allowlisted Store domain errors are typed `RemoteAssetResult::Error`; scope/auth/infrastructure errors remain outer failures.
 - Made approved `post/global/session` helpers `pub(super)` and declared the adapter module.
-- Added focused integration tests for a real temporary attachment source, cross-session reference, arbitrary path rejection and workspace mismatch.
+- Added focused integration tests for real temporary `root/session/turn/file` resolution, current ref paired with foreign saved path, encoded traversal turn id, cross-session reference, arbitrary external path and workspace mismatch. Added native adapter unit coverage for typed `ASSET_NOT_FOUND` mapping and scope/infrastructure error exclusion.
+- Review fixes bind every trusted `savedPath` to the sanitized `sessionId` and decoded `turnId` named in the attachment reference; malformed turn identifiers fail before registry lookup. Typed AssetStore errors are allowlisted; `ASSET_NOT_FOUND` is returned only as `RemoteAssetResult::Error`, while scope/auth and infrastructure failures stay outer errors and all typed results pass the post-operation account/lifetime guard.
 
 ## Verification
 
-- Node 24 focused Vitest: `src/server/remote-session/assets.integration.test.ts`, **2 passed**.
-- Full `tsc --noEmit`, focused ESLint, test classification (399 server tests: 106 integration, 6 credentialed), `rustfmt --check` for the new adapter, and `git diff --check`: passed.
-- `project-sync handoff` confirmed clean worktree and remote branch `codex/mobile-assets-host-rpc-20261018` at `b4ef604a2de81cba05b9767c65e896deba8a3a0b`; gate remains blocked by current canonical divergence and task record schema, which this update is intended to fix.
-- Rust `cargo check --manifest-path src-tauri/Cargo.toml --lib` was attempted with a temporary local AssetStore dependency and then removed. Compilation stopped inside platform dependencies because available Command Line Tools SDK lacks system headers (`sys/types.h`, `stdio.h`, `zlib.h`), before the adapter was type-checked. No Cargo manifest or lockfile change is included.
+- Node 24 focused Vitest: `src/server/remote-session/assets.integration.test.ts`, **3 passed**. Cases include a real temporary `root/session/turn/file`, current ref paired with a foreign saved path, encoded traversal, cross-session reference, arbitrary external path, and workspace mismatch.
+- Full `tsc --noEmit`, focused ESLint, test classification (399 server tests: 106 integration, 6 credentialed), `rustfmt --check` for the adapter, and `git diff --check`: passed.
+- Previous `project-sync handoff` confirmed clean worktree and remote branch at `04dbfc73acfdf0f2f353a18a1ca2c9615e03cc90`; this review-fix commit still needs a fresh handoff gate.
+- Rust `cargo check --manifest-path src-tauri/Cargo.toml --lib` was retried with the specified `DEVELOPER_DIR` and `SDKROOT`, using a temporary local AssetStore dependency. Required system headers resolved, but macOS dependency build stopped in `apple-metal`/`apple-cf` Swift PackageDescription manifest linking before reaching the adapter. The added native adapter unit test is therefore not run, and no real Host integration test was run. Temporary Cargo manifest/lockfile changes were removed.
 - The focused test reused the already available ignored dependency tree through a temporary symlink; the link was removed after tests. No dependency installation occurred.
 
 ## Blockers and unknowns
 
 - Current canonical `main` (`b9857cff181cdbd7139ce861443de88b43ff6a18`) diverged from the authorized root task base; do not rebase or merge it in this worker branch. Root will integrate into its current mobile task branch.
-- Rust compilation needs a build-capable environment with an installed/accepted macOS SDK; root owns the full integrated Cargo check.
+- Rust compilation remains unverified because platform Swift package build failed before adapter type checking; root owns the full integrated Cargo check.
+- No real Host/account/remote peer was exercised; the native unit test covers only typed error mapping. Root must verify the integrated response carries the original request ID and that exact typed `ASSET_NOT_FOUND` recovers an UNKNOWN upload status.
 - Incoming attachment upload admission into an existing SessionEngine send is intentionally outside this RPC adapter because v1 has no association method; add it only through a new versioned protocol method.
 - A dormant session without an owner dispatch fails closed with `TARGET_OWNER_UNAVAILABLE`.
 
