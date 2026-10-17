@@ -66,6 +66,7 @@ function AppBody() {
   const appliedSpeechTextRef = useRef('');
   const speechEpochRef = useRef(0);
   const speechActiveRef = useRef(false);
+  const composerWidthRef = useRef(0);
   const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
     const key = draftKey(nextTarget, sessionId);
     const priorOwner = ownerRef.current;
@@ -84,17 +85,28 @@ function AppBody() {
     setScreen(nextScreen);
     setSnapshot(snapshotRef.current);
     setDraft(readDraft(draftStoreRef.current, key));
+    setComposerInputHeight(40);
     return ownerRef.current;
   }, []);
   const saveDraftFor = useCallback((key: string | null, value: string) => {
     draftStoreRef.current = updateDraft(draftStoreRef.current, key, value);
-    if (key === activeDraftKeyRef.current) setDraft(value);
+    if (key === activeDraftKeyRef.current) {
+      setDraft(value);
+      // RN Web reports scrollHeight while the textarea still has its previous
+      // explicit height. Reset before measuring so deleting lines can shrink it.
+      setComposerInputHeight(40);
+    }
   }, []);
   const saveDraft = useCallback((value: string) => saveDraftFor(activeDraftKeyRef.current, value), [saveDraftFor]);
   const commitSnapshot = useCallback((value: Snapshot) => { snapshotRef.current = value; setSnapshot(value); }, []);
   const onComposerContentSizeChange = useCallback((event: { nativeEvent: { contentSize: { height: number } } }) => {
     const height = Math.min(106, Math.max(40, Math.ceil(event.nativeEvent.contentSize.height)));
     setComposerInputHeight((current) => current === height ? current : height);
+  }, []);
+  const onComposerLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+    const width = event.nativeEvent.layout.width;
+    if (composerWidthRef.current && Math.abs(composerWidthRef.current - width) > 1) setComposerInputHeight(40);
+    composerWidthRef.current = width;
   }, []);
   const draftKeyAtRender = activeDraftKeyRef.current;
 
@@ -467,7 +479,7 @@ function AppBody() {
         </View>}
         <View style={styles.composer}>
           <Pressable accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" onPress={() => setComposerMenuOpen((value) => !value)} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, value)} onContentSizeChange={onComposerContentSizeChange} rows={1} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
+          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, value)} onLayout={onComposerLayout} onContentSizeChange={onComposerContentSizeChange} rows={1} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
           {draft.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} disabled={sending || blocksMutation || !target?.online} onPress={sendDraft} style={[styles.sendButton, (sending || blocksMutation || !target?.online) && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
         </View>
       </View>
