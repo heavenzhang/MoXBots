@@ -10,10 +10,13 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import expo.modules.kotlin.Promise
 import expo.modules.interfaces.permissions.PermissionsResponseListener
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicInteger
 import org.json.JSONObject
 
 class MoxBotsRemoteModule : Module() {
   private val owner = Executors.newSingleThreadExecutor()
+  private val pendingRequests = AtomicInteger(0)
   private val main = Handler(Looper.getMainLooper())
   private var connection: NativeConnection? = null
   @Volatile private var ownerActive = true
@@ -33,7 +36,7 @@ class MoxBotsRemoteModule : Module() {
         } else main.post { handleSpeech(kind, promise) }
       } else if (intent != null && kind != null && kind.startsWith("attachment.")) {
         handleAttachmentIntent(intent, promise)
-      } else owner.execute {
+      } else enqueue(promise) {
         try {
           promise.resolve(ensureConnection().request(input))
         } catch (_: Exception) { promise.resolve(failure("MOBILE_CONNECTION_UNAVAILABLE")) }
@@ -48,7 +51,7 @@ class MoxBotsRemoteModule : Module() {
           if (result.resultCode != Activity.RESULT_OK || uri == null) {
             pending.promise.resolve(failure("MOBILE_ATTACHMENT_CANCELLED"))
           } else if (!ownerActive || owner.isShutdown) pending.promise.resolve(failure("MOBILE_ATTACHMENT_CANCELLED"))
-          else owner.execute {
+          else enqueue(pending.promise) {
             try {
               check(accountScope() == pending.scope) { "MOBILE_ACCOUNT_CHANGED" }
               val context = requireNotNull(appContext.reactContext)
@@ -76,6 +79,19 @@ class MoxBotsRemoteModule : Module() {
       }
       owner.execute { connection?.close(); connection = null }
       owner.shutdown()
+    }
+  }
+  private fun enqueue(promise: Promise, work: () -> Unit) {
+    if (!ownerActive || owner.isShutdown) { promise.resolve(failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
+    if (pendingRequests.incrementAndGet() > 8) {
+      pendingRequests.decrementAndGet(); promise.resolve(failure("MOBILE_BUSY")); return
+    }
+    try {
+      owner.execute {
+        try { work() } finally { pendingRequests.decrementAndGet() }
+      }
+    } catch (_: RejectedExecutionException) {
+      pendingRequests.decrementAndGet(); promise.resolve(failure("MOBILE_CONNECTION_UNAVAILABLE"))
     }
   }
   private fun ensureConnection(): NativeConnection {
@@ -107,7 +123,7 @@ class MoxBotsRemoteModule : Module() {
       else -> false
     }
     if (!valid) { promise.resolve(failure("MOBILE_INTENT_INVALID")); return }
-    owner.execute {
+    enqueue(promise) {
       try {
         val scope = accountScope()
         val context = requireNotNull(appContext.reactContext)

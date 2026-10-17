@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, copyFileSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, copyFileSync, writeFileSync, rmSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -35,8 +35,10 @@ if (target === 'android') {
   });
   const destination = path.join(moduleDir, 'android/native/arm64-v8a');
   mkdirSync(destination, { recursive: true });
-  copyFileSync(path.join(cargoTarget, 'aarch64-linux-android/release/libmox_mobile_connection.so'),
-    path.join(destination, 'libmox_mobile_connection.so'));
+  const library = path.join(destination, 'libmox_mobile_connection.so');
+  const pendingLibrary = library + '.pending';
+  copyFileSync(path.join(cargoTarget, 'aarch64-linux-android/release/libmox_mobile_connection.so'), pendingLibrary);
+  renameSync(pendingLibrary, library);
 } else if (target === 'ios') {
   run('xcrun', ['--sdk', 'iphoneos', '--show-sdk-path']);
   const staging = path.join(cargoTarget, 'xcframework-stage');

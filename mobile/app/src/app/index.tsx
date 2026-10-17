@@ -5,7 +5,7 @@ import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Mic, MoreHorizontal, Plus } from 'lucide-react-native';
 import { Account, Interaction, PendingOperation, QaScenario, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestNative, selectQaScenario, subscribeSpeechChanges } from '../native';
-import { approvalStillCurrent, commitIfViewOwned, draftKey, mutationDisposition, readDraft, updateDraft, viewStillOwned, ViewOwner } from '../operationPolicy';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, readDraft, updateDraft, viewStillOwned, ViewOwner } from '../operationPolicy';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -38,6 +38,7 @@ function AppBody() {
   const [screen, setScreen] = useState<'login' | 'sessions' | 'chat'>('login');
   const [draft, setDraft] = useState('');
   const [composerInputHeight, setComposerInputHeight] = useState(40);
+  const [composerTextWidth, setComposerTextWidth] = useState(0);
   const [notice, setNotice] = useState<Notice>(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -47,6 +48,8 @@ function AppBody() {
   const [receiptStates, setReceiptStates] = useState<Record<string, ReceiptStatus>>({});
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
+  const [loginPollGate] = useState(() => createPollFlightGate());
+  const [snapshotPollGate] = useState(() => createPollFlightGate());
   const [speechPanelOpen, setSpeechPanelOpen] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
   const blocksMutation = pending.some((item) => item.targetId === target?.targetId && item.sessionId === (snapshot?.sessionId ?? null) && mutationDisposition(item.status) === 'query-only');
@@ -60,13 +63,13 @@ function AppBody() {
   const loadingEpochRef = useRef(0);
   const sendingEpochRef = useRef(0);
   const accountRefreshEpochRef = useRef(0);
+  const accountRefreshInFlightRef = useRef<number | null>(null);
   const speechOwnerEpochRef = useRef<number | null>(null);
   const speechStateRef = useRef<SpeechReply['state']>('idle');
   const speechBaseDraftRef = useRef('');
   const appliedSpeechTextRef = useRef('');
   const speechEpochRef = useRef(0);
   const speechActiveRef = useRef(false);
-  const composerWidthRef = useRef(0);
   const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
     const key = draftKey(nextTarget, sessionId);
     const priorOwner = ownerRef.current;
@@ -85,28 +88,23 @@ function AppBody() {
     setScreen(nextScreen);
     setSnapshot(snapshotRef.current);
     setDraft(readDraft(draftStoreRef.current, key));
-    setComposerInputHeight(40);
     return ownerRef.current;
   }, []);
   const saveDraftFor = useCallback((key: string | null, value: string) => {
     draftStoreRef.current = updateDraft(draftStoreRef.current, key, value);
     if (key === activeDraftKeyRef.current) {
       setDraft(value);
-      // RN Web reports scrollHeight while the textarea still has its previous
-      // explicit height. Reset before measuring so deleting lines can shrink it.
-      setComposerInputHeight(40);
     }
   }, []);
   const saveDraft = useCallback((value: string) => saveDraftFor(activeDraftKeyRef.current, value), [saveDraftFor]);
   const commitSnapshot = useCallback((value: Snapshot) => { snapshotRef.current = value; setSnapshot(value); }, []);
-  const onComposerContentSizeChange = useCallback((event: { nativeEvent: { contentSize: { height: number } } }) => {
-    const height = Math.min(106, Math.max(40, Math.ceil(event.nativeEvent.contentSize.height)));
-    setComposerInputHeight((current) => current === height ? current : height);
+  const onComposerInputLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
+    const width = Math.max(0, event.nativeEvent.layout.width);
+    setComposerTextWidth((current) => Math.abs(current - width) > 1 ? width : current);
   }, []);
-  const onComposerLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
-    const width = event.nativeEvent.layout.width;
-    if (composerWidthRef.current && Math.abs(composerWidthRef.current - width) > 1) setComposerInputHeight(40);
-    composerWidthRef.current = width;
+  const onComposerMeasureLayout = useCallback((event: { nativeEvent: { layout: { height: number } } }) => {
+    const height = Math.min(106, Math.max(40, Math.ceil(event.nativeEvent.layout.height)));
+    setComposerInputHeight((current) => current === height ? current : height);
   }, []);
   const draftKeyAtRender = activeDraftKeyRef.current;
 
@@ -147,6 +145,8 @@ function AppBody() {
 
   const loadAccount = useCallback(async () => {
     const refreshEpoch = ++accountRefreshEpochRef.current;
+    accountRefreshInFlightRef.current = refreshEpoch;
+    try {
     const reply = await requestNative({ version: 1, kind: 'account.status' });
     if (refreshEpoch !== accountRefreshEpochRef.current) return;
     if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
@@ -191,6 +191,9 @@ function AppBody() {
     }
     const journal = await requestNative({ version: 1, kind: 'operations.pending' });
     if (refreshEpoch === accountRefreshEpochRef.current && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+    } finally {
+      if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
+    }
   }, [commitSnapshot, moveOwner]);
 
   useEffect(() => {
@@ -199,17 +202,20 @@ function AppBody() {
   }, [loadAccount, say]);
   useEffect(() => {
     if (loginStarted) {
-    const timer = setInterval(() => {
-      void requestNative({ version: 1, kind: 'account.login.poll' }).then((reply) => {
-        if (reply.kind === 'account') {
+      const poll = createSingleFlightPoll(async (isCurrent) => {
+        try {
+          const reply = await requestNative({ version: 1, kind: 'account.login.poll' });
+          if (!isCurrent() || reply.kind !== 'account') return;
           setAccount(reply);
           if (reply.state === 'signed-in') { setLoginStarted(false); void loadAccount(); }
+        } catch (error) {
+          if (isCurrent()) say(error instanceof Error ? error.message : 'ACCOUNT_LOGIN_POLL_FAILED', 'error');
         }
-      }).catch(() => undefined);
-    }, 3000);
-    return () => clearInterval(timer);
+      }, () => AppState.currentState === 'active', loginPollGate);
+      const timer = setInterval(() => { void poll.tick(); }, 3000);
+      return () => { clearInterval(timer); poll.stop(); };
     }
-  }, [loadAccount, loginStarted, say]);
+  }, [loadAccount, loginPollGate, loginStarted, say]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
       if (state === 'active') void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));
@@ -253,18 +259,36 @@ function AppBody() {
 
   useEffect(() => {
     if (screen !== 'chat' || !snapshot?.sessionId || !target?.targetId) return;
-    const interval = setInterval(() => {
+    const pollOwner = ownerRef.current;
+    let failureShown = false;
+    const poll = createSingleFlightPoll(async (isCurrent) => {
       const current = snapshotRef.current;
       const currentTarget = targetRef.current;
       if (!current || !currentTarget) return;
-      const owner = ownerRef.current;
+      const owner = pollOwner;
       if (owner.screen !== 'chat' || owner.targetId !== currentTarget.targetId || owner.agentId !== current.agentId || owner.sessionId !== current.sessionId) return;
-      void requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } })
-        .then(parseSessionReply).then((result) => { if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId && result.revision !== snapshotRef.current?.revision) commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot); })
-        .catch(() => undefined);
+      try {
+        const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } }));
+        if (!isCurrent() || !viewStillOwned(owner, ownerRef.current)) return;
+        if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId) {
+          failureShown = false;
+          if (result.revision !== snapshotRef.current?.revision) commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot);
+        } else if (result.kind === 'error' && !failureShown) {
+          failureShown = true;
+          say(result.code, 'error');
+        }
+      } catch (error) {
+        if (isCurrent() && viewStillOwned(owner, ownerRef.current) && !failureShown) {
+          failureShown = true;
+          say(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED', 'error');
+        }
+      }
+    }, () => AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
+    const interval = setInterval(() => {
+      void poll.tick();
     }, 1500);
-    return () => clearInterval(interval);
-  }, [commitSnapshot, screen, snapshot?.sessionId, target?.targetId]);
+    return () => { clearInterval(interval); poll.stop(); };
+  }, [commitSnapshot, ownerEpoch, say, screen, snapshot?.sessionId, snapshotPollGate, target?.targetId]);
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
@@ -479,8 +503,9 @@ function AppBody() {
         </View>}
         <View style={styles.composer}>
           <Pressable accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" onPress={() => setComposerMenuOpen((value) => !value)} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, value)} onLayout={onComposerLayout} onContentSizeChange={onComposerContentSizeChange} rows={1} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
+          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
           {draft.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} disabled={sending || blocksMutation || !target?.online} onPress={sendDraft} style={[styles.sendButton, (sending || blocksMutation || !target?.online) && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
+          {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
         </View>
       </View>
     </View>}
@@ -525,7 +550,7 @@ const styles = StyleSheet.create({
   listHead: { paddingHorizontal: 20, paddingTop: 13, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, newButton: { height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.green, justifyContent: 'center' }, newButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' }, sessionList: { paddingHorizontal: 16, paddingBottom: 30 }, sessionRow: { flexDirection: 'row', alignItems: 'center', minHeight: 78, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line }, sessionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center' }, sessionIconText: { fontSize: 18, color: C.green }, sessionCopy: { marginLeft: 12, flex: 1 }, sessionTitle: { color: C.ink, fontWeight: '600', fontSize: 15 }, sessionPreview: { color: C.muted, fontSize: 12, marginTop: 5 }, chevron: { marginLeft: 8, color: '#A7AEA9', fontSize: 25 },
   empty: { flex: 1, minHeight: 185, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700', textAlign: 'center' }, emptyDetail: { marginTop: 6, maxWidth: 280, color: C.muted, fontSize: 13, lineHeight: 20, textAlign: 'center' }, secondaryButton: { marginTop: 15, paddingHorizontal: 18, height: 42, borderRadius: 11, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }, secondaryText: { color: C.green, fontSize: 13, fontWeight: '600' },
   chatToolbar: { height: 56, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line }, chatToolbarTitle: { flex: 1, paddingLeft: 5, paddingRight: 8 }, chatTitle: { color: C.ink, fontWeight: '700', fontSize: 15 }, chatSubtitle: { marginTop: 1, color: C.muted, fontSize: 11 }, toolbarAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, transcript: { flex: 1 }, transcriptContent: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 24, flexGrow: 1 }, messageRow: { width: '100%', marginBottom: 16, alignItems: 'flex-start' }, userMessageRow: { alignItems: 'flex-end' }, messageBubble: { maxWidth: '90%', paddingHorizontal: 14, paddingVertical: 11, borderRadius: 16 }, assistantBubble: { backgroundColor: C.canvas, borderTopLeftRadius: 5 }, userBubble: { backgroundColor: C.green, borderTopRightRadius: 5 }, messageText: { fontSize: 15, lineHeight: 22, color: C.ink }, userText: { color: '#fff' }, messageMeta: { marginTop: 8, color: '#DDECE2', fontSize: 11 }, messageTimestamp: { marginTop: 4, marginHorizontal: 5, color: '#969D98', fontSize: 10 }, toolText: { marginTop: 7, color: C.muted, fontSize: 12, lineHeight: 18 }, thinking: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 2, marginBottom: 15, marginLeft: 5 },
-  composerArea: { paddingHorizontal: 12, paddingTop: 1, paddingBottom: 1, borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.paper }, composer: { minHeight: 44, maxHeight: 124, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 24, paddingHorizontal: 3, paddingVertical: 1 }, plusButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, input: { flex: 1, maxHeight: 106, minHeight: 40, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8, color: C.ink, fontSize: 15, lineHeight: 21 }, micButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: C.green }, sendDisabled: { backgroundColor: '#B7C9BD' },
+  composerArea: { paddingHorizontal: 12, paddingTop: 1, paddingBottom: 1, borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.paper }, composer: { minHeight: 44, maxHeight: 124, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 24, paddingHorizontal: 3, paddingVertical: 1 }, plusButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, input: { flex: 1, maxHeight: 106, minHeight: 40, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8, color: C.ink, fontSize: 15, lineHeight: 21 }, inputMeasure: { position: 'absolute', left: 47, top: 1, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8, fontSize: 15, lineHeight: 21, color: 'transparent', opacity: 0 }, micButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: C.green }, sendDisabled: { backgroundColor: '#B7C9BD' },
   notice: { marginHorizontal: 16, marginVertical: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: C.canvas }, noticeError: { backgroundColor: '#FBEEEC' }, noticeSuccess: { backgroundColor: C.greenWash }, noticeText: { color: C.ink, fontSize: 12, lineHeight: 17 }, errorDetailsButton: { alignSelf: 'flex-start', marginTop: 5, minHeight: 28, justifyContent: 'center' }, errorCode: { marginTop: 3, color: C.muted, fontSize: 11 }, approvalCard: { marginVertical: 8, padding: 15, borderRadius: 14, borderWidth: 1, borderColor: '#E9DDBD', backgroundColor: '#FFFCF4' }, approvalKicker: { color: C.amber, fontWeight: '700', fontSize: 11 }, approvalTitle: { marginTop: 6, color: C.ink, fontSize: 15, fontWeight: '700' }, approvalDescription: { marginTop: 5, color: C.muted, fontSize: 13, lineHeight: 19 }, questionText: { marginTop: 10, color: C.ink, fontSize: 13, lineHeight: 20 }, approvalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 12 }, denyButton: { minHeight: 42, paddingHorizontal: 16, justifyContent: 'center' }, denyText: { color: C.red, fontWeight: '600' }, allowButton: { minHeight: 42, paddingHorizontal: 15, justifyContent: 'center', borderRadius: 10, backgroundColor: C.green }, allowText: { color: '#fff', fontWeight: '700' },
   smallMenu: { padding: 12, borderBottomWidth: 1, borderColor: C.line, flexDirection: 'row', justifyContent: 'space-between' }, composerMenu: { marginBottom: 9, padding: 10, backgroundColor: C.canvas, borderRadius: 14 }, speechPanel: { marginBottom: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.canvas }, speechPanelHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, speechPanelTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, speechClose: { minHeight: 32, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }, speechTextInput: { marginTop: 8, minHeight: 50, maxHeight: 110, padding: 9, borderRadius: 9, backgroundColor: C.paper, color: C.ink, fontSize: 14, lineHeight: 20 }, speechActions: { minHeight: 38, justifyContent: 'center', alignItems: 'flex-start', marginTop: 5 }, speechStop: { minHeight: 40, minWidth: 110, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: C.green }, speechStopText: { color: C.paper, fontSize: 13, fontWeight: '700' }, speechProgress: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 8 }, menuItem: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, menuLabel: { color: C.ink, fontSize: 14 }, menuHint: { color: C.muted, fontSize: 11 }, pendingBox: { marginTop: 8, marginBottom: 12, padding: 13, borderRadius: 12, backgroundColor: C.canvas }, pendingTitle: { color: C.ink, fontWeight: '700', fontSize: 13 }, pendingRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, marginTop: 8 }, pendingText: { color: C.muted, fontSize: 12 }, pendingLink: { color: C.green, fontWeight: '600', fontSize: 12 }, pendingRowDisabled: { opacity: 0.55 }, pendingLinkDisabled: { color: C.muted }, fixtureBanner: { minHeight: 27, backgroundColor: '#9A541C', paddingHorizontal: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, fixtureText: { color: '#fff', fontSize: 11, fontWeight: '700' }, qaScenarioToggle: { minHeight: 26, paddingHorizontal: 7, justifyContent: 'center', borderRadius: 7, backgroundColor: '#7D4115' }, qaScenarioOptions: { flexBasis: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 5, paddingBottom: 7 }, qaScenarioOption: { minHeight: 29, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 8, backgroundColor: '#7D4115' }, qaScenarioText: { color: '#fff', fontSize: 10, fontWeight: '600' }, questionBlock: { marginTop: 10 }, answerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 7 }, answerOption: { minHeight: 38, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper }, answerOptionSelected: { borderColor: C.green, backgroundColor: C.greenWash }, answerOptionText: { color: C.muted, fontSize: 12 }, answerOptionTextSelected: { color: C.green, fontWeight: '700' }, answerInput: { minHeight: 42, marginTop: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: C.line, borderRadius: 10, backgroundColor: C.paper, color: C.ink },
 });

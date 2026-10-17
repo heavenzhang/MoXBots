@@ -4,6 +4,7 @@ import UIKit
 
 public final class MoxBotsRemoteModule: Module {
   private let queue = DispatchQueue(label: "com.moxbots.mobile.remote.owner", qos: .userInitiated)
+  private let requestSlots = DispatchSemaphore(value: 8)
   private var connection: NativeConnection?
   private var ownerActive = true // owner queue only
   private var backgroundObserver: NSObjectProtocol?
@@ -41,7 +42,7 @@ public final class MoxBotsRemoteModule: Module {
         let kind = intent["kind"] as? String, kind.hasPrefix("attachment.") {
         self.handleAttachmentIntent(intent, promise: promise); return
       }
-      self.queue.async {
+      self.enqueue(promise) {
         do {
           promise.resolve(try self.ensureConnection().request(input))
         } catch let error as NativeFailure { promise.resolve(Self.failure(error.code)) }
@@ -53,6 +54,15 @@ public final class MoxBotsRemoteModule: Module {
       if let observer = self.backgroundObserver { NotificationCenter.default.removeObserver(observer) }
       DispatchQueue.main.async { self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
       self.queue.async { self.ownerActive = false; self.connection?.close(); self.connection = nil }
+    }
+  }
+  private func enqueue(_ promise: Promise, work: @escaping () -> Void) {
+    guard requestSlots.wait(timeout: .now()) == .success else {
+      promise.resolve(Self.failure("MOBILE_BUSY")); return
+    }
+    queue.async {
+      defer { self.requestSlots.signal() }
+      work()
     }
   }
   private func ensureConnection() throws -> NativeConnection {
@@ -92,7 +102,7 @@ public final class MoxBotsRemoteModule: Module {
       || (kind == "attachment.pick" && intent.count == 3 && ["file", "image"].contains(intent["source"] as? String ?? ""))
       || (kind == "attachment.remove" && intent.count == 3 && (intent["localId"] as? String)?.count == 36)
     guard valid else { promise.resolve(Self.failure("MOBILE_INTENT_INVALID")); return }
-    queue.async {
+    enqueue(promise) {
       do {
         let scope = try self.accountScope()
         if kind == "attachment.list" { self.resolve(try self.attachmentOwner(scope).list(), promise: promise) }
