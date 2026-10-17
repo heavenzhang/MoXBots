@@ -4,7 +4,7 @@ Task ID: `MOXBOTS-059-WINDOWS-DOWNLOAD-20261017`
 
 - Repository: `https://github.com/heavenzhang/MoXBots.git`
 - Task branch: `codex/moxbots-059-windows-package`
-- Original base: `1553ab7cf23f4e1d5c00068592198b758f08f6b3`; latest `main` `b11e10bc776858f5c2a0d4204f00cc515f3218a6` was reviewed and merged into the task branch before final CI.
+- Original base: `1553ab7cf23f4e1d5c00068592198b758f08f6b3`; latest reviewed `main` `428ffd94ce2e5eedfb150c28dccecf201c6b2edc` is integrated into the task branch before the next CI run.
 - Build PR: https://github.com/heavenzhang/MoXBots/pull/102
 
 ## Scope
@@ -35,4 +35,4 @@ The generic Windows script builds `MyAgents / com.myagents.app`, and the existin
 
 The download-page candidate is isolated under `output/download-windows-059-20261017/candidate/download`. A private local browser preview confirmed the Mac and Windows cards, exact-source/hash fields, the unsigned and updater-limit disclosures, and the Windows SHA copy interaction. The synthetic preview manifest is separate from the deployment manifest and must never be published. The 390px mobile viewport had no horizontal overflow.
 
-Current stage: PR #102 head `91d4f193af7e26d3982cc8e6c436d8ee565086cf` includes the latest reviewed `main` and an explicit one-task website deployment designation in `.agent-sync/plan.md`. Check run `39039654361` has four required checks passing while the typecheck/lint/test/build-smoke and macOS CLIProxy jobs are still running; merge remains pending. The user directed use of an existing SSH Host alias, but no local config/Include alias resolving to the website server was found; use remains unresolved until the alias name can be matched. Next: wait for normal checks, merge only once green, dispatch the pinned Windows package workflow, inspect the private artifact and build metadata, then publish only to the existing cloud download page once the configured server alias is identified. No package has been built or published yet; the public download page has not changed.
+Current stage: PR #102 includes the latest reviewed `main` and the explicit one-task website deployment designation in `.agent-sync/plan.md`. Main advanced from `b11e10b` to `428ffd9` with one unrelated `ConfirmDialog.tsx` visual style change; it was reviewed and integrated without conflict. The next push restarts all six normal CI checks on the synchronized head. The user directed use of an existing SSH Host alias, but no local config/Include alias resolving to the website server was found; use remains unresolved until the alias name can be matched. Next: push the synchronized branch, wait for normal checks, merge only once green, dispatch the pinned Windows package workflow, inspect the private artifact and build metadata, then publish only to the existing cloud download page once the configured server alias is identified. No package has been built or published yet; the public download page has not changed.
