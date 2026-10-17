@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, readDraft, updateDraft, viewStillOwned } from '../src/operationPolicy.ts';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, viewStillOwned } from '../src/operationPolicy.ts';
 
 test('an unknown mutation is query-only and cannot be submitted a second time', () => {
   assert.equal(mutationDisposition('unknown'), 'query-only');
@@ -31,25 +31,18 @@ test('a deferred Bot A list response cannot overwrite the currently selected Bot
   assert.deepEqual(visible, ['Bot B current session']);
 });
 
-test('session drafts stay within their Bot/session and old voice events lose ownership after navigation', () => {
-  const targetA = { agentId: 'agent-a', deviceName: 'host-1', name: 'Bot A' };
-  const targetB = { agentId: 'agent-b', deviceName: 'host-1', name: 'Bot B' };
+test('draft keys use stable native target identity and isolate sessions across renames/accounts', () => {
+  const targetA = { identityKey: 'opaque-account-a-host-1-agent-a' };
+  const renamedTargetA = { identityKey: 'opaque-account-a-host-1-agent-a' };
+  const targetB = { identityKey: 'opaque-account-b-host-1-agent-a' };
   const keyA = draftKey(targetA, 'session-a');
-  const keyB = draftKey(targetB, 'session-b');
+  const renamedKeyA = draftKey(renamedTargetA, 'session-a');
   const newKeyA = draftKey(targetA, null);
-  let drafts = updateDraft({}, keyA, 'A unsent draft');
-  drafts = updateDraft(drafts, keyB, 'B draft');
-  drafts = updateDraft(drafts, newKeyA, 'A new-conversation draft');
-  assert.equal(readDraft(drafts, keyA), 'A unsent draft');
-  assert.equal(readDraft(drafts, keyB), 'B draft');
-  assert.equal(readDraft(drafts, newKeyA), 'A new-conversation draft');
-
-  const voiceOwner = { epoch: 8, screen: 'chat' as const, targetId: 'target-a', agentId: 'agent-a', sessionId: 'session-a' };
-  const afterSwitch = { epoch: 9, screen: 'chat' as const, targetId: 'target-b', agentId: 'agent-b', sessionId: 'session-b' };
-  assert.equal(viewStillOwned(voiceOwner, afterSwitch), false);
-  assert.equal(commitIfViewOwned(voiceOwner, afterSwitch, 'late transcript', (text) => { drafts = updateDraft(drafts, keyB, text); }), false);
-  assert.equal(readDraft(drafts, keyB), 'B draft');
-  assert.equal(readDraft(drafts, keyA), 'A unsent draft');
+  assert.equal(renamedKeyA, keyA, 'display-name changes do not lose the stored draft');
+  assert.notEqual(draftKey(targetB, 'session-b'), keyA, 'a different account has an isolated draft');
+  assert.notEqual(draftKey(targetA, 'session-b'), keyA, 'drafts remain isolated by session');
+  assert.notEqual(draftKey({ identityKey: 'other-account-same-agent-name' }, 'session-a'), keyA, 'different native account identities do not collide');
+  assert.notEqual(newKeyA, keyA, 'a new conversation has a separate draft');
 });
 
 test('slow polling stays single-flight and only commits while its app and view owner remain current', async () => {

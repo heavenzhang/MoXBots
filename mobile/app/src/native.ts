@@ -16,7 +16,8 @@ const sessionResult = z.discriminatedUnion('kind', [
 const speechReply = z.object({ kind: z.literal('speech'), state: z.enum(['recording', 'transcribing', 'idle']), text: z.string().max(8000), final: z.boolean(), code: z.string().regex(/^[A-Z0-9_]+$/).max(128).optional() }).strict();
 
 export type Account = { kind: 'account'; state: 'signed-out' | 'authenticating' | 'signed-in' | 'expired'; displayName: string | null; principalId: string | null };
-export type Target = { targetId: string; agentId: string; name: string; deviceName: string; online: boolean; runtime: string | null };
+export type Target = { targetId: string; identityKey: string; agentId: string; name: string; deviceName: string; online: boolean; runtime: string | null };
+export type DraftReply = { kind: 'draft'; identityKey: string; agentId: string; sessionId: string | null; text: string; revision: number; lastWriteId: string | null };
 export type SessionRequest =
   | { kind: 'capabilities'; agentId: string }
   | { kind: 'list'; agentId: string; limit: number; before?: string }
@@ -37,13 +38,18 @@ export type NativeIntent =
   | { version: 1; kind: 'account.login.start' }
   | { version: 1; kind: 'targets.list' }
   | { version: 1; kind: 'operations.pending' }
+  | { version: 1; kind: 'draft.read'; targetId: string; sessionId: string | null }
+  | { version: 1; kind: 'draft.write'; targetId: string; sessionId: string | null; expectedRevision: number; writeId: string; text: string }
   | { version: 1; kind: 'speech.start' | 'speech.stop' | 'speech.cancel' }
   | { version: 1; kind: 'session'; targetId: string; request: SessionRequest };
 
 const accountSchema = z.object({ kind: z.literal('account'), state: z.enum(['signed-out', 'authenticating', 'signed-in', 'expired']), displayName: z.string().nullable(), principalId: z.string().nullable() }).strict();
-const targetSchema = z.object({ targetId: z.string().min(1), agentId: id, name: z.string(), deviceName: z.string(), online: z.boolean(), runtime: z.string().nullable() }).strict();
+const targetSchema = z.object({ targetId: z.string().min(1), identityKey: z.string().min(1).max(256), agentId: id, name: z.string(), deviceName: z.string(), online: z.boolean(), runtime: z.string().nullable() }).strict();
+const draftReadIntent = z.object({ version: z.literal(1), kind: z.literal('draft.read'), targetId: z.string().min(1), sessionId: sessionId.nullable() }).strict();
+const draftWriteIntent = z.object({ version: z.literal(1), kind: z.literal('draft.write'), targetId: z.string().min(1), sessionId: sessionId.nullable(), expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), writeId: z.string().uuid(), text: z.string().max(16000) }).strict();
+const draftReply = z.object({ kind: z.literal('draft'), identityKey: z.string().min(1).max(256), agentId: id, sessionId: sessionId.nullable(), text: z.string().max(16000), revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), lastWriteId: z.string().uuid().nullable() }).strict();
 const pendingSchema = z.object({ kind: z.literal('operations'), items: z.array(z.object({ targetId: z.string(), agentId: id, operationId: z.string().uuid(), sessionId: sessionId.nullable(), status: z.enum(['prepared', 'unknown', 'processing']) }).strict()) }).strict();
-const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
+const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
 
 type RemoteBridge = { request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void } };
 function getRemoteBridge(): RemoteBridge {
@@ -72,20 +78,24 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
     if (!parsedFixture.success) throw new Error('QA_FIXTURE_REPLY_INVALID');
     return parsedFixture.data;
   }
-  const parsed = nativeReply.safeParse(await moduleRequest(intent));
+  const checkedIntent = intent.kind === 'draft.read' ? draftReadIntent.safeParse(intent)
+    : intent.kind === 'draft.write' ? draftWriteIntent.safeParse(intent)
+      : null;
+  if (checkedIntent && !checkedIntent.success) throw new Error('NATIVE_INTENT_INVALID');
+  const parsed = nativeReply.safeParse(await moduleRequest(checkedIntent?.success ? checkedIntent.data as NativeIntent : intent));
   if (!parsed.success) throw new Error('NATIVE_REPLY_INVALID');
   return parsed.data;
 }
 
 export const isFixtureMode = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_MOBILE_QA === '1';
 
-export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error';
+export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error';
 export const qaScenarioOptions: readonly { id: QaScenario; label: string }[] = [
   { id: 'conversation', label: '会话' }, { id: 'multi-bot', label: '多 Bot / 离线' },
   { id: 'offline', label: '全部离线' }, { id: 'approval', label: '审批 / 拒绝' },
   { id: 'stale-approval', label: '过期审批' }, { id: 'unknown-receipt', label: '回执未知' },
   { id: 'reset-unknown', label: '重启后未确认' },
-  { id: 'network-error', label: '网络错误' },
+  { id: 'network-error', label: '网络错误' }, { id: 'draft-error', label: '草稿保存失败' },
 ];
 
 export async function selectQaScenario(scenario: QaScenario): Promise<void> {

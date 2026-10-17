@@ -59,21 +59,10 @@ export function commitIfViewOwned<T>(captured: ViewOwner, current: ViewOwner, va
   return true;
 }
 
-export type DraftStore = Record<string, string>;
-
 /** Draft keys use returned target identity as a storage namespace, never as bridge authorization. */
-export function draftKey(target: { agentId: string; deviceName: string; name: string } | null, sessionId: string | null): string | null {
+export function draftKey(target: { identityKey: string } | null, sessionId: string | null): string | null {
   if (!target) return null;
-  return JSON.stringify([target.agentId, target.deviceName, target.name, sessionId ?? 'new']);
-}
-
-export function updateDraft(store: DraftStore, key: string | null, value: string): DraftStore {
-  if (!key) return store;
-  return { ...store, [key]: value };
-}
-
-export function readDraft(store: DraftStore, key: string | null): string {
-  return key ? store[key] ?? '' : '';
+  return JSON.stringify([target.identityKey, sessionId]);
 }
 
 /** A mutation UUID may be submitted once. Later interaction is always a receipt query. */
