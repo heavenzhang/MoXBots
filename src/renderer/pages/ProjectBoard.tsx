@@ -84,7 +84,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
       if (observations.some(a => a.state !== 'idle' || a.error || (boardGoalState(a, Date.now()) !== undefined && boardGoalState(a, Date.now()) !== 'complete'))) throw new Error(t(busyKey));
     }
   }
-  function canConvert(row: BoardRow): boolean { return !row.task && row.group === 'idle' && row.sessions.length === 1; }
+  function canConvert(row: BoardRow): boolean { return !row.task && (row.group === 'idle' || row.group === 'done' && !!row.reviewReady) && row.sessions.length === 1; }
   /** An idle conversation with a deliverable becomes a real Task bound to the same Session,
    * so it can be run, verified and completed instead of staying a pool entry. */
   async function convertToTask(row: BoardRow) {
@@ -116,7 +116,11 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
       if (!restore) await assertSessionsIdle([...new Set(row.task?.sessionIds ?? row.sessions.map(s => s.id))], 'projectBoard.archiveBusy');
       if (row.task) {
         if (restore) await taskUpdateStatus({ id: row.task.id, status: 'done' });
-        else await taskArchive(row.task.id);
+        else {
+          // Only a Done Task can be archived; archiving a finished-run row is the acceptance, so settle it first.
+          if (row.task.status === 'verifying' || row.task.status === 'running') await taskUpdateStatus({ id: row.task.id, status: 'done', message: drafts[row.id]?.trim() || undefined });
+          await taskArchive(row.task.id);
+        }
       } else {
         const session = row.sessions[0];
         if (!session) throw new Error(t('projectBoard.unavailable'));
@@ -147,7 +151,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
         {t('projectBoard.updated')} {formatTime(new Date(row.updatedAt).toISOString())}
       </time>
       <div className="pb-card-bottom">
-        <button type="button" className="pb-card-action" onClick={() => select(row)}>{t(row.confirmationReason === 'verification' ? 'projectBoard.inspect' : row.group === 'needs' ? 'projectBoard.handle' : 'projectBoard.details')} ↗</button>
+        <button type="button" className="pb-card-action" onClick={() => select(row)}>{t(row.group === 'needs' ? 'projectBoard.handle' : 'projectBoard.details')} ↗</button>
         {canConvert(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={t('projectBoard.convertHint')} onClick={() => { void convertToTask(row); }}>{t('projectBoard.convert')}</button>}
         {canOrganize(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={row.group === 'archived' ? undefined : t('projectBoard.archiveHint')} onClick={() => { void organize(row); }}>{t(row.group === 'archived' ? 'projectBoard.restore' : 'projectBoard.archive')}</button>}
         {row.sessions.length === 1 && <button type="button" className="pb-card-action pb-enter-session" onClick={() => openSession(row.sessions[0].id)} aria-label={t('projectBoard.enterSessionFor', { title: row.sessions[0].title })}>{t('projectBoard.enterSession')} ↗</button>}
@@ -183,7 +187,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
         : view === 'board' ? <>
           <div className="pb-columns" style={groups.length < 4 ? { gridTemplateColumns: `repeat(${groups.length}, minmax(0, 1fr))` } : undefined}>
             {groups.map(g => <section key={g} className={`pb-column ${expanded.has(g) ? 'expanded' : ''}`} data-group={g} aria-label={t(`projectBoard.groups.${g}`)}>
-              <button type="button" className="pb-column-head" aria-expanded={compact ? expanded.has(g) : true} onClick={() => setExpanded(current => { const next = new Set(current); if (next.has(g)) next.delete(g); else next.add(g); return next; })}>
+              <button type="button" className="pb-column-head" title={g === 'done' ? t('projectBoard.doneHint') : undefined} aria-expanded={compact ? expanded.has(g) : true} onClick={() => setExpanded(current => { const next = new Set(current); if (next.has(g)) next.delete(g); else next.add(g); return next; })}>
                 <span>{t(`projectBoard.groups.${g}`)}</span><span className="count">{visible.filter(r => r.group === g).length}</span><span className="chevron" aria-hidden="true">›</span></button>
               <div className="pb-cards">{visible.filter(r => r.group === g).map(card)}{!visible.some(r => r.group === g) && <div className="pb-column-empty">{t('projectBoard.groupEmpty')}</div>}</div>
             </section>)}
