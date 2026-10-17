@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, mutationDisposition, viewStillOwned } from '../src/operationPolicy.ts';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, mutationDisposition } from '../src/operationPolicy.ts';
 
 test('an unknown mutation is query-only and cannot be submitted a second time', () => {
   assert.equal(mutationDisposition('unknown'), 'query-only');
@@ -48,7 +48,7 @@ test('draft keys use stable native target identity and isolate sessions across r
 test('slow polling stays single-flight and only commits while its app and view owner remain current', async () => {
   let resolveRequest!: () => void;
   const deferred = new Promise<void>((resolve) => { resolveRequest = resolve; });
-  let appActive = true;
+  const appActive = true;
   let selectedOwner = 'Bot A';
   let commits = 0;
   let requests = 0;
