@@ -14,20 +14,22 @@ describe('headless mobile.start original Host admission',()=>{
    adopt:async(value,id,hash)=>{expect(value).toBe(request);expect(id).toBe('session-1');expect(hash).toBe('a'.repeat(64));order.push('adopt');return true},
    dispatch:async(target,id,value)=>{expect([target,id,value]).toEqual(['worker','session-1',request]);order.push('dispatch');return {accepted:true}},
    finish:async(value,status,id,code)=>{expect([value,status,id,code]).toEqual([request,'accepted','session-1',null]);order.push('finish');return {status}},
+   releaseObservation:vi.fn(),
   });
   expect(result.status).toBe('accepted');expect(order).toEqual(['begin','ensure','adopt','dispatch','finish']);
  });
 
  it('does not create or dispatch a second session for an existing operation',async()=>{
   const ensure=vi.fn(),dispatch=vi.fn();
-  const result=await admitHeadlessMobileStart({request,manifestHash:'b'.repeat(64),begin:async()=>({fresh:false}),read:async(value,hash)=>{expect(value).toBe(request);expect(hash).toBe('b'.repeat(64));return {status:'processing'}},ensure,adopt:vi.fn(),dispatch,finish:vi.fn()});
+  const result=await admitHeadlessMobileStart({request,manifestHash:'b'.repeat(64),begin:async()=>({fresh:false}),read:async(value,hash)=>{expect(value).toBe(request);expect(hash).toBe('b'.repeat(64));return {status:'processing'}},ensure,adopt:vi.fn(),dispatch,finish:vi.fn(),releaseObservation:vi.fn()});
   expect(result.status).toBe('processing');expect(ensure).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
  });
 
  it('keeps a lost Host dispatch unresolved and never retries it',async()=>{
   const dispatch=vi.fn(async()=>{throw new Error('worker transport failed')});
   const finish=vi.fn();let reads=0;
-  const result=await admitHeadlessMobileStart({request,manifestHash:'c'.repeat(64),begin:async()=>({fresh:true}),read:async()=>{reads++;return {status:'processing'}},ensure:async()=>({target:'worker',sessionId:'session-2'}),adopt:async()=>true,dispatch,finish});
-  expect(result.status).toBe('processing');expect(reads).toBe(1);expect(dispatch).toHaveBeenCalledTimes(1);expect(finish).not.toHaveBeenCalled();
+  const releaseObservation=vi.fn(async()=>{});
+  const result=await admitHeadlessMobileStart({request,manifestHash:'c'.repeat(64),begin:async()=>({fresh:true}),read:async()=>{reads++;expect(releaseObservation).toHaveBeenCalledOnce();return {status:'unconfirmed'}},ensure:async()=>({target:'worker',sessionId:'session-2'}),adopt:async()=>true,dispatch,finish,releaseObservation});
+  expect(result.status).toBe('unconfirmed');expect(reads).toBe(1);expect(dispatch).toHaveBeenCalledTimes(1);expect(finish).not.toHaveBeenCalled();
  });
 });
