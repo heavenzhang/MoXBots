@@ -78,7 +78,10 @@ internal class SecureRecords(context: Context) {
     syncDirectory()
   }
   private fun syncDirectory() {
-    val fd = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_DIRECTORY, 0)
-    try { Os.fsync(fd) } finally { Os.close(fd) }
+    val fd = Os.open(directory.absolutePath, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW, 0)
+    try {
+      check(OsConstants.S_ISDIR(Os.fstat(fd).st_mode)) { "MOBILE_SECURE_STORE_UNAVAILABLE" }
+      Os.fsync(fd)
+    } finally { Os.close(fd) }
   }
 }
