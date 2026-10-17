@@ -22,11 +22,14 @@ MoxMobileClient *mox_mobile_new(const uint8_t *config, size_t config_len,
  * relay-ready: {kind:"relay-ready"} only on authenticated relay confirmation.
  * suspend: {kind:"suspend"} closes epoch permanently. New auth requires new handle.
  * asset-request: {kind:"asset-request",request:<RemoteAssetRequest version:1>}
- *   Native config profile:"assets" requires a separate channel. First request is
- *   capabilities; other asset requests wait for its authenticated matching response.
- *   Session execution intents are forbidden on an assets profile (and vice versa).
+ *   Native profile:"combined" uses ONE existing channel/owner for both approved
+ *   methods; never open a second WSS or reset sequences between session and assets.
+ *   First asset request is capabilities; data waits for its authenticated response.
+ *   Combined binds one Agent on the first valid session/asset/recovered record.
+ *   Recover this Agent's journal BEFORE any RPC, including asset capabilities.
+ *   Default session-only and explicit assets-only restrictions remain unchanged.
  * status: {kind:"status"}
- * prepare returns {state:"journal-required",record:{operationId,digest,request,target}}.
+ * prepare returns {state:"journal-required",record:{operationId,digest,request,target,issuer}}.
  * Persist record durably in encrypted native store, THEN commit. Never auto-commit
  * recovered records. Query original receipt after reconnect. */
 MoxMobileBuffer mox_mobile_call(MoxMobileClient *, const uint8_t *, size_t);

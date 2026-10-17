@@ -115,6 +115,7 @@ enum MobileProfile {
     #[default]
     Session,
     Assets,
+    Combined,
 }
 enum PendingRequest {
     Session(RemoteSessionRequest),
@@ -134,6 +135,7 @@ pub struct MobileClient {
     profile: MobileProfile,
     assets_negotiated: bool,
     assets_agent: Option<String>,
+    combined_agent: Option<String>,
 }
 // A single-channel projection of the original PairChannels credit policy.
 // Keep strict cumulative-byte/sequence checks and the same bounded windows.
@@ -304,6 +306,7 @@ impl MobileClient {
             profile: config.profile,
             assets_negotiated: false,
             assets_agent: None,
+            combined_agent: None,
         })
     }
     fn digest(
@@ -315,6 +318,21 @@ impl MobileClient {
             .map_err(|_| error("MOBILE_INTENT_INVALID"))?;
         Ok(URL_SAFE_NO_PAD.encode(Sha256::digest(canonical)))
     }
+    fn bind_combined_agent(&mut self, agent_id: &str) -> Result<(), NetworkError> {
+        if self.profile == MobileProfile::Combined {
+            if self
+                .combined_agent
+                .as_ref()
+                .is_some_and(|agent| agent != agent_id)
+            {
+                return Err(error("MOBILE_COMBINED_AGENT_MISMATCH"));
+            }
+            if self.combined_agent.is_none() {
+                self.combined_agent = Some(agent_id.into());
+            }
+        }
+        Ok(())
+    }
     fn prepare(&mut self, request: RemoteSessionRequest) -> Result<Value, NetworkError> {
         request
             .validate()
@@ -322,6 +340,7 @@ impl MobileClient {
         if !request.mutation() {
             return Err(error("MOBILE_MUTATION_REQUIRED"));
         }
+        self.bind_combined_agent(request.agent_id())?;
         let operation_id = request
             .operation_id()
             .ok_or_else(|| error("MOBILE_OPERATION_REQUIRED"))?;
@@ -364,12 +383,23 @@ impl MobileClient {
         request: myagents_host_management_protocol::RemoteAssetRequest,
     ) -> Result<Value, NetworkError> {
         use myagents_host_management_protocol::RemoteAssetRequest;
-        if self.profile != MobileProfile::Assets {
+        if !matches!(
+            self.profile,
+            MobileProfile::Assets | MobileProfile::Combined
+        ) {
             return Err(error("MOBILE_PROFILE_MISMATCH"));
         }
         request
             .validate()
             .map_err(|_| error("MOBILE_ASSET_REQUEST_INVALID"))?;
+        if self.profile == MobileProfile::Combined
+            && self
+                .combined_agent
+                .as_ref()
+                .is_some_and(|agent| agent != request.agent_id())
+        {
+            return Err(error("MOBILE_COMBINED_AGENT_MISMATCH"));
+        }
         if self
             .assets_agent
             .as_ref()
@@ -384,6 +414,7 @@ impl MobileClient {
             return Err(error("MOBILE_PENDING_LIMIT"));
         }
         let request_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        self.bind_combined_agent(request.agent_id())?;
         if self.assets_agent.is_none() {
             self.assets_agent = Some(request.agent_id().into());
         }
@@ -523,6 +554,7 @@ impl MobileClient {
         request
             .validate()
             .map_err(|_| error("MOBILE_INTENT_INVALID"))?;
+        self.bind_combined_agent(request.agent_id())?;
         if self.pending.len() >= MAX_PENDING {
             return Err(error("MOBILE_PENDING_LIMIT"));
         }
@@ -598,6 +630,7 @@ impl MobileClient {
                     return Err(error("MOBILE_RECOVERY_INVALID"));
                 }
                 let mut recovered = BTreeMap::new();
+                let mut recovered_agent = self.combined_agent.clone();
                 for record in records {
                     record
                         .request
@@ -613,6 +646,17 @@ impl MobileClient {
                     {
                         return Err(error("MOBILE_RECOVERY_INVALID"));
                     }
+                    if self.profile == MobileProfile::Combined {
+                        if recovered_agent
+                            .as_ref()
+                            .is_some_and(|agent| agent != record.request.agent_id())
+                        {
+                            return Err(error("MOBILE_COMBINED_AGENT_MISMATCH"));
+                        }
+                        if recovered_agent.is_none() {
+                            recovered_agent = Some(record.request.agent_id().into());
+                        }
+                    }
                     recovered.insert(
                         record.operation_id.as_uuid().to_string(),
                         JournalEntry {
@@ -622,6 +666,9 @@ impl MobileClient {
                     );
                 }
                 self.journal = recovered;
+                if self.profile == MobileProfile::Combined {
+                    self.combined_agent = recovered_agent;
+                }
                 Ok(json!({"state":"receipt-required"}))
             }
             Intent::RelayReady {} => {
@@ -901,6 +948,7 @@ mod tests {
                 profile: MobileProfile::Session,
                 assets_negotiated: false,
                 assets_agent: None,
+                combined_agent: None,
             },
             b,
             sb,
@@ -1260,6 +1308,476 @@ mod tests {
         );
         assert!(client.execute(Intent::Status {}).is_err());
     }
+    fn session_rpc(
+        client: &mut MobileClient,
+        host: &mut Channel,
+        host_sequences: &mut PairSequences,
+        request: RemoteSessionRequest,
+        result: RemoteSessionResult,
+    ) -> Value {
+        if request.mutation() {
+            let prepared = client
+                .call(Intent::Prepare {
+                    request: request.clone(),
+                })
+                .unwrap();
+            let record: JournalRecord = serde_json::from_value(prepared["record"].clone()).unwrap();
+            assert!(
+                client.drain_frame().unwrap().is_none(),
+                "prepare cannot emit encrypted effects"
+            );
+            client
+                .call(Intent::Commit {
+                    operation_id: record.operation_id,
+                    digest: record.digest,
+                })
+                .unwrap();
+        } else {
+            client
+                .call(Intent::Request {
+                    request: request.clone(),
+                })
+                .unwrap();
+        }
+        let mut observed = None;
+        while let Some(frame) = client.drain_frame().unwrap() {
+            for event in host
+                .feed_management(decode_tls_frame(&frame).unwrap().1, host_sequences)
+                .unwrap()
+            {
+                if let ManagementEvent::Request {
+                    request_id,
+                    method,
+                    params,
+                } = event
+                {
+                    assert_eq!(method, ManagementMethod::RemoteSession);
+                    assert_eq!(
+                        params,
+                        RequestParams::RemoteSession(RemoteSessionParams {
+                            remote_session: request.clone()
+                        })
+                    );
+                    observed = Some(request_id);
+                }
+            }
+        }
+        host.send_management(ManagementMessage::Response {
+            request_id: observed.unwrap(),
+            result: ResponseResult::RemoteSession { data: result },
+        })
+        .unwrap();
+        let mut last = json!({});
+        while let Some(frame) = host.drain_frame().unwrap() {
+            last = client.feed(&frame).unwrap();
+        }
+        last
+    }
+    #[test]
+    fn combined_owner_reuses_one_encrypted_channel_across_assets_sessions_and_journal() {
+        use myagents_host_management_protocol::{
+            RemoteAssetRequest as Q, RemoteAssetResult as R, UploadState, ASSET_CHUNK_BYTES,
+            ASSET_MAX_BYTES,
+        };
+        let (mut client, mut host, mut sequence) = pair();
+        client.profile = MobileProfile::Combined;
+        let channel = client.channel.id.clone();
+        assert_eq!(channel, host.id);
+        let capabilities = || Q::Capabilities {
+            version: 1,
+            agent_id: "agent".into(),
+        };
+        let cap_result = || R::Capabilities {
+            version: 1,
+            agent_id: "agent".into(),
+            max_bytes: ASSET_MAX_BYTES,
+            max_chunk_bytes: ASSET_CHUNK_BYTES as u32,
+        };
+        asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            capabilities(),
+            cap_result(),
+        )
+        .unwrap();
+        assert_eq!(client.combined_agent.as_deref(), Some("agent"));
+        let upload_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let asset_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let bytes = b"actual bounded combined payload";
+        let digest = format!("{:x}", Sha256::digest(bytes));
+        asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::UploadBegin {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                name: "input.txt".into(),
+                mime_type: "text/plain".into(),
+                size_bytes: bytes.len() as u64,
+                sha256: digest.clone(),
+            },
+            R::Upload {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                received_bytes: 0,
+                total_bytes: bytes.len() as u64,
+                state: UploadState::Uploading,
+            },
+        )
+        .unwrap();
+        asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::UploadChunk {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                offset: 0,
+                data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+                sha256: digest.clone(),
+            },
+            R::Upload {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                received_bytes: bytes.len() as u64,
+                total_bytes: bytes.len() as u64,
+                state: UploadState::Uploading,
+            },
+        )
+        .unwrap();
+        asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::UploadFinish {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+            },
+            R::Asset {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                asset_id,
+                name: "input.txt".into(),
+                mime_type: "text/plain".into(),
+                size_bytes: bytes.len() as u64,
+                sha256: digest,
+            },
+        )
+        .unwrap();
+        let sent_after_asset = client.flow.sent;
+        let received_after_asset = client.flow.received;
+        let listed = session_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            RemoteSessionRequest::List {
+                agent_id: "agent".into(),
+                limit: 1,
+                before: None,
+            },
+            RemoteSessionResult::List {
+                agent_id: "agent".into(),
+                items: vec![],
+                has_more: false,
+                next_before: None,
+            },
+        );
+        assert_eq!(listed["events"][0]["kind"], "response");
+        let operation_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        session_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            start(operation_id),
+            RemoteSessionResult::Receipt {
+                agent_id: "agent".into(),
+                operation_id,
+                session_id: Some("combined-session".into()),
+                status: RemoteReceiptStatus::Accepted,
+                code: None,
+            },
+        );
+        assert!(client.journal.is_empty());
+        assert!(client
+            .confirmed
+            .contains(&operation_id.as_uuid().to_string()));
+        assert_eq!(
+            client
+                .call(Intent::Prepare {
+                    request: start(operation_id)
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_RECEIPT_REQUIRED"
+        );
+        assert!(client.flow.sent > sent_after_asset && client.flow.received > received_after_asset);
+        let status = asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::UploadStatus {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+            },
+            R::Upload {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                received_bytes: bytes.len() as u64,
+                total_bytes: bytes.len() as u64,
+                state: UploadState::Ready,
+            },
+        )
+        .unwrap();
+        assert_eq!(status["events"][0]["kind"], "asset-response");
+        assert_eq!(client.channel.id, channel);
+        assert_eq!(host.id, channel);
+        assert!(client.channel.ready() && host.ready());
+        assert!(client.pending.is_empty());
+        // The original peer validates strict incoming management sequences throughout;
+        // any channel/sequence reset between these encrypted methods would fail above.
+        assert_eq!(
+            client
+                .call(Intent::Request {
+                    request: RemoteSessionRequest::List {
+                        agent_id: "foreign".into(),
+                        limit: 1,
+                        before: None
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_COMBINED_AGENT_MISMATCH"
+        );
+        assert_eq!(
+            client
+                .call(Intent::AssetRequest {
+                    request: Q::Capabilities {
+                        version: 1,
+                        agent_id: "foreign".into()
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_COMBINED_AGENT_MISMATCH"
+        );
+        assert!(client.drain_frame().unwrap().is_none());
+    }
+    #[test]
+    fn combined_session_first_binding_and_atomic_recovery_reject_foreign_agents() {
+        use myagents_host_management_protocol::RemoteAssetRequest as Q;
+        let (mut source, _, _) = pair();
+        let first_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let second_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let first: JournalRecord = serde_json::from_value(
+            source
+                .call(Intent::Prepare {
+                    request: start(first_id),
+                })
+                .unwrap()["record"]
+                .clone(),
+        )
+        .unwrap();
+        let second: JournalRecord = serde_json::from_value(
+            source
+                .call(Intent::Prepare {
+                    request: RemoteSessionRequest::Start {
+                        agent_id: "foreign".into(),
+                        operation_id: second_id,
+                        text: "other".into(),
+                    },
+                })
+                .unwrap()["record"]
+                .clone(),
+        )
+        .unwrap();
+        let (mut client, _, _) = pair();
+        client.profile = MobileProfile::Combined;
+        assert_eq!(
+            client
+                .call(Intent::Recover {
+                    records: vec![first.clone(), second.clone()]
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_COMBINED_AGENT_MISMATCH"
+        );
+        assert!(client.combined_agent.is_none() && client.journal.is_empty());
+        client
+            .call(Intent::Recover {
+                records: vec![first.clone()],
+            })
+            .unwrap();
+        assert_eq!(client.combined_agent.as_deref(), Some("agent"));
+        assert_eq!(
+            client
+                .call(Intent::Commit {
+                    operation_id: first_id,
+                    digest: first.digest
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_RECEIPT_REQUIRED"
+        );
+        assert_eq!(
+            client
+                .call(Intent::AssetRequest {
+                    request: Q::Capabilities {
+                        version: 1,
+                        agent_id: "foreign".into()
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_COMBINED_AGENT_MISMATCH"
+        );
+        let (mut session_first, _, _) = pair();
+        session_first.profile = MobileProfile::Combined;
+        session_first
+            .call(Intent::Prepare {
+                request: start(first_id),
+            })
+            .unwrap();
+        assert_eq!(session_first.combined_agent.as_deref(), Some("agent"));
+        assert_eq!(
+            session_first
+                .call(Intent::AssetRequest {
+                    request: Q::Capabilities {
+                        version: 1,
+                        agent_id: "foreign".into()
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_COMBINED_AGENT_MISMATCH"
+        );
+        assert_eq!(
+            session_first
+                .call(Intent::AssetRequest {
+                    request: Q::UploadStatus {
+                        version: 1,
+                        agent_id: "agent".into(),
+                        upload_id: first_id
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_ASSET_CAPABILITY_REQUIRED"
+        );
+        // Rejected invalid/unrecognized intents cannot select another profile or method.
+        assert!(serde_json::from_str::<Intent>(r#"{"kind":"request","profile":"combined","method":"config.set","request":{"kind":"list","agentId":"foreign","limit":1}}"#).is_err());
+    }
+    #[test]
+    fn combined_pending_demux_handles_reversed_asset_and_session_responses() {
+        use myagents_host_management_protocol::{
+            RemoteAssetRequest as Q, RemoteAssetResult as R, UploadState, ASSET_CHUNK_BYTES,
+            ASSET_MAX_BYTES,
+        };
+        let (mut client, mut host, mut sequence) = pair();
+        client.profile = MobileProfile::Combined;
+        asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::Capabilities {
+                version: 1,
+                agent_id: "agent".into(),
+            },
+            R::Capabilities {
+                version: 1,
+                agent_id: "agent".into(),
+                max_bytes: ASSET_MAX_BYTES,
+                max_chunk_bytes: ASSET_CHUNK_BYTES as u32,
+            },
+        )
+        .unwrap();
+        let upload_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let asset = client
+            .call(Intent::AssetRequest {
+                request: Q::UploadStatus {
+                    version: 1,
+                    agent_id: "agent".into(),
+                    upload_id,
+                },
+            })
+            .unwrap();
+        let session = client
+            .call(Intent::Request {
+                request: RemoteSessionRequest::List {
+                    agent_id: "agent".into(),
+                    limit: 1,
+                    before: None,
+                },
+            })
+            .unwrap();
+        assert_eq!(client.pending.len(), 2);
+        let mut requests = vec![];
+        while let Some(frame) = client.drain_frame().unwrap() {
+            for event in host
+                .feed_management(decode_tls_frame(&frame).unwrap().1, &mut sequence)
+                .unwrap()
+            {
+                if let ManagementEvent::Request {
+                    request_id, method, ..
+                } = event
+                {
+                    requests.push((request_id, method));
+                }
+            }
+        }
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].1, ManagementMethod::RemoteAssets);
+        assert_eq!(requests[1].1, ManagementMethod::RemoteSession);
+        for (request_id, method) in requests.into_iter().rev() {
+            let result = if method == ManagementMethod::RemoteAssets {
+                ResponseResult::RemoteAssets {
+                    data: R::Upload {
+                        version: 1,
+                        agent_id: "agent".into(),
+                        upload_id,
+                        received_bytes: 0,
+                        total_bytes: 1,
+                        state: UploadState::Uploading,
+                    },
+                }
+            } else {
+                ResponseResult::RemoteSession {
+                    data: RemoteSessionResult::List {
+                        agent_id: "agent".into(),
+                        items: vec![],
+                        has_more: false,
+                        next_before: None,
+                    },
+                }
+            };
+            host.send_management(ManagementMessage::Response { request_id, result })
+                .unwrap();
+        }
+        let mut events = vec![];
+        while let Some(frame) = host.drain_frame().unwrap() {
+            events.extend(
+                client.feed(&frame).unwrap()["events"]
+                    .as_array()
+                    .unwrap()
+                    .clone(),
+            );
+        }
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0]["requestId"], session["requestId"]);
+        assert_eq!(events[0]["kind"], "response");
+        assert_eq!(events[1]["requestId"], asset["requestId"]);
+        assert_eq!(events[1]["kind"], "asset-response");
+        assert!(client.pending.is_empty());
+    }
     #[test]
     fn native_controller_can_be_the_deterministic_tls_responder() {
         let (client, host, _) = pair_with_direction(false);
@@ -1508,6 +2026,16 @@ mod provisioning_tests {
     #[test]
     fn native_provisioning_verifies_signed_bootstrap_local_key_and_target_account() {
         let (config, key) = provisioned();
+        let mut combined_config = config.clone();
+        combined_config["profile"] = json!("combined");
+        assert!(matches!(
+            serde_json::from_value::<NativeConfig>(combined_config.clone())
+                .unwrap()
+                .profile,
+            MobileProfile::Combined
+        ));
+        combined_config["profile"] = json!("arbitrary-management");
+        assert!(serde_json::from_value::<NativeConfig>(combined_config).is_err());
         let client = MobileClient::new(
             serde_json::from_value(config.clone()).unwrap(),
             Zeroizing::new(key.to_vec()),
