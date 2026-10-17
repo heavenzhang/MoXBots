@@ -38,7 +38,16 @@ Android 可通过构建环境变量 `MOXBOTS_ANDROID_GOOGLE_SERVICES_FILE` 指�
 - [x] 主Agent：应用类型检查、lint、50项策略测试；具体日志 `/tmp/moxbots-mobile-notification-ui-{typecheck,lint,policy}.log`。
 - [x] 非实现者源码复核：权限/登记状态、失败反馈、token轮换与手动关闭的竞态；已据发现修复。该审阅未获得 IAB，不能称独立运行态验收。
 - [x] 主Agent实际 Web 合成流程：账号入口、启用/停用、系统权限单独展示、有效 hint 定位到原会话并保留草稿、已停用 hint 拒绝、重试/忽略后继续使用列表。证据 `/tmp/moxbots-mobile-ui-review-002/primary-notification-settings-separated-pass.png`、`primary-notification-ignore-pass.png`。未验证本次窄屏布局。
-- [ ] 集成新 Rust SDK 与 server provider 包后的主Agent复验、Android原生重建与仪器测试、准确源码CI。
+- [x] Rust SDK已集成为 `bd9034aa`；主Agent104项连接测试、严格clippy和原桌面reader18项回归通过。日志 `/tmp/moxbots-mobile-notification-root-sdk-tests.log`、`/tmp/moxbots-mobile-notification-reader-tests.log`。
+- [x] Android通知版Rust原生库重建通过（8.70s）；应用Debug构建和27项仪器测试通过（1m29s，0失败/0跳过）。新增真实JNI未登录通知拒绝与禁止JS指定installationId断言。日志 `/tmp/moxbots-mobile-notification-android-{native,regression}.log`。
+- [x] 原生制品源码摘要覆盖实际导入的共享AgentNet/lifecycle文件，APK核验拒绝与当前干净源码不符的原生库；旧摘要与新版scopeVersion=2不可直接比较。
+- [x] SDK错误码与界面提示已对齐；主Agent复跑typecheck/lint/50项策略通过；实际Web合成流程复验未启用提醒的提示及忽略返回列表。证据 `/tmp/moxbots-mobile-ui-review-002/primary-notification-native-contract-notice.png`。
+- [x] Android内嵌JS测试包构建、16KiB/签名/当前原生源码核对与专用模拟器安装通过；仍为Debug test key，原生UI/账号等未验收。详见 `android-build.md`。
+- [ ] 服务端provider修复后集成与主Agent复验、准确源码CI。
 - [ ] Host 事件来源契约：云端当前不能证明 Host 私有 Bot/session 归属，不能新增任意登录设备可伪造来源的 public hint 路由。受信内部入口不能替代真实来源接入。
 - [ ] 真实 APNs/FCM 凭据、物理设备送达、后台/冷启动、过期登录恢复和旧授权失效验证。
 - [ ] iOS SDK协议与签名、真实Host/账号/语音、主干交付和内部签名分发。
+
+## Host来源接入的下一步
+
+现有AuthStore登录会话携带登录时提交的deviceId；仅用Bearer加DeviceStore记录查询，不能等同于已证明持有该设备私钥。通知来源接口仍未开放。下一包应从原Session owner生成有限事件，由保有既有设备私钥的Rust连接器提交：复用现有challenge/PoP能力，在通知存储中把challenge绑定当前session_handle、设备binding/generation和确切pointer；验证单次proof后才生成hint。不修改冻结的crypto/protocol，也不让调用方指定其他principal或source device。云端只验证来源设备，手机仍重新读取实际Bot目录与Session；提示本身不授予执行或审批权限。该设计尚未实现或通过真实Host验收。

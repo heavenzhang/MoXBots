@@ -49,3 +49,12 @@ Instrumentation APK 自带的 Rust 库曾掩盖应用 APK 漏包；16项原生�
 新版原生构建记录源码为 `c8775b5d83e8c2fcb498892cb8c05ef47cad393b`，`sourceDirty=false`，源码摘要 `0b8dec1e521d73c2c73c1a15202a0d5af731cfd85ba512c1e283e80a830181d5`。本机成果状态、暂停和移除改用当前账号的已批准目录快照；下载、预览和分享仍检查新鲜授权。连接层90项测试及严格clippy通过；Android重建通过（1m36s），应用构建与27项仪器测试通过（46s）。随后加入真实JNI未登录快照拒绝断言，27项回归再次通过（25s）。日志 `/tmp/moxbots-mobile-snapshot-android-native.log`、`/tmp/moxbots-mobile-snapshot-android-regression.log`、`/tmp/moxbots-mobile-snapshot-jni-regression.log`。
 
 应用APK SHA-256为 `05b4844fe254291083e4a66462b127eb83497979f2a7db6ccc408ebbec2cea5e`，核验报告 `/tmp/moxbots-mobile-snapshot-apk-verified.json`；原生输入及NDK剥离结果、16KiB对齐与签名检查通过，专用模拟器安装成功（`/tmp/moxbots-mobile-snapshot-debug-install.log`）。仍为Debug测试签名且无内嵌JS，依赖Metro；此处不构成独立分发、原生页面、真实Host或物理语音验收。
+
+## Notification SDK 与内嵌JS测试包（2026-10-18）
+
+- 客户端源码 `b57e5252b1c6473e02cd3e6b1784edfc017f4cc4`；原生库构建记录 `cf8bba760d00154536982a85e92409499423d3b6`，两者之间只有不影响Rust输入的app文案与仪器断言；当前干净的原生源码摘要核对一致。新版摘要scopeVersion=2包含实际导入的共享AgentNet/lifecycle源码，不能与旧scope摘要直接比较。
+- Rust原生release8.70s；Debug应用与27项仪器测试1m29s通过（0失败/0错误/0跳过），真实JNI覆盖通知未登录拒绝和JS伪造安装标识拒绝。日志 `/tmp/moxbots-mobile-notification-android-native.log`、`/tmp/moxbots-mobile-notification-android-regression.log`。
+- 实际 `:app:assembleRelease`3m12s通过，`EXPO_PUBLIC_MOBILE_QA=0`，APK包含 `assets/index.android.bundle`，无需Metro提供界面代码。日志 `/tmp/moxbots-mobile-notification-offline-build.log`。
+- APK SHA256 `67f97eec1ec2d82bc2f8b737816bd2f7620fe72e0ed15504ba180901734146f0`；16KiB ELF/ZIP对齐、签名和实际Rust二进制/当前源码一致性通过。原生sourceDigest `baef71792a5f4478513aa222cd0803e18f247a02040871e7e82415f4c2fc58b4`。报告 `/tmp/moxbots-mobile-notification-offline-apk-verified.json`。
+- 使用 **Android Debug test key**；不是正式上架签名。已通过adb安装到专用emulator-5554（`/tmp/moxbots-mobile-notification-offline-install.log`），未验收原生UI启动/账号/Host/语音/推送。
+- 独立保留制品：`/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/output/mobile-002/native-checkpoints/MoxBots-mobile-002-android-offline-test-67f97eec.apk`；复制后再次核对SHA256一致。尚未交付可日常使用版本。
