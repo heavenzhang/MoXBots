@@ -203,7 +203,7 @@ async function serve(): Promise<void> {
       if (!row || (row.runtime && row.runtime !== 'builtin')) throw new Error('Unknown or unsupported Session');
       workspace = await workspacePath(row.agentDir);
     }
-    const remoteBirth = remoteWorkspace && !sessionId ? resolveWorkspaceConfig(workspace,undefined,{includeMcp:false}):undefined;
+    const remoteBirth = remoteWorkspace && !sessionId ? resolveWorkspaceConfig(workspace,undefined,{includeMcp:false,includeProviderEnv:false}):undefined;
     if (remoteBirth && !isConcreteProviderRoute(remoteBirth.providerRoute)) throw new HostRemoteError('REMOTE_SESSION_AGENT_PROVIDER_UNAVAILABLE');
     const remoteRouteCandidate=remoteBirth?.providerRoute;
     if(remoteModel!==undefined&&(!remoteBirth||!isConcreteProviderRoute(remoteRouteCandidate)||!/^.{1,256}$/.test(remoteModel)||/[\p{Cc}]/u.test(remoteModel)))throw new HostRemoteError('REMOTE_MOBILE_MODEL_UNAVAILABLE');

@@ -1,5 +1,5 @@
 import {randomUUID} from 'node:crypto';
-import {mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
+import {chmod,mkdtemp,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach,expect,it,vi} from 'vitest';
@@ -71,4 +71,12 @@ it.each(['ensure','dispatch'] as const)('marks a lost %s observation unknown wit
  expect(await admitHeadlessMobileStart(input)).toMatchObject(expected);
  expect(await admitHeadlessMobileStart(input)).toMatchObject(expected);
  expect(ensure).toHaveBeenCalledTimes(1);expect(dispatch).toHaveBeenCalledTimes(stage==='ensure'?0:1);expect(input.finish).not.toHaveBeenCalled();
+});
+
+it('releases only its local heartbeat even when storage cannot be safely opened',async()=>{
+ const {dir,owner}=await fixture(),request=start();await owner.beginMobile(request,null);
+ await chmod(dir,0o755);
+ try{await expect(owner.releaseMobileObservation(request)).resolves.toBeUndefined()}
+ finally{await chmod(dir,0o700)}
+ expect(await owner.beginMobile(request,null)).toMatchObject({fresh:false,receipt:{status:'unconfirmed',sessionId:null}});
 });

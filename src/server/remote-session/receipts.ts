@@ -164,14 +164,11 @@ export function createRemoteReceiptOwner(scope: string, directory = join(homedir
       });
     },
     async releaseMobileObservation(raw:RemoteMobileRequest):Promise<void>{
-      const {path,digest}=identity(raw);await prepare();
-      await withFileLock({lockPath:path+'.lock'},async()=>{
-        const entry=await load(path);
-        if(!entry||entry.digest!==digest||entry.receipt.kind!=='mobile.receipt')throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
-        // Ending local observation does not cancel or retry a worker. Keep the
-        // durable operation/Session binding, but stop claiming a live admission.
-        if(entry.ownerPid===process.pid&&entry.ownerToken===PROCESS_OWNER)active.delete(path);
-      });
+      const {path}=identity(raw);
+      // This set belongs only to this owner instance. Stop its heartbeat even
+      // when receipt storage is unavailable; no IO/lock may prevent release.
+      // No worker is cancelled and no durable operation/Session is replaced.
+      active.delete(path);
     },
     finish:(raw:RemoteSessionRequest,status:Receipt['status'],sessionId:string|null,code:string|null=null)=>finish(raw,status,sessionId,code) as Promise<Receipt>,
     finishMobile:(raw:RemoteMobileRequest,status:Receipt['status'],sessionId:string|null,code:string|null=null)=>finish(raw,status,sessionId,code) as Promise<MobileReceipt>,
