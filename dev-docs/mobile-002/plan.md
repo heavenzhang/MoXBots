@@ -139,8 +139,10 @@ Primary core27/connection66 test reruns passed. Actual Android arm64 core releas
 ### Source provenance integration and complete iOS build gate
 
 - [x] Primary reviewed Host origin scope/capacity repairs and DeviceStore proof binding; integrated owned Host commits as e9beff6b/0bdaa473 and server PoP/readback commits as344217a4/08ef3b9c. No frozen crypto/protocol or reader artifacts changed.
-- [x] Primary combined regression:185 headless,34 Node Host/asset/receipt and105 mobile SDK tests pass. Backend/core with committed-readback rerun pending. Logs `/tmp/moxbots-mobile-source-primary-{headless,node,sdk}.log`.
+- [x] Primary combined regression:185 headless,34 Node Host/asset/receipt and105 mobile SDK tests pass. Primary full service175 tests/5 existing ignored and strict service clippy pass; core17 and standalone strict clippy pass after SourceChallengeInput repair530e1ac7; HTTP10 recheck passes. Logs `/tmp/moxbots-mobile-source-primary-{headless,node,sdk}.log`.
 - [x] Existing remote macOS job at238a40cb passed real iOS device/simulator Swift/Rust native core preflight; full workflow still running.
 - [ ] Original Node source→private IPC→native publisher→actual temporary service/device stores→durable ACK combined loopback acceptance; provider/physical phone remain separate.
 - [ ] Manual-only complete unsigned iOS simulator app build, including Expo wrapper/Pods/link and embedded JS; no signing/account/license bypass.
-- [ ] Rebuild Android Rust/APK after imported shared OwnedClient changed; old APK remains a previous checkpoint.
+- [x] Rebuilt Android Rust/APK after imported shared OwnedClient changed:27 instrumentation tests, embedded JS, current source/16KiB/signature verification and emulator install pass. APKcbbf253b, see android-build.md. Debug test signing only.
+
+Primary CI repair: c1c32e16 portable job caught the core ten-parameter API; root's standalone check reproduced it and owner repaired via a validated SourceChallengeInput (no blanket lint suppression). JS job caught one prefer-const in a new source unit test; primary repaired only that declaration. Root full lint/dependency/docs checks pass with the existing CLT toolchain environment. Exact-source rerun remains required. Synthetic Web account→notification enable→original chat return was rechecked with draft retained; screenshot `/tmp/moxbots-mobile-ui-review-002/primary-source-integration-chat-return.png` (480px centered UI, not native/390px acceptance).

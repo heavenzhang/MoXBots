@@ -58,3 +58,11 @@ Instrumentation APK 自带的 Rust 库曾掩盖应用 APK 漏包；16项原生�
 - APK SHA256 `67f97eec1ec2d82bc2f8b737816bd2f7620fe72e0ed15504ba180901734146f0`；16KiB ELF/ZIP对齐、签名和实际Rust二进制/当前源码一致性通过。原生sourceDigest `baef71792a5f4478513aa222cd0803e18f247a02040871e7e82415f4c2fc58b4`。报告 `/tmp/moxbots-mobile-notification-offline-apk-verified.json`。
 - 使用 **Android Debug test key**；不是正式上架签名。已通过adb安装到专用emulator-5554（`/tmp/moxbots-mobile-notification-offline-install.log`），未验收原生UI启动/账号/Host/语音/推送。
 - 独立保留制品：`/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/output/mobile-002/native-checkpoints/MoxBots-mobile-002-android-offline-test-67f97eec.apk`；复制后再次核对SHA256一致。尚未交付可日常使用版本。
+
+## 来源适配后的离线测试包（2026-10-18）
+
+共享OwnedClient已变更，本节制品替代上一个67f97eec原生代码检查点。Rust输入commit c1c32e1661a888696d46c60441e1d85cc9287f18、sourceDirty=false、sourceScopeVersion=2，digest `66bfb6fff8e5ed03baff819ccc6a093388535721a9b10ffbc135d32b8483df33`。Rust release30.78s，Android仪器27项（0失败/错误/跳过）与内嵌JS Release包1m32s通过。
+
+APK SHA256 `cbbf253b3566d6398e1b040e0114bb18f9949511acdc0231e911d23917e6be87`。保存文件 `/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/output/mobile-002/native-checkpoints/MoxBots-mobile-002-android-offline-test-cbbf253b.apk`，复制后重新核对SHA，0600。packaging/原生当前源码/ELF与ZIP16KiB/signature验证通过，embedded JS=true，专用emulator-5554 install -r成功。仍使用Debug test key，不是正式内部签名；没有以安装成功替代启动/账号/Host/推送/语音真实路径。
+
+准确日志 `/tmp/moxbots-mobile-source-android-native.log`、`/tmp/moxbots-mobile-source-android-regression-apk.log`、`/tmp/moxbots-mobile-source-apk-verified.json`、`/tmp/moxbots-mobile-source-android-install.log`。

@@ -62,3 +62,7 @@ CI39071442301的macOS预检已实际编译通过device Rust目标，Swift随后�
 ### 完整 iOS 应用构建门禁
 
 新增现有 Test 工作流的手动 `mobile_ios_app=true` 路径，在 GitHub macOS26 上使用真实 Expo prebuild、CocoaPods、Rust XCFramework 与 Xcode Release 模拟器链接；普通 push/PR 保留原自动检查。该路径不使用 Apple 账号或签名，不接受本机 SDK 协议，不替代真机安装。产物要求内嵌非空 main.jsbundle 和正确 bundle ID，保留源码 SHA、原生 provenance 与构建日志。新增构建尚未执行完成。
+
+### 来源接口整合后主Agent回归
+
+185项headless、34项Node原Host/asset/receipt组合、105项SDK、175项service（5既有ignored）、17项notify-core与HTTP定向10项通过。service及core各自strict clippy通过；SDK/headless按现有redline门禁通过。第一次core严格检查实际失败，已由原实现者通过SourceChallengeInput修复；没有降低门禁。完整root lint/依赖/文档核验通过。新版Android27项仪器、离线APK和安装通过；真实跨进程来源联调与当前CI继续开放。
