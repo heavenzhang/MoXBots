@@ -87,7 +87,7 @@ const supplier=httpServer(async(request,response)=>{
 process.once('SIGTERM',()=>{void writeFile(join(root,'stop'),'stop',{mode:0o600});});
 async function control(path:string,body:unknown){
   const {request}=await import('node:http');
-  return new Promise<any>((yes,no)=>{const call=request({socketPath:join(root,'control.sock'),path,method:'POST',headers:{'content-type':'application/json'}},response=>{let data='';response.on('data',c=>data+=c);response.on('end',()=>{try{const value=JSON.parse(data);assert(value.ok,JSON.stringify(value));yes(value.data);}catch(e){no(e);}});});call.on('error',no);call.end(JSON.stringify(body));});
+  return new Promise<Record<string,unknown>>((yes,no)=>{const call=request({socketPath:join(root,'control.sock'),path,method:'POST',headers:{'content-type':'application/json'}},response=>{let data='';response.on('data',c=>data+=c);response.on('end',()=>{try{const value=JSON.parse(data);assert(value.ok,JSON.stringify(value));yes(value.data);}catch(e){no(e);}});});call.on('error',no);call.end(JSON.stringify(body));});
 }
 try{
   assert(process.getuid!()>0);
@@ -122,6 +122,6 @@ try{
   await writeFile(join(root,'host-result.json'),JSON.stringify({calls,seenAttachment,sessions}),{mode:0o600});
 }catch(error){console.error(String(error));console.error(diagnostics.slice(-6000));process.exitCode=1;}
 finally{captureProcesses();for(const c of children.reverse())await stop(c);
-  for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{}}
+  for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{/* already exited */}}
   supplier.closeAllConnections();supplier.close();await writeFile(join(root,'diagnostics.private.log'),diagnostics,{mode:0o600});
 }

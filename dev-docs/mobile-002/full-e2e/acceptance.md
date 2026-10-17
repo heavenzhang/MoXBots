@@ -87,3 +87,13 @@ Live original permission/stop/artifact integration is not yet exercised by this
 package. iOS/Android installation and daily use, real SSO, OS credential stores,
 real two-service-UID isolation, background push, fresh authorization recovery,
 real speech and production/signing all remain separate open gates.
+
+### Red-run cleanup and fixture checks
+
+After the empty-directory failure reached its terminal result, birth-recorded
+service PID 23286, Node fixture 23290, connector 23328 and original Host 23319
+were reread with `ps`; all had exited. The original Host's recorded descendant
+set also reread exited. Loopback public port 53377 and original service port
+53379 had no `LISTEN` entry when checked with `lsof`. No worker or SDK native
+process was created in this red run because no mobile business start occurred.
+Node helper syntax, runner syntax, targeted ESLint and `git diff --check` pass.
