@@ -63,6 +63,8 @@ pub struct NativeConfig {
     /// Native must acquire a fresh authenticated snapshot before constructing.
     trust_expires_at: u64,
     tls_initiator: bool,
+    #[serde(default)]
+    profile: MobileProfile,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -96,6 +98,9 @@ pub enum Intent {
     Request {
         request: RemoteSessionRequest,
     },
+    AssetRequest {
+        request: myagents_host_management_protocol::RemoteAssetRequest,
+    },
     Recover {
         records: Vec<JournalRecord>,
     },
@@ -104,17 +109,31 @@ pub enum Intent {
     Status {},
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum MobileProfile {
+    #[default]
+    Session,
+    Assets,
+}
+enum PendingRequest {
+    Session(RemoteSessionRequest),
+    Asset(myagents_host_management_protocol::RemoteAssetRequest),
+}
 pub struct MobileClient {
     channel: Channel,
     sequences: PairSequences,
     account: NetworkAccountSession,
     target: DeviceScope,
     journal: BTreeMap<String, JournalEntry>,
-    pending: BTreeMap<String, RemoteSessionRequest>,
+    pending: BTreeMap<String, PendingRequest>,
     confirmed: BTreeSet<String>,
     used: bool,
     network_url: String,
     flow: RelayFlow,
+    profile: MobileProfile,
+    assets_negotiated: bool,
+    assets_agent: Option<String>,
 }
 // A single-channel projection of the original PairChannels credit policy.
 // Keep strict cumulative-byte/sequence checks and the same bounded windows.
@@ -282,6 +301,9 @@ impl MobileClient {
             used: false,
             network_url: bootstrap.network_url,
             flow: RelayFlow::default(),
+            profile: config.profile,
+            assets_negotiated: false,
+            assets_agent: None,
         })
     }
     fn digest(
@@ -337,6 +359,166 @@ impl MobileClient {
         );
         Ok(result)
     }
+    fn send_asset(
+        &mut self,
+        request: myagents_host_management_protocol::RemoteAssetRequest,
+    ) -> Result<Value, NetworkError> {
+        use myagents_host_management_protocol::RemoteAssetRequest;
+        if self.profile != MobileProfile::Assets {
+            return Err(error("MOBILE_PROFILE_MISMATCH"));
+        }
+        request
+            .validate()
+            .map_err(|_| error("MOBILE_ASSET_REQUEST_INVALID"))?;
+        if self
+            .assets_agent
+            .as_ref()
+            .is_some_and(|agent| agent != request.agent_id())
+        {
+            return Err(error("MOBILE_ASSET_AGENT_MISMATCH"));
+        }
+        if !self.assets_negotiated && !matches!(&request, RemoteAssetRequest::Capabilities { .. }) {
+            return Err(error("MOBILE_ASSET_CAPABILITY_REQUIRED"));
+        }
+        if self.pending.len() >= MAX_PENDING {
+            return Err(error("MOBILE_PENDING_LIMIT"));
+        }
+        let request_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        if self.assets_agent.is_none() {
+            self.assets_agent = Some(request.agent_id().into());
+        }
+        self.channel.send_management(ManagementMessage::Request {
+            request_id,
+            method: ManagementMethod::RemoteAssets,
+            params: RequestParams::RemoteAssets {
+                remote_assets: request.clone(),
+            },
+        })?;
+        self.pending.insert(
+            request_id.as_uuid().to_string(),
+            PendingRequest::Asset(request),
+        );
+        self.used = true;
+        Ok(json!({"state":"submitted","requestId":request_id}))
+    }
+    fn validate_asset_response(
+        request: &myagents_host_management_protocol::RemoteAssetRequest,
+        result: &myagents_host_management_protocol::RemoteAssetResult,
+    ) -> Result<(), NetworkError> {
+        use myagents_host_management_protocol::{
+            RemoteAssetRequest as Q, RemoteAssetResult as R, UploadState,
+        };
+        let valid = match (request, result) {
+            (_, R::Error { .. }) => true,
+            (
+                Q::Capabilities {
+                    agent_id: expected, ..
+                },
+                R::Capabilities { agent_id, .. },
+            ) => expected == agent_id,
+            (
+                Q::UploadBegin {
+                    agent_id: expected,
+                    upload_id: upload,
+                    size_bytes,
+                    ..
+                },
+                R::Upload {
+                    agent_id,
+                    upload_id,
+                    total_bytes,
+                    ..
+                },
+            ) => expected == agent_id && upload == upload_id && size_bytes == total_bytes,
+            (
+                Q::UploadChunk {
+                    agent_id: expected,
+                    upload_id: upload,
+                    ..
+                }
+                | Q::UploadStatus {
+                    agent_id: expected,
+                    upload_id: upload,
+                    ..
+                },
+                R::Upload {
+                    agent_id,
+                    upload_id,
+                    ..
+                },
+            ) => expected == agent_id && upload == upload_id,
+            (
+                Q::UploadCancel {
+                    agent_id: expected,
+                    upload_id: upload,
+                    ..
+                },
+                R::Upload {
+                    agent_id,
+                    upload_id,
+                    state,
+                    ..
+                },
+            ) => expected == agent_id && upload == upload_id && *state == UploadState::Cancelled,
+            (
+                Q::UploadFinish {
+                    agent_id: expected,
+                    upload_id: upload,
+                    ..
+                },
+                R::Asset {
+                    agent_id,
+                    upload_id,
+                    ..
+                },
+            ) => expected == agent_id && upload == upload_id,
+            (
+                Q::List {
+                    agent_id: expected,
+                    session_id: session,
+                    limit,
+                    ..
+                },
+                R::List {
+                    agent_id,
+                    session_id,
+                    items,
+                    ..
+                },
+            ) => expected == agent_id && session == session_id && items.len() <= *limit as usize,
+            (
+                Q::Read {
+                    agent_id: expected,
+                    session_id: session,
+                    artifact_id: artifact,
+                    offset: requested,
+                    max_bytes,
+                    ..
+                },
+                R::Chunk {
+                    agent_id,
+                    session_id,
+                    artifact_id,
+                    offset,
+                    data_base64,
+                    ..
+                },
+            ) => {
+                expected == agent_id
+                    && session == session_id
+                    && artifact == artifact_id
+                    && requested == offset
+                    && myagents_host_management_protocol::asset_base64_len(data_base64)
+                        .is_some_and(|n| n <= *max_bytes as usize)
+            }
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(error("MOBILE_RESPONSE_SCOPE_MISMATCH"))
+        }
+    }
     fn send(&mut self, request: RemoteSessionRequest) -> Result<Value, NetworkError> {
         request
             .validate()
@@ -353,8 +535,10 @@ impl MobileClient {
             }),
         })?;
         self.used = true;
-        self.pending
-            .insert(request_id.as_uuid().to_string(), request);
+        self.pending.insert(
+            request_id.as_uuid().to_string(),
+            PendingRequest::Session(request),
+        );
         Ok(json!({"state":"submitted", "requestId":request_id}))
     }
     fn call(&mut self, intent: Intent) -> Result<Value, NetworkError> {
@@ -364,7 +548,19 @@ impl MobileClient {
             return Ok(json!({"state":"authorization-required"}));
         }
         self.account.ensure_current()?;
+        if self.profile == MobileProfile::Assets
+            && matches!(
+                &intent,
+                Intent::Prepare { .. }
+                    | Intent::Commit { .. }
+                    | Intent::Request { .. }
+                    | Intent::Recover { .. }
+            )
+        {
+            return Err(error("MOBILE_PROFILE_MISMATCH"));
+        }
         match intent {
+            Intent::AssetRequest { request } => self.send_asset(request),
             Intent::Prepare { request } => self.prepare(request),
             Intent::Commit {
                 operation_id,
@@ -551,12 +747,27 @@ impl MobileClient {
                         .ok_or_else(|| error("MOBILE_UNSOLICITED_RESPONSE"))?;
                     match result {
                         ResponseResult::RemoteSession { data } => {
+                            let PendingRequest::Session(request) = request else {
+                                return Err(error("MOBILE_PROFILE_MISMATCH"));
+                            };
                             data.validate()
                                 .map_err(|_| error("MOBILE_RESPONSE_INVALID"))?;
                             Self::validate_response(&request, &data)?;
                             self.note_receipt(&data)?;
                             out.push(
                                 json!({"kind":"response", "requestId":request_id, "data":data}),
+                            );
+                        }
+                        ResponseResult::RemoteAssets { data } => {
+                            let PendingRequest::Asset(request) = request else {
+                                return Err(error("MOBILE_PROFILE_MISMATCH"));
+                            };
+                            data.validate()
+                                .map_err(|_| error("MOBILE_RESPONSE_INVALID"))?;
+                            Self::validate_asset_response(&request, &data)?;
+                            if matches!(data,myagents_host_management_protocol::RemoteAssetResult::Capabilities{..}) {self.assets_negotiated=true;}
+                            out.push(
+                                json!({"kind":"asset-response","requestId":request_id,"data":data}),
                             );
                         }
                         ResponseResult::Error { code } => {
@@ -687,6 +898,9 @@ mod tests {
                 used: false,
                 network_url: "https://relay.invalid".into(),
                 flow: RelayFlow::default(),
+                profile: MobileProfile::Session,
+                assets_negotiated: false,
+                assets_agent: None,
             },
             b,
             sb,
@@ -846,6 +1060,205 @@ mod tests {
                 .code,
             "MOBILE_RECEIPT_REQUIRED"
         );
+    }
+    fn asset_rpc(
+        client: &mut MobileClient,
+        host: &mut Channel,
+        host_sequences: &mut PairSequences,
+        request: myagents_host_management_protocol::RemoteAssetRequest,
+        result: myagents_host_management_protocol::RemoteAssetResult,
+    ) -> Result<Value, NetworkError> {
+        client.call(Intent::AssetRequest {
+            request: request.clone(),
+        })?;
+        let mut observed = None;
+        while let Some(frame) = client.drain_frame().unwrap() {
+            for event in host
+                .feed_management(decode_tls_frame(&frame).unwrap().1, host_sequences)
+                .unwrap()
+            {
+                if let ManagementEvent::Request {
+                    request_id,
+                    method,
+                    params,
+                } = event
+                {
+                    assert_eq!(method, ManagementMethod::RemoteAssets);
+                    assert_eq!(
+                        params,
+                        RequestParams::RemoteAssets {
+                            remote_assets: request.clone()
+                        }
+                    );
+                    observed = Some(request_id);
+                }
+            }
+        }
+        host.send_management(ManagementMessage::Response {
+            request_id: observed.unwrap(),
+            result: ResponseResult::RemoteAssets { data: result },
+        })
+        .unwrap();
+        let mut last = json!({});
+        while let Some(frame) = host.drain_frame().unwrap() {
+            last = client.feed(&frame)?;
+        }
+        Ok(last)
+    }
+    #[test]
+    fn encrypted_asset_profile_negotiates_and_transfers_bounded_real_chunk() {
+        use myagents_host_management_protocol::{
+            RemoteAssetRequest as Q, RemoteAssetResult as R, UploadState, ASSET_CHUNK_BYTES,
+            ASSET_MAX_BYTES,
+        };
+        let (mut client, mut host, mut sequence) = pair();
+        let upload_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        assert_eq!(
+            client
+                .call(Intent::AssetRequest {
+                    request: Q::Capabilities {
+                        version: 1,
+                        agent_id: "agent".into()
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_PROFILE_MISMATCH"
+        );
+        client.profile = MobileProfile::Assets;
+        assert_eq!(
+            client
+                .call(Intent::AssetRequest {
+                    request: Q::UploadStatus {
+                        version: 1,
+                        agent_id: "agent".into(),
+                        upload_id
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_ASSET_CAPABILITY_REQUIRED"
+        );
+        assert_eq!(
+            client
+                .call(Intent::Prepare {
+                    request: start(upload_id)
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_PROFILE_MISMATCH"
+        );
+        let result = asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::Capabilities {
+                version: 1,
+                agent_id: "agent".into(),
+            },
+            R::Capabilities {
+                version: 1,
+                agent_id: "agent".into(),
+                max_bytes: ASSET_MAX_BYTES,
+                max_chunk_bytes: ASSET_CHUNK_BYTES as u32,
+            },
+        )
+        .unwrap();
+        assert_eq!(result["events"][0]["kind"], "asset-response");
+        assert!(client.assets_negotiated);
+        assert_eq!(client.assets_agent.as_deref(), Some("agent"));
+        assert_eq!(
+            client
+                .call(Intent::AssetRequest {
+                    request: Q::Capabilities {
+                        version: 1,
+                        agent_id: "different".into()
+                    }
+                })
+                .unwrap_err()
+                .code,
+            "MOBILE_ASSET_AGENT_MISMATCH"
+        );
+        let bytes = vec![0xa5; ASSET_CHUNK_BYTES];
+        let digest = format!("{:x}", Sha256::digest(&bytes));
+        asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::UploadBegin {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                name: "capture.png".into(),
+                mime_type: "image/png".into(),
+                size_bytes: bytes.len() as u64,
+                sha256: digest.clone(),
+            },
+            R::Upload {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                received_bytes: 0,
+                total_bytes: bytes.len() as u64,
+                state: UploadState::Uploading,
+            },
+        )
+        .unwrap();
+        let result = asset_rpc(
+            &mut client,
+            &mut host,
+            &mut sequence,
+            Q::UploadChunk {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                offset: 0,
+                data_base64: base64::engine::general_purpose::STANDARD.encode(&bytes),
+                sha256: digest,
+            },
+            R::Upload {
+                version: 1,
+                agent_id: "agent".into(),
+                upload_id,
+                received_bytes: bytes.len() as u64,
+                total_bytes: bytes.len() as u64,
+                state: UploadState::Uploading,
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            result["events"][0]["data"]["receivedBytes"],
+            ASSET_CHUNK_BYTES
+        );
+    }
+    #[test]
+    fn encrypted_asset_response_wrong_agent_closes_epoch() {
+        use myagents_host_management_protocol::{
+            RemoteAssetRequest as Q, RemoteAssetResult as R, ASSET_CHUNK_BYTES, ASSET_MAX_BYTES,
+        };
+        let (mut client, mut host, mut sequence) = pair();
+        client.profile = MobileProfile::Assets;
+        assert_eq!(
+            asset_rpc(
+                &mut client,
+                &mut host,
+                &mut sequence,
+                Q::Capabilities {
+                    version: 1,
+                    agent_id: "agent".into()
+                },
+                R::Capabilities {
+                    version: 1,
+                    agent_id: "foreign".into(),
+                    max_bytes: ASSET_MAX_BYTES,
+                    max_chunk_bytes: ASSET_CHUNK_BYTES as u32
+                }
+            )
+            .unwrap_err()
+            .code,
+            "MOBILE_RESPONSE_SCOPE_MISMATCH"
+        );
+        assert!(client.execute(Intent::Status {}).is_err());
     }
     #[test]
     fn native_controller_can_be_the_deterministic_tls_responder() {

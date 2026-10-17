@@ -21,6 +21,10 @@ MoxMobileClient *mox_mobile_new(const uint8_t *config, size_t config_len,
  * recover: {kind:"recover",records:[<JournalRecord>]} (before connection use)
  * relay-ready: {kind:"relay-ready"} only on authenticated relay confirmation.
  * suspend: {kind:"suspend"} closes epoch permanently. New auth requires new handle.
+ * asset-request: {kind:"asset-request",request:<RemoteAssetRequest version:1>}
+ *   Native config profile:"assets" requires a separate channel. First request is
+ *   capabilities; other asset requests wait for its authenticated matching response.
+ *   Session execution intents are forbidden on an assets profile (and vice versa).
  * status: {kind:"status"}
  * prepare returns {state:"journal-required",record:{operationId,digest,request,target}}.
  * Persist record durably in encrypted native store, THEN commit. Never auto-commit

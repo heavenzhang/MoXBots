@@ -105,3 +105,18 @@ Original session.remote v1 and outer vendored public protocol remain unchanged.
 Pure store receives authenticated native scope; parent wires actual Host/runtime.
 Android NDK is now authorized and installing/being validated by parent; historical
 license blocker above is resolved. iOS SDK/system-admin setup remains parent-owned.
+
+## Asset extension — contract and encrypted controller
+
+- Resume gate passed against remote bdae87ac and verified canonical URL/base.
+- Added closed owned method session.assets.v1, versioned bounded request/result
+  types and Rust/Zod shared valid/invalid fixtures. Public vendored network and
+  original remote_session.rs / remoteSession.ts remain unchanged.
+- Assets uses a separate native profile/channel, authenticated capabilities
+  before data, one Agent binding and typed request/result correlation. File bytes
+  and labels are redacted from new protocol Debug projections.
+- Core 29 tests passed, including encrypted 24KiB asset RPC and foreign-agent
+  response closure. Management codec 26 tests passed; focused new+legacy Vitest
+  fixtures passed with existing Zod 4.1.12 dependencies. No Host path claimed.
+- Store implementation/tests are staged separately next; native integration is
+  still parent-owned. Android native rebuild with this extension is not yet run.
