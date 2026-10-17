@@ -79,3 +79,22 @@ provider, phone and deployment acceptance remain outside this package.
 
 No new dependencies, lock changes, frozen schema changes or further agents.
 Requested model6.1-sol/medium; actual serving model, token usage and cost unknown.
+
+## Follow-up: persisted type evidence
+
+Review of the actual `admin-config.ts` strict loader confirms
+`validIdentityRows` already requires Agent `name` to be a string and `enabled`
+to be a boolean; otherwise `loadConfig({strict:true})` throws `REGISTRY_CORRUPT`.
+Thus the prior String(name)/truthiness expressions were not reachable with
+malformed persisted types. The catalog now projects `name` directly and selects
+only `enabled === true`, removing unnecessary coercion without changing the
+registry owner or filling defaults.
+
+A real temporary-registry regression writes12 malformed name/enabled variants
+(including omitted/null/object/array/numeric values, truthy string enabled and
+invalid name on a disabled Agent). All reject with the original fixed corruption
+error, never call the workspace verifier, and leave config/projects bytes intact;
+restoring a valid row then succeeds through the same catalog owner. Final focused
+suite:7 passed,139ms test/803ms total; eslint and root tsc exit0. No production
+defect red was fabricated: the existing strict owner already rejected these rows.
+Only helper/test/documentation/task record changed in this follow-up.

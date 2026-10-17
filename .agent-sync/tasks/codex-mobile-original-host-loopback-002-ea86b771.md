@@ -97,3 +97,10 @@ Only owned catalog/IPC/connector/tests and this record are submitted; main,
 passing scripts, parent plan, workflows, dependencies and frozen protocol remain
 unchanged. Next: primary wires the three-line owner dispatch and independently
 tests the real initial targets path. No production deployment authorized.
+
+Catalog review follow-up (owned-diff base7ffd750c): original strict loader already
+validates string name/boolean enabled and throws REGISTRY_CORRUPT; remove redundant
+catalog coercion anyway. Added12 real malformed-registry variants proving original
+fail-closed/no repair/no workspace access, then valid restoration. Node7 tests,
+focused eslint and root tsc pass; exact evidence in catalog-acceptance.md. No
+registry owner/main/Native/protocol change; parent actual integration remains open.

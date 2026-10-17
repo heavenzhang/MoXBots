@@ -49,7 +49,7 @@ export function createHostMobileAgentCatalog(options:Options){
       }
       for(const selected of projection.agentProjections){
         const {agent,project}=selected;
-        if(!agent.enabled)continue;
+        if(agent.enabled!==true)continue;
         try{assertOrdinaryRemoteAgent(agent.id,privateLedger);}catch(error){if(error instanceof HostRemoteError&&error.code==='REMOTE_SESSION_PRIVATE')continue;throw error;}
         const runtimeConfig=agent.runtimeConfig;
         const runtimeSource=runtimeConfig&&typeof runtimeConfig==='object'&&'source' in runtimeConfig?runtimeConfig.source:undefined;
@@ -61,7 +61,7 @@ export function createHostMobileAgentCatalog(options:Options){
         if(!remoteSessionRequestSchema.safeParse({kind:'capabilities',agentId:agent.id}).success)fail('CATALOG_INVALID');
         const path=await options.workspacePath(selected.workspacePath);
         if(!workspacePathsEqual(path,selected.workspacePath))fail('CATALOG_CHANGED');
-        items.push({localAgentId:agent.id,localWorkspaceId:ownerProject.id,name:String(agent.name),path,
+        items.push({localAgentId:agent.id,localWorkspaceId:ownerProject.id,name:agent.name,path,
           lifecycle:'active',exposureRevision:ownerProject.agentNetworkExposureRevision??0,icon:ownerProject.icon??null});
       }
       items.sort((a,b)=>a.localAgentId<b.localAgentId?-1:a.localAgentId>b.localAgentId?1:0);
