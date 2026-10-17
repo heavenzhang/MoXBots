@@ -5,6 +5,7 @@ export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' |
 const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-identity-main', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
 const offlineTarget: Target = { targetId: 'qa-offline-target', identityKey: 'qa-identity-offline', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
 const account: Account = { kind: 'account', state: 'signed-in', displayName: '演示账号', principalId: 'qa-principal' };
+let fixtureAccount: Account = account;
 let scenario: QaScenario = 'conversation';
 let active: Snapshot | null = null;
 let staleApprovalNextRead = false;
@@ -14,6 +15,7 @@ export function selectScenario(next: QaScenario): void {
   scenario = next;
   active = null;
   staleApprovalNextRead = false;
+  fixtureAccount = account;
 }
 
 export function armStaleApproval(): void {
@@ -21,7 +23,8 @@ export function armStaleApproval(): void {
 }
 
 export function fixtureReply(intent: NativeIntent): unknown {
-  if (intent.kind === 'account.status' || intent.kind === 'account.login.poll' || intent.kind === 'account.logout') return intent.kind === 'account.logout' ? { kind: 'account', state: 'signed-out', displayName: null, principalId: null } : account;
+  if (intent.kind === 'account.status' || intent.kind === 'account.login.poll') return fixtureAccount;
+  if (intent.kind === 'account.logout') { fixtureAccount = { kind: 'account', state: 'signed-out', displayName: null, principalId: null }; return fixtureAccount; }
   if (intent.kind === 'account.login.start') return { kind: 'login', authorizationUrl: 'https://example.invalid/qa-only', expiresAt: 0 };
   if (intent.kind === 'targets.list') {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };

@@ -1,9 +1,10 @@
 import { StatusBar } from 'expo-status-bar';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, Sparkles, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
@@ -364,10 +365,13 @@ function AppBody() {
     }
   }, [commitSnapshot, loadMobileCatalog, moveOwner]);
 
-  useEffect(() => {
-    const timer = setTimeout(() => { void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error')); }, 0);
-    return () => clearTimeout(timer);
-  }, [loadAccount, say]);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    void loadAccount().catch((error) => {
+      if (active) say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error');
+    });
+    return () => { active = false; };
+  }, [loadAccount, say]));
   useEffect(() => {
     if (loginStarted) {
       const poll = createSingleFlightPoll(async (isCurrent) => {
@@ -923,6 +927,9 @@ function AppBody() {
   };
   const sendAvailability = sendProtocol(mobileMode, draft.trim(), selectedModelId, attachments.map((item) => ({ state: item.upload?.state ?? (item.errorCode ? 'error' : 'uploading'), assetId: item.upload?.assetId ?? null })));
   const canSubmit = sendAvailability !== 'blocked' && !!target?.online && !sending && !blocksMutation;
+  const chatPendingReceipt = screen === 'chat' ? pending.find((item) => item.status !== 'prepared'
+    && item.targetId === target?.targetId && item.agentId === (snapshot?.agentId ?? target?.agentId)
+    && item.sessionId === (snapshot?.sessionId ?? null)) : undefined;
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
@@ -940,7 +947,7 @@ function AppBody() {
     </View>}
 
     {screen === 'sessions' && <View style={styles.fill}>
-      <Topbar left="刷新会话" onBack={() => void run('sessions', loadSessions)} right={{ label: '刷新', onPress: () => void run('sessions', loadSessions) }}/>
+      <Topbar left="刷新会话" onBack={() => void run('sessions', loadSessions)} right={{ label: '刷新', onPress: () => void run('sessions', loadSessions) }} avatar={{ label: '账号与设置', onPress: () => router.push('/account') }}/>
       <View style={styles.targetsBar}>
         <Text style={styles.sectionEyebrow}>BOT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -966,6 +973,7 @@ function AppBody() {
       {resultsOpen && <View style={styles.smallMenu}><Text style={styles.caption}>{isFixtureMode ? '此演示会话没有附件成果。' : '当前没有可读取的会话成果。'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭成果面板" onPress={() => setResultsOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
       {menuOpen && <View style={styles.smallMenu}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
       {notice && <NoticeView notice={notice}/>}
+      {chatPendingReceipt && <View style={{ marginHorizontal: 16, marginVertical: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.canvas, flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ flex: 1, color: C.muted, fontSize: 12, lineHeight: 17 }}>消息状态待确认 · {receiptLabels[receiptStates[chatPendingReceipt.operationId] ?? chatPendingReceipt.status]}。不会自动重发。</Text><Pressable accessibilityRole="button" accessibilityLabel="查询这条消息的操作状态" accessibilityHint="只查询原操作回执，不会重新发送消息" accessibilityState={{ disabled: !target?.online || loading || sending }} disabled={!target?.online || loading || sending} onPress={() => void run('receipt', () => queryPending(chatPendingReceipt))} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6 }}><RefreshCw size={15} color={target?.online && !loading && !sending ? C.green : C.muted}/><Text style={[styles.pendingLink, (!target?.online || loading || sending) && styles.pendingLinkDisabled]}>{loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线'}</Text></Pressable></View>}
       <ScrollView ref={scrollRef} style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
         {snapshot?.state === 'unavailable' && <EmptyState title="会话暂时不可用" detail="请刷新状态或检查设备连接。" action="重新读取" onAction={() => void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }))}/>}
@@ -1021,8 +1029,8 @@ function AppBody() {
   </KeyboardAvoidingView></SafeAreaView>;
 }
 
-function Topbar({ left, onBack, right }: { left: string; onBack: () => void; right?: { label: string; onPress: () => void } }) {
-  return <View style={styles.topbar}><Pressable accessibilityRole="button" accessibilityLabel={left} onPress={onBack} hitSlop={8} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable><View style={styles.brand}><Text style={styles.brandName}>MOXBOTS</Text><Text style={styles.brandSub}>REMOTE</Text></View>{right ? <Pressable accessibilityRole="button" accessibilityLabel={right.label} onPress={right.onPress} style={styles.headerAction}><Text style={styles.headerActionText}>{right.label}</Text></Pressable> : <View style={styles.headerRight}/>}</View>;
+function Topbar({ left, onBack, right, avatar }: { left: string; onBack: () => void; right?: { label: string; onPress: () => void }; avatar?: { label: string; onPress: () => void } }) {
+  return <View style={styles.topbar}><Pressable accessibilityRole="button" accessibilityLabel={left} onPress={onBack} hitSlop={8} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable><View style={styles.brand}><Text style={styles.brandName}>MOXBOTS</Text><Text style={styles.brandSub}>REMOTE</Text></View><View style={styles.headerRight}/>{right && <Pressable accessibilityRole="button" accessibilityLabel={right.label} onPress={right.onPress} style={styles.headerAction}><Text style={styles.headerActionText}>{right.label}</Text></Pressable>}{avatar && <Pressable accessibilityRole="button" accessibilityLabel={avatar.label} onPress={avatar.onPress} hitSlop={6} style={styles.accountAvatar}><CircleUserRound size={22} color={C.green}/></Pressable>}</View>;
 }
 
 function formatMessageTime(value: string): string {
@@ -1053,7 +1061,7 @@ function ApprovalCard({ item, onRespond, disabled }: { item: Interaction; onResp
 export default function App() { return <SafeAreaProvider><AppBody/></SafeAreaProvider>; }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.paper }, fill: { flex: 1 }, appFrame: Platform.OS === 'web' ? { width: '100%', maxWidth: 480, alignSelf: 'center', borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.line } : {}, topbar: { height: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 44, height: 44, justifyContent: 'center' }, backText: { fontSize: 34, lineHeight: 40, color: C.ink, fontWeight: '300' }, brand: { marginLeft: 4, flexDirection: 'row', alignItems: 'baseline', gap: 7 }, brandName: { color: C.ink, fontSize: 14, fontWeight: '800', letterSpacing: 1.1 }, brandSub: { color: C.muted, fontSize: 9, fontWeight: '700', letterSpacing: 1.4 }, headerRight: { flex: 1 }, headerAction: { marginLeft: 'auto', minWidth: 52, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }, headerActionText: { color: C.green, fontSize: 14, fontWeight: '600' },
+  safe: { flex: 1, backgroundColor: C.paper }, fill: { flex: 1 }, appFrame: Platform.OS === 'web' ? { width: '100%', maxWidth: 480, alignSelf: 'center', borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.line } : {}, topbar: { height: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 44, height: 44, justifyContent: 'center' }, backText: { fontSize: 34, lineHeight: 40, color: C.ink, fontWeight: '300' }, brand: { marginLeft: 4, flexDirection: 'row', alignItems: 'baseline', gap: 7 }, brandName: { color: C.ink, fontSize: 14, fontWeight: '800', letterSpacing: 1.1 }, brandSub: { color: C.muted, fontSize: 9, fontWeight: '700', letterSpacing: 1.4 }, headerRight: { flex: 1 }, headerAction: { marginLeft: 'auto', minWidth: 52, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }, headerActionText: { color: C.green, fontSize: 14, fontWeight: '600' }, accountAvatar: { width: 44, height: 44, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
   loginPage: { flex: 1, backgroundColor: C.canvas }, loginCard: { marginHorizontal: 24, marginTop: 88, padding: 24, borderRadius: 20, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line }, logoMark: { width: 48, height: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: C.greenWash }, logoMarkText: { fontSize: 23, color: C.green, fontWeight: '800' }, title: { marginTop: 18, fontSize: 24, letterSpacing: -0.4, fontWeight: '700', color: C.ink }, subtitle: { marginTop: 6, color: C.muted, fontSize: 14, lineHeight: 21 }, primaryButton: { height: 50, marginTop: 24, borderRadius: 12, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 15, fontWeight: '700' }, pendingLogin: { alignItems: 'center', paddingVertical: 25, gap: 10 }, body: { color: C.ink, fontSize: 15 }, caption: { color: C.muted, fontSize: 12, lineHeight: 18 },
   targetsBar: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }, sectionEyebrow: { color: C.muted, fontWeight: '700', fontSize: 10, letterSpacing: 1.2, marginBottom: 9 }, chips: { gap: 8, paddingRight: 18 }, targetChip: { minHeight: 44, maxWidth: 220, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderRadius: 22, borderWidth: 1, borderColor: C.line, gap: 8 }, targetChipActive: { borderColor: C.green, backgroundColor: C.greenWash }, targetChipText: { color: C.muted, fontSize: 13, fontWeight: '600' }, targetChipTextActive: { color: C.green }, dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green }, dotOff: { backgroundColor: '#B5BBB7' },
   listHead: { paddingHorizontal: 20, paddingTop: 13, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, newButton: { height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.green, justifyContent: 'center' }, newButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' }, sessionList: { paddingHorizontal: 16, paddingBottom: 30 }, sessionRow: { flexDirection: 'row', alignItems: 'center', minHeight: 78, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line }, sessionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center' }, sessionIconText: { fontSize: 18, color: C.green }, sessionCopy: { marginLeft: 12, flex: 1 }, sessionTitle: { color: C.ink, fontWeight: '600', fontSize: 15 }, sessionPreview: { color: C.muted, fontSize: 12, marginTop: 5 }, chevron: { marginLeft: 8, color: '#A7AEA9', fontSize: 25 },
