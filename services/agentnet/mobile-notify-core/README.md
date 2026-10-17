@@ -1,20 +1,23 @@
 # AgentNet mobile notification core
 
 This crate defines bounded registration and notification-hint contracts plus a
-private SQLite endpoint/outbox owner. It does not register HTTP routes, contact
-APNs/FCM, inspect Host session content, authorize a Host, or execute a Session
-action.
+private SQLite endpoint/outbox owner. `services/agentnet/src/mobile_notification_http.rs`
+is a separate authenticated adapter for local tests and is not mounted by the
+service server. Neither crate contacts APNs/FCM, inspects Host session content,
+authorizes a Host connection, nor executes a Session action. Push delivery,
+provider integration, and cold-start restoration are not implemented.
 
 ## Authority boundary
 
 `Authority` and `FreshEndpoint` are ordinary Rust values, not cryptographic
 capabilities. This crate does not consult `AuthStore`, `DeviceStore`, live relay
-state, or current Host/session ownership. A future service adapter must create
-them only after a fresh check of the active AuthStore session and exact
-DeviceStore owner, identity binding, and generation. It must repeat the live
-check immediately before claiming/sending a delivery and before resolving a
-hint. Never deserialize these authority values from HTTP, Host, push, or mobile
-input. Store matching is defense in depth, not an authorization decision.
+state, or current Host/session ownership. The internal HTTP adapter creates
+these values only after checking the live AuthStore session and exact
+DeviceStore owner, identity binding, and generation. Each register, revoke, and
+redeem operation performs that check. A future delivery worker must repeat it
+immediately before claiming/sending a delivery. Never deserialize authority
+values from HTTP, Host, push, or mobile input. Store matching is defense in
+depth, not an authorization decision.
 
 The event source contract is intended for a separately authenticated owned-HTTP
 extension (or authenticated local Host IPC followed by that extension). It does

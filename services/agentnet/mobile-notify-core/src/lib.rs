@@ -312,6 +312,17 @@ impl FreshEndpoint {
 pub struct EndpointId(String);
 
 impl EndpointId {
+    /// Parse a canonical endpoint UUID received from an authenticated client.
+    /// This exposes no authority: every store operation still checks its
+    /// account, device, binding, and generation scope.
+    pub fn parse(value: impl Into<String>) -> Result<Self, NotifyError> {
+        let value = value.into();
+        if !canonical_uuid(&value) {
+            return Err(NotifyError::InvalidInput);
+        }
+        Ok(Self(value))
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
@@ -1445,6 +1456,15 @@ mod tests {
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let store = Store::open(dir.path()).unwrap();
         (dir, store)
+    }
+
+    #[test]
+    fn endpoint_id_parser_accepts_only_canonical_uuid() {
+        let valid = "77777777-7777-4777-8777-777777777777";
+        assert_eq!(EndpointId::parse(valid).unwrap().as_str(), valid);
+        assert!(EndpointId::parse("not-an-id").is_err());
+        assert!(EndpointId::parse("77777777777747778777777777777777").is_err());
+        assert!(EndpointId::parse("77777777-7777-4777-8777-77777777777A").is_err());
     }
 
     fn register(store: &Store, auth: &Authority, token: &str, now: i64) -> EndpointId {
