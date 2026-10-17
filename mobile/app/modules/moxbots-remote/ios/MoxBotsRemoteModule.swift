@@ -5,7 +5,9 @@ import UIKit
 public final class MoxBotsRemoteModule: Module {
   private let queue = DispatchQueue(label: "com.moxbots.mobile.remote.owner", qos: .userInitiated)
   private var connection: NativeConnection?
+  private var ownerActive = true // owner queue only
   private var backgroundObserver: NSObjectProtocol?
+  private var attachmentPicker: NativeAttachmentPicker? // main-thread owned
   private lazy var speech = NativeSpeech { [weak self] event in
     self?.sendEvent("speechChanged", event.projection)
   }
@@ -34,16 +36,14 @@ public final class MoxBotsRemoteModule: Module {
         DispatchQueue.main.async { self.handleSpeech(kind, promise: promise) }
         return
       }
+      if let bytes = input.data(using: .utf8), bytes.count <= 64 * 1024,
+        let intent = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any],
+        let kind = intent["kind"] as? String, kind.hasPrefix("attachment.") {
+        self.handleAttachmentIntent(intent, promise: promise); return
+      }
       self.queue.async {
         do {
-          if self.connection == nil {
-            let origin = Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String
-              ?? "https://140.143.183.232"
-            self.connection = try NativeConnection(origin: origin,
-              bundle: Bundle.main.bundleIdentifier ?? "com.moxbots.mobile.internal")
-          }
-          guard let connection = self.connection else { throw NativeFailure("MOBILE_CONNECTION_UNAVAILABLE") }
-          promise.resolve(try connection.request(input))
+          promise.resolve(try self.ensureConnection().request(input))
         } catch let error as NativeFailure { promise.resolve(Self.failure(error.code)) }
         catch { promise.resolve(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")) }
       }
@@ -51,8 +51,80 @@ public final class MoxBotsRemoteModule: Module {
     OnDestroy { [weak self] in
       guard let self else { return }
       if let observer = self.backgroundObserver { NotificationCenter.default.removeObserver(observer) }
-      DispatchQueue.main.async { self.speech.cancel() }
-      self.queue.async { self.connection?.close(); self.connection = nil }
+      DispatchQueue.main.async { self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
+      self.queue.async { self.ownerActive = false; self.connection?.close(); self.connection = nil }
+    }
+  }
+  private func ensureConnection() throws -> NativeConnection {
+    guard ownerActive else { throw NativeFailure("MOBILE_CONNECTION_UNAVAILABLE") }
+    if connection == nil {
+      connection = try NativeConnection(
+        origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232",
+        bundle: Bundle.main.bundleIdentifier ?? "com.moxbots.mobile.internal")
+    }
+    guard let connection else { throw NativeFailure("MOBILE_CONNECTION_UNAVAILABLE") }
+    return connection
+  }
+  private func accountScope() throws -> String {
+    let raw = try ensureConnection().request("{\"version\":1,\"kind\":\"account.status\"}")
+    guard let data = raw.data(using: .utf8),
+      let account = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+      account["kind"] as? String == "account", account["state"] as? String == "signed-in",
+      let principal = account["principalId"] as? String, !principal.isEmpty, principal.utf8.count <= 256 else {
+      throw NativeFailure("MOBILE_AUTHORIZATION_REQUIRED")
+    }
+    return (Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232") + "\u{0}" + principal
+  }
+  private func attachmentOwner(_ scope: String) throws -> NativeAttachments {
+    try NativeAttachments(scope: scope, bundle: Bundle.main.bundleIdentifier ?? "com.moxbots.mobile.internal")
+  }
+  private func resolve(_ value: [String: Any], promise: Promise) {
+    guard let bytes = try? JSONSerialization.data(withJSONObject: value), let text = String(data: bytes, encoding: .utf8) else {
+      promise.resolve(Self.failure("MOBILE_ATTACHMENT_RESPONSE_INVALID")); return
+    }
+    promise.resolve(text)
+  }
+  private func handleAttachmentIntent(_ intent: [String: Any], promise: Promise) {
+    guard intent["version"] as? Int == 1, let kind = intent["kind"] as? String else {
+      promise.resolve(Self.failure("MOBILE_INTENT_INVALID")); return
+    }
+    let valid = (kind == "attachment.list" && intent.count == 2)
+      || (kind == "attachment.pick" && intent.count == 3 && ["file", "image"].contains(intent["source"] as? String ?? ""))
+      || (kind == "attachment.remove" && intent.count == 3 && (intent["localId"] as? String)?.count == 36)
+    guard valid else { promise.resolve(Self.failure("MOBILE_INTENT_INVALID")); return }
+    queue.async {
+      do {
+        let scope = try self.accountScope()
+        if kind == "attachment.list" { self.resolve(try self.attachmentOwner(scope).list(), promise: promise) }
+        else if kind == "attachment.remove", let id = intent["localId"] as? String {
+          self.resolve(try self.attachmentOwner(scope).remove(id), promise: promise)
+        } else {
+          DispatchQueue.main.async {
+            guard self.attachmentPicker == nil else { promise.resolve(Self.failure("MOBILE_ATTACHMENT_PICKER_BUSY")); return }
+            self.attachmentPicker = NativeAttachmentPicker(importer: { [weak self] url, image, name in
+              guard let self else { throw NativeFailure("MOBILE_ATTACHMENT_CANCELLED") }
+              return try self.queue.sync {
+                guard try self.accountScope() == scope else { throw NativeFailure("MOBILE_ACCOUNT_CHANGED") }
+                let files = try self.attachmentOwner(scope)
+                let picked = try files.importPicked(url, image: image, suggestedName: name)
+                guard try self.accountScope() == scope else {
+                  if let id = picked["localId"] as? String { _ = try? files.remove(id) }
+                  throw NativeFailure("MOBILE_ACCOUNT_CHANGED")
+                }
+                return picked
+              }
+            }, completion: { result in
+              self.attachmentPicker = nil
+              switch result {
+              case .success(let value): self.resolve(value, promise: promise)
+              case .failure(let error): promise.resolve(Self.failure((error as? NativeFailure)?.code ?? "MOBILE_ATTACHMENT_UNAVAILABLE"))
+              }
+            })
+            self.attachmentPicker?.present(image: intent["source"] as? String == "image")
+          }
+        }
+      } catch let error as NativeFailure { promise.resolve(Self.failure(error.code)) }
+      catch { promise.resolve(Self.failure("MOBILE_ATTACHMENT_UNAVAILABLE")) }
     }
   }
   private func handleSpeech(_ kind: String, promise: Promise) {
