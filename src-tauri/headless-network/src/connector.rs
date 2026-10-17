@@ -591,6 +591,32 @@ async fn connect(
         },
     )
     .await?;
+    let source_ready = Arc::new(AtomicBool::new(false));
+    let source_signal = source_ready.clone();
+    let source_identity = identity.clone();
+    let source_scope = scope.clone();
+    let source_local = local.clone();
+    let source_publisher = async move {
+        if let (Some(connection), Some(runtime)) = (owned, management) {
+            let authority = crate::management_ipc::LocalSourceAuthority {
+                connection: source_scope,
+                local: source_local,
+                account_binding: source_identity.account.binding_id().into(),
+                management_binding: runtime.binding.account_binding().into(),
+            };
+            crate::notification_source::run(
+                connection,
+                runtime.ipc,
+                runtime.binding,
+                source_identity,
+                authority,
+                source_signal,
+            )
+            .await;
+        }
+        std::future::pending::<()>().await;
+    };
+    tokio::pin!(source_publisher);
     let mut ready = false;
     let mut execution_fence: Option<ExecutionFence> = None;
     let management_enabled =
@@ -604,6 +630,7 @@ async fn connect(
     loop {
         identity.account.ensure_current()?;
         tokio::select! {
+        _=&mut source_publisher=>{},
         incoming=socket.next()=>{
         last_server=Instant::now();
         match incoming{
@@ -615,7 +642,7 @@ async fn connect(
         if owned.is_some() { crate::agent_network::owned_profile::control(&envelope.message)?; }
         control_gate(&envelope.message,&scope,true,true)?;
         match envelope.message{
-        ServerMessage::Ready{catalog_seq:1,..} if !ready=>{ready=true;backoff.recovered();publish(owner,path,"ready",Some(&scope.network_id),true,None)?;execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;},
+        ServerMessage::Ready{catalog_seq:1,..} if !ready=>{ready=true;source_ready.store(true,Ordering::Release);backoff.recovered();publish(owner,path,"ready",Some(&scope.network_id),true,None)?;execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;},
         ServerMessage::Changed{change:ChangeScope::Settings|ChangeScope::Catalog,..}=>{drop(execution_fence.take());publish(owner,path,"hydrating",Some(&scope.network_id),false,None)?;policy=if owned.is_some(){policy::hydrate_owned(&transport,&identity.token,&local).await?}else{policy::hydrate(&transport,&identity.token,&local).await?};if identity.account.is_management_only()&&!policy.joined{return Err(NetworkError::new("OWNED_MEMBERSHIP_REQUIRED"));}publish(owner,path,if ready{"ready"}else{"hydrating"},Some(&scope.network_id),ready,None)?;if ready{execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;}},
         ServerMessage::Changed{..} if identity.account.is_management_only()=>{
             drop(execution_fence.take());

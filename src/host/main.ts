@@ -20,7 +20,7 @@ import { stopBotChild } from './bot-child-stop';
 import { atomicModifyConfig, loadConfig, loadProjects, materializeProviderRouteEnv, resolveWorkspaceConfig } from '../server/utils/admin-config';
 import { createConcreteProviderRoute, isConcreteProviderRoute } from '../shared/providerRoute';
 import { createHostResourceOwner, HostResourceError, type HostResourceRequest } from './resources';
-import { connectHostManagementIpc } from './management-ipc';
+import { connectHostManagementIpc, type LocalSourceAuthority } from './management-ipc';
 import { createHostProviderCredentialOwner, HostProviderCredentialError, type ProviderCredentialInput } from './provider-credentials';
 import { HOST_PROVIDER_REFERENCE, readHostSystemdCredential, resolveHostProviderCredential } from '../server/utils/host-credentials';
 import { withWorkspaceAgentRegistrationIntent } from '../server/utils/agent-workspace-identity';
@@ -32,6 +32,7 @@ import { REMOTE_SESSION_BYTES } from '../shared/remoteSession';
 import { remoteMobileRequestSchema, remoteMobileResultSchema } from '../shared/remoteMobile';
 import { imSnapshotObservation } from '../server/routes/im-model-selection';
 import { HostMobileAssetStaging } from './mobile-asset-staging';
+import { HostNotificationSource, isOriginalSourceWorker, uniqueSourceAgent } from './mobile-notify-source';
 import { admitHeadlessMobileStart } from './headless-mobile-start';
 
 const stateDir = resolve(process.env.MYAGENTS_HOST_STATE_DIR ?? '/var/lib/myagents-host-test');
@@ -41,7 +42,7 @@ const configPath = join(home, '.myagents', 'config.json');
 const workspaceRoot = join(stateDir, 'workspaces');
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_BODY = 1024 * 1024;
-type Active = { child: ChildProcess; generation: string; sessionId: string; closing: boolean; bot?: BotRunIdentity; botBootstrap?: HostBotBootstrap };
+type Active = { sourceAuthority?:LocalSourceAuthority; child: ChildProcess; generation: string; sessionId: string; closing: boolean; bot?: BotRunIdentity; botBootstrap?: HostBotBootstrap };
 
 async function jsonFile<T>(path: string, fallback: T): Promise<T> {
   try { return JSON.parse(await readFile(path, 'utf8')) as T; }
@@ -169,11 +170,11 @@ async function serve(): Promise<void> {
     );
   }
 
-  function workerCall(target: Active, operation: HostSessionOperation, args: Record<string, unknown> = {}): Promise<unknown> {
+  function workerCall(target: Active, operation: HostSessionOperation, args: Record<string, unknown> = {}, timeoutMs=60000): Promise<unknown> {
     if (target.closing && operation !== 'shutdown') return Promise.reject(new Error('Session is closing'));
     return new Promise((resolveCall, reject) => {
       const id = randomUUID();
-      const timer = setTimeout(() => { pending.delete(id); reject(new Error('Session request outcome is unconfirmed; inspect state, do not resend automatically')); }, 60000);
+      const timer = setTimeout(() => { pending.delete(id); reject(new Error('Session request outcome is unconfirmed; inspect state, do not resend automatically')); }, timeoutMs);
       pending.set(id, { active: target, resolve: resolveCall, reject, timer });
       target.child.send({ id, generation: target.generation, operation, args } as HostSessionRequest, (error) => {
         if (!error) return;
@@ -244,7 +245,7 @@ async function serve(): Promise<void> {
         ...(bot ? {MYAGENTS_HOST_BOT_BOOTSTRAP:Buffer.from(JSON.stringify(bot)).toString('base64url')} : {}) },
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     });
-    const target: Active = { child, generation, sessionId: sessionId ?? '', closing: false, ...(bot ? {botBootstrap:bot}: {}) };
+    const target: Active = { sourceAuthority:notificationSource.capture(), child, generation, sessionId: sessionId ?? '', closing: false, ...(bot ? {botBootstrap:bot}: {}) };
     let credentialDelivered = false;
     active = target;
     child.on('exit', () => {
@@ -267,6 +268,9 @@ async function serve(): Promise<void> {
         });
         credential = undefined;
         return;
+      }
+      if(reply?.type==='terminal'&&isOriginalSourceWorker(active,target,reply.generation,reply.sessionId,shuttingDown)){
+        void observeSource(target,`terminal:${randomUUID()}`).catch(()=>{process.stderr.write('HOST_NOTIFICATION_SOURCE_UNCONFIRMED\n');});return;
       }
       if (!reply || reply.generation !== generation || reply.type !== 'reply') return;
       const entry = pending.get(reply.id);
@@ -311,6 +315,21 @@ async function serve(): Promise<void> {
     if (agent.runtimePreference !== undefined && !preference) throw new HostRemoteError('REMOTE_SESSION_RUNTIME_UNSUPPORTED');
     return {workspacePath:await workspacePath(selected.workspacePath),runtime:preference ? runtimeTypeForAgentRuntimePreference(preference):'builtin'};
   };
+  const notificationSource=new HostNotificationSource(join(stateDir,'mobile-notify-source-v1'),async item=>{
+    try{const agent=await resolveRemoteAgent(item.agentId);await remoteSessions.validateSession(item.sessionId,agent.workspacePath);return true;}catch{return false;}
+  });
+  let sourceObservationPending=false;
+  async function observeSource(target:Active,observation:string){
+    if(active!==target||target.bot||target.botBootstrap||target.closing||shuttingDown||!target.sourceAuthority)return;
+    const store=await import('../server/SessionStore');const metadata=store.getSessionMetadata(target.sessionId);if(!metadata)return;
+    const resources=await resourceOwner.inspect();
+    // Ambiguous/shared workspace registrations cannot establish source ownership.
+    const agentId=uniqueSourceAgent(resources.agents,metadata.agentDir);if(!agentId)return;
+    const agent=await resolveRemoteAgent(agentId);
+    await remoteSessions.validateSession(target.sessionId,agent.workspacePath);
+    if(active!==target||target.bot||target.closing)return;
+    await notificationSource.observe(target.sourceAuthority,{agentId,sessionId:target.sessionId,workerGeneration:target.generation,observation},()=>isOriginalSourceWorker(active,target,target.generation,target.sessionId,shuttingDown));
+  }
   const remoteSessions = createHostRemoteSessionService({
     resolveAgent:resolveRemoteAgent,
     async validateSession(sessionId,workspace) {
@@ -520,8 +539,27 @@ async function serve(): Promise<void> {
         expectedGid: Number(managementGid),
         dispatch: dispatchManagement,
         expectedDeviceId: identity.hostId,
+        dispatchLocalSource:async(authority,operation)=>{
+          if(shuttingDown||authority.local.deviceId!==identity.hostId)throw Error('SOURCE_OWNER_CHANGED');
+          const result=await notificationSource.request(authority,operation);
+          if(operation.kind==='source.peek'&&active&&!active.bot&&!active.closing&&!sourceObservationPending){
+            const target=active;
+            sourceObservationPending=true;
+            // A read-only child projection may be slow. Never retain the private
+            // IPC dispatcher/transport lock while waiting for the Session owner.
+            void (async()=>{
+              const state=await workerCall(target,'state',{},1000) as {replay?:{pendingInteractiveRequests?:Array<{data?:{requestId?:string}}>}};
+              for(const item of (state.replay?.pendingInteractiveRequests??[]).slice(0,8)){
+                const id=item.data?.requestId;
+                if(typeof id==='string'&&id.length<=128)await observeSource(target,`interactive:${id}`);
+              }
+            })().catch(()=>{process.stderr.write('HOST_NOTIFICATION_SOURCE_UNCONFIRMED\n');}).finally(()=>{sourceObservationPending=false;});
+          }
+          return result;
+        },
         dispatchInternal: async (authority, operation) => {
           if (authority.local.deviceId !== identity.hostId || shuttingDown) throw new Error('HOST_MANAGEMENT_OWNER_CHANGED');
+          notificationSource.activate({connection:authority.connection,local:authority.local,accountBinding:authority.accountBinding,managementBinding:authority.managementBinding});
           if (operation.kind.startsWith('asset.stage.')) return mobileAssetStaging.handle(authority, operation);
           if(operation.kind==='assets.request'&&operation.request.kind==='list'){
             const target=await ensureOwnerWorker(operation.request.agentId,operation.request.sessionId);
