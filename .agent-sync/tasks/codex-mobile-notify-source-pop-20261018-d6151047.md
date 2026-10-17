@@ -23,6 +23,7 @@ Add default-disabled, provider-gated HTTP source challenge and hint endpoints wi
 - Fresh challenge is required after proof consumption without a durable receipt; exact sourceEventId/epoch/pointer retries deduplicate, while changed epoch/pointer conflicts.
 - Device challenge creation is preceded by notification preflight checks, preventing rejected content conflicts from exhausting DeviceStore pending challenge quota.
 - Store uses bounded TTL/quota/cleanup and persists scope and pointer before exposing nonce.
+- Both challenge binding and final receipt now require a committed DB readback of exact scope/pointer/state; mismatches fail as fixed unavailable before returning nonce or success.
 
 ## Completed
 
@@ -35,8 +36,9 @@ Add default-disabled, provider-gated HTTP source challenge and hint endpoints wi
 
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo fmt --manifest-path services/agentnet/Cargo.toml` — passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/Cargo.toml --lib mobile_notification_http::tests` — 10 passed.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/mobile-notify-core/Cargo.toml` — 15 passed.
-- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/Cargo.toml --lib` — 175 passed, 5 ignored (manual fixtures).
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/mobile-notify-core/Cargo.toml` — 17 passed, including SQLite-trigger corruption/readback regressions.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/Cargo.toml --lib` — 175 passed, 5 ignored (manual fixtures), before the readback-only core repair.
+- After the readback repair, focused service HTTP tests — 10 passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo clippy --manifest-path services/agentnet/Cargo.toml --all-targets -- -D warnings` — passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo fmt --manifest-path services/agentnet/Cargo.toml --check` and `git diff --check` — passed.
 
@@ -48,4 +50,4 @@ Add default-disabled, provider-gated HTTP source challenge and hint endpoints wi
 
 ## Next step
 
-Root should review and integrate the owned commit; Host sender remains a separate integration gate.
+Root should review and integrate the owned commits; Host sender remains a separate integration gate.
