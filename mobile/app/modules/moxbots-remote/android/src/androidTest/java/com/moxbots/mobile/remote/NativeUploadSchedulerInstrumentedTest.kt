@@ -136,7 +136,8 @@ class NativeUploadSchedulerInstrumentedTest {
     assertEquals(listOf("upload.status"), f.io.requests.map { it.getString("kind") })
     val uploadId = first.getString("uploadId")
     f.io.statusDefault = "found"
-    val resumed = f.scheduler.status(scope, target, localId)
+    // status() is deliberately read-only; only an explicit upload request resumes work.
+    val resumed = f.scheduler.start(scope, target, localId)
     assertEquals(uploadId, resumed.getString("uploadId"))
     f.drain()
     assertTrue("a found status resumes the existing upload without begin", f.io.requests.none { it.getString("kind") == "upload.begin" })
@@ -154,7 +155,9 @@ class NativeUploadSchedulerInstrumentedTest {
 
     f.io.statusDefault = "found"
     f.scheduler.status(scope, target, localId)
-    f.drain(1) // Remote status only; the next owner turn is the cancel RPC.
+    f.turn() // The already queued BEGIN is fenced by target loss.
+    f.turn() // Read-only status query; the scheduler is now quiescent.
+    assertTrue(f.queued.isEmpty())
     f.scheduler.cancel(scope, target, localId)
     f.drain()
     val kinds = f.io.requests.map { it.getString("kind") }
