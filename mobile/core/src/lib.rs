@@ -3,6 +3,8 @@
 //! and HTTPS/WSS; JavaScript receives only projected remote-session results.
 mod agent_network;
 mod ffi;
+#[cfg(test)]
+mod mobile_tests;
 pub use ffi::*;
 // Name adapter required by the shared JOSE verifier; no desktop/cloud dependency.
 mod space_cloud {
@@ -26,6 +28,7 @@ use myagents_host_management_protocol::{
     CanonicalUuid, ManagementMessage, ManagementMethod, PeerRole, RemoteSessionParams,
     RemoteSessionRequest, RequestParams, ResponseResult,
 };
+use myagents_host_management_protocol::{RemoteMobileRequest, RemoteMobileResult};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -72,9 +75,42 @@ pub struct NativeConfig {
 pub struct JournalRecord {
     operation_id: CanonicalUuid,
     digest: String,
-    request: RemoteSessionRequest,
+    request: JournalRequest,
     target: DeviceScope,
     issuer: String,
+}
+/// Untagged wire preservation: legacy records have exactly the original request JSON.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum JournalRequest {
+    Legacy(RemoteSessionRequest),
+    Mobile(RemoteMobileRequest),
+}
+impl JournalRequest {
+    fn agent_id(&self) -> &str {
+        match self {
+            Self::Legacy(r) => r.agent_id(),
+            Self::Mobile(r) => r.agent_id(),
+        }
+    }
+    fn operation_id(&self) -> Option<CanonicalUuid> {
+        match self {
+            Self::Legacy(r) => r.operation_id(),
+            Self::Mobile(r) => r.operation_id(),
+        }
+    }
+    fn mutation(&self) -> bool {
+        match self {
+            Self::Legacy(r) => r.mutation(),
+            Self::Mobile(r) => r.mutation(),
+        }
+    }
+    fn validate(&self) -> Result<(), myagents_host_management_protocol::CodecError> {
+        match self {
+            Self::Legacy(r) => r.validate(),
+            Self::Mobile(r) => r.validate(),
+        }
+    }
 }
 struct JournalEntry {
     record: JournalRecord,
@@ -90,6 +126,12 @@ struct JournalEntry {
 pub enum Intent {
     Prepare {
         request: RemoteSessionRequest,
+    },
+    PrepareMobile {
+        request: RemoteMobileRequest,
+    },
+    MobileRequest {
+        request: RemoteMobileRequest,
     },
     Commit {
         operation_id: CanonicalUuid,
@@ -118,6 +160,7 @@ enum MobileProfile {
     Combined,
 }
 enum PendingRequest {
+    Mobile(RemoteMobileRequest),
     Session(RemoteSessionRequest),
     Asset(myagents_host_management_protocol::RemoteAssetRequest),
 }
@@ -136,6 +179,7 @@ pub struct MobileClient {
     assets_negotiated: bool,
     assets_agent: Option<String>,
     combined_agent: Option<String>,
+    mobile_negotiated: bool,
 }
 // A single-channel projection of the original PairChannels credit policy.
 // Keep strict cumulative-byte/sequence checks and the same bounded windows.
@@ -307,10 +351,11 @@ impl MobileClient {
             assets_negotiated: false,
             assets_agent: None,
             combined_agent: None,
+            mobile_negotiated: false,
         })
     }
     fn digest(
-        request: &RemoteSessionRequest,
+        request: &JournalRequest,
         target: &DeviceScope,
         issuer: &str,
     ) -> Result<String, NetworkError> {
@@ -333,12 +378,15 @@ impl MobileClient {
         }
         Ok(())
     }
-    fn prepare(&mut self, request: RemoteSessionRequest) -> Result<Value, NetworkError> {
+    fn prepare(&mut self, request: JournalRequest) -> Result<Value, NetworkError> {
         request
             .validate()
             .map_err(|_| error("MOBILE_INTENT_INVALID"))?;
         if !request.mutation() {
             return Err(error("MOBILE_MUTATION_REQUIRED"));
+        }
+        if let JournalRequest::Mobile(mobile) = &request {
+            self.check_mobile(mobile)?;
         }
         self.bind_combined_agent(request.agent_id())?;
         let operation_id = request
@@ -593,7 +641,14 @@ impl MobileClient {
         }
         match intent {
             Intent::AssetRequest { request } => self.send_asset(request),
-            Intent::Prepare { request } => self.prepare(request),
+            Intent::Prepare { request } => self.prepare(JournalRequest::Legacy(request)),
+            Intent::PrepareMobile { request } => self.prepare(JournalRequest::Mobile(request)),
+            Intent::MobileRequest { request } => {
+                if request.mutation() {
+                    return Err(error("MOBILE_JOURNAL_REQUIRED"));
+                }
+                self.send_mobile(request)
+            }
             Intent::Commit {
                 operation_id,
                 digest,
@@ -617,7 +672,10 @@ impl MobileClient {
                 // Mark uncertain BEFORE touching transport. A failure must never open a retry.
                 entry.emitted = true;
                 let request = entry.record.request.clone();
-                self.send(request)
+                match request {
+                    JournalRequest::Legacy(r) => self.send(r),
+                    JournalRequest::Mobile(r) => self.send_mobile(r),
+                }
             }
             Intent::Request { request } => {
                 if request.mutation() {
@@ -656,6 +714,11 @@ impl MobileClient {
                         if recovered_agent.is_none() {
                             recovered_agent = Some(record.request.agent_id().into());
                         }
+                    }
+                    if matches!(&record.request, JournalRequest::Mobile(_))
+                        && self.profile != MobileProfile::Combined
+                    {
+                        return Err(error("MOBILE_PROFILE_MISMATCH"));
                     }
                     recovered.insert(
                         record.operation_id.as_uuid().to_string(),
@@ -753,15 +816,169 @@ impl MobileClient {
             if matches!(
                 status,
                 RemoteReceiptStatus::Accepted | RemoteReceiptStatus::Rejected
-            ) && self
-                .journal
-                .get(&id)
-                .is_some_and(|entry| entry.record.request.agent_id() == agent_id)
-            {
+            ) && self.journal.get(&id).is_some_and(|entry| {
+                entry.record.request.agent_id() == agent_id
+                    && matches!(&entry.record.request, JournalRequest::Legacy(_))
+            }) {
                 if self.confirmed.len() >= MAX_CONFIRMED {
                     return Err(error("MOBILE_CONFIRMATION_LIMIT"));
                 }
                 // Retain only the UUID replay tombstone; unknown bodies are never evicted.
+                self.confirmed.insert(id.clone());
+                self.journal.remove(&id);
+            }
+        }
+        Ok(())
+    }
+    fn check_mobile(&mut self, request: &RemoteMobileRequest) -> Result<(), NetworkError> {
+        if self.profile != MobileProfile::Combined {
+            return Err(error("MOBILE_PROFILE_MISMATCH"));
+        }
+        request
+            .validate()
+            .map_err(|_| error("MOBILE_ADMISSION_REQUEST_INVALID"))?;
+        if !matches!(request, RemoteMobileRequest::Capabilities { .. }) && !self.mobile_negotiated {
+            return Err(error("MOBILE_CAPABILITY_REQUIRED"));
+        }
+        self.bind_combined_agent(request.agent_id())
+    }
+    fn send_mobile(&mut self, request: RemoteMobileRequest) -> Result<Value, NetworkError> {
+        self.check_mobile(&request)?;
+        if self.pending.len() >= MAX_PENDING {
+            return Err(error("MOBILE_PENDING_LIMIT"));
+        }
+        let request_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        self.channel.send_management(ManagementMessage::Request {
+            request_id,
+            method: ManagementMethod::RemoteMobile,
+            params: RequestParams::RemoteMobile {
+                remote_mobile: request.clone(),
+            },
+        })?;
+        self.pending.insert(
+            request_id.as_uuid().to_string(),
+            PendingRequest::Mobile(request),
+        );
+        self.used = true;
+        Ok(json!({"state":"submitted","requestId":request_id}))
+    }
+    fn validate_mobile_response(
+        request: &RemoteMobileRequest,
+        result: &RemoteMobileResult,
+    ) -> Result<(), NetworkError> {
+        use RemoteMobileRequest as Q;
+        use RemoteMobileResult as R;
+        let valid = match (request, result) {
+            (_, R::Error { .. }) => true,
+            (
+                Q::Capabilities {
+                    agent_id: expected, ..
+                },
+                R::Capabilities { agent_id, .. },
+            )
+            | (
+                Q::Models {
+                    agent_id: expected, ..
+                },
+                R::Models { agent_id, .. },
+            ) => expected == agent_id,
+            (
+                Q::Suggestions {
+                    agent_id: expected,
+                    session_id: session,
+                    revision: rev,
+                    ..
+                },
+                R::Suggestions {
+                    agent_id,
+                    session_id,
+                    revision,
+                    ..
+                },
+            ) => expected == agent_id && session == session_id && rev == revision,
+            (
+                Q::Start {
+                    agent_id: expected,
+                    operation_id: operation,
+                    ..
+                }
+                | Q::Receipt {
+                    agent_id: expected,
+                    operation_id: operation,
+                    ..
+                },
+                R::Receipt {
+                    agent_id,
+                    operation_id,
+                    ..
+                },
+            ) => expected == agent_id && operation == operation_id,
+            (
+                Q::Send {
+                    agent_id: expected,
+                    session_id: session,
+                    operation_id: operation,
+                    ..
+                },
+                R::Receipt {
+                    agent_id,
+                    session_id,
+                    operation_id,
+                    ..
+                },
+            ) => {
+                expected == agent_id
+                    && operation == operation_id
+                    && session_id.as_deref() == Some(session.as_str())
+            }
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(error("MOBILE_RESPONSE_SCOPE_MISMATCH"))
+        }
+    }
+    fn note_mobile_receipt(&mut self, result: &RemoteMobileResult) -> Result<(), NetworkError> {
+        use myagents_host_management_protocol::RemoteReceiptStatus;
+        if let RemoteMobileResult::Receipt {
+            agent_id,
+            operation_id,
+            session_id,
+            status,
+            ..
+        } = result
+        {
+            let id = operation_id.as_uuid().to_string();
+            // A receipt query carries no sessionId. Correlate recovered sends
+            // against their original immutable journal before any confirmation.
+            if let Some(JournalEntry {
+                record:
+                    JournalRecord {
+                        request:
+                            JournalRequest::Mobile(RemoteMobileRequest::Send {
+                                session_id: expected,
+                                ..
+                            }),
+                        ..
+                    },
+                ..
+            }) = self.journal.get(&id)
+            {
+                if session_id.as_deref() != Some(expected.as_str()) {
+                    return Err(error("MOBILE_RESPONSE_SCOPE_MISMATCH"));
+                }
+            }
+            if matches!(
+                status,
+                RemoteReceiptStatus::Accepted | RemoteReceiptStatus::Rejected
+            ) && self.journal.get(&id).is_some_and(|entry| {
+                entry.record.request.agent_id() == agent_id
+                    && matches!(&entry.record.request, JournalRequest::Mobile(_))
+            }) {
+                if self.confirmed.len() >= MAX_CONFIRMED {
+                    return Err(error("MOBILE_CONFIRMATION_LIMIT"));
+                }
                 self.confirmed.insert(id.clone());
                 self.journal.remove(&id);
             }
@@ -804,6 +1021,19 @@ impl MobileClient {
                             out.push(
                                 json!({"kind":"response", "requestId":request_id, "data":data}),
                             );
+                        }
+                        ResponseResult::RemoteMobile { data } => {
+                            let PendingRequest::Mobile(request) = request else {
+                                return Err(error("MOBILE_RESPONSE_PROTOCOL_MISMATCH"));
+                            };
+                            data.validate()
+                                .map_err(|_| error("MOBILE_RESPONSE_INVALID"))?;
+                            Self::validate_mobile_response(&request, &data)?;
+                            if matches!(data, RemoteMobileResult::Capabilities { .. }) {
+                                self.mobile_negotiated = true;
+                            }
+                            self.note_mobile_receipt(&data)?;
+                            out.push(json!({"kind":"mobile-response","requestId":request_id,"data":data}));
                         }
                         ResponseResult::RemoteAssets { data } => {
                             let PendingRequest::Asset(request) = request else {
@@ -852,7 +1082,7 @@ mod tests {
             key_generation: 1,
         }
     }
-    fn pair() -> (MobileClient, Channel, PairSequences) {
+    pub(super) fn pair() -> (MobileClient, Channel, PairSequences) {
         pair_with_direction(true)
     }
     fn pair_with_direction(
@@ -949,12 +1179,13 @@ mod tests {
                 assets_negotiated: false,
                 assets_agent: None,
                 combined_agent: None,
+                mobile_negotiated: false,
             },
             b,
             sb,
         )
     }
-    fn start(operation_id: CanonicalUuid) -> RemoteSessionRequest {
+    pub(super) fn start(operation_id: CanonicalUuid) -> RemoteSessionRequest {
         RemoteSessionRequest::Start {
             agent_id: "agent".into(),
             operation_id,
@@ -1308,7 +1539,7 @@ mod tests {
         );
         assert!(client.execute(Intent::Status {}).is_err());
     }
-    fn session_rpc(
+    pub(super) fn session_rpc(
         client: &mut MobileClient,
         host: &mut Channel,
         host_sequences: &mut PairSequences,
