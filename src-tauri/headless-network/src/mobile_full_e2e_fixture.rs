@@ -55,6 +55,12 @@ async fn original_headless_connector_fixture() {
         .mode(0o640)
         .open(root.join("headless-status.json"))
         .unwrap();
+    // Provision the original status contract exactly even under a private umask.
+    fs::set_permissions(
+        root.join("headless-status.json"),
+        fs::Permissions::from_mode(0o640),
+    )
+    .unwrap();
     tokio::time::timeout(
         Duration::from_secs(150),
         super::run_context(
