@@ -1381,7 +1381,11 @@ fn valid_session_id(value: &str) -> bool {
 }
 
 fn valid_agent_id(value: &str) -> bool {
-    !value.is_empty() && value.chars().count() <= 256 && !value.chars().any(char::is_control)
+    !value.is_empty()
+        && value.len() <= 256
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"._:-".contains(&byte))
 }
 
 fn validate_time(now: i64) -> Result<(), NotifyError> {
@@ -2106,6 +2110,12 @@ mod tests {
         );
         assert!(HostHintV1::new("not-a-uuid", "session").is_err());
         assert!(HostHintV1::new("88888888-8888-4888-8888-888888888888", "bad/session").is_err());
+        for invalid in ["agent name", "代理", "agent/name", "agent\n"] {
+            assert!(
+                TargetScope::from_validated_host_session(&authority(DEVICE, BINDING, 1), invalid)
+                    .is_err()
+            );
+        }
         assert!(
             TargetScope::from_validated_host_session(&authority(DEVICE, BINDING, 1), "").is_err()
         );

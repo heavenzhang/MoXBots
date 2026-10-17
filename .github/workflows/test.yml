@@ -40,6 +40,7 @@ jobs:
             mobile/connection
             mobile/asset-store
             src-tauri/host-management-protocol
+            services/agentnet/mobile-notify-core
       - name: Validate portable controller, journal, wire and byte owners
         run: |
           # The imported desktop store harness launches a hardcoded root-module
@@ -53,6 +54,8 @@ jobs:
           cargo test --manifest-path mobile/asset-store/Cargo.toml --locked
           cargo clippy --manifest-path mobile/asset-store/Cargo.toml --locked --all-targets -- -D warnings
           cargo test --manifest-path src-tauri/host-management-protocol/Cargo.toml --locked
+          cargo test --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked
+          cargo clippy --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked --all-targets -- -D warnings
 
   headless-network:
     name: headless AgentNet connector · no desktop

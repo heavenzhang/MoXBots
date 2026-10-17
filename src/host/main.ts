@@ -550,7 +550,7 @@ async function serve(): Promise<void> {
             assertOrdinaryRemoteAgent(request.agentId,loadConfig({strict:true}).hostBotDelegationsV1);
             const stageSessionId=request.kind==='mobile.start'?request.operationId:request.sessionId;
             if(request.kind==='mobile.send'){
-              const existing=await ensureOwnerWorker(request.agentId,request.sessionId);
+              await ensureOwnerWorker(request.agentId,request.sessionId);
               if(request.modelId!==undefined){
                 const store=await import('../server/SessionStore'),metadata=store.getSessionMetadata(request.sessionId);
                 if(!metadata)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
@@ -611,7 +611,7 @@ async function serve(): Promise<void> {
                 const result=await workerCall(target,'mobile-send',{agentId:request.agentId,sessionId,operationId:request.operationId,text:request.text,assets,expectedObservation,...(request.modelId?{modelId:request.modelId}:{})});
                 if(!result||typeof result!=='object'||(result as {accepted?:unknown}).accepted!==true)throw new Error('REMOTE_MOBILE_ADMISSION_REJECTED');
                 return remoteMobileResultSchema.parse(await remoteReceipts.finishMobile(request,'accepted',sessionId));
-              }catch(error){
+              }catch{
                 // beginMobile already reserved this operation. Once dispatch preparation
                 // begins, any thrown worker/lifecycle error may have crossed admission;
                 // preserve the original ledger's status for explicit recovery instead of

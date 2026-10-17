@@ -39,8 +39,8 @@ projections or fixed error messages, and must never be logged by callers.
 A Host hint v1 carries only `sourceEventId`, `sessionId`, and the fixed
 `attention-required` kind. The separate non-deserializable `TargetScope` is
 constructed from the verified Host authority and the service-verified Agent ID
-that owns the Session. Agent IDs are limited to 1–256 Unicode characters with
-no control characters. The target device therefore matches the verified Host
+that owns the Session. Agent IDs follow the mobile wire contract: 1–256 ASCII
+letters, digits, or `._:-`. The target device therefore matches the verified Host
 authority while the Agent ID disambiguates multiple Bots on that Host.
 The store deduplicates by principal/network + source device/binding/generation
 + source event ID; reuse with different content is rejected. A server-generated
