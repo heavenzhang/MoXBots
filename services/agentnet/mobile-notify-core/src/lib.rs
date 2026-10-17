@@ -363,6 +363,50 @@ pub struct SourceChallengeBinding {
     pub state: SourceChallengeState,
 }
 
+/// Validated request metadata persisted with a DeviceStore RecoverQuery
+/// challenge. The session handle and authority remain separate trusted inputs.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceChallengeInput {
+    challenge_id: String,
+    source_event_id: String,
+    connection_epoch: String,
+    agent_id: String,
+    session_id: String,
+    expires_at: i64,
+}
+
+impl SourceChallengeInput {
+    pub fn new(
+        challenge_id: impl Into<String>,
+        source_event_id: impl Into<String>,
+        connection_epoch: impl Into<String>,
+        agent_id: impl Into<String>,
+        session_id: impl Into<String>,
+        expires_at: i64,
+    ) -> Result<Self, NotifyError> {
+        let input = Self {
+            challenge_id: challenge_id.into(),
+            source_event_id: source_event_id.into(),
+            connection_epoch: connection_epoch.into(),
+            agent_id: agent_id.into(),
+            session_id: session_id.into(),
+            expires_at,
+        };
+        if !canonical_uuid(&input.challenge_id)
+            || !canonical_uuid(&input.source_event_id)
+            || !canonical_uuid(&input.connection_epoch)
+            || input.expires_at < 0
+        {
+            return Err(NotifyError::InvalidInput);
+        }
+        if !valid_agent_id(&input.agent_id) {
+            return Err(NotifyError::InvalidInput);
+        }
+        HostHintV1::new(&input.source_event_id, &input.session_id)?;
+        Ok(input)
+    }
+}
+
 /// Strict Host-origin hint v1. The target device comes from the authenticated
 /// Host authority, not from this request. The source event ID is only a scoped
 /// deduplication key and carries no permission.
@@ -1027,29 +1071,21 @@ impl Store {
         &self,
         authority: &Authority,
         session_handle: &str,
-        challenge_id: &str,
-        source_event_id: &str,
-        connection_epoch: &str,
-        agent_id: &str,
-        session_id: &str,
-        expires_at: i64,
+        input: &SourceChallengeInput,
         now: i64,
     ) -> Result<(), NotifyError> {
         authority.validate()?;
         if !canonical_uuid(session_handle)
-            || !canonical_uuid(challenge_id)
-            || !canonical_uuid(source_event_id)
-            || !canonical_uuid(connection_epoch)
-            || expires_at <= now
-            || expires_at.saturating_sub(now) > MAX_SOURCE_CHALLENGE_TTL_SECONDS
+            || input.expires_at <= now
+            || input.expires_at.saturating_sub(now) > MAX_SOURCE_CHALLENGE_TTL_SECONDS
         {
             return Err(NotifyError::InvalidInput);
         }
         validate_time(now)?;
-        let target = TargetScope::from_validated_host_session(authority, agent_id)?;
-        let hint = HostHintV1::new(source_event_id, session_id)?;
+        let target = TargetScope::from_validated_host_session(authority, &input.agent_id)?;
+        let hint = HostHintV1::new(&input.source_event_id, &input.session_id)?;
         let content_digest = source_request_digest(
-            connection_epoch,
+            &input.connection_epoch,
             &target.target_device_id,
             &target.agent_id,
             &hint.session_id,
@@ -1060,41 +1096,47 @@ impl Store {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| NotifyError::Storage)?;
         prune_source_challenges(&tx, now)?;
-        check_source_request_capacity(&tx, authority, source_event_id, &content_digest, now)?;
+        check_source_request_capacity(
+            &tx,
+            authority,
+            &input.source_event_id,
+            &content_digest,
+            now,
+        )?;
         tx.execute(
             "INSERT INTO source_challenges(challenge_id,principal_id,network_id,device_id,
                identity_binding_id,key_generation,session_handle,source_event_id,connection_epoch,
                agent_id,session_id,content_digest,created_at,expires_at,state,proof_digest,event_id)
              VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'pending',NULL,NULL)",
             params![
-                challenge_id,
+                input.challenge_id,
                 authority.principal_id,
                 authority.network_id,
                 authority.device_id,
                 authority.identity_binding_id,
                 authority.key_generation as i64,
                 session_handle,
-                source_event_id,
-                connection_epoch,
+                input.source_event_id,
+                input.connection_epoch,
                 target.agent_id,
                 hint.session_id,
                 content_digest.as_slice(),
                 now,
-                expires_at,
+                input.expires_at,
             ],
         )
         .map_err(|_| NotifyError::Conflict)?;
         tx.commit().map_err(|_| NotifyError::Storage)?;
         drop(connection);
         let binding = self
-            .source_challenge_for_scope(authority, session_handle, challenge_id, now)
+            .source_challenge_for_scope(authority, session_handle, &input.challenge_id, now)
             .map_err(|_| NotifyError::Storage)?;
-        if binding.challenge_id == challenge_id
-            && binding.source_event_id == source_event_id
-            && binding.connection_epoch == connection_epoch
+        if binding.challenge_id == input.challenge_id
+            && binding.source_event_id == input.source_event_id
+            && binding.connection_epoch == input.connection_epoch
             && binding.agent_id == target.agent_id
             && binding.session_id == hint.session_id
-            && binding.expires_at == expires_at
+            && binding.expires_at == input.expires_at
             && binding.state == SourceChallengeState::Pending
         {
             Ok(())
@@ -2118,6 +2160,23 @@ mod tests {
         (dir, store)
     }
 
+    fn source_input(
+        challenge_id: &str,
+        source_event_id: &str,
+        connection_epoch: &str,
+        expires_at: i64,
+    ) -> SourceChallengeInput {
+        SourceChallengeInput::new(
+            challenge_id.to_owned(),
+            source_event_id.to_owned(),
+            connection_epoch.to_owned(),
+            "agent-a",
+            "session-a",
+            expires_at,
+        )
+        .unwrap()
+    }
+
     #[test]
     fn endpoint_id_parser_accepts_only_canonical_uuid() {
         let valid = "77777777-7777-4777-8777-777777777777";
@@ -2140,12 +2199,7 @@ mod tests {
                 .bind_source_challenge(
                     &scope,
                     session_handle,
-                    &challenge_id,
-                    &Uuid::new_v4().to_string(),
-                    epoch,
-                    "agent-a",
-                    "session-a",
-                    120,
+                    &source_input(&challenge_id, &Uuid::new_v4().to_string(), epoch, 120),
                     100,
                 )
                 .unwrap();
@@ -2155,12 +2209,12 @@ mod tests {
             store.bind_source_challenge(
                 &scope,
                 session_handle,
-                &Uuid::new_v4().to_string(),
-                &Uuid::new_v4().to_string(),
-                epoch,
-                "agent-a",
-                "session-a",
-                120,
+                &source_input(
+                    &Uuid::new_v4().to_string(),
+                    &Uuid::new_v4().to_string(),
+                    epoch,
+                    120,
+                ),
                 100,
             ),
             Err(NotifyError::Capacity)
@@ -2178,12 +2232,12 @@ mod tests {
             .bind_source_challenge(
                 &scope,
                 session_handle,
-                &Uuid::new_v4().to_string(),
-                &Uuid::new_v4().to_string(),
-                epoch,
-                "agent-a",
-                "session-a",
-                140,
+                &source_input(
+                    &Uuid::new_v4().to_string(),
+                    &Uuid::new_v4().to_string(),
+                    epoch,
+                    140,
+                ),
                 120,
             )
             .unwrap();
@@ -2192,12 +2246,7 @@ mod tests {
             .bind_source_challenge(
                 &scope,
                 session_handle,
-                &Uuid::new_v4().to_string(),
-                &event_id,
-                epoch,
-                "agent-a",
-                "session-a",
-                180,
+                &source_input(&Uuid::new_v4().to_string(), &event_id, epoch, 180),
                 120,
             )
             .unwrap();
@@ -2205,12 +2254,7 @@ mod tests {
             .bind_source_challenge(
                 &scope,
                 session_handle,
-                &Uuid::new_v4().to_string(),
-                &event_id,
-                epoch,
-                "agent-a",
-                "session-a",
-                180,
+                &source_input(&Uuid::new_v4().to_string(), &event_id, epoch, 180),
                 120,
             )
             .unwrap();
@@ -2218,12 +2262,12 @@ mod tests {
             store.bind_source_challenge(
                 &scope,
                 session_handle,
-                &Uuid::new_v4().to_string(),
-                &event_id,
-                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-                "agent-a",
-                "session-a",
-                180,
+                &source_input(
+                    &Uuid::new_v4().to_string(),
+                    &event_id,
+                    "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                    180,
+                ),
                 120,
             ),
             Err(NotifyError::Conflict)
@@ -2254,12 +2298,7 @@ mod tests {
             store.bind_source_challenge(
                 &scope,
                 "77777777-7777-4777-8777-777777777777",
-                &challenge_id,
-                &source_event_id,
-                &epoch,
-                "agent-a",
-                "session-a",
-                120,
+                &source_input(&challenge_id, &source_event_id, &epoch, 120),
                 100,
             ),
             Err(NotifyError::Storage),
@@ -2277,12 +2316,12 @@ mod tests {
             .bind_source_challenge(
                 &scope,
                 session_handle,
-                &challenge_id,
-                &Uuid::new_v4().to_string(),
-                &Uuid::new_v4().to_string(),
-                "agent-a",
-                "session-a",
-                120,
+                &source_input(
+                    &challenge_id,
+                    &Uuid::new_v4().to_string(),
+                    &Uuid::new_v4().to_string(),
+                    120,
+                ),
                 100,
             )
             .unwrap();
