@@ -83,6 +83,21 @@ jobs:
         with:
           workspaces: app/src-tauri
 
+      - name: Install repository-pinned NSIS 3.13
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'nsis-3.13.zip'
+          node app/scripts/ci/download-nsis.mjs $archive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $nsisRoot = Join-Path $env:RUNNER_TEMP 'moxbots-nsis'
+          Expand-Archive -LiteralPath $archive -DestinationPath $nsisRoot -Force
+          $makensisDir = Join-Path $nsisRoot 'nsis-3.13'
+          $makensis = Join-Path $makensisDir 'makensis.exe'
+          if (!(Test-Path -LiteralPath $makensis -PathType Leaf)) { throw "NSIS 3.13 is missing: $makensis" }
+          $version = (& $makensis /VERSION).Trim()
+          if ($LASTEXITCODE -ne 0 -or $version -ne 'v3.13') { throw "Unexpected NSIS version: $version" }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $makensisDir
+
       - name: Stage verified Git for Windows installer for NSIS
         shell: pwsh
         run: |
