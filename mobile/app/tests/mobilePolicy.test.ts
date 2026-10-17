@@ -98,30 +98,67 @@ test('an early ready upload event is not overwritten by the delayed initial uplo
   const tracker = new AttachmentUploadTracker();
   const ready = uploadProjection('ready');
   const initial = uploadProjection('uploading', { receivedBytes: 0 });
-  assert.deepEqual(tracker.publish(ready), ready);
-  assert.deepEqual(tracker.publish(initial), ready);
+  const flight = tracker.captureFlight(initial.localId);
+  assert.deepEqual(tracker.publishEvent(ready), ready);
+  assert.deepEqual(tracker.publishReply(initial, flight), ready);
   assert.equal(tracker.current(ready.localId)?.state, 'ready');
+});
+
+test('an explicit revalidation can supersede a cached ready asset and a newer event beats its delayed reply', async () => {
+  const tracker = new AttachmentUploadTracker();
+  const ready = uploadProjection('ready');
+  tracker.publishEvent(ready);
+  const flight = tracker.captureFlight(ready.localId);
+  const uploading = uploadProjection('uploading', { receivedBytes: 0, assetId: null });
+  tracker.publishEvent(uploading);
+  assert.deepEqual(tracker.publishReply(ready, flight), uploading);
+
+  const missingRemoteRecord = uploadProjection('paused', { receivedBytes: 0, errorCode: 'MOBILE_UPLOAD_NOT_FOUND' });
+  tracker.publishEvent(missingRemoteRecord);
+  assert.deepEqual(tracker.current(ready.localId), missingRemoteRecord);
+  let queueMayAdvance = false;
+  const terminal = tracker.wait(missingRemoteRecord).then((value) => { queueMayAdvance = value !== null; return value; });
+  await Promise.resolve();
+  assert.equal(queueMayAdvance, false);
+
+  const freshReady = uploadProjection('ready');
+  const oldFlight = tracker.captureFlight(ready.localId);
+  tracker.publishEvent(missingRemoteRecord);
+  assert.deepEqual(tracker.publishReply(freshReady, oldFlight), missingRemoteRecord);
+  assert.equal(tracker.current(ready.localId)?.state, 'paused');
+  // An authoritative terminal event is what releases the waiter after the revalidation.
+  tracker.publishEvent(freshReady);
+  assert.deepEqual(await terminal, freshReady);
+});
+
+test('invalidated owner flights cannot repopulate upload state from late replies', () => {
+  const tracker = new AttachmentUploadTracker();
+  const loading = uploadProjection('uploading', { receivedBytes: 0 });
+  const flight = tracker.captureFlight(loading.localId);
+  tracker.invalidate();
+  assert.equal(tracker.publishReply(uploadProjection('ready'), flight), null);
+  assert.equal(tracker.current(loading.localId), null);
 });
 
 test('cancel waits for a matching terminal native event; paused error stays unresolved for removal', async () => {
   const tracker = new AttachmentUploadTracker();
   const paused = uploadProjection('paused');
-  tracker.publish(paused);
+  tracker.publishEvent(paused);
   const cancelledPromise = tracker.wait(paused, true);
   const cancelled = uploadProjection('cancelled');
-  assert.deepEqual(tracker.publish(cancelled), cancelled);
+  assert.deepEqual(tracker.publishEvent(cancelled), cancelled);
   assert.deepEqual(await cancelledPromise, cancelled);
 
   tracker.invalidate();
   const another = uploadProjection('paused', { localId: '10000000-0000-4000-8000-000000000002', uploadId: '20000000-0000-4000-8000-000000000002' });
-  tracker.publish(another);
+  tracker.publishEvent(another);
   let settled = false;
   const failedCancel = tracker.wait(another, true).then((value) => { settled = true; return value; });
-  tracker.publish(uploadProjection('cancelled'));
+  tracker.publishEvent(uploadProjection('cancelled'));
   await Promise.resolve();
   assert.equal(settled, false);
   const pausedError = { ...another, errorCode: 'MOBILE_REMOTE_UNAVAILABLE' };
-  tracker.publish(pausedError);
+  tracker.publishEvent(pausedError);
   assert.deepEqual(await failedCancel, pausedError);
 });
 

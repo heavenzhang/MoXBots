@@ -1,6 +1,7 @@
 import type { NativeAttachmentUpload } from './native';
 
 type UploadScope = Pick<NativeAttachmentUpload, 'localId' | 'targetId' | 'identityKey' | 'agentId' | 'uploadId'>;
+export type UploadFlight = { localId: string; generation: number; eventVersion: number };
 
 function matchesScope(upload: NativeAttachmentUpload, scope: UploadScope): boolean {
   return upload.localId === scope.localId && upload.targetId === scope.targetId
@@ -15,17 +16,31 @@ function isTerminal(upload: NativeAttachmentUpload): boolean {
 /** Keeps event/reply ordering monotonic and lets callers await a scoped native outcome. */
 export class AttachmentUploadTracker {
   private readonly latest = new Map<string, NativeAttachmentUpload>();
+  private readonly eventVersions = new Map<string, number>();
+  private generation = 0;
   private readonly waiters = new Map<string, Set<{
     scope: UploadScope;
     acceptPausedError: boolean;
     resolve: (upload: NativeAttachmentUpload | null) => void;
   }>>();
 
-  publish(incoming: NativeAttachmentUpload): NativeAttachmentUpload {
-    const prior = this.latest.get(incoming.localId);
-    const next = prior && matchesScope(prior, incoming) && isTerminal(prior) && !isTerminal(incoming)
-      ? prior : incoming;
-    this.latest.set(incoming.localId, next);
+  captureFlight(localId: string): UploadFlight {
+    return { localId, generation: this.generation, eventVersion: this.eventVersions.get(localId) ?? 0 };
+  }
+
+  publishEvent(incoming: NativeAttachmentUpload): NativeAttachmentUpload {
+    this.eventVersions.set(incoming.localId, (this.eventVersions.get(incoming.localId) ?? 0) + 1);
+    return this.commit(incoming);
+  }
+
+  publishReply(incoming: NativeAttachmentUpload, flight: UploadFlight): NativeAttachmentUpload | null {
+    if (flight.localId !== incoming.localId || flight.generation !== this.generation) return null;
+    if ((this.eventVersions.get(incoming.localId) ?? 0) > flight.eventVersion) return this.latest.get(incoming.localId) ?? null;
+    return this.commit(incoming);
+  }
+
+  private commit(next: NativeAttachmentUpload): NativeAttachmentUpload {
+    this.latest.set(next.localId, next);
     const waiting = this.waiters.get(next.localId);
     if (waiting) {
       for (const waiter of [...waiting]) {
@@ -58,9 +73,11 @@ export class AttachmentUploadTracker {
   }
 
   invalidate(): void {
+    this.generation += 1;
     for (const waiting of this.waiters.values()) for (const waiter of waiting) waiter.resolve(null);
     this.waiters.clear();
     this.latest.clear();
+    this.eventVersions.clear();
   }
 }
 

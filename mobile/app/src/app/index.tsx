@@ -157,7 +157,7 @@ function AppBody() {
   useEffect(() => subscribeAttachmentUploadChanges((upload) => {
     const currentScope = attachmentScopeRef.current;
     if (!currentScope || targetRef.current?.targetId !== upload.targetId || targetRef.current.identityKey !== upload.identityKey || targetRef.current.agentId !== upload.agentId) return;
-    const currentUpload = attachmentUploadTrackerRef.current.publish(upload);
+    const currentUpload = attachmentUploadTrackerRef.current.publishEvent(upload);
     updateAttachments((items) => items.map((item) => item.ownerKey === currentScope && item.file.localId === currentUpload.localId ? { ...item, upload: currentUpload, errorCode: currentUpload.errorCode ?? undefined } : item));
     if (currentUpload.state === 'ready' || currentUpload.state === 'cancelled' || (currentUpload.errorCode && currentUpload.state !== 'paused')) releaseAttachmentJob(currentUpload.localId);
     if (currentUpload.errorCode) say(currentUpload.errorCode, 'error');
@@ -605,13 +605,22 @@ function AppBody() {
     try {
       let upload: NativeAttachmentUpload;
       try {
-        upload = attachmentUploadTrackerRef.current.publish(applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId }), file, selected));
+        const flight = attachmentUploadTrackerRef.current.captureFlight(file.localId);
+        const reply = await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId });
+        if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
+        const current = attachmentUploadTrackerRef.current.publishReply(applyUploadReply(reply, file, selected), flight);
+        if (!current) return;
+        upload = current;
       } catch (startError) {
         const startCode = startError instanceof Error ? startError.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
         // A transport failure can follow durable upload creation; status decides whether the native single-upload slot is still occupied.
         try {
+          const flight = attachmentUploadTrackerRef.current.captureFlight(file.localId);
           const status = await requestNative({ version: 1, kind: 'attachment.upload.status', localId: file.localId, targetId: selected.targetId });
-          upload = attachmentUploadTrackerRef.current.publish(applyUploadReply(status, file, selected));
+          if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
+          const current = attachmentUploadTrackerRef.current.publishReply(applyUploadReply(status, file, selected), flight);
+          if (!current) return;
+          upload = current;
         } catch (statusError) {
           const statusCode = statusError instanceof Error ? statusError.message : 'MOBILE_ATTACHMENT_STATUS_FAILED';
           if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
@@ -646,8 +655,11 @@ function AppBody() {
     const batchEpoch = attachmentBatchEpochRef.current;
     const scopeKey = item.ownerKey;
     try {
-      const upload = attachmentUploadTrackerRef.current.publish(applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: item.file.localId, targetId: selected.targetId }), item.file, selected));
+      const flight = attachmentUploadTrackerRef.current.captureFlight(item.file.localId);
+      const reply = await requestNative({ version: 1, kind: 'attachment.upload', localId: item.file.localId, targetId: selected.targetId });
       if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, () => true)) return;
+      const upload = attachmentUploadTrackerRef.current.publishReply(applyUploadReply(reply, item.file, selected), flight);
+      if (!upload) return;
       setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload, errorCode: upload.errorCode ?? undefined }));
       if (upload.errorCode) say(upload.errorCode, 'error');
       if (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused')) releaseAttachmentJob(item.file.localId, batchEpoch);
@@ -702,13 +714,17 @@ function AppBody() {
     if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
     if (!item.upload || !target) return;
     const owner = ownerRef.current;
+    const selected = targetRef.current;
+    if (!selected) return;
     try {
+      const flight = attachmentUploadTrackerRef.current.captureFlight(item.file.localId);
       const reply = await requestNative({ version: 1, kind: 'attachment.upload.pause', localId: item.file.localId, targetId: item.upload.targetId });
       if (reply.kind === 'error') throw new Error(reply.code);
       if (reply.kind !== 'attachment-upload' || reply.localId !== item.file.localId || reply.targetId !== item.upload.targetId
         || reply.identityKey !== item.upload.identityKey || reply.agentId !== item.upload.agentId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
-      const projection = attachmentUploadTrackerRef.current.publish(reply);
-      if (viewStillOwned(owner, ownerRef.current)) setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload: projection, errorCode: projection.errorCode ?? undefined }));
+      if (!viewStillOwned(owner, ownerRef.current) || targetRef.current?.identityKey !== selected.identityKey) return;
+      const projection = attachmentUploadTrackerRef.current.publishReply(reply, flight);
+      if (projection && viewStillOwned(owner, ownerRef.current)) setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload: projection, errorCode: projection.errorCode ?? undefined }));
     } catch (error) { if (viewStillOwned(owner, ownerRef.current)) { const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_PAUSE_FAILED'; setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error'); } }
   };
 
@@ -722,7 +738,11 @@ function AppBody() {
       if ((item.upload || hasActiveJob) && item.upload?.state !== 'cancelled' && item.upload?.state !== 'ready') {
         const selectedTargetId = item.upload?.targetId ?? targetRef.current?.targetId;
         if (!selectedTargetId) throw new Error('TARGET_UNAVAILABLE');
+        const selected = targetRef.current;
+        if (!selected) throw new Error('TARGET_UNAVAILABLE');
+        const flight = attachmentUploadTrackerRef.current.captureFlight(item.file.localId);
         const cancelled = await requestNative({ version: 1, kind: 'attachment.upload.cancel', localId: item.file.localId, targetId: selectedTargetId });
+        if (!viewStillOwned(owner, ownerRef.current) || !selectedIdentityKey || targetRef.current?.identityKey !== selectedIdentityKey || accountRef.current?.principalId !== principalId) return;
         if (cancelled.kind === 'error') {
           if (!isConfirmedUploadRecordAbsence(cancelled.code)) throw new Error(cancelled.code);
           releaseAttachmentJob(item.file.localId, attachmentBatchEpochRef.current);
@@ -730,7 +750,8 @@ function AppBody() {
           const selected = targetRef.current;
           if (cancelled.kind !== 'attachment-upload' || cancelled.localId !== item.file.localId || cancelled.targetId !== selectedTargetId
             || !selected || cancelled.identityKey !== selected.identityKey || cancelled.agentId !== selected.agentId) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
-          const projection = attachmentUploadTrackerRef.current.publish(cancelled);
+          const projection = attachmentUploadTrackerRef.current.publishReply(cancelled, flight);
+          if (!projection) return;
           if (projection.state === 'paused' && !projection.errorCode) {
             const final = await attachmentUploadTrackerRef.current.wait({ localId: projection.localId, targetId: projection.targetId, identityKey: projection.identityKey, agentId: projection.agentId, uploadId: projection.uploadId }, true);
             if (!final) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
