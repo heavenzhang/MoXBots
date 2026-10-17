@@ -46,15 +46,19 @@ Android 可通过构建环境变量 `MOXBOTS_ANDROID_GOOGLE_SERVICES_FILE` 指�
 - [x] 服务端provider包及两轮主审修复已集成：默认关闭、固定origin、APNs JWT缓存与HTTP/2、FCM严格回执、未配置provider拒绝、当前session/device重验及剩余预算领取。主Agent服务168项测试通过（5项既有ignored）、严格clippy通过；core14项测试及严格clippy通过。日志 `/tmp/moxbots-mobile-notification-root-{service,core}-tests.log`。包级fmt通过；未对冻结crypto/protocol依赖做格式化。
 - [x] 非实现者再次源码确认“忽略后冷响应复活”的修复闭合；显式点击同一event仍可重开。仍不称独立运行态验收。
 - [x] iOS语音Event默认let字段的初始化器编译错误已用本机Swift复现并修复；提取实际Event定义后typecheck通过。新增现有macOS CI内的真实iOS双target Rust和原生Swift核心预检，结果待远端；不包含Expo wrapper/链接/签名/运行态。
-- [ ] 新检查点准确源码CI；iOS原生核心预检的实际结果与可能的修复。
-- [ ] Host 事件来源契约：云端当前不能证明 Host 私有 Bot/session 归属，不能新增任意登录设备可伪造来源的 public hint 路由。受信内部入口不能替代真实来源接入。
+- [x] 238a40cb 的远端 macOS iOS 预检步骤通过：真实 iphoneos/iphonesimulator SDK 的 Swift owner 类型检查与双 Rust target 检查；完整工作流尚未结束，不能称全绿。
+- [x] 来源代码已接入：原 Host SessionStore/worker 筛选、冻结 worker birth scope、持久化有界 outbox、私有 Unix IPC、原 Rust 设备签名，以及服务端当前 session/device/challenge 精确绑定。已完成主审并修复跨账号竞态、确认记录占满容量和提交后读回缺口；组合运行态联调仍开放。
 - [ ] 真实 APNs/FCM 凭据、物理设备送达、后台/冷启动、过期登录恢复和旧授权失效验证。
 - [ ] iOS SDK协议与签名、真实Host/账号/语音、主干交付和内部签名分发。
 
 ## Host来源接入的下一步
 
-现有AuthStore登录会话携带登录时提交的deviceId；仅用Bearer加DeviceStore记录查询，不能等同于已证明持有该设备私钥。通知来源接口仍未开放。下一包应从原Session owner生成有限事件，由保有既有设备私钥的Rust连接器提交：复用现有challenge/PoP能力，在通知存储中把challenge绑定当前session_handle、设备binding/generation和确切pointer；验证单次proof后才生成hint。不修改冻结的crypto/protocol，也不让调用方指定其他principal或source device。云端只验证来源设备，手机仍重新读取实际Bot目录与Session；提示本身不授予执行或审批权限。该设计尚未实现或通过真实Host验收。
+现有AuthStore登录会话携带登录时提交的deviceId；仅用Bearer加DeviceStore记录查询，不能等同于已证明持有该设备私钥。来源接口已实现且随通知配置默认关闭，尚未部署。原Session owner生成有限事件，由保有既有设备私钥的Rust连接器提交：复用现有challenge/PoP能力，在通知存储中把challenge绑定当前session_handle、设备binding/generation和确切pointer；验证单次proof后才生成hint。不修改冻结的crypto/protocol，也不让调用方指定其他principal或source device。云端只验证来源设备，手机仍重新读取实际Bot目录与Session；提示本身不授予执行或审批权限。源代码实现已集成；主Agent已复跑185项headless、34项原Host组合与105项SDK回归。没有真实Host/provider/手机端送达验收，不能据此声称已可日常使用。
 
 ### iOS真实SDK首轮预检
 
 CI39071442301的macOS预检已实际编译通过device Rust目标，Swift随后发现成果缓存调用不存在的解析方法、跨类型`record`比较错误；这不是本机许可阻断。原始日志 `/tmp/moxbots-mobile-ios-preflight-ci-first.log`。已改为使用同文件内已有的受验证descriptor/project转换，并对两侧record显式取String。原生SecureRecords、NativeArtifacts和NativeUploadScheduler在本机实际Swift/macOS SDK的联合typecheck通过（`/tmp/moxbots-mobile-ios-artifact-core-macos-typecheck.log`）；这不代替iOS SDK或运行态。预检顺序改为先检查两套真实SDK的Swift源码，再下载/检查Rust targets，以便编译错误更快反馈。修复后的iOS device/simulator完整核心预检仍待新CI；Expo wrapper、链接、签名和真机继续开放。
+
+### 完整 iOS 应用构建门禁
+
+新增现有 Test 工作流的手动 `mobile_ios_app=true` 路径，在 GitHub macOS26 上使用真实 Expo prebuild、CocoaPods、Rust XCFramework 与 Xcode Release 模拟器链接；普通 push/PR 保留原自动检查。该路径不使用 Apple 账号或签名，不接受本机 SDK 协议，不替代真机安装。产物要求内嵌非空 main.jsbundle 和正确 bundle ID，保留源码 SHA、原生 provenance 与构建日志。新增构建尚未执行完成。

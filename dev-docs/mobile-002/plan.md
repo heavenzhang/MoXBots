@@ -135,3 +135,12 @@ Primary core27/connection66 test reruns passed. Actual Android arm64 core releas
 - Artifact JS package `5190055d` integrated as `47a489f2`; primary typecheck/lint37 policy tests passed. Actual synthetic Web navigation from chat-more to separate artifact route passed. Source review found stale tracker values after remove/not-found, busy rows retained after blur, metadata events polluting state before verification, and list-refresh clearing unknown result guards; original UI owner is repairing these before acceptance. Persisted local status restoration and clickable pause QA are also required.
 - Original Host bridge first code review found a malformed UUID regex, zero-asset staging root dependency, false capabilities that violate the exact wire schema and send process-exit ambiguity. Host owner is correcting these and adding actual worker-path tests; its package is not yet accepted or merged into root. Same-provider model selection must preserve frozen runtime/provider/permissions and original receipt owner.
 - Notification source audit confirms no existing push registration/provider routes. A bounded notification core/store contract package is assigned separately; no public route/provider/credential or production mutation is authorized by that package alone. Current background push/cold-start gate stays open. Do not modify frozen shared protocol source to add notifications.
+
+### Source provenance integration and complete iOS build gate
+
+- [x] Primary reviewed Host origin scope/capacity repairs and DeviceStore proof binding; integrated owned Host commits as e9beff6b/0bdaa473 and server PoP/readback commits as344217a4/08ef3b9c. No frozen crypto/protocol or reader artifacts changed.
+- [x] Primary combined regression:185 headless,34 Node Host/asset/receipt and105 mobile SDK tests pass. Backend/core with committed-readback rerun pending. Logs `/tmp/moxbots-mobile-source-primary-{headless,node,sdk}.log`.
+- [x] Existing remote macOS job at238a40cb passed real iOS device/simulator Swift/Rust native core preflight; full workflow still running.
+- [ ] Original Node source→private IPC→native publisher→actual temporary service/device stores→durable ACK combined loopback acceptance; provider/physical phone remain separate.
+- [ ] Manual-only complete unsigned iOS simulator app build, including Expo wrapper/Pods/link and embedded JS; no signing/account/license bypass.
+- [ ] Rebuild Android Rust/APK after imported shared OwnedClient changed; old APK remains a previous checkpoint.

@@ -5,17 +5,63 @@ name: Test
 # not just locally. Required check: a PR that fails this cannot merge.
 on:
   workflow_dispatch:
+    inputs:
+      mobile_ios_app:
+        description: Build only the unsigned offline iOS simulator app
+        type: boolean
+        default: false
   pull_request:
   push:
     branches: [main, "dev/**"]
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}
+  group: test-${{ github.workflow }}-${{ github.ref }}-${{ inputs.mobile_ios_app || false }}
   cancel-in-progress: true
 
 jobs:
+  mobile-ios-app:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_ios_app }}
+    name: iOS simulator · unsigned offline app
+    runs-on: macos-26
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/app/package-lock.json
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/connection
+      - run: npm ci --prefix mobile/app
+      - name: Build complete app with actual Expo, Pods and Rust framework
+        env:
+          EXPO_PUBLIC_MOBILE_QA: '0'
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p output/mobile-ios-simulator
+          node mobile/scripts/build-ios-simulator.mjs 2>&1 | tee output/mobile-ios-simulator/build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-ios-simulator-${{ github.sha }}
+          retention-days: 7
+          path: |
+            output/mobile-ios-simulator/build.log
+            output/mobile-ios-simulator/source-commit.txt
+            output/mobile-ios-simulator/acceptance.txt
+            output/mobile-ios-simulator/*.tar.gz
+            mobile/app/modules/moxbots-remote/ios/Frameworks/MoxConnectionCore.xcframework/**/native-build.json
+          if-no-files-found: error
+
   mobile-portable:
+    if: ${{ !inputs.mobile_ios_app }}
     name: mobile SDK · app policy
     runs-on: ubuntu-24.04
     steps:
@@ -58,6 +104,7 @@ jobs:
           cargo clippy --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked --all-targets -- -D warnings
 
   headless-network:
+    if: ${{ !inputs.mobile_ios_app }}
     name: headless AgentNet connector · no desktop
     runs-on: ubuntu-24.04
     steps:
@@ -106,6 +153,7 @@ jobs:
   # The headless identity store must build without Tauri/GTK or a desktop
   # credential service. Actual systemd projection is a separate server gate.
   headless-identity:
+    if: ${{ !inputs.mobile_ios_app }}
     name: headless identity store · no desktop
     # Match the first authorized Linux acceptance server's glibc baseline.
     runs-on: ubuntu-24.04
@@ -153,6 +201,7 @@ jobs:
   # loopback-only network via setup-integration.ts. Real Provider / SDK smoke
   # lives in `credentialed` and is intentionally excluded from public CI.
   js:
+    if: ${{ !inputs.mobile_ios_app }}
     name: typecheck · lint · tests · build smoke
     runs-on: ubuntu-latest
     steps:
@@ -252,6 +301,7 @@ jobs:
   # disallowed_methods/macros here; ordinary Clippy warnings stay non-fatal
   # until they are cleaned up in a dedicated phase.
   rust:
+    if: ${{ !inputs.mobile_ios_app }}
     name: cargo test · clippy redlines
     runs-on: ubuntu-latest
     steps:
@@ -312,6 +362,7 @@ jobs:
   # type-check or execute `cfg(windows)`. Run workspace IO tests natively:
   # compile-only checks cannot detect invalid OS rename parameters (#641).
   windows-rust:
+    if: ${{ !inputs.mobile_ios_app }}
     name: Windows cargo check · workspace IO
     runs-on: windows-latest
     steps:
@@ -422,6 +473,7 @@ jobs:
   # CLIProxy native lifecycle fixtures require a supported Unix platform.
   # Keep Linux's broad Rust gate; apple-metal requires the Xcode 26 SDK.
   macos-cliproxy:
+    if: ${{ !inputs.mobile_ios_app }}
     name: macOS CLIProxy lifecycle
     runs-on: macos-26
     steps:
