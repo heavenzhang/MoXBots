@@ -78,9 +78,15 @@ lifecycle and cannot reconstruct a handle from cached JS state.
   events plus status. Unsolicited, wrong-method or wrong-scope responses fail closed.
 - `suspend` invalidates authority; `status` returns readiness and unknown UUIDs.
 
-A handle bounds its journal to 128 operations and in-flight requests to 64. There
-is no automatic replay, expiry-based removal or success synthesis. Native must
-retain its durable records independently and reconcile them on fresh authorization.
+A handle bounds its active journal to 128 operations and in-flight requests to 64.
+Authenticated matching Accepted/Rejected receipts release full bodies from the
+active journal and retain UUID replay tombstones (up to 4096 per authorization
+epoch). Unknown/Processing/NotFound/Unconfirmed records are never evicted. The
+native encrypted store must persist confirmed tombstones before pruning full
+bodies, and keep unknown full records for recovery; daily confirmed operations do
+not consume the 128 unknown-record budget. There is no automatic replay,
+expiry-based removal or success synthesis. Native retains its durable records
+independently and reconciles them on fresh authorization.
 The current core has no account login UI, outer HTTP/WSS event loop, notification
 provider, attachment extension or microphone/ASR implementation; these belong to
 the mobile native/Host integration owners.
