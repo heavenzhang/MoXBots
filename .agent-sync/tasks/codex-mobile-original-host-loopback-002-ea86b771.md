@@ -75,3 +75,25 @@ interactions acceptance/evidence, and this task record. Existing passing script,
 passing evidence, production owner/protocol, dependencies, parent plan and shared
 workflow are unchanged. Follow-up entry: run the exact new script command from
 dev-docs/mobile-002/original-host-loopback/interactions-acceptance.md.
+
+## Successor stage: initial original Host catalog
+
+Same genuinely start-gated branch/canonical926; owned-diff checkpoint26108f96.
+Root owns main wiring/integration. No new start exception or protocol change.
+
+- [x] Strict original identity/config/projects read-only catalog owner; ordinary
+  enabled builtin projection, private/archive/unsupported filtering.
+- [x] Closed local-source IPC, authority-bound bounded24KiB byte chunks, one8MiB
+  snapshot/fixed30s lifetime, EOF source readback; native whole-read validation.
+- [x] Managed connector initial catalog rejects failed/partial reads before Ready;
+  explicitly unmanaged empty catalog remains; no execution authority added.
+- [x] Node6 integration cases, tsc/eslint and full headless190 pass/1ignored.
+- [ ] Strict clippy: unchanged baseline too_many_arguments in owned_login and
+  handle_management_events; no warning suppression or out-of-scope edits.
+- [ ] Parent main wiring and independent actual Host/service targets acceptance.
+
+Evidence/commands/limits: dev-docs/mobile-002/original-host-loopback/catalog-acceptance.md.
+Only owned catalog/IPC/connector/tests and this record are submitted; main,
+passing scripts, parent plan, workflows, dependencies and frozen protocol remain
+unchanged. Next: primary wires the three-line owner dispatch and independently
+tests the real initial targets path. No production deployment authorized.
