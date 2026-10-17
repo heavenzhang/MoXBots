@@ -1,12 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, realpath, rm } from 'node:fs/promises';
+import { lstat, mkdir, open, opendir, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { InternalManagementAuthority, InternalManagementOperation } from './management-ipc';
 
 type StageBegin = Extract<InternalManagementOperation,{kind:'asset.stage.begin'}>;
-type StageChunk = Extract<InternalManagementOperation,{kind:'asset.stage.chunk'}>;
-type StageFinish = Extract<InternalManagementOperation,{kind:'asset.stage.finish'}>;
 type Entry = StageBegin & { path:string; scope:string; received:number; ready:boolean; touchedAt:number };
 const MAX_ACTIVE=8, MAX_ENTRIES=1024, MAX_SCOPE_BYTES=160*1024*1024, MAX_TOTAL_BYTES=1024*1024*1024;
 
@@ -23,6 +21,8 @@ function same(begin:StageBegin, value:StageBegin) {
 export class HostMobileAssetStaging {
   private readonly entries=new Map<string,Entry>();
   private initialized?:Promise<string>;
+  private startupCleanupComplete=false;
+  private startupCleanupPass?:Promise<boolean>;
   constructor(private readonly root:string,private readonly now=()=>Date.now()) {}
   private init() {
     if(this.initialized)return this.initialized;
@@ -30,24 +30,42 @@ export class HostMobileAssetStaging {
       await mkdir(this.root,{recursive:true,mode:0o700});
       const info=await lstat(this.root);
       if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o077)!==0)throw new Error('HOST_ASSET_STAGING_UNSAFE');
-      const root=await realpath(this.root);
-      // The in-memory upload ledger intentionally does not survive Host restart.
-      // Reap only our immediate UUID/data layout, in a bounded batch; never
-      // traverse or remove an arbitrary path supplied over IPC.
-      let reaped=0;
-      for(const name of await readdir(root)){
-        if(reaped>=32)break;
-        if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(name))continue;
-        const directory=path.join(root,name),dirInfo=await lstat(directory);
-        if(!dirInfo.isDirectory()||dirInfo.isSymbolicLink())continue;
-        const children=await readdir(directory);if(children.length!==1||children[0]!=='data')continue;
-        const dataInfo=await lstat(path.join(directory,'data'));
-        if(!dataInfo.isFile()||dataInfo.isSymbolicLink()||dataInfo.nlink!==1)continue;
-        await rm(directory,{recursive:true,force:false});reaped++;
-      }
-      return root;
+      return realpath(this.root);
     })();
     return this.initialized;
+  }
+  private async reapStartupBatch(root:string) {
+    // The staging ledger is memory-only. After a crash, refuse new uploads
+    // until bounded batches have removed every orphan; otherwise old bytes
+    // would be omitted from the in-memory quota. opendir stops at 32 entries,
+    // so a large directory is never materialized or traversed in one pass.
+    const directory=await opendir(root);let visited=0;
+    for await(const entry of directory){
+      visited++;
+      const name=entry.name;
+      if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(name))throw new Error('HOST_ASSET_STAGING_UNSAFE');
+      const orphan=path.join(root,name),dirInfo=await lstat(orphan);
+      if(!dirInfo.isDirectory()||dirInfo.isSymbolicLink())throw new Error('HOST_ASSET_STAGING_UNSAFE');
+      const children=await opendir(orphan);
+      let first;let second;
+      try{first=await children.read();second=await children.read()}finally{await children.close()}
+      if(second||first&&first.name!=='data')throw new Error('HOST_ASSET_STAGING_UNSAFE');
+      if(first){
+        const dataInfo=await lstat(path.join(orphan,'data'));
+        if(!dataInfo.isFile()||dataInfo.isSymbolicLink()||dataInfo.nlink!==1)throw new Error('HOST_ASSET_STAGING_UNSAFE');
+      }
+      await rm(orphan,{recursive:true,force:false});
+      if(visited>=32)return false;
+    }
+    return true;
+  }
+  private async cleanStartupBatch(root:string) {
+    if(this.startupCleanupComplete)return true;
+    if(!this.startupCleanupPass){
+      this.startupCleanupPass=this.reapStartupBatch(root).finally(()=>{this.startupCleanupPass=undefined});
+    }
+    this.startupCleanupComplete=await this.startupCleanupPass;
+    return this.startupCleanupComplete;
   }
   private key(scope:string,op:{agentId:string;sessionId:string;assetId:string}) { return `${scope}:${op.agentId}:${op.sessionId}:${op.assetId}`; }
   async handle(authority:InternalManagementAuthority, operation:InternalManagementOperation):Promise<{kind:'stage';assetId:string;receivedBytes:number;ready:boolean}> {
@@ -55,11 +73,13 @@ export class HostMobileAssetStaging {
     if(operation.kind==='asset.stage.begin') {
       await this.expire();
       if(!safeLabel(operation.name)||operation.sizeBytes<1||operation.sizeBytes>20*1024*1024||!(/^[a-z0-9.+-]+\/[a-z0-9.+-]+$/i.test(operation.mimeType)))throw new Error('ASSET_REQUEST_INVALID');
+      const root=await this.init();
+      if(!await this.cleanStartupBatch(root))throw new Error('ASSET_STAGING_CLEANUP_PENDING');
       const k=this.key(scope,operation),existing=this.entries.get(k);
       if(existing) {if(!same(existing,operation))throw new Error('ASSET_UPLOAD_CONFLICT');existing.touchedAt=time;return {kind:'stage',assetId:existing.assetId,receivedBytes:existing.received,ready:existing.ready};}
       const scoped=[...this.entries.values()].filter(e=>e.scope===scope);
       if(this.entries.size>=MAX_ENTRIES||scoped.length>=MAX_ACTIVE||scoped.reduce((sum,e)=>sum+e.sizeBytes,0)+operation.sizeBytes>MAX_SCOPE_BYTES||[...this.entries.values()].reduce((sum,e)=>sum+e.sizeBytes,0)+operation.sizeBytes>MAX_TOTAL_BYTES)throw new Error('ASSET_QUOTA_EXCEEDED');
-      const root=await this.init(), directory=path.join(root,randomUUID());await mkdir(directory,{mode:0o700});
+      const directory=path.join(root,randomUUID());await mkdir(directory,{mode:0o700});
       const file=path.join(directory,'data'),fd=await open(file,constants.O_WRONLY|constants.O_CREAT|constants.O_EXCL|(constants.O_NOFOLLOW??0),0o600);await fd.close();
       const entry:Entry={...operation,path:file,scope,received:0,ready:false,touchedAt:time};this.entries.set(k,entry);
       return {kind:'stage',assetId:entry.assetId,receivedBytes:0,ready:false};

@@ -58,7 +58,25 @@ describe('Host UID mobile asset staging',()=>{
     const orphan=path.join(root,randomUUID());await (await import('node:fs/promises')).mkdir(orphan,{mode:0o700});
     await (await import('node:fs/promises')).writeFile(path.join(orphan,'data'),'partial',{mode:0o600});
     const staging=new HostMobileAssetStaging(root);
-    await staging.withReadyAssets(authority,{agentId:'agent-1',sessionId:'session-1',assetIds:[]},async()=>undefined);
+    const payload=Buffer.from('x'),assetId=randomUUID();
+    await staging.handle(authority,{kind:'asset.stage.begin',agentId:'agent-1',sessionId:'session-1',assetId,name:'x.txt',mimeType:'text/plain',sizeBytes:1,sha256:createHash('sha256').update(payload).digest('hex')});
     await expect((await import('node:fs/promises')).stat(orphan)).rejects.toMatchObject({code:'ENOENT'});
+  });
+
+  it('cleans more than 32 restart orphans in bounded batches before admitting uploads',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'mox-orphan-stage-batch-'));roots.push(root);
+    const fs=await import('node:fs/promises');
+    for(let i=0;i<70;i++){
+      const orphan=path.join(root,randomUUID());await fs.mkdir(orphan,{mode:0o700});
+      await fs.writeFile(path.join(orphan,'data'),'partial',{mode:0o600});
+    }
+    const staging=new HostMobileAssetStaging(root),payload=Buffer.from('x'),assetId=randomUUID();
+    const begin={kind:'asset.stage.begin' as const,agentId:'agent-1',sessionId:'session-1',assetId,name:'x.txt',mimeType:'text/plain',sizeBytes:1,sha256:createHash('sha256').update(payload).digest('hex')};
+    await expect(staging.handle(authority,begin)).rejects.toThrow('ASSET_STAGING_CLEANUP_PENDING');
+    expect((await fs.readdir(root)).length).toBe(38);
+    await expect(staging.handle(authority,begin)).rejects.toThrow('ASSET_STAGING_CLEANUP_PENDING');
+    expect((await fs.readdir(root)).length).toBe(6);
+    expect(await staging.handle(authority,begin)).toMatchObject({assetId,ready:false});
+    expect((await fs.readdir(root)).length).toBe(1);
   });
 });
