@@ -21,7 +21,8 @@ use myagents_agentnet_device_core::{DeviceRecord, SessionContext};
 use myagents_agentnet_metadata_core::{MetadataError, Page, Presence, RelayMetadataState};
 use myagents_agentnet_peer_core::PeerSnapshot;
 use myagents_agentnet_relay_core::{
-    Effect, RelayConfig, RelayCore, RelayError, TrustedLiveSnapshot, TrustedReadyEvidence,
+    Effect, RelayConfig, RelayCore, RelayError, TrustedLiveSnapshot, TrustedMountEvidence,
+    TrustedReadyEvidence,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -81,6 +82,7 @@ impl RelayController {
             peer_jwks: network._keys.jwks(),
         })
         .map_err(|_| AuthError::Configuration)?;
+        network.enable_return_routes();
         Ok(Self {
             network,
             runtime: Mutex::new(Runtime {
@@ -545,7 +547,102 @@ impl RelayController {
             return Vec::new();
         };
         runtime.connections.remove(connection_id);
-        runtime.core.disconnect(connection_id)
+        let now_ms = self
+            .monotonic_origin
+            .elapsed()
+            .as_millis()
+            .min(i64::MAX as u128) as i64;
+        runtime.core.disconnect_at(connection_id, now_ms)
+    }
+
+    fn operation_control(
+        &self,
+        connection_id: &str,
+        control: &Value,
+    ) -> Result<Vec<Effect>, RelayFailure> {
+        let sender = self.connection_entry(connection_id)?;
+        let selected = {
+            let runtime = self.runtime()?;
+            let peers = runtime.core.operation_peers(connection_id, control);
+            peers.and_then(|peers| {
+                let lookup = |device: &str| {
+                    runtime
+                        .connections
+                        .iter()
+                        .find(|(_, c)| {
+                            c.access.device_id() == device
+                                && c.access.principal_id() == sender.access.principal_id()
+                                && c.access.issuer_network_id() == sender.access.issuer_network_id()
+                        })
+                        .map(|(id, c)| (id.clone(), c.clone()))
+                        .ok_or(RelayError::Connection)
+                };
+                Ok((
+                    lookup(&peers.source_device_id)?,
+                    lookup(&peers.target_device_id)?,
+                    peers.mount_id,
+                ))
+            })
+        };
+        let (source, target, mount_id) = match selected {
+            Ok(selected) => selected,
+            Err(error) => return Ok(vec![operation_error(connection_id, control, error)]),
+        };
+        let result = self.with_two_live(
+            &source.1.access,
+            &target.1.access,
+            |source_live, target_live| {
+                if !durably_ready(&source_live.metadata, &source.1.epoch)
+                    || !durably_ready(&target_live.metadata, &target.1.epoch)
+                {
+                    return Ok(vec![operation_error(
+                        connection_id,
+                        control,
+                        RelayError::Connection,
+                    )]);
+                }
+                // Lock order: AuthStore -> MetadataStore -> runtime. The enable/CAS
+                // policy cannot change between the authoritative read and permit.
+                self.network
+                    .metadata
+                    .with_callable_mount(&target_live.context, &mount_id, |mount| {
+                        let mut runtime = self.runtime()?;
+                        verify_runtime_pair(&runtime, &source.0, &source.1, &target.0, &target.1)?;
+                        verify_runtime_entry(&runtime, connection_id, &sender)?;
+                        let (now, now_ms) = fresh_times(&self.monotonic_origin)?;
+                        let bytes = serde_json::to_vec(control).map_err(|_| rejected())?;
+                        let result = runtime.core.handle_control_with_mount(
+                            connection_id,
+                            &bytes,
+                            None,
+                            Some(TrustedMountEvidence {
+                                mount_id: mount_id.clone(),
+                                device_id: mount.device_id,
+                                key_generation: mount.key_generation,
+                                connection_epoch: mount.connection_epoch,
+                                membership_revision: mount.membership_revision,
+                                enable_revision: mount.enable_revision,
+                            }),
+                            now,
+                            now_ms,
+                        );
+                        Ok(result.unwrap_or_else(|error| {
+                            vec![operation_error(connection_id, control, error)]
+                        }))
+                    })
+                    .map_err(map_metadata)?
+            },
+        );
+        match result {
+            Ok(effects) => Ok(effects),
+            // Do not turn an unavailable/policy-revoked return into an implicit
+            // replay or a reconnect storm. The local return owner settles it.
+            Err(_) => Ok(vec![operation_error(
+                connection_id,
+                control,
+                RelayError::Unauthorized,
+            )]),
+        }
     }
 
     /// Best-effort Offline CAS for a connection this controller admitted.
@@ -614,6 +711,7 @@ impl RelayHandler for RelayController {
                     .map_err(map_relay)?;
                 let (connection_id, effects) =
                     runtime.core.connect(authorized, now).map_err(map_relay)?;
+                runtime.core.negotiate_returns(&connection_id, &hello).map_err(map_relay)?;
                 let projection = runtime
                     .core
                     .connection_projection(&connection_id, now)
@@ -668,6 +766,13 @@ impl RelayHandler for RelayController {
             .and_then(Value::as_str)
             .ok_or_else(rejected)?;
 
+        if matches!(
+            kind,
+            "op.prepare" | "permit.acquire" | "route.resume" | "route.rebind"
+        ) {
+            return self.operation_control(connection_id, &control);
+        }
+
         if kind == "channel.open" {
             let (target_id, target) = self.open_target_entry(&control)?;
             let result = self.with_two_live(
@@ -686,6 +791,13 @@ impl RelayHandler for RelayController {
                     runtime
                         .core
                         .handle_control(connection_id, &bytes, None, now, now_ms)
+                        .or_else(|error| {
+                            if error == RelayError::PairExists {
+                                Ok(vec![operation_error(connection_id, &control, error)])
+                            } else {
+                                Err(error)
+                            }
+                        })
                         .map_err(map_relay)
                 },
             );
@@ -695,10 +807,21 @@ impl RelayHandler for RelayController {
             return result;
         }
 
+        let absent_close = if kind == "channel.close" {
+            !self.runtime()?.core.has_channel(
+                control
+                    .get("channelId")
+                    .and_then(Value::as_str)
+                    .ok_or_else(rejected)?,
+            )
+        } else {
+            false
+        };
         if matches!(
             kind,
             "channel.accept" | "channel.ready" | "channel.close" | "credit.release"
-        ) {
+        ) && !absent_close
+        {
             let channel_id = control
                 .get("channelId")
                 .and_then(Value::as_str)
@@ -930,6 +1053,22 @@ impl RelayHandler for RelayController {
             Ok(effects) => effects,
             Err(_) => self.disconnect_exact(connection_id),
         }
+    }
+}
+
+fn operation_error(connection_id: &str, request: &Value, error: RelayError) -> Effect {
+    let (code, retryable) = match error {
+        RelayError::PairExists => ("CHANNEL_PAIR_EXISTS", false),
+        RelayError::Connection | RelayError::Channel => ("TARGET_OFFLINE", true),
+        RelayError::Capacity | RelayError::Unavailable => ("RESOURCE_EXHAUSTED", true),
+        RelayError::Replay => ("OP_ALREADY_COMPLETED", false),
+        _ => ("RETURN_UNAVAILABLE", false),
+    };
+    Effect::Control {
+        target_connection_id: connection_id.into(),
+        json: serde_json::json!({
+            "version":1,"controlId":request["controlId"],"type":"error","code":code,"retryable":retryable
+        }),
     }
 }
 

@@ -2,8 +2,8 @@
 //!
 //! The caller supplies an AuthStore-validated session and device-core identity.
 //! This crate does not authenticate bearer tokens, accept relay frames, or issue
-//! certificates. Mount mutation and callable-agent/peer-binding behavior are
-//! deliberately out of scope until a real relay owner is connected.
+//! certificates. Callable decisions remain serialized with mount mutations; the
+//! relay owner may commit its own control state while that decision is locked.
 
 use myagents_agent_network_protocol::{
     budget, validate_catalog, validate_device_name_mutation, validate_metadata, CatalogSnapshot,
@@ -48,6 +48,10 @@ pub enum MetadataError {
     NameConflict,
     CatalogConflict,
     CatalogStale,
+    MountNotFound,
+    MountUnavailable,
+    EnableConflict,
+    DescriptionConflict,
     ReceiptConflict,
     ReceiptNotFound,
     ReceiptExpired,
@@ -73,6 +77,10 @@ impl std::fmt::Display for MetadataError {
             Self::NameConflict => "device name changed",
             Self::CatalogConflict => "catalog sequence was reused with different content",
             Self::CatalogStale => "catalog epoch or sequence is stale",
+            Self::MountNotFound => "mount was not found",
+            Self::MountUnavailable => "mount is not currently callable",
+            Self::EnableConflict => "mount enable revision changed",
+            Self::DescriptionConflict => "mount description revision changed",
             Self::ReceiptConflict => "mutation id was reused with different content",
             Self::ReceiptNotFound => "mutation receipt was not found",
             Self::ReceiptExpired => "mutation receipt expired",
@@ -155,6 +163,16 @@ pub struct Page<T> {
     pub items: Vec<T>,
     pub next_cursor: Option<String>,
     pub complete: bool,
+}
+
+/// Current authorization projection, valid only during the owner-locked callback.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallableMount {
+    pub device_id: String,
+    pub key_generation: u64,
+    pub connection_epoch: String,
+    pub membership_revision: u64,
+    pub enable_revision: u64,
 }
 
 pub struct MetadataStore {
@@ -643,18 +661,22 @@ impl MetadataStore {
             ],
         )
         .map_err(|_| MetadataError::Storage)?;
-        tx.execute(
-            "UPDATE catalog_items SET item_json=json_set(item_json,'$.lifecycle','removed')
-             WHERE network_id=?1 AND principal_id=?2 AND device_id=?3
-               AND json_extract(item_json,'$.lifecycle')='active'",
-            params![context.network_id, context.principal_id, context.device_id],
-        )
-        .map_err(|_| MetadataError::Storage)?;
+        let previous_ids: Vec<String> = {
+            let mut statement = tx.prepare("SELECT local_agent_id FROM catalog_items WHERE network_id=?1 AND principal_id=?2 AND device_id=?3").map_err(|_| MetadataError::Storage)?;
+            let rows = statement
+                .query_map(
+                    params![context.network_id, context.principal_id, context.device_id],
+                    |row| row.get(0),
+                )
+                .map_err(|_| MetadataError::Storage)?;
+            rows.collect::<Result<_, _>>()
+                .map_err(|_| MetadataError::Storage)?
+        };
         for item in &snapshot.items {
             let item_json = serde_json::to_string(item).map_err(|_| MetadataError::Storage)?;
-            let existing_mount: Option<String> = tx
+            let existing_mount: Option<(String, String)> = tx
                 .query_row(
-                    "SELECT mount_id FROM catalog_items WHERE network_id=?1 AND principal_id=?2
+                    "SELECT mount_id,item_json FROM catalog_items WHERE network_id=?1 AND principal_id=?2
                        AND device_id=?3 AND local_agent_id=?4",
                     params![
                         context.network_id,
@@ -662,10 +684,22 @@ impl MetadataStore {
                         context.device_id,
                         item.local_agent_id
                     ],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()
                 .map_err(|_| MetadataError::Storage)?;
+            if let Some((_, previous)) = &existing_mount {
+                let previous: Value =
+                    serde_json::from_str(previous).map_err(|_| MetadataError::Storage)?;
+                if !matches!(
+                    item.lifecycle,
+                    myagents_agent_network_protocol::CatalogLifecycle::Active
+                ) || previous["lifecycle"] != "active"
+                    || previous["exposureRevision"].as_u64() != Some(item.exposure_revision)
+                {
+                    disable_mount(&tx, context, &context.device_id, Some(&item.local_agent_id))?;
+                }
+            }
             tx.execute(
                 "INSERT INTO catalog_items(network_id,principal_id,device_id,local_agent_id,
                    mount_id,item_json,enabled,enable_revision,description,description_revision)
@@ -677,11 +711,19 @@ impl MetadataStore {
                     context.principal_id,
                     context.device_id,
                     item.local_agent_id,
-                    existing_mount.unwrap_or_else(|| Uuid::new_v4().to_string()),
+                    existing_mount
+                        .map(|(mount, _)| mount)
+                        .unwrap_or_else(|| Uuid::new_v4().to_string()),
                     item_json
                 ],
             )
             .map_err(|_| MetadataError::Storage)?;
+        }
+        for local_agent_id in previous_ids {
+            if !seen.contains(&local_agent_id) {
+                disable_mount(&tx, context, &context.device_id, Some(&local_agent_id))?;
+                tx.execute("UPDATE catalog_items SET item_json=json_set(item_json,'$.lifecycle','removed') WHERE network_id=?1 AND principal_id=?2 AND device_id=?3 AND local_agent_id=?4", params![context.network_id,context.principal_id,context.device_id,local_agent_id]).map_err(|_| MetadataError::Storage)?;
+            }
         }
         validate_context(context)?;
         tx.commit().map_err(|_| MetadataError::Storage)?;
@@ -993,6 +1035,215 @@ impl MetadataStore {
         serde_json::from_value(page).map_err(|_| MetadataError::Storage)
     }
 
+    /// Executes the relay's control-state commit under the metadata owner lock.
+    /// Caller holds the live AuthStore session gate. The callback must not call
+    /// metadata again and must not await or perform IO while holding this lock.
+    pub fn with_callable_mount<T>(
+        &self,
+        context: &SessionContext,
+        mount_id: &str,
+        operation: impl FnOnce(CallableMount) -> T,
+    ) -> Result<T, MetadataError> {
+        validate_context(context)?;
+        if !canonical_uuid(mount_id) {
+            return Err(MetadataError::InvalidInput);
+        }
+        let mut connection = self.connection.lock().map_err(|_| MetadataError::Storage)?;
+        validate_context(context)?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| MetadataError::Storage)?;
+        ensure_registered(&tx, context)?;
+        let (mount, _) = self.callable_projection(&tx, context, mount_id)?;
+        validate_context(context)?;
+        let result = operation(mount);
+        // Read-only transaction; the callback's successful control commit must
+        // not be followed by a fallible database commit or expiry check.
+        drop(tx);
+        Ok(result)
+    }
+
+    pub fn resolve_callable(
+        &self,
+        context: &SessionContext,
+        mount_id: &str,
+    ) -> Result<Value, MetadataError> {
+        validate_context(context)?;
+        if !canonical_uuid(mount_id) {
+            return Err(MetadataError::InvalidInput);
+        }
+        let connection = self.connection.lock().map_err(|_| MetadataError::Storage)?;
+        validate_context(context)?;
+        ensure_registered(&connection, context)?;
+        let (_, value) = self.callable_projection(&connection, context, mount_id)?;
+        validate_context(context)?;
+        Ok(value)
+    }
+
+    pub fn list_callable(
+        &self,
+        context: &SessionContext,
+        cursor: Option<&str>,
+        limit: usize,
+    ) -> Result<Value, MetadataError> {
+        self.directory_page(context, "callable", cursor, limit, |tx| {
+            let ids = {
+                let mut statement = tx.prepare("SELECT mount_id FROM catalog_items WHERE network_id=?1 AND principal_id=?2 AND enabled=1 ORDER BY mount_id LIMIT ?3").map_err(|_| MetadataError::Storage)?;
+                let rows = statement.query_map(params![context.network_id,context.principal_id,budget("catalogItems") + 1], |row| row.get::<_,String>(0)).map_err(|_| MetadataError::Storage)?;
+                rows.collect::<Result<Vec<_>,_>>().map_err(|_| MetadataError::Storage)?
+            };
+            if ids.len() > budget("catalogItems") { return Err(MetadataError::SnapshotCapacity); }
+            self.refresh_callable(tx, context, ids.iter().map(String::as_str))
+        })
+    }
+
+    fn refresh_callable<'a>(
+        &self,
+        connection: &Connection,
+        context: &SessionContext,
+        ids: impl Iterator<Item = &'a str>,
+    ) -> Result<Vec<Value>, MetadataError> {
+        let mut values = Vec::new();
+        // A catalog can be 8 MiB/5000 entries. Validate each device's full ACK
+        // once per locked read, never once per mount or across requests.
+        let mut verified_catalogs = std::collections::HashSet::new();
+        for id in ids {
+            match self.callable_projection_checked(connection, context, id, &mut verified_catalogs)
+            {
+                Ok((_, value)) => values.push(value),
+                Err(MetadataError::MountNotFound | MetadataError::MountUnavailable) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(values)
+    }
+
+    fn callable_projection(
+        &self,
+        connection: &Connection,
+        context: &SessionContext,
+        mount_id: &str,
+    ) -> Result<(CallableMount, Value), MetadataError> {
+        self.callable_projection_checked(
+            connection,
+            context,
+            mount_id,
+            &mut std::collections::HashSet::new(),
+        )
+    }
+
+    fn callable_projection_checked(
+        &self,
+        connection: &Connection,
+        context: &SessionContext,
+        mount_id: &str,
+        verified_catalogs: &mut std::collections::HashSet<String>,
+    ) -> Result<(CallableMount, Value), MetadataError> {
+        let row = connection.query_row(
+            "SELECT i.device_id,i.local_agent_id,i.item_json,i.enabled,i.enable_revision,i.description,d.joined,d.presence,d.connection_epoch,d.catalog_epoch,d.catalog_seq,d.key_generation,d.membership_revision,d.name,d.platform FROM catalog_items i JOIN devices d ON d.network_id=i.network_id AND d.principal_id=i.principal_id AND d.device_id=i.device_id WHERE i.network_id=?1 AND i.principal_id=?2 AND i.mount_id=?3",
+            params![context.network_id,context.principal_id,mount_id], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,String>(2)?,row.get::<_,bool>(3)?,row.get::<_,u64>(4)?,row.get::<_,Option<String>>(5)?,row.get::<_,bool>(6)?,row.get::<_,String>(7)?,row.get::<_,Option<String>>(8)?,row.get::<_,Option<String>>(9)?,row.get::<_,i64>(10)?,row.get::<_,u64>(11)?,row.get::<_,u64>(12)?,row.get::<_,String>(13)?,row.get::<_,String>(14)?))
+        ).optional().map_err(|_| MetadataError::Storage)?.ok_or(MetadataError::MountNotFound)?;
+        let (
+            device_id,
+            local_agent_id,
+            item_json,
+            enabled,
+            enable_revision,
+            description,
+            joined,
+            presence,
+            connection_epoch,
+            catalog_epoch,
+            catalog_seq,
+            key_generation,
+            membership_revision,
+            device_name,
+            platform,
+        ) = row;
+        let item: Value = serde_json::from_str(&item_json).map_err(|_| MetadataError::Storage)?;
+        if !enabled
+            || !joined
+            || presence != "ready"
+            || item["lifecycle"] != "active"
+            || (!verified_catalogs.contains(&device_id)
+                && durable_catalog_ack(
+                    connection,
+                    context,
+                    &device_id,
+                    connection_epoch.as_deref(),
+                    catalog_epoch.as_deref(),
+                    catalog_seq,
+                )? != Some(catalog_seq as u64))
+        {
+            return Err(MetadataError::MountUnavailable);
+        }
+        verified_catalogs.insert(device_id.clone());
+        let connection_epoch = connection_epoch.ok_or(MetadataError::MountUnavailable)?;
+        let selector = myagents_agent_network_protocol::AgentReference {
+            service_id: self.profile.service_id.clone(),
+            network_id: context.network_id.clone(),
+            mount_id: mount_id.into(),
+        }
+        .encode()
+        .map_err(|_| MetadataError::Storage)?;
+        let value = json!({"mountId":mount_id,"localAgentId":local_agent_id,"name":item["name"],"icon":item.get("icon"),"description":description,"deviceId":device_id,"deviceName":device_name,"platform":platform,"membershipRevision":membership_revision,"enableRevision":enable_revision,"selector":selector,"isLocal":false,"source":{"serviceId":self.profile.service_id,"networkId":context.network_id},"connectionEpoch":connection_epoch,"keyGeneration":key_generation,"signedBinding":null});
+        validate_metadata(MetadataKind::CallableAgent, &value)
+            .map_err(|_| MetadataError::Storage)?;
+        Ok((
+            CallableMount {
+                device_id,
+                key_generation,
+                connection_epoch,
+                membership_revision,
+                enable_revision,
+            },
+            value,
+        ))
+    }
+
+    /// Applies exactly one fixed-protocol mount mutation and persists its receipt.
+    pub fn mutate_mount(
+        &self,
+        context: &SessionContext,
+        mount_id: &str,
+        request: &Value,
+    ) -> Result<Value, MetadataError> {
+        myagents_agent_network_protocol::validate_mutation(false, request)
+            .map_err(|_| MetadataError::InvalidInput)?;
+        if request
+            .get("description")
+            .and_then(Value::as_str)
+            .is_some_and(|s| s.len() > budget("descriptionBytes"))
+        {
+            return Err(MetadataError::InvalidInput);
+        }
+        let mutation_id = request["mutationId"]
+            .as_str()
+            .ok_or(MetadataError::InvalidInput)?;
+        self.mutate(context,mutation_id,"mount",mount_id,request.clone(),|tx,_now| {
+            let row = tx.query_row("SELECT device_id,local_agent_id,enabled,enable_revision,description,description_revision,item_json FROM catalog_items WHERE network_id=?1 AND principal_id=?2 AND mount_id=?3",params![context.network_id,context.principal_id,mount_id],|row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?,row.get::<_,bool>(2)?,row.get::<_,u64>(3)?,row.get::<_,Option<String>>(4)?,row.get::<_,u64>(5)?,row.get::<_,String>(6)?))).optional().map_err(|_| MetadataError::Storage)?.ok_or(MetadataError::MountNotFound)?;
+            let (device_id,local_agent_id,mut enabled,mut enable_revision,mut description,mut description_revision,item_json) = row;
+            let device = get_target_device(tx,context,&device_id)?;
+            if request["expectedMembershipRevision"].as_u64() != Some(device.membership_revision as u64) { return Err(MetadataError::MembershipConflict); }
+            if let Some(change) = request.get("enabled") {
+                if request["expectedEnableRevision"].as_u64() != Some(enable_revision) { return Err(MetadataError::EnableConflict); }
+                let change = change.as_bool().ok_or(MetadataError::InvalidInput)?;
+                let item: Value = serde_json::from_str(&item_json).map_err(|_| MetadataError::Storage)?;
+                if change && (!device.joined || item["lifecycle"] != "active") { return Err(MetadataError::MountUnavailable); }
+                if enabled != change { enabled = change; enable_revision = next_revision(enable_revision)?; }
+            } else {
+                if request["expectedDescriptionRevision"].as_u64() != Some(description_revision) { return Err(MetadataError::DescriptionConflict); }
+                let change = request["description"].as_str().map(str::to_owned);
+                if description != change { description = change; description_revision = next_revision(description_revision)?; }
+            }
+            tx.execute("UPDATE catalog_items SET enabled=?1,enable_revision=?2,description=?3,description_revision=?4 WHERE network_id=?5 AND principal_id=?6 AND mount_id=?7",params![enabled,enable_revision,description,description_revision,context.network_id,context.principal_id,mount_id]).map_err(|_| MetadataError::Storage)?;
+            bump_roster(tx,context)?;
+            let result = json!({"mountId":mount_id,"networkId":context.network_id,"principalId":context.principal_id,"deviceId":device_id,"localAgentId":local_agent_id,"enabled":enabled,"enableRevision":enable_revision,"description":description,"descriptionRevision":description_revision});
+            validate_metadata(MetadataKind::Mount,&result).map_err(|_| MetadataError::Storage)?;
+            Ok(result)
+        })
+    }
+
     pub fn get_network(&self, context: &SessionContext) -> Result<Value, MetadataError> {
         validate_context(context)?;
         let connection = self.connection.lock().map_err(|_| MetadataError::Storage)?;
@@ -1052,6 +1303,9 @@ impl MetadataStore {
                         ],
                     )
                     .map_err(|_| MetadataError::Storage)?;
+                    if !joined {
+                        disable_mount(tx, context, target_device_id, None)?;
+                    }
                     bump_roster(tx, context)?;
                     row.joined = joined;
                 }
@@ -1352,6 +1606,8 @@ impl MetadataStore {
                 let page = json!({"items":rows,"nextCursor":null,"complete":true});
                 let kind = if query_key == "devices" {
                     MetadataKind::Devices
+                } else if query_key == "callable" {
+                    MetadataKind::Callable
                 } else {
                     MetadataKind::Agents
                 };
@@ -1412,11 +1668,24 @@ impl MetadataStore {
             .map_err(|_| MetadataError::Storage)?;
             Some(cursor_id)
         };
+        let page_items = if query_key == "callable" {
+            self.refresh_callable(
+                &tx,
+                context,
+                items[start..end]
+                    .iter()
+                    .map(|item| item["mountId"].as_str().unwrap_or_default()),
+            )?
+        } else {
+            items[start..end].to_vec()
+        };
         validate_context(context)?;
         tx.commit().map_err(|_| MetadataError::Storage)?;
-        let page = json!({"items":items[start..end],"nextCursor":next_cursor,"complete":complete});
+        let page = json!({"items":page_items,"nextCursor":next_cursor,"complete":complete});
         let kind = if query_key == "devices" {
             MetadataKind::Devices
+        } else if query_key == "callable" {
+            MetadataKind::Callable
         } else {
             MetadataKind::Agents
         };
@@ -1564,6 +1833,27 @@ impl MetadataStore {
         }
         Ok(result)
     }
+}
+
+fn next_revision(value: u64) -> Result<u64, MetadataError> {
+    value
+        .checked_add(1)
+        .filter(|n| *n <= MAX_GENERATION as u64)
+        .ok_or(MetadataError::Storage)
+}
+
+fn disable_mount(
+    connection: &Connection,
+    context: &SessionContext,
+    device_id: &str,
+    local_agent_id: Option<&str>,
+) -> Result<(), MetadataError> {
+    let overflow: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM catalog_items WHERE network_id=?1 AND principal_id=?2 AND device_id=?3 AND (?4 IS NULL OR local_agent_id=?4) AND enabled=1 AND enable_revision>=?5)",params![context.network_id,context.principal_id,device_id,local_agent_id,MAX_GENERATION],|row| row.get(0)).map_err(|_| MetadataError::Storage)?;
+    if overflow {
+        return Err(MetadataError::Storage);
+    }
+    connection.execute("UPDATE catalog_items SET enabled=0,enable_revision=enable_revision+1 WHERE network_id=?1 AND principal_id=?2 AND device_id=?3 AND (?4 IS NULL OR local_agent_id=?4) AND enabled=1",params![context.network_id,context.principal_id,device_id,local_agent_id]).map_err(|_| MetadataError::Storage)?;
+    Ok(())
 }
 
 fn parse_presence(value: &str) -> Result<Presence, MetadataError> {

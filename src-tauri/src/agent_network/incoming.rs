@@ -284,7 +284,8 @@ impl Incoming {
             || target_mount_id != &entry.target_mount
             || membership_revision != membership
             || enable_revision != enabled
-            || *freshness_ms != budget("permitMs") as u64
+            || *freshness_ms == 0
+            || *freshness_ms > budget("permitMs") as u64
         {
             return Err(NetworkError::new("PERMIT_SCOPE_MISMATCH"));
         }
@@ -604,6 +605,22 @@ mod tests {
         assert!(
             matches!(incoming.permit(&control, &permit, &local(), &connection()), Err(NetworkError { code, .. }) if code == "PERMIT_EXPIRED")
         );
+    }
+    #[test]
+    fn cached_permit_remaining_freshness_is_bounded_by_original_request_clock() {
+        for remaining in [0, 1, 4_000, 5_000, 5_001] {
+            let (mut incoming, control, mut permit) = prepared();
+            if let ServerMessage::Permit { freshness_ms, .. } = &mut permit {
+                *freshness_ms = remaining;
+            }
+            if let Phase::Permit { requested_at, .. } =
+                &mut incoming.entries.get_mut(&invocation().op_id).unwrap().phase
+            {
+                *requested_at = Instant::now() - Duration::from_millis(50);
+            }
+            let result = incoming.permit(&control, &permit, &local(), &connection());
+            assert_eq!(result.is_ok(), matches!(remaining, 4_000 | 5_000));
+        }
     }
     #[test]
     fn completed_or_pending_duplicate_never_reexecutes_and_payload_collision_is_rejected() {

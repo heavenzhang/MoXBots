@@ -1,6 +1,18 @@
-//! The owned relay profile grants device membership, never Agent invocation.
+//! Legacy owned relay restrictions. Agent authority requires explicit capability
+//! negotiation and a current enabled mount plus server-issued permit.
 use super::{transport::NetworkRoute, NetworkError};
 use myagents_agent_network_protocol::ServerMessage;
+
+/// Presence of one extension is insufficient; every prerequisite must be
+/// explicitly implemented by this server before publishing Agent business.
+pub(crate) fn supports_agents(metadata: &serde_json::Value) -> bool {
+    let Some(capabilities) = metadata["capabilities"].as_array() else {
+        return false;
+    };
+    ["tls13-mtls", "typed-rpc", "permit-v1", "return-v1"]
+        .iter()
+        .all(|required| capabilities.iter().any(|value| value == required))
+}
 
 pub(crate) fn control(message: &ServerMessage) -> Result<(), NetworkError> {
     if matches!(
@@ -86,5 +98,24 @@ mod tests {
             catalog_seq: 1
         })
         .is_ok());
+    }
+    #[test]
+    fn agent_business_requires_all_prerequisites_and_legacy_remains_restricted() {
+        use serde_json::json;
+        for metadata in [
+            json!({}),
+            json!({"capabilities":[]}),
+            json!({"capabilities":["return-resume-v1"]}),
+            json!({"capabilities":["tls13-mtls","typed-rpc","permit-v1"]}),
+            json!({"capabilities":"typed-rpc"}),
+        ] {
+            assert!(!supports_agents(&metadata));
+        }
+        assert!(supports_agents(
+            &json!({"capabilities":["tls13-mtls","typed-rpc","permit-v1","return-v1"]})
+        ));
+        assert!(supports_agents(
+            &json!({"capabilities":["tls13-mtls","typed-rpc","permit-v1","return-v1","return-resume-v1"]})
+        ));
     }
 }

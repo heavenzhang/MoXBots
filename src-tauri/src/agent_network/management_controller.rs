@@ -2,7 +2,7 @@
 //! Route snapshots are not grants. The Host independently authorizes dispatch.
 use super::{
     channel::ManagementEvent,
-    connection::send,
+    connection::{send, send_control},
     identity::NetworkIdentity,
     pairs::{Offer, Pairs},
     transport::{DeviceAddress, NetworkSocket, NetworkTransport},
@@ -18,6 +18,7 @@ use myagents_host_management_protocol::{
 };
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::{HashSet, VecDeque},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -25,6 +26,180 @@ use std::{
     time::Duration,
 };
 use tokio_tungstenite::tungstenite::Message;
+
+/// Frames received while one explicit management request owns the socket.
+/// Byte leases remain attached until the original actor dispatches each frame.
+/// The queue outlives success, channel errors and management timeouts.
+pub(crate) struct DeferredMessages {
+    memory: super::memory::MemoryBudget,
+    messages: VecDeque<(Message, super::memory::Allocation)>,
+    bytes: usize,
+    active_channel: Option<ActiveManagementChannel>,
+    fatal_overflow: bool,
+    controls: VecDeque<ManagementControl>,
+}
+struct ManagementControl {
+    id: String,
+    channel: String,
+    scope: ConnectionScope,
+    open: bool,
+    _lease: super::memory::Allocation,
+}
+#[derive(Clone)]
+struct ActiveManagementChannel {
+    channel: String,
+    open_attempted: bool,
+    offered_by_peer: bool,
+}
+impl DeferredMessages {
+    pub(crate) fn new(memory: super::memory::MemoryBudget) -> Self {
+        Self {
+            memory,
+            messages: VecDeque::new(),
+            bytes: 0,
+            active_channel: None,
+            fatal_overflow: false,
+            controls: VecDeque::new(),
+        }
+    }
+    fn push(&mut self, message: Message) -> Result<(), NetworkError> {
+        let size = message
+            .len()
+            .checked_add(std::mem::size_of::<Message>())
+            .ok_or_else(|| NetworkError::new("RESOURCE_EXHAUSTED"))?;
+        if self.messages.len() >= 256
+            || size
+                > myagents_agent_network_protocol::budget("socketQueueBytes")
+                    .saturating_sub(self.bytes)
+        {
+            self.fatal_overflow = true;
+            return Err(NetworkError::new("HOST_MANAGEMENT_DEFERRED_CAPACITY"));
+        }
+        let lease = match self.memory.reserve(size) {
+            Ok(lease) => lease,
+            Err(error) => {
+                self.fatal_overflow = true;
+                return Err(error);
+            }
+        };
+        if self.messages.try_reserve(1).is_err() {
+            self.fatal_overflow = true;
+            return Err(NetworkError::new("RESOURCE_EXHAUSTED"));
+        }
+        self.bytes += size;
+        self.messages.push_back((message, lease));
+        Ok(())
+    }
+    fn record_control(
+        &mut self,
+        id: String,
+        channel: &str,
+        scope: &ConnectionScope,
+        open: bool,
+    ) -> Result<(), NetworkError> {
+        let bytes = 2 * std::mem::size_of::<ManagementControl>()
+            + id.len()
+            + channel.len()
+            + scope.service_id.len()
+            + scope.network_id.len()
+            + scope.boot_epoch.len()
+            + scope.connection_epoch.len();
+        let lease = self.memory.reserve(bytes)?;
+        if self.controls.len() >= 1024 {
+            self.controls.pop_front();
+        }
+        self.controls
+            .try_reserve(1)
+            .map_err(|_| NetworkError::new("RESOURCE_EXHAUSTED"))?;
+        self.controls.push_back(ManagementControl {
+            id,
+            channel: channel.into(),
+            scope: scope.clone(),
+            open,
+            _lease: lease,
+        });
+        Ok(())
+    }
+    pub(crate) fn cleanup_control(
+        &mut self,
+        scope: &ConnectionScope,
+        channel: &str,
+    ) -> Result<String, NetworkError> {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.record_control(id.clone(), channel, scope, false)?;
+        Ok(id)
+    }
+    /// Exact IDs are recorded before the socket write can be cancelled. Their
+    /// connection/channel scope survives the local controller future; unrelated
+    /// errors retain the actor's original fail-closed behavior.
+    pub(crate) fn consume_control_error(
+        &mut self,
+        id: &str,
+        code: &str,
+        scope: &ConnectionScope,
+        pairs: &mut Pairs,
+    ) -> Result<bool, NetworkError> {
+        let Some(record) = self.controls.iter().find(|record| record.id == id) else {
+            return Ok(false);
+        };
+        if record.scope != *scope {
+            return Err(NetworkError::new("CONTROL_SCOPE_MISMATCH"));
+        }
+        if record.open && code == "CHANNEL_PAIR_EXISTS" {
+            pairs.retire_management(&record.channel, false);
+        }
+        Ok(true)
+    }
+    pub(crate) fn has_pending(&self) -> bool {
+        !self.messages.is_empty()
+    }
+    pub(crate) fn fatal_overflow(&self) -> bool {
+        self.fatal_overflow
+    }
+    /// The actor calls this after its original queue/deadline timeout cancels
+    /// this future, so only the cancelled management channel is retired.
+    pub(crate) fn retire_cancelled(&mut self, pairs: &mut Pairs) -> Option<String> {
+        let active = self.active_channel.take()?;
+        pairs.retire_management(&active.channel, active.open_attempted);
+        active.offered_by_peer.then_some(active.channel)
+    }
+    pub(crate) fn pop(&mut self) -> Option<(Message, super::memory::Allocation)> {
+        let (message, lease) = self.messages.pop_front()?;
+        self.bytes -= message.len() + std::mem::size_of::<Message>();
+        Some((message, lease))
+    }
+}
+fn management_control_id(
+    channel: &str,
+    scope: &ConnectionScope,
+    open: bool,
+    controls: &mut HashSet<String>,
+    deferred: Option<&mut DeferredMessages>,
+) -> Result<String, NetworkError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    if let Some(deferred) = deferred {
+        deferred.record_control(id.clone(), channel, scope, open)?;
+    }
+    controls.insert(id.clone());
+    Ok(id)
+}
+fn unrelated_control(
+    message: &ServerMessage,
+    channel: &str,
+    control_id: &str,
+    request_controls: &HashSet<String>,
+) -> bool {
+    match message {
+        ServerMessage::ChannelOffer { channel_id, .. }
+        | ServerMessage::ChannelAccepted { channel_id, .. }
+        | ServerMessage::ChannelReady { channel_id, .. }
+        | ServerMessage::ChannelClosed { channel_id, .. }
+        | ServerMessage::Credit { channel_id, .. } => channel_id != channel,
+        ServerMessage::Error { .. } => !request_controls.contains(control_id),
+        ServerMessage::Hello { .. } => false,
+        _ => true,
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -400,6 +575,48 @@ pub(crate) async fn execute(
     request: &ManagementRequest,
     sent: Arc<AtomicBool>,
 ) -> Result<ManagementResponse, NetworkError> {
+    execute_inner(
+        socket, transport, identity, local, scope, pairs, request, sent, None,
+    )
+    .await
+}
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn execute_multiplexed(
+    socket: &mut NetworkSocket,
+    transport: &NetworkTransport,
+    identity: &NetworkIdentity,
+    local: &DeviceScope,
+    scope: &ConnectionScope,
+    pairs: &mut Pairs,
+    request: &ManagementRequest,
+    sent: Arc<AtomicBool>,
+    deferred: &mut DeferredMessages,
+) -> Result<ManagementResponse, NetworkError> {
+    execute_inner(
+        socket,
+        transport,
+        identity,
+        local,
+        scope,
+        pairs,
+        request,
+        sent,
+        Some(deferred),
+    )
+    .await
+}
+#[allow(clippy::too_many_arguments)]
+async fn execute_inner(
+    socket: &mut NetworkSocket,
+    transport: &NetworkTransport,
+    identity: &NetworkIdentity,
+    local: &DeviceScope,
+    scope: &ConnectionScope,
+    pairs: &mut Pairs,
+    request: &ManagementRequest,
+    sent: Arc<AtomicBool>,
+    mut deferred: Option<&mut DeferredMessages>,
+) -> Result<ManagementResponse, NetworkError> {
     if !identity.account.is_management_only()
         || request.connection_id != identity.account.binding_id()
         || request.principal_id != local.principal_id
@@ -411,7 +628,15 @@ pub(crate) async fn execute(
     let request_id = CanonicalUuid::new(uuid::Uuid::new_v4());
     let message = request.message(request_id)?;
     pairs.reserve_management_retirement(&channel, scope, local)?;
+    if let Some(deferred) = deferred.as_mut() {
+        deferred.active_channel = Some(ActiveManagementChannel {
+            channel: channel.clone(),
+            open_attempted: false,
+            offered_by_peer: false,
+        });
+    }
     let mut known_to_peer = false;
+    let mut offered_by_peer = false;
     let mut unsupported_close = false;
     let mut peer_closed = false;
     let operation = async {
@@ -421,6 +646,10 @@ pub(crate) async fn execute(
             .device_address(&identity.token, local, &request.device_id)
             .await?;
         matches_target(request, &address.scope)?;
+        if deferred.is_some() && pairs.has_peer_channel(&address.scope) {
+            return Err(NetworkError::new("HOST_MANAGEMENT_TARGET_BUSY"));
+        }
+        let mut request_controls = HashSet::new();
         let mut verifier = identity.verifier.clone();
         let peer = verifier.peer(&address.signed_binding).await?;
         if peer.service_id != address.scope.service_id
@@ -432,9 +661,24 @@ pub(crate) async fn execute(
             return Err(NetworkError::new("HOST_ADDRESS_INVALID"));
         }
         identity.account.ensure_current()?;
+        let open_control = management_control_id(
+            &channel,
+            scope,
+            true,
+            &mut request_controls,
+            deferred.as_deref_mut(),
+        )?;
         known_to_peer = true;
-        send(
+        if let Some(deferred) = deferred.as_mut() {
+            deferred.active_channel = Some(ActiveManagementChannel {
+                channel: channel.clone(),
+                open_attempted: true,
+                offered_by_peer: false,
+            });
+        }
+        send_control(
             socket,
+            open_control.clone(),
             ClientMessage::Open {
                 scope: scope.clone(),
                 channel_id: channel.clone(),
@@ -485,14 +729,33 @@ pub(crate) async fn execute(
                 queue_request(pairs, &channel, message.clone(), &mut request_queued)?;
             }
             for id in pairs.announce_ready() {
-                send(
-                    socket,
-                    ClientMessage::ChannelReady {
-                        scope: scope.clone(),
-                        channel_id: id,
-                    },
-                )
-                .await?;
+                if id == channel {
+                    let control = management_control_id(
+                        &channel,
+                        scope,
+                        false,
+                        &mut request_controls,
+                        deferred.as_deref_mut(),
+                    )?;
+                    send_control(
+                        socket,
+                        control,
+                        ClientMessage::ChannelReady {
+                            scope: scope.clone(),
+                            channel_id: id,
+                        },
+                    )
+                    .await?;
+                } else {
+                    send(
+                        socket,
+                        ClientMessage::ChannelReady {
+                            scope: scope.clone(),
+                            channel_id: id,
+                        },
+                    )
+                    .await?;
+                }
             }
             flush_frames(socket, pairs, &channel, request_queued, &sent, &mut frames).await?;
             match socket.next().await {
@@ -505,12 +768,26 @@ pub(crate) async fn execute(
                 Some(Ok(Message::Text(text))) => {
                     controls += 1;
                     if controls > 256 {
+                        if let Some(deferred) = deferred.as_mut() {
+                            deferred.fatal_overflow = true;
+                        }
                         return Err(NetworkError::new("HOST_MANAGEMENT_CAPACITY"));
                     }
                     let envelope = ServerEnvelope::parse(text.as_bytes())
                         .map_err(|_| NetworkError::new("CONTROL_INVALID"))?;
                     if envelope.message.scope().is_some_and(|s| s != scope) {
                         return Err(NetworkError::new("CONTROL_SCOPE_MISMATCH"));
+                    }
+                    if let Some(deferred) = deferred.as_mut() {
+                        if unrelated_control(
+                            &envelope.message,
+                            &channel,
+                            &envelope.control_id,
+                            &request_controls,
+                        ) {
+                            deferred.push(Message::Text(text))?;
+                            continue;
+                        }
                     }
                     super::owned_profile::control(&envelope.message)?;
                     if pairs.consume_retired_management(
@@ -559,6 +836,14 @@ pub(crate) async fn execute(
                                 responder_binding,
                             };
                             matches_offer(&next, &address, local, &scope.connection_epoch)?;
+                            offered_by_peer = true;
+                            if let Some(deferred) = deferred.as_mut() {
+                                deferred.active_channel = Some(ActiveManagementChannel {
+                                    channel: channel.clone(),
+                                    open_attempted: true,
+                                    offered_by_peer: true,
+                                });
+                            }
                             pairs.reserve_management_controller(&channel)?;
                             let signed_binding = identity
                                 .peer
@@ -567,8 +852,16 @@ pub(crate) async fn execute(
                                 .signed_binding
                                 .clone();
                             offer = Some(next);
-                            send(
+                            let control = management_control_id(
+                                &channel,
+                                scope,
+                                false,
+                                &mut request_controls,
+                                deferred.as_deref_mut(),
+                            )?;
+                            send_control(
                                 socket,
+                                control,
                                 ClientMessage::Accept {
                                     scope: scope.clone(),
                                     channel_id: channel.clone(),
@@ -629,7 +922,15 @@ pub(crate) async fn execute(
                             return Err(NetworkError::new("HOST_MANAGEMENT_POLICY_CHANGED"))
                         }
                         ServerMessage::Error { code, .. } => {
-                            return Err(NetworkError::cloud(&code, 400))
+                            if envelope.control_id == open_control && code == "CHANNEL_PAIR_EXISTS"
+                            {
+                                mark_open_rejected(
+                                    &mut known_to_peer,
+                                    &mut offered_by_peer,
+                                    deferred.as_deref_mut(),
+                                );
+                            }
+                            return Err(NetworkError::cloud(&code, 400));
                         }
                         _ => return Err(NetworkError::new("CONTROL_UNEXPECTED")),
                     }
@@ -638,6 +939,10 @@ pub(crate) async fn execute(
                     let (id, payload) = decode_tls_frame(&bytes)
                         .map_err(|_| NetworkError::new("TLS_FRAME_INVALID"))?;
                     if id != channel {
+                        if let Some(deferred) = deferred.as_mut() {
+                            deferred.push(Message::Binary(bytes))?;
+                            continue;
+                        }
                         return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
                     }
                     let (next, allocation) = pairs.feed_management(&channel, payload)?;
@@ -663,24 +968,44 @@ pub(crate) async fn execute(
         .await
         .unwrap_or_else(|_| Err(NetworkError::new("HOST_MANAGEMENT_TIMEOUT")));
     pairs.retire_management(&channel, known_to_peer);
-    let _ = pairs.take_failures();
-    // Cleanup is bounded and best effort. A failed Close cannot change a receipt.
-    let cleanup_confirmed = peer_closed
-        || matches!(
-            tokio::time::timeout(
-                Duration::from_secs(1),
-                send(
-                    socket,
-                    ClientMessage::Close {
-                        scope: scope.clone(),
-                        channel_id: channel.clone(),
-                        reason: "READ_COMPLETED".into(),
-                    },
-                ),
+    if let Some(deferred) = deferred.as_mut() {
+        deferred.active_channel = None;
+    }
+    // Preserve other channels' writer failures for the owning actor. This
+    // request retires only its own exact channel and transport uncertainty.
+    if deferred.is_none() {
+        let _ = pairs.take_failures();
+    }
+    // A transport attempt does not prove that this random channel exists.
+    // Only an exact validated Offer qualifies Close; pre-Open failures and
+    // explicit Open rejection leave existing Agent channels untouched.
+    let close_id = if offered_by_peer && !peer_closed {
+        if let Some(deferred) = deferred.as_mut() {
+            deferred.cleanup_control(scope, &channel).ok()
+        } else {
+            Some(uuid::Uuid::new_v4().to_string())
+        }
+    } else {
+        None
+    };
+    let cleanup_confirmed = close_confirmed_channel(
+        offered_by_peer && close_id.is_some(),
+        peer_closed,
+        || async {
+            send_control(
+                socket,
+                close_id.ok_or_else(|| NetworkError::new("HOST_MANAGEMENT_CHANNEL_UNCONFIRMED"))?,
+                ClientMessage::Close {
+                    scope: scope.clone(),
+                    channel_id: channel.clone(),
+                    reason: "READ_COMPLETED".into(),
+                },
             )
-            .await,
-            Ok(Ok(_))
-        );
+            .await
+            .map(|_| ())
+        },
+    )
+    .await;
     let unsupported_result = matches!(&result, Ok(ManagementResponse { result: ResponseResult::Error { code }, .. }) if matches!(code.as_str(), "INVALID_REQUEST" | "METHOD_UNSUPPORTED"));
     if request.method == ManagementMethod::HostCapabilities
         && sent.load(Ordering::Acquire)
@@ -698,6 +1023,40 @@ pub(crate) async fn execute(
             error
         }
     })
+}
+
+fn mark_open_rejected(
+    known_to_peer: &mut bool,
+    offered_by_peer: &mut bool,
+    deferred: Option<&mut DeferredMessages>,
+) {
+    // This correlated response guarantees that no channel was created. Unlike
+    // an uncertain timeout it needs no active tombstone or future Close.
+    *known_to_peer = false;
+    *offered_by_peer = false;
+    if let Some(deferred) = deferred {
+        if let Some(active) = deferred.active_channel.as_mut() {
+            active.open_attempted = false;
+            active.offered_by_peer = false;
+        }
+    }
+}
+
+async fn close_confirmed_channel<F, Fut>(offered_by_peer: bool, peer_closed: bool, close: F) -> bool
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), NetworkError>>,
+{
+    if peer_closed {
+        return true;
+    }
+    if !offered_by_peer {
+        return false;
+    }
+    matches!(
+        tokio::time::timeout(Duration::from_secs(1), close()).await,
+        Ok(Ok(()))
+    )
 }
 
 #[cfg(test)]
@@ -1125,5 +1484,395 @@ mod handoff_tests {
             lost(true, sent.load(Ordering::Acquire)).code,
             "HOST_MANAGEMENT_UNCONFIRMED"
         );
+    }
+    #[test]
+    fn deferred_frames_keep_fifo_byte_leases_and_original_tls_identity_after_management_cancel() {
+        use myagents_agent_network_protocol::{
+            budget, BusinessObject, ReturnAck, ReturnSettlement,
+        };
+        let memory = super::super::memory::MemoryBudget::default();
+        let mut deferred = DeferredMessages::new(memory.clone());
+        let (mut source, mut target, mut ss, mut st) = super::super::channel::tests::ready_pair();
+        source
+            .send(
+                BusinessObject::Ack(ReturnAck {
+                    version: 1,
+                    sender_sequence: 1,
+                    op_id: uuid::Uuid::new_v4().to_string(),
+                    return_route_id: uuid::Uuid::new_v4().to_string(),
+                    event_id: uuid::Uuid::new_v4().to_string(),
+                    settlement: ReturnSettlement::Delivered,
+                }),
+                &mut ss,
+            )
+            .unwrap();
+        deferred
+            .push(Message::Text("original route control".into()))
+            .unwrap();
+        let mut frames = 0;
+        while let Some(frame) = source.drain_frame().unwrap() {
+            deferred.push(Message::Binary(frame)).unwrap();
+            frames += 1;
+        }
+        assert!(frames > 0);
+        let held = memory
+            .reserve(budget("connectorBytes") - deferred.bytes)
+            .unwrap();
+        assert!(memory.reserve(1).is_err());
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        let management_id = uuid::Uuid::new_v4().to_string();
+        let local = target.peer().clone();
+        let scope = ConnectionScope {
+            service_id: local.service_id.clone(),
+            network_id: local.network_id.clone(),
+            boot_epoch: uuid::Uuid::new_v4().to_string(),
+            connection_epoch: uuid::Uuid::new_v4().to_string(),
+        };
+        pairs
+            .reserve_management_retirement(&management_id, &scope, &local)
+            .unwrap();
+        pairs.reserve_management_controller(&management_id).unwrap();
+        deferred.active_channel = Some(ActiveManagementChannel {
+            channel: management_id.clone(),
+            open_attempted: true,
+            offered_by_peer: true,
+        });
+        assert_eq!(deferred.retire_cancelled(&mut pairs), Some(management_id));
+        assert!(deferred.has_pending());
+        let (message, lease) = deferred.pop().unwrap();
+        assert_eq!(message, Message::Text("original route control".into()));
+        assert!(memory.reserve(1).is_err());
+        drop(lease);
+        let mut delivered = 0;
+        while let Some((message, _lease)) = deferred.pop() {
+            let Message::Binary(frame) = message else {
+                panic!("wrong deferred order")
+            };
+            let (channel, payload) = decode_tls_frame(&frame).unwrap();
+            assert_eq!(channel, target.id);
+            delivered += target.feed(payload, &mut st).unwrap().len();
+        }
+        assert_eq!(delivered, 1);
+        assert!(target.ready());
+        assert!(!deferred.has_pending());
+        drop(held);
+        assert!(memory.reserve(budget("connectorBytes")).is_ok());
+    }
+
+    #[test]
+    fn deferred_queue_is_bounded_and_controls_are_correlated_to_exact_management_request() {
+        let mut deferred = DeferredMessages::new(super::super::memory::MemoryBudget::default());
+        for _ in 0..256 {
+            deferred.push(Message::Text("queued".into())).unwrap();
+        }
+        assert_eq!(
+            deferred
+                .push(Message::Text("overflow".into()))
+                .unwrap_err()
+                .code,
+            "HOST_MANAGEMENT_DEFERRED_CAPACITY"
+        );
+        assert!(deferred.fatal_overflow());
+        for _ in 0..256 {
+            assert!(deferred.pop().is_some());
+        }
+        assert!(deferred.pop().is_none());
+        let controls = HashSet::from(["management-open".to_owned()]);
+        let error = ServerMessage::Error {
+            code: "BUSY".into(),
+            retryable: false,
+        };
+        assert!(!unrelated_control(
+            &error,
+            "channel",
+            "management-open",
+            &controls
+        ));
+        assert!(unrelated_control(
+            &error,
+            "channel",
+            "agent-permit",
+            &controls
+        ));
+        let scope = ConnectionScope {
+            service_id: "s".into(),
+            network_id: "n".into(),
+            boot_epoch: "b".into(),
+            connection_epoch: "e".into(),
+        };
+        assert!(unrelated_control(
+            &ServerMessage::RouteClosed {
+                scope: scope.clone(),
+                return_route_id: "route".into(),
+                reason: "done".into()
+            },
+            "channel",
+            "control",
+            &controls
+        ));
+        assert!(unrelated_control(
+            &ServerMessage::ChannelClosed {
+                scope: scope.clone(),
+                channel_id: "other-agent-channel".into(),
+                reason: "done".into()
+            },
+            "channel",
+            "control",
+            &controls
+        ));
+        assert!(!unrelated_control(
+            &ServerMessage::ChannelClosed {
+                scope,
+                channel_id: "channel".into(),
+                reason: "done".into()
+            },
+            "channel",
+            "control",
+            &controls
+        ));
+    }
+    #[tokio::test]
+    async fn preopen_busy_and_unconfirmed_cleanup_never_send_close_or_interrupt_agent_tls_on_real_socket(
+    ) {
+        use myagents_agent_network_protocol::{BusinessObject, ReturnAck, ReturnSettlement};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (mut source, mut target, mut ss, mut st) = super::super::channel::tests::ready_pair();
+        let local = target.peer().clone();
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        pairs.reserve("pending-agent-offer").unwrap();
+        assert!(
+            pairs.has_peer_channel(&local),
+            "pending Agent verification must block management before Open"
+        );
+        let mut tls_frames = Vec::new();
+        for _ in 0..3 {
+            source
+                .send(
+                    BusinessObject::Ack(ReturnAck {
+                        version: 1,
+                        sender_sequence: 1,
+                        op_id: uuid::Uuid::new_v4().to_string(),
+                        return_route_id: uuid::Uuid::new_v4().to_string(),
+                        event_id: uuid::Uuid::new_v4().to_string(),
+                        settlement: ReturnSettlement::Delivered,
+                    }),
+                    &mut ss,
+                )
+                .unwrap();
+            let mut batch = Vec::new();
+            while let Some(frame) = source.drain_frame().unwrap() {
+                batch.push(frame);
+            }
+            tls_frames.push(batch);
+        }
+        let server = async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            for (index, batch) in tls_frames.into_iter().enumerate() {
+                let message = socket.next().await.unwrap().unwrap();
+                // Any stray ClientMessage::Close would be a JSON text frame
+                // before this marker and would fail this real-socket assertion.
+                assert_eq!(message, Message::Text(format!("agent-path-{index}")));
+                for frame in batch {
+                    socket.send(Message::Binary(frame)).await.unwrap();
+                }
+            }
+        };
+        let client = async {
+            let stream = tokio::net::TcpStream::connect(address).await.unwrap();
+            let (mut socket, _) =
+                tokio_tungstenite::client_async(format!("ws://{address}/relay"), stream)
+                    .await
+                    .unwrap();
+            let scope = ConnectionScope {
+                service_id: local.service_id.clone(),
+                network_id: local.network_id.clone(),
+                boot_epoch: uuid::Uuid::new_v4().to_string(),
+                connection_epoch: uuid::Uuid::new_v4().to_string(),
+            };
+            let mut deferred = DeferredMessages::new(super::super::memory::MemoryBudget::default());
+            for index in 0..3 {
+                let mut controls = HashSet::new();
+                let id = management_control_id(
+                    "cancelled-management-channel",
+                    &scope,
+                    true,
+                    &mut controls,
+                    Some(&mut deferred),
+                )
+                .unwrap();
+                assert!(deferred
+                    .consume_control_error(&id, "CHANNEL_PAIR_EXISTS", &scope, &mut pairs)
+                    .unwrap());
+                assert!(deferred
+                    .consume_control_error(&id, "CHANNEL_PAIR_EXISTS", &scope, &mut pairs)
+                    .unwrap());
+                // Covers pre-Open busy/address validation, Open handoff without an
+                // Offer, and explicit Open rejection: none proves a channel exists.
+                let confirmed = close_confirmed_channel(false, false, || async {
+                    socket
+                        .send(Message::Text("unexpected-channel-close".into()))
+                        .await
+                        .map_err(|_| NetworkError::new("NETWORK_CONNECTION_CLOSED"))
+                })
+                .await;
+                assert!(!confirmed);
+                socket
+                    .send(Message::Text(format!("agent-path-{index}")))
+                    .await
+                    .unwrap();
+                let message = tokio::time::timeout(Duration::from_secs(2), socket.next())
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .unwrap();
+                let Message::Binary(frame) = message else {
+                    panic!("expected existing Agent TLS result")
+                };
+                let (id, payload) = decode_tls_frame(&frame).unwrap();
+                assert_eq!(id, target.id);
+                let objects = target.feed(payload, &mut st).unwrap();
+                assert_eq!(objects.len(), 1);
+                assert!(target.ready());
+            }
+        };
+        tokio::join!(server, client);
+    }
+
+    #[tokio::test]
+    async fn cleanup_closes_only_a_server_confirmed_offer_and_cancel_keeps_unconfirmed_tombstone() {
+        let writes = std::sync::atomic::AtomicUsize::new(0);
+        assert!(
+            !close_confirmed_channel(false, false, || async {
+                writes.fetch_add(1, Ordering::AcqRel);
+                Ok(())
+            })
+            .await
+        );
+        assert!(
+            close_confirmed_channel(false, true, || async {
+                writes.fetch_add(1, Ordering::AcqRel);
+                Ok(())
+            })
+            .await
+        );
+        assert_eq!(writes.load(Ordering::Acquire), 0);
+        assert!(
+            close_confirmed_channel(true, false, || async {
+                writes.fetch_add(1, Ordering::AcqRel);
+                Ok(())
+            })
+            .await
+        );
+        assert_eq!(writes.load(Ordering::Acquire), 1);
+        let memory = super::super::memory::MemoryBudget::default();
+        let mut deferred = DeferredMessages::new(memory);
+        let (mut host, _controller, local, _peer, id) =
+            super::super::pairs::tests::installed_management_pair();
+        deferred.active_channel = Some(ActiveManagementChannel {
+            channel: id.clone(),
+            open_attempted: true,
+            offered_by_peer: false,
+        });
+        assert_eq!(deferred.retire_cancelled(&mut host), None);
+        assert!(!host.has_channel(&id));
+        let _ = local;
+    }
+    #[test]
+    fn repeated_explicit_open_rejections_release_reservations_and_never_consume_active_budget() {
+        let (_host, _controller, local, _peer, _id) =
+            super::super::pairs::tests::installed_management_pair();
+        let scope = ConnectionScope {
+            service_id: local.service_id.clone(),
+            network_id: local.network_id.clone(),
+            boot_epoch: uuid::Uuid::new_v4().to_string(),
+            connection_epoch: uuid::Uuid::new_v4().to_string(),
+        };
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        let mut deferred = DeferredMessages::new(super::super::memory::MemoryBudget::default());
+        for _ in 0..512 {
+            let id = uuid::Uuid::new_v4().to_string();
+            pairs
+                .reserve_management_retirement(&id, &scope, &local)
+                .unwrap();
+            let mut known = true;
+            let mut offered = false;
+            deferred.active_channel = Some(ActiveManagementChannel {
+                channel: id.clone(),
+                open_attempted: true,
+                offered_by_peer: false,
+            });
+            mark_open_rejected(&mut known, &mut offered, Some(&mut deferred));
+            assert!(!known && !offered);
+            pairs.retire_management(&id, known);
+            assert_eq!(deferred.retire_cancelled(&mut pairs), None);
+        }
+    }
+    #[test]
+    fn cancelled_control_ids_are_owned_before_write_and_late_errors_are_exact_scoped_and_idempotent(
+    ) {
+        let (_host, _controller, local, _peer, _id) =
+            super::super::pairs::tests::installed_management_pair();
+        let scope = ConnectionScope {
+            service_id: local.service_id.clone(),
+            network_id: local.network_id.clone(),
+            boot_epoch: uuid::Uuid::new_v4().to_string(),
+            connection_epoch: uuid::Uuid::new_v4().to_string(),
+        };
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        let mut deferred = DeferredMessages::new(super::super::memory::MemoryBudget::default());
+        for open in [true, false] {
+            let channel = uuid::Uuid::new_v4().to_string();
+            pairs
+                .reserve_management_retirement(&channel, &scope, &local)
+                .unwrap();
+            let mut controls = HashSet::new();
+            let id =
+                management_control_id(&channel, &scope, open, &mut controls, Some(&mut deferred))
+                    .unwrap();
+            assert!(controls.contains(&id));
+            // There has been no awaited write. Even if the next write is
+            // cancelled after partial handoff, the original actor owns this ID.
+            assert!(deferred.controls.iter().any(|record| record.id == id));
+            deferred.active_channel = Some(ActiveManagementChannel {
+                channel: channel.clone(),
+                open_attempted: true,
+                offered_by_peer: false,
+            });
+            assert_eq!(deferred.retire_cancelled(&mut pairs), None);
+            assert!(deferred
+                .consume_control_error(&id, "CHANNEL_PAIR_EXISTS", &scope, &mut pairs)
+                .unwrap());
+            assert!(deferred
+                .consume_control_error(&id, "CHANNEL_PAIR_EXISTS", &scope, &mut pairs)
+                .unwrap());
+            assert!(!deferred
+                .consume_control_error(
+                    "another-agent-permit",
+                    "CHANNEL_PAIR_EXISTS",
+                    &scope,
+                    &mut pairs
+                )
+                .unwrap());
+            let mut foreign = scope.clone();
+            foreign.connection_epoch = uuid::Uuid::new_v4().to_string();
+            assert_eq!(
+                deferred
+                    .consume_control_error(&id, "CHANNEL_PAIR_EXISTS", &foreign, &mut pairs)
+                    .unwrap_err()
+                    .code,
+                "CONTROL_SCOPE_MISMATCH"
+            );
+            if !open {
+                pairs.retire_management(&channel, false);
+            }
+        }
+        for _ in 0..1100 {
+            let mut controls = HashSet::new();
+            management_control_id("channel", &scope, false, &mut controls, Some(&mut deferred))
+                .unwrap();
+        }
+        assert_eq!(deferred.controls.len(), 1024);
     }
 }

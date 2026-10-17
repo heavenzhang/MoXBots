@@ -12,8 +12,8 @@ MOXBOTS-BACKEND-RECOVERY-20261017: complete negotiated terminal-return recovery 
 ## Acceptance criteria
 
 - [x] Verify actual repo, clean isolated branch, current main348251b3 and coordination/deployment boundaries.
-- [ ] Extend existing metadata/relay owners with explicit mount policy, fresh permits and bounded recoverable routes.
-- [ ] Verify both peers again after reconnect; reject identity/session/key/policy changes, expire offline results and deduplicate terminal delivery.
+- [x] Extend existing metadata/relay owners with explicit mount policy, fresh permits and bounded recoverable routes.
+- [x] Verify both peers again after reconnect; reject identity/session/key/policy changes, expire offline results and deduplicate terminal delivery in scoped source/socket tests; installed-App gate remains separate.
 - [ ] Repair DSH prompt at its owning source, build a reproducible compatible artifact and retain approval/denial checks.
 - [ ] Focused regression, real socket/TLS/runtime integration, independent review and primary acceptance.
 - [ ] Sync current main, final-head CI/review, PR merge and remote main inclusion proof.
@@ -21,7 +21,7 @@ MOXBOTS-BACKEND-RECOVERY-20261017: complete negotiated terminal-return recovery 
 
 ## Completed
 
-Source and baseline gates pass. Root owns relay/client integration and delivery; DSH worker owns DSH modules; metadata worker owns metadata-core and network_http. No overlapping writers. Both workers requested native gpt-6.1-sol/high for runtime/artifact and concurrent-authorization risks; measured token/cost data unavailable.
+Source and baseline gates pass. Root owns relay/client integration and delivery; DSH worker owns DSH modules; metadata worker owns metadata-core, network_http and client multiplexing; independent reviewer owns its review and extra regression file. No overlapping writers. Three workers requested native gpt-6.1-sol/high for runtime/artifact, concurrent-authorization and protocol-review risks; measured token/cost data unavailable. Draft PR101 https://github.com/heavenzhang/MoXBots/pull/101 holds staged checkpoints; it is not main delivery.
 
 ## Verification
 
@@ -29,7 +29,7 @@ Evidence: dev-docs/backend-recovery-20261017/. Verbose non-secret logs: original
 
 ## Blockers and unknowns
 
-Owned clients currently use management-only profile; turning on a server capability alone is insufficient. Existing sole desktop release owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4. This task does not take over that target or interrupt the daily app. Production server target/ownership and safe deployment admission must be verified before changes; local isolated real-process acceptance can proceed independently. DSH upstream is read-only; immutable downloaded artifacts must not be modified.
+Owned clients now negotiate existing business and management profiles separately; original Host management authorization is preserved. Existing sole desktop release owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4. This task does not take over that target or interrupt the daily app. Production server target/ownership and safe deployment admission must be verified before changes; local isolated real-process acceptance can proceed independently. DSH upstream is read-only; immutable downloaded artifacts must not be modified. Four-platform owned source-built candidates are required before formal selector activation; original pointer remains until then. Native Mac full-App compiler previously fails in unrelated Swift dependency; actual Linux/Windows CI remains required.
 
 ## Next step
 

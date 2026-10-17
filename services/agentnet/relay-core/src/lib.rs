@@ -1,9 +1,9 @@
-//! Fixed 1.1 device-level opaque relay state machine.
+//! Bounded opaque relay and operation/return correlation state machine.
 //!
 //! This crate does not perform socket I/O, decrypt TLS, parse AgentNet business
-//! frames, or authorize operations. The parent service must revalidate the
+//! frames. The parent service must revalidate the
 //! access session and current device/membership state before constructing the
-//! trusted snapshots consumed here.
+//! trusted snapshots and owner-locked mount evidence consumed here.
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 use uuid::Uuid;
+mod return_control;
+pub use return_control::{OperationPeers, TrustedMountEvidence};
 
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -59,6 +61,7 @@ impl std::fmt::Debug for TrustedLiveSnapshot {
     }
 }
 
+#[derive(Clone)]
 pub struct AuthorizedDevice {
     scope: DeviceScope,
     session_handle: String,
@@ -146,6 +149,8 @@ pub enum RelayError {
     Capacity,
     #[error("channel state or scope is invalid")]
     Channel,
+    #[error("the exact authenticated device pair already has a channel")]
+    PairExists,
     #[error("opaque frame is invalid")]
     Frame,
     #[error("credit is invalid")]
@@ -179,6 +184,7 @@ struct Connection {
     connection_epoch: String,
     ready: bool,
     control_ids: HashSet<String>,
+    return_resume: bool,
 }
 
 /// Non-secret adapter projection of one exact live relay connection.
@@ -268,6 +274,10 @@ pub struct RelayCore {
     boot_epoch: String,
     connections: HashMap<String, Connection>,
     channels: HashMap<String, Channel>,
+    operations: HashMap<String, return_control::PreparedOperation>,
+    returns: HashMap<String, return_control::ReturnRoute>,
+    completed_ops: HashMap<String, i64>,
+    now_ms: i64,
 }
 
 impl RelayCore {
@@ -288,6 +298,10 @@ impl RelayCore {
             boot_epoch: Uuid::new_v4().to_string(),
             connections: HashMap::new(),
             channels: HashMap::new(),
+            operations: HashMap::new(),
+            returns: HashMap::new(),
+            completed_ops: HashMap::new(),
+            now_ms: 0,
         })
     }
 
@@ -397,6 +411,7 @@ impl RelayCore {
                 connection_epoch,
                 ready: false,
                 control_ids: HashSet::new(),
+                return_resume: false,
             },
         );
         Ok((connection_id, effects))
@@ -429,6 +444,30 @@ impl RelayCore {
         self.drop_connection(connection_id, "connection-disconnected")
     }
 
+    pub fn disconnect_at(&mut self, connection_id: &str, now_ms: i64) -> Vec<Effect> {
+        self.now_ms = self.now_ms.max(now_ms);
+        self.disconnect(connection_id)
+    }
+
+    /// Capability agreement is socket-scoped; metadata advertising alone does
+    /// not authorize retention for a legacy peer.
+    pub fn negotiate_returns(
+        &mut self,
+        connection_id: &str,
+        hello: &Value,
+    ) -> Result<(), RelayError> {
+        let caps = hello["capabilities"]
+            .as_array()
+            .ok_or(RelayError::Control)?;
+        self.connections
+            .get_mut(connection_id)
+            .ok_or(RelayError::Connection)?
+            .return_resume = ["permit-v1", "return-v1", "return-resume-v1"]
+            .iter()
+            .all(|c| caps.iter().any(|v| v == c));
+        Ok(())
+    }
+
     /// Non-authorizing exact endpoint lookup for the adapter's dual-session
     /// gate. The adapter must recheck these IDs after acquiring that gate.
     pub fn channel_connections(
@@ -441,6 +480,9 @@ impl RelayCore {
             return Err(RelayError::Channel);
         }
         Ok([channel.initiator.clone(), channel.responder.clone()])
+    }
+    pub fn has_channel(&self, channel_id: &str) -> bool {
+        self.channels.contains_key(channel_id)
     }
 
     /// Close one channel after an adapter reports delivery failure. The
@@ -500,6 +542,19 @@ impl RelayCore {
         now_unix: i64,
         now_ms: i64,
     ) -> Result<Vec<Effect>, RelayError> {
+        self.handle_control_with_mount(connection_id, bytes, ready_proof, None, now_unix, now_ms)
+    }
+
+    pub fn handle_control_with_mount(
+        &mut self,
+        connection_id: &str,
+        bytes: &[u8],
+        ready_proof: Option<ReadyProof>,
+        mount: Option<TrustedMountEvidence>,
+        now_unix: i64,
+        now_ms: i64,
+    ) -> Result<Vec<Effect>, RelayError> {
+        self.now_ms = self.now_ms.max(now_ms);
         if bytes.len() > budget("controlBytes") {
             return Err(RelayError::Control);
         }
@@ -541,6 +596,15 @@ impl RelayCore {
             "channel.close" => self.close_channel(connection_id, &value, now_unix),
             "credit.release" => self.release_credit(connection_id, &value, now_unix, now_ms),
             "auth.refresh" => Err(RelayError::Unauthorized),
+            "op.prepare" | "permit.acquire" | "route.resume" | "route.rebind" => self
+                .operation_control(
+                    connection_id,
+                    &value,
+                    mount.ok_or(RelayError::Unauthorized)?,
+                    now_unix,
+                    now_ms,
+                ),
+            "op.release" | "route.close" => self.release_operation(connection_id, &value, now_unix),
             _ => Ok(vec![unsupported_effect(connection_id, control_id)?]),
         }
     }
@@ -640,12 +704,22 @@ impl RelayCore {
         for id in ids {
             effects.extend(self.drop_connection(&id, "device-invalidated"));
         }
+        let retained: Vec<_> = self
+            .returns
+            .iter()
+            .filter(|(_, route)| route.has_device(device_id))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in retained {
+            effects.extend(self.close_return(&id, "RETURN_UNAVAILABLE"));
+        }
         effects
     }
 
     /// Expire offers after the handshake budget, ready channels after the
     /// fixed idle budget, and sessions whose session or peer binding expired.
     pub fn expire(&mut self, now_unix: i64, now_ms: i64) -> Vec<Effect> {
+        self.now_ms = self.now_ms.max(now_ms);
         let stale_connections: Vec<String> = self
             .connections
             .iter()
@@ -681,6 +755,17 @@ impl RelayCore {
             .collect();
         for (id, reason) in expired {
             effects.extend(self.remove_channel(&id, reason));
+        }
+        self.operations.retain(|_, op| op.expires_ms > now_ms);
+        self.completed_ops.retain(|_, deadline| *deadline > now_ms);
+        let expired: Vec<_> = self
+            .returns
+            .iter()
+            .filter(|(_, route)| route.deadline_ms.is_some_and(|deadline| deadline <= now_ms))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in expired {
+            effects.extend(self.close_return(&id, "RETURN_EXPIRED"));
         }
         effects
     }
@@ -763,13 +848,15 @@ impl RelayCore {
         let responder = self.live_connection(&target_id, now_unix)?;
         if !same_principal_network(&initiator.device.scope, &responder.device.scope)
             || initiator.device.scope.device_id == responder.device.scope.device_id
-            || pair_key(&initiator.device.scope, &responder.device.scope).is_some_and(|key| {
-                self.channels
-                    .values()
-                    .any(|channel| channel_pair_key(channel) == key)
-            })
         {
             return Err(RelayError::Channel);
+        }
+        if pair_key(&initiator.device.scope, &responder.device.scope).is_some_and(|key| {
+            self.channels
+                .values()
+                .any(|channel| channel_pair_key(channel) == key)
+        }) {
+            return Err(RelayError::PairExists);
         }
         let channel_id = value["channelId"].as_str().ok_or(RelayError::Control)?;
         if self.channels.contains_key(channel_id) {
@@ -1070,6 +1157,11 @@ impl RelayCore {
     ) -> Result<Vec<Effect>, RelayError> {
         self.live_connection(connection_id, now_unix)?;
         let channel_id = value["channelId"].as_str().ok_or(RelayError::Control)?;
+        // Cleanup can race an explicitly rejected Open or an earlier close.
+        // Absence has no authority to revoke and is an idempotent no-op.
+        if !self.channels.contains_key(channel_id) {
+            return Ok(vec![]);
+        }
         if !self.channels.get(channel_id).is_some_and(|channel| {
             channel.initiator == connection_id || channel.responder == connection_id
         }) {
@@ -1184,7 +1276,11 @@ impl RelayCore {
     }
 
     fn drop_connection(&mut self, connection_id: &str, reason: &'static str) -> Vec<Effect> {
+        let mut effects = self.suspend_returns(connection_id, reason);
         self.connections.remove(connection_id);
+        self.operations.retain(|_, op| {
+            op.source.connection_id != connection_id && op.target.connection_id != connection_id
+        });
         let affected: Vec<String> = self
             .channels
             .iter()
@@ -1193,7 +1289,6 @@ impl RelayCore {
             })
             .map(|(id, _)| id.clone())
             .collect();
-        let mut effects = Vec::new();
         for id in affected {
             effects.extend(self.remove_channel(&id, reason));
         }
@@ -2585,7 +2680,8 @@ mod tests {
         assert_eq!(forwarded.len(), 1);
         assert!(matches!(forwarded[0], Effect::OpaqueFrame { .. }));
 
-        // A well-formed but unauthorized close does not count as pair activity.
+        // Idempotent cleanup of an absent channel does not count as activity
+        // for any live pair, and cannot keep the idle channel alive.
         let invalid_close = client_control(
             &old_hello,
             "channel.close",
@@ -2599,7 +2695,7 @@ mod tests {
                 fixture.now,
                 active_at + 1,
             ),
-            Err(RelayError::Channel)
+            Ok(vec![])
         );
 
         let expired_at = base + budget("idleChannelMs") as i64 + 4;
@@ -2899,44 +2995,33 @@ mod tests {
                 "targetMountId":Uuid::new_v4().to_string(),
             }),
         );
-        let unsupported_effect = fixture
-            .core
-            .handle_control(
+        assert_eq!(
+            fixture.core.handle_control(
                 &connection_id,
                 &serde_json::to_vec(&unsupported).unwrap(),
                 None,
                 fixture.now,
-                1_103,
-            )
-            .unwrap();
-        assert_eq!(
-            unsupported_effect[0].control_json().unwrap()["type"],
-            "error"
+                1_103
+            ),
+            Err(RelayError::Unauthorized)
         );
-        assert_eq!(
-            unsupported_effect[0].control_json().unwrap()["code"],
-            "UNSUPPORTED"
-        );
-        // Protocol 1.2 schema acceptance must not confer permit/route authority
-        // on this device-only relay. Never advertise recovery until that owner exists.
+        // Schema-valid controls still require a current mount proof from the
+        // parent owner. The untrusted client cannot mint one.
         let resume = client_control(
             &hello,
             "route.resume",
             json!({"returnRouteId": Uuid::new_v4().to_string()}),
         );
-        let effects = fixture
-            .core
-            .handle_control(
+        assert_eq!(
+            fixture.core.handle_control(
                 &connection_id,
                 &serde_json::to_vec(&resume).unwrap(),
                 None,
                 fixture.now,
-                1_104,
-            )
-            .unwrap();
-        assert_eq!(effects.len(), 1);
-        assert_eq!(effects[0].control_json().unwrap()["type"], "error");
-        assert_eq!(effects[0].control_json().unwrap()["code"], "UNSUPPORTED");
+                1_104
+            ),
+            Err(RelayError::Unauthorized)
+        );
         assert_eq!(
             fixture.core.handle_control(
                 &connection_id,
@@ -3095,4 +3180,6 @@ mod tests {
         );
         assert!(!fixture.core.channels.contains_key(&next_channel));
     }
+    include!("return_control_tests.rs");
+    include!("return_recovery_review_tests.rs");
 }

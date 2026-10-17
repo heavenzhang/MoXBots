@@ -1,4 +1,4 @@
-//! Fixed 1.1 metadata HTTP adapter. No catalog upload or relay authority.
+//! Fixed-protocol metadata HTTP adapter. Relay/catalog authority stays with its owner.
 //! Device registration is an owned application extension, never self-reported scope.
 use crate::{AuthError, AuthStore, identity_http::IdentityHttpConfig};
 use axum::{
@@ -21,7 +21,13 @@ use myagents_agentnet_peer_core::{PeerProfile, PeerStore};
 use rand::TryRngCore;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 use tokio::sync::Semaphore;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -51,6 +57,7 @@ pub struct NetworkService {
     pub(super) environment: String,
     network_name: String,
     boot_nonce: String,
+    return_routes_enabled: Arc<AtomicBool>,
     #[cfg(test)]
     test_body_read_timeout: Option<std::time::Duration>,
     // This owner only loads existing signing authority; it never initializes keys.
@@ -117,6 +124,7 @@ impl NetworkService {
             environment: identity.environment.clone(),
             network_name: config.name.clone(),
             boot_nonce: URL_SAFE_NO_PAD.encode(nonce),
+            return_routes_enabled: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
             test_body_read_timeout: None,
             _keys: Arc::new(keys),
@@ -135,12 +143,27 @@ impl NetworkService {
         &self.network_name
     }
 
+    /// Called only after the real relay owner has initialized its control authority.
+    /// Clones share this gate; a metadata-only service never advertises execution.
+    pub(crate) fn enable_return_routes(&self) {
+        self.return_routes_enabled.store(true, Ordering::Release);
+    }
+
     pub fn router(&self) -> Router<()> {
         Router::new()
             .route("/api/agent-network/device/registration", post(dispatch))
             .route("/v1/me/network", get(dispatch))
             .route("/v1/devices", get(dispatch))
             .route("/v1/devices/{device}/agents", get(dispatch))
+            .route("/v1/networks/{network}/callable-agents", get(dispatch))
+            .route(
+                "/v1/networks/{network}/callable-agents/{mount}",
+                get(dispatch),
+            )
+            .route(
+                "/v1/networks/{network}/mounts/{mount}",
+                axum::routing::patch(dispatch),
+            )
             .route(
                 "/v1/networks/{network}/devices/{device}/join",
                 post(dispatch),
@@ -296,9 +319,20 @@ impl NetworkService {
             ("GET", ["v1", "me", "network"]) => {
                 no_query(uri)?;
                 empty_body(body)?;
-                self.metadata
+                let mut network = self
+                    .metadata
                     .get_network(context)
-                    .map_err(HttpError::metadata)
+                    .map_err(HttpError::metadata)?;
+                if self.return_routes_enabled.load(Ordering::Acquire) {
+                    network["capabilities"] = json!([
+                        "tls13-mtls",
+                        "typed-rpc",
+                        "permit-v1",
+                        "return-v1",
+                        "return-resume-v1"
+                    ]);
+                }
+                Ok(network)
             }
             ("GET", ["v1", "devices"]) => {
                 empty_body(body)?;
@@ -312,6 +346,31 @@ impl NetworkService {
                 let page = PageQuery::parse(uri.query())?;
                 self.metadata
                     .list_agents(context, target, page.cursor.as_deref(), page.limit)
+                    .map_err(HttpError::metadata)
+            }
+            ("GET", ["v1", "networks", network, "callable-agents"]) => {
+                empty_body(body)?;
+                scope_path(context, network)?;
+                let page = PageQuery::parse(uri.query())?;
+                self.metadata
+                    .list_callable(context, page.cursor.as_deref(), page.limit)
+                    .map_err(HttpError::metadata)
+            }
+            ("GET", ["v1", "networks", network, "callable-agents", mount]) => {
+                no_query(uri)?;
+                empty_body(body)?;
+                scope_path(context, network)?;
+                self.metadata
+                    .resolve_callable(context, mount)
+                    .map_err(HttpError::metadata)
+            }
+            ("PATCH", ["v1", "networks", network, "mounts", mount]) => {
+                no_query(uri)?;
+                scope_path(context, network)?;
+                let change: MountMutation = decode(body)?;
+                let change = serde_json::to_value(change).map_err(|_| HttpError::bad())?;
+                self.metadata
+                    .mutate_mount(context, mount, &change)
                     .map_err(HttpError::metadata)
             }
             ("POST", ["v1", "networks", network, "devices", target, action])
@@ -387,6 +446,30 @@ struct Rename {
     name: String,
     expected_name: String,
     mutation_id: String,
+}
+
+#[derive(Deserialize, serde::Serialize)]
+#[serde(untagged)]
+enum MountMutation {
+    Enabled(EnableMount),
+    Description(DescribeMount),
+}
+#[derive(Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EnableMount {
+    mutation_id: String,
+    expected_membership_revision: u64,
+    expected_enable_revision: u64,
+    enabled: bool,
+}
+#[derive(Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DescribeMount {
+    mutation_id: String,
+    expected_membership_revision: u64,
+    expected_description_revision: u64,
+    // Value keeps explicit null distinct from a missing required description.
+    description: Value,
 }
 
 struct PageQuery {
@@ -571,6 +654,12 @@ impl HttpError {
             NameConflict => Self::fixed(StatusCode::CONFLICT, "DEVICE_NAME_CONFLICT"),
             CatalogConflict => Self::fixed(StatusCode::CONFLICT, "CATALOG_CONFLICT"),
             CatalogStale => Self::fixed(StatusCode::CONFLICT, "CATALOG_STALE"),
+            MountNotFound => Self::fixed(StatusCode::NOT_FOUND, "MOUNT_NOT_FOUND"),
+            MountUnavailable => Self::fixed(StatusCode::CONFLICT, "MOUNT_UNAVAILABLE"),
+            EnableConflict => Self::fixed(StatusCode::CONFLICT, "ENABLE_REVISION_CONFLICT"),
+            DescriptionConflict => {
+                Self::fixed(StatusCode::CONFLICT, "DESCRIPTION_REVISION_CONFLICT")
+            }
             ReceiptConflict => Self::fixed(StatusCode::CONFLICT, "MUTATION_CONFLICT"),
             ReceiptNotFound => Self::fixed(StatusCode::NOT_FOUND, "MUTATION_NOT_FOUND"),
             ReceiptExpired => Self::fixed(StatusCode::GONE, "MUTATION_EXPIRED"),
@@ -649,7 +738,7 @@ pub(crate) mod tests {
         }
     }
     pub(crate) struct Device {
-        pub(crate) key: DevicePrivateKey,
+        pub(crate) key: Arc<DevicePrivateKey>,
         pub(crate) account_token: Zeroizing<String>,
         pub(crate) access: Zeroizing<String>,
         pub(crate) context: SessionContext,
@@ -724,7 +813,7 @@ pub(crate) mod tests {
                 session_handle: session.session_handle,
                 expires_at: session.expires_at,
             };
-            let key = DevicePrivateKey::generate().unwrap();
+            let key = Arc::new(DevicePrivateKey::generate().unwrap());
             let record = self
                 .service
                 .devices
@@ -1382,5 +1471,185 @@ pub(crate) mod tests {
         assert_eq!(f.service.in_flight.available_permits(), 1);
         drop(held);
         assert_eq!(clone.in_flight.available_permits(), MAX_IN_FLIGHT);
+    }
+    #[tokio::test]
+    async fn callable_mount_http_routes_enforce_protocol_scope_and_current_readiness() {
+        use myagents_agent_network_protocol::{
+            CatalogItem, CatalogLifecycle, CatalogSnapshot, MetadataKind, validate_metadata,
+        };
+        use myagents_agentnet_metadata_core::Presence;
+        let f = Fixture::new();
+        let own = f.device("caller");
+        f.register(&own).await;
+        let metadata = &f.service.metadata;
+        metadata
+            .mutate_membership(
+                &own.context,
+                &own.context.device_id,
+                true,
+                0,
+                &Uuid::new_v4().to_string(),
+            )
+            .unwrap();
+        let epoch = Uuid::new_v4().to_string();
+        metadata
+            .set_presence(&own.context, 1, &epoch, Presence::Syncing, None)
+            .unwrap();
+        metadata
+            .upload_catalog(
+                &own.context,
+                1,
+                &epoch,
+                &CatalogSnapshot {
+                    version: 1,
+                    connection_epoch: epoch.clone(),
+                    catalog_seq: 1,
+                    items: vec![CatalogItem {
+                        local_agent_id: "http-agent".into(),
+                        local_workspace_id: "workspace".into(),
+                        name: "HTTP Agent".into(),
+                        path: "/test/agent".into(),
+                        lifecycle: CatalogLifecycle::Active,
+                        exposure_revision: 0,
+                        icon: Some("bot".into()),
+                    }],
+                },
+            )
+            .unwrap();
+        metadata
+            .set_presence(&own.context, 1, &epoch, Presence::Ready, Some(1))
+            .unwrap();
+        let agents = metadata
+            .list_agents(&own.context, &own.context.device_id, None, 200)
+            .unwrap();
+        let mount = agents["items"][0]["mountId"].as_str().unwrap();
+        let callable = format!("/v1/networks/{}/callable-agents", f.network);
+        let resolve = format!("{callable}/{mount}");
+        let mutation = format!("/v1/networks/{}/mounts/{mount}", f.network);
+        assert!(
+            f.request(&own, "GET", &callable, "").await.1["data"]["items"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            f.request(&own, "GET", &resolve, "").await.0,
+            StatusCode::CONFLICT
+        );
+        let body = json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedEnableRevision":0,"enabled":true}).to_string();
+        let changed = f.request(&own, "PATCH", &mutation, &body).await;
+        assert_eq!(changed.0, StatusCode::OK);
+        validate_metadata(MetadataKind::Mount, &changed.1["data"]).unwrap();
+        assert_eq!(
+            f.request(&own, "PATCH", &mutation, &body).await.1["data"],
+            changed.1["data"]
+        );
+        let listed = f
+            .request(&own, "GET", &format!("{callable}?limit=1"), "")
+            .await;
+        assert_eq!(listed.0, StatusCode::OK);
+        validate_metadata(MetadataKind::Callable, &listed.1["data"]).unwrap();
+        let resolved = f.request(&own, "GET", &resolve, "").await;
+        assert_eq!(resolved.0, StatusCode::OK);
+        validate_metadata(MetadataKind::CallableAgent, &resolved.1["data"]).unwrap();
+        assert_eq!(
+            resolved.1["data"]["selector"],
+            format!("ma-agent:1:{}:{}:{mount}", f.service.service_id, f.network)
+        );
+        let description = json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedDescriptionRevision":0,"description":"HTTP description"}).to_string();
+        assert_eq!(
+            f.request(&own, "PATCH", &mutation, &description).await.1["data"]["descriptionRevision"],
+            1
+        );
+        for uri in [
+            format!("{callable}?limit=0"),
+            format!("{callable}?limit=1&limit=2"),
+            format!("{resolve}?limit=1"),
+            format!("{mutation}?unexpected=1"),
+        ] {
+            let method = if uri.starts_with(&mutation) {
+                "PATCH"
+            } else {
+                "GET"
+            };
+            let request_body = if method == "PATCH" { body.as_str() } else { "" };
+            assert_eq!(
+                f.request(&own, method, &uri, request_body).await.0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        let missing_description = json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedDescriptionRevision":1}).to_string();
+        assert_eq!(
+            f.request(&own, "PATCH", &mutation, &missing_description)
+                .await
+                .0,
+            StatusCode::BAD_REQUEST
+        );
+        let ambiguous = json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedEnableRevision":1,"enabled":false,"description":null,"expectedDescriptionRevision":1}).to_string();
+        assert_eq!(
+            f.request(&own, "PATCH", &mutation, &ambiguous).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        let duplicate = format!(
+            "{{\"mutationId\":\"{}\",\"expectedMembershipRevision\":1,\"expectedEnableRevision\":1,\"enabled\":true,\"enabled\":false}}",
+            Uuid::new_v4()
+        );
+        assert_eq!(
+            f.request(&own, "PATCH", &mutation, &duplicate).await.0,
+            StatusCode::BAD_REQUEST
+        );
+        let foreign = f.device("foreign");
+        f.register(&foreign).await;
+        assert_eq!(
+            f.request(&foreign, "GET", &resolve, "").await.0,
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            f.request(&foreign, "PATCH", &mutation, &body).await.0,
+            StatusCode::NOT_FOUND
+        );
+        let other_network = format!("/v1/networks/{}/callable-agents/{mount}", Uuid::new_v4());
+        assert_eq!(
+            f.request(&own, "GET", &other_network, "").await.0,
+            StatusCode::NOT_FOUND
+        );
+        metadata
+            .set_presence(&own.context, 1, &epoch, Presence::Offline, None)
+            .unwrap();
+        assert_eq!(
+            f.request(&own, "GET", &resolve, "").await.0,
+            StatusCode::CONFLICT
+        );
+        assert!(
+            f.request(&own, "GET", &callable, "").await.1["data"]["items"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+    }
+    #[tokio::test]
+    async fn relay_capabilities_require_initialized_owner_and_are_shared_by_service_clones() {
+        let f = Fixture::new();
+        let device = f.device("capabilities");
+        f.register(&device).await;
+        let before = f.request(&device, "GET", "/v1/me/network", "").await;
+        assert_eq!(before.1["data"]["capabilities"], json!([]));
+        let clone = f.service.clone();
+        let _relay = crate::relay_controller::RelayController::new(clone).unwrap();
+        let after = f.request(&device, "GET", "/v1/me/network", "").await;
+        assert_eq!(
+            after.1["data"]["capabilities"],
+            json!([
+                "tls13-mtls",
+                "typed-rpc",
+                "permit-v1",
+                "return-v1",
+                "return-resume-v1"
+            ])
+        );
+        assert_eq!(
+            f.service.metadata.get_network(&device.context).unwrap()["capabilities"],
+            json!([])
+        );
     }
 }

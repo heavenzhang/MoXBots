@@ -1115,15 +1115,12 @@ async fn connect(
             let join = account.join_authorized.swap(false, Ordering::AcqRel);
             super::owned_admission::enroll(&identity, &transport, join).await?;
         }
-        let management_only = identity.account.is_management_only();
-        let recovery = if management_only {
-            false
-        } else {
-            let metadata = transport
-                .json(NetworkRoute::Network, &identity.token, None)
-                .await?;
-            supports_return_resume(&metadata)
-        };
+        let metadata = transport
+            .json(NetworkRoute::Network, &identity.token, None)
+            .await?;
+        let management_only = identity.account.is_management_only()
+            && !super::owned_profile::supports_agents(&metadata);
+        let recovery = !management_only && supports_return_resume(&metadata);
         let mut capabilities: Vec<String> = if management_only {
             vec!["tls13-mtls".into()]
         } else {
@@ -1145,11 +1142,20 @@ async fn connect(
         )
         .await?;
         let (scope, local, resume) = initial_hello(&mut socket, &identity).await?;
-        Ok::<_, NetworkError>((identity, transport, socket, scope, local, resume, recovery))
+        Ok::<_, NetworkError>((
+            identity,
+            transport,
+            socket,
+            scope,
+            local,
+            resume,
+            recovery,
+            management_only,
+        ))
     };
     tokio::pin!(prepared);
     let mut maintenance = tokio::time::interval(Duration::from_secs(1));
-    let (mut identity, transport, mut socket, scope, local, resume, recovery) = loop {
+    let (mut identity, transport, mut socket, scope, local, resume, recovery, management_only) = loop {
         tokio::select! {
             result = &mut prepared => break result?,
             Some(completed) = returns.work.next(), if !returns.work.is_empty() => settle_owner_work(completed, &mut returns.source, &mut returns.target),
@@ -1167,7 +1173,7 @@ async fn connect(
         source_returns.invalidate("RETURN_RESUME_UNSUPPORTED");
         target_returns.invalidate("RETURN_RESUME_UNSUPPORTED");
     }
-    let management_only = identity.account.is_management_only();
+    let owned_account = identity.account.is_management_only();
     *previous_out = Some((identity.account.binding_id().to_owned(), resume));
     let connection_lifetime = ConnectionLifetime(Arc::new(AtomicBool::new(true)));
     let mut work: FuturesUnordered<BoxFuture<'static, Work>> = FuturesUnordered::new();
@@ -1176,9 +1182,13 @@ async fn connect(
             owner.memory.clone(),
             myagents_host_management_protocol::PeerRole::Host,
         )
+    } else if owned_account {
+        Pairs::new_owned(owner.memory.clone())
     } else {
         Pairs::new(owner.memory.clone())
     };
+    let mut deferred_messages =
+        super::management_controller::DeferredMessages::new(owner.memory.clone());
     let mut calls = Calls::default();
     source_returns.verify_local(&local);
     target_returns.verify_local(&local);
@@ -1213,7 +1223,11 @@ async fn connect(
     loop {
         identity.account.ensure_current()?;
         tokio::select! {
-            incoming = socket.next() => {
+            incoming = async {
+                if let Some((message,lease)) = deferred_messages.pop() { (Some(Ok(message)),Some(lease)) }
+                else { (socket.next().await,None) }
+            } => {
+                let (incoming,_deferred_lease) = incoming;
                 last_server = Instant::now();
                 match incoming {
                     Some(Ok(Message::Ping(bytes))) => socket.send(Message::Pong(bytes)).await
@@ -1224,7 +1238,16 @@ async fn connect(
                         let envelope = ServerEnvelope::parse(text.as_bytes()).map_err(|_| NetworkError::new("CONTROL_INVALID"))?;
                         if envelope.message.scope().is_some_and(|current| current != &scope) { return Err(NetworkError::new("CONTROL_SCOPE_MISMATCH")); }
                         if management_only { super::owned_profile::control(&envelope.message)?; }
-                        if management_only && pairs.consume_retired_management(
+                        if owned_account {
+                            if let Some(retired)=pairs.retired_management_offer(&envelope.message,&scope,&local,&scope.connection_epoch)? {
+                                if let super::pairs::RetiredManagementOffer::Close(channel_id)=retired {
+                                    let control_id=deferred_messages.cleanup_control(&scope,&channel_id)?;
+                                    send_control(&mut socket,control_id,ClientMessage::Close {scope:scope.clone(),channel_id,reason:"HOST_MANAGEMENT_TIMEOUT".into()}).await?;
+                                }
+                                continue;
+                            }
+                        }
+                        if owned_account && pairs.consume_retired_management(
                             &envelope.message, &scope, &local, &scope.connection_epoch,
                         )? { continue; }
                         match envelope.message {
@@ -1241,7 +1264,9 @@ async fn connect(
                                 let snapshot = owner.snapshot(); owner.publish(app, generation, snapshot);
                             }
                             ServerMessage::AuthRefreshed { expires_at, .. } if expires_at == identity.access.exp => {},
-                            ServerMessage::Error { code, retryable } => {let mut error=NetworkError::cloud(&code,400);error.retryable=retryable;
+                            ServerMessage::Error { code, retryable } => {
+                                if owned_account && deferred_messages.consume_control_error(&envelope.control_id,&code,&scope,&mut pairs)? {continue;}
+                                let mut error=NetworkError::cloud(&code,400);error.retryable=retryable;
                                 if let Some(op)=incoming_calls.control_op(&envelope.control_id) {
                                     prepared_targets.remove(&op);
                                     if let Some((channel,response,_allocation))=incoming_calls.finish(&op,error_outcome(error)) {let _=pairs.send(&channel,BusinessObject::Response(response));}
@@ -1250,9 +1275,9 @@ async fn connect(
                             ServerMessage::ChannelOffer { channel_id, initiator, responder, initiator_connection_epoch,
                                 responder_connection_epoch, initiator_binding, responder_binding, .. } => {
                                 if work.len() >= budget("pending") { return Err(NetworkError::new("NETWORK_REQUEST_CAPACITY")); }
-                                if management_only {pairs.reserve_management_retirement(&channel_id,&scope,&local)?;}
+                                if owned_account {pairs.reserve_management_retirement(&channel_id,&scope,&local)?;}
                                 if let Err(error) = pairs.reserve(&channel_id) {
-                                    if management_only {pairs.retire_management(&channel_id,true);}
+                                    if owned_account {pairs.retire_management(&channel_id,true);}
                                     send(&mut socket, ClientMessage::Close { scope: scope.clone(), channel_id, reason: error.code }).await?;
                                     continue;
                                 }
@@ -1275,10 +1300,11 @@ async fn connect(
                             },
                             ServerMessage::ChannelReady { channel_id, .. } => pairs.ready(&channel_id)?,
                             ServerMessage::ChannelClosed { channel_id, .. } => {
-                                if management_only {
+                                if owned_account && (management_only || pairs.is_management_channel(&channel_id)) {
                                     if !pairs.has_channel(&channel_id) { return Err(NetworkError::new("CONTROL_UNEXPECTED")); }
                                     pairs.note_management_closed(&channel_id);pairs.retire_management(&channel_id,true);pending_offers.remove(&channel_id);continue;
                                 }
+                                if owned_account { pairs.retire_management(&channel_id,false); }
                                 pairs.remove(&channel_id);pending_offers.remove(&channel_id);calls.channel_closed(&channel_id);target_returns.channel_closed(&channel_id);
                                 for op in incoming_calls.channel_ops(&channel_id) {
                                     prepared_targets.remove(&op);
@@ -1375,6 +1401,10 @@ async fn connect(
                             ServerMessage::RouteResumed {return_route_id,source_connection_epoch,target_connection_epoch,..} => {source_returns.resumed(&return_route_id,&source_connection_epoch,&target_connection_epoch);target_returns.resumed(&return_route_id,&source_connection_epoch,&target_connection_epoch);},
                             ServerMessage::RouteClosed {return_route_id,reason,..}=> {source_returns.close_route(&return_route_id,&reason);target_returns.close_route(&return_route_id,&reason);},
                             ServerMessage::RouteRebound {return_route_id,channel_id,..}=> {
+                                let (peer,epoch)=pairs.peer(&channel_id)?;
+                                if pairs.ready_for(peer,epoch)!=Some(channel_id.as_str()) {return Err(NetworkError::new("RETURN_CONTEXT_LOST"));}
+                                if source_returns.rebound(&return_route_id,peer,epoch,&scope.connection_epoch)? {continue;}
+                                if target_returns.rebound_probe(&envelope.control_id,&return_route_id,&channel_id)? {continue;}
                                 match target_returns.rebound(&envelope.control_id,&return_route_id,&channel_id) {
                                     Ok(object)=> {if let Err(error)=pairs.send(&channel_id,object) {target_returns.close_route(&return_route_id,&error.code);send(&mut socket,ClientMessage::CloseRoute {scope:scope.clone(),return_route_id,reason:error.code}).await?;}},
                                     Err(error) if error.code=="RETURN_NOT_PENDING"=>{},
@@ -1388,8 +1418,10 @@ async fn connect(
                     Some(Ok(Message::Binary(bytes))) => {
                         let (channel_id, payload) = myagents_agent_network_protocol::decode_tls_frame(&bytes)
                             .map_err(|_| NetworkError::new("TLS_FRAME_INVALID"))?;
-                        if management_only {
-                            let (events,_allocation)=match pairs.feed_management(&channel_id,payload){Ok(decoded)=>decoded,Err(error)=>{pairs.retire_management(&channel_id,true);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id:channel_id.clone(),reason:error.code}).await?;continue;}};
+                        let mut owned_decoded = None;
+                        if owned_account {
+                            let decoded = if management_only { pairs.feed_management(&channel_id,payload).map(|(events,allocation)|(Vec::new(),events,allocation)) } else { pairs.feed_mixed(&channel_id,payload) };
+                            let (objects,events,allocation)=match decoded {Ok(decoded)=>decoded,Err(error)=>{pairs.retire_management(&channel_id,true);calls.channel_closed(&channel_id);target_returns.channel_closed(&channel_id);for op in incoming_calls.channel_ops(&channel_id) {prepared_targets.remove(&op);incoming_calls.finish(&op,error_outcome(NetworkError::new("ADMISSION_UNCONFIRMED")));}send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id:channel_id.clone(),reason:error.code}).await?;continue;}};
                             let (sequence,received_bytes)=pairs.release_credit(&channel_id,bytes.len())?;
                             send(&mut socket,ClientMessage::Credit{scope:scope.clone(),channel_id:channel_id.clone(),sequence,received_bytes}).await?;
                             for event in events {
@@ -1408,12 +1440,14 @@ async fn connect(
                                     super::channel::ManagementEvent::Response{..} => {pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id:channel_id.clone(),reason:"HOST_MANAGEMENT_UNEXPECTED_RESPONSE".into()}).await?;},
                                 }
                             }
-                            continue;
+                            owned_decoded = Some((objects,allocation));
                         }
-                        match pairs.feed(&channel_id, payload) {
+                        match owned_decoded.map_or_else(||pairs.feed(&channel_id,payload),Ok) {
                             Ok((objects,_decoded_allocation)) => {
-                                let (sequence,received_bytes)=pairs.release_credit(&channel_id,bytes.len())?;
-                                send(&mut socket,ClientMessage::Credit {scope:scope.clone(),channel_id:channel_id.clone(),sequence,received_bytes}).await?;
+                                if !owned_account {
+                                    let (sequence,received_bytes)=pairs.release_credit(&channel_id,bytes.len())?;
+                                    send(&mut socket,ClientMessage::Credit {scope:scope.clone(),channel_id:channel_id.clone(),sequence,received_bytes}).await?;
+                                }
                                 for object in objects {
                                     // A response/ACK write can retire this pair while
                                     // dispatching the current decoded batch. Remaining
@@ -1596,7 +1630,7 @@ async fn connect(
             }
             Some(command) = commands.recv() => {
                 if let Command::Management(command) = command {
-                    if command.reply.is_closed() || !management_only || command.generation != generation || !hydrated
+                    if command.reply.is_closed() || !owned_account || command.generation != generation || !hydrated
                         || command.request.auth_generation != owner.snapshot().auth_generation
                         || command.request.connection_id != owner.connection_id
                         || command.request.principal_id != local.principal_id
@@ -1604,18 +1638,31 @@ async fn connect(
                         let _=command.reply.send(Err(NetworkError::new("CONNECTOR_NOT_READY")));
                         continue;
                     }
+                    if deferred_messages.has_pending() {
+                        let _=command.reply.send(Err(NetworkError::new("HOST_MANAGEMENT_BUSY")));
+                        continue;
+                    }
                     let remaining = Duration::from_secs(30).checked_sub(command.queued_at.elapsed());
                     let result = match remaining {
-                        Some(remaining) => tokio::time::timeout(remaining, super::management_controller::execute(&mut socket,&transport,&identity,&local,&scope,&mut pairs,&command.request,command.sent.clone()))
+                        Some(remaining) => tokio::time::timeout(remaining, async {
+                            if management_only { super::management_controller::execute(&mut socket,&transport,&identity,&local,&scope,&mut pairs,&command.request,command.sent.clone()).await }
+                            else { super::management_controller::execute_multiplexed(&mut socket,&transport,&identity,&local,&scope,&mut pairs,&command.request,command.sent.clone(),&mut deferred_messages).await }
+                        })
                             .await.unwrap_or_else(|_|Err(super::management_controller::lost(command.request.mutation(),command.sent.load(Ordering::Acquire)))),
                         None => Err(super::management_controller::lost(command.request.mutation(),false)),
                     };
+                    if let Some(channel_id)=deferred_messages.retire_cancelled(&mut pairs) {
+                        if let Ok(control_id)=deferred_messages.cleanup_control(&scope,&channel_id) {
+                            let _=tokio::time::timeout(Duration::from_secs(1),send_control(&mut socket,control_id,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"HOST_MANAGEMENT_TIMEOUT".into()})).await;
+                        }
+                    }
                     let result=if owner.generation()!=generation || identity.account.ensure_current().is_err() {
                         Err(super::management_controller::lost(command.request.mutation(),command.sent.load(Ordering::Acquire)))
                     } else {result};
                     let failed=result.as_ref().is_err_and(|error| !super::management_controller::isolated_unsupported_probe(&command.request,error));
                     let _=command.reply.send(result);
-                    if failed { return Err(NetworkError::new("HOST_MANAGEMENT_CONNECTION_RESET")); }
+                    if deferred_messages.fatal_overflow() { return Err(NetworkError::new("HOST_MANAGEMENT_DEFERRED_CAPACITY")); }
+                    if failed && management_only { return Err(NetworkError::new("HOST_MANAGEMENT_CONNECTION_RESET")); }
                     last_server=Instant::now();last_ping=Instant::now();
                     continue;
                 }
@@ -1712,6 +1759,7 @@ async fn connect(
                     return Err(NetworkError::new("NETWORK_CONNECTION_TIMEOUT"));
                 }
                 for (channel_id, reason) in pairs.expired() {
+                    if owned_account {pairs.retire_management(&channel_id,true);}
                     pairs.remove(&channel_id);calls.channel_closed(&channel_id);target_returns.channel_closed(&channel_id);
                     send(&mut socket, ClientMessage::Close { scope: scope.clone(), channel_id, reason: reason.into() }).await?;
                 }
@@ -1767,7 +1815,7 @@ async fn connect(
                 async move {
                     Work::Hydrate {
                         catalog_seq,
-                        result: if management_only {
+                        result: if owned_account {
                             super::policy::hydrate_owned(&transport, &token, &local).await
                         } else {
                             hydrate(&transport, &token, &local).await
