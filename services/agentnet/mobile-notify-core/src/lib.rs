@@ -34,6 +34,10 @@ const MAX_ATTEMPTS: i64 = 5;
 const MAX_LEASE_SECONDS: i64 = 300;
 const MAX_EVENT_TTL_SECONDS: i64 = 86_400;
 const DEDUPE_RETENTION_SECONDS: i64 = 7 * 86_400;
+const MAX_SOURCE_CHALLENGE_TTL_SECONDS: i64 = 300;
+const MAX_SOURCE_CHALLENGES_GLOBAL: i64 = 10_000;
+const MAX_SOURCE_CHALLENGES_DEVICE: i64 = 8;
+const CLEANUP_SOURCE_CHALLENGE_BATCH: i64 = 100;
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum NotifyError {
@@ -337,6 +341,28 @@ impl EndpointId {
     }
 }
 
+/// Result state for a source proof challenge. The proof itself is never
+/// persisted; only its digest is retained with a finalized event receipt.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SourceChallengeState {
+    Pending,
+    ConsumedUnconfirmed,
+    Finalized { proof_digest: [u8; 32], event_id: String },
+}
+
+/// Durable, exact source pointer binding. This record is private service
+/// metadata and is not a cryptographic authority by itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SourceChallengeBinding {
+    pub challenge_id: String,
+    pub source_event_id: String,
+    pub connection_epoch: String,
+    pub agent_id: String,
+    pub session_id: String,
+    pub expires_at: i64,
+    pub state: SourceChallengeState,
+}
+
 /// Strict Host-origin hint v1. The target device comes from the authenticated
 /// Host authority, not from this request. The source event ID is only a scoped
 /// deduplication key and carries no permission.
@@ -502,7 +528,7 @@ impl Store {
         let schema_version: i64 = connection
             .query_row("PRAGMA user_version", [], |row| row.get(0))
             .map_err(|_| NotifyError::Storage)?;
-        if schema_version > 2 {
+        if schema_version > 3 {
             return Err(NotifyError::Storage);
         }
         connection
@@ -572,6 +598,29 @@ impl Store {
                    ON deliveries(endpoint_id, state, next_attempt_at, lease_until);
                  CREATE INDEX IF NOT EXISTS deliveries_cleanup
                    ON deliveries(state, event_id, endpoint_id);
+                 CREATE TABLE IF NOT EXISTS source_challenges (
+                   challenge_id TEXT PRIMARY KEY,
+                   principal_id TEXT NOT NULL,
+                   network_id TEXT NOT NULL,
+                   device_id TEXT NOT NULL,
+                   identity_binding_id TEXT NOT NULL,
+                   key_generation INTEGER NOT NULL CHECK(key_generation > 0),
+                   session_handle TEXT NOT NULL,
+                   source_event_id TEXT NOT NULL,
+                   connection_epoch TEXT NOT NULL,
+                   agent_id TEXT NOT NULL,
+                   session_id TEXT NOT NULL,
+                   content_digest BLOB NOT NULL,
+                   created_at INTEGER NOT NULL,
+                   expires_at INTEGER NOT NULL,
+                   state TEXT NOT NULL CHECK(state IN ('pending','consumed-unconfirmed','finalized','expired')),
+                   proof_digest BLOB,
+                   event_id TEXT
+                 );
+                 CREATE INDEX IF NOT EXISTS source_challenges_device_pending
+                   ON source_challenges(principal_id,network_id,device_id,state,expires_at);
+                 CREATE INDEX IF NOT EXISTS source_challenges_cleanup
+                   ON source_challenges(expires_at,challenge_id);
                  ",
             )
             .map_err(|_| NotifyError::Storage)?;
@@ -599,6 +648,11 @@ impl Store {
                 .map_err(|_| NotifyError::Storage)?;
             connection
                 .pragma_update(None, "user_version", 2)
+                .map_err(|_| NotifyError::Storage)?;
+        }
+        if schema_version < 3 {
+            connection
+                .pragma_update(None, "user_version", 3)
                 .map_err(|_| NotifyError::Storage)?;
         }
         Ok(Self {
@@ -929,6 +983,296 @@ impl Store {
         }
         tx.commit().map_err(|_| NotifyError::Storage)?;
         Ok(ids.len())
+    }
+
+    /// Persist the exact pointer and authenticated source scope for a
+    /// DeviceStore RecoverQuery challenge before its nonce is returned.
+    /// Call this before creating a DeviceStore challenge so rejected request
+    /// conflicts cannot consume its bounded pending-challenge quota. The
+    /// binding method repeats these checks transactionally after challenge
+    /// creation to handle races.
+    pub fn check_source_challenge_request(
+        &self,
+        authority: &Authority,
+        source_event_id: &str,
+        connection_epoch: &str,
+        agent_id: &str,
+        session_id: &str,
+        now: i64,
+    ) -> Result<(), NotifyError> {
+        authority.validate()?;
+        if !canonical_uuid(source_event_id) || !canonical_uuid(connection_epoch) {
+            return Err(NotifyError::InvalidInput);
+        }
+        validate_time(now)?;
+        let target = TargetScope::from_validated_host_session(authority, agent_id)?;
+        let hint = HostHintV1::new(source_event_id, session_id)?;
+        let content_digest = source_request_digest(
+            connection_epoch,
+            &target.target_device_id,
+            &target.agent_id,
+            &hint.session_id,
+            hint.kind,
+        );
+        let mut connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| NotifyError::Storage)?;
+        prune_source_challenges(&tx, now)?;
+        check_source_request_capacity(&tx, authority, source_event_id, &content_digest, now)?;
+        tx.commit().map_err(|_| NotifyError::Storage)
+    }
+
+    pub fn bind_source_challenge(
+        &self,
+        authority: &Authority,
+        session_handle: &str,
+        challenge_id: &str,
+        source_event_id: &str,
+        connection_epoch: &str,
+        agent_id: &str,
+        session_id: &str,
+        expires_at: i64,
+        now: i64,
+    ) -> Result<(), NotifyError> {
+        authority.validate()?;
+        if !canonical_uuid(session_handle)
+            || !canonical_uuid(challenge_id)
+            || !canonical_uuid(source_event_id)
+            || !canonical_uuid(connection_epoch)
+            || expires_at <= now
+            || expires_at.saturating_sub(now) > MAX_SOURCE_CHALLENGE_TTL_SECONDS
+        {
+            return Err(NotifyError::InvalidInput);
+        }
+        validate_time(now)?;
+        let target = TargetScope::from_validated_host_session(authority, agent_id)?;
+        let hint = HostHintV1::new(source_event_id, session_id)?;
+        let content_digest = source_request_digest(
+            connection_epoch,
+            &target.target_device_id,
+            &target.agent_id,
+            &hint.session_id,
+            hint.kind,
+        );
+        let mut connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| NotifyError::Storage)?;
+        prune_source_challenges(&tx, now)?;
+        check_source_request_capacity(&tx, authority, source_event_id, &content_digest, now)?;
+        tx.execute(
+            "INSERT INTO source_challenges(challenge_id,principal_id,network_id,device_id,
+               identity_binding_id,key_generation,session_handle,source_event_id,connection_epoch,
+               agent_id,session_id,content_digest,created_at,expires_at,state,proof_digest,event_id)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,'pending',NULL,NULL)",
+            params![
+                challenge_id,
+                authority.principal_id,
+                authority.network_id,
+                authority.device_id,
+                authority.identity_binding_id,
+                authority.key_generation as i64,
+                session_handle,
+                source_event_id,
+                connection_epoch,
+                target.agent_id,
+                hint.session_id,
+                content_digest.as_slice(),
+                now,
+                expires_at,
+            ],
+        )
+        .map_err(|_| NotifyError::Conflict)?;
+        tx.commit().map_err(|_| NotifyError::Storage)
+    }
+
+    /// Load a source challenge only for the exact fresh session and identity
+    /// generation. Expired pending challenges are durably closed.
+    pub fn source_challenge_for_scope(
+        &self,
+        authority: &Authority,
+        session_handle: &str,
+        challenge_id: &str,
+        now: i64,
+    ) -> Result<SourceChallengeBinding, NotifyError> {
+        authority.validate()?;
+        if !canonical_uuid(session_handle) || !canonical_uuid(challenge_id) {
+            return Err(NotifyError::InvalidInput);
+        }
+        validate_time(now)?;
+        let mut connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| NotifyError::Storage)?;
+        let raw = tx
+            .query_row(
+                "SELECT principal_id,network_id,device_id,identity_binding_id,key_generation,
+                   session_handle,source_event_id,connection_epoch,agent_id,session_id,expires_at,
+                   state,proof_digest,event_id,content_digest FROM source_challenges WHERE challenge_id=?1",
+                params![challenge_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?, row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?, row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
+                        row.get::<_, String>(6)?, row.get::<_, String>(7)?,
+                        row.get::<_, String>(8)?, row.get::<_, String>(9)?,
+                        row.get::<_, i64>(10)?, row.get::<_, String>(11)?,
+                        row.get::<_, Option<Vec<u8>>>(12)?, row.get::<_, Option<String>>(13)?,
+                        row.get::<_, Vec<u8>>(14)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|_| NotifyError::Storage)?;
+        let Some((principal, network, device, binding, generation, handle, source_event_id,
+            connection_epoch, agent_id, session_id, expires_at, state, proof_digest, event_id,
+            stored_digest)) = raw
+        else {
+            return Err(NotifyError::NotFound);
+        };
+        if principal != authority.principal_id
+            || network != authority.network_id
+            || device != authority.device_id
+            || binding != authority.identity_binding_id
+            || generation != authority.key_generation as i64
+            || handle != session_handle
+        {
+            return Err(NotifyError::Unauthorized);
+        }
+        let expected_digest = source_request_digest(
+            &connection_epoch,
+            &authority.device_id,
+            &agent_id,
+            &session_id,
+            HintKind::AttentionRequired,
+        );
+        if stored_digest.as_slice() != expected_digest {
+            return Err(NotifyError::Conflict);
+        }
+        if state == "pending" && expires_at <= now {
+            tx.execute(
+                "UPDATE source_challenges SET state='expired' WHERE challenge_id=?1 AND state='pending'",
+                params![challenge_id],
+            )
+            .map_err(|_| NotifyError::Storage)?;
+            tx.commit().map_err(|_| NotifyError::Storage)?;
+            return Err(NotifyError::ClaimExpired);
+        }
+        let state = match state.as_str() {
+            "pending" => SourceChallengeState::Pending,
+            "consumed-unconfirmed" => SourceChallengeState::ConsumedUnconfirmed,
+            "finalized" => {
+                let digest: [u8; 32] = proof_digest
+                    .and_then(|bytes| bytes.try_into().ok())
+                    .ok_or(NotifyError::Storage)?;
+                SourceChallengeState::Finalized {
+                    proof_digest: digest,
+                    event_id: event_id.ok_or(NotifyError::Storage)?,
+                }
+            }
+            "expired" => return Err(NotifyError::ClaimExpired),
+            _ => return Err(NotifyError::Storage),
+        };
+        tx.commit().map_err(|_| NotifyError::Storage)?;
+        Ok(SourceChallengeBinding {
+            challenge_id: challenge_id.to_owned(),
+            source_event_id,
+            connection_epoch,
+            agent_id,
+            session_id,
+            expires_at,
+            state,
+        })
+    }
+
+    /// Mark a consumed-or-uncertain DeviceStore challenge as unusable for
+    /// receipt recovery. The caller must obtain and sign a fresh challenge.
+    pub fn mark_source_challenge_unconfirmed(
+        &self,
+        authority: &Authority,
+        session_handle: &str,
+        challenge_id: &str,
+        now: i64,
+    ) -> Result<(), NotifyError> {
+        authority.validate()?;
+        if !canonical_uuid(session_handle) || !canonical_uuid(challenge_id) {
+            return Err(NotifyError::InvalidInput);
+        }
+        validate_time(now)?;
+        let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let changed = connection
+            .execute(
+                "UPDATE source_challenges SET state=CASE WHEN expires_at<=?7 THEN 'expired'
+                   ELSE 'consumed-unconfirmed' END
+                 WHERE challenge_id=?1 AND principal_id=?2 AND network_id=?3 AND device_id=?4
+                   AND identity_binding_id=?5 AND key_generation=?6 AND session_handle=?8
+                   AND state='pending'",
+                params![
+                    challenge_id,
+                    authority.principal_id,
+                    authority.network_id,
+                    authority.device_id,
+                    authority.identity_binding_id,
+                    authority.key_generation as i64,
+                    now,
+                    session_handle
+                ],
+            )
+            .map_err(|_| NotifyError::Storage)?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(NotifyError::NotFound)
+        }
+    }
+
+    /// Save a replay-safe receipt only after DeviceStore consumed a valid PoP
+    /// and enqueue_hint durably completed.
+    pub fn finalize_source_challenge(
+        &self,
+        authority: &Authority,
+        session_handle: &str,
+        challenge_id: &str,
+        proof_digest: &[u8; 32],
+        event_id: &str,
+        now: i64,
+    ) -> Result<(), NotifyError> {
+        authority.validate()?;
+        if !canonical_uuid(session_handle)
+            || !canonical_uuid(challenge_id)
+            || !canonical_uuid(event_id)
+        {
+            return Err(NotifyError::InvalidInput);
+        }
+        validate_time(now)?;
+        let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let changed = connection
+            .execute(
+                "UPDATE source_challenges SET state='finalized',proof_digest=?7,event_id=?8
+                 WHERE challenge_id=?1 AND principal_id=?2 AND network_id=?3 AND device_id=?4
+                   AND identity_binding_id=?5 AND key_generation=?6 AND session_handle=?9
+                   AND state='pending' AND expires_at>?10",
+                params![
+                    challenge_id,
+                    authority.principal_id,
+                    authority.network_id,
+                    authority.device_id,
+                    authority.identity_binding_id,
+                    authority.key_generation as i64,
+                    proof_digest.as_slice(),
+                    event_id,
+                    session_handle,
+                    now
+                ],
+            )
+            .map_err(|_| NotifyError::Storage)?;
+        if changed == 1 {
+            Ok(())
+        } else {
+            Err(NotifyError::ClaimExpired)
+        }
     }
 
     /// Persist a Host hint and fan it out to currently registered endpoints in
@@ -1437,6 +1781,77 @@ fn revoke_deliveries_for_endpoint(
     Ok(())
 }
 
+fn prune_source_challenges(
+    tx: &rusqlite::Transaction<'_>,
+    now: i64,
+) -> Result<(), NotifyError> {
+    tx.execute(
+        "UPDATE source_challenges SET state='expired' WHERE challenge_id IN
+           (SELECT challenge_id FROM source_challenges WHERE state='pending' AND expires_at<=?1
+             ORDER BY expires_at,challenge_id LIMIT ?2)",
+        params![now, CLEANUP_SOURCE_CHALLENGE_BATCH],
+    )
+    .map_err(|_| NotifyError::Storage)?;
+    let cutoff = now.saturating_sub(DEDUPE_RETENTION_SECONDS);
+    tx.execute(
+        "DELETE FROM source_challenges WHERE challenge_id IN
+           (SELECT challenge_id FROM source_challenges WHERE expires_at<?1
+             ORDER BY expires_at,challenge_id LIMIT ?2)",
+        params![cutoff, CLEANUP_SOURCE_CHALLENGE_BATCH],
+    )
+    .map_err(|_| NotifyError::Storage)?;
+    Ok(())
+}
+
+fn check_source_request_capacity(
+    tx: &rusqlite::Transaction<'_>,
+    authority: &Authority,
+    source_event_id: &str,
+    content_digest: &[u8; 32],
+    now: i64,
+) -> Result<(), NotifyError> {
+    let prior_digest: Option<Vec<u8>> = tx
+        .query_row(
+            "SELECT content_digest FROM source_challenges WHERE principal_id=?1 AND network_id=?2
+               AND device_id=?3 AND identity_binding_id=?4 AND key_generation=?5
+               AND source_event_id=?6 AND expires_at>=?7
+             ORDER BY created_at DESC,challenge_id LIMIT 1",
+            params![
+                authority.principal_id,
+                authority.network_id,
+                authority.device_id,
+                authority.identity_binding_id,
+                authority.key_generation as i64,
+                source_event_id,
+                now.saturating_sub(DEDUPE_RETENTION_SECONDS),
+            ],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|_| NotifyError::Storage)?;
+    if prior_digest
+        .as_deref()
+        .is_some_and(|prior| prior != content_digest.as_slice())
+    {
+        return Err(NotifyError::Conflict);
+    }
+    let pending: i64 = tx
+        .query_row(
+            "SELECT COUNT(*) FROM source_challenges WHERE principal_id=?1 AND network_id=?2
+               AND device_id=?3 AND state='pending' AND expires_at>?4",
+            params![authority.principal_id, authority.network_id, authority.device_id, now],
+            |row| row.get(0),
+        )
+        .map_err(|_| NotifyError::Storage)?;
+    let global_count: i64 = tx
+        .query_row("SELECT COUNT(*) FROM source_challenges", [], |row| row.get(0))
+        .map_err(|_| NotifyError::Storage)?;
+    if pending >= MAX_SOURCE_CHALLENGES_DEVICE || global_count >= MAX_SOURCE_CHALLENGES_GLOBAL {
+        return Err(NotifyError::Capacity);
+    }
+    Ok(())
+}
+
 fn prune(tx: &rusqlite::Transaction<'_>, now: i64) -> Result<(), NotifyError> {
     tx.execute(
         "UPDATE hint_events SET state='expired' WHERE event_id IN
@@ -1591,6 +2006,29 @@ fn token_digest(provider: Provider, token: &str) -> [u8; 32] {
     digest.finalize().into()
 }
 
+fn source_request_digest(
+    connection_epoch: &str,
+    target_id: &str,
+    agent_id: &str,
+    session_id: &str,
+    kind: HintKind,
+) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    digest.update(b"moxbots-agentnet-mobile-source-request-v1\0");
+    digest.update(connection_epoch.as_bytes());
+    digest.update([0]);
+    digest.update(match kind {
+        HintKind::AttentionRequired => b"attention-required".as_slice(),
+    });
+    digest.update([0]);
+    digest.update(target_id.as_bytes());
+    digest.update([0]);
+    digest.update(agent_id.as_bytes());
+    digest.update([0]);
+    digest.update(session_id.as_bytes());
+    digest.finalize().into()
+}
+
 fn hint_digest(target_id: &str, agent_id: &str, session_id: &str, kind: HintKind) -> [u8; 32] {
     let mut digest = Sha256::new();
     digest.update(b"moxbots-agentnet-mobile-hint-v1\0");
@@ -1646,6 +2084,109 @@ mod tests {
         assert!(EndpointId::parse("not-an-id").is_err());
         assert!(EndpointId::parse("77777777777747778777777777777777").is_err());
         assert!(EndpointId::parse("77777777-7777-4777-8777-77777777777A").is_err());
+    }
+
+    #[test]
+    fn source_challenge_bindings_are_scoped_bounded_and_expire() {
+        let (_dir, store) = open();
+        let scope = authority(DEVICE, BINDING, 1);
+        let session_handle = "77777777-7777-4777-8777-777777777777";
+        let epoch = "99999999-9999-4999-8999-999999999999";
+        let mut challenge_ids = Vec::new();
+        for _ in 0..MAX_SOURCE_CHALLENGES_DEVICE {
+            let challenge_id = Uuid::new_v4().to_string();
+            store
+                .bind_source_challenge(
+                    &scope,
+                    session_handle,
+                    &challenge_id,
+                    &Uuid::new_v4().to_string(),
+                    epoch,
+                    "agent-a",
+                    "session-a",
+                    120,
+                    100,
+                )
+                .unwrap();
+            challenge_ids.push(challenge_id);
+        }
+        assert!(matches!(
+            store.bind_source_challenge(
+                &scope,
+                session_handle,
+                &Uuid::new_v4().to_string(),
+                &Uuid::new_v4().to_string(),
+                epoch,
+                "agent-a",
+                "session-a",
+                120,
+                100,
+            ),
+            Err(NotifyError::Capacity)
+        ));
+        let other_scope = authority(OTHER_DEVICE, OTHER_BINDING, 1);
+        assert_eq!(
+            store.source_challenge_for_scope(&other_scope, session_handle, &challenge_ids[0], 101),
+            Err(NotifyError::Unauthorized)
+        );
+        assert_eq!(
+            store.source_challenge_for_scope(&scope, session_handle, &challenge_ids[0], 120),
+            Err(NotifyError::ClaimExpired)
+        );
+        store
+            .bind_source_challenge(
+                &scope,
+                session_handle,
+                &Uuid::new_v4().to_string(),
+                &Uuid::new_v4().to_string(),
+                epoch,
+                "agent-a",
+                "session-a",
+                140,
+                120,
+            )
+            .unwrap();
+        let event_id = Uuid::new_v4().to_string();
+        store
+            .bind_source_challenge(
+                &scope,
+                session_handle,
+                &Uuid::new_v4().to_string(),
+                &event_id,
+                epoch,
+                "agent-a",
+                "session-a",
+                180,
+                120,
+            )
+            .unwrap();
+        store
+            .bind_source_challenge(
+                &scope,
+                session_handle,
+                &Uuid::new_v4().to_string(),
+                &event_id,
+                epoch,
+                "agent-a",
+                "session-a",
+                180,
+                120,
+            )
+            .unwrap();
+        assert!(matches!(
+            store.bind_source_challenge(
+                &scope,
+                session_handle,
+                &Uuid::new_v4().to_string(),
+                &event_id,
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+                "agent-a",
+                "session-a",
+                180,
+                120,
+            ),
+            Err(NotifyError::Conflict)
+        ));
     }
 
     fn register(store: &Store, auth: &Authority, token: &str, now: i64) -> EndpointId {
