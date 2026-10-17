@@ -36,6 +36,7 @@ Add module-scoped Android instrumentation coverage, then implement the native An
 
 - `git diff --check` passed for current edits.
 - The Android instrumentation tests have not yet been compiled or run for the scheduler follow-up. Root owns the serial Gradle build/test process; this task does not start a concurrent Gradle invocation. The added regression cases are source-only until that run completes.
+- Root's integrated Gradle build reached `:moxbots-remote:compileDebugKotlin` and failed on nullable `JSONObject?` dereferences at `MoxBotsRemoteModule.kt:49` and `:51`; this task now uses safe calls. That same compile has not been rerun. The failure log is `/tmp/moxbots-mobile-upload-native-repair-instrumentation.log` on the root build host.
 - iOS compilation and device verification remain unrun because the Xcode license prompt is pending; no license was accepted and no real-device upload behavior is claimed.
 - The dedicated emulator is designated for later validation; no real-device microphone, speech, account, or Host behavior is claimed by these storage/JNI tests.
 

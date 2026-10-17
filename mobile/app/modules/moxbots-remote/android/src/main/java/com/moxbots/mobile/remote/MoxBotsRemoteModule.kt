@@ -46,9 +46,9 @@ class MoxBotsRemoteModule : Module() {
             uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
           }
           if (parsedKind in setOf("session", "mobile", "assets")) {
-            val targetId = parsed.optString("targetId")
+            val targetId = parsed?.optString("targetId").orEmpty()
             if (targetId.isNotBlank()) uploads?.pauseForTarget(targetId)
-            val innerKind = parsed.optJSONObject("request")?.optString("kind")
+            val innerKind = parsed?.optJSONObject("request")?.optString("kind")
             if (innerKind == "stop") uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
           }
           val response = ensureConnection().request(input)
