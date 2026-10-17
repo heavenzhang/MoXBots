@@ -613,6 +613,7 @@ function AppBody() {
         upload = current;
       } catch (startError) {
         const startCode = startError instanceof Error ? startError.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
+        if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
         // A transport failure can follow durable upload creation; status decides whether the native single-upload slot is still occupied.
         try {
           const flight = attachmentUploadTrackerRef.current.captureFlight(file.localId);
