@@ -199,3 +199,35 @@ exited, ports 64060/64065 closed. Diagnostic runs' recorded births also reread
 exited (39028/39030/39050/39036/39044, 39717/39719/39747/39743/39745,
 40188/40199/40213/40207/40209), all six original public/service ports had no
 LISTEN. No Session worker/SDK child had started because inner TLS had failed.
+
+## Primary certificate-chain integration — 2026-10-18
+
+The actual first business attempt failed in original Host `pairs.feed_management`
+with `NETWORK_TLS_FAILED`: the original identity owner had already validated and
+retained leaf + issuing CA + root, but the mobile core constructor received only
+the leaf. The old provisioning fixture signed leaves directly with the root and
+did not reproduce the service's issuing hierarchy.
+
+MobileConnection now passes the original verified three DER certificates to the
+native-only core constructor. Core requires exactly three bounded certificates,
+exact signed leaf and pinned bootstrap root, and retains the existing private-key,
+fingerprint, SAN, TLS1.3 and encrypted ChannelHello checks. Only the bootstrap root
+is trusted; the intermediate is presented as part of the chain. Frozen shared
+crypto/protocol/reader inputs are unchanged. The provisioning fixture now uses a
+real issuing CA and checks missing, extra, changed leaf/root, duplicate, empty and
+oversized chain failures. Primary core42 tests and strict Clippy passed; bounded
+independent source review found no trust-boundary defect.
+
+Primary full-chain readback under a private umask first exposed a fixture-only
+status provisioning error: mode0640 was masked to0600. The fixture now applies
+its original exact0640 contract explicitly inside the private0700 root. No
+production status check changed. That failed run cleaned its recorded children.
+The next actual full-chain run passed target discovery and channel opening but
+failed later with `MOBILE_CHANNEL_CLOSED` while waiting for a business response;
+this is **not full-chain acceptance**, and its next source error remains to be
+located. Evidence `/tmp/moxbots-mobile-full-e2e-primary-chain-green-attempt.log`;
+core evidence `/tmp/moxbots-mobile-full-chain-core-{regression,clippy}.log`.
+
+These production Rust changes invalidate the earlier Android/iOS native input
+digest for current-source acceptance. Previously saved binaries remain labelled
+historical build checkpoints; fresh cross-platform native builds are required.

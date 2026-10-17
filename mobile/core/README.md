@@ -33,7 +33,7 @@ Native-only constructor JSON (camelCase):
 
 ```
 issuer, local, target, channelId, localEpoch, targetEpoch,
-jwks, bootstrap, localSignedPeer, targetSignedPeer, certificate, trustExpiresAt, tlsInitiator
+jwks, bootstrap, localSignedPeer, targetSignedPeer, certificate, certificateChain, trustExpiresAt, tlsInitiator
 ```
 
 `tlsInitiator` must match the validated relay Offer initiator (device ordering),
@@ -45,7 +45,13 @@ independent of the management Controller role; both TLS directions are supported
 JS or a token-selected URL. `bootstrap` and both signed peers are verified using
 the original JOSE verifier. The bootstrap binds account, service, local device,
 key generation, DPoP thumbprint, relay origin and CA. `certificate` is the single
-local leaf PEM, matched to its signed fingerprint and supplied key. TLS verifies
+local leaf PEM, matched to its signed fingerprint and supplied key.
+`certificateChain` contains the original native identity owner's three DER byte
+arrays in leaf/issuing-CA/root order. The leaf must exactly match `certificate`,
+and the last certificate must exactly match the signed bootstrap root; each
+certificate is bounded to16KiB. The chain is presented to TLS, never imported as
+additional trust roots. Omitting the intermediate breaks real service-issued
+mutual TLS even when direct-root test certificates work. TLS verifies
 the remote signed fingerprint/SAN and the encrypted ChannelHello verifies exact
 network/account/device/key-generation/connection-epoch scope.
 
