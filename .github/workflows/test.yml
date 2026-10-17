@@ -130,6 +130,7 @@ jobs:
           workspaces: |
             src-tauri/headless-network
             services/agentnet
+            mobile/connection
       - name: Validate standalone network owner
         run: |
           cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked
@@ -151,6 +152,12 @@ jobs:
           # TLS are used; this never enrolls a real device or invokes a real Session.
           cargo test --manifest-path services/agentnet/Cargo.toml --locked --no-run actual_host_source_service_fixture
           cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked --offline actual_publish_private_node_source -- --ignored --nocapture
+      - name: Verify original encrypted mobile and Host session chain
+        timeout-minutes: 15
+        run: |
+          # Actual original clients, TLS/WSS, Host/SDK and SessionStore; isolated
+          # synthetic login and loopback supplier only. No production grants.
+          node scripts/verify-mobile-full-host-e2e.mjs
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}

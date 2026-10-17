@@ -245,3 +245,47 @@ production repairs; no guard, protocol or Node contract was relaxed here.
 Evidence: `/tmp/moxbots-full-e2e-post-tls-diagnostic.log`. Diagnostic hunks were
 removed. Exact process births 44328/44333/44392/44377/44383 reread exited and
 public54862/service54865 had no LISTEN. No Session worker/SDK had started.
+
+
+## Primary full-chain acceptance — 2026-10-18
+
+The next actual boundary was two mismatched internal contracts. Rust internal
+request/response structs used `request_id`, while original Node strictly requires
+`requestId` and closed the socket. They now use the original camelCase contract.
+The successful raw Node `RemoteMobileResult` also needs strict parsing and the
+original `ResponseResult::RemoteMobile` wrapper; it was incorrectly parsed as an
+already wrapped result. Both corrections preserve closed fields, request ID,
+authority, Unix peer credentials and current account checks. A real private Unix
+socket regression verifies the Node-shaped exchange and rejects snake_case.
+Independent bounded source review accepted both changes.
+
+Primary explicitly ran the complete original chain successfully in11.02s:
+actual AuthStore/identity/enrollment, pinned public TLS/WSS, original peer mTLS
+and management Ready, original strict Host registry, default-disabled mount,
+explicit synthetic-user original revision API authorization, original mobile
+start and accepted receipt, original Node/worker/native SDK, original complete
+Session snapshot and persisted SessionStore. The controlled supplier executed
+exactly once. Native correctly rejects a repeated business intent with
+`MOBILE_RECEIPT_REQUIRED`; the fixture now checks that guard and queries the
+original receipt instead of expecting the SDK to replay a known operation. This
+is a correction to the fixture contract, with no relaxation of product journal
+behavior. Host-side duplicate recovery was tested separately by the original
+Host admission regression.
+
+Primary reread the actual fixture result: one supplier call, one persisted
+Session matching the accepted receipt. Nine recorded service/Host/worker/SDK
+PIDs had exited; public/service ports57398/57402 had no listener. The bounded
+redacted summary is `primary-evidence.json`; raw successful log remains private
+at `/tmp/moxbots-mobile-full-e2e-primary-accepted.log` and its per-run0700 root.
+Core42, connection105 (one explicit case ignored in the default pool), ten real
+IPC tests and normal headless regressions passed. Core/connection strict Clippy
+and existing headless redlines passed (the same two baseline warnings remain).
+The explicit full-chain case now also runs in the existing Linux headless CI
+job; the next pushed revision still needs its actual Linux result.
+
+This closes controlled initial text execution through the complete native Rust
+network path. It does not close dynamic catalog refresh, application onboarding
+for mount authorization, deployed real SSO/provider, native picker/upload/preview,
+WSS approval/stop/attachments, phone OS credentials, real two-service-user Host
+isolation, APNs/FCM, physical speech, signing or main delivery. Test-only same-UID
+and synthetic-login substitutions remain explicitly documented above.
