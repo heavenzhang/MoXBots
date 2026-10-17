@@ -25,9 +25,13 @@ class NativeUploadSchedulerInstrumentedTest {
     var generatedUploadId = ""
     var statusDefault = "missing"
     var hideReadback = false
+    var failIndexWrites = false
     var cancelUnknown = false
     override fun readRecord(scope: String, name: String) = if (hideReadback) null else records[name]?.clone()
-    override fun writeRecord(scope: String, name: String, bytes: ByteArray) { records[name] = bytes.clone() }
+    override fun writeRecord(scope: String, name: String, bytes: ByteArray) {
+      if (failIndexWrites && name == "attachment-upload-index-v1") error("MOBILE_ATTACHMENT_UPLOAD_PERSISTENCE_UNCONFIRMED")
+      records[name] = bytes.clone()
+    }
     override fun removeRecord(scope: String, name: String) { records.remove(name) }
     override fun source(scope: String, localId: String): UploadSource? =
       UploadSource(localId, "synthetic.txt", "text/plain", content.size.toLong(), sha(content))
@@ -46,6 +50,7 @@ class NativeUploadSchedulerInstrumentedTest {
         "upload.status" -> if (statuses.isNotEmpty()) statuses.removeFirst() else when (statusDefault) {
           "missing" -> JSONObject().put("kind", "error").put("version", 1).put("code", "ASSET_NOT_FOUND")
           "unknown" -> JSONObject().put("kind", "error").put("code", "MOBILE_CONNECTION_UNKNOWN")
+          "ready" -> upload(inner, content.size.toLong(), "ready")
           else -> upload(inner, 0, "uploading")
         }
         "upload.begin" -> upload(inner, 0, "uploading")
@@ -210,5 +215,93 @@ class NativeUploadSchedulerInstrumentedTest {
     assertEquals("MOBILE_CONNECTION_UNKNOWN", f.events.last().getString("errorCode"))
     assertEquals(first.getString("uploadId"), f.events.last().getString("uploadId"))
     assertEquals(1, kinds.count { it == "upload.cancel" })
+  }
+
+  @Test fun indexWriteFailureLeavesNoActiveCurrentAndSameProcessRetrySchedulesStatus() {
+    val f = fixture()
+    f.io.failIndexWrites = true
+    try {
+      f.scheduler.start(scope, target, localId)
+      fail("failed index reservation must reject start")
+    } catch (error: IllegalStateException) {
+      assertTrue(error.message?.contains("PERSISTENCE_UNCONFIRMED") == true)
+    }
+    assertTrue(f.io.requests.isEmpty())
+    assertTrue(f.queued.isEmpty())
+    assertTrue(f.io.records.isEmpty())
+
+    f.io.failIndexWrites = false
+    val retried = f.scheduler.start(scope, target, localId)
+    assertEquals("uploading", retried.getString("state"))
+    assertEquals(1, f.queued.size)
+    assertEquals(2, f.io.records.size)
+    assertNotNull(f.io.records["attachment-upload-index-v1"])
+    f.turn()
+    assertEquals("upload.status", f.io.requests.single().getString("kind"))
+  }
+
+  @Test fun statusOnlyNeverBeginsOrChunksAndExplicitStartResumesSameUpload() {
+    val f = fixture()
+    val first = f.scheduler.start(scope, target, localId)
+    val queried = f.scheduler.status(scope, target, localId)
+    assertEquals("paused", queried.getString("state"))
+    f.drain()
+    assertEquals(listOf("upload.status"), f.io.requests.map { it.getString("kind") })
+
+    val resumed = f.scheduler.start(scope, target, localId)
+    assertEquals(first.getString("uploadId"), resumed.getString("uploadId"))
+    f.drain()
+    assertEquals("upload.begin", f.io.requests[2].getString("kind"))
+  }
+
+  @Test fun fractionalProtocolNumbersAreRejectedWithoutAdvancingUpload() {
+    val f = fixture()
+    val started = f.scheduler.start(scope, target, localId)
+    f.io.statuses += JSONObject().put("kind", "upload").put("version", 1.5)
+      .put("agentId", target.agentId).put("uploadId", started.getString("uploadId"))
+      .put("receivedBytes", 0.0).put("totalBytes", sourceBytes.size).put("state", "uploading")
+    f.turn()
+    assertEquals("paused", f.events.last().getString("state"))
+    assertEquals("MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID", f.events.last().getString("errorCode"))
+    assertEquals(listOf("upload.status"), f.io.requests.map { it.getString("kind") })
+  }
+
+  @Test fun readyStatusOnlyChecksExistenceAndExplicitStartReconfirmsWithFinish() {
+    val f = fixture()
+    val first = f.scheduler.start(scope, target, localId)
+    f.drain()
+    val originalAsset = f.events.last().getString("assetId")
+    assertEquals("ready", f.events.last().getString("state"))
+
+    f.io.requests.clear()
+    f.io.statusDefault = "ready"
+    val status = f.scheduler.status(scope, target, localId)
+    assertEquals("paused", status.getString("state"))
+    f.drain()
+    assertEquals(listOf("upload.status"), f.io.requests.map { it.getString("kind") })
+    assertEquals("ready", f.events.last().getString("state"))
+
+    f.io.requests.clear()
+    val restarted = f.scheduler.start(scope, target, localId)
+    assertEquals(first.getString("uploadId"), restarted.getString("uploadId"))
+    f.drain()
+    assertEquals(listOf("upload.status", "upload.finish"), f.io.requests.map { it.getString("kind") })
+    assertEquals(originalAsset, f.events.last().getString("assetId"))
+  }
+
+  @Test fun statusNotFoundInvalidatesCachedReadyAsset() {
+    val f = fixture()
+    f.scheduler.start(scope, target, localId)
+    f.drain()
+    assertEquals("ready", f.events.last().getString("state"))
+    assertNotNull(f.events.last().getString("assetId"))
+
+    f.io.statusDefault = "missing"
+    f.scheduler.status(scope, target, localId)
+    f.drain()
+    assertEquals("paused", f.events.last().getString("state"))
+    assertTrue(f.events.last().isNull("assetId"))
+    assertEquals("MOBILE_UPLOAD_NOT_FOUND", f.events.last().getString("errorCode"))
+    assertEquals("upload.status", f.io.requests.last().getString("kind"))
   }
 }

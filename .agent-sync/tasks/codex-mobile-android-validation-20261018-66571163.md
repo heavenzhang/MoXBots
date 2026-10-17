@@ -29,11 +29,13 @@ Add module-scoped Android instrumentation coverage, then implement the native An
 - Implemented Android and iOS native scheduler classes and connected the Android and iOS module request/event/lifecycle paths. Source access stays in the native attachment owner; JS supplies no file path, agent, asset ID, or bytes.
 - Added Android instrumentation state-machine tests using injected memory records and deterministic RPC responses. They use no account, credentials, or network.
 - Kept native production edits within the assigned remote module Android/iOS directories.
+- Repaired the scheduler follow-up: status is query-only and leaves resumable work paused; explicit upload rechecks server status, including ready uploads, before continuing. A missing remote upload clears a cached ready asset. Journal capacity is checked before reserving an index entry, and the job record is only written after the reservation is confirmed; a same-process retry cannot return an unscheduled active job after index-write failure.
+- Added regression cases for index-write failure and same-process retry, status without upload mutations, fractional protocol integers, and ready-asset status/reconfirmation behavior. Android module events now use an explicit metadata-only map projection with JSON null values translated to Kotlin null. Wrapper target changes and typed stop requests fence queued uploads.
 
 ## Verification
 
 - `git diff --check` passed for current edits.
-- The Android instrumentation tests have not yet been compiled or run for this scheduler change. Parent owns the active Gradle build/test process; this task does not start a concurrent Gradle invocation.
+- The Android instrumentation tests have not yet been compiled or run for the scheduler follow-up. Root owns the serial Gradle build/test process; this task does not start a concurrent Gradle invocation. The added regression cases are source-only until that run completes.
 - iOS compilation and device verification remain unrun because the Xcode license prompt is pending; no license was accepted and no real-device upload behavior is claimed.
 - The dedicated emulator is designated for later validation; no real-device microphone, speech, account, or Host behavior is claimed by these storage/JNI tests.
 
@@ -45,4 +47,4 @@ Add module-scoped Android instrumentation coverage, then implement the native An
 
 ## Next step
 
-After the current root-owned Gradle run completes, run the module's `connectedDebugAndroidTest` task against `emulator-5554` to compile and execute the new injected scheduler tests, then append exact command/output. Root should review and cherry-pick only the native scheduler/module integration commit(s); iOS still needs a future licensed Xcode/device verification.
+Root should compile the integrated Android module and run the instrumented scheduler regressions serially against `emulator-5554`, then append the exact command/output. Root reviews and cherry-picks only this task's native scheduler/module integration commits; iOS still needs a future licensed Xcode/device verification.
