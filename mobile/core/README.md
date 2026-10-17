@@ -108,3 +108,15 @@ Host tests do not establish iPhone/Android native acceptance. Cross-builds requi
 Apple's iOS SDK or Android NDK and target-specific linkers; inspect the task record
 for actual outcomes instead of inferring them from the crate types or installed
 Rust targets.
+
+## Owned assets data profile
+
+Native config `profile:"assets"` creates a separate logical encrypted channel for
+`session.assets.v1`; absent `profile` preserves the existing session profile.
+`{kind:"asset-request",request:<RemoteAssetRequest>}` is native-only, requires an
+authenticated capabilities response first, and binds this channel to that Agent.
+It cannot execute a `session.remote` intent. Responses use `asset-response` events
+and are matched by exact request method, Agent, upload/artifact/session/offset scope.
+Chunks are canonical base64 for at most 24 KiB; request IDs/chunks never imply full
+file completion. Explicit upload.status and matching offsets/hash govern resumption;
+there is no new automatic execution replay or weakening of session v1 journaling.
