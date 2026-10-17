@@ -15,11 +15,12 @@ use axum::{
 };
 use myagents_agentnet_device_core::{DeviceRecord, DeviceStore, SessionContext};
 use myagents_agentnet_mobile_notify_core::{
-    Authority, FreshEndpoint, NotifyError, RegisterEndpointV1, SessionPointer, Store,
+    Authority, FreshEndpoint, NotifyError, Provider, RegisterEndpointV1, SessionPointer, Store,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
+    collections::HashSet,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -33,6 +34,7 @@ pub struct MobileNotificationService {
     pub(super) devices: Arc<DeviceStore>,
     pub(super) store: Arc<Store>,
     pub(super) network_id: String,
+    supported_providers: Option<HashSet<Provider>>,
 }
 
 impl MobileNotificationService {
@@ -47,7 +49,22 @@ impl MobileNotificationService {
             devices,
             store,
             network_id: network_id.into(),
+            supported_providers: None,
         }
+    }
+
+    pub(crate) fn with_provider_allowlist(
+        mut self,
+        providers: impl IntoIterator<Item = Provider>,
+    ) -> Self {
+        self.supported_providers = Some(providers.into_iter().collect());
+        self
+    }
+
+    fn supports_provider(&self, provider: Provider) -> bool {
+        self.supported_providers
+            .as_ref()
+            .is_none_or(|supported| supported.contains(&provider))
     }
 
     /// Deliberately not mounted into the production server by this change.
@@ -151,6 +168,9 @@ async fn register(
     let request: RegisterEndpointV1 =
         serde_json::from_slice(&body).map_err(|_| MobileHttpError::bad_request())?;
     let result = service.with_authority(&headers, |session, authority| {
+        if !service.supports_provider(request.provider) {
+            return Err(MobileHttpError::provider_unavailable());
+        }
         service
             .store
             .register_endpoint_for_session(
@@ -299,6 +319,12 @@ impl MobileHttpError {
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             code: "MOBILE_NOTIFY_UNAVAILABLE",
+        }
+    }
+    fn provider_unavailable() -> Self {
+        Self {
+            status: StatusCode::SERVICE_UNAVAILABLE,
+            code: "MOBILE_NOTIFY_PROVIDER_UNAVAILABLE",
         }
     }
     fn notify(error: NotifyError) -> Self {
@@ -656,6 +682,42 @@ mod tests {
         .await;
         assert_eq!(stale_registration, StatusCode::UNAUTHORIZED);
         assert!(second["endpointId"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn registration_rejects_unconfigured_provider_without_creating_endpoint() {
+        let f = fixture();
+        let session = f.auth.validate_session(&f.mobile_token).unwrap();
+        let router = MobileNotificationService::new(
+            f.auth.clone(),
+            f.devices.clone(),
+            f.store.clone(),
+            session.account.network_id,
+        )
+        .with_provider_allowlist([Provider::Fcm])
+        .router();
+        let (status, body) = call(
+            router,
+            &f.mobile_token,
+            "POST",
+            "/api/mobile-notify/v1/endpoints",
+            Some(json!({
+                "version":1,
+                "provider":"apns-production",
+                "installationId":Uuid::new_v4().to_string(),
+                "token":"valid-shaped-token"
+            })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error"]["code"], "MOBILE_NOTIFY_PROVIDER_UNAVAILABLE");
+        let owner = f.auth.validate_session(&f.mobile_token).unwrap();
+        assert!(
+            f.store
+                .endpoint_candidates(&owner.account.principal_id, &owner.account.network_id)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
