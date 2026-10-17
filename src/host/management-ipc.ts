@@ -62,6 +62,23 @@ export function parseInternalManagementRequest(value:unknown, expectedDeviceId:s
   return {requestId:value.requestId,authority:authority.data,operation:operation.data};
 }
 
+const localSourceAuthoritySchema = z.object({
+  connection: internalAuthoritySchema.shape.connection,
+  local: internalAuthoritySchema.shape.local,
+  accountBinding: z.string().uuid(), managementBinding:z.string().uuid(),
+}).strict().refine(a => a.accountBinding===a.managementBinding && a.connection.networkId===a.local.networkId && a.connection.serviceId===a.local.serviceId && UUID.test(a.connection.connectionEpoch));
+const localSourceOperationSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('source.peek')}).strict(),
+  z.object({kind:z.literal('source.ack'),sourceEventId:z.string().uuid(),eventId:z.string().uuid()}).strict(),
+]);
+export type LocalSourceAuthority=z.infer<typeof localSourceAuthoritySchema>;
+export type LocalSourceOperation=z.infer<typeof localSourceOperationSchema>;
+export function parseLocalSourceRequest(value:unknown,deviceId:string){
+  if(!plain(value)||!exactKeys(value,['kind','requestId','authority','operation'])||value.kind!=='local-source-request'||typeof value.requestId!=='string'||!UUID.test(value.requestId))return null;
+  const authority=localSourceAuthoritySchema.safeParse(value.authority),operation=localSourceOperationSchema.safeParse(value.operation);
+  return authority.success&&operation.success&&authority.data.local.deviceId===deviceId?{requestId:value.requestId,authority:authority.data,operation:operation.data}:null;
+}
+
 class IpcError extends Error {
   constructor(
     readonly code: string,
@@ -342,6 +359,7 @@ export async function connectHostManagementIpc(options: {
   expectedGid: number;
   dispatch: Dispatcher;
   expectedDeviceId?: string;
+  dispatchLocalSource?: (authority:LocalSourceAuthority,operation:LocalSourceOperation)=>Promise<unknown>;
   dispatchInternal?: (authority:InternalManagementAuthority,operation:InternalManagementOperation)=>Promise<unknown>;
   isShuttingDown: () => boolean;
   onFailure?: (code: string) => void;
@@ -523,6 +541,14 @@ export async function connectHostManagementIpc(options: {
                 session,
                 new IpcError("MANAGEMENT_IPC_INVALID_FRAME"),
               );
+              return;
+            }
+            if(message.kind==='local-source-request') {
+              const parsed=options.expectedDeviceId?parseLocalSourceRequest(message,options.expectedDeviceId):null;
+              if(!parsed||!options.dispatchLocalSource){closeSession(session,new IpcError('MANAGEMENT_IPC_INVALID_FRAME'));return;}
+              let result:unknown;
+              try{result=await options.dispatchLocalSource(parsed.authority,parsed.operation);}catch{result={kind:'error',code:'SOURCE_UNAVAILABLE'};}
+              if(session.connected&&current===session&&!stopped&&!options.isShuttingDown())await send({kind:'local-source-response',requestId:parsed.requestId,authority:parsed.authority,result});
               return;
             }
             if(message.kind==='internal-request') {

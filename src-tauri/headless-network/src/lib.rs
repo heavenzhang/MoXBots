@@ -9,6 +9,7 @@ mod bot_execution_ipc;
 mod management_admission;
 mod management_ipc;
 mod native_management;
+mod notification_source;
 mod owned;
 mod owned_state;
 mod probe;

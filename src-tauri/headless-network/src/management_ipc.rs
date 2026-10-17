@@ -109,6 +109,43 @@ struct InternalResponse {
     result: Value,
 }
 
+/// Colocated source owner has no phone peer and grants no Session operations.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct LocalSourceAuthority {
+    pub connection: ConnectionScope,
+    pub local: DeviceScope,
+    pub account_binding: String,
+    pub management_binding: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+pub(crate) enum LocalSourceOperation {
+    #[serde(rename = "source.peek")]
+    Peek,
+    #[serde(rename = "source.ack", rename_all = "camelCase")]
+    Ack {
+        source_event_id: String,
+        event_id: String,
+    },
+}
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LocalSourceRequest {
+    kind: String,
+    request_id: CanonicalUuid,
+    authority: LocalSourceAuthority,
+    operation: LocalSourceOperation,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LocalSourceResponse {
+    kind: String,
+    request_id: CanonicalUuid,
+    authority: LocalSourceAuthority,
+    result: Value,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ManagementIpcConfig {
     pub socket: PathBuf,
@@ -387,6 +424,98 @@ impl ManagementIpc {
             Ok(response.result)
         };
         let result = match tokio::time::timeout(IPC_TIMEOUT, result).await {
+            Ok(result) => result,
+            Err(_) => Err(NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED")),
+        };
+        if result.is_err() {
+            *slot = None;
+        }
+        result
+    }
+
+    pub(crate) async fn request_local_source(
+        &self,
+        request_id: CanonicalUuid,
+        authority: LocalSourceAuthority,
+        operation: LocalSourceOperation,
+    ) -> Result<Value, NetworkError> {
+        if authority.account_binding != authority.management_binding
+            || authority.connection.network_id != authority.local.network_id
+            || authority.connection.service_id != authority.local.service_id
+        {
+            return Err(NetworkError::new("HOST_MANAGEMENT_REQUEST_INVALID"));
+        }
+        let message = LocalSourceRequest {
+            kind: "local-source-request".into(),
+            request_id,
+            authority: authority.clone(),
+            operation,
+        };
+        let payload = serde_json::to_vec(&message)
+            .map_err(|_| NetworkError::new("HOST_MANAGEMENT_REQUEST_INVALID"))?;
+        if payload.is_empty() || payload.len() > MAX_OBJECT_BYTES {
+            return Err(NetworkError::new("HOST_MANAGEMENT_REQUEST_TOO_LARGE"));
+        }
+        let mut slot = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let slot = self.connection.lock().await;
+                if slot.is_some() {
+                    return slot;
+                }
+                drop(slot);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNAVAILABLE"))?;
+        let connection = slot
+            .as_mut()
+            .ok_or_else(|| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+        let result = async {
+            if connection
+                .stream
+                .peer_cred()
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_IPC_PEER_REJECTED"))?
+                .uid()
+                != self.host_uid
+            {
+                return Err(NetworkError::new("HOST_MANAGEMENT_IPC_PEER_REJECTED"));
+            }
+            let mut frame = Vec::with_capacity(payload.len() + 4);
+            frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+            frame.extend_from_slice(&payload);
+            connection
+                .stream
+                .write_all(&frame)
+                .await
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+            let mut prefix = [0u8; 4];
+            connection
+                .stream
+                .read_exact(&mut prefix)
+                .await
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+            let length = u32::from_be_bytes(prefix) as usize;
+            if length == 0 || length > MAX_OBJECT_BYTES || length + 4 > MAX_RECEIVE_BYTES {
+                return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+            }
+            let mut body = vec![0; length];
+            connection
+                .stream
+                .read_exact(&mut body)
+                .await
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+            let response: LocalSourceResponse = serde_json::from_slice(&body)
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+            if response.kind != "local-source-response"
+                || response.request_id != request_id
+                || response.authority != authority
+            {
+                return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+            }
+            Ok(response.result)
+        };
+        let result = match tokio::time::timeout(Duration::from_secs(2), result).await {
             Ok(result) => result,
             Err(_) => Err(NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED")),
         };
@@ -701,6 +830,47 @@ mod tests {
                 code: "OWNER_OPERATION_FAILED".into()
             }
         );
+    }
+
+    #[tokio::test]
+    async fn local_source_has_no_phone_peer_and_uses_original_uid_guarded_transport() {
+        let uid = unsafe { libc::geteuid() };
+        let (_dir, config) = test_endpoint(uid);
+        let ipc = Arc::new(ManagementIpc::bind_inner(&config, true).unwrap());
+        let mut node = UnixStream::connect(&config.socket).await.unwrap();
+        let binding = uuid::Uuid::new_v4().to_string();
+        let authority = LocalSourceAuthority {
+            connection: ConnectionScope {
+                service_id: "service".into(),
+                network_id: "network".into(),
+                boot_epoch: "boot".into(),
+                connection_epoch: uuid::Uuid::new_v4().to_string(),
+            },
+            local: DeviceScope {
+                service_id: "service".into(),
+                environment: "test".into(),
+                network_id: "network".into(),
+                principal_id: "principal".into(),
+                device_id: "device".into(),
+                key_generation: 1,
+            },
+            account_binding: binding.clone(),
+            management_binding: binding,
+        };
+        let request = ipc.request_local_source(
+            CanonicalUuid::new(uuid::Uuid::new_v4()),
+            authority,
+            LocalSourceOperation::Peek,
+        );
+        let responder = async {
+            let request = read_message(&mut node).await;
+            assert!(request["authority"].get("peer").is_none());
+            assert!(request.get("requestId").is_some());
+            assert_eq!(request["kind"], "local-source-request");
+            send_message(&mut node,&serde_json::json!({"kind":"local-source-response","requestId":request["requestId"],"authority":request["authority"],"result":{"kind":"source.empty"}})).await;
+        };
+        let (result, _) = tokio::join!(request, responder);
+        assert_eq!(result.unwrap(), serde_json::json!({"kind":"source.empty"}));
     }
 
     #[tokio::test]

@@ -580,6 +580,41 @@ impl OwnedClient {
         }
         Ok(value)
     }
+    /// Fixed source PoP routes; optional capability failure never retries HTTP.
+    pub(crate) async fn notification_source_request(
+        &self,
+        path: &str,
+        body: Value,
+        token: &str,
+    ) -> Result<Value, NetworkError> {
+        if !matches!(
+            path,
+            "/api/mobile-notify/v1/source/challenges" | "/api/mobile-notify/v1/source/hints"
+        ) {
+            return Err(NetworkError::new("OWNED_REQUEST_INVALID"));
+        }
+        let (status, value) = raw_request_with_limits(
+            &self.http,
+            &self.origin,
+            Method::POST,
+            path,
+            Some(body),
+            Some(token),
+            8192,
+            8192,
+            false,
+        )
+        .await?;
+        let expected = if path == "/api/mobile-notify/v1/source/challenges" {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        };
+        if status != expected {
+            return Err(NetworkError::new("OWNED_NOTIFICATION_SOURCE_UNAVAILABLE"));
+        }
+        Ok(value)
+    }
     pub(crate) async fn identity_request(
         &self,
         method: Method,
@@ -711,6 +746,148 @@ mod tests {
                 assert_eq!(seen[0]["pkceChallenge"], seen[1]["pkceChallenge"]);
             }
         }
+    }
+    #[tokio::test]
+    async fn source_routes_use_pinned_tls_and_native_device_pop_without_http_retries() {
+        use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+        use std::io::{Read, Write};
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let certificate = certified.cert.pem();
+        let tls = rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![certified.cert.der().clone()],
+            rustls::pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der())
+                .into(),
+        )
+        .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!(
+            "https://localhost:{}",
+            listener.local_addr().unwrap().port()
+        );
+        let key = crypto::DevicePrivateKey::generate().unwrap();
+        let jwk = key.public_jwk().unwrap();
+        let mut point = vec![4];
+        point.extend(URL_SAFE_NO_PAD.decode(jwk["x"].as_str().unwrap()).unwrap());
+        point.extend(URL_SAFE_NO_PAD.decode(jwk["y"].as_str().unwrap()).unwrap());
+        let verifier = VerifyingKey::from_sec1_bytes(&point).unwrap();
+        let challenge = uuid::Uuid::new_v4().to_string();
+        let expected_challenge = challenge.clone();
+        let nonce = URL_SAFE_NO_PAD.encode([7u8; 32]);
+        let expected_nonce = nonce.clone();
+        let server = std::thread::spawn(move || {
+            for step in 0..3 {
+                let (socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut stream = rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(std::sync::Arc::new(tls.clone())).unwrap(),
+                    socket,
+                );
+                let mut bytes = Vec::new();
+                let (end, size) = loop {
+                    let mut b = [0; 2048];
+                    let n = stream.read(&mut b).unwrap();
+                    assert!(n > 0 && bytes.len() + n <= 8192);
+                    bytes.extend_from_slice(&b[..n]);
+                    if let Some(end) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                        let size = headers
+                            .lines()
+                            .find_map(|l| {
+                                let (k, v) = l.split_once(':')?;
+                                k.eq_ignore_ascii_case("content-length")
+                                    .then(|| v.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
+                        if bytes.len() >= end + 4 + size {
+                            break (end + 4, size);
+                        }
+                    }
+                };
+                let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                assert!(headers
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer source-test-token"));
+                let body: Value = serde_json::from_slice(&bytes[end..end + size]).unwrap();
+                let (status, reply) = match step {
+                    0 => {
+                        assert!(
+                            headers.starts_with("POST /api/mobile-notify/v1/source/challenges ")
+                        );
+                        assert_eq!(body["version"], 1);
+                        (
+                            201,
+                            json!({"version":1,"challengeId":expected_challenge,"nonce":expected_nonce,"expiresAt":jsonwebtoken::get_current_timestamp()+60}),
+                        )
+                    }
+                    1 => {
+                        assert!(headers.starts_with("POST /api/mobile-notify/v1/source/hints "));
+                        assert_eq!(body["challengeId"], expected_challenge);
+                        let signature = Signature::from_slice(
+                            &URL_SAFE_NO_PAD
+                                .decode(body["proof"].as_str().unwrap())
+                                .unwrap(),
+                        )
+                        .unwrap();
+                        let mut signed =
+                            format!("MyAgents Agent Network PoP v1\n{expected_challenge}\n")
+                                .into_bytes();
+                        signed.extend([7u8; 32]);
+                        verifier.verify(&signed, &signature).unwrap();
+                        (
+                            200,
+                            json!({"version":1,"eventId":uuid::Uuid::new_v4().to_string()}),
+                        )
+                    }
+                    _ => (404, json!({"code":"NOT_FOUND"})),
+                };
+                let body = reply.to_string();
+                let response=format!("HTTP/1.1 {status} Response\r\nCache-Control: no-store\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                stream.write_all(response.as_bytes()).unwrap();
+                stream.flush().unwrap();
+            }
+        });
+        let mut pin = instance();
+        pin.issuer = origin;
+        let client = OwnedClient::pinned(pin, Some(&certificate)).unwrap();
+        let response=client.notification_source_request("/api/mobile-notify/v1/source/challenges",json!({"version":1,"sourceEventId":uuid::Uuid::new_v4().to_string(),"connectionEpoch":uuid::Uuid::new_v4().to_string(),"agentId":"agent-1","sessionId":uuid::Uuid::new_v4().to_string()}),"source-test-token").await.unwrap();
+        let proof = key
+            .sign_proof(
+                response["challengeId"].as_str().unwrap(),
+                response["nonce"].as_str().unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            client
+                .notification_source_request(
+                    "/api/mobile-notify/v1/source/hints",
+                    json!({"version":1,"challengeId":challenge,"proof":proof}),
+                    "source-test-token"
+                )
+                .await
+                .unwrap()["version"],
+            1
+        );
+        assert!(client
+            .notification_source_request(
+                "/api/mobile-notify/v1/source/challenges",
+                json!({"version":1}),
+                "source-test-token"
+            )
+            .await
+            .is_err());
+        assert!(client
+            .notification_source_request("/api/unrelated", json!({}), "source-test-token")
+            .await
+            .is_err());
+        server.join().unwrap();
     }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()
