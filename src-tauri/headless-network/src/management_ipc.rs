@@ -92,7 +92,7 @@ pub(crate) enum InternalOperation {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InternalRequest {
     kind: String,
     request_id: CanonicalUuid,
@@ -101,7 +101,7 @@ struct InternalRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct InternalResponse {
     kind: String,
     request_id: CanonicalUuid,
@@ -726,6 +726,8 @@ mod tests {
                 == authority
         );
         let mut value: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["requestId"], id.as_uuid().to_string());
+        assert!(value.get("request_id").is_none());
         value["arbitraryPath"] = Value::String("/etc/passwd".into());
         assert!(serde_json::from_value::<InternalRequest>(value).is_err());
     }
@@ -814,6 +816,62 @@ mod tests {
             .await
             .unwrap();
         stream.write_all(&body).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn internal_mobile_uses_the_original_node_camel_case_envelope() {
+        let uid = unsafe { libc::geteuid() };
+        let (_dir, config) = test_endpoint(uid);
+        let ipc = ManagementIpc::bind_inner(&config, true).unwrap();
+        let mut node = UnixStream::connect(&config.socket).await.unwrap();
+        let scope = myagents_agent_network_protocol::DeviceScope {
+            service_id: "s".into(),
+            environment: "t".into(),
+            network_id: "n".into(),
+            principal_id: "p".into(),
+            device_id: "d".into(),
+            key_generation: 1,
+        };
+        let authority = InternalAuthority {
+            connection: myagents_agent_network_protocol::ConnectionScope {
+                service_id: "s".into(),
+                network_id: "n".into(),
+                boot_epoch: "b".into(),
+                connection_epoch: uuid::Uuid::new_v4().to_string(),
+            },
+            peer: scope.clone(),
+            peer_epoch: uuid::Uuid::new_v4().to_string(),
+            local: scope,
+            account_binding: "binding".into(),
+            management_binding: "binding".into(),
+        };
+        let id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let request = ipc.request_internal(
+            id,
+            authority,
+            InternalOperation::Mobile {
+                request: myagents_host_management_protocol::RemoteMobileRequest::Capabilities {
+                    version: 1,
+                    agent_id: "agent".into(),
+                },
+            },
+        );
+        let caps = serde_json::json!({"kind":"mobile.capabilities","version":1,"agentId":"agent","attachments":true,"modelSelection":true,"nextSuggestions":true,"maxAssets":8});
+        let responder = async {
+            let request = read_message(&mut node).await;
+            assert_eq!(request["requestId"], id.as_uuid().to_string());
+            assert!(request.get("request_id").is_none());
+            assert_eq!(request["operation"]["kind"], "mobile.request");
+            assert_eq!(request["operation"]["request"]["agentId"], "agent");
+            let reply = serde_json::json!({"kind":"internal-response","requestId":request["requestId"],"authority":request["authority"],"result":caps});
+            let mut wrong = reply.clone();
+            wrong.as_object_mut().unwrap().remove("requestId");
+            wrong["request_id"] = request["requestId"].clone();
+            assert!(serde_json::from_value::<InternalResponse>(wrong).is_err());
+            send_message(&mut node, &reply).await;
+        };
+        let (result, _) = tokio::join!(request, responder);
+        assert_eq!(result.unwrap(), caps);
     }
 
     #[tokio::test]

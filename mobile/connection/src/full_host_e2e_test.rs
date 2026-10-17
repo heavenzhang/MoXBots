@@ -313,7 +313,13 @@ async fn original_mobile_wss_host_chain() {
             assert!(terminal_deadline.elapsed()<Duration::from_secs(35),"original session terminal absent: {snapshot}");
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
-        assert_eq!(ok(owner.request(start_intent).await),receipt,"same original operation must not execute twice");
+        // Native journal requires read-only receipt recovery for a known
+        // mutation; it must not replay even an already accepted business intent.
+        let duplicate=owner.request(start_intent).await;
+        assert_eq!(duplicate["ok"],false);
+        assert_eq!(duplicate["error"]["code"],"MOBILE_RECEIPT_REQUIRED");
+        let recovered=ok(owner.request(json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.receipt","version":1,"agentId":"original-host-agent","operationId":operation_id}})).await);
+        assert_eq!(recovered,receipt,"same original operation is queried without redispatch");
         fs::write(root.join("stop"),b"stop").unwrap();let actual=wait_json(&root.join("host-result.json")).await;assert_eq!(actual["calls"],1);assert!(actual["sessions"].as_array().unwrap().iter().any(|s|s["id"]==receipt["sessionId"]));
     }).await;
     tasks.abort_all();

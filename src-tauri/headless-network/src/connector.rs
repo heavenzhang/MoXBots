@@ -949,7 +949,9 @@ async fn handle_management_events(
                                                 data:myagents_host_management_protocol::RemoteMobileResult::Error{version:1,code:code.into()},
                                             })
                                         } else {
-                                            serde_json::from_value(value).map_err(|_|NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))
+                                            serde_json::from_value(value)
+                                                .map(|data|myagents_host_management_protocol::ResponseResult::RemoteMobile{data})
+                                                .map_err(|_|NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))
                                         }
                                     })
                             }
