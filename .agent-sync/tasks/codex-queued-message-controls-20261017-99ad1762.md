@@ -22,6 +22,10 @@ MOXBOTS-QUEUE-UI-001：修复排队卡片点击无反馈及操作含义不清，
 - [ ] 提交、合入并核验远端main。
 - [ ] 统一负责人下一未冻结版本发布及正式客户端真实路径验收。
 
+## Completed
+
+独立编辑/取消、Runtime拒绝错误传递、操作防重和32px热区已实现。生产组件IAB实测、125项定向/完整类型/限定lint/web与server构建通过。同步最新main b5781988仅引入已审查的官网发布文件，无源码冲突。
+
 ## Verification
 
 详见 `dev-docs/queued-message-controls/acceptance.md`；使用生产QueuedMessagesPanel和隔离合成fixture，未操作日常App，不启动真实Provider。
