@@ -66,3 +66,14 @@ Verification: connection locked lib suite 80 tests; all-targets clippy with
 should cherry-pick only this stage's connection-owned commit and rebuild native
 archives before testing app draft restoration. Requested/runtime-confirmed model
 and token cost remain unknown.
+
+### Draft session ID review correction
+
+Parent review required alignment with the original session identifier contract:
+null or 1–99 ASCII letters/digits/hyphens. Both local intents and persisted
+index/record validation now enforce it. This replaces the earlier allowance for
+an empty session string; empty text remains the clear-draft operation. Regression
+covers empty, 100-character, slash, control, non-ASCII and oversized identifiers,
+99-character acceptance and invalid stored bindings. Locked connection lib suite:
+81 passed; all-targets clippy -D warnings passed. No peer/SDK change in this fix;
+new session.mobile.v1 integration awaits the parent's SDK dependency commit.

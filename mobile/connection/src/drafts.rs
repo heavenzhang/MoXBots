@@ -56,6 +56,11 @@ struct Record {
 fn nullable<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     serde::Deserialize::deserialize(d)
 }
+fn valid_session(session: &Option<String>) -> bool {
+    session.as_ref().is_none_or(|s| {
+        !s.is_empty() && s.len() <= 99 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
+}
 fn record_key(identity: &str, session: &Option<String>) -> Result<String, NetworkError> {
     Ok(format!("draft:{}", hash(&(identity, session))?))
 }
@@ -118,6 +123,9 @@ impl MobileConnection {
             Some(Value::String(s)) => Some(s.clone()),
             _ => return Err(err("MOBILE_DRAFT_INVALID")),
         };
+        if !valid_session(&session) {
+            return Err(err("MOBILE_DRAFT_INVALID"));
+        }
         let identity_key = identity(saved, target)?;
         let account = hash(&(
             &saved.instance.issuer,
@@ -152,7 +160,8 @@ impl MobileConnection {
                 device: entry.device.clone(),
                 agent: entry.agent.clone(),
             };
-            if identity(saved, &t)? != entry.identity_key
+            if !valid_session(&entry.session)
+                || identity(saved, &t)? != entry.identity_key
                 || record_key(&entry.identity_key, &entry.session)? != entry.record
                 || !seen.insert(&entry.record)
             {
@@ -167,6 +176,7 @@ impl MobileConnection {
                 if r.version != 1
                     || r.identity_key != identity_key
                     || r.agent_id != target.agent
+                    || !valid_session(&r.session_id)
                     || r.session_id != session
                     || r.revision == 0
                     || r.revision > MAX_REV
@@ -389,7 +399,10 @@ mod tests {
             true,
         )
         .unwrap();
-        assert_eq!(o.draft(&read(json!("")), false).unwrap()["text"], "");
+        assert_eq!(
+            o.draft(&read(json!("another-session")), false).unwrap()["text"],
+            ""
+        );
         o.targets.get_mut("approved").unwrap().device.push('x');
         assert_eq!(o.draft(&read(Value::Null), false).unwrap()["text"], "");
         o.targets.get_mut("approved").unwrap().device.pop();
@@ -411,6 +424,72 @@ mod tests {
         assert!(o.draft(&read(Value::Null), false).is_err());
         o.saved = None;
         assert!(o.draft(&read(Value::Null), false).is_err());
+    }
+    #[test]
+    fn draft_session_ids_match_original_session_contract() {
+        let memory = Box::<Memory>::default();
+        let o = owner(Arc::new(callbacks(&memory)), None);
+        let id = uuid::Uuid::new_v4().to_string();
+        for invalid in [
+            "".to_owned(),
+            "a".repeat(100),
+            "a/b".into(),
+            "a\nb".into(),
+            "a\0b".into(),
+            "中文".into(),
+            "x".repeat(65536),
+        ] {
+            assert_eq!(
+                o.draft(&read(json!(invalid)), false).unwrap_err().code,
+                "MOBILE_DRAFT_INVALID"
+            );
+            assert_eq!(
+                o.draft(&write(json!(invalid), 0, &id, ""), true)
+                    .unwrap_err()
+                    .code,
+                "MOBILE_DRAFT_INVALID"
+            );
+        }
+        for valid in ["a".to_owned(), "Az09-".repeat(19) + "abcd"] {
+            assert!(o.draft(&write(json!(valid), 0, &id, "kept"), true).is_ok());
+        }
+        let saved = o.saved.as_ref().unwrap();
+        let account = hash(&(
+            &saved.instance.issuer,
+            &saved.instance.service_id,
+            &saved.instance.environment,
+            &saved.instance.network_id,
+            &saved.session.principal_id,
+        ))
+        .unwrap();
+        let scope = format!("drafts-v1:{account}");
+        let bytes = o.store.read_record(&scope, "index").unwrap().unwrap();
+        let mut index: Index = serde_json::from_slice(&bytes).unwrap();
+        index.entries[0].session = Some("bad/session".into());
+        index.entries[0].record =
+            record_key(&index.entries[0].identity_key, &index.entries[0].session).unwrap();
+        o.store
+            .write_record(&scope, "index", &serde_json::to_vec(&index).unwrap())
+            .unwrap();
+        assert_eq!(
+            o.draft(&read(Value::Null), false).unwrap_err().code,
+            "MOBILE_DRAFT_CORRUPT"
+        );
+        o.store.write_record(&scope, "index", &bytes).unwrap();
+        let index: Index = serde_json::from_slice(&bytes).unwrap();
+        let key = &index.entries[0].record;
+        let record = o.store.read_record(&scope, key).unwrap().unwrap();
+        let mut record: Record = serde_json::from_slice(&record).unwrap();
+        record.session_id = Some("bad/session".into());
+        o.store
+            .write_record(&scope, key, &serde_json::to_vec(&record).unwrap())
+            .unwrap();
+        assert_eq!(
+            o.draft(&read(json!(index.entries[0].session)), false)
+                .unwrap_err()
+                .code,
+            "MOBILE_DRAFT_CORRUPT"
+        );
     }
     #[test]
     fn unconfirmed_os_writes_never_report_success() {

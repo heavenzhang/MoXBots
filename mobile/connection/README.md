@@ -51,8 +51,8 @@ Replies are `{kind:"draft",identityKey,agentId,sessionId,text,revision,lastWrite
 An absent draft returns empty text, revision 0, and null lastWriteId. To clear text,
 write an empty string with the current revision and a fresh canonical UUID.
 There is no deletion/eviction intent. Each account retains at most 64 reservations,
-including empty drafts and interrupted first writes. Null and empty session IDs
-are separate scopes. Text is limited to 16,000 UTF-16 units; raw request JSON,
+including empty drafts and interrupted first writes. Session IDs are null or 1–99 ASCII letters, digits and hyphens, matching the
+original session contract; persisted index and record bindings enforce the same rule. Text is limited to 16,000 UTF-16 units; raw request JSON,
 persisted index and each record are limited to 64 KiB. Revisions are safe u53.
 
 Drafts use the same native OS encrypted record callbacks, under a separate hashed
