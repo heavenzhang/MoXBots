@@ -50,7 +50,7 @@ describe('useTabCloseController', () => {
     const hook = renderHook(() =>
       useHarness({ id: 'settings', view: 'settings', title: 'Settings' }, undefined, calls),
     );
-    act(() => hook.result.current.close('settings'));
+    act(() => { void hook.result.current.close('settings'); });
     expect(hook.result.current.state.tabs).toEqual([{ id: 'fallback', view: 'launcher', title: 'New Tab' }]);
     expect(calls).toEqual(['before-detach', 'detached']);
   });
@@ -98,7 +98,7 @@ describe('useTabCloseController', () => {
       },
     };
     const hook = renderHook(() => useHarness(recordTab(), lifecycle, calls));
-    act(() => hook.result.current.close('record-tab'));
+    act(() => { void hook.result.current.close('record-tab'); });
     await waitFor(() => expect(calls).toEqual(['prepare', 'before-detach', 'detached', 'after-detach']));
   });
 });
