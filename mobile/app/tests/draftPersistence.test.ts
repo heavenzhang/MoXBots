@@ -75,6 +75,30 @@ test('typing during a deferred read wins over the late restored value', async ()
   controller.clear();
 });
 
+test('a read started before a successful save cannot restore stale text afterward', async () => {
+  let deferredResolve!: (value: DraftReply) => void;
+  let readCount = 0;
+  const backend = memoryIO();
+  const delayedRead = new Promise<DraftReply>((resolve) => { deferredResolve = resolve; });
+  const updates: DraftUpdate[] = [];
+  const controller = manager({
+    ...backend.io,
+    read: async (targetId, sessionId) => ++readCount === 2 ? delayedRead : backend.io.read(targetId, sessionId),
+  }, updates);
+  const initial = controller.activate(target, 'session-a', 1);
+  await initial.ready;
+  controller.edit(initial.key, 1, 'newly saved text');
+  const reopened = controller.activate(target, 'session-a', 2);
+  const saving = controller.flushOwner(2);
+  await saving;
+  assert.equal(updates.at(-1)?.status, 'saved');
+  deferredResolve(reply(target, 'session-a', 'stale pre-save text', 0));
+  await reopened.ready;
+  assert.equal(updates.some((update) => update.text === 'stale pre-save text'), false);
+  assert.equal(updates.at(-1)?.text, 'newly saved text');
+  controller.clear();
+});
+
 test('an old owner save cannot publish state into a newly selected target', async () => {
   let resolveWrite!: (value: DraftReply) => void;
   const deferredWrite = new Promise<DraftReply>((resolve) => { resolveWrite = resolve; });
@@ -153,6 +177,49 @@ test('typing during a slow save queues only the newest text and a write failure 
   assert.equal(updates.at(-1)?.status, 'error');
   assert.equal(updates.at(-1)?.text, 'preserve after failure');
   shouldFail = false;
+  controller.clear();
+});
+
+test('a lost write acknowledgement is resolved by retrying the same idempotency key', async () => {
+  const backend = memoryIO();
+  const current = new Map<string, DraftReply>();
+  const writeCalls: { writeId: string; revision: number; text: string }[] = [];
+  let readCount = 0;
+  let writeCount = 0;
+  const io = {
+    async read(targetId: string, sessionId: string | null) {
+      if (++readCount === 2) return reply(target, sessionId, '', 0);
+      return current.get(JSON.stringify([target.identityKey, sessionId])) ?? backend.io.read(targetId, sessionId);
+    },
+    async write(targetId: string, sessionId: string | null, expectedRevision: number, writeId: string, text: string) {
+      writeCalls.push({ writeId, revision: expectedRevision, text });
+      const key = JSON.stringify([target.identityKey, sessionId]);
+      const alreadyCommitted = current.get(key);
+      if (alreadyCommitted?.lastWriteId === writeId) return alreadyCommitted;
+      if (expectedRevision !== (alreadyCommitted?.revision ?? 0)) throw new Error('MOBILE_DRAFT_CONFLICT');
+      const saved = reply(target, sessionId, text, expectedRevision + 1, writeId);
+      current.set(key, saved);
+      if (++writeCount === 1) throw new Error('MOBILE_REMOTE_UNAVAILABLE');
+      return saved;
+    },
+  };
+  const updates: DraftUpdate[] = [];
+  const controller = manager(io, updates);
+  const opened = controller.activate(target, 'session-a', 1);
+  await opened.ready;
+  controller.edit(opened.key, 1, 'first attempt');
+  await controller.flushOwner(1);
+  assert.equal(current.get(JSON.stringify([target.identityKey, 'session-a']))?.text, 'first attempt');
+  controller.edit(opened.key, 1, 'newer edit');
+  await controller.flushOwner(1);
+  assert.equal(writeCalls.length, 3);
+  assert.deepEqual(writeCalls.slice(0, 2).map((call) => [call.writeId, call.revision, call.text]), [
+    [writeCalls[0].writeId, 0, 'first attempt'],
+    [writeCalls[0].writeId, 0, 'first attempt'],
+  ]);
+  assert.notEqual(writeCalls[2].writeId, writeCalls[0].writeId);
+  assert.deepEqual(writeCalls[2], { writeId: writeCalls[2].writeId, revision: 1, text: 'newer edit' });
+  assert.equal(current.get(JSON.stringify([target.identityKey, 'session-a']))?.text, 'newer edit');
   controller.clear();
 });
 

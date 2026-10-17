@@ -20,9 +20,11 @@ type DraftRecord = {
   writing: boolean;
   conflicted: boolean;
   conflictRefreshPending: boolean;
+  pendingAttempt: PendingAttempt | null;
   timer: ReturnType<typeof setTimeout> | null;
 };
 type DraftOwner = { key: string; epoch: number };
+type PendingAttempt = { writeId: string; text: string; expectedRevision: number; editRevision: number };
 
 export function stableDraftKey(identityKey: string, sessionId: string | null): string {
   return JSON.stringify([identityKey, sessionId]);
@@ -99,7 +101,7 @@ export class DraftPersistence {
   private getOrCreate(scope: DraftScope, sessionId: string | null, key: string): DraftRecord {
     const existing = this.records.get(key);
     if (existing) { existing.scope = scope; return existing; }
-    const created: DraftRecord = { scope, sessionId, key, text: '', revision: 0, revisionGeneration: 0, editRevision: 0, writeGeneration: 0, dirty: false, writing: false, conflicted: false, conflictRefreshPending: false, timer: null };
+    const created: DraftRecord = { scope, sessionId, key, text: '', revision: 0, revisionGeneration: 0, editRevision: 0, writeGeneration: 0, dirty: false, writing: false, conflicted: false, conflictRefreshPending: false, pendingAttempt: null, timer: null };
     this.records.set(key, created);
     return created;
   }
@@ -116,11 +118,12 @@ export class DraftPersistence {
     try {
       const reply = await this.io.read(record.scope.targetId, record.sessionId);
       if (accountGeneration !== this.accountGeneration || !this.owns(record, ownerEpoch) || !this.matches(record, reply)) return;
-      if (record.writeGeneration === writeGeneration && record.revisionGeneration === revisionGeneration) {
+      const readStillCurrent = record.writeGeneration === writeGeneration && record.revisionGeneration === revisionGeneration;
+      if (readStillCurrent) {
         record.revision = reply.revision;
         record.revisionGeneration += 1;
       }
-      if (record.editRevision === editRevision && !record.dirty && !record.writing) {
+      if (readStillCurrent && record.editRevision === editRevision && !record.dirty && !record.writing) {
         record.text = reply.text;
         this.emit(record, 'saved');
       } else if (record.dirty) this.emit(record, record.conflicted ? 'conflict' : 'unsaved');
@@ -136,20 +139,47 @@ export class DraftPersistence {
     record.writing = true;
     const ownerEpoch = this.owner?.key === record.key ? this.owner.epoch : null;
     const accountGeneration = this.accountGeneration;
-    const text = record.text;
-    const editRevision = record.editRevision;
-    const revision = record.revision;
     const writeGeneration = ++record.writeGeneration;
-    const writeId = this.newWriteId();
     if (ownerEpoch !== null) this.emit(record, 'saving');
     try {
-      const reply = await this.io.write(record.scope.targetId, record.sessionId, revision, writeId, text);
+      let attempt = record.pendingAttempt;
+      if (attempt) {
+        const observed = await this.io.read(record.scope.targetId, record.sessionId);
+        if (accountGeneration !== this.accountGeneration || this.records.get(record.key) !== record || writeGeneration !== record.writeGeneration) return;
+        if (!this.matches(record, observed)) throw new Error('MOBILE_DRAFT_REPLY_INVALID');
+        if (observed.lastWriteId === attempt.writeId && observed.revision > attempt.expectedRevision) {
+          record.revision = observed.revision;
+          record.revisionGeneration += 1;
+          record.pendingAttempt = null;
+          if (record.editRevision === attempt.editRevision && record.text === attempt.text) record.dirty = false;
+          if (!record.dirty) {
+            record.writing = false;
+            if (ownerEpoch !== null && this.owns(record, ownerEpoch)) this.emit(record, 'saved');
+            return;
+          }
+          attempt = null;
+        } else if (observed.revision !== attempt.expectedRevision) {
+          record.revision = observed.revision;
+          record.revisionGeneration += 1;
+          record.pendingAttempt = null;
+          record.writing = false;
+          record.conflicted = true;
+          if (ownerEpoch !== null && this.owns(record, ownerEpoch)) this.emit(record, 'conflict', '草稿版本冲突；当前编辑已保留，继续编辑后再保存。', 'MOBILE_DRAFT_CONFLICT');
+          return;
+        }
+      }
+      if (!attempt) {
+        attempt = { writeId: this.newWriteId(), text: record.text, expectedRevision: record.revision, editRevision: record.editRevision };
+        record.pendingAttempt = attempt;
+      }
+      const reply = await this.io.write(record.scope.targetId, record.sessionId, attempt.expectedRevision, attempt.writeId, attempt.text);
       if (accountGeneration !== this.accountGeneration || this.records.get(record.key) !== record || writeGeneration !== record.writeGeneration) return;
-      if (!this.matches(record, reply) || reply.lastWriteId !== writeId) throw new Error('MOBILE_DRAFT_REPLY_INVALID');
+      if (!this.matches(record, reply) || reply.lastWriteId !== attempt.writeId) throw new Error('MOBILE_DRAFT_REPLY_INVALID');
       record.revision = reply.revision;
       record.revisionGeneration += 1;
+      record.pendingAttempt = null;
       record.writing = false;
-      if (record.editRevision === editRevision) record.dirty = false;
+      if (record.editRevision === attempt.editRevision && record.text === attempt.text) record.dirty = false;
       if (ownerEpoch !== null && this.owns(record, ownerEpoch)) this.emit(record, record.dirty ? 'saving' : 'saved');
       if (record.dirty && !record.conflicted) await this.flush(record);
     } catch (error) {
@@ -157,10 +187,11 @@ export class DraftPersistence {
       record.writing = false;
       record.dirty = true;
       if (this.errorCode(error) === 'MOBILE_DRAFT_CONFLICT') {
+        record.pendingAttempt = null;
         record.conflicted = true;
         record.conflictRefreshPending = true;
         if (ownerEpoch !== null && this.owns(record, ownerEpoch)) this.emit(record, 'conflict', '草稿版本冲突；当前编辑已保留，继续编辑后再保存。', 'MOBILE_DRAFT_CONFLICT');
-        await this.refreshConflictRevision(record, ownerEpoch, accountGeneration, writeGeneration, editRevision);
+        await this.refreshConflictRevision(record, ownerEpoch, accountGeneration, writeGeneration, record.editRevision);
       } else if (ownerEpoch !== null && this.owns(record, ownerEpoch)) {
         this.emit(record, 'error', '草稿未保存；当前内容仍保留，返回前会再尝试保存。', this.errorCode(error));
       }
