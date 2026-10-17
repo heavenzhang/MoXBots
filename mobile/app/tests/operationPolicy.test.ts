@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, viewStillOwned } from '../src/operationPolicy.ts';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, mutationDisposition, viewStillOwned } from '../src/operationPolicy.ts';
 
 test('an unknown mutation is query-only and cannot be submitted a second time', () => {
   assert.equal(mutationDisposition('unknown'), 'query-only');
@@ -130,4 +130,40 @@ test('an owner change cannot start a second poll until the previous native reque
   assert.equal(dispatched, 2);
   assert.equal(commits, 1, 'the old owner response is discarded and only the current owner commits');
   newPoll.stop();
+});
+
+test('leaving the root route during account status prevents target dispatch and stale owner commits', async () => {
+  const focus = createRouteFocusGate();
+  const token = focus.focus();
+  let resolveAccount!: () => void;
+  const accountStatus = new Promise<void>((resolve) => { resolveAccount = resolve; });
+  let targetRequests = 0;
+  let ownerCommits = 0;
+  const refresh = (captured: number) => accountStatus.then(() => {
+    if (!focus.isCurrent(captured)) return;
+    targetRequests += 1;
+    if (focus.isCurrent(captured)) ownerCommits += 1;
+  });
+
+  const pendingRefresh = refresh(token);
+  focus.blur();
+  resolveAccount();
+  await pendingRefresh;
+  assert.equal(targetRequests, 0, 'a deferred status reply must not trigger targets.list after the root route blurs');
+  assert.equal(ownerCommits, 0, 'a stale account reply cannot mutate the shared session owner');
+});
+
+test('a queued login or snapshot tick cannot dispatch native RPC after route blur', async () => {
+  const focus = createRouteFocusGate();
+  const token = focus.focus();
+  let nativeCalls = 0;
+  const poll = createSingleFlightPoll(async (isCurrent) => {
+    if (!isCurrent()) return;
+    nativeCalls += 1;
+  }, () => focus.isCurrent(token));
+  const pendingTick = poll.tick();
+  assert.ok(pendingTick);
+  focus.blur();
+  await pendingTick;
+  assert.equal(nativeCalls, 0, 'the poll task checks route ownership immediately before dispatch');
 });

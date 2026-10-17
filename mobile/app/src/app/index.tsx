@@ -6,7 +6,7 @@ import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
-import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
 import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
 import { SerialUploadQueue } from '../uploadQueue';
@@ -86,6 +86,8 @@ function AppBody() {
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
   const [loginPollGate] = useState(() => createPollFlightGate());
   const [snapshotPollGate] = useState(() => createPollFlightGate());
+  const [routeFocusGate] = useState(() => createRouteFocusGate());
+  const routeActiveRef = useRef(false);
   const [speechPanelOpen, setSpeechPanelOpen] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
@@ -279,7 +281,7 @@ function AppBody() {
     if (!selected?.online) {
       setMobileMode('unavailable'); setMobileModels([]); setSelectedModelId(null); return;
     }
-    const stillSelected = () => catalogEpoch === mobileCatalogEpochRef.current
+    const stillSelected = () => routeActiveRef.current && AppState.currentState === 'active' && catalogEpoch === mobileCatalogEpochRef.current
       && targetRef.current?.targetId === selected.targetId
       && targetRef.current.identityKey === selected.identityKey;
     setMobileMode('loading'); setMobileModels([]); setSelectedModelId(null); setSuggestions([]);
@@ -309,11 +311,15 @@ function AppBody() {
   }, [say]);
 
   const loadAccount = useCallback(async () => {
+    const routeEpoch = routeFocusGate.capture();
+    const routeIsCurrent = () => routeFocusGate.isCurrent(routeEpoch) && AppState.currentState === 'active';
+    if (!routeIsCurrent()) return;
     const refreshEpoch = ++accountRefreshEpochRef.current;
     accountRefreshInFlightRef.current = refreshEpoch;
+    const requestIsCurrent = () => refreshEpoch === accountRefreshEpochRef.current && routeIsCurrent();
     try {
     const reply = await requestNative({ version: 1, kind: 'account.status' });
-    if (refreshEpoch !== accountRefreshEpochRef.current) return;
+    if (!requestIsCurrent()) return;
     if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
     const previousAccount = accountRef.current;
     accountRef.current = reply;
@@ -325,8 +331,9 @@ function AppBody() {
       return;
     }
     if (previousAccount && previousAccount.principalId !== reply.principalId) draftPersistenceRef.current?.clear();
+    if (!requestIsCurrent()) return;
     const result = await requestNative({ version: 1, kind: 'targets.list' });
-    if (refreshEpoch !== accountRefreshEpochRef.current) return;
+    if (!requestIsCurrent()) return;
     if (result.kind !== 'targets') throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
     setTargets(result.items);
     const previous = targetRef.current;
@@ -340,42 +347,53 @@ function AppBody() {
       setNotice({ text: '当前 Bot 已不可用，请从列表重新打开会话。', tone: 'error' });
     }
     const refreshedOwner = moveOwner(nextScreen === 'chat' && !sameLogicalTarget ? 'sessions' : nextScreen, selectedTarget, nextSessionId);
-    if (refreshEpoch !== accountRefreshEpochRef.current) return;
+    if (!requestIsCurrent()) return;
     void loadMobileCatalog(selectedTarget);
     if (selectedTarget?.online && refreshedOwner.screen === 'sessions') {
+      if (!requestIsCurrent()) return;
       const sessionsReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'list', agentId: selectedTarget.agentId, limit: 30 } }));
-      if (viewStillOwned(refreshedOwner, ownerRef.current)) {
+      if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) {
         if (sessionsReply.kind === 'error') throw new Error(sessionsReply.code);
         if (sessionsReply.kind !== 'list' || sessionsReply.agentId !== refreshedOwner.agentId) throw new Error('SESSION_LIST_REPLY_INVALID');
         setSessions(sessionsReply.items);
       }
     } else if (refreshedOwner.screen === 'sessions') setSessions([]);
     if (selectedTarget?.online && refreshedOwner.screen === 'chat' && refreshedOwner.sessionId) {
+      if (!requestIsCurrent()) return;
       const snapshotReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'get', agentId: selectedTarget.agentId, sessionId: refreshedOwner.sessionId, limit: 30 } }));
-      if (viewStillOwned(refreshedOwner, ownerRef.current)) {
+      if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) {
         if (snapshotReply.kind === 'error') throw new Error(snapshotReply.code);
         if (snapshotReply.kind !== 'snapshot' || snapshotReply.agentId !== refreshedOwner.agentId || snapshotReply.sessionId !== refreshedOwner.sessionId) throw new Error('SESSION_SNAPSHOT_REPLY_INVALID');
         commitSnapshot(snapshotReply);
       }
     }
+    if (!requestIsCurrent()) return;
     const journal = await requestNative({ version: 1, kind: 'operations.pending' });
-    if (refreshEpoch === accountRefreshEpochRef.current && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+    if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
-  }, [commitSnapshot, loadMobileCatalog, moveOwner]);
+  }, [commitSnapshot, loadMobileCatalog, moveOwner, routeFocusGate]);
 
   useFocusEffect(useCallback(() => {
     let active = true;
+    routeActiveRef.current = true;
+    routeFocusGate.focus();
     void loadAccount().catch((error) => {
       if (active) say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error');
     });
-    return () => { active = false; };
-  }, [loadAccount, say]));
+    return () => {
+      active = false;
+      routeActiveRef.current = false;
+      routeFocusGate.blur();
+      accountRefreshEpochRef.current += 1;
+    };
+  }, [loadAccount, routeFocusGate, say]));
   useEffect(() => {
     if (loginStarted) {
       const poll = createSingleFlightPoll(async (isCurrent) => {
         try {
+          if (!isCurrent()) return;
           const reply = await requestNative({ version: 1, kind: 'account.login.poll' });
           if (!isCurrent() || reply.kind !== 'account') return;
           const previousAccount = accountRef.current;
@@ -386,14 +404,14 @@ function AppBody() {
         } catch (error) {
           if (isCurrent()) say(error instanceof Error ? error.message : 'ACCOUNT_LOGIN_POLL_FAILED', 'error');
         }
-      }, () => AppState.currentState === 'active', loginPollGate);
+      }, () => routeActiveRef.current && AppState.currentState === 'active', loginPollGate);
       const timer = setInterval(() => { void poll.tick(); }, 3000);
       return () => { clearInterval(timer); poll.stop(); };
     }
   }, [loadAccount, loginPollGate, loginStarted, say]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));
+      if (state === 'active' && routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'); });
     });
     return () => listener.remove();
   }, [loadAccount, say]);
@@ -443,6 +461,7 @@ function AppBody() {
       const owner = pollOwner;
       if (owner.screen !== 'chat' || owner.targetId !== currentTarget.targetId || owner.agentId !== current.agentId || owner.sessionId !== current.sessionId) return;
       try {
+        if (!isCurrent()) return;
         const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } }));
         if (!isCurrent() || !viewStillOwned(owner, ownerRef.current)) return;
         if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId) {
@@ -458,7 +477,7 @@ function AppBody() {
           say(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED', 'error');
         }
       }
-    }, () => AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
+    }, () => routeActiveRef.current && AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
     const interval = setInterval(() => {
       void poll.tick();
     }, 1500);
@@ -930,11 +949,15 @@ function AppBody() {
   const chatPendingReceipt = screen === 'chat' ? pending.find((item) => item.status !== 'prepared'
     && item.targetId === target?.targetId && item.agentId === (snapshot?.agentId ?? target?.agentId)
     && item.sessionId === (snapshot?.sessionId ?? null)) : undefined;
+  const chatNotice: NonNullable<Notice> | null = chatPendingReceipt
+    ? { ...(notice ?? { tone: 'error' as const }), text: `消息状态待确认 · ${receiptLabels[receiptStates[chatPendingReceipt.operationId] ?? chatPendingReceipt.status]}。不会自动重发。` }
+    : notice;
+  const canQueryChatReceipt = !!target?.online && !loading && !sending;
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
     {screen === 'login' && <View style={styles.loginPage}>
-      <Topbar left="刷新登录状态" onBack={() => void run('account', loadAccount)} right={{ label: '刷新', onPress: () => void run('account', loadAccount) }}/>
+      <Topbar right={{ label: '刷新', onPress: () => void run('account', loadAccount) }}/>
       <View style={styles.loginCard}>
         <View style={styles.logoMark}><Text style={styles.logoMarkText}>M</Text></View>
         <Text style={styles.title}>连接你的 Agent</Text>
@@ -947,7 +970,7 @@ function AppBody() {
     </View>}
 
     {screen === 'sessions' && <View style={styles.fill}>
-      <Topbar left="刷新会话" onBack={() => void run('sessions', loadSessions)} right={{ label: '刷新', onPress: () => void run('sessions', loadSessions) }} avatar={{ label: '账号与设置', onPress: () => router.push('/account') }}/>
+      <Topbar right={{ label: '刷新', onPress: () => void run('sessions', loadSessions) }} avatar={{ label: '账号与设置', onPress: () => router.push('/account') }}/>
       <View style={styles.targetsBar}>
         <Text style={styles.sectionEyebrow}>BOT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
@@ -972,8 +995,7 @@ function AppBody() {
       </View>
       {resultsOpen && <View style={styles.smallMenu}><Text style={styles.caption}>{isFixtureMode ? '此演示会话没有附件成果。' : '当前没有可读取的会话成果。'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭成果面板" onPress={() => setResultsOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
       {menuOpen && <View style={styles.smallMenu}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
-      {notice && <NoticeView notice={notice}/>}
-      {chatPendingReceipt && <View style={{ marginHorizontal: 16, marginVertical: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: C.canvas, flexDirection: 'row', alignItems: 'center', gap: 8 }}><Text style={{ flex: 1, color: C.muted, fontSize: 12, lineHeight: 17 }}>消息状态待确认 · {receiptLabels[receiptStates[chatPendingReceipt.operationId] ?? chatPendingReceipt.status]}。不会自动重发。</Text><Pressable accessibilityRole="button" accessibilityLabel="查询这条消息的操作状态" accessibilityHint="只查询原操作回执，不会重新发送消息" accessibilityState={{ disabled: !target?.online || loading || sending }} disabled={!target?.online || loading || sending} onPress={() => void run('receipt', () => queryPending(chatPendingReceipt))} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6 }}><RefreshCw size={15} color={target?.online && !loading && !sending ? C.green : C.muted}/><Text style={[styles.pendingLink, (!target?.online || loading || sending) && styles.pendingLinkDisabled]}>{loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线'}</Text></Pressable></View>}
+      {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : undefined}/>}
       <ScrollView ref={scrollRef} style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
         {snapshot?.state === 'unavailable' && <EmptyState title="会话暂时不可用" detail="请刷新状态或检查设备连接。" action="重新读取" onAction={() => void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }))}/>}
@@ -1029,8 +1051,8 @@ function AppBody() {
   </KeyboardAvoidingView></SafeAreaView>;
 }
 
-function Topbar({ left, onBack, right, avatar }: { left: string; onBack: () => void; right?: { label: string; onPress: () => void }; avatar?: { label: string; onPress: () => void } }) {
-  return <View style={styles.topbar}><Pressable accessibilityRole="button" accessibilityLabel={left} onPress={onBack} hitSlop={8} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable><View style={styles.brand}><Text style={styles.brandName}>MOXBOTS</Text><Text style={styles.brandSub}>REMOTE</Text></View><View style={styles.headerRight}/>{right && <Pressable accessibilityRole="button" accessibilityLabel={right.label} onPress={right.onPress} style={styles.headerAction}><Text style={styles.headerActionText}>{right.label}</Text></Pressable>}{avatar && <Pressable accessibilityRole="button" accessibilityLabel={avatar.label} onPress={avatar.onPress} hitSlop={6} style={styles.accountAvatar}><CircleUserRound size={22} color={C.green}/></Pressable>}</View>;
+function Topbar({ right, avatar }: { right?: { label: string; onPress: () => void }; avatar?: { label: string; onPress: () => void } }) {
+  return <View style={styles.topbar}>{avatar && <Pressable accessibilityRole="button" accessibilityLabel={avatar.label} onPress={avatar.onPress} hitSlop={6} style={styles.accountAvatar}><CircleUserRound size={22} color={C.green}/></Pressable>}<View style={[styles.brand, !avatar && { marginLeft: 0 }]}><Text style={styles.brandName}>MOXBOTS</Text><Text style={styles.brandSub}>REMOTE</Text></View><View style={styles.headerRight}/>{right && <Pressable accessibilityRole="button" accessibilityLabel={right.label} onPress={right.onPress} style={styles.headerAction}><Text style={styles.headerActionText}>{right.label}</Text></Pressable>}</View>;
 }
 
 function formatMessageTime(value: string): string {
@@ -1039,10 +1061,10 @@ function formatMessageTime(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function NoticeView({ notice }: { notice: NonNullable<Notice> }) {
+function NoticeView({ notice, action }: { notice: NonNullable<Notice>; action?: { label: string; accessibilityLabel: string; accessibilityHint?: string; disabled: boolean; onPress: () => void } }) {
   const [showCode, setShowCode] = useState(false);
   return <View accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.noticeError, notice.tone === 'success' && styles.noticeSuccess]}>
-    <Text style={styles.noticeText}>{notice.text}</Text>
+    <View style={{ flexDirection: action ? 'row' : 'column', alignItems: action ? 'center' : 'flex-start', gap: 8 }}><Text style={[styles.noticeText, action && { flex: 1 }]}>{notice.text}</Text>{action && <Pressable accessibilityRole="button" accessibilityLabel={action.accessibilityLabel} accessibilityHint={action.accessibilityHint} accessibilityState={{ disabled: action.disabled }} disabled={action.disabled} onPress={action.onPress} style={{ minHeight: 40, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }}><RefreshCw size={15} color={action.disabled ? C.muted : C.green}/><Text style={[styles.pendingLink, action.disabled && styles.pendingLinkDisabled]}>{action.label}</Text></Pressable>}</View>
     {notice.code && <Pressable accessibilityRole="button" accessibilityLabel={showCode ? '隐藏错误详情' : '查看错误详情'} onPress={() => setShowCode((value) => !value)} style={styles.errorDetailsButton}><Text style={styles.pendingLink}>{showCode ? '隐藏详情' : '错误详情'}</Text></Pressable>}
     {showCode && notice.code && <Text selectable style={styles.errorCode}>错误码：{notice.code}</Text>}
   </View>;

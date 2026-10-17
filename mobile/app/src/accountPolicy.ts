@@ -14,3 +14,13 @@ export async function logoutAndConfirm(
   onConfirmed();
   return 'confirmed';
 }
+
+export function returnFromAccountRoute(canGoBack: () => boolean, goBack: () => void, goHome: () => void): void {
+  if (canGoBack()) goBack();
+  else goHome();
+}
+
+/** Pop an account route back to the already-mounted chat owner after confirmed logout. */
+export function dismissToExistingRoot(dismissToRoot: () => void): void {
+  dismissToRoot();
+}

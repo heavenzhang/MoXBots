@@ -2,6 +2,18 @@ export type ReceiptState = 'prepared' | 'processing' | 'accepted' | 'rejected' |
 
 export type ViewOwner = { epoch: number; screen: 'login' | 'sessions' | 'chat'; targetId: string | null; agentId: string | null; sessionId: string | null };
 
+/** Invalidates an account refresh immediately when the root route loses focus. */
+export function createRouteFocusGate() {
+  let focused = false;
+  let epoch = 0;
+  return {
+    focus(): number { focused = true; epoch += 1; return epoch; },
+    blur(): void { focused = false; epoch += 1; },
+    capture(): number { return epoch; },
+    isCurrent(captured: number): boolean { return focused && captured === epoch; },
+  };
+}
+
 /** Shared across effect lifetimes so an old owner cannot overlap a new poll while its RPC is pending. */
 export function createPollFlightGate() {
   let currentLease = 0;

@@ -18,7 +18,9 @@ Add native Expo Router account, profile, security, storage, about, and help scre
 - [x] About shows Expo app version and configured internal app name/build identifier; help provides static workflow guidance.
 - [x] Account routes have accessible controls and loading/error/empty states; deferred logout tests cover confirmed, unconfirmed, and error responses.
 - [x] Typecheck, lint, focused policy tests, Expo Router web export, and diff whitespace check pass.
-- [ ] Root visual/native review and remote handoff; implementation is committed locally but not yet pushed.
+- [x] Root-requested review repairs: route-focus request/commit fence, compact in-notice receipt query, account QA provenance banner, localized copy, disabled stale logout, correct topbar refresh semantics, and direct-link back fallback.
+- [x] Confirmed logout dismisses to the already-mounted root; confirmation restores focus on cancel and traps keyboard Tab navigation in web.
+- [ ] Root visual/native re-review and remote handoff after this focused polish commit.
 - [ ] No native-device/logout, signed-build, production, or main-integration claim without corresponding evidence.
 
 ## Completed
@@ -26,18 +28,19 @@ Add native Expo Router account, profile, security, storage, about, and help scre
 - Started from verified canonical main `400b746a4841bab8e4b99d8f83479fd54925c205` with project-sync `observe`, `start --base`, and `task-init` PASS.
 - Merged root's reviewed prerequisite integration `55771134560bb5aa00a2d4fe7e3cd2e5c4801f48` with a normal merge after task-init; no rewrite/reset.
 - Committed owned implementation in `085781ac8c1b7d487ab79d3d54b52e5f0942c0c4`.
+- Applied root's subsequent account UI review requests as a focused follow-up; the root remains responsible for integration and real native review.
 
 ## Verification
 
-- `mobile/app`: `npm run typecheck` PASS; `npm run lint` PASS; `npm run test:policy` PASS (31 tests).
-- `mobile/app`: `npm exec expo -- export --platform web --output-dir /tmp/moxbots-account-pages-web-export-2` PASS; Router bundle includes account home plus profile/security/storage/about/help screens.
-- `git diff --check` PASS after the receipt-query adjustment.
+- `mobile/app`: `npm run typecheck` PASS; `npm run lint` PASS; `npm run test:policy` PASS (34 tests).
+- `mobile/app`: `npx expo export --platform web --output-dir /tmp/moxbots-mobile-account-export` PASS; Router bundle includes account home plus profile/security/storage/about/help screens.
+- `git diff --check` to be repeated after this follow-up commit.
 - Consulted the Expo SDK v58 Router and Stack references for `useFocusEffect` and native-stack behavior: https://docs.expo.dev/versions/v58.0.0/sdk/router/ and https://docs.expo.dev/versions/v58.0.0/sdk/router/stack/.
 
 ## Blockers and unknowns
 
-- Native logout, KeyStore data behavior, actual device storage contents, and native stack/back behavior require a custom native build/device path and are not inferred from web export or explicit QA fixtures.
-- Root independently requested a compact in-chat query control for a pending unknown receipt; it was added to the same app index route using existing protocol-aware `queryPending`, but awaits root review.
+- Native logout, secure storage behavior, actual device storage contents, and native stack/back behavior require a custom native build/device path and are not inferred from web export or explicit QA fixtures.
+- The browser was not available in this worker; account home and modal focus behavior need root's actual IAB/native review after integration.
 - Root owns integration and native modules; this branch owns account route UI and tests only.
 
 ## Next step
