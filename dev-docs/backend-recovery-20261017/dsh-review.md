@@ -39,4 +39,28 @@ node --test scripts/integrated-runtimes/prepare-dsh-runtime.test.mjs scripts/int
 
 Result: **21 passed, 0 failed, 0 skipped**, 532 ms. These are focused resource/provenance/selection tests, including rejection of wrong publisher/source/recipe, pending target claims, archive corruption, and absent-release fallback. They are not four-platform native Runtime execution evidence.
 
-The Windows CI log for the reviewed checkpoint records `npm_execpath is required to launch package tools on Windows` before native campaign output; that target cannot be marked verified from that run. The implementation owner's launcher repair and subsequent runner/campaign/package evidence must be reviewed before the candidate is accepted. No installed desktop, production or real-user approval-card acceptance was performed by this reviewer.
+The Windows CI log for the reviewed checkpoint records `npm_execpath is required to launch package tools on Windows` before native campaign output; that target cannot be marked verified from that run. No installed desktop, production or real-user approval-card acceptance was performed by this reviewer.
+
+## Windows launcher repair increment
+
+The subsequent implementation-owner increment was inspected without changing its source. `selectedNpmEntrypoint` retains an existing usable npm lifecycle entrypoint or finds the npm JavaScript entrypoint in the selected Node's Windows-adjacent/Unix-lib layouts. The builder explicitly passes that environment to official `childCli` calls and propagates it before importing the official native builder. Node remains pinned and the actual npm version must still equal 11.19.0; this repair does not replace native validation or relax any provenance/package gate.
+
+The existing Windows log reports setup-node's npm as 11.19.0 before the failed direct invocation. The repair therefore addresses the observed missing lifecycle environment while retaining the selected toolchain's version gate.
+
+Independently executed:
+
+```sh
+node --test scripts/integrated-runtimes/build-moxbots-dsh-runtime.test.mjs scripts/integrated-runtimes/package-moxbots-dsh-runtime.test.mjs
+```
+
+Result: **2 passed, 0 failed**, 47 ms. One packaging test overlaps the earlier 21-test run. Both platform layouts, an existing lifecycle environment, and missing-entrypoint rejection are exercised. Scoped `git diff --check` passed. No additional actionable P1/P2 was found in this increment. A repaired Windows Actions run and the four actual target campaign/package outputs remain required before a complete candidate can be accepted.
+
+## Accepted consumer dependency drift follow-up
+
+The later Linux log `dsh-linux-364ad.log` fails while resolving `myagents-dsh@0.1.18` in the repository's `install:verified-dsh-checks` step: Cordis is pinned to 4.0.4, but a fresh no-lock peer resolution chooses `cordis-plugin-group` 1.0.5 from the `~1.0.4` range, and that new package requires Cordis `~4.0.5`. This is distinct from the accepted isolated artifact consumer, whose external pins/overrides, offline install/ci, `npm ls`, package integrity authority, compiler resolution containment and resulting package/lock digests already bind the historical graph.
+
+The safe repair belongs to the temporary checks-install projection and its process environment. It must consume the already verified consumer's exact external dependencies/overrides, retain the 105 absolute local DSH tarball overrides, and restore the original repository package/lock bytes. Upgrading Cordis, using force/legacy-peer resolution, rewriting the accepted consumer lock, or changing the artifact builder would change or bypass the accepted authority. `build-patched-dsh-artifact.ts` itself is listed in the builder-authority digest, so changing it is not a transparent preservation of accepted manifest `8a55db844fcfed62e2320d4c0873934c72ea56e4826d359c5af928f388dce6ed`.
+
+An intermediate checks-install repair had a P1 build blocker: it accepted only string override values, while the historical graph contains real parent-scoped multiple-version overrides. Examples include AWS token providers 3.1127.0 at root / 3.1138.0 below credential-provider-sso, and gaxios using agent-base 7.1.4 plus https-proxy-agent 7.0.6 while root uses 9.0.0 / 9.1.0. Flattening these changes the graph; rejecting objects prevents installation. This was reported to the owner and corrected in the next scratch increment with recursive exact-leaf validation, deep copying, retained parent selectors and recursive TypeScript declarations.
+
+The revised checks installer also runs `npm ls --all`, checks the installed Cordis/group/Zod versions against the verified consumer, and restores original package/lock bytes in `finally`. Its subprocess wrapper explicitly uses the same official npmjs registry identity as the isolated artifact consumer instead of warming only a user mirror's packument cache; it does not edit global npm configuration. Static reinspection found no new P1/P2 in that direction. The owner still must demonstrate the unchanged accepted manifest/consumer digests and actual checks install/compile success, then refresh the Runtime source, patch, recipe and candidate identities together. This reviewer did not repeat the artifact build or install.

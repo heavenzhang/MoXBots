@@ -16,7 +16,7 @@ index 19bc9eb..6d5e73c 100644
      fibers.push(await root.plugin(ApprovalService, { policy: "ask" }));
 +    const stopChildApprovalContext = installHostChildApprovalContext(root);
 +    fibers.push({ dispose: () => { stopChildApprovalContext(); return Promise.resolve(); } });
- 
+
      const stopProjection = installNativeChildAuthorityProjection(root);
      fibers.push({ dispose: () => { stopProjection(); return Promise.resolve(); } });
 diff --git a/packages/runtime-product/src/system-context.ts b/packages/runtime-product/src/system-context.ts
@@ -26,7 +26,7 @@ index 826cb1e..e7c45c7 100644
 @@ -24,6 +24,21 @@ export const COMPACTION_CONTINUITY_ORDER = -90;
  export const RUNTIME_WORKSPACE_CONTEXT_ORDER = 90;
  export const MAX_HOST_CONTEXT_BYTES = 512 * 1024;
- 
+
 +/** Project the policy owned by this composition through DSH's public assembly seam. */
 +export const installHostChildApprovalContext = (root: Context): (() => void) =>
 +  root.on("system-prompt/assemble", async (_assembly, context, next) => {
@@ -45,27 +45,125 @@ index 826cb1e..e7c45c7 100644
  export const runtimeWorkspaceContextText = (canonicalRoot: string): string => [
    "Current workspace root:",
    canonicalRoot,
+diff --git a/scripts/install-verified-dsh-for-checks.mjs b/scripts/install-verified-dsh-for-checks.mjs
+index 830351d..f2e6309 100644
+--- a/scripts/install-verified-dsh-for-checks.mjs
++++ b/scripts/install-verified-dsh-for-checks.mjs
+@@ -1,7 +1,7 @@
+ #!/usr/bin/env node
+
+ import { execFileSync } from "node:child_process";
+-import { readFileSync, writeFileSync } from "node:fs";
++import { existsSync, readFileSync, writeFileSync } from "node:fs";
+ import { resolve } from "node:path";
+ import process from "node:process";
+
+@@ -27,6 +27,7 @@ const packagePath = resolve(root, "package.json");
+ const packageBytes = readFileSync(packagePath);
+ const lockPath = resolve(root, "package-lock.json");
+ const lockBytes = readFileSync(lockPath);
++let lockChanged;
+ try {
+   // Every workspace must resolve the same patched package. Merely installing
+   // tarballs at the root leaves registry DSH copies nested under workspaces.
+@@ -38,10 +39,24 @@ try {
+   const install = childCli("npm", ["install", "--no-save", "--package-lock=false", "--ignore-scripts",
+     "--no-audit", "--no-fund"]);
+   execFileSync(install.command, install.args, { cwd: root, stdio: "inherit" });
++  const inventory = childCli("npm", ["ls", "--all", "--json"]);
++  execFileSync(inventory.command, inventory.args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
++  const consumer = JSON.parse(readFileSync(resolve(artifact, "consumer/package.json"), "utf8"));
++  for (const name of ["@deepseek-ai/cordis", "@deepseek-ai/cordis-plugin-group", "zod"]) {
++    const installed = JSON.parse(readFileSync(resolve(root, "node_modules", name, "package.json"), "utf8"));
++    if (installed.name !== name || installed.version !== consumer.dependencies[name]) {
++      throw new Error(`Installed external package differs from verified consumer: ${name}`);
++    }
++  }
+ } finally {
+-  writeFileSync(packagePath, packageBytes);
++  try {
++    lockChanged = !existsSync(lockPath) || !readFileSync(lockPath).equals(lockBytes);
++  } finally {
++    try { writeFileSync(packagePath, packageBytes); }
++    finally { writeFileSync(lockPath, lockBytes); }
++  }
+ }
+-if (!readFileSync(lockPath).equals(lockBytes)) {
++if (lockChanged) {
+   throw new Error("Installing verified DSH changed the repository package lock");
+ }
+ const consumerLock = JSON.parse(readFileSync(resolve(artifact, "consumer/package-lock.json"), "utf8"));
+diff --git a/scripts/verified-dsh-install-policy.d.mts b/scripts/verified-dsh-install-policy.d.mts
+index 45c946b..c696d7c 100644
+--- a/scripts/verified-dsh-install-policy.d.mts
++++ b/scripts/verified-dsh-install-policy.d.mts
+@@ -1,8 +1,10 @@
++export interface InstallOverrides { [name: string]: string | InstallOverrides }
++
+ export interface InstallPackageManifest {
+   dependencies?: Record<string, string>;
+   devDependencies?: Record<string, string>;
+   optionalDependencies?: Record<string, string>;
+-  overrides?: Record<string, string>;
++  overrides?: InstallOverrides;
+ }
+
+ export function packageForVerifiedDshInstall(
+diff --git a/scripts/verified-dsh-install-policy.mjs b/scripts/verified-dsh-install-policy.mjs
+index 366c307..a9cebe5 100644
+--- a/scripts/verified-dsh-install-policy.mjs
++++ b/scripts/verified-dsh-install-policy.mjs
+@@ -12,6 +12,29 @@ export function packageForVerifiedDshInstall(sourcePackage, packages, artifactRo
+   }
+   temporaryPackage.dependencies ??= {};
+   temporaryPackage.dependencies.zod = zod;
++  // A no-lock install also resolves peer packages again. Preserve the entire
++  // verified consumer graph so a newly published compatible-range peer cannot
++  // pull in a different Cordis generation during repository checks.
++  const nativeNames = new Set(packages.map(({ name }) => name));
++  const externalPins = Object.fromEntries(Object.entries(consumerPackage.dependencies ?? {})
++    .filter(([name]) => !nativeNames.has(name)));
++  const assertExact = (name, value) => {
++    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
++      for (const [child, version] of Object.entries(value)) assertExact(`${name}/${child}`, version);
++    } else if (typeof value !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value)) {
++      throw new Error(`Verified DSH consumer must pin an exact external version: ${name}`);
++    }
++  };
++  for (const [name, value] of Object.entries(consumerPackage.overrides ?? {})) assertExact(name, value);
++  temporaryPackage.overrides ??= {};
++  const acceptedOverrides = JSON.parse(JSON.stringify(consumerPackage.overrides ?? {}));
++  for (const [name, version] of Object.entries({ ...externalPins, ...acceptedOverrides })) {
++    assertExact(name, version);
++    for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
++      if (typeof version === "string" && Object.hasOwn(temporaryPackage[section] ?? {}, name)) temporaryPackage[section][name] = version;
++    }
++    temporaryPackage.overrides[name] = version;
++  }
+   for (const { name, tarball } of packages) {
+     const localSpec = `file:${resolve(artifactRoot, tarball)}`;
+     for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
 diff --git a/specs/ARCHITECTURE.md b/specs/ARCHITECTURE.md
 index b0eefd5..83ae363 100644
 --- a/specs/ARCHITECTURE.md
 +++ b/specs/ARCHITECTURE.md
 @@ -395,7 +395,7 @@ The Product policy catalog has 24 internal slots. `modelToolNames` maps them to
- 
+
  The single execution path applies PreToolUse transformation before authoritative assistant/tool-call commit. The selected executor owns argument validation, hard policy and permission; authorized execution runs under its deadline, followed by output validation, PostToolUse and durable DSH tool results. Optional presentation metadata and harmless model decorations cannot replace those authority checks.
- 
+
 -Permission uses `approval-required`, `workspace-autonomous` or `full-autonomous`. Composition translates them into DSH approval and sandbox policy. The first two restrict file/Shell writes to workspace and sandbox temporary roots; the last uses current-user access. Exact grants belong to the root Session tree; approval and sandbox escalation have distinct lifetimes. Human review waits without an execution deadline, while transport, authorized execution and cleanup remain bounded.
 +Permission uses `approval-required`, `workspace-autonomous` or `full-autonomous`. Composition translates them into DSH approval and sandbox policy. The first two restrict file/Shell writes to workspace and sandbox temporary roots; the last uses current-user access. Exact grants belong to the root Session tree; approval and sandbox escalation have distinct lifetimes. Human review waits without an execution deadline, while transport, authorized execution and cleanup remain bounded. Native child delegation guidance is projected from the actual child approval policy through the public prompt assembly seam; it has no authority to grant access. See [Permissions/interactions/Plan](./tech_docs/execution/permissions-interactions-and-plan.md).
- 
+
  `ProductPlanService` owns normal/Plan state, the managed plan file and a monotonic tool guard. Plan retains the selected Shell for prompt-guided inspection; it grants no Shell approval and adds no command parser. Agent-initiated exit reviews actual plan bytes; Host-initiated exit is the user's decision. See [Permissions/interactions/Plan](./tech_docs/execution/permissions-interactions-and-plan.md).
- 
+
 diff --git a/specs/tech_docs/execution/permissions-interactions-and-plan.md b/specs/tech_docs/execution/permissions-interactions-and-plan.md
-index 5ce2ef6..edcdb74 100644
+index 5ce2ef6..c190d7a 100644
 --- a/specs/tech_docs/execution/permissions-interactions-and-plan.md
 +++ b/specs/tech_docs/execution/permissions-interactions-and-plan.md
 @@ -29,6 +29,13 @@ Exact current behavior is owned by:
- 
+
  Permission and question waits use the existing interaction/Host owners for registration, identity, decisions and cancellation. There is no ProductWork capacity queue or waiting-phase ledger. Native DSH owns child execution and resource limits.
- 
+
 +The Product composition projects native child delegation context through the public
 +`system-prompt/assemble` seam. It reads the child's effective ApprovalService policy
 +for each model request: `ask` describes the configured Host answerers and fail-closed
@@ -74,8 +172,14 @@ index 5ce2ef6..edcdb74 100644
 +preserved. This projection grants no permission and does not modify durable policy.
 +
  ## 2. Permission modes
- 
+
  The product supplies one of three modes to each Session. Reads and searches use the local user's access on all three modes. The first two modes apply the upstream `workspace-write` sandbox to governed file mutations and Shell processes; `full-autonomous` uses `danger-full-access`.
+@@ -156,3 +163,5 @@ A platform's release claim requires its own native campaign against the exact Ru
+ ## 9. Change and release discipline
+
+ Any change to modes, rule events, interaction decisions, resume restoration or Plan transitions must update the canonical protocol source when wire shape changes, generated schema/client/fixtures/evidence as applicable, candidate profile, focused unit tests, packed Runtime conformance, module documentation and every affected handoff. A protocol or generated-client digest change invalidates the previous immutable MyAgents integration handoff and its dependent platform/product evidence; an implementation-only resume change still requires a new immutable Runtime and handoff identity.
++
++Repository checks install patched DSH with the verified consumer external pins and overrides. The temporary no-lock installation must not re-resolve Cordis peers to newer registry releases; it restores repository package metadata and retains the accepted native dependency manifest.
 diff --git a/tests/child-approval-context.unit.test.ts b/tests/child-approval-context.unit.test.ts
 new file mode 100644
 index 0000000..56d7a28
@@ -126,3 +230,52 @@ index 0000000..56d7a28
 +  stop();
 +  expect(await text(child)).toBe("original fixed delegation");
 +});
+diff --git a/tests/verified-dsh-install.unit.test.ts b/tests/verified-dsh-install.unit.test.ts
+index f39bf8b..9a4115b 100644
+--- a/tests/verified-dsh-install.unit.test.ts
++++ b/tests/verified-dsh-install.unit.test.ts
+@@ -3,6 +3,8 @@ import { resolve } from "node:path";
+ import { describe, expect, it } from "vitest";
+
+ import { packageForVerifiedDshInstall } from "../scripts/verified-dsh-install-policy.mjs";
++import { buildExactExternalOverrides } from "../scripts/build-patched-dsh-artifact.js";
++import { PATCHED_DSH_EXTERNAL_PACKAGE_AUTHORITY, PATCHED_DSH_COMPILE_TOOLING_AUTHORITY } from "../scripts/patched-dsh-artifact-policy.js";
+
+ describe("verified DSH installation", () => {
+   it("redirects root and workspace DSH dependencies to the same verified tarballs", () => {
+@@ -32,4 +34,35 @@ describe("verified DSH installation", () => {
+       dependencies: { zod: "^4.6.5" },
+     })).toThrow("exact Zod version");
+   });
++
++  it("keeps verified external peer versions when registry ranges gain incompatible releases", () => {
++    const source = { dependencies: { "@deepseek-ai/cordis": "4.0.4" },
++      devDependencies: { typescript: "6.0.3" } };
++    const result = packageForVerifiedDshInstall(source, [], "/artifact", {
++      dependencies: { zod: "4.6.5", "@deepseek-ai/cordis": "4.0.4", "@deepseek-ai/cordis-plugin-group": "1.0.4" },
++      overrides: { typescript: "6.0.3", undici: "8.10.0",
++        "gaxios@7.3.1": { "agent-base": "7.1.4", "https-proxy-agent": "7.0.6" } },
++    });
++    expect(result.overrides).toMatchObject({ "@deepseek-ai/cordis": "4.0.4",
++      "@deepseek-ai/cordis-plugin-group": "1.0.4", typescript: "6.0.3", undici: "8.10.0" });
++    expect(result.dependencies?.["@deepseek-ai/cordis"]).toBe("4.0.4");
++    expect(source).not.toHaveProperty("overrides");
++    expect(result.overrides?.["gaxios@7.3.1"]).toEqual({ "agent-base": "7.1.4", "https-proxy-agent": "7.0.6" });
++    expect(() => packageForVerifiedDshInstall({}, [], "/artifact", {
++      dependencies: { zod: "4.6.5" }, overrides: { undici: "^8.10.0" },
++    })).toThrow("exact external version");
++  });
++
++  it("preserves every exact nested override generated from the accepted external authority", () => {
++    const overrides = buildExactExternalOverrides([
++      ...PATCHED_DSH_EXTERNAL_PACKAGE_AUTHORITY, ...PATCHED_DSH_COMPILE_TOOLING_AUTHORITY,
++    ]);
++    const consumer = { dependencies: { zod: "4.6.5" }, overrides };
++    const before = JSON.stringify(consumer);
++    const result = packageForVerifiedDshInstall({}, [], "/artifact", consumer);
++    expect(result.overrides).toMatchObject(overrides);
++    expect(result.overrides?.["gaxios@7.3.1"]).toEqual({ "agent-base": "7.1.4", "https-proxy-agent": "7.0.6" });
++    expect(JSON.stringify(consumer)).toBe(before);
++    expect(result.overrides?.["gaxios@7.3.1"]).not.toBe(overrides["gaxios@7.3.1"]);
++  });
+ });

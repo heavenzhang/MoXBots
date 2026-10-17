@@ -44,6 +44,8 @@ macOS Dev / Release 在构建业务 bundle 前检查已安装的 SDK JS wrapper�
 
 需要修复 Runtime composition 时，`scripts/integrated-runtimes/source-patches/` 保存精确 upstream commit、可审阅源 diff、SHA-256、确定性结果 commit 和 accepted dependency 身份。`build-moxbots-dsh-runtime.mjs` 仅在新目录构建独立源码，原有下载缓存、包和 sealed handoff 不可修改；没有固定源码、工具链或原生验证时直接失败。
 
+本次源 patch 同时固定 repository checks 的临时安装图：从已验证 consumer 继承 exact external root pins 与递归 overrides，保留 native tarball 覆盖，检查完整 npm 依赖树及 Cordis/group/Zod 实值，并在异常时恢复 package/lock 原字节。accepted native DSH artifact 身份和 builder authority 不变。构建子进程使用 lock 权威 npmjs registry 预热离线缓存，避免用户镜像的元数据键与隔离 verifier 不匹配；不修改全局 npm 配置。
+
 窄 paths PR 或手动 `Owned DSH candidate` workflow 在四种实际 native runner 上执行 source gates、官方安装进程 campaign 和官方 handoff/archive roundtrip 验证，上传候选 archives 与完整 `manifest.json`；不创建 tag、Release 或发布客户端。源码 recipe 的 MoXBots commit、diff digest 与重建后的 Runtime commit 构成来源链，不能把仅存在于 scratch 中的合成 commit 声称为已经发布的上游 commit。
 
 `package-moxbots-dsh-runtime.mjs` 聚合前核对四种 distinct verified targets、共同源码和 recipe provenance，并逐包校验大小及 SHA-256。正式 owned publisher 固定为 `heavenzhang/MoXBots`；tag、资产模板与 recipe identity 必须显式选择。缺包、pending claim、来源不符或下载失败均无上游/旧版本 fallback。候选 selector 位于 `scripts/integrated-runtimes/source-patches/moxbots-dsh-release-candidate.json`；只有 root 完成资源发布裁决、确认目标 Release 的全部资源可读取后，才可用其替换正式 `dsh-release.json`。此步骤不等于桌面 App 发布或真实用户验收。

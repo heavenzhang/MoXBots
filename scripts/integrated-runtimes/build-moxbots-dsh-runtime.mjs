@@ -77,6 +77,10 @@ async function main() {
   if (values['source-only']) return process.stdout.write(`${JSON.stringify(prepared)}\n`);
   const env = { ...process.env, PATH: `${dirname(process.execPath)}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}`,
     npm_execpath: selectedNpmEntrypoint(),
+    // The official isolated verifier reads the lock's npmjs registry cache.
+    // Host-specific registry mirrors must not warm a different metadata key.
+    npm_config_registry: 'https://registry.npmjs.org/',
+    NPM_CONFIG_REGISTRY: 'https://registry.npmjs.org/',
     npm_config_user_agent: `npm/${policy.npmVersion} node/${process.version} ${process.platform} ${process.arch}` };
   const { childCli } = await import(pathToFileURL(join(prepared.checkout, 'scripts/child-cli.mjs')).href);
   const run = (command, args) => {
@@ -90,7 +94,8 @@ async function main() {
   if (npmVersion !== policy.npmVersion) throw new Error(`Runtime build requires npm ${policy.npmVersion}; received ${npmVersion}`);
   run(process.execPath, ['scripts/setup.mjs']);
   run(process.execPath, ['node_modules/vitest/vitest.mjs', 'run', 'tests/child-approval-context.unit.test.ts',
-    'tests/system-context.unit.test.ts', 'tests/product-permission-interaction.unit.test.ts']);
+    'tests/system-context.unit.test.ts', 'tests/product-permission-interaction.unit.test.ts',
+    'tests/verified-dsh-install.unit.test.ts']);
   if (values['full-checks']) {
     for (const script of ['typecheck', 'lint', 'test', 'build']) run(npm, ['run', script]);
   }
@@ -99,6 +104,8 @@ async function main() {
     // Same official builder used by upstream native Release targets, with no tag or publication.
     process.env.PATH = env.PATH;
     process.env.npm_execpath = env.npm_execpath;
+    process.env.npm_config_registry = env.npm_config_registry;
+    process.env.NPM_CONFIG_REGISTRY = env.NPM_CONFIG_REGISTRY;
     process.env.npm_config_user_agent = env.npm_config_user_agent;
     const { buildNativeHandoff } = await import(pathToFileURL(join(prepared.checkout, 'scripts/build-native-handoff.mjs')).href);
     mkdirSync(work);

@@ -33,4 +33,4 @@ Owned clients now negotiate existing business and management profiles separately
 
 ## Next step
 
-Finish the owned DSH four-platform native build (including the Windows package-manager launch context), validate exact resources and activate the formal selector; then require final-head full App/broad/service CI, review and remote main inclusion. Relay implementation, real socket/TLS recovery and the independent management-race repairs already pass their scoped local gates.
+Verify the DSH source-owner repair32a against the official accepted dependency build and actual checks installation, then four native targets, exact resources and the formal selector. Source reconstruction/resource regressions and independent increment review pass; full App/broad/service CI at364ad49e and relay real socket/TLS acceptance also pass. Final resource-selection CI, PR review and remote main inclusion remain required.
