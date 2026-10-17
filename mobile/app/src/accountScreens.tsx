@@ -3,7 +3,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronRight, CircleHelp, HardDrive, Info, LockKeyhole, LogOut, RefreshCw, UserRound } from 'lucide-react-native';
+import { ArrowLeft, Bell, ChevronRight, CircleHelp, HardDrive, Info, LockKeyhole, LogOut, RefreshCw, UserRound } from 'lucide-react-native';
 import { Account, NativeAttachment, isFixtureMode, requestNative } from './native';
 import { dismissToExistingRoot, logoutAndConfirm, returnFromAccountRoute } from './accountPolicy';
 
@@ -47,7 +47,7 @@ function useAccountStatus() {
   return { account, busy, error, refresh };
 }
 
-function AccountFrame({ title, children, onBack }: { title: string; children: React.ReactNode; onBack?: () => void }) {
+export function AccountFrame({ title, children, onBack }: { title: string; children: React.ReactNode; onBack?: () => void }) {
   const router = useRouter();
   const back = onBack ?? (() => returnFromAccountRoute(() => router.canGoBack(), () => router.back(), () => router.replace('/')));
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -91,6 +91,7 @@ export function AccountHomeScreen() {
     </View>
     <Text style={styles.section}>应用</Text>
     <View style={styles.card}>
+      <AccountRow icon={<Bell size={19} color={color.green}/>} title="会话提醒" detail="通知权限与远程会话提醒" onPress={() => router.push('/account/notifications')}/>
       <AccountRow icon={<HardDrive size={19} color={color.green}/>} title="本机文件" detail="查看待发送文件与图片" onPress={() => router.push('/account/storage')}/>
       <AccountRow icon={<Info size={19} color={color.green}/>} title="关于 MoXBots" detail="应用版本与内部构建信息" onPress={() => router.push('/account/about')}/>
       <AccountRow icon={<CircleHelp size={19} color={color.green}/>} title="使用帮助" detail="登录、Bot、会话与附件" onPress={() => router.push('/account/help')}/>
@@ -259,7 +260,7 @@ function formatBytes(bytes: number): string {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#FFFFFF' }, header: { height: 54, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, flexDirection: 'row', alignItems: 'center' }, back: { width: 44, height: 44, justifyContent: 'center' }, headerTitle: { marginLeft: 3, color: color.ink, fontSize: 17, fontWeight: '700' }, headerSpace: { flex: 1 }, content: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 34 },
+  safe: { flex: 1, width: '100%', maxWidth: 480, alignSelf: 'center', backgroundColor: '#FFFFFF' }, header: { height: 54, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, flexDirection: 'row', alignItems: 'center' }, back: { width: 44, height: 44, justifyContent: 'center' }, headerTitle: { marginLeft: 3, color: color.ink, fontSize: 17, fontWeight: '700' }, headerSpace: { flex: 1 }, content: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 34 },
   accountCard: { flexDirection: 'row', alignItems: 'center', padding: 16, minHeight: 94, borderRadius: 16, backgroundColor: color.canvas, gap: 13 }, accountMark: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center' }, accountCopy: { flex: 1 }, accountName: { color: color.ink, fontSize: 16, fontWeight: '700' }, inline: { flexDirection: 'row', alignItems: 'center', gap: 9 }, muted: { color: color.muted, fontSize: 13 }, refresh: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 38, alignSelf: 'flex-start' }, refreshText: { color: color.green, fontSize: 13, fontWeight: '600' }, section: { marginTop: 24, marginBottom: 10, color: color.muted, fontSize: 12, fontWeight: '700' }, card: { overflow: 'hidden', borderWidth: 1, borderColor: color.line, borderRadius: 14, backgroundColor: '#FFFFFF' }, row: { minHeight: 68, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line }, rowPressed: { backgroundColor: color.canvas }, rowIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center', marginRight: 12 }, rowCopy: { flex: 1 }, rowTitle: { color: color.ink, fontSize: 14, fontWeight: '600' }, rowDetail: { marginTop: 4, color: color.muted, fontSize: 12, lineHeight: 17 }, footnote: { marginTop: 16, color: color.muted, fontSize: 12, lineHeight: 18 },
   keyValue: { minHeight: 58, paddingHorizontal: 15, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, justifyContent: 'center', gap: 5 }, keyLabel: { color: color.muted, fontSize: 12 }, keyText: { color: color.ink, fontSize: 14, lineHeight: 20 }, errorNotice: { color: color.red, backgroundColor: '#FAEFED', padding: 12, borderRadius: 10, marginTop: 14, fontSize: 13, lineHeight: 18 },
   logoutButton: { minHeight: 48, marginTop: 24, borderWidth: 1, borderColor: '#E8C9C5', borderRadius: 12, flexDirection: 'row', gap: 9, alignItems: 'center', justifyContent: 'center' }, logoutText: { color: color.red, fontSize: 14, fontWeight: '600' }, disabledButton: { opacity: 0.5 }, modalBackdrop: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(24,31,26,0.36)' }, confirmCard: { padding: 20, backgroundColor: '#FFFFFF', borderRadius: 18 }, confirmTitle: { color: color.ink, fontSize: 18, fontWeight: '700' }, confirmCopy: { marginTop: 12, color: color.muted, fontSize: 14, lineHeight: 21 }, confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 }, cancelButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center' }, cancelText: { color: color.ink, fontSize: 14 }, confirmButton: { minWidth: 96, minHeight: 44, paddingHorizontal: 14, borderRadius: 10, backgroundColor: color.red, justifyContent: 'center', alignItems: 'center' }, confirmButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },

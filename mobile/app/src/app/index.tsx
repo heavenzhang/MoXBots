@@ -12,11 +12,16 @@ import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, rec
 import { SerialUploadQueue } from '../uploadQueue';
 import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../attachmentUploadTracker';
 import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactChatReturn, rememberArtifactChatReturn, resolveArtifactReturnTarget } from '../artifactNavigation';
+import { notificationOpens, notificationSnapshotMatches } from '../notificationPolicy';
+import { clearHandledNotification } from '../notifications';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
 type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found' | 'unknown';
 type Notice = { tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
+function notificationOpenNotice(code: string): NonNullable<Notice> {
+  return { tone: 'error', code, text: code === 'MOBILE_NOTIFICATIONS_DISABLED' ? '会话提醒已停用，请在账号设置中重新启用。' : '暂时无法打开通知对应的会话。可重试读取，或忽略这条通知。' };
+}
 type AttachmentItem = { file: NativeAttachment; upload: NativeAttachmentUpload | null; ownerKey: string; errorCode?: string };
 
 const errorMessages: Record<string, string> = {
@@ -315,6 +320,7 @@ function AppBody() {
     const routeIsCurrent = () => routeFocusGate.isCurrent(routeEpoch) && AppState.currentState === 'active';
     if (!routeIsCurrent()) return;
     const artifactReturn = peekArtifactChatReturn();
+    const notificationIntent = notificationOpens.peek();
     const refreshEpoch = ++accountRefreshEpochRef.current;
     accountRefreshInFlightRef.current = refreshEpoch;
     const requestIsCurrent = () => refreshEpoch === accountRefreshEpochRef.current && routeIsCurrent();
@@ -333,11 +339,50 @@ function AppBody() {
       return;
     }
     if (previousAccount && previousAccount.principalId !== reply.principalId) draftPersistenceRef.current?.clear();
+    let notificationTarget: { targetId: string; identityKey: string; agentId: string; sessionId: string } | null = null;
+    let notificationFailure: string | null = null;
+    if (notificationIntent && notificationOpens.isCurrent(notificationIntent)) {
+      try {
+        const opened = await requestNative({ version: 1, kind: 'notification.open', eventId: notificationIntent.eventId });
+        if (!requestIsCurrent() || !notificationOpens.isCurrent(notificationIntent)) return;
+        if (opened.kind !== 'notification-open') throw new Error(opened.kind === 'error' ? opened.code : 'MOBILE_NOTIFICATION_REPLY_INVALID');
+        notificationTarget = opened;
+      } catch (error) {
+        if (!requestIsCurrent()) return;
+        notificationFailure = error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE';
+      }
+    }
     if (!requestIsCurrent()) return;
     const result = await requestNative({ version: 1, kind: 'targets.list' });
     if (!requestIsCurrent()) return;
     if (result.kind !== 'targets') throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
     setTargets(result.items);
+    if (notificationTarget && notificationIntent && notificationOpens.isCurrent(notificationIntent)) {
+      const currentTarget = result.items.find((item) => item.identityKey === notificationTarget.identityKey && item.agentId === notificationTarget.agentId && item.online);
+      if (currentTarget) {
+        try {
+          const freshSnapshot = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: currentTarget.agentId, sessionId: notificationTarget.sessionId, limit: 30 } }));
+          if (!requestIsCurrent() || !notificationOpens.isCurrent(notificationIntent)) return;
+          if (freshSnapshot.kind !== 'snapshot' || !notificationSnapshotMatches(notificationTarget, freshSnapshot)) throw new Error('MOBILE_NOTIFICATION_TARGET_UNAVAILABLE');
+          const journal = await requestNative({ version: 1, kind: 'operations.pending' });
+          if (!requestIsCurrent() || !notificationOpens.isCurrent(notificationIntent)) return;
+          if (journal.kind !== 'operations') throw new Error(journal.kind === 'error' ? journal.code : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE');
+          clearArtifactChatReturn(artifactReturn);
+          moveOwner('chat', currentTarget, freshSnapshot.sessionId);
+          commitSnapshot(freshSnapshot);
+          setPending(journal.items.filter((item) => item.status !== 'prepared'));
+          setNotice(null);
+          notificationOpens.complete(notificationIntent);
+          void clearHandledNotification(notificationIntent.eventId);
+          void loadMobileCatalog(currentTarget);
+          return;
+        } catch (error) {
+          if (!requestIsCurrent()) return;
+          notificationFailure = error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE';
+        }
+      } else notificationFailure = 'MOBILE_NOTIFICATION_TARGET_UNAVAILABLE';
+    }
+    if (notificationFailure) setNotice(notificationOpenNotice(notificationFailure));
     if (artifactReturn) {
       const returnTarget = resolveArtifactReturnTarget(artifactReturn, reply.principalId, result.items);
       if (returnTarget && requestIsCurrent()) {
@@ -349,7 +394,7 @@ function AppBody() {
             const restoredOwner = moveOwner('chat', returnTarget, artifactReturn.sessionId);
             if (!requestIsCurrent() || !viewStillOwned(restoredOwner, ownerRef.current)) return;
             commitSnapshot(returnedSnapshot);
-            setNotice(null);
+            setNotice(notificationFailure ? notificationOpenNotice(notificationFailure) : null);
             void loadMobileCatalog(returnTarget);
             const journal = await requestNative({ version: 1, kind: 'operations.pending' });
             if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
@@ -402,6 +447,10 @@ function AppBody() {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
   }, [commitSnapshot, loadMobileCatalog, moveOwner, routeFocusGate]);
+
+  useEffect(() => notificationOpens.subscribe(() => {
+    if (routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE', 'error'); });
+  }), [loadAccount, say]);
 
   useFocusEffect(useCallback(() => {
     let active = true;
@@ -981,6 +1030,18 @@ function AppBody() {
     ? { ...(notice ?? { tone: 'error' as const }), text: `消息状态待确认 · ${receiptLabels[receiptStates[chatPendingReceipt.operationId] ?? chatPendingReceipt.status]}。不会自动重发。` }
     : notice;
   const canQueryChatReceipt = !!target?.online && !loading && !sending;
+  const pendingNotification = notificationOpens.peek();
+  const dismissNotification = pendingNotification ? () => {
+    if (!notificationOpens.isCurrent(pendingNotification)) return;
+    notificationOpens.dismiss(pendingNotification);
+    setNotice(null);
+    void clearHandledNotification(pendingNotification.eventId);
+  } : undefined;
+  const retryNotificationAction = pendingNotification ? {
+    label: '重试打开通知', accessibilityLabel: '重新读取通知对应的会话',
+    accessibilityHint: '只重新读取会话，不发送消息或处理授权', disabled: !!loading || sending,
+    onPress: () => void run('notification', loadAccount),
+  } : undefined;
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
@@ -1007,7 +1068,7 @@ function AppBody() {
         </ScrollView>
       </View>
       <View style={styles.listHead}><View><Text style={styles.title}>会话</Text><Text style={styles.subtitle}>{target ? `${target.deviceName} · ${target.online ? '在线' : '离线'}` : '选择一个 Bot'}</Text></View><Pressable accessibilityRole="button" onPress={() => { moveOwner('chat', targetRef.current, null); setNotice(null); }} style={styles.newButton}><Text style={styles.newButtonText}>＋ 新会话</Text></Pressable></View>
-      {notice && <NoticeView notice={notice}/>}
+      {notice && <NoticeView notice={notice} action={retryNotificationAction} onDismiss={dismissNotification}/>}
       <ScrollView style={styles.fill} contentContainerStyle={styles.sessionList}>
         {pending.length > 0 && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认操作</Text><Text style={styles.caption}>状态未知时只查询，不会自动重发。</Text>{pending.map((item) => { const canQuery = !!item.targetId && targets.some((entry) => entry.targetId === item.targetId && entry.online); return <Pressable key={item.operationId} accessibilityRole="button" accessibilityState={{ disabled: !canQuery }} disabled={!canQuery} onPress={() => void run('receipt', () => queryPending(item))} style={[styles.pendingRow, !canQuery && styles.pendingRowDisabled]}><Text style={styles.pendingText}>查询操作 · {receiptLabels[receiptStates[item.operationId] ?? item.status]}</Text><Text style={[styles.pendingLink, !canQuery && styles.pendingLinkDisabled]}>{canQuery ? '查询状态' : '等待设备'}</Text></Pressable>; })}</View>}
         {!target ? <EmptyState title={account?.state === 'signed-in' ? '暂时无法读取 Bot' : '没有可用 Bot'} detail={account?.state === 'signed-in' ? '请检查网络连接后刷新。' : '登录后会从已授权账号读取可连接设备。'}/> : target.online === false ? <EmptyState title="设备当前离线" detail="Bot 设备离线时无法读取会话。"/> : sessions.length === 0 ? <EmptyState title="暂无会话" detail="创建一个会话，或刷新以重新读取。" action="读取会话" onAction={() => void run('sessions', loadSessions)}/> : sessions.map((item) => <Pressable key={item.sessionId} accessibilityRole="button" accessibilityLabel={`打开会话：${item.title || '新会话'}${item.preview ? `，${item.preview}` : ''}`} onPress={() => void run('snapshot', () => openSnapshot(item))} style={styles.sessionRow}><View style={styles.sessionIcon}><ArrowUpRight size={18} color={C.green}/></View><View style={styles.sessionCopy}><Text numberOfLines={1} style={styles.sessionTitle}>{item.title || '新会话'}</Text><Text numberOfLines={2} style={styles.sessionPreview}>{item.preview || item.runtime}</Text></View><ChevronRight size={20} color="#A7AEA9"/></Pressable>)}
@@ -1021,7 +1082,7 @@ function AppBody() {
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
         {menuOpen && <View style={[styles.smallMenu, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!target?.targetId} onPress={() => { setMenuOpen(false); if (target?.targetId) { rememberArtifactChatReturn(account?.principalId && target.identityKey && target.agentId && snapshot?.sessionId ? { principalId: account.principalId, identityKey: target.identityKey, agentId: target.agentId, sessionId: snapshot.sessionId } : null); router.push({ pathname: '/artifacts', params: { targetId: target.targetId, sessionId: snapshot?.sessionId ?? '' } }); } }} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 8 }}><FileText size={17} color={C.green}/><Text style={styles.pendingLink}>查看会话成果</Text></Pressable></View>}
-      {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : undefined}/>}
+      {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : retryNotificationAction} onDismiss={chatPendingReceipt ? undefined : dismissNotification}/>}
       <ScrollView ref={scrollRef} style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
         {snapshot?.state === 'unavailable' && <EmptyState title="会话暂时不可用" detail="请刷新状态或检查设备连接。" action="重新读取" onAction={() => void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }))}/>}
@@ -1087,11 +1148,11 @@ function formatMessageTime(value: string): string {
   return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit' }).format(date);
 }
 
-function NoticeView({ notice, action }: { notice: NonNullable<Notice>; action?: { label: string; accessibilityLabel: string; accessibilityHint?: string; disabled: boolean; onPress: () => void } }) {
+function NoticeView({ notice, action, onDismiss }: { notice: NonNullable<Notice>; action?: { label: string; accessibilityLabel: string; accessibilityHint?: string; disabled: boolean; onPress: () => void }; onDismiss?: () => void }) {
   const [showCode, setShowCode] = useState(false);
   return <View accessibilityRole="alert" style={[styles.notice, notice.tone === 'error' && styles.noticeError, notice.tone === 'success' && styles.noticeSuccess]}>
     <View style={{ flexDirection: action ? 'row' : 'column', alignItems: action ? 'center' : 'flex-start', gap: 8 }}><Text style={[styles.noticeText, action && { flex: 1 }]}>{notice.text}</Text>{action && <Pressable accessibilityRole="button" accessibilityLabel={action.accessibilityLabel} accessibilityHint={action.accessibilityHint} accessibilityState={{ disabled: action.disabled }} disabled={action.disabled} onPress={action.onPress} style={{ minHeight: 40, paddingHorizontal: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }}><RefreshCw size={15} color={action.disabled ? C.muted : C.green}/><Text style={[styles.pendingLink, action.disabled && styles.pendingLinkDisabled]}>{action.label}</Text></Pressable>}</View>
-    {notice.code && <Pressable accessibilityRole="button" accessibilityLabel={showCode ? '隐藏错误详情' : '查看错误详情'} onPress={() => setShowCode((value) => !value)} style={styles.errorDetailsButton}><Text style={styles.pendingLink}>{showCode ? '隐藏详情' : '错误详情'}</Text></Pressable>}
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>{notice.code && <Pressable accessibilityRole="button" accessibilityLabel={showCode ? '隐藏错误详情' : '查看错误详情'} onPress={() => setShowCode((value) => !value)} style={styles.errorDetailsButton}><Text style={styles.pendingLink}>{showCode ? '隐藏详情' : '错误详情'}</Text></Pressable>}{onDismiss && <Pressable accessibilityRole="button" accessibilityLabel="忽略这条通知" disabled={action?.disabled} onPress={onDismiss} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 6 }}><Text style={styles.pendingLink}>忽略通知</Text></Pressable>}</View>
     {showCode && notice.code && <Text selectable style={styles.errorCode}>错误码：{notice.code}</Text>}
   </View>;
 }

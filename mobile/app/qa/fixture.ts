@@ -6,6 +6,7 @@ const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-i
 const offlineTarget: Target = { targetId: 'qa-offline-target', identityKey: 'qa-identity-offline', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
 const account: Account = { kind: 'account', state: 'signed-in', displayName: '演示账号', principalId: 'qa-principal' };
 let fixtureAccount: Account = account;
+let notificationsEnabled = false;
 let scenario: QaScenario = 'conversation';
 let active: Snapshot | null = null;
 let staleApprovalNextRead = false;
@@ -26,6 +27,19 @@ export function fixtureReply(intent: NativeIntent): unknown {
   if (intent.kind === 'account.status' || intent.kind === 'account.login.poll') return fixtureAccount;
   if (intent.kind === 'account.logout') { fixtureAccount = { kind: 'account', state: 'signed-out', displayName: null, principalId: null }; return fixtureAccount; }
   if (intent.kind === 'account.login.start') return { kind: 'login', authorizationUrl: 'https://example.invalid/qa-only', expiresAt: 0 };
+  if (intent.kind.startsWith('notification.')) {
+    if (fixtureAccount.state !== 'signed-in') return { kind: 'error', code: 'MOBILE_AUTHORIZATION_REQUIRED' };
+    if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_NOTIFICATIONS_UNAVAILABLE' };
+    if (intent.kind === 'notification.open') {
+      if (!notificationsEnabled) return { kind: 'error', code: 'MOBILE_NOTIFICATIONS_DISABLED' };
+      if (scenario === 'offline') return { kind: 'error', code: 'MOBILE_NOTIFICATION_TARGET_UNAVAILABLE' };
+      return { kind: 'notification-open', targetId: target.targetId, identityKey: target.identityKey, agentId: target.agentId, sessionId: 'qa-session-1' };
+    }
+    if (intent.kind === 'notification.register') notificationsEnabled = true;
+    // Token rotation refreshes an existing opt-in; it cannot enable reminders.
+    if (intent.kind === 'notification.disable') notificationsEnabled = false;
+    return { kind: 'notification', state: notificationsEnabled ? 'enabled' : 'disabled', provider: notificationsEnabled ? 'fcm' : null, errorCode: null };
+  }
   if (intent.kind === 'targets.list') {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
     return { kind: 'targets', items: scenario === 'multi-bot' ? [target, offlineTarget] : scenario === 'offline' ? [offlineTarget] : [target], hasMore: false };

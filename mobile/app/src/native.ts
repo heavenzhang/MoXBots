@@ -48,12 +48,19 @@ export type SpeechReply = z.infer<typeof speechReply>;
 export type Snapshot = Extract<SessionResult, { kind: 'snapshot' }>;
 export type Interaction = Snapshot['interactions'][number];
 export type PendingOperation = { protocol: 'session' | 'mobile'; targetId: string; agentId: string; operationId: string; sessionId: string | null; status: 'prepared' | 'unknown' | 'processing' };
+const notificationProvider = z.enum(['fcm', 'apns-sandbox', 'apns-production']);
+const notificationReply = z.object({ kind: z.literal('notification'), state: z.enum(['disabled', 'enabled', 'unconfirmed']), provider: notificationProvider.nullable(), errorCode: z.string().regex(/^[A-Z0-9_]{1,128}$/).nullable() }).strict().refine((value) => value.state !== 'enabled' || value.provider !== null);
+const notificationOpenReply = z.object({ kind: z.literal('notification-open'), targetId: z.string().min(1).max(256), identityKey: z.string().min(1).max(256), agentId: id, sessionId }).strict();
+export type NotificationRegistration = z.infer<typeof notificationReply>;
 
 export type NativeIntent =
   | { version: 1; kind: 'account.status' | 'account.login.poll' | 'account.logout' }
   | { version: 1; kind: 'account.login.start' }
   | { version: 1; kind: 'targets.list' }
   | { version: 1; kind: 'operations.pending' }
+  | { version: 1; kind: 'notification.status' | 'notification.disable' }
+  | { version: 1; kind: 'notification.register' | 'notification.refresh'; provider: z.infer<typeof notificationProvider>; token: string }
+  | { version: 1; kind: 'notification.open'; eventId: string }
   | { version: 1; kind: 'draft.read'; targetId: string; sessionId: string | null }
   | { version: 1; kind: 'draft.write'; targetId: string; sessionId: string | null; expectedRevision: number; writeId: string; text: string }
   | { version: 1; kind: 'attachment.pick'; source: 'file' | 'image' }
@@ -79,7 +86,12 @@ const artifactIntentSchema = z.discriminatedUnion('kind', [
   z.object({ version: z.literal(1), kind: z.enum(['artifact.status', 'artifact.pause', 'artifact.remove', 'artifact.preview', 'artifact.share']), targetId: z.string().min(1).max(256), sessionId, artifactId: z.string().uuid() }).strict(),
 ]);
 const pendingSchema = z.object({ kind: z.literal('operations'), items: z.array(z.object({ protocol: z.enum(['session', 'mobile']), targetId: z.string(), agentId: id, operationId: z.string().uuid(), sessionId: sessionId.nullable(), status: z.enum(['prepared', 'unknown', 'processing']) }).strict()) }).strict();
-const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, artifactListReply, artifactDownload, artifactAction, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
+const notificationIntentSchema = z.discriminatedUnion('kind', [
+  z.object({ version: z.literal(1), kind: z.enum(['notification.status', 'notification.disable']) }).strict(),
+  z.object({ version: z.literal(1), kind: z.enum(['notification.register', 'notification.refresh']), provider: notificationProvider, token: z.string().min(1).max(4096) }).strict(),
+  z.object({ version: z.literal(1), kind: z.literal('notification.open'), eventId: z.string().uuid().regex(/^[0-9a-f-]+$/) }).strict(),
+]);
+const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, artifactListReply, artifactDownload, artifactAction, notificationReply, notificationOpenReply, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
 
 type RemoteBridge = { request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void }; addListener(event: 'attachmentUploadChanged', listener: (payload: NativeAttachmentUpload) => void): { remove(): void }; addListener(event: 'artifactDownloadChanged', listener: (payload: ArtifactDownload) => void): { remove(): void } };
 function getRemoteBridge(): RemoteBridge {
@@ -149,6 +161,7 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
     : intent.kind === 'draft.write' ? draftWriteIntent.safeParse(intent)
       : intent.kind.startsWith('attachment.') ? attachmentIntentSchema.safeParse(intent)
       : intent.kind.startsWith('artifact.') ? artifactIntentSchema.safeParse(intent)
+      : intent.kind.startsWith('notification.') ? notificationIntentSchema.safeParse(intent)
       : null;
   if (checkedIntent && !checkedIntent.success) throw new Error('NATIVE_INTENT_INVALID');
   const parsed = nativeReply.safeParse(await moduleRequest(checkedIntent?.success ? checkedIntent.data as NativeIntent : intent));

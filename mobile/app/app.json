@@ -27,6 +27,7 @@
     },
     "plugins": [
       "expo-router",
+      ["expo-notifications", { "defaultChannel": "remote-sessions", "enableBackgroundRemoteNotifications": false }],
       "./modules/moxbots-remote/app.plugin"
     ]
   }
