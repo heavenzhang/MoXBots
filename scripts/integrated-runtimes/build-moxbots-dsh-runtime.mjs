@@ -97,6 +97,7 @@ async function main() {
     'tests/system-context.unit.test.ts', 'tests/product-permission-interaction.unit.test.ts',
     'tests/verified-dsh-install.unit.test.ts']);
   if (values['full-checks']) {
+    run(process.execPath, ['--import', 'tsx', 'scripts/verify-isolated-dsh-checks.ts']);
     for (const script of ['typecheck', 'lint', 'test', 'build']) run(npm, ['run', script]);
   }
   const work = join(values.out, 'native-build');

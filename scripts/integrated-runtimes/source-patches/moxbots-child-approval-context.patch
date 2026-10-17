@@ -46,103 +46,570 @@ index 826cb1e..e7c45c7 100644
    "Current workspace root:",
    canonicalRoot,
 diff --git a/scripts/install-verified-dsh-for-checks.mjs b/scripts/install-verified-dsh-for-checks.mjs
-index 830351d..f2e6309 100644
+index 830351d..038cd5b 100644
 --- a/scripts/install-verified-dsh-for-checks.mjs
 +++ b/scripts/install-verified-dsh-for-checks.mjs
-@@ -1,7 +1,7 @@
+@@ -1,55 +1,96 @@
  #!/usr/bin/env node
-
+-
  import { execFileSync } from "node:child_process";
 -import { readFileSync, writeFileSync } from "node:fs";
-+import { existsSync, readFileSync, writeFileSync } from "node:fs";
- import { resolve } from "node:path";
+-import { resolve } from "node:path";
++import { createHash, randomUUID } from "node:crypto";
++import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
  import process from "node:process";
 
-@@ -27,6 +27,7 @@ const packagePath = resolve(root, "package.json");
- const packageBytes = readFileSync(packagePath);
- const lockPath = resolve(root, "package-lock.json");
- const lockBytes = readFileSync(lockPath);
-+let lockChanged;
+ import { childCli } from "./child-cli.mjs";
+-import { packageForVerifiedDshInstall } from "./verified-dsh-install-policy.mjs";
++import { projectVerifiedDshChecks } from "./verified-dsh-install-policy.mjs";
+
+ const root = resolve(import.meta.dirname, "..");
+-const artifactFlag = process.argv.indexOf("--artifact");
+-if (artifactFlag < 0 || !process.argv[artifactFlag + 1] || process.argv.length !== 4) {
+-  throw new Error("usage: install-verified-dsh-for-checks --artifact <verified artifact directory>");
+-}
+-const artifact = resolve(process.argv[artifactFlag + 1]);
+-const accepted = JSON.parse(readFileSync(resolve(root,
+-  "packages/product-profile/manifests/accepted-patched-dsh-artifact-v1.json"), "utf8"));
+-const verify = childCli("npm", ["run", "verify:dsh-artifact", "--", "--artifact", artifact,
+-  "--expected-manifest-sha256", accepted.manifestSha256]);
++const flag = process.argv.indexOf("--artifact");
++if (flag < 0 || !process.argv[flag + 1] || process.argv.length !== 4) throw new Error("usage: install-verified-dsh-for-checks --artifact <verified artifact directory>");
++const artifact = resolve(process.argv[flag + 1]);
++const accepted = JSON.parse(readFileSync(join(root, "packages/product-profile/manifests/accepted-patched-dsh-artifact-v1.json"), "utf8"));
++const verify = childCli("npm", ["run", "verify:dsh-artifact", "--", "--artifact", artifact, "--expected-manifest-sha256", accepted.manifestSha256]);
+ execFileSync(verify.command, verify.args, { cwd: root, stdio: "inherit" });
+-const manifest = JSON.parse(readFileSync(resolve(artifact, "patched-dsh-artifact-v1.json"), "utf8"));
+-if (manifest.packageCount !== manifest.packages?.length || manifest.packageCount !== accepted.packageCount) {
+-  throw new Error("Verified artifact package inventory differs from the accepted profile");
++const manifestBytes = readFileSync(join(artifact, "patched-dsh-artifact-v1.json"));
++const manifest = JSON.parse(manifestBytes);
++const digest = bytes => createHash("sha256").update(bytes).digest("hex");
++if (manifest.packageCount !== accepted.packageCount || manifest.packages.length !== accepted.packageCount) throw new Error("Verified native inventory differs");
++const sourcePackage = readFileSync(join(root, "package.json"));
++const sourceLock = readFileSync(join(root, "package-lock.json"));
++const consumerPackage = readFileSync(join(artifact, "consumer/package.json"));
++const consumerLock = readFileSync(join(artifact, "consumer/package-lock.json"));
++const receiptPath = join(root, "node_modules/.myagents-verified-dsh-checks.json");
++let previousLinks = [];
++let retainedConsumers = [];
++if (existsSync(receiptPath)) {
++  const previous = JSON.parse(readFileSync(receiptPath, "utf8"));
++  const prefix = join(realpathSync(tmpdir()), "myagents-verified-dsh-checks-");
++  if (previous.repository !== root || typeof previous.consumer !== "string" || !previous.consumer.startsWith(prefix)
++    || !lstatSync(previous.consumer).isDirectory() || lstatSync(previous.consumer).isSymbolicLink()
++    || previous.artifactManifestSha256 !== digest(manifestBytes) || previous.consumerLockSha256 !== digest(consumerLock)
++    || !Array.isArray(previous.links)) throw new Error("Unknown verified checks receipt");
++  for (const link of previous.links) {
++    if (typeof link.name !== "string" || typeof link.target !== "string" || link.target !== join(previous.consumer, "node_modules", link.name)
++      || realpathSync(link.target) !== link.target) throw new Error("Unknown previous native projection target");
++  }
++  previousLinks = previous.links;
++  retainedConsumers = [...(previous.retainedConsumers ?? []), previous.consumer];
+ }
+-const packagePath = resolve(root, "package.json");
+-const packageBytes = readFileSync(packagePath);
+-const lockPath = resolve(root, "package-lock.json");
+-const lockBytes = readFileSync(lockPath);
++const cacheCommand = childCli("npm", ["config", "get", "cache"]);
++const npmCache = execFileSync(cacheCommand.command, cacheCommand.args, { cwd: root, encoding: "utf8" }).trim();
++const work = mkdtempSync(join(realpathSync(tmpdir()), "myagents-verified-dsh-checks-"));
++let projected = false;
  try {
-   // Every workspace must resolve the same patched package. Merely installing
-   // tarballs at the root leaves registry DSH copies nested under workspaces.
-@@ -38,10 +39,24 @@ try {
-   const install = childCli("npm", ["install", "--no-save", "--package-lock=false", "--ignore-scripts",
-     "--no-audit", "--no-fund"]);
-   execFileSync(install.command, install.args, { cwd: root, stdio: "inherit" });
-+  const inventory = childCli("npm", ["ls", "--all", "--json"]);
-+  execFileSync(inventory.command, inventory.args, { cwd: root, stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
-+  const consumer = JSON.parse(readFileSync(resolve(artifact, "consumer/package.json"), "utf8"));
-+  for (const name of ["@deepseek-ai/cordis", "@deepseek-ai/cordis-plugin-group", "zod"]) {
-+    const installed = JSON.parse(readFileSync(resolve(root, "node_modules", name, "package.json"), "utf8"));
-+    if (installed.name !== name || installed.version !== consumer.dependencies[name]) {
-+      throw new Error(`Installed external package differs from verified consumer: ${name}`);
-+    }
-+  }
- } finally {
+-  // Every workspace must resolve the same patched package. Merely installing
+-  // tarballs at the root leaves registry DSH copies nested under workspaces.
+-  const temporaryPackage = packageForVerifiedDshInstall(
+-    JSON.parse(packageBytes.toString("utf8")), manifest.packages, artifact,
+-    JSON.parse(readFileSync(resolve(artifact, "consumer/package.json"), "utf8")),
+-  );
+-  writeFileSync(packagePath, `${JSON.stringify(temporaryPackage, null, 2)}\n`);
+-  const install = childCli("npm", ["install", "--no-save", "--package-lock=false", "--ignore-scripts",
+-    "--no-audit", "--no-fund"]);
+-  execFileSync(install.command, install.args, { cwd: root, stdio: "inherit" });
+-} finally {
 -  writeFileSync(packagePath, packageBytes);
-+  try {
-+    lockChanged = !existsSync(lockPath) || !readFileSync(lockPath).equals(lockBytes);
-+  } finally {
-+    try { writeFileSync(packagePath, packageBytes); }
-+    finally { writeFileSync(lockPath, lockBytes); }
-+  }
- }
+-}
 -if (!readFileSync(lockPath).equals(lockBytes)) {
-+if (lockChanged) {
-   throw new Error("Installing verified DSH changed the repository package lock");
+-  throw new Error("Installing verified DSH changed the repository package lock");
+-}
+-const consumerLock = JSON.parse(readFileSync(resolve(artifact, "consumer/package-lock.json"), "utf8"));
+-for (const { name } of manifest.packages) {
+-  const version = consumerLock.packages?.[`node_modules/${name}`]?.version;
+-  const installed = JSON.parse(readFileSync(resolve(root, "node_modules", name, "package.json"), "utf8"));
+-  if (typeof version !== "string" || installed.name !== name || installed.version !== version) {
+-    throw new Error(`Installed DSH package differs from verified artifact: ${name}`);
++  const consumer = join(work, "consumer");
++  mkdirSync(consumer);
++  for (const { tarball } of manifest.packages) copyFileSync(join(artifact, tarball), join(work, tarball));
++  writeFileSync(join(consumer, "package.json"), consumerPackage);
++  writeFileSync(join(consumer, "package-lock.json"), consumerLock);
++  const home = join(work, "home"); mkdirSync(home);
++  for (const name of ["user.npmrc", "global.npmrc"]) writeFileSync(join(work, name), "");
++  const env = Object.fromEntries(["PATH", "PATHEXT", "SystemRoot", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "TZ"].flatMap(name => process.env[name] === undefined ? [] : [[name, process.env[name]]]));
++  Object.assign(env, { HOME: home, USERPROFILE: home, npm_execpath: process.env.npm_execpath,
++    NPM_CONFIG_USERCONFIG: join(work, "user.npmrc"), NPM_CONFIG_GLOBALCONFIG: join(work, "global.npmrc"),
++    NPM_CONFIG_CACHE: npmCache, NPM_CONFIG_REGISTRY: "https://registry.npmjs.org/", NPM_CONFIG_OFFLINE: "true", NPM_CONFIG_LOGS_DIR: join(work, "npm-logs") });
++  const { tsImport } = await import("tsx/esm/api");
++  const { assertNoAncestorNodeModules, assertContainedNodeModules } = await tsImport("./build-patched-dsh-artifact.ts", import.meta.url);
++  assertNoAncestorNodeModules(consumer);
++  const npm = args => {
++    const command = childCli("npm", args, env);
++    execFileSync(command.command, command.args, { cwd: consumer, env, stdio: "pipe", maxBuffer: 64 * 1024 * 1024 });
++  };
++  npm(["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"]);
++  npm(["ls", "--all", "--json", "--offline"]);
++  assertContainedNodeModules(consumer);
++  for (const [path, bytes] of [["package.json", consumerPackage], ["package-lock.json", consumerLock]]) {
++    if (!readFileSync(join(consumer, path)).equals(bytes)) throw new Error(`Consumer authority changed: ${path}`);
+   }
++  const links = await projectVerifiedDshChecks({ repository: root, consumer, packages: manifest.packages,
++    sourceLock: JSON.parse(sourceLock), consumerLock: JSON.parse(consumerLock), previousLinks, validate: async links => {
++      execFileSync(process.execPath, ["--import", "tsx", "scripts/verify-isolated-dsh-identities.ts", consumer], { cwd: root, env, stdio: "inherit" });
++      for (const [path, bytes] of [["patched-dsh-artifact-v1.json", manifestBytes], ["consumer/package.json", consumerPackage], ["consumer/package-lock.json", consumerLock]]) {
++        if (!readFileSync(join(artifact, path)).equals(bytes)) throw new Error(`Original artifact authority changed: ${path}`);
++      }
++      if (!readFileSync(join(root, "package.json")).equals(sourcePackage) || !readFileSync(join(root, "package-lock.json")).equals(sourceLock)) throw new Error("Repository authority changed");
++      const next = `${receiptPath}.next-${randomUUID()}`;
++      try {
++        writeFileSync(next, `${JSON.stringify({ schemaVersion: 1, repository: root, consumer,
++          artifactManifestSha256: digest(manifestBytes),
++          consumerLockSha256: digest(consumerLock), retainedConsumers, links }, null, 2)}\n`, { mode: 0o600 });
++        renameSync(next, receiptPath);
++        projected = true;
++      } catch (error) { rmSync(next, { force: true }); throw error; }
++    } });
++  projected = true;
++  process.stdout.write(`Installed isolated locked native checks: ${manifest.packageCount} packages, ${links.length} native/public links, consumer=${consumer}\n`);
++} catch (error) {
++  if (error.retainConsumer) projected = true;
++  throw error;
++} finally {
++  if (!projected) rmSync(work, { recursive: true, force: true });
  }
- const consumerLock = JSON.parse(readFileSync(resolve(artifact, "consumer/package-lock.json"), "utf8"));
+-process.stdout.write(`Installed ${manifest.packageCount} verified patched DSH packages for repository checks\n`);
+diff --git a/scripts/portable-pack-audit-policy.ts b/scripts/portable-pack-audit-policy.ts
+new file mode 100644
+index 0000000..b4b69e1
+--- /dev/null
++++ b/scripts/portable-pack-audit-policy.ts
+@@ -0,0 +1,13 @@
++/** Keep drive letters out of tar's archive operand: GNU tar treats C: as a remote host. */
++export const packAuditTarInvocation = (
++  directory: string,
++  filename: string,
++  action: "list" | "extract",
++): { cwd: string; args: string[] } => {
++  // npm pack reports a local basename. Refuse paths before listing/extracting;
++  // ./ also prevents a basename from being interpreted as an option.
++  if (!filename.endsWith(".tgz") || /[\\/:\p{Cc}]/u.test(filename)) {
++    throw new Error("npm pack archive must be a local tgz basename");
++  }
++  return { cwd: directory, args: [action === "list" ? "-tzf" : "-xzf", `./${filename}`] };
++};
 diff --git a/scripts/verified-dsh-install-policy.d.mts b/scripts/verified-dsh-install-policy.d.mts
-index 45c946b..c696d7c 100644
+index 45c946b..5d851eb 100644
 --- a/scripts/verified-dsh-install-policy.d.mts
 +++ b/scripts/verified-dsh-install-policy.d.mts
-@@ -1,8 +1,10 @@
-+export interface InstallOverrides { [name: string]: string | InstallOverrides }
-+
- export interface InstallPackageManifest {
-   dependencies?: Record<string, string>;
-   devDependencies?: Record<string, string>;
-   optionalDependencies?: Record<string, string>;
+@@ -1,13 +1,11 @@
+-export interface InstallPackageManifest {
+-  dependencies?: Record<string, string>;
+-  devDependencies?: Record<string, string>;
+-  optionalDependencies?: Record<string, string>;
 -  overrides?: Record<string, string>;
-+  overrides?: InstallOverrides;
- }
-
- export function packageForVerifiedDshInstall(
+-}
+-
+-export function packageForVerifiedDshInstall(
+-  sourcePackage: InstallPackageManifest,
+-  packages: readonly { name: string; tarball: string }[],
+-  artifactRoot: string,
+-  consumerPackage: InstallPackageManifest,
+-): InstallPackageManifest;
++export interface CheckLock { packages?: Record<string, { version?: string; link?: boolean }> }
++export interface CheckProjection { path: string; name: string; target: string }
++export function verifiedProjectionNames(packages: readonly { name: string }[], sourceLock: CheckLock, consumerLock: CheckLock): { name: string; version: string }[];
++export function projectVerifiedDshChecks(options: {
++  repository: string; consumer: string; packages: readonly { name: string }[];
++  sourceLock: CheckLock; consumerLock: CheckLock;
++  previousLinks?: CheckProjection[];
++  cleanup?: (path: string) => void;
++  warn?: (message: string) => void;
++  validate?: (links: CheckProjection[]) => void | Promise<void>;
++}): Promise<CheckProjection[]>;
 diff --git a/scripts/verified-dsh-install-policy.mjs b/scripts/verified-dsh-install-policy.mjs
-index 366c307..a9cebe5 100644
+index 366c307..d6176f3 100644
 --- a/scripts/verified-dsh-install-policy.mjs
 +++ b/scripts/verified-dsh-install-policy.mjs
-@@ -12,6 +12,29 @@ export function packageForVerifiedDshInstall(sourcePackage, packages, artifactRo
+@@ -1,26 +1,138 @@
+-import { resolve } from "node:path";
++import process from "node:process";
++import { randomUUID } from "node:crypto";
++import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync } from "node:fs";
++import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+
+-export function packageForVerifiedDshInstall(sourcePackage, packages, artifactRoot, consumerPackage) {
+-  const temporaryPackage = JSON.parse(JSON.stringify(sourcePackage));
+-  // Zod schemas cross the native/product API boundary. A no-lock install may
+-  // otherwise hoist a newer transitive copy beside the exact workspace pin,
+-  // making those public schema types incompatible. Use the accepted consumer's
+-  // dependency identity, just as the Runtime composition does.
+-  const zod = consumerPackage?.dependencies?.zod;
+-  if (typeof zod !== "string" || !/^\d+\.\d+\.\d+$/u.test(zod)) {
+-    throw new Error("Verified DSH consumer must pin an exact Zod version");
++export function verifiedProjectionNames(packages, sourceLock, consumerLock) {
++  const names = new Set(packages.map(({ name }) => name));
++  for (const name of ["@deepseek-ai/cordis", "zod"]) {
++    const expected = consumerLock.packages?.[`node_modules/${name}`]?.version;
++    if (typeof expected !== "string" || sourceLock.packages?.[`node_modules/${name}`]?.version !== expected) {
++      throw new Error(`Public check boundary differs between repository and consumer: ${name}`);
++    }
++    names.add(name);
    }
-   temporaryPackage.dependencies ??= {};
-   temporaryPackage.dependencies.zod = zod;
-+  // A no-lock install also resolves peer packages again. Preserve the entire
-+  // verified consumer graph so a newly published compatible-range peer cannot
-+  // pull in a different Cordis generation during repository checks.
-+  const nativeNames = new Set(packages.map(({ name }) => name));
-+  const externalPins = Object.fromEntries(Object.entries(consumerPackage.dependencies ?? {})
-+    .filter(([name]) => !nativeNames.has(name)));
-+  const assertExact = (name, value) => {
-+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-+      for (const [child, version] of Object.entries(value)) assertExact(`${name}/${child}`, version);
-+    } else if (typeof value !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u.test(value)) {
-+      throw new Error(`Verified DSH consumer must pin an exact external version: ${name}`);
+-  temporaryPackage.dependencies ??= {};
+-  temporaryPackage.dependencies.zod = zod;
+-  for (const { name, tarball } of packages) {
+-    const localSpec = `file:${resolve(artifactRoot, tarball)}`;
+-    for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
+-      if (Object.hasOwn(temporaryPackage[section] ?? {}, name)) {
+-        temporaryPackage[section][name] = localSpec;
++  return [...names].sort().map(name => {
++    if (!/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/u.test(name)) throw new Error("Unsafe verified package name");
++    const version = consumerLock.packages?.[`node_modules/${name}`]?.version;
++    if (typeof version !== "string") throw new Error(`Verified consumer lacks package identity: ${name}`);
++    return { name, version };
++  });
++}
++
++const stat = path => { try { return lstatSync(path); } catch (error) { if (error.code === "ENOENT") return undefined; throw error; } };
++const remove = path => { const entry = stat(path); if (!entry) return; if (entry.isSymbolicLink()) unlinkSync(path); else rmSync(path, { recursive: true }); };
++
++/** Keep the two lock authorities physically separate; Node follows directory realpaths. */
++export async function projectVerifiedDshChecks({ repository, consumer, packages, sourceLock, consumerLock, previousLinks = [], validate = () => {}, cleanup = remove, warn = message => process.stderr.write(`${message}\n`) }) {
++  repository = realpathSync(repository);
++  consumer = realpathSync(consumer);
++  const prior = new Map(previousLinks.map(item => [resolve(item.path), item]));
++  const containedParents = path => {
++    const local = relative(repository, path);
++    if (local.startsWith("..") || isAbsolute(local)) throw new Error("Check projection escapes repository");
++    let current = repository;
++    for (const part of relative(repository, dirname(path)).split(/[\\/]/u).filter(Boolean)) {
++      current = join(current, part);
++      const entry = stat(current);
++      if (entry && (!entry.isDirectory() || entry.isSymbolicLink())) throw new Error(`Check projection parent is not an owned directory: ${current}`);
 +    }
 +  };
-+  for (const [name, value] of Object.entries(consumerPackage.overrides ?? {})) assertExact(name, value);
-+  temporaryPackage.overrides ??= {};
-+  const acceptedOverrides = JSON.parse(JSON.stringify(consumerPackage.overrides ?? {}));
-+  for (const [name, version] of Object.entries({ ...externalPins, ...acceptedOverrides })) {
-+    assertExact(name, version);
-+    for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
-+      if (typeof version === "string" && Object.hasOwn(temporaryPackage[section] ?? {}, name)) temporaryPackage[section][name] = version;
++  const identities = verifiedProjectionNames(packages, sourceLock, consumerLock);
++  const native = new Set(packages.map(({ name }) => name));
++  const expected = new Map(identities.map(item => [item.name, item.version]));
++  const targets = new Map();
++  for (const { name, version } of identities) {
++    const path = join(consumer, "node_modules", name);
++    const installed = JSON.parse(readFileSync(join(path, "package.json"), "utf8"));
++    if (installed.name !== name || installed.version !== version || !lstatSync(path).isDirectory()) {
++      throw new Error(`Verified consumer installation differs: ${name}`);
 +    }
-+    temporaryPackage.overrides[name] = version;
++    targets.set(name, realpathSync(path));
 +  }
-   for (const { name, tarball } of packages) {
-     const localSpec = `file:${resolve(artifactRoot, tarball)}`;
-     for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
++  const selected = new Map(identities.map(({ name }) => [join(repository, "node_modules", name), name]));
++  const scan = directory => {
++    const directoryEntry = stat(directory);
++    if (!directoryEntry) return;
++    containedParents(join(directory, "placeholder"));
++    const visit = (path, name) => {
++      const entry = lstatSync(path);
++      if (expected.has(name) && (entry.isDirectory() || entry.isSymbolicLink())) {
++        const version = JSON.parse(readFileSync(join(path, "package.json"), "utf8")).version;
++        if (native.has(name) || version === expected.get(name)) selected.set(path, name);
+       }
++      if (entry.isDirectory()) scan(join(path, "node_modules"));
++    };
++    for (const entry of readdirSync(directory, { withFileTypes: true })) {
++      if (entry.name.startsWith(".")) continue;
++      const path = join(directory, entry.name);
++      if (entry.name.startsWith("@") && entry.isSymbolicLink()) throw new Error(`Unknown scope link: ${path}`);
++      if (entry.name.startsWith("@") && entry.isDirectory()) {
++        for (const item of readdirSync(path)) visit(join(path, item), `${entry.name}/${item}`);
++      } else visit(path, entry.name);
++    }
++  };
++  scan(join(repository, "node_modules"));
++  for (const path of Object.keys(sourceLock.packages ?? {})) {
++    if (/^(?:apps|packages)\/[^/]+$/u.test(path)) scan(join(repository, path, "node_modules"));
++  }
++  // Replacing a selected parent already replaces its whole graph. Never traverse
++  // through that new link and mutate the consumer's own nested directories.
++  const links = [];
++  for (const [path, name] of [...selected].sort(([a], [b]) => a.length - b.length)) {
++    if (!links.some(item => path.startsWith(`${item.path}/`) || path.startsWith(`${item.path}\\`))) {
++      links.push({ path: resolve(path), name, target: targets.get(name) });
+     }
+-    temporaryPackage.overrides ??= {};
+-    temporaryPackage.overrides[name] = localSpec;
+   }
+-  return temporaryPackage;
++  for (const item of links) {
++    containedParents(item.path);
++    const entry = stat(item.path);
++    if (!entry) continue;
++    if (entry.isSymbolicLink()) {
++      const priorItem = prior.get(item.path);
++      if (!priorItem || priorItem.name !== item.name || realpathSync(item.path) !== priorItem.target) throw new Error(`Unknown check projection link: ${item.path}`);
++    } else {
++      const identity = JSON.parse(readFileSync(join(item.path, "package.json"), "utf8"));
++      const locked = sourceLock.packages?.[relative(repository, item.path).replaceAll("\\", "/")];
++      if (!entry.isDirectory() || !locked || identity.name !== item.name || identity.version !== locked.version) throw new Error(`Check projection is not from the repository lock: ${item.path}`);
++    }
++  }
++  const changed = [];
++  try {
++    for (const item of links) {
++      mkdirSync(dirname(item.path), { recursive: true });
++      const suffix = randomUUID();
++      const next = `${item.path}.verified-next-${suffix}`;
++      const backup = `${item.path}.verified-backup-${suffix}`;
++      const existed = Boolean(stat(item.path));
++      symlinkSync(item.target, next, process.platform === "win32" ? "junction" : "dir");
++      try {
++        if (existed) renameSync(item.path, backup);
++        changed.push({ ...item, backup, existed });
++        renameSync(next, item.path);
++      } finally { remove(next); }
++    }
++    for (const item of links) {
++      if (realpathSync(item.path) !== item.target) throw new Error(`Check projection realpath differs: ${item.name}`);
++    }
++    await validate(links);
++  } catch (error) {
++    const failures = [];
++    for (const item of changed.reverse()) {
++      try { remove(item.path); if (item.existed) renameSync(item.backup, item.path); }
++      catch (failure) { failures.push(failure); }
++    }
++    if (failures.length) {
++      const failure = new AggregateError([error, ...failures], "Check projection rollback failed; preserve isolated consumer");
++      failure.retainConsumer = true;
++      throw failure;
++    }
++    throw error;
++  }
++  // validate commits the receipt while all backups still exist. Cleanup cannot
++  // turn this successful projection into a failure which deletes its live graph.
++  for (const item of changed) if (item.existed) {
++    try { cleanup(item.backup); } catch (error) { try { warn(`Retained check projection backup ${item.backup}: ${String(error)}`); } catch { /* The committed graph remains live even if diagnostics fail. */ } }
++  }
++  return links;
+ }
+diff --git a/scripts/verify-isolated-dsh-checks.ts b/scripts/verify-isolated-dsh-checks.ts
+new file mode 100644
+index 0000000..38f28a2
+--- /dev/null
++++ b/scripts/verify-isolated-dsh-checks.ts
+@@ -0,0 +1,134 @@
++import assert from "node:assert/strict";
++import { execFile, execFileSync } from "node:child_process";
++import { createHash } from "node:crypto";
++import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
++import { createServer } from "node:http";
++import { tmpdir } from "node:os";
++import { join, resolve } from "node:path";
++import { promisify } from "node:util";
++
++import { childCli } from "./child-cli.mjs";
++import { projectVerifiedDshChecks, type CheckLock, type CheckProjection } from "./verified-dsh-install-policy.mjs";
++
++// Explicit native verification: default unit tests intentionally prohibit processes/network.
++async function main() {
++  const work = mkdtempSync(join(realpathSync(tmpdir()), "dsh-two-lock-npm-"));
++  const packages = new Map<string, Record<string, unknown>>();
++  const archives = new Map<string, Buffer>();
++  const pack = (name: string, version: string, dependencies = {}, peerDependencies = {}, files: Record<string, string> = {}) => {
++    const key = `${name.replaceAll("/", "-")}-${version}`;
++    const folder = join(work, key);
++    mkdirSync(join(folder, "package"), { recursive: true });
++    const manifest = { name, version, main: "index.js", types: "index.d.ts", dependencies, peerDependencies };
++    writeFileSync(join(folder, "package/package.json"), JSON.stringify(manifest));
++    for (const [path, contents] of Object.entries({ "index.js": "module.exports = {};", ...files })) {
++      const target = join(folder, "package", path);
++      mkdirSync(resolve(target, ".."), { recursive: true }); writeFileSync(target, contents);
++    }
++    const tarball = `${key}.tgz`;
++    execFileSync("tar", ["-czf", tarball, "-C", folder, "package"], { cwd: work });
++    archives.set(tarball, readFileSync(join(work, tarball)));
++    const versions = packages.get(name) ?? {}; versions[version] = { ...manifest, tarball }; packages.set(name, versions);
++    return tarball;
++  };
++  pack("zod", "4.6.5", {}, {}, { "index.js": "exports.Schema = class Schema {};", "index.d.ts": "export class Schema { private identity: void; }" });
++  for (const version of ["4.0.4", "4.0.5"]) pack("@deepseek-ai/cordis", version, {}, {}, {
++    "index.js": "exports.Context = class Context {};", "index.d.ts": "export class Context { private identity: void; }",
++  });
++  pack("@deepseek-ai/cordis-plugin-group", "1.0.4", {}, { "@deepseek-ai/cordis": "~4.0.4" });
++  pack("@deepseek-ai/cordis-plugin-group", "1.0.5", {}, { "@deepseek-ai/cordis": "~4.0.5" });
++  for (const version of ["0.4.1", "1.0.0", "1.1.0"]) pack("json-schema-traverse", version);
++  pack("ajv", "6.15.0", { "json-schema-traverse": "^0.4.1" }, {}, { "lib/refs/json-schema-draft-04.json": "{\"version\":6}" });
++  pack("ajv", "8.20.0", { "json-schema-traverse": "^1.0.0" }, {}, { "index.js": "module.exports = {traverse:require('json-schema-traverse/package.json').version};" });
++  for (const version of ["1.0.0", "1.1.0"]) pack("@fixture/token", version);
++  pack("@fixture/sso", "1.0.0", { "@fixture/token": "^1.0.0" }, {}, { "index.js": "module.exports = {version:require('./package.json').version,token:require('@fixture/token/package.json').version};" });
++  const nativeFiles = {
++    "index.js": "const {Context}=require('@deepseek-ai/cordis'),{Schema}=require('zod'); module.exports = {Context,Schema,check:(ctx,schema)=>ctx instanceof Context && schema instanceof Schema,ajv:require('ajv/package.json').version,group:require('@deepseek-ai/cordis-plugin-group/package.json').version,traverse:require('ajv').traverse,sso:require('@fixture/sso')};",
++    "index.d.ts": "import {Context} from '@deepseek-ai/cordis'; import {Schema} from 'zod'; export function check(ctx: Context, schema: Schema): boolean;",
++  };
++  const peers = { "@deepseek-ai/cordis": "~4.0.4", "@deepseek-ai/cordis-plugin-group": "~1.0.4", zod: "^4.6.5" };
++  const dependencies = { ajv: "^8.20.0", "@fixture/sso": "1.0.0" };
++  for (const name of ["@fixture/dsh-native", "@fixture/dsh-peer"]) {
++    pack(name, "1.0.0", dependencies, peers, nativeFiles);
++    pack(name, "2.0.0", dependencies, peers, nativeFiles);
++  }
++  pack("fixture-dev-tool", "1.0.0", { ajv: "^6.14.0", "@fixture/sso": "1.0.0" }, {}, {
++    "index.js": "module.exports = {ajv:require('ajv/package.json').version,draft:require('ajv/lib/refs/json-schema-draft-04.json').version,sso:require('@fixture/sso')};",
++  });
++  let registry = "";
++  const server = createServer((request, response) => {
++    const name = decodeURIComponent((request.url ?? "").slice(1));
++    const bytes = archives.get(name); if (bytes) { response.end(bytes); return; }
++    const versions = packages.get(name); if (!versions) { response.writeHead(404).end(); return; }
++    const entries = Object.entries(versions);
++    response.setHeader("content-type", "application/json");
++    response.end(JSON.stringify({ name, "dist-tags": { latest: entries.at(-1)?.[0] }, versions: Object.fromEntries(entries.map(([version, value]) => {
++      const item = value as { tarball: string }; const body = archives.get(item.tarball); if (!body) throw new Error("fixture archive missing");
++      return [version, { ...item, dist: { tarball: `${registry}${item.tarball}`, integrity: `sha512-${createHash("sha512").update(body).digest("base64")}` } }];
++    })) }));
++  });
++  try {
++    await new Promise<void>(resolveListen => server.listen(0, "127.0.0.1", resolveListen));
++    const address = server.address(); if (!address || typeof address === "string") throw new Error("fixture registry address missing");
++    registry = `http://127.0.0.1:${address.port}/`;
++    for (const name of ["user.npmrc", "global.npmrc"]) writeFileSync(join(work, name), "");
++    const env = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, HOME: work, USERPROFILE: work, TEMP: work, TMP: work,
++      npm_execpath: process.env.npm_execpath, NPM_CONFIG_USERCONFIG: join(work, "user.npmrc"), NPM_CONFIG_GLOBALCONFIG: join(work, "global.npmrc"),
++      NPM_CONFIG_CACHE: join(work, "cache"), NPM_CONFIG_REGISTRY: registry };
++    const npm = async (cwd: string, args: string[]) => { const command = childCli("npm", args, env); return promisify(execFile)(command.command, command.args, { cwd, env, timeout: 90_000, maxBuffer: 8 * 1024 * 1024 }); };
++    const npmVersion = (await npm(work, ["--version"])).stdout.trim(); assert.equal(npmVersion, "11.19.0");
++    const repository = join(work, "repository"); const consumer = join(work, "consumer"); mkdirSync(repository); mkdirSync(consumer);
++    const original = { name: "fixture-repository", version: "1.0.0", private: true, dependencies: {
++      "@fixture/dsh-native": "1.0.0", "@fixture/dsh-peer": "1.0.0", "@deepseek-ai/cordis": "4.0.4", zod: "4.6.5", "@deepseek-ai/cordis-plugin-group": "1.0.4", "fixture-dev-tool": "1.0.0",
++    }, overrides: { "@deepseek-ai/cordis-plugin-group": "1.0.4" } };
++    const accepted = { name: "fixture-consumer", version: "1.0.0", private: true, dependencies: {
++      "@fixture/dsh-native": "file:../@fixture-dsh-native-2.0.0.tgz", "@fixture/dsh-peer": "file:../@fixture-dsh-peer-2.0.0.tgz",
++      "@deepseek-ai/cordis": "4.0.4", zod: "4.6.5", "@deepseek-ai/cordis-plugin-group": "1.0.4",
++    }, overrides: { "@deepseek-ai/cordis-plugin-group": "1.0.4", "json-schema-traverse": "1.0.0", "@fixture/token": "1.0.0" } };
++    writeFileSync(join(repository, "package.json"), JSON.stringify(original)); writeFileSync(join(consumer, "package.json"), JSON.stringify(accepted));
++    for (const cwd of [repository, consumer]) {
++      await npm(cwd, ["install", "--ignore-scripts", "--no-audit", "--no-fund"]);
++      await npm(cwd, ["ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund"]);
++      await npm(cwd, ["ls", "--all", "--json", "--offline"]);
++    }
++    const sourceBytes = ["package.json", "package-lock.json"].map(name => readFileSync(join(repository, name)));
++    const consumerBytes = ["package.json", "package-lock.json"].map(name => readFileSync(join(consumer, name)));
++    const sourceLock = JSON.parse(readFileSync(join(repository, "package-lock.json"), "utf8")) as Required<CheckLock>; const consumerLock = JSON.parse(readFileSync(join(consumer, "package-lock.json"), "utf8")) as Required<CheckLock>;
++    const workspace = join(repository, "packages/workspace/node_modules"); mkdirSync(join(workspace, "@fixture"), { recursive: true });
++    cpSync(join(repository, "node_modules/@fixture/dsh-native"), join(workspace, "@fixture/dsh-native"), { recursive: true });
++    sourceLock.packages["packages/workspace"] = { version: "1.0.0" };
++    sourceLock.packages["packages/workspace/node_modules/@fixture/dsh-native"] = { version: "1.0.0" };
++    const nativePackages = [{ name: "@fixture/dsh-native" }, { name: "@fixture/dsh-peer" }];
++    const receipt = join(repository, "node_modules/.fixture-receipt.json");
++    const commit = (links: CheckProjection[]) => { const next = `${receipt}.next`; writeFileSync(next, JSON.stringify(links)); renameSync(next, receipt); };
++    const options = { repository, consumer, packages: nativePackages, sourceLock, consumerLock };
++    await assert.rejects(projectVerifiedDshChecks({ ...options, validate: () => { throw new Error("injected receipt write failure"); } }), /receipt write failure/u);
++    assert.equal(lstatSync(join(repository, "node_modules/@fixture/dsh-native")).isSymbolicLink(), false);
++    assert.equal((JSON.parse(readFileSync(join(repository, "node_modules/@fixture/dsh-native/package.json"), "utf8")) as { version: string }).version, "1.0.0");
++    const links = await projectVerifiedDshChecks({ ...options, validate: commit });
++    const oldReceipt = readFileSync(receipt);
++    await assert.rejects(projectVerifiedDshChecks({ ...options, previousLinks: links, validate: () => { throw new Error("second projection fails"); } }), /second projection fails/u);
++    assert.ok(readFileSync(receipt).equals(oldReceipt));
++    for (const link of links) assert.equal(realpathSync(link.path), link.target);
++    const warnings: string[] = [];
++    const repeated = await projectVerifiedDshChecks({ ...options, previousLinks: links, validate: commit, cleanup: () => { throw new Error("injected cleanup failure"); }, warn: value => warnings.push(value) });
++    assert.equal(repeated.length, links.length); assert.equal(warnings.length, links.length);
++    const result: unknown = JSON.parse(execFileSync(process.execPath, ["-e", `const n=require('@fixture/dsh-native'),p=require('@fixture/dsh-peer'),{Context}=require('@deepseek-ai/cordis'),{Schema}=require('zod'); console.log(JSON.stringify({native:n,peer:p,dev:require('fixture-dev-tool'),publicIdentity:n.Context===Context&&p.Context===Context&&n.Schema===Schema&&p.Schema===Schema,crossBoundary:n.check(new Context(),new Schema())&&p.check(new Context(),new Schema()),workspace:require('./packages/workspace/node_modules/@fixture/dsh-native').sso}));`], { cwd: repository, env, encoding: "utf8" }));
++    const nativeResult = { ajv: "8.20.0", group: "1.0.4", traverse: "1.0.0", sso: { version: "1.0.0", token: "1.0.0" } };
++    assert.deepEqual(result, { native: nativeResult, peer: nativeResult, dev: { ajv: "6.15.0", draft: 6, sso: { version: "1.0.0", token: "1.1.0" } }, publicIdentity: true, crossBoundary: true, workspace: { version: "1.0.0", token: "1.0.0" } });
++    const ts = join(repository, "boundary.ts"); writeFileSync(ts, "import {Context} from '@deepseek-ai/cordis'; import {Schema} from 'zod'; import {check} from '@fixture/dsh-native'; check(new Context(),new Schema());\n");
++    execFileSync(process.execPath, [resolve(import.meta.dirname, "../node_modules/typescript/bin/tsc"), "--strict", "--noEmit", "--module", "nodenext", "--moduleResolution", "nodenext", "--target", "es2022", ts], { cwd: repository, env, stdio: "pipe" });
++    for (const [index, name] of ["package.json", "package-lock.json"].entries()) {
++      const sourceExpected = sourceBytes[index]; const consumerExpected = consumerBytes[index];
++      assert.ok(sourceExpected); assert.ok(consumerExpected);
++      assert.ok(readFileSync(join(repository, name)).equals(sourceExpected)); assert.ok(readFileSync(join(consumer, name)).equals(consumerExpected));
++    }
++    const unknown = join(repository, "node_modules/@fixture"); const saved = `${unknown}.saved`; renameSync(unknown, saved); symlinkSync(saved, unknown, process.platform === "win32" ? "junction" : "dir");
++    await assert.rejects(projectVerifiedDshChecks({ ...options, previousLinks: repeated }), /Unknown scope link|owned directory/u);
++    unlinkSync(unknown); renameSync(saved, unknown);
++    process.stdout.write(`${JSON.stringify({ node: process.version, npm: npmVersion, result, lockAuthoritiesUnchanged: true, receiptFailureRollback: true, repeatedProjectionRollback: true, cleanupFailureKeepsLiveGraph: true, unknownScopeRejected: true, typecheck: true, links: links.length })}\n`);
++  } finally {
++    await new Promise<void>(resolveClose => server.close(() => resolveClose())); rmSync(work, { recursive: true, force: true });
++  }
++}
++main().catch((error: unknown) => { process.stderr.write(`${error instanceof Error ? error.stack : String(error)}\n`); process.exitCode = 1; });
+diff --git a/scripts/verify-isolated-dsh-identities.ts b/scripts/verify-isolated-dsh-identities.ts
+new file mode 100644
+index 0000000..26cec2e
+--- /dev/null
++++ b/scripts/verify-isolated-dsh-identities.ts
+@@ -0,0 +1,30 @@
++import assert from "node:assert/strict";
++import { readFileSync, realpathSync } from "node:fs";
++import { createRequire } from "node:module";
++import { join, resolve } from "node:path";
++
++import { Context } from "@deepseek-ai/cordis";
++import { CommandRuntime } from "@deepseek-ai/dsh-commands";
++import { z } from "zod";
++
++const repository = resolve(import.meta.dirname, "..");
++const consumer = process.argv[2];
++if (!consumer) throw new Error("usage: verify-isolated-dsh-identities <consumer>");
++const rootRequire = createRequire(join(repository, "package.json"));
++const consumerRequire = createRequire(join(consumer, "package.json"));
++const inventory = JSON.parse(readFileSync(join(consumer, "package.json"), "utf8")) as { dependencies: Record<string, string> };
++assert.equal(realpathSync(consumerRequire.resolve("@deepseek-ai/cordis")), realpathSync(rootRequire.resolve("@deepseek-ai/cordis")));
++assert.equal(realpathSync(consumerRequire.resolve("zod")), realpathSync(rootRequire.resolve("zod")));
++let count = 0;
++for (const name of Object.keys(inventory.dependencies)) {
++  if (!name.startsWith("@deepseek-ai/dsh-") && !name.startsWith("@deepseek-ai/cdp")) continue;
++  const nativeRequire = createRequire(join(consumer, "node_modules", name, "package.json"));
++  assert.equal(realpathSync(nativeRequire.resolve("@deepseek-ai/cordis")), realpathSync(rootRequire.resolve("@deepseek-ai/cordis")), "Cordis public Context identity split");
++  assert.equal(realpathSync(nativeRequire.resolve("zod")), realpathSync(rootRequire.resolve("zod")), "Zod public identity split");
++  count++;
++}
++const ctx = new Context();
++new CommandRuntime(ctx);
++assert.equal(Object.hasOwn(ctx.reflect.props, "invocation"), true, "Native Typert invocation accessor must bind the public Context");
++assert.equal(z.object({ accepted: z.literal(true) }).parse({ accepted: true }).accepted, true);
++process.stdout.write(`Verified public Cordis/Zod identities and native Typert accessor for ${count} native packages\n`);
+diff --git a/scripts/verify-repository-security.ts b/scripts/verify-repository-security.ts
+index 10cabdd..936481f 100644
+--- a/scripts/verify-repository-security.ts
++++ b/scripts/verify-repository-security.ts
+@@ -15,6 +15,7 @@ import {
+   type PackedFile,
+ } from "../packages/artifact-verifier/src/index.js";
+ import { analyzeModuleLoads } from "./dsh-baseline-policy.js";
++import { packAuditTarInvocation } from "./portable-pack-audit-policy.js";
+ import {
+   ARTIFACT_LAUNCHER_PATH,
+   DYNAMIC_E2E_HOST_PATH,
+@@ -248,8 +249,9 @@ try {
+         files.push({ path: record.path, size: record.size, mode: record.mode });
+       }
+     }
+-    const archivePath = resolve(packageRoot, result.filename);
+-    const listed = await execute("tar", ["-tzf", archivePath], {
++    const listing = packAuditTarInvocation(packageRoot, result.filename, "list");
++    const listed = await execute("tar", listing.args, {
++      cwd: listing.cwd,
+       env: packEnvironment,
+       maxBuffer: 16 * 1024 * 1024,
+     });
+@@ -277,7 +279,8 @@ try {
+       mode: 0,
+     });
+     failures.push(...auditPackedFileList(policy, actualFiles));
+-    await execute("tar", ["-xzf", archivePath, "-C", packageRoot]);
++    const extraction = packAuditTarInvocation(packageRoot, result.filename, "extract");
++    await execute("tar", extraction.args, { cwd: extraction.cwd, env: packEnvironment });
+     const entries = await Promise.all(actualPaths.map(async (path) => ({
+       path,
+       bytes: await readFile(resolve(packageRoot, "package", path)),
 diff --git a/specs/ARCHITECTURE.md b/specs/ARCHITECTURE.md
 index b0eefd5..83ae363 100644
 --- a/specs/ARCHITECTURE.md
@@ -156,8 +623,26 @@ index b0eefd5..83ae363 100644
 
  `ProductPlanService` owns normal/Plan state, the managed plan file and a monotonic tool guard. Plan retains the selected Shell for prompt-guided inspection; it grants no Shell approval and adds no command parser. Agent-initiated exit reviews actual plan bytes; Host-initiated exit is the user's decision. See [Permissions/interactions/Plan](./tech_docs/execution/permissions-interactions-and-plan.md).
 
+diff --git a/specs/tech_docs/assurance/development-and-local-integration.md b/specs/tech_docs/assurance/development-and-local-integration.md
+index 3d28f55..aef50b3 100644
+--- a/specs/tech_docs/assurance/development-and-local-integration.md
++++ b/specs/tech_docs/assurance/development-and-local-integration.md
+@@ -12,11 +12,11 @@ Tests that create real filesystem symlinks run only when the local OS account ca
+ ./setup.sh
+ ```
+
+-On Windows PowerShell, run `./setup.ps1`. Both call `scripts/setup.mjs` through npm so that npm/Corepack subprocesses use the selected Node toolchain. It runs `npm ci`, obtains the exact DSH and pi-ai source commits recorded in `specs/dsh/seam-decisions-v1.json` and `specs/pi-ai/seam-evidence-v1.json`, primes the package stores, builds or verifies the accepted patched DSH artifact, and installs those verified packages for repository checks. Its inputs and artifact live under ignored `tmp/setup/`; rerunning setup verifies and reuses the accepted artifact. Use `--dsh-source` / `--pi-ai-source` with absolute paths when those Git checkouts already exist. CI uses `--checks-only` to omit pi-ai preparation when it will only typecheck, lint, test, and build source. These standalone script entries leave `package.json`, an artifact identity input, unchanged.
++On Windows PowerShell, run `./setup.ps1`. Both call `scripts/setup.mjs` through npm so that npm/Corepack subprocesses use the selected Node toolchain. It runs `npm ci`, obtains the exact DSH and pi-ai source commits recorded in `specs/dsh/seam-decisions-v1.json` and `specs/pi-ai/seam-evidence-v1.json`, primes the package stores, builds or verifies the accepted patched DSH artifact, and installs those verified packages for repository checks. Its inputs and artifact live under ignored `tmp/setup/`; rerunning setup verifies and reuses the accepted artifact. Use `--dsh-source` / `--pi-ai-source` with absolute paths when those Git checkouts already exist. CI uses `--checks-only` to omit pi-ai preparation when it will only typecheck, lint, test, and build source. These standalone script entries leave `package.json`, an artifact identity input, unchanged. Check dependencies use an isolated copy of the accepted consumer lock; the original repository lock still owns development tools. The checks receipt in `node_modules/.myagents-verified-dsh-checks.json` records the active and retained temporary consumers. Keep them until source checks and handoff construction finish; retained directories and failed-cleanup backups are intentionally preserved rather than deleting a graph still referenced by a link. Run `node --import tsx scripts/verify-isolated-dsh-checks.ts` with the selected npm toolchain for the real two-lock installation and rollback regression.
+
+ `npm run build` builds source and Reference Web. It does not produce a MyAgents integration handoff. `npm ci` alone also leaves ordinary registry DSH packages in place and is not the completed checked setup.
+
+-The verified install also pins the temporary root Zod dependency to the accepted consumer's exact version. Native session schemas cross into Product code, so allowing an unpinned transitive Zod upgrade beside the workspace pin can break source composition even when every DSH tarball is correct. This does not change the committed package manifest or lockfile.
++The verified install projects the root public Cordis and Zod entry points to the accepted consumer instances. Native Context constructors and session schemas cross into Product code, so even same-version duplicate installations can break constructor identity or source composition. The installer verifies matching public versions before projection and native public resolution afterward, without changing either package manifest or lockfile.
+
+ ## Modify DSH and build a local native handoff
+
 diff --git a/specs/tech_docs/execution/permissions-interactions-and-plan.md b/specs/tech_docs/execution/permissions-interactions-and-plan.md
-index 5ce2ef6..c190d7a 100644
+index 5ce2ef6..d544be0 100644
 --- a/specs/tech_docs/execution/permissions-interactions-and-plan.md
 +++ b/specs/tech_docs/execution/permissions-interactions-and-plan.md
 @@ -29,6 +29,13 @@ Exact current behavior is owned by:
@@ -179,7 +664,7 @@ index 5ce2ef6..c190d7a 100644
 
  Any change to modes, rule events, interaction decisions, resume restoration or Plan transitions must update the canonical protocol source when wire shape changes, generated schema/client/fixtures/evidence as applicable, candidate profile, focused unit tests, packed Runtime conformance, module documentation and every affected handoff. A protocol or generated-client digest change invalidates the previous immutable MyAgents integration handoff and its dependent platform/product evidence; an implementation-only resume change still requires a new immutable Runtime and handoff identity.
 +
-+Repository checks install patched DSH with the verified consumer external pins and overrides. The temporary no-lock installation must not re-resolve Cordis peers to newer registry releases; it restores repository package metadata and retains the accepted native dependency manifest.
++Repository checks preserve two independent lock authorities: the original repository `npm ci` owns development tools, and a separate temporary copy of the unchanged accepted consumer runs offline `npm ci --ignore-scripts`. Only the 105 native package entry points and the public Cordis/Zod identities are projected into repository checks through directory links. Native realpaths retain the accepted external graph; development tools retain the original repository graph. Projection preflights ownership, commits its receipt before discarding backups, and rolls back failed validation. The receipt tracks retained consumer directories through setup and native build; cleanup failures retain their graphs and backups for inspection. Package manifests, both locks and accepted archives are unchanged. `node --import tsx scripts/verify-isolated-dsh-checks.ts` exercises real npm installation, conflicting child versions, shared public identities, TypeScript resolution, repeat projection and transaction failures.
 diff --git a/tests/child-approval-context.unit.test.ts b/tests/child-approval-context.unit.test.ts
 new file mode 100644
 index 0000000..56d7a28
@@ -230,52 +715,77 @@ index 0000000..56d7a28
 +  stop();
 +  expect(await text(child)).toBe("original fixed delegation");
 +});
+diff --git a/tests/portable-pack-audit.unit.test.ts b/tests/portable-pack-audit.unit.test.ts
+new file mode 100644
+index 0000000..01f6d16
+--- /dev/null
++++ b/tests/portable-pack-audit.unit.test.ts
+@@ -0,0 +1,14 @@
++import { expect, it } from "vitest";
++import { packAuditTarInvocation } from "../scripts/portable-pack-audit-policy.js";
++
++it.each(["list", "extract"] as const)("audits Windows drive paths without a remote tar operand (%s)", action => {
++  const directory = String.raw`C:\Users\runner user\AppData\Local\Temp\pack-audit`;
++  const result = packAuditTarInvocation(directory, "myagents-dsh-reference-web-0.0.0.tgz", action);
++  expect(result.cwd).toBe(directory);
++  expect(result.args).toEqual([action === "list" ? "-tzf" : "-xzf", "./myagents-dsh-reference-web-0.0.0.tgz"]);
++});
++
++it.each(["../outside.tgz", "folder/archive.tgz", String.raw`folder\archive.tgz`, "C:archive.tgz", "archive.tgz\n", "archive\u0000.tgz", "archive.zip"])("rejects a nonlocal npm pack archive: %s", filename => {
++  expect(() => packAuditTarInvocation("/isolated/pack", filename, "list")).toThrow("local tgz basename");
++  expect(() => packAuditTarInvocation("/isolated/pack", filename, "extract")).toThrow("local tgz basename");
++});
 diff --git a/tests/verified-dsh-install.unit.test.ts b/tests/verified-dsh-install.unit.test.ts
-index f39bf8b..9a4115b 100644
+index f39bf8b..736678c 100644
 --- a/tests/verified-dsh-install.unit.test.ts
 +++ b/tests/verified-dsh-install.unit.test.ts
-@@ -3,6 +3,8 @@ import { resolve } from "node:path";
+@@ -1,35 +1,19 @@
+-import { resolve } from "node:path";
+-
  import { describe, expect, it } from "vitest";
++import { verifiedProjectionNames } from "../scripts/verified-dsh-install-policy.mjs";
 
- import { packageForVerifiedDshInstall } from "../scripts/verified-dsh-install-policy.mjs";
-+import { buildExactExternalOverrides } from "../scripts/build-patched-dsh-artifact.js";
-+import { PATCHED_DSH_EXTERNAL_PACKAGE_AUTHORITY, PATCHED_DSH_COMPILE_TOOLING_AUTHORITY } from "../scripts/patched-dsh-artifact-policy.js";
-
- describe("verified DSH installation", () => {
-   it("redirects root and workspace DSH dependencies to the same verified tarballs", () => {
-@@ -32,4 +34,35 @@ describe("verified DSH installation", () => {
-       dependencies: { zod: "^4.6.5" },
-     })).toThrow("exact Zod version");
-   });
-+
-+  it("keeps verified external peer versions when registry ranges gain incompatible releases", () => {
-+    const source = { dependencies: { "@deepseek-ai/cordis": "4.0.4" },
-+      devDependencies: { typescript: "6.0.3" } };
-+    const result = packageForVerifiedDshInstall(source, [], "/artifact", {
-+      dependencies: { zod: "4.6.5", "@deepseek-ai/cordis": "4.0.4", "@deepseek-ai/cordis-plugin-group": "1.0.4" },
-+      overrides: { typescript: "6.0.3", undici: "8.10.0",
-+        "gaxios@7.3.1": { "agent-base": "7.1.4", "https-proxy-agent": "7.0.6" } },
-+    });
-+    expect(result.overrides).toMatchObject({ "@deepseek-ai/cordis": "4.0.4",
-+      "@deepseek-ai/cordis-plugin-group": "1.0.4", typescript: "6.0.3", undici: "8.10.0" });
-+    expect(result.dependencies?.["@deepseek-ai/cordis"]).toBe("4.0.4");
-+    expect(source).not.toHaveProperty("overrides");
-+    expect(result.overrides?.["gaxios@7.3.1"]).toEqual({ "agent-base": "7.1.4", "https-proxy-agent": "7.0.6" });
-+    expect(() => packageForVerifiedDshInstall({}, [], "/artifact", {
-+      dependencies: { zod: "4.6.5" }, overrides: { undici: "^8.10.0" },
-+    })).toThrow("exact external version");
-+  });
-+
-+  it("preserves every exact nested override generated from the accepted external authority", () => {
-+    const overrides = buildExactExternalOverrides([
-+      ...PATCHED_DSH_EXTERNAL_PACKAGE_AUTHORITY, ...PATCHED_DSH_COMPILE_TOOLING_AUTHORITY,
+-import { packageForVerifiedDshInstall } from "../scripts/verified-dsh-install-policy.mjs";
+-
+-describe("verified DSH installation", () => {
+-  it("redirects root and workspace DSH dependencies to the same verified tarballs", () => {
+-    const source = {
+-      dependencies: { "@deepseek-ai/dsh-session": "0.1.7-rc.2" },
+-      overrides: { "@deepseek-ai/dsh-session": "0.1.7-rc.2", unrelated: "2.0.0" },
+-    };
+-    const packages = [
+-      { name: "@deepseek-ai/dsh-session", tarball: "session.tgz" },
+-      { name: "@deepseek-ai/dsh-agent", tarball: "agent.tgz" },
+-    ];
+-    const result = packageForVerifiedDshInstall(source, packages, "/artifact", {
+-      dependencies: { zod: "4.6.5" },
+-    });
+-
+-    expect(result.dependencies?.["@deepseek-ai/dsh-session"]).toBe(`file:${resolve("/artifact/session.tgz")}`);
+-    expect(result.overrides?.["@deepseek-ai/dsh-session"]).toBe(result.dependencies?.["@deepseek-ai/dsh-session"]);
+-    expect(result.overrides?.["@deepseek-ai/dsh-agent"]).toBe(`file:${resolve("/artifact/agent.tgz")}`);
+-    expect(result.overrides?.unrelated).toBe("2.0.0");
+-    expect(result.dependencies?.zod).toBe("4.6.5");
+-    expect(source.dependencies["@deepseek-ai/dsh-session"]).toBe("0.1.7-rc.2");
+-    expect(source.dependencies).not.toHaveProperty("zod");
++describe("verified DSH checks projection", () => {
++  const source = { packages: { "node_modules/@deepseek-ai/cordis": { version: "4.0.4" }, "node_modules/zod": { version: "4.6.5" } } };
++  const consumer = { packages: { ...source.packages, "node_modules/@fixture/native": { version: "2.0.0" } } };
++  it("projects native identity and the evidenced Cordis/Zod boundary without rewriting either authority", () => {
++    const before = JSON.stringify({ source, consumer });
++    expect(verifiedProjectionNames([{ name: "@fixture/native" }], source, consumer)).toEqual([
++      { name: "@deepseek-ai/cordis", version: "4.0.4" }, { name: "@fixture/native", version: "2.0.0" }, { name: "zod", version: "4.6.5" },
 +    ]);
-+    const consumer = { dependencies: { zod: "4.6.5" }, overrides };
-+    const before = JSON.stringify(consumer);
-+    const result = packageForVerifiedDshInstall({}, [], "/artifact", consumer);
-+    expect(result.overrides).toMatchObject(overrides);
-+    expect(result.overrides?.["gaxios@7.3.1"]).toEqual({ "agent-base": "7.1.4", "https-proxy-agent": "7.0.6" });
-+    expect(JSON.stringify(consumer)).toBe(before);
-+    expect(result.overrides?.["gaxios@7.3.1"]).not.toBe(overrides["gaxios@7.3.1"]);
-+  });
++    expect(JSON.stringify({ source, consumer })).toBe(before);
+   });
+-
+-  it("rejects a floating schema dependency before installing unverified types", () => {
+-    expect(() => packageForVerifiedDshInstall({}, [], "/artifact", {
+-      dependencies: { zod: "^4.6.5" },
+-    })).toThrow("exact Zod version");
++  it("rejects missing native identity, unsafe paths or different public boundary versions", () => {
++    expect(() => verifiedProjectionNames([{ name: "missing" }], source, consumer)).toThrow("lacks package identity");
++    expect(() => verifiedProjectionNames([{ name: "../outside" }], source, consumer)).toThrow("Unsafe");
++    expect(() => verifiedProjectionNames([], source, { packages: { ...consumer.packages, "node_modules/zod": { version: "4.6.6" } } })).toThrow("Public check boundary differs");
+   });
  });
