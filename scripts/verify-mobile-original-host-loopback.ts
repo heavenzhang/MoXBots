@@ -1,7 +1,7 @@
 /** Explicit original Host + real SessionEngine/SDK/native child loopback. No paid inference. */
 import {strict as assert} from 'node:assert';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
-import {spawn,type ChildProcess} from 'node:child_process';
+import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createServer as httpServer,type ServerResponse} from 'node:http';
 import {createServer as unixServer,type Socket} from 'node:net';
 import {once} from 'node:events';
@@ -19,9 +19,26 @@ const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'wor
 const ipcDirectory=join(root,'ipc'),socketPath=join(ipcDirectory,'management.sock');
 const secret=randomBytes(32).toString('base64url');
 const children:ChildProcess[]=[];
-let diagnostics='',calls=0,seenAttachment=false;
+let diagnostics='',calls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
 const evidence:string[]=[];
+const descendants=new Map<number,{pid:number;ppid:number;pgid:number;birth:string;command:string}>();
 function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object});evidence.push(line);console.log(line);}
+function processRows(){
+  return execFileSync('/bin/ps',['-axo','pid=,ppid=,pgid=,lstart=,comm='],{encoding:'utf8'}).trim().split('\n').map(line=>{
+    const fields=line.trim().split(/\s+/);
+    return {pid:Number(fields[0]),ppid:Number(fields[1]),pgid:Number(fields[2]),birth:fields.slice(3,8).join(' '),command:fields.slice(8).join(' ')};
+  });
+}
+function captureProcesses(){
+  if(!hostPid)return;
+  const rows=processRows();
+  if(!hostBirth||rows.find(row=>row.pid===hostPid)?.birth!==hostBirth)return;
+  const owned=new Set([hostPid]);let changed=true;
+  while(changed){changed=false;for(const row of rows)if(owned.has(row.ppid)&&!owned.has(row.pid)){owned.add(row.pid);changed=true;}}
+  const selected=rows.filter(row=>owned.has(row.pid));
+  for(const row of selected)descendants.set(row.pid,row);
+  record('actual-host-process-tree',{processes:selected});
+}
 const env:NodeJS.ProcessEnv={PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:home,USERPROFILE:home,TMPDIR:root,
   DEVELOPER_DIR:'/Library/Developer/CommandLineTools',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',CLAUDE_CODE_MAX_RETRIES:'0',
   ENABLE_CLAUDEAI_MCP_SERVERS:'false',MYAGENTS_MANAGEMENT_PORT:''};
@@ -57,7 +74,7 @@ const supplier=httpServer(async(request,response)=>{
     const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};
     assert.equal(body.model,'original-host-model');
     seenAttachment ||= JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/');
-    calls++;reply(response);
+    calls++;captureProcesses();reply(response);
   }catch{response.writeHead(500).end();}
 });
 let peer:Socket|undefined;
@@ -114,6 +131,8 @@ try{
     MYAGENTS_HOST_STATE_DIR:state,MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MANAGEMENT_IPC:socketPath,
     MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:String(process.getuid!()),MYAGENTS_HOST_MANAGEMENT_GID:String(process.getgid!()),MYAGENTS_HOST_MODE:'1',
     CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'});
+  hostPid=host.pid;hostBirth=processRows().find(row=>row.pid===hostPid)?.birth;
+  record('host-born',{pid:hostPid,pgid:hostPid,birth:hostBirth,node:process.version});
   await wait('real Host startup',async()=>{if(host.exitCode!==null)throw Error('FIXTURE_HOST_EXITED');return peer&&diagnostics.includes('management IPC connected')?true:undefined;});
   const rejected=await management('config.provider.set',{provider:{id:'forbidden-loopback',name:'Forbidden portable loopback',apiProtocol:'anthropic',authType:'api_key',baseUrl},model:'original-host-model',workspace:{rootId:'workspaces',relativePath:'default'},executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
   assert.equal((rejected.result as {kind:string}).kind,'error');
@@ -148,19 +167,37 @@ try{
   ]){const response=await internal(operation);assert.notEqual((response.result as {kind:string}).kind,'error');}
   await mobile({kind:'mobile.send',operationId:sendId,sessionId,text:'Second original Host turn with a real uploaded file.',assetIds:[assetId]});
   await wait('accepted send',async()=>{const r=(await mobile({kind:'mobile.receipt',operationId:sendId})).result as Record<string,unknown>;if(r.status==='rejected'||r.status==='unconfirmed')throw Error(`FIXTURE_SEND_${r.status}:${r.code}`);return r.status==='accepted'?r:undefined;});
-  await wait('actual second terminal',async()=>{const s=await remote({kind:'get',sessionId,limit:30});return s.terminal==='complete'&&s.state==='idle'&&JSON.stringify(s.messages).includes('Second original Host turn')?s:undefined;});
+  await wait('actual second terminal',async()=>{const s=await remote({kind:'get',sessionId,limit:30});return s.terminal==='complete'&&s.state==='idle'&&calls>callsAfterStart&&JSON.stringify(s.messages).includes('Second original Host turn')?s:undefined;});
   const materialized=join(workspace,'myagents_files','remote-mobile',sessionId,sendId,`${assetId}.txt`);
   assert.deepEqual(await readFile(materialized),bytes);assert(seenAttachment,'supplier did not see original worker attachment reference');
+  const callsAfterSend=calls;
+  const sendReceipt=(await mobile({kind:'mobile.receipt',operationId:sendId})).result;
+  assert.deepEqual((await mobile({kind:'mobile.send',operationId:sendId,sessionId,text:'Second original Host turn with a real uploaded file.',assetIds:[assetId]})).result,sendReceipt);
+  assert.equal(calls,callsAfterSend);record('send-retry-no-session-replay');
   const index=JSON.parse(await readFile(join(home,'.myagents','sessions.json'),'utf8')) as Array<{id:string;providerId:string;sdkSessionId?:string}>;
   assert.equal(index.filter(item=>item.id===sessionId).length,1);assert.equal(index.find(item=>item.id===sessionId)?.providerId,'original-host-fixture');
   record('real-session-and-file-persisted',{sessionId,attachmentBytes:bytes.length,sha256,supplierCalls:calls});
   const artifacts=await internal({kind:'assets.request',request:{version:1,kind:'list',agentId:'original-host-agent',sessionId,limit:30}});
+  assert.equal((artifacts.result as {kind:string}).kind,'owner-page');
   record('artifact-owner-projection',artifacts.result);
+  const outbox=await wait('both original terminal observations',async()=>{
+    const files=await readdir(join(state,'mobile-notify-source-v1'));
+    const disk=JSON.parse(await readFile(join(state,'mobile-notify-source-v1',files.find(name=>name.endsWith('.json'))!),'utf8')) as {items:Array<{sourceEventId:string;connectionEpoch:string;agentId:string;sessionId:string;workerGeneration:string}>};
+    return disk.items.length>=2?disk.items:undefined;
+  });
+  assert.equal(outbox.length,2);assert.equal(new Set(outbox.map(item=>item.sourceEventId)).size,2);
+  assert.equal(outbox[0]!.sourceEventId,hint.sourceEventId);
+  for(const item of outbox){assert.equal(item.agentId,'original-host-agent');assert.equal(item.sessionId,sessionId);assert.equal(item.connectionEpoch,connectionEpoch);assert.equal(item.workerGeneration,completed.generation);}
+  record('two-original-terminal-sources-durable',{pending:outbox.length,stableFirstSource:outbox[0]!.sourceEventId===hint.sourceEventId});
   record('PASS',{elapsedMs:Date.now()-started,scope:'actual main + worker + SessionEngine/Store + native SDK, synthetic loopback supplier; no WSS/provider/phone acceptance'});
 }catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',privateFixture:root});process.exitCode=1;}
 finally{
+  captureProcesses();
   // Every owned process was born detached; signal only its exact birth PGID.
   for(const processChild of children.reverse())if(processChild.pid&&processChild.exitCode===null){try{process.kill(-processChild.pid,'SIGTERM');}catch{/* already exited */}await Promise.race([once(processChild,'exit').catch(()=>{}),new Promise(r=>setTimeout(r,1500))]);if(processChild.exitCode===null)try{process.kill(-processChild.pid,'SIGKILL');}catch{/* group exited */}}
+  // SDK descendants normally inherit the Host group. A recorded detached
+  // descendant is cleaned only if its exact PID/birth identity still matches.
+  for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{/* already exited */}}
   peer?.destroy();for(const waiter of pending.values()){clearTimeout(waiter.timer);waiter.reject(Error('FIXTURE_CLOSED'));}pending.clear();
   supplier.closeAllConnections();supplier.close();listener.close();
   await writeFile(join(root,'diagnostics.private.log'),diagnostics,{mode:0o600});
