@@ -97,3 +97,52 @@ set also reread exited. Loopback public port 53377 and original service port
 53379 had no `LISTEN` entry when checked with `lsof`. No worker or SDK native
 process was created in this red run because no mobile business start occurred.
 Node helper syntax, runner syntax, targeted ESLint and `git diff --check` pass.
+
+### Original identity owner / outer-timeout hardening
+
+The helper now boots original main once without management enabled, waits for
+its ready state, reads original `/host/status.hostId`, stops that exact Host,
+configures the original encrypted credential owner while the Host is stopped,
+then boots original main with management and checks the same persisted ID.
+There is no direct fixture write to `host-identity.json`. Private keys, device
+certificates and peer bindings are always generated/verified by original owners.
+The bootstrap creates no Session and is not another executor.
+
+A dedicated `scripts/fixtures/mobile-full-e2e-tsconfig.json` extends root and
+includes all `src/**/*` plus this fixture; check with:
+
+```sh
+node node_modules/typescript/bin/tsc -p scripts/fixtures/mobile-full-e2e-tsconfig.json --noEmit
+```
+
+The business-start assertion now follows original asynchronous semantics:
+query the original mobile receipt until accepted, verify original terminal and
+supplier text, repeat the same original operation and require one supplier call.
+This downstream part remains **unexecuted** until a legitimate target exists.
+
+The outer runner now records the actual child group birth and captures the
+private fixture root. On its own deadline it validates root owner/mode/canonical
+path, writes the original Node stop signal and gives cleanup a grace period;
+then only exact recorded PID/group birth matches can receive TERM/KILL. This
+covers a Rust process terminated before `Children::drop` could run.
+
+An explicit negative cleanup check exercises that case:
+
+```sh
+MOXBOTS_FULL_TIMEOUT_CHECK=1 node scripts/verify-mobile-full-host-e2e.mjs
+```
+
+It intentionally pauses the test after real Headless ready and uses a 10-second
+outer deadline (normal remains 150 seconds; inner remains 130 seconds). Expected
+result is nonzero/SIGTERM, never a passing business-chain assertion. Local run
+printed `explicit-timeout-cleanup-fixture-ready` and the expected SIGTERM. Exact
+recorded service 28500, Node 28502, connector 28532, bootstrap Host 28519 and
+runtime Host 28522 were reread as exited, as were their recorded descendants;
+public 58313 and service 58314 had no LISTEN. Normal owner-created-identity red
+was also reproduced separately, with exact processes 28260/28262/28291 and
+bootstrap/runtime Hosts 28287/28289 exited and ports 58077/58078 closed. No SDK
+native process had started because the target-directory gate was still red.
+Raw private diagnostics: `/tmp/moxbots-full-e2e-owner-identity-red4.log` and
+`/tmp/moxbots-full-e2e-outer-timeout.log`.
+The final dedicated full-source TypeScript check exited 0 with no diagnostics;
+ESLint and runner syntax also exited 0 after the identity/timeout changes.

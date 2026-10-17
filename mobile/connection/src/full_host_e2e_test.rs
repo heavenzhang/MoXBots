@@ -157,20 +157,40 @@ async fn original_mobile_wss_host_chain() {
         wait_json(&root.join("host-ready.json")).await;
         let host=std::env::var("MOXBOTS_FULL_HOST_TEST_BIN").expect("build headless test binary first");spawn(&mut children,&root,&host,&["agent_network::connector::mobile_full_e2e_fixture::original_headless_connector_fixture","--ignored","--exact","--nocapture"],"headless");
         let status=std::time::Instant::now();loop{let v=wait_json(&root.join("headless-status.json")).await;if v["ready"]==true{break;}assert!(status.elapsed()<Duration::from_secs(35),"headless not ready: {v}");tokio::time::sleep(Duration::from_millis(100)).await;}
+        if std::env::var("MOXBOTS_FULL_TIMEOUT_CHECK").as_deref()==Ok("1") {
+            eprintln!("explicit-timeout-cleanup-fixture-ready");
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        }
         let state=root.join("mobile-state");fs::create_dir(&state).unwrap();fs::set_permissions(&state,fs::Permissions::from_mode(0o700)).unwrap();let mut kek=[0u8;32];fs::File::open("/dev/urandom").unwrap().read_exact(&mut kek).unwrap();
         let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let mut owner=MobileConnection::new(NativeConfig{issuer,public_tls_ca:Some(cert.pem())},store).unwrap();
         ok(owner.request(json!({"version":1,"kind":"account.login.start"})).await);let account=ok(owner.request(json!({"version":1,"kind":"account.login.poll"})).await);assert_eq!(account["state"],"signed-in");
         let targets=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-mobile-targets={targets}");
         let target=targets["items"].as_array().unwrap().iter().find(|v|v["agentId"]=="original-host-agent").expect("ORIGINAL_HOST_AGENT_NOT_DISCOVERABLE: original connector uploaded empty catalog; never inject fixture target");
-        let receipt=ok(owner.request(json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.start","version":1,"agentId":"original-host-agent","operationId":uuid::Uuid::new_v4().to_string(),"text":"Original E2EE WSS first turn.","assetIds":[]}})).await);
-        eprintln!("actual-encrypted-mobile-receipt={receipt}");assert_eq!(receipt["kind"],"mobile.receipt");assert_eq!(receipt["status"],"accepted");assert!(receipt["sessionId"].as_str().is_some());
+        let operation_id=uuid::Uuid::new_v4().to_string();
+        let start_intent=json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.start","version":1,"agentId":"original-host-agent","operationId":operation_id,"text":"Original E2EE WSS first turn.","assetIds":[]}});
+        let first=ok(owner.request(start_intent.clone()).await);
+        assert_eq!(first["kind"],"mobile.receipt");
+        let receipt_deadline=std::time::Instant::now();
+        let receipt=loop {
+            let current=ok(owner.request(json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.receipt","version":1,"agentId":"original-host-agent","operationId":operation_id}})).await);
+            assert_eq!(current["kind"],"mobile.receipt");
+            if current["status"]=="accepted" {break current;}
+            assert!(current["status"]!="rejected" && current["status"]!="unconfirmed","original start rejected: {current}");
+            assert!(receipt_deadline.elapsed()<Duration::from_secs(35),"original start receipt absent: {current}");
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        };
+        eprintln!("actual-encrypted-mobile-receipt={receipt}");assert!(receipt["sessionId"].as_str().is_some());
         let terminal_deadline=std::time::Instant::now();
         loop {
             let snapshot=ok(owner.request(json!({"version":1,"kind":"session","targetId":target["targetId"],"request":{"kind":"get","agentId":"original-host-agent","sessionId":receipt["sessionId"],"limit":30}})).await);
-            if snapshot["state"]=="idle" && snapshot["terminal"]=="complete" {eprintln!("actual-original-session-terminal={snapshot}");break;}
+            if snapshot["state"]=="idle" && snapshot["terminal"]=="complete" {
+                assert!(snapshot["messages"].to_string().contains("Original Host local supplier completion"));
+                eprintln!("actual-original-session-terminal={snapshot}");break;
+            }
             assert!(terminal_deadline.elapsed()<Duration::from_secs(35),"original session terminal absent: {snapshot}");
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
+        assert_eq!(ok(owner.request(start_intent).await),receipt,"same original operation must not execute twice");
         fs::write(root.join("stop"),b"stop").unwrap();let actual=wait_json(&root.join("host-result.json")).await;assert_eq!(actual["calls"],1);assert!(actual["sessions"].as_array().unwrap().iter().any(|s|s["id"]==receipt["sessionId"]));
     }).await;
     tasks.abort_all();
