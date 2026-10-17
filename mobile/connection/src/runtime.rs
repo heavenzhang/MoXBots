@@ -1,5 +1,7 @@
 #[path = "drafts.rs"]
 mod drafts;
+#[path = "notifications.rs"]
+mod notifications;
 #[path = "peer.rs"]
 mod peer;
 use crate::agent_network::{
@@ -203,6 +205,10 @@ impl MobileConnection {
                 "writeId",
                 "text",
             ][..]
+        } else if kind == "notification.register" || kind == "notification.refresh" {
+            &["version", "kind", "provider", "token"][..]
+        } else if kind == "notification.open" {
+            &["version", "kind", "eventId"][..]
         } else if kind == "session" || kind == "assets" || kind == "mobile" {
             &["version", "kind", "targetId", "request"][..]
         } else {
@@ -217,6 +223,11 @@ impl MobileConnection {
             return Err(err("MOBILE_INTENT_INVALID"));
         }
         match kind {
+            "notification.register"
+            | "notification.refresh"
+            | "notification.status"
+            | "notification.disable"
+            | "notification.open" => self.notification(intent).await,
             "draft.read" => self.draft(&intent, false),
             "draft.write" => self.draft(&intent, true),
             "account.status" => {
@@ -303,6 +314,9 @@ impl MobileConnection {
                     .store
                     .read_record(&self.config.issuer, "account")
                     .map_err(store_error)?;
+                let notification_logout = self
+                    .notification_logout(disk.as_ref().map(|b| b.as_slice()))
+                    .await;
                 self.active.store(false, Ordering::Release);
                 self.connected = None;
                 self.peer = None;
@@ -336,6 +350,7 @@ impl MobileConnection {
                 };
                 canceled?;
                 logout?;
+                notification_logout?;
                 Ok(self.account_view())
             }
             "connection.suspend" => {
@@ -352,29 +367,31 @@ impl MobileConnection {
                 self.operations_pending()
             }
             "targets.snapshot" => self.targets_snapshot(),
-            "targets.list" => {
-                self.connect().await?;
-                let result = self.list_targets().await;
-                if result.is_err() {
-                    self.clear_targets();
-                    self.peer = None;
-                }
-                if self.peer.as_ref().is_some_and(|p| {
-                    !self.targets.values().any(|target| {
-                        target.device == p.target.device && target.agent == p.target.agent
-                    })
-                }) {
-                    self.peer = None;
-                }
-                // Metadata-only connections are closed after the snapshot;
-                // a retained combined peer stays alive for interleaved RPCs.
-                if let Some(mut c) = self.connected.take() {
-                    let _ = c.socket.close(None).await;
-                }
-                result
-            }
+            "targets.list" => self.refresh_targets().await,
             _ => Err(err("MOBILE_INTENT_UNSUPPORTED")),
         }
+    }
+    async fn refresh_targets(&mut self) -> Result<Value, NetworkError> {
+        self.connect().await?;
+        let result = self.list_targets().await;
+        if result.is_err() {
+            self.clear_targets();
+            self.peer = None;
+        }
+        if self.peer.as_ref().is_some_and(|p| {
+            !self
+                .targets
+                .values()
+                .any(|target| target.device == p.target.device && target.agent == p.target.agent)
+        }) {
+            self.peer = None;
+        }
+        // Metadata-only connections are closed after the snapshot;
+        // a retained combined peer stays alive for interleaved RPCs.
+        if let Some(mut c) = self.connected.take() {
+            let _ = c.socket.close(None).await;
+        }
+        result
     }
     fn clear_targets(&mut self) {
         self.targets.clear();
@@ -898,7 +915,7 @@ mod tests {
         )
         .unwrap()
     }
-    fn snapshot_owner() -> MobileConnection {
+    pub(super) fn snapshot_owner() -> MobileConnection {
         let mut o = owner();
         let network = uuid::Uuid::new_v4().to_string();
         let instance = OwnedInstance {
