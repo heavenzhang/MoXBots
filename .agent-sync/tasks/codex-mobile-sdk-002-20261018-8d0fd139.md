@@ -238,3 +238,68 @@ Final package verification (2026-10-18, existing CLT macOS tools):
 Next concrete step: parent cherry-picks this package, then coordinates the Desktop
 original receipt-owner singleton/operation namespace and SessionEngine admission.
 Latest delta's Android/iOS and real Host/real account acceptance remain unverified.
+
+## Desktop original owner mobile admission — current package
+
+Ownership for this package is limited to remote-session/desktop.ts, receipts.ts,
+new mobile.ts and related integration tests plus this record. Root retains HTTP
+route/Rust target/lease/controller/app ownership. A normal dependency merge of
+root 7c25f587 is 04a48c00: preserve SDK 4010d555, retain root immutable artifact
+registration changes, no unrelated source rewrite. Resume gate passed first at
+published 4010d555; feature branch continues the same task/base/remote.
+
+- [x] Export one existing desktopRemoteReceipts instance. Both protocols use the
+  same Desktop ledger, active set and operation namespace. Legacy serialized
+  receipt/digest bytes retain their original Zod canonicalization and shape.
+  Mobile kinds fence receipt reads, and immutable request plus adopted file
+  manifest digest rejects altered text/model/files or cross-protocol UUID reuse.
+- [x] prepareDesktopRemoteMobileSession({request}) accepts only mobile.start/send.
+  Authenticated target precheck precedes durable begin; begin precedes metadata
+  birth/freeze or any file copy. Frozen birth is hidden exactly as legacy Desktop.
+  Existing legacy sessions use original snapshot helpers and SessionStore CAS;
+  ambiguous partial legacy Provider drift is rejected instead of importing newer
+  Agent authority. Durable observation/model freeze survives process handoff.
+- [x] handleDesktopRemoteMobileSession({request,generation,preparedSessionId?,assets?},role)
+  requires the original Session owner, exact Agent/session/generation/observation,
+  and single adoptPrepared before file writes/sendDesktopMessage. No new executor.
+  Definite admission errors reject; possible handed-off failure remains unconfirmed.
+  Duplicate/unknown operations never dispatch again. Queued send keeps original
+  Desktop queue-admission semantics and does not claim turn completion.
+- [x] Internal assets are trusted Rust lease metadata only. Exact ordered assetIds,
+  bounded descriptors, 20MiB file/10MiB image bounds, canonical appdata store
+  hex64/uploadUUID/data path, private directories, nofollow/regular/nlink/stat checks,
+  bounded descriptor reads and SHA verification precede copies. MIME syntax comes
+  from shared schema; known image magic/PDF signatures/text UTF-8 are checked.
+  All verified bytes are copied to original attachment_ref storage or controlled
+  workspace/myagents_files/remote-mobile with @relative references. No staging
+  absolute path or whole binary is put in a remote DTO/user prompt.
+- [x] Models reuse existing IM model-options authority, filtered to the frozen
+  Provider/runtime. Agent-default catalog is read-only; send rechecks its Session
+  authority and uses only a per-send model, preserving Provider/permissions.
+  Suggestions require current Session sidecar, matching snapshot revisions before
+  and after the existing next-prompt service. No additional recommendation provider.
+- [x] Failure preserves root-compatible top-level code and typed mobile.error data.
+  Query not-found returns REMOTE_OPERATION_NOT_FOUND rather than a nullable send
+  receipt. Session ID is retained on actual ledger receipts. Unknown never replays.
+
+Verification (all credential-free; no actual model invocation):
+- All remote-session unit/integration tests: 9 files, 39 tests passed.
+- Existing IM model-selection (17) and next-prompt service (10) unit tests passed;
+  rerun alongside the 18 new mobile integration cases: 45 tests passed.
+  Distinct coverage across these runs is 66 tests.
+- Full repository TypeScript: tsc --noEmit --pretty false passed, zero diagnostics.
+- Real child-process test imports actual Desktop registry, materialization,
+  SessionStore and shared ledger; verifies one durable hidden birth, duplicate
+  processing (no same-process orphan mistake), and cross-protocol UUID conflict.
+  Separate real legacy authenticated Global routes and artifact resolver tests pass.
+- TempDir asset cases exercise actual reads/copies/hash corruption/symlinks/order,
+  metadata overflow and immutable file manifest. Engine admission is mocked in
+  those behavior fixtures; no provider or executor call is claimed.
+
+Remaining parent gates: wire/authenticate internal HTTP routes and Rust target,
+retain verified scoped leases through exact admission, native/relay integration,
+real model and real device/Host acceptance, main delivery and any release.
+No production, real account mutation, new credentials or Xcode license action.
+Next: parent cherry-picks only the new Desktop admission commit after 04a48c00,
+reviews the frozen model authority/lease lifecycle and runs integrated route tests.
+Requested model/effort remains gpt-6.1-sol/medium; runtime token/cost unknown.
