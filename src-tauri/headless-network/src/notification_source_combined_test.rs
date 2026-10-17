@@ -527,6 +527,75 @@ async fn actual_publish_private_node_source_real_service_restart_ack_loss_and_re
             .len(),
         2
     );
+    // Cancel the actual publish future at both unknown-side-effect boundaries.
+    // The fixture middleware merely pauses; it never weakens auth or PoP.
+    for (index, phase) in ["before", "after"].into_iter().enumerate() {
+        stop_node(&mut children, &root, &ipc, &authority).await;
+        let mut cancelled_pointer = pointer.clone();
+        cancelled_pointer["observation"] = json!(format!("terminal:cancel-{phase}"));
+        private_json(
+            &root.join("node-config.json"),
+            &json!({"socket":config.socket,"deviceId":device,"authority":authority,"pointer":cancelled_pointer}),
+        );
+        children.0.push(spawn_node(&repo, &root, true));
+        wait_json(&root.join("node-ready")).await;
+        let original = ready_hint(&ipc, &authority).await.unwrap();
+        let _ = fs::remove_file(root.join("hint-pause-entered.json"));
+        let flag = root.join(format!("pause-hint-{phase}"));
+        fs::write(&flag, b"pause").unwrap();
+        let entered_path = root.join("hint-pause-entered.json");
+        {
+            let publication = publish(&connection, &ipc, &binding, &identity, &authority);
+            tokio::pin!(publication);
+            tokio::select! {
+                result=&mut publication=>panic!("publication completed before explicit test pause: {result:?}"),
+                entered=wait_json(&entered_path)=>assert_eq!(entered["phase"],phase),
+            }
+            // Lexical scope drop cancels the actual native publish/HTTP future.
+        }
+        assert!(ready_hint(&ipc, &authority).await.as_ref() == Some(&original));
+        let held = service_command(&root, "stats").await;
+        let before_count = 2 + index;
+        assert_eq!(
+            held["events"].as_array().unwrap().len(),
+            before_count + usize::from(phase == "after")
+        );
+        fs::remove_file(flag).unwrap();
+        assert!(publish(&connection, &ipc, &binding, &identity, &authority)
+            .await
+            .unwrap());
+        let settled = service_command(&root, "stats").await;
+        assert_eq!(
+            settled["events"].as_array().unwrap().len(),
+            before_count + 1
+        );
+        let events: Vec<_> = settled["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|v| v["sourceEventId"] == original.source_event_id)
+            .collect();
+        assert_eq!(events.len(), 1);
+        let acknowledged = node_disk(&root);
+        let ack = acknowledged["confirmed"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|v| v["sourceEventId"] == original.source_event_id)
+            .unwrap();
+        assert_eq!(ack["eventId"], events[0]["eventId"]);
+        for proof in settled["proofs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|v| v["sourceEventId"] == original.source_event_id)
+        {
+            assert_eq!(proof["connectionEpoch"], original.connection_epoch);
+            assert_eq!(proof["agentId"], original.agent_id);
+            assert_eq!(proof["sessionId"], original.session_id);
+        }
+        eprintln!("actual publish future cancelled at {phase} hint processing; original pointer retained; fresh proof retry acknowledged exactly one source event");
+    }
     // Another original observation is persisted, then actual AuthStore revoke
     // denies fresh-account HTTP before signing or ACK; pending pointer survives.
     stop_node(&mut children, &root, &ipc, &authority).await;
@@ -545,7 +614,7 @@ async fn actual_publish_private_node_source_real_service_restart_ack_loss_and_re
         .is_err());
     assert!(ready_hint(&ipc, &authority).await.as_ref() == Some(&pending));
     let revoked = service_command(&root, "stats").await;
-    assert_eq!(revoked["events"].as_array().unwrap().len(), 2);
+    assert_eq!(revoked["events"].as_array().unwrap().len(), 4);
     let mut wrong_generation = authority.clone();
     wrong_generation.local.key_generation += 1;
     assert!(
