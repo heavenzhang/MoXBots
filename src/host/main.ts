@@ -1,5 +1,5 @@
 import { fork, type ChildProcess } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { createServer, request } from 'node:http';
 import { chmod, lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -29,6 +29,10 @@ import { createRemoteReceiptOwner } from '../server/remote-session/receipts';
 import { workspacePathsEqual } from '../shared/workspacePath';
 import { resolveAgentRuntimePreference, runtimeTypeForAgentRuntimePreference } from '../shared/integrated-runtimes/identity';
 import { REMOTE_SESSION_BYTES } from '../shared/remoteSession';
+import { remoteMobileRequestSchema, remoteMobileResultSchema } from '../shared/remoteMobile';
+import { imSnapshotObservation } from '../server/routes/im-model-selection';
+import { HostMobileAssetStaging } from './mobile-asset-staging';
+import { admitHeadlessMobileStart } from './headless-mobile-start';
 
 const stateDir = resolve(process.env.MYAGENTS_HOST_STATE_DIR ?? '/var/lib/myagents-host-test');
 const socket = process.env.MYAGENTS_HOST_SOCKET ?? '/run/myagents-host-test/control.sock';
@@ -179,7 +183,7 @@ async function serve(): Promise<void> {
     });
   }
 
-  async function ensureSession(sessionId?: string, botBootstrap?: HostBotBootstrap, remoteWorkspace?: string): Promise<Active> {
+  async function ensureSession(sessionId?: string, botBootstrap?: HostBotBootstrap, remoteWorkspace?: string, remoteModel?:string, remoteAgentId?:string): Promise<Active> {
     if (shuttingDown) throw new Error('Host is stopping');
     if (active) {
       if (sessionId && active.sessionId === sessionId && !active.closing) return active;
@@ -201,7 +205,13 @@ async function serve(): Promise<void> {
     const remoteBirth = remoteWorkspace && !sessionId ? resolveWorkspaceConfig(workspace,undefined,{includeMcp:false}):undefined;
     if (remoteBirth && !isConcreteProviderRoute(remoteBirth.providerRoute)) throw new HostRemoteError('REMOTE_SESSION_AGENT_PROVIDER_UNAVAILABLE');
     const remoteRouteCandidate=remoteBirth?.providerRoute;
-    const remoteRoute=isConcreteProviderRoute(remoteRouteCandidate) ? remoteRouteCandidate:undefined;
+    if(remoteModel!==undefined&&(!remoteBirth||!isConcreteProviderRoute(remoteRouteCandidate)||!/^.{1,256}$/.test(remoteModel)||/[\p{Cc}]/u.test(remoteModel)))throw new HostRemoteError('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+    if(remoteModel!==undefined){
+      if(!remoteAgentId)throw new HostRemoteError('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+      const {resolveRemoteMobileModelChoices}=await import('../server/remote-session/mobile-models');
+      if(!(await resolveRemoteMobileModelChoices(remoteAgentId)).some(item=>item.id===remoteModel))throw new HostRemoteError('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+    }
+    const remoteRoute=isConcreteProviderRoute(remoteRouteCandidate) ? {...remoteRouteCandidate,...(remoteModel?{model:remoteModel}:{})}:undefined;
     const generation = bot?.run_generation ?? randomUUID();
     const childEnvironment: NodeJS.ProcessEnv = bot ? {PATH:process.env.PATH,LANG:process.env.LANG,TMPDIR:process.env.TMPDIR,USERPROFILE:home} : {...process.env};
     let sessionProviderId = remoteRoute?.providerId ?? bot?.provider_id ?? settings!.providerId;
@@ -225,9 +235,10 @@ async function serve(): Promise<void> {
     const child = fork(workerPath, [], {
       cwd: dirname(workerPath),
       env: { ...childEnvironment, HOME: home, MYAGENTS_HOST_MODE: '1', MYAGENTS_HOST_WORKSPACE: workspace,
+        MYAGENTS_HOST_ASSET_STAGING_ROOT: join(home,'.myagents','remote-assets-staging-v1'),
         MYAGENTS_HOST_CREDENTIAL_SOURCE: 'supervisor-ipc',
         MYAGENTS_HOST_SESSION_ID: sessionId ?? '', MYAGENTS_HOST_PROVIDER_ID: sessionProviderId,
-        MYAGENTS_HOST_MODEL: remoteRoute?.model ?? bot?.model ?? settings!.model, MYAGENTS_HOST_GENERATION: generation,
+        MYAGENTS_HOST_MODEL: remoteRoute?.model ?? bot?.model ?? settings!.model, ...(remoteModel?{MYAGENTS_HOST_REMOTE_MODEL:remoteModel}:{}), MYAGENTS_HOST_GENERATION: generation,
         MYAGENTS_HOST_REMOTE_AGENT_BIRTH: remoteBirth ? '1':'0',
         MYAGENTS_HOST_EXECUTION_AUTHORIZED: !bot && settings?.executionAuthorized ? '1' : '0',
         ...(bot ? {MYAGENTS_HOST_BOT_BOOTSTRAP:Buffer.from(JSON.stringify(bot)).toString('base64url')} : {}) },
@@ -285,21 +296,23 @@ async function serve(): Promise<void> {
   }
 
   const remoteReceipts = createRemoteReceiptOwner(`host:${identity.hostId}`,join(home,'.myagents','remote-session-receipts'));
+  const mobileAssetStaging = new HostMobileAssetStaging(join(home,'.myagents','remote-assets-staging-v1'));
+  const resolveRemoteAgent = async (agentId:string) => {
+    const resources=await resourceOwner.inspect();
+    const selected=resources.agents.find(item=>item.agentId===agentId);
+    if (!selected || !selected.enabled || selected.archived) throw new HostRemoteError('REMOTE_SESSION_AGENT_UNAVAILABLE');
+    const config=loadConfig({strict:true});
+    assertOrdinaryRemoteAgent(agentId,config.hostBotDelegationsV1);
+    const agent=config.agents?.find(item=>item.id===agentId);
+    if (!agent || !agent.enabled) throw new HostRemoteError('REMOTE_SESSION_AGENT_UNAVAILABLE');
+    const runtimeConfig=agent.runtimeConfig;
+    const runtimeSource=runtimeConfig && typeof runtimeConfig==='object' && 'source' in runtimeConfig ? runtimeConfig.source:undefined;
+    const preference=resolveAgentRuntimePreference({runtimePreference:agent.runtimePreference,runtime:agent.runtime,runtimeSource,providerId:agent.providerId});
+    if (agent.runtimePreference !== undefined && !preference) throw new HostRemoteError('REMOTE_SESSION_RUNTIME_UNSUPPORTED');
+    return {workspacePath:await workspacePath(selected.workspacePath),runtime:preference ? runtimeTypeForAgentRuntimePreference(preference):'builtin'};
+  };
   const remoteSessions = createHostRemoteSessionService({
-    async resolveAgent(agentId) {
-      const resources=await resourceOwner.inspect();
-      const selected=resources.agents.find(item=>item.agentId===agentId);
-      if (!selected || !selected.enabled || selected.archived) throw new HostRemoteError('REMOTE_SESSION_AGENT_UNAVAILABLE');
-      const config=loadConfig({strict:true});
-      assertOrdinaryRemoteAgent(agentId,config.hostBotDelegationsV1);
-      const agent=config.agents?.find(item=>item.id===agentId);
-      if (!agent || !agent.enabled) throw new HostRemoteError('REMOTE_SESSION_AGENT_UNAVAILABLE');
-      const runtimeConfig=agent.runtimeConfig;
-      const runtimeSource=runtimeConfig && typeof runtimeConfig==='object' && 'source' in runtimeConfig ? runtimeConfig.source:undefined;
-      const preference=resolveAgentRuntimePreference({runtimePreference:agent.runtimePreference,runtime:agent.runtime,runtimeSource,providerId:agent.providerId});
-      if (agent.runtimePreference !== undefined && !preference) throw new HostRemoteError('REMOTE_SESSION_RUNTIME_UNSUPPORTED');
-      return {workspacePath:await workspacePath(selected.workspacePath),runtime:preference ? runtimeTypeForAgentRuntimePreference(preference):'builtin'};
-    },
+    resolveAgent:resolveRemoteAgent,
     async validateSession(sessionId,workspace) {
       const store=await import('../server/SessionStore');
       const metadata=store.getSessionMetadata(sessionId);
@@ -322,7 +335,7 @@ async function serve(): Promise<void> {
       const {buildRemoteSnapshot}=await import('../server/remote-session/projection');
       return buildRemoteSnapshot(request.agentId,request.sessionId,null,request.limit,request.before);
     },
-    async ensure(workspace,sessionId) {
+    async ensure(workspace,sessionId,modelId,agentId) {
       return exclusive(async()=>{
         if (active && (!sessionId || active.sessionId!==sessionId)) {
           if (active.bot || active.closing) throw new HostRemoteError('REMOTE_SESSION_HOST_BUSY');
@@ -333,7 +346,7 @@ async function serve(): Promise<void> {
           await release(previous);
         }
         if (active?.bot || active?.closing) throw new HostRemoteError('REMOTE_SESSION_HOST_BUSY');
-        return ensureSession(sessionId,undefined,workspace);
+        return ensureSession(sessionId,undefined,workspace,modelId,agentId);
       });
     },
     active:()=>active && !active.bot && !active.closing ? {sessionId:active.sessionId,generation:active.generation}:null,
@@ -343,6 +356,16 @@ async function serve(): Promise<void> {
     },
     receipts:{begin:remoteReceipts.begin,read:remoteReceipts.read,update:remoteReceipts.finish},
   });
+  async function ensureOwnerWorker(agentId:string,sessionId:string):Promise<Active>{
+    assertOrdinaryRemoteAgent(agentId,loadConfig({strict:true}).hostBotDelegationsV1);
+    const agent=await remoteSessions.resolveAgent(agentId);
+    if(agent.runtime!=='builtin')throw new HostRemoteError('REMOTE_SESSION_RUNTIME_UNSUPPORTED');
+    await remoteSessions.validateSession(sessionId,agent.workspacePath);
+    const owner=await remoteSessions.ensure(agent.workspacePath,sessionId);
+    const target=active;
+    if(!target||target.bot||target.closing||target.sessionId!==owner.sessionId||target.generation!==owner.generation)throw new HostRemoteError('REMOTE_SESSION_TARGET_CHANGED');
+    return target;
+  }
 
   async function release(target: Active): Promise<void> {
     target.closing = true;
@@ -496,6 +519,109 @@ async function serve(): Promise<void> {
         expectedUid: Number(managementUid),
         expectedGid: Number(managementGid),
         dispatch: dispatchManagement,
+        expectedDeviceId: identity.hostId,
+        dispatchInternal: async (authority, operation) => {
+          if (authority.local.deviceId !== identity.hostId || shuttingDown) throw new Error('HOST_MANAGEMENT_OWNER_CHANGED');
+          if (operation.kind.startsWith('asset.stage.')) return mobileAssetStaging.handle(authority, operation);
+          if(operation.kind==='assets.request'&&operation.request.kind==='list'){
+            const target=await ensureOwnerWorker(operation.request.agentId,operation.request.sessionId);
+            return workerCall(target,'asset-owner',{kind:'list',agentId:operation.request.agentId,sessionId:operation.request.sessionId,limit:operation.request.limit,before:operation.request.before});
+          }
+          if(operation.kind==='assets.request'&&operation.request.kind==='read'){
+            const target=await ensureOwnerWorker(operation.request.agentId,operation.request.sessionId);
+            return workerCall(target,'asset-owner',{kind:'read',agentId:operation.request.agentId,sessionId:operation.request.sessionId,sourceId:operation.request.artifactId,offset:operation.request.offset,maxBytes:operation.request.maxBytes});
+          }
+          if(operation.kind==='mobile.request'){
+            const request=remoteMobileRequestSchema.parse(operation.request);
+            assertOrdinaryRemoteAgent(request.agentId,loadConfig({strict:true}).hostBotDelegationsV1);
+            const requestAgent=await remoteSessions.resolveAgent(request.agentId);
+            if(requestAgent.runtime!=='builtin')throw new Error('REMOTE_SESSION_RUNTIME_UNSUPPORTED');
+            if(request.kind==='mobile.receipt')return remoteMobileResultSchema.parse(await remoteReceipts.readMobile(request.agentId,request.operationId));
+            if(request.kind==='mobile.capabilities')return remoteMobileResultSchema.parse({kind:'mobile.capabilities',version:1,agentId:request.agentId,attachments:true,modelSelection:true,nextSuggestions:true,maxAssets:8});
+            if(request.kind==='mobile.models'){
+              const {resolveRemoteMobileModelChoices}=await import('../server/remote-session/mobile-models');
+              return remoteMobileResultSchema.parse({kind:'mobile.models',version:1,agentId:request.agentId,items:await resolveRemoteMobileModelChoices(request.agentId)});
+            }
+            if(request.kind==='mobile.suggestions'){
+              const target=await ensureOwnerWorker(request.agentId,request.sessionId);
+              return remoteMobileResultSchema.parse(await workerCall(target,'mobile-suggestions',{agentId:request.agentId,sessionId:request.sessionId,revision:request.revision}));
+            }
+            if(request.kind!=='mobile.start'&&request.kind!=='mobile.send')throw new Error('REMOTE_MOBILE_SESSION_REQUIRED');
+            assertOrdinaryRemoteAgent(request.agentId,loadConfig({strict:true}).hostBotDelegationsV1);
+            const stageSessionId=request.kind==='mobile.start'?request.operationId:request.sessionId;
+            if(request.kind==='mobile.send'){
+              const existing=await ensureOwnerWorker(request.agentId,request.sessionId);
+              if(request.modelId!==undefined){
+                const store=await import('../server/SessionStore'),metadata=store.getSessionMetadata(request.sessionId);
+                if(!metadata)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
+                const {resolveRemoteMobileModelChoices}=await import('../server/remote-session/mobile-models');
+                const choices=await resolveRemoteMobileModelChoices(request.agentId,metadata);
+                if(!choices.some(item=>item.id===request.modelId))throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+              }
+            }else{
+              if(request.modelId!==undefined){
+                const {resolveRemoteMobileModelChoices}=await import('../server/remote-session/mobile-models');
+                const choices=await resolveRemoteMobileModelChoices(request.agentId);
+                if(!choices.some(item=>item.id===request.modelId))throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+              }
+            }
+            return mobileAssetStaging.withReadyAssets(authority,{agentId:request.agentId,sessionId:stageSessionId,assetIds:request.assetIds},async assets=>{
+              if(assets.some(asset=>asset.sizeBytes>20*1024*1024||asset.mimeType.startsWith('image/')&&asset.sizeBytes>5*1024*1024))throw new Error('REMOTE_MOBILE_ASSET_SIZE_LIMIT');
+              const manifest=JSON.stringify(assets.map(({assetId,name,mimeType,sizeBytes,sha256})=>({assetId,name,mimeType,sizeBytes,sha256})));
+              const manifestHash=createHash('sha256').update(manifest).digest('hex');
+              if(request.kind==='mobile.start'){
+                const agent=requestAgent;
+                const host=loadConfig({strict:true}) as HostConfig;
+                if(!host.hostSettings?.executionAuthorized)throw new Error('REMOTE_SESSION_EXECUTION_NOT_AUTHORIZED');
+                return remoteMobileResultSchema.parse(await admitHeadlessMobileStart({
+                  request,manifestHash,
+                  begin:value=>remoteReceipts.beginMobile(value,null),
+                  read:(value,hash)=>remoteReceipts.readMobileIntent(value,hash),
+                  ensure:async(agentId,modelId)=>{
+                    const created=await remoteSessions.ensure(agent.workspacePath,undefined,modelId,agentId);
+                    const target=active;
+                    if(!target||target.bot||target.closing||target.sessionId!==created.sessionId||target.generation!==created.generation)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
+                    return {target,sessionId:created.sessionId};
+                  },
+                  adopt:(value,sessionId,hash)=>remoteReceipts.adoptPrepared(value,sessionId,hash),
+                  dispatch:async(target,sessionId,value)=>{
+                    const store=await import('../server/SessionStore'),metadata=store.getSessionMetadata(sessionId);
+                    if(!metadata)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
+                    const result=await workerCall(target,'mobile-send',{agentId:value.agentId,sessionId,operationId:value.operationId,text:value.text,assets,expectedObservation:imSnapshotObservation(metadata),...(value.modelId?{modelId:value.modelId}:{})});
+                    return {accepted:!!result&&typeof result==='object'&&(result as {accepted?:unknown}).accepted===true};
+                  },
+                  finish:(value,status,sessionId,code)=>remoteReceipts.finishMobile(value,status,sessionId,code),
+                }));
+              }
+              const begun=await remoteReceipts.beginMobile(request,request.sessionId);
+              if(!begun.fresh)return remoteMobileResultSchema.parse(await remoteReceipts.readMobileIntent(request,manifestHash));
+              let target:Active|undefined;
+              try{
+                const sessionId=request.sessionId;
+                target=await ensureOwnerWorker(request.agentId,sessionId);
+                const store=await import('../server/SessionStore'),metadata=store.getSessionMetadata(sessionId);
+                if(!metadata)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
+                if(request.modelId!==undefined){
+                  const {resolveRemoteMobileModelChoices}=await import('../server/remote-session/mobile-models');
+                  if(!(await resolveRemoteMobileModelChoices(request.agentId,metadata)).some(item=>item.id===request.modelId))throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+                }
+                const expectedObservation=imSnapshotObservation(metadata);
+                const adopted=await remoteReceipts.adoptPrepared(request,sessionId,manifestHash);
+                if(!adopted)return remoteMobileResultSchema.parse(await remoteReceipts.readMobile(request.agentId,request.operationId));
+                const result=await workerCall(target,'mobile-send',{agentId:request.agentId,sessionId,operationId:request.operationId,text:request.text,assets,expectedObservation,...(request.modelId?{modelId:request.modelId}:{})});
+                if(!result||typeof result!=='object'||(result as {accepted?:unknown}).accepted!==true)throw new Error('REMOTE_MOBILE_ADMISSION_REJECTED');
+                return remoteMobileResultSchema.parse(await remoteReceipts.finishMobile(request,'accepted',sessionId));
+              }catch(error){
+                // beginMobile already reserved this operation. Once dispatch preparation
+                // begins, any thrown worker/lifecycle error may have crossed admission;
+                // preserve the original ledger's status for explicit recovery instead of
+                // converting uncertainty into a retryable rejection.
+                return remoteMobileResultSchema.parse(await remoteReceipts.readMobileIntent(request,manifestHash));
+              }
+            });
+          }
+          throw new Error(operation.kind === 'assets.request' ? 'REMOTE_ASSET_OPERATION_UNSUPPORTED' : 'REMOTE_MOBILE_OWNER_REQUIRED');
+        },
         isShuttingDown: () => shuttingDown,
         onFailure: code => console.error(`Host management IPC stopped: ${code}`),
       });

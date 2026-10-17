@@ -54,6 +54,9 @@ const CHILD_PROCESS_ALLOWLIST = new Set([
   // loopback port. No Session worker, SDK/model execution or real credentials;
   // validates private-history filtering and the prepared publication barrier.
   'src/server/remote-session/desktop-routes.integration.test.ts',
+  // Isolated Node module against temp HOME and synthetic config only. Verifies
+  // prepared birth/ledger persistence without admitting a turn or provider call.
+  'src/server/remote-session/mobile-owner.integration.test.ts',
   // This regression verifies the existing MCP OAuth refresh lock across real
   // Node processes. Children share only a temp config dir and loopback server.
   'src/server/__tests__/mcp-oauth.integration.test.ts',

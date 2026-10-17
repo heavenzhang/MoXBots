@@ -2,10 +2,13 @@
 //! The Unix peer is authenticated locally; it never carries AgentNet credentials.
 
 use crate::agent_network::NetworkError;
+use myagents_agent_network_protocol::{ConnectionScope, DeviceScope};
 use myagents_host_management_protocol::{
     CanonicalUuid, Frame, ManagementMessage, ManagementMethod, RequestParams, ResponseResult,
     MAX_OBJECT_BYTES, MAX_RECEIVE_BYTES, NAMESPACE, VERSION,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::{
     fs,
     os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt},
@@ -21,9 +24,95 @@ use tokio::{
 
 const IPC_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Private IPC authority comes only from the active, verified AgentNet
+/// connection. The Node Host additionally validates its own device identity
+/// and the original agent/session/worker generation before dispatch.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct InternalAuthority {
+    pub connection: ConnectionScope,
+    pub peer: DeviceScope,
+    pub peer_epoch: String,
+    pub local: DeviceScope,
+    pub account_binding: String,
+    pub management_binding: String,
+}
+
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub(crate) enum InternalOperation {
+    #[serde(rename = "asset.stage.begin")]
+    StageBegin {
+        agent_id: String,
+        session_id: String,
+        asset_id: String,
+        name: String,
+        mime_type: String,
+        size_bytes: u64,
+        sha256: String,
+    },
+    #[serde(rename = "asset.stage.chunk")]
+    StageChunk {
+        agent_id: String,
+        session_id: String,
+        asset_id: String,
+        offset: u64,
+        data_base64: String,
+        sha256: String,
+    },
+    #[serde(rename = "asset.stage.finish")]
+    StageFinish {
+        agent_id: String,
+        session_id: String,
+        asset_id: String,
+    },
+    #[serde(rename = "assets.request")]
+    Assets {
+        request: myagents_host_management_protocol::RemoteAssetRequest,
+    },
+    #[serde(rename = "mobile.request")]
+    Mobile {
+        request: myagents_host_management_protocol::RemoteMobileRequest,
+    },
+    #[serde(rename = "asset.owner.list")]
+    OwnerList {
+        agent_id: String,
+        session_id: String,
+        limit: u8,
+        before: Option<String>,
+    },
+    #[serde(rename = "asset.owner.read")]
+    OwnerRead {
+        agent_id: String,
+        session_id: String,
+        source_id: String,
+        offset: u64,
+        max_bytes: u32,
+    },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InternalRequest {
+    kind: String,
+    request_id: CanonicalUuid,
+    authority: InternalAuthority,
+    operation: InternalOperation,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InternalResponse {
+    kind: String,
+    request_id: CanonicalUuid,
+    authority: InternalAuthority,
+    result: Value,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct ManagementIpcConfig {
     pub socket: PathBuf,
+    pub asset_root: PathBuf,
     pub host_uid: u32,
     pub management_gid: u32,
 }
@@ -37,6 +126,7 @@ pub(crate) struct ManagementIpc {
     socket_dev: u64,
     socket_ino: u64,
     host_uid: u32,
+    asset_store: Arc<moxbots_asset_store::AssetStore>,
     connection: Arc<Mutex<Option<PeerConnection>>>,
     accept_tasks: tokio::task::JoinSet<()>,
 }
@@ -115,6 +205,28 @@ impl ManagementIpc {
         config: &ManagementIpcConfig,
         allow_same_uid: bool,
     ) -> Result<Self, NetworkError> {
+        let asset_meta = match fs::symlink_metadata(&config.asset_root) {
+            Ok(meta) => meta,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&config.asset_root)
+                    .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?;
+                fs::set_permissions(&config.asset_root, fs::Permissions::from_mode(0o700))
+                    .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?;
+                fs::symlink_metadata(&config.asset_root)
+                    .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
+            }
+            Err(_) => return Err(NetworkError::new("ASSET_STORE_UNAVAILABLE")),
+        };
+        if !config.asset_root.is_absolute()
+            || asset_meta.file_type().is_symlink()
+            || !asset_meta.is_dir()
+        {
+            return Err(NetworkError::new("ASSET_STORE_UNAVAILABLE"));
+        }
+        let asset_store = Arc::new(
+            moxbots_asset_store::AssetStore::open(&config.asset_root)
+                .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?,
+        );
         let current_uid = unsafe { libc::geteuid() };
         if config.host_uid == 0
             || (!allow_same_uid && config.host_uid == current_uid)
@@ -158,9 +270,14 @@ impl ManagementIpc {
             socket_dev: metadata.dev(),
             socket_ino: metadata.ino(),
             host_uid,
+            asset_store,
             connection,
             accept_tasks,
         })
+    }
+
+    pub(crate) fn asset_store(&self) -> Arc<moxbots_asset_store::AssetStore> {
+        self.asset_store.clone()
     }
 
     pub(crate) async fn request(
@@ -172,6 +289,111 @@ impl ManagementIpc {
     ) -> Result<ResponseResult, NetworkError> {
         self.request_with_timeout(channel_id, request_id, method, params, IPC_TIMEOUT)
             .await
+    }
+
+    /// Separate closed internal union for Node-hosted asset/mobile ownership.
+    /// Legacy ManagementMessage framing/serialization remains untouched.
+    pub(crate) async fn request_internal(
+        &self,
+        request_id: CanonicalUuid,
+        authority: InternalAuthority,
+        operation: InternalOperation,
+    ) -> Result<Value, NetworkError> {
+        if let InternalOperation::StageChunk { data_base64, .. } = &operation {
+            // 24 KiB raw chunk, canonical padded base64; this bound plus the
+            // fixed envelope leaves ample room under MAX_OBJECT_BYTES.
+            if data_base64.is_empty() || data_base64.len() > 32 * 1024 {
+                return Err(NetworkError::new("HOST_MANAGEMENT_REQUEST_TOO_LARGE"));
+            }
+        }
+        for value in [
+            authority.account_binding.as_str(),
+            authority.management_binding.as_str(),
+            authority.peer_epoch.as_str(),
+        ] {
+            if value.is_empty() || value.len() > 256 || value.bytes().any(|b| b.is_ascii_control())
+            {
+                return Err(NetworkError::new("HOST_MANAGEMENT_REQUEST_INVALID"));
+            }
+        }
+        let message = InternalRequest {
+            kind: "internal-request".into(),
+            request_id,
+            authority: authority.clone(),
+            operation,
+        };
+        let payload = serde_json::to_vec(&message)
+            .map_err(|_| NetworkError::new("HOST_MANAGEMENT_REQUEST_INVALID"))?;
+        if payload.is_empty() || payload.len() > MAX_OBJECT_BYTES {
+            return Err(NetworkError::new("HOST_MANAGEMENT_REQUEST_TOO_LARGE"));
+        }
+        let mut slot = tokio::time::timeout(IPC_TIMEOUT, async {
+            loop {
+                let slot = self.connection.lock().await;
+                if slot.is_some() {
+                    return slot;
+                }
+                drop(slot);
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNAVAILABLE"))?;
+        let connection = slot
+            .as_mut()
+            .ok_or_else(|| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+        let result = async {
+            if connection
+                .stream
+                .peer_cred()
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_IPC_PEER_REJECTED"))?
+                .uid()
+                != self.host_uid
+            {
+                return Err(NetworkError::new("HOST_MANAGEMENT_IPC_PEER_REJECTED"));
+            }
+            let mut frame = Vec::with_capacity(payload.len() + 4);
+            frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+            frame.extend_from_slice(&payload);
+            connection
+                .stream
+                .write_all(&frame)
+                .await
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+            let mut prefix = [0u8; 4];
+            connection
+                .stream
+                .read_exact(&mut prefix)
+                .await
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+            let length = u32::from_be_bytes(prefix) as usize;
+            if length == 0 || length > MAX_OBJECT_BYTES || length + 4 > MAX_RECEIVE_BYTES {
+                return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+            }
+            let mut body = vec![0; length];
+            connection
+                .stream
+                .read_exact(&mut body)
+                .await
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
+            let response: InternalResponse = serde_json::from_slice(&body)
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+            if response.kind != "internal-response"
+                || response.request_id != request_id
+                || response.authority != authority
+            {
+                return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+            }
+            Ok(response.result)
+        };
+        let result = match tokio::time::timeout(IPC_TIMEOUT, result).await {
+            Ok(result) => result,
+            Err(_) => Err(NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED")),
+        };
+        if result.is_err() {
+            *slot = None;
+        }
+        result
     }
 
     async fn request_with_timeout(
@@ -312,6 +534,59 @@ mod tests {
     use myagents_host_management_protocol::SnapshotParams;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    #[test]
+    fn internal_ipc_has_closed_authority_envelope_and_24k_chunks_stay_below_frame_cap() {
+        let scope = myagents_agent_network_protocol::DeviceScope {
+            service_id: "service".into(),
+            environment: "production".into(),
+            network_id: "network".into(),
+            principal_id: "principal".into(),
+            device_id: "device".into(),
+            key_generation: 1,
+        };
+        let authority = InternalAuthority {
+            connection: myagents_agent_network_protocol::ConnectionScope {
+                service_id: "service".into(),
+                network_id: "network".into(),
+                boot_epoch: "boot".into(),
+                connection_epoch: "epoch".into(),
+            },
+            peer: scope.clone(),
+            peer_epoch: "peer-epoch".into(),
+            local: scope,
+            account_binding: "binding".into(),
+            management_binding: "binding".into(),
+        };
+        let id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let message = InternalRequest {
+            kind: "internal-request".into(),
+            request_id: id,
+            authority: authority.clone(),
+            operation: InternalOperation::StageChunk {
+                agent_id: "agent-1".into(),
+                session_id: "session-1".into(),
+                asset_id: uuid::Uuid::new_v4().to_string(),
+                offset: 0,
+                data_base64: base64::Engine::encode(
+                    &base64::engine::general_purpose::STANDARD,
+                    vec![0u8; 24 * 1024],
+                ),
+                sha256: "a".repeat(64),
+            },
+        };
+        let bytes = serde_json::to_vec(&message).unwrap();
+        assert!(bytes.len() < MAX_OBJECT_BYTES);
+        assert!(
+            serde_json::from_slice::<InternalRequest>(&bytes)
+                .unwrap()
+                .authority
+                == authority
+        );
+        let mut value: Value = serde_json::from_slice(&bytes).unwrap();
+        value["arbitraryPath"] = Value::String("/etc/passwd".into());
+        assert!(serde_json::from_value::<InternalRequest>(value).is_err());
+    }
+
     fn private_test_base() -> PathBuf {
         let uid = unsafe { libc::geteuid() };
         let home = std::env::var_os("HOME")
@@ -349,6 +624,7 @@ mod tests {
             dir,
             ManagementIpcConfig {
                 socket: path,
+                asset_root: parent.join("assets"),
                 host_uid: expected_uid,
                 management_gid: gid,
             },
