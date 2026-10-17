@@ -32,6 +32,22 @@ Base remote main9269dd8; normal dependency merge238a40cb. Backend source contrac
 
 Not performed; source-only handoff to parent integration owner. New source service/mobile/Host deployment requires that task's established target/owner gates. Shared OwnedClient edit must enter root native SDK provenance rebuild.
 
-## Next action
+## Next step
 
 Root review exact owned commit, integrate normal merge, combine backend source service and Host synthetic end-to-end tests; retain physical/provider gates.
+
+## Acceptance criteria
+
+Exact original worker/SessionStore/Agent ownership, immutable authenticated source scope, durable generic hint identity, private peer-free local-source IPC, fresh native device PoP and fixed HTTP statuses; no Session replay or credential exposure. Parent combined review must still pass before completion.
+
+## Completed
+
+Source adapter, atomic outbox, worker birth scope fences, bounded deferred/confirmed storage and native publisher are committed in this branch. Main/CI/real Host/mobile deployment are not performed by this worker.
+
+## Verification
+
+Final full headless Rust185 passed; Node34 passed across9 files; final source12 passed; full TypeScript typecheck exit0. Exact commands/output and limitations are in the evidence paths above. Owned Rust formatting and staged diff whitespace checks pass.
+
+## Blockers and unknowns
+
+Parent combined review/actual service integration remain open. Physical mobile, actual Host/provider, runtime cancellation/device revocation injection and production deployment are unverified/outside this worker's authorized actions. Actual model/cost and total elapsed usage are unknown. Initial unknown-scope observations fail closed; all256 unconfirmed capacity exhaustion explicitly remains unconfirmed.
