@@ -48,6 +48,13 @@ function child(command:string,args:string[],environment=env) {
   for(const stream of [processChild.stdout,processChild.stderr])stream?.on('data',chunk=>{diagnostics+=String(chunk).split(secret).join('[redacted]');});
   return processChild;
 }
+async function stop(processChild:ChildProcess){
+  const alive=()=>processChild.exitCode===null&&processChild.signalCode===null;
+  if(!processChild.pid||!alive())return;
+  try{process.kill(-processChild.pid,'SIGTERM');}catch{/* already exited */}
+  await Promise.race([once(processChild,'exit').catch(()=>{}),new Promise(r=>setTimeout(r,1500))]);
+  if(alive())try{process.kill(-processChild.pid,'SIGKILL');}catch{/* group exited */}
+}
 async function wait<T>(name:string,read:()=>Promise<T|undefined>,timeout=60_000):Promise<T> {
   const deadline=Date.now()+timeout;
   while(Date.now()<deadline){const result=await read();if(result!==undefined)return result;await new Promise(r=>setTimeout(r,100));}
@@ -127,15 +134,18 @@ try{
   listener.listen(socketPath);await once(listener,'listening');await chmod(socketPath,0o660);
   const entry=join(root,'host-main.mjs');
   const hostArgs=process.platform==='linux'?['--exclusive','--nonblock','--no-fork',join(state,'host.lock'),process.execPath,entry,'--serve']:[entry,'--serve'];
-  const host=child(process.platform==='linux'?'/usr/bin/flock':process.execPath,hostArgs,{...env,
+  const hostEnvironment={...env,
     MYAGENTS_HOST_STATE_DIR:state,MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MANAGEMENT_IPC:socketPath,
     MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:String(process.getuid!()),MYAGENTS_HOST_MANAGEMENT_GID:String(process.getgid!()),MYAGENTS_HOST_MODE:'1',
-    CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'});
+    CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'};
+  const hostCommand=process.platform==='linux'?'/usr/bin/flock':process.execPath;
+  const host=child(hostCommand,hostArgs,hostEnvironment);
   hostPid=host.pid;hostBirth=processRows().find(row=>row.pid===hostPid)?.birth;
   record('host-born',{pid:hostPid,pgid:hostPid,birth:hostBirth,node:process.version});
   await wait('real Host startup',async()=>{if(host.exitCode!==null)throw Error('FIXTURE_HOST_EXITED');return peer&&diagnostics.includes('management IPC connected')?true:undefined;});
   const rejected=await management('config.provider.set',{provider:{id:'forbidden-loopback',name:'Forbidden portable loopback',apiProtocol:'anthropic',authType:'api_key',baseUrl},model:'original-host-model',workspace:{rootId:'workspaces',relativePath:'default'},executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
   assert.equal((rejected.result as {kind:string}).kind,'error');
+  assert.equal((rejected.result as {code:string}).code,'INVALID_REQUEST');
   const configured=await management('config.set',{providerId:'moonshot-coding',model:'k3',executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
   assert.equal((configured.result as {status:string}).status,'persisted');
   const credential=await management('credential.provider.set',{providerId:'original-host-fixture',credential:secret,expectedRevision:0,mutationId:randomUUID()});
@@ -189,12 +199,25 @@ try{
   assert.equal(outbox[0]!.sourceEventId,hint.sourceEventId);
   for(const item of outbox){assert.equal(item.agentId,'original-host-agent');assert.equal(item.sessionId,sessionId);assert.equal(item.connectionEpoch,connectionEpoch);assert.equal(item.workerGeneration,completed.generation);}
   record('two-original-terminal-sources-durable',{pending:outbox.length,stableFirstSource:outbox[0]!.sourceEventId===hint.sourceEventId});
+  captureProcesses();await stop(host);peer?.destroy();peer=undefined;
+  const previousEpoch=authority.connection.connectionEpoch;
+  authority={...authority,connection:{...authority.connection,bootEpoch:randomUUID(),connectionEpoch:randomUUID()},peerEpoch:randomUUID()};
+  const restartOffset=diagnostics.length;
+  const restarted=child(hostCommand,hostArgs,hostEnvironment);hostPid=restarted.pid;hostBirth=processRows().find(row=>row.pid===hostPid)?.birth;
+  record('host-restarted',{pid:hostPid,pgid:hostPid,birth:hostBirth});
+  await wait('restarted real Host',async()=>{if(restarted.exitCode!==null||restarted.signalCode!==null)throw Error('FIXTURE_RESTART_EXITED');return peer&&diagnostics.slice(restartOffset).includes('management IPC connected')?true:undefined;});
+  assert.deepEqual((await source()).result,hint);assert.equal(hint.connectionEpoch,previousEpoch);
+  assert.notEqual(authority.connection.connectionEpoch,previousEpoch);
+  assert.deepEqual((await mobile({kind:'mobile.receipt',operationId})).result,receipt);
+  assert.deepEqual((await mobile({kind:'mobile.receipt',operationId:sendId})).result,sendReceipt);
+  assert.equal(calls,callsAfterSend);
+  record('restart-recovered-same-source-and-receipts-without-session-dispatch',{sourceEventId:hint.sourceEventId,originalEpoch:hint.connectionEpoch,supplierCalls:calls});
   record('PASS',{elapsedMs:Date.now()-started,scope:'actual main + worker + SessionEngine/Store + native SDK, synthetic loopback supplier; no WSS/provider/phone acceptance'});
-}catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',elapsedMs:Date.now()-started,privateFixture:root});process.exitCode=1;}
+}catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',supplierCalls:calls,elapsedMs:Date.now()-started,privateFixture:root});process.exitCode=1;}
 finally{
   captureProcesses();
   // Every owned process was born detached; signal only its exact birth PGID.
-  for(const processChild of children.reverse())if(processChild.pid&&processChild.exitCode===null){try{process.kill(-processChild.pid,'SIGTERM');}catch{/* already exited */}await Promise.race([once(processChild,'exit').catch(()=>{}),new Promise(r=>setTimeout(r,1500))]);if(processChild.exitCode===null)try{process.kill(-processChild.pid,'SIGKILL');}catch{/* group exited */}}
+  for(const processChild of children.reverse())await stop(processChild);
   // SDK descendants normally inherit the Host group. A recorded detached
   // descendant is cleaned only if its exact PID/birth identity still matches.
   for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{/* already exited */}}

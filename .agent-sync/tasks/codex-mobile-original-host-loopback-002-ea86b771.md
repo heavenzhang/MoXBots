@@ -34,15 +34,16 @@ supplier and actual installed SDK/native child. No production changes or calls.
 
 - Original receipt adoption failure was handed to primary; production fix
   6fd18b85 was cherry-picked as dependency f027e96d (not owned).
-- Next real Node24 fixture exposes supervisor credential materialization before
-  worker snapshot: `Host credential reference is unavailable`, fail-closed
-  unconfirmed before worker/Session birth. Primary owns route-only projection repair.
-  Both private failure fixtures remain intact; neither operation is replayed.
+- Projection repair 430ce91b was cherry-picked as dependency63b1e888 (not owned).
+- Actual Node24 original Host/worker/SDK/native supplier execution, Store, first
+  generic source and real attachment bytes succeeded; duplicate attachment send
+  fails before receipt lookup with ASSET_UPLOAD_NOT_FOUND. Primary owns exact
+  intent preflight repair. All three private failure fixtures remain intact.
 - No real provider/account/WSS/phone/production acceptance, all outside this package.
 
 ## Next step
 
-- Integrate primary's reviewed supervisor route projection repair as dependency, then execute
+- Integrate primary's reviewed exact-intent preflight repair as dependency, then execute
   a fresh private fixture. Do not reuse the unknown original operation to send.
 - Requested model 6.1-sol/medium inherited from assignment; actual serving model,
   tokens and money cost unknown. No external model calls or further delegation.

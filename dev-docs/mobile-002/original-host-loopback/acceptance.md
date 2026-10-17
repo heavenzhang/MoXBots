@@ -103,3 +103,34 @@ run used Node24.20.0, and neither reached actual native SDK execution.
 Script type checking (root config normally excludes scripts):
 `node_modules/.bin/tsc --noEmit --project src/test/fixtures/mobile-original-host-tsconfig.json`
 passed together with eslint on both new TypeScript files; repeat after final edits.
+
+## Third actual failure: consumed attachment staging on duplicate send
+
+Primary's shared projection repair `430ce91b5a72bfc81215fdd854212389236cee5e`
+was cherry-picked as dependency `63b1e888` (not owned). A new Node24.20.0 fixture
+actually reached main → worker → installed SDK/native child → local supplier →
+original Store → generic source, then a second mobile send with actual file bytes.
+The native process was observed at PID4182 beneath original worker4181 and
+supervisor4176, all in the supervisor's actual birth PGID4176.
+
+- Evidence: `/Users/zhangshaohua/.mox-original-host-t31O7a/evidence.jsonl`, sibling
+  private diagnostics; failure after 3316ms, both supplier turns completed.
+- Start operation `79264238-169f-48a6-ac9e-cdecdde8fac0`, send operation
+  `470c3f98-1fdf-4509-9076-f0a3bc9e8856`, real Product Session
+  `7cf71014-f107-4e11-a89e-2e18dba925b4`.
+- The first accepted start's identical-operation retry returned its original
+  receipt without another supplier call. The actual attachment send was accepted,
+  the original worker's materialized file bytes matched, and its @ reference was
+  present in the real SDK request.
+- Same send operation with the same asset IDs then returned
+  `ASSET_UPLOAD_NOT_FOUND` before original receipt lookup. The fixture's expected
+  identical accepted receipt assertion remained unchanged and failed.
+- Read-only inspection afterwards confirmed two original terminal observations
+  in the durable outbox with the same real Session, worker generation and epoch.
+  All observed PIDs4176/4181/4182/4202/4204 were absent after exact birth cleanup.
+
+Primary will repair original receipt-owner exact-intent preflight before staging;
+no stage is recreated and no unknown Session send is replayed. The fixture's
+next stage also tests a genuine Host process restart and recovery of the same
+pending source ID/original epoch plus accepted receipts with no new SDK dispatch.
+That restart assertion is not yet executed on this red fixture.
