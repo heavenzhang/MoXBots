@@ -26,7 +26,7 @@
 
 ### Integrated DSH 构建来源
 
-`scripts/integrated-runtimes/prepare-dsh-runtime.mjs` 在打包前选择 DSH handoff。唯一的发行选择是 `src/shared/integrated-runtimes/dsh-release.json` 中的 `version`；正式入口和直接 `npm run tauri:build` 从该版本的 GitHub Release `manifest.json` 选择目标资产。packaged Dev 入口也默认使用该版本，只有显式传入 `local` 和绝对 handoff 路径才改用本地资源。Release 构建按清单校验整个 `.tar.gz` 的大小与 SHA-256，再读取必要的身份清单、复制到临时 staging 并原子暂存；不再逐文件扫描暂存副本。本地 handoff 没有归档摘要，暂存副本使用构建机 Node 调用官方 handoff 结构 verifier；不执行目标 Node/npm 或 Runtime self-check。`tauri:build:prepared` 消费已暂存的 Runtime，不重复遍历交付清单。macOS 正式构建在每个目标的准备完成后，为 DSH staging 内所有 Mach-O 文件附加 Developer ID、secure timestamp 与 hardened runtime 签名，再交给 Tauri 打包和公证；签名不修改 Release 归档、缓存或上游清单。
+`scripts/integrated-runtimes/prepare-dsh-runtime.mjs` 在打包前选择 DSH handoff。唯一的发行选择是 `src/shared/integrated-runtimes/dsh-release.json`；普通选择仅需 `version`，显式 owned 选择还固定 `repository`、`tag`、`assetName` 与源码 recipe 身份。正式入口和直接 `npm run tauri:build` 从所选 GitHub Release `manifest.json` 选择目标资产。packaged Dev 入口也默认使用该版本，只有显式传入 `local` 和绝对 handoff 路径才改用本地资源。Release 构建按清单校验整个 `.tar.gz` 的大小与 SHA-256，再读取必要的身份清单、复制到临时 staging 并原子暂存；不再逐文件扫描暂存副本。本地 handoff 没有归档摘要，暂存副本使用构建机 Node 调用官方 handoff 结构 verifier；不执行目标 Node/npm 或 Runtime self-check。`tauri:build:prepared` 消费已暂存的 Runtime，不重复遍历交付清单。macOS 正式构建在每个目标的准备完成后，为 DSH staging 内所有 Mach-O 文件附加 Developer ID、secure timestamp 与 hardened runtime 签名，再交给 Tauri 打包和公证；签名不修改 Release 归档、缓存或上游清单。
 
 本地 Dev 的 effective lock 和 compatibility 由 handoff 派生，写入 ignored 的 `dsh-build-selection-v1.json`；Vite、Sidecar esbuild 与 Rust build.rs 在同一次构建读取该身份。打包 Dev App 与正式 App 都运行这个 Sidecar bundle，只有 `tauri dev` 运行源码。它不改动已提交的版本选择。每个目标有自己的原生 DSH 资产，因此 macOS 双目标构建在目标循环中分别准备 DSH 并重建业务 bundle。`npm run tauri:build:prepared` 只供已调用 prepare 的平台脚本使用；通用直接入口负责自己准备。若绑定版本的 GitHub Release 尚不可用，默认构建会在请求清单时失败；需打 Dev 包时可显式使用 `--dsh-source local --dsh-handoff /absolute/path`（Windows 为 `-DshSource local -DshHandoff`）。本地 handoff 由 MyAgents-dsh 的 `scripts/build-local-handoff.mjs` 生成，先在其仓库完成 setup 并提交源代码即可；本地 Dev 不要求模型密钥或原生模型验收，handoff 标记为待原生验证。该仓库的 `specs/tech_docs/assurance/development-and-local-integration.md` 维护完整入口。
 
@@ -40,6 +40,16 @@ Linux 的 `--prepare`、Debug 和 Release 入口共用 `build_linux.sh`，由 `s
 
 macOS Dev / Release 在构建业务 bundle 前检查已安装的 SDK JS wrapper；此检查同时核对根 manifest 和 lock 中的八个平台原生包版本。原生 Mach-O 的目标架构、文件完整性与签名仍由既有平台校验入口负责。
 
+### Owned DSH 候选构建与发行
+
+需要修复 Runtime composition 时，`scripts/integrated-runtimes/source-patches/` 保存精确 upstream commit、可审阅源 diff、SHA-256、确定性结果 commit 和 accepted dependency 身份。`build-moxbots-dsh-runtime.mjs` 仅在新目录构建独立源码，原有下载缓存、包和 sealed handoff 不可修改；没有固定源码、工具链或原生验证时直接失败。
+
+窄 paths PR 或手动 `Owned DSH candidate` workflow 在四种实际 native runner 上执行 source gates、官方安装进程 campaign 和官方 handoff/archive roundtrip 验证，上传候选 archives 与完整 `manifest.json`；不创建 tag、Release 或发布客户端。源码 recipe 的 MoXBots commit、diff digest 与重建后的 Runtime commit 构成来源链，不能把仅存在于 scratch 中的合成 commit 声称为已经发布的上游 commit。
+
+`package-moxbots-dsh-runtime.mjs` 聚合前核对四种 distinct verified targets、共同源码和 recipe provenance，并逐包校验大小及 SHA-256。正式 owned publisher 固定为 `heavenzhang/MoXBots`；tag、资产模板与 recipe identity 必须显式选择。缺包、pending claim、来源不符或下载失败均无上游/旧版本 fallback。候选 selector 位于 `scripts/integrated-runtimes/source-patches/moxbots-dsh-release-candidate.json`；只有 root 完成资源发布裁决、确认目标 Release 的全部资源可读取后，才可用其替换正式 `dsh-release.json`。此步骤不等于桌面 App 发布或真实用户验收。
+
+
+
 ### MoXBots macOS 固定凭据读取器
 
 MoXBots macOS 包只从显式 `MOXBOTS_CREDENTIAL_READER_BUNDLE` 输入固定凭据读取器；不下载、重编或在 App 构建期间签名该组件。该绝对目录仅含 `credential-reader-manifest.json` 与 `moxbots-credential-reader`。权威发布契约在 `scripts/moxbot-credential-reader-release.json`：锁定 reader / parent bundle ID、协议版本、专用发布叶证书 SHA-256、源码闭包摘要，以及每个已发布架构的二进制 SHA-256/CDHash。源码闭包按 `rust-toolchain.toml`、crypto/protocol/vendor 源树中所有 regular file 的 root-relative POSIX 路径排序，排除任一路径组件名为 `target` 的文件，再按 `path + NUL + fileSHA256 + LF` 汇总。输入路径逐级拒绝符号链接，并限制祖先目录属主与写权限；仅系统固定的 root-owned `/private/tmp` sticky 01777 和 `/Applications` 0775 祖先例外。输入目录与文件本身仍必须只读、无特殊权限位，payload 不可有硬链接。准备 helper 从当前仓库重新计算源码摘要，并核对 manifest 与受信架构制品 SHA/CDHash，不信任制品自报摘要；Tauri 后再次检查源码闭包，防止打包期间源码漂移。当前仅锁定 arm64 reader，x86_64 必须先单独发布固定制品。
@@ -51,6 +61,7 @@ MoXBots macOS 包只从显式 `MOXBOTS_CREDENTIAL_READER_BUNDLE` 输入固定凭
 Linux 的 setup 通过 `build_linux.sh --install-deps` 和 `--prepare` 复用资源路径，debug/release 也走该脚本。macOS/Windows 的开发版仍可使用项目 node_modules 提供 sharp/tsx；正式包必须携带自包含资源。
 
 macOS 正式构建完成各目标打包后，收尾步骤使用同一准备入口恢复主机架构的 Node、DSH 和 CLIProxy，并在恢复 DSH 选择后重建业务 bundle。Node 与 DSH 的原生依赖必须属于同一目标，业务 bundle 也必须绑定恢复后的 DSH 身份；只恢复 Node 会让本地启动加载另一架构的 Runtime。此步骤只更新 checkout 的 staging，不修改已经打包的 App；任一准备或业务构建失败都会使脚本失败，重跑准备入口可恢复，不提供跨资源事务回滚。
+
 
 ## 业务 bundle 与本次 Runtime 选择一致
 

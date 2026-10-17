@@ -1,0 +1,128 @@
+diff --git a/packages/runtime-product/src/composition.ts b/packages/runtime-product/src/composition.ts
+index 19bc9eb..6d5e73c 100644
+--- a/packages/runtime-product/src/composition.ts
++++ b/packages/runtime-product/src/composition.ts
+@@ -193,6 +193,7 @@ import { createHostDeepSeekWebSearchConfig } from "./host-web-search.js";
+ import { createHostDeepSeekWebFetchConfig } from "./host-web-fetch.js";
+ import { executeHostCanonicalWebTool } from "./host-web-bridge.js";
+ import {
++  installHostChildApprovalContext,
+   COMPACTION_CONTINUITY,
+   COMPACTION_CONTINUITY_ORDER,
+   RUNTIME_OPERATING_CONTRACT,
+@@ -1335,6 +1336,8 @@ export const installCanonicalToolPlane = async (
+     fibers.push(await root.plugin(SubagentForkInProcess, { providerName: "native-fork" }));
+     fibers.push(await root.plugin(SkillRegistry));
+     fibers.push(await root.plugin(ApprovalService, { policy: "ask" }));
++    const stopChildApprovalContext = installHostChildApprovalContext(root);
++    fibers.push({ dispose: () => { stopChildApprovalContext(); return Promise.resolve(); } });
+ 
+     const stopProjection = installNativeChildAuthorityProjection(root);
+     fibers.push({ dispose: () => { stopProjection(); return Promise.resolve(); } });
+diff --git a/packages/runtime-product/src/system-context.ts b/packages/runtime-product/src/system-context.ts
+index 826cb1e..e7c45c7 100644
+--- a/packages/runtime-product/src/system-context.ts
++++ b/packages/runtime-product/src/system-context.ts
+@@ -24,6 +24,21 @@ export const COMPACTION_CONTINUITY_ORDER = -90;
+ export const RUNTIME_WORKSPACE_CONTEXT_ORDER = 90;
+ export const MAX_HOST_CONTEXT_BYTES = 512 * 1024;
+ 
++/** Project the policy owned by this composition through DSH's public assembly seam. */
++export const installHostChildApprovalContext = (root: Context): (() => void) =>
++  root.on("system-prompt/assemble", async (_assembly, context, next) => {
++    const assembly = await next();
++    const agent = context.agent;
++    if (agent?.session.header.origin !== "subagent"
++      || agent.session.header.parentSession === undefined) return assembly;
++    const policy = root.approval.overrideOf(agent.session) ?? root.approval.config.policy ?? "ask";
++    const text = policy === "ask"
++      ? "You are a delegated subagent. Operations that require approval are routed through the configured Host answerers under the current Session policy; without an available answerer, the request fails closed. A denied operation must not be retried to evade its decision. Delegation itself does not grant additional access; report any remaining limitation to the delegating agent."
++      : "You are a delegated subagent. The current Session approval policy is never: operations that require approval are rejected automatically. Do not retry a denied operation or widen your scope; report the limitation to the delegating agent.";
++    return { ...assembly, contexts: assembly.contexts.map((entry) =>
++      entry.name === "subagent:delegation" ? { ...entry, text } : entry) };
++  });
++
+ export const runtimeWorkspaceContextText = (canonicalRoot: string): string => [
+   "Current workspace root:",
+   canonicalRoot,
+diff --git a/specs/ARCHITECTURE.md b/specs/ARCHITECTURE.md
+index b0eefd5..83ae363 100644
+--- a/specs/ARCHITECTURE.md
++++ b/specs/ARCHITECTURE.md
+@@ -395,7 +395,7 @@ The Product policy catalog has 24 internal slots. `modelToolNames` maps them to
+ 
+ The single execution path applies PreToolUse transformation before authoritative assistant/tool-call commit. The selected executor owns argument validation, hard policy and permission; authorized execution runs under its deadline, followed by output validation, PostToolUse and durable DSH tool results. Optional presentation metadata and harmless model decorations cannot replace those authority checks.
+ 
+-Permission uses `approval-required`, `workspace-autonomous` or `full-autonomous`. Composition translates them into DSH approval and sandbox policy. The first two restrict file/Shell writes to workspace and sandbox temporary roots; the last uses current-user access. Exact grants belong to the root Session tree; approval and sandbox escalation have distinct lifetimes. Human review waits without an execution deadline, while transport, authorized execution and cleanup remain bounded.
++Permission uses `approval-required`, `workspace-autonomous` or `full-autonomous`. Composition translates them into DSH approval and sandbox policy. The first two restrict file/Shell writes to workspace and sandbox temporary roots; the last uses current-user access. Exact grants belong to the root Session tree; approval and sandbox escalation have distinct lifetimes. Human review waits without an execution deadline, while transport, authorized execution and cleanup remain bounded. Native child delegation guidance is projected from the actual child approval policy through the public prompt assembly seam; it has no authority to grant access. See [Permissions/interactions/Plan](./tech_docs/execution/permissions-interactions-and-plan.md).
+ 
+ `ProductPlanService` owns normal/Plan state, the managed plan file and a monotonic tool guard. Plan retains the selected Shell for prompt-guided inspection; it grants no Shell approval and adds no command parser. Agent-initiated exit reviews actual plan bytes; Host-initiated exit is the user's decision. See [Permissions/interactions/Plan](./tech_docs/execution/permissions-interactions-and-plan.md).
+ 
+diff --git a/specs/tech_docs/execution/permissions-interactions-and-plan.md b/specs/tech_docs/execution/permissions-interactions-and-plan.md
+index 5ce2ef6..edcdb74 100644
+--- a/specs/tech_docs/execution/permissions-interactions-and-plan.md
++++ b/specs/tech_docs/execution/permissions-interactions-and-plan.md
+@@ -29,6 +29,13 @@ Exact current behavior is owned by:
+ 
+ Permission and question waits use the existing interaction/Host owners for registration, identity, decisions and cancellation. There is no ProductWork capacity queue or waiting-phase ledger. Native DSH owns child execution and resource limits.
+ 
++The Product composition projects native child delegation context through the public
++`system-prompt/assemble` seam. It reads the child's effective ApprovalService policy
++for each model request: `ask` describes the configured Host answerers and fail-closed
++behavior, while `never` describes automatic rejection. Only the named native
++`subagent:delegation` contribution is replaced; root and arbitrary Host contexts are
++preserved. This projection grants no permission and does not modify durable policy.
++
+ ## 2. Permission modes
+ 
+ The product supplies one of three modes to each Session. Reads and searches use the local user's access on all three modes. The first two modes apply the upstream `workspace-write` sandbox to governed file mutations and Shell processes; `full-autonomous` uses `danger-full-access`.
+diff --git a/tests/child-approval-context.unit.test.ts b/tests/child-approval-context.unit.test.ts
+new file mode 100644
+index 0000000..56d7a28
+--- /dev/null
++++ b/tests/child-approval-context.unit.test.ts
+@@ -0,0 +1,44 @@
++import { Context } from "@deepseek-ai/cordis";
++import type { Agent } from "@deepseek-ai/dsh-agent";
++import { SessionId, SessionStore } from "@deepseek-ai/dsh-session";
++import { SystemPrompt } from "@deepseek-ai/dsh-system-prompt";
++import { ApprovalService, setApprovalPolicy } from "@deepseek-ai/dsh-user-approval";
++import { afterEach, expect, it } from "vitest";
++import { installHostChildApprovalContext } from "../packages/runtime-product/src/system-context.js";
++
++const roots: Context[] = [];
++afterEach(async () => {
++  await Promise.all(roots.splice(0).map((root) => root.fiber.dispose()));
++});
++
++it("projects actual child ask/never policy without changing policy, other contexts or root prompts", async () => {
++  const root = new Context();
++  roots.push(root);
++  await root.plugin(SessionStore);
++  await root.plugin(SystemPrompt, { includeHarnessIdentity: false });
++  await root.plugin(ApprovalService, { policy: "ask" });
++  const parent = { session: root.sessions.create(SessionId("parent")) } as Agent;
++  const child = { session: root.sessions.create(SessionId("child"), {
++    meta: { origin: "subagent", parentSession: parent.session.id },
++  }) } as Agent;
++  root.systemPrompt.context({ name: "subagent:delegation", order: 1, text: "original fixed delegation" });
++  root.systemPrompt.context({ name: "host:literal", order: 2, text: "operations that require approval are rejected automatically {{literal}}" });
++  const stop = installHostChildApprovalContext(root);
++  const assemble = (agent: Agent) => root.systemPrompt.assemble({ agent, scope: agent });
++  const text = async (agent: Agent) => (await assemble(agent)).contexts.find(({ name }) => name === "subagent:delegation")?.text;
++
++  expect(await text(parent)).toBe("original fixed delegation");
++  expect(await text(child)).toContain("configured Host answerers");
++  expect(await text(child)).not.toContain("operations that require approval are rejected automatically");
++  expect(root.approval.overrideOf(child.session)).toBeUndefined();
++  setApprovalPolicy(child.session, "never");
++  expect(await text(child)).toContain("operations that require approval are rejected automatically");
++  expect(root.approval.overrideOf(child.session)).toBe("never");
++  setApprovalPolicy(child.session, "ask");
++  expect(await text(child)).toContain("configured Host answerers");
++  expect((await assemble(child)).contexts.find(({ name }) => name === "host:literal")?.text)
++    .toBe("operations that require approval are rejected automatically {{literal}}");
++  expect(root.approval.overrideOf(parent.session)).toBeUndefined();
++  stop();
++  expect(await text(child)).toBe("original fixed delegation");
++});

@@ -29,30 +29,66 @@ export function currentTarget(platform = process.platform, arch = process.arch) 
   return `${os}-${cpu}`;
 }
 
-export function releaseAssetUrl(tag, asset) {
-  if (!/^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(tag)
+export function releaseAssetUrl(tag, asset, repository = releaseRepository) {
+  if (![releaseRepository, "heavenzhang/MoXBots"].includes(repository)
+    || !/^(?:v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?|dsh-v\d+\.\d+\.\d+-moxbots\.[1-9]\d*)$/.test(tag)
     || (asset !== "manifest.json"
-      && !/^myagents-dsh-v[0-9A-Za-z.+-]+-(?:darwin-arm64|darwin-x64|linux-x64|win32-x64)\.tar\.gz$/.test(asset))) {
+      && !/^(?:myagents-dsh-v|moxbots-dsh-v)[0-9A-Za-z.+-]+-(?:darwin-arm64|darwin-x64|linux-x64|win32-x64)\.tar\.gz$/.test(asset))) {
     throw new Error("DSH release tag or asset name is invalid");
   }
-  return `https://github.com/${releaseRepository}/releases/download/${tag}/${asset}`;
+  return `https://github.com/${repository}/releases/download/${tag}/${asset}`;
 }
 
-export function parseReleaseManifest(bytes, version) {
+export function normalizeReleaseSelection(input) {
+  const selection = typeof input === "string" ? { version: input } : input;
+  const version = selection?.version;
+  if (!versionPattern.test(version ?? "")) throw new Error("No stable MyAgents-dsh version in dsh-release.json");
+  const repository = selection.repository ?? releaseRepository;
+  const tag = selection.tag ?? `v${version}`;
+  const assetName = selection.assetName ?? `myagents-dsh-${tag}-{target}.tar.gz`;
+  if (repository === releaseRepository) {
+    if (tag !== `v${version}` || assetName !== `myagents-dsh-${tag}-{target}.tar.gz`) {
+      throw new Error("Upstream DSH selection must use its exact official tag and asset names");
+    }
+  } else if (repository === "heavenzhang/MoXBots") {
+    if (!new RegExp(`^dsh-v${version.replaceAll(".", "\\.")}-moxbots\\.[1-9]\\d*$`).test(tag)
+      || assetName !== `moxbots-${tag}-{target}.tar.gz`
+      || !sourcePattern.test(selection.sourceCommit ?? "")
+      || !sourcePattern.test(selection.upstreamSourceCommit ?? "")
+      || !shaPattern.test(selection.sourcePatchSha256 ?? "")
+      || !shaPattern.test(selection.sourceRecipeSha256 ?? "")) {
+      throw new Error("Owned DSH selection requires a fixed tag, assets and source recipe identity");
+    }
+  } else throw new Error("DSH release repository is not an admitted publisher");
+  releaseAssetUrl(tag, assetName.replace("{target}", "darwin-arm64"), repository);
+  return { ...selection, version, repository, tag, assetName };
+}
+
+export function parseReleaseManifest(bytes, input) {
+  const selection = normalizeReleaseSelection(input);
+  const { version, repository, tag, assetName } = selection;
   if (!versionPattern.test(version)) throw new Error("MyAgents-dsh version must be stable X.Y.Z");
   if (bytes.length > 64 * 1024) throw new Error("MyAgents-dsh Release manifest is too large");
   const manifest = JSON.parse(bytes.toString("utf8"));
-  const tag = `v${version}`;
-  if (manifest.schemaVersion !== 1 || manifest.repository !== releaseRepository
+  if (manifest.schemaVersion !== 1 || manifest.repository !== repository
     || manifest.version !== version || manifest.tag !== tag
     || !sourcePattern.test(manifest.sourceCommit ?? "")
     || !manifest.assets || typeof manifest.assets !== "object" || Array.isArray(manifest.assets)
     || JSON.stringify(Object.keys(manifest.assets).sort()) !== JSON.stringify([...releaseTargets].sort())) {
     throw new Error(`MyAgents-dsh Release manifest does not describe ${tag} and all four targets`);
   }
+  if (repository === "heavenzhang/MoXBots"
+    && (manifest.sourceCommit !== selection.sourceCommit
+      || manifest.provenance?.upstreamSourceCommit !== selection.upstreamSourceCommit
+      || manifest.provenance?.sourcePatchSha256 !== selection.sourcePatchSha256
+      || manifest.provenance?.sourceRecipeSha256 !== selection.sourceRecipeSha256
+      || manifest.provenance?.sourceRecipePath !== "scripts/integrated-runtimes/source-patches/moxbots-child-approval-context.json"
+      || !sourcePattern.test(manifest.provenance?.sourceRecipeCommit ?? ""))) {
+    throw new Error("Owned DSH manifest differs from the pinned source recipe");
+  }
   for (const target of releaseTargets) {
     const asset = manifest.assets[target];
-    if (asset?.name !== `myagents-dsh-${tag}-${target}.tar.gz`
+    if (asset?.name !== assetName.replace("{target}", target)
       || !shaPattern.test(asset.sha256 ?? "") || !shaPattern.test(asset.handoffSha256 ?? "")
       || !shaPattern.test(asset.runtimeManifestSha256 ?? "")
       || !shaPattern.test(asset.compatibilitySha256 ?? "")
@@ -111,7 +147,7 @@ export function deriveReleaseLock(releaseLock, handoffRoot, target, manifest, ma
     || selected.lock.handoff.compatibilitySha256 !== asset.compatibilitySha256) {
     throw new Error(`MyAgents-dsh Release handoff identity differs from the ${target} manifest`);
   }
-  selected.lock.release = { version: manifest.version, tag: manifest.tag,
+  selected.lock.release = { version: manifest.version, tag: manifest.tag, repository: manifest.repository,
     sourceCommit: manifest.sourceCommit, manifestSha256, archiveSha256: asset.sha256 };
   return selected;
 }
@@ -156,27 +192,27 @@ function digest(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-export async function acquireRelease(repoRoot, version, target, download) {
-  if (!versionPattern.test(version)) throw new Error("No stable MyAgents-dsh version in dsh-release.json");
+export async function acquireRelease(repoRoot, input, target, download) {
+  const selection = normalizeReleaseSelection(input);
+  const { repository, tag } = selection;
   if (!releaseTargets.includes(target)) throw new Error(`Unsupported MyAgents-dsh Release target: ${target}`);
-  const tag = `v${version}`;
   const cacheRoot = resolve(repoRoot, "src-tauri/resources/dsh-release-cache");
   mkdirSync(cacheRoot, { recursive: true });
-  const manifestCache = resolve(cacheRoot, `${tag}-manifest.json`);
+  const manifestCache = resolve(cacheRoot, `${repository.replace("/", "-")}-${tag}-manifest.json`);
   let manifestBytes;
   let manifest;
   if (existsSync(manifestCache)) {
     try {
       manifestBytes = readFileSync(manifestCache);
-      manifest = parseReleaseManifest(manifestBytes, version);
+      manifest = parseReleaseManifest(manifestBytes, selection);
     } catch {
       manifestBytes = undefined;
     }
   }
   if (!manifestBytes) {
-    const manifestUrl = releaseAssetUrl(tag, "manifest.json");
+    const manifestUrl = releaseAssetUrl(tag, "manifest.json", repository);
     manifestBytes = await download(manifestUrl, { maxBytes: 64 * 1024, redirect: "follow" });
-    manifest = parseReleaseManifest(manifestBytes, version);
+    manifest = parseReleaseManifest(manifestBytes, selection);
     const temporary = `${manifestCache}.tmp-${randomUUID()}`;
     try {
       writeFileSync(temporary, manifestBytes);
@@ -186,7 +222,7 @@ export async function acquireRelease(repoRoot, version, target, download) {
     }
   }
   const pin = manifest.assets[target];
-  const url = releaseAssetUrl(tag, pin.name);
+  const url = releaseAssetUrl(tag, pin.name, repository);
   const archive = resolve(cacheRoot, `${pin.sha256}.tar.gz`);
   let bytes;
   if (existsSync(archive)) {
@@ -234,8 +270,8 @@ export async function prepareDshRuntime({
   if (source === "local") {
     input = { root: resolveExplicitDirectory(handoff, "--handoff"), cleanup: () => {} };
   } else {
-    const version = readJson(resolve(repoRoot, "src/shared/integrated-runtimes/dsh-release.json")).version;
-    input = await acquireRelease(repoRoot, version, target, download);
+    const selection = readJson(resolve(repoRoot, "src/shared/integrated-runtimes/dsh-release.json"));
+    input = await acquireRelease(repoRoot, selection, target, download);
   }
   try {
     const { lock, compatibility } = source === "release"

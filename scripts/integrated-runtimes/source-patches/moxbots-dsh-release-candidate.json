@@ -1,0 +1,10 @@
+{
+  "version": "0.1.18",
+  "repository": "heavenzhang/MoXBots",
+  "tag": "dsh-v0.1.18-moxbots.1",
+  "assetName": "moxbots-dsh-v0.1.18-moxbots.1-{target}.tar.gz",
+  "sourceCommit": "d1d39a952f63af29eea3544e3dd52bd13eb8db1d",
+  "upstreamSourceCommit": "8f5a36fa3ef7544b5dfeda432f0446531d476707",
+  "sourcePatchSha256": "e464494f3db4cd7262763c4c225f94d68553f924397b8363af41f473a4fb1727",
+  "sourceRecipeSha256": "c009a322370772d56c0deaacd588954319b696d4f919260f852fa4f219636d47"
+}

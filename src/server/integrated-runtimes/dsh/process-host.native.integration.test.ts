@@ -799,6 +799,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         { id: 'fixture-agent-call', name: 'subagent', input: { description: 'Verify child approval', prompt: 'Return the synthetic fixture completion.', run_in_background: false } },
         { id: 'fixture-child-inherited-call', name: 'bash', input: { command: 'printf inherited-child', workdir: 'child', description: 'Verify the shared directory grant' } },
         { id: 'fixture-child-review-call', name: 'bash', input: { command: `printf approved-child; ${curl} http://dsh-shell-fixture.invalid/child`, description: 'Verify child approval at another directory' } },
+        { id: 'fixture-child-denied-call', name: 'bash', input: { command: `${curl} http://dsh-shell-fixture.invalid/denied`, description: 'Verify that denied child approval never executes' } },
         undefined, // The foreground child completes before the root continues.
         { id: 'fixture-question-call', name: 'AskUserQuestion', input: { questions: [0, 1, 2].map(index => ({ header: `Step ${index}`, question: `Choose synthetic step ${index}`, options: [{ label: 'Continue', description: 'Complete the fixture' }, { label: 'Stop', description: 'Stop the fixture' }, { label: 'Review, then continue', description: 'Review first' }, { label: 'Later', description: 'Defer' }], multiSelect: index === 1 })) } },
         { id: 'fixture-enter-plan-call', name: 'EnterPlanMode', input: {} },
@@ -847,7 +848,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         const modelRequest = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { model?: string; tools?: Array<Record<string, unknown>>; messages: { content: unknown }[]; system?: unknown };
         for (const block of modelRequest.messages.flatMap(message => Array.isArray(message.content) ? message.content as { type: string; tool_use_id?: string; content?: unknown; is_error?: boolean }[] : [])) {
           if (block.type === 'tool_result' && block.tool_use_id) modelToolResults.set(block.tool_use_id, block);
-          if (block.type === 'tool_result' && (block.tool_use_id === 'fixture-child-inherited-call' || block.tool_use_id === 'fixture-child-review-call')) childResults.set(block.tool_use_id, block);
+          if (block.type === 'tool_result' && block.tool_use_id?.startsWith('fixture-child-')) childResults.set(block.tool_use_id, block);
         }
         const tool = calls[requests++];
         if (tool?.id === 'fixture-agent-call') advertisedDelegation = modelRequest.tools?.find(candidate => candidate.name === 'subagent');
@@ -955,7 +956,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         expect(receipt.state).toBe('applied');
         let approvalIndex = 1;
         let expectedRevision = receipt.state === 'applied' ? receipt.effectivePolicyRevision : '';
-        const approveCall = async (callId: string, origin: 'root' | 'foreground_child') => {
+        const approveCall = async (callId: string, origin: 'root' | 'foreground_child', decision: 'allow_once' | 'deny' = 'allow_once') => {
           await expect.poll(() => approvals.length, { timeout: 20_000 }).toBe(approvalIndex + 1);
           const next = approvals[approvalIndex++]!;
           const call = calls.find(candidate => candidate?.id === callId)!;
@@ -965,6 +966,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
           expect((next.schema as Record<string, unknown>).tool).toBe(call.name === 'subagent' ? 'Agent' : call.name);
           expect(next.review?.actor.origin).toBe(origin);
           if (origin === 'foreground_child') {
+            if (childAgentId !== undefined) expect(next.review!.actor.agentId).toBe(childAgentId);
             childAgentId = next.review!.actor.agentId;
             expect(childAgentId).not.toBe(binding.runtimeSessionId);
             expect((await host.requestNativeSubagent('subagent/list', {})).items).toEqual(expect.arrayContaining([
@@ -975,7 +977,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
           expect(next.authority).toMatchObject({ callId: call.id, rootCallId: call.id });
           expect(next.desiredPolicyRevision).toBe(expectedRevision);
           expect(childResults.has(call.id)).toBe(false);
-          const result = await host.request('interaction/respond', { interactionId: next.interactionId, expectedRevision: next.desiredPolicyRevision, decision: 'allow_once' });
+          const result = await host.request('interaction/respond', { interactionId: next.interactionId, expectedRevision: next.desiredPolicyRevision, decision });
           expect(result.state).toBe('applied');
           if (result.state === 'applied') expectedRevision = result.effectivePolicyRevision;
         };
@@ -999,6 +1001,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         await approveCall('fixture-skill-call', 'root');
         await approveCall('fixture-agent-call', 'root');
         await approveCall('fixture-child-review-call', 'foreground_child');
+        await approveCall('fixture-child-denied-call', 'foreground_child', 'deny');
         await answerQuestions();
         await expect.poll(() => approvals.length, { timeout: 20_000 }).toBe(approvalIndex + 1);
         const planApproval = approvals[approvalIndex++]!;
@@ -1010,9 +1013,12 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
           decision: 'answered',
           value: { answers: [{ id: planQuestion.id, selected: ['Approve'] }] },
         })).toMatchObject({ state: 'applied' });
-        expect(approvals.filter(value => value.kind === 'permission')).toHaveLength(6);
-        expect(childResults.size).toBe(2);
-        for (const result of childResults.values()) expect(result.is_error, JSON.stringify(result)).not.toBe(true);
+        expect(approvals.filter(value => value.kind === 'permission')).toHaveLength(7);
+        expect(childResults.size).toBe(3);
+        for (const [id, result] of childResults) {
+          if (id === 'fixture-child-denied-call') expect(result.is_error, JSON.stringify(result)).toBe(true);
+          else expect(result.is_error, JSON.stringify(result)).not.toBe(true);
+        }
         expect(JSON.stringify(childResults.get('fixture-child-inherited-call')?.content)).toContain('inherited-child');
         expect(JSON.stringify(childResults.get('fixture-child-review-call')?.content)).toContain('approved-child');
         expect(JSON.stringify(childResults.get('fixture-child-review-call')?.content)).toContain('shell-proxy-ok');
@@ -1097,6 +1103,7 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
         // Host approval actually succeeded above. The model must not be told
         // that all child approval requests are rejected without interaction.
         expect(childSystemPrompt).not.toContain('operations that require approval are rejected automatically');
+        expect(childSystemPrompt).toContain('configured Host answerers');
       } catch (error) {
         const progress = { requests, results: [...modelToolResults].map(([id, result]) => ({ id, isError: result.is_error, content: JSON.stringify(result.content).slice(0, 1500) })), terminal: await host.request('turn/get', { clientOperationId: 'native-shell-review-turn' }).catch(() => undefined), stderr: fixture.stderr.slice(-5) };
         throw new Error(`Native tool sequence failed: ${JSON.stringify(progress)}`, { cause: error });

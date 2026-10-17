@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/hAcKlyc/MyAgents-dsh.git",
+  "baseCommit": "8f5a36fa3ef7544b5dfeda432f0446531d476707",
+  "patch": "moxbots-child-approval-context.patch",
+  "patchSha256": "e464494f3db4cd7262763c4c225f94d68553f924397b8363af41f473a4fb1727",
+  "resultCommit": "d1d39a952f63af29eea3544e3dd52bd13eb8db1d",
+  "commitName": "MoXBots Runtime Builder",
+  "commitEmail": "runtime-builder@moxbots.invalid",
+  "commitDate": "2026-10-17T12:00:00Z",
+  "commitSubject": "fix(runtime): describe effective native child approval policy",
+  "commitBody": "The Host composition permits child approval through its answerers. Project the existing named delegation context from the actual ApprovalService policy without changing authorization or native package bytes.",
+  "changedPaths": [
+    "packages/runtime-product/src/composition.ts",
+    "packages/runtime-product/src/system-context.ts",
+    "specs/ARCHITECTURE.md",
+    "specs/tech_docs/execution/permissions-interactions-and-plan.md",
+    "tests/child-approval-context.unit.test.ts"
+  ],
+  "nodeVersion": "v24.20.0",
+  "npmVersion": "11.19.0",
+  "acceptedDshManifestSha256": "8a55db844fcfed62e2320d4c0873934c72ea56e4826d359c5af928f388dce6ed"
+}
