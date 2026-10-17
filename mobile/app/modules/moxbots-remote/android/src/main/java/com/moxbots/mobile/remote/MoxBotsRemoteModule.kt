@@ -12,6 +12,7 @@ import expo.modules.interfaces.permissions.PermissionsResponseListener
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 
 class MoxBotsRemoteModule : Module() {
@@ -23,12 +24,15 @@ class MoxBotsRemoteModule : Module() {
   @Volatile private var appForeground = true
   private var speech: NativeSpeech? = null
   private var uploads: NativeUploadScheduler? = null // owner-thread only
+  private var artifactDownloads: NativeArtifactScheduler? = null // owner-thread only
+  @Volatile private var artifactScope: String? = null
+  private val artifactPresentationFence = AtomicLong(0)
   private data class Picker(val scope: String, val image: Boolean, val promise: Promise)
   private var picker: Picker? = null // main-thread owned
   private val pickerCode = 0x4d58
   override fun definition() = ModuleDefinition {
     Name("MoxBotsRemote")
-    Events("snapshotChanged", "speechChanged", "attachmentUploadChanged")
+    Events("snapshotChanged", "speechChanged", "attachmentUploadChanged", "artifactDownloadChanged")
     AsyncFunction("request") { input: String, promise: Promise ->
       val intent = try { if (input.toByteArray(Charsets.UTF_8).size <= 64 * 1024) JSONObject(input) else null } catch (_: Exception) { null }
       val kind = intent?.optString("kind")
@@ -38,27 +42,47 @@ class MoxBotsRemoteModule : Module() {
         } else main.post { handleSpeech(kind, promise) }
       } else if (intent != null && kind != null && kind.startsWith("attachment.")) {
         handleAttachmentIntent(intent, promise)
+      } else if (intent != null && kind != null && kind.startsWith("artifact.")) {
+        handleArtifactIntent(intent, promise)
       } else enqueue(promise) {
         try {
           val parsed = intent
           val parsedKind = parsed?.optString("kind")
           if (parsedKind in setOf("account.login.start", "account.login.poll", "account.logout", "connection.suspend")) {
+            artifactPresentationFence.incrementAndGet()
             uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+            artifactDownloads?.pause()
+            artifactScope = null
           }
           if (parsedKind in setOf("session", "mobile", "assets")) {
+            artifactPresentationFence.incrementAndGet()
             val targetId = parsed?.optString("targetId").orEmpty()
             if (targetId.isNotBlank()) uploads?.pauseForTarget(targetId)
+            if (targetId.isNotBlank()) artifactDownloads?.pauseForTarget(targetId)
             val innerKind = parsed?.optJSONObject("request")?.optString("kind")
-            if (innerKind == "stop") uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+            if (innerKind == "stop") {
+              uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+              val innerSession = parsed?.optJSONObject("request")?.optString("sessionId").orEmpty()
+              if (innerSession.isNotEmpty()) artifactDownloads?.pauseForSession(innerSession)
+            }
           }
+          if (parsedKind == "targets.list") artifactPresentationFence.incrementAndGet()
           val response = ensureConnection().request(input)
           when (parsedKind) {
             "targets.list" -> runCatching {
               val scope = accountScope()
-              uploads?.validateTargets(scope, JSONObject(response).getJSONArray("items"))
-            }.onFailure { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED") }
-            "account.status" -> runCatching { uploads?.pauseUnlessScope(accountScope()) }
-              .onFailure { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED") }
+              val items = JSONObject(response).getJSONArray("items")
+              uploads?.validateTargets(scope, items)
+              artifactDownloads?.validateTargets(items)
+            }.onFailure { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED"); artifactDownloads?.pause() }
+            "account.status" -> runCatching {
+              val liveScope = accountScope()
+              uploads?.pauseUnlessScope(liveScope)
+              if (artifactScope != null && artifactScope != liveScope) { artifactPresentationFence.incrementAndGet(); artifactDownloads?.pause(); artifactScope = null }
+            }.onFailure {
+              artifactPresentationFence.incrementAndGet()
+              uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED"); artifactDownloads?.pause(); artifactScope = null
+            }
           }
           promise.resolve(response)
         } catch (_: Exception) { promise.resolve(failure("MOBILE_CONNECTION_UNAVAILABLE")) }
@@ -91,9 +115,11 @@ class MoxBotsRemoteModule : Module() {
     }
     OnActivityEntersBackground {
       appForeground = false
+      artifactPresentationFence.incrementAndGet()
       main.post { speech?.cancel() }
       owner.execute {
         try { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED") } catch (_: Exception) { }
+        try { artifactDownloads?.pause() } catch (_: Exception) { }
         try { connection?.request("{\"version\":1,\"kind\":\"connection.suspend\"}") } catch (_: Exception) { }
       }
     }
@@ -106,6 +132,7 @@ class MoxBotsRemoteModule : Module() {
       }
       owner.execute {
         try { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED") } catch (_: Exception) { }
+        try { artifactDownloads?.pause() } catch (_: Exception) { }
         try { connection?.close() } catch (_: Exception) { }
         connection = null; uploads = null
       }
@@ -267,6 +294,119 @@ class MoxBotsRemoteModule : Module() {
     "assetId" to event.opt("assetId").let { if (it == null || it === JSONObject.NULL) null else it },
     "errorCode" to event.opt("errorCode").let { if (it == null || it === JSONObject.NULL) null else it },
   )
+  private fun handleArtifactIntent(intent: JSONObject, promise: Promise) {
+    val kind = intent.optString("kind")
+    val version = intent.opt("version")
+    val targetId = intent.optString("targetId")
+    val sessionId = intent.optString("sessionId")
+    val id = intent.optString("artifactId")
+    val shapeValid = when (kind) {
+      "artifact.list" -> intent.keys().asSequence().toSet() == (if (intent.has("before")) setOf("version", "kind", "targetId", "sessionId", "limit", "before") else setOf("version", "kind", "targetId", "sessionId", "limit")) &&
+        (intent.opt("limit") is Int || intent.opt("limit") is Long) && intent.optLong("limit", 0) in 1..30 && (!intent.has("before") || intent.opt("before") is String)
+      "artifact.download" -> intent.keys().asSequence().toSet() == setOf("version", "kind", "targetId", "sessionId", "artifact") && intent.optJSONObject("artifact") != null
+      "artifact.status", "artifact.pause", "artifact.remove", "artifact.preview", "artifact.share" ->
+        intent.keys().asSequence().toSet() == setOf("version", "kind", "targetId", "sessionId", "artifactId") && isCanonicalUuid(id)
+      else -> false
+    }
+    if (version !is Int || version != 1 || !shapeValid ||
+      !targetId.matches(Regex("[A-Za-z0-9._:-]{1,256}")) || !sessionId.matches(Regex("[A-Za-z0-9-]{1,99}"))) {
+      promise.resolve(failure("MOBILE_INTENT_INVALID")); return
+    }
+    if (appContext.currentActivity?.hasWindowFocus() != true) {
+      promise.resolve(failure("MOBILE_ARTIFACT_FOREGROUND_REQUIRED")); return
+    }
+    appForeground = true
+    artifactPresentationFence.incrementAndGet()
+    enqueue(promise) {
+      try {
+        val scope = accountScope()
+        val context = requireNotNull(appContext.reactContext)
+        val (target, targetItems) = runCatching { currentArtifactTarget(targetId) }
+          .onFailure { artifactDownloads?.pause() }.getOrThrow()
+        artifactDownloads?.validateTargets(targetItems)
+        artifactDownloads?.pauseForTarget(target.targetId)
+        val scheduler = artifactScheduler(scope, context)
+        val result = when (kind) {
+          "artifact.list" -> scheduler.list(target, sessionId, intent.getLong("limit").toInt(), if (intent.has("before")) intent.getString("before") else null)
+          "artifact.download" -> scheduler.download(target, sessionId, parseArtifactDescriptor(intent.getJSONObject("artifact")))
+          "artifact.status" -> scheduler.status(target, sessionId, id)
+          "artifact.pause" -> scheduler.pause(target, sessionId, id)
+          "artifact.remove" -> scheduler.remove(target, sessionId, id)
+          else -> {
+            val readyFile = scheduler.readyFile(target, sessionId, id)
+            check(accountScope() == scope && artifactScope == scope) { "MOBILE_ACCOUNT_CHANGED" }
+            val presentationFence = artifactPresentationFence.get()
+            main.post {
+              try {
+                check(ownerActive && artifactScope == scope && artifactPresentationFence.get() == presentationFence) { "MOBILE_ACCOUNT_CHANGED" }
+                val activity = appContext.currentActivity
+                check(activity != null && !activity.isFinishing && activity.hasWindowFocus()) { "MOBILE_ARTIFACT_FOREGROUND_REQUIRED" }
+                check(artifactScope == scope) { "MOBILE_ACCOUNT_CHANGED" }
+                NativeArtifactPresenter.present(activity, context.packageName + ".moxbots.artifacts",
+                  context.contentResolver, readyFile, kind == "artifact.share")
+                promise.resolve(JSONObject().put("kind", "artifact-action").put("action", kind.removePrefix("artifact."))
+                  .put("targetId", target.targetId).put("identityKey", target.identityKey).put("agentId", target.agentId)
+                  .put("sessionId", sessionId).put("artifactId", id).put("state", "presented").put("errorCode", JSONObject.NULL).toString())
+              } catch (problem: Exception) { promise.resolve(failure(artifactError(problem))) }
+            }
+            return@enqueue
+          }
+        }
+        promise.resolve(result.toString())
+      } catch (error: Exception) {
+        artifactDownloads?.pause()
+        if (isArtifactAuthorityFailure(artifactError(error))) {
+          artifactPresentationFence.incrementAndGet(); artifactDownloads?.pause(); artifactScope = null
+        }
+        promise.resolve(failure(artifactError(error)))
+      }
+    }
+  }
+  private fun currentArtifactTarget(targetId: String): Pair<ArtifactTarget, org.json.JSONArray> {
+    val items = JSONObject(ensureConnection().request("{\"version\":1,\"kind\":\"targets.list\"}"))
+      .getJSONArray("items")
+    val target = (0 until items.length()).mapNotNull { items.optJSONObject(it) }
+      .firstOrNull { it.opt("targetId") is String && it.optString("targetId") == targetId } ?: error("MOBILE_TARGET_INVALID")
+    check(target.opt("identityKey") is String && target.opt("agentId") is String) { "MOBILE_TARGET_INVALID" }
+    val value = ArtifactTarget(targetId, target.getString("identityKey"), target.getString("agentId"))
+    check(value.identityKey.matches(Regex("[0-9a-f]{64}")) && value.agentId.matches(Regex("[A-Za-z0-9._:-]{1,256}"))) { "MOBILE_TARGET_INVALID" }
+    return value to items
+  }
+  private fun parseArtifactDescriptor(value: JSONObject): ArtifactDescriptor {
+    check(value.keys().asSequence().toSet() == setOf("artifactId", "name", "mimeType", "sizeBytes", "sha256") &&
+      value.opt("artifactId") is String && value.opt("name") is String && value.opt("mimeType") is String && value.opt("sha256") is String &&
+      (value.opt("sizeBytes") is Int || value.opt("sizeBytes") is Long)) { "MOBILE_INTENT_INVALID" }
+    return ArtifactDescriptor(value.getString("artifactId"), value.getString("name"), value.getString("mimeType"),
+      value.getLong("sizeBytes"), value.getString("sha256"))
+  }
+  private fun artifactScheduler(scope: String, context: android.content.Context): NativeArtifactScheduler {
+    if (artifactScope == scope) artifactDownloads?.let { return it }
+    artifactDownloads?.pause()
+    val records = SecureRecords(context)
+    val cache = NativeArtifactCache(context, records, scope)
+    val scheduler = NativeArtifactScheduler(cache, scope, { next -> owner.execute(next) }, { targetId, inner ->
+      val envelope = JSONObject().put("version", 1).put("kind", "assets").put("targetId", targetId).put("request", inner)
+      JSONObject(ensureConnection().request(envelope.toString()))
+    }, { ownerActive && appForeground && artifactScope == scope }, { event ->
+      if (ownerActive && artifactScope == scope) sendEvent("artifactDownloadChanged", artifactProjection(event))
+    })
+    artifactScope = scope
+    artifactDownloads = scheduler
+    return scheduler
+  }
+  private fun artifactProjection(event: JSONObject): Map<String, Any?> = mapOf(
+    "kind" to event.optString("kind"), "targetId" to event.optString("targetId"),
+    "identityKey" to event.optString("identityKey"), "agentId" to event.optString("agentId"),
+    "sessionId" to event.optString("sessionId"), "artifactId" to event.optString("artifactId"),
+    "name" to event.optString("name"), "mimeType" to event.optString("mimeType"), "sha256" to event.optString("sha256"),
+    "state" to event.optString("state"), "receivedBytes" to event.optLong("receivedBytes"),
+    "totalBytes" to event.optLong("totalBytes"),
+    "errorCode" to event.opt("errorCode").let { if (it == null || it === JSONObject.NULL) null else it },
+  )
+  private fun artifactError(error: Exception): String = error.message
+    ?.takeIf { it.matches(Regex("[A-Z0-9_]{1,128}")) } ?: "MOBILE_ARTIFACT_UNAVAILABLE"
+  private fun isArtifactAuthorityFailure(code: String) = code.startsWith("ACCOUNT_") || code.startsWith("TARGET_") ||
+    code.startsWith("HOST_MANAGEMENT_") || code in setOf("MOBILE_AUTHORIZATION_REQUIRED", "MOBILE_ACCOUNT_CHANGED")
   private fun isCanonicalUuid(value: String) = runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false)
   private fun handleSpeech(kind: String, promise: Promise) {
     val context = appContext.reactContext ?: run { promise.resolve(failure("MOBILE_SPEECH_SERVICE_UNAVAILABLE")); return }

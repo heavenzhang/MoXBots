@@ -65,6 +65,27 @@ allprojects {
     if (existing) existing.$['android:value'] = 'https://140.143.183.232';
     else metadata.push({ $: { 'android:name': key, 'android:value': 'https://140.143.183.232' } });
     application['meta-data'] = metadata;
+    const providers = application.provider ?? [];
+    const providerName = 'androidx.core.content.FileProvider';
+    const providerAuthority = '${applicationId}.moxbots.artifacts';
+    const existingProvider = providers.find((item) => item.$?.['android:name'] === providerName &&
+      item.$?.['android:authorities'] === providerAuthority);
+    const artifactProvider = existingProvider ?? { $: {
+      'android:name': providerName,
+      'android:authorities': providerAuthority,
+      'android:exported': 'false',
+      'android:grantUriPermissions': 'true',
+    } };
+    artifactProvider.$['android:exported'] = 'false';
+    artifactProvider.$['android:grantUriPermissions'] = 'true';
+    artifactProvider['meta-data'] = (artifactProvider['meta-data'] ?? []).filter((item) =>
+      item.$?.['android:name'] !== 'android.support.FILE_PROVIDER_PATHS');
+    artifactProvider['meta-data'].push({ $: {
+      'android:name': 'android.support.FILE_PROVIDER_PATHS',
+      'android:resource': '@xml/moxbots_artifact_paths',
+    } });
+    if (!existingProvider) providers.push(artifactProvider);
+    application.provider = providers;
     return entry;
   });
 };
