@@ -49,6 +49,9 @@ a trusted internal interface until its owner supplies a verified binding.
 - FCM HTTP success is accepted only when the bounded JSON response has a
   `Message.name` for the configured project and a non-empty message ID;
   malformed, wrong-project, and unexpected-success responses remain unknown.
+- Worker claim count now uses the remaining per-tick delivery budget, so a
+  partial final batch cannot leave extra unprocessed items leased. APNs delivery
+  is accepted only for HTTP 200; other 2xx statuses remain unknown.
 - Checked current source identity limits: AuthStore session issuance takes a
   caller-supplied device ID (`services/agentnet/src/store.rs`), so authenticated
   session + DeviceStore lookup alone does not prove device-key possession or
@@ -68,6 +71,10 @@ a trusted internal interface until its owner supplies a verified binding.
 - Post-fix focused provider suite passed: 6 tests, including APNs h2c fixture
   assertion, JWT cache reuse, token length bounds, and malformed/wrong-project
   FCM response handling. Focused unavailable-provider HTTP test also passed.
+- Follow-up focused delivery tests passed: 7 tests, including a real temporary
+  store regression proving one remaining budget slot claims one delivery and
+  leaves the other two immediately due, plus APNs HTTP 200/201/204 classification.
+- Follow-up strict service Clippy passed with `-D warnings`.
 - The repeated DELETE HTTP regression passed within the full service suite; the
   core test also confirms stale session-handle rejection and current-handle
   retry success.

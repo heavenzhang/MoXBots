@@ -399,12 +399,12 @@ async fn classify_response(response: Result<reqwest::Response, reqwest::Error>) 
         return DeliveryOutcome::Unknown;
     }
     match status {
-        ReqStatus::OK | ReqStatus::CREATED => DeliveryOutcome::Accepted,
+        ReqStatus::OK => DeliveryOutcome::Accepted,
         ReqStatus::TOO_MANY_REQUESTS | ReqStatus::SERVICE_UNAVAILABLE | ReqStatus::BAD_GATEWAY => {
             DeliveryOutcome::RetryableFailure
         }
         status if status.is_server_error() => DeliveryOutcome::RetryableFailure,
-        status if status.is_success() => DeliveryOutcome::Accepted,
+        status if status.is_success() => DeliveryOutcome::Unknown,
         _ => DeliveryOutcome::PermanentFailure,
     }
 }
@@ -620,10 +620,10 @@ impl MobileNotificationRuntime {
                 if !self.providers.supports(candidate.provider()) {
                     continue;
                 }
-                let Some(claims) = self.claim_fresh(candidate) else {
+                let Some(claims) = self.claim_fresh(candidate, budget) else {
                     continue;
                 };
-                for claim in claims.into_iter().take(budget) {
+                for claim in claims {
                     let outcome = self
                         .providers
                         .send(&claim, || self.claim_is_current(candidate, &claim))
@@ -701,7 +701,11 @@ impl MobileNotificationRuntime {
     fn claim_fresh(
         &self,
         candidate: &myagents_agentnet_mobile_notify_core::EndpointCandidate,
+        remaining_budget: usize,
     ) -> Option<Vec<DeliveryClaim>> {
+        if remaining_budget == 0 {
+            return Some(Vec::new());
+        }
         self.with_candidate_auth(candidate, |authority| {
             let endpoint = FreshEndpoint::from_validated_service_state(
                 candidate.endpoint_id(),
@@ -715,7 +719,7 @@ impl MobileNotificationRuntime {
                 .claim_due(
                     &endpoint,
                     unix_seconds().map_err(|_| AuthError::Storage)? as i64,
-                    MAX_BATCH_CLAIMS,
+                    remaining_budget,
                 )
                 .map_err(|_| AuthError::Storage)?;
             Ok(claims)
@@ -814,6 +818,12 @@ mod tests {
     }
 
     fn scope_with_claims(provider: Provider, provider_token: &str) -> TestScope {
+        let mut scope = scope_with_pending(provider, provider_token, 2);
+        scope.claims = scope.store.claim_due(&scope.endpoint, 3, 3).unwrap();
+        scope
+    }
+
+    fn scope_with_pending(provider: Provider, provider_token: &str, now: i64) -> TestScope {
         let dir = tempfile::tempdir().unwrap();
         fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).unwrap();
         let auth_config = crate::AuthConfig {
@@ -881,7 +891,7 @@ mod tests {
                     &target,
                     "99999999-9999-4999-8999-999999999999",
                     &hint,
-                    2,
+                    now,
                     3600,
                 )
                 .unwrap();
@@ -892,14 +902,13 @@ mod tests {
             session.session_handle.clone(),
         )
         .unwrap();
-        let claims = store.claim_due(&endpoint, 3, 3).unwrap();
         TestScope {
             _dir: dir,
             auth,
             devices,
             store,
             endpoint,
-            claims,
+            claims: Vec::new(),
             record,
             handle: session.session_handle,
             bearer,
@@ -1226,7 +1235,11 @@ mod tests {
     async fn apns_loopback_uses_generic_event_only_alert() {
         let scope = scope_with_claims(Provider::ApnsSandbox, &"ab".repeat(32));
         let state = FixtureState {
-            statuses: Arc::new(tokio::sync::Mutex::new(VecDeque::from([StatusCode::OK]))),
+            statuses: Arc::new(tokio::sync::Mutex::new(VecDeque::from([
+                StatusCode::OK,
+                StatusCode::CREATED,
+                StatusCode::NO_CONTENT,
+            ]))),
             delay_send: Duration::ZERO,
             send_count: Arc::new(AtomicUsize::new(0)),
             payloads: Arc::new(tokio::sync::Mutex::new(Vec::new())),
@@ -1264,6 +1277,13 @@ mod tests {
         );
         assert_eq!(state.send_count.load(Ordering::SeqCst), 1);
         assert!(state.http2_seen.load(Ordering::SeqCst));
+        for claim in &scope.claims[1..] {
+            assert_eq!(
+                client.send(claim, || live_claim(&scope, claim)).await,
+                DeliveryOutcome::Unknown
+            );
+        }
+        assert_eq!(state.send_count.load(Ordering::SeqCst), 3);
         let payloads = state.payloads.lock().await;
         let payload = &payloads[0];
         assert_eq!(payload["aps"]["alert"]["title"], GENERIC_TITLE);
@@ -1271,5 +1291,44 @@ mod tests {
         assert!(payload["eventId"].as_str().is_some());
         assert!(!payload.to_string().contains("private-session-ref"));
         server.abort();
+    }
+
+    #[test]
+    fn worker_claims_only_the_remaining_tick_budget() {
+        let now = unix_seconds().unwrap() as i64;
+        let scope = scope_with_pending(Provider::Fcm, "opaque-device-token", now);
+        let candidate = scope
+            .store
+            .endpoint_candidates_page(NETWORK, None, 10)
+            .unwrap()
+            .remove(0);
+        let service = MobileNotificationService::new(
+            scope.auth.clone(),
+            scope.devices.clone(),
+            scope.store.clone(),
+            NETWORK,
+        );
+        let runtime = MobileNotificationRuntime {
+            service,
+            providers: Arc::new(ProviderClient {
+                http: Client::new(),
+                apns_sandbox: None,
+                apns_production: None,
+                fcm: None,
+            }),
+            auth: scope.auth.clone(),
+        };
+
+        let claimed = runtime.claim_fresh(&candidate, 1).unwrap();
+        assert_eq!(claimed.len(), 1);
+        let still_due = scope
+            .store
+            .claim_due(&scope.endpoint, now + 1, MAX_BATCH_CLAIMS)
+            .unwrap();
+        assert_eq!(
+            still_due.len(),
+            2,
+            "unclaimed work must remain immediately due"
+        );
     }
 }
