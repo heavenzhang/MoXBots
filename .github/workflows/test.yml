@@ -432,7 +432,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            mobile/connection
+      - name: Check iOS native core against actual device and simulator SDKs
+        run: node mobile/scripts/check-ios-native.mjs
       - name: Prepare signed CLIProxy build inputs
         run: node scripts/prepare-cliproxy.mjs
       - name: Prepare non-executed Tauri resource paths

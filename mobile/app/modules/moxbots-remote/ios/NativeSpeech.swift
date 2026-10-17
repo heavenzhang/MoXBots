@@ -8,7 +8,14 @@ final class NativeSpeech {
     let state: String
     let text: String
     let final: Bool
-    let code: String? = nil
+    let code: String?
+
+    init(state: String, text: String, final: Bool, code: String? = nil) {
+      self.state = state
+      self.text = text
+      self.final = final
+      self.code = code
+    }
 
     var projection: [String: Any] {
       var value: [String: Any] = ["kind": "speech", "state": state, "text": text, "final": final]
