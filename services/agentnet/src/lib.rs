@@ -18,6 +18,7 @@ mod feedback_http;
 mod feedback_store;
 mod identity_http;
 mod instance_http;
+mod mobile_notification_delivery;
 mod mobile_notification_http;
 mod model_center_authority;
 mod model_center_gateway;

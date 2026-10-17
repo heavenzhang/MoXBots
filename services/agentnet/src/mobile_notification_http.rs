@@ -29,10 +29,10 @@ const MAX_BODY_BYTES: usize = 8 * 1024;
 
 #[derive(Clone)]
 pub struct MobileNotificationService {
-    auth: Arc<AuthStore>,
-    devices: Arc<DeviceStore>,
-    store: Arc<Store>,
-    network_id: String,
+    pub(super) auth: Arc<AuthStore>,
+    pub(super) devices: Arc<DeviceStore>,
+    pub(super) store: Arc<Store>,
+    pub(super) network_id: String,
 }
 
 impl MobileNotificationService {
@@ -63,6 +63,7 @@ impl MobileNotificationService {
                 post(redeem),
             )
             .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
+            .layer(axum::middleware::from_fn(no_store))
             .with_state(Arc::new(self.clone()))
     }
 
@@ -78,7 +79,10 @@ impl MobileNotificationService {
         })
     }
 
-    fn authority_for(&self, session: &SessionProjection) -> Result<Authority, MobileHttpError> {
+    pub(super) fn authority_for(
+        &self,
+        session: &SessionProjection,
+    ) -> Result<Authority, MobileHttpError> {
         if session.account.network_id != self.network_id {
             return Err(MobileHttpError::unauthorized());
         }
@@ -102,6 +106,15 @@ impl MobileNotificationService {
             .map_err(MobileHttpError::notify)?;
         Ok(authority)
     }
+}
+
+async fn no_store(request: axum::extract::Request, next: axum::middleware::Next) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store, max-age=0"),
+    );
+    response
 }
 
 #[derive(Deserialize)]
@@ -137,10 +150,15 @@ async fn register(
     }
     let request: RegisterEndpointV1 =
         serde_json::from_slice(&body).map_err(|_| MobileHttpError::bad_request())?;
-    let result = service.with_authority(&headers, |_, authority| {
+    let result = service.with_authority(&headers, |session, authority| {
         service
             .store
-            .register_endpoint(authority, request, unix_seconds()?)
+            .register_endpoint_for_session(
+                authority,
+                &session.session_handle,
+                request,
+                unix_seconds()?,
+            )
             .map_err(MobileHttpError::notify)
     })?;
     Ok((
@@ -164,10 +182,10 @@ async fn revoke(
     }
     let id = myagents_agentnet_mobile_notify_core::EndpointId::parse(endpoint_id)
         .map_err(MobileHttpError::notify)?;
-    service.with_authority(&headers, |_, authority| {
+    service.with_authority(&headers, |session, authority| {
         service
             .store
-            .revoke_endpoint(authority, &id, unix_seconds()?)
+            .revoke_endpoint(authority, &session.session_handle, &id, unix_seconds()?)
             .map_err(MobileHttpError::notify)
     })?;
     Ok(axum::Json(json!({"ok":true,"version":1})))
@@ -188,9 +206,13 @@ async fn redeem(
     if body.version != 1 {
         return Err(MobileHttpError::bad_request());
     }
-    let pointer = service.with_authority(&headers, |_, authority| {
-        let fresh = FreshEndpoint::from_validated_service_state(endpoint_id, authority.clone())
-            .map_err(MobileHttpError::notify)?;
+    let pointer = service.with_authority(&headers, |session, authority| {
+        let fresh = FreshEndpoint::from_validated_service_state(
+            endpoint_id,
+            authority.clone(),
+            session.session_handle.clone(),
+        )
+        .map_err(MobileHttpError::notify)?;
         service
             .store
             .redeem_hint(&fresh, &event_id, unix_seconds()?)
@@ -255,7 +277,7 @@ fn unix_seconds() -> Result<i64, MobileHttpError> {
 }
 
 #[derive(Debug)]
-struct MobileHttpError {
+pub(super) struct MobileHttpError {
     status: StatusCode,
     code: &'static str,
 }
@@ -438,6 +460,13 @@ mod tests {
         };
         let response = router.oneshot(request).await.unwrap();
         let status = response.status();
+        assert_eq!(
+            response
+                .headers()
+                .get(header::CACHE_CONTROL)
+                .and_then(|value| value.to_str().ok()),
+            Some("no-store, max-age=0"),
+        );
         let bytes = axum::body::to_bytes(response.into_body(), MAX_BODY_BYTES)
             .await
             .unwrap();
@@ -548,6 +577,9 @@ mod tests {
         assert_eq!(cross_revoke, StatusCode::UNAUTHORIZED);
         let (revoked, _) = call(f.router.clone(), &f.mobile_token, "DELETE", &revoke, None).await;
         assert_eq!(revoked, StatusCode::OK);
+        let (retry_revoke, _) =
+            call(f.router.clone(), &f.mobile_token, "DELETE", &revoke, None).await;
+        assert_eq!(retry_revoke, StatusCode::OK);
         let (after_revoke, _) = call(
             f.router.clone(),
             &f.mobile_token,

@@ -266,6 +266,7 @@ pub struct EndpointCandidate {
     endpoint_id: String,
     authority: Authority,
     provider: Provider,
+    session_handle: String,
 }
 
 impl EndpointCandidate {
@@ -280,6 +281,10 @@ impl EndpointCandidate {
     pub fn provider(&self) -> Provider {
         self.provider
     }
+
+    pub fn session_handle(&self) -> &str {
+        &self.session_handle
+    }
 }
 
 /// Freshly revalidated endpoint context supplied by trusted service code.
@@ -289,21 +294,25 @@ impl EndpointCandidate {
 pub struct FreshEndpoint {
     endpoint_id: String,
     authority: Authority,
+    session_handle: String,
 }
 
 impl FreshEndpoint {
     pub fn from_validated_service_state(
         endpoint_id: impl Into<String>,
         authority: Authority,
+        session_handle: impl Into<String>,
     ) -> Result<Self, NotifyError> {
         let endpoint_id = endpoint_id.into();
-        if !canonical_uuid(&endpoint_id) {
+        let session_handle = session_handle.into();
+        if !canonical_uuid(&endpoint_id) || !canonical_uuid(&session_handle) {
             return Err(NotifyError::InvalidInput);
         }
         authority.validate()?;
         Ok(Self {
             endpoint_id,
             authority,
+            session_handle,
         })
     }
 }
@@ -490,6 +499,12 @@ impl Store {
         connection
             .pragma_update(None, "synchronous", "FULL")
             .map_err(|_| NotifyError::Storage)?;
+        let schema_version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(|_| NotifyError::Storage)?;
+        if schema_version > 2 {
+            return Err(NotifyError::Storage);
+        }
         connection
             .execute_batch(
                 "PRAGMA foreign_keys=ON;
@@ -504,6 +519,7 @@ impl Store {
                    provider TEXT NOT NULL CHECK(provider IN ('apns-sandbox','apns-production','fcm')),
                    token_hash BLOB NOT NULL,
                    token TEXT NOT NULL,
+                   session_handle TEXT,
                    created_at INTEGER NOT NULL,
                    revoked_at INTEGER
                  );
@@ -556,9 +572,35 @@ impl Store {
                    ON deliveries(endpoint_id, state, next_attempt_at, lease_until);
                  CREATE INDEX IF NOT EXISTS deliveries_cleanup
                    ON deliveries(state, event_id, endpoint_id);
-                 PRAGMA user_version=1;",
+                 ",
             )
             .map_err(|_| NotifyError::Storage)?;
+        if schema_version < 2 {
+            let has_session_handle: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('endpoints') WHERE name='session_handle')",
+                [],
+                |row| row.get(0),
+            )
+                .map_err(|_| NotifyError::Storage)?;
+            if !has_session_handle {
+                connection
+                    .execute_batch("ALTER TABLE endpoints ADD COLUMN session_handle TEXT;")
+                    .map_err(|_| NotifyError::Storage)?;
+            }
+            connection
+                .execute_batch(
+                    "UPDATE endpoints SET revoked_at=COALESCE(revoked_at,created_at)
+                   WHERE session_handle IS NULL;
+                 UPDATE deliveries SET state='revoked',lease_id=NULL,lease_until=NULL
+                   WHERE endpoint_id IN (SELECT endpoint_id FROM endpoints WHERE revoked_at IS NOT NULL)
+                     AND state IN ('pending','leased','unknown');",
+                )
+                .map_err(|_| NotifyError::Storage)?;
+            connection
+                .pragma_update(None, "user_version", 2)
+                .map_err(|_| NotifyError::Storage)?;
+        }
         Ok(Self {
             connection: Mutex::new(connection),
             state_dir,
@@ -572,13 +614,17 @@ impl Store {
     /// Register or rotate a token for one stable app installation. Rotation
     /// retains the endpoint row while invalidating claims made with its old
     /// token. A provider token already active elsewhere is atomically detached.
-    pub fn register_endpoint(
+    pub fn register_endpoint_for_session(
         &self,
         authority: &Authority,
+        session_handle: &str,
         request: RegisterEndpointV1,
         now: i64,
     ) -> Result<EndpointId, NotifyError> {
         authority.validate()?;
+        if !canonical_uuid(session_handle) {
+            return Err(NotifyError::InvalidInput);
+        }
         request.validate()?;
         validate_time(now)?;
         let token = request.token.as_str();
@@ -611,14 +657,16 @@ impl Store {
             .map_err(|_| NotifyError::Storage)?;
 
         let endpoint_id = if let Some(id) = installation_endpoint {
-            let current_hash: Vec<u8> = tx
+            let current_hash: (Vec<u8>, Option<String>) = tx
                 .query_row(
-                    "SELECT token_hash FROM endpoints WHERE endpoint_id=?1",
+                    "SELECT token_hash,session_handle FROM endpoints WHERE endpoint_id=?1",
                     params![id],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .map_err(|_| NotifyError::Storage)?;
-            if current_hash.as_slice() == token_hash {
+            if current_hash.0.as_slice() == token_hash
+                && current_hash.1.as_deref() == Some(session_handle)
+            {
                 id
             } else {
                 if let Some(other_id) = token_endpoint.as_deref().filter(|other| *other != id) {
@@ -631,8 +679,8 @@ impl Store {
                 }
                 revoke_deliveries_for_endpoint(&tx, &id)?;
                 tx.execute(
-                    "UPDATE endpoints SET token_hash=?2,token=?3,created_at=?4 WHERE endpoint_id=?1",
-                    params![id, token_hash.as_slice(), token, now],
+                    "UPDATE endpoints SET token_hash=?2,token=?3,session_handle=?4,created_at=?5 WHERE endpoint_id=?1",
+                    params![id, token_hash.as_slice(), token, session_handle, now],
                 )
                 .map_err(|_| NotifyError::Storage)?;
                 id
@@ -642,10 +690,10 @@ impl Store {
             revoke_deliveries_for_endpoint(&tx, &id)?;
             tx.execute(
                 "UPDATE endpoints SET principal_id=?2,network_id=?3,device_id=?4,identity_binding_id=?5,
-                   key_generation=?6,installation_id=?7,token=?8,created_at=?9
+                   key_generation=?6,installation_id=?7,token=?8,session_handle=?9,created_at=?10
                  WHERE endpoint_id=?1 AND revoked_at IS NULL",
                 params![id, authority.principal_id, authority.network_id, authority.device_id,
-                    authority.identity_binding_id, authority.key_generation as i64, request.installation_id, token, now],
+                    authority.identity_binding_id, authority.key_generation as i64, request.installation_id, token, session_handle, now],
             )
             .map_err(|_| NotifyError::Storage)?;
             id
@@ -660,17 +708,32 @@ impl Store {
             let id = Uuid::new_v4().to_string();
             tx.execute(
                 "INSERT INTO endpoints(endpoint_id,principal_id,network_id,device_id,identity_binding_id,
-                   key_generation,installation_id,provider,token_hash,token,created_at,revoked_at)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL)",
+                   key_generation,installation_id,provider,token_hash,token,session_handle,created_at,revoked_at)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,NULL)",
                 params![id, authority.principal_id, authority.network_id, authority.device_id,
                     authority.identity_binding_id, authority.key_generation as i64, request.installation_id,
-                    request.provider.as_str(), token_hash.as_slice(), token, now],
+                    request.provider.as_str(), token_hash.as_slice(), token, session_handle, now],
             )
             .map_err(|_| NotifyError::Storage)?;
             id
         };
         tx.commit().map_err(|_| NotifyError::Storage)?;
         Ok(EndpointId(endpoint_id))
+    }
+
+    #[cfg(test)]
+    fn register_endpoint(
+        &self,
+        authority: &Authority,
+        request: RegisterEndpointV1,
+        now: i64,
+    ) -> Result<EndpointId, NotifyError> {
+        self.register_endpoint_for_session(
+            authority,
+            "77777777-7777-4777-8777-777777777777",
+            request,
+            now,
+        )
     }
 
     /// Non-secret internal list used so service code can freshly revalidate
@@ -686,7 +749,7 @@ impl Store {
         let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
         let mut statement = connection
             .prepare(
-                "SELECT endpoint_id,device_id,identity_binding_id,key_generation,provider
+                "SELECT endpoint_id,device_id,identity_binding_id,key_generation,provider,session_handle
                  FROM endpoints WHERE principal_id=?1 AND network_id=?2 AND revoked_at IS NULL
                  ORDER BY created_at,endpoint_id LIMIT ?3",
             )
@@ -703,14 +766,16 @@ impl Store {
                         row.get::<_, String>(2)?,
                         generation,
                         provider,
+                        row.get::<_, Option<String>>(5)?,
                     ))
                 },
             )
             .map_err(|_| NotifyError::Storage)?;
         let mut result = Vec::new();
         for row in rows {
-            let (endpoint_id, device_id, binding_id, generation, provider) =
+            let (endpoint_id, device_id, binding_id, generation, provider, session_handle) =
                 row.map_err(|_| NotifyError::Storage)?;
+            let session_handle = session_handle.ok_or(NotifyError::Storage)?;
             let authority = Authority::from_validated_service_state(
                 principal_id,
                 network_id,
@@ -722,6 +787,54 @@ impl Store {
                 endpoint_id,
                 authority,
                 provider: Provider::parse(&provider)?,
+                session_handle,
+            });
+        }
+        Ok(result)
+    }
+
+    /// Global, keyset-paginated worker scan. `limit` bounds each DB read and
+    /// `after_endpoint_id` prevents a large account from starving later rows.
+    pub fn endpoint_candidates_page(
+        &self,
+        network_id: &str,
+        after_endpoint_id: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<EndpointCandidate>, NotifyError> {
+        if !canonical_uuid(network_id)
+            || after_endpoint_id.is_some_and(|id| !canonical_uuid(id))
+            || !(1..=128).contains(&limit)
+        {
+            return Err(NotifyError::InvalidInput);
+        }
+        let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let mut statement = connection.prepare(
+            "SELECT endpoint_id,principal_id,device_id,identity_binding_id,key_generation,provider,session_handle
+             FROM endpoints WHERE network_id=?1 AND revoked_at IS NULL
+               AND (?2 IS NULL OR endpoint_id>?2) ORDER BY endpoint_id LIMIT ?3",
+        ).map_err(|_| NotifyError::Storage)?;
+        let rows = statement.query_map(
+            params![network_id, after_endpoint_id, limit as i64],
+            |row| Ok((
+                row.get::<_, String>(0)?, row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?, row.get::<_, String>(3)?,
+                row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+            )),
+        ).map_err(|_| NotifyError::Storage)?;
+        let mut result = Vec::new();
+        for row in rows {
+            let (endpoint_id, principal, device, binding, generation, provider, handle) =
+                row.map_err(|_| NotifyError::Storage)?;
+            let handle = handle.ok_or(NotifyError::Storage)?;
+            result.push(EndpointCandidate {
+                endpoint_id,
+                authority: Authority::from_validated_service_state(
+                    principal, network_id, device, binding,
+                    u64::try_from(generation).map_err(|_| NotifyError::Storage)?,
+                )?,
+                provider: Provider::parse(&provider)?,
+                session_handle: handle,
             });
         }
         Ok(result)
@@ -732,34 +845,52 @@ impl Store {
     pub fn revoke_endpoint(
         &self,
         authority: &Authority,
+        session_handle: &str,
         endpoint_id: &EndpointId,
         now: i64,
     ) -> Result<(), NotifyError> {
         authority.validate()?;
+        if !canonical_uuid(session_handle) {
+            return Err(NotifyError::Unauthorized);
+        }
         validate_time(now)?;
         let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
         let tx = connection
             .unchecked_transaction()
             .map_err(|_| NotifyError::Storage)?;
-        let changed = tx
-            .execute(
-                "UPDATE endpoints SET revoked_at=?2 WHERE endpoint_id=?1 AND principal_id=?3
-                   AND network_id=?4 AND device_id=?5 AND identity_binding_id=?6
-                   AND key_generation=?7 AND revoked_at IS NULL",
+        let row: Option<(Option<String>, Option<i64>)> = tx
+            .query_row(
+                "SELECT session_handle,revoked_at FROM endpoints WHERE endpoint_id=?1 AND principal_id=?2
+                   AND network_id=?3 AND device_id=?4 AND identity_binding_id=?5 AND key_generation=?6",
                 params![
                     endpoint_id.0,
-                    now,
                     authority.principal_id,
                     authority.network_id,
                     authority.device_id,
                     authority.identity_binding_id,
                     authority.key_generation as i64
                 ],
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
+            .optional()
             .map_err(|_| NotifyError::Storage)?;
-        if changed == 0 {
+        let Some((Some(stored_handle), revoked_at)) = row else {
+            return Err(NotifyError::NotFound);
+        };
+        if stored_handle != session_handle {
             return Err(NotifyError::NotFound);
         }
+        // A repeated DELETE can recover a lost success response, but only the
+        // still-current registration session may observe that idempotent ACK.
+        if revoked_at.is_some() {
+            tx.commit().map_err(|_| NotifyError::Storage)?;
+            return Ok(());
+        }
+        tx.execute(
+            "UPDATE endpoints SET revoked_at=?2 WHERE endpoint_id=?1 AND revoked_at IS NULL",
+            params![endpoint_id.0, now],
+        )
+        .map_err(|_| NotifyError::Storage)?;
         revoke_deliveries_for_endpoint(&tx, &endpoint_id.0)?;
         tx.commit().map_err(|_| NotifyError::Storage)
     }
@@ -1066,6 +1197,40 @@ impl Store {
         tx.commit().map_err(|_| NotifyError::Storage)
     }
 
+    /// Check that a claimed delivery still has its exact endpoint token and
+    /// lease immediately before provider IO. No state is changed.
+    pub fn claim_is_current(
+        &self,
+        endpoint: &FreshEndpoint,
+        claim: &DeliveryClaim,
+        now: i64,
+    ) -> Result<bool, NotifyError> {
+        validate_time(now)?;
+        if endpoint.endpoint_id != claim.endpoint_id || now >= claim.lease_until {
+            return Ok(false);
+        }
+        let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
+        let tx = connection
+            .unchecked_transaction()
+            .map_err(|_| NotifyError::Storage)?;
+        if require_endpoint(&tx, endpoint).is_err() {
+            return Ok(false);
+        }
+        let current: Option<(String, i64)> = tx
+            .query_row(
+                "SELECT e.token,d.lease_until FROM endpoints e JOIN deliveries d ON d.endpoint_id=e.endpoint_id
+                 WHERE e.endpoint_id=?1 AND d.event_id=?2 AND d.state='leased' AND d.lease_id=?3
+                   AND e.session_handle=?4",
+                params![claim.endpoint_id, claim.event_id, claim.lease_id, endpoint.session_handle],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|_| NotifyError::Storage)?;
+        Ok(current.is_some_and(|(token, lease_until)| {
+            token == claim.token() && lease_until == claim.lease_until && now < lease_until
+        }))
+    }
+
     /// Resolve an event only for the exact fresh endpoint scope that received
     /// it. This returns a private pointer, not approval data or an action.
     pub fn redeem_hint(
@@ -1160,14 +1325,15 @@ fn require_endpoint(
     let exists: bool = tx
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM endpoints WHERE endpoint_id=?1 AND principal_id=?2 AND network_id=?3
-               AND device_id=?4 AND identity_binding_id=?5 AND key_generation=?6 AND revoked_at IS NULL)",
+               AND device_id=?4 AND identity_binding_id=?5 AND key_generation=?6 AND session_handle=?7 AND revoked_at IS NULL)",
             params![
                 endpoint.endpoint_id,
                 endpoint.authority.principal_id,
                 endpoint.authority.network_id,
                 endpoint.authority.device_id,
                 endpoint.authority.identity_binding_id,
-                endpoint.authority.key_generation as i64
+                endpoint.authority.key_generation as i64,
+                endpoint.session_handle
             ],
             |row| row.get(0),
         )
@@ -1448,7 +1614,12 @@ mod tests {
     }
 
     fn fresh(endpoint_id: &EndpointId, authority: Authority) -> FreshEndpoint {
-        FreshEndpoint::from_validated_service_state(endpoint_id.as_str(), authority).unwrap()
+        FreshEndpoint::from_validated_service_state(
+            endpoint_id.as_str(),
+            authority,
+            "77777777-7777-4777-8777-777777777777",
+        )
+        .unwrap()
     }
 
     fn open() -> (tempfile::TempDir, Store) {
@@ -1605,6 +1776,58 @@ mod tests {
         assert_eq!(new_claim.envelope().event_id(), next.event_id());
         assert_eq!(new_claim.token(), "token-8");
         assert_ne!(first.event_id(), next.event_id());
+    }
+
+    #[test]
+    fn auth_session_rotation_invalidates_claim_and_legacy_unbound_rows_retire() {
+        let (dir, store) = open();
+        let auth = authority(DEVICE, BINDING, 1);
+        let installation = installation_id("session-rotation-install");
+        let old_handle = "77777777-7777-4777-8777-777777777777";
+        let new_handle = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        let endpoint = store.register_endpoint_for_session(
+            &auth, old_handle,
+            RegisterEndpointV1::new(Provider::Fcm, &installation, "same-token").unwrap(),
+            10,
+        ).unwrap();
+        let hint = hint("88888888-8888-4888-8888-888888888888", "private-session");
+        store.enqueue_hint(&auth, &target(&auth, "agent-main"),
+            "99999999-9999-4999-8999-999999999999", &hint, 11, 100).unwrap();
+        let old = FreshEndpoint::from_validated_service_state(
+            endpoint.as_str(), auth.clone(), old_handle,
+        ).unwrap();
+        let claim = store.claim_due(&old, 12, 1).unwrap().remove(0);
+        let rotated = store.register_endpoint_for_session(
+            &auth, new_handle,
+            RegisterEndpointV1::new(Provider::Fcm, &installation, "same-token").unwrap(),
+            13,
+        ).unwrap();
+        assert_eq!(rotated, endpoint);
+        assert!(!store.claim_is_current(&old, &claim, 14).unwrap());
+        let candidates = store.endpoint_candidates_page(NETWORK, None, 10).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].session_handle(), new_handle);
+        assert!(matches!(
+            store.revoke_endpoint(&auth, old_handle, &endpoint, 15),
+            Err(NotifyError::NotFound)
+        ));
+        store
+            .revoke_endpoint(&auth, new_handle, &endpoint, 16)
+            .unwrap();
+        // The same current registration session can safely retry after a lost
+        // HTTP acknowledgement; foreign or stale sessions cannot.
+        store
+            .revoke_endpoint(&auth, new_handle, &endpoint, 17)
+            .unwrap();
+
+        store.connection.lock().unwrap().execute(
+            "UPDATE endpoints SET session_handle=NULL,revoked_at=NULL WHERE endpoint_id=?1",
+            [endpoint.as_str()],
+        ).unwrap();
+        store.connection.lock().unwrap().pragma_update(None, "user_version", 1).unwrap();
+        drop(store);
+        let reopened = Store::open(dir.path()).unwrap();
+        assert!(reopened.endpoint_candidates(PRINCIPAL, NETWORK).unwrap().is_empty());
     }
 
     #[test]
