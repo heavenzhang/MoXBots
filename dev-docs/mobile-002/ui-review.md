@@ -1,5 +1,7 @@
 # MOXBOTS-MOBILE-002 独立 UI 验收
 
+最新补充：主Agent在后续整合版实际完成成果“下载50%→暂停→返回→重开成果→自动恢复暂停状态→明确继续→已下载”合成流程；没有自动恢复传输。证据 `/tmp/moxbots-mobile-ui-review-002/primary-artifact-return-paused-pass.png`、`primary-artifact-resume-ready-pass.png`。预览/分享反馈均明确标记模拟操作，不能证明系统查看器。另发现成果页返回到会话列表，原对话上下文丢失，修复中。该补充为主Agent浏览器功能验收，保持下方独立报告的原始证据和范围；不是最新原生或窄屏验收。
+
 ## 范围与证据
 
 - 验收者：`/root/mobile_ui_acceptance`，独立于实现者。

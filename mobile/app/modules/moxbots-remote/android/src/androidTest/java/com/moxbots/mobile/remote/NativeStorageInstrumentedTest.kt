@@ -67,6 +67,9 @@ class NativeStorageInstrumentedTest {
       assertEquals("account", response.getString("kind"))
       assertEquals("signed-out", response.getString("state"))
       assertTrue(response.isNull("principalId"))
+      val snapshot = JSONObject(connection.request("""{"version":1,"kind":"targets.snapshot"}"""))
+      assertEquals("error", snapshot.getString("kind"))
+      assertEquals("MOBILE_TARGET_SNAPSHOT_UNAVAILABLE", snapshot.getString("code"))
     } finally {
       connection.close()
     }

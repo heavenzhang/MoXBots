@@ -1,5 +1,7 @@
 # MOXBOTS-MOBILE-002 execution plan
 
+Latest checkpoint: canonical9269dd8c merged normally; task branch pushed as c8775b5d, Draft PR113. Connection90 + strict clippy, Host182 Rust, mobile/receipt/IPC22 integration, Host staging9, app43 policy/typecheck/lint and full root lint pass. Android snapshot-native rebuild and27 instrumentation pass; application APK provenance/16KiB/signature verified and installed on the dedicated emulator. Added actual JNI signed-out snapshot refusal;27 tests pass again. Evidence and exact binary digest: `android-build.md`. Exact-source CI39068209994 and owned-service39068209983 are running. Artifact pause/restore/explicit-continue passes in the synthetic Web UI; returning directly to the original chat is under repair. Notification core12 tests pass; internal HTTP adapter is being validated and no provider/public route is connected. Real-device/iOS/account/Host/voice/push/main/internal distribution remain open.
+
 2026-10-18. Full target: internal daily-use iPhone + Android companion using existing Host/SessionEngine, not a WebView mock or a second executor. Design baseline is acceptedV6: one header, one-line resting composer, secondary model/suggestions in plus menu. Local design source: MoxBot/output/mobile-prototype/MOXBOTS-MOBILE-001 (outside product Git).
 
 ## Architecture and interfaces

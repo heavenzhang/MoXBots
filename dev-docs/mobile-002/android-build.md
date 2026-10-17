@@ -43,3 +43,9 @@ Instrumentation APK 自带的 Rust 库曾掩盖应用 APK 漏包；16项原生�
 修复后应用构建及16/16原生测试通过，制品核验通过28个原生库。当前检查记录为 `/tmp/moxbots-mobile-apk-rust-production-check.json`，APK SHA-256 为 `0e35d824a3827f7c759405708d4933d3e9ccff2f5576fd9a7db2f110b2d58377`。它使用 Debug 测试密钥、没有内嵌 JS，依赖开发服务器；不是可日常独立使用或正式上架的发行包。后续修改必须重新构建及记录实际制品摘要，不沿用此结果。
 
 `EXPO_PUBLIC_MOBILE_QA=1` 仅用于显式 Web 合成夹具。原生运行不以夹具替代真实设备、附件、麦克风或服务端能力。独立发行包还须验证离开开发服务器后的冷启动、实际账号和 Host、授权/回执恢复、文件及语音路径；发布范围和真实设备条件仍按主任务记录执行。
+
+## 目录快照与成果恢复复验
+
+新版原生构建记录源码为 `c8775b5d83e8c2fcb498892cb8c05ef47cad393b`，`sourceDirty=false`，源码摘要 `0b8dec1e521d73c2c73c1a15202a0d5af731cfd85ba512c1e283e80a830181d5`。本机成果状态、暂停和移除改用当前账号的已批准目录快照；下载、预览和分享仍检查新鲜授权。连接层90项测试及严格clippy通过；Android重建通过（1m36s），应用构建与27项仪器测试通过（46s）。随后加入真实JNI未登录快照拒绝断言，27项回归再次通过（25s）。日志 `/tmp/moxbots-mobile-snapshot-android-native.log`、`/tmp/moxbots-mobile-snapshot-android-regression.log`、`/tmp/moxbots-mobile-snapshot-jni-regression.log`。
+
+应用APK SHA-256为 `05b4844fe254291083e4a66462b127eb83497979f2a7db6ccc408ebbec2cea5e`，核验报告 `/tmp/moxbots-mobile-snapshot-apk-verified.json`；原生输入及NDK剥离结果、16KiB对齐与签名检查通过，专用模拟器安装成功（`/tmp/moxbots-mobile-snapshot-debug-install.log`）。仍为Debug测试签名且无内嵌JS，依赖Metro；此处不构成独立分发、原生页面、真实Host或物理语音验收。
