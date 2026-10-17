@@ -107,6 +107,8 @@ struct Record {
     created: u64,
     updated: u64,
     session: Option<String>,
+    #[serde(default)]
+    source_id: Option<String>,
 }
 /// Native trusted output owner selects the root and relative path; never decode from RPC.
 pub struct TrustedArtifactSource {
@@ -483,6 +485,7 @@ impl AssetStore {
                     created: now(),
                     updated: now(),
                     session: None,
+                    source_id: None,
                 };
                 Self::save(&dir, &record)?;
                 sync_dir(&scope_dir)?;
@@ -699,6 +702,132 @@ impl AssetStore {
         }
         Err(err("ASSET_NOT_FOUND"))
     }
+    /// Lookup an owner-imported artifact without exposing or accepting a path.
+    /// A worker source ID is scoped to one authenticated session and its
+    /// immutable metadata; a changed source under the same ID fails closed.
+    pub fn find_owner_source(
+        &self,
+        scope: &AssetScope,
+        session_id: &str,
+        source_id: &str,
+        name: &str,
+        mime_type: &str,
+        size_bytes: u64,
+        sha256: &str,
+    ) -> Result<Option<RemoteArtifactDescriptor>, StoreError> {
+        if CanonicalUuid::parse(source_id).is_err() {
+            return Err(err("ASSET_SOURCE_INVALID"));
+        }
+        RemoteAssetRequest::List {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: session_id.into(),
+            limit: 1,
+            before: None,
+        }
+        .validate()
+        .map_err(|_| err("ASSET_REQUEST_INVALID"))?;
+        let _lock = self.lock()?;
+        for (id, record) in Self::records(&self.scope_dir(scope)?)? {
+            if record.scope == *scope
+                && record.session.as_deref() == Some(session_id)
+                && record.source_id.as_deref() == Some(source_id)
+            {
+                if record.name != name
+                    || record.mime_type != mime_type
+                    || record.size != size_bytes
+                    || record.sha256 != sha256
+                    || record.state != UploadState::Ready
+                {
+                    return Err(err("ASSET_SOURCE_CHANGED"));
+                }
+                let dir = Self::record_dir(
+                    &self.scope_dir(scope)?,
+                    CanonicalUuid::parse(&id).map_err(|_| err("ASSET_RECORD_CORRUPT"))?,
+                )?;
+                Self::verify(&dir, &record)?;
+                return Ok(Some(descriptor(&record)));
+            }
+        }
+        Ok(None)
+    }
+    pub fn owner_source_for_artifact(
+        &self,
+        scope: &AssetScope,
+        session_id: &str,
+        artifact_id: CanonicalUuid,
+    ) -> Result<Option<String>, StoreError> {
+        let _lock = self.lock()?;
+        let (dir, record) = self.scoped_record(scope, artifact_id)?;
+        if record.scope != *scope
+            || record.session.as_deref() != Some(session_id)
+            || record.state != UploadState::Ready
+        {
+            return Ok(None);
+        }
+        Self::verify(&dir, &record)?;
+        Ok(record.source_id)
+    }
+    /// Bind a fully verified upload as an output artifact. The caller streams
+    /// owner bytes through the normal upload chunk/hash checks first.
+    pub fn bind_ready_upload(
+        &self,
+        scope: &AssetScope,
+        session_id: &str,
+        upload_id: CanonicalUuid,
+        source_id: &str,
+    ) -> Result<RemoteArtifactDescriptor, StoreError> {
+        if CanonicalUuid::parse(source_id).is_err() {
+            return Err(err("ASSET_SOURCE_INVALID"));
+        }
+        RemoteAssetRequest::List {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: session_id.into(),
+            limit: 1,
+            before: None,
+        }
+        .validate()
+        .map_err(|_| err("ASSET_REQUEST_INVALID"))?;
+        let _lock = self.lock()?;
+        let scope_dir = self.scope_dir(scope)?;
+        let id = upload_id.as_uuid().to_string();
+        let dir = Self::record_dir(&scope_dir, upload_id)?;
+        let mut record = Self::load(&dir)?;
+        if record.scope != *scope || record.session.is_some() || record.state != UploadState::Ready
+        {
+            return Err(err("ASSET_NOT_FOUND"));
+        }
+        Self::verify(&dir, &record)?;
+        for (other_id, other) in Self::records(&scope_dir)? {
+            if other.scope == *scope
+                && other.session.as_deref() == Some(session_id)
+                && other.source_id.as_deref() == Some(source_id)
+            {
+                if other.name != record.name
+                    || other.mime_type != record.mime_type
+                    || other.size != record.size
+                    || other.sha256 != record.sha256
+                    || other.state != UploadState::Ready
+                {
+                    return Err(err("ASSET_SOURCE_CHANGED"));
+                }
+                let existing_id =
+                    CanonicalUuid::parse(&other_id).map_err(|_| err("ASSET_RECORD_CORRUPT"))?;
+                let existing_dir = Self::record_dir(&scope_dir, existing_id)?;
+                Self::verify(&existing_dir, &other)?;
+                scope_dir.remove_dir_all(&id)?;
+                sync_dir(&scope_dir)?;
+                return Ok(descriptor(&other));
+            }
+        }
+        record.session = Some(session_id.into());
+        record.source_id = Some(source_id.into());
+        record.updated = now();
+        Self::save(&dir, &record)?;
+        sync_dir(&dir)?;
+        Ok(descriptor(&record))
+    }
     pub fn register_artifact(
         &self,
         scope: &AssetScope,
@@ -780,6 +909,7 @@ impl AssetStore {
             created: now(),
             updated: now(),
             session: Some(session_id.into()),
+            source_id: None,
         };
         Self::save(&dir, &r)?;
         sync_dir(&scope_dir)?;
@@ -937,6 +1067,87 @@ mod tests {
             data_base64: STANDARD.encode(data),
             sha256: hash(data),
         }
+    }
+    #[test]
+    fn owner_stream_import_binds_verified_upload_idempotently_to_exact_session() {
+        let (_root, store, scope) = setup();
+        let source = uuid::Uuid::new_v4().to_string();
+        let bytes = b"worker-owned immutable output";
+        let upload = CanonicalUuid::new(uuid::Uuid::new_v4());
+        store
+            .execute(&scope, &begin(&scope, upload, bytes))
+            .unwrap();
+        store
+            .execute(&scope, &chunk(&scope, upload, 0, bytes))
+            .unwrap();
+        store
+            .execute(
+                &scope,
+                &RemoteAssetRequest::UploadFinish {
+                    version: 1,
+                    agent_id: scope.agent_id.clone(),
+                    upload_id: upload,
+                },
+            )
+            .unwrap();
+        let descriptor = store
+            .bind_ready_upload(&scope, "session-a", upload, &source)
+            .unwrap();
+        assert_eq!(
+            store
+                .find_owner_source(
+                    &scope,
+                    "session-a",
+                    &source,
+                    "safe-label.txt",
+                    "text/plain",
+                    bytes.len() as u64,
+                    &hash(bytes)
+                )
+                .unwrap(),
+            Some(descriptor.clone())
+        );
+        assert!(store
+            .find_owner_source(
+                &scope,
+                "session-b",
+                &source,
+                "safe-label.txt",
+                "text/plain",
+                bytes.len() as u64,
+                &hash(bytes)
+            )
+            .unwrap()
+            .is_none());
+        assert_eq!(
+            store
+                .execute(
+                    &scope,
+                    &RemoteAssetRequest::List {
+                        version: 1,
+                        agent_id: scope.agent_id.clone(),
+                        session_id: "session-a".into(),
+                        limit: 30,
+                        before: None
+                    }
+                )
+                .unwrap(),
+            RemoteAssetResult::List {
+                version: 1,
+                agent_id: scope.agent_id.clone(),
+                session_id: "session-a".into(),
+                items: vec![descriptor],
+                has_more: false,
+                next_before: None
+            }
+        );
+        assert_eq!(
+            store
+                .bind_ready_upload(&scope, "session-a", upload, &source)
+                .unwrap_err()
+                .code,
+            "ASSET_NOT_FOUND"
+        );
     }
     fn status(s: &AssetScope, id: CanonicalUuid) -> RemoteAssetRequest {
         RemoteAssetRequest::UploadStatus {

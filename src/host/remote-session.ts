@@ -70,6 +70,9 @@ export function createHostRemoteSessionService(ports:HostRemotePorts) {
     }
   }
   return {
+    ensure:ports.ensure,
+    resolveAgent:ports.resolveAgent,
+    validateSession:ports.validateSession,
     async request(value:unknown):Promise<RemoteSessionResult> {
       const parsed=remoteSessionRequestSchema.safeParse(value);
       if (!parsed.success) return {kind:'error',code:'REMOTE_SESSION_REQUEST_INVALID'};
