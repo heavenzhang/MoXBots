@@ -22,7 +22,7 @@ const children:ChildProcess[]=[];
 let diagnostics='',calls=0,hostPid:number|undefined,hostBirth:string|undefined;
 const evidence:string[]=[];
 const descendants=new Map<number,{pid:number;ppid:number;pgid:number;birth:string;command:string}>();
-function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object});evidence.push(line);console.log(line);}
+function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object}).split(secret).join('[redacted]');evidence.push(line);console.log(line);}
 function processRows(){
   return execFileSync('/bin/ps',['-axo','pid=,ppid=,pgid=,lstart=,comm='],{encoding:'utf8'}).trim().split('\n').map(line=>{
     const fields=line.trim().split(/\s+/);
@@ -89,7 +89,7 @@ const supplier=httpServer(async(request,response)=>{
     const chunks:Buffer[]=[];let size=0;
     for await(const part of request){size+=part.length;if(size>8*1024*1024)throw Error('FIXTURE_REQUEST_TOO_LARGE');chunks.push(Buffer.from(part));}
     if(request.url.includes('count_tokens')){response.writeHead(200,{'content-type':'application/json'}).end('{"input_tokens":100}');return;}
-    assert.equal(request.headers['x-api-key'],secret);
+    if(request.headers['x-api-key']!==secret)throw Error('FIXTURE_PROVIDER_AUTH_MISMATCH');
     const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};assert.equal(body.model,'original-host-model');
     calls++;captureProcesses();
     if(!issued.has(phase)){issued.add(phase);record('supplier-real-tool-use',{phase,tool:'Bash'});reply(response,{name:'Bash',id:`toolu_fixture_${phase}`,input:writeInput(phase)});}
