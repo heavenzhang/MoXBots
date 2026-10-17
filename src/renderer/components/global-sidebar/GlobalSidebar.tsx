@@ -2007,6 +2007,7 @@ function WorkspaceTree({
       ),
       (session) => `session:${session.id}`,
       organizing ? organization.orders[`workspace:${project.id}`] : undefined,
+      { createdAt: (session) => session.createdAt },
     );
     const limit = sessionLimits[key] ?? SESSION_PAGE_SIZE;
     const workspaceSessionState =
@@ -2178,6 +2179,7 @@ function WorkspaceTree({
         ),
         (session) => `session:${session.id}`,
         organization.orders[container],
+        { createdAt: (session) => session.createdAt },
       ).map((session) => `session:${session.id}`);
     }
     return sectionEntries(container).map((entry) => entry.id);
