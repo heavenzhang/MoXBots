@@ -326,7 +326,16 @@ impl MobileConnection {
             }
             "targets.list" => {
                 self.connect().await?;
-                self.list_targets().await
+                let result = self.list_targets().await;
+                if result.is_err() {
+                    self.targets.clear();
+                }
+                // There is no idle background actor: close after the snapshot;
+                // each session obtains a fresh authenticated outer epoch.
+                if let Some(mut c) = self.connected.take() {
+                    let _ = c.socket.close(None).await;
+                }
+                result
             }
             _ => Err(err("MOBILE_INTENT_UNSUPPORTED")),
         }
@@ -482,7 +491,7 @@ impl MobileConnection {
                 None,
             )
             .await?;
-        self.targets.clear();
+        let previous_targets = std::mem::take(&mut self.targets);
         let mut items = Vec::new();
         let mut has_more = devices["complete"] != true;
         for device in devices["items"]
@@ -532,7 +541,7 @@ impl MobileConnection {
                     has_more = true;
                     break;
                 }
-                let opaque = uuid::Uuid::new_v4().to_string();
+                let opaque = catalog_target_id(&previous_targets, device_id, id);
                 self.targets.insert(
                     opaque.clone(),
                     Target {
@@ -552,6 +561,13 @@ impl MobileConnection {
     }
 }
 
+fn catalog_target_id(previous: &HashMap<String, Target>, device: &str, agent: &str) -> String {
+    previous
+        .iter()
+        .find(|(_, target)| target.device == device && target.agent == agent)
+        .map(|(id, _)| id.clone())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
 fn approval_matches(
     snapshot: &Value,
     request: &myagents_host_management_protocol::RemoteSessionRequest,
@@ -1147,6 +1163,34 @@ mod tests {
             )
             .unwrap();
         assert!(o.pending_operations("scope").is_err());
+    }
+    #[test]
+    fn catalog_refresh_keeps_selection_only_for_the_same_device_and_agent() {
+        let mut previous = HashMap::new();
+        previous.insert(
+            "approved-opaque".into(),
+            Target {
+                device: "host-one".into(),
+                agent: "agent".into(),
+            },
+        );
+        assert_eq!(
+            catalog_target_id(&previous, "host-one", "agent"),
+            "approved-opaque"
+        );
+        assert_ne!(
+            catalog_target_id(&previous, "host-two", "agent"),
+            "approved-opaque"
+        );
+        assert_ne!(
+            catalog_target_id(&previous, "host-one", "another-agent"),
+            "approved-opaque"
+        );
+        previous.clear();
+        assert_ne!(
+            catalog_target_id(&previous, "host-one", "agent"),
+            "approved-opaque"
+        );
     }
     #[test]
     fn pending_projection_exposes_only_scoped_receipt_identifiers() {

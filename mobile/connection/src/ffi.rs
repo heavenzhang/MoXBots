@@ -132,6 +132,36 @@ impl IdentityStore for MoxConnectionStore {
             .map_err(|_| CryptoError::CredentialUnavailable)
     }
 }
+// Validate raw JSON with original typed DTOs before Value normalization so
+// duplicate security fields and unknown request fields remain rejected.
+#[derive(serde::Deserialize)]
+#[serde(tag = "kind", rename_all_fields = "camelCase", deny_unknown_fields)]
+enum ClosedIntent {
+    #[serde(rename = "account.status")]
+    AccountStatus { version: u8 },
+    #[serde(rename = "account.login.start")]
+    LoginStart { version: u8 },
+    #[serde(rename = "account.login.poll")]
+    LoginPoll { version: u8 },
+    #[serde(rename = "account.logout")]
+    Logout { version: u8 },
+    #[serde(rename = "targets.list")]
+    Targets { version: u8 },
+    #[serde(rename = "operations.pending")]
+    Operations { version: u8 },
+    #[serde(rename = "connection.suspend")]
+    Suspend { version: u8 },
+    #[serde(rename = "session")]
+    Session {
+        version: u8,
+        target_id: String,
+        request: myagents_host_management_protocol::RemoteSessionRequest,
+    },
+}
+fn parse_intent(bytes: &[u8]) -> Result<serde_json::Value, ()> {
+    let _: ClosedIntent = serde_json::from_slice(bytes).map_err(|_| ())?;
+    serde_json::from_slice(bytes).map_err(|_| ())
+}
 pub struct MoxConnection {
     runtime: tokio::runtime::Runtime,
     connection: MobileConnection,
@@ -205,7 +235,7 @@ pub unsafe extern "C" fn mox_connection_request(
 ) -> MoxConnectionBuffer {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let h = h.as_mut().ok_or(())?;
-        let v = serde_json::from_slice(input(p, n)?).map_err(|_| ())?;
+        let v = parse_intent(input(p, n)?)?;
         Ok::<_, ()>(buffer(h.runtime.block_on(h.connection.request(v))))
     })) {
         Ok(Ok(b)) => b,
@@ -344,6 +374,11 @@ mod tests {
             device_id: "device".into(),
             key_generation: 1,
         }
+    }
+    #[test]
+    fn raw_intents_preserve_original_duplicate_and_unknown_field_rejection() {
+        for bytes in [br#"{"version":1,"version":1,"kind":"account.status"}"#.as_slice(),br#"{"version":1,"kind":"session","targetId":"target","request":{"kind":"list","agentId":"safe","agentId":"other","limit":30}}"#.as_slice(),br#"{"version":1,"kind":"session","targetId":"target","request":{"kind":"list","agentId":"safe","limit":30,"accessToken":"private"}}"#.as_slice(),br#"{"version":1,"kind":"account.status","issuer":"https://untrusted.invalid"}"#.as_slice()] {assert!(parse_intent(bytes).is_err());}
+        assert!(parse_intent(br#"{"version":1,"kind":"session","targetId":"approved","request":{"kind":"list","agentId":"safe","limit":30}}"#).is_ok());
     }
     #[test]
     fn native_key_save_is_idempotent_conflict_safe_and_readback_verified() {
