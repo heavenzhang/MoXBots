@@ -88,7 +88,7 @@ not consume the 128 unknown-record budget. There is no automatic replay,
 expiry-based removal or success synthesis. Native retains its durable records
 independently and reconciles them on fresh authorization.
 The current core has no account login UI, outer HTTP/WSS event loop, notification
-provider, attachment extension or microphone/ASR implementation; these belong to
+provider or microphone/ASR implementation; these belong to
 the mobile native/Host integration owners.
 
 ## Verification
@@ -114,7 +114,7 @@ Rust targets.
 Native config accepts exactly `profile:"session"` (default), `"assets"`, or
 `"combined"`. Session-only and assets-only restrictions remain unchanged. The
 Combined profile exposes only the existing `session.remote` and owned
-`session.assets.v1` typed methods; it is not an arbitrary management-method port.
+`session.assets.v1` / `session.mobile.v1` typed methods; it is not an arbitrary management-method port.
 Choose the profile in trusted native provisioning, never from a JavaScript intent.
 
 The actual relay allows one outer WSS per device and one channel per device pair.
@@ -154,3 +154,40 @@ byte offsets/hash govern resumption; session v1 wire shapes and execution journa
 semantics are unchanged. Combined tests use actual TLS against the existing Host
 channel implementation and its strict sequence validation; actual outer relay and
 native platform integration remain separate parent-owned acceptance gates.
+
+## Opt-in mobile session admission
+
+Combined additionally permits the closed owned `session.mobile.v1` projection.
+Native must first request `mobile.capabilities` and receive the exact authenticated
+capabilities result for the bound Agent. Assets capabilities and legacy session
+capabilities do not grant mobile admission. The same original Channel, pair
+sequences, outer epoch, pending map and flow credit continue across all three
+methods. There is no arbitrary method or provider-credential port.
+
+Native uses `mobile-request` for capabilities, models, suggestions and receipts;
+`prepare-mobile` accepts only mobile.start/mobile.send. Persist the returned opaque
+record durably before `commit`, exactly as with legacy Prepare. The digest covers
+the original text, ordered assetIds, optional modelId, operation UUID and existing
+authenticated scope. A UUID cannot change parameters or protocols. A record's
+stored protocol selects the Commit method; JavaScript does not choose it.
+
+JournalRequest is an untagged Legacy/Mobile enum: legacy record JSON and digests
+remain byte compatible, while `mobile.` request kinds disambiguate new records.
+Restore all of this Agent's mixed-protocol unknown records before any RPC; restore
+is atomic. Recovered effects are receipt-only and cannot be recommitted, even after
+not-found. Accepted/rejected receipts only clear journals of the same protocol;
+confirmed UUID tombstones block both protocols. A mobile.send receipt, including a
+query after recovery, must contain the original sessionId. Native must retain the
+opaque protocol and durable confirmed marker as well as the UUID.
+
+Events use `mobile-response` plus exact requestId and typed data. Suggestions bind
+Agent/session/revision; receipts bind Agent/operation and a send's original session.
+The authoritative management JSON Schema describes the closed structural forms.
+Rust/Zod codecs additionally enforce UTF-16 and serialized UTF-8 budgets,
+per-field Unicode rules and arithmetic/cross-field invariants noted in the schema.
+
+This package implements the type, crypto and journal boundary only. Real Host
+mobile admission, model catalog/allowlist, trusted attachment leases, permission
+rechecks and SessionEngine side effects remain integration gates. TLS fixture
+receipt responses establish protocol behavior, not actual Host support or a real
+model execution outcome. Existing session.remote v1 DTOs remain unchanged.
