@@ -1043,8 +1043,6 @@
     "convertBusy": "The conversation is running or waiting for input and cannot be converted yet. Resolve or explicitly stop it first.",
     "convertLinkFailed": "The task was created, but linking the original conversation failed. Refresh and check the task details.",
     "convertTaskDoc": "# {{title}}\n\nSource: converted from a conversation; linked to the original session.\n\n## Background\n\n{{summary}}\n\n## Done when\n\n- [ ] Describe the deliverable and acceptance criteria\n",
-    "reviewReady": "Done · awaiting review",
-    "recentlyFinished": "Done · within 24h",
     "doneHint": "Tasks whose run finished and await your review, plus conversations that stopped within the last 24 hours (older ones move to Continue). Archive once you accept the result, or open the conversation to continue (it returns to Running). Done means the run ended, not that the result is accepted.",
     "archiveHint": "Archive once you have reviewed it; restore it from History",
     "idleHint": "Conversations untouched for over 24 hours. Use \"Convert to task\" if there is something to deliver; otherwise archive. Idle does not mean the goal is complete.",

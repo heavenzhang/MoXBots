@@ -131,7 +131,7 @@ describe('project board authority projection', () => {
   it('separates idle from unknown and preserves observed duration after a failed refresh', () => {
     const rows=projectBoardRows({path:'/work/p'},[],[session()],new Map([['s1',{state:'idle',checkedAt:now}]]),now);
     expect(rows[0]).toMatchObject({group:'done',reviewReady:true});
-    expect(boardRowStateKey(rows[0],now)).toBe('projectBoard.recentlyFinished');
+    expect(boardRowStateKey(rows[0],now)).toBe('badges.status.done');
     const snapshot={state:'running' as const,checkedAt:now-10000,error:'read failed',execution:{startedAt:'2026-10-14T12:00:00.000Z',elapsedMs:15000}};
     expect(freshActivity(snapshot,now)).toBeUndefined();
     expect(sessionExecutionTime(snapshot,now)).toMatchObject({elapsedMs:15000,stale:true});
@@ -188,7 +188,7 @@ describe('project board authority projection', () => {
   it('moves a finished agent run to done for review only when its Session is observed idle', () => {
     const run = (activity: Map<string, any>) => projectBoardRows({path:'/work/p'},[task()],[session()],activity,now)[0];
     expect(run(new Map([['s1',{state:'idle',checkedAt:now}]]))).toMatchObject({group:'done',reviewReady:true});
-    expect(boardRowStateKey(run(new Map([['s1',{state:'idle',checkedAt:now}]])),now)).toBe('projectBoard.reviewReady');
+    expect(boardRowStateKey(run(new Map([['s1',{state:'idle',checkedAt:now}]])),now)).toBe('badges.status.done');
     expect(run(new Map([['s1',{state:'running',checkedAt:now}]])).group).toBe('running');
     expect(run(new Map([['s1',{state:'waiting_user_action',checkedAt:now}]])).group).toBe('needs');
     expect(run(new Map([['s1',{state:'idle',checkedAt:now-61000}]]))).toMatchObject({group:'needs',confirmationReason:'unknown'});

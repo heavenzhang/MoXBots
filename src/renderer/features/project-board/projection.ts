@@ -168,7 +168,6 @@ export function filterBoardRows(rows: readonly BoardRow[], filter: 'all' | 'need
 }
 
 export function boardRowStateKey(row: BoardRow, now: number): string {
-  if (row.reviewReady) return row.task ? 'projectBoard.reviewReady' : 'projectBoard.recentlyFinished';
   if (row.confirmationReason) return `projectBoard.reasons.${row.confirmationReason}`;
   if (row.group === 'running') return 'projectBoard.running';
   if (row.group === 'done') return 'badges.status.done';
