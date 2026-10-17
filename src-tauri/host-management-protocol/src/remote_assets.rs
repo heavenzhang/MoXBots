@@ -71,6 +71,9 @@ pub enum RemoteAssetRequest {
 fn optional_string<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     String::deserialize(d).map(Some)
 }
+fn required_nullable<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Option::<String>::deserialize(d)
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RemoteArtifactDescriptor {
@@ -125,6 +128,7 @@ pub enum RemoteAssetResult {
         session_id: String,
         items: Vec<RemoteArtifactDescriptor>,
         has_more: bool,
+        #[serde(deserialize_with = "required_nullable")]
         next_before: Option<String>,
     },
     Chunk {

@@ -267,6 +267,22 @@
       "maxBytes": 20971520,
       "maxChunkBytes": 24576,
       "accessToken": "forged"
+    },
+    {
+      "version": 1,
+      "agentId": "agent",
+      "sessionId": "session",
+      "kind": "list",
+      "items": [
+        {
+          "artifactId": "00000000-0000-4000-8000-000000000001",
+          "name": "output.txt",
+          "mimeType": "text/plain",
+          "sizeBytes": 3,
+          "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        }
+      ],
+      "hasMore": false
     }
   ]
 }
