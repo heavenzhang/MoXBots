@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.speech.ModelDownloadListener
 import android.speech.RecognitionSupport
 import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
-/** Read-only local speech readiness probe; never starts listening or requests permissions. */
+/** Metadata probe; model preparation requires the explicit developer-only runner argument. Never records. */
 @RunWith(AndroidJUnit4::class)
 class NativeSpeechReadinessInstrumentedTest {
   private val context = ApplicationProvider.getApplicationContext<Context>()
@@ -42,10 +43,14 @@ class NativeSpeechReadinessInstrumentedTest {
       "DENIED"
     }
 
-    val support = if (sdk >= 33 && onDeviceAvailable == true) queryChineseSupport() else SupportResult(
+    val initialSupport = if (sdk >= 33 && onDeviceAvailable == true) queryChineseSupport() else SupportResult(
       status = if (sdk < 33) "unknown" else "unavailable",
       detail = if (sdk < 33) "API_BELOW_33" else "ON_DEVICE_RECOGNIZER_UNAVAILABLE",
     )
+    val requestedSetup = InstrumentationRegistry.getArguments().getString("moxbotsInstallSpeechLocale")
+    require(requestedSetup == null || requestedSetup == "zh-CN") { "Only explicit zh-CN test-device setup is supported" }
+    val modelSetup = if (requestedSetup != null) prepareChineseModel(initialSupport, onDeviceAvailable == true) else null
+    val support = if (modelSetup?.optBoolean("triggered") == true) queryChineseSupport() else initialSupport
     val installedChinese = support.installed.any(::isChineseLocale)
     val pendingChinese = support.pending.any(::isChineseLocale)
     val supportedChinese = support.supported.any(::isChineseLocale)
@@ -60,11 +65,54 @@ class NativeSpeechReadinessInstrumentedTest {
     }
 
     val negativeStart = if (micPermission == "DENIED") verifyNativeSpeechPermissionDenial() else null
-    val report = """{"device":"${Build.MODEL}","sdk":$sdk,"locale":"zh-CN","onDeviceRecognitionAvailable":$onDeviceAvailable,"recordAudioPermission":"$micPermission","supportStatus":"${support.status}","supportDetail":"${escape(support.detail)}","installedOnDeviceLanguages":${jsonArray(support.installed)},"pendingOnDeviceLanguages":${jsonArray(support.pending)},"supportedOnDeviceLanguages":${jsonArray(support.supported)},"readiness":"$readiness","negativeStart":${negativeStart?.toString() ?: "null"},"modelDownloadTriggered":false}"""
+    val permissionAfter = context.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+    assertEquals("model preparation must not change microphone permission", micPermission == "GRANTED", permissionAfter)
+    val report = """{"device":"${Build.MODEL}","sdk":$sdk,"locale":"zh-CN","onDeviceRecognitionAvailable":$onDeviceAvailable,"recordAudioPermission":"$micPermission","supportStatus":"${support.status}","supportDetail":"${escape(support.detail)}","installedOnDeviceLanguages":${jsonArray(support.installed)},"pendingOnDeviceLanguages":${jsonArray(support.pending)},"supportedOnDeviceLanguages":${jsonArray(support.supported)},"readiness":"$readiness","negativeStart":${negativeStart?.toString() ?: "null"},"modelDownloadTriggered":${modelSetup?.optBoolean("triggered") ?: false},"modelSetup":${modelSetup?.toString() ?: "null"}}"""
     Log.i(TAG, report)
     println("MOXBOTS_SPEECH_READINESS $report")
 
     if (micPermission == "DENIED") assertEquals("permission_denied_closed", negativeStart?.getString("status"))
+  }
+
+  private fun prepareChineseModel(support: SupportResult, available: Boolean): org.json.JSONObject {
+    val report = org.json.JSONObject().put("triggered", false)
+    if (support.installed.any(::isChineseLocale)) return report.put("status", "already_installed")
+    if (Build.VERSION.SDK_INT < 34 || !available || support.status != "ok" || !support.supported.any(::isChineseLocale)) {
+      return report.put("status", "unavailable_or_unknown")
+    }
+    // Use the service's exact advertised model identifier, not a guessed alias.
+    val modelLocale = support.supported.first { isChineseLocale(it) }
+    report.put("modelLocale", modelLocale)
+    val result = AtomicReference<String>()
+    val progress = AtomicInteger(-1)
+    val latch = CountDownLatch(1)
+    var recognizer: SpeechRecognizer? = null
+    try {
+      InstrumentationRegistry.getInstrumentation().runOnMainSync {
+        recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+        report.put("triggered", true)
+        recognizer!!.triggerModelDownload(chineseIntent(modelLocale), context.mainExecutor, object : ModelDownloadListener {
+          override fun onProgress(completedPercent: Int) { progress.set(completedPercent) }
+          override fun onSuccess() { result.compareAndSet(null, "success"); latch.countDown() }
+          override fun onScheduled() { result.compareAndSet(null, "scheduled"); latch.countDown() }
+          override fun onError(error: Int) { result.compareAndSet(null, "error_$error"); latch.countDown() }
+        })
+      }
+      val completed = latch.await(60, TimeUnit.SECONDS)
+      return report.put("status", if (completed) result.get() ?: "callback_missing" else "bounded_wait_expired")
+        .put("lastProgressPercent", progress.get())
+    } catch (error: Exception) {
+      return report.put("status", "exception").put("detail", "${error.javaClass.simpleName}:${error.message ?: "no_message"}")
+    } finally {
+      InstrumentationRegistry.getInstrumentation().runOnMainSync { recognizer?.destroy() }
+    }
+  }
+
+  private fun chineseIntent(language: String = "zh-CN") = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+    putExtra(RecognizerIntent.EXTRA_LANGUAGE, language)
+    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, language)
+    putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
   }
 
   private fun queryChineseSupport(): SupportResult {
@@ -74,12 +122,7 @@ class NativeSpeechReadinessInstrumentedTest {
     try {
       InstrumentationRegistry.getInstrumentation().runOnMainSync {
         recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-          putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-          putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
-          putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
-          putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-        }
+        val intent = chineseIntent()
         if (Build.VERSION.SDK_INT >= 33) {
           recognizer!!.checkRecognitionSupport(intent, context.mainExecutor, object : RecognitionSupportCallback {
             override fun onSupportResult(result: RecognitionSupport) {
