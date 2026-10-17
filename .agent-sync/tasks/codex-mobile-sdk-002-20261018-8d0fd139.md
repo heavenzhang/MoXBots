@@ -48,7 +48,7 @@ No fake completion, automatic resend, or protocol changes to existing v1.
   before final extra ABI/scope checks (latest final run will follow).
 - Tests use synthetic keys and real TLS between the SDK and existing Host channel,
   plus original replay/nonce/role/hello/JOSE regression suite. No external services.
-- Final focused run after relay-credit follow-up: 26 tests passed; clippy all-targets
+- Final focused run after relay-credit follow-up: 27 tests passed; clippy all-targets
   with -D warnings passed. final macOS host release build passed, including all crate types.
 - `cargo check --manifest-path mobile/core/Cargo.toml --locked --target aarch64-apple-ios`:
   failed at ring C build because `xcrun` cannot locate `iphoneos` SDK. This is a real
@@ -74,7 +74,7 @@ only after successful validation. Focused window/duplicate/release tests passed.
 
 ## Final worker acceptance
 
-- 26/26 Rust tests passed; clippy `--all-targets -- -D warnings` passed; release build passed.
+- 27/27 Rust tests passed; clippy `--all-targets -- -D warnings` passed; release build passed.
 - Release dylib loaded through actual C ABI using ctypes: 8 exports present, 24-byte
   buffer layout, sanitized constructor failure and owned-buffer free passed.
 - Native config `tlsInitiator` must reflect the validated Offer initiator, independent
@@ -82,3 +82,15 @@ only after successful validation. Focused window/duplicate/release tests passed.
 - iOS actual cross-check failed solely at missing `iphoneos` SDK; Android NDK license
   authorization remains with parent. Neither platform native SDK acceptance is claimed.
 - No remote push, main integration or production release performed by worker.
+
+## Confirmed receipt and capacity boundary
+
+Authenticated matching Accepted/Rejected receipts clear operation bodies from the
+active 128-record journal and retain bounded UUID tombstones (4096 per auth epoch).
+The UI unknown list now reflects actual uncertain operations. Tombstones continue
+to block resend of a confirmed UUID; NotFound/Unconfirmed/Processing never grant
+replay or remove unknown records. Actual encrypted NotFound→explicit receipt query→
+Accepted test and full 128-record capacity recovery test passed. Connection owner
+confirmed persistent native markers survive key rotation/new handles and prune only
+confirmed full bodies; unknown full records remain on disk. Final 27 tests, clippy
+and host release passed after this change.
