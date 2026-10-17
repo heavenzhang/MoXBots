@@ -1084,7 +1084,23 @@ impl Store {
             ],
         )
         .map_err(|_| NotifyError::Conflict)?;
-        tx.commit().map_err(|_| NotifyError::Storage)
+        tx.commit().map_err(|_| NotifyError::Storage)?;
+        drop(connection);
+        let binding = self
+            .source_challenge_for_scope(authority, session_handle, challenge_id, now)
+            .map_err(|_| NotifyError::Storage)?;
+        if binding.challenge_id == challenge_id
+            && binding.source_event_id == source_event_id
+            && binding.connection_epoch == connection_epoch
+            && binding.agent_id == target.agent_id
+            && binding.session_id == hint.session_id
+            && binding.expires_at == expires_at
+            && binding.state == SourceChallengeState::Pending
+        {
+            Ok(())
+        } else {
+            Err(NotifyError::Storage)
+        }
     }
 
     /// Load a source challenge only for the exact fresh session and identity
@@ -1247,6 +1263,12 @@ impl Store {
             return Err(NotifyError::InvalidInput);
         }
         validate_time(now)?;
+        let before = self
+            .source_challenge_for_scope(authority, session_handle, challenge_id, now)
+            .map_err(|_| NotifyError::Storage)?;
+        if before.state != SourceChallengeState::Pending {
+            return Err(NotifyError::Storage);
+        }
         let connection = self.connection.lock().map_err(|_| NotifyError::Storage)?;
         let changed = connection
             .execute(
@@ -1269,7 +1291,26 @@ impl Store {
             )
             .map_err(|_| NotifyError::Storage)?;
         if changed == 1 {
-            Ok(())
+            drop(connection);
+            let after = self
+                .source_challenge_for_scope(authority, session_handle, challenge_id, now)
+                .map_err(|_| NotifyError::Storage)?;
+            if after.challenge_id == before.challenge_id
+                && after.source_event_id == before.source_event_id
+                && after.connection_epoch == before.connection_epoch
+                && after.agent_id == before.agent_id
+                && after.session_id == before.session_id
+                && after.expires_at == before.expires_at
+                && after.state
+                    == (SourceChallengeState::Finalized {
+                        proof_digest: *proof_digest,
+                        event_id: event_id.to_owned(),
+                    })
+            {
+                Ok(())
+            } else {
+                Err(NotifyError::Storage)
+            }
         } else {
             Err(NotifyError::ClaimExpired)
         }
@@ -2187,6 +2228,93 @@ mod tests {
             ),
             Err(NotifyError::Conflict)
         ));
+    }
+
+    #[test]
+    fn source_challenge_bind_requires_exact_committed_pointer_readback() {
+        let (_dir, store) = open();
+        let scope = authority(DEVICE, BINDING, 1);
+        let challenge_id = Uuid::new_v4().to_string();
+        let source_event_id = Uuid::new_v4().to_string();
+        let epoch = Uuid::new_v4().to_string();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute_batch(
+                "CREATE TRIGGER corrupt_source_binding AFTER INSERT ON source_challenges
+                 BEGIN
+                   UPDATE source_challenges SET session_id='corrupt-session'
+                   WHERE challenge_id=NEW.challenge_id;
+                 END;",
+            )
+            .unwrap();
+
+        assert_eq!(
+            store.bind_source_challenge(
+                &scope,
+                "77777777-7777-4777-8777-777777777777",
+                &challenge_id,
+                &source_event_id,
+                &epoch,
+                "agent-a",
+                "session-a",
+                120,
+                100,
+            ),
+            Err(NotifyError::Storage),
+            "the caller must not receive a nonce if durable readback differs"
+        );
+    }
+
+    #[test]
+    fn source_challenge_finalization_requires_exact_committed_receipt_readback() {
+        let (_dir, store) = open();
+        let scope = authority(DEVICE, BINDING, 1);
+        let session_handle = "77777777-7777-4777-8777-777777777777";
+        let challenge_id = Uuid::new_v4().to_string();
+        store
+            .bind_source_challenge(
+                &scope,
+                session_handle,
+                &challenge_id,
+                &Uuid::new_v4().to_string(),
+                &Uuid::new_v4().to_string(),
+                "agent-a",
+                "session-a",
+                120,
+                100,
+            )
+            .unwrap();
+        let event_id = Uuid::new_v4().to_string();
+        let different_event_id = Uuid::new_v4().to_string();
+        let trigger = format!(
+            "CREATE TRIGGER corrupt_source_receipt AFTER UPDATE OF state ON source_challenges
+             WHEN NEW.state='finalized'
+             BEGIN
+               UPDATE source_challenges SET event_id='{different_event_id}'
+               WHERE challenge_id=NEW.challenge_id;
+             END;"
+        );
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute_batch(&trigger)
+            .unwrap();
+
+        assert_eq!(
+            store.finalize_source_challenge(
+                &scope,
+                session_handle,
+                &challenge_id,
+                &[7; 32],
+                &event_id,
+                101,
+            ),
+            Err(NotifyError::Storage),
+            "the HTTP handler must not acknowledge an unverified durable receipt"
+        );
     }
 
     fn register(store: &Store, auth: &Authority, token: &str, now: i64) -> EndpointId {
