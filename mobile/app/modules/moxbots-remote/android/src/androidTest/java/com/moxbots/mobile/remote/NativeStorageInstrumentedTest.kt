@@ -83,19 +83,20 @@ class NativeStorageInstrumentedTest {
     var localId: String? = null
     try {
       val imported = attachments.importPicked(uri, image = true)
-      localId = imported.getString("localId")
+      val importedId = imported.getString("localId")
+      localId = importedId
       assertEquals("image/png", imported.getString("mimeType"))
       assertEquals(bytes.size.toLong(), imported.getLong("sizeBytes"))
       assertEquals(sha256(bytes), imported.getString("sha256"))
       assertTrue(imported.getBoolean("image"))
 
-      val (chunkMetadata, chunk) = attachments.readChunk(localId!!, 0)
-      assertEquals(localId, chunkMetadata.getString("localId"))
+      val (chunkMetadata, chunk) = attachments.readChunk(importedId, 0)
+      assertEquals(importedId, chunkMetadata.getString("localId"))
       assertArrayEquals(bytes, chunk)
-      val crossScopeFailure = expectFailure { otherAccount.readChunk(localId, 0) }
+      val crossScopeFailure = expectFailure { otherAccount.readChunk(importedId, 0) }
       assertTrue(crossScopeFailure.message.orEmpty().contains("MOBILE_ATTACHMENT_NOT_FOUND"))
 
-      attachments.remove(localId)
+      attachments.remove(importedId)
       localId = null
       assertEquals(0, attachments.list().getJSONArray("items").length())
     } finally {

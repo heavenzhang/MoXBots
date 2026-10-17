@@ -36,6 +36,9 @@ android {
     consumerProguardFiles 'consumer-rules.pro'
   }
   externalNativeBuild { cmake { path 'src/main/cpp/CMakeLists.txt' } }
+  // Library instrumentation has its own APK; AGP otherwise omits the imported
+  // Rust runtime even though the consuming application packages it.
+  sourceSets { androidTest { jniLibs.srcDirs = ['native'] } }
 }
 
 dependencies {
