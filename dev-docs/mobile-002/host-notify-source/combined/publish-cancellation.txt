@@ -1,0 +1,50 @@
+   Compiling myagents-host-network v0.5.2 (/Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-source-combined/src-tauri/headless-network)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 6.93s
+     Running unittests src/lib.rs (src-tauri/headless-network/target/debug/deps/myagents_host_network-f95fdaba437d2c24)
+
+running 1 test
+private combined fixture root: /Users/zhangshaohua/sc-Tsqfl8
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+actual publish future cancelled at before hint processing; original pointer retained; fresh proof retry acknowledged exactly one source event
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=342
+fixture TLS bridge forwarded response bytes=312
+fixture TLS bridge forwarded response bytes=225
+actual publish future cancelled at after hint processing; original pointer retained; fresh proof retry acknowledged exactly one source event
+fixture TLS bridge forwarded response bytes=1322
+fixture TLS bridge forwarded response bytes=217
+combined source accepted: actual publish, private Node IPC, pinned TLS → actual AuthStore/DeviceStore/notification router; immutable sourceEventId/epoch/pointer restart retry retained same service eventId; loss after durable ACK restarted empty without republish; real bearer revocation and local wrong-generation rejected; Session executors absent
+test notification_source::combined_test::actual_publish_private_node_source_real_service_restart_ack_loss_and_revocation ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 185 filtered out; finished in 17.46s
+
+     Running unittests src/main.rs (src-tauri/headless-network/target/debug/deps/myagents_host_network-06e69f6f04bfc6da)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

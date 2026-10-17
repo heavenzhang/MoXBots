@@ -75,6 +75,8 @@ pub struct ServiceFileConfig {
     pub execution: bool,
     #[serde(default)]
     pub model_center: Option<crate::model_center_authority::ModelCenterConfig>,
+    #[serde(default)]
+    pub mobile_notifications: Option<crate::mobile_notification_delivery::MobileNotificationConfig>,
 }
 fn default_session_ttl() -> u64 {
     86_400
@@ -288,6 +290,28 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
         session_ttl: Duration::from_secs(config.session_ttl_seconds),
     };
     let store = Arc::new(AuthStore::open(&config.state_dir, &auth)?);
+    let mobile_notifications = config
+        .mobile_notifications
+        .as_ref()
+        .filter(|settings| settings.enabled)
+        .map(|settings| {
+            let devices = Arc::new(
+                myagents_agentnet_device_core::DeviceStore::open(&config.state_dir)
+                    .map_err(|_| AuthError::Storage)?,
+            );
+            let notify = Arc::new(
+                myagents_agentnet_mobile_notify_core::Store::open(&config.state_dir)
+                    .map_err(|_| AuthError::Storage)?,
+            );
+            crate::mobile_notification_delivery::MobileNotificationRuntime::open(
+                store.clone(),
+                devices,
+                notify,
+                &config.network_id,
+                settings,
+            )
+        })
+        .transpose()?;
     let feedback = FeedbackService::open(
         store.clone(),
         &config.state_dir,
@@ -439,6 +463,11 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
     let router = assemble_feature_routes(router, identity, network, relay, &config.issuer)
         .merge(feedback.router())
         .merge(community.router());
+    let router = if let Some(mobile) = &mobile_notifications {
+        router.merge(mobile.router())
+    } else {
+        router
+    };
     let router = if let Some(admin) = administration {
         router.merge(admin.router())
     } else {
@@ -460,12 +489,18 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
     let listener = TcpListener::bind(config.listen)
         .await
         .map_err(|_| AuthError::Configuration)?;
-    axum::serve(listener, router)
+    let worker =
+        mobile_notifications.map(|runtime| tokio::spawn(std::sync::Arc::new(runtime).run_worker()));
+    let serve_result = axum::serve(listener, router)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .map_err(|_| AuthError::Storage)
+        .map_err(|_| AuthError::Storage);
+    if let Some(worker) = worker {
+        worker.abort();
+    }
+    serve_result
 }
 
 /// Merge the optional feature routers into the same production router used by
@@ -569,6 +604,13 @@ fn read_root_ca(path: &Path) -> Result<Vec<u8>, AuthError> {
 }
 fn validate_config(c: &ServiceFileConfig) -> Result<(), AuthError> {
     if c.relay && (c.identity.is_none() || c.network.is_none()) {
+        return Err(AuthError::Configuration);
+    }
+    if c.mobile_notifications
+        .as_ref()
+        .is_some_and(|settings| settings.enabled)
+        && (c.identity.is_none() || c.network.is_none())
+    {
         return Err(AuthError::Configuration);
     }
     let issuer = Url::parse(&c.issuer).map_err(|_| AuthError::OidcConfiguration)?;
@@ -1627,9 +1669,19 @@ mod tests {
             relay: false,
             administration: None,
             model_center: None,
+            mobile_notifications: None,
             execution: false,
         };
         assert!(validate_config(&good).is_ok());
+        good.mobile_notifications = Some(
+            crate::mobile_notification_delivery::MobileNotificationConfig {
+                enabled: true,
+                apns: None,
+                fcm: None,
+            },
+        );
+        assert!(validate_config(&good).is_err());
+        good.mobile_notifications = None;
         good.relay = true;
         assert!(validate_config(&good).is_err());
         good.relay = false;
@@ -1650,6 +1702,7 @@ mod tests {
         });
         let config: ServiceFileConfig = serde_json::from_value(value).unwrap();
         assert!(!config.relay);
+        assert!(config.mobile_notifications.is_none());
     }
 
     #[tokio::test]

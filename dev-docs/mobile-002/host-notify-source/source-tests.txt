@@ -1,0 +1,11 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-mobile-002-host-source
+
+ ✓ |unit| src/test/host-mobile-notify-source.unit.test.ts (12 tests) 5155ms
+   ✓ original Host generic source outbox > keeps accepting after more than128 confirmed events and persists interactive dedupe  3259ms
+   ✓ original Host generic source outbox > durably defers at pending capacity and promotes the same original event after ACK  1792ms
+
+ Test Files  1 passed (1)
+      Tests  12 passed (12)
+   Start at  05:50:09
+   Duration  5.63s (transform 142ms, setup 86ms, collect 145ms, tests 5.15s, environment 0ms, prepare 76ms)
