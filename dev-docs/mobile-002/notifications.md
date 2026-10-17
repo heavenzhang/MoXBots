@@ -43,7 +43,10 @@ Android 可通过构建环境变量 `MOXBOTS_ANDROID_GOOGLE_SERVICES_FILE` 指�
 - [x] 原生制品源码摘要覆盖实际导入的共享AgentNet/lifecycle文件，APK核验拒绝与当前干净源码不符的原生库；旧摘要与新版scopeVersion=2不可直接比较。
 - [x] SDK错误码与界面提示已对齐；主Agent复跑typecheck/lint/50项策略通过；实际Web合成流程复验未启用提醒的提示及忽略返回列表。证据 `/tmp/moxbots-mobile-ui-review-002/primary-notification-native-contract-notice.png`。
 - [x] Android内嵌JS测试包构建、16KiB/签名/当前原生源码核对与专用模拟器安装通过；仍为Debug test key，原生UI/账号等未验收。详见 `android-build.md`。
-- [ ] 服务端provider修复后集成与主Agent复验、准确源码CI。
+- [x] 服务端provider包及两轮主审修复已集成：默认关闭、固定origin、APNs JWT缓存与HTTP/2、FCM严格回执、未配置provider拒绝、当前session/device重验及剩余预算领取。主Agent服务168项测试通过（5项既有ignored）、严格clippy通过；core14项测试及严格clippy通过。日志 `/tmp/moxbots-mobile-notification-root-{service,core}-tests.log`。包级fmt通过；未对冻结crypto/protocol依赖做格式化。
+- [x] 非实现者再次源码确认“忽略后冷响应复活”的修复闭合；显式点击同一event仍可重开。仍不称独立运行态验收。
+- [x] iOS语音Event默认let字段的初始化器编译错误已用本机Swift复现并修复；提取实际Event定义后typecheck通过。新增现有macOS CI内的真实iOS双target Rust和原生Swift核心预检，结果待远端；不包含Expo wrapper/链接/签名/运行态。
+- [ ] 新检查点准确源码CI；iOS原生核心预检的实际结果与可能的修复。
 - [ ] Host 事件来源契约：云端当前不能证明 Host 私有 Bot/session 归属，不能新增任意登录设备可伪造来源的 public hint 路由。受信内部入口不能替代真实来源接入。
 - [ ] 真实 APNs/FCM 凭据、物理设备送达、后台/冷启动、过期登录恢复和旧授权失效验证。
 - [ ] iOS SDK协议与签名、真实Host/账号/语音、主干交付和内部签名分发。
