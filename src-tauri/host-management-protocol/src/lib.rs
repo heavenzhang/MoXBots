@@ -5,6 +5,8 @@
 //! request succeeded. The TLS/channel owner must perform those steps.
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+mod remote_assets;
+pub use remote_assets::*;
 mod remote_session;
 pub use remote_session::*;
 use std::fmt;
@@ -94,6 +96,8 @@ pub enum Owner {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ManagementMethod {
+    #[serde(rename = "session.assets.v1")]
+    RemoteAssets,
     #[serde(rename = "session.remote")]
     RemoteSession,
     #[serde(rename = "host.snapshot")]
@@ -163,6 +167,10 @@ pub enum ManagementMessage {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum RequestParams {
+    RemoteAssets {
+        #[serde(rename = "remoteAssets")]
+        remote_assets: RemoteAssetRequest,
+    },
     RemoteSession(RemoteSessionParams),
     Snapshot(SnapshotParams),
     ConfigSet(ConfigSetParams),
@@ -428,6 +436,9 @@ fn deserialize_required_provider<'de, D: Deserializer<'de>>(
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ResponseResult {
+    RemoteAssets {
+        data: RemoteAssetResult,
+    },
     RemoteSession {
         data: RemoteSessionResult,
     },
@@ -653,6 +664,9 @@ impl Frame {
                             | ManagementMethod::HostInspect,
                         RequestParams::Snapshot(_)
                     ) | (
+                        ManagementMethod::RemoteAssets,
+                        RequestParams::RemoteAssets { .. }
+                    ) | (
                         ManagementMethod::RemoteSession,
                         RequestParams::RemoteSession(_)
                     ) | (ManagementMethod::ConfigSet, RequestParams::ConfigSet(_))
@@ -707,6 +721,7 @@ impl Frame {
 
 fn validate_params(params: &RequestParams) -> Result<(), CodecError> {
     match params {
+        RequestParams::RemoteAssets { remote_assets } => remote_assets.validate(),
         RequestParams::RemoteSession(p) => p.remote_session.validate(),
         RequestParams::Snapshot(_) | RequestParams::ReceiptGet(_) => Ok(()),
         RequestParams::ConfigSet(p) => {
@@ -780,6 +795,7 @@ fn validate_params(params: &RequestParams) -> Result<(), CodecError> {
 }
 fn validate_result(result: &ResponseResult) -> Result<(), CodecError> {
     match result {
+        ResponseResult::RemoteAssets { data } => data.validate(),
         ResponseResult::RemoteSession { data } => data.validate(),
         ResponseResult::Error { code } if !valid_error_code(code) => Err(CodecError::InvalidFrame),
         ResponseResult::Snapshot(snapshot) => validate_snapshot(snapshot),
