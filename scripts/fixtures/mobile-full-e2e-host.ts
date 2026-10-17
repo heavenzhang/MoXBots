@@ -1,0 +1,127 @@
+/** Explicit original Host + real SessionEngine/SDK/native child loopback. No paid inference. */
+import {strict as assert} from 'node:assert';
+import {randomBytes,randomUUID} from 'node:crypto';
+import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
+import {createServer as httpServer,type ServerResponse} from 'node:http';
+import {once} from 'node:events';
+import {chmod,mkdir,writeFile,readFile,symlink} from 'node:fs/promises';
+import {join,resolve} from 'node:path';
+import {createRequire} from 'node:module';
+import {build} from 'esbuild';
+
+
+const repository=resolve(import.meta.dirname,'../..');
+const root=resolve(process.argv[2]);
+assert(root.startsWith('/'));
+await chmod(root,0o700);
+const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'workspaces','default');
+const ipcDirectory=join(root,'ipc'),socketPath=join(ipcDirectory,'management.sock');
+const secret=randomBytes(32).toString('base64url');
+const children:ChildProcess[]=[];
+let diagnostics='',calls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
+const evidence:string[]=[];
+const descendants=new Map<number,{pid:number;ppid:number;pgid:number;birth:string;command:string}>();
+function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object});evidence.push(line);console.log(line);}
+function processRows(){
+  return execFileSync('/bin/ps',['-axo','pid=,ppid=,pgid=,lstart=,comm='],{encoding:'utf8'}).trim().split('\n').map(line=>{
+    const fields=line.trim().split(/\s+/);
+    return {pid:Number(fields[0]),ppid:Number(fields[1]),pgid:Number(fields[2]),birth:fields.slice(3,8).join(' '),command:fields.slice(8).join(' ')};
+  });
+}
+function captureProcesses(){
+  if(!hostPid)return;
+  const rows=processRows();
+  if(!hostBirth||rows.find(row=>row.pid===hostPid)?.birth!==hostBirth)return;
+  const owned=new Set([hostPid]);let changed=true;
+  while(changed){changed=false;for(const row of rows)if(owned.has(row.ppid)&&!owned.has(row.pid)){owned.add(row.pid);changed=true;}}
+  const selected=rows.filter(row=>owned.has(row.pid));
+  for(const row of selected)descendants.set(row.pid,row);
+  record('actual-host-process-tree',{processes:selected});
+}
+const env:NodeJS.ProcessEnv={PATH:process.env.PATH,LANG:'en_US.UTF-8',HOME:home,USERPROFILE:home,TMPDIR:root,
+  DEVELOPER_DIR:'/Library/Developer/CommandLineTools',CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:'1',CLAUDE_CODE_MAX_RETRIES:'0',
+  ENABLE_CLAUDEAI_MCP_SERVERS:'false',MYAGENTS_MANAGEMENT_PORT:''};
+function child(command:string,args:string[],environment=env) {
+  const processChild=spawn(command,args,{cwd:root,env:environment,detached:true,stdio:['ignore','pipe','pipe']});
+  children.push(processChild);
+  for(const stream of [processChild.stdout,processChild.stderr])stream?.on('data',chunk=>{diagnostics+=String(chunk).split(secret).join('[redacted]');});
+  return processChild;
+}
+async function stop(processChild:ChildProcess){
+  const alive=()=>processChild.exitCode===null&&processChild.signalCode===null;
+  if(!processChild.pid||!alive())return;
+  try{process.kill(-processChild.pid,'SIGTERM');}catch{/* already exited */}
+  await Promise.race([once(processChild,'exit').catch(()=>{}),new Promise(r=>setTimeout(r,1500))]);
+  if(alive())try{process.kill(-processChild.pid,'SIGKILL');}catch{/* group exited */}
+}
+async function wait<T>(name:string,read:()=>Promise<T|undefined>,timeout=60_000):Promise<T> {
+  const deadline=Date.now()+timeout;
+  while(Date.now()<deadline){const result=await read();if(result!==undefined)return result;await new Promise(r=>setTimeout(r,100));}
+  throw Error(`FIXTURE_TIMEOUT:${name}`);
+}
+const frame=(event:string,data:unknown)=>`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+function reply(response:ServerResponse) {
+  const text=`Original Host local supplier completion ${calls}.`;
+  response.writeHead(200,{'content-type':'text/event-stream'});
+  response.end(frame('message_start',{type:'message_start',message:{id:`fixture-${calls}`,type:'message',role:'assistant',model:'original-host-model',content:[],stop_reason:null,stop_sequence:null,usage:{input_tokens:100,output_tokens:0}}})
+    +frame('content_block_start',{type:'content_block_start',index:0,content_block:{type:'text',text:''}})
+    +frame('content_block_delta',{type:'content_block_delta',index:0,delta:{type:'text_delta',text}})
+    +frame('content_block_stop',{type:'content_block_stop',index:0})
+    +frame('message_delta',{type:'message_delta',delta:{stop_reason:'end_turn',stop_sequence:null},usage:{output_tokens:20}})
+    +frame('message_stop',{type:'message_stop'}));
+}
+const supplier=httpServer(async(request,response)=>{
+  try{
+    if(request.method!=='POST'||!request.url?.startsWith('/v1/messages')){response.writeHead(404).end();return;}
+    const chunks:Buffer[]=[];let size=0;
+    for await(const part of request){size+=part.length;if(size>8*1024*1024)throw Error('FIXTURE_REQUEST_TOO_LARGE');chunks.push(Buffer.from(part));}
+    if(request.url.includes('count_tokens')){response.writeHead(200,{'content-type':'application/json'}).end('{"input_tokens":100}');return;}
+    assert.equal(request.headers['x-api-key'],secret);
+    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};
+    assert.equal(body.model,'original-host-model');
+    seenAttachment ||= JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/');
+    calls++;captureProcesses();reply(response);
+  }catch{response.writeHead(500).end();}
+});
+
+process.once('SIGTERM',()=>{void writeFile(join(root,'stop'),'stop',{mode:0o600});});
+async function control(path:string,body:unknown){
+  const {request}=await import('node:http');
+  return new Promise<any>((yes,no)=>{const call=request({socketPath:join(root,'control.sock'),path,method:'POST',headers:{'content-type':'application/json'}},response=>{let data='';response.on('data',c=>data+=c);response.on('end',()=>{try{const value=JSON.parse(data);assert(value.ok,JSON.stringify(value));yes(value.data);}catch(e){no(e);}});});call.on('error',no);call.end(JSON.stringify(body));});
+}
+try{
+  assert(process.getuid!()>0);
+  await symlink(join(repository,'node_modules'),join(root,'node_modules'));
+  for(const directory of [home,workspace,join(root,'credentials'),ipcDirectory])await mkdir(directory,{recursive:true,mode:0o700});
+  await chmod(state,0o700);await chmod(ipcDirectory,0o750);
+  await writeFile(join(state,'host.lock'),'',{mode:0o600});
+  const masterKey=randomBytes(32),deviceId=randomUUID();
+  await writeFile(join(root,'credentials','provider-key'),masterKey,{mode:0o600});
+  await writeFile(join(state,'host-identity.json'),JSON.stringify({hostId:deviceId,schemaVersion:1}),{mode:0o600});
+  await new Promise<void>(yes=>supplier.listen(0,'127.0.0.1',yes));
+  const address=supplier.address();assert(address&&typeof address!=='string');
+  const baseUrl=`http://127.0.0.1:${address.port}`;
+  const operator=child(process.execPath,['--import','tsx',join(repository,'src/test/fixtures/mobile-original-host-operator.ts'),workspace,baseUrl]);
+  assert.equal((await once(operator,'exit'))[0],0,'operator setup failed');
+  const storePath=join(state,'provider-credentials');await mkdir(storePath,{mode:0o700});
+  const {createHostProviderCredentialOwner}=await import('../../src/host/provider-credentials');
+  const owner=createHostProviderCredentialOwner({hostId:deviceId,storePath,loadMasterKey:()=>Buffer.from(masterKey)});
+  await owner.initialize();assert.equal((await owner.write({providerId:'original-host-fixture',credential:secret,expectedRevision:0,mutationId:randomUUID()})).status,'persisted');
+  const require=createRequire(import.meta.url);await mkdir(join(root,'claude-agent-sdk'),{mode:0o700});
+  const triple=process.platform==='darwin'?`darwin-${process.arch}`:`linux-${process.arch}`;
+  await symlink(require.resolve(`@anthropic-ai/claude-agent-sdk-${triple}/claude`),join(root,'claude-agent-sdk','claude'));
+  for(const [entry,target] of [['src/host/main.ts','host-main.mjs'],['src/server/host-session-worker.ts','host-session-worker.mjs']])await build({entryPoints:[join(repository,entry)],outfile:join(root,target),bundle:true,platform:'node',format:'esm',logLevel:'silent',banner:{js:'import {createRequire as __createRequire} from "module"; const require=__createRequire(import.meta.url);'},external:['playwright','playwright/*','playwright-core','playwright-core/*','@playwright/mcp','@playwright/mcp/*']});
+  const entry=join(root,'host-main.mjs');const args=process.platform==='linux'?['--exclusive','--nonblock','--no-fork',join(state,'host.lock'),process.execPath,entry,'--serve']:[entry,'--serve'];
+  const host=child(process.platform==='linux'?'/usr/bin/flock':process.execPath,args,{...env,MYAGENTS_HOST_STATE_DIR:state,MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MANAGEMENT_IPC:socketPath,MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:String(process.getuid!()),MYAGENTS_HOST_MANAGEMENT_GID:String(process.getgid!()),MYAGENTS_HOST_MODE:'1',CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'});
+  hostPid=host.pid;hostBirth=processRows().find(r=>r.pid===hostPid)?.birth;record('host-born',{pid:hostPid,pgid:hostPid,birth:hostBirth});
+  await wait('original Host socket',async()=>{if(host.exitCode!==null)throw Error('Host exited');try{return await control('/host/status',{});}catch{return undefined;}});
+  await control('/host/configure',{providerId:'moonshot-coding',model:'k3',executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
+  await writeFile(join(root,'host-ready.json'),JSON.stringify({deviceId}),{mode:0o600});
+  await wait('fixture completion',async()=>{try{await readFile(join(root,'stop'));return true;}catch{return undefined;}},150_000);
+  const sessions=JSON.parse(await readFile(join(home,'.myagents','sessions.json'),'utf8').catch(()=>'[]'));
+  await writeFile(join(root,'host-result.json'),JSON.stringify({calls,seenAttachment,sessions}),{mode:0o600});
+}catch(error){console.error(String(error));console.error(diagnostics.slice(-6000));process.exitCode=1;}
+finally{captureProcesses();for(const c of children.reverse())await stop(c);
+  for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{}}
+  supplier.closeAllConnections();supplier.close();await writeFile(join(root,'diagnostics.private.log'),diagnostics,{mode:0o600});
+}
