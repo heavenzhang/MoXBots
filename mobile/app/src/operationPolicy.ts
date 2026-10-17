@@ -2,6 +2,48 @@ export type ReceiptState = 'prepared' | 'processing' | 'accepted' | 'rejected' |
 
 export type ViewOwner = { epoch: number; screen: 'login' | 'sessions' | 'chat'; targetId: string | null; agentId: string | null; sessionId: string | null };
 
+/** Shared across effect lifetimes so an old owner cannot overlap a new poll while its RPC is pending. */
+export function createPollFlightGate() {
+  let currentLease = 0;
+  let nextLease = 0;
+  return {
+    acquire(): number | null {
+      if (currentLease) return null;
+      currentLease = ++nextLease;
+      return currentLease;
+    },
+    release(lease: number) {
+      if (currentLease === lease) currentLease = 0;
+    },
+  };
+}
+
+/** A recurring native poll may own at most one request until that request settles. */
+export function createSingleFlightPoll(task: (isCurrent: () => boolean) => Promise<void>, eligible: () => boolean, gate = createPollFlightGate()) {
+  let active = true;
+  let inFlight = false;
+  let generation = 0;
+  return {
+    tick(): Promise<boolean> | null {
+      if (!active || inFlight || !eligible()) return null;
+      const lease = gate.acquire();
+      if (lease === null) return null;
+      inFlight = true;
+      const requestGeneration = ++generation;
+      const isCurrent = () => active && requestGeneration === generation && eligible();
+      return Promise.resolve().then(() => task(isCurrent)).then(() => true, () => false).then((completed) => {
+        if (active && requestGeneration === generation) inFlight = false;
+        gate.release(lease);
+        return completed;
+      });
+    },
+    stop() {
+      active = false;
+      generation += 1;
+    },
+  };
+}
+
 /** Async view reads may commit only while their exact screen/target/session still owns the view. */
 export function viewStillOwned(captured: ViewOwner, current: ViewOwner): boolean {
   return captured.epoch === current.epoch

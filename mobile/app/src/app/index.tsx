@@ -5,7 +5,7 @@ import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Mic, MoreHorizontal, Plus } from 'lucide-react-native';
 import { Account, Interaction, PendingOperation, QaScenario, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestNative, selectQaScenario, subscribeSpeechChanges } from '../native';
-import { approvalStillCurrent, commitIfViewOwned, draftKey, mutationDisposition, readDraft, updateDraft, viewStillOwned, ViewOwner } from '../operationPolicy';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, readDraft, updateDraft, viewStillOwned, ViewOwner } from '../operationPolicy';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -48,6 +48,8 @@ function AppBody() {
   const [receiptStates, setReceiptStates] = useState<Record<string, ReceiptStatus>>({});
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
+  const [loginPollGate] = useState(() => createPollFlightGate());
+  const [snapshotPollGate] = useState(() => createPollFlightGate());
   const [speechPanelOpen, setSpeechPanelOpen] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
   const blocksMutation = pending.some((item) => item.targetId === target?.targetId && item.sessionId === (snapshot?.sessionId ?? null) && mutationDisposition(item.status) === 'query-only');
@@ -61,6 +63,7 @@ function AppBody() {
   const loadingEpochRef = useRef(0);
   const sendingEpochRef = useRef(0);
   const accountRefreshEpochRef = useRef(0);
+  const accountRefreshInFlightRef = useRef<number | null>(null);
   const speechOwnerEpochRef = useRef<number | null>(null);
   const speechStateRef = useRef<SpeechReply['state']>('idle');
   const speechBaseDraftRef = useRef('');
@@ -142,6 +145,8 @@ function AppBody() {
 
   const loadAccount = useCallback(async () => {
     const refreshEpoch = ++accountRefreshEpochRef.current;
+    accountRefreshInFlightRef.current = refreshEpoch;
+    try {
     const reply = await requestNative({ version: 1, kind: 'account.status' });
     if (refreshEpoch !== accountRefreshEpochRef.current) return;
     if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
@@ -186,6 +191,9 @@ function AppBody() {
     }
     const journal = await requestNative({ version: 1, kind: 'operations.pending' });
     if (refreshEpoch === accountRefreshEpochRef.current && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+    } finally {
+      if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
+    }
   }, [commitSnapshot, moveOwner]);
 
   useEffect(() => {
@@ -194,17 +202,20 @@ function AppBody() {
   }, [loadAccount, say]);
   useEffect(() => {
     if (loginStarted) {
-    const timer = setInterval(() => {
-      void requestNative({ version: 1, kind: 'account.login.poll' }).then((reply) => {
-        if (reply.kind === 'account') {
+      const poll = createSingleFlightPoll(async (isCurrent) => {
+        try {
+          const reply = await requestNative({ version: 1, kind: 'account.login.poll' });
+          if (!isCurrent() || reply.kind !== 'account') return;
           setAccount(reply);
           if (reply.state === 'signed-in') { setLoginStarted(false); void loadAccount(); }
+        } catch (error) {
+          if (isCurrent()) say(error instanceof Error ? error.message : 'ACCOUNT_LOGIN_POLL_FAILED', 'error');
         }
-      }).catch(() => undefined);
-    }, 3000);
-    return () => clearInterval(timer);
+      }, () => AppState.currentState === 'active', loginPollGate);
+      const timer = setInterval(() => { void poll.tick(); }, 3000);
+      return () => { clearInterval(timer); poll.stop(); };
     }
-  }, [loadAccount, loginStarted, say]);
+  }, [loadAccount, loginPollGate, loginStarted, say]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
       if (state === 'active') void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));
@@ -248,18 +259,36 @@ function AppBody() {
 
   useEffect(() => {
     if (screen !== 'chat' || !snapshot?.sessionId || !target?.targetId) return;
-    const interval = setInterval(() => {
+    const pollOwner = ownerRef.current;
+    let failureShown = false;
+    const poll = createSingleFlightPoll(async (isCurrent) => {
       const current = snapshotRef.current;
       const currentTarget = targetRef.current;
       if (!current || !currentTarget) return;
-      const owner = ownerRef.current;
+      const owner = pollOwner;
       if (owner.screen !== 'chat' || owner.targetId !== currentTarget.targetId || owner.agentId !== current.agentId || owner.sessionId !== current.sessionId) return;
-      void requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } })
-        .then(parseSessionReply).then((result) => { if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId && result.revision !== snapshotRef.current?.revision) commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot); })
-        .catch(() => undefined);
+      try {
+        const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } }));
+        if (!isCurrent() || !viewStillOwned(owner, ownerRef.current)) return;
+        if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId) {
+          failureShown = false;
+          if (result.revision !== snapshotRef.current?.revision) commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot);
+        } else if (result.kind === 'error' && !failureShown) {
+          failureShown = true;
+          say(result.code, 'error');
+        }
+      } catch (error) {
+        if (isCurrent() && viewStillOwned(owner, ownerRef.current) && !failureShown) {
+          failureShown = true;
+          say(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED', 'error');
+        }
+      }
+    }, () => AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
+    const interval = setInterval(() => {
+      void poll.tick();
     }, 1500);
-    return () => clearInterval(interval);
-  }, [commitSnapshot, screen, snapshot?.sessionId, target?.targetId]);
+    return () => { clearInterval(interval); poll.stop(); };
+  }, [commitSnapshot, ownerEpoch, say, screen, snapshot?.sessionId, snapshotPollGate, target?.targetId]);
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
@@ -476,7 +505,7 @@ function AppBody() {
           <Pressable accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" onPress={() => setComposerMenuOpen((value) => !value)} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
           <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
           {draft.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} disabled={sending || blocksMutation || !target?.online} onPress={sendDraft} style={[styles.sendButton, (sending || blocksMutation || !target?.online) && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
-          {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
+          {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
         </View>
       </View>
     </View>}
