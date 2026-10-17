@@ -6,11 +6,10 @@ use super::{
     NetworkError,
 };
 use crate::sidecar::ManagedSidecarManager;
-use moxbots_asset_store::{AssetStore, TrustedArtifactSource};
+use moxbots_asset_store::{AssetScope, AssetStore, TrustedArtifactSource};
 use myagents_agent_network_protocol::DeviceScope;
 use myagents_host_management_protocol::{
-    AssetScope, CanonicalUuid, RemoteArtifactDescriptor, RemoteAssetRequest, RemoteAssetResult,
-    ResponseResult,
+    CanonicalUuid, RemoteArtifactDescriptor, RemoteAssetRequest, RemoteAssetResult, ResponseResult,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -38,6 +37,11 @@ struct OwnerArtifact {
     relative: String,
     name: String,
     mime_type: String,
+}
+
+enum StoreFailure {
+    Owner(NetworkError),
+    Store(&'static str),
 }
 
 fn guard(
@@ -96,6 +100,31 @@ fn response(data: RemoteAssetResult) -> Result<ResponseResult, NetworkError> {
     data.validate()
         .map_err(|_| NetworkError::new("TARGET_RECEIPT_INVALID"))?;
     Ok(ResponseResult::RemoteAssets { data })
+}
+
+fn typed_store_error(code: &'static str) -> Option<RemoteAssetResult> {
+    match code {
+        "ASSET_NOT_FOUND"
+        | "ASSET_READ_RANGE"
+        | "ASSET_UPLOAD_CANCELLED"
+        | "ASSET_UPLOAD_CONFLICT"
+        | "ASSET_UPLOAD_INCOMPLETE"
+        | "ASSET_CHUNK_CONFLICT"
+        | "ASSET_CHUNK_HASH_MISMATCH"
+        | "ASSET_CHUNK_INVALID"
+        | "ASSET_CHUNK_ORDER"
+        | "ASSET_HASH_MISMATCH"
+        | "ASSET_PATH_INVALID"
+        | "ASSET_SIZE_LIMIT"
+        | "ASSET_SOURCE_CHANGED" => Some(RemoteAssetResult::Error {
+            version: 1,
+            code: code.to_owned(),
+        }),
+        // Scope/authentication and infrastructure failures must remain outer
+        // failures. In particular, only an exact typed NOT_FOUND can resolve
+        // an UNKNOWN upload status at the caller.
+        _ => None,
+    }
 }
 
 async fn precheck(
@@ -165,31 +194,49 @@ async fn list_from_owner(
     {
         return Err(NetworkError::new("TARGET_OWNER_SCOPE_MISMATCH"));
     }
-    let session_id = session_id.clone();
+    let result_session_id = session_id.clone();
+    let worker_session_id = result_session_id.clone();
     let descriptors = tauri::async_runtime::spawn_blocking(move || {
         let mut result: Vec<RemoteArtifactDescriptor> = Vec::with_capacity(page.items.len());
         for item in page.items {
             if !Path::new(&item.root).is_absolute() {
-                return Err(NetworkError::new("TARGET_RECEIPT_INVALID"));
+                return Err(StoreFailure::Owner(NetworkError::new(
+                    "TARGET_RECEIPT_INVALID",
+                )));
             }
             let source =
                 TrustedArtifactSource::from_owner(Path::new(&item.root), Path::new(&item.relative))
-                    .map_err(|e| NetworkError::new(e.code))?;
+                    .map_err(|e| StoreFailure::Store(e.code))?;
             let descriptor = store
-                .register_artifact(&scope, &session_id, &source, &item.name, &item.mime_type)
-                .map_err(|e| NetworkError::new(e.code))?;
+                .register_artifact(
+                    &scope,
+                    &worker_session_id,
+                    &source,
+                    &item.name,
+                    &item.mime_type,
+                )
+                .map_err(|e| StoreFailure::Store(e.code))?;
             result.push(descriptor);
         }
-        Ok::<_, NetworkError>((result, page.has_more, page.next_before))
+        Ok::<_, StoreFailure>((result, page.has_more, page.next_before))
     })
     .await
-    .map_err(|_| NetworkError::new("ASSET_IO_FAILED"))??;
+    .map_err(|_| NetworkError::new("ASSET_IO_FAILED"))?;
+    let descriptors = match descriptors {
+        Ok(value) => value,
+        Err(StoreFailure::Owner(error)) => return Err(error),
+        Err(StoreFailure::Store(code)) => {
+            return typed_store_error(code)
+                .map(|error| (error, allocation))
+                .ok_or_else(|| NetworkError::new(code));
+        }
+    };
     let (items, has_more, next_before) = descriptors;
     Ok((
         RemoteAssetResult::List {
             version: 1,
             agent_id: agent_id.clone(),
-            session_id: session_id.clone(),
+            session_id: result_session_id,
             items,
             has_more,
             next_before,
@@ -223,14 +270,45 @@ pub(crate) async fn execute(
         let store_for_worker = store.clone();
         let request_for_worker = request.clone();
         let scope_for_worker = scope.clone();
-        let data = tauri::async_runtime::spawn_blocking(move || {
+        let stored = tauri::async_runtime::spawn_blocking(move || {
             store_for_worker.execute(&scope_for_worker, &request_for_worker)
         })
         .await
-        .map_err(|_| NetworkError::new("ASSET_IO_FAILED"))?
-        .map_err(|e| NetworkError::new(e.code))?;
+        .map_err(|_| NetworkError::new("ASSET_IO_FAILED"))?;
+        let data = match stored {
+            Ok(data) => data,
+            Err(error) => match typed_store_error(error.code) {
+                Some(data) => data,
+                None => return Err(NetworkError::new(error.code)),
+            },
+        };
         (data, memory.reserve(64 * 1024)?)
     };
     guard()?;
     Ok((response(data)?, allocation))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_allowlisted_store_domain_errors_become_typed_asset_results() {
+        let missing = typed_store_error("ASSET_NOT_FOUND").expect("typed missing result");
+        assert!(matches!(
+            &missing,
+            RemoteAssetResult::Error { version: 1, code } if code == "ASSET_NOT_FOUND"
+        ));
+        missing.validate().expect("valid typed protocol error");
+        assert!(matches!(
+            response(missing),
+            Ok(ResponseResult::RemoteAssets {
+                data: RemoteAssetResult::Error { version: 1, code }
+            }) if code == "ASSET_NOT_FOUND"
+        ));
+
+        assert!(typed_store_error("ASSET_SCOPE_MISMATCH").is_none());
+        assert!(typed_store_error("ASSET_SCOPE_INVALID").is_none());
+        assert!(typed_store_error("ASSET_IO_FAILED").is_none());
+    }
 }

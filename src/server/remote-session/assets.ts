@@ -68,6 +68,17 @@ function encodeCursor(cursor: Cursor): string {
   return `${cursorPrefix}${Buffer.from(JSON.stringify(cursor)).toString('base64url')}`;
 }
 
+function sanitizeSessionTurnSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9_-]+/g, '_');
+}
+
+function hasControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0)!;
+    return code <= 0x1f || code === 0x7f;
+  });
+}
+
 function parseToolAttachmentRef(raw: string, sessionId: string): { turnId: string; filename: string } | null {
   const parts = raw.split('/');
   if (parts.length !== 7 || parts[0] !== '' || parts[1] !== 'api' || parts[2] !== 'attachment' ||
@@ -76,8 +87,9 @@ function parseToolAttachmentRef(raw: string, sessionId: string): { turnId: strin
     const refSession = decodeURIComponent(parts[4]);
     const turnId = decodeURIComponent(parts[5]);
     const filename = decodeURIComponent(parts[6]);
-    if (refSession !== sessionId || !turnId || !filename || filename === '.' || filename === '..' ||
-        filename.includes('/') || filename.includes('\\') || filename.includes('\0')) return null;
+    if (refSession !== sessionId || !/^[A-Za-z0-9_-]+$/.test(refSession) ||
+        !/^[A-Za-z0-9_-]+$/.test(turnId) || !filename || filename === '.' || filename === '..' ||
+        filename.length > 256 || hasControlCharacter(filename) || filename.includes('/') || filename.includes('\\')) return null;
     return { turnId, filename };
   } catch {
     return null;
@@ -135,10 +147,26 @@ async function resolveSource(sessionId: string, attachment: ToolAttachment): Pro
   let relative: string;
   const trustedRoot = getToolAttachmentRoot();
   const storedPath = typeof attachment.savedPath === 'string' ? attachment.savedPath : undefined;
-  if (storedPath && validateTrustedAttachmentRoot(storedPath, { canonicalizeSymlinks: true }).ok) {
+  const expectedTrustedPath = path.join(
+    trustedRoot,
+    sanitizeSessionTurnSegment(sessionId),
+    sanitizeSessionTurnSegment(parsed.turnId),
+    parsed.filename,
+  );
+  const resolvedRoot = path.resolve(trustedRoot);
+  const resolvedStoredPath = storedPath ? path.resolve(storedPath) : undefined;
+  const storedRelative = resolvedStoredPath ? path.relative(resolvedRoot, resolvedStoredPath) : undefined;
+  const storedIsInsideTrustedRoot = storedRelative !== undefined &&
+    !path.isAbsolute(storedRelative) && storedRelative !== '..' &&
+    !storedRelative.startsWith(`..${path.sep}`);
+  if (storedIsInsideTrustedRoot) {
+    if (resolvedStoredPath !== path.resolve(expectedTrustedPath) ||
+        !validateTrustedAttachmentRoot(expectedTrustedPath, { canonicalizeSymlinks: true }).ok) {
+      throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
+    }
     const [canonicalRoot, canonicalFile] = await Promise.all([
       realpath(trustedRoot).catch(() => null),
-      realpath(storedPath).catch(() => null),
+      realpath(expectedTrustedPath).catch(() => null),
     ]);
     if (!canonicalRoot || !canonicalFile) throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
     const checkedRelative = path.relative(canonicalRoot, canonicalFile);

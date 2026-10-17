@@ -52,21 +52,34 @@ afterEach(async () => { await rm(root, { recursive: true, force: true }); });
 
 it('resolves only the original session attachment and returns owner-root-relative source metadata', async () => {
   const attachRoot = path.join(root, 'attachments');
-  const file = path.join(attachRoot, 'out.txt');
+  const file = path.join(attachRoot, sessionId, 'turn-1', 'out.txt');
+  await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, 'real output');
   f.data.mockResolvedValue({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, file)], transcriptFormat: 1 });
 
   const result = await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 });
   expect(result).toMatchObject({ success: true, data: {
     agentId: 'agent', sessionId, hasMore: false, nextBefore: null,
-    items: [{ root: await import('node:fs/promises').then(fs => fs.realpath(attachRoot)), relative: 'out.txt', name: 'out.txt', mimeType: 'text/plain' }],
+    items: [{ root: await import('node:fs/promises').then(fs => fs.realpath(attachRoot)), relative: `${sessionId}/turn-1/out.txt`, name: 'out.txt', mimeType: 'text/plain' }],
   } });
 });
 
-it('fails closed for cross-session references, arbitrary caller paths, and wrong workspace ownership', async () => {
+it('rejects cross-session references, a current ref paired with a foreign savedPath, and encoded turn traversal', async () => {
   f.data.mockResolvedValueOnce({ messages: [toolMessage('/api/attachment/tool/other/turn/out.txt')], transcriptFormat: 1 });
   expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false });
 
+  const foreignPath = path.join(root, 'attachments', 'foreign-session', 'turn-1', 'out.txt');
+  await mkdir(path.dirname(foreignPath), { recursive: true });
+  await writeFile(foreignPath, 'foreign session');
+  f.data.mockResolvedValueOnce({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, foreignPath)], transcriptFormat: 1 });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false });
+
+  f.data.mockResolvedValueOnce({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn%2F..%2Fforeign/out.txt`)], transcriptFormat: 1 });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false });
+  expect(f.external).not.toHaveBeenCalled();
+});
+
+it('rejects arbitrary external paths and wrong workspace ownership', async () => {
   f.data.mockResolvedValueOnce({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn/out.txt`, path.join(root, 'outside.txt'))], transcriptFormat: 1 });
   expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false });
 
