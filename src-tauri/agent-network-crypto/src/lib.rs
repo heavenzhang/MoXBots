@@ -134,6 +134,19 @@ impl DevicePrivateKey {
         SigningKey::from_pkcs8_der(&der).map_err(|_| CryptoError::InvalidKey)?;
         Ok(Self { der })
     }
+    /// Restore a software device key from a native secure-store owner. Callers
+    /// must bind the record to the full KeyScope and keep bytes outside JS/IPC
+    /// projections. Hardware non-exportable signing is a separate backend.
+    #[cfg(feature = "native-store")]
+    pub fn from_native_pkcs8(der: Zeroizing<Vec<u8>>) -> Result<Self, CryptoError> {
+        Self::from_der(der)
+    }
+    /// Borrow key bytes only for the duration of the native persistence call.
+    /// This deliberately adds neither Serialize nor Debug to the private key.
+    #[cfg(feature = "native-store")]
+    pub fn with_native_pkcs8<T>(&self, store: impl FnOnce(&[u8]) -> T) -> T {
+        store(&self.der)
+    }
     fn rcgen(&self) -> Result<rcgen::KeyPair, CryptoError> {
         rcgen::KeyPair::from_pkcs8_der_and_sign_algo(
             &PrivatePkcs8KeyDer::from(self.der.to_vec()),
@@ -561,6 +574,19 @@ pub mod tests {
     use super::*;
     #[cfg(test)]
     use p256::ecdsa::signature::Verifier;
+
+    #[test]
+    #[cfg(feature = "native-store")]
+    fn native_store_round_trip_preserves_identity_and_rejects_invalid_records() {
+        let original = DevicePrivateKey::generate().unwrap();
+        let saved = original.with_native_pkcs8(|bytes| Zeroizing::new(bytes.to_vec()));
+        let restored = DevicePrivateKey::from_native_pkcs8(saved).unwrap();
+        assert_eq!(original.public_fingerprint().unwrap(), restored.public_fingerprint().unwrap());
+        assert_eq!(original.public_thumbprint().unwrap(), restored.public_thumbprint().unwrap());
+        for invalid in [vec![], vec![0; 4097], b"not a PKCS8 device key".to_vec()] {
+            assert!(DevicePrivateKey::from_native_pkcs8(Zeroizing::new(invalid)).is_err());
+        }
+    }
 
     pub struct Fixture {
         pub ca: rcgen::Certificate,
