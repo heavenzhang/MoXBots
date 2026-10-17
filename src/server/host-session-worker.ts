@@ -102,7 +102,10 @@ async function main(): Promise<void> {
     const providerId = bot?.provider_id ?? process.env.MYAGENTS_HOST_PROVIDER_ID?.trim();
     if (!model || !providerId) throw new Error('New Host Session requires an explicit Provider/model route');
     const remoteBirth = process.env.MYAGENTS_HOST_REMOTE_AGENT_BIRTH === '1' ? config.resolveWorkspaceConfig(workspace):undefined;
-    const route = remoteBirth?.providerRoute ?? routes.createConcreteProviderRoute(providerId, model);
+    const selectedRemoteModel=process.env.MYAGENTS_HOST_REMOTE_MODEL?.trim();
+    const route = remoteBirth?.providerRoute
+      ? selectedRemoteModel ? {...remoteBirth.providerRoute,model:selectedRemoteModel}:remoteBirth.providerRoute
+      : routes.createConcreteProviderRoute(providerId, model);
     if (!routes.isConcreteProviderRoute(route) || route.providerId !== providerId || route.model !== model) throw new Error('Host Agent birth provider identity changed');
     const prepared = await engine.materializePendingDesktopSession({
       workspacePath: workspace, phase: 'prepare',
@@ -253,17 +256,35 @@ async function main(): Promise<void> {
           if(Number(args.offset)<0||Number(args.offset)>entry.sizeBytes)throw new Error('REMOTE_ASSET_RANGE_INVALID');
           const absolute=join(entry.root,entry.relative);if(await realpath(absolute)!==absolute)throw new Error('REMOTE_ARTIFACT_CHANGED');
           const before=await lstat(absolute);if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.dev!==entry.dev||before.ino!==entry.ino||before.size!==entry.sizeBytes||before.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');
-          const fd=await open(absolute,constants.O_RDONLY|(constants.O_NOFOLLOW??0));try{const stat=await fd.stat();if(stat.dev!==entry.dev||stat.ino!==entry.ino||stat.size!==entry.sizeBytes||stat.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');const hash=createHash('sha256'),buffer=Buffer.alloc(24*1024);let offset=0;try{while(offset<stat.size){const read=await fd.read(buffer,0,Math.min(buffer.length,stat.size-offset),offset);if(!read.bytesRead)throw new Error('REMOTE_ARTIFACT_CHANGED');hash.update(buffer.subarray(0,read.bytesRead));offset+=read.bytesRead;}}finally{buffer.fill(0);}if(hash.digest('hex')!==entry.sha256)throw new Error('REMOTE_ARTIFACT_CHANGED');const data=Buffer.alloc(Math.min(Number(args.maxBytes),entry.sizeBytes-Number(args.offset)));const result=await fd.read(data,0,data.length,Number(args.offset));if(result.bytesRead!==data.length)throw new Error('REMOTE_ARTIFACT_CHANGED');return {kind:'owner-chunk',sourceId:args.sourceId,offset:Number(args.offset),dataBase64:data.toString('base64'),sha256:createHash('sha256').update(data).digest('hex'),eof:Number(args.offset)+data.length===entry.sizeBytes};}finally{await fd.close();}
+          const fd=await open(absolute,constants.O_RDONLY|(constants.O_NOFOLLOW??0));try{const stat=await fd.stat();if(stat.dev!==entry.dev||stat.ino!==entry.ino||stat.size!==entry.sizeBytes||stat.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');const data=Buffer.alloc(Math.min(Number(args.maxBytes),entry.sizeBytes-Number(args.offset)));const result=await fd.read(data,0,data.length,Number(args.offset));if(result.bytesRead!==data.length)throw new Error('REMOTE_ARTIFACT_CHANGED');const after=await fd.stat();if(after.dev!==entry.dev||after.ino!==entry.ino||after.size!==entry.sizeBytes||after.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');return {kind:'owner-chunk',sourceId:args.sourceId,offset:Number(args.offset),dataBase64:data.toString('base64'),sha256:createHash('sha256').update(data).digest('hex'),eof:Number(args.offset)+data.length===entry.sizeBytes};}finally{await fd.close();}
         }
         throw new Error('REMOTE_ASSET_REQUEST_INVALID');
       }
+      case 'mobile-suggestions': {
+        if(bot||typeof args.agentId!=='string'||args.sessionId!==sessionId||typeof args.revision!=='string'||args.revision.length>128)throw new Error('REMOTE_MOBILE_REQUEST_INVALID');
+        validateRemoteAgent(args.agentId);
+        const [{buildRemoteSnapshot},{suggestNextPrompt}]=await Promise.all([import('./remote-session/projection'),import('./session-prompt-suggestion')]);
+        const before=await buildRemoteSnapshot(args.agentId,sessionId,generation!,30);
+        if(before.revision!==args.revision)throw new Error('REMOTE_MOBILE_REVISION_CHANGED');
+        const anchor=before.messages.at(-1);if(!anchor||anchor.role!=='assistant')throw new Error('REMOTE_MOBILE_SUGGESTIONS_UNAVAILABLE');
+        const suggestion=await suggestNextPrompt(engine,{sessionId,anchorMessageId:anchor.id});
+        if((await buildRemoteSnapshot(args.agentId,sessionId,generation!,30)).revision!==args.revision)throw new Error('REMOTE_MOBILE_REVISION_CHANGED');
+        if(suggestion.availability!=='supported'||suggestion.suggestion&&suggestion.suggestion.length>512)throw new Error('REMOTE_MOBILE_SUGGESTIONS_UNAVAILABLE');
+        return {kind:'mobile.suggestions',version:1,agentId:args.agentId,sessionId,revision:args.revision,suggestions:suggestion.suggestion?[suggestion.suggestion]:[]};
+      }
       case 'mobile-send': {
-        if(bot||typeof args.agentId!=='string'||args.sessionId!==sessionId||typeof args.operationId!=='string'||!/^([0-9a-f]{8}-){4}[0-9a-f]{12}$/.test(args.operationId)||typeof args.text!=='string'||args.text.length>16000||!Array.isArray(args.assets)||args.assets.length>8)throw new Error('REMOTE_MOBILE_REQUEST_INVALID');
+        if(bot||typeof args.agentId!=='string'||args.sessionId!==sessionId||typeof args.operationId!=='string'||! /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(args.operationId)||typeof args.text!=='string'||args.text.length>16000||!Array.isArray(args.assets)||args.assets.length>8)throw new Error('REMOTE_MOBILE_REQUEST_INVALID');
+        if(args.modelId!==undefined&&(typeof args.modelId!=='string'||args.modelId.length<1||args.modelId.length>256||/[\p{Cc}]/u.test(args.modelId)))throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+        if(typeof args.expectedObservation!=='string'||!/^[0-9a-f]{64}$/.test(args.expectedObservation))throw new Error('REMOTE_SESSION_OWNER_CHANGED');
         if(process.env.MYAGENTS_HOST_EXECUTION_AUTHORIZED!=='1')throw new Error('REMOTE_SESSION_EXECUTION_NOT_AUTHORIZED');
         validateRemoteAgent(args.agentId);
-        const stageRoot=process.env.MYAGENTS_HOST_ASSET_STAGING_ROOT;if(!stageRoot||await realpath(stageRoot)!==stageRoot)throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
+        const {imSnapshotObservation}=await import('./routes/im-model-selection');
+        const ownedMetadata=store.getSessionMetadata(sessionId);
+        if(!ownedMetadata||imSnapshotObservation(ownedMetadata)!==args.expectedObservation)throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+        const stageRoot=process.env.MYAGENTS_HOST_ASSET_STAGING_ROOT;if(args.assets.length>0&&(!stageRoot||await realpath(stageRoot)!==stageRoot))throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
         const images:import('./runtimes/types').ImagePayload[]=[],refs:string[]=[];
         for(const raw of args.assets){
+          if(!stageRoot)throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
           if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('REMOTE_MOBILE_ASSET_INVALID');
           const asset=raw as Record<string,unknown>;
           if(typeof asset.assetId!=='string'||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(asset.assetId)||typeof asset.sourcePath!=='string'||typeof asset.name!=='string'||typeof asset.mimeType!=='string'||typeof asset.sha256!=='string'||!/^[0-9a-f]{64}$/.test(asset.sha256)||!Number.isSafeInteger(asset.sizeBytes)||Number(asset.sizeBytes)<1||Number(asset.sizeBytes)>20*1024*1024)throw new Error('REMOTE_MOBILE_ASSET_INVALID');
@@ -287,7 +308,7 @@ async function main(): Promise<void> {
           bytes.fill(0);
         }
         const text=[args.text,...refs].filter(Boolean).join('\n');if(!text&&images.length===0)throw new Error('A bounded non-empty text is required');
-        return operate({...request,operation:'send',args:{text,images,clientRequestId:args.operationId,remote:true,remoteAgentId:args.agentId}});
+        return operate({...request,operation:'send',args:{text,images,clientRequestId:args.operationId,remote:true,remoteMobile:true,remoteObservation:args.expectedObservation,remoteAgentId:args.agentId,...(typeof args.modelId==='string'?{modelId:args.modelId}:{})}});
       }
       case 'remote': {
         if (bot) throw new Error('REMOTE_SESSION_PRIVATE');
@@ -331,18 +352,28 @@ async function main(): Promise<void> {
         if(bot?.cloud_model)resolveHostCloudModelProvider(bot.provider_id,bot.model);
         const snapshot = store.getSessionMetadata(sessionId);
         if (!routes.isConcreteProviderRoute(snapshot?.providerRoute)) throw new Error('Session Provider/model route is unavailable');
-        const provider = config.materializeProviderRouteEnv(snapshot.providerRoute);
+        const selectedModel=args.remoteMobile===true&&typeof args.modelId==='string'?args.modelId:undefined;
+        if(selectedModel&&snapshot.providerRoute.kind!=='provider')throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+        const providerRoute=selectedModel&&snapshot.providerRoute.kind==='provider'?{...snapshot.providerRoute,model:selectedModel}:snapshot.providerRoute;
+        const frozenObservation=JSON.stringify([snapshot.providerRoute,snapshot.model,snapshot.runtime,snapshot.runtimeSource,snapshot.permissionMode,snapshot.configSnapshotAt]);
+        const provider = config.materializeProviderRouteEnv(providerRoute);
         if (provider?.apiKey) credentials.add(provider.apiKey);
         if (provider?.apiProtocol === 'openai') await ensureLoopbackBridge();
         if (snapshot.providerRoute.kind === 'provider' && !provider) throw new Error('Session Provider credential is unavailable');
+        if(args.remoteMobile===true){
+          if(typeof args.remoteObservation!=='string'||!/^[0-9a-f]{64}$/.test(args.remoteObservation))throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+          const {imSnapshotObservation}=await import('./routes/im-model-selection');
+          if(imSnapshotObservation(snapshot)!==args.remoteObservation)throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+        }
         const result = await engine.sendDesktopMessage({
           text: args.text, images: mobileImages, sessionId, workspacePath, scenario: { type: 'desktop' },
-          providerRoute: snapshot.providerRoute, permissionMode: args.remote === true ? snapshot.permissionMode ?? 'custom':'custom',
+          providerRoute, ...(selectedModel?{model:selectedModel}:{}), permissionMode: args.remote === true ? snapshot.permissionMode ?? 'custom':'custom',
           clientRequestId: typeof args.clientRequestId === 'string' ? args.clientRequestId : randomUUID(), turnBoundaryOnly: true,
           beforeDispatch: async () => {
             if (typeof args.remoteAgentId==='string') {
               try {validateRemoteAgent(args.remoteAgentId);} catch {return {accepted:false,error:'REMOTE_SESSION_AGENT_UNAVAILABLE'};}
             }
+            if(args.remoteMobile===true){const current=store.getSessionMetadata(sessionId);const {imSnapshotObservation}=await import('./routes/im-model-selection');if(!current||imSnapshotObservation(current)!==args.remoteObservation||JSON.stringify([current.providerRoute,current.model,current.runtime,current.runtimeSource,current.permissionMode,current.configSnapshotAt])!==frozenObservation)return {accepted:false,error:'REMOTE_SESSION_OWNER_CHANGED'};}
             return { accepted: !closing, ...(closing ? { error: 'Host worker is shutting down' } : {}) };
           },
           onTerminal: outcome => { send({ type: 'terminal', generation: generation!, sessionId, outcome }); },
@@ -405,7 +436,7 @@ async function main(): Promise<void> {
         // Only this entry's fixed validation messages may cross IPC. Provider
         // and SDK errors may carry bearer material and remain server diagnostics.
         const message = error instanceof Error ? error.message : '';
-        const safe = /^(REMOTE_SESSION_[A-Z_]+$|BOT_MODEL_NOT_AUTHORIZED$|Delegated Bot v1|Model execution requires|A bounded|Session Provider|OpenAI protocol requires|Session message admission|Session dispatch|Permission |Question |Plan |Interactive )/.test(message);
+        const safe = /^(REMOTE_(?:SESSION|MOBILE|ASSET)_[A-Z_]+$|BOT_MODEL_NOT_AUTHORIZED$|Delegated Bot v1|Model execution requires|A bounded|Session Provider|OpenAI protocol requires|Session message admission|Session dispatch|Permission |Question |Plan |Interactive )/.test(message);
         send({ type: 'reply', generation: generation!, id: value.id, ok: false, error: safe ? message : 'Host Session operation failed; inspect worker diagnostics' });
       }
     };

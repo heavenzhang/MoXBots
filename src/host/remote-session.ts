@@ -10,7 +10,7 @@ export interface HostRemotePorts {
   validateSession(sessionId:string,workspacePath:string):Promise<void>;
   list(request:Extract<RemoteSessionRequest,{kind:'list'}>,agent:HostRemoteAgent):Promise<Extract<RemoteSessionResult,{kind:'list'}>>;
   snapshot(request:Extract<RemoteSessionRequest,{kind:'get'}>):Promise<RemoteSnapshot>;
-  ensure(workspacePath:string,sessionId?:string):Promise<HostRemoteTarget>;
+  ensure(workspacePath:string,sessionId?:string,modelId?:string,agentId?:string):Promise<HostRemoteTarget>;
   active():HostRemoteTarget|null;
   execute(request:Exclude<Mutation,{kind:'start'}>,target:HostRemoteTarget):Promise<unknown>;
   receipts:{
