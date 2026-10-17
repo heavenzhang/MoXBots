@@ -82,6 +82,15 @@ was corrected; IHDR/IDAT/IEND CRCs and zlib scanline were checked independently,
 and the final run above uses the corrected sample. No production change was
 needed and no red application behavior was hidden by changing permission policy.
 
+Post-review fixture logging hardening replaces an API-key equality assertion
+(whose failure could print its expected temporary key) with the fixed
+`FIXTURE_PROVIDER_AUTH_MISMATCH` error, and redacts the runtime-only secret from
+every recorded event as well as existing child diagnostics. Full real-loop
+retest passed **5235ms**, six supplier calls, at private fixture
+`/Users/zhangshaohua/.mox-host-interactions-LoJdAM/evidence.jsonl`.
+Its main12809/worker12829/native12831 and observed12846/12847 were all checked
+absent after cleanup. The earlier corrected-sample evidence above is preserved.
+
 ## Cleanup, checks and limits
 
 Every direct child is born in its own process group. Cleanup signals only that
