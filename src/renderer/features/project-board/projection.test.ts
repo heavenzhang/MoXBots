@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '@/../shared/types/task';
 import type { SessionMetadata } from '@/api/sessionClient';
-import { boardRowStateKey, filterBoardRows, INACTIVE_AFTER_MS, RECENT_FINISH_MS, projectBoardRows, freshActivity, sessionExecutionTime } from './projection';
+import { boardRowStateKey, filterBoardRows, INACTIVE_AFTER_MS, RECENT_FINISH_MS, projectBoardRows, freshActivity, sessionExecutionTime, type ActivitySnapshot } from './projection';
 const now = 100000;
 const task = (fields: Partial<Task> = {}): Task => ({ id: 't1', name: 'Task', executor: 'agent', workspaceId: 'p', workspacePath: '/work/p', executionMode: 'once', sessionIds: ['s1'], status: 'running', tags: [], createdAt: now, updatedAt: now, statusHistory: [], dispatchOrigin: 'direct', ...fields });
 const session = (fields: Partial<SessionMetadata> = {}): SessionMetadata => ({ id: 's1', title: 'Conversation', agentDir: '/work/p', createdAt: new Date(now).toISOString(), lastActiveAt: new Date(now).toISOString(), ...fields });
@@ -186,7 +186,7 @@ describe('project board authority projection', () => {
     expect(failed[0]).toMatchObject({group:'needs',confirmationReason:'unknown'});
   });
   it('moves a finished agent run to done for review only when its Session is observed idle', () => {
-    const run = (activity: Map<string, any>) => projectBoardRows({path:'/work/p'},[task()],[session()],activity,now)[0];
+    const run = (activity: Map<string, ActivitySnapshot>) => projectBoardRows({path:'/work/p'},[task()],[session()],activity,now)[0];
     expect(run(new Map([['s1',{state:'idle',checkedAt:now}]]))).toMatchObject({group:'done',reviewReady:true});
     expect(boardRowStateKey(run(new Map([['s1',{state:'idle',checkedAt:now}]])),now)).toBe('badges.status.done');
     expect(run(new Map([['s1',{state:'running',checkedAt:now}]])).group).toBe('running');
