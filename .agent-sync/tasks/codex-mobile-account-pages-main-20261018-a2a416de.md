@@ -46,3 +46,22 @@ Add native Expo Router account, profile, security, storage, about, and help scre
 ## Next step
 
 - Root should integrate/review the branch, then verify the account entry/home, security logout confirmation with real native state, and in-chat unknown-receipt query in the current Expo QA app.
+
+## Follow-up: session artifact screen
+
+- [x] Add a separate Expo Router成果页 entry from the chat's temporary more menu; preserve the compact chat toolbar/composer.
+- [x] Read/list native session artifacts with a 20-item cursor page, display native filename/MIME/size, and keep downloaded bytes and file URIs inside the native module.
+- [x] Wire explicit download, progress, pause/resume, local preview/share, remove, and query-only recovery after ambiguous operations; do not automatically restart unknown downloads.
+- [x] Restore each loaded page's local download states with at most 20 sequential, read-only `artifact.status` calls; new progress events take precedence, and loss of route focus prevents dispatch of subsequent checks.
+- [x] Keep failed status checks visible with a manual check action; only confirmed `MOBILE_ARTIFACT_NOT_FOUND` enables a fresh download.
+- [x] Add synthetic QA normal/error/early-event/pause-resume cases and make simulated preview/share copy explicit.
+- [x] Raise artifact action touch targets to at least 44 px and distinguish information/success/error notices.
+- [x] Root IAB reported successful artifact download → remove → redownload → ready path after tracker repair. Native preview/share on device remains unverified.
+- [x] Pause/resume QA case now holds at 50% until explicit pause; explicit resume completes without a timer racing the user.
+- [ ] Root re-review read-only status restoration, deterministic pause/resume fixture, 44 px touch targets, and post-blur dispatch stop after integrating the latest follow-up.
+
+## Follow-up verification
+
+- `mobile/app`: `npm run typecheck` PASS; `npm run lint` PASS; `npm run test:policy` PASS (43 tests).
+- `mobile/app`: `npx expo export --platform web --output-dir /tmp/moxbots-mobile-artifacts-repair-web` PASS; native-device artifact preview/share and download behavior are not inferred from this web export.
+- `git diff --check` to be repeated before the follow-up commit.

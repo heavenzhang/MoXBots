@@ -127,3 +127,18 @@ export function artifactEventMatchesDescriptor(event: ArtifactDownload, descript
 }
 
 type ArtifactDescriptorShape = { artifactId: string; name: string; mimeType: string; sha256: string; sizeBytes: number };
+
+/** Runs bounded read-only status checks sequentially and stops before dispatching another when ownership is lost. */
+export async function restoreArtifactStatuses<T extends { artifactId: string }>(
+  items: readonly T[],
+  isCurrent: () => boolean,
+  shouldCheck: (artifactId: string) => boolean,
+  query: (item: T) => Promise<void>,
+  limit = 20,
+): Promise<void> {
+  for (const item of items.slice(0, limit)) {
+    if (!isCurrent()) return;
+    if (!shouldCheck(item.artifactId)) continue;
+    await query(item);
+  }
+}

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronDown, Download, Eye, FileText, Image as ImageIcon, Pause, Play, RefreshCw, Share2, Trash2 } from 'lucide-react-native';
-import { artifactEventMatchesDescriptor, artifactListBelongsToOwner, ArtifactDownloadTracker, ArtifactRowBusyTracker, type ArtifactOwner } from './artifactPolicy';
+import { artifactEventMatchesDescriptor, artifactListBelongsToOwner, ArtifactDownloadTracker, ArtifactRowBusyTracker, restoreArtifactStatuses, type ArtifactOwner } from './artifactPolicy';
 import { ArtifactActionReply, ArtifactDescriptor, ArtifactDownload, isFixtureMode, QaArtifactScenario, qaArtifactScenarioOptions, requestNative, selectQaArtifactScenario, subscribeArtifactDownloadChanges, Target } from './native';
 
 const color = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', canvas: '#F7F8F6', green: '#26734D', wash: '#E9F3ED', red: '#A7433B' };
@@ -43,6 +43,10 @@ export default function ArtifactScreen() {
   const routeActiveRef = useRef(false);
   const listFlightRef = useRef<number | null>(null);
   const listFlightSequenceRef = useRef(0);
+  const statusRestoreQueueRef = useRef<ArtifactDescriptor[]>([]);
+  const statusRestoreAttemptsRef = useRef(new Set<string>());
+  const statusRestoreFlightRef = useRef<Promise<void> | null>(null);
+  const [statusRestorePulse, setStatusRestorePulse] = useState(0);
   const itemsRef = useRef<ArtifactDescriptor[]>([]);
   const [items, setItems] = useState<ArtifactDescriptor[]>([]);
   const [downloads, setDownloads] = useState<Record<string, ArtifactDownload>>({});
@@ -50,8 +54,10 @@ export default function ArtifactScreen() {
   const [statusNeedsCheck, setStatusNeedsCheck] = useState<Record<string, boolean>>({});
   const downloadsRef = useRef(downloads);
   const unknownRef = useRef(unknown);
+  const statusNeedsCheckRef = useRef(statusNeedsCheck);
   useEffect(() => { downloadsRef.current = downloads; }, [downloads]);
   useEffect(() => { unknownRef.current = unknown; }, [unknown]);
+  useEffect(() => { statusNeedsCheckRef.current = statusNeedsCheck; }, [statusNeedsCheck]);
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
   const busyTrackerRef = useRef(new ArtifactRowBusyTracker());
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
@@ -59,7 +65,7 @@ export default function ArtifactScreen() {
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [notice, setNotice] = useState<{ text: string; code?: string } | null>(null);
+  const [notice, setNotice] = useState<{ text: string; code?: string; tone?: 'error' | 'success' | 'info' } | null>(null);
   const [noSession, setNoSession] = useState(false);
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [qaScenario, setQaScenario] = useState<QaArtifactScenario>('normal');
@@ -96,13 +102,13 @@ export default function ArtifactScreen() {
       const unique = [...new Map(combined.map((item) => [item.artifactId, item])).values()];
       itemsRef.current = unique;
       setItems(unique);
-      if (reset) {
-        setStatusNeedsCheck((prior) => {
-          const next = { ...prior };
-          for (const item of response.items) if (!downloadsRef.current[item.artifactId] && !unknownRef.current[item.artifactId]) next[item.artifactId] = true;
-          return next;
-        });
-      }
+      statusRestoreQueueRef.current.push(...response.items.slice(0, pageLimit));
+      setStatusRestorePulse((prior) => prior + 1);
+      setStatusNeedsCheck((prior) => {
+        const next = { ...prior };
+        for (const item of response.items) if (!downloadsRef.current[item.artifactId] && !unknownRef.current[item.artifactId]) next[item.artifactId] = true;
+        return next;
+      });
       setHasMore(response.hasMore);
       setNextBefore(response.nextBefore);
     } catch (reason) {
@@ -117,6 +123,7 @@ export default function ArtifactScreen() {
     if (!routeIsCurrent(epoch)) return;
     listFlightRef.current = null;
     setLoading(true); setLoadingMore(false); setNotice(null); setTarget(null); setNoSession(false);
+    statusRestoreQueueRef.current = []; statusRestoreAttemptsRef.current.clear();
     ownerRef.current = null; itemsRef.current = []; setItems([]); setDownloads({}); setUnknown({}); setStatusNeedsCheck({});
     if (!routeTargetId) { setNotice({ text: '没有指定会话成果。请从会话页的成果入口打开。' }); setLoading(false); return; }
     try {
@@ -210,6 +217,34 @@ export default function ArtifactScreen() {
     return trackerRef.current.latest(descriptor.artifactId, trackerEpochRef.current);
   }, [routeIsCurrent]);
 
+  useEffect(() => {
+    if (statusRestoreFlightRef.current || statusRestoreQueueRef.current.length === 0) return;
+    const epoch = routeEpochRef.current;
+    const currentOwner = ownerRef.current;
+    if (!currentOwner || !routeIsCurrent(epoch)) return;
+    let cancelled = false;
+    const flight = restoreArtifactStatuses(
+      statusRestoreQueueRef.current.splice(0, pageLimit),
+      () => !cancelled && routeIsCurrent(epoch) && ownerRef.current !== null && artifactListBelongsToOwner(ownerRef.current, currentOwner),
+      (artifactId) => statusNeedsCheckRef.current[artifactId] === true && !unknownRef.current[artifactId] && !statusRestoreAttemptsRef.current.has(artifactId),
+      async (descriptor) => {
+        statusRestoreAttemptsRef.current.add(descriptor.artifactId);
+        const rowFlight = claimRow(descriptor.artifactId, epoch);
+        if (!rowFlight) return;
+        try { await queryStatus(descriptor, epoch); }
+        catch (reason) { if (!cancelled && routeIsCurrent(epoch)) setNotice(noticeFor(reason)); }
+        finally { releaseRow(rowFlight); }
+      },
+      pageLimit,
+    );
+    statusRestoreFlightRef.current = flight;
+    void flight.finally(() => {
+      if (statusRestoreFlightRef.current === flight) statusRestoreFlightRef.current = null;
+      if (statusRestoreQueueRef.current.length > 0 && routeIsCurrent(routeEpochRef.current)) setStatusRestorePulse((prior) => prior + 1);
+    });
+    return () => { cancelled = true; };
+  }, [claimRow, queryStatus, releaseRow, routeIsCurrent, statusRestorePulse]);
+
   const beginDownload = useCallback(async (descriptor: ArtifactDescriptor, epoch: number) => {
     const currentOwner = ownerRef.current;
     if (!currentOwner || !routeIsCurrent(epoch) || unknown[descriptor.artifactId] || trackerRef.current.isUnknown(descriptor.artifactId, trackerEpochRef.current) || statusNeedsCheck[descriptor.artifactId]) return;
@@ -271,10 +306,10 @@ export default function ArtifactScreen() {
           setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: false }));
           setStatusNeedsCheck((prior) => ({ ...prior, [descriptor.artifactId]: false }));
           setRemoveConfirmId(null);
-          setNotice({ text: '已移除本机副本；远端成果仍保留。' });
+          setNotice({ text: '已移除本机副本；远端成果仍保留。', tone: 'success' });
         } else setNotice({ text: isFixtureMode
           ? (kind === 'preview' ? '演示：已模拟打开系统预览。' : '演示：已模拟交给系统分享。')
-          : (kind === 'preview' ? '已在系统预览中打开。' : '已交给系统分享。') });
+          : (kind === 'preview' ? '已在系统预览中打开。' : '已交给系统分享。'), tone: 'success' });
       }
     } catch (reason) {
       if (routeIsCurrent(epoch)) {
@@ -354,9 +389,9 @@ function actionMatches(value: ArtifactActionReply, owner: ArtifactOwner, descrip
     && value.errorCode === null && value.state === (action === 'remove' ? 'removed' : 'presented');
 }
 
-function noticeFor(reason: unknown): { text: string; code: string } {
+function noticeFor(reason: unknown): { text: string; code: string; tone: 'error' } {
   const code = reason instanceof Error && /^[A-Z][A-Z0-9_]{2,127}$/.test(reason.message) ? reason.message : 'MOBILE_ARTIFACT_UNAVAILABLE';
-  return { text: errorCopy[code] ?? '暂时无法处理这项成果，请刷新状态后重试。', code };
+  return { text: errorCopy[code] ?? '暂时无法处理这项成果，请刷新状态后重试。', code, tone: 'error' };
 }
 
 function formatBytes(size: number): string {
@@ -384,7 +419,7 @@ function ArtifactRow({ descriptor, download, busy, unknown, needsStatusCheck, re
               : <ActionButton label="下载" icon={<Download size={15} color={color.green}/>} disabled={busy} onPress={onDownload}/>}
       {busy && <ActivityIndicator size="small" color={color.green}/>}
       {(download?.state === 'ready' || download?.state === 'paused') && !unknown && !removeConfirm && <ActionButton label="移除本机副本" icon={<Trash2 size={15} color={color.muted}/>} disabled={busy} onPress={onRemove}/>}
-      {removeConfirm && <View style={styles.removeConfirm}><Text style={styles.removeConfirmText}>只移除此设备上的下载文件？</Text><Pressable accessibilityRole="button" accessibilityLabel="确认移除本机副本" disabled={busy} onPress={onRemoveConfirm}><Text style={styles.removeConfirmAction}>确认</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="取消移除" onPress={onRemoveCancel}><Text style={styles.removeCancel}>取消</Text></Pressable></View>}
+      {removeConfirm && <View style={styles.removeConfirm}><Text style={styles.removeConfirmText}>只移除此设备上的下载文件？</Text><Pressable accessibilityRole="button" accessibilityLabel="确认移除本机副本" disabled={busy} onPress={onRemoveConfirm} style={styles.removeConfirmButton}><Text style={styles.removeConfirmAction}>确认</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="取消移除" onPress={onRemoveCancel} style={styles.removeConfirmButton}><Text style={styles.removeCancel}>取消</Text></Pressable></View>}
     </View>
   </View>;
 }
@@ -395,12 +430,13 @@ function ActionButton({ label, icon, disabled, onPress }: { label: string; icon:
 
 function InlineNotice({ notice }: { notice: { text: string; code?: string } }) {
   const [expanded, setExpanded] = useState(false);
-  return <View accessibilityRole="alert" style={styles.notice}><Text style={styles.noticeText}>{notice.text}</Text>{notice.code && <><Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.noticeDetails}><Text style={styles.moreText}>{expanded ? '隐藏详情' : '错误详情'}</Text></Pressable>{expanded && <Text selectable style={styles.errorCode}>错误码：{notice.code}</Text>}</>}</View>;
+  const tone = 'tone' in notice ? notice.tone ?? 'info' : 'info';
+  return <View accessibilityRole={tone === 'error' ? 'alert' : undefined} style={[styles.notice, tone === 'error' ? styles.noticeError : tone === 'success' ? styles.noticeSuccess : styles.noticeInfo]}><Text style={[styles.noticeText, tone === 'error' ? styles.noticeErrorText : tone === 'success' ? styles.noticeSuccessText : styles.noticeInfoText]}>{notice.text}</Text>{notice.code && <><Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded((value) => !value)} style={styles.noticeDetails}><Text style={styles.moreText}>{expanded ? '隐藏详情' : '错误详情'}</Text></Pressable>{expanded && <Text selectable style={styles.errorCode}>错误码：{notice.code}</Text>}</>}</View>;
 }
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: '#FFFFFF' }, qaBanner: { minHeight: 30, backgroundColor: '#9A541C', paddingHorizontal: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, qaBannerText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' }, qaToggle: { minHeight: 26, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 7, backgroundColor: '#7D4115' }, qaToggleText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', flexDirection: 'row' }, qaChoices: { flexBasis: '100%', flexDirection: 'row', justifyContent: 'center', gap: 6, paddingBottom: 7 }, qaChoice: { minHeight: 30, paddingHorizontal: 10, justifyContent: 'center', borderRadius: 8, backgroundColor: '#7D4115' }, qaChoiceText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' },
   header: { minHeight: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: color.line, gap: 8 }, headerButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, headerCopy: { flex: 1 }, headerTitle: { color: color.ink, fontSize: 15, fontWeight: '700' }, headerSubtitle: { marginTop: 2, color: color.muted, fontSize: 11 }, summary: { minHeight: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: color.line }, summaryText: { color: color.ink, fontSize: 12, fontWeight: '600' }, summaryHint: { marginLeft: 'auto', color: color.muted, fontSize: 11 },
-  list: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, gap: 9 }, artifactCard: { borderWidth: 1, borderColor: color.line, borderRadius: 13, padding: 12, backgroundColor: '#FFFFFF' }, artifactMain: { flexDirection: 'row', alignItems: 'center', gap: 10 }, fileIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: color.wash, justifyContent: 'center', alignItems: 'center' }, artifactCopy: { flex: 1 }, fileName: { color: color.ink, fontSize: 13, fontWeight: '600', lineHeight: 18 }, fileMeta: { marginTop: 3, color: color.muted, fontSize: 10 }, progressRow: { marginTop: 9, flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, statusText: { color: color.muted, fontSize: 11 }, errorText: { color: color.red }, progressTrack: { height: 4, overflow: 'hidden', marginTop: 6, borderRadius: 2, backgroundColor: color.line }, progressFill: { height: 4, backgroundColor: color.green }, actions: { minHeight: 36, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7, marginTop: 8 }, actionButton: { minHeight: 36, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 9, backgroundColor: color.canvas }, actionText: { color: color.ink, fontSize: 11, fontWeight: '600' }, disabled: { opacity: 0.55 }, removeConfirm: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 10 }, removeConfirmText: { color: color.muted, fontSize: 10 }, removeConfirmAction: { color: color.red, fontWeight: '700', fontSize: 11 }, removeCancel: { color: color.ink, fontSize: 11 },
-  stateCard: { margin: 16, minHeight: 150, padding: 20, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: color.line, borderRadius: 14 }, stateTitle: { color: color.ink, fontSize: 14, fontWeight: '700' }, stateDetail: { color: color.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' }, loading: { paddingVertical: 35, alignItems: 'center', gap: 9 }, notice: { marginHorizontal: 14, marginTop: 10, padding: 12, borderRadius: 10, backgroundColor: '#FAEFED' }, noticeText: { color: color.red, fontSize: 12, lineHeight: 18 }, noticeDetails: { minHeight: 30, justifyContent: 'center', alignSelf: 'flex-start' }, moreText: { color: color.green, fontSize: 11, fontWeight: '600' }, errorCode: { color: color.muted, fontSize: 10 }, moreButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' }, footer: { paddingHorizontal: 15, paddingVertical: 8, color: color.muted, fontSize: 10, lineHeight: 15, borderTopWidth: StyleSheet.hairlineWidth, borderColor: color.line },
+  list: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, gap: 9 }, artifactCard: { borderWidth: 1, borderColor: color.line, borderRadius: 13, padding: 12, backgroundColor: '#FFFFFF' }, artifactMain: { flexDirection: 'row', alignItems: 'center', gap: 10 }, fileIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: color.wash, justifyContent: 'center', alignItems: 'center' }, artifactCopy: { flex: 1 }, fileName: { color: color.ink, fontSize: 13, fontWeight: '600', lineHeight: 18 }, fileMeta: { marginTop: 3, color: color.muted, fontSize: 10 }, progressRow: { marginTop: 9, flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, statusText: { color: color.muted, fontSize: 11 }, errorText: { color: color.red }, progressTrack: { height: 4, overflow: 'hidden', marginTop: 6, borderRadius: 2, backgroundColor: color.line }, progressFill: { height: 4, backgroundColor: color.green }, actions: { minHeight: 44, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7, marginTop: 8 }, actionButton: { minHeight: 44, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 9, backgroundColor: color.canvas }, actionText: { color: color.ink, fontSize: 11, fontWeight: '600' }, disabled: { opacity: 0.55 }, removeConfirm: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }, removeConfirmButton: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 }, removeConfirmText: { color: color.muted, fontSize: 10 }, removeConfirmAction: { color: color.red, fontWeight: '700', fontSize: 11 }, removeCancel: { color: color.ink, fontSize: 11 },
+  stateCard: { margin: 16, minHeight: 150, padding: 20, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: color.line, borderRadius: 14 }, stateTitle: { color: color.ink, fontSize: 14, fontWeight: '700' }, stateDetail: { color: color.muted, fontSize: 12, lineHeight: 18, textAlign: 'center' }, loading: { paddingVertical: 35, alignItems: 'center', gap: 9 }, notice: { marginHorizontal: 14, marginTop: 10, padding: 12, borderRadius: 10 }, noticeError: { backgroundColor: '#FAEFED' }, noticeSuccess: { backgroundColor: color.wash }, noticeInfo: { backgroundColor: color.canvas }, noticeText: { fontSize: 12, lineHeight: 18 }, noticeErrorText: { color: color.red }, noticeSuccessText: { color: color.green }, noticeInfoText: { color: color.ink }, noticeDetails: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }, moreText: { color: color.green, fontSize: 11, fontWeight: '600' }, errorCode: { color: color.muted, fontSize: 10 }, moreButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' }, footer: { paddingHorizontal: 15, paddingVertical: 8, color: color.muted, fontSize: 10, lineHeight: 15, borderTopWidth: StyleSheet.hairlineWidth, borderColor: color.line },
 });

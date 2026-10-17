@@ -96,6 +96,10 @@ function fixtureArtifactReply(intent: Extract<NativeIntent, { kind: `artifact.${
     return actionReply(intent.kind === 'artifact.preview' ? 'preview' : 'share', 'presented');
   }
   if (artifactScenario === 'error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
+  if (artifactScenario === 'pause-resume' && intent.kind === 'artifact.download' && job?.state === 'paused') {
+    const ready = { ...job, state: 'ready' as const, receivedBytes: job.totalBytes };
+    artifactDownloads.set(key, ready); emitArtifactDownload(ready); return ready;
+  }
   const base: ArtifactDownload = { kind: 'artifact-download', targetId: approved.targetId, identityKey: approved.identityKey,
     agentId: approved.agentId, sessionId: intent.sessionId, artifactId: descriptor.artifactId, name: descriptor.name,
     mimeType: descriptor.mimeType, sha256: descriptor.sha256, state: 'downloading', receivedBytes: 0,
@@ -110,12 +114,12 @@ function fixtureArtifactReply(intent: Extract<NativeIntent, { kind: `artifact.${
     return new Promise((resolve) => setTimeout(() => resolve(base), 120));
   }
   const progressDelay = artifactScenario === 'pause-resume' ? 120 : 80;
-  const readyDelay = artifactScenario === 'pause-resume' ? 2500 : 220;
+  const readyDelay = artifactScenario === 'pause-resume' ? null : 220;
   setTimeout(() => {
     if (artifactJobGenerations.get(key) !== generation || artifactDownloads.get(key)?.state !== 'downloading') return;
     artifactDownloads.set(key, progress); emitArtifactDownload(progress);
   }, progressDelay);
-  setTimeout(() => {
+  if (readyDelay !== null) setTimeout(() => {
     if (artifactJobGenerations.get(key) !== generation || artifactDownloads.get(key)?.state !== 'downloading') return;
     artifactDownloads.set(key, ready); emitArtifactDownload(ready);
   }, readyDelay);

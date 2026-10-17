@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { artifactEventMatchesDescriptor, ArtifactDownloadTracker, ArtifactRowBusyTracker, type ArtifactOwner } from '../src/artifactPolicy.ts';
+import { artifactEventMatchesDescriptor, ArtifactDownloadTracker, ArtifactRowBusyTracker, restoreArtifactStatuses, type ArtifactOwner } from '../src/artifactPolicy.ts';
 import type { ArtifactDownload } from '../src/native.ts';
 
 const owner: ArtifactOwner = { targetId: 'target-a', identityKey: 'identity-a', agentId: 'agent-a', sessionId: 'session-a' };
@@ -90,4 +90,36 @@ test('blur reset permits a new same-id action and a late old finally cannot rele
   assert.ok(newFlight);
   assert.equal(busy.release(oldFlight), false);
   assert.equal(busy.release(newFlight), true);
+});
+
+test('read-only status recovery is serial and stops dispatching after blur', async () => {
+  const items = [
+    { artifactId: 'artifact-1' }, { artifactId: 'artifact-2' }, { artifactId: 'artifact-3' },
+  ];
+  let active = true;
+  let inFlight = false;
+  const calls: string[] = [];
+  let finishFirst!: () => void;
+  const firstResult = new Promise<void>((resolve) => { finishFirst = resolve; });
+  const restoring = restoreArtifactStatuses(items, () => active, () => true, async (item) => {
+    assert.equal(inFlight, false, 'status requests must not overlap');
+    inFlight = true;
+    calls.push(item.artifactId);
+    if (item.artifactId === 'artifact-1') await firstResult;
+    inFlight = false;
+  }, 20);
+
+  assert.deepEqual(calls, ['artifact-1']);
+  active = false;
+  finishFirst();
+  await restoring;
+  assert.deepEqual(calls, ['artifact-1'], 'no next native status request starts after the route loses focus');
+});
+
+test('status recovery is bounded to the visible page', async () => {
+  const items = Array.from({ length: 25 }, (_, index) => ({ artifactId: `artifact-${index}` }));
+  const calls: string[] = [];
+  await restoreArtifactStatuses(items, () => true, () => true, async (item) => { calls.push(item.artifactId); }, 20);
+  assert.equal(calls.length, 20);
+  assert.equal(calls.at(-1), 'artifact-19');
 });
