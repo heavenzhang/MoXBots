@@ -151,6 +151,12 @@ enum ClosedIntent {
     Operations { version: u8 },
     #[serde(rename = "connection.suspend")]
     Suspend { version: u8 },
+    #[serde(rename = "assets")]
+    Assets {
+        version: u8,
+        target_id: String,
+        request: myagents_host_management_protocol::RemoteAssetRequest,
+    },
     #[serde(rename = "session")]
     Session {
         version: u8,
@@ -379,6 +385,11 @@ mod tests {
     fn raw_intents_preserve_original_duplicate_and_unknown_field_rejection() {
         for bytes in [br#"{"version":1,"version":1,"kind":"account.status"}"#.as_slice(),br#"{"version":1,"kind":"session","targetId":"target","request":{"kind":"list","agentId":"safe","agentId":"other","limit":30}}"#.as_slice(),br#"{"version":1,"kind":"session","targetId":"target","request":{"kind":"list","agentId":"safe","limit":30,"accessToken":"private"}}"#.as_slice(),br#"{"version":1,"kind":"account.status","issuer":"https://untrusted.invalid"}"#.as_slice()] {assert!(parse_intent(bytes).is_err());}
         assert!(parse_intent(br#"{"version":1,"kind":"session","targetId":"approved","request":{"kind":"list","agentId":"safe","limit":30}}"#).is_ok());
+    }
+    #[test]
+    fn raw_asset_profile_is_closed_and_preserves_session_v1() {
+        assert!(parse_intent(br#"{"version":1,"kind":"assets","targetId":"approved","request":{"kind":"capabilities","version":1,"agentId":"agent"}}"#).is_ok());
+        for raw in [br#"{"version":1,"kind":"assets","targetId":"approved","request":{"kind":"capabilities","version":1,"agentId":"agent","agentId":"other"}}"#.as_slice(),br#"{"version":1,"kind":"assets","targetId":"approved","request":{"kind":"capabilities","version":1,"agentId":"agent","path":"/private/file"}}"#.as_slice(),br#"{"version":1,"kind":"session","targetId":"approved","request":{"kind":"start","agentId":"agent","operationId":"00000000-0000-0000-0000-000000000001","text":"hi","assets":[]}}"#.as_slice()] {assert!(parse_intent(raw).is_err());}
     }
     #[test]
     fn native_key_save_is_idempotent_conflict_safe_and_readback_verified() {

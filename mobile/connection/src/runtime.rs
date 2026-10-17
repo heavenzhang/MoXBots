@@ -1,3 +1,5 @@
+#[path = "peer.rs"]
+mod peer;
 use crate::agent_network::{
     account::{NetworkAccountSession, OwnedAccount},
     connection::{initial_hello, send},
@@ -62,7 +64,7 @@ struct Connected {
     scope: ConnectionScope,
     local: DeviceScope,
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 struct Target {
     device: String,
     agent: String,
@@ -76,6 +78,7 @@ pub struct MobileConnection {
     pending: Option<PendingLogin>,
     active: Arc<AtomicBool>,
     connected: Option<Connected>,
+    peer: Option<peer::PeerConnection>,
     targets: HashMap<String, Target>,
 }
 fn err(code: &'static str) -> NetworkError {
@@ -100,6 +103,7 @@ impl MobileConnection {
             pending: None,
             active: Arc::new(AtomicBool::new(true)),
             connected: None,
+            peer: None,
             targets: HashMap::new(),
         })
     }
@@ -110,6 +114,7 @@ impl MobileConnection {
             Ok(Err(e)) => json!({"ok":false,"error":{"kind":"error","code":e.code}}),
             Err(_) => {
                 self.connected = None;
+                self.peer = None;
                 json!({"ok":false,"error":{"kind":"error","code":"MOBILE_OPERATION_TIMEOUT"}})
             }
         }
@@ -161,6 +166,7 @@ impl MobileConnection {
     }
     async fn cancel(&mut self) -> Result<(), NetworkError> {
         self.connected = None;
+        self.peer = None;
         self.targets.clear();
         if let Some(p) = self.pending.take() {
             return self
@@ -179,7 +185,7 @@ impl MobileConnection {
         let kind = intent["kind"]
             .as_str()
             .ok_or_else(|| err("MOBILE_INTENT_INVALID"))?;
-        let allowed = if kind == "session" {
+        let allowed = if kind == "session" || kind == "assets" {
             &["version", "kind", "targetId", "request"][..]
         } else {
             &["version", "kind"][..]
@@ -279,6 +285,7 @@ impl MobileConnection {
                     .map_err(store_error)?;
                 self.active.store(false, Ordering::Release);
                 self.connected = None;
+                self.peer = None;
                 self.targets.clear();
                 let saved = match self.saved.take() {
                     Some(saved) => Ok(Some(saved)),
@@ -313,13 +320,12 @@ impl MobileConnection {
             }
             "connection.suspend" => {
                 self.connected = None;
+                self.peer = None;
                 self.targets.clear();
                 Ok(json!({"kind":"connection","state":"suspended"}))
             }
-            "session" => {
-                self.connect().await?;
-                self.session(&intent).await
-            }
+            "session" => self.session(&intent).await,
+            "assets" => self.assets(&intent).await,
             "operations.pending" => {
                 self.restore().await?;
                 self.operations_pending()
@@ -329,9 +335,17 @@ impl MobileConnection {
                 let result = self.list_targets().await;
                 if result.is_err() {
                     self.targets.clear();
+                    self.peer = None;
                 }
-                // There is no idle background actor: close after the snapshot;
-                // each session obtains a fresh authenticated outer epoch.
+                if self.peer.as_ref().is_some_and(|p| {
+                    !self.targets.values().any(|target| {
+                        target.device == p.target.device && target.agent == p.target.agent
+                    })
+                }) {
+                    self.peer = None;
+                }
+                // Metadata-only connections are closed after the snapshot;
+                // a retained combined peer stays alive for interleaved RPCs.
                 if let Some(mut c) = self.connected.take() {
                     let _ = c.socket.close(None).await;
                 }
@@ -341,10 +355,31 @@ impl MobileConnection {
         }
     }
     async fn connect(&mut self) -> Result<(), NetworkError> {
+        // A healthy same-target peer survives routine directory refresh. Pump
+        // bounded idle controls first, so real policy revocation invalidates it.
+        if let Some(mut p) = self.peer.take() {
+            if p.reusable(&p.target, &self.active) {
+                match p.drain_idle().await {
+                    Ok(()) => {
+                        self.peer = Some(p);
+                        return Ok(());
+                    }
+                    Err(error) if error.code == "NETWORK_CONNECTION_CLOSED" => {}
+                    Err(error) => {
+                        self.targets.clear();
+                        return Err(error);
+                    }
+                }
+            }
+        }
         if let Some(c) = &self.connected {
             c.identity.account.ensure_current()?;
             return Ok(());
         }
+        self.connected = Some(self.new_connection().await?);
+        Ok(())
+    }
+    async fn new_connection(&mut self) -> Result<Connected, NetworkError> {
         self.restore().await?;
         let saved = self
             .saved
@@ -465,19 +500,19 @@ impl MobileConnection {
         })
         .await
         .map_err(|_| err("NETWORK_HELLO_TIMEOUT"))??;
-        self.connected = Some(Connected {
+        Ok(Connected {
             identity,
             transport,
             socket,
             scope,
             local,
-        });
-        Ok(())
+        })
     }
     async fn list_targets(&mut self) -> Result<Value, NetworkError> {
         let c = self
             .connected
             .as_ref()
+            .or_else(|| self.peer.as_ref().map(|p| &p.c))
             .ok_or_else(|| err("NETWORK_NOT_CONNECTED"))?;
         c.identity.account.ensure_current()?;
         let devices = c
@@ -682,390 +717,6 @@ impl MobileConnection {
         }
         Ok(json!({"kind":"operations","items":items}))
     }
-    async fn session(&mut self, intent: &Value) -> Result<Value, NetworkError> {
-        let id = intent["targetId"]
-            .as_str()
-            .ok_or_else(|| err("MOBILE_TARGET_INVALID"))?;
-        let target = self
-            .targets
-            .get(id)
-            .cloned()
-            .ok_or_else(|| err("MOBILE_TARGET_INVALID"))?;
-        let request: myagents_host_management_protocol::RemoteSessionRequest =
-            serde_json::from_value(intent["request"].clone())
-                .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
-        request
-            .validate()
-            .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
-        if request.agent_id() != target.agent {
-            return Err(err("MOBILE_TARGET_INVALID"));
-        }
-        if let myagents_host_management_protocol::RemoteSessionRequest::Respond {
-            agent_id,
-            session_id,
-            ..
-        } = &request
-        {
-            let mut check = self
-                .connected
-                .take()
-                .ok_or_else(|| err("NETWORK_NOT_CONNECTED"))?;
-            let get = myagents_host_management_protocol::RemoteSessionRequest::Get {
-                agent_id: agent_id.clone(),
-                session_id: session_id.clone(),
-                limit: 1,
-                before: None,
-            };
-            let snapshot = tokio::time::timeout(
-                Duration::from_secs(35),
-                self.session_on(&mut check, &target, get),
-            )
-            .await
-            .map_err(|_| err("MOBILE_APPROVAL_SNAPSHOT_REQUIRED"))??;
-            let _ = check.socket.close(None).await;
-            if !approval_matches(&snapshot, &request) {
-                return Err(err("MOBILE_APPROVAL_STALE"));
-            }
-            self.connect().await?;
-        }
-        // Take ownership: any failure discards this WSS epoch, never resumes old TLS.
-        let mut c = self
-            .connected
-            .take()
-            .ok_or_else(|| err("NETWORK_NOT_CONNECTED"))?;
-        let result = tokio::time::timeout(
-            Duration::from_secs(35),
-            self.session_on(&mut c, &target, request),
-        )
-        .await
-        .map_err(|_| err("MOBILE_SESSION_UNKNOWN"))?;
-        // A completed request closes its channel and uses a fresh authenticated outer
-        // epoch next time. No uncertain operation is ever automatically resent.
-        let _ = c.socket.close(None).await;
-        result
-    }
-    async fn session_on(
-        &self,
-        c: &mut Connected,
-        target: &Target,
-        request: myagents_host_management_protocol::RemoteSessionRequest,
-    ) -> Result<Value, NetworkError> {
-        use crate::agent_network::{account_operation::AccountOperation, identity::proof};
-        c.identity.account.ensure_current()?;
-        c.identity = c.identity.clone().ensure_peer().await?;
-        let address = c
-            .transport
-            .device_address(&c.identity.token, &c.local, &target.device)
-            .await?;
-        let key = c.identity.device_key();
-        let signed = proof(
-            &c.identity.account,
-            &c.identity.scope,
-            &key,
-            "recover-query",
-            &key.public_fingerprint()?,
-        )
-        .await?;
-        let current=c.identity.account.request(AccountOperation::Current,Some(json!({"deviceId":c.identity.scope.device_id,"keyFingerprint":key.public_fingerprint()?,"expectedKeyGeneration":c.identity.scope.key_generation,"challengeId":signed.0,"proof":signed.1}))).await?;
-        let bootstrap = current["bootstrapGrant"]
-            .as_str()
-            .ok_or_else(|| err("IDENTITY_RESPONSE_INVALID"))?;
-        // Recheck the original bootstrap trust before handing it to the shared SDK.
-        let verified = c.identity.verifier.clone().bootstrap(bootstrap).await?;
-        c.identity
-            .account
-            .ensure_bootstrap(&verified.root_certificate, &verified.network_url)?;
-        if verified.access.device_id != c.local.device_id
-            || verified.access.key_generation != c.local.key_generation
-            || verified.access.cnf.jkt != key.public_thumbprint()?
-        {
-            return Err(err("IDENTITY_SCOPE_MISMATCH"));
-        }
-        let peer = c
-            .identity
-            .peer
-            .as_ref()
-            .ok_or_else(|| err("NETWORK_CERTIFICATE_INVALID"))?;
-        let channel = uuid::Uuid::new_v4().to_string();
-        send(
-            &mut c.socket,
-            ClientMessage::Open {
-                scope: c.scope.clone(),
-                channel_id: channel.clone(),
-                target_device_id: address.scope.device_id.clone(),
-                target_key_generation: address.scope.key_generation,
-                target_connection_epoch: address.connection_epoch.clone(),
-                target_binding: Some(address.signed_binding.clone()),
-            },
-        )
-        .await?;
-        let mut offered = false;
-        let mut tls_initiator = false;
-        let mut accepted = false;
-        let mut sdk = None;
-        let mut queued = false;
-        loop {
-            c.identity.account.ensure_current()?;
-            if let Some(client) = sdk.as_mut() {
-                let client: &mut moxbots_mobile_core::MobileClient = client;
-                while let Some(frame) = client
-                    .drain_frame()
-                    .map_err(|_| err("MOBILE_CHANNEL_INVALID"))?
-                {
-                    c.socket
-                        .send(Message::Binary(frame))
-                        .await
-                        .map_err(|_| err("MOBILE_SESSION_UNKNOWN"))?;
-                }
-            }
-            match c.socket.next().await {
-                Some(Ok(Message::Ping(p))) => c
-                    .socket
-                    .send(Message::Pong(p))
-                    .await
-                    .map_err(|_| err("NETWORK_CONNECTION_CLOSED"))?,
-                Some(Ok(Message::Pong(_))) => {}
-                Some(Ok(Message::Text(text))) => {
-                    if text == "ma-network-pong" {
-                        continue;
-                    }
-                    let envelope = ServerEnvelope::parse(text.as_bytes())
-                        .map_err(|_| err("CONTROL_INVALID"))?;
-                    if envelope.message.scope() != Some(&c.scope) {
-                        return Err(err("CONTROL_SCOPE_MISMATCH"));
-                    }
-                    match envelope.message {
-                        ServerMessage::ChannelOffer {
-                            channel_id,
-                            initiator,
-                            responder,
-                            initiator_connection_epoch,
-                            responder_connection_epoch,
-                            ..
-                        } if channel_id == channel && !offered => {
-                            tls_initiator = initiator == c.local;
-                            let valid = if tls_initiator {
-                                responder == address.scope
-                                    && initiator_connection_epoch == c.scope.connection_epoch
-                                    && responder_connection_epoch == address.connection_epoch
-                            } else {
-                                responder == c.local
-                                    && initiator == address.scope
-                                    && responder_connection_epoch == c.scope.connection_epoch
-                                    && initiator_connection_epoch == address.connection_epoch
-                            };
-                            if !valid {
-                                return Err(err("CHANNEL_SCOPE_MISMATCH"));
-                            }
-                            offered = true;
-                            send(
-                                &mut c.socket,
-                                ClientMessage::Accept {
-                                    scope: c.scope.clone(),
-                                    channel_id: channel.clone(),
-                                    signed_binding: peer.signed_binding.clone(),
-                                },
-                            )
-                            .await?;
-                        }
-                        ServerMessage::ChannelAccepted {
-                            channel_id,
-                            initiator_binding,
-                            responder_binding,
-                            ..
-                        } if channel_id == channel && offered && !accepted => {
-                            let (local_binding, target_binding) = if tls_initiator {
-                                (initiator_binding, responder_binding)
-                            } else {
-                                (responder_binding, initiator_binding)
-                            };
-                            if local_binding != peer.signed_binding
-                                || target_binding != address.signed_binding
-                            {
-                                return Err(err("CHANNEL_SCOPE_MISMATCH"));
-                            }
-                            accepted = true;
-                            let config = json!({"issuer":c.identity.account.issuer(),"local":c.local,"target":address.scope,"channelId":channel,"localEpoch":c.scope.connection_epoch,"targetEpoch":address.connection_epoch,"jwks":self.instance.as_ref().unwrap().jwks,"bootstrap":bootstrap,"tlsInitiator":tls_initiator,"localSignedPeer":local_binding,"targetSignedPeer":target_binding,"certificate":peer.binding.certificate,"trustExpiresAt":jsonwebtoken::get_current_timestamp()+120});
-                            let pkcs8 = key.with_native_pkcs8(|b| Zeroizing::new(b.to_vec()));
-                            sdk = Some(
-                                tokio::task::spawn_blocking(move || {
-                                    let config = serde_json::from_value(config)
-                                        .map_err(|_| "MOBILE_CONFIG_INVALID".to_owned())?;
-                                    moxbots_mobile_core::MobileClient::new(config, pkcs8)
-                                })
-                                .await
-                                .map_err(|_| err("MOBILE_RUNTIME_UNAVAILABLE"))?
-                                .map_err(|_| err("MOBILE_TRUST_INVALID"))?,
-                            );
-                        }
-                        ServerMessage::ChannelReady { channel_id, .. }
-                            if channel_id == channel && accepted =>
-                        {
-                            let client =
-                                sdk.as_mut().ok_or_else(|| err("CHANNEL_OFFER_MISSING"))?;
-                            client
-                                .execute(
-                                    serde_json::from_value(json!({"kind":"relay-ready"})).unwrap(),
-                                )
-                                .map_err(|_| err("MOBILE_CHANNEL_INVALID"))?;
-                        }
-                        ServerMessage::Credit {
-                            channel_id,
-                            sequence,
-                            received_bytes,
-                            ..
-                        } if channel_id == channel => {
-                            sdk.as_mut()
-                                .ok_or_else(|| err("CHANNEL_OFFER_MISSING"))?
-                                .relay_credit(sequence, received_bytes)
-                                .map_err(|_| err("MOBILE_CHANNEL_INVALID"))?;
-                        }
-                        ServerMessage::Error { code, .. } => {
-                            return Err(NetworkError::cloud(&code, 400))
-                        }
-                        ServerMessage::ChannelClosed { channel_id, .. }
-                            if channel_id == channel =>
-                        {
-                            return Err(err("MOBILE_SESSION_UNKNOWN"))
-                        }
-                        _ => return Err(err("MOBILE_CHANNEL_CHANGED")),
-                    }
-                }
-                Some(Ok(Message::Binary(frame))) => {
-                    let client = sdk.as_mut().ok_or_else(|| err("CHANNEL_OFFER_MISSING"))?;
-                    let events = client
-                        .feed_frame(&frame)
-                        .map_err(|_| err("MOBILE_CHANNEL_INVALID"))?;
-                    if let Some((sequence, received_bytes)) = client
-                        .take_received_credit()
-                        .map_err(|_| err("MOBILE_CHANNEL_INVALID"))?
-                    {
-                        send(
-                            &mut c.socket,
-                            ClientMessage::Credit {
-                                scope: c.scope.clone(),
-                                channel_id: channel.clone(),
-                                sequence,
-                                received_bytes,
-                            },
-                        )
-                        .await?;
-                    }
-                    if events["status"]["ready"] == true && !queued {
-                        // Re-resolve immediately before any remote effect; the directory is not a grant.
-                        let fresh = c
-                            .transport
-                            .device_address(&c.identity.token, &c.local, &target.device)
-                            .await?;
-                        if fresh != address {
-                            return Err(err("HOST_MANAGEMENT_TARGET_CHANGED"));
-                        }
-                        if request.mutation() {
-                            let op = request
-                                .operation_id()
-                                .ok_or_else(|| err("MOBILE_OPERATION_REQUIRED"))?
-                                .as_uuid()
-                                .to_string();
-                            let record = format!("operation:{op}");
-                            let scope = journal_scope(&c.identity.scope)?;
-                            if self
-                                .store
-                                .read_record(&scope, &record)
-                                .map_err(store_error)?
-                                .is_some()
-                            {
-                                return Err(err("MOBILE_RECEIPT_REQUIRED"));
-                            }
-                            let mut pending = self.pending_operations(&scope)?;
-                            if !pending.contains(&op) {
-                                if pending.len() >= 128 {
-                                    return Err(err("MOBILE_JOURNAL_LIMIT"));
-                                }
-                                pending.push(op.clone());
-                                self.store
-                                    .write_record(
-                                        &scope,
-                                        "pending-operations",
-                                        &serde_json::to_vec(&pending)
-                                            .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
-                                    )
-                                    .map_err(store_error)?;
-                            }
-                            let prepared = client
-                                .execute(
-                                    serde_json::from_value(
-                                        json!({"kind":"prepare","request":request}),
-                                    )
-                                    .map_err(|_| err("MOBILE_INTENT_INVALID"))?,
-                                )
-                                .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
-                            let bytes = Zeroizing::new(
-                                serde_json::to_vec(&prepared["record"])
-                                    .map_err(|_| err("MOBILE_INTENT_INVALID"))?,
-                            );
-                            self.store
-                                .write_record(&scope, &record, &bytes)
-                                .map_err(store_error)?;
-                            client.execute(serde_json::from_value(json!({"kind":"commit","operationId":op,"digest":prepared["record"]["digest"]})).map_err(|_|err("MOBILE_INTENT_INVALID"))?).map_err(|_|err("MOBILE_RECEIPT_REQUIRED"))?;
-                        } else {
-                            client
-                                .execute(
-                                    serde_json::from_value(
-                                        json!({"kind":"request","request":request}),
-                                    )
-                                    .map_err(|_| err("MOBILE_INTENT_INVALID"))?,
-                                )
-                                .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
-                        }
-                        queued = true;
-                    }
-                    if let Some(values) = events["events"].as_array() {
-                        for event in values {
-                            if event["kind"] == "response" {
-                                let data = event["data"].clone();
-                                if request.mutation() && data["kind"] == "snapshot"
-                                    || data["kind"] == "receipt"
-                                        && ["accepted", "rejected"]
-                                            .iter()
-                                            .any(|status| data["status"] == *status)
-                                {
-                                    if let Some(op) = request.operation_id() {
-                                        let scope = journal_scope(&c.identity.scope)?;
-                                        let op = op.as_uuid().to_string();
-                                        self.store
-                                            .write_record(
-                                                &scope,
-                                                &format!("operation:{op}"),
-                                                b"{\"confirmed\":true}",
-                                            )
-                                            .map_err(store_error)?;
-                                        let mut pending = self.pending_operations(&scope)?;
-                                        pending.retain(|id| id != &op);
-                                        self.store
-                                            .write_record(
-                                                &scope,
-                                                "pending-operations",
-                                                &serde_json::to_vec(&pending)
-                                                    .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
-                                            )
-                                            .map_err(store_error)?;
-                                    }
-                                }
-                                return Ok(data);
-                            }
-                            if event["kind"] == "error" {
-                                return Err(NetworkError::cloud(
-                                    event["code"].as_str().unwrap_or("MOBILE_SESSION_UNKNOWN"),
-                                    400,
-                                ));
-                            }
-                        }
-                    }
-                }
-                _ => return Err(err("MOBILE_SESSION_UNKNOWN")),
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1108,7 +759,7 @@ mod tests {
             Ok(())
         }
     }
-    fn owner() -> MobileConnection {
+    pub(super) fn owner() -> MobileConnection {
         MobileConnection::new(
             NativeConfig {
                 issuer: "https://mobile.example.test".into(),
