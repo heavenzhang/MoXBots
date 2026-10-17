@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/mobile-notify-backend-20261018 -->
 <!-- git-project-sync-task:base=9269dd8c52c423a180bfba366c8f0434a90db005 -->
-<!-- git-project-sync-task:status=ready-for-handoff -->
+<!-- git-project-sync-task:status=ready-for-review -->
 
 # Task: Implement authenticated mobile notification source and provider delivery
 
