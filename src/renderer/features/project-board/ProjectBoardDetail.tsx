@@ -2,7 +2,7 @@ import SessionWorkProgress from './SessionWorkProgress';
 import SessionExecutionTime from './SessionExecutionTime';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { taskGet, taskRun, taskRerun, taskUpdateStatus } from '@/api/taskCenter';
+import { taskGet, taskRun, taskRerun } from '@/api/taskCenter';
 import { TaskDocBlock } from '@/components/task-center/TaskDocBlock';
 import { CloseIcon } from '@/components/icons';
 import PanelResizeHandle, { usePanelWidth, type PanelWidthConfig } from '@/components/PanelResizeHandle';
@@ -68,17 +68,16 @@ export default function ProjectBoardDetail({ row, workspacePath, isActive, now, 
     return () => window.removeEventListener('keydown', handleKey);
   }, [isActive, busy, onClose, overlay]);
   const onDocError = useCallback((message: string) => setError(message), []);
-  async function act(kind: 'run' | 'rerun' | 'done') {
+  async function act(kind: 'run' | 'rerun') {
     if (!task || busy || organizing || !loaded || task.executionState) return;
     readGeneration.current += 1;
     setBusy(true); setError(null);
     try {
-      if (kind === 'done') await taskUpdateStatus({ id: task.id, status: 'done', message: draft.trim() || undefined });
-      else if (kind === 'run') await taskRun(task.id);
+      if (kind === 'run') await taskRun(task.id);
       else await taskRerun(task.id);
       const next = await taskGet(task.id);
       if (!next) throw new Error(t('projectBoard.unavailable'));
-      if (mounted.current) { setDetail(next); if (kind === 'done') onDraftChange(''); onChanged(); }
+      if (mounted.current) { setDetail(next); onChanged(); }
     } catch (e) { if (mounted.current) setError(String(e)); }
     finally { if (mounted.current) setBusy(false); }
   }
@@ -113,7 +112,7 @@ export default function ProjectBoardDetail({ row, workspacePath, isActive, now, 
         {task && loaded ? <section className="pb-detail-section"><h3>{t('projectBoard.taskDocument')}</h3><TaskDocBlock task={task} doc="task" emptyHint={t('projectBoard.noDocument')} reloadKey={task.updatedAt} onError={onDocError} />
           {task.docs?.verifyMd && <TaskDocBlock task={task} doc="verify" emptyHint={t('projectBoard.noDocument')} onError={onDocError} />}
           {task.docs?.progressMd && <TaskDocBlock task={task} doc="progress" emptyHint={t('projectBoard.noDocument')} onError={onDocError} />}</section> : !task && <p className="pb-meta">{t('projectBoard.sessionArtifactsHint')}</p>}
-        {task?.status === 'verifying' && <label className="pb-detail-section"><span className="pb-meta">{t('projectBoard.acceptanceNote')}</span><textarea aria-label={t('projectBoard.acceptanceNote')} value={draft} onChange={e => onDraftChange(e.target.value)} disabled={busy} /></label>}
+        {row.reviewReady && task && <label className="pb-detail-section"><span className="pb-meta">{t('projectBoard.acceptanceNote')}</span><textarea aria-label={t('projectBoard.acceptanceNote')} value={draft} onChange={e => onDraftChange(e.target.value)} disabled={busy} /></label>}
       </>}
       <section className="pb-detail-section"><h3>{t('projectBoard.originalSession')}</h3>{sessionIds.length ? sessionIds.map(id => <button type="button" className="pb-session-link" key={id} onClick={() => onOpenSession(id)}>{row.sessions.find(s => s.id === id)?.title || t('projectBoard.originalSession')}<small>{t('projectBoard.openSession')}</small></button>) : <p className="pb-detail-note">{t('projectBoard.noSession')}</p>}</section>
     </div>
@@ -122,7 +121,6 @@ export default function ProjectBoardDetail({ row, workspacePath, isActive, now, 
       {onOrganize && <button className="pb-button" type="button" disabled={busy || !loaded || organizing} title={row.group === 'archived' ? undefined : t('projectBoard.archiveHint')} onClick={onOrganize}>{t(row.group === 'archived' ? 'projectBoard.restore' : 'projectBoard.archive')}</button>}
       {task?.executor === 'agent' && task.status === 'todo' && row.group === 'todo' && <button className="pb-button primary" type="button" disabled={busy || organizing || !loaded || !!task.executionState} onClick={() => { void act('run'); }}>{t('projectBoard.run')}</button>}
       {canRerun && <button className="pb-button" type="button" disabled={busy || organizing || !loaded || !!task.executionState} onClick={() => { void act('rerun'); }}>{t('projectBoard.rerun')}</button>}
-      {task?.status === 'verifying' && row.confirmationReason === 'verification' && <button className="pb-button primary" type="button" disabled={busy || organizing || !loaded || !!task.executionState} onClick={() => { if (section !== 'artifacts') setSection('artifacts'); else void act('done'); }}>{t(section === 'artifacts' ? 'projectBoard.accept' : 'projectBoard.inspect')}</button>}
       {busy && <span className="pb-meta" role="status">{t('projectBoard.processing')}</span>}
     </div>}
   </aside>;
