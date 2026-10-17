@@ -26,6 +26,10 @@
 ## Deployment request
 Required: macOS arm64 desktop, next unfrozen release. Sole owner 01a12bc2-907a-7702-b6dd-788225c5dfe4; no release takeover, frozen artifact modification or daily App restart. This task may build isolated candidates for acceptance. No cloud/Host/API exposure change or migrations. Preserve existing browser identity state; rollback via prior signed app with compatible config.
 
+## CI repair
+
+PR https://github.com/heavenzhang/MoXBots/pull/100 。首轮JS CI发现验收脚本7处lint，Rust1697通过/1失败，原因旧版本断言60未同步；已修脚本和版本61断言，新增optional Skill断言。完整本地lint及原生fmt复核，等待修复头完整CI。
+
 ## Blockers and unknowns
 正式发布/当前原生会话与完整真实账号验收未完成；不把组件/loopback测试当生产验收。
 

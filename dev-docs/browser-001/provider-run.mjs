@@ -1,14 +1,12 @@
 // Explicit real-provider/browser test. Never runs as part of automatic CI.
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
-import { randomBytes, createHash } from 'node:crypto';
-import { spawn, execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createWriteStream } from 'node:fs';
 import { mkdtemp, realpath, mkdir, chmod, readFile, writeFile, symlink, cp } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { tmpdir } from 'node:os';
-import { Readable } from 'node:stream';
 import { appBuildDefines } from '../../scripts/app-build-profile.mjs';
 import { networkProfile } from '../title-session-acceptance/sandbox.mjs';
 const [mode, credentialPath, executablePath] = process.argv.slice(2);
@@ -55,7 +53,7 @@ const upstream = createServer(async (req, res) => {
     if (reply.body) for await (const chunk of reply.body) { replyText += Buffer.from(chunk).toString(); res.write(chunk); }
     res.end();
     row.usage = [];
-    for (const line of replyText.split('\n')) if (line.startsWith('data:')) { try { const e = JSON.parse(line.slice(5)); const usage = e.usage ?? e.message?.usage; if (usage) row.usage.push(usage); } catch {} }
+    for (const line of replyText.split('\n')) if (line.startsWith('data:')) { try { const e = JSON.parse(line.slice(5)); const usage = e.usage ?? e.message?.usage; if (usage) row.usage.push(usage); } catch { /* SSE control line or an already exited owned process. */ } }
     await writeFile(join(home, `upstream-${row.index}.txt`), replyText, { mode: 0o600 });
   } catch (error) { failure ??= String(error); if (!res.headersSent) res.writeHead(403); res.end('{}'); }
 });
@@ -119,11 +117,11 @@ await build({ entryPoints: [join(import.meta.dirname, 'provider-child.ts')], out
 const reservation = createServer(); await new Promise(r => reservation.listen(0, '127.0.0.1', r)); const inbound = reservation.address().port; await new Promise(r => reservation.close(r));
 const child = spawn('/usr/bin/sandbox-exec', ['-p', networkProfile(inbound, [upstream.address().port, app.address().port]), process.execPath, bundle], { cwd: home, detached: true, env: { HOME: home, USER: 'browser-qa', LOGNAME: 'browser-qa', TMPDIR: home, PATH: '/Applications/MoXBots.app/Contents/Resources/nodejs/bin:/usr/bin:/bin', LANG: 'en_US.UTF-8', CLAUDE_CONFIG_DIR: join(home, '.claude'), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', MYAGENTS_MANAGEMENT_PORT: String(app.address().port), MYAGENTS_SIDECAR_ID: 'browser-test-sidecar' }, stdio: ['ignore','pipe','pipe'] });
 const log = createWriteStream(join(home, 'child.log'), { mode: 0o600 }); child.stdout.pipe(log); child.stderr.pipe(log);
-const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGTERM'); } catch {} }, 240000);
+const timer = setTimeout(() => { try { process.kill(-child.pid, 'SIGTERM'); } catch { /* SSE control line or an already exited owned process. */ } }, 240000);
 let code;
 try { code = await new Promise((r, reject) => { child.once('error', reject); child.once('close', r); }); }
 finally {
- clearTimeout(timer); try { process.kill(-child.pid, 'SIGKILL'); } catch {}
+ clearTimeout(timer); try { process.kill(-child.pid, 'SIGKILL'); } catch { /* SSE control line or an already exited owned process. */ }
  if (code === 0 && pageReceipt) {
    await registry.closeSessionContext(binding.productSessionId);
    binding = { ...binding, productSessionId: 'browser-test-second-session' };
