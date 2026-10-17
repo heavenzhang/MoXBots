@@ -18,7 +18,11 @@ struct ThreadEnv {
   JavaVM *vm; JNIEnv *env = nullptr; bool attached = false;
   explicit ThreadEnv(JavaVM *value): vm(value) {
     if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_EDETACHED) {
+      #if defined(__ANDROID__)
       attached = vm->AttachCurrentThread(&env, nullptr) == JNI_OK;
+#else
+      attached = vm->AttachCurrentThread(reinterpret_cast<void **>(&env), nullptr) == JNI_OK;
+#endif
     }
   }
   ~ThreadEnv() { if (attached) vm->DetachCurrentThread(); }

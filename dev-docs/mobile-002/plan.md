@@ -53,3 +53,7 @@ No cost savings or runtime model confirmation inferred from requested settings. 
 ### Representative UI gate
 
 Baseline: accepted V6 `MoxBot/output/mobile-prototype/MOXBOTS-MOBILE-001/qa-v6/06-after-current.png`. Native target widths390/360; current browser fixture is partial evidence, never native keyboard/inset proof. One compact toolbar; one-line resting composer with real mic icon; central transcript priority. Critical journeys: Bot selection/list/new/send/continue/back-draft, query unknown receipt without resending, refresh exact approval, plus/result/detail cancel/back. Visual, interaction and responsive checks remain separate. First actual page must pass before repeated full account/settings/file page patterns are expanded.
+
+### Native build checkpoint
+
+Primary core27/connection66 test reruns passed. Actual Android arm64 core release9m17s, connection release10m14s; aligned-verifier connection rebuild33.85s. JNI initially failed because Android and macOS JNI attach signatures differ; the target-specific signature fix then compiled and linked successfully using the actual Android NDK. These timings are observed wall times, not model usage/cost savings. Dedicated Android AVD created and booting; complete Expo APK Gradle build is in progress. Mac locked during App Store readback, manual unlock requested. Current independent UI retest is blocked by IAB availability and locking; no current UI gate is inferred from source checks.

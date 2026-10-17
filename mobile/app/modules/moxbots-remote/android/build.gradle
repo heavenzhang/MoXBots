@@ -16,8 +16,11 @@ def metadataText = providers.exec {
     'aarch64-linux-android', '--manifest-path', connectionManifest
 }.standardOutput.asText.get()
 def metadata = new JsonSlurper().parseText(metadataText)
-def verifier = metadata.packages.find { it.name == 'rustls-platform-verifier-android' }
-if (verifier == null) throw new GradleException('Locked Android TLS verifier dependency missing')
+def verifiers = metadata.packages.findAll { it.name == 'rustls-platform-verifier-android' }
+if (verifiers.size() != 1) {
+  throw new GradleException('Android TLS verifier must have one locked Java/Rust version; align Cargo.lock before building')
+}
+def verifier = verifiers.first()
 def verifierMaven = new File(new File(verifier.manifest_path).parentFile, 'maven')
 repositories {
   maven { url = verifierMaven.toURI(); metadataSources { artifact() } }
