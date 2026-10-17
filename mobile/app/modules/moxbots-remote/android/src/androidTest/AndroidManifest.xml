@@ -1,4 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Match the production config plugin's package-visibility query for the
+       library's standalone instrumentation host. -->
+  <queries>
+    <intent>
+      <action android:name="android.speech.RecognitionService" />
+    </intent>
+  </queries>
   <!-- Library instrumentation has its own application, separate from Expo's
        generated app manifest. Exercise the real provider through its resolver. -->
   <application>
