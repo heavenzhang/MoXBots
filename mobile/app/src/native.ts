@@ -171,9 +171,10 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
 
 export const isFixtureMode = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_MOBILE_QA === '1';
 
-export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
+export type QaScenario = 'conversation' | 'multi-bot' | 'no-bots' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
 export const qaScenarioOptions: readonly { id: QaScenario; label: string }[] = [
   { id: 'conversation', label: '会话' }, { id: 'multi-bot', label: '多 Bot / 离线' },
+  { id: 'no-bots', label: '尚无可用 Bot' },
   { id: 'offline', label: '全部离线' }, { id: 'approval', label: '审批 / 拒绝' },
   { id: 'stale-approval', label: '过期审批' }, { id: 'unknown-receipt', label: '回执未知' },
   { id: 'reset-unknown', label: '重启后未确认' },

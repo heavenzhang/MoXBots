@@ -1,6 +1,6 @@
-import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, PendingOperation, SessionRequest, Snapshot, Target } from '../src/native';
+import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, PendingOperation, QaScenario, SessionRequest, Snapshot, Target } from '../src/native';
 
-export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
+export type { QaScenario } from '../src/native';
 
 const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-identity-main', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
 const offlineTarget: Target = { targetId: 'qa-offline-target', identityKey: 'qa-identity-offline', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
@@ -42,6 +42,7 @@ export function fixtureReply(intent: NativeIntent): unknown {
   }
   if (intent.kind === 'targets.list') {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
+    if (scenario === 'no-bots') return { kind: 'targets', items: [], hasMore: false };
     return { kind: 'targets', items: scenario === 'multi-bot' ? [target, offlineTarget] : scenario === 'offline' ? [offlineTarget] : [target], hasMore: false };
   }
   if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [
