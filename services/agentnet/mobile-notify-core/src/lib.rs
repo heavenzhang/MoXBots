@@ -813,15 +813,22 @@ impl Store {
              FROM endpoints WHERE network_id=?1 AND revoked_at IS NULL
                AND (?2 IS NULL OR endpoint_id>?2) ORDER BY endpoint_id LIMIT ?3",
         ).map_err(|_| NotifyError::Storage)?;
-        let rows = statement.query_map(
-            params![network_id, after_endpoint_id, limit as i64],
-            |row| Ok((
-                row.get::<_, String>(0)?, row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?, row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?, row.get::<_, String>(5)?,
-                row.get::<_, Option<String>>(6)?,
-            )),
-        ).map_err(|_| NotifyError::Storage)?;
+        let rows = statement
+            .query_map(
+                params![network_id, after_endpoint_id, limit as i64],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, i64>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                    ))
+                },
+            )
+            .map_err(|_| NotifyError::Storage)?;
         let mut result = Vec::new();
         for row in rows {
             let (endpoint_id, principal, device, binding, generation, provider, handle) =
@@ -830,7 +837,10 @@ impl Store {
             result.push(EndpointCandidate {
                 endpoint_id,
                 authority: Authority::from_validated_service_state(
-                    principal, network_id, device, binding,
+                    principal,
+                    network_id,
+                    device,
+                    binding,
                     u64::try_from(generation).map_err(|_| NotifyError::Storage)?,
                 )?,
                 provider: Provider::parse(&provider)?,
@@ -1785,23 +1795,40 @@ mod tests {
         let installation = installation_id("session-rotation-install");
         let old_handle = "77777777-7777-4777-8777-777777777777";
         let new_handle = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-        let endpoint = store.register_endpoint_for_session(
-            &auth, old_handle,
-            RegisterEndpointV1::new(Provider::Fcm, &installation, "same-token").unwrap(),
-            10,
-        ).unwrap();
+        let endpoint = store
+            .register_endpoint_for_session(
+                &auth,
+                old_handle,
+                RegisterEndpointV1::new(Provider::Fcm, &installation, "same-token").unwrap(),
+                10,
+            )
+            .unwrap();
         let hint = hint("88888888-8888-4888-8888-888888888888", "private-session");
-        store.enqueue_hint(&auth, &target(&auth, "agent-main"),
-            "99999999-9999-4999-8999-999999999999", &hint, 11, 100).unwrap();
+        store
+            .enqueue_hint(
+                &auth,
+                &target(&auth, "agent-main"),
+                "99999999-9999-4999-8999-999999999999",
+                &hint,
+                11,
+                100,
+            )
+            .unwrap();
         let old = FreshEndpoint::from_validated_service_state(
-            endpoint.as_str(), auth.clone(), old_handle,
-        ).unwrap();
+            endpoint.as_str(),
+            auth.clone(),
+            old_handle,
+        )
+        .unwrap();
         let claim = store.claim_due(&old, 12, 1).unwrap().remove(0);
-        let rotated = store.register_endpoint_for_session(
-            &auth, new_handle,
-            RegisterEndpointV1::new(Provider::Fcm, &installation, "same-token").unwrap(),
-            13,
-        ).unwrap();
+        let rotated = store
+            .register_endpoint_for_session(
+                &auth,
+                new_handle,
+                RegisterEndpointV1::new(Provider::Fcm, &installation, "same-token").unwrap(),
+                13,
+            )
+            .unwrap();
         assert_eq!(rotated, endpoint);
         assert!(!store.claim_is_current(&old, &claim, 14).unwrap());
         let candidates = store.endpoint_candidates_page(NETWORK, None, 10).unwrap();
@@ -1820,14 +1847,29 @@ mod tests {
             .revoke_endpoint(&auth, new_handle, &endpoint, 17)
             .unwrap();
 
-        store.connection.lock().unwrap().execute(
-            "UPDATE endpoints SET session_handle=NULL,revoked_at=NULL WHERE endpoint_id=?1",
-            [endpoint.as_str()],
-        ).unwrap();
-        store.connection.lock().unwrap().pragma_update(None, "user_version", 1).unwrap();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE endpoints SET session_handle=NULL,revoked_at=NULL WHERE endpoint_id=?1",
+                [endpoint.as_str()],
+            )
+            .unwrap();
+        store
+            .connection
+            .lock()
+            .unwrap()
+            .pragma_update(None, "user_version", 1)
+            .unwrap();
         drop(store);
         let reopened = Store::open(dir.path()).unwrap();
-        assert!(reopened.endpoint_candidates(PRINCIPAL, NETWORK).unwrap().is_empty());
+        assert!(
+            reopened
+                .endpoint_candidates(PRINCIPAL, NETWORK)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
