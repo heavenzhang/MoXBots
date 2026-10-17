@@ -146,3 +146,15 @@ Raw private diagnostics: `/tmp/moxbots-full-e2e-owner-identity-red4.log` and
 `/tmp/moxbots-full-e2e-outer-timeout.log`.
 The final dedicated full-source TypeScript check exited 0 with no diagnostics;
 ESLint and runner syntax also exited 0 after the identity/timeout changes.
+
+### Rust formatting and lint gates
+
+All three new Rust fixture files pass direct `rustfmt --check` for their crate
+editions. `cargo clippy --locked --tests -- -D warnings` passes for mobile
+connection (16.98s) and AgentNet service (9.82s). The same strict whole-headless
+command still fails only the two documented parent baseline
+`clippy::too_many_arguments` findings in original
+`owned_login::raw_request_with_limits` and `connector::handle_management_events`.
+No production lint suppression was added. The actual existing headless CI gate
+`cargo clippy --locked --all-targets -- -D clippy::disallowed_methods
+-D clippy::disallowed_macros` passes (4.78s), retaining those two baseline warnings.
