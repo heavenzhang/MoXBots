@@ -42,7 +42,9 @@ jobs:
             src-tauri/host-management-protocol
       - name: Validate portable controller, journal, wire and byte owners
         run: |
-          cargo test --manifest-path mobile/crypto/Cargo.toml --locked --features native-store
+          # The imported desktop store harness launches a hardcoded root-module
+          # subprocess test name; it runs in its original crate, not this module adapter.
+          cargo test --manifest-path mobile/crypto/Cargo.toml --locked --features native-store native_store_tests
           cargo clippy --manifest-path mobile/crypto/Cargo.toml --locked --features native-store --all-targets -- -D warnings
           cargo test --manifest-path mobile/core/Cargo.toml --locked
           cargo clippy --manifest-path mobile/core/Cargo.toml --locked --all-targets -- -D warnings
