@@ -26,7 +26,7 @@ crypto key adapter from parent c795947a is locally cherry-picked as 3e0c6f9c.
 - [ ] Integrated native login/WSS/SessionEngine/notification/file/voice acceptance (parent).
 - [ ] Main / remote delivery and production release (parent; outside worker authority).
 
-## Implemented
+## Completed
 
 `mobile/core/include/mox_mobile.h` is the native ABI contract; buffers include status,
 length and owned data. `src/agent_network.rs` adapts a native pinned trust snapshot to
@@ -56,7 +56,7 @@ No fake completion, automatic resend, or protocol changes to existing v1.
 - Initial clippy diagnosed shared original channel constructor arity; import preserves
   original signatures using same targeted allowance as headless-network.
 
-## Blockers and next step
+## Blockers and unknowns
 
 Parent integrates this local branch/commit and connects native account/WSS owner.
 Final worker test, lint, release and dynamic C ABI checks passed; native gates remain open. Android license
@@ -94,3 +94,14 @@ Accepted test and full 128-record capacity recovery test passed. Connection owne
 confirmed persistent native markers survive key rotation/new handles and prune only
 confirmed full bodies; unknown full records remain on disk. Final 27 tests, clippy
 and host release passed after this change.
+
+## Next step
+
+Continue MOXBOTS-MOBILE-002 versioned asset extension in this branch. Parent owns
+remote publication needed by the resume gate; worker does not push or merge.
+New ownership: mobile/core, mobile/asset-store, remote_assets.rs plus necessary
+management codec additions, shared remoteAssets.ts and parity fixtures/tests.
+Original session.remote v1 and outer vendored public protocol remain unchanged.
+Pure store receives authenticated native scope; parent wires actual Host/runtime.
+Android NDK is now authorized and installing/being validated by parent; historical
+license blocker above is resolved. iOS SDK/system-admin setup remains parent-owned.
