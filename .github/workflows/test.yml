@@ -38,6 +38,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: mobile/connection
+          cache-on-failure: true
       - run: npm ci --prefix mobile/app
       - name: Build complete app with actual Expo, Pods and Rust framework
         env:
