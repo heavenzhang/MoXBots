@@ -1,9 +1,9 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronDown, Download, Eye, FileText, Image as ImageIcon, Pause, Play, RefreshCw, Share2, Trash2 } from 'lucide-react-native';
-import { artifactListBelongsToOwner, ArtifactDownloadTracker, type ArtifactOwner } from './artifactPolicy';
+import { artifactEventMatchesDescriptor, artifactListBelongsToOwner, ArtifactDownloadTracker, ArtifactRowBusyTracker, type ArtifactOwner } from './artifactPolicy';
 import { ArtifactActionReply, ArtifactDescriptor, ArtifactDownload, isFixtureMode, QaArtifactScenario, qaArtifactScenarioOptions, requestNative, selectQaArtifactScenario, subscribeArtifactDownloadChanges, Target } from './native';
 
 const color = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', canvas: '#F7F8F6', green: '#26734D', wash: '#E9F3ED', red: '#A7433B' };
@@ -47,8 +47,13 @@ export default function ArtifactScreen() {
   const [items, setItems] = useState<ArtifactDescriptor[]>([]);
   const [downloads, setDownloads] = useState<Record<string, ArtifactDownload>>({});
   const [unknown, setUnknown] = useState<Record<string, boolean>>({});
+  const [statusNeedsCheck, setStatusNeedsCheck] = useState<Record<string, boolean>>({});
+  const downloadsRef = useRef(downloads);
+  const unknownRef = useRef(unknown);
+  useEffect(() => { downloadsRef.current = downloads; }, [downloads]);
+  useEffect(() => { unknownRef.current = unknown; }, [unknown]);
   const [busyIds, setBusyIds] = useState<Record<string, boolean>>({});
-  const busyIdsRef = useRef(new Set<string>());
+  const busyTrackerRef = useRef(new ArtifactRowBusyTracker());
   const [removeConfirmId, setRemoveConfirmId] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
@@ -60,15 +65,19 @@ export default function ArtifactScreen() {
   const [qaScenario, setQaScenario] = useState<QaArtifactScenario>('normal');
 
   const routeIsCurrent = useCallback((epoch: number) => routeActiveRef.current && routeEpochRef.current === epoch && AppState.currentState === 'active', []);
-  const claimRow = useCallback((artifactId: string): boolean => {
-    if (busyIdsRef.current.has(artifactId)) return false;
-    busyIdsRef.current.add(artifactId);
+  const claimRow = useCallback((artifactId: string, epoch: number) => {
+    if (!routeIsCurrent(epoch)) return null;
+    const flight = busyTrackerRef.current.claim(artifactId, epoch);
+    if (!flight) return null;
     setBusyIds((prior) => ({ ...prior, [artifactId]: true }));
-    return true;
+    return flight;
+  }, [routeIsCurrent]);
+  const releaseRow = useCallback((flight: ReturnType<ArtifactRowBusyTracker['claim']>) => {
+    if (flight && busyTrackerRef.current.release(flight)) setBusyIds((prior) => ({ ...prior, [flight.artifactId]: false }));
   }, []);
-  const releaseRow = useCallback((artifactId: string) => {
-    busyIdsRef.current.delete(artifactId);
-    setBusyIds((prior) => ({ ...prior, [artifactId]: false }));
+  const resetBusyRows = useCallback(() => {
+    busyTrackerRef.current.reset();
+    setBusyIds({});
   }, []);
 
   const loadPage = useCallback(async (epoch: number, currentOwner: ArtifactOwner, before: string | null, reset: boolean) => {
@@ -87,9 +96,15 @@ export default function ArtifactScreen() {
       const unique = [...new Map(combined.map((item) => [item.artifactId, item])).values()];
       itemsRef.current = unique;
       setItems(unique);
+      if (reset) {
+        setStatusNeedsCheck((prior) => {
+          const next = { ...prior };
+          for (const item of response.items) if (!downloadsRef.current[item.artifactId] && !unknownRef.current[item.artifactId]) next[item.artifactId] = true;
+          return next;
+        });
+      }
       setHasMore(response.hasMore);
       setNextBefore(response.nextBefore);
-      setUnknown({});
     } catch (reason) {
       if (routeIsCurrent(epoch)) setNotice(noticeFor(reason));
     } finally {
@@ -102,7 +117,7 @@ export default function ArtifactScreen() {
     if (!routeIsCurrent(epoch)) return;
     listFlightRef.current = null;
     setLoading(true); setLoadingMore(false); setNotice(null); setTarget(null); setNoSession(false);
-    ownerRef.current = null; itemsRef.current = []; setItems([]); setDownloads({}); setUnknown({});
+    ownerRef.current = null; itemsRef.current = []; setItems([]); setDownloads({}); setUnknown({}); setStatusNeedsCheck({});
     if (!routeTargetId) { setNotice({ text: '没有指定会话成果。请从会话页的成果入口打开。' }); setLoading(false); return; }
     try {
       const accountReply = await requestNative({ version: 1, kind: 'account.status' });
@@ -128,13 +143,15 @@ export default function ArtifactScreen() {
   useFocusEffect(useCallback(() => {
     routeActiveRef.current = true;
     const epoch = ++routeEpochRef.current;
+    resetBusyRows();
     void loadContext(epoch);
     const eventSubscription = subscribeArtifactDownloadChanges((event) => {
-      if (!routeIsCurrent(routeEpochRef.current) || !trackerRef.current.acceptEvent(event, trackerEpochRef.current)) return;
+      if (!routeIsCurrent(routeEpochRef.current)) return;
       const currentOwner = ownerRef.current;
-      if (!currentOwner || !scopeMatchesDownload(event, currentOwner)) return;
+      if (!currentOwner) return;
       const descriptor = itemsRef.current.find((item) => item.artifactId === event.artifactId);
-      if (!descriptor || descriptor.name !== event.name || descriptor.mimeType !== event.mimeType || descriptor.sha256 !== event.sha256) return;
+      if (!descriptor || !artifactEventMatchesDescriptor(event, descriptor, currentOwner)
+        || !trackerRef.current.acceptEvent(event, trackerEpochRef.current)) return;
       setDownloads((prior) => ({ ...prior, [event.artifactId]: event }));
       setUnknown((prior) => ({ ...prior, [event.artifactId]: false }));
     });
@@ -143,11 +160,13 @@ export default function ArtifactScreen() {
         const resumedEpoch = ++routeEpochRef.current;
         trackerRef.current.blur();
         ownerRef.current = null;
+        resetBusyRows();
         void loadContext(resumedEpoch);
       } else if (nextState !== 'active') {
         ++routeEpochRef.current;
         trackerRef.current.blur();
         ownerRef.current = null;
+        resetBusyRows();
       }
     });
     return () => {
@@ -156,10 +175,11 @@ export default function ArtifactScreen() {
       trackerRef.current.blur();
       trackerEpochRef.current = 0;
       ownerRef.current = null;
+      resetBusyRows();
       eventSubscription();
       appStateSubscription.remove();
     };
-  }, [loadContext, routeIsCurrent]));
+  }, [loadContext, resetBusyRows, routeIsCurrent]));
 
   const queryStatus = useCallback(async (descriptor: ArtifactDescriptor, epoch = routeEpochRef.current): Promise<ArtifactDownload | null> => {
     const currentOwner = ownerRef.current;
@@ -172,6 +192,7 @@ export default function ArtifactScreen() {
         if (trackerRef.current.acceptAbsence(flight)) {
           setDownloads((prior) => { const next = { ...prior }; delete next[descriptor.artifactId]; return next; });
           setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: false }));
+          setStatusNeedsCheck((prior) => ({ ...prior, [descriptor.artifactId]: false }));
         }
         return trackerRef.current.latest(descriptor.artifactId, trackerEpochRef.current);
       }
@@ -184,13 +205,16 @@ export default function ArtifactScreen() {
     if (trackerRef.current.acceptReply(response, flight)) {
       setDownloads((prior) => ({ ...prior, [descriptor.artifactId]: response }));
       setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: false }));
+      setStatusNeedsCheck((prior) => ({ ...prior, [descriptor.artifactId]: false }));
     }
     return trackerRef.current.latest(descriptor.artifactId, trackerEpochRef.current);
   }, [routeIsCurrent]);
 
   const beginDownload = useCallback(async (descriptor: ArtifactDescriptor, epoch: number) => {
     const currentOwner = ownerRef.current;
-    if (!currentOwner || !routeIsCurrent(epoch) || unknown[descriptor.artifactId] || !claimRow(descriptor.artifactId)) return;
+    if (!currentOwner || !routeIsCurrent(epoch) || unknown[descriptor.artifactId] || trackerRef.current.isUnknown(descriptor.artifactId, trackerEpochRef.current) || statusNeedsCheck[descriptor.artifactId]) return;
+    const busyFlight = claimRow(descriptor.artifactId, epoch);
+    if (!busyFlight) return;
     let downloadDispatched = false;
     try {
       const checked = await queryStatus(descriptor, epoch);
@@ -208,22 +232,26 @@ export default function ArtifactScreen() {
       }
       if (trackerRef.current.acceptReply(response, flight)) setDownloads((prior) => ({ ...prior, [descriptor.artifactId]: response }));
       setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: false }));
+      setStatusNeedsCheck((prior) => ({ ...prior, [descriptor.artifactId]: false }));
       setNotice(null);
     } catch (reason) {
       if (!routeIsCurrent(epoch)) return;
       if (downloadDispatched) {
+        trackerRef.current.markUnknown(descriptor.artifactId, trackerEpochRef.current);
         setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: true }));
         setNotice({ ...noticeFor(reason), text: '下载结果尚未确认。请查询本机状态后再决定下一步；应用不会自动重启下载。' });
       } else setNotice(noticeFor(reason));
     } finally {
-      if (routeIsCurrent(epoch)) releaseRow(descriptor.artifactId);
+      releaseRow(busyFlight);
     }
-  }, [claimRow, queryStatus, releaseRow, routeIsCurrent, unknown]);
+  }, [claimRow, queryStatus, releaseRow, routeIsCurrent, statusNeedsCheck, unknown]);
 
   const runRowAction = useCallback(async (descriptor: ArtifactDescriptor, kind: 'pause' | 'preview' | 'share' | 'remove') => {
     const currentOwner = ownerRef.current;
     const epoch = routeEpochRef.current;
-    if (!currentOwner || !routeIsCurrent(epoch) || !claimRow(descriptor.artifactId)) return;
+    if (!currentOwner || !routeIsCurrent(epoch)) return;
+    const busyFlight = claimRow(descriptor.artifactId, epoch);
+    if (!busyFlight) return;
     setNotice(null);
     const pauseFlight = kind === 'pause' ? trackerRef.current.begin(descriptor.artifactId, trackerEpochRef.current) : null;
     let nativeRejected = false;
@@ -238,34 +266,41 @@ export default function ArtifactScreen() {
       } else {
         if (response.kind !== 'artifact-action' || !actionMatches(response, currentOwner, descriptor, kind)) throw new Error('MOBILE_ARTIFACT_ACTION_INVALID');
         if (kind === 'remove') {
+          trackerRef.current.forget(descriptor.artifactId, trackerEpochRef.current);
           setDownloads((prior) => { const next = { ...prior }; delete next[descriptor.artifactId]; return next; });
           setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: false }));
+          setStatusNeedsCheck((prior) => ({ ...prior, [descriptor.artifactId]: false }));
           setRemoveConfirmId(null);
           setNotice({ text: '已移除本机副本；远端成果仍保留。' });
-        } else setNotice({ text: kind === 'preview' ? '已在系统预览中打开。' : '已交给系统分享。' });
+        } else setNotice({ text: isFixtureMode
+          ? (kind === 'preview' ? '演示：已模拟打开系统预览。' : '演示：已模拟交给系统分享。')
+          : (kind === 'preview' ? '已在系统预览中打开。' : '已交给系统分享。') });
       }
     } catch (reason) {
       if (routeIsCurrent(epoch)) {
         if (nativeRejected) setNotice(noticeFor(reason));
         else {
+          trackerRef.current.markUnknown(descriptor.artifactId, trackerEpochRef.current);
           setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: true }));
           setNotice({ ...noticeFor(reason), text: '操作结果尚未确认。请查询本机状态后再继续；应用不会自动重试。' });
         }
       }
     } finally {
-      if (routeIsCurrent(epoch)) releaseRow(descriptor.artifactId);
+      releaseRow(busyFlight);
     }
   }, [claimRow, releaseRow, routeIsCurrent]);
 
   const refreshStatus = useCallback(async (descriptor: ArtifactDescriptor) => {
     const epoch = routeEpochRef.current;
-    if (!routeIsCurrent(epoch) || !claimRow(descriptor.artifactId)) return;
+    if (!routeIsCurrent(epoch)) return;
+    const busyFlight = claimRow(descriptor.artifactId, epoch);
+    if (!busyFlight) return;
     setNotice(null);
     try {
       const reply = await queryStatus(descriptor, epoch);
       if (routeIsCurrent(epoch)) setNotice({ text: reply ? `本机状态：${downloadStateLabel[reply.state]}。` : '本机没有这项成果的下载记录。' });
     } catch (reason) { if (routeIsCurrent(epoch)) setNotice(noticeFor(reason)); }
-    finally { if (routeIsCurrent(epoch)) releaseRow(descriptor.artifactId); }
+    finally { releaseRow(busyFlight); }
   }, [claimRow, queryStatus, releaseRow, routeIsCurrent]);
 
   const refreshList = useCallback(() => {
@@ -285,6 +320,7 @@ export default function ArtifactScreen() {
     if (!isFixtureMode) return;
     await selectQaArtifactScenario(next);
     setDownloads({}); setUnknown({}); setNotice(null);
+    setStatusNeedsCheck(Object.fromEntries(itemsRef.current.map((item) => [item.artifactId, true])));
     if (ownerRef.current) trackerEpochRef.current = trackerRef.current.activate(ownerRef.current);
     setQaScenario(next); setQaMenuOpen(false);
     refreshList();
@@ -303,7 +339,7 @@ export default function ArtifactScreen() {
       : loading && items.length === 0 ? <View style={styles.loading}><ActivityIndicator color={color.green}/><Text style={styles.stateDetail}>正在读取会话成果…</Text></View>
         : items.length === 0 ? <View style={styles.stateCard}><FileText size={25} color={color.muted}/><Text style={styles.stateTitle}>{target?.online ? '暂无成果' : 'Bot 当前离线'}</Text><Text style={styles.stateDetail}>{target?.online ? '此会话还没有可下载的文件。' : '连接后可重新读取会话成果。'}</Text></View>
           : <ScrollView contentContainerStyle={styles.list}>
-            {items.map((descriptor) => <ArtifactRow key={descriptor.artifactId} descriptor={descriptor} download={downloads[descriptor.artifactId] ?? null} busy={!!busyIds[descriptor.artifactId]} unknown={!!unknown[descriptor.artifactId]} removeConfirm={removeConfirmId === descriptor.artifactId} onDownload={() => void beginDownload(descriptor, routeEpochRef.current)} onStatus={() => void refreshStatus(descriptor)} onPause={() => void runRowAction(descriptor, 'pause')} onPreview={() => void runRowAction(descriptor, 'preview')} onShare={() => void runRowAction(descriptor, 'share')} onRemove={() => setRemoveConfirmId(descriptor.artifactId)} onRemoveCancel={() => setRemoveConfirmId(null)} onRemoveConfirm={() => void runRowAction(descriptor, 'remove')}/>) }
+            {items.map((descriptor) => <ArtifactRow key={descriptor.artifactId} descriptor={descriptor} download={downloads[descriptor.artifactId] ?? null} busy={!!busyIds[descriptor.artifactId]} unknown={!!unknown[descriptor.artifactId]} needsStatusCheck={!!statusNeedsCheck[descriptor.artifactId]} removeConfirm={removeConfirmId === descriptor.artifactId} onDownload={() => void beginDownload(descriptor, routeEpochRef.current)} onStatus={() => void refreshStatus(descriptor)} onPause={() => void runRowAction(descriptor, 'pause')} onPreview={() => void runRowAction(descriptor, 'preview')} onShare={() => void runRowAction(descriptor, 'share')} onRemove={() => setRemoveConfirmId(descriptor.artifactId)} onRemoveCancel={() => setRemoveConfirmId(null)} onRemoveConfirm={() => void runRowAction(descriptor, 'remove')}/>) }
             {hasMore && <Pressable accessibilityRole="button" accessibilityLabel="加载更多成果" disabled={loadingMore} onPress={loadMore} style={styles.moreButton}>{loadingMore ? <ActivityIndicator size="small" color={color.green}/> : <Text style={styles.moreText}>加载更多</Text>}</Pressable>}
           </ScrollView>}
     <Text style={styles.footer}>下载文件只保存在本机；移除本机副本不会删除远端成果。</Text>
@@ -329,19 +365,19 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ArtifactRow({ descriptor, download, busy, unknown, removeConfirm, onDownload, onStatus, onPause, onPreview, onShare, onRemove, onRemoveCancel, onRemoveConfirm }: {
-  descriptor: ArtifactDescriptor; download: ArtifactDownload | null; busy: boolean; unknown: boolean; removeConfirm: boolean;
+function ArtifactRow({ descriptor, download, busy, unknown, needsStatusCheck, removeConfirm, onDownload, onStatus, onPause, onPreview, onShare, onRemove, onRemoveCancel, onRemoveConfirm }: {
+  descriptor: ArtifactDescriptor; download: ArtifactDownload | null; busy: boolean; unknown: boolean; needsStatusCheck: boolean; removeConfirm: boolean;
   onDownload: () => void; onStatus: () => void; onPause: () => void; onPreview: () => void; onShare: () => void;
   onRemove: () => void; onRemoveCancel: () => void; onRemoveConfirm: () => void;
 }) {
-  const state = unknown ? '状态待确认' : download ? downloadStateLabel[download.state] : '尚未下载';
+  const state = unknown ? '状态待确认' : download ? downloadStateLabel[download.state] : needsStatusCheck ? '待检查本机状态' : '尚未下载';
   const progress = download ? Math.min(100, Math.round(download.receivedBytes / Math.max(1, download.totalBytes) * 100)) : 0;
   return <View style={styles.artifactCard}>
     <View style={styles.artifactMain}><View style={styles.fileIcon}>{descriptor.mimeType.startsWith('image/') ? <ImageIcon size={18} color={color.green}/> : <FileText size={18} color={color.green}/>}</View><View style={styles.artifactCopy}><Text numberOfLines={2} style={styles.fileName}>{descriptor.name}</Text><Text numberOfLines={1} style={styles.fileMeta}>{descriptor.mimeType} · {formatBytes(descriptor.sizeBytes)}</Text></View></View>
     <View style={styles.progressRow}><Text style={[styles.statusText, unknown && styles.errorText]}>{state}</Text>{download?.state === 'downloading' && <Text style={styles.statusText}>{progress}% · {formatBytes(download.receivedBytes)} / {formatBytes(download.totalBytes)}</Text>}</View>
     {download?.state === 'downloading' && <View accessibilityRole="progressbar" accessibilityLabel={`${descriptor.name} 下载进度 ${progress}%`} accessibilityValue={{ min: 0, max: 100, now: progress }} style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]}/></View>}
     <View style={styles.actions}>
-      {unknown ? <ActionButton label="查询状态" icon={<RefreshCw size={15} color={color.green}/>} disabled={busy} onPress={onStatus}/>
+      {unknown || needsStatusCheck ? <ActionButton label={unknown ? '查询状态' : '检查本机'} icon={<RefreshCw size={15} color={color.green}/>} disabled={busy} onPress={onStatus}/>
         : download?.state === 'downloading' ? <ActionButton label="暂停" icon={<Pause size={15} color={color.ink}/>} disabled={busy} onPress={onPause}/>
           : download?.state === 'paused' ? <ActionButton label="继续" icon={<Play size={15} color={color.green}/>} disabled={busy} onPress={onDownload}/>
             : download?.state === 'ready' ? <><ActionButton label="预览" icon={<Eye size={15} color={color.green}/>} disabled={busy} onPress={onPreview}/><ActionButton label="分享" icon={<Share2 size={15} color={color.green}/>} disabled={busy} onPress={onShare}/></>

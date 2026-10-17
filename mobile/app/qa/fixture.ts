@@ -42,7 +42,7 @@ export function fixtureReply(intent: NativeIntent): unknown {
   return { kind: 'error', code: 'QA_FIXTURE_OPERATION_UNSUPPORTED' };
 }
 
-export type FixtureArtifactScenario = 'normal' | 'error' | 'late-event';
+export type FixtureArtifactScenario = 'normal' | 'error' | 'late-event' | 'pause-resume';
 let artifactScenario: FixtureArtifactScenario = 'normal';
 const artifactDescriptors: ArtifactDescriptor[] = [
   { artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', name: '移动端体验方案.pdf', mimeType: 'application/pdf', sizeBytes: 84000, sha256: 'a'.repeat(64) },
@@ -50,9 +50,12 @@ const artifactDescriptors: ArtifactDescriptor[] = [
 ];
 const artifactDownloads = new Map<string, ArtifactDownload>();
 const artifactListeners = new Set<(value: ArtifactDownload) => void>();
+const artifactJobGenerations = new Map<string, number>();
+let artifactJobSequence = 0;
 export function selectArtifactScenario(next: FixtureArtifactScenario): void {
   artifactScenario = next;
   artifactDownloads.clear();
+  artifactJobGenerations.clear();
 }
 export function subscribeArtifactDownloadChanges(listener: (value: ArtifactDownload) => void): () => void {
   artifactListeners.add(listener);
@@ -98,14 +101,24 @@ function fixtureArtifactReply(intent: Extract<NativeIntent, { kind: `artifact.${
     mimeType: descriptor.mimeType, sha256: descriptor.sha256, state: 'downloading', receivedBytes: 0,
     totalBytes: descriptor.sizeBytes, errorCode: null };
   artifactDownloads.set(key, base);
+  const generation = ++artifactJobSequence;
+  artifactJobGenerations.set(key, generation);
   const progress = { ...base, receivedBytes: Math.floor(descriptor.sizeBytes / 2) };
   const ready = { ...base, state: 'ready' as const, receivedBytes: descriptor.sizeBytes };
   if (artifactScenario === 'late-event') {
     setTimeout(() => { artifactDownloads.set(key, ready); emitArtifactDownload(ready); }, 20);
     return new Promise((resolve) => setTimeout(() => resolve(base), 120));
   }
-  setTimeout(() => { artifactDownloads.set(key, progress); emitArtifactDownload(progress); }, 80);
-  setTimeout(() => { artifactDownloads.set(key, ready); emitArtifactDownload(ready); }, 220);
+  const progressDelay = artifactScenario === 'pause-resume' ? 120 : 80;
+  const readyDelay = artifactScenario === 'pause-resume' ? 2500 : 220;
+  setTimeout(() => {
+    if (artifactJobGenerations.get(key) !== generation || artifactDownloads.get(key)?.state !== 'downloading') return;
+    artifactDownloads.set(key, progress); emitArtifactDownload(progress);
+  }, progressDelay);
+  setTimeout(() => {
+    if (artifactJobGenerations.get(key) !== generation || artifactDownloads.get(key)?.state !== 'downloading') return;
+    artifactDownloads.set(key, ready); emitArtifactDownload(ready);
+  }, readyDelay);
   return base;
 }
 

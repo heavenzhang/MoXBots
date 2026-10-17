@@ -180,9 +180,9 @@ export async function armQaStaleApproval(): Promise<void> {
   fixture.armStaleApproval();
 }
 
-export type QaArtifactScenario = 'normal' | 'error' | 'late-event';
+export type QaArtifactScenario = 'normal' | 'error' | 'late-event' | 'pause-resume';
 export const qaArtifactScenarioOptions: readonly { id: QaArtifactScenario; label: string }[] = [
-  { id: 'normal', label: '正常下载' }, { id: 'error', label: '下载错误' }, { id: 'late-event', label: '事件先于回执' },
+  { id: 'normal', label: '正常下载' }, { id: 'error', label: '下载错误' }, { id: 'late-event', label: '事件先于回执' }, { id: 'pause-resume', label: '暂停 / 继续' },
 ];
 export async function selectQaArtifactScenario(scenario: QaArtifactScenario): Promise<void> {
   if (!isFixtureMode) return;

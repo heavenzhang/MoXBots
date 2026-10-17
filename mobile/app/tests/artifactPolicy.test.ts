@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ArtifactDownloadTracker, type ArtifactOwner } from '../src/artifactPolicy.ts';
+import { artifactEventMatchesDescriptor, ArtifactDownloadTracker, ArtifactRowBusyTracker, type ArtifactOwner } from '../src/artifactPolicy.ts';
 import type { ArtifactDownload } from '../src/native.ts';
 
 const owner: ArtifactOwner = { targetId: 'target-a', identityKey: 'identity-a', agentId: 'agent-a', sessionId: 'session-a' };
@@ -35,4 +35,59 @@ test('route blur invalidates an outstanding status response', () => {
   const flight = tracker.begin(downloading.artifactId, epoch);
   tracker.blur();
   assert.equal(tracker.acceptReply(downloading, flight), false);
+});
+
+test('confirmed removal and later not-found status clear the tracker so an explicit redownload can start', () => {
+  const tracker = new ArtifactDownloadTracker();
+  const epoch = tracker.activate(owner);
+  const ready = { ...downloading, state: 'ready' as const, receivedBytes: 100 };
+  assert.equal(tracker.acceptReply(ready, tracker.begin(ready.artifactId, epoch)), true);
+  assert.equal(tracker.latest(ready.artifactId, epoch)?.state, 'ready');
+
+  assert.equal(tracker.forget(ready.artifactId, epoch), true); // matching successful artifact.remove reply
+  assert.equal(tracker.latest(ready.artifactId, epoch), null);
+  const statusFlight = tracker.begin(ready.artifactId, epoch);
+  assert.equal(tracker.acceptAbsence(statusFlight), true); // a later explicit status check confirms no local file
+  assert.equal(tracker.latest(ready.artifactId, epoch), null);
+
+  const downloadFlight = tracker.begin(ready.artifactId, epoch);
+  assert.equal(tracker.acceptReply(downloading, downloadFlight), true);
+  assert.equal(tracker.latest(ready.artifactId, epoch)?.state, 'downloading');
+});
+
+test('unknown downloads stay gated until a matching status reply or event resolves them', () => {
+  const tracker = new ArtifactDownloadTracker();
+  const epoch = tracker.activate(owner);
+  assert.equal(tracker.markUnknown(downloading.artifactId, epoch), true);
+  assert.equal(tracker.isUnknown(downloading.artifactId, epoch), true);
+  const mismatched = { ...downloading, name: 'different.pdf' };
+  assert.equal(artifactEventMatchesDescriptor(mismatched, { ...downloading, sizeBytes: 100 }, owner), false);
+  assert.equal(tracker.latest(downloading.artifactId, epoch), null);
+  assert.equal(tracker.isUnknown(downloading.artifactId, epoch), true);
+
+  const statusFlight = tracker.begin(downloading.artifactId, epoch);
+  assert.equal(tracker.acceptReply(downloading, statusFlight), true);
+  assert.equal(tracker.isUnknown(downloading.artifactId, epoch), false);
+});
+
+test('invalid metadata events are rejected before they can replace the tracked artifact state', () => {
+  const tracker = new ArtifactDownloadTracker();
+  const epoch = tracker.activate(owner);
+  const descriptor = { ...downloading, sizeBytes: 100 };
+  const wrongSizeEvent = { ...downloading, totalBytes: 101, state: 'ready' as const, receivedBytes: 100 };
+  assert.equal(artifactEventMatchesDescriptor(wrongSizeEvent, descriptor, owner), false);
+  assert.equal(tracker.latest(downloading.artifactId, epoch), null);
+  assert.equal(tracker.acceptEvent(downloading, epoch), true);
+  assert.equal(tracker.latest(downloading.artifactId, epoch)?.state, 'downloading');
+});
+
+test('blur reset permits a new same-id action and a late old finally cannot release its busy lock', () => {
+  const busy = new ArtifactRowBusyTracker();
+  const oldFlight = busy.claim(downloading.artifactId, 1);
+  assert.ok(oldFlight);
+  busy.reset();
+  const newFlight = busy.claim(downloading.artifactId, 2);
+  assert.ok(newFlight);
+  assert.equal(busy.release(oldFlight), false);
+  assert.equal(busy.release(newFlight), true);
 });
