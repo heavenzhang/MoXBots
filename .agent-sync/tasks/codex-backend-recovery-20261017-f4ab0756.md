@@ -33,4 +33,4 @@ Owned clients now negotiate existing business and management profiles separately
 
 ## Next step
 
-Implement relay metadata/permit/route contract, then exercise actual reconnect through existing owners before enabling capability and delivering main.
+Finish the owned DSH four-platform native build (including the Windows package-manager launch context), validate exact resources and activate the formal selector; then require final-head full App/broad/service CI, review and remote main inclusion. Relay implementation, real socket/TLS recovery and the independent management-race repairs already pass their scoped local gates.

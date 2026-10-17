@@ -11,6 +11,16 @@ const policyRoot = resolve(import.meta.dirname, 'source-patches');
 const policyPath = resolve(policyRoot, 'moxbots-child-approval-context.json');
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+/** Direct Node invocations do not receive npm's lifecycle environment. */
+export function selectedNpmEntrypoint(execPath = process.execPath, env = process.env) {
+  const candidates = [env.npm_execpath,
+    resolve(dirname(execPath), 'node_modules/npm/bin/npm-cli.js'),
+    resolve(dirname(execPath), '../lib/node_modules/npm/bin/npm-cli.js')];
+  const entrypoint = candidates.find(path => path && existsSync(path));
+  if (!entrypoint) throw new Error('npm JS entrypoint is missing from the selected Node toolchain');
+  return entrypoint;
+}
+
 /** Rebuild owned Runtime source; immutable upstream handoffs are never rewritten. */
 export function prepareMoxbotsDshSource({ out, source }) {
   const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
@@ -66,14 +76,15 @@ async function main() {
   const prepared = prepareMoxbotsDshSource({ out: values.out ?? '', source: values.source });
   if (values['source-only']) return process.stdout.write(`${JSON.stringify(prepared)}\n`);
   const env = { ...process.env, PATH: `${dirname(process.execPath)}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}`,
+    npm_execpath: selectedNpmEntrypoint(),
     npm_config_user_agent: `npm/${policy.npmVersion} node/${process.version} ${process.platform} ${process.arch}` };
   const { childCli } = await import(pathToFileURL(join(prepared.checkout, 'scripts/child-cli.mjs')).href);
   const run = (command, args) => {
-    const invocation = childCli(command, args);
+    const invocation = childCli(command, args, env);
     return execFileSync(invocation.command, invocation.args, { cwd: prepared.checkout, env, stdio: 'inherit' });
   };
   const npm = 'npm';
-  const npmInvocation = childCli(npm, ['--version']);
+  const npmInvocation = childCli(npm, ['--version'], env);
   const npmVersion = execFileSync(npmInvocation.command, npmInvocation.args,
     { cwd: prepared.checkout, env, encoding: 'utf8' }).trim();
   if (npmVersion !== policy.npmVersion) throw new Error(`Runtime build requires npm ${policy.npmVersion}; received ${npmVersion}`);
@@ -87,6 +98,7 @@ async function main() {
   if (values['validate-native']) {
     // Same official builder used by upstream native Release targets, with no tag or publication.
     process.env.PATH = env.PATH;
+    process.env.npm_execpath = env.npm_execpath;
     process.env.npm_config_user_agent = env.npm_config_user_agent;
     const { buildNativeHandoff } = await import(pathToFileURL(join(prepared.checkout, 'scripts/build-native-handoff.mjs')).href);
     mkdirSync(work);
