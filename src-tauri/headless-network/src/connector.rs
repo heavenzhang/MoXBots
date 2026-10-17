@@ -1,3 +1,5 @@
+#[path = "catalog.rs"]
+pub(crate) mod catalog;
 #[path = "../../src/agent_network/catalog_ack.rs"]
 pub(crate) mod catalog_ack;
 
@@ -62,8 +64,8 @@ pub(crate) fn hello() -> ClientMessage {
     }
 }
 pub(crate) fn empty_catalog(epoch: String) -> Result<serde_json::Value, NetworkError> {
-    // This dedicated owner exposes no Agent registry or business invoke adapter.
-    // Empty is its explicit product configuration, never a fallback after read failure.
+    // Unmanaged headless owners explicitly expose no registry. Managed owners
+    // must read their original Host registry and never fall back after failure.
     let value = serde_json::to_value(CatalogSnapshot {
         version: 1,
         connection_epoch: epoch,
@@ -565,13 +567,22 @@ async fn connect(
     .await?;
     let (scope, local, _) = initial_hello(&mut socket, &identity).await?;
     publish(owner, path, "catalog", Some(&scope.network_id), false, None)?;
+    let initial_catalog = if let Some(runtime) = management {
+        catalog::read_initial_catalog(runtime.ipc, runtime.binding, &identity, &scope, &local)
+            .await?
+    } else {
+        empty_catalog(scope.connection_epoch.clone())?
+    };
     let uploaded = transport
         .json(
             NetworkRoute::Catalog,
             &identity.token,
-            Some(empty_catalog(scope.connection_epoch.clone())?),
+            Some(initial_catalog),
         )
         .await?;
+    if let Some(runtime) = management {
+        catalog::verify_current(runtime.binding, &identity, &scope, &local)?;
+    }
     catalog_ack::validate_catalog_ack(&uploaded, &scope.connection_epoch, 1).map_err(|error| {
         NetworkError::new(match error {
             catalog_ack::CatalogAckError::Invalid => "CATALOG_INVALID",

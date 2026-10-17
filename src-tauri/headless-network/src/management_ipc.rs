@@ -121,6 +121,11 @@ pub(crate) struct LocalSourceAuthority {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", deny_unknown_fields)]
 pub(crate) enum LocalSourceOperation {
+    #[serde(rename = "catalog.snapshot")]
+    CatalogSnapshot {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cursor: Option<String>,
+    },
     #[serde(rename = "source.peek")]
     Peek,
     #[serde(rename = "source.ack", rename_all = "camelCase")]
@@ -444,6 +449,10 @@ impl ManagementIpc {
         authority: LocalSourceAuthority,
         operation: LocalSourceOperation,
     ) -> Result<Value, NetworkError> {
+        if matches!(&operation, LocalSourceOperation::CatalogSnapshot { cursor: Some(cursor) } if cursor.is_empty() || cursor.len() > 128)
+        {
+            return Err(NetworkError::new("HOST_MANAGEMENT_REQUEST_INVALID"));
+        }
         if authority.account_binding != authority.management_binding
             || authority.connection.network_id != authority.local.network_id
             || authority.connection.service_id != authority.local.service_id
@@ -876,6 +885,70 @@ mod tests {
         };
         let (result, _) = tokio::join!(request, responder);
         assert_eq!(result.unwrap(), serde_json::json!({"kind":"source.empty"}));
+    }
+
+    #[tokio::test]
+    async fn catalog_query_uses_original_private_transport_and_closed_cursor() {
+        use sha2::Digest;
+        let uid = unsafe { libc::geteuid() };
+        let (_dir, config) = test_endpoint(uid);
+        let ipc = ManagementIpc::bind_inner(&config, true).unwrap();
+        let mut node = UnixStream::connect(&config.socket).await.unwrap();
+        let binding = uuid::Uuid::new_v4().to_string();
+        let authority = LocalSourceAuthority {
+            connection: ConnectionScope {
+                service_id: "s".into(),
+                network_id: "n".into(),
+                boot_epoch: "b".into(),
+                connection_epoch: uuid::Uuid::new_v4().to_string(),
+            },
+            local: DeviceScope {
+                service_id: "s".into(),
+                environment: "t".into(),
+                network_id: "n".into(),
+                principal_id: "p".into(),
+                device_id: "d".into(),
+                key_generation: 1,
+            },
+            account_binding: binding.clone(),
+            management_binding: binding,
+        };
+        assert!(serde_json::from_value::<LocalSourceOperation>(
+            serde_json::json!({"kind":"catalog.snapshot","path":"/untrusted"})
+        )
+        .is_err());
+        let operation = LocalSourceOperation::CatalogSnapshot { cursor: None };
+        assert_eq!(
+            serde_json::to_value(&operation).unwrap(),
+            serde_json::json!({"kind":"catalog.snapshot"})
+        );
+        let request = ipc.request_local_source(
+            CanonicalUuid::new(uuid::Uuid::new_v4()),
+            authority.clone(),
+            operation,
+        );
+        let result = serde_json::json!({"kind":"catalog.chunk","observation":format!("{:x}",sha2::Sha256::digest(b"[]")),"offset":0,"dataBase64":"W10=","nextCursor":null});
+        let responder = async {
+            let request = read_message(&mut node).await;
+            assert_eq!(
+                request["operation"],
+                serde_json::json!({"kind":"catalog.snapshot"})
+            );
+            assert!(request["authority"].get("peer").is_none());
+            send_message(&mut node,&serde_json::json!({"kind":"local-source-response","requestId":request["requestId"],"authority":request["authority"],"result":result})).await;
+        };
+        let (received, _) = tokio::join!(request, responder);
+        assert_eq!(received.unwrap(), result);
+        assert!(ipc
+            .request_local_source(
+                CanonicalUuid::new(uuid::Uuid::new_v4()),
+                authority,
+                LocalSourceOperation::CatalogSnapshot {
+                    cursor: Some("x".repeat(129))
+                }
+            )
+            .await
+            .is_err());
     }
 
     #[tokio::test]
