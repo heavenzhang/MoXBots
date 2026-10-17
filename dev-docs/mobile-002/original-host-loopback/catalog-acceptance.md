@@ -98,3 +98,9 @@ restoring a valid row then succeeds through the same catalog owner. Final focuse
 suite:7 passed,139ms test/803ms total; eslint and root tsc exit0. No production
 defect red was fabricated: the existing strict owner already rejected these rows.
 Only helper/test/documentation/task record changed in this follow-up.
+
+## Primary integration verification — 2026-10-18
+
+The original Host main now constructs this read-only catalog next to its existing receipt/asset owners and routes only `catalog.snapshot` to it after the original shutdown/device guard. Notification source dispatch is unchanged. Primary independently ran the final seven temporary-registry integration tests (133ms), four native catalog aggregation tests (1.00s), and the actual private-IPC catalog query test (0.03s). Root TypeScript and focused ESLint passed. Existing headless Clippy redlines passed, retaining the two previously recorded `too_many_arguments` baseline warnings; no suppression or gate changes were added.
+
+Local logs: `/tmp/moxbots-mobile-catalog-primary-{node,rust,ipc,typecheck,lint,clippy}.log`. This is source and controlled integration acceptance. The complete MobileConnection/TLS/WSS/Host chain, dynamic catalog invalidation, real OS two-user service topology and physical devices remain separate gates. In particular, an uploaded new mount remains disabled until its original explicit user authorization; catalog publication does not grant execution.

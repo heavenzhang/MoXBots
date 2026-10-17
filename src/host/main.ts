@@ -36,6 +36,7 @@ import { imSnapshotObservation } from '../server/routes/im-model-selection';
 import { HostMobileAssetStaging } from './mobile-asset-staging';
 import { HostNotificationSource, isOriginalSourceWorker, uniqueSourceAgent } from './mobile-notify-source';
 import { admitHeadlessMobileStart } from './headless-mobile-start';
+import { createHostMobileAgentCatalog } from './mobile-agent-catalog';
 
 const stateDir = resolve(process.env.MYAGENTS_HOST_STATE_DIR ?? '/var/lib/myagents-host-test');
 const socket = process.env.MYAGENTS_HOST_SOCKET ?? '/run/myagents-host-test/control.sock';
@@ -303,6 +304,7 @@ async function serve(): Promise<void> {
 
   const remoteReceipts = createRemoteReceiptOwner(`host:${identity.hostId}`,join(home,'.myagents','remote-session-receipts'));
   const mobileAssetStaging = new HostMobileAssetStaging(join(home,'.myagents','remote-assets-staging-v1'));
+  const mobileCatalog = createHostMobileAgentCatalog({workspacePath});
   const resolveRemoteAgent = async (agentId:string) => {
     const resources=await resourceOwner.inspect();
     const selected=resources.agents.find(item=>item.agentId===agentId);
@@ -543,6 +545,7 @@ async function serve(): Promise<void> {
         expectedDeviceId: identity.hostId,
         dispatchLocalSource:async(authority,operation)=>{
           if(shuttingDown||authority.local.deviceId!==identity.hostId)throw Error('SOURCE_OWNER_CHANGED');
+          if(operation.kind==='catalog.snapshot')return mobileCatalog.request(authority,operation.cursor);
           const result=await notificationSource.request(authority,operation);
           if(operation.kind==='source.peek'&&active&&!active.bot&&!active.closing&&!sourceObservationPending){
             const target=active;
