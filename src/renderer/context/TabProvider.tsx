@@ -7004,7 +7004,9 @@ export default function TabProvider({
           `[TabProvider ${tabId}] Cancel queue item failed:`,
           error,
         );
-        return null;
+        // The card owns visible failure feedback. Do not turn a rejected
+        // cancellation into the same null result as an already-gone item.
+        throw error;
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- postJson is stable
@@ -7041,7 +7043,7 @@ export default function TabProvider({
           `[TabProvider ${tabId}] Force execute queue item failed:`,
           error,
         );
-        return false;
+        throw error;
       } finally {
         releaseSendTransition?.();
       }

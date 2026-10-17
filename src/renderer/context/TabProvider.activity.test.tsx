@@ -2948,6 +2948,30 @@ describe('TabProvider session activity ownership', () => {
     expect(sseHarness.connection.connect).toHaveBeenCalledTimes(1);
   });
   it.each([
+    ['cancel', 409, 'queue_already_accepted'],
+    ['cancel', 503, 'queue_cancel_unavailable'],
+    ['force', 500, 'queue_handoff_failed'],
+  ] as const)('propagates %s failures to the card while preserving queue state (%s)', async (action, status, errorCode) => {
+    let tab!: ReturnType<typeof useTabState>;
+    function CaptureQueueActions() {
+      const value = useTabState();
+      useEffect(() => { tab = value; }, [value]);
+      return null;
+    }
+    tauriHarness.proxyFetch.mockResolvedValue(new Response(JSON.stringify({ success: false, error: 'queue action rejected', errorCode }), {
+      status, headers: { 'Content-Type': 'application/json' },
+    }));
+    render(<TabProvider tabId="queue-action-failure" agentDir="/tmp/workspace" sessionId="pending-queue-action-failure" claimSessionOpeningTransition={allowSessionOpening}><CaptureQueueActions /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('queue:added', { queueId: 'queue-failure', messageText: '/compact' });
+    await act(async () => {
+      const result = action === 'cancel' ? tab.cancelQueuedMessage('queue-failure') : tab.forceExecuteQueuedMessage('queue-failure');
+      await expect(result).rejects.toMatchObject({ status, errorCode });
+    });
+    expect(tab.queuedMessages).toEqual([expect.objectContaining({ queueId: 'queue-failure', text: '/compact' })]);
+  });
+
+  it.each([
     ['queue-stale-cancel', 'cancel stale', '/chat/queue/cancel'],
     ['queue-stale-force', 'force stale', '/chat/queue/force'],
   ] as const)(

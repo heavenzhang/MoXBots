@@ -20,10 +20,10 @@ export async function handleSessionEngineQueueRoute(
     const cancelResult = await getSessionEngine().cancelQueuedMessage(queueId);
     if (cancelResult.status !== 'cancelled') {
       if (cancelResult.status === 'not_cancelled') {
-        return jsonResponse({ success: false, error: 'Queue item was already accepted by SDK' }, 409);
+        return jsonResponse({ success: false, errorCode: 'queue_already_accepted', error: 'Queue item was already accepted by SDK' }, 409);
       }
       if (cancelResult.status === 'unavailable') {
-        return jsonResponse({ success: false, error: 'Queue cancellation is unavailable for this session' }, 503);
+        return jsonResponse({ success: false, errorCode: 'queue_cancel_unavailable', error: 'Queue cancellation is unavailable for this session' }, 503);
       }
       if (cancelResult.status === 'error') {
         return jsonResponse({ success: false, error: 'Queue cancellation failed' }, 500);

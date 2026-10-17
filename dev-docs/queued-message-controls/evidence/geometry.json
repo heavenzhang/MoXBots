@@ -1,0 +1,48 @@
+{
+  "buttons": [
+    {
+      "height": 32,
+      "hit": true,
+      "label": "编辑",
+      "width": 64
+    },
+    {
+      "height": 32,
+      "hit": true,
+      "label": "立即发送",
+      "width": 92
+    },
+    {
+      "height": 32,
+      "hit": true,
+      "label": "取消排队",
+      "width": 32
+    },
+    {
+      "height": 32,
+      "hit": true,
+      "label": "编辑",
+      "width": 64
+    },
+    {
+      "height": 32,
+      "hit": true,
+      "label": "立即发送",
+      "width": 92
+    },
+    {
+      "height": 32,
+      "hit": true,
+      "label": "取消排队",
+      "width": 32
+    }
+  ],
+  "overflow": 0,
+  "panels": [
+    {
+      "left": 493,
+      "right": 787,
+      "width": 294
+    }
+  ]
+}

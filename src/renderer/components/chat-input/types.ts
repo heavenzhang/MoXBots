@@ -156,8 +156,9 @@ export interface SimpleChatInputProps {
   managedReasoningModel?: Pick<RuntimeModelInfo, 'supportedReasoningEfforts' | 'defaultReasoningEffort'> | null;
   runtimePermissionModes?: RuntimePermissionMode[];
   queuedMessages?: QueuedMessageInfo[];
-  onCancelQueued?: (queueId: string) => void;
-  onForceExecuteQueued?: (queueId: string) => void;
+  onCancelQueued?: (queueId: string) => Promise<boolean>;
+  onEditQueued?: (queueId: string) => Promise<boolean>;
+  onForceExecuteQueued?: (queueId: string) => Promise<boolean>;
   agentStatusSlot?: React.ReactNode;
   onOverlayHeightChange?: (height: number) => void;
 }

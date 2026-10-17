@@ -583,7 +583,15 @@
       "title": "Queued ({{count}})",
       "sendNow": "Send now",
       "recallSend": "Recall send",
-      "cancelQueued": "Cancel queued"
+      "cancelQueued": "Cancel queued",
+      "edit": "Edit",
+      "sendNowHint": "Stop the current response and process this message now",
+      "submitted": "Submitted, waiting to be processed",
+      "processing": "Processing…",
+      "alreadyAccepted": "This message has been accepted and can no longer be recalled or edited. Processing will continue.",
+      "draftNotEmpty": "The composer has an unsent draft. Send or clear it before editing a queued message.",
+      "cancelUnavailable": "Recall is unavailable for this session. The message will still be processed.",
+      "actionFailed": "The action did not complete. Message status is unconfirmed; please try again."
     },
     "permissionPrompt": {
       "sandboxTitle": "Write outside the workspace",
