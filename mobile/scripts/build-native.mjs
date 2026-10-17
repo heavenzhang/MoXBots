@@ -47,7 +47,9 @@ if (target === 'android') {
   const sdk = process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT;
   if (!sdk) throw new Error('Set ANDROID_HOME to the installed Android SDK');
   const ndk = process.env.ANDROID_NDK_HOME || path.join(sdk, 'ndk/27.1.12297006');
-  const toolchain = path.join(ndk, 'toolchains/llvm/prebuilt/darwin-x86_64/bin');
+  const ndkHost = { darwin: 'darwin-x86_64', linux: 'linux-x86_64' }[process.platform];
+  if (!ndkHost) throw new Error('Android native builds currently support macOS and Linux hosts');
+  const toolchain = path.join(ndk, 'toolchains/llvm/prebuilt', ndkHost, 'bin');
   const clang = path.join(toolchain, 'aarch64-linux-android24-clang');
   const ar = path.join(toolchain, 'llvm-ar');
   check(clang, 'Android NDK clang'); check(ar, 'Android NDK ar');
