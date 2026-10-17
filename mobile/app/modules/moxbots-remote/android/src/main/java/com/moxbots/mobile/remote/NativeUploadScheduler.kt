@@ -44,7 +44,7 @@ internal class NativeUploadScheduler(
     var errorCode: String? = null,
   )
 
-  private enum class Step { STATUS, BEGIN, CHUNK, FINISH, CANCEL_STATUS, CANCEL }
+  private enum class Step { STATUS, QUERY, BEGIN, CHUNK, FINISH, CANCEL_STATUS, CANCEL }
   private var current: Job? = null
   private var currentStep = Step.STATUS
   private var generation = 0L
@@ -58,7 +58,6 @@ internal class NativeUploadScheduler(
     val existing = load(scope, key)
     if (existing != null) verifyBinding(existing, target, source)
     if (existing?.state == "cancelled") error("MOBILE_UPLOAD_CANCELLED")
-    if (existing?.state == "ready") return projection(existing)
     ensureNoOtherActive(scope, key)
     val job = existing ?: Job(
       scope = scope, record = key, localId = localId, targetId = target.targetId,
@@ -68,16 +67,18 @@ internal class NativeUploadScheduler(
     )
     current?.let { active ->
       if (active.state == "uploading" && active.record != job.record) error("MOBILE_ATTACHMENT_UPLOAD_BUSY")
-      if (active.record == job.record && active.state == "uploading") return projection(active)
+      if (active.scope == job.scope && active.record == job.record &&
+        active.targetId == target.targetId && active.state == "uploading") return projection(active)
+      generation++
       if (active.state == "uploading") pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
     }
     job.targetId = target.targetId // Current approved opaque ID may change after process restoration.
     job.state = "uploading"
     job.errorCode = null
     job.assetId = null
-    current = job
     currentStep = Step.STATUS
     persist(job)
+    current = job
     emit(job)
     scheduleStep()
     return projection(job)
@@ -97,18 +98,25 @@ internal class NativeUploadScheduler(
     verifyBinding(job, target, source)
     ensureNoOtherActive(scope, job.record)
     current?.let { active ->
-      if (active.record != job.record && active.state == "uploading") error("MOBILE_ATTACHMENT_UPLOAD_BUSY")
-      if (active.record == job.record && active.state == "uploading") return projection(active)
-      if (active.state == "uploading") pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+      if (active.state == "paused" && currentStep in setOf(Step.CANCEL_STATUS, Step.CANCEL)) {
+        error("MOBILE_ATTACHMENT_UPLOAD_BUSY")
+      }
+      if (active.state == "uploading" && (active.scope != job.scope || active.record != job.record)) {
+        pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+      }
+      generation++
     }
     job.targetId = target.targetId
-    if (job.state == "ready" || job.state == "cancelled") return projection(job)
-    job.state = "uploading"
-    job.errorCode = null
+    if (job.state == "cancelled") return projection(job)
+    val wasReady = job.state == "ready"
+    job.state = if (wasReady) "ready" else "paused"
+    currentStep = Step.QUERY
     current = job
-    currentStep = Step.STATUS
-    persist(job); emit(job); scheduleStep()
-    return projection(job)
+    persist(job)
+    scheduleStep()
+    val snapshot = projection(job)
+    if (wasReady) snapshot.put("state", "paused").put("assetId", JSONObject.NULL)
+    return snapshot
   }
 
   fun cancel(scope: String, target: UploadTarget, localId: String): JSONObject {
@@ -167,7 +175,12 @@ internal class NativeUploadScheduler(
 
   fun pause(code: String? = null) {
     val job = current ?: return
-    if (job.state == "paused" && currentStep in setOf(Step.CANCEL_STATUS, Step.CANCEL)) {
+    if ((job.state == "paused" || job.state == "ready") && currentStep == Step.QUERY) {
+      generation++
+      currentStep = Step.STATUS
+      return
+    }
+    if (job.state == "paused" && currentStep in setOf(Step.QUERY, Step.CANCEL_STATUS, Step.CANCEL)) {
       generation++
       currentStep = Step.STATUS
       job.errorCode = code
@@ -184,20 +197,20 @@ internal class NativeUploadScheduler(
   }
 
   fun pauseForTarget(targetId: String) {
-    if (current?.let { (it.state == "uploading" || (it.state == "paused" && currentStep in setOf(Step.CANCEL_STATUS, Step.CANCEL))) && it.targetId != targetId } == true) {
+    if (current?.let { (it.state == "uploading" || (it.state in setOf("paused", "ready") && currentStep in setOf(Step.QUERY, Step.CANCEL_STATUS, Step.CANCEL))) && it.targetId != targetId } == true) {
       pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
     }
   }
 
   fun pauseUnlessScope(scope: String) {
-    if (current?.let { it.scope != scope && (it.state == "uploading" || (it.state == "paused" && currentStep in setOf(Step.CANCEL_STATUS, Step.CANCEL))) } == true) {
+    if (current?.let { it.scope != scope && (it.state == "uploading" || (it.state in setOf("paused", "ready") && currentStep in setOf(Step.QUERY, Step.CANCEL_STATUS, Step.CANCEL))) } == true) {
       pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
     }
   }
 
   fun validateTargets(scope: String, items: JSONArray) {
     val job = current ?: return
-    if (job.scope != scope || (job.state != "uploading" && !(job.state == "paused" && currentStep in setOf(Step.CANCEL_STATUS, Step.CANCEL)))) return
+    if (job.scope != scope || (job.state != "uploading" && !(job.state in setOf("paused", "ready") && currentStep in setOf(Step.QUERY, Step.CANCEL_STATUS, Step.CANCEL)))) return
     val approved = (0 until items.length()).any { index ->
       val item = items.optJSONObject(index) ?: return@any false
       item.optString("targetId") == job.targetId &&
@@ -232,7 +245,8 @@ internal class NativeUploadScheduler(
     schedule {
       if (token != generation) return@schedule
       val job = current ?: return@schedule
-      if (job.state != "uploading" && currentStep !in setOf(Step.CANCEL_STATUS, Step.CANCEL)) return@schedule
+      if (job.state != "uploading" && !(job.state == "ready" && currentStep == Step.QUERY) &&
+        !(job.state == "paused" && currentStep in setOf(Step.QUERY, Step.CANCEL_STATUS, Step.CANCEL))) return@schedule
       if (!allowed()) { pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED"); return@schedule }
       runStep(job, token)
     }
@@ -241,17 +255,28 @@ internal class NativeUploadScheduler(
   private fun runStep(job: Job, token: Long) {
     try {
       when (currentStep) {
-        Step.STATUS, Step.CANCEL_STATUS -> {
+        Step.STATUS, Step.QUERY, Step.CANCEL_STATUS -> {
+          val queryOnly = currentStep == Step.QUERY
           val cancel = currentStep == Step.CANCEL_STATUS
           val result = rpc(job, "upload.status")
           if (isNotFound(result)) {
-            if (cancel) finishCancelled(job) else { currentStep = Step.BEGIN; scheduleStep() }
+            if (cancel) finishCancelled(job)
+            else if (queryOnly) {
+              job.state = "paused"; job.assetId = null; job.errorCode = "MOBILE_UPLOAD_NOT_FOUND"
+              persist(job); emit(job); current = null
+            } else { currentStep = Step.BEGIN; scheduleStep() }
             return
           }
           val upload = requireUpload(result, job, allowCancelled = true)
           if (upload.state == "cancelled") { finishCancelled(job); return }
           job.receivedBytes = upload.receivedBytes
-          if (cancel && upload.state == "ready") {
+          if (queryOnly) {
+            if (upload.state == "ready" && job.assetId != null) { job.state = "ready"; job.receivedBytes = job.totalBytes }
+            else { job.state = "paused"; job.assetId = null }
+            job.errorCode = null
+            persist(job); emit(job); current = null
+            return
+          } else if (cancel && upload.state == "ready") {
             job.state = "uploading"
             job.errorCode = null
             currentStep = Step.FINISH
@@ -295,10 +320,10 @@ internal class NativeUploadScheduler(
         Step.FINISH -> {
           check(job.receivedBytes == job.totalBytes) { "MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID" }
           val result = rpc(job, "upload.finish")
-          check(result.optString("kind") == "asset" && result.optInt("version") == 1 &&
+          check(result.optString("kind") == "asset" && strictLong(result.opt("version")) == 1L &&
             result.optString("agentId") == job.agentId && result.optString("uploadId") == job.uploadId &&
             isCanonicalUuid(result.optString("assetId")) && result.optString("name") == job.name &&
-            result.optString("mimeType") == job.mimeType && result.optLong("sizeBytes", -1) == job.totalBytes &&
+            result.optString("mimeType") == job.mimeType && strictLong(result.opt("sizeBytes")) == job.totalBytes &&
             result.optString("sha256") == job.sha256) { "MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID" }
           job.assetId = result.getString("assetId")
           job.receivedBytes = job.totalBytes
@@ -330,10 +355,10 @@ internal class NativeUploadScheduler(
 
   private data class UploadStatus(val receivedBytes: Long, val state: String)
   private fun requireUpload(value: JSONObject, job: Job, allowCancelled: Boolean): UploadStatus {
-    check(value.optString("kind") == "upload" && value.optInt("version") == 1 &&
+    check(value.optString("kind") == "upload" && strictLong(value.opt("version")) == 1L &&
       value.optString("agentId") == job.agentId && value.optString("uploadId") == job.uploadId &&
-      value.optLong("totalBytes", -1) == job.totalBytes) { errorCode(value) ?: "MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID" }
-    val received = value.optLong("receivedBytes", -1)
+      strictLong(value.opt("totalBytes")) == job.totalBytes) { errorCode(value) ?: "MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID" }
+    val received = strictLong(value.opt("receivedBytes")) ?: -1L
     val state = value.optString("state")
     check(received in 0..job.totalBytes && state in if (allowCancelled) setOf("uploading", "ready", "cancelled") else setOf("uploading", "ready")) {
       "MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID"
@@ -355,7 +380,7 @@ internal class NativeUploadScheduler(
 
   private fun isNotFound(value: JSONObject): Boolean =
     value.keys().asSequence().toSet() == setOf("kind", "version", "code") &&
-      value.optString("kind") == "error" && value.optInt("version", -1) == 1 && value.optString("code") == "ASSET_NOT_FOUND"
+      value.optString("kind") == "error" && strictLong(value.opt("version")) == 1L && value.optString("code") == "ASSET_NOT_FOUND"
 
   private fun errorCode(value: JSONObject): String? = value.optString("code").takeIf {
     value.optString("kind") == "error" && it.matches(Regex("[A-Z0-9_]{1,128}"))
@@ -385,15 +410,24 @@ internal class NativeUploadScheduler(
   private fun checkSource(job: Job, source: UploadSource) = verifyBinding(job, UploadTarget(job.targetId, job.identityKey, job.agentId), source)
 
   private fun persist(job: Job) {
+    val oldIndex = index(job.scope)
+    val needsReservation = job.record !in oldIndex
+    check(!needsReservation || oldIndex.size < MAX_JOBS) { "MOBILE_ATTACHMENT_UPLOAD_LIMIT" }
+    if (needsReservation) {
+      try { writeIndex(job.scope, oldIndex + job.record) }
+      catch (failure: Exception) { runCatching { writeIndex(job.scope, oldIndex) }; throw failure }
+    }
     val bytes = encode(job).toByteArray(Charsets.UTF_8)
     try {
-      io.writeRecord(job.scope, job.record, bytes)
-      val verified = io.readRecord(job.scope, job.record)
-      try { check(verified?.contentEquals(bytes) == true) { "MOBILE_ATTACHMENT_UPLOAD_PERSISTENCE_UNCONFIRMED" } }
-      finally { verified?.fill(0) }
-      val index = index(job.scope).toMutableSet().apply { add(job.record) }
-      check(index.size <= MAX_JOBS) { "MOBILE_ATTACHMENT_UPLOAD_LIMIT" }
-      writeIndex(job.scope, index.toList())
+      try {
+        io.writeRecord(job.scope, job.record, bytes)
+        val verified = io.readRecord(job.scope, job.record)
+        try { check(verified?.contentEquals(bytes) == true) { "MOBILE_ATTACHMENT_UPLOAD_PERSISTENCE_UNCONFIRMED" } }
+        finally { verified?.fill(0) }
+      } catch (failure: Exception) {
+        if (needsReservation) runCatching { io.removeRecord(job.scope, job.record); writeIndex(job.scope, oldIndex) }
+        throw failure
+      }
     } finally { bytes.fill(0) }
   }
 
@@ -402,23 +436,26 @@ internal class NativeUploadScheduler(
     try {
       val json = JSONObject(bytes.toString(Charsets.UTF_8))
       check(json.keys().asSequence().toSet() == JOB_FIELDS) { "MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID" }
-      check(json.getInt("version") == 1 && json.getString("record") == key) { "MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID" }
+      check(strictLong(json.opt("version")) == 1L && strictLong(json.opt("totalBytes")) != null &&
+        strictLong(json.opt("receivedBytes")) != null && json.getString("record") == key) { "MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID" }
       val job = Job(scope, key, json.getString("localId"), json.getString("targetId"), json.getString("identityKey"),
         json.getString("agentId"), json.getString("uploadId"), json.getString("name"), json.getString("mimeType"),
-        json.getLong("totalBytes"), json.getString("sha256"), json.getLong("receivedBytes"), json.getString("state"),
+        strictLong(json.opt("totalBytes"))!!, json.getString("sha256"), strictLong(json.opt("receivedBytes"))!!, json.getString("state"),
         if (json.isNull("assetId")) null else json.getString("assetId"),
         if (json.isNull("errorCode")) null else json.getString("errorCode"))
       requireUuid(job.localId, "MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID")
       requireUuid(job.uploadId, "MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID")
+      val assetId = job.assetId
+      val errorCode = job.errorCode
       check(job.identityKey.matches(Regex("[0-9a-f]{64}")) && job.agentId.matches(Regex("[A-Za-z0-9._:-]{1,256}")) &&
         job.targetId.matches(Regex("[A-Za-z0-9._:-]{1,256}")) && job.sha256.matches(Regex("[0-9a-f]{64}")) &&
         job.record == recordName(job.identityKey, job.localId) &&
         job.name.length in 1..256 && job.name != "." && job.name != ".." && !job.name.any { it.isISOControl() || it == '/' || it == '\\' } &&
         job.mimeType.matches(Regex("[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+")) && job.totalBytes in 1..MAX_BYTES &&
         job.receivedBytes in 0..job.totalBytes && job.state in STATES &&
-        (job.assetId == null || isCanonicalUuid(job.assetId)) &&
-        ((job.state == "ready") == (job.assetId != null)) && (job.state != "ready" || job.receivedBytes == job.totalBytes) &&
-        (job.errorCode == null || job.errorCode.matches(Regex("[A-Z0-9_]{1,128}")))) {
+        (assetId == null || isCanonicalUuid(assetId)) &&
+        ((job.state == "ready") == (assetId != null)) && (job.state != "ready" || job.receivedBytes == job.totalBytes) &&
+        (errorCode == null || errorCode.matches(Regex("[A-Z0-9_]{1,128}")))) {
         "MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID"
       }
       return job
@@ -475,6 +512,12 @@ internal class NativeUploadScheduler(
   private fun isCanonicalUuid(value: String) = runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
   private fun hash(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes)
     .joinToString("") { "%02x".format(it.toInt() and 255) }
+
+  private fun strictLong(value: Any?): Long? = when (value) {
+    is Int -> value.toLong()
+    is Long -> value
+    else -> null
+  }
 
   companion object {
     private const val CHUNK_BYTES = 24 * 1024

@@ -56,10 +56,10 @@ public final class MoxBotsRemoteModule: Module {
           if ["account.login.start", "account.login.poll", "account.logout", "connection.suspend"].contains(kind ?? "") {
             self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
           }
-          if kind == "session", let intent {
+          if ["session", "mobile", "assets"].contains(kind ?? ""), let intent {
             if let targetId = intent["targetId"] as? String, !targetId.isEmpty { self.uploads?.pauseForTarget(targetId) }
             let request = intent["request"] as? [String: Any]
-            if (request?["kind"] as? String)?.localizedCaseInsensitiveContains("cancel") == true {
+            if (request?["kind"] as? String) == "stop" {
               self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
             }
           }

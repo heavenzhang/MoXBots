@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import CoreFoundation
 
 struct NativeUploadTarget {
   let targetId: String
@@ -31,7 +32,7 @@ final class NativeUploadScheduler {
     let request: (String, [String: Any]) throws -> [String: Any]
   }
 
-  private enum Step: Equatable { case status, begin, chunk, finish, cancelStatus, cancel }
+  private enum Step: Equatable { case status, query, begin, chunk, finish, cancelStatus, cancel }
   private struct Job {
     let scope: String
     let record: String
@@ -82,20 +83,21 @@ final class NativeUploadScheduler {
       name: source.name, mimeType: source.mimeType, totalBytes: source.sizeBytes, sha256: source.sha256)
     try verify(job: job, target: target, source: source)
     if job.state == "cancelled" { throw NativeFailure("MOBILE_UPLOAD_CANCELLED") }
-    if job.state == "ready" { return projection(job) }
     try ensureNoOtherActive(scope: scope, record: record)
     if let active = current, active.state == "uploading", active.record != job.record {
       throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_BUSY")
     }
-    if let active = current, active.state == "uploading", active.record == job.record { return projection(active) }
+    if let active = current, active.state == "uploading", active.scope == job.scope, active.record == job.record,
+      active.targetId == target.targetId { return projection(active) }
+    if current != nil { generation &+= 1 }
     if current?.state == "uploading" { pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED") }
     job.targetId = target.targetId
     job.state = "uploading"
     job.assetId = nil
     job.errorCode = nil
-    current = job
     currentStep = .status
     try persist(job)
+    current = job
     emit(job)
     scheduleStep()
     return projection(job)
@@ -115,18 +117,25 @@ final class NativeUploadScheduler {
     if let active = current, active.state == "uploading", active.record != job.record {
       throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_BUSY")
     }
-    if let active = current, active.state == "uploading", active.record == job.record { return projection(active) }
-    if current?.state == "uploading" { pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED") }
+    if let active = current, active.state == "paused" && (currentStep == .cancelStatus || currentStep == .cancel) {
+      throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_BUSY")
+    }
+    if let active = current, active.state == "uploading",
+      (active.scope != job.scope || active.record != job.record) {
+      pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+    }
+    if current != nil { generation &+= 1 }
     job.targetId = target.targetId
-    if job.state == "ready" || job.state == "cancelled" { return projection(job) }
-    job.state = "uploading"
-    job.errorCode = nil
+    if job.state == "cancelled" { return projection(job) }
+    let wasReady = job.state == "ready"
+    job.state = wasReady ? "ready" : "paused"
+    currentStep = .query
     current = job
-    currentStep = .status
     try persist(job)
-    emit(job)
     scheduleStep()
-    return projection(job)
+    var snapshot = projection(job)
+    if wasReady { snapshot["state"] = "paused"; snapshot["assetId"] = NSNull() }
+    return snapshot
   }
 
   func cancel(scope: String, target: NativeUploadTarget, localId: String) throws -> [String: Any] {
@@ -186,7 +195,12 @@ final class NativeUploadScheduler {
 
   func pause(_ code: String? = nil) {
     guard var job = current else { return }
-    if job.state == "paused" && (currentStep == .cancelStatus || currentStep == .cancel) {
+    if job.state == "ready" && currentStep == .query {
+      generation &+= 1
+      currentStep = .status
+      return
+    }
+    if job.state == "paused" && (currentStep == .query || currentStep == .cancelStatus || currentStep == .cancel) {
       generation &+= 1
       currentStep = .status
       job.errorCode = code
@@ -205,20 +219,20 @@ final class NativeUploadScheduler {
   }
 
   func pauseForTarget(_ targetId: String) {
-    if let job = current, (job.state == "uploading" || (job.state == "paused" && (currentStep == .cancelStatus || currentStep == .cancel))), job.targetId != targetId {
+    if let job = current, (job.state == "uploading" || (["paused", "ready"].contains(job.state) && (currentStep == .query || currentStep == .cancelStatus || currentStep == .cancel))), job.targetId != targetId {
       pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
     }
   }
 
   func pauseUnlessScope(_ scope: String) {
-    if let job = current, job.scope != scope, (job.state == "uploading" || (job.state == "paused" && (currentStep == .cancelStatus || currentStep == .cancel))) {
+    if let job = current, job.scope != scope, (job.state == "uploading" || (["paused", "ready"].contains(job.state) && (currentStep == .query || currentStep == .cancelStatus || currentStep == .cancel))) {
       pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
     }
   }
 
   func validateTargets(scope: String, items: [[String: Any]]) {
     guard let job = current, job.scope == scope,
-      job.state == "uploading" || (job.state == "paused" && (currentStep == .cancelStatus || currentStep == .cancel)) else { return }
+      job.state == "uploading" || (["paused", "ready"].contains(job.state) && (currentStep == .query || currentStep == .cancelStatus || currentStep == .cancel)) else { return }
     let approved = items.contains { item in
       item["targetId"] as? String == job.targetId && item["identityKey"] as? String == job.identityKey &&
         item["agentId"] as? String == job.agentId
@@ -254,7 +268,8 @@ final class NativeUploadScheduler {
     let token = generation
     schedule { [weak self] in
       guard let self, token == self.generation, var job = self.current else { return }
-      guard job.state == "uploading" || self.currentStep == .cancelStatus || self.currentStep == .cancel else { return }
+      guard job.state == "uploading" || (job.state == "ready" && self.currentStep == .query) ||
+        (job.state == "paused" && (self.currentStep == .query || self.currentStep == .cancelStatus || self.currentStep == .cancel)) else { return }
       guard self.allowed() else { self.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED"); return }
       self.runStep(&job, token: token)
     }
@@ -263,17 +278,28 @@ final class NativeUploadScheduler {
   private func runStep(_ job: inout Job, token: UInt64) {
     do {
       switch currentStep {
-      case .status, .cancelStatus:
+      case .status, .query, .cancelStatus:
+        let queryOnly = currentStep == .query
         let isCancel = currentStep == .cancelStatus
         let result = try rpc(job, "upload.status")
         if isNotFound(result) {
-          if isCancel { try finishCancelled(&job) } else { currentStep = .begin; current = job; scheduleStep() }
+          if isCancel { try finishCancelled(&job) }
+          else if queryOnly {
+            job.state = "paused"; job.assetId = nil; job.errorCode = "MOBILE_UPLOAD_NOT_FOUND"
+            try persist(job); emit(job); current = nil
+          } else { currentStep = .begin; current = job; scheduleStep() }
           return
         }
         let upload = try requireUpload(result, job: job, allowCancelled: true)
         if upload.state == "cancelled" { try finishCancelled(&job); return }
         job.receivedBytes = upload.receivedBytes
-        if isCancel && upload.state == "ready" {
+        if queryOnly {
+          if upload.state == "ready", job.assetId != nil { job.state = "ready"; job.receivedBytes = job.totalBytes }
+          else { job.state = "paused"; job.assetId = nil }
+          job.errorCode = nil
+          try persist(job); emit(job); current = nil
+          return
+        } else if isCancel && upload.state == "ready" {
           job.state = "uploading"
           job.errorCode = nil
           currentStep = .finish
@@ -315,11 +341,11 @@ final class NativeUploadScheduler {
       case .finish:
         guard job.receivedBytes == job.totalBytes else { throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID") }
         let result = try rpc(job, "upload.finish")
-        guard result["kind"] as? String == "asset", (result["version"] as? Int) == 1,
+        guard result["kind"] as? String == "asset", strictInteger(result["version"]) == 1,
           result["agentId"] as? String == job.agentId, result["uploadId"] as? String == job.uploadId,
           let assetId = result["assetId"] as? String, isCanonicalUuid(assetId),
           result["name"] as? String == job.name, result["mimeType"] as? String == job.mimeType,
-          (result["sizeBytes"] as? Int) == job.totalBytes, result["sha256"] as? String == job.sha256 else {
+          strictInteger(result["sizeBytes"]) == job.totalBytes, result["sha256"] as? String == job.sha256 else {
           throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID")
         }
         job.assetId = assetId
@@ -347,10 +373,10 @@ final class NativeUploadScheduler {
   }
 
   private func requireUpload(_ value: [String: Any], job: Job, allowCancelled: Bool) throws -> (receivedBytes: Int, state: String) {
-    guard value["kind"] as? String == "upload", (value["version"] as? Int) == 1,
+      guard value["kind"] as? String == "upload", strictInteger(value["version"]) == 1,
       value["agentId"] as? String == job.agentId, value["uploadId"] as? String == job.uploadId,
-      (value["totalBytes"] as? Int) == job.totalBytes,
-      let received = value["receivedBytes"] as? Int, received >= 0, received <= job.totalBytes,
+      strictInteger(value["totalBytes"]) == job.totalBytes,
+      let received = strictInteger(value["receivedBytes"]), received >= 0, received <= job.totalBytes,
       let state = value["state"] as? String,
       (allowCancelled ? ["uploading", "ready", "cancelled"] : ["uploading", "ready"]).contains(state) else {
       throw NativeFailure(errorCode(value) ?? "MOBILE_ATTACHMENT_UPLOAD_RESPONSE_INVALID")
@@ -369,7 +395,7 @@ final class NativeUploadScheduler {
 
   private func isNotFound(_ value: [String: Any]) -> Bool {
     Set(value.keys) == Set(["kind", "version", "code"]) && (value["kind"] as? String) == "error" &&
-      (value["version"] as? Int) == 1 && value["code"] as? String == "ASSET_NOT_FOUND"
+      strictInteger(value["version"]) == 1 && value["code"] as? String == "ASSET_NOT_FOUND"
   }
   private func errorCode(_ value: [String: Any]) -> String? {
     guard value["kind"] as? String == "error", let code = value["code"] as? String,
@@ -399,24 +425,35 @@ final class NativeUploadScheduler {
   }
 
   private func persist(_ job: Job) throws {
+    let oldIndex = try index(job.scope)
+    let needsReservation = !oldIndex.contains(job.record)
+    guard !needsReservation || oldIndex.count < maxJobs else { throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_LIMIT") }
+    if needsReservation {
+      do { try writeIndex(job.scope, oldIndex + [job.record]) }
+      catch { try? writeIndex(job.scope, oldIndex); throw error }
+    }
     let bytes = try JSONSerialization.data(withJSONObject: encoded(job), options: [.sortedKeys])
-    try io.writeRecord(job.scope, job.record, bytes)
-    guard try io.readRecord(job.scope, job.record) == bytes else { throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_PERSISTENCE_UNCONFIRMED") }
-    var values = try index(job.scope)
-    if !values.contains(job.record) { values.append(job.record) }
-    guard values.count <= maxJobs else { throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_LIMIT") }
-    try writeIndex(job.scope, values)
+    do {
+      try io.writeRecord(job.scope, job.record, bytes)
+      guard try io.readRecord(job.scope, job.record) == bytes else { throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_PERSISTENCE_UNCONFIRMED") }
+    } catch {
+      if needsReservation {
+        try? io.removeRecord(job.scope, job.record)
+        try? writeIndex(job.scope, oldIndex)
+      }
+      throw error
+    }
   }
 
   private func load(scope: String, record: String) throws -> Job? {
     guard let bytes = try io.readRecord(scope, record) else { return nil }
     guard let value = try JSONSerialization.jsonObject(with: bytes) as? [String: Any], Set(value.keys) == Self.jobFields,
-      (value["version"] as? Int) == 1, value["record"] as? String == record,
+      strictInteger(value["version"]) == 1, value["record"] as? String == record,
       let localId = value["localId"] as? String, let targetId = value["targetId"] as? String,
       let identityKey = value["identityKey"] as? String, let agentId = value["agentId"] as? String,
       let uploadId = value["uploadId"] as? String, let name = value["name"] as? String,
-      let mimeType = value["mimeType"] as? String, let total = value["totalBytes"] as? Int,
-      let sha = value["sha256"] as? String, let received = value["receivedBytes"] as? Int,
+      let mimeType = value["mimeType"] as? String, let total = strictInteger(value["totalBytes"]),
+      let sha = value["sha256"] as? String, let received = strictInteger(value["receivedBytes"]),
       let state = value["state"] as? String, states.contains(state) else {
       throw NativeFailure("MOBILE_ATTACHMENT_UPLOAD_JOURNAL_INVALID")
     }
@@ -480,6 +517,13 @@ final class NativeUploadScheduler {
   private func emit(_ job: Job) { onChanged(projection(job)) }
   private func recordName(_ identity: String, _ localId: String) -> String { "attachment-upload-v1:\(identity):\(localId)" }
   private func isCanonicalUuid(_ value: String) -> Bool { UUID(uuidString: value)?.uuidString.lowercased() == value }
+  private func strictInteger(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
+      !CFNumberIsFloatType(number as! CFNumber) else { return nil }
+    let doubleValue = number.doubleValue
+    guard doubleValue.isFinite, doubleValue >= Double(Int.min), doubleValue <= Double(Int.max) else { return nil }
+    return number.intValue
+  }
   private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
   private static let jobFields: Set<String> = ["version", "record", "localId", "targetId", "identityKey", "agentId", "uploadId", "name", "mimeType", "totalBytes", "sha256", "receivedBytes", "state", "assetId", "errorCode"]

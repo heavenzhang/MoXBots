@@ -45,12 +45,11 @@ class MoxBotsRemoteModule : Module() {
           if (parsedKind in setOf("account.login.start", "account.login.poll", "account.logout", "connection.suspend")) {
             uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
           }
-          if (parsedKind == "session") {
+          if (parsedKind in setOf("session", "mobile", "assets")) {
             val targetId = parsed.optString("targetId")
             if (targetId.isNotBlank()) uploads?.pauseForTarget(targetId)
-            if (parsed.optJSONObject("request")?.optString("kind")?.contains("cancel", ignoreCase = true) == true) {
-              uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
-            }
+            val innerKind = parsed.optJSONObject("request")?.optString("kind")
+            if (innerKind == "stop") uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
           }
           val response = ensureConnection().request(input)
           when (parsedKind) {
@@ -250,11 +249,24 @@ class MoxBotsRemoteModule : Module() {
       },
       schedule = { next -> owner.execute(next) },
       allowed = { ownerActive && appForeground },
-      onChanged = { event -> if (ownerActive) sendEvent("attachmentUploadChanged", event.toMap()) },
+      onChanged = { event -> if (ownerActive) sendEvent("attachmentUploadChanged", uploadEventProjection(event)) },
     )
     uploads = scheduler
     return scheduler
   }
+  private fun uploadEventProjection(event: JSONObject): Map<String, Any?> = mapOf(
+    "kind" to event.optString("kind"),
+    "localId" to event.optString("localId"),
+    "targetId" to event.optString("targetId"),
+    "identityKey" to event.optString("identityKey"),
+    "agentId" to event.optString("agentId"),
+    "uploadId" to event.optString("uploadId"),
+    "state" to event.optString("state"),
+    "receivedBytes" to event.optLong("receivedBytes"),
+    "totalBytes" to event.optLong("totalBytes"),
+    "assetId" to event.opt("assetId").let { if (it == null || it === JSONObject.NULL) null else it },
+    "errorCode" to event.opt("errorCode").let { if (it == null || it === JSONObject.NULL) null else it },
+  )
   private fun isCanonicalUuid(value: String) = runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false)
   private fun handleSpeech(kind: String, promise: Promise) {
     val context = appContext.reactContext ?: run { promise.resolve(failure("MOBILE_SPEECH_SERVICE_UNAVAILABLE")); return }
