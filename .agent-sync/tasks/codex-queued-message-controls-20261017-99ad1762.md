@@ -40,4 +40,4 @@ required：由 `.agent-sync/plan.md` 既定桌面发布owner 01a12bc2-907a-7702-
 
 ## Next step
 
-完成IAB验收与构建后提交PR，等待必需CI并合入main；发布仍在统一owner队列。
+PR https://github.com/heavenzhang/MoXBots/pull/108 已创建；等待最新head必需CI并合入main，核验远端包含源码；发布仍在统一owner队列。

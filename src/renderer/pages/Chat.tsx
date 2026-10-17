@@ -4956,7 +4956,10 @@ export default function Chat({
         .filter((message) => message.role === 'assistant')
         .map((message) => message.content);
       const cancelledText = await cancelQueuedMessage(queueId);
-      if (cancelledText !== null && sessionIdRef.current === cancelledSessionId) {
+      // Imperative handles contain render-scoped image/context snapshots.
+      // Re-read the current handle after the async cancellation settles.
+      const currentInput = chatInputRef.current;
+      if (cancelledText !== null && sessionIdRef.current === cancelledSessionId && currentInput) {
         const restored = queuedMsg?.asyncQuestionReply
           ? restoreAsyncQuestionAnswerDraft(
               queuedMsg.asyncQuestionReply,
@@ -4975,10 +4978,10 @@ export default function Chat({
         );
         // Input can change while cancellation is in flight. Preserve that new
         // draft as well as the recalled message and its attachment/context data.
-        const currentText = input.getCurrentValue();
-        const currentContext = input.getQueryContext();
+        const currentText = currentInput.getCurrentValue();
+        const currentContext = currentInput.getQueryContext();
         const restoredText = restored?.text ?? cancelledText;
-        input.setValue(currentText ? `${currentText}\n\n${restoredText}` : restoredText, {
+        currentInput.setValue(currentText ? `${currentText}\n\n${restoredText}` : restoredText, {
           ...currentContext,
           agentMentions: [...(queuedMsg?.agentMentions ?? []), ...(currentContext.agentMentions ?? [])],
           primaryContext: currentContext.primaryContext ?? queuedMsg?.primaryContext,
@@ -5001,7 +5004,7 @@ export default function Chat({
               relativePath: img.relativePath,
             }),
           );
-          input.setImages([...input.getImages(), ...restoredImages]);
+          currentInput.setImages([...currentInput.getImages(), ...restoredImages]);
         }
         return true;
       }

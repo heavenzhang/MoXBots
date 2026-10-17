@@ -6,7 +6,7 @@
 
 用户截图中的 /compact 点击×无反馈。只读核对本机 `.moxbot/logs/unified-2026-10-17.log` 23:14：请求到达原Session，SDK cancel_async_message返回not-cancelled，HTTP409；TabProvider catch只写日志并返回null，UI不显示失败。按钮本身热区仅16px且只在hover显示；取消还同时恢复输入框，缺少独立编辑含义。
 
-现在正文和操作分行；编辑/立即发送常驻，×独立取消，全部至少32px热区和可见键盘focus。立即发送Tip说明会停止当前回复。编辑只有在原queue owner确认撤回成功后恢复草稿；已有草稿先提示，不撤回；请求期间的新输入/图片合并保留。取消不修改输入框。保留原Runtime能力位和optimistic项控制限制，零隐式Stop、零重发或假删除。
+现在正文和操作分行；编辑/立即发送常驻，×独立取消，全部至少32px热区和可见键盘focus。立即发送Tip说明会停止当前回复。编辑只有在原queue owner确认撤回成功后恢复草稿；已有草稿先提示，不撤回；请求期间的新输入/图片合并保留。复审发现imperative handle的图片/上下文随render形成快照，已在await后重读当前handle，避免覆盖等待期间新增附件；改后125项、完整类型和Chat lint再次通过。取消不修改输入框。保留原Runtime能力位和optimistic项控制限制，零隐式Stop、零重发或假删除。
 
 后端原拒绝状态附稳定errorCode，错误沿Promise到卡片：409明确已接收且无法撤回/编辑，停止提供这两个无效入口；503说明不支持撤回；网络/其他失败保留消息并可重试。单条请求未完成时禁用该条全部操作，避免重复/冲突。其他行仍可操作。
 
