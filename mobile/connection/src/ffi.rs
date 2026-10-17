@@ -145,6 +145,29 @@ enum ClosedIntent {
     LoginPoll { version: u8 },
     #[serde(rename = "account.logout")]
     Logout { version: u8 },
+    #[serde(rename = "notification.register")]
+    NotificationRegister {
+        version: u8,
+        provider: NotificationProvider,
+        #[serde(deserialize_with = "notification_token")]
+        token: String,
+    },
+    #[serde(rename = "notification.refresh")]
+    NotificationRefresh {
+        version: u8,
+        provider: NotificationProvider,
+        #[serde(deserialize_with = "notification_token")]
+        token: String,
+    },
+    #[serde(rename = "notification.status")]
+    NotificationStatus { version: u8 },
+    #[serde(rename = "notification.disable")]
+    NotificationDisable { version: u8 },
+    #[serde(rename = "notification.open")]
+    NotificationOpen {
+        version: u8,
+        event_id: myagents_host_management_protocol::CanonicalUuid,
+    },
     #[serde(rename = "targets.snapshot")]
     TargetsSnapshot { version: u8 },
     #[serde(rename = "targets.list")]
@@ -188,6 +211,22 @@ enum ClosedIntent {
         target_id: String,
         request: myagents_host_management_protocol::RemoteSessionRequest,
     },
+}
+#[derive(serde::Deserialize)]
+enum NotificationProvider {
+    #[serde(rename = "fcm")]
+    Fcm,
+    #[serde(rename = "apns-sandbox")]
+    Sandbox,
+    #[serde(rename = "apns-production")]
+    Production,
+}
+fn notification_token<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let value = <String as serde::Deserialize>::deserialize(d)?;
+    if value.is_empty() || value.len() > 4096 || value.chars().any(char::is_control) {
+        return Err(serde::de::Error::custom("invalid notification token"));
+    }
+    Ok(value)
 }
 fn nullable_session<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     serde::Deserialize::deserialize(d)
@@ -342,6 +381,7 @@ pub(crate) mod tests {
         records: Mutex<Records>,
         writes: AtomicUsize,
         pub(crate) discard: AtomicBool,
+        pub(crate) discard_on: AtomicUsize,
     }
     unsafe extern "C" fn read(
         c: *mut c_void,
@@ -377,8 +417,9 @@ pub(crate) mod tests {
         n: usize,
     ) -> i32 {
         let c = &*(c as *const Memory);
-        c.writes.fetch_add(1, Ordering::SeqCst);
-        if !c.discard.load(Ordering::SeqCst) {
+        let write_number = c.writes.fetch_add(1, Ordering::SeqCst) + 1;
+        if !c.discard.load(Ordering::SeqCst) && c.discard_on.load(Ordering::SeqCst) != write_number
+        {
             c.records.lock().unwrap().insert(
                 (
                     std::slice::from_raw_parts(s, sn).to_vec(),
@@ -410,6 +451,78 @@ pub(crate) mod tests {
             write,
             remove,
         }
+    }
+    #[test]
+    fn raw_notification_intents_are_closed_and_installation_id_stays_native() {
+        let value = serde_json::json!({"version":1,"kind":"notification.register","provider":"fcm","token":"public-push-address"});
+        assert!(parse_intent(&serde_json::to_vec(&value).unwrap()).is_ok());
+        for field in [
+            "installationId",
+            "endpointId",
+            "principalId",
+            "issuer",
+            "path",
+        ] {
+            let mut bad = value.clone();
+            bad[field] = serde_json::json!(uuid::Uuid::new_v4().to_string());
+            assert!(parse_intent(&serde_json::to_vec(&bad).unwrap()).is_err());
+        }
+        for token in ["".to_owned(), "x".repeat(4097), "control\n".into()] {
+            let mut bad = value.clone();
+            bad["token"] = serde_json::json!(token);
+            assert!(parse_intent(&serde_json::to_vec(&bad).unwrap()).is_err());
+        }
+        for provider in ["apns", "FCM", "https://evil"] {
+            let mut bad = value.clone();
+            bad["provider"] = serde_json::json!(provider);
+            assert!(parse_intent(&serde_json::to_vec(&bad).unwrap()).is_err());
+        }
+        for provider in ["fcm", "apns-sandbox", "apns-production"] {
+            let mut boundary = value.clone();
+            boundary["provider"] = serde_json::json!(provider);
+            boundary["token"] = serde_json::json!("x".repeat(4096));
+            assert!(parse_intent(&serde_json::to_vec(&boundary).unwrap()).is_ok());
+        }
+        let mut unicode = value.clone();
+        unicode["token"] = serde_json::json!("é".repeat(2049));
+        assert!(parse_intent(&serde_json::to_vec(&unicode).unwrap()).is_err());
+        let mut refresh = value.clone();
+        refresh["kind"] = serde_json::json!("notification.refresh");
+        assert!(parse_intent(&serde_json::to_vec(&refresh).unwrap()).is_ok());
+        refresh["installationId"] = serde_json::json!(uuid::Uuid::new_v4().to_string());
+        assert!(parse_intent(&serde_json::to_vec(&refresh).unwrap()).is_err());
+        refresh.as_object_mut().unwrap().remove("installationId");
+        assert!(parse_intent(
+            refresh
+                .to_string()
+                .replace("\"token\":", "\"token\":\"duplicate\",\"token\":")
+                .as_bytes()
+        )
+        .is_err());
+        refresh["provider"] = serde_json::json!("apns");
+        assert!(parse_intent(&serde_json::to_vec(&refresh).unwrap()).is_err());
+        let raw = value.to_string();
+        assert!(parse_intent(
+            raw.replace("\"token\":", "\"token\":\"duplicate\",\"token\":")
+                .as_bytes()
+        )
+        .is_err());
+        for kind in ["notification.status", "notification.disable"] {
+            assert!(parse_intent(
+                &serde_json::to_vec(&serde_json::json!({"version":1,"kind":kind})).unwrap()
+            )
+            .is_ok());
+            assert!(parse_intent(
+                &serde_json::to_vec(&serde_json::json!({"version":1,"kind":kind,"provider":"fcm"}))
+                    .unwrap()
+            )
+            .is_err());
+        }
+        assert!(parse_intent(&serde_json::to_vec(&serde_json::json!({"version":1,"kind":"notification.open","eventId":uuid::Uuid::new_v4().to_string()})).unwrap()).is_ok());
+        assert!(
+            parse_intent(br#"{"version":1,"kind":"notification.open","eventId":"../path"}"#)
+                .is_err()
+        );
     }
     #[test]
     fn raw_target_snapshot_remains_a_closed_parameterless_intent() {

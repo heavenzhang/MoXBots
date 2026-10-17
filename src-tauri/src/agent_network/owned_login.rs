@@ -212,6 +212,11 @@ async fn raw_request_with_limits(
     {
         return Ok((status, Value::Null));
     }
+    // An unmounted optional mobile notification router commonly returns plain
+    // 404 without JSON/no-store. It never authorizes a successful registration.
+    if status == StatusCode::NOT_FOUND && path.starts_with("/api/mobile-notify/v1/endpoints") {
+        return Err(NetworkError::new("MOBILE_NOTIFICATIONS_UNAVAILABLE"));
+    }
     if !response
         .headers()
         .get(header::CACHE_CONTROL)
@@ -524,6 +529,56 @@ impl OwnedClient {
             return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
         }
         request.response(value)
+    }
+    /// Fixed optional mobile routes only; reuse pinned TLS, no redirects/retries,
+    /// sensitive bearer handling and bounded strict no-store JSON HTTP.
+    pub(crate) async fn notification_request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        token: &str,
+    ) -> Result<Value, NetworkError> {
+        let suffix = path
+            .strip_prefix("/api/mobile-notify/v1/endpoints")
+            .ok_or_else(|| NetworkError::new("OWNED_REQUEST_INVALID"))?;
+        let parts: Vec<_> = suffix.split('/').collect();
+        let expected = if suffix.is_empty() && method == Method::POST && body.is_some() {
+            StatusCode::CREATED
+        } else if parts.len() == 2
+            && parts[0].is_empty()
+            && uuid(parts[1])
+            && method == Method::DELETE
+            && body.is_none()
+            || parts.len() == 5
+                && parts[0].is_empty()
+                && uuid(parts[1])
+                && parts[2] == "events"
+                && uuid(parts[3])
+                && parts[4] == "redeem"
+                && method == Method::POST
+                && body == Some(json!({"version":1}))
+        {
+            StatusCode::OK
+        } else {
+            return Err(NetworkError::new("OWNED_REQUEST_INVALID"));
+        };
+        let (status, value) = raw_request_with_limits(
+            &self.http,
+            &self.origin,
+            method,
+            path,
+            body,
+            Some(token),
+            8 * 1024,
+            8 * 1024,
+            false,
+        )
+        .await?;
+        if status != expected {
+            return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
+        }
+        Ok(value)
     }
     pub(crate) async fn identity_request(
         &self,
