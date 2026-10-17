@@ -11,10 +11,12 @@ Scope: correct native child approval guidance at Runtime composition, preserve a
 - [x] Pass complete source typecheck, lint, unit tests and build with exact Node/npm.
 - [x] Save the new fixed source recipe and candidate metadata; root independently reproduces the clean source and resource tests before committing.
 - [x] Retain both small/large prompt negative assertions and add explicit child deny/non-execution coverage.
-- [ ] Complete official installed Runtime/native campaign and verified handoff for the new exact source.
-- [ ] Complete four native platform candidate jobs, archive roundtrips and aggregate manifest.
-- [ ] Root independently admits exact candidate bytes and runs complete MoX Host native integration suite.
-- [ ] Root formal publication/selector decision, mainline/remote delivery and applicable production acceptance.
+- [x] Complete official darwin-arm64 Runtime/native campaign and fully verified handoff for the new exact source.
+- [x] Complete four native platform candidate jobs, archive roundtrips and aggregate manifest (Actions39040257661).
+- [x] Root independently admits the exact local handoff and passes complete MoX Host native integration (17 passed / 2 optional skipped).
+- [x] Root repeats acceptance on the exact CI arm64 bytes selected for publication (17 passed / 2 optional skipped).
+- [x] Publish and anonymously reacquire all four original resources; activate the exact owned formal selector and pass release-source Host17/2 plus24 resource tests.
+- [ ] Required final-head CI, normal main/remote delivery and separately recorded installed-client/production acceptance.
 
 ## Source owner and fix
 
@@ -74,14 +76,39 @@ Logs are under `/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBo
 | Complete source build | Foundation, Reference Web and TypeScript pass | `dsh-two-lock-build.log` |
 | First full unit run image failure | One existing pixel-image assertion failed; retained. Same case, original 41-test file and complete suite subsequently pass without a test change; exact first failure cause is unproven | `dsh-two-lock-tests.log`, `dsh-two-lock-image-failure.log`, `dsh-two-lock-image-full-retest.log` |
 | Old four-platform candidate source32a | Fails real AJV lint on Unix; Windows also exposed absolute tar archive operand. Superseded, never published or selected | `dsh-ci-linux-source32a.log`, `dsh-job-117405288413-source32a.log` |
-| New exact-source native campaign | Started, not yet claimed successful | `dsh-native-owned-9f98b281.log` |
+| New exact-source native campaign | Darwin ARM64 passed; Runtime manifest `610d4a5bebe7cca0a71fbc7bfd93a42ce5bc7e9770ca9a82917f1c744612b48a`, platform report `8447e198f6fee13648a4d8d94914fdcfe9c1e1ca2488cb66879a4fcfe487f0cb` | `dsh-native-owned-9f98b281-cached.log` |
+| Official complete handoff | Original command passes in new canonical temporary output; manifest `d86cb2fcb5c1db2d8be87afc8e4422fc816fc9b53fdd39f0ccd68c1f90d07265` | `dsh-native-handoff-9f98b281-tmp.log` |
+| Primary exact local handoff Host suite | 17 passed / 2 optional skipped in45.53s; allow/deny and both prompt sizes, history, MCP, HTTPS and restart persistence pass | `dsh-primary-host-native-candidate9f98.log` |
+
+The first post-campaign handoff copy under Documents failed the unchanged metadata audit. Independent diagnostics reproduced a copied Zod file changing ctime only, with inode/content/mtime/size/mode/link count unchanged; UF_TRACKED state appeared on copies. The concrete writer is unknown; observed mdworker read descriptors do not establish causation. The sealed source/copy bytes were preserved. Both original trees later passed the full original verifier; rerunning the original official handoff command into a new canonical temporary directory passed every check without source changes or weaker verification. Diagnostics are retained in `dsh-handoff-metadata-diagnosis-review.md` and associated external logs.
+
+Primary preparation and Host execution use an isolated temporary resource root, exact Node24.20 and CLI SHA-256 `d9fbdb724e8e4c161f57c59dc38dcbf6782e96ff0280ff5f22aaac61a7b9ae21`. Real Chromium and the optional lifecycle soak were not enabled; no paid model or daily App is used.
+
+All four native targets and the aggregate candidate pass in [Actions39040257661](https://github.com/heavenzhang/MoXBots/actions/runs/39040257661), at source-recipe commit713958e199bade6808f5c607ab9ed3ad46b8f386. The primary then acquired the exact CI arm64 archive, verified its full SHA-256 `da9a103802ccf906b150f0cdcbe7362508f9eb6e97cd6d199d61d46640d7bd18` and size46922901, checked the complete receipt/provenance, extracted to a new canonical temporary directory, and independently verified handoff `376092f505b6b5e0c83f4956e8dfe386865cf75302317c0f4813c0f0e8aa6899` and Runtime `610d4a5b…`. The complete Host suite against these exact CI bytes passes17 tests with2 optional skips in42.01s. Logs: `dsh-primary-ci-arm64-admission.log`, `dsh-primary-host-native-ci713958e1.log`, `ci-dsh-713958e1.json`. The two approval sizes include actual allow/deny effects and positive/negative prompt checks. Resource publication and anonymous public reacquisition are separate remaining gates.
 
 ## Delivery boundaries
 
 The candidate workflow runs narrow PR paths or manual dispatch on four actual native runners, exact toolchains, full source checks, source reconstruction and official verified native campaigns. Each target archive is checked before/after tar roundtrip. The aggregate requires four distinct verified targets and identical source/recipe/provenance. Actions candidates are read-only uploads; there is no publish job.
 
-Candidate metadata targets `heavenzhang/MoXBots` fixed tag `dsh-v0.1.18-moxbots.1`. Formal `src/shared/integrated-runtimes/dsh-release.json` still selects upstream 0.1.18. Root must accept/publish verified resources before activating the owned selector. Missing or invalid owned resources fail with no upstream fallback.
+Formal `src/shared/integrated-runtimes/dsh-release.json` now selects owned source9f98b281 at `heavenzhang/MoXBots` fixed tag `dsh-v0.1.18-moxbots.1`, exactly matching the admitted candidate metadata. Missing or invalid owned resources fail with no upstream fallback. Final CI/main delivery is recorded by PR101 and the canonical Git refs.
+
+The primary collected all four original CI archives with the official packager, independently verified source/provenance and every archive, and published [the fixed Runtime resources](https://github.com/heavenzhang/MoXBots/releases/tag/dsh-v0.1.18-moxbots.1) at recipe commit713958e199bade6808f5c607ab9ed3ad46b8f386. Manifest SHA-256 is `dcbe97c7347df9d6e788bda6de7764e93dd9cd7586102f4ef8473c9e6e7ebfc4`. All nine GitHub asset digests and sizes match the admitted original files (four archives, four target receipts, one manifest). A transport-only retry retained the unpublished draft and completed each remaining upload independently; no accepted bytes, tag or existing asset was overwritten. Because GitHub returned this first normal Release from `/latest` despite explicit `latest=false`, the resource Release is classified as prerelease; `/latest` again returns the same404 as before publication. Fixed-tag acquisition accepts this classification. Anonymous full reacquisition and formal selector activation subsequently passed as described below.
 
 Native fixtures use isolated home/workspace and loopback synthetic Provider/HTTP endpoints. They prove real Runtime/Host processes and approved/denied effects without external model calls or user files. They do not establish signed daily-client installation, UI card acceptance or production release. Those states remain separate and root-owned.
 
 Execution: this worker directly owns the DSH source/build changes; root and its independent reviewer perform separate integration/review. No worker delegation or external model call was made here. Actual model identifier, reasoning setting, per-worker token usage and monetary cost are not exposed to this worker and remain unknown.
+
+## Public resources and formal consumption
+
+Anonymous HTTPS acquisition of the public manifest and all four archives passed complete size/SHA-256 verification against the prevalidated original manifest. No GitHub token or authenticated fallback was used. Manifest bytes match dcbe97c7… exactly. The public-download proof and original downloaded bytes are retained outside Git in `dsh-public-reacquired-713958e1/`; raw transport progress is in `dsh-public-reacquisition.log`.
+
+| Target | Archive bytes | SHA-256 |
+| --- | ---: | --- |
+| darwin-arm64 | 46922901 | `da9a103802ccf906b150f0cdcbe7362508f9eb6e97cd6d199d61d46640d7bd18` |
+| darwin-x64 | 49016407 | `48901e44dbc82e502d1e93ea3a6aa92ed9c372d1a781ecbd1f5800adf6fed923` |
+| linux-x64 | 49711742 | `f78ee49f4a66137c9b9c9fdc3faecb9aa44628a86d43b84af93e8e46ee7a44da` |
+| win32-x64 | 52012909 | `4e379165679ae19a418b0d3b19c4589c0dafb5b78e5c12e4e811b9c61ea8bee8` |
+
+The primary then invoked the actual `prepareDshRuntime` release branch using a narrowly URL-bound, file-backed download adapter over those original anonymously acquired bytes. The adapter rechecks all four hashes plus fixed manifest/provenance before returning a buffer; it does not fabricate a handoff, change bytes, weaken verification or claim that the default HTTP fetch ran again. The official acquisition, release lock derivation, handoff/resource verification and atomic staging all ran. Preparation reports source=`release`, exact public arm64 URL, source9f98, handoff376092f5 and Runtime610d4.
+
+The complete staged Host suite passes **17 tests / 2 optional skips in36.07s**, including both approval sizes and actual allow/deny effects. Evidence: `dsh-primary-host-native-public-release.log`. The24 resource/build/web tests pass after changing the actual formal selector: `dsh-formal-selector-resource-tests.log`. These runs overlap prior suites and are not additional unique tests. The optional Chrome/soak and installed desktop/production boundaries remain unchanged.

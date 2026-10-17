@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/backend-recovery-20261017 -->
 <!-- git-project-sync-task:base=348251b3ce990dfbd0e0888d140477c6ed353f83 -->
-<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:status=ready-for-review -->
 
 # Task: Complete relay terminal-return recovery and DSH approval guidance
 
@@ -14,10 +14,10 @@ MOXBOTS-BACKEND-RECOVERY-20261017: complete negotiated terminal-return recovery 
 - [x] Verify actual repo, clean isolated branch, current main348251b3 and coordination/deployment boundaries.
 - [x] Extend existing metadata/relay owners with explicit mount policy, fresh permits and bounded recoverable routes.
 - [x] Verify both peers again after reconnect; reject identity/session/key/policy changes, expire offline results and deduplicate terminal delivery in scoped source/socket tests; installed-App gate remains separate.
-- [ ] Repair DSH prompt at its owning source, build a reproducible compatible artifact and retain approval/denial checks.
-- [ ] Focused regression, real socket/TLS/runtime integration, independent review and primary acceptance.
+- [x] Repair DSH prompt at source9f98b281, reproduce exact source, pass four native campaigns and retain real approval/denial checks.
+- [x] Focused regression, actual socket/TLS and exact-CI Runtime/Host integration, independent review and primary acceptance.
 - [ ] Sync current main, final-head CI/review, PR merge and remote main inclusion proof.
-- [ ] Record production/signed-client acceptance separately, coordinate via the designated release owner.
+- [x] Record installed-client/deployed-service acceptance separately and preserve the designated release owner; neither state is implied by source/resource acceptance.
 
 ## Completed
 
@@ -29,8 +29,10 @@ Evidence: dev-docs/backend-recovery-20261017/. Verbose non-secret logs: original
 
 ## Blockers and unknowns
 
-Owned clients now negotiate existing business and management profiles separately; original Host management authorization is preserved. Existing sole desktop release owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4. This task does not take over that target or interrupt the daily app. Production server target/ownership and safe deployment admission must be verified before changes; local isolated real-process acceptance can proceed independently. DSH upstream is read-only; immutable downloaded artifacts must not be modified. Four-platform owned source-built candidates are required before formal selector activation; original pointer remains until then. Native Mac full-App compiler previously fails in unrelated Swift dependency; actual Linux/Windows CI remains required.
+Owned clients now negotiate existing business and management profiles separately; original Host management authorization is preserved. Existing sole desktop release owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4. This task does not take over that target or interrupt the daily app. Production server target/ownership and safe deployment admission must be verified before changes; local isolated real-process acceptance can proceed independently. DSH upstream is read-only; immutable downloaded artifacts must not be modified. All four owned source-built resources passed native/roundtrip/admission, were published and anonymously reacquired, and the formal selector now pins source9f98 atdsh-v0.1.18-moxbots.1. Native Mac full-App compiler previously fails in unrelated Swift dependency; actual Linux/Windows CI remains required.
 
 ## Next step
 
-Build and admit four native DSH candidates from exact source9f98b281, run the primary Host/native campaign, publish and reacquire the immutable owned resources, then activate the formal selector. Primary clean source reproduction and24 resource tests pass; owner full source typecheck/lint/build and871 unit tests pass (2 pre-existing skips). The unchanged105-package manifest is retained; real dual-lock npm and repeated105 installation close the dependency authority defect. Windows portable tar unit/local real-tar gates pass, actual Windows candidate remains required. Main b11e10bc was normally merged without conflicts and six actual socket/TLS tests pass again; final App/resource-selection CI, PR review and remote main inclusion remain required.
+Run required final-head CI and review, normally merge PR101, then verify canonical remote main contains the exact reviewed task head and selected resources. This committed task record is the premerge snapshot; PR101 and actual remote refs are authoritative for its subsequent final delivery state. No self-referential head SHA is embedded.
+
+Four-platform native/aggregate CI at recipe commit713958e1 passes, all nine published asset digests match the original admitted files, and anonymous manifest/four-archive full reacquisition passes. Exact CI Host17/2 and public-release-source Host17/2 both pass; formal selector resource tests24/24 pass. Detailed evidence, digests, prior failure diagnosis and test boundaries are in dev-docs/backend-recovery-20261017/. Full source871 unit passes/2 conditional skips, unchanged105-package dependency authority and independent exact reconstruction remain established. Main b11e10bc,3e7fec64 andfa63b5d4 were normally incorporated without conflicts; final required App/service/native checks run against the final integration head. Signed daily App and deployed-service user-path acceptance remain separate under existing owners.
