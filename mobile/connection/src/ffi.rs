@@ -151,6 +151,23 @@ enum ClosedIntent {
     Operations { version: u8 },
     #[serde(rename = "connection.suspend")]
     Suspend { version: u8 },
+    #[serde(rename = "draft.read")]
+    DraftRead {
+        version: u8,
+        target_id: String,
+        #[serde(deserialize_with = "nullable_session")]
+        session_id: Option<String>,
+    },
+    #[serde(rename = "draft.write")]
+    DraftWrite {
+        version: u8,
+        target_id: String,
+        #[serde(deserialize_with = "nullable_session")]
+        session_id: Option<String>,
+        expected_revision: u64,
+        write_id: String,
+        text: String,
+    },
     #[serde(rename = "assets")]
     Assets {
         version: u8,
@@ -164,8 +181,18 @@ enum ClosedIntent {
         request: myagents_host_management_protocol::RemoteSessionRequest,
     },
 }
+fn nullable_session<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    serde::Deserialize::deserialize(d)
+}
 fn parse_intent(bytes: &[u8]) -> Result<serde_json::Value, ()> {
-    let _: ClosedIntent = serde_json::from_slice(bytes).map_err(|_| ())?;
+    let typed: ClosedIntent = serde_json::from_slice(bytes).map_err(|_| ())?;
+    if matches!(
+        typed,
+        ClosedIntent::DraftRead { .. } | ClosedIntent::DraftWrite { .. }
+    ) && bytes.len() > 64 * 1024
+    {
+        return Err(());
+    }
     serde_json::from_slice(bytes).map_err(|_| ())
 }
 pub struct MoxConnection {
@@ -287,7 +314,7 @@ pub unsafe extern "C" fn mox_connection_android_init(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::{
         collections::HashMap,
@@ -298,10 +325,10 @@ mod tests {
     };
     type Records = HashMap<(Vec<u8>, Vec<u8>), Vec<u8>>;
     #[derive(Default)]
-    struct Memory {
+    pub(crate) struct Memory {
         records: Mutex<Records>,
         writes: AtomicUsize,
-        discard: AtomicBool,
+        pub(crate) discard: AtomicBool,
     }
     unsafe extern "C" fn read(
         c: *mut c_void,
@@ -363,13 +390,48 @@ mod tests {
         ));
         0
     }
-    fn callbacks(c: &Memory) -> MoxConnectionStore {
+    pub(crate) fn callbacks(c: &Memory) -> MoxConnectionStore {
         MoxConnectionStore {
             context: c as *const _ as *mut c_void,
             read,
             write,
             remove,
         }
+    }
+    #[test]
+    fn raw_drafts_reject_duplicate_unknown_missing_and_oversize_fields() {
+        let id = uuid::Uuid::new_v4().to_string();
+        let valid = serde_json::json!({"version":1,"kind":"draft.write","targetId":"approved","sessionId":null,"expectedRevision":0,"writeId":id,"text":""});
+        assert!(parse_intent(&serde_json::to_vec(&valid).unwrap()).is_ok());
+        for suffix in [
+            r#","text":"duplicate"}"#,
+            r#","identityKey":"injected"}"#,
+            r#","expectedRevision":1}"#,
+        ] {
+            let original = valid.to_string();
+            let raw = format!("{}{}", &original[..original.len() - 1], suffix);
+            assert!(parse_intent(raw.as_bytes()).is_err());
+        }
+        let read = br#"{"version":1,"kind":"draft.read","targetId":"a","sessionId":null}"#;
+        assert!(parse_intent(read).is_ok());
+        let mut padded = read.to_vec();
+        padded.extend(vec![b' '; 65536]);
+        assert!(parse_intent(&padded).is_err());
+        for revision in [serde_json::json!(-1), serde_json::json!(0.5)] {
+            let mut invalid = valid.clone();
+            invalid["expectedRevision"] = revision;
+            assert!(parse_intent(&serde_json::to_vec(&invalid).unwrap()).is_err());
+        }
+        let mut missing = valid.clone();
+        missing.as_object_mut().unwrap().remove("sessionId");
+        assert!(parse_intent(&serde_json::to_vec(&missing).unwrap()).is_err());
+        let mut oversized = valid;
+        oversized["text"] = serde_json::json!("x".repeat(65536));
+        assert!(parse_intent(&serde_json::to_vec(&oversized).unwrap()).is_err());
+        assert!(parse_intent(
+            br#"{"version":1,"kind":"draft.read","targetId":"a","sessionId":null,"sessionId":"b"}"#
+        )
+        .is_err());
     }
     fn key_scope() -> KeyScope {
         KeyScope {

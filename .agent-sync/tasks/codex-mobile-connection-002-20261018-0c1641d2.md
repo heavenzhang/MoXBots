@@ -46,3 +46,34 @@ Actual device/Host acceptance remains parent-owned. Resume gate PASS at parent-p
 ## Next step
 
 Parent cherry-picks only the final owned connection commit after the accepted combined SDK dependencies, rebuilds the actual Android/iOS native library, integrates bounded native file IO, and completes authorized real account/Host acceptance.
+
+## Stable target identity and encrypted draft stage
+
+Resumed the exact clean parent-pushed 105865f6 branch; explicit-remote resume gate
+PASS. No SDK dependencies, app/NativeModule files, session/asset journal formats
+or production state changed in this bounded stage.
+
+- [x] Add stable opaque target identityKey from canonical issuer/service/environment/network/principal/target-device/agent tuple; targetId remains current native catalog authorization.
+- [x] Closed draft.read/draft.write with required nullable sessionId, u53 revisions, UUID writeId, 16,000 UTF-16 text and 64-KiB JSON bounds. Empty read is text empty, revision 0, lastWriteId null; clear uses write empty text.
+- [x] Native approved-target and validated in-memory account scope only; local operations never restore/discover/call HTTP. Invalid/expired/inactive account and removed catalog IDs fail closed.
+- [x] Separate OS-encrypted account index reserves up to 64 records before writing; complete target/session binding is validated on read. Exact readback confirms index/record persistence. Missing confirmed and orphan/foreign records are rejected rather than overwritten.
+- [x] Revision conflicts, current-writeId idempotency, changed-payload rejection, process-local serialized CAS/index gate and bounded quota; records including empty drafts are retained without eviction.
+- [x] Synthetic native C callbacks cover restart reads, account/target/session isolation, stale revision and exact retry, unconfirmed writes, corruption rejection, UTF-16 and capacity boundaries, raw strict duplicate/unknown/missing-field parsing.
+- [ ] Parent review/app integration, actual iOS/Android OS-store acceptance, real account/Host acceptance, main/release delivery remain parent-owned and are not claimed here.
+
+Verification: connection locked lib suite 80 tests; all-targets clippy with
+-D warnings. No real credentials/device storage/Host operations used. Parent
+should cherry-pick only this stage's connection-owned commit and rebuild native
+archives before testing app draft restoration. Requested/runtime-confirmed model
+and token cost remain unknown.
+
+### Draft session ID review correction
+
+Parent review required alignment with the original session identifier contract:
+null or 1–99 ASCII letters/digits/hyphens. Both local intents and persisted
+index/record validation now enforce it. This replaces the earlier allowance for
+an empty session string; empty text remains the clear-draft operation. Regression
+covers empty, 100-character, slash, control, non-ASCII and oversized identifiers,
+99-character acceptance and invalid stored bindings. Locked connection lib suite:
+81 passed; all-targets clippy -D warnings passed. No peer/SDK change in this fix;
+new session.mobile.v1 integration awaits the parent's SDK dependency commit.

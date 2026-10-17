@@ -35,3 +35,44 @@ cargo clippy --manifest-path mobile/connection/Cargo.toml --locked --all-targets
 ```
 
 Tests use generated ephemeral keys, bounded loopback HTTP fixtures and a real pinned TLS WebSocket upgrade/DPoP/subprotocol exchange, including rejection of a foreign CA. The sibling SDK tests exercise actual mutually authenticated inner TLS in both relay directions, including asset → session → asset and request-ID multiplexing on the same channel. These tests do not establish a production user login, real mobile Keychain/Keystore behavior, or a real Host session effect; those are separate native/device acceptance gates.
+
+### Stable target identity and encrypted local drafts
+
+Targets additionally expose `identityKey`, the lowercase SHA-256 of a canonical
+JSON tuple `(issuer, serviceId, environment, networkId, principalId, targetDeviceId,
+agentId)`. It survives display-name changes, catalog ID regeneration and native
+suspension. It is a cache key; only a current native-approved `targetId` authorizes
+requests. Neither draft requests nor execution requests accept caller-supplied
+identity/account/device/path bindings.
+
+Closed local intents are `draft.read` (`version:1`, `targetId`, required nullable
+`sessionId`) and `draft.write` (the same plus `expectedRevision`, `writeId`, `text`).
+Replies are `{kind:"draft",identityKey,agentId,sessionId,text,revision,lastWriteId}`.
+An absent draft returns empty text, revision 0, and null lastWriteId. To clear text,
+write an empty string with the current revision and a fresh canonical UUID.
+There is no deletion/eviction intent. Each account retains at most 64 reservations,
+including empty drafts and interrupted first writes. Session IDs are null or 1–99 ASCII letters, digits and hyphens, matching the
+original session contract; persisted index and record bindings enforce the same rule. Text is limited to 16,000 UTF-16 units; raw request JSON,
+persisted index and each record are limited to 64 KiB. Revisions are safe u53.
+
+Drafts use the same native OS encrypted record callbacks, under a separate hashed
+account namespace and a record hash bound to the complete target/session tuple.
+The encrypted index is reserved and read back before the record is written;
+record bytes and the completed index are read back before success is acknowledged.
+Missing confirmed records, orphan records, foreign bindings and malformed state
+fail closed. A process-local synchronous gate serializes index reservation/CAS
+across handles; native callers must retain their serialized owner queue and must
+not invoke reentrant callbacks. There is no cross-process file lock contract.
+Stale revisions return `MOBILE_DRAFT_CONFLICT`. The current lastWriteId with the
+same text returns the saved revision; a different payload is rejected. An
+unconfirmed write may have persisted, so callers retry the same writeId/text or
+read current state rather than inventing success.
+
+Draft operations perform no HTTP and do not restore login from disk. A cold owner
+must first complete the ordinary verified account and target restoration. A warm
+loaded account can use drafts without network availability, while its session is
+valid and its target remains in the current approved catalog. Suspend clears that
+catalog; logout, expiry or an inactive owner prevents writes into the old scope.
+Session and asset operation journals are unchanged. Callback/restart tests prove
+native adapter behavior with synthetic storage; actual device encryption and
+restart acceptance remain the integrating owner's checks.
