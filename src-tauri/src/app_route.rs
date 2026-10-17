@@ -111,11 +111,21 @@ pub fn enqueue_deep_link<R: Runtime>(
     state: &ManagedAppRouteQueue,
     raw: &str,
 ) -> bool {
+    // A wake signal only: the current PKCE transaction remains the sole login
+    // authority. Never accept tokens, account IDs or arbitrary routes here.
+    if is_login_return(raw) {
+        let _ = app.emit("owned-login:browser-return", ());
+        return true;
+    }
     let Some(route) = parse_deep_link(raw) else {
         return false;
     };
     enqueue(app, state, route);
     true
+}
+
+fn is_login_return(raw: &str) -> bool {
+    raw == format!("{APP_ROUTE_SCHEME}://login/complete")
 }
 
 pub fn enqueue_from_args<R: Runtime>(
@@ -282,6 +292,20 @@ pub fn parse_deep_link(raw: &str) -> Option<AppRoute> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn login_return_is_only_a_fixed_credential_free_wake_signal() {
+        let expected = format!("{APP_ROUTE_SCHEME}://login/complete");
+        assert!(is_login_return(&expected));
+        assert!(parse_deep_link(&expected).is_none());
+        for suffix in ["?token=secret", "#state", "/", "/../complete"] {
+            assert!(!is_login_return(&format!("{expected}{suffix}")));
+        }
+        assert!(!is_login_return("https://login/complete"));
+        assert!(!is_login_return(&format!(
+            "{APP_ROUTE_SCHEME}://login@evil/complete"
+        )));
+    }
 
     #[test]
     fn matches_shared_route_corpus() {

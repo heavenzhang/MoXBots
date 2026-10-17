@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>登录成功 · MoXBots</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#f5f4f0;color:#30332e;font:16px/1.6 system-ui,sans-serif;min-height:100dvh;display:grid;place-items:center;padding:24px}
+    main{width:100%;max-width:440px;background:#fff;border:1px solid #dedfd7;border-radius:20px;padding:36px;text-align:center}
+    .mark{font-size:28px;color:#39754b}h1{font-size:26px;margin:12px 0}p{color:#656c61;margin:12px 0 24px}
+    a{display:block;border-radius:10px;padding:12px 20px;background:#303b2e;color:#fff;text-decoration:none;font-weight:600}a:focus-visible{outline:3px solid #648958;outline-offset:4px}.hint{font-size:13px;margin:20px 0 0}
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">✓</div>
+    <h1>登录成功</h1>
+    <p role="status">正在打开 MoXBots，应用会自动完成登录。</p>
+    <a href="moxbot://login/complete">打开 MoXBots</a>
+    <p class="hint">如果浏览器询问是否打开应用，请选择允许。<br>未自动打开时，可点击上方按钮；完成后可关闭此页面。</p>
+  </main>
+  <script>
+    // No credentials in the app URL. The desktop verifies its own PKCE attempt.
+    history.replaceState(null, "", location.pathname);
+    window.location.replace("moxbot://login/complete");
+  </script>
+</body>
+</html>

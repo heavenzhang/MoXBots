@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OwnedLoginAttempt } from "@/api/agentNetwork";
+import { listenWithCleanup } from "@/utils/tauriListen";
+import { isTauriEnvironment } from "@/utils/browserMock";
 
 type Phase =
   | "idle"
@@ -276,7 +278,13 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
       if (current.current && !cancelled.current) void checkRef.current();
     };
     window.addEventListener("focus", focus);
-    return () => window.removeEventListener("focus", focus);
+    const abort = new AbortController();
+    if (isTauriEnvironment())
+      void listenWithCleanup("owned-login:browser-return", focus, abort.signal);
+    return () => {
+      abort.abort();
+      window.removeEventListener("focus", focus);
+    };
   }, []);
   return {
     attempt,
