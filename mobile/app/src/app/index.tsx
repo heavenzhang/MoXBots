@@ -5,7 +5,7 @@ import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Mic, MoreHorizontal, Plus } from 'lucide-react-native';
 import { Account, Interaction, PendingOperation, QaScenario, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestNative, selectQaScenario, subscribeSpeechChanges } from '../native';
-import { approvalStillCurrent, mutationDisposition } from '../operationPolicy';
+import { approvalStillCurrent, commitIfViewOwned, draftKey, mutationDisposition, readDraft, updateDraft, viewStillOwned, ViewOwner } from '../operationPolicy';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -29,6 +29,7 @@ const receiptLabels: Record<ReceiptStatus | PendingOperation['status'], string> 
 
 function AppBody() {
   const [account, setAccount] = useState<Account | null>(null);
+  const [ownerEpoch, setOwnerEpoch] = useState(0);
   const [targets, setTargets] = useState<Target[]>([]);
   const [target, setTarget] = useState<Target | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
@@ -51,22 +52,56 @@ function AppBody() {
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const snapshotRef = useRef<Snapshot | null>(null);
   const targetRef = useRef<Target | null>(null);
+  const ownerRef = useRef<ViewOwner>({ epoch: 0, screen: 'login', targetId: null, agentId: null, sessionId: null });
+  const draftStoreRef = useRef<Record<string, string>>({});
+  const activeDraftKeyRef = useRef<string | null>(null);
+  const speechDraftKeyRef = useRef<string | null>(null);
+  const loadingEpochRef = useRef(0);
+  const sendingEpochRef = useRef(0);
+  const accountRefreshEpochRef = useRef(0);
+  const speechOwnerEpochRef = useRef<number | null>(null);
   const speechStateRef = useRef<SpeechReply['state']>('idle');
   const speechBaseDraftRef = useRef('');
   const appliedSpeechTextRef = useRef('');
   const speechEpochRef = useRef(0);
   const speechActiveRef = useRef(false);
-  useEffect(() => { snapshotRef.current = snapshot; targetRef.current = target; }, [snapshot, target]);
+  const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
+    const key = draftKey(nextTarget, sessionId);
+    const priorOwner = ownerRef.current;
+    const priorSnapshot = snapshotRef.current;
+    const keepSnapshot = !!sessionId && priorOwner.targetId === nextTarget?.targetId && priorOwner.agentId === nextTarget?.agentId && priorOwner.sessionId === sessionId && priorSnapshot?.sessionId === sessionId;
+    targetRef.current = nextTarget;
+    snapshotRef.current = keepSnapshot ? priorSnapshot : null;
+    activeDraftKeyRef.current = key;
+    ownerRef.current = { epoch: ownerRef.current.epoch + 1, screen: nextScreen, targetId: nextTarget?.targetId ?? null, agentId: nextTarget?.agentId ?? null, sessionId };
+    setOwnerEpoch(ownerRef.current.epoch);
+    loadingEpochRef.current += 1;
+    sendingEpochRef.current += 1;
+    setLoading(false);
+    setSending(false);
+    setTarget(nextTarget);
+    setScreen(nextScreen);
+    setSnapshot(snapshotRef.current);
+    setDraft(readDraft(draftStoreRef.current, key));
+    return ownerRef.current;
+  }, []);
+  const saveDraftFor = useCallback((key: string | null, value: string) => {
+    draftStoreRef.current = updateDraft(draftStoreRef.current, key, value);
+    if (key === activeDraftKeyRef.current) setDraft(value);
+  }, []);
+  const saveDraft = useCallback((value: string) => saveDraftFor(activeDraftKeyRef.current, value), [saveDraftFor]);
+  const commitSnapshot = useCallback((value: Snapshot) => { snapshotRef.current = value; setSnapshot(value); }, []);
+  const draftKeyAtRender = activeDraftKeyRef.current;
 
   const applySpeech = useCallback((reply: SpeechReply) => {
-    if (!speechActiveRef.current) return;
+    if (!speechActiveRef.current || speechOwnerEpochRef.current !== ownerRef.current.epoch) return;
     speechStateRef.current = reply.state;
     setSpeech(reply);
     const recognizedText = reply.text.trim();
     if (recognizedText && appliedSpeechTextRef.current !== recognizedText) {
       appliedSpeechTextRef.current = recognizedText;
       const base = speechBaseDraftRef.current.trim();
-      setDraft(base ? `${base}\n${recognizedText}` : recognizedText);
+      saveDraft(base ? `${base}\n${recognizedText}` : recognizedText);
     }
     if (reply.code) {
       speechActiveRef.current = false;
@@ -76,7 +111,7 @@ function AppBody() {
       return;
     }
     if (reply.final || reply.state === 'idle') { speechActiveRef.current = false; speechStateRef.current = 'idle'; }
-  }, []);
+  }, [saveDraft]);
 
   useEffect(() => subscribeSpeechChanges(applySpeech), [applySpeech]);
 
@@ -85,40 +120,68 @@ function AppBody() {
     else setNotice({ text, tone });
   }, []);
   const run = useCallback(async (kind: string, action: () => Promise<void>) => {
+    const requestOwner = ownerRef.current;
+    const requestId = ++loadingEpochRef.current;
     setLoading(true);
     try { await action(); }
-    catch (error) { say(error instanceof Error ? error.message : `NATIVE_${kind.toUpperCase()}_FAILED`, 'error'); }
-    finally { setLoading(false); }
+    catch (error) { if (viewStillOwned(requestOwner, ownerRef.current)) say(error instanceof Error ? error.message : `NATIVE_${kind.toUpperCase()}_FAILED`, 'error'); }
+    finally { if (requestId === loadingEpochRef.current) setLoading(false); }
   }, [say]);
 
   const loadAccount = useCallback(async () => {
+    const refreshEpoch = ++accountRefreshEpochRef.current;
     const reply = await requestNative({ version: 1, kind: 'account.status' });
+    if (refreshEpoch !== accountRefreshEpochRef.current) return;
     if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
     setAccount(reply);
-    setScreen(reply.state === 'signed-in' ? 'sessions' : 'login');
-    if (reply.state === 'signed-in') {
-      const result = await requestNative({ version: 1, kind: 'targets.list' });
-      if (result.kind !== 'targets') throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
-      setTargets(result.items);
-      const selectedTarget = result.items.find((item) => item.targetId === targetRef.current?.targetId) ?? result.items.find((item) => item.online) ?? result.items[0] ?? null;
-      targetRef.current = selectedTarget;
-      setTarget(selectedTarget);
-      if (selectedTarget?.online) {
-        const sessions = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'list', agentId: selectedTarget.agentId, limit: 30 } }));
-        if (sessions.kind === 'list') setSessions(sessions.items);
-        else if (sessions.kind === 'error') throw new Error(sessions.code);
-      } else setSessions([]);
-      const journal = await requestNative({ version: 1, kind: 'operations.pending' });
-      if (journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+    if (reply.state !== 'signed-in') {
+      moveOwner('login', null, null);
+      setSessions([]);
+      return;
     }
-  }, []);
+    const result = await requestNative({ version: 1, kind: 'targets.list' });
+    if (refreshEpoch !== accountRefreshEpochRef.current) return;
+    if (result.kind !== 'targets') throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
+    setTargets(result.items);
+    const previous = targetRef.current;
+    const selectedTarget = result.items.find((item) => item.targetId === previous?.targetId)
+      ?? result.items.find((item) => item.agentId === previous?.agentId && item.deviceName === previous.deviceName)
+      ?? result.items.find((item) => item.online) ?? result.items[0] ?? null;
+    const previousOwner = ownerRef.current;
+    const sameLogicalTarget = !!previous && !!selectedTarget && previous.agentId === selectedTarget.agentId && previous.deviceName === selectedTarget.deviceName;
+    const nextScreen = previousOwner.screen === 'login' ? 'sessions' : previousOwner.screen;
+    const nextSessionId = nextScreen === 'chat' && sameLogicalTarget ? previousOwner.sessionId : null;
+    if (previousOwner.screen === 'chat' && !sameLogicalTarget) {
+      setNotice({ text: '当前 Bot 已不可用，请从列表重新打开会话。', tone: 'error' });
+    }
+    const refreshedOwner = moveOwner(nextScreen === 'chat' && !sameLogicalTarget ? 'sessions' : nextScreen, selectedTarget, nextSessionId);
+    if (refreshEpoch !== accountRefreshEpochRef.current) return;
+    if (selectedTarget?.online && refreshedOwner.screen === 'sessions') {
+      const sessionsReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'list', agentId: selectedTarget.agentId, limit: 30 } }));
+      if (viewStillOwned(refreshedOwner, ownerRef.current)) {
+        if (sessionsReply.kind === 'error') throw new Error(sessionsReply.code);
+        if (sessionsReply.kind !== 'list' || sessionsReply.agentId !== refreshedOwner.agentId) throw new Error('SESSION_LIST_REPLY_INVALID');
+        setSessions(sessionsReply.items);
+      }
+    } else if (refreshedOwner.screen === 'sessions') setSessions([]);
+    if (selectedTarget?.online && refreshedOwner.screen === 'chat' && refreshedOwner.sessionId) {
+      const snapshotReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'get', agentId: selectedTarget.agentId, sessionId: refreshedOwner.sessionId, limit: 30 } }));
+      if (viewStillOwned(refreshedOwner, ownerRef.current)) {
+        if (snapshotReply.kind === 'error') throw new Error(snapshotReply.code);
+        if (snapshotReply.kind !== 'snapshot' || snapshotReply.agentId !== refreshedOwner.agentId || snapshotReply.sessionId !== refreshedOwner.sessionId) throw new Error('SESSION_SNAPSHOT_REPLY_INVALID');
+        commitSnapshot(snapshotReply);
+      }
+    }
+    const journal = await requestNative({ version: 1, kind: 'operations.pending' });
+    if (refreshEpoch === accountRefreshEpochRef.current && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+  }, [commitSnapshot, moveOwner]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error')); }, 0);
     return () => clearTimeout(timer);
   }, [loadAccount, say]);
   useEffect(() => {
-    if (!loginStarted) return;
+    if (loginStarted) {
     const timer = setInterval(() => {
       void requestNative({ version: 1, kind: 'account.login.poll' }).then((reply) => {
         if (reply.kind === 'account') {
@@ -127,38 +190,49 @@ function AppBody() {
         }
       }).catch(() => undefined);
     }, 3000);
-    const listener = AppState.addEventListener('change', (state) => { if (state === 'active') void loadAccount().catch(() => undefined); });
-    return () => { clearInterval(timer); listener.remove(); };
+    return () => clearInterval(timer);
+    }
   }, [loadAccount, loginStarted, say]);
+  useEffect(() => {
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));
+    });
+    return () => listener.remove();
+  }, [loadAccount, say]);
 
-  const loadSessions = useCallback(async (selected = target) => {
+  const loadSessions = useCallback(async (selected = targetRef.current) => {
     if (!selected) return;
+    const owner = ownerRef.current;
+    if (owner.screen !== 'sessions' || owner.targetId !== selected.targetId || owner.agentId !== selected.agentId) return;
     const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId, request: { kind: 'list', agentId: selected.agentId, limit: 30 } }));
+    if (!viewStillOwned(owner, ownerRef.current)) return;
     if (result.kind === 'error') throw new Error(result.code);
-    if (result.kind !== 'list') throw new Error('SESSION_LIST_REPLY_INVALID');
-    setSessions(result.items);
-  }, [target]);
+    if (result.kind !== 'list' || result.agentId !== owner.agentId) throw new Error('SESSION_LIST_REPLY_INVALID');
+    commitIfViewOwned(owner, ownerRef.current, result.items, setSessions);
+  }, []);
 
   useEffect(() => {
     if (screen !== 'chat') return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      setScreen('sessions');
-      setSnapshot(null);
+      moveOwner('sessions', targetRef.current, null);
       void loadSessions().catch((error) => say(error instanceof Error ? error.message : 'SESSION_LIST_FAILED', 'error'));
       return true;
     });
     return () => subscription.remove();
-  }, [screen, loadSessions, say]);
+  }, [screen, loadSessions, moveOwner, say]);
 
   const openSnapshot = useCallback(async (row: SessionRow, selected = target) => {
     if (!selected) return;
-    setSnapshot(null);
-    setScreen('chat');
-    const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId, request: { kind: 'get', agentId: selected.agentId, sessionId: row.sessionId, limit: 30 } }));
-    if (result.kind === 'error') throw new Error(result.code);
-    if (result.kind !== 'snapshot') throw new Error('SESSION_SNAPSHOT_REPLY_INVALID');
-    setSnapshot(result);
-  }, [target]);
+    const owner = moveOwner('chat', selected, row.sessionId);
+    setNotice(null);
+    let result;
+    try { result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId, request: { kind: 'get', agentId: selected.agentId, sessionId: row.sessionId, limit: 30 } })); }
+    catch (error) { if (viewStillOwned(owner, ownerRef.current)) say(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED', 'error'); return; }
+    if (!viewStillOwned(owner, ownerRef.current)) return;
+    if (result.kind === 'error') { say(result.code, 'error'); return; }
+    if (result.kind !== 'snapshot' || result.agentId !== selected.agentId || result.sessionId !== row.sessionId) { say('SESSION_SNAPSHOT_REPLY_INVALID', 'error'); return; }
+    commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot);
+  }, [moveOwner, commitSnapshot, say, target]);
 
   useEffect(() => {
     if (screen !== 'chat' || !snapshot?.sessionId || !target?.targetId) return;
@@ -166,40 +240,45 @@ function AppBody() {
       const current = snapshotRef.current;
       const currentTarget = targetRef.current;
       if (!current || !currentTarget) return;
+      const owner = ownerRef.current;
+      if (owner.screen !== 'chat' || owner.targetId !== currentTarget.targetId || owner.agentId !== current.agentId || owner.sessionId !== current.sessionId) return;
       void requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } })
-        .then(parseSessionReply).then((result) => { if (result.kind === 'snapshot' && result.sessionId === snapshotRef.current?.sessionId && result.revision !== snapshotRef.current.revision) setSnapshot(result); })
+        .then(parseSessionReply).then((result) => { if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId && result.revision !== snapshotRef.current?.revision) commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot); })
         .catch(() => undefined);
     }, 1500);
     return () => clearInterval(interval);
-  }, [screen, snapshot?.sessionId, target?.targetId]);
+  }, [commitSnapshot, screen, snapshot?.sessionId, target?.targetId]);
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
+    const mutationOwner = ownerRef.current;
+    const sendingId = ++sendingEpochRef.current;
     setSending(true);
     setNotice(null);
     try {
       const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId, request }));
       if (result.kind === 'error') throw new Error(result.code);
       if (result.kind !== 'receipt') throw new Error('MUTATION_RECEIPT_INVALID');
+      const stillOwner = viewStillOwned(mutationOwner, ownerRef.current);
       setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
       if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
       else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
-      if (result.status === 'processing') say('已提交，正在确认接收状态');
-      else if (result.status === 'accepted') say('已接收');
-      else if (result.status === 'unconfirmed') say('结果尚未确认。请查询状态后再继续；这条消息不会自动重发。', 'error');
-      else if (result.status === 'not-found') say('未找到该操作记录，无法判断是否执行。请勿直接重发。', 'error');
-      else say(result.code ?? '操作未接收', 'error');
-      if (result.sessionId && request.kind === 'start') {
+      if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
+      else if (stillOwner && result.status === 'accepted') say('已接收');
+      else if (stillOwner && result.status === 'unconfirmed') say('结果尚未确认。请查询状态后再继续；这条消息不会自动重发。', 'error');
+      else if (stillOwner && result.status === 'not-found') say('未找到该操作记录，无法判断是否执行。请勿直接重发。', 'error');
+      else if (stillOwner) say(result.code ?? '操作未接收', 'error');
+      if (stillOwner && result.sessionId && request.kind === 'start') {
         const row = { sessionId: result.sessionId, title: request.text.slice(0, 48), updatedAt: new Date().toISOString(), preview: request.text, runtime: target?.runtime ?? '' };
-        setDraft('');
+        saveDraft('');
         await openSnapshot(row);
-      } else if (request.kind === 'send' && result.status === 'accepted') setDraft('');
-      if (request.kind === 'respond' || request.kind === 'stop') {
+      } else if (stillOwner && request.kind === 'send' && result.status === 'accepted') saveDraft('');
+      if (stillOwner && (request.kind === 'respond' || request.kind === 'stop')) {
         const fresh = await requestNative({ version: 1, kind: 'session', targetId, request: { kind: 'get', agentId: request.agentId, sessionId: request.sessionId, limit: 30 } }).then(parseSessionReply);
-        if (fresh.kind === 'snapshot') setSnapshot(fresh);
+        if (viewStillOwned(mutationOwner, ownerRef.current) && fresh.kind === 'snapshot' && fresh.agentId === mutationOwner.agentId && fresh.sessionId === mutationOwner.sessionId) commitSnapshot(fresh);
       }
-    } catch (error) { say(error instanceof Error ? error.message : 'MUTATION_FAILED', 'error'); }
-    finally { setSending(false); }
+    } catch (error) { if (viewStillOwned(mutationOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'MUTATION_FAILED', 'error'); }
+    finally { if (sendingId === sendingEpochRef.current) setSending(false); }
   };
 
   const sendDraft = () => {
@@ -211,28 +290,31 @@ function AppBody() {
   };
 
   const queryPending = async (item: PendingOperation) => {
+    const queryOwner = ownerRef.current;
     const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: item.targetId, request: { kind: 'receipt', agentId: item.agentId, operationId: item.operationId } }));
     if (result.kind !== 'receipt') throw new Error(result.kind === 'error' ? result.code : 'RECEIPT_REPLY_INVALID');
     setReceiptStates((states) => ({ ...states, [item.operationId]: result.status }));
     if (result.status === 'accepted' || result.status === 'rejected') setPending((items) => items.filter((entry) => entry.operationId !== item.operationId));
-    say(result.status === 'unconfirmed' || result.status === 'not-found' ? `操作状态：${receiptLabels[result.status]}，没有重发。` : `操作状态：${receiptLabels[result.status]}`, result.status === 'unconfirmed' || result.status === 'not-found' ? 'error' : 'neutral');
+    if (viewStillOwned(queryOwner, ownerRef.current)) say(result.status === 'unconfirmed' || result.status === 'not-found' ? `操作状态：${receiptLabels[result.status]}，没有重发。` : `操作状态：${receiptLabels[result.status]}`, result.status === 'unconfirmed' || result.status === 'not-found' ? 'error' : 'neutral');
   };
 
   const respond = (item: Interaction, approved: boolean, answers?: Record<string, string>) => {
     if (!snapshot || !target || !item.actionable || snapshot.state !== 'waiting_user_action') return;
     const generation = snapshot.generation;
     const turnId = snapshot.turnId;
+    const approvalOwner = ownerRef.current;
     const captured = { sessionId: snapshot.sessionId, generation, turnId, requestId: item.requestId };
     if (!generation || !turnId) { say('审批信息已过期，请刷新会话。', 'error'); return; }
     void (async () => {
       try {
         if (isFixtureMode) await armQaStaleApproval();
         const current = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: target.targetId, request: { kind: 'get', agentId: snapshot.agentId, sessionId: captured.sessionId, limit: 30 } }));
-        if (current.kind !== 'snapshot') throw new Error(current.kind === 'error' ? current.code : 'APPROVAL_REFRESH_INVALID');
-        setSnapshot(current);
+        if (!viewStillOwned(approvalOwner, ownerRef.current)) return;
+        if (current.kind !== 'snapshot' || current.agentId !== approvalOwner.agentId || current.sessionId !== approvalOwner.sessionId) throw new Error(current.kind === 'error' ? current.code : 'APPROVAL_REFRESH_INVALID');
+        commitSnapshot(current);
         if (!approvalStillCurrent(current, { requestId: captured.requestId, generation, turnId })) { say('审批信息已更新，尚未提交。请检查刷新后的请求。', 'error'); return; }
         void mutation({ kind: 'respond', agentId: current.agentId, sessionId: captured.sessionId, operationId: Crypto.randomUUID(), generation, turnId, requestId: captured.requestId, interaction: item.interaction, approved, ...(answers ? { answers } : {}) });
-      } catch (error) { say(error instanceof Error ? error.message : 'APPROVAL_REFRESH_FAILED', 'error'); }
+      } catch (error) { if (viewStillOwned(approvalOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'APPROVAL_REFRESH_FAILED', 'error'); }
     })();
   };
 
@@ -250,38 +332,44 @@ function AppBody() {
     setSpeech({ kind: 'speech', state: 'idle', text: '', final: false });
     speechBaseDraftRef.current = draft;
     appliedSpeechTextRef.current = '';
+    speechDraftKeyRef.current = activeDraftKeyRef.current;
     if (isFixtureMode) { say('Web 演示不能调用设备麦克风；请在开发构建中测试语音。'); return; }
     const epoch = ++speechEpochRef.current;
+    speechOwnerEpochRef.current = ownerRef.current.epoch;
+    const ownerEpoch = speechOwnerEpochRef.current;
     speechActiveRef.current = true;
     speechStateRef.current = 'recording';
     setSpeech((prior) => ({ ...prior, state: 'recording' }));
     try {
       const reply = await requestNative({ version: 1, kind: 'speech.start' });
-      if (epoch !== speechEpochRef.current) return;
+      if (epoch !== speechEpochRef.current || ownerEpoch !== ownerRef.current.epoch) return;
       if (reply.kind === 'error') { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(reply.code, 'error'); return; }
       if (reply.kind !== 'speech') { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say('SPEECH_REPLY_INVALID', 'error'); return; }
       applySpeech(reply);
-    } catch (error) { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(error instanceof Error ? error.message : 'SPEECH_START_FAILED', 'error'); }
+    } catch (error) { if (epoch === speechEpochRef.current && ownerEpoch === ownerRef.current.epoch) { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(error instanceof Error ? error.message : 'SPEECH_START_FAILED', 'error'); } }
   };
 
   const stopSpeech = async () => {
     if (isFixtureMode) return;
     const epoch = speechEpochRef.current;
+    const ownerEpoch = speechOwnerEpochRef.current;
     speechStateRef.current = 'transcribing';
     setSpeech((prior) => ({ ...prior, state: 'transcribing', final: false }));
     try {
       const reply = await requestNative({ version: 1, kind: 'speech.stop' });
-      if (epoch !== speechEpochRef.current) return;
-      if (reply.kind === 'error') { say(reply.code, 'error'); return; }
-      if (reply.kind !== 'speech') { say('SPEECH_REPLY_INVALID', 'error'); return; }
+      if (epoch !== speechEpochRef.current || ownerEpoch !== ownerRef.current.epoch) return;
+      if (reply.kind === 'error') { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(reply.code, 'error'); return; }
+      if (reply.kind !== 'speech') { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say('SPEECH_REPLY_INVALID', 'error'); return; }
       applySpeech(reply);
-    } catch (error) { say(error instanceof Error ? error.message : 'SPEECH_STOP_FAILED', 'error'); }
+    } catch (error) { if (epoch === speechEpochRef.current && ownerEpoch === ownerRef.current.epoch) say(error instanceof Error ? error.message : 'SPEECH_STOP_FAILED', 'error'); }
   };
 
   const cancelSpeech = useCallback(async (quiet = false) => {
     const shouldCancel = speechActiveRef.current || speechStateRef.current !== 'idle';
+    const canceledOwnerEpoch = speechOwnerEpochRef.current;
     speechEpochRef.current += 1;
     speechActiveRef.current = false;
+    speechOwnerEpochRef.current = null;
     speechStateRef.current = 'idle';
     setSpeech({ kind: 'speech', state: 'idle', text: '', final: false });
     setSpeechPanelOpen(false);
@@ -289,8 +377,8 @@ function AppBody() {
     if (shouldCancel && !isFixtureMode) {
       try {
         const reply = await requestNative({ version: 1, kind: 'speech.cancel' });
-        if (reply.kind === 'error' && !quiet) say(reply.code, 'error');
-      } catch (error) { if (!quiet) say(error instanceof Error ? error.message : 'SPEECH_CANCEL_FAILED', 'error'); }
+        if (reply.kind === 'error' && !quiet && ownerRef.current.epoch === canceledOwnerEpoch) say(reply.code, 'error');
+      } catch (error) { if (!quiet && ownerRef.current.epoch === canceledOwnerEpoch) say(error instanceof Error ? error.message : 'SPEECH_CANCEL_FAILED', 'error'); }
     }
   }, [say]);
 
@@ -304,10 +392,13 @@ function AppBody() {
   useEffect(() => {
     if (screen !== 'chat' && speechActiveRef.current) void cancelSpeech(true);
   }, [cancelSpeech, screen]);
+  useEffect(() => {
+    if (speechActiveRef.current && speechOwnerEpochRef.current !== ownerRef.current.epoch) void cancelSpeech(true);
+  }, [cancelSpeech, ownerEpoch]);
 
   const chooseQaScenario = async (scenario: QaScenario) => {
-    targetRef.current = null;
-    setTarget(null); setSessions([]); setSnapshot(null); setDraft(''); setPending([]); setNotice(null);
+    moveOwner('login', null, null);
+    setSessions([]); setPending([]); setNotice(null);
     setReceiptStates({}); setResultsOpen(false); setMenuOpen(false); setComposerMenuOpen(false); setQaMenuOpen(false);
     try { await selectQaScenario(scenario); await loadAccount(); }
     catch (error) { say(error instanceof Error ? error.message : 'NATIVE_SCENARIO_FAILED', 'error'); }
@@ -333,11 +424,11 @@ function AppBody() {
       <View style={styles.targetsBar}>
         <Text style={styles.sectionEyebrow}>BOT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {targets.map((item) => <Pressable key={item.targetId} onPress={() => { if (target?.targetId !== item.targetId) setDraft(''); targetRef.current = item; setTarget(item); setSessions([]); void run('sessions', () => loadSessions(item)); }} style={[styles.targetChip, target?.targetId === item.targetId && styles.targetChipActive]}><View style={[styles.dot, !item.online && styles.dotOff]}/><Text style={[styles.targetChipText, target?.targetId === item.targetId && styles.targetChipTextActive]} numberOfLines={1}>{item.name}</Text></Pressable>)}
+        {targets.map((item) => <Pressable key={item.targetId} onPress={() => { if (targetRef.current?.targetId !== item.targetId) { moveOwner('sessions', item, null); setSessions([]); } void run('sessions', () => loadSessions(item)); }} style={[styles.targetChip, target?.targetId === item.targetId && styles.targetChipActive]}><View style={[styles.dot, !item.online && styles.dotOff]}/><Text style={[styles.targetChipText, target?.targetId === item.targetId && styles.targetChipTextActive]} numberOfLines={1}>{item.name}</Text></Pressable>)}
           {targets.length === 0 && <Text style={styles.caption}>尚未发现可用 Bot</Text>}
         </ScrollView>
       </View>
-      <View style={styles.listHead}><View><Text style={styles.title}>会话</Text><Text style={styles.subtitle}>{target ? `${target.deviceName} · ${target.online ? '在线' : '离线'}` : '选择一个 Bot'}</Text></View><Pressable accessibilityRole="button" onPress={() => { setSnapshot(null); setScreen('chat'); setNotice(null); }} style={styles.newButton}><Text style={styles.newButtonText}>＋ 新会话</Text></Pressable></View>
+      <View style={styles.listHead}><View><Text style={styles.title}>会话</Text><Text style={styles.subtitle}>{target ? `${target.deviceName} · ${target.online ? '在线' : '离线'}` : '选择一个 Bot'}</Text></View><Pressable accessibilityRole="button" onPress={() => { moveOwner('chat', targetRef.current, null); setNotice(null); }} style={styles.newButton}><Text style={styles.newButtonText}>＋ 新会话</Text></Pressable></View>
       {notice && <NoticeView notice={notice}/>}
       <ScrollView style={styles.fill} contentContainerStyle={styles.sessionList}>
         {pending.length > 0 && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认操作</Text><Text style={styles.caption}>状态未知时只查询，不会自动重发。</Text>{pending.map((item) => { const canQuery = !!item.targetId && targets.some((entry) => entry.targetId === item.targetId && entry.online); return <Pressable key={item.operationId} accessibilityRole="button" accessibilityState={{ disabled: !canQuery }} disabled={!canQuery} onPress={() => void run('receipt', () => queryPending(item))} style={[styles.pendingRow, !canQuery && styles.pendingRowDisabled]}><Text style={styles.pendingText}>查询操作 · {receiptLabels[receiptStates[item.operationId] ?? item.status]}</Text><Text style={[styles.pendingLink, !canQuery && styles.pendingLinkDisabled]}>{canQuery ? '查询状态' : '等待设备'}</Text></Pressable>; })}</View>}
@@ -347,7 +438,7 @@ function AppBody() {
 
     {screen === 'chat' && <View style={styles.fill}>
       <View style={styles.chatToolbar}>
-        <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { setScreen('sessions'); setSnapshot(null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { moveOwner('sessions', targetRef.current, null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
         <View style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || '新会话'}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="查看成果" onPress={() => setResultsOpen((value) => !value)} style={styles.toolbarAction}><FileText size={20} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
@@ -366,12 +457,12 @@ function AppBody() {
         {composerMenuOpen && <View style={styles.composerMenu}><Pressable onPress={() => { setComposerMenuOpen(false); say('附件选择当前不可用。', 'neutral'); }} style={styles.menuItem}><Text style={styles.menuLabel}>添加附件</Text><Text style={styles.menuHint}>当前不可用</Text></Pressable><Pressable onPress={() => { setComposerMenuOpen(false); void startSpeech(); }} style={styles.menuItem}><Text style={styles.menuLabel}>语音输入</Text><Text style={styles.menuHint}>{isFixtureMode ? '仅开发构建' : '使用设备麦克风'}</Text></Pressable><Pressable onPress={() => { setComposerMenuOpen(false); say('下一步建议当前不可用。', 'neutral'); }} style={styles.menuItem}><Text style={styles.menuLabel}>下一步建议</Text><Text style={styles.menuHint}>当前不可用</Text></Pressable></View>}
         {speechPanelOpen && <View style={styles.speechPanel}>
           <View style={styles.speechPanelHead}><Text style={styles.speechPanelTitle}>{speech.state === 'recording' ? '正在聆听' : speech.state === 'transcribing' ? '正在整理识别结果' : speech.final ? '识别草稿' : '语音输入'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭语音输入" onPress={() => void cancelSpeech()} style={styles.speechClose}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>
-          {isFixtureMode && !speech.text ? <Text style={styles.caption}>Web 演示不会生成识别内容；开发构建会使用设备本地语音服务。</Text> : <TextInput accessibilityLabel="语音识别草稿" value={speech.text} editable={speech.state === 'idle'} multiline onChangeText={(value) => { setSpeech((prior) => ({ ...prior, text: value })); appliedSpeechTextRef.current = value; const base = speechBaseDraftRef.current.trim(); setDraft(base ? `${base}\n${value}` : value); }} placeholder={speech.state === 'recording' ? '正在聆听…' : '识别到的文字会留在这里，发送前可以编辑。'} placeholderTextColor={C.muted} style={styles.speechTextInput}/>}
+          {isFixtureMode && !speech.text ? <Text style={styles.caption}>Web 演示不会生成识别内容；开发构建会使用设备本地语音服务。</Text> : <TextInput accessibilityLabel="语音识别草稿" value={speech.text} editable={speech.state === 'idle'} multiline onChangeText={(value) => { if (speechOwnerEpochRef.current !== ownerRef.current.epoch) return; setSpeech((prior) => ({ ...prior, text: value })); appliedSpeechTextRef.current = value; const base = speechBaseDraftRef.current.trim(); saveDraftFor(speechDraftKeyRef.current, base ? `${base}\n${value}` : value); }} placeholder={speech.state === 'recording' ? '正在聆听…' : '识别到的文字会留在这里，发送前可以编辑。'} placeholderTextColor={C.muted} style={styles.speechTextInput}/>}
           <View style={styles.speechActions}>{speech.state === 'recording' ? <Pressable accessibilityRole="button" accessibilityLabel="停止录音并识别" onPress={() => void stopSpeech()} style={styles.speechStop}><Text style={styles.speechStopText}>完成录音</Text></Pressable> : speech.state === 'transcribing' ? <View style={styles.speechProgress}><ActivityIndicator color={C.green}/><Text style={styles.caption}>等待识别完成</Text></View> : <Text style={styles.caption}>{speech.final ? '已加入消息草稿，可继续编辑。' : '识别文本不会自动发送。'}</Text>}</View>
         </View>}
         <View style={styles.composer}>
           <Pressable accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" onPress={() => setComposerMenuOpen((value) => !value)} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={setDraft} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={styles.input}/>
+          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, value)} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={styles.input}/>
           {draft.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} disabled={sending || blocksMutation || !target?.online} onPress={sendDraft} style={[styles.sendButton, (sending || blocksMutation || !target?.online) && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
         </View>
       </View>
