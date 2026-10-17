@@ -169,9 +169,23 @@ explicit fixture's synthetic-only events with its temporary root replaced by
 - Exact PID inspection after cleanup found no processes at
   5268/5289/5294/5308/5309/5317. Other desktop/SDK processes were not signalled.
 
-Primary independently reran the pre-restart version and reported PASS4213ms at
-private fixture `.mox-original-host-u9FqQt`; final restart increment still awaits
-primary's independent acceptance. Do not treat this worker report as that gate.
+Primary independently reran the pre-restart version: PASS4213ms, private fixture
+`.mox-original-host-u9FqQt`. Then primary integrated the actual restart increment
+and independently ran it: **PASS3492ms**, private fixture
+`/Users/zhangshaohua/.mox-original-host-MDhjB2/evidence.jsonl`; full command output
+`/tmp/moxbots-mobile-original-host-primary-restart.log`. Main6242 → worker6244 →
+native6247; fresh supervisor6263 recovered exact source ID
+`5f0e33e0-c4dd-4aba-a468-44acc1b45e09`/original epoch and both accepted receipts,
+with supplierCalls2. Session `2244c424-2e5e-4a0e-b1dc-34e86d81b6ba` stayed unique.
+Primary exact PID inspection confirmed6242/6244/6247/6256/6258/6263 absent after
+cleanup. The read-back attachment SHA matches the worker's result. Artifact owner
+still returned an empty page, so no result-file preview claim. Primary accepts
+this package within its stated controlled macOS source/SDK scope.
+
+The existing Linux headless CI job now explicitly runs this original Host script
+with a5-minute bound; the next exact-source Linux execution is pending. The
+separate actual source/publisher/service regression already passed Linux36.25s
+onf6; those are different tests and neither substitutes for the other.
 
 This is macOS local controller/Host source and actual SDK integration with a
 synthetic supplier and synthetic management scope. It does not verify Linux
