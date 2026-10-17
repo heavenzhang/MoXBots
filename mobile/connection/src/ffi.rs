@@ -145,6 +145,8 @@ enum ClosedIntent {
     LoginPoll { version: u8 },
     #[serde(rename = "account.logout")]
     Logout { version: u8 },
+    #[serde(rename = "targets.snapshot")]
+    TargetsSnapshot { version: u8 },
     #[serde(rename = "targets.list")]
     Targets { version: u8 },
     #[serde(rename = "operations.pending")]
@@ -407,6 +409,17 @@ pub(crate) mod tests {
             read,
             write,
             remove,
+        }
+    }
+    #[test]
+    fn raw_target_snapshot_remains_a_closed_parameterless_intent() {
+        assert!(parse_intent(br#"{"version":1,"kind":"targets.snapshot"}"#).is_ok());
+        for raw in [
+            br#"{"version":1,"kind":"targets.snapshot","targetId":"injected"}"#.as_slice(),
+            br#"{"version":1,"kind":"targets.snapshot","version":1}"#.as_slice(),
+            br#"{"version":1,"kind":"targets.snapshot","kind":"targets.list"}"#.as_slice(),
+        ] {
+            assert!(parse_intent(raw).is_err());
         }
     }
     #[test]

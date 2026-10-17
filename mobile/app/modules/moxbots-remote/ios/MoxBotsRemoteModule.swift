@@ -315,7 +315,7 @@ public final class MoxBotsRemoteModule: Module {
       do {
         let scope = try self.accountScope()
         let targetAndItems: (NativeArtifactTarget, [[String: Any]])
-        do { targetAndItems = try self.currentArtifactTarget(targetId) }
+        do { targetAndItems = try self.currentArtifactTarget(targetId, kind: kind) }
         catch { self.artifactDownloads?.pause(); throw error }
         let (target, items) = targetAndItems
         self.artifactDownloads?.validateTargets(items)
@@ -364,8 +364,10 @@ public final class MoxBotsRemoteModule: Module {
     code.hasPrefix("ACCOUNT_") || code.hasPrefix("TARGET_") || code.hasPrefix("HOST_MANAGEMENT_") ||
       ["MOBILE_AUTHORIZATION_REQUIRED", "MOBILE_ACCOUNT_CHANGED"].contains(code)
   }
-  private func currentArtifactTarget(_ targetId: String) throws -> (NativeArtifactTarget, [[String: Any]]) {
-    let raw = try ensureConnection().request("{\"version\":1,\"kind\":\"targets.list\"}")
+  private func currentArtifactTarget(_ targetId: String, kind: String) throws -> (NativeArtifactTarget, [[String: Any]]) {
+    let localOnly = ["artifact.status", "artifact.pause", "artifact.remove"].contains(kind)
+    let targetQuery = localOnly ? "targets.snapshot" : "targets.list"
+    let raw = try ensureConnection().request("{\"version\":1,\"kind\":\"\(targetQuery)\"}")
     guard let data = raw.data(using: .utf8), let result = try JSONSerialization.jsonObject(with: data) as? [String: Any],
       let items = result["items"] as? [[String: Any]],
       let value = items.first(where: { $0["targetId"] as? String == targetId }),

@@ -321,7 +321,7 @@ class MoxBotsRemoteModule : Module() {
       try {
         val scope = accountScope()
         val context = requireNotNull(appContext.reactContext)
-        val (target, targetItems) = runCatching { currentArtifactTarget(targetId) }
+        val (target, targetItems) = runCatching { currentArtifactTarget(targetId, kind) }
           .onFailure { artifactDownloads?.pause() }.getOrThrow()
         artifactDownloads?.validateTargets(targetItems)
         artifactDownloads?.pauseForTarget(target.targetId)
@@ -362,8 +362,9 @@ class MoxBotsRemoteModule : Module() {
       }
     }
   }
-  private fun currentArtifactTarget(targetId: String): Pair<ArtifactTarget, org.json.JSONArray> {
-    val items = JSONObject(ensureConnection().request("{\"version\":1,\"kind\":\"targets.list\"}"))
+  private fun currentArtifactTarget(targetId: String, kind: String): Pair<ArtifactTarget, org.json.JSONArray> {
+    val targetQuery = if (kind in setOf("artifact.status", "artifact.pause", "artifact.remove")) "targets.snapshot" else "targets.list"
+    val items = JSONObject(ensureConnection().request("{\"version\":1,\"kind\":\"$targetQuery\"}"))
       .getJSONArray("items")
     val target = (0 until items.length()).mapNotNull { items.optJSONObject(it) }
       .firstOrNull { it.opt("targetId") is String && it.optString("targetId") == targetId } ?: error("MOBILE_TARGET_INVALID")

@@ -84,6 +84,7 @@ pub struct MobileConnection {
     connected: Option<Connected>,
     peer: Option<peer::PeerConnection>,
     targets: HashMap<String, Target>,
+    target_account: Option<NetworkAccountSession>,
 }
 fn err(code: &'static str) -> NetworkError {
     NetworkError::new(code)
@@ -109,6 +110,7 @@ impl MobileConnection {
             connected: None,
             peer: None,
             targets: HashMap::new(),
+            target_account: None,
         })
     }
     /// JS receives only closed projections. Secrets stay in this native owner.
@@ -171,7 +173,7 @@ impl MobileConnection {
     async fn cancel(&mut self) -> Result<(), NetworkError> {
         self.connected = None;
         self.peer = None;
-        self.targets.clear();
+        self.clear_targets();
         if let Some(p) = self.pending.take() {
             return self
                 .client
@@ -304,7 +306,7 @@ impl MobileConnection {
                 self.active.store(false, Ordering::Release);
                 self.connected = None;
                 self.peer = None;
-                self.targets.clear();
+                self.clear_targets();
                 let saved = match self.saved.take() {
                     Some(saved) => Ok(Some(saved)),
                     None => disk
@@ -339,7 +341,7 @@ impl MobileConnection {
             "connection.suspend" => {
                 self.connected = None;
                 self.peer = None;
-                self.targets.clear();
+                self.clear_targets();
                 Ok(json!({"kind":"connection","state":"suspended"}))
             }
             "session" => self.session(&intent).await,
@@ -349,11 +351,12 @@ impl MobileConnection {
                 self.restore().await?;
                 self.operations_pending()
             }
+            "targets.snapshot" => self.targets_snapshot(),
             "targets.list" => {
                 self.connect().await?;
                 let result = self.list_targets().await;
                 if result.is_err() {
-                    self.targets.clear();
+                    self.clear_targets();
                     self.peer = None;
                 }
                 if self.peer.as_ref().is_some_and(|p| {
@@ -373,6 +376,45 @@ impl MobileConnection {
             _ => Err(err("MOBILE_INTENT_UNSUPPORTED")),
         }
     }
+    fn clear_targets(&mut self) {
+        self.targets.clear();
+        self.target_account = None;
+    }
+    /// Current native registry only. Never restore/login/connect/renew here:
+    /// local cache status must not perform directory HTTP per displayed item.
+    fn targets_snapshot(&self) -> Result<Value, NetworkError> {
+        let account = self
+            .target_account
+            .as_ref()
+            .ok_or_else(|| err("MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"))?;
+        account.ensure_current()?;
+        let saved = self
+            .saved
+            .as_ref()
+            .ok_or_else(|| err("ACCOUNT_BINDING_CHANGED"))?;
+        saved.session.validate(&saved.instance)?;
+        let NetworkAccountSession::Owned(owned) = account else {
+            return Err(err("ACCOUNT_BINDING_CHANGED"));
+        };
+        if !Arc::ptr_eq(&owned.active, &self.active)
+            || !self.active.load(Ordering::Acquire)
+            || owned.device_id != saved.device_id
+            || owned.descriptor != saved.instance
+            || owned.descriptor.issuer != self.config.issuer
+            || owned.session.principal_id != saved.session.principal_id
+            || owned.session.network_id != saved.session.network_id
+            || owned.session.expires_at != saved.session.expires_at
+            || owned.session.access_token != saved.session.access_token
+        {
+            return Err(err("ACCOUNT_BINDING_CHANGED"));
+        }
+        let mut items = Vec::with_capacity(self.targets.len());
+        for (target_id, target) in &self.targets {
+            items.push(json!({"targetId":target_id,"identityKey":drafts::identity(saved,target)?,"agentId":target.agent}));
+        }
+        account.ensure_current()?;
+        Ok(json!({"kind":"targets","items":items}))
+    }
     async fn connect(&mut self) -> Result<(), NetworkError> {
         // A healthy same-target peer survives routine directory refresh. Pump
         // bounded idle controls first, so real policy revocation invalidates it.
@@ -385,7 +427,7 @@ impl MobileConnection {
                     }
                     Err(error) if error.code == "NETWORK_CONNECTION_CLOSED" => {}
                     Err(error) => {
-                        self.targets.clear();
+                        self.clear_targets();
                         return Err(error);
                     }
                 }
@@ -620,6 +662,7 @@ impl MobileConnection {
             }
         }
         c.identity.account.ensure_current()?;
+        self.target_account = Some(c.identity.account.clone());
         Ok(json!({"kind":"targets","items":items,"hasMore":has_more}))
     }
 }
@@ -854,6 +897,187 @@ mod tests {
             Arc::new(Store::default()),
         )
         .unwrap()
+    }
+    fn snapshot_owner() -> MobileConnection {
+        let mut o = owner();
+        let network = uuid::Uuid::new_v4().to_string();
+        let instance = OwnedInstance {
+            version: 1,
+            profile: "owned-device-relay-v1".into(),
+            service_id: uuid::Uuid::new_v4().to_string(),
+            environment: "development".into(),
+            network_id: network.clone(),
+            name: "fixture".into(),
+            issuer: o.config.issuer.clone(),
+            login_issuer: "https://login.test/dex".into(),
+            protocol: 1,
+            capabilities: vec!["tls13-mtls".into()],
+            root_certificate: String::new(),
+            jwks: json!({"keys":[]}),
+        };
+        let session = OwnedSession {
+            access_token: "a".repeat(43),
+            expires_at: jsonwebtoken::get_current_timestamp() + 600,
+            principal_id: uuid::Uuid::new_v4().to_string(),
+            network_id: network,
+        };
+        let device = uuid::Uuid::new_v4().to_string();
+        o.target_account = Some(NetworkAccountSession::Owned(Arc::new(OwnedAccount {
+            binding_id: uuid::Uuid::new_v4().to_string(),
+            connection_id: uuid::Uuid::new_v4().to_string(),
+            device_id: device.clone(),
+            session_bound: true,
+            descriptor: instance.clone(),
+            session: session.clone(),
+            active: o.active.clone(),
+            public_tls_ca: None,
+            join_authorized: AtomicBool::new(false),
+            guard: Arc::new(|| Ok(())),
+        })));
+        o.saved = Some(SavedAccount {
+            device_id: device,
+            instance,
+            session,
+        });
+        o.targets.insert(
+            "approved".into(),
+            Target {
+                device: uuid::Uuid::new_v4().to_string(),
+                agent: "agent".into(),
+            },
+        );
+        o
+    }
+    #[tokio::test]
+    async fn cached_target_snapshot_is_local_bounded_and_cannot_restore_or_create_authority() {
+        let mut o = snapshot_owner();
+        assert!(o.client.is_none() && o.connected.is_none() && o.peer.is_none());
+        let expected = drafts::identity(o.saved.as_ref().unwrap(), &o.targets["approved"]).unwrap();
+        for _ in 0..20 {
+            let result = o
+                .request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await;
+            assert_eq!(
+                result,
+                json!({"ok":true,"value":{"kind":"targets","items":[{"targetId":"approved","identityKey":expected,"agentId":"agent"}]}})
+            );
+        }
+        assert!(o.client.is_none() && o.connected.is_none() && o.peer.is_none());
+        assert_eq!(o.targets.len(), 1);
+        o.targets.clear();
+        assert_eq!(
+            o.request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["value"]["items"],
+            json!([])
+        );
+        o.clear_targets();
+        assert_eq!(
+            o.request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
+        );
+        let mut cold = owner();
+        assert_eq!(
+            cold.request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
+        );
+        assert!(cold.client.is_none() && cold.saved.is_none());
+    }
+    #[tokio::test]
+    async fn cached_target_snapshot_rejects_expiry_account_switch_revocation_suspend_and_logout() {
+        for change in 0..7 {
+            let mut o = snapshot_owner();
+            match change {
+                0 => o.active.store(false, Ordering::Release),
+                1 => o.active = Arc::new(AtomicBool::new(true)),
+                2 => {
+                    o.saved.as_mut().unwrap().session.principal_id =
+                        uuid::Uuid::new_v4().to_string()
+                }
+                3 => {
+                    o.saved.as_mut().unwrap().instance.service_id = uuid::Uuid::new_v4().to_string()
+                }
+                4 => o.saved.as_mut().unwrap().session.expires_at = 0,
+                5 => o.saved = None,
+                _ => {
+                    let NetworkAccountSession::Owned(a) = o.target_account.as_mut().unwrap() else {
+                        panic!()
+                    };
+                    Arc::get_mut(a).unwrap().guard =
+                        Arc::new(|| Err(err("ACCOUNT_BINDING_CHANGED")));
+                }
+            }
+            let reply = o
+                .request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await;
+            assert_eq!(reply["ok"], false);
+            assert!(reply.get("value").is_none());
+        }
+        let mut suspended = snapshot_owner();
+        suspended
+            .request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        assert_eq!(
+            suspended
+                .request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
+        );
+        let mut logged_out = snapshot_owner();
+        logged_out.saved = None;
+        assert_eq!(
+            logged_out
+                .request(json!({"version":1,"kind":"account.logout"}))
+                .await["ok"],
+            true
+        );
+        assert_eq!(
+            logged_out
+                .request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
+        );
+    }
+    #[test]
+    fn native_local_artifact_helpers_select_snapshot_and_keep_presentation_fresh() {
+        // Source contract only: actual native compilation/device checks belong
+        // to the integrating owner. Neither platform broadens local-only kinds.
+        let swift = include_str!("../../app/modules/moxbots-remote/ios/MoxBotsRemoteModule.swift");
+        let kotlin=include_str!("../../app/modules/moxbots-remote/android/src/main/java/com/moxbots/mobile/remote/MoxBotsRemoteModule.kt");
+        let swift_helper = swift
+            .split("private func currentArtifactTarget")
+            .nth(1)
+            .unwrap()
+            .split("private func artifactScheduler")
+            .next()
+            .unwrap();
+        let kotlin_helper = kotlin
+            .split("private fun currentArtifactTarget")
+            .nth(1)
+            .unwrap()
+            .split("private fun parseArtifactDescriptor")
+            .next()
+            .unwrap();
+        assert!(swift.contains("self.currentArtifactTarget(targetId, kind: kind)"));
+        assert!(kotlin.contains("currentArtifactTarget(targetId, kind)"));
+        assert!(swift_helper.contains(
+            "[\"artifact.status\", \"artifact.pause\", \"artifact.remove\"].contains(kind)"
+        ));
+        assert!(swift_helper.contains("localOnly ? \"targets.snapshot\" : \"targets.list\""));
+        assert!(kotlin_helper.contains("if (kind in setOf(\"artifact.status\", \"artifact.pause\", \"artifact.remove\")) \"targets.snapshot\" else \"targets.list\""));
+        for helper in [swift_helper, kotlin_helper] {
+            for fresh in [
+                "artifact.list",
+                "artifact.download",
+                "artifact.preview",
+                "artifact.share",
+            ] {
+                assert!(!helper.contains(fresh));
+            }
+        }
+        assert!(swift.contains("self.artifactDownloads?.validateTargets(items)"));
+        assert!(kotlin.contains("artifactDownloads?.validateTargets(targetItems)"));
     }
     #[test]
     fn journal_fences_accounts_but_survives_local_key_rotation() {
@@ -1152,74 +1376,49 @@ mod wss_tests {
             rustls::pki_types::PrivatePkcs8KeyDer::from(leaf_key.serialize_der()).into(),
         )
         .unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let listener = Arc::new(tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap());
         let port = listener.local_addr().unwrap().port();
         let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
-        let valid_acceptor = acceptor.clone();
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let stream = valid_acceptor.accept(stream).await.unwrap();
-            let callback=|request:&tokio_tungstenite::tungstenite::handshake::server::Request,mut response:tokio_tungstenite::tungstenite::handshake::server::Response|{
-    assert_eq!(request.uri().path(),"/v1/ws");assert!(request.headers().contains_key("dpop"));assert_eq!(request.headers()["authorization"],"Bearer synthetic-public-token");response.headers_mut().insert("sec-websocket-protocol","myagents-agent-network.v1".parse().unwrap());Ok(response)
-   };
-            let mut ws = tokio_tungstenite::accept_hdr_async(stream, callback)
-                .await
-                .unwrap();
-            assert_eq!(
-                ws.next().await.unwrap().unwrap(),
-                Message::Text("synthetic-ping".into())
-            );
-            ws.send(Message::Text("synthetic-pong".into()))
-                .await
-                .unwrap();
-        });
-        let key = Arc::new(crate::DevicePrivateKey::generate().unwrap());
-        let transport = NetworkTransport::new_with_public_ca(
-            &format!("https://localhost:{port}"),
-            key.clone(),
-            MemoryBudget::default(),
-            Some(&cert.pem()),
-        )
-        .unwrap();
-        let mut socket = tokio::time::timeout(
-            Duration::from_secs(5),
-            transport.websocket("synthetic-public-token"),
-        )
-        .await
-        .unwrap()
-        .unwrap();
-        socket
-            .send(Message::Text("synthetic-ping".into()))
-            .await
-            .unwrap();
-        assert_eq!(
-            socket.next().await.unwrap().unwrap(),
-            Message::Text("synthetic-pong".into())
-        );
-        server.await.unwrap();
-        // The same server certificate fails with unrelated test roots; no insecure
-        // certificate verifier or plain WS fallback participates in this test.
-        let other = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            acceptor.accept(stream).await.is_err()
-        });
-        let wrong = NetworkTransport::new_with_public_ca(
-            &format!("https://localhost:{port}"),
-            key,
-            MemoryBudget::default(),
-            Some(&other.cert.pem()),
-        )
-        .unwrap();
-        assert!(tokio::time::timeout(
-            Duration::from_secs(5),
-            wrong.websocket("synthetic-public-token")
-        )
-        .await
-        .unwrap()
-        .is_err());
-        assert!(server.await.unwrap());
+        let mut tasks = tokio::task::JoinSet::new();
+        // Reuse the proven-reachable listener for the foreign-root phase. A
+        // generic client connection error alone cannot prove certificate rejection.
+        // Bound every phase together and reap all fixture tasks on failure/timeout.
+        let result = tokio::time::timeout(Duration::from_secs(15), async {
+            let valid_acceptor = acceptor.clone();
+            let valid_listener = listener.clone();
+            tasks.spawn(async move {
+                let (stream, _) = valid_listener.accept().await.map_err(|_| "valid TCP accept")?;
+                let stream = valid_acceptor.accept(stream).await.map_err(|_| "valid TLS accept")?;
+                let callback=|request:&tokio_tungstenite::tungstenite::handshake::server::Request,mut response:tokio_tungstenite::tungstenite::handshake::server::Response|{
+                    assert_eq!(request.uri().path(),"/v1/ws");assert!(request.headers().contains_key("dpop"));assert_eq!(request.headers()["authorization"],"Bearer synthetic-public-token");response.headers_mut().insert("sec-websocket-protocol","myagents-agent-network.v1".parse().unwrap());Ok(response)
+                };
+                let mut ws = tokio_tungstenite::accept_hdr_async(stream, callback).await.map_err(|_| "valid websocket accept")?;
+                if ws.next().await.ok_or("valid server EOF")?.map_err(|_| "valid server read")? != Message::Text("synthetic-ping".into()) { return Err("valid server ping"); }
+                ws.send(Message::Text("synthetic-pong".into())).await.map_err(|_| "valid server send")?;
+                Ok(())
+            });
+            let key = Arc::new(crate::DevicePrivateKey::generate().map_err(|_| "device key")?);
+            let transport = NetworkTransport::new_with_public_ca(&format!("https://localhost:{port}"), key.clone(), MemoryBudget::default(), Some(&cert.pem())).map_err(|_| "valid transport")?;
+            let mut socket = tokio::time::timeout(Duration::from_secs(5),transport.websocket("synthetic-public-token")).await.map_err(|_| "valid websocket timeout")?.map_err(|_| "valid websocket connect")?;
+            socket.send(Message::Text("synthetic-ping".into())).await.map_err(|_| "valid client send")?;
+            if socket.next().await.ok_or("valid client EOF")?.map_err(|_| "valid client read")? != Message::Text("synthetic-pong".into()) { return Err("valid client pong"); }
+            drop(socket);drop(transport);
+            tasks.join_next().await.ok_or("valid server absent")?.map_err(|_| "valid server task")??;
+            let other = rcgen::generate_simple_self_signed(vec!["localhost".into()]).map_err(|_| "foreign certificate")?;
+            tasks.spawn(async move {
+                let (stream, _) = listener.accept().await.map_err(|_| "foreign TCP accept")?;
+                if acceptor.accept(stream).await.is_ok() {return Err("foreign CA unexpectedly trusted");}
+                Ok(())
+            });
+            let wrong = NetworkTransport::new_with_public_ca(&format!("https://localhost:{port}"),key,MemoryBudget::default(),Some(&other.cert.pem())).map_err(|_| "foreign transport")?;
+            if tokio::time::timeout(Duration::from_secs(5),wrong.websocket("synthetic-public-token")).await.map_err(|_| "foreign websocket timeout")?.is_ok() {return Err("foreign websocket unexpectedly connected");}
+            // Require the server to have accepted TCP and rejected TLS as well.
+            tasks.join_next().await.ok_or("foreign server absent")?.map_err(|_| "foreign server task")??;
+            Ok::<(), &str>(())
+        }).await;
+        tasks.shutdown().await;
+        result
+            .expect("WSS fixture deadline; fixture tasks aborted and reaped")
+            .expect("pinned TLS/WSS assertion failed");
     }
 }
