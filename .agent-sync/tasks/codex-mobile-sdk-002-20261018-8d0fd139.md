@@ -7,9 +7,11 @@
 
 ## Objective and ownership
 
-Current SDK worker owns `mobile/core/**` and this task record. Parent owns native
-bridges, login/transport integration, Host extensions, final integration and release.
-No production operations or push/main merge performed by this worker. Shared native
+Current SDK worker owns `mobile/core/**`, `mobile/asset-store/**`, owned management
+asset/mobile DTOs, authoritative management schema and shared TS parity files, plus
+this task record. Parent owns native bridges, login/transport integration, Host
+admission, final main integration and release. Feature-branch commits and normal
+pushes are explicitly authorized; no main merge or production operations here. Shared native
 crypto key adapter from parent c795947a is locally cherry-picked as 3e0c6f9c.
 
 ## Acceptance criteria / To Do
@@ -21,7 +23,8 @@ crypto key adapter from parent c795947a is locally cherry-picked as 3e0c6f9c.
 - [x] Actual encrypted controller-to-existing-Host-channel interoperability tests.
 - [x] Wrong account/issuer/service/device/key generation, target/replay and closed intent tests.
 - [x] Final focused ABI tests, clippy -D warnings and macOS host release build.
-- [ ] Android cross-build/link and real device tests; NDK license authorization pending parent.
+- [ ] Latest mobile-method Android cross-build/link and real device tests (parent);
+  parent reports earlier core/connection Android releases passed after NDK installation.
 - [ ] iOS cross-build/link and real device tests; Apple iOS SDK not currently available.
 - [ ] Integrated native login/WSS/SessionEngine/notification/file/voice acceptance (parent).
 - [ ] Main / remote delivery and production release (parent; outside worker authority).
@@ -58,10 +61,14 @@ No fake completion, automatic resend, or protocol changes to existing v1.
 
 ## Blockers and unknowns
 
-Parent integrates this local branch/commit and connects native account/WSS owner.
-Final worker test, lint, release and dynamic C ABI checks passed; native gates remain open. Android license
-prompt needs the user's answer; Apple SDK absence prevents native iOS validation.
-Local only — not synchronized to remote; parent is sole integration/push owner.
+Parent integrates feature-branch commits and owns actual native/Host acceptance.
+Earlier license/SDK/push statements below are historical checkpoints. Android NDK
+is installed and parent reported earlier core/connection Android release builds
+passed. The latest mobile-method delta still needs parent platform verification.
+Apple Xcode license acceptance remains pending user action; this worker uses only
+previously accepted CommandLineTools and does not accept that license.
+Actual Host mobile admission/model allowlist/file leases/SessionEngine integration,
+real accounts/devices and production acceptance are not established by core fixtures.
 
 ## Relay flow-control follow-up
 
@@ -97,7 +104,7 @@ and host release passed after this change.
 
 ## Next step
 
-Continue MOXBOTS-MOBILE-002 versioned asset extension in this branch. Parent owns
+Deliver the closed mobile-method package to parent for integration. Parent owns
 remote publication needed by the resume gate; worker does not push or merge.
 New ownership: mobile/core, mobile/asset-store, remote_assets.rs plus necessary
 management codec additions, shared remoteAssets.ts and parity fixtures/tests.
@@ -172,3 +179,62 @@ supersedes the earlier separate-channel asset proposal; no cloud behavior change
 Connection owner was informed: choose profile combined at construction, restore
 only that Agent's unknown journal BEFORE any RPC/capabilities, then keep the same
 SDK and outer connection epoch throughout. No public DTO or v1 wire edits.
+
+
+## Mobile session admission method — current package
+
+- [x] Resume gate passed at published b13b4ae0 before editing; original base and
+  remote remain unchanged. No new task, socket, identity or executor was created.
+- [x] Closed owned session.mobile.v1 DTOs and shared Rust/Zod fixtures cover all
+  requested capabilities/models/suggestions/start/send/receipt/result kinds,
+  mandatory nullable fields, unique bounded assets, opaque model labels and
+  48KiB serialized control bound. Legacy session.remote source DTOs are unchanged.
+- [x] Combined-only explicit mobile capabilities gate and the existing same-Agent
+  owner bind apply before mobile requests. All methods retain one original Channel,
+  PairSequences, pending table, outer epoch and relay flow-control lifecycle.
+- [x] PrepareMobile persists an opaque untagged Legacy/Mobile JournalRequest;
+  Commit dispatches from stored protocol. Digest includes text/assets/model/scope.
+  Frozen legacy serialized record and digest roundtrip exactly. Unknown recovery
+  remains atomic/query-only, cross-protocol receipts never confirm each other,
+  and confirmed UUID tombstones block either protocol.
+- [x] Exact pending method/requestId/Agent/session/revision/operation correlation;
+  mobile.send receipts queried after recovery also require the original sessionId.
+  Mismatch closes authorization without clearing unknown. Host should return the
+  typed mobile.error when no matching session can be reported.
+- [x] Authoritative host-management-v1.schema.json now admits only the closed assets
+  and mobile methods/params/results. Rust JSON Schema validator tests use the same
+  fixtures, reject unknown DTO/wrapper fields and wrong method/param pairs.
+  Schema comments explicitly retain executable codec enforcement for UTF-16/UTF-8
+  budgets, unique model IDs and arithmetic relationships absent in standard schema.
+- [x] Existing-channel TLS test writes/fsyncs/reads a real temporary durable record
+  before commit, then validates mobile receipt and continuing v1 snapshot. Additional
+  tests cover raw text/asset/model changes, cross-protocol UUID reuse and receipts,
+  mixed-Agent restore, profile bypass and wrong suggestion revision/send session.
+- [ ] Parent Host admission/model allowlist/asset leases/actual SessionEngine writes,
+  native connection mobile intent adoption, platform builds and real-device tests.
+
+Verification commands use DEVELOPER_DIR=/Library/Developer/CommandLineTools.
+Final exact counts/build outcome follow in the handoff report; no native/Host
+support or model execution completion is inferred from TLS fixture responses.
+Requested worker model/effort remains gpt-6.1-sol/medium for consequential cross-layer
+side-effect isolation. Runtime model/tokens/cost are not independently observable.
+
+Final package verification (2026-10-18, existing CLT macOS tools):
+- cargo test --offline --locked --manifest-path mobile/core/Cargo.toml: 39 passed.
+- cargo test --offline --locked --manifest-path src-tauri/host-management-protocol/Cargo.toml:
+  28 passed (7 unit, 6 codec, 9 extensions, 1 authoritative schema, 5 legacy sessions).
+- Both crates: cargo clippy --offline --locked --all-targets -- -D warnings passed.
+- cargo build --offline --locked --manifest-path mobile/core/Cargo.toml --release: passed.
+- Existing Vitest unit runner: remoteMobile/remoteAssets/remoteSession parity, 3/3 passed;
+  reused the parent-authorized ignored node_modules symlink, no npm installation.
+- Added only test dependencies tempfile and the same pinned jsonschema 0.58.3 already
+  used by the shared network protocol; no new production dependency or crypto fork.
+- Initial aggregate-size fixture was corrected to exceed 48KiB after including the
+  actual UTF-8 model/assets overhead; both Rust and TS reject the corrected fixture.
+- Initial schema wrapper-smuggling check found permissive untagged struct variants;
+  deny_unknown_fields closes the new assets/mobile wrappers. All original tuple DTO
+  regression tests still pass; no legacy session DTO source changes were made.
+
+Next concrete step: parent cherry-picks this package, then coordinates the Desktop
+original receipt-owner singleton/operation namespace and SessionEngine admission.
+Latest delta's Android/iOS and real Host/real account acceptance remain unverified.
