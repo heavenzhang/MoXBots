@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
 import type { TabBase } from '@/tab-workspace/contracts';
 import type { DetachTabResult, TabWorkspaceController } from '@/tab-workspace/useTabWorkspaceController';
@@ -24,6 +24,8 @@ interface CloseControllerOptions<
   defaultReason: TReason;
   createFallback: () => TTab;
   onBeforeDetach?: (tab: TTab, reason: TReason) => void;
+  /** Recheck navigation/protection after asynchronous save admission. */
+  canDetach?: (tab: TTab, reason: TReason) => boolean;
   onDetached?: (result: Extract<DetachTabResult<TTab>, { kind: 'detached' }>, reason: TReason) => void;
   onCleanupError?: (tab: TTab, error: unknown) => void;
 }
@@ -38,6 +40,7 @@ export function useTabCloseController<
   defaultReason,
   createFallback,
   onBeforeDetach,
+  canDetach,
   onDetached,
   onCleanupError,
 }: CloseControllerOptions<TTab, TModules, TReason>) {
@@ -46,57 +49,72 @@ export function useTabCloseController<
     defaultReason,
     createFallback,
     onBeforeDetach,
+    canDetach,
     onDetached,
     onCleanupError,
   });
-  useEffect(() => {
+  useLayoutEffect(() => {
     optionsRef.current = {
       lifecycle,
       defaultReason,
       createFallback,
       onBeforeDetach,
+      canDetach,
       onDetached,
       onCleanupError,
     };
-  }, [createFallback, defaultReason, lifecycle, onBeforeDetach, onCleanupError, onDetached]);
-  const inFlightRef = useRef(new Set<string>());
+  }, [canDetach, createFallback, defaultReason, lifecycle, onBeforeDetach, onCleanupError, onDetached]);
+  const inFlightRef = useRef(new Map<string, { reason: TReason; promise: Promise<boolean> }>());
 
   return useCallback(
-    (tabId: string, reason?: TReason): void => {
+    function closeTab(tabId: string, reason?: TReason): Promise<boolean> {
       const closeReason = reason ?? optionsRef.current.defaultReason;
-      if (inFlightRef.current.has(tabId)) return;
+      const inFlight = inFlightRef.current.get(tabId);
+      if (inFlight) {
+        if (inFlight.reason === closeReason) return inFlight.promise;
+        // An explicit user close must not inherit a cancelled cache eviction.
+        // Re-admit it after the original save settles, using the latest page.
+        return inFlight.promise.then(closed => closed || closeTab(tabId, closeReason));
+      }
       const captured = workspace.capture(tabId);
-      if (!captured) return;
+      if (!captured) return Promise.resolve(false);
       const tab = workspace.getSnapshot().tabs.find((candidate) => candidate.id === tabId);
-      if (!tab) return;
+      if (!tab) return Promise.resolve(false);
       const adapter = optionsRef.current.lifecycle[tab.view as TTab['view']] as
         | TabLifecycleAdapter<TTab, TReason>
         | undefined;
       const detach = () => {
+        const live = workspace.getSnapshot().tabs.find(candidate => candidate.id === tabId);
+        if (!live || optionsRef.current.canDetach?.(live, closeReason) === false) return false;
         const result = workspace.detach(captured, optionsRef.current.createFallback, (acceptedTab) =>
           optionsRef.current.onBeforeDetach?.(acceptedTab, closeReason),
         );
-        if (result.kind !== 'detached') return;
+        if (result.kind !== 'detached') return false;
         optionsRef.current.onDetached?.(result, closeReason);
-        if (!adapter?.afterDetach) return;
-        Promise.resolve(adapter.afterDetach(tab, closeReason)).catch((error) =>
-          optionsRef.current.onCleanupError?.(tab, error),
-        );
+        if (adapter?.afterDetach) {
+          Promise.resolve(adapter.afterDetach(result.tab, closeReason)).catch((error) =>
+            optionsRef.current.onCleanupError?.(result.tab, error),
+          );
+        }
+        return true;
       };
 
       const admission = adapter?.prepareClose?.(tab, closeReason) ?? 'allow';
       if (!(admission instanceof Promise)) {
-        if (admission === 'allow') detach();
-        return;
+        return Promise.resolve(admission === 'allow' && detach());
       }
 
-      inFlightRef.current.add(tabId);
-      void admission
+      const pending = admission
         .then((result) => {
-          if (result === 'allow') detach();
+          return result === 'allow' && detach();
         })
-        .catch((error) => optionsRef.current.onCleanupError?.(tab, error))
+        .catch((error) => {
+          optionsRef.current.onCleanupError?.(tab, error);
+          return false;
+        })
         .finally(() => inFlightRef.current.delete(tabId));
+      inFlightRef.current.set(tabId, { reason: closeReason, promise: pending });
+      return pending;
     },
     [workspace],
   );

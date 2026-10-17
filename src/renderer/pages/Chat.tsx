@@ -615,6 +615,7 @@ interface ChatProps {
   registerFileEditSubmitter?: (
     tabId: string,
     submit: () => Promise<boolean>,
+    canEvict?: () => boolean,
   ) => () => void;
   /** Native shown/not-minimized lifecycle; focus is intentionally independent. */
   windowPresentation: MainWindowPresentation;
@@ -1593,9 +1594,18 @@ export default function Chat({
   const chatInputRef = useRef<SimpleChatInputHandle>(null);
   useChatDraftScope(sessionId, discussionId, chatInputRef);
 
+  // Pending answer/approval drafts belong to this mounted Chat. Automatic
+  // cache reclamation reads this live guard before and after editor saving.
+  const pendingInteractionForCacheRef = useRef(false);
+  useLayoutEffect(() => {
+    pendingInteractionForCacheRef.current = Boolean(pendingPermission || pendingAskUserQuestion
+      || (pendingExitPlanMode && pendingExitPlanMode.resolved === undefined)
+      || (pendingEnterPlanMode && pendingEnterPlanMode.resolved === undefined));
+  });
+
   // Ref for DirectoryPanel to trigger refresh
   const directoryPanelRef = useRef<DirectoryPanelHandle>(null);
-  useEffect(
+  useLayoutEffect(
     () =>
       registerFileEditSubmitter?.(tabId, async () => {
         for (const preview of [
@@ -1606,7 +1616,7 @@ export default function Chat({
           if (preview && !(await preview.prepareTransition())) return false;
         }
         return directoryPanelRef.current?.preparePreviewTransition() ?? true;
-      }),
+      }, () => !pendingInteractionForCacheRef.current),
     [registerFileEditSubmitter, tabId],
   );
 

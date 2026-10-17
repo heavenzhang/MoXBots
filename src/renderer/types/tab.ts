@@ -46,6 +46,8 @@ export interface TabState {
 }
 
 export const MAX_TABS = 12;
+/** One bounded admission slot while FIFO eviction awaits editor save. */
+export const TAB_ADMISSION_LIMIT = MAX_TABS + 1;
 
 export function generateTabId(): string {
   return `tab-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

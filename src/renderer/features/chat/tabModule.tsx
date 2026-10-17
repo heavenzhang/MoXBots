@@ -36,7 +36,7 @@ export interface ChatOpenIntent {
 export interface ChatRenderBinding {
   startupError?: (tabId: string) => string | null;
   onRetryStartup?: (tabId: string) => Promise<void>;
-  registerFileEditSubmitter?: (tabId: string, submit: () => Promise<boolean>) => () => void;
+  registerFileEditSubmitter?: (tabId: string, submit: () => Promise<boolean>, canEvict?: () => boolean) => () => void;
   windowPresentation: MainWindowPresentation;
   onOpenHistorySession: (
     tabId: string,
