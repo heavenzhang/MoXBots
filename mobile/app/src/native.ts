@@ -20,12 +20,20 @@ const attachment = z.object({ kind: z.literal('attachment'), localId: z.string()
 const attachmentUpload = z.object({ kind: z.literal('attachment-upload'), localId: z.string().uuid(), targetId: z.string().min(1), identityKey: z.string().min(1).max(256), agentId: id, uploadId: z.string().uuid(), state: z.enum(['uploading', 'ready', 'paused', 'cancelled']), receivedBytes: z.number().int().min(0).max(20 * 1024 * 1024), totalBytes: z.number().int().positive().max(20 * 1024 * 1024), assetId: z.string().uuid().nullable(), errorCode: z.string().regex(/^[A-Z0-9_]+$/).max(128).nullable() }).strict().refine((value) => value.receivedBytes <= value.totalBytes && (value.state !== 'ready' || value.assetId !== null));
 const attachments = z.object({ kind: z.literal('attachments'), items: z.array(attachment).max(8) }).strict();
 const attachmentRemoved = z.object({ kind: z.literal('attachment-removed'), localId: z.string().uuid() }).strict();
+const artifactDescriptor = z.object({ artifactId: z.string().uuid(), name: z.string().min(1).max(256), mimeType: z.string().min(1).max(128), sizeBytes: z.number().int().positive().max(20 * 1024 * 1024), sha256: z.string().regex(/^[0-9a-f]{64}$/) }).strict();
+const artifactDownload = z.object({ kind: z.literal('artifact-download'), targetId: z.string().min(1).max(256), identityKey: z.string().min(1).max(256), agentId: id, sessionId, artifactId: z.string().uuid(), name: z.string().min(1).max(256), mimeType: z.string().min(1).max(128), sha256: z.string().regex(/^[0-9a-f]{64}$/), state: z.enum(['downloading', 'ready', 'paused']), receivedBytes: z.number().int().min(0).max(20 * 1024 * 1024), totalBytes: z.number().int().positive().max(20 * 1024 * 1024), errorCode: z.string().regex(/^[A-Z0-9_]{1,128}$/).nullable() }).strict().refine((value) => value.receivedBytes <= value.totalBytes && (value.state !== 'ready' || value.receivedBytes === value.totalBytes));
+const artifactListReply = z.object({ kind: z.literal('artifact-list'), targetId: z.string().min(1).max(256), identityKey: z.string().min(1).max(256), agentId: id, sessionId, items: z.array(artifactDescriptor).max(30), hasMore: z.boolean(), nextBefore: z.string().max(256).nullable() }).strict().refine((value) => value.hasMore === (value.nextBefore !== null));
+const artifactAction = z.object({ kind: z.literal('artifact-action'), action: z.enum(['remove', 'preview', 'share']), targetId: z.string().min(1).max(256), identityKey: z.string().min(1).max(256), agentId: id, sessionId, artifactId: z.string().uuid(), state: z.enum(['removed', 'presented']), errorCode: z.string().regex(/^[A-Z0-9_]{1,128}$/).nullable() }).strict().refine((value) => (value.action === 'remove') === (value.state === 'removed'));
 
 export type Account = { kind: 'account'; state: 'signed-out' | 'authenticating' | 'signed-in' | 'expired'; displayName: string | null; principalId: string | null };
 export type Target = { targetId: string; identityKey: string; agentId: string; name: string; deviceName: string; online: boolean; runtime: string | null };
 export type DraftReply = { kind: 'draft'; identityKey: string; agentId: string; sessionId: string | null; text: string; revision: number; lastWriteId: string | null };
 export type NativeAttachment = z.infer<typeof attachment>;
 export type NativeAttachmentUpload = z.infer<typeof attachmentUpload>;
+export type ArtifactDescriptor = z.infer<typeof artifactDescriptor>;
+export type ArtifactDownload = z.infer<typeof artifactDownload>;
+export type ArtifactListReply = z.infer<typeof artifactListReply>;
+export type ArtifactActionReply = z.infer<typeof artifactAction>;
 export type SessionRequest =
   | { kind: 'capabilities'; agentId: string }
   | { kind: 'list'; agentId: string; limit: number; before?: string }
@@ -52,6 +60,9 @@ export type NativeIntent =
   | { version: 1; kind: 'attachment.list' }
   | { version: 1; kind: 'attachment.remove'; localId: string }
   | { version: 1; kind: 'attachment.upload' | 'attachment.upload.status' | 'attachment.upload.pause' | 'attachment.upload.cancel'; localId: string; targetId: string }
+  | { version: 1; kind: 'artifact.list'; targetId: string; sessionId: string; limit: number; before?: string }
+  | { version: 1; kind: 'artifact.download'; targetId: string; sessionId: string; artifact: ArtifactDescriptor }
+  | { version: 1; kind: 'artifact.status' | 'artifact.pause' | 'artifact.remove' | 'artifact.preview' | 'artifact.share'; targetId: string; sessionId: string; artifactId: string }
   | { version: 1; kind: 'mobile'; targetId: string; request: RemoteMobileRequest }
   | { version: 1; kind: 'speech.start' | 'speech.stop' | 'speech.cancel' }
   | { version: 1; kind: 'session'; targetId: string; request: SessionRequest };
@@ -62,10 +73,15 @@ const draftReadIntent = z.object({ version: z.literal(1), kind: z.literal('draft
 const draftWriteIntent = z.object({ version: z.literal(1), kind: z.literal('draft.write'), targetId: z.string().min(1), sessionId: sessionId.nullable(), expectedRevision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), writeId: z.string().uuid(), text: z.string().max(16000) }).strict();
 const draftReply = z.object({ kind: z.literal('draft'), identityKey: z.string().min(1).max(256), agentId: id, sessionId: sessionId.nullable(), text: z.string().max(16000), revision: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER), lastWriteId: z.string().uuid().nullable() }).strict();
 const attachmentIntentSchema = z.discriminatedUnion('kind', [z.object({ version: z.literal(1), kind: z.literal('attachment.pick'), source: z.enum(['file', 'image']) }).strict(), z.object({ version: z.literal(1), kind: z.literal('attachment.list') }).strict(), z.object({ version: z.literal(1), kind: z.literal('attachment.remove'), localId: z.string().uuid() }).strict(), z.object({ version: z.literal(1), kind: z.enum(['attachment.upload', 'attachment.upload.status', 'attachment.upload.pause', 'attachment.upload.cancel']), localId: z.string().uuid(), targetId: z.string().min(1) }).strict()]);
+const artifactIntentSchema = z.discriminatedUnion('kind', [
+  z.object({ version: z.literal(1), kind: z.literal('artifact.list'), targetId: z.string().min(1).max(256), sessionId, limit: z.number().int().min(1).max(30), before: z.string().min(1).max(256).optional() }).strict(),
+  z.object({ version: z.literal(1), kind: z.literal('artifact.download'), targetId: z.string().min(1).max(256), sessionId, artifact: artifactDescriptor }).strict(),
+  z.object({ version: z.literal(1), kind: z.enum(['artifact.status', 'artifact.pause', 'artifact.remove', 'artifact.preview', 'artifact.share']), targetId: z.string().min(1).max(256), sessionId, artifactId: z.string().uuid() }).strict(),
+]);
 const pendingSchema = z.object({ kind: z.literal('operations'), items: z.array(z.object({ protocol: z.enum(['session', 'mobile']), targetId: z.string(), agentId: id, operationId: z.string().uuid(), sessionId: sessionId.nullable(), status: z.enum(['prepared', 'unknown', 'processing']) }).strict()) }).strict();
-const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
+const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, artifactListReply, artifactDownload, artifactAction, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
 
-type RemoteBridge = { request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void }; addListener(event: 'attachmentUploadChanged', listener: (payload: NativeAttachmentUpload) => void): { remove(): void } };
+type RemoteBridge = { request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void }; addListener(event: 'attachmentUploadChanged', listener: (payload: NativeAttachmentUpload) => void): { remove(): void }; addListener(event: 'artifactDownloadChanged', listener: (payload: ArtifactDownload) => void): { remove(): void } };
 function getRemoteBridge(): RemoteBridge {
   return requireNativeModule<RemoteBridge>('MoxBotsRemote');
 }
@@ -94,6 +110,22 @@ export function subscribeAttachmentUploadChanges(listener: (payload: NativeAttac
   return () => subscription.remove();
 }
 
+export function subscribeArtifactDownloadChanges(listener: (payload: ArtifactDownload) => void): () => void {
+  if (isFixtureMode) {
+    let active = true;
+    let unsubscribe: () => void = () => {};
+    void import('../qa/fixture').then((fixture) => {
+      if (active) unsubscribe = fixture.subscribeArtifactDownloadChanges(listener);
+    });
+    return () => { active = false; unsubscribe(); };
+  }
+  const subscription = getRemoteBridge().addListener('artifactDownloadChanged', (payload) => {
+    const parsed = artifactDownload.safeParse(payload);
+    if (parsed.success) listener(parsed.data);
+  });
+  return () => subscription.remove();
+}
+
 export async function requestMobile(targetId: string, request: RemoteMobileRequest): Promise<RemoteMobileResult> {
   const checkedRequest = remoteMobileRequestSchema.safeParse(request);
   if (!checkedRequest.success) throw new Error('MOBILE_INTENT_INVALID');
@@ -116,6 +148,7 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
   const checkedIntent = intent.kind === 'draft.read' ? draftReadIntent.safeParse(intent)
     : intent.kind === 'draft.write' ? draftWriteIntent.safeParse(intent)
       : intent.kind.startsWith('attachment.') ? attachmentIntentSchema.safeParse(intent)
+      : intent.kind.startsWith('artifact.') ? artifactIntentSchema.safeParse(intent)
       : null;
   if (checkedIntent && !checkedIntent.success) throw new Error('NATIVE_INTENT_INVALID');
   const parsed = nativeReply.safeParse(await moduleRequest(checkedIntent?.success ? checkedIntent.data as NativeIntent : intent));
@@ -145,6 +178,16 @@ export async function armQaStaleApproval(): Promise<void> {
   if (!isFixtureMode) return;
   const fixture = await import('../qa/fixture');
   fixture.armStaleApproval();
+}
+
+export type QaArtifactScenario = 'normal' | 'error' | 'late-event';
+export const qaArtifactScenarioOptions: readonly { id: QaArtifactScenario; label: string }[] = [
+  { id: 'normal', label: '正常下载' }, { id: 'error', label: '下载错误' }, { id: 'late-event', label: '事件先于回执' },
+];
+export async function selectQaArtifactScenario(scenario: QaArtifactScenario): Promise<void> {
+  if (!isFixtureMode) return;
+  const fixture = await import('../qa/fixture');
+  fixture.selectArtifactScenario(scenario);
 }
 
 export function parseSessionReply(reply: z.infer<typeof nativeReply>): SessionResult {

@@ -1,4 +1,4 @@
-import type { Account, NativeIntent, PendingOperation, SessionRequest, Snapshot, Target } from '../src/native';
+import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, PendingOperation, SessionRequest, Snapshot, Target } from '../src/native';
 
 export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
 
@@ -37,8 +37,76 @@ export function fixtureReply(intent: NativeIntent): unknown {
   if (intent.kind === 'mobile') return mobileReply(intent.targetId, intent.request);
   if (intent.kind === 'attachment.pick' || intent.kind === 'attachment.list' || intent.kind === 'attachment.remove' || intent.kind === 'attachment.upload' || intent.kind === 'attachment.upload.status' || intent.kind === 'attachment.upload.pause' || intent.kind === 'attachment.upload.cancel') return attachmentReply(intent);
   if (intent.kind === 'draft.read' || intent.kind === 'draft.write') return fixtureDraftReply(intent);
+  if (intent.kind === 'artifact.list' || intent.kind === 'artifact.download' || intent.kind === 'artifact.status' || intent.kind === 'artifact.pause' || intent.kind === 'artifact.remove' || intent.kind === 'artifact.preview' || intent.kind === 'artifact.share') return fixtureArtifactReply(intent);
   if (intent.kind === 'session' && intent.request) return sessionReply(intent.request);
   return { kind: 'error', code: 'QA_FIXTURE_OPERATION_UNSUPPORTED' };
+}
+
+export type FixtureArtifactScenario = 'normal' | 'error' | 'late-event';
+let artifactScenario: FixtureArtifactScenario = 'normal';
+const artifactDescriptors: ArtifactDescriptor[] = [
+  { artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1', name: '移动端体验方案.pdf', mimeType: 'application/pdf', sizeBytes: 84000, sha256: 'a'.repeat(64) },
+  { artifactId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2', name: '界面示意图.png', mimeType: 'image/png', sizeBytes: 42000, sha256: 'b'.repeat(64) },
+];
+const artifactDownloads = new Map<string, ArtifactDownload>();
+const artifactListeners = new Set<(value: ArtifactDownload) => void>();
+export function selectArtifactScenario(next: FixtureArtifactScenario): void {
+  artifactScenario = next;
+  artifactDownloads.clear();
+}
+export function subscribeArtifactDownloadChanges(listener: (value: ArtifactDownload) => void): () => void {
+  artifactListeners.add(listener);
+  return () => artifactListeners.delete(listener);
+}
+function emitArtifactDownload(value: ArtifactDownload): void {
+  for (const listener of artifactListeners) listener(value);
+}
+function fixtureArtifactReply(intent: Extract<NativeIntent, { kind: `artifact.${string}` }>): unknown {
+  const approved = [target, offlineTarget].find((item) => item.targetId === intent.targetId);
+  if (!approved) return { kind: 'error', code: 'MOBILE_TARGET_INVALID' };
+  if (intent.kind === 'artifact.list') {
+    const secondPage = intent.before === 'qa-artifact-page-2';
+    const items = secondPage ? [artifactDescriptors[1]] : [artifactDescriptors[0]];
+    return { kind: 'artifact-list', targetId: approved.targetId, identityKey: approved.identityKey, agentId: approved.agentId,
+      sessionId: intent.sessionId, items, hasMore: !secondPage, nextBefore: secondPage ? null : 'qa-artifact-page-2' };
+  }
+  const descriptor = intent.kind === 'artifact.download' ? intent.artifact : artifactDescriptors.find((item) => item.artifactId === intent.artifactId);
+  if (!descriptor) return { kind: 'error', code: 'MOBILE_ARTIFACT_NOT_FOUND' };
+  const key = `${approved.targetId}:${intent.sessionId}:${descriptor.artifactId}`;
+  const job = artifactDownloads.get(key);
+  const actionReply = (action: 'remove' | 'preview' | 'share', state: 'removed' | 'presented') => ({ kind: 'artifact-action', action,
+    targetId: approved.targetId, identityKey: approved.identityKey, agentId: approved.agentId, sessionId: intent.sessionId,
+    artifactId: descriptor.artifactId, state, errorCode: null });
+  if (intent.kind === 'artifact.status') return job ?? { kind: 'error', code: 'MOBILE_ARTIFACT_NOT_FOUND' };
+  if (intent.kind === 'artifact.pause') {
+    if (!job) return { kind: 'error', code: 'MOBILE_ARTIFACT_NOT_FOUND' };
+    const paused = { ...job, state: job.state === 'ready' ? 'ready' as const : 'paused' as const, errorCode: null };
+    artifactDownloads.set(key, paused); emitArtifactDownload(paused); return paused;
+  }
+  if (intent.kind === 'artifact.remove') {
+    if (!job) return { kind: 'error', code: 'MOBILE_ARTIFACT_NOT_FOUND' };
+    if (job.state === 'downloading') return { kind: 'error', code: 'MOBILE_ARTIFACT_ACTIVE' };
+    artifactDownloads.delete(key); return actionReply('remove', 'removed');
+  }
+  if (intent.kind === 'artifact.preview' || intent.kind === 'artifact.share') {
+    if (job?.state !== 'ready') return { kind: 'error', code: 'MOBILE_ARTIFACT_NOT_READY' };
+    return actionReply(intent.kind === 'artifact.preview' ? 'preview' : 'share', 'presented');
+  }
+  if (artifactScenario === 'error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
+  const base: ArtifactDownload = { kind: 'artifact-download', targetId: approved.targetId, identityKey: approved.identityKey,
+    agentId: approved.agentId, sessionId: intent.sessionId, artifactId: descriptor.artifactId, name: descriptor.name,
+    mimeType: descriptor.mimeType, sha256: descriptor.sha256, state: 'downloading', receivedBytes: 0,
+    totalBytes: descriptor.sizeBytes, errorCode: null };
+  artifactDownloads.set(key, base);
+  const progress = { ...base, receivedBytes: Math.floor(descriptor.sizeBytes / 2) };
+  const ready = { ...base, state: 'ready' as const, receivedBytes: descriptor.sizeBytes };
+  if (artifactScenario === 'late-event') {
+    setTimeout(() => { artifactDownloads.set(key, ready); emitArtifactDownload(ready); }, 20);
+    return new Promise((resolve) => setTimeout(() => resolve(base), 120));
+  }
+  setTimeout(() => { artifactDownloads.set(key, progress); emitArtifactDownload(progress); }, 80);
+  setTimeout(() => { artifactDownloads.set(key, ready); emitArtifactDownload(ready); }, 220);
+  return base;
 }
 
 let fixtureAttachmentNumber = 0;

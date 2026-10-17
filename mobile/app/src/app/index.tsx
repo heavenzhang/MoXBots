@@ -72,7 +72,6 @@ function AppBody() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [resultsOpen, setResultsOpen] = useState(false);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const [mobileMode, setMobileMode] = useState<MobileMode>('loading');
   const [mobileModels, setMobileModels] = useState<{ id: string; label: string }[]>([]);
@@ -940,7 +939,7 @@ function AppBody() {
   const chooseQaScenario = async (scenario: QaScenario) => {
     moveOwner('login', null, null);
     setSessions([]); setPending([]); setNotice(null);
-    setReceiptStates({}); setResultsOpen(false); setMenuOpen(false); setComposerMenuOpen(false); setQaMenuOpen(false);
+    setReceiptStates({}); setMenuOpen(false); setComposerMenuOpen(false); setQaMenuOpen(false);
     try { await selectQaScenario(scenario); await loadAccount(); }
     catch (error) { say(error instanceof Error ? error.message : 'NATIVE_SCENARIO_FAILED', 'error'); }
   };
@@ -990,11 +989,9 @@ function AppBody() {
       <View style={styles.chatToolbar}>
         <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { moveOwner('sessions', targetRef.current, null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
         <View style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || '新会话'}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'}</Text></View>
-        <Pressable accessibilityRole="button" accessibilityLabel="查看成果" onPress={() => setResultsOpen((value) => !value)} style={styles.toolbarAction}><FileText size={20} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
-      {resultsOpen && <View style={styles.smallMenu}><Text style={styles.caption}>{isFixtureMode ? '此演示会话没有附件成果。' : '当前没有可读取的会话成果。'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭成果面板" onPress={() => setResultsOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
-      {menuOpen && <View style={styles.smallMenu}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
+      {menuOpen && <View style={[styles.smallMenu, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!target?.targetId} onPress={() => { setMenuOpen(false); if (target?.targetId) router.push({ pathname: '/artifacts', params: { targetId: target.targetId, sessionId: snapshot?.sessionId ?? '' } }); }} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 8 }}><FileText size={17} color={C.green}/><Text style={styles.pendingLink}>查看会话成果</Text></Pressable></View>}
       {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : undefined}/>}
       <ScrollView ref={scrollRef} style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
