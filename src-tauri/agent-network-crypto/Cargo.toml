@@ -7,6 +7,9 @@ license = "AGPL-3.0-only"
 
 [features]
 default = []
+# Mobile bindings supply their own Keychain/Keystore owner. Never enables a
+# file-store fallback or exports key material to the renderer/JavaScript.
+native-store = []
 os-store = ["dep:keyring", "dep:security-framework", "dep:security-framework-sys", "dep:core-foundation"]
 # Real crypto fixtures used by existing Desktop channel parity tests only.
 test-support = []
