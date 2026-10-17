@@ -128,20 +128,64 @@ export function parseSidebarOrganization(value: unknown): SidebarOrganization {
   return { sections, placements, orders };
 }
 
-/** Apply a saved prefix order while preserving the source order of IDs not yet loaded. */
+export interface SidebarOrderOptions<T> {
+  /**
+   * Item birth timestamp. Items absent from the saved order but younger than
+   * every arranged item are treated as newly created and lead the container;
+   * older unsaved items keep their trailing slots instead.
+   */
+  createdAt?: (item: T) => string | undefined;
+}
+
+function itemTime(value: string | undefined): number {
+  if (!value) return Number.NaN;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+/**
+ * Apply a saved prefix order while preserving the source order of IDs not yet loaded.
+ *
+ * With `createdAt`, items that the saved order has never seen and that are younger
+ * than every arranged item are new arrivals rather than hidden or unloaded ones,
+ * so they lead the arranged block instead of dropping to the end. Their relative
+ * order follows the source list, which already applies the default pinned/recency rule.
+ */
 export function orderSidebarItems<T>(
   items: readonly T[],
   ids: (item: T) => string,
   order: readonly string[] | undefined,
+  options?: SidebarOrderOptions<T>,
 ): T[] {
   if (!order?.length || items.length < 2) return [...items];
   const rank = new Map<string, number>();
   order.forEach((id, index) => {
     if (!rank.has(id)) rank.set(id, index);
   });
+  const createdAt = options?.createdAt;
+  let watermark = Number.NaN;
+  if (createdAt) {
+    for (const item of items) {
+      if (rank.get(ids(item)) === undefined) continue;
+      const time = itemTime(createdAt(item));
+      if (!Number.isNaN(time) && (Number.isNaN(watermark) || time > watermark))
+        watermark = time;
+    }
+  }
   return items
-    .map((item, index) => ({ item, index, rank: rank.get(ids(item)) }))
+    .map((item, index) => {
+      const itemRank = rank.get(ids(item));
+      const time = createdAt && itemRank === undefined ? itemTime(createdAt(item)) : Number.NaN;
+      return {
+        item,
+        index,
+        rank: itemRank,
+        // Without any arranged item on screen there is no watermark, so nothing is new.
+        fresh: !Number.isNaN(time) && !Number.isNaN(watermark) && time > watermark,
+      };
+    })
     .sort((a, b) => {
+      if (a.fresh !== b.fresh) return a.fresh ? -1 : 1;
       if (a.rank === undefined && b.rank === undefined)
         return a.index - b.index;
       if (a.rank === undefined) return 1;

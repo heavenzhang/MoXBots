@@ -210,6 +210,66 @@ describe('sidebarOrganization', () => {
     );
   });
 
+  it('leads the container with items created after the newest arranged item', () => {
+    const at = (id: string, createdAt: string) => ({ id, createdAt });
+    const input = [
+      at('fresh-b', '2026-10-17T18:57:00.000Z'),
+      at('arranged-old', '2026-09-01T00:00:00.000Z'),
+      at('fresh-a', '2026-10-17T12:07:00.000Z'),
+      at('arranged-new', '2026-10-10T00:00:00.000Z'),
+      at('hidden-old', '2026-08-01T00:00:00.000Z'),
+    ];
+    expect(
+      orderSidebarItems(
+        input,
+        (item) => item.id,
+        ['arranged-new', 'arranged-old'],
+        { createdAt: (item) => item.createdAt },
+      ).map(({ id }) => id),
+    ).toEqual([
+      'fresh-b',
+      'fresh-a',
+      'arranged-new',
+      'arranged-old',
+      'hidden-old',
+    ]);
+  });
+
+  it('keeps older unsaved items trailing so hidden or unloaded slots survive', () => {
+    const at = (id: string, createdAt: string) => ({ id, createdAt });
+    const input = [
+      at('arranged', '2026-10-10T00:00:00.000Z'),
+      at('unloaded', '2026-01-01T00:00:00.000Z'),
+    ];
+    expect(
+      orderSidebarItems(input, (item) => item.id, ['arranged'], {
+        createdAt: (item) => item.createdAt,
+      }).map(({ id }) => id),
+    ).toEqual(['arranged', 'unloaded']);
+  });
+
+  it('treats nothing as new when no arranged item is on screen or timestamps are unreadable', () => {
+    const input = [
+      { id: 'a', createdAt: '2026-10-17T00:00:00.000Z' },
+      { id: 'b', createdAt: 'not-a-date' },
+    ];
+    expect(
+      orderSidebarItems(input, (item) => item.id, ['gone'], {
+        createdAt: (item) => item.createdAt,
+      }).map(({ id }) => id),
+    ).toEqual(['a', 'b']);
+    expect(
+      orderSidebarItems(input, (item) => item.id, ['gone'], {
+        createdAt: () => 'not-a-date',
+      }).map(({ id }) => id),
+    ).toEqual(['a', 'b']);
+    expect(
+      orderSidebarItems(input, (item) => item.id, ['gone'], {}).map(
+        ({ id }) => id,
+      ),
+    ).toEqual(['a', 'b']);
+  });
+
   it('deletes only section metadata and supports collapse, expand, rename and section reorder', () => {
     const removed = removeSidebarSection(base, 'section:a');
     expect(removed.sections.map(({ id }) => id)).toEqual(['section:b']);
