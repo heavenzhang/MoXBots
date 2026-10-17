@@ -39,6 +39,21 @@ a trusted internal interface until its owner supplies a verified binding.
   authority and stored session handle. Stale handles remain rejected.
 - Documented configuration and the remaining Host→hint integration boundary in
   `services/agentnet/MOBILE-NOTIFICATIONS.md`.
+- Cached APNs authentication JWTs for 45 minutes and shared the cache between
+  sandbox/production clients; configured the provider HTTP client to require
+  HTTP/2. APNs token validation now accepts any non-empty, even-length hex
+  string within the existing 4 KiB endpoint bound.
+- Added a runtime provider allowlist to registration. A provider lacking local
+  credentials returns a fixed `503` with `Cache-Control: no-store` and creates
+  no endpoint.
+- FCM HTTP success is accepted only when the bounded JSON response has a
+  `Message.name` for the configured project and a non-empty message ID;
+  malformed, wrong-project, and unexpected-success responses remain unknown.
+- Checked current source identity limits: AuthStore session issuance takes a
+  caller-supplied device ID (`services/agentnet/src/store.rs`), so authenticated
+  session + DeviceStore lookup alone does not prove device-key possession or
+  Host role. The Host source remains unwired pending a fresh DeviceStore PoP
+  challenge and Host-owner provenance; Agent/session references remain hints.
 
 ## Verification
 
@@ -49,6 +64,10 @@ a trusted internal interface until its owner supplies a verified binding.
   163 passed, 5 ignored.
 - `cargo clippy --manifest-path services/agentnet/Cargo.toml --all-targets --
   -D warnings` passed.
+- Post-provider-fix full AgentNet service suite passed: 167 passed, 5 ignored.
+- Post-fix focused provider suite passed: 6 tests, including APNs h2c fixture
+  assertion, JWT cache reuse, token length bounds, and malformed/wrong-project
+  FCM response handling. Focused unavailable-provider HTTP test also passed.
 - The repeated DELETE HTTP regression passed within the full service suite; the
   core test also confirms stale session-handle rejection and current-handle
   retry success.
@@ -61,6 +80,7 @@ a trusted internal interface until its owner supplies a verified binding.
 - Host Bot/session ownership is not represented by NetworkService's PeerStore;
   the source entry point will remain crate-internal and require validated input.
 - No provider credentials, internet sends, or physical-device checks are in scope.
+- Official constraints referenced for this follow-up: [APNs request guidance](https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns), [APNs connection/token guidance](https://developer.apple.com/library/archive/documentation/NetworkingInternet/Conceptual/RemoteNotificationsPG/CommunicatingwithAPNs.html), and [FCM `projects.messages.send`](https://firebase.google.com/docs/reference/fcm/rest/v1/projects.messages/send).
 
 ## Next step
 

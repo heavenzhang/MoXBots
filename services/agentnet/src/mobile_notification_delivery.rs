@@ -104,6 +104,7 @@ struct ApnsProvider {
     topic: String,
     key_pem: Zeroizing<Vec<u8>>,
     origin: String,
+    cached_bearer: Arc<Mutex<Option<CachedAccessToken>>>,
 }
 
 struct FcmProvider {
@@ -121,6 +122,7 @@ impl ProviderClient {
         let http = Client::builder()
             .redirect(Policy::none())
             .https_only(true)
+            .http2_prior_knowledge()
             .connect_timeout(Duration::from_secs(5))
             .timeout(PROVIDER_TIMEOUT)
             .http2_adaptive_window(true)
@@ -132,12 +134,14 @@ impl ProviderClient {
             validate_apns_config(apns)?;
             let key = read_private_credential(&apns.private_key_file)?;
             EncodingKey::from_ec_pem(&key).map_err(|_| AuthError::Configuration)?;
+            let cached_bearer = Arc::new(Mutex::new(None));
             let provider = |origin: &str| ApnsProvider {
                 team_id: apns.team_id.clone(),
                 key_id: apns.key_id.clone(),
                 topic: apns.topic.clone(),
                 key_pem: Zeroizing::new(key.to_vec()),
                 origin: origin.to_owned(),
+                cached_bearer: cached_bearer.clone(),
             };
             sandbox = Some(provider(APNS_SANDBOX_ORIGIN));
             production = Some(provider(APNS_PRODUCTION_ORIGIN));
@@ -209,6 +213,17 @@ impl ProviderClient {
         }
     }
 
+    fn supported_providers(&self) -> Vec<Provider> {
+        [
+            Provider::ApnsSandbox,
+            Provider::ApnsProduction,
+            Provider::Fcm,
+        ]
+        .into_iter()
+        .filter(|provider| self.supports(*provider))
+        .collect()
+    }
+
     async fn send_apns(
         &self,
         provider: &ApnsProvider,
@@ -218,7 +233,7 @@ impl ProviderClient {
         if !valid_apns_token(claim.token()) {
             return DeliveryOutcome::PermanentFailure;
         }
-        let token = match apns_bearer(provider) {
+        let token = match apns_bearer(provider).await {
             Ok(token) => token,
             Err(()) => return DeliveryOutcome::PermanentFailure,
         };
@@ -274,7 +289,7 @@ impl ProviderClient {
             .json(&body)
             .send()
             .await;
-        classify_response(result).await
+        classify_fcm_response(result, &provider.project_id).await
     }
 
     async fn fcm_access_token(
@@ -345,7 +360,14 @@ struct OAuthResponse {
     token_type: String,
 }
 
-fn apns_bearer(provider: &ApnsProvider) -> Result<Zeroizing<String>, ()> {
+async fn apns_bearer(provider: &ApnsProvider) -> Result<Zeroizing<String>, ()> {
+    let mut cache = provider.cached_bearer.lock().await;
+    if let Some(token) = cache
+        .as_ref()
+        .filter(|token| Instant::now() < token.expires)
+    {
+        return Ok(Zeroizing::new(token.value.to_string()));
+    }
     let now = unix_seconds().map_err(|_| ())?;
     let claims = JwtClaims {
         iss: &provider.team_id,
@@ -357,9 +379,14 @@ fn apns_bearer(provider: &ApnsProvider) -> Result<Zeroizing<String>, ()> {
     let key = EncodingKey::from_ec_pem(&provider.key_pem).map_err(|_| ())?;
     let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(provider.key_id.clone());
-    encode(&header, &claims, &key)
-        .map(Zeroizing::new)
-        .map_err(|_| ())
+    let token = Zeroizing::new(encode(&header, &claims, &key).map_err(|_| ())?);
+    *cache = Some(CachedAccessToken {
+        value: Zeroizing::new(token.to_string()),
+        // APNs authentication tokens are valid for one hour. Refresh well
+        // before expiry and reuse the token across both APNs environments.
+        expires: Instant::now() + Duration::from_secs(45 * 60),
+    });
+    Ok(token)
 }
 
 async fn classify_response(response: Result<reqwest::Response, reqwest::Error>) -> DeliveryOutcome {
@@ -380,6 +407,58 @@ async fn classify_response(response: Result<reqwest::Response, reqwest::Error>) 
         status if status.is_success() => DeliveryOutcome::Accepted,
         _ => DeliveryOutcome::PermanentFailure,
     }
+}
+
+async fn classify_fcm_response(
+    response: Result<reqwest::Response, reqwest::Error>,
+    expected_project: &str,
+) -> DeliveryOutcome {
+    let response = match response {
+        Ok(response) => response,
+        Err(_) => return DeliveryOutcome::Unknown,
+    };
+    let status = response.status();
+    let bytes = match bounded_body(response).await {
+        Ok(bytes) => bytes,
+        Err(()) => return DeliveryOutcome::Unknown,
+    };
+    if status == ReqStatus::OK || status == ReqStatus::CREATED {
+        let Ok(body) = serde_json::from_slice::<FcmSendResponse>(&bytes) else {
+            return DeliveryOutcome::Unknown;
+        };
+        return if valid_fcm_message_name(&body.name, expected_project) {
+            DeliveryOutcome::Accepted
+        } else {
+            DeliveryOutcome::Unknown
+        };
+    }
+    match status {
+        ReqStatus::TOO_MANY_REQUESTS | ReqStatus::SERVICE_UNAVAILABLE | ReqStatus::BAD_GATEWAY => {
+            DeliveryOutcome::RetryableFailure
+        }
+        status if status.is_server_error() => DeliveryOutcome::RetryableFailure,
+        status if status.is_success() => DeliveryOutcome::Unknown,
+        _ => DeliveryOutcome::PermanentFailure,
+    }
+}
+
+#[derive(Deserialize)]
+struct FcmSendResponse {
+    name: String,
+}
+
+fn valid_fcm_message_name(value: &str, expected_project: &str) -> bool {
+    let Some(message_id) = value
+        .strip_prefix("projects/")
+        .and_then(|rest| rest.strip_prefix(expected_project))
+        .and_then(|rest| rest.strip_prefix("/messages/"))
+    else {
+        return false;
+    };
+    !message_id.is_empty()
+        && message_id.len() <= 512
+        && !message_id.contains('/')
+        && !message_id.chars().any(char::is_control)
 }
 
 async fn bounded_body(mut response: reqwest::Response) -> Result<Vec<u8>, ()> {
@@ -431,7 +510,10 @@ fn valid_id(value: &str, max: usize) -> bool {
 }
 
 fn valid_apns_token(value: &str) -> bool {
-    value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+    !value.is_empty()
+        && value.len() <= 4096
+        && value.len().is_multiple_of(2)
+        && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
 fn read_private_credential(path: &Path) -> Result<Zeroizing<Vec<u8>>, AuthError> {
@@ -497,8 +579,10 @@ impl MobileNotificationRuntime {
             return Err(AuthError::Configuration);
         }
         let providers = Arc::new(ProviderClient::open(config)?);
+        let supported_providers = providers.supported_providers();
         Ok(Self {
-            service: MobileNotificationService::new(auth.clone(), devices, store, network_id),
+            service: MobileNotificationService::new(auth.clone(), devices, store, network_id)
+                .with_provider_allowlist(supported_providers),
             providers,
             auth,
         })
@@ -688,7 +772,13 @@ impl MobileNotificationRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{Router, body::Bytes, extract::State, http::StatusCode, routing::post};
+    use axum::{
+        Router,
+        body::{Bytes, to_bytes},
+        extract::State,
+        http::{Request, StatusCode, Version},
+        routing::post,
+    };
     use myagents_agent_network_crypto::DevicePrivateKey;
     use myagents_agentnet_device_core::{DeviceRecord, SessionContext};
     use myagents_agentnet_mobile_notify_core::{HostHintV1, RegisterEndpointV1, TargetScope};
@@ -703,7 +793,7 @@ mod tests {
         os::unix::fs::PermissionsExt,
         sync::{
             Arc,
-            atomic::{AtomicUsize, Ordering},
+            atomic::{AtomicBool, AtomicUsize, Ordering},
         },
     };
 
@@ -848,6 +938,8 @@ mod tests {
         delay_send: Duration,
         send_count: Arc<AtomicUsize>,
         payloads: Arc<tokio::sync::Mutex<Vec<Value>>>,
+        success_response: Arc<tokio::sync::Mutex<Value>>,
+        http2_seen: Arc<AtomicBool>,
     }
 
     async fn oauth_fixture() -> axum::Json<Value> {
@@ -873,10 +965,35 @@ mod tests {
             .await
             .pop_front()
             .unwrap_or(StatusCode::OK);
-        (
-            status,
-            axum::Json(json!({"provider":"fixture","error":"not returned to caller"})),
-        )
+        let body = if status.is_success() {
+            state.success_response.lock().await.clone()
+        } else {
+            json!({"provider":"fixture","error":"not returned to caller"})
+        };
+        (status, axum::Json(body))
+    }
+
+    async fn apns_h2_fixture(
+        State(state): State<FixtureState>,
+        request: Request<axum::body::Body>,
+    ) -> (StatusCode, axum::Json<Value>) {
+        state
+            .http2_seen
+            .store(request.version() == Version::HTTP_2, Ordering::SeqCst);
+        let body = request.into_body();
+        state.send_count.fetch_add(1, Ordering::SeqCst);
+        if let Ok(bytes) = to_bytes(body, 4096).await
+            && let Ok(payload) = serde_json::from_slice::<Value>(&bytes)
+        {
+            state.payloads.lock().await.push(payload);
+        }
+        let status = state
+            .statuses
+            .lock()
+            .await
+            .pop_front()
+            .unwrap_or(StatusCode::OK);
+        (status, axum::Json(json!({})))
     }
 
     async fn fixture_client(
@@ -889,12 +1006,17 @@ mod tests {
         tokio::task::JoinHandle<()>,
         Arc<AtomicUsize>,
         Arc<tokio::sync::Mutex<Vec<Value>>>,
+        Arc<tokio::sync::Mutex<Value>>,
     ) {
         let state = FixtureState {
             statuses: Arc::new(tokio::sync::Mutex::new(statuses.into())),
             delay_send,
             send_count: Arc::new(AtomicUsize::new(0)),
             payloads: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            success_response: Arc::new(tokio::sync::Mutex::new(
+                json!({"name":"projects/test-project/messages/fixture-message"}),
+            )),
+            http2_seen: Arc::new(AtomicBool::new(false)),
         };
         let app = Router::new()
             .route("/oauth/token", post(oauth_fixture))
@@ -927,7 +1049,13 @@ mod tests {
             }),
         };
         let _ = scope;
-        (client, server, state.send_count, state.payloads)
+        (
+            client,
+            server,
+            state.send_count,
+            state.payloads,
+            state.success_response,
+        )
     }
 
     fn test_rsa_key() -> String {
@@ -948,10 +1076,21 @@ mod tests {
             .to_vec()
     }
 
+    fn test_apns_provider() -> ApnsProvider {
+        ApnsProvider {
+            team_id: "TESTTEAM123".into(),
+            key_id: "TESTKEY123".into(),
+            topic: "com.example.test".into(),
+            key_pem: Zeroizing::new(test_ec_key()),
+            origin: APNS_SANDBOX_ORIGIN.into(),
+            cached_bearer: Arc::new(Mutex::new(None)),
+        }
+    }
+
     #[tokio::test]
     async fn fcm_loopback_observes_live_auth_device_scope_and_maps_provider_statuses() {
         let scope = scope_with_claims(Provider::Fcm, "opaque-device-token");
-        let (client, server, send_count, payloads) = fixture_client(
+        let (client, server, send_count, payloads, _) = fixture_client(
             &scope,
             vec![
                 StatusCode::OK,
@@ -987,10 +1126,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fcm_success_requires_matching_project_message_name() {
+        let scope = scope_with_claims(Provider::Fcm, "opaque-device-token");
+        let (client, server, _, _, success_response) = fixture_client(
+            &scope,
+            vec![StatusCode::OK, StatusCode::OK, StatusCode::NO_CONTENT],
+            Duration::ZERO,
+            PROVIDER_TIMEOUT,
+        )
+        .await;
+        let claim = &scope.claims[0];
+        *success_response.lock().await = json!({"name":"projects/other-project/messages/id"});
+        assert_eq!(
+            client.send(claim, || live_claim(&scope, claim)).await,
+            DeliveryOutcome::Unknown
+        );
+        *success_response.lock().await = json!({"unexpected":"gateway body"});
+        assert_eq!(
+            client.send(claim, || live_claim(&scope, claim)).await,
+            DeliveryOutcome::Unknown
+        );
+        *success_response.lock().await = json!({
+            "name":"projects/test-project/messages/fixture-message"
+        });
+        assert_eq!(
+            client.send(claim, || live_claim(&scope, claim)).await,
+            DeliveryOutcome::Unknown
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn apns_provider_token_cache_reuses_until_safe_refresh_window() {
+        let provider = test_apns_provider();
+        *provider.cached_bearer.lock().await = Some(CachedAccessToken {
+            value: Zeroizing::new("cached-apns-token".into()),
+            expires: Instant::now() + Duration::from_secs(60),
+        });
+        assert_eq!(
+            apns_bearer(&provider).await.unwrap().as_str(),
+            "cached-apns-token"
+        );
+
+        *provider.cached_bearer.lock().await = None;
+        let generated = apns_bearer(&provider).await.unwrap();
+        let cached = provider.cached_bearer.lock().await;
+        let entry = cached.as_ref().unwrap();
+        assert_eq!(entry.value.as_str(), generated.as_str());
+        assert!(entry.expires > Instant::now() + Duration::from_secs(44 * 60));
+        assert!(entry.expires < Instant::now() + Duration::from_secs(46 * 60));
+    }
+
+    #[test]
+    fn apns_device_tokens_are_bounded_even_length_hex_without_fixed_size_assumption() {
+        assert!(valid_apns_token("ab"));
+        assert!(valid_apns_token(&"ab".repeat(32)));
+        assert!(valid_apns_token(&"ab".repeat(2048)));
+        assert!(!valid_apns_token(""));
+        assert!(!valid_apns_token("abc"));
+        assert!(!valid_apns_token("ag"));
+        assert!(!valid_apns_token(&"ab".repeat(2049)));
+    }
+
+    #[tokio::test]
     async fn provider_timeout_is_unknown_and_stale_auth_blocks_outbound_calls() {
         let scope = scope_with_claims(Provider::Fcm, "opaque-device-token");
         let claim = &scope.claims[0];
-        let (client, server, send_count, _) = fixture_client(
+        let (client, server, send_count, _, _) = fixture_client(
             &scope,
             vec![StatusCode::OK],
             Duration::from_millis(100),
@@ -1004,7 +1206,7 @@ mod tests {
         assert_eq!(send_count.load(Ordering::SeqCst), 1);
         server.abort();
 
-        let (client, server, send_count, _) = fixture_client(
+        let (client, server, send_count, _, _) = fixture_client(
             &scope,
             vec![StatusCode::OK],
             Duration::ZERO,
@@ -1028,9 +1230,13 @@ mod tests {
             delay_send: Duration::ZERO,
             send_count: Arc::new(AtomicUsize::new(0)),
             payloads: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            success_response: Arc::new(tokio::sync::Mutex::new(
+                json!({"name":"projects/test-project/messages/fixture-message"}),
+            )),
+            http2_seen: Arc::new(AtomicBool::new(false)),
         };
         let app = Router::new()
-            .route("/3/device/{token}", post(fcm_fixture))
+            .route("/3/device/{token}", post(apns_h2_fixture))
             .with_state(state.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -1039,16 +1245,12 @@ mod tests {
         });
         let http = Client::builder()
             .redirect(Policy::none())
+            .http2_prior_knowledge()
             .timeout(PROVIDER_TIMEOUT)
             .build()
             .unwrap();
-        let provider = ApnsProvider {
-            team_id: "TESTTEAM123".into(),
-            key_id: "TESTKEY123".into(),
-            topic: "com.example.test".into(),
-            key_pem: Zeroizing::new(test_ec_key()),
-            origin: format!("http://{addr}"),
-        };
+        let mut provider = test_apns_provider();
+        provider.origin = format!("http://{addr}");
         let client = ProviderClient {
             http,
             apns_sandbox: Some(provider),
@@ -1061,6 +1263,7 @@ mod tests {
             DeliveryOutcome::Accepted
         );
         assert_eq!(state.send_count.load(Ordering::SeqCst), 1);
+        assert!(state.http2_seen.load(Ordering::SeqCst));
         let payloads = state.payloads.lock().await;
         let payload = &payloads[0];
         assert_eq!(payload["aps"]["alert"]["title"], GENERIC_TITLE);
