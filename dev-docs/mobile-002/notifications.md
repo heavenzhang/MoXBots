@@ -54,3 +54,7 @@ Android 可通过构建环境变量 `MOXBOTS_ANDROID_GOOGLE_SERVICES_FILE` 指�
 ## Host来源接入的下一步
 
 现有AuthStore登录会话携带登录时提交的deviceId；仅用Bearer加DeviceStore记录查询，不能等同于已证明持有该设备私钥。通知来源接口仍未开放。下一包应从原Session owner生成有限事件，由保有既有设备私钥的Rust连接器提交：复用现有challenge/PoP能力，在通知存储中把challenge绑定当前session_handle、设备binding/generation和确切pointer；验证单次proof后才生成hint。不修改冻结的crypto/protocol，也不让调用方指定其他principal或source device。云端只验证来源设备，手机仍重新读取实际Bot目录与Session；提示本身不授予执行或审批权限。该设计尚未实现或通过真实Host验收。
+
+### iOS真实SDK首轮预检
+
+CI39071442301的macOS预检已实际编译通过device Rust目标，Swift随后发现成果缓存调用不存在的解析方法、跨类型`record`比较错误；这不是本机许可阻断。原始日志 `/tmp/moxbots-mobile-ios-preflight-ci-first.log`。已改为使用同文件内已有的受验证descriptor/project转换，并对两侧record显式取String。原生SecureRecords、NativeArtifacts和NativeUploadScheduler在本机实际Swift/macOS SDK的联合typecheck通过（`/tmp/moxbots-mobile-ios-artifact-core-macos-typecheck.log`）；这不代替iOS SDK或运行态。预检顺序改为先检查两套真实SDK的Swift源码，再下载/检查Rust targets，以便编译错误更快反馈。修复后的iOS device/simulator完整核心预检仍待新CI；Expo wrapper、链接、签名和真机继续开放。

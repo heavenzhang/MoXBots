@@ -21,7 +21,6 @@ const targets = [
 // Fail at normal SDK/permission checks before downloading targets. Do not accept
 // licenses or switch the user's selected Xcode as part of a build check.
 for (const target of targets) target.sdkPath = run('xcrun', ['--sdk', target.sdk, '--show-sdk-path'], true);
-run('rustup', ['target', 'add', ...targets.map(target => target.rust)]);
 const temp = mkdtempSync(path.join(tmpdir(), 'moxbots-ios-preflight-'));
 try {
   const moduleDir = path.join(temp, 'MoxConnectionCore');
@@ -33,8 +32,11 @@ try {
   // separate gate. These exact files use real Apple frameworks, no mock SDKs.
   const sources = readdirSync(ownerDir).filter(file => file.endsWith('.swift') && file !== 'MoxBotsRemoteModule.swift').sort().map(file => path.join(ownerDir, file));
   for (const target of targets) {
-    run('cargo', ['check', '--locked', '--manifest-path', 'mobile/connection/Cargo.toml', '--target', target.rust]);
     run('xcrun', ['--sdk', target.sdk, 'swiftc', '-typecheck', '-swift-version', '5', '-sdk', target.sdkPath, '-target', target.swift, '-I', temp, ...sources]);
+  }
+  run('rustup', ['target', 'add', ...targets.map(target => target.rust)]);
+  for (const target of targets) {
+    run('cargo', ['check', '--locked', '--manifest-path', 'mobile/connection/Cargo.toml', '--target', target.rust]);
   }
   process.stdout.write('iOS device/simulator Rust targets and native Swift core typecheck passed; full Expo app, linking, signing and runtime remain separate gates.\n');
 } finally {

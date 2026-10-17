@@ -77,7 +77,7 @@ final class NativeArtifactCache {
     var all: [String: NativeArtifactDescriptor] = [:]
     if before != nil {
       guard let old = existing?["items"] as? [[String: Any]] else { throw NativeFailure("MOBILE_ARTIFACT_CACHE_INVALID") }
-      for item in old { let descriptor = try Self.parseDescriptor(item); all[descriptor.artifactId] = descriptor }
+      for item in old { let descriptor = try NativeArtifactScheduler.descriptor(item); all[descriptor.artifactId] = descriptor }
     }
     for item in items {
       if let old = all[item.artifactId], old.artifactId != item.artifactId || old.name != item.name || old.mimeType != item.mimeType || old.sizeBytes != item.sizeBytes || old.sha256 != item.sha256 {
@@ -87,7 +87,7 @@ final class NativeArtifactCache {
     }
     guard all.count <= 128 else { throw NativeFailure("MOBILE_ARTIFACT_CACHE_LIMIT") }
     let value: [String: Any] = ["version": 1, "identityKey": identity, "agentId": agent, "sessionId": session,
-      "nextBefore": (next as Any?) ?? NSNull(), "items": all.values.map(Self.project)]
+      "nextBefore": (next as Any?) ?? NSNull(), "items": all.values.map(NativeArtifactScheduler.project)]
     let bytes = try JSONSerialization.data(withJSONObject: value)
     guard bytes.count <= 220 * 1024 else { throw NativeFailure("MOBILE_ARTIFACT_CACHE_LIMIT") }
     try records.write(scope: scope, record: key, bytes: bytes)
@@ -99,7 +99,7 @@ final class NativeArtifactCache {
       NativeArtifactInteger.value(value["version"]) == 1, value["identityKey"] as? String == identity,
       value["agentId"] as? String == agent, value["sessionId"] as? String == session,
       let items = value["items"] as? [[String: Any]] else { throw NativeFailure("MOBILE_ARTIFACT_REFRESH_REQUIRED") }
-    guard let found = try items.map(Self.parseDescriptor).first(where: { $0.artifactId == descriptor.artifactId }) else {
+    guard let found = try items.map(NativeArtifactScheduler.descriptor).first(where: { $0.artifactId == descriptor.artifactId }) else {
       throw NativeFailure("MOBILE_ARTIFACT_REFRESH_REQUIRED")
     }
     guard found.name == descriptor.name, found.mimeType == descriptor.mimeType, found.sizeBytes == descriptor.sizeBytes, found.sha256 == descriptor.sha256 else {
@@ -328,7 +328,7 @@ final class NativeArtifactScheduler {
   }
   func pause(target: NativeArtifactTarget, session: String, id: String) throws -> [String: Any] {
     var job = try localJob(target, session, id)
-    if current?["record"] as? String == job["record"] { generation &+= 1; current = nil; currentTarget = nil }
+    if current?["record"] as? String == job["record"] as? String { generation &+= 1; current = nil; currentTarget = nil }
     if job["state"] as? String != "ready" { job["state"] = "paused" }
     job["errorCode"] = NSNull()
     try persist(job); emit(job, target)
@@ -376,7 +376,7 @@ final class NativeArtifactScheduler {
           let session = job["sessionId"] as? String, let id = job["artifactId"] as? String else { throw NativeFailure("MOBILE_ARTIFACT_PAUSED") }
         let response = try self.io.request(target.targetId, ["version": 1, "kind": "read", "agentId": target.agentId,
           "sessionId": session, "artifactId": id, "offset": offset, "maxBytes": self.chunkBytes])
-        guard token == self.generation, self.current?["record"] as? String == job["record"] else { return }
+        guard token == self.generation, self.current?["record"] as? String == job["record"] as? String else { return }
         try Self.throwRemoteError(response)
         let bytes = try Self.chunk(response, job: job, offset: offset, chunkBytes: self.chunkBytes)
         let next = offset + bytes.count
@@ -391,7 +391,7 @@ final class NativeArtifactScheduler {
         try self.persist(job); self.emit(job, target)
         if eof { self.current = nil; self.currentTarget = nil } else { self.scheduleStep() }
       } catch {
-        if token == self.generation, self.current?["record"] as? String == job["record"] {
+        if token == self.generation, self.current?["record"] as? String == job["record"] as? String {
           self.generation &+= 1; job["state"] = "paused"; job["errorCode"] = self.errorCode(error)
           try? self.persist(job); self.emit(job, target); self.current = nil; self.currentTarget = nil
         }
@@ -438,7 +438,7 @@ final class NativeArtifactScheduler {
       throw NativeFailure("MOBILE_INTENT_INVALID")
     }
   }
-  private static func descriptor(_ value: [String: Any]) throws -> NativeArtifactDescriptor {
+  fileprivate static func descriptor(_ value: [String: Any]) throws -> NativeArtifactDescriptor {
     guard Set(value.keys) == Set(["artifactId", "name", "mimeType", "sizeBytes", "sha256"]),
       let id = value["artifactId"] as? String, let name = value["name"] as? String, let mime = value["mimeType"] as? String,
       let size = NativeArtifactInteger.value(value["sizeBytes"]), let hash = value["sha256"] as? String else {
@@ -447,7 +447,7 @@ final class NativeArtifactScheduler {
     let result = NativeArtifactDescriptor(artifactId: id, name: name, mimeType: mime, sizeBytes: size, sha256: hash)
     try validateDescriptor(result); return result
   }
-  private static func project(_ value: NativeArtifactDescriptor) -> [String: Any] {
+  fileprivate static func project(_ value: NativeArtifactDescriptor) -> [String: Any] {
     ["artifactId": value.artifactId, "name": value.name, "mimeType": value.mimeType, "sizeBytes": value.sizeBytes, "sha256": value.sha256]
   }
   private static func chunk(_ value: [String: Any], job: [String: Any], offset: Int, chunkBytes: Int) throws -> Data {
