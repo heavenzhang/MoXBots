@@ -120,3 +120,19 @@ license blocker above is resolved. iOS SDK/system-admin setup remains parent-own
   fixtures passed with existing Zod 4.1.12 dependencies. No Host path claimed.
 - Store implementation/tests are staged separately next; native integration is
   still parent-owned. Android native rebuild with this extension is not yet run.
+
+## Asset extension — native scoped storage
+
+- Added standalone mobile/asset-store with capability-relative no-follow I/O and
+  process-shared filesystem reservation lock. Native AssetScope is never RPC input.
+- Real durable sequential chunks, exact duplicates, restart hash validation and
+  unacknowledged-tail truncation; finish validates exact size and full SHA256.
+- Scoped 8-active/160MiB and global 1GiB bounds, bounded metadata counts, explicit
+  TTL/cancel cleanup, cancelled-crash retained-byte accounting, ready leases, and
+  trusted output-owner artifact copying/list/read. No executor or transcript scan.
+- Ten real TempDir tests passed and clippy all-targets -D warnings passed.
+- Remaining platform gates: Linux/Windows native filesystem acceptance, actual Host
+  dispatcher/session admission, UI/native upload and preview, and Android/iOS fresh
+  extension builds. Worker does not claim these from pure store or TLS fixtures.
+- Parent must keep output registration rooted in the real transcript owner and
+  retain ready leases through SessionEngine attachment admission/consumption.
