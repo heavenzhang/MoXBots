@@ -11,6 +11,12 @@ Reproduce from the repository root:
 DEVELOPER_DIR=/Library/Developer/CommandLineTools node --import tsx scripts/verify-mobile-original-host-loopback.ts
 ```
 
+Current acceptance Mac's verified installed Node24 command:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools /Applications/MoXBots.app/Contents/Resources/nodejs/bin/node --import tsx scripts/verify-mobile-original-host-loopback.ts
+```
+
 The command creates a 0700 private temporary directory under the current user's
 home. It uses an empty isolated HOME, a runtime-generated provider credential,
 the original local operator definition builder and locked provider/config writer,
@@ -68,3 +74,32 @@ Actual mobile.start/SDK completion, mobile.send/attachment, generic notification
 source, result artifacts, restart and real native/production paths remain open
 until a passing execution is recorded. Earlier synthetic/helper test counts do
 not close this actual Host gate.
+
+## Second actual failure: encrypted credential route projection
+
+Primary's shared fix `6fd18b850ee62329c84a2bd1b501a8198c5d2bf1` was cherry-picked
+as dependency `f027e96d` (not owned). The next fresh fixture used actual bundled
+Node24.20.0 and the original encrypted credential owner reference for the custom
+Provider. It failed before Session birth with
+`unconfirmed / REMOTE_ADMISSION_UNCONFIRMED`:
+
+- Evidence: `/Users/zhangshaohua/.mox-original-host-JOS6um/evidence.jsonl`, sibling
+  private diagnostics; operation `14391f89-cb30-4a7f-9aeb-244ed56f82be`.
+- Host PID/PGID2381 verified absent after exact group cleanup. No worker,
+  sessions.json, supplier request or source outbox was created.
+- Actual `resolveWorkspaceConfig(workspace, undefined, {includeMcp:false})` under
+  the same isolated HOME reproduces `Host credential reference is unavailable`.
+- Supervisor remote birth calls the full provider env materializer.
+  `host-provider-credential:<id>` requires the worker's installed snapshot, which
+  the supervisor does not hold. This precedes real fork/snapshot delivery.
+  Portable Host profiles also persist the same reference form.
+
+Primary owns a safe route-only supervisor projection repair. The fixture does
+not substitute plaintext credentials, fake a worker snapshot, change provider
+validation or call Session send to bypass this failure. The first unknown
+operation remains untouched. The first run was Node22.23.0; only this second
+run used Node24.20.0, and neither reached actual native SDK execution.
+
+Script type checking (root config normally excludes scripts):
+`node_modules/.bin/tsc --noEmit --project src/test/fixtures/mobile-original-host-tsconfig.json`
+passed together with eslint on both new TypeScript files; repeat after final edits.
