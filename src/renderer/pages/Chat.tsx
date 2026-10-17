@@ -4943,9 +4943,18 @@ export default function Chat({
     void handleSendMessageRef.current('/init');
   }, []);
 
-  // Cancel a queued message and restore its text (and images if any) to the input box
-  const handleCancelQueued = useCallback(
+  // Cancelling discards only this queued item; editing recalls it to the composer.
+  const handleCancelQueued = useCallback(async (queueId: string) => {
+    return (await cancelQueuedMessage(queueId)) !== null;
+  }, [cancelQueuedMessage]);
+
+  const handleEditQueued = useCallback(
     async (queueId: string) => {
+      const input = chatInputRef.current;
+      if (!input) return false;
+      if (input.getCurrentValue().trim() || input.getImages().length > 0) {
+        throw Object.assign(new Error('Composer has an unsent draft'), { errorCode: 'queue_draft_not_empty' });
+      }
       // Snapshot the queued message info before it's removed (for image restore)
       const queuedMsg = queuedMessages.find((q) => q.queueId === queueId);
       const cancelledSessionId = sessionId;
@@ -4957,7 +4966,10 @@ export default function Chat({
         .filter((message) => message.role === 'assistant')
         .map((message) => message.content);
       const cancelledText = await cancelQueuedMessage(queueId);
-      if (cancelledText && sessionIdRef.current === cancelledSessionId) {
+      // Imperative handles contain render-scoped image/context snapshots.
+      // Re-read the current handle after the async cancellation settles.
+      const currentInput = chatInputRef.current;
+      if (cancelledText !== null && sessionIdRef.current === cancelledSessionId && currentInput) {
         const restored = queuedMsg?.asyncQuestionReply
           ? restoreAsyncQuestionAnswerDraft(
               queuedMsg.asyncQuestionReply,
@@ -4974,7 +4986,16 @@ export default function Chat({
               }
             : null,
         );
-        chatInputRef.current?.setValue(restored?.text ?? cancelledText, { agentMentions: queuedMsg?.agentMentions, primaryContext: queuedMsg?.primaryContext });
+        // Input can change while cancellation is in flight. Preserve that new
+        // draft as well as the recalled message and its attachment/context data.
+        const currentText = currentInput.getCurrentValue();
+        const currentContext = currentInput.getQueryContext();
+        const restoredText = restored?.text ?? cancelledText;
+        currentInput.setValue(currentText ? `${currentText}\n\n${restoredText}` : restoredText, {
+          ...currentContext,
+          agentMentions: [...(queuedMsg?.agentMentions ?? []), ...(currentContext.agentMentions ?? [])],
+          primaryContext: currentContext.primaryContext ?? queuedMsg?.primaryContext,
+        });
         // Restore images if the queued message had them
         // Note: We only have preview data URLs (not File blobs) to avoid memory leaks,
         // so we reconstruct ImageAttachment with a minimal placeholder File.
@@ -4993,9 +5014,11 @@ export default function Chat({
               relativePath: img.relativePath,
             }),
           );
-          chatInputRef.current?.setImages(restoredImages);
+          currentInput.setImages([...currentInput.getImages(), ...restoredImages]);
         }
+        return true;
       }
+      return false;
     },
     [
       cancelQueuedMessage,
@@ -5010,7 +5033,7 @@ export default function Chat({
   // Force-execute a queued message (interrupt current AI response)
   const handleForceExecuteQueued = useCallback(
     async (queueId: string) => {
-      await forceExecuteQueuedMessage(queueId);
+      return forceExecuteQueuedMessage(queueId);
     },
     [forceExecuteQueuedMessage],
   );
@@ -5540,20 +5563,6 @@ export default function Chat({
   const handleGoalDismiss = useCallback(() => {
     dismissGoal();
   }, [dismissGoal]);
-
-  const handleCancelQueuedVoid = useCallback(
-    (queueId: string) => {
-      void handleCancelQueued(queueId);
-    },
-    [handleCancelQueued],
-  );
-
-  const handleForceExecuteQueuedVoid = useCallback(
-    (queueId: string) => {
-      void handleForceExecuteQueued(queueId);
-    },
-    [handleForceExecuteQueued],
-  );
 
   // Format selected text as Markdown blockquote
   const formatQuote = useCallback(
@@ -6949,8 +6958,9 @@ export default function Chat({
                   : undefined
               }
               queuedMessages={queuedMessages}
-              onCancelQueued={handleCancelQueuedVoid}
-              onForceExecuteQueued={handleForceExecuteQueuedVoid}
+              onCancelQueued={handleCancelQueued}
+              onEditQueued={handleEditQueued}
+              onForceExecuteQueued={handleForceExecuteQueued}
               agentStatusSlot={agentStatusSlot}
               onOverlayHeightChange={handleInputOverlayHeightChange}
             />

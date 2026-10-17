@@ -216,6 +216,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   runtimePermissionModes,
   queuedMessages = [],
   onCancelQueued,
+  onEditQueued,
   onForceExecuteQueued,
   agentStatusSlot,
   onOverlayHeightChange,
@@ -1384,7 +1385,8 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
           (justify-end) when alone. `items-end` bottom-aligns the two cards
           (a single-row Todo bar sits slightly higher than the queue card —
           natural heights kept so an expanded AgentStatusPanel doesn't
-          stretch the queue card into a mostly-empty tall panel). `empty:hidden`
+          stretch the queue card into a mostly-empty tall panel). On narrow
+          composers the row wraps, keeping both cards and their controls reachable. `empty:hidden`
           collapses the row + mb-2 gap when both children render null (no
           agent activity + no queue).
           The row sits OUTSIDE the input container (sibling, not child) so
@@ -1394,13 +1396,15 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
           click and block message selection (Codex review). Cards themselves
           override with `pointer-events-auto`. */}
       {!isLauncherMode && (
-        <div className="pointer-events-none mb-2 flex w-full max-w-3xl items-end justify-end gap-2 empty:hidden">
+        <div className="pointer-events-none mb-2 flex w-full max-w-3xl flex-wrap items-end justify-end gap-2 empty:hidden">
           {agentStatusSlot}
           {queuedMessages.length > 0 && (
             <QueuedMessagesPanel
+              key={sessionId ?? 'pending'}
               messages={queuedMessages}
-              onCancel={(queueId) => onCancelQueued?.(queueId)}
-              onForceExecute={(queueId) => onForceExecuteQueued?.(queueId)}
+              onCancel={onCancelQueued}
+              onEdit={onEditQueued}
+              onForceExecute={onForceExecuteQueued}
             />
           )}
         </div>

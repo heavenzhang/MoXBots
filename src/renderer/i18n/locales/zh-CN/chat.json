@@ -583,7 +583,15 @@
       "title": "排队中 ({{count}})",
       "sendNow": "立即发送",
       "recallSend": "撤回发送",
-      "cancelQueued": "取消排队"
+      "cancelQueued": "取消排队",
+      "edit": "编辑",
+      "sendNowHint": "停止当前回复，立即处理这条消息",
+      "submitted": "已提交，等待处理",
+      "processing": "正在处理…",
+      "alreadyAccepted": "这条消息已被接收，无法再撤回或编辑，将继续处理。",
+      "draftNotEmpty": "输入框中有未发送的草稿，请先发送或清空，再编辑排队消息。",
+      "cancelUnavailable": "当前会话暂不支持撤回，消息仍会继续处理。",
+      "actionFailed": "操作未完成，消息状态未确认，请稍后重试。"
     },
     "permissionPrompt": {
       "sandboxTitle": "工作区外写入请求",

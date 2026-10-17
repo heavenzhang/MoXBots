@@ -75,6 +75,19 @@ describe('handleSessionEngineQueueRoute', () => {
     });
   });
 
+  it.each([
+    ['not_cancelled', 409, 'queue_already_accepted'],
+    ['unavailable', 503, 'queue_cancel_unavailable'],
+  ] as const)('reports %s with a stable user-feedback code and retains the target', async (status, httpStatus, errorCode) => {
+    mocks.engine.cancelQueuedMessage.mockResolvedValueOnce({ status });
+    const response = await handleSessionEngineQueueRoute('/chat/queue/cancel', new Request('http://local/chat/queue/cancel', {
+      method: 'POST', body: JSON.stringify({ queueId: 'q-compact' }),
+    }));
+    expect(response?.status).toBe(httpStatus);
+    expect(await readJson(response!)).toMatchObject({ success: false, errorCode });
+    expect(mocks.engine.forceQueuedMessage).not.toHaveBeenCalled();
+  });
+
   it('marks a missing force target as stale so the renderer can converge', async () => {
     mocks.engine.forceQueuedMessage.mockResolvedValueOnce(false);
 

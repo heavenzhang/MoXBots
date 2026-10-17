@@ -341,6 +341,10 @@ User authorized nine upstream repairs and consumed-settings-navigation state onl
 
 补齐可自动发现的产品浏览器Skill（系统同步v61），让对话工具菜单在未安装/全局未开启时也能定位浏览器资源卡片；明确资源、选择与实际连接，增加读失败重查与事件/查询竞态保护。CLI project browser选择与UI共用互斥规则，不修改全局peer。531项定向回归、实际合成IAB交互与真实Kimi k3→生产SessionEngine/SDK→Browser Host/Registry→锁定Chromium中文表单/截图及新Session合成Cookie恢复通过；Rust authority为测试替身、headless，不冒充原生生产验收。任务 `.agent-sync/tasks/codex-browser-001-20261017-ef4fc5b6.md`；证据 `dev-docs/browser-001/acceptance.md`。主干/CI与下一未冻结桌面发行分别追踪，唯一既定发布owner不变，不并发操作日常App或通知其它聊天。
 
+## MOXBOTS-QUEUE-UI-001 — 2026-10-17
+
+排队卡片独立编辑/取消、32px常驻操作区、真实撤回拒绝与网络错误反馈，保留原Runtime裁决。日志确认SDK not-cancelled/409被UI吞掉；不假删已接收项，不隐式停止任务。源码/125项定向/完整类型和MoXBots web构建已通过；实际IAB、CI/main与下一未冻结原生发布分别追踪。任务 `.agent-sync/tasks/codex-queued-message-controls-20261017-99ad1762.md`，验收 `dev-docs/queued-message-controls/acceptance.md`。发布仍由既定统一owner串行，不回写已发布0.5.9、不向其它聊天发送消息。
+
 
 ## MOXBOTS-SESSION-WINDOWS-001 — 2026-10-17
 
