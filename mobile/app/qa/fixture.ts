@@ -1,6 +1,6 @@
 import type { Account, NativeIntent, PendingOperation, SessionRequest, Snapshot, Target } from '../src/native';
 
-export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error';
+export type QaScenario = 'conversation' | 'multi-bot' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
 
 const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-identity-main', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
 const offlineTarget: Target = { targetId: 'qa-offline-target', identityKey: 'qa-identity-offline', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
@@ -27,10 +27,76 @@ export function fixtureReply(intent: NativeIntent): unknown {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
     return { kind: 'targets', items: scenario === 'multi-bot' ? [target, offlineTarget] : scenario === 'offline' ? [offlineTarget] : [target], hasMore: false };
   }
-  if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [{ targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' }] : [] as PendingOperation[] };
+  if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [
+    { protocol: 'session', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' },
+    { protocol: 'mobile', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000043', sessionId: null, status: 'unknown' },
+  ] : [] as PendingOperation[] };
+  if (intent.kind === 'mobile') return mobileReply(intent.targetId, intent.request);
+  if (intent.kind === 'attachment.pick' || intent.kind === 'attachment.list' || intent.kind === 'attachment.remove' || intent.kind === 'attachment.upload' || intent.kind === 'attachment.upload.status' || intent.kind === 'attachment.upload.pause' || intent.kind === 'attachment.upload.cancel') return attachmentReply(intent);
   if (intent.kind === 'draft.read' || intent.kind === 'draft.write') return fixtureDraftReply(intent);
   if (intent.kind === 'session' && intent.request) return sessionReply(intent.request);
   return { kind: 'error', code: 'QA_FIXTURE_OPERATION_UNSUPPORTED' };
+}
+
+let fixtureAttachmentNumber = 0;
+const fixtureAttachments = new Map<string, { localId: string; name: string; mimeType: string; sizeBytes: number; sha256: string; image: boolean }>();
+const fixtureUploads = new Map<string, { targetId: string; identityKey: string; agentId: string; uploadId: string; state: 'uploading' | 'ready' | 'paused' | 'cancelled'; receivedBytes: number; totalBytes: number; assetId: string | null; errorCode: string | null }>();
+function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${string}` }>): unknown {
+  if (intent.kind === 'attachment.pick') {
+    const localId = `10000000-0000-4000-8000-${String(++fixtureAttachmentNumber).padStart(12, '0')}`;
+    const picked = { kind: 'attachment', localId, name: intent.source === 'image' ? '演示图片.png' : '演示文件.txt', mimeType: intent.source === 'image' ? 'image/png' : 'text/plain', sizeBytes: 1200, sha256: '0'.repeat(64), image: intent.source === 'image' };
+    fixtureAttachments.set(localId, picked);
+    return picked;
+  }
+  if (intent.kind === 'attachment.list') return { kind: 'attachments', items: [...fixtureAttachments.values()] };
+  if (intent.kind === 'attachment.remove') {
+    if (fixtureUploads.get(intent.localId)?.state === 'uploading') return { kind: 'error', code: 'MOBILE_ATTACHMENT_UPLOAD_ACTIVE' };
+    fixtureAttachments.delete(intent.localId); fixtureUploads.delete(intent.localId);
+    return { kind: 'attachment-removed', localId: intent.localId };
+  }
+  const picked = fixtureAttachments.get(intent.localId);
+  const approved = [target, offlineTarget].find((entry) => entry.targetId === intent.targetId);
+  if (!picked || !approved) return { kind: 'error', code: 'MOBILE_ATTACHMENT_NOT_FOUND' };
+  const prior = fixtureUploads.get(intent.localId);
+  if (intent.kind === 'attachment.upload.status') return prior ? { kind: 'attachment-upload', localId: intent.localId, ...prior } : { kind: 'error', code: 'MOBILE_UPLOAD_NOT_FOUND' };
+  if (intent.kind === 'attachment.upload.cancel') {
+    if (!prior) return { kind: 'error', code: 'MOBILE_UPLOAD_NOT_FOUND' };
+    const cancelled = { ...prior, state: 'cancelled' as const, assetId: null };
+    fixtureUploads.set(intent.localId, cancelled);
+    return { kind: 'attachment-upload', localId: intent.localId, ...cancelled };
+  }
+  if (intent.kind === 'attachment.upload.pause') {
+    if (!prior) return { kind: 'error', code: 'MOBILE_UPLOAD_NOT_FOUND' };
+    const paused = { ...prior, state: prior.state === 'ready' ? 'ready' as const : 'paused' as const };
+    fixtureUploads.set(intent.localId, paused);
+    return { kind: 'attachment-upload', localId: intent.localId, ...paused };
+  }
+  if (scenario === 'mobile-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
+  if (prior?.state === 'cancelled') return { kind: 'error', code: 'MOBILE_UPLOAD_CANCELLED' };
+  const ready = { targetId: intent.targetId, identityKey: approved.identityKey, agentId: approved.agentId, uploadId: prior?.uploadId ?? `20000000-0000-4000-8000-${String(fixtureAttachmentNumber).padStart(12, '0')}`, state: 'ready' as const, receivedBytes: picked.sizeBytes, totalBytes: picked.sizeBytes, assetId: `30000000-0000-4000-8000-${String(fixtureAttachmentNumber).padStart(12, '0')}`, errorCode: null };
+  fixtureUploads.set(intent.localId, ready);
+  return { kind: 'attachment-upload', localId: intent.localId, ...ready };
+}
+
+function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'mobile' }>['request']): unknown {
+  if (scenario === 'mobile-error') return { version: 1, kind: 'mobile.error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
+  if (scenario === 'mobile-unsupported') return { version: 1, kind: 'mobile.error', code: 'MOBILE_PROFILE_MISMATCH' };
+  const approved = [target, offlineTarget].find((entry) => entry.targetId === targetId);
+  if (!approved) return { version: 1, kind: 'mobile.error', code: 'TARGET_UNAVAILABLE' };
+  if (request.kind === 'mobile.capabilities') return { version: 1, kind: 'mobile.capabilities', agentId: request.agentId, attachments: true, modelSelection: true, nextSuggestions: true, maxAssets: 8 };
+  if (request.kind === 'mobile.models') return { version: 1, kind: 'mobile.models', agentId: request.agentId, items: [{ id: 'qa-model-fast', label: '演示模型 · 快速' }, { id: 'qa-model-reasoning', label: '演示模型 · 深度' }] };
+  if (request.kind === 'mobile.suggestions') return { version: 1, kind: 'mobile.suggestions', agentId: request.agentId, sessionId: request.sessionId, revision: request.revision, suggestions: ['列出当前方案中的关键假设', '按优先级整理下一步', '补充一段简短摘要'] };
+  if (request.kind === 'mobile.receipt') return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId: active?.sessionId ?? null, status: 'not-found', code: null };
+  if (scenario === 'unknown-receipt') return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId: request.kind === 'mobile.send' ? request.sessionId : null, status: 'unconfirmed', code: 'MOBILE_RECEIPT_REQUIRED' };
+  const sessionId = request.kind === 'mobile.start' ? `qa-mobile-session-${sessions.length + 1}` : request.sessionId;
+  const now = new Date().toISOString();
+  const added = [
+    { id: `qa-mobile-user-${Date.now()}`, role: 'user' as const, timestamp: now, content: request.text || '已添加附件', truncated: false, tools: [] },
+    { id: `qa-mobile-reply-${Date.now()}`, role: 'assistant' as const, timestamp: now, content: '已收到演示内容。此反馈仅用于浏览器 QA，不代表设备端实际执行。', truncated: false, tools: [] },
+  ];
+  active = { ...makeSnapshot(sessionId, request.agentId), revision: String(Date.now()), terminal: 'complete', messages: [...(request.kind === 'mobile.send' ? active?.messages ?? [] : []), ...added].slice(-30) };
+  if (request.kind === 'mobile.start') sessions = [{ sessionId, title: (request.text || '附件会话').slice(0, 48), updatedAt: now, preview: request.text || '已添加附件', runtime: 'codex' }, ...sessions].slice(0, 30);
+  return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId, status: 'accepted', code: null };
 }
 
 type FixtureDraft = { identityKey: string; agentId: string; sessionId: string | null; text: string; revision: number; lastWriteId: string | null };
