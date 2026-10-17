@@ -666,6 +666,7 @@ async fn start(
         (true, None | Some("/admin")) => Some("/admin"),
         (true, Some("/feedback")) => Some("/feedback"),
         (true, Some("/community")) => Some("/community"),
+        (true, Some("/desktop")) => Some("/desktop"),
         _ => return Err(ApiError::BadRequest),
     };
     let device = canonical_uuid(&req.device_id).ok_or(ApiError::BadRequest)?;
@@ -804,6 +805,21 @@ fn callback_browser_return_path(app: &App, uri: &axum::http::Uri) -> Option<&'st
 }
 
 fn browser_return_response(path: &'static str, success: bool) -> axum::response::Response {
+    if path == "/desktop" {
+        return (
+            if success { StatusCode::OK } else { StatusCode::BAD_REQUEST },
+            [
+                (header::CACHE_CONTROL, "no-store"),
+                (header::REFERRER_POLICY, "no-referrer"),
+                (header::CONTENT_SECURITY_POLICY, "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"),
+            ],
+            Html(if success {
+                include_str!("../admin-web/desktop-complete.html")
+            } else {
+                include_str!("../admin-web/desktop-error.html")
+            }),
+        ).into_response();
+    }
     let target = match (path, success) {
         ("/community", true) => "/community?login=complete",
         ("/community", false) => "/community?login=failed",
@@ -1828,6 +1844,69 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn desktop_return_is_opt_in_state_bound_and_never_carries_credentials() {
+        let (app, _dir) = test_app();
+        let request = |browser_return| StartRequest {
+            device_id: TEST_DEVICE.into(),
+            pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
+            browser_return,
+            browser_return_path: Some("/desktop".into()),
+        };
+        assert!(matches!(
+            start(State(app.clone()), Json(request(false))).await,
+            Err(ApiError::BadRequest)
+        ));
+        let (_, Json(started)) = start(State(app.clone()), Json(request(true)))
+            .await
+            .unwrap();
+        let state = app.flow.pending.lock().unwrap()[&started.transaction_id]
+            .state
+            .to_string();
+        assert_eq!(
+            callback_browser_return_path(
+                &app,
+                &format!("/auth/callback?state={state}").parse().unwrap()
+            ),
+            Some("/desktop")
+        );
+        for query in [
+            "state=wrong&browserReturnPath=/desktop".to_owned(),
+            format!("state={state}&state={state}"),
+        ] {
+            assert_eq!(
+                callback_browser_return_path(
+                    &app,
+                    &format!("/auth/callback?{query}").parse().unwrap()
+                ),
+                None
+            );
+        }
+        let success = browser_return_response("/desktop", true);
+        assert_eq!(success.status(), StatusCode::OK);
+        assert_eq!(success.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(success.headers()[header::REFERRER_POLICY], "no-referrer");
+        assert!(
+            success
+                .headers()
+                .contains_key(header::CONTENT_SECURITY_POLICY)
+        );
+        let body = axum::body::to_bytes(success.into_body(), 8192)
+            .await
+            .unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("window.location.replace(\"moxbot://login/complete\")"));
+        assert!(text.contains("href=\"moxbot://login/complete\""));
+        assert!(!text.contains(&state) && !text.contains(&started.transaction_id));
+        let failure = browser_return_response("/desktop", false);
+        assert_eq!(failure.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(failure.into_body(), 4096)
+            .await
+            .unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("登录未完成") && !text.contains("<script>"));
     }
 
     #[tokio::test]
