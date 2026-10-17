@@ -385,11 +385,13 @@ async fn owner_list(
             store_for_find.find_owner_source(
                 &scope_for_find,
                 &session_for_find,
-                &metadata.source_id,
-                &metadata.name,
-                &metadata.mime_type,
-                metadata.size_bytes,
-                &metadata.sha256,
+                moxbots_asset_store::OwnerSourceMetadata {
+                    source_id: &metadata.source_id,
+                    name: &metadata.name,
+                    mime_type: &metadata.mime_type,
+                    size_bytes: metadata.size_bytes,
+                    sha256: &metadata.sha256,
+                },
             )
         })
         .await

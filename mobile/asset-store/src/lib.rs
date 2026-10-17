@@ -17,6 +17,14 @@ const GLOBAL_BYTES: u64 = 1024 * 1024 * 1024;
 const MAX_RECORDS: usize = 1024;
 const MAX_SCOPE_RECORDS: usize = 128;
 const META_LIMIT: u64 = 256 * 1024;
+/// Immutable metadata supplied by the verified session owner. No file paths.
+pub struct OwnerSourceMetadata<'a> {
+    pub source_id: &'a str,
+    pub name: &'a str,
+    pub mime_type: &'a str,
+    pub size_bytes: u64,
+    pub sha256: &'a str,
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetScope {
@@ -709,12 +717,15 @@ impl AssetStore {
         &self,
         scope: &AssetScope,
         session_id: &str,
-        source_id: &str,
-        name: &str,
-        mime_type: &str,
-        size_bytes: u64,
-        sha256: &str,
+        source: OwnerSourceMetadata<'_>,
     ) -> Result<Option<RemoteArtifactDescriptor>, StoreError> {
+        let OwnerSourceMetadata {
+            source_id,
+            name,
+            mime_type,
+            size_bytes,
+            sha256,
+        } = source;
         if CanonicalUuid::parse(source_id).is_err() {
             return Err(err("ASSET_SOURCE_INVALID"));
         }
@@ -1098,11 +1109,13 @@ mod tests {
                 .find_owner_source(
                     &scope,
                     "session-a",
-                    &source,
-                    "safe-label.txt",
-                    "text/plain",
-                    bytes.len() as u64,
-                    &hash(bytes)
+                    OwnerSourceMetadata {
+                        source_id: &source,
+                        name: "safe-label.txt",
+                        mime_type: "text/plain",
+                        size_bytes: bytes.len() as u64,
+                        sha256: &hash(bytes),
+                    }
                 )
                 .unwrap(),
             Some(descriptor.clone())
@@ -1111,11 +1124,13 @@ mod tests {
             .find_owner_source(
                 &scope,
                 "session-b",
-                &source,
-                "safe-label.txt",
-                "text/plain",
-                bytes.len() as u64,
-                &hash(bytes)
+                OwnerSourceMetadata {
+                    source_id: &source,
+                    name: "safe-label.txt",
+                    mime_type: "text/plain",
+                    size_bytes: bytes.len() as u64,
+                    sha256: &hash(bytes),
+                }
             )
             .unwrap()
             .is_none());
