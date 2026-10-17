@@ -44,12 +44,13 @@ afterEach(() => {
   vi.useRealTimers();
 });
 it("immediately verifies the current PKCE attempt on native browser return and closes only after authentication", async () => {
-  const { result, actions } = setup();
+  const poll = vi.fn().mockResolvedValue("pending");
+  const { result, actions } = setup({ onOwnedPoll: poll });
   await act(async () => { await result.current.start("https://cloud.test"); });
   await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
   expect(actions.onOwnedPoll).toHaveBeenCalledExactlyOnceWith("attempt-1");
   expect(actions.onCancel).not.toHaveBeenCalled();
-  actions.onOwnedPoll.mockResolvedValueOnce("authenticated");
+  poll.mockResolvedValueOnce("authenticated");
   await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
   expect(actions.onCancel).toHaveBeenCalledOnce();
 });

@@ -20,7 +20,7 @@
 已实现三段链路及按钮网格，服务端旧版本拒绝可选参数时保留原轮询登录。主 Agent 负责实现与整体验收，login_review 负责独立只读审查。未调用外部模型。
 
 ## Verification
-project-sync start PASS。task-init 在产品编辑后执行，因 dirty worktree 拒绝，故手工建立相同格式任务记录；未回滚修改或伪报 task-init 通过。详细证据 dev-docs/login-callback-delivery.md 和 dev-docs/login-callback-review.md。全量服务/headless测试与CI进行中。
+project-sync start PASS。task-init 在产品编辑后执行，因 dirty worktree 拒绝，故手工建立相同格式任务记录；未回滚修改或伪报 task-init 通过。详细证据 dev-docs/login-callback-delivery.md 和 dev-docs/login-callback-review.md。本地服务端152通过/5原配置忽略，headless167通过，服务端clippy/format通过。首轮CI发现仅测试fixture的TS mock类型与tokio spawn门禁，已修正，重新核实最新typecheck和headless clippy后推送。PR103，主干与生产仍待验。
 
 ## Blockers and unknowns
 生产与日常客户端尚未更新，真实 OIDC/OS 唤起/Keychain 未验收。既定桌面部署 owner 为 01a12bc2-907a-7702-b6dd-788225c5dfe4；本任务不并发签名、换包、重启任务或改生产。云服务部署需协调归属及有效 SSH 身份，先完成可审阅源码交付。

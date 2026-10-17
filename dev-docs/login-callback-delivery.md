@@ -15,7 +15,7 @@
 - project-sync start PASS；定向DOM 64/64（账号、selector、dialog、hook），新增原生回跳模拟及取消/卸载防迟到；typecheck、限定ESLint、classification、diff-check通过。
 - 服务端登录路由20/20，覆盖新 /desktop opt-in/state绑定、凭据不进URL、失败不自动跳成功页及既有admin/community/feedback。
 - 真实本地HTTP loopback：新服务200单请求；旧服务纯文本无cache header 400/422各两次且复用同device/challenge；503单请求失败。测试在共享OwnedClient的headless harness通过，不能替代桌面编译和原生验收。
-- 服务端 clippy --all-targets -D warnings 通过。服务端全量、headless全量与GitHub CI以任务记录后续结果为准。
+- 服务端 clippy --all-targets -D warnings 通过。服务端全量152通过/5原配置忽略、headless167通过；服务端format通过。首轮CI另发现新增测试mock类型与禁用spawn，修复后重跑本地检查，CI/main以任务记录后续结果为准。
 - 主Agent内置浏览器实点发起、手动检查、滚动操作；独立reviewer复核1280完整页、660×400顶部/底部及CSS zoom2截图，无按钮叠放或标签裁断。当前为dark主题/合成数据，不是OS/WebView原生缩放。
 - 独立审阅：dev-docs/login-callback-review.md，发现1项P1，修复后关闭；无剩余已知阻断问题。
 

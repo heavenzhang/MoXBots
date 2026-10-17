@@ -568,8 +568,13 @@ mod tests {
             let expected_transaction = transaction.clone();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let origin = format!("http://{}", listener.local_addr().unwrap());
-            let server = tokio::spawn(async move {
-                loop {
+            let expected_requests = if matches!(rejected, Some(400 | 422)) {
+                2
+            } else {
+                1
+            };
+            let server = async move {
+                for _ in 0..expected_requests {
                     let (mut stream, _) = listener.accept().await.unwrap();
                     let mut bytes = Vec::new();
                     let (header_end, size) = loop {
@@ -599,9 +604,9 @@ mod tests {
                         seen.push(body);
                         seen.len() == 1
                     };
-                    let (status, headers, body) = if first && rejected.is_some() {
+                    let (status, headers, body) = if let Some(status) = rejected.filter(|_| first) {
                         // Old extractor: plain text and no cache header.
-                        (rejected.unwrap(), "", "request rejected".to_owned())
+                        (status, "", "request rejected".to_owned())
                     } else {
                         (200, "Cache-Control: no-store\r\nContent-Type: application/json\r\n", json!({
                             "transactionId": transaction,
@@ -612,7 +617,7 @@ mod tests {
                     let response = format!("HTTP/1.1 {status} Response\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
                     stream.write_all(response.as_bytes()).await.unwrap();
                 }
-            });
+            };
             // Test-only HTTP loopback. Production keeps pinned HTTPS/no redirects.
             #[allow(clippy::disallowed_methods)]
             let http = reqwest::Client::builder()
@@ -627,9 +632,9 @@ mod tests {
                 instance: instance(),
             };
             let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
-            let result = client
-                .start_desktop(&uuid::Uuid::new_v4().to_string(), &challenge)
-                .await;
+            let device = uuid::Uuid::new_v4().to_string();
+            let request = client.start_desktop(&device, &challenge);
+            let (_, result) = tokio::join!(server, request);
             if rejected == Some(503) {
                 assert!(result.is_err());
             } else {
@@ -650,7 +655,6 @@ mod tests {
                 assert_eq!(seen[0]["deviceId"], seen[1]["deviceId"]);
                 assert_eq!(seen[0]["pkceChallenge"], seen[1]["pkceChallenge"]);
             }
-            server.abort();
         }
     }
     fn instance() -> OwnedInstance {
