@@ -1,7 +1,7 @@
 import { requireNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import { z } from 'zod';
-import { remoteMobileRequestSchema, remoteMobileResultSchema, type RemoteMobileRequest, type RemoteMobileResult } from './mobileProtocol';
+import { parseMobileBridgeResult, remoteMobileRequestSchema, type RemoteMobileRequest, type RemoteMobileResult } from './mobileProtocol';
 export type { RemoteMobileRequest } from './mobileProtocol';
 
 const id = z.string().min(1).max(256).regex(/^[A-Za-z0-9._:-]+$/);
@@ -99,9 +99,7 @@ export async function requestMobile(targetId: string, request: RemoteMobileReque
   if (!checkedRequest.success) throw new Error('MOBILE_INTENT_INVALID');
   const intent: NativeIntent = { version: 1, kind: 'mobile', targetId, request: checkedRequest.data };
   const raw = isFixtureMode ? (await import('../qa/fixture')).fixtureReply(intent) : await moduleRequest(intent);
-  const parsed = remoteMobileResultSchema.safeParse(raw);
-  if (!parsed.success) throw new Error('MOBILE_REPLY_INVALID');
-  const result = parsed.data;
+  const result = parseMobileBridgeResult(raw);
   if (result.kind !== 'mobile.error' && result.agentId !== request.agentId) throw new Error('MOBILE_RESPONSE_SCOPE_MISMATCH');
   if (result.kind === 'mobile.receipt' && request.kind === 'mobile.send' && result.sessionId !== request.sessionId) throw new Error('MOBILE_RECEIPT_SCOPE_MISMATCH');
   return result;

@@ -5,13 +5,14 @@ import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
-import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, viewStillOwned, ViewOwner } from '../operationPolicy';
+import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
-import { permitsLegacyTextFallback, receiptProtocol, sendProtocol, type MobileMode } from '../mobilePolicy';
+import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
+import { SerialUploadQueue } from '../uploadQueue';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
-type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found';
+type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found' | 'unknown';
 type Notice = { tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
 type AttachmentItem = { file: NativeAttachment; upload: NativeAttachmentUpload | null; ownerKey: string; errorCode?: string };
 
@@ -26,6 +27,7 @@ const errorMessages: Record<string, string> = {
   NATIVE_REPLY_INVALID: '设备返回了无法识别的内容，请稍后重试。',
   MOBILE_PROFILE_MISMATCH: '此设备不支持附件、模型选择或下一步建议；可继续发送纯文本。',
   MOBILE_INTENT_UNSUPPORTED: '此设备不支持附件、模型选择或下一步建议；可继续发送纯文本。',
+  METHOD_UNSUPPORTED: '设备不支持这项移动消息能力；能力探测时可回退为纯文本。',
   MOBILE_REMOTE_UNAVAILABLE: '远程服务暂时不可用，请检查连接后重试。',
   MOBILE_ADMISSION_REQUEST_INVALID: '消息格式暂不受支持，请检查文字和附件后重试。',
   MOBILE_ADMISSION_RESPONSE_INVALID: '远程服务返回了无法识别的响应，请稍后重试。',
@@ -83,7 +85,7 @@ function AppBody() {
   const [snapshotPollGate] = useState(() => createPollFlightGate());
   const [speechPanelOpen, setSpeechPanelOpen] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
-  const blocksMutation = pending.some((item) => item.targetId === target?.targetId && item.sessionId === (snapshot?.sessionId ?? null) && mutationDisposition(item.status) === 'query-only');
+  const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const snapshotRef = useRef<Snapshot | null>(null);
   const targetRef = useRef<Target | null>(null);
@@ -105,7 +107,8 @@ function AppBody() {
   const mobileCatalogEpochRef = useRef(0);
   const attachmentBatchEpochRef = useRef(0);
   const attachmentsRef = useRef<AttachmentItem[]>([]);
-  const attachmentQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const attachmentQueueRef = useRef(new SerialUploadQueue());
+  const attachmentUploadWaitersRef = useRef(new Map<string, { batchEpoch: number; finish: () => void }>());
   const attachmentScopeRef = useRef<string | null>(null);
   const mobileUnknownAttachmentsRef = useRef(new Map<string, { ownerKey: string; localIds: string[]; targetId: string; identityKey: string; agentId: string; principalId: string | null; sessionId: string | null }>());
   const say = useCallback((text: string, tone: NonNullable<Notice>['tone'] = 'neutral') => {
@@ -138,26 +141,33 @@ function AppBody() {
     };
   }, []);
   const updateAttachments = useCallback((transform: (items: AttachmentItem[]) => AttachmentItem[]) => {
-    setAttachments((current) => {
-      const next = transform(current);
-      attachmentsRef.current = next;
-      return next;
-    });
+    const next = transform(attachmentsRef.current);
+    attachmentsRef.current = next;
+    setAttachments(next);
+  }, []);
+  const releaseAttachmentJob = useCallback((localId: string, batchEpoch?: number) => {
+    const waiter = attachmentUploadWaitersRef.current.get(localId);
+    if (!waiter || (batchEpoch !== undefined && waiter.batchEpoch !== batchEpoch)) return;
+    attachmentUploadWaitersRef.current.delete(localId);
+    waiter.finish();
   }, []);
   useEffect(() => subscribeAttachmentUploadChanges((upload) => {
     const currentScope = attachmentScopeRef.current;
     if (!currentScope || targetRef.current?.targetId !== upload.targetId || targetRef.current.identityKey !== upload.identityKey || targetRef.current.agentId !== upload.agentId) return;
     updateAttachments((items) => items.map((item) => item.ownerKey === currentScope && item.file.localId === upload.localId ? { ...item, upload, errorCode: upload.errorCode ?? undefined } : item));
+    if (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused')) releaseAttachmentJob(upload.localId);
     if (upload.errorCode) say(upload.errorCode, 'error');
-  }), [say, updateAttachments]);
+  }), [releaseAttachmentJob, say, updateAttachments]);
   const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
     const priorOwner = ownerRef.current;
     const priorAttachmentScope = attachmentScopeKey(targetRef.current, priorOwner.sessionId);
     const nextAttachmentScope = attachmentScopeKey(nextTarget, sessionId);
     if (priorAttachmentScope !== nextAttachmentScope) {
       attachmentBatchEpochRef.current += 1;
+      attachmentQueueRef.current.invalidate();
       for (const item of attachmentsRef.current) {
         if (item.upload?.state === 'uploading') void requestNative({ version: 1, kind: 'attachment.upload.pause', localId: item.file.localId, targetId: item.upload.targetId });
+        releaseAttachmentJob(item.file.localId);
       }
       attachmentsRef.current = [];
       setAttachments([]);
@@ -193,7 +203,7 @@ function AppBody() {
       setDraft('');
     }
     return ownerRef.current;
-  }, []);
+  }, [releaseAttachmentJob]);
   const saveDraftFor = useCallback((key: string | null, ownerEpoch: number | null, value: string) => {
     if (ownerEpoch === null) return;
     draftPersistenceRef.current?.edit(key, ownerEpoch, value);
@@ -242,6 +252,22 @@ function AppBody() {
     finally { if (requestId === loadingEpochRef.current) setLoading(false); }
   }, [say]);
 
+  const retainFailedMutationUntilJournalCheck = async (attempt: MutationAttempt, capturedOwner: ViewOwner, principalId: string | null, error: unknown) => {
+    const isCurrentOwner = () => viewStillOwned(capturedOwner, ownerRef.current) && accountRef.current?.principalId === principalId;
+    if (!isCurrentOwner()) return;
+    setPending((items) => isCurrentOwner() ? reconcileFailedMutation(items, attempt, null) : items);
+    setReceiptStates((states) => ({ ...states, [attempt.operationId]: 'unknown' }));
+    const code = error instanceof Error && /^[A-Z][A-Z0-9_]{2,127}$/.test(error.message) ? error.message : undefined;
+    setNotice({ text: '操作未收到明确回执。已暂时阻止重复发送，正在核对本机操作记录；之后只能查询状态。', tone: 'error', ...(code ? { code } : {}) });
+    try {
+      const journal = await requestNative({ version: 1, kind: 'operations.pending' });
+      if (!isCurrentOwner() || journal.kind !== 'operations') return;
+      setPending((items) => isCurrentOwner() ? reconcileFailedMutation(items, attempt, journal.items) : items);
+    } catch {
+      // Keep the provisional query-only entry if the native journal itself is unavailable.
+    }
+  };
+
   const loadMobileCatalog = useCallback(async (selected: Target | null) => {
     const catalogEpoch = ++mobileCatalogEpochRef.current;
     if (!selected?.online) {
@@ -251,6 +277,7 @@ function AppBody() {
       && targetRef.current?.targetId === selected.targetId
       && targetRef.current.identityKey === selected.identityKey;
     setMobileMode('loading'); setMobileModels([]); setSelectedModelId(null); setSuggestions([]);
+    let capabilitiesConfirmed = false;
     try {
       const capabilities = await requestMobile(selected.targetId, { version: 1, agentId: selected.agentId, kind: 'mobile.capabilities' });
       if (!stillSelected()) return;
@@ -259,6 +286,7 @@ function AppBody() {
         setMobileMode('error'); say(capabilities.code, 'error'); return;
       }
       if (capabilities.kind !== 'mobile.capabilities') { setMobileMode('error'); say('MOBILE_CAPABILITY_REPLY_INVALID', 'error'); return; }
+      capabilitiesConfirmed = true;
       setMobileMode('supported');
       const models = await requestMobile(selected.targetId, { version: 1, agentId: selected.agentId, kind: 'mobile.models' });
       if (!stillSelected()) return;
@@ -266,7 +294,11 @@ function AppBody() {
       else if (models.kind === 'mobile.error') say(models.code, 'error');
       else say('MOBILE_MODELS_REPLY_INVALID', 'error');
     } catch (error) {
-      if (stillSelected()) { setMobileMode('error'); say(error instanceof Error ? error.message : 'MOBILE_CATALOG_FAILED', 'error'); }
+      if (stillSelected()) {
+        const code = error instanceof Error ? error.message : 'MOBILE_CATALOG_FAILED';
+        if (!capabilitiesConfirmed && permitsLegacyTextFallback(code)) { setMobileMode('legacy'); return; }
+        setMobileMode('error'); say(code, 'error');
+      }
     }
   }, [say]);
 
@@ -426,14 +458,19 @@ function AppBody() {
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
+    if (!('operationId' in request)) throw new Error('MUTATION_OPERATION_ID_REQUIRED');
     const mutationOwner = ownerRef.current;
+    const principalId = accountRef.current?.principalId ?? null;
+    const attempt: MutationAttempt = { protocol: 'session', targetId, agentId: request.agentId, operationId: request.operationId, sessionId: 'sessionId' in request ? request.sessionId : null };
     const sendingId = ++sendingEpochRef.current;
+    let receiptReceived = false;
     setSending(true);
     setNotice(null);
     try {
       const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId, request }));
       if (result.kind === 'error') throw new Error(result.code);
       if (result.kind !== 'receipt') throw new Error('MUTATION_RECEIPT_INVALID');
+      receiptReceived = true;
       const stillOwner = viewStillOwned(mutationOwner, ownerRef.current);
       setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
       if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'session', targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
@@ -452,7 +489,10 @@ function AppBody() {
         const fresh = await requestNative({ version: 1, kind: 'session', targetId, request: { kind: 'get', agentId: request.agentId, sessionId: request.sessionId, limit: 30 } }).then(parseSessionReply);
         if (viewStillOwned(mutationOwner, ownerRef.current) && fresh.kind === 'snapshot' && fresh.agentId === mutationOwner.agentId && fresh.sessionId === mutationOwner.sessionId) commitSnapshot(fresh);
       }
-    } catch (error) { if (viewStillOwned(mutationOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'MUTATION_FAILED', 'error'); }
+    } catch (error) {
+      if (!receiptReceived) await retainFailedMutationUntilJournalCheck(attempt, mutationOwner, principalId, error);
+      else if (viewStillOwned(mutationOwner, ownerRef.current) && accountRef.current?.principalId === principalId) say(error instanceof Error ? error.message : 'MUTATION_FAILED', 'error');
+    }
     finally { if (sendingId === sendingEpochRef.current) setSending(false); }
   };
 
@@ -460,15 +500,19 @@ function AppBody() {
     const selected = targetRef.current;
     if (!selected || !selected.online) return;
     const requestOwner = ownerRef.current;
+    const principalId = accountRef.current?.principalId ?? null;
+    const attempt: MutationAttempt = { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: request.operationId, sessionId: request.kind === 'mobile.send' ? request.sessionId : null };
     const sendingId = ++sendingEpochRef.current;
     const sendOwnerKey = attachmentScopeRef.current ?? '';
     const sendPrincipalId = accountRef.current?.principalId ?? null;
     const localIds = attachmentsRef.current.filter((item) => item.ownerKey === sendOwnerKey).map((item) => item.file.localId);
+    let receiptReceived = false;
     setSending(true); setNotice(null);
     try {
       const result = await requestMobile(selected.targetId, request);
       if (result.kind === 'mobile.error') throw new Error(result.code);
       if (result.kind !== 'mobile.receipt' || result.operationId !== request.operationId) throw new Error('MOBILE_RECEIPT_INVALID');
+      receiptReceived = true;
       const stillOwner = viewStillOwned(requestOwner, ownerRef.current) && targetRef.current?.identityKey === selected.identityKey;
       setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
       if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') {
@@ -493,7 +537,10 @@ function AppBody() {
           await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
         }
       }
-    } catch (error) { if (viewStillOwned(requestOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'MOBILE_SEND_FAILED', 'error'); }
+    } catch (error) {
+      if (!receiptReceived) await retainFailedMutationUntilJournalCheck(attempt, requestOwner, principalId, error);
+      else if (viewStillOwned(requestOwner, ownerRef.current) && accountRef.current?.principalId === principalId) say(error instanceof Error ? error.message : 'MOBILE_SEND_FAILED', 'error');
+    }
     finally { if (sendingId === sendingEpochRef.current) setSending(false); }
   };
 
@@ -529,37 +576,91 @@ function AppBody() {
   };
 
   const setAttachmentItem = (localId: string, transform: (item: AttachmentItem) => AttachmentItem) => updateAttachments((items) => items.map((item) => item.file.localId === localId ? transform(item) : item));
-  const uploadAttachment = async (file: NativeAttachment, owner: ViewOwner, selected: Target, scopeKey: string, batchEpoch: number) => {
-    if (batchEpoch !== attachmentBatchEpochRef.current || !viewStillOwned(owner, ownerRef.current) || targetRef.current?.targetId !== selected.targetId) return;
+  const isAttachmentOwnerCurrent = (owner: ViewOwner, selected: Target, scopeKey: string, batchEpoch: number, isQueueCurrent: () => boolean) =>
+    isQueueCurrent() && batchEpoch === attachmentBatchEpochRef.current && viewStillOwned(owner, ownerRef.current)
+      && attachmentScopeRef.current === scopeKey && targetRef.current?.identityKey === selected.identityKey;
+  const waitForUploadResolution = (file: NativeAttachment, batchEpoch: number): Promise<void> => new Promise((resolve) => {
+    const current = attachmentsRef.current.find((item) => item.file.localId === file.localId);
+    if (!current || current.upload?.state === 'ready' || current.upload?.state === 'cancelled') { resolve(); return; }
+    attachmentUploadWaitersRef.current.set(file.localId, { batchEpoch, finish: resolve });
+  });
+  const applyUploadReply = (reply: unknown, file: NativeAttachment, selected: Target): NativeAttachmentUpload => {
+    if (!reply || typeof reply !== 'object') throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
+    const envelope = reply as { kind?: string; code?: string };
+    if (envelope.kind === 'error') throw new Error(envelope.code ?? 'MOBILE_ATTACHMENT_UPLOAD_FAILED');
+    const parsed = reply as Partial<NativeAttachmentUpload>;
+    if (parsed.kind !== 'attachment-upload' || parsed.localId !== file.localId || parsed.targetId !== selected.targetId || parsed.identityKey !== selected.identityKey || parsed.agentId !== selected.agentId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
+    return parsed as NativeAttachmentUpload;
+  };
+  const uploadAttachment = async (file: NativeAttachment, owner: ViewOwner, selected: Target, scopeKey: string, batchEpoch: number, isQueueCurrent: () => boolean) => {
+    if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent) || !attachmentsRef.current.some((item) => item.file.localId === file.localId && item.ownerKey === scopeKey)) return;
     setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: undefined }));
     try {
-      const reply = await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId });
-      if (reply.kind === 'error') throw new Error(reply.code);
-      if (reply.kind !== 'attachment-upload' || reply.localId !== file.localId || reply.targetId !== selected.targetId || reply.identityKey !== selected.identityKey || reply.agentId !== selected.agentId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
-      if (batchEpoch !== attachmentBatchEpochRef.current || !viewStillOwned(owner, ownerRef.current) || attachmentScopeRef.current !== scopeKey) return;
-      setAttachmentItem(file.localId, (item) => ({ ...item, upload: reply, errorCode: reply.errorCode ?? undefined }));
+      let upload: NativeAttachmentUpload;
+      try {
+        upload = applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId }), file, selected);
+      } catch (startError) {
+        const startCode = startError instanceof Error ? startError.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
+        // A transport failure can follow durable upload creation; status decides whether the native single-upload slot is still occupied.
+        try {
+          const status = await requestNative({ version: 1, kind: 'attachment.upload.status', localId: file.localId, targetId: selected.targetId });
+          upload = applyUploadReply(status, file, selected);
+        } catch (statusError) {
+          const statusCode = statusError instanceof Error ? statusError.message : 'MOBILE_ATTACHMENT_STATUS_FAILED';
+          if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
+          setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: statusCode })); say(statusCode, 'error');
+          if (statusCode === 'MOBILE_UPLOAD_NOT_FOUND' || startCode === 'MOBILE_UPLOAD_CANCELLED') { releaseAttachmentJob(file.localId, batchEpoch); return; }
+          await waitForUploadResolution(file, batchEpoch);
+          return;
+        }
+      }
+      if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
+      setAttachmentItem(file.localId, (item) => ({ ...item, upload, errorCode: upload.errorCode ?? undefined }));
+      if (upload.errorCode) say(upload.errorCode, 'error');
+      if (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused')) releaseAttachmentJob(file.localId, batchEpoch);
+      else await waitForUploadResolution(file, batchEpoch);
     } catch (error) {
       const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
-      if (batchEpoch === attachmentBatchEpochRef.current && viewStillOwned(owner, ownerRef.current) && attachmentScopeRef.current === scopeKey) {
+      if (isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) {
         setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: code })); say(code, 'error');
+        if (code === 'MOBILE_UPLOAD_CANCELLED' || code === 'MOBILE_UPLOAD_NOT_FOUND' || code === 'MOBILE_ATTACHMENT_TOO_LARGE' || code === 'MOBILE_ATTACHMENT_IMAGE_INVALID') releaseAttachmentJob(file.localId, batchEpoch);
+        else await waitForUploadResolution(file, batchEpoch);
       }
     }
   };
 
   const queueAttachmentUpload = (file: NativeAttachment, owner: ViewOwner, selected: Target, scopeKey: string) => {
     const batchEpoch = attachmentBatchEpochRef.current;
-    const job = attachmentQueueRef.current.catch(() => undefined).then(() => uploadAttachment(file, owner, selected, scopeKey, batchEpoch));
-    attachmentQueueRef.current = job.catch(() => undefined);
+    const queueEpoch = attachmentQueueRef.current.currentEpoch();
+    void attachmentQueueRef.current.enqueue(queueEpoch, (isQueueCurrent) => uploadAttachment(file, owner, selected, scopeKey, batchEpoch, isQueueCurrent)).catch(() => undefined);
+  };
+
+  const resumeAttachment = async (item: AttachmentItem, owner: ViewOwner, selected: Target) => {
+    const batchEpoch = attachmentBatchEpochRef.current;
+    const scopeKey = item.ownerKey;
+    try {
+      const upload = applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: item.file.localId, targetId: selected.targetId }), item.file, selected);
+      if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, () => true)) return;
+      setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload, errorCode: upload.errorCode ?? undefined }));
+      if (upload.errorCode) say(upload.errorCode, 'error');
+      if (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused')) releaseAttachmentJob(item.file.localId, batchEpoch);
+    } catch (error) {
+      if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, () => true)) return;
+      const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
+      setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error');
+      if (code === 'MOBILE_UPLOAD_CANCELLED' || code === 'MOBILE_UPLOAD_NOT_FOUND') releaseAttachmentJob(item.file.localId, batchEpoch);
+    }
   };
 
   const retryAttachment = (item: AttachmentItem) => {
     if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
     const selected = targetRef.current;
     const owner = ownerRef.current;
-    if (!selected || item.ownerKey !== attachmentScopeRef.current || item.upload?.state === 'cancelled') {
+    if (!selected || item.ownerKey !== attachmentScopeRef.current || item.upload?.state === 'cancelled' || item.errorCode === 'MOBILE_UPLOAD_CANCELLED') {
       say('此上传已取消，请移除并重新选择附件。', 'error'); return;
     }
-    queueAttachmentUpload(item.file, owner, selected, item.ownerKey);
+    if (item.upload?.state === 'paused' || attachmentUploadWaitersRef.current.has(item.file.localId)) void resumeAttachment(item, owner, selected);
+    else queueAttachmentUpload(item.file, owner, selected, item.ownerKey);
   };
 
   const pickAttachment = async (source: 'file' | 'image') => {
@@ -606,14 +707,19 @@ function AppBody() {
     if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
     const owner = ownerRef.current;
     try {
-      if (item.upload && item.upload.state !== 'cancelled') {
-        const cancelled = await requestNative({ version: 1, kind: 'attachment.upload.cancel', localId: item.file.localId, targetId: item.upload.targetId });
-        if (cancelled.kind === 'error') throw new Error(cancelled.code);
-        if (cancelled.kind !== 'attachment-upload' || cancelled.state !== 'cancelled' || cancelled.localId !== item.file.localId) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+      const hasActiveJob = attachmentUploadWaitersRef.current.has(item.file.localId);
+      if ((item.upload || hasActiveJob) && item.upload?.state !== 'cancelled') {
+        const selectedTargetId = item.upload?.targetId ?? targetRef.current?.targetId;
+        if (!selectedTargetId) throw new Error('TARGET_UNAVAILABLE');
+        const cancelled = await requestNative({ version: 1, kind: 'attachment.upload.cancel', localId: item.file.localId, targetId: selectedTargetId });
+        if (cancelled.kind === 'error' && cancelled.code !== 'MOBILE_UPLOAD_NOT_FOUND') throw new Error(cancelled.code);
+        if (cancelled.kind !== 'error' && (cancelled.kind !== 'attachment-upload' || cancelled.state !== 'cancelled' || cancelled.localId !== item.file.localId)) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+        releaseAttachmentJob(item.file.localId, attachmentBatchEpochRef.current);
       }
       const removed = await requestNative({ version: 1, kind: 'attachment.remove', localId: item.file.localId });
       if (removed.kind === 'error') throw new Error(removed.code);
       if (removed.kind !== 'attachment-removed') throw new Error('MOBILE_ATTACHMENT_REMOVE_INVALID');
+      releaseAttachmentJob(item.file.localId, attachmentBatchEpochRef.current);
       if (viewStillOwned(owner, ownerRef.current)) updateAttachments((items) => items.filter((entry) => entry.file.localId !== item.file.localId));
     } catch (error) { if (viewStillOwned(owner, ownerRef.current)) { const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_REMOVE_FAILED'; setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error'); } }
   };
