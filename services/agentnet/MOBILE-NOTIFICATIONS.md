@@ -32,7 +32,8 @@ responses, and do not retry inside the HTTP client. The outbox owns bounded
 retry and lease behavior. FCM service-account access tokens are short-lived and
 held in process memory only.
 
-The mobile routes accept registration, endpoint revocation, and redemption.
+When enabled with at least one configured provider, the mobile routes accept
+registration, endpoint revocation, redemption, and device-attested source hints.
 Every response carries `Cache-Control: no-store, max-age=0`. Provider payloads
 contain only an event ID and fixed generic notification text. A successful
 redemption returns only the private target device, Agent, and Session
@@ -47,11 +48,23 @@ the exact current DeviceStore binding/generation, and the current delivery lease
 before claiming and again before each provider request. Legacy active rows with
 no session handle are retired on open.
 
-This change does not connect Host Session lifecycle events to the internal
-hint publisher, and it does not add a public hint-submission route. The source
-adapter remains an in-process seam for a future owner that can prove the active
-Host connection and its Agent/Session relationship. Consequently, a configured
-worker can deliver already-enqueued hints, but this package alone does not make
-real Host events produce push notifications. No production credentials or
-provider sends were used for local tests; real account/provider/device
-acceptance remains outstanding.
+`POST /api/mobile-notify/v1/source/challenges` returns 201 after durable
+challenge binding; `POST /api/mobile-notify/v1/source/hints` returns 200 after
+proof verification and enqueueing. The source routes require a fresh AuthStore
+session, the exact current DeviceStore binding/generation, and a single-use
+`RecoverQuery` proof signed by that device's existing private key. The challenge
+database durably binds the session handle, source event ID, connection epoch,
+Agent ID, and Session reference before returning its nonce. If proof
+consumption and outbox insertion are interrupted across their separate
+databases, the response requires a new challenge; a fresh proof for the same
+source event and exact pointer reuses the existing event ID. Requests do not
+accept caller-supplied principal, network, device, binding, generation,
+target-device, or receipt values.
+
+This establishes only that the currently enrolled device key attested the
+hint. It does not establish that the device is running Host software or prove
+that the Agent/Session relationship is true. The pointer is a non-actionable
+hint; mobile clients must refresh their authorized target catalog and current
+Session snapshot and require a separate human approval. Host lifecycle
+integration, production credentials, provider sends, and real account/device
+acceptance remain separate gates.
