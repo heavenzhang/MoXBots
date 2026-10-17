@@ -69,6 +69,9 @@ pub struct NativeConfig {
     local_signed_peer: String,
     target_signed_peer: String,
     certificate: String,
+    /// Full DER chain from the original native identity owner: leaf, issuer, root.
+    /// The signed bootstrap remains the sole trust anchor.
+    certificate_chain: Vec<Vec<u8>>,
     /// Native must acquire a fresh authenticated snapshot before constructing.
     trust_expires_at: u64,
     tls_initiator: bool,
@@ -318,11 +321,27 @@ impl MobileClient {
             return Err(error("MOBILE_IDENTITY_MISMATCH"));
         }
         let certificates = crypto::certificate_chain(&config.certificate)?;
+        let root = crypto::certificate_chain(&bootstrap.root_certificate)?;
         if certificates.len() != 1
             || crypto::certificate_fingerprint(&certificates[0]) != own.certificate_fingerprint
+            || config.certificate_chain.len() != 3
+            || config
+                .certificate_chain
+                .iter()
+                .any(|cert| cert.is_empty() || cert.len() > 16 * 1024)
+            || config.certificate_chain[0].as_slice() != certificates[0].as_ref()
+            || root.len() != 1
+            || config.certificate_chain[2].as_slice() != root[0].as_ref()
+            || config.certificate_chain[0] == config.certificate_chain[1]
+            || config.certificate_chain[1] == config.certificate_chain[2]
         {
             return Err(error("MOBILE_IDENTITY_MISMATCH"));
         }
+        let certificates = config
+            .certificate_chain
+            .into_iter()
+            .map(rustls::pki_types::CertificateDer::from)
+            .collect();
         let identity = crypto::TlsIdentity::new(certificates, key)?;
         let roots = crypto::private_roots(&bootstrap.root_certificate)?;
         let channel = Channel::new_management(
@@ -2227,8 +2246,22 @@ mod provisioning_tests {
         let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
         ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
         ca_params.key_usages = vec![rcgen::KeyUsagePurpose::KeyCertSign];
+        ca_params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, "Mobile provisioning root");
         let ca = ca_params.self_signed(&ca_key).unwrap();
-        let ca_issuer = rcgen::Issuer::new(ca_params, ca_key);
+        let root_issuer = rcgen::Issuer::new(ca_params, ca_key);
+        let issuing_key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+        let mut issuing_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+        issuing_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Constrained(0));
+        issuing_params.key_usages = vec![rcgen::KeyUsagePurpose::KeyCertSign];
+        issuing_params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, "Mobile provisioning issuer");
+        let issuing = issuing_params
+            .signed_by(&issuing_key, &root_issuer)
+            .unwrap();
+        let ca_issuer = rcgen::Issuer::new(issuing_params, issuing_key);
         let make_peer = |n: u8| {
             let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
             let binding_id = uuid::Uuid::new_v4().to_string();
@@ -2249,6 +2282,13 @@ mod provisioning_tests {
         };
         let (local, certificate, key) = make_peer(3);
         let (target, _, _) = make_peer(4);
+        let chain = vec![
+            crypto::certificate_chain(&certificate).unwrap()[0]
+                .as_ref()
+                .to_vec(),
+            issuing.der().as_ref().to_vec(),
+            ca.der().as_ref().to_vec(),
+        ];
         let local_key =
             crypto::DevicePrivateKey::from_native_pkcs8(Zeroizing::new(key.to_vec())).unwrap();
         let bootstrap = sign(
@@ -2256,9 +2296,42 @@ mod provisioning_tests {
             json!({"iss":"https://issuer.invalid","aud":service,"sub":"account","iat":now,"nbf":now,"exp":now+300,"jti":uuid::Uuid::new_v4().to_string(),"environment":"development","deviceId":"00000000-0000-0000-0000-000000000003","keyGeneration":1,"sessionHandle":uuid::Uuid::new_v4().to_string(),"cnf":{"jkt":local_key.public_thumbprint().unwrap()},"networkUrl":"https://relay.invalid","rootCertificate":ca.pem()}),
         );
         (
-            json!({"issuer":"https://issuer.invalid","local":serde_json::to_value(super::tests::scope(3)).unwrap(),"target":serde_json::to_value(super::tests::scope(4)).unwrap(),"channelId":uuid::Uuid::new_v4().to_string(),"localEpoch":uuid::Uuid::new_v4().to_string(),"targetEpoch":uuid::Uuid::new_v4().to_string(),"jwks":{"keys":[jwk]},"bootstrap":bootstrap,"localSignedPeer":local,"targetSignedPeer":target,"certificate":certificate,"trustExpiresAt":now+299,"tlsInitiator":true}),
+            json!({"issuer":"https://issuer.invalid","local":serde_json::to_value(super::tests::scope(3)).unwrap(),"target":serde_json::to_value(super::tests::scope(4)).unwrap(),"channelId":uuid::Uuid::new_v4().to_string(),"localEpoch":uuid::Uuid::new_v4().to_string(),"targetEpoch":uuid::Uuid::new_v4().to_string(),"jwks":{"keys":[jwk]},"bootstrap":bootstrap,"localSignedPeer":local,"targetSignedPeer":target,"certificate":certificate,"certificateChain":chain,"trustExpiresAt":now+299,"tlsInitiator":true}),
             key,
         )
+    }
+    #[test]
+    fn native_provisioning_keeps_the_original_issuing_chain_and_pinned_root() {
+        let (config, key) = provisioned();
+        let chain = config["certificateChain"].as_array().unwrap();
+        assert_eq!(chain.len(), 3);
+        let valid = || Zeroizing::new(key.to_vec());
+        assert!(
+            MobileClient::new(serde_json::from_value(config.clone()).unwrap(), valid()).is_ok()
+        );
+        let mut missing = config.clone();
+        missing.as_object_mut().unwrap().remove("certificateChain");
+        assert!(serde_json::from_value::<NativeConfig>(missing).is_err());
+        let bad_chains = [
+            json!([]),
+            json!([chain[0], chain[2]]),
+            json!([chain[1], chain[1], chain[2]]),
+            json!([chain[0], chain[1], chain[1]]),
+            json!([chain[0], chain[0], chain[2]]),
+            json!([chain[0], [], chain[2]]),
+            json!([chain[0], vec![0u8; 16 * 1024 + 1], chain[2]]),
+            json!([chain[0], chain[1], chain[2], chain[2]]),
+        ];
+        for chain in bad_chains {
+            let mut wrong = config.clone();
+            wrong["certificateChain"] = chain;
+            assert_eq!(
+                MobileClient::new(serde_json::from_value(wrong).unwrap(), valid())
+                    .err()
+                    .as_deref(),
+                Some("MOBILE_IDENTITY_MISMATCH")
+            );
+        }
     }
     #[test]
     fn native_provisioning_verifies_signed_bootstrap_local_key_and_target_account() {

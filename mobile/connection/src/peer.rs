@@ -184,7 +184,15 @@ impl PeerConnection {
                             {
                                 return Err(err("CHANNEL_SCOPE_MISMATCH"));
                             }
-                            let config = json!({"profile":"combined","issuer":c.identity.account.issuer(),"local":c.local,"target":address.scope,"channelId":channel,"localEpoch":c.scope.connection_epoch,"targetEpoch":address.connection_epoch,"jwks":jwks,"bootstrap":bootstrap,"tlsInitiator":tls_initiator,"localSignedPeer":local_binding,"targetSignedPeer":target_binding,"certificate":peer.binding.certificate,"trustExpiresAt":deadline});
+                            // Preserve the original owner's verified issuing chain;
+                            // sending its leaf alone cannot authenticate to a peer.
+                            let certificate_chain: Vec<Vec<u8>> = peer
+                                .tls
+                                .certificates
+                                .iter()
+                                .map(|cert| cert.as_ref().to_vec())
+                                .collect();
+                            let config = json!({"profile":"combined","issuer":c.identity.account.issuer(),"local":c.local,"target":address.scope,"channelId":channel,"localEpoch":c.scope.connection_epoch,"targetEpoch":address.connection_epoch,"jwks":jwks,"bootstrap":bootstrap,"tlsInitiator":tls_initiator,"localSignedPeer":local_binding,"targetSignedPeer":target_binding,"certificate":peer.binding.certificate,"certificateChain":certificate_chain,"trustExpiresAt":deadline});
                             let pkcs8 =
                                 key.with_native_pkcs8(|bytes| Zeroizing::new(bytes.to_vec()));
                             sdk = Some(
