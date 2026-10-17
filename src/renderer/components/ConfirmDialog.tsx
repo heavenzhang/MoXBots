@@ -103,7 +103,7 @@ export default function ConfirmDialog({
                         onClick={alternativeAction.onClick}
                         disabled={loading}
                         className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors disabled:opacity-50 ${alternativeAction.danger
-                            ? 'text-[var(--error)] hover:bg-[var(--button-secondary-bg-hover)]'
+                            ? 'border border-[var(--error)] text-[var(--error)] hover:bg-[var(--error)] hover:text-[var(--on-error)]'
                             : 'bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:bg-[var(--button-secondary-bg-hover)]'}`}
                     >
                         {alternativeAction.text}

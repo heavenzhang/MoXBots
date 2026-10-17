@@ -281,6 +281,12 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 
 ## Deployment coordination
 
+### MOXBOTS-WINDOWS-DOWNLOAD-059 — 2026-10-17
+
+- **Deployment designation:** 用户在当前任务明确要求“同步发一个 Windows 的包到下载页面”；当前任务 `MOXBOTS-059-WINDOWS-DOWNLOAD-20261017` 负责这一次受限网站发布。该委托仅覆盖本任务下的 Windows 0.5.9 下载页变更。
+- **Targets and limits:** 仅官网静态下载页 `https://140.143.183.232/download/`、其 `/download/packages/` 下的不可变 Windows 安装包，以及页面 HTML/CSS/JS/内容寻址版本清单。冻结源码为 `v0.5.9` / `9f93b3304ee6f06434d8d09754d3e59d4d676d0d`。Actions 私有短期 artifact 只作传输，不创建 GitHub Release；页面须显示实际 Authenticode 状态和 Windows 自动更新暂不支持。
+- **Runbook and exclusions:** 复用官网现有维护锁、备份、不可变 release 目录、symlink CAS 原子切换及选择性回滚。不得改 `/updates/*`、updater manifest/stable、Nginx/TLS、auth、Host、其他网站服务、macOS 下载资产或日常客户端；不扩大权限或中断任务。
+
 - **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`，MoxBots桌面端统一打包负责人。
 - **Designation:** 既定唯一发布owner仍为本聊天。最新用户于2026-10-16在修复聊天`01a1420f-245b-7f22-8a0f-4caaaf31b91b`明确回复“授权发送并安排修复版”；Root实际核读human message`01a142d4-9285-7c93-a968-52d61de5ab7d`，覆盖下一未冻结修复版及任务空闲后启用、不中断任务。原056授权和交付保持其发行记录，不将开发者转述自身当新增授权。
 - **Targets and runbook:** 本次仅既有macOS arm64 MoXBots own updater `https://140.143.183.232/updates/stable/darwin-aarch64.json`、`/srv/moxbots/updates`及其不可变归档/原子stable；流程`scripts/moxbot-updates/README.md`与`release.mjs`。复用原Developer ID、公证profile、正式Reader和自有签名根。允许确认任务空闲、Mac手动解锁且启用前兼容配置备份就绪后，在本机启用新版并验证已有授权账号；不主动停止运行任务。不扩展路径/端口，不部署auth/Host/网站服务，不扩大External Calls/模型权限。

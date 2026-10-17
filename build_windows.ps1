@@ -5,7 +5,9 @@
 
 param(
     [switch]$SkipTypeCheck,
-    [switch]$SkipPortable
+    [switch]$SkipPortable,
+    [switch]$MoXBots,
+    [switch]$NonInteractive
 )
 
 $ErrorActionPreference = "Stop"
@@ -17,15 +19,27 @@ try {
     Set-Location $ProjectDir
     . (Join-Path $ProjectDir 'scripts\windows-build-environment.ps1')
 
-    # 读取版本号
-    $TauriConf = Get-Content "src-tauri\tauri.conf.json" -Raw | ConvertFrom-Json
+    # MyAgents remains the default profile. MoXBots is explicit so the generic
+    # Windows release script can never silently change product identity.
+    $ProfileConfigPath = if ($MoXBots) { "src-tauri\tauri.moxbot.conf.json" } else { "src-tauri\tauri.conf.json" }
+    $TauriConf = Get-Content $ProfileConfigPath -Raw | ConvertFrom-Json
     $Version = $TauriConf.version
+    $ProductName = $TauriConf.productName
+    if ($MoXBots) {
+        if ($ProductName -ne "MoXBots" -or $TauriConf.identifier -ne "com.moxbot.app") {
+            throw "MoXBots profile identity mismatch in $ProfileConfigPath"
+        }
+        $env:MYAGENTS_BUILD_PROFILE = "moxbot"
+    }
+    elseif ($NonInteractive) {
+        throw "NonInteractive mode is reserved for the isolated MoXBots package workflow."
+    }
     $TauriConfPath = Join-Path $ProjectDir "src-tauri\tauri.conf.json"
     $EnvFile = Join-Path $ProjectDir ".env"
 
     Write-Host ""
     Write-Host "=========================================" -ForegroundColor Cyan
-    Write-Host "  MyAgents Windows 发布构建" -ForegroundColor Green
+    Write-Host "  $ProductName Windows 发布构建" -ForegroundColor Green
     Write-Host "  Version: $Version" -ForegroundColor Blue
     Write-Host "=========================================" -ForegroundColor Cyan
     Write-Host ""
@@ -46,6 +60,7 @@ try {
         Write-Host "  tauri.conf.json: $Version" -ForegroundColor Cyan
         Write-Host "  Cargo.toml:      $CargoVersion" -ForegroundColor Cyan
         Write-Host ""
+        if ($NonInteractive) { throw "Non-interactive release build refuses version mismatch" }
         $sync = Read-Host "是否同步版本号到 $PkgVersion? (y/N)"
         if ($sync -eq "y" -or $sync -eq "Y") {
             & node "$ProjectDir\scripts\sync-version.js"
@@ -86,17 +101,22 @@ try {
 
     # 检查 Tauri 签名密钥
     $TauriSigningKey = [Environment]::GetEnvironmentVariable("TAURI_SIGNING_PRIVATE_KEY", "Process")
-    if (-not $TauriSigningKey) {
+    if (-not $TauriSigningKey -and $MoXBots) {
+        Write-Host "  MoXBots Windows download build disables updater artifacts; no updater signing key is needed." -ForegroundColor Gray
+    }
+    elseif (-not $TauriSigningKey) {
         Write-Host ""
         Write-Host "=========================================" -ForegroundColor Yellow
         Write-Host "  警告: TAURI_SIGNING_PRIVATE_KEY 未设置" -ForegroundColor Yellow
         Write-Host "  自动更新功能将不可用!" -ForegroundColor Yellow
         Write-Host "=========================================" -ForegroundColor Yellow
         Write-Host ""
-        $continue = Read-Host "是否继续构建? (Y/n)"
-        if ($continue -eq "n" -or $continue -eq "N") {
-            Write-Host "构建已取消" -ForegroundColor Red
-            throw "用户取消构建"
+        if (-not $NonInteractive) {
+            $continue = Read-Host "是否继续构建? (Y/n)"
+            if ($continue -eq "n" -or $continue -eq "N") {
+                Write-Host "构建已取消" -ForegroundColor Red
+                throw "用户取消构建"
+            }
         }
     }
     else {
@@ -137,10 +157,14 @@ try {
         Write-Host "  (Fork / 自建无需上报可忽略本提示。)" -ForegroundColor Yellow
         Write-Host "=========================================" -ForegroundColor Yellow
         Write-Host ""
-        $continueAnalytics = Read-Host "是否继续构建? (Y/n)"
-        if ($continueAnalytics -eq "n" -or $continueAnalytics -eq "N") {
-            Write-Host "构建已取消" -ForegroundColor Red
-            throw "用户取消构建"
+        if ($NonInteractive) {
+            Write-Host "  Non-interactive MoXBots download package will ship with analytics disabled; this is recorded in release metadata." -ForegroundColor Yellow
+        } else {
+            $continueAnalytics = Read-Host "是否继续构建? (Y/n)"
+            if ($continueAnalytics -eq "n" -or $continueAnalytics -eq "N") {
+                Write-Host "构建已取消" -ForegroundColor Red
+                throw "用户取消构建"
+            }
         }
     }
     Write-Host ""
@@ -302,15 +326,17 @@ try {
     # ========================================
     Write-Host "[3/7] 验证 CSP 配置..." -ForegroundColor Blue
 
+    # CSP is shared with the base Tauri config; identity and app permissions
+    # are overlaid by tauri.moxbot.conf.json during the MoXBots build.
     $conf = Get-Content $TauriConfPath -Raw | ConvertFrom-Json
     $currentCsp = $conf.app.security.csp
 
     # 验证关键 CSP 指令是否存在
-    $requiredCspParts = @(
-        "http://ipc.localhost",
-        "asset:",
-        "https://download.myagents.io"
-    )
+    $requiredCspParts = if ($MoXBots) {
+        @("http://ipc.localhost", "asset:")
+    } else {
+        @("http://ipc.localhost", "asset:", "https://download.myagents.io")
+    }
 
     $missingParts = @()
     foreach ($part in $requiredCspParts) {
@@ -352,27 +378,29 @@ try {
     Write-Host "[准备] 清理旧构建..." -ForegroundColor Blue
 
     # 杀死残留进程（避免文件锁定）
-    $appProcesses = Get-Process | Where-Object { $_.ProcessName -eq "MyAgents" }
+    if ($MoXBots) {
+        Write-Host "  MoXBots mode skips process termination to preserve other product sessions." -ForegroundColor Gray
+    } else {
+        $appProcesses = Get-Process | Where-Object { $_.ProcessName -eq "MyAgents" }
 
-    if ($appProcesses) {
-        $appProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
-        Write-Host "  清理了 $($appProcesses.Count) 个 MyAgents 进程" -ForegroundColor Gray
-    }
-
-    # 验证进程清理完成（最多等待 2 秒）
-    $maxWait = 20  # 20 * 100ms = 2s
-    $waited = 0
-    while ($waited -lt $maxWait) {
-        $remainingApp = Get-Process -Name "MyAgents" -ErrorAction SilentlyContinue
-        if (-not $remainingApp) {
-            break
+        if ($appProcesses) {
+            $appProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
+            Write-Host "  清理了 $($appProcesses.Count) 个 MyAgents 进程" -ForegroundColor Gray
         }
-        Start-Sleep -Milliseconds 100
-        $waited++
-    }
 
-    if ($waited -gt 0) {
-        Write-Host "  进程清理验证完成 (耗时 $($waited * 100)ms)" -ForegroundColor Gray
+        # 验证进程清理完成（最多等待 2 秒）
+        $maxWait = 20  # 20 * 100ms = 2s
+        $waited = 0
+        while ($waited -lt $maxWait) {
+            $remainingApp = Get-Process -Name "MyAgents" -ErrorAction SilentlyContinue
+            if (-not $remainingApp) { break }
+            Start-Sleep -Milliseconds 100
+            $waited++
+        }
+
+        if ($waited -gt 0) {
+            Write-Host "  进程清理验证完成 (耗时 $($waited * 100)ms)" -ForegroundColor Gray
+        }
     }
 
     # 清理构建输出目录
@@ -424,7 +452,7 @@ try {
     $env:NODE_OPTIONS = "--max-old-space-size=4096"
     & npm run build:assets
     if ($LASTEXITCODE -ne 0) { throw "前端和运行时资源构建失败" }
-    $buildAssetsConfig = Join-Path ([System.IO.Path]::GetTempPath()) "myagents-assets-$PID.json"
+    $buildAssetsConfig = Join-Path ([System.IO.Path]::GetTempPath()) "$($ProductName.ToLowerInvariant())-assets-$PID.json"
     Set-Content -Path $buildAssetsConfig -Value '{"build":{"beforeBuildCommand":null}}' -Encoding utf8
 
     # 填充 tsx-runtime（Plugin Bridge 走绝对路径 --import）—— Windows 当前
@@ -461,7 +489,11 @@ try {
     & node "$ProjectDir\scripts\prepare-native-inference.mjs" "x86_64-pc-windows-msvc"
     if ($LASTEXITCODE -ne 0) { throw "原生推理资源准备失败" }
 
-    & npm run tauri:build:prepared -- --target x86_64-pc-windows-msvc --config src-tauri/tauri.windows.conf.json --config $buildAssetsConfig
+    if ($MoXBots) {
+        & npm run tauri:build:moxbot -- --target x86_64-pc-windows-msvc --config src-tauri/tauri.windows.conf.json --config src-tauri/tauri.moxbot.windows.conf.json --config $buildAssetsConfig
+    } else {
+        & npm run tauri:build:prepared -- --target x86_64-pc-windows-msvc --config src-tauri/tauri.windows.conf.json --config $buildAssetsConfig
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Tauri 构建失败"
     }
@@ -485,7 +517,7 @@ try {
 
         if (Test-Path $exePath) {
             $portableDir = Join-Path $targetDir "portable"
-            $zipName = "MyAgents_${Version}_x86_64-portable.zip"
+            $zipName = "${ProductName}_${Version}_x86_64-portable.zip"
             $zipPath = Join-Path $nsisDir $zipName
 
             if (Test-Path $portableDir) {
@@ -572,7 +604,10 @@ try {
     Write-Host ""
 
     $sigFiles = Get-ChildItem -Path $nsisDir -Filter "*.sig" -ErrorAction SilentlyContinue
-    if ($sigFiles) {
+    if ($MoXBots) {
+        Write-Host "  Windows updater artifacts disabled; this installer is download-only." -ForegroundColor Gray
+    }
+    elseif ($sigFiles) {
         Write-Host "  OK - 自动更新签名已生成" -ForegroundColor Green
     }
     else {
@@ -582,7 +617,11 @@ try {
     Write-Host ""
     Write-Host "后续步骤:" -ForegroundColor Blue
     Write-Host "  1. 测试安装包" -ForegroundColor White
-    Write-Host "  2. 运行 .\publish_windows.ps1 发布到 R2" -ForegroundColor White
+    if ($MoXBots) {
+        Write-Host "  2. Publish only through the MoXBots download-page release procedure." -ForegroundColor White
+    } else {
+        Write-Host "  2. 运行 .\publish_windows.ps1 发布到 R2" -ForegroundColor White
+    }
     Write-Host ""
 
     $BuildSuccess = $true
@@ -611,12 +650,14 @@ try {
 }
 
 Write-Host ""
-if ($BuildSuccess) {
-    Write-Host "按回车键退出..." -ForegroundColor Cyan
-} else {
-    Write-Host "按回车键退出..." -ForegroundColor Yellow
+if (-not $NonInteractive) {
+    if ($BuildSuccess) {
+        Write-Host "按回车键退出..." -ForegroundColor Cyan
+    } else {
+        Write-Host "按回车键退出..." -ForegroundColor Yellow
+    }
+    Read-Host
 }
-Read-Host
 if (-not $BuildSuccess) {
     exit 1
 }
