@@ -70,10 +70,8 @@ Owned task initialization: `b20ed9c1`. Normal dependency merge of exact f6:
 merge is not an owned test change and must not be cherry-picked as one.
 
 Initial eslint for both new TypeScript files and root `tsc --noEmit` passed.
-Actual mobile.start/SDK completion, mobile.send/attachment, generic notification
-source, result artifacts, restart and real native/production paths remain open
-until a passing execution is recorded. Earlier synthetic/helper test counts do
-not close this actual Host gate.
+The following failures are historical red fixtures; the passing scope below is
+separate from real Linux, external provider, WSS, phone and production gates.
 
 ## Second actual failure: encrypted credential route projection
 
@@ -134,3 +132,49 @@ no stage is recreated and no unknown Session send is replayed. The fixture's
 next stage also tests a genuine Host process restart and recovery of the same
 pending source ID/original epoch plus accepted receipts with no new SDK dispatch.
 That restart assertion is not yet executed on this red fixture.
+
+## Passing original Host execution and restart
+
+Primary's shared preflight repair `afa157f412d7f844640f6cf4a78cbd6ea5f78c26`
+was cherry-picked as dependency `8134a1a7` (not owned). With all three original
+production repairs, the unchanged strict receipt assertions and restart checks
+passed in **3631ms** under installed bundled Node24.20.0. Actual command is above.
+
+Private raw evidence: `/Users/zhangshaohua/.mox-original-host-NRURBJ/evidence.jsonl`
+and sibling `diagnostics.private.log`. `passing-evidence.jsonl` contains that
+explicit fixture's synthetic-only events with its temporary root replaced by
+`$FIXTURE`; no access token, private key, config or provider credential is copied.
+
+- Original main PID5268 → original worker5289 → actual SDK/native5294, all observed
+  in birth PGID5268. SDK0.3.296 is the original persisted integrated binding.
+- One Product Session `9925c183-3fdc-4789-8a10-5311b5fd9104`; actual first
+  `mobile.start` and second `mobile.send` both reached accepted receipts and
+  completed through the actual native child/local supplier. Supplier requests: 2.
+- Original staging begin/chunk/finish admitted 40 real bytes; original worker
+  materialized them, exact readback hash
+  `a4655a06160a240466fdd4c63bdf211481b08224db7ced1cc08f97ecf8fd6906`;
+  real SDK input carried the original @ reference.
+- Same start and send operation retries returned the original exact accepted
+  receipts. No stage recreation, second Session or extra supplier request.
+- Two original worker terminal observations produced two durable generic source
+  entries with exact Session/Agent/generation/epoch. The private source envelope
+  returned only kind/sourceEventId/connectionEpoch/agentId/sessionId.
+- Actual supervisor termination and new supervisor PID5317 used the same private
+  persisted state. With a fresh connection/boot epoch and same account/device
+  scope, source peek recovered the exact original source ID and original event
+  epoch, both accepted receipts remained identical, supplier requests stayed 2.
+  No worker or native child was started by source/receipt recovery.
+- Original artifact owner list was reached and returned an empty page. This
+  synthetic supplier emits text; output artifact creation/readback was not tested.
+- Exact PID inspection after cleanup found no processes at
+  5268/5289/5294/5308/5309/5317. Other desktop/SDK processes were not signalled.
+
+Primary independently reran the pre-restart version and reported PASS4213ms at
+private fixture `.mox-original-host-u9FqQt`; final restart increment still awaits
+primary's independent acceptance. Do not treat this worker report as that gate.
+
+This is macOS local controller/Host source and actual SDK integration with a
+synthetic supplier and synthetic management scope. It does not verify Linux
+systemd/flock, real network identity/bearer/WSS, the Rust publisher/service loop
+(covered in a separate package), provider behavior, output artifact download,
+actual mobile UI, push delivery or production release. No deployment occurred.
