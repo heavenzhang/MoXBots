@@ -42,6 +42,25 @@ it('preserves a legitimate item larger than one chunk and retries EOF without an
   expect(await owner.request(a,first.nextCursor!)).toEqual(last);expect(reads).toBe(2);
   const result=await collect(createHostMobileAgentCatalog({workspacePath}));expect(result.pages).toBeGreaterThan(1);expect(result.items[0].name).toBe(agents[0]!.name);
 });
+it('rejects malformed persisted Agent name/enabled types through the original strict owner without coercion or repair',async()=>{
+  await add('ordinary');await save();
+  const configPath=join(home,'.myagents','config.json');const projectPath=join(home,'.myagents','projects.json');
+  const projectBefore=await readFile(projectPath,'utf8');const verifier=vi.fn(workspacePath);
+  const owner=createHostMobileAgentCatalog({workspacePath:verifier});
+  const malformed=[
+    {name:undefined},{name:null},{name:42},{name:{}},{name:[]},
+    {enabled:undefined},{enabled:null},{enabled:'true'},{enabled:1},{enabled:{}},{enabled:[]},
+    {name:{},enabled:false},
+  ];
+  for(const change of malformed){
+    const bytes=JSON.stringify({agents:[{...agent('ordinary'),...change}]});await writeFile(configPath,bytes);
+    await expect(owner.request(a)).rejects.toThrow('REGISTRY_CORRUPT');
+    expect(await readFile(configPath,'utf8')).toBe(bytes);
+    expect(await readFile(projectPath,'utf8')).toBe(projectBefore);
+  }
+  expect(verifier).not.toHaveBeenCalled();
+  await save();expect((await collect(owner)).items[0].name).toBe('ordinary');
+});
 it('rejects partial/duplicate/missing/malformed/outside-root sources instead of publishing empty',async()=>{
   const owner=createHostMobileAgentCatalog({workspacePath});await expect(owner.request(a)).rejects.toThrow();
   await add('a');await save();await writeFile(join(home,'.myagents','projects.json'),'{bad');await expect(owner.request(a)).rejects.toThrow();
