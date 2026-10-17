@@ -58,19 +58,21 @@ jobs:
           }
           Write-Host "Verified application source $sourceCommit and isolated MoXBots Windows overlay."
 
-      - name: Install Node.js
+      - name: Install the frozen Node.js runtime
         uses: actions/setup-node@v4
         with:
-          node-version: 24.14.0
+          node-version: 24.20.0
 
-      - name: Enforce repository Node and npm minimums
+      - name: Match the frozen Windows Node and npm versions
         shell: pwsh
         run: |
+          $expectedNodeVersion = '24.20.0'
+          $expectedNpmVersion = '11.19.0'
           $nodeVersion = (node --version).Trim().TrimStart('v')
-          if ([version]$nodeVersion -lt [version]'24.14.0') { throw "Node.js $nodeVersion is below the repository minimum." }
-          npm install --global npm@11.15.0
+          if ($nodeVersion -ne $expectedNodeVersion) { throw "Node.js $nodeVersion does not match the frozen Windows runtime $expectedNodeVersion." }
+          npm install --global "npm@$expectedNpmVersion"
           $npmVersion = (npm --version).Trim()
-          if ([version]$npmVersion -lt [version]'11.15.0') { throw "npm $npmVersion is below the repository minimum." }
+          if ($npmVersion -ne $expectedNpmVersion) { throw "npm $npmVersion does not match the frozen Windows runtime $expectedNpmVersion." }
 
       - name: Install Rust toolchain and Windows target
         uses: dtolnay/rust-toolchain@1.92.0
