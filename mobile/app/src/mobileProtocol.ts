@@ -30,5 +30,15 @@ export const remoteMobileResultSchema = bounded(z.discriminatedUnion('kind', [
   z.object({ version: z.literal(1), kind: z.literal('mobile.error'), code }).strict(),
 ]));
 
+const bridgeErrorSchema = z.object({ kind: z.literal('error'), code: z.string().min(1).max(128).regex(/^[A-Z0-9_]+$/) }).strict();
+
+export function parseMobileBridgeResult(value: unknown): RemoteMobileResult {
+  const bridgeError = bridgeErrorSchema.safeParse(value);
+  if (bridgeError.success) throw new Error(bridgeError.data.code);
+  const result = remoteMobileResultSchema.safeParse(value);
+  if (!result.success) throw new Error('MOBILE_REPLY_INVALID');
+  return result.data;
+}
+
 export type RemoteMobileRequest = z.infer<typeof remoteMobileRequestSchema>;
 export type RemoteMobileResult = z.infer<typeof remoteMobileResultSchema>;
