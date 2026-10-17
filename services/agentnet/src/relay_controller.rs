@@ -630,17 +630,21 @@ impl RelayController {
                             vec![operation_error(connection_id, control, error)]
                         }))
                     })
-                    .map_err(map_metadata)?
+                    .map_err(map_operation_metadata)?
             },
         );
         match result {
             Ok(effects) => Ok(effects),
-            // Do not turn an unavailable/policy-revoked return into an implicit
-            // replay or a reconnect storm. The local return owner settles it.
-            Err(_) => Ok(vec![operation_error(
+            // A temporary owner outage retains the original bounded return;
+            // a revoked policy/session is permanent. Neither replays an op.
+            Err(error) => Ok(vec![operation_error(
                 connection_id,
                 control,
-                RelayError::Unauthorized,
+                if error.code() == FAILURE_UNAVAILABLE {
+                    RelayError::Unavailable
+                } else {
+                    RelayError::Unauthorized
+                },
             )]),
         }
     }
@@ -1139,6 +1143,16 @@ fn map_metadata(error: MetadataError) -> RelayFailure {
     match error {
         MetadataError::InvalidSession | MetadataError::IdentityConflict => rejected(),
         _ => unavailable(),
+    }
+}
+
+fn map_operation_metadata(error: MetadataError) -> RelayFailure {
+    match error {
+        MetadataError::Storage
+        | MetadataError::UnsafePath
+        | MetadataError::ProfileMismatch
+        | MetadataError::UnboundDatabase => unavailable(),
+        _ => rejected(),
     }
 }
 
