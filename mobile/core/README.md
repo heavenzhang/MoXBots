@@ -19,7 +19,12 @@ The native owner serializes all calls on one queue and supplies:
   record, including after `not-found`, `unconfirmed` or a transport timeout.
 
 `include/mox_mobile.h` defines the ABI. Rust callers can use `MobileClient::new`,
-`execute(Intent)`, `feed_frame`, and `drain_frame`. Buffers have explicit status
+`execute(Intent)`, `feed_frame`, and `drain_frame`. Native authenticated relay
+controls call `relay_credit(sequence, received_bytes)` and, after successful feed,
+`take_received_credit()` to send cumulative byte acknowledgments. The corresponding
+C ABI calls are `mox_mobile_credit` and `mox_mobile_received_credit`. Drain pauses
+at the original protocol channel/socket queue windows; duplicate, skipped,
+non-increasing or excessive grants fail closed. Buffers have explicit status
 (0 success, 1 JSON error); free them once using `mox_mobile_buffer_free`. Do not
 expose constructor, feed/drain, commit/recover or raw storage APIs to JS. The native
 bridge projects only approved UI intents/results and handles journaling itself.

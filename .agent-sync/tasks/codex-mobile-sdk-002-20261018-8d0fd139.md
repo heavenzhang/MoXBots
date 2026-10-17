@@ -20,7 +20,7 @@ crypto key adapter from parent c795947a is locally cherry-picked as 3e0c6f9c.
 - [x] Prepare/durable-native-journal/commit boundary and UNKNOWN receipt-only recovery.
 - [x] Actual encrypted controller-to-existing-Host-channel interoperability tests.
 - [x] Wrong account/issuer/service/device/key generation, target/replay and closed intent tests.
-- [ ] Final focused ABI test / clippy / host release build (running at first handoff).
+- [x] Final focused ABI tests, clippy -D warnings and macOS host release build.
 - [ ] Android cross-build/link and real device tests; NDK license authorization pending parent.
 - [ ] iOS cross-build/link and real device tests; Apple iOS SDK not currently available.
 - [ ] Integrated native login/WSS/SessionEngine/notification/file/voice acceptance (parent).
@@ -48,7 +48,12 @@ No fake completion, automatic resend, or protocol changes to existing v1.
   before final extra ABI/scope checks (latest final run will follow).
 - Tests use synthetic keys and real TLS between the SDK and existing Host channel,
   plus original replay/nonce/role/hello/JOSE regression suite. No external services.
-- Host release build, clippy and iOS check pending at first coherent handoff.
+- Final focused run after relay-credit follow-up: 25 tests passed; clippy all-targets
+  with -D warnings passed. macOS host release build passed before credit follow-up;
+  incremental final release build is running.
+- `cargo check --manifest-path mobile/core/Cargo.toml --locked --target aarch64-apple-ios`:
+  failed at ring C build because `xcrun` cannot locate `iphoneos` SDK. This is a real
+  environment failure, not successful native portability validation.
 - Initial clippy diagnosed shared original channel constructor arity; import preserves
   original signatures using same targeted allowance as headless-network.
 
@@ -58,3 +63,12 @@ Parent integrates this local branch/commit and connects native account/WSS owner
 Worker finishes final command outcomes and appends follow-up record. Android license
 prompt needs the user's answer; Apple SDK absence prevents native iOS validation.
 Local only — not synchronized to remote; parent is sole integration/push owner.
+
+## Relay flow-control follow-up
+
+Connection integration identified the outer cumulative credit policy, separate from
+TLS channel sequence enforcement. Core now exposes native-only `relay_credit` and
+`take_received_credit` (and C equivalents), validates original strict credit sequence
+and cumulative byte constraints, and withholds drain at protocol channel/socket
+windows. Duplicate/oversized grants close the handle. Actual feed bytes are credited
+only after successful validation. Focused window/duplicate/release tests passed.

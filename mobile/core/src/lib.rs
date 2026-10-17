@@ -111,6 +111,18 @@ pub struct MobileClient {
     pending: BTreeMap<String, RemoteSessionRequest>,
     used: bool,
     network_url: String,
+    flow: RelayFlow,
+}
+// A single-channel projection of the original PairChannels credit policy.
+// Keep strict cumulative-byte/sequence checks and the same bounded windows.
+#[derive(Default)]
+struct RelayFlow {
+    sent: u64,
+    returned: u64,
+    return_sequence: u64,
+    received: u64,
+    reported: u64,
+    release_sequence: u64,
 }
 impl MobileClient {
     /// Typed native entry point; mutations require durable prepare/commit sequencing.
@@ -124,10 +136,62 @@ impl MobileClient {
         self.feed(bytes).map_err(|e| e.code)
     }
     pub fn drain_frame(&mut self) -> Result<Option<Vec<u8>>, String> {
-        self.account
-            .ensure_current()
-            .and_then(|_| self.channel.drain_frame())
-            .map_err(|e| e.code)
+        self.drain_native().map_err(|e| e.code)
+    }
+    /// Native authenticated relay control only. A duplicate/out-of-order grant
+    /// closes authorization instead of weakening the original credit policy.
+    pub fn relay_credit(&mut self, sequence: u64, received_bytes: u64) -> Result<(), String> {
+        let result = self.account.ensure_current().and_then(|_| {
+            if Some(sequence) != self.flow.return_sequence.checked_add(1)
+                || received_bytes <= self.flow.returned
+                || received_bytes > self.flow.sent
+            {
+                return Err(error("CREDIT_INVALID"));
+            }
+            self.flow.returned = received_bytes;
+            self.flow.return_sequence = sequence;
+            Ok(())
+        });
+        if result.is_err() {
+            self.account.current.store(false, Ordering::Release);
+        }
+        result.map_err(|e| e.code)
+    }
+    /// Native sends the returned cumulative release on the current relay scope.
+    pub fn take_received_credit(&mut self) -> Result<Option<(u64, u64)>, String> {
+        self.account.ensure_current().map_err(|e| e.code)?;
+        if self.flow.reported == self.flow.received {
+            return Ok(None);
+        }
+        self.flow.release_sequence = self
+            .flow
+            .release_sequence
+            .checked_add(1)
+            .filter(|n| *n <= myagents_host_management_protocol::MAX_SAFE_SEQUENCE)
+            .ok_or_else(|| "CREDIT_OVERFLOW".to_owned())?;
+        self.flow.reported = self.flow.received;
+        Ok(Some((self.flow.release_sequence, self.flow.received)))
+    }
+    fn drain_native(&mut self) -> Result<Option<Vec<u8>>, NetworkError> {
+        use myagents_agent_network_protocol::budget;
+        self.account.ensure_current()?;
+        let outstanding = self.flow.sent - self.flow.returned;
+        let maximum = (budget("tlsChunkBytes") + 22) as u64;
+        if outstanding + maximum
+            > budget("socketQueueBytes").min(budget("channelQueueBytes")) as u64
+        {
+            return Ok(None);
+        }
+        let frame = self.channel.drain_frame()?;
+        if let Some(frame) = &frame {
+            self.flow.sent = self
+                .flow
+                .sent
+                .checked_add(frame.len() as u64)
+                .filter(|n| *n <= myagents_host_management_protocol::MAX_SAFE_SEQUENCE)
+                .ok_or_else(|| error("CREDIT_OVERFLOW"))?;
+        }
+        Ok(frame)
     }
     pub fn new(config: NativeConfig, pkcs8: Zeroizing<Vec<u8>>) -> Result<Self, String> {
         Self::new_inner(config, pkcs8).map_err(|e| e.code)
@@ -213,6 +277,7 @@ impl MobileClient {
             pending: BTreeMap::new(),
             used: false,
             network_url: bootstrap.network_url,
+            flow: RelayFlow::default(),
         })
     }
     fn digest(
@@ -461,6 +526,12 @@ impl MobileClient {
                 ManagementEvent::Request { .. } => return Err(error("MOBILE_ROLE_MISMATCH")),
             }
         }
+        self.flow.received = self
+            .flow
+            .received
+            .checked_add(bytes.len() as u64)
+            .filter(|n| *n <= myagents_host_management_protocol::MAX_SAFE_SEQUENCE)
+            .ok_or_else(|| error("CREDIT_OVERFLOW"))?;
         Ok(json!({"events":out, "status":self.status()}))
     }
 }
@@ -567,6 +638,7 @@ mod tests {
                 pending: BTreeMap::new(),
                 used: false,
                 network_url: "https://relay.invalid".into(),
+                flow: RelayFlow::default(),
             },
             b,
             sb,
@@ -662,6 +734,10 @@ mod tests {
             }
         }
         assert!(received);
+        let credit = client.take_received_credit().unwrap().unwrap();
+        assert_eq!(credit.0, 1);
+        assert!(credit.1 > 22);
+        assert!(client.take_received_credit().unwrap().is_none());
         assert_eq!(
             client
                 .call(Intent::Commit {
@@ -672,6 +748,43 @@ mod tests {
                 .code,
             "MOBILE_RECEIPT_REQUIRED"
         );
+    }
+    #[test]
+    fn relay_credit_rejects_duplicates_and_releases_bounded_native_writer() {
+        let (mut client, _, _) = pair();
+        client
+            .call(Intent::Request {
+                request: RemoteSessionRequest::List {
+                    agent_id: "agent".into(),
+                    limit: 1,
+                    before: None,
+                },
+            })
+            .unwrap();
+        let window = myagents_agent_network_protocol::budget("channelQueueBytes")
+            .min(myagents_agent_network_protocol::budget("socketQueueBytes"))
+            as u64;
+        client.flow.sent = window;
+        assert!(client.drain_frame().unwrap().is_none());
+        client.relay_credit(1, window).unwrap();
+        assert!(client.drain_frame().unwrap().is_some());
+        assert_eq!(
+            client.relay_credit(1, window).unwrap_err(),
+            "CREDIT_INVALID"
+        );
+        assert!(client.execute(Intent::Status {}).is_err());
+        let (mut oversized, _, _) = pair();
+        assert_eq!(oversized.relay_credit(1, 1).unwrap_err(), "CREDIT_INVALID");
+    }
+    #[test]
+    fn native_received_credit_is_cumulative_and_reported_once() {
+        let (mut client, _, _) = pair();
+        assert!(client.take_received_credit().unwrap().is_none());
+        client.flow.received = 42;
+        assert_eq!(client.take_received_credit().unwrap(), Some((1, 42)));
+        assert!(client.take_received_credit().unwrap().is_none());
+        client.flow.received = 84;
+        assert_eq!(client.take_received_credit().unwrap(), Some((2, 84)));
     }
     #[test]
     fn recovered_unknown_cannot_resend_and_rejects_cross_target_journal() {

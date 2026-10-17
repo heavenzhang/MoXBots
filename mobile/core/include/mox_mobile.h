@@ -32,6 +32,11 @@ MoxMobileBuffer mox_mobile_call(MoxMobileClient *, const uint8_t *, size_t);
  * Feed <=256KiB. Native WSS handles outer auth/TLS with verified bootstrap. */
 MoxMobileBuffer mox_mobile_feed(MoxMobileClient *, const uint8_t *, size_t);
 MoxMobileBuffer mox_mobile_drain(MoxMobileClient *);
+/* Native authenticated relay controls only; never expose through JS.
+ * credit validates strict cumulative-byte sequence. received_credit returns
+ * {sequence,receivedBytes} or null; send it after successful feed. */
+MoxMobileBuffer mox_mobile_credit(MoxMobileClient *, uint64_t sequence, uint64_t received_bytes);
+MoxMobileBuffer mox_mobile_received_credit(MoxMobileClient *);
 void mox_mobile_buffer_free(MoxMobileBuffer);
 void mox_mobile_free(MoxMobileClient *);
 #ifdef __cplusplus

@@ -139,15 +139,47 @@ pub unsafe extern "C" fn mox_mobile_drain(client: *mut MoxMobileClient) -> MoxMo
         let Some(client) = client.as_mut() else {
             return MoxMobileBuffer::failure("MOBILE_HANDLE_INVALID");
         };
-        match client
-            .inner
-            .account
-            .ensure_current()
-            .and_then(|_| client.inner.channel.drain_frame())
-        {
+        match client.inner.drain_native() {
             Ok(Some(bytes)) => MoxMobileBuffer::bytes(bytes, 0),
             Ok(None) => MoxMobileBuffer::bytes(Vec::new(), 0),
             Err(error) => MoxMobileBuffer::failure(&error.code),
+        }
+    })
+}
+/// # Safety
+/// Live native handle, serialized access; values come from authenticated relay.
+#[no_mangle]
+pub unsafe extern "C" fn mox_mobile_credit(
+    client: *mut MoxMobileClient,
+    sequence: u64,
+    received_bytes: u64,
+) -> MoxMobileBuffer {
+    guarded(|| {
+        let Some(client) = client.as_mut() else {
+            return MoxMobileBuffer::failure("MOBILE_HANDLE_INVALID");
+        };
+        match client.inner.relay_credit(sequence, received_bytes) {
+            Ok(()) => MoxMobileBuffer::json(Ok(Value::Null)),
+            Err(code) => MoxMobileBuffer::failure(&code),
+        }
+    })
+}
+/// # Safety
+/// Live native handle, serialized access; returned credit belongs to its scope.
+#[no_mangle]
+pub unsafe extern "C" fn mox_mobile_received_credit(
+    client: *mut MoxMobileClient,
+) -> MoxMobileBuffer {
+    guarded(|| {
+        let Some(client) = client.as_mut() else {
+            return MoxMobileBuffer::failure("MOBILE_HANDLE_INVALID");
+        };
+        match client.inner.take_received_credit() {
+            Ok(Some((sequence, received_bytes))) => MoxMobileBuffer::json(Ok(
+                json!({"sequence":sequence,"receivedBytes":received_bytes}),
+            )),
+            Ok(None) => MoxMobileBuffer::json(Ok(Value::Null)),
+            Err(code) => MoxMobileBuffer::failure(&code),
         }
     })
 }
