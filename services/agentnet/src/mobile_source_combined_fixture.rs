@@ -22,6 +22,21 @@ fn write_private(path: &std::path::Path, value: &Value) {
     drop(file);
     fs::rename(temporary, path).unwrap();
 }
+async fn pause_hint_response(root: &std::path::Path, phase: &str) {
+    let flag = root.join(format!("pause-hint-{phase}"));
+    write_private(
+        &root.join("hint-pause-entered.json"),
+        &json!({"phase":phase}),
+    );
+    let start = std::time::Instant::now();
+    while flag.exists() {
+        assert!(
+            start.elapsed() < Duration::from_secs(15),
+            "explicit fixture HTTP pause timed out"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
 #[tokio::test]
 #[ignore = "explicit isolated loopback fixture spawned by actual Host publish acceptance"]
 async fn actual_host_source_service_fixture() {
@@ -68,6 +83,28 @@ async fn actual_host_source_service_fixture() {
     // These two test-only adapters use the actual AuthStore for credential freshness.
     let router=service.router().merge(Router::new().route("/api/agent-network/instance",get({let instance=config["instance"].clone();move||{let instance=instance.clone();async move{([(header::CACHE_CONTROL,"no-store")],Json(instance))}}}))).merge(Router::new().route("/auth/session",get({let auth=auth.clone();move|headers:HeaderMap|{let auth=auth.clone();async move{let result=bearer_token(&headers).and_then(|bearer|auth.validate_session(&bearer).map_err(|_|MobileHttpError::unauthorized()));match result{Ok(s)=>(StatusCode::OK,[(header::CACHE_CONTROL,"no-store")],Json(json!({"principalId":s.account.principal_id,"networkId":s.account.network_id,"deviceId":s.device_id,"expiresAt":s.expires_at}))).into_response(),Err(e)=>e.into_response()}}}})));
     let router = router.layer(axum::middleware::from_fn(no_store));
+    let router = router.layer(axum::middleware::from_fn({
+        let root = root.clone();
+        move |request: axum::extract::Request, next: axum::middleware::Next| {
+            let root = root.clone();
+            async move {
+                let hint = request.uri().path() == "/api/mobile-notify/v1/source/hints";
+                // Capture this request's test gates before processing: a late old
+                // request must never adopt a subsequent case's pause flag.
+                let before = hint && root.join("pause-hint-before").exists();
+                let after = hint && root.join("pause-hint-after").exists();
+                if before {
+                    pause_hint_response(&root, "before").await;
+                }
+                let response = next.run(request).await;
+                if after {
+                    pause_hint_response(&root, "after").await;
+                }
+                response
+            }
+        }
+    }));
+
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     write_private(
         &root.join("service-ready.json"),
