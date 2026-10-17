@@ -40,6 +40,7 @@ Add default-disabled, provider-gated HTTP source challenge and hint endpoints wi
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo test --manifest-path services/agentnet/Cargo.toml --lib` — 175 passed, 5 ignored (manual fixtures), before the readback-only core repair.
 - After the readback repair, focused service HTTP tests — 10 passed.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo clippy --manifest-path services/agentnet/Cargo.toml --all-targets -- -D warnings` — passed.
+- `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo clippy --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked --all-targets -- -D warnings` — passed after the SourceChallengeInput API refactor.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo fmt --manifest-path services/agentnet/Cargo.toml --check` and `git diff --check` — passed.
 
 ## Blockers and unknowns

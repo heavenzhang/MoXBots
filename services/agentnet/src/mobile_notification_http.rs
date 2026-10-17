@@ -18,7 +18,7 @@ use myagents_agentnet_device_core::{
 };
 use myagents_agentnet_mobile_notify_core::{
     Authority, FreshEndpoint, HostHintV1, NotifyError, Provider, RegisterEndpointV1,
-    SessionPointer, SourceChallengeState, Store, TargetScope,
+    SessionPointer, SourceChallengeInput, SourceChallengeState, Store, TargetScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -360,17 +360,21 @@ async fn create_source_challenge(
                 &record.key_fingerprint,
             )
             .map_err(MobileHttpError::device)?;
+        let source_input = SourceChallengeInput::new(
+            challenge.challenge_id.clone(),
+            request.source_event_id.clone(),
+            request.connection_epoch.clone(),
+            request.agent_id.clone(),
+            request.session_id.clone(),
+            challenge.expires_at,
+        )
+        .map_err(MobileHttpError::notify)?;
         service
             .store
             .bind_source_challenge(
                 authority,
                 &session.session_handle,
-                &challenge.challenge_id,
-                &request.source_event_id,
-                &request.connection_epoch,
-                &request.agent_id,
-                &request.session_id,
-                challenge.expires_at,
+                &source_input,
                 unix_seconds()?,
             )
             .map_err(MobileHttpError::notify)?;
