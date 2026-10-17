@@ -10,9 +10,23 @@ import {homedir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
+import {crc32,deflateSync} from 'node:zlib';
 import type {InternalManagementAuthority} from '../src/host/management-ipc';
 
 const started=Date.now(), repository=resolve(import.meta.dirname,'..');
+const imageBoundary=process.argv.includes('--image-boundary');
+function largePng(){
+  // Valid 1400px RGB pixels, deliberately larger than 5MiB and below the
+  // original product's 10MiB image limit. Random pixels are fixture data.
+  const width=1400,height=1400,rows=Buffer.alloc(height*(width*3+1));
+  for(let y=0;y<height;y++)randomBytes(width*3).copy(rows,y*(width*3+1)+1);
+  const chunk=(type:string,data:Buffer)=>{
+    const tag=Buffer.from(type),out=Buffer.alloc(data.length+12);out.writeUInt32BE(data.length);tag.copy(out,4);data.copy(out,8);
+    out.writeUInt32BE(crc32(Buffer.concat([tag,data])),data.length+8);return out;
+  };
+  const header=Buffer.alloc(13);header.writeUInt32BE(width);header.writeUInt32BE(height,4);header[8]=8;header[9]=2;
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(rows)),chunk('IEND',Buffer.alloc(0))]);
+}
 const root=await mkdtemp(join(homedir(),'.mox-original-host-'));
 await chmod(root,0o700);
 const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'workspaces','default');
@@ -80,7 +94,8 @@ const supplier=httpServer(async(request,response)=>{
     assert.equal(request.headers['x-api-key'],secret);
     const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};
     assert.equal(body.model,'original-host-model');
-    seenAttachment ||= JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/');
+    const encoded=JSON.stringify(body.messages);
+    seenAttachment ||= imageBoundary ? encoded.includes('"type":"image"') : encoded.includes('@myagents_files/remote-mobile/');
     calls++;captureProcesses();reply(response);
   }catch{response.writeHead(500).end();}
 });
@@ -168,17 +183,23 @@ try{
   assert.deepEqual((await source()).result,hint);record('original-terminal-generic-source',hint);
   const callsAfterStart=calls;assert.deepEqual((await mobile({kind:'mobile.start',operationId,text:'First original Host loopback turn.',assetIds:[]})).result,receipt);
   assert.equal(calls,callsAfterStart);record('start-retry-no-session-replay');
-  const sendId=randomUUID(),assetId=randomUUID(),bytes=Buffer.from('Original Host fixture attachment bytes.\n');
+  const sendId=randomUUID(),assetId=randomUUID(),bytes=imageBoundary?largePng():Buffer.from('Original Host fixture attachment bytes.\n');
+  if(imageBoundary){assert(bytes.length>5*1024*1024&&bytes.length<=10*1024*1024);record('valid-large-image-staging',{sizeBytes:bytes.length,width:1400,height:1400});}
   const sha256=createHash('sha256').update(bytes).digest('hex');
   for(const operation of [
-    {kind:'asset.stage.begin',agentId:'original-host-agent',sessionId,assetId,name:'fixture.txt',mimeType:'text/plain',sizeBytes:bytes.length,sha256},
-    {kind:'asset.stage.chunk',agentId:'original-host-agent',sessionId,assetId,offset:0,dataBase64:bytes.toString('base64'),sha256},
-    {kind:'asset.stage.finish',agentId:'original-host-agent',sessionId,assetId},
+    {kind:'asset.stage.begin',agentId:'original-host-agent',sessionId,assetId,name:imageBoundary?'fixture.png':'fixture.txt',mimeType:imageBoundary?'image/png':'text/plain',sizeBytes:bytes.length,sha256},
   ]){const response=await internal(operation);assert.notEqual((response.result as {kind:string}).kind,'error');}
-  await mobile({kind:'mobile.send',operationId:sendId,sessionId,text:'Second original Host turn with a real uploaded file.',assetIds:[assetId]});
+  for(let offset=0;offset<bytes.length;offset+=24*1024){
+    const block=bytes.subarray(offset,offset+24*1024);
+    const response=await internal({kind:'asset.stage.chunk',agentId:'original-host-agent',sessionId,assetId,offset,dataBase64:block.toString('base64'),sha256:createHash('sha256').update(block).digest('hex')});
+    assert.notEqual((response.result as {kind:string}).kind,'error');
+  }
+  assert.notEqual(((await internal({kind:'asset.stage.finish',agentId:'original-host-agent',sessionId,assetId})).result as {kind:string}).kind,'error');
+  const submitted=(await mobile({kind:'mobile.send',operationId:sendId,sessionId,text:'Second original Host turn with a real uploaded file.',assetIds:[assetId]})).result as {kind:string;code?:string};
+  assert.notEqual(submitted.kind,'error',submitted.code);
   await wait('accepted send',async()=>{const r=(await mobile({kind:'mobile.receipt',operationId:sendId})).result as Record<string,unknown>;if(r.status==='rejected'||r.status==='unconfirmed')throw Error(`FIXTURE_SEND_${r.status}:${r.code}`);return r.status==='accepted'?r:undefined;});
   await wait('actual second terminal',async()=>{const s=await remote({kind:'get',sessionId,limit:30});return s.terminal==='complete'&&s.state==='idle'&&calls>callsAfterStart&&JSON.stringify(s.messages).includes('Second original Host turn')?s:undefined;});
-  const materialized=join(workspace,'myagents_files','remote-mobile',sessionId,sendId,`${assetId}.txt`);
+  const materialized=imageBoundary?join(home,'.myagents','attachments',sessionId,`${sendId}-${assetId}.png`):join(workspace,'myagents_files','remote-mobile',sessionId,sendId,`${assetId}.txt`);
   assert.deepEqual(await readFile(materialized),bytes);assert(seenAttachment,'supplier did not see original worker attachment reference');
   const callsAfterSend=calls;
   const sendReceipt=(await mobile({kind:'mobile.receipt',operationId:sendId})).result;

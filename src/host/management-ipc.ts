@@ -68,6 +68,7 @@ const localSourceAuthoritySchema = z.object({
   accountBinding: z.string().uuid(), managementBinding:z.string().uuid(),
 }).strict().refine(a => a.accountBinding===a.managementBinding && a.connection.networkId===a.local.networkId && a.connection.serviceId===a.local.serviceId && UUID.test(a.connection.connectionEpoch));
 const localSourceOperationSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('catalog.snapshot'),cursor:z.string().min(1).max(128).optional()}).strict(),
   z.object({kind:z.literal('source.peek')}).strict(),
   z.object({kind:z.literal('source.ack'),sourceEventId:z.string().uuid(),eventId:z.string().uuid()}).strict(),
 ]);

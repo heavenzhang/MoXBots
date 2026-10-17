@@ -115,10 +115,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - name: Verify original Host mobile admission, attachments and restart recovery
+      - name: Verify original Host mobile admission, images, approvals and restart recovery
         if: runner.os == 'Linux'
         timeout-minutes: 5
-        run: node --import tsx scripts/verify-mobile-original-host-loopback.ts
+        run: |
+          node --import tsx scripts/verify-mobile-original-host-loopback.ts
+          node --import tsx scripts/verify-mobile-original-host-loopback.ts --image-boundary
+          node --import tsx scripts/verify-mobile-original-host-interactions.ts
       - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: rustfmt, clippy
