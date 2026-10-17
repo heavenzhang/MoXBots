@@ -1,6 +1,5 @@
 import Foundation
 import CryptoKit
-import CoreFoundation
 
 struct NativeUploadTarget {
   let targetId: String
@@ -518,11 +517,10 @@ final class NativeUploadScheduler {
   private func recordName(_ identity: String, _ localId: String) -> String { "attachment-upload-v1:\(identity):\(localId)" }
   private func isCanonicalUuid(_ value: String) -> Bool { UUID(uuidString: value)?.uuidString.lowercased() == value }
   private func strictInteger(_ value: Any?) -> Int? {
-    guard let number = value as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID(),
-      !CFNumberIsFloatType(number as! CFNumber) else { return nil }
-    let doubleValue = number.doubleValue
-    guard doubleValue.isFinite, doubleValue >= Double(Int.min), doubleValue <= Double(Int.max) else { return nil }
-    return number.intValue
+    guard let number = value as? NSNumber else { return nil }
+    let type = String(cString: number.objCType)
+    guard ["s", "i", "l", "q"].contains(type) else { return nil }
+    return Int(number.stringValue)
   }
   private func digest(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
