@@ -11,6 +11,7 @@ import { DraftPersistence, DraftUpdate } from '../draftPersistence';
 import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
 import { SerialUploadQueue } from '../uploadQueue';
 import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../attachmentUploadTracker';
+import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactChatReturn, rememberArtifactChatReturn, resolveArtifactReturnTarget } from '../artifactNavigation';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -313,6 +314,7 @@ function AppBody() {
     const routeEpoch = routeFocusGate.capture();
     const routeIsCurrent = () => routeFocusGate.isCurrent(routeEpoch) && AppState.currentState === 'active';
     if (!routeIsCurrent()) return;
+    const artifactReturn = peekArtifactChatReturn();
     const refreshEpoch = ++accountRefreshEpochRef.current;
     accountRefreshInFlightRef.current = refreshEpoch;
     const requestIsCurrent = () => refreshEpoch === accountRefreshEpochRef.current && routeIsCurrent();
@@ -324,6 +326,7 @@ function AppBody() {
     accountRef.current = reply;
     setAccount(reply);
     if (reply.state !== 'signed-in') {
+      clearArtifactChatReturn(artifactReturn);
       draftPersistenceRef.current?.clear();
       moveOwner('login', null, null);
       setSessions([]);
@@ -335,12 +338,38 @@ function AppBody() {
     if (!requestIsCurrent()) return;
     if (result.kind !== 'targets') throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
     setTargets(result.items);
+    if (artifactReturn) {
+      const returnTarget = resolveArtifactReturnTarget(artifactReturn, reply.principalId, result.items);
+      if (returnTarget && requestIsCurrent()) {
+        try {
+          const returnedSnapshot = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: returnTarget.targetId, request: { kind: 'get', agentId: returnTarget.agentId, sessionId: artifactReturn.sessionId, limit: 30 } }));
+          if (!requestIsCurrent()) return;
+          if (returnedSnapshot.kind === 'snapshot' && artifactReturnSnapshotMatches(artifactReturn, returnedSnapshot)) {
+            clearArtifactChatReturn(artifactReturn);
+            const restoredOwner = moveOwner('chat', returnTarget, artifactReturn.sessionId);
+            if (!requestIsCurrent() || !viewStillOwned(restoredOwner, ownerRef.current)) return;
+            commitSnapshot(returnedSnapshot);
+            setNotice(null);
+            void loadMobileCatalog(returnTarget);
+            const journal = await requestNative({ version: 1, kind: 'operations.pending' });
+            if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+            return;
+          }
+        } catch {
+          if (!requestIsCurrent()) return;
+          // The session must be re-opened from the current list if its fresh snapshot is unavailable.
+        }
+      }
+      if (!requestIsCurrent()) return;
+      clearArtifactChatReturn(artifactReturn);
+      setNotice({ text: '无法确认原会话仍可访问。请从当前列表重新打开。', tone: 'error' });
+    }
     const previous = targetRef.current;
     const selectedTarget = result.items.find((item) => item.identityKey === previous?.identityKey)
       ?? result.items.find((item) => item.online) ?? result.items[0] ?? null;
     const previousOwner = ownerRef.current;
     const sameLogicalTarget = !!previous && !!selectedTarget && previous.identityKey === selectedTarget.identityKey;
-    const nextScreen = previousOwner.screen === 'login' ? 'sessions' : previousOwner.screen;
+    const nextScreen = artifactReturn ? 'sessions' : previousOwner.screen === 'login' ? 'sessions' : previousOwner.screen;
     const nextSessionId = nextScreen === 'chat' && sameLogicalTarget ? previousOwner.sessionId : null;
     if (previousOwner.screen === 'chat' && !sameLogicalTarget) {
       setNotice({ text: '当前 Bot 已不可用，请从列表重新打开会话。', tone: 'error' });
@@ -991,7 +1020,7 @@ function AppBody() {
         <View style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || '新会话'}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
-      {menuOpen && <View style={[styles.smallMenu, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!target?.targetId} onPress={() => { setMenuOpen(false); if (target?.targetId) router.push({ pathname: '/artifacts', params: { targetId: target.targetId, sessionId: snapshot?.sessionId ?? '' } }); }} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 8 }}><FileText size={17} color={C.green}/><Text style={styles.pendingLink}>查看会话成果</Text></Pressable></View>}
+        {menuOpen && <View style={[styles.smallMenu, { flexDirection: 'column', alignItems: 'stretch', gap: 8 }]}><View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View><Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!target?.targetId} onPress={() => { setMenuOpen(false); if (target?.targetId) { rememberArtifactChatReturn(account?.principalId && target.identityKey && target.agentId && snapshot?.sessionId ? { principalId: account.principalId, identityKey: target.identityKey, agentId: target.agentId, sessionId: snapshot.sessionId } : null); router.push({ pathname: '/artifacts', params: { targetId: target.targetId, sessionId: snapshot?.sessionId ?? '' } }); } }} style={{ minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 8 }}><FileText size={17} color={C.green}/><Text style={styles.pendingLink}>查看会话成果</Text></Pressable></View>}
       {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : undefined}/>}
       <ScrollView ref={scrollRef} style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
         {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}

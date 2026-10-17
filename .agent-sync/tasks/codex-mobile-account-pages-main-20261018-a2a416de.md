@@ -60,6 +60,20 @@ Add native Expo Router account, profile, security, storage, about, and help scre
 - [x] Pause/resume QA case now holds at 50% until explicit pause; explicit resume completes without a timer racing the user.
 - [ ] Root re-review read-only status restoration, deterministic pause/resume fixture, 44 px touch targets, and post-blur dispatch stop after integrating the latest follow-up.
 
+## Follow-up: return from artifacts to the originating chat
+
+- [x] Keep a one-use in-memory navigation hint for the originating account principal, stable target identity, agent, and session; do not treat route parameters as authorization.
+- [x] On root-route focus, verify signed-in account and fresh target catalog, resolve the current native-approved target ID by stable identity/agent, and fetch the exact session snapshot before restoring chat.
+- [x] If the account, target, online state, or snapshot no longer matches, remain in the current sessions flow and require the user to reopen a verified session.
+- [x] Add focused policy tests for stale account/target/session hints and for preserving the hint when a refresh is superseded by route blur.
+- [ ] Root actual IAB re-review of chat → artifacts → return-to-originating-chat and fallback to sessions when the original session is no longer available.
+
+## Follow-up verification
+
+- `mobile/app`: `npm run typecheck` PASS; `npm run lint` PASS; `npm run test:policy` PASS (45 tests); `git diff --check` PASS.
+- Docs checked against Expo SDK 58 Router and Stack references; behavior uses existing root-focus refresh and custom in-memory hint, not route parameters for authority.
+- No native-device or post-integration IAB claim; root owns integration and actual route acceptance.
+
 ## Follow-up verification
 
 - `mobile/app`: `npm run typecheck` PASS; `npm run lint` PASS; `npm run test:policy` PASS (43 tests).
