@@ -136,3 +136,13 @@ license blocker above is resolved. iOS SDK/system-admin setup remains parent-own
   extension builds. Worker does not claim these from pure store or TLS fixtures.
 - Parent must keep output registration rooted in the real transcript owner and
   retain ready leases through SessionEngine attachment admission/consumption.
+
+## Asset extension — final parity check
+
+Final required-nextBefore-nullability fixture fixed a Rust Option default that
+would accept an omitted field rejected by Zod. New+legacy Vitest fixtures passed;
+management codec 26, core 29 and asset store 10 tests all passed on final sources.
+Protocol/core/store strict clippy passed. Final Rust linking explicitly selected
+previously installed CommandLineTools for macOS because the newly active Xcode
+SDK license prompt blocks default tools; no unlicensed Xcode/iOS SDK was used.
+Parent retains the system license flow and actual Android/iOS/Host integration.
