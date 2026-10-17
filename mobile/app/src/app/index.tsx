@@ -9,6 +9,7 @@ import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSi
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
 import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
 import { SerialUploadQueue } from '../uploadQueue';
+import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../attachmentUploadTracker';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -40,6 +41,7 @@ const errorMessages: Record<string, string> = {
   MOBILE_ATTACHMENT_UPLOAD_ACTIVE: '附件仍在上传，请先暂停或等待完成。',
   MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED: '取消状态尚未确认；附件仍保留。请查询状态后重试移除。',
   MOBILE_UPLOAD_NOT_FOUND: '设备未找到上传记录。请查询或重新选择附件后重试。',
+  MOBILE_ATTACHMENT_UPLOAD_NOT_FOUND: '本机没有这条上传任务记录，可以移除附件后重新选择。',
   MOBILE_ATTACHMENT_NOT_FOUND: '设备未找到本地附件。请重新选择文件。',
   MOBILE_DRAFT_CONFLICT: '草稿版本发生变化；当前编辑已保留。继续编辑后可重试保存。',
 };
@@ -108,6 +110,7 @@ function AppBody() {
   const attachmentBatchEpochRef = useRef(0);
   const attachmentsRef = useRef<AttachmentItem[]>([]);
   const attachmentQueueRef = useRef(new SerialUploadQueue());
+  const attachmentUploadTrackerRef = useRef(new AttachmentUploadTracker());
   const attachmentUploadWaitersRef = useRef(new Map<string, { batchEpoch: number; finish: () => void }>());
   const attachmentScopeRef = useRef<string | null>(null);
   const mobileUnknownAttachmentsRef = useRef(new Map<string, { ownerKey: string; localIds: string[]; targetId: string; identityKey: string; agentId: string; principalId: string | null; sessionId: string | null }>());
@@ -154,9 +157,10 @@ function AppBody() {
   useEffect(() => subscribeAttachmentUploadChanges((upload) => {
     const currentScope = attachmentScopeRef.current;
     if (!currentScope || targetRef.current?.targetId !== upload.targetId || targetRef.current.identityKey !== upload.identityKey || targetRef.current.agentId !== upload.agentId) return;
-    updateAttachments((items) => items.map((item) => item.ownerKey === currentScope && item.file.localId === upload.localId ? { ...item, upload, errorCode: upload.errorCode ?? undefined } : item));
-    if (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused')) releaseAttachmentJob(upload.localId);
-    if (upload.errorCode) say(upload.errorCode, 'error');
+    const currentUpload = attachmentUploadTrackerRef.current.publish(upload);
+    updateAttachments((items) => items.map((item) => item.ownerKey === currentScope && item.file.localId === currentUpload.localId ? { ...item, upload: currentUpload, errorCode: currentUpload.errorCode ?? undefined } : item));
+    if (currentUpload.state === 'ready' || currentUpload.state === 'cancelled' || (currentUpload.errorCode && currentUpload.state !== 'paused')) releaseAttachmentJob(currentUpload.localId);
+    if (currentUpload.errorCode) say(currentUpload.errorCode, 'error');
   }), [releaseAttachmentJob, say, updateAttachments]);
   const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
     const priorOwner = ownerRef.current;
@@ -165,6 +169,7 @@ function AppBody() {
     if (priorAttachmentScope !== nextAttachmentScope) {
       attachmentBatchEpochRef.current += 1;
       attachmentQueueRef.current.invalidate();
+      attachmentUploadTrackerRef.current.invalidate();
       for (const item of attachmentsRef.current) {
         if (item.upload?.state === 'uploading') void requestNative({ version: 1, kind: 'attachment.upload.pause', localId: item.file.localId, targetId: item.upload.targetId });
         releaseAttachmentJob(item.file.localId);
@@ -579,9 +584,11 @@ function AppBody() {
   const isAttachmentOwnerCurrent = (owner: ViewOwner, selected: Target, scopeKey: string, batchEpoch: number, isQueueCurrent: () => boolean) =>
     isQueueCurrent() && batchEpoch === attachmentBatchEpochRef.current && viewStillOwned(owner, ownerRef.current)
       && attachmentScopeRef.current === scopeKey && targetRef.current?.identityKey === selected.identityKey;
-  const waitForUploadResolution = (file: NativeAttachment, batchEpoch: number): Promise<void> => new Promise((resolve) => {
+  const waitForUploadResolution = (file: NativeAttachment, selected: Target, batchEpoch: number): Promise<void> => new Promise((resolve) => {
     const current = attachmentsRef.current.find((item) => item.file.localId === file.localId);
-    if (!current || current.upload?.state === 'ready' || current.upload?.state === 'cancelled') { resolve(); return; }
+    const upload = attachmentUploadTrackerRef.current.current(file.localId);
+    if (!current || upload?.targetId === selected.targetId && upload.identityKey === selected.identityKey && upload.agentId === selected.agentId
+      && (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused'))) { resolve(); return; }
     attachmentUploadWaitersRef.current.set(file.localId, { batchEpoch, finish: resolve });
   });
   const applyUploadReply = (reply: unknown, file: NativeAttachment, selected: Target): NativeAttachmentUpload => {
@@ -598,19 +605,19 @@ function AppBody() {
     try {
       let upload: NativeAttachmentUpload;
       try {
-        upload = applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId }), file, selected);
+        upload = attachmentUploadTrackerRef.current.publish(applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId }), file, selected));
       } catch (startError) {
         const startCode = startError instanceof Error ? startError.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
         // A transport failure can follow durable upload creation; status decides whether the native single-upload slot is still occupied.
         try {
           const status = await requestNative({ version: 1, kind: 'attachment.upload.status', localId: file.localId, targetId: selected.targetId });
-          upload = applyUploadReply(status, file, selected);
+          upload = attachmentUploadTrackerRef.current.publish(applyUploadReply(status, file, selected));
         } catch (statusError) {
           const statusCode = statusError instanceof Error ? statusError.message : 'MOBILE_ATTACHMENT_STATUS_FAILED';
           if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) return;
           setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: statusCode })); say(statusCode, 'error');
-          if (statusCode === 'MOBILE_UPLOAD_NOT_FOUND' || startCode === 'MOBILE_UPLOAD_CANCELLED') { releaseAttachmentJob(file.localId, batchEpoch); return; }
-          await waitForUploadResolution(file, batchEpoch);
+          if (isConfirmedUploadRecordAbsence(statusCode) || startCode === 'MOBILE_UPLOAD_CANCELLED') { releaseAttachmentJob(file.localId, batchEpoch); return; }
+          await waitForUploadResolution(file, selected, batchEpoch);
           return;
         }
       }
@@ -618,13 +625,13 @@ function AppBody() {
       setAttachmentItem(file.localId, (item) => ({ ...item, upload, errorCode: upload.errorCode ?? undefined }));
       if (upload.errorCode) say(upload.errorCode, 'error');
       if (upload.state === 'ready' || upload.state === 'cancelled' || (upload.errorCode && upload.state !== 'paused')) releaseAttachmentJob(file.localId, batchEpoch);
-      else await waitForUploadResolution(file, batchEpoch);
+      else await waitForUploadResolution(file, selected, batchEpoch);
     } catch (error) {
       const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
       if (isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, isQueueCurrent)) {
         setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: code })); say(code, 'error');
-        if (code === 'MOBILE_UPLOAD_CANCELLED' || code === 'MOBILE_UPLOAD_NOT_FOUND' || code === 'MOBILE_ATTACHMENT_TOO_LARGE' || code === 'MOBILE_ATTACHMENT_IMAGE_INVALID') releaseAttachmentJob(file.localId, batchEpoch);
-        else await waitForUploadResolution(file, batchEpoch);
+        if (code === 'MOBILE_UPLOAD_CANCELLED' || isConfirmedUploadRecordAbsence(code) || code === 'MOBILE_ATTACHMENT_TOO_LARGE' || code === 'MOBILE_ATTACHMENT_IMAGE_INVALID') releaseAttachmentJob(file.localId, batchEpoch);
+        else await waitForUploadResolution(file, selected, batchEpoch);
       }
     }
   };
@@ -639,7 +646,7 @@ function AppBody() {
     const batchEpoch = attachmentBatchEpochRef.current;
     const scopeKey = item.ownerKey;
     try {
-      const upload = applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: item.file.localId, targetId: selected.targetId }), item.file, selected);
+      const upload = attachmentUploadTrackerRef.current.publish(applyUploadReply(await requestNative({ version: 1, kind: 'attachment.upload', localId: item.file.localId, targetId: selected.targetId }), item.file, selected));
       if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, () => true)) return;
       setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload, errorCode: upload.errorCode ?? undefined }));
       if (upload.errorCode) say(upload.errorCode, 'error');
@@ -648,7 +655,7 @@ function AppBody() {
       if (!isAttachmentOwnerCurrent(owner, selected, scopeKey, batchEpoch, () => true)) return;
       const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
       setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error');
-      if (code === 'MOBILE_UPLOAD_CANCELLED' || code === 'MOBILE_UPLOAD_NOT_FOUND') releaseAttachmentJob(item.file.localId, batchEpoch);
+      if (code === 'MOBILE_UPLOAD_CANCELLED' || isConfirmedUploadRecordAbsence(code)) releaseAttachmentJob(item.file.localId, batchEpoch);
     }
   };
 
@@ -698,24 +705,43 @@ function AppBody() {
     try {
       const reply = await requestNative({ version: 1, kind: 'attachment.upload.pause', localId: item.file.localId, targetId: item.upload.targetId });
       if (reply.kind === 'error') throw new Error(reply.code);
-      if (reply.kind !== 'attachment-upload' || reply.localId !== item.file.localId || reply.targetId !== item.upload.targetId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
-      if (viewStillOwned(owner, ownerRef.current)) setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload: reply, errorCode: reply.errorCode ?? undefined }));
+      if (reply.kind !== 'attachment-upload' || reply.localId !== item.file.localId || reply.targetId !== item.upload.targetId
+        || reply.identityKey !== item.upload.identityKey || reply.agentId !== item.upload.agentId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
+      const projection = attachmentUploadTrackerRef.current.publish(reply);
+      if (viewStillOwned(owner, ownerRef.current)) setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload: projection, errorCode: projection.errorCode ?? undefined }));
     } catch (error) { if (viewStillOwned(owner, ownerRef.current)) { const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_PAUSE_FAILED'; setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error'); } }
   };
 
   const removeAttachment = async (item: AttachmentItem) => {
     if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
     const owner = ownerRef.current;
+    const principalId = accountRef.current?.principalId ?? null;
+    const selectedIdentityKey = targetRef.current?.identityKey;
     try {
       const hasActiveJob = attachmentUploadWaitersRef.current.has(item.file.localId);
-      if ((item.upload || hasActiveJob) && item.upload?.state !== 'cancelled') {
+      if ((item.upload || hasActiveJob) && item.upload?.state !== 'cancelled' && item.upload?.state !== 'ready') {
         const selectedTargetId = item.upload?.targetId ?? targetRef.current?.targetId;
         if (!selectedTargetId) throw new Error('TARGET_UNAVAILABLE');
         const cancelled = await requestNative({ version: 1, kind: 'attachment.upload.cancel', localId: item.file.localId, targetId: selectedTargetId });
-        if (cancelled.kind === 'error' && cancelled.code !== 'MOBILE_UPLOAD_NOT_FOUND') throw new Error(cancelled.code);
-        if (cancelled.kind !== 'error' && (cancelled.kind !== 'attachment-upload' || cancelled.state !== 'cancelled' || cancelled.localId !== item.file.localId)) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
-        releaseAttachmentJob(item.file.localId, attachmentBatchEpochRef.current);
+        if (cancelled.kind === 'error') {
+          if (!isConfirmedUploadRecordAbsence(cancelled.code)) throw new Error(cancelled.code);
+          releaseAttachmentJob(item.file.localId, attachmentBatchEpochRef.current);
+        } else {
+          const selected = targetRef.current;
+          if (cancelled.kind !== 'attachment-upload' || cancelled.localId !== item.file.localId || cancelled.targetId !== selectedTargetId
+            || !selected || cancelled.identityKey !== selected.identityKey || cancelled.agentId !== selected.agentId) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+          const projection = attachmentUploadTrackerRef.current.publish(cancelled);
+          if (projection.state === 'paused' && !projection.errorCode) {
+            const final = await attachmentUploadTrackerRef.current.wait({ localId: projection.localId, targetId: projection.targetId, identityKey: projection.identityKey, agentId: projection.agentId, uploadId: projection.uploadId }, true);
+            if (!final) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+            if (final.errorCode) throw new Error(final.errorCode);
+            if (final.state !== 'cancelled' && final.state !== 'ready') throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+          } else if (projection.errorCode) throw new Error(projection.errorCode);
+          else if (projection.state !== 'cancelled' && projection.state !== 'ready') throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+          releaseAttachmentJob(item.file.localId, attachmentBatchEpochRef.current);
+        }
       }
+      if (!viewStillOwned(owner, ownerRef.current) || !selectedIdentityKey || targetRef.current?.identityKey !== selectedIdentityKey || accountRef.current?.principalId !== principalId) return;
       const removed = await requestNative({ version: 1, kind: 'attachment.remove', localId: item.file.localId });
       if (removed.kind === 'error') throw new Error(removed.code);
       if (removed.kind !== 'attachment-removed') throw new Error('MOBILE_ATTACHMENT_REMOVE_INVALID');
@@ -919,7 +945,7 @@ function AppBody() {
       {menuOpen && <View style={styles.smallMenu}><Text style={styles.caption}>设备：{target?.deviceName ?? '未知'} · 运行时：{snapshot?.runtime ?? target?.runtime ?? '未知'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭会话信息" onPress={() => setMenuOpen(false)}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>}
       {notice && <NoticeView notice={notice}/>}
       <ScrollView ref={scrollRef} style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}>
-        {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '输入第一条消息后，设备将按原 Session 所有者创建会话。'}/>}
+        {!snapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
         {snapshot?.state === 'unavailable' && <EmptyState title="会话暂时不可用" detail="请刷新状态或检查设备连接。" action="重新读取" onAction={() => void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }))}/>}
         {snapshot?.messages.map((item) => <View key={item.id} style={[styles.messageRow, item.role === 'user' && styles.userMessageRow]}><View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}><Text style={[styles.messageText, item.role === 'user' && styles.userText]}>{item.content}</Text>{item.truncated && <Text style={styles.messageMeta}>内容已截断</Text>}{item.tools.map((tool) => <Text key={tool.id} style={styles.toolText}>{tool.status === 'running' ? '运行中' : tool.status === 'error' ? '失败' : '完成'} · {tool.name}{tool.summary ? ` — ${tool.summary}` : ''}</Text>)}</View><Text style={styles.messageTimestamp}>{formatMessageTime(item.timestamp)}</Text></View>)}
         {snapshot?.state === 'running' && <View style={styles.thinking}><ActivityIndicator color={C.green}/><Text style={styles.caption}>正在处理…</Text></View>}
@@ -936,10 +962,10 @@ function AppBody() {
           {attachmentPicking && <View style={styles.menuStatus}><ActivityIndicator size="small" color={C.green}/><Text style={styles.menuHint}>正在打开系统文件选择器…</Text></View>}
           {mobileMode === 'legacy' && <Text style={styles.menuHint}>此设备仅支持纯文本消息，最多 8,000 个字符。</Text>}
           {mobileMode === 'loading' && <Text style={styles.menuHint}>正在读取设备能力…</Text>}
-          {mobileMode === 'error' && <Text style={styles.menuHint}>设备能力暂时不可用；不会模拟附件、模型或建议结果。</Text>}
+          {mobileMode === 'error' && <Text style={styles.menuHint}>设备能力暂不可用，请检查连接或稍后重试；附件、模型与建议暂不可用。</Text>}
           {mobileMode === 'supported' && <View style={styles.modelOptions}><Text style={styles.menuSectionLabel}>模型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionChips}>
-            <Pressable accessibilityRole="button" accessibilityState={{ selected: selectedModelId === null }} onPress={() => setSelectedModelId(null)} style={[styles.optionChip, selectedModelId === null && styles.optionChipActive]}><Text style={[styles.optionChipText, selectedModelId === null && styles.optionChipTextActive]}>默认</Text></Pressable>
-            {mobileModels.map((model) => <Pressable key={model.id} accessibilityRole="button" accessibilityState={{ selected: selectedModelId === model.id }} onPress={() => setSelectedModelId(model.id)} style={[styles.optionChip, selectedModelId === model.id && styles.optionChipActive]}><Text style={[styles.optionChipText, selectedModelId === model.id && styles.optionChipTextActive]}>{model.label}</Text></Pressable>)}
+            <Pressable accessibilityRole="button" accessibilityLabel={`默认模型${selectedModelId === null ? '，已选择' : ''}`} accessibilityState={{ selected: selectedModelId === null }} onPress={() => setSelectedModelId(null)} style={[styles.optionChip, selectedModelId === null && styles.optionChipActive]}><Text style={[styles.optionChipText, selectedModelId === null && styles.optionChipTextActive]}>默认</Text></Pressable>
+            {mobileModels.map((model) => <Pressable key={model.id} accessibilityRole="button" accessibilityLabel={`${model.label}${selectedModelId === model.id ? '，已选择' : ''}`} accessibilityState={{ selected: selectedModelId === model.id }} onPress={() => setSelectedModelId(model.id)} style={[styles.optionChip, selectedModelId === model.id && styles.optionChipActive]}><Text style={[styles.optionChipText, selectedModelId === model.id && styles.optionChipTextActive]}>{model.label}</Text></Pressable>)}
           </ScrollView></View>}
           {suggestionsLoading && <View style={styles.menuStatus}><ActivityIndicator size="small" color={C.green}/><Text style={styles.menuHint}>正在读取本轮建议…</Text></View>}
           {suggestions.length > 0 && <View style={styles.suggestionList}><Text style={styles.menuSectionLabel}>下一步建议 · 点击填入草稿</Text>{suggestions.map((suggestion) => <Pressable key={suggestion} accessibilityRole="button" onPress={() => { saveDraft(suggestion); setSuggestions([]); setComposerMenuOpen(false); }} style={styles.suggestionItem}><Text style={styles.suggestionText}>{suggestion}</Text><ArrowUpRight size={15} color={C.green}/></Pressable>)}</View>}

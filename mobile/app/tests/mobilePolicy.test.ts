@@ -3,6 +3,14 @@ import test from 'node:test';
 import { blocksMutationForScope, permitsLegacyTextFallback, provisionalMutation, receiptProtocol, reconcileFailedMutation, sendProtocol } from '../src/mobilePolicy.ts';
 import { mutationDisposition } from '../src/operationPolicy.ts';
 import { SerialUploadQueue } from '../src/uploadQueue.ts';
+import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../src/attachmentUploadTracker.ts';
+
+const uploadProjection = (state: 'uploading' | 'ready' | 'paused' | 'cancelled', overrides: Record<string, unknown> = {}) => ({
+  kind: 'attachment-upload' as const,
+  localId: '10000000-0000-4000-8000-000000000001', targetId: 'target-a', identityKey: 'identity-a', agentId: 'agent-a',
+  uploadId: '20000000-0000-4000-8000-000000000001', state, receivedBytes: state === 'ready' ? 4 : 1,
+  totalBytes: 4, assetId: state === 'ready' ? '30000000-0000-4000-8000-000000000001' : null, errorCode: null, ...overrides,
+});
 
 test('legacy mode is entered only for explicit mobile capability unsupported codes', () => {
   assert.equal(permitsLegacyTextFallback('MOBILE_PROFILE_MISMATCH'), true);
@@ -84,6 +92,44 @@ test('owner change invalidates queued uploads after the active job settles', asy
   finishActive();
   await Promise.all([active, stale]);
   assert.equal(staleStarted, false);
+});
+
+test('an early ready upload event is not overwritten by the delayed initial uploading reply', () => {
+  const tracker = new AttachmentUploadTracker();
+  const ready = uploadProjection('ready');
+  const initial = uploadProjection('uploading', { receivedBytes: 0 });
+  assert.deepEqual(tracker.publish(ready), ready);
+  assert.deepEqual(tracker.publish(initial), ready);
+  assert.equal(tracker.current(ready.localId)?.state, 'ready');
+});
+
+test('cancel waits for a matching terminal native event; paused error stays unresolved for removal', async () => {
+  const tracker = new AttachmentUploadTracker();
+  const paused = uploadProjection('paused');
+  tracker.publish(paused);
+  const cancelledPromise = tracker.wait(paused, true);
+  const cancelled = uploadProjection('cancelled');
+  assert.deepEqual(tracker.publish(cancelled), cancelled);
+  assert.deepEqual(await cancelledPromise, cancelled);
+
+  tracker.invalidate();
+  const another = uploadProjection('paused', { localId: '10000000-0000-4000-8000-000000000002', uploadId: '20000000-0000-4000-8000-000000000002' });
+  tracker.publish(another);
+  let settled = false;
+  const failedCancel = tracker.wait(another, true).then((value) => { settled = true; return value; });
+  tracker.publish(uploadProjection('cancelled'));
+  await Promise.resolve();
+  assert.equal(settled, false);
+  const pausedError = { ...another, errorCode: 'MOBILE_REMOTE_UNAVAILABLE' };
+  tracker.publish(pausedError);
+  assert.deepEqual(await failedCancel, pausedError);
+});
+
+test('only exact upload journal absence errors permit local source removal', () => {
+  assert.equal(isConfirmedUploadRecordAbsence('MOBILE_ATTACHMENT_UPLOAD_NOT_FOUND'), true);
+  assert.equal(isConfirmedUploadRecordAbsence('MOBILE_UPLOAD_NOT_FOUND'), true);
+  assert.equal(isConfirmedUploadRecordAbsence('MOBILE_ATTACHMENT_UPLOAD_BUSY'), false);
+  assert.equal(isConfirmedUploadRecordAbsence('MOBILE_REMOTE_UNAVAILABLE'), false);
 });
 
 test('attachments require ready asset IDs and legacy is limited to text-only 8k', () => {
