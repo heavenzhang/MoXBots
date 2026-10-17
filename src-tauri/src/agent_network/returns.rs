@@ -804,6 +804,7 @@ struct TargetContext {
     intent: ReturnIntent,
     target_session: String,
     recovery_probe: Option<DeliveryPhase>,
+    open_after: Option<Instant>,
 }
 enum DeliveryPhase {
     Waiting,
@@ -927,6 +928,7 @@ impl TargetReturns {
                     .ok_or_else(|| NetworkError::new("TARGET_SESSION_REQUIRED"))?
                     .into(),
                 recovery_probe: None,
+                open_after: None,
             },
         );
         Ok(true)
@@ -942,6 +944,7 @@ impl TargetReturns {
                 c.route.suspend(recovery_window());
                 c.route.resume_after = None;
                 c.recovery_probe = None;
+                c.open_after = None;
                 (c.route.id.clone(), c.route.recoverable)
             })
             .collect();
@@ -967,6 +970,7 @@ impl TargetReturns {
                 || c.route.suspended_until.is_some();
             c.route.resume(source, target);
             if changed {
+                c.open_after = None;
                 if let Some(d) = self.pending.get_mut(op) {
                     d.phase = DeliveryPhase::Waiting;
                 } else if c.route.recovery_until.is_some() {
@@ -1164,7 +1168,9 @@ impl TargetReturns {
                     channel: channel.into(),
                     control,
                 };
-            } else if matches!(delivery.phase, DeliveryPhase::Waiting) {
+            } else if matches!(delivery.phase, DeliveryPhase::Waiting)
+                && !context.open_after.is_some_and(|at| at > Instant::now())
+            {
                 let key = (
                     context.route.source.device_id.clone(),
                     context.route.source_epoch.clone(),
@@ -1224,7 +1230,9 @@ impl TargetReturns {
                     channel: channel.into(),
                     control,
                 };
-            } else if matches!(phase, DeliveryPhase::Waiting) {
+            } else if matches!(phase, DeliveryPhase::Waiting)
+                && !context.open_after.is_some_and(|at| at > Instant::now())
+            {
                 let key = (
                     context.route.source.device_id.clone(),
                     context.route.source_epoch.clone(),
@@ -1451,6 +1459,41 @@ impl TargetReturns {
             }
             return true;
         }
+        if matches!(
+            error.code.as_str(),
+            "CHANNEL_PAIR_EXISTS" | "CHANNEL_ALREADY_OPEN"
+        ) {
+            // The relay rejected this Open without creating its channel. All
+            // routes sharing it must retire that attempt together. Reuse a
+            // Ready Agent channel immediately, or retry after bounded backoff
+            // when the competing management/Agent channel has gone away.
+            let after = Instant::now() + Duration::from_secs(10);
+            let mut matched = false;
+            for context in self.contexts.values_mut() {
+                if matches!(&context.recovery_probe,
+                    Some(DeliveryPhase::Opening {control: expected,..}) if expected == control)
+                {
+                    context.recovery_probe = Some(DeliveryPhase::Waiting);
+                    context.open_after = Some(after);
+                    matched = true;
+                }
+            }
+            for (op, delivery) in &mut self.pending {
+                if matches!(&delivery.phase,
+                    DeliveryPhase::Opening {control: expected,..} if expected == control)
+                {
+                    delivery.phase = DeliveryPhase::Waiting;
+                    self.contexts
+                        .get_mut(op)
+                        .expect("pending context")
+                        .open_after = Some(after);
+                    matched = true;
+                }
+            }
+            if matched {
+                return true;
+            }
+        }
         let probe = self
             .contexts
             .iter()
@@ -1466,12 +1509,6 @@ impl TargetReturns {
                 _ => None,
             });
         if let Some(op) = probe {
-            if matches!(
-                error.code.as_str(),
-                "CHANNEL_PAIR_EXISTS" | "CHANNEL_ALREADY_OPEN"
-            ) {
-                return true;
-            }
             if permanent_resume_error(&error.code) {
                 self.complete(&op, Err(error.clone()), &error.code);
             } else {
@@ -1496,15 +1533,6 @@ impl TargetReturns {
             })
             .collect();
         let matched = !ops.is_empty();
-        if matches!(
-            error.code.as_str(),
-            "CHANNEL_PAIR_EXISTS" | "CHANNEL_ALREADY_OPEN"
-        ) && ops
-            .iter()
-            .all(|op| matches!(self.pending[op].phase, DeliveryPhase::Opening { .. }))
-        {
-            return matched;
-        }
         for op in ops {
             if self.contexts[&op].route.recoverable && !permanent_resume_error(&error.code) {
                 self.contexts
@@ -1684,6 +1712,133 @@ mod tests {
         let mut t = target();
         t.contexts.get_mut(&id(9)).unwrap().route.recoverable = true;
         t
+    }
+    #[tokio::test]
+    async fn busy_pair_releases_every_shared_return_open_without_losing_the_result() {
+        for code in ["CHANNEL_PAIR_EXISTS", "CHANNEL_ALREADY_OPEN"] {
+            let mut t = recoverable_target();
+            for (op, route) in [(109, 108), (209, 208)] {
+                let mut other = recoverable_target();
+                let mut context = other.contexts.remove(&id(9)).unwrap();
+                context.route.id = id(route);
+                t.contexts.insert(id(op), context);
+            }
+            t.disconnected();
+            let (callback, reply) = callback();
+            let original = callback.event.clone();
+            t.enqueue(callback, 0).unwrap_or_else(|_| panic!("enqueue"));
+            for route in [8, 108, 208] {
+                t.resumed(&id(route), &id(40), &id(41));
+            }
+            let deadlines: HashMap<_, _> = t
+                .contexts
+                .iter()
+                .map(|(op, context)| (op.clone(), context.route.recovery_until))
+                .collect();
+            let actions = t.advance(&super::super::pairs::Pairs::default(), &scope());
+            assert_eq!(actions.len(), 1);
+            let myagents_agent_network_protocol::ClientMessage::Open {
+                channel_id: old_channel,
+                ..
+            } = &actions[0].message
+            else {
+                panic!("open")
+            };
+            assert!(t.control_failed(&actions[0].id, NetworkError::new(code)));
+            // A rejected Open created no channel. Its random channel ID will
+            // never receive the existing management channel's Close event.
+            assert!(matches!(t.pending[&id(9)].phase, DeliveryPhase::Waiting));
+            for op in [109, 209] {
+                assert!(matches!(
+                    t.contexts[&id(op)].recovery_probe,
+                    Some(DeliveryPhase::Waiting)
+                ));
+            }
+            for (op, deadline) in &deadlines {
+                assert_eq!(&t.contexts[op].route.recovery_until, deadline);
+            }
+            assert_eq!(t.pending[&id(9)].event_id, id(12));
+            // Closing the other channel neither closes this result nor causes
+            // a tight Open loop. A Ready Agent channel may still bypass delay.
+            t.channel_closed(&id(77));
+            assert!(t
+                .advance(&super::super::pairs::Pairs::default(), &scope())
+                .is_empty());
+            for context in t.contexts.values_mut() {
+                context.open_after = Some(Instant::now() - Duration::from_secs(1));
+            }
+            let retry = t.advance(&super::super::pairs::Pairs::default(), &scope());
+            assert_eq!(retry.len(), 1);
+            let myagents_agent_network_protocol::ClientMessage::Open {
+                channel_id: channel,
+                ..
+            } = &retry[0].message
+            else {
+                panic!("retry open")
+            };
+            assert_ne!(channel, old_channel);
+            assert_ne!(retry[0].id, actions[0].id);
+            for (op, deadline) in &deadlines {
+                assert_eq!(&t.contexts[op].route.recovery_until, deadline);
+            }
+            t.pending.get_mut(&id(9)).unwrap().phase = DeliveryPhase::Rebinding {
+                channel: channel.clone(),
+                control: id(333),
+            };
+            let myagents_agent_network_protocol::BusinessObject::Event(result) =
+                t.rebound(&id(333), &id(8), channel).unwrap()
+            else {
+                panic!("original event")
+            };
+            assert_eq!(result.event, original);
+            t.ack(
+                myagents_agent_network_protocol::ReturnAck {
+                    version: 1,
+                    op_id: id(9),
+                    sender_sequence: 1,
+                    return_route_id: id(8),
+                    event_id: id(12),
+                    settlement: ReturnSettlement::Delivered,
+                },
+                channel,
+                &device(3),
+                &id(40),
+            )
+            .unwrap();
+            assert!(matches!(
+                reply.await.unwrap().unwrap(),
+                ReturnSettlement::Delivered
+            ));
+            assert!(!t.pending.contains_key(&id(9)));
+        }
+    }
+    #[tokio::test]
+    async fn callback_after_rejected_probe_obeys_the_same_pair_backoff() {
+        let mut t = recoverable_target();
+        t.disconnected();
+        t.resumed(&id(8), &id(40), &id(41));
+        let deadline = t.contexts[&id(9)].route.recovery_until;
+        let open = t
+            .advance(&super::super::pairs::Pairs::default(), &scope())
+            .remove(0);
+        assert!(t.control_failed(&open.id, NetworkError::new("CHANNEL_PAIR_EXISTS")));
+        let (callback, _reply) = callback();
+        t.enqueue(callback, 0)
+            .unwrap_or_else(|_| panic!("late callback"));
+        t.channel_closed(&id(77));
+        assert!(t
+            .advance(&super::super::pairs::Pairs::default(), &scope())
+            .is_empty());
+        t.contexts.get_mut(&id(9)).unwrap().open_after =
+            Some(Instant::now() - Duration::from_secs(1));
+        let retry = t.advance(&super::super::pairs::Pairs::default(), &scope());
+        assert_eq!(retry.len(), 1);
+        assert!(matches!(
+            retry[0].message,
+            myagents_agent_network_protocol::ClientMessage::Open { .. }
+        ));
+        assert_eq!(t.contexts[&id(9)].route.recovery_until, deadline);
+        assert_eq!(t.pending[&id(9)].event_id, id(12));
     }
     #[test]
     fn closed_route_receipts_and_pending_admission_never_resume() {

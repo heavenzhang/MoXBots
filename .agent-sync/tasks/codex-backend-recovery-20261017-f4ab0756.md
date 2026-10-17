@@ -33,4 +33,4 @@ Owned clients now negotiate existing business and management profiles separately
 
 ## Next step
 
-Verify the DSH source-owner repair32a against the official accepted dependency build and actual checks installation, then four native targets, exact resources and the formal selector. Source reconstruction/resource regressions and independent increment review pass; full App/broad/service CI at364ad49e and relay real socket/TLS acceptance also pass. Final resource-selection CI, PR review and remote main inclusion remain required.
+Constrain accepted DSH dependency overrides to their native Runtime subtree while preserving the repository dev graph, then verify full source/native gates, four exact assets and the formal selector. Source32a passes actual checks-install/typecheck but lint exposes the overbroad graph boundary. Relay busy-pair return retry now passes31 state tests, six actual sockets and independent review; final App/resource-selection CI, PR review and remote main inclusion remain required.

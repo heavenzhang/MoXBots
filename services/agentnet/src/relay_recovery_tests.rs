@@ -157,8 +157,8 @@ async fn recovery_permit(
 }
 
 #[tokio::test]
-async fn actual_owned_sockets_recover_exact_route_after_either_peer_disconnects_without_reissuing_permit()
- {
+async fn actual_owned_sockets_recover_exact_route_after_either_peer_disconnects_without_reissuing_permit(
+) {
     for disconnect_source in [true, false] {
         let server = RealRelayServer::start().await;
         let a = server.joined_device().await;
@@ -348,7 +348,7 @@ async fn recovery_tls_pair(
     myagents_agent_network_crypto::InnerTls,
     myagents_agent_network_crypto::InnerTls,
 ) {
-    use myagents_agent_network_crypto::{InnerTls, TlsIdentity, certificate_chain, private_roots};
+    use myagents_agent_network_crypto::{certificate_chain, private_roots, InnerTls, TlsIdentity};
     let (sh, th) = hellos;
     let ap = recovery_peer(server, a);
     let bp = recovery_peer(server, b);
@@ -471,7 +471,7 @@ async fn actual_owned_socket_recovery_delivers_original_terminal_and_ack_through
     let event_id = Uuid::new_v4().to_string();
     let request_id = Uuid::new_v4().to_string();
     // A completed terminal belongs to the original operation. Retain the same
-    // event, correlation and 128KiB body throughout the physical socket outage.
+    // event, correlation and 168KiB body throughout the physical socket outage.
     let body = "原任务完成结果".repeat(8_192);
     let event = ReturnEvent {
         version: 1,
@@ -498,6 +498,45 @@ async fn actual_owned_socket_recovery_delivers_original_terminal_and_ack_through
         .unwrap();
     receive_control(&mut source, "route.resumed").await;
     receive_control(&mut target, "route.resumed").await;
+    // A management/other channel may occupy the pair during recovery. The
+    // rejected return-channel Open creates no channel and must not consume the
+    // original route. After the competing channel closes, a fresh Open works
+    // on the same sockets and still delivers the original terminal below.
+    let busy = establish_real_channel(&mut source, &sh, &mut target, &th).await;
+    let rejected = scoped_control(
+        &th,
+        "channel.open",
+        json!({"channelId":Uuid::new_v4().to_string(),
+        "targetDeviceId":a.context.device_id,"targetKeyGeneration":1,
+        "targetConnectionEpoch":sh["connectionEpoch"],"targetBinding":null}),
+    );
+    target
+        .send(ClientMessage::Text(rejected.to_string().into()))
+        .await
+        .unwrap();
+    let error = receive_control(&mut target, "error").await;
+    assert_eq!(error["controlId"], rejected["controlId"]);
+    assert_eq!(error["code"], "CHANNEL_PAIR_EXISTS");
+    source
+        .send(ClientMessage::Text(
+            scoped_control(
+                &sh,
+                "channel.close",
+                json!({"channelId":busy,"reason":"operation-finished"}),
+            )
+            .to_string()
+            .into(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        receive_control(&mut source, "channel.closed").await["channelId"],
+        busy
+    );
+    assert_eq!(
+        receive_control(&mut target, "channel.closed").await["channelId"],
+        busy
+    );
     let channel = establish_real_channel(&mut source, &sh, &mut target, &th).await;
     let (mut source_tls, mut target_tls) = recovery_tls_pair(
         &server,
