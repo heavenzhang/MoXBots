@@ -18,13 +18,14 @@ Add native Expo Router account, profile, security, storage, about, and help scre
 - [x] About shows Expo app version and configured internal app name/build identifier; help provides static workflow guidance.
 - [x] Account routes have accessible controls and loading/error/empty states; deferred logout tests cover confirmed, unconfirmed, and error responses.
 - [x] Typecheck, lint, focused policy tests, Expo Router web export, and diff whitespace check pass.
-- [ ] Root visual/native review. Owned source and this task record are not yet committed/pushed.
+- [ ] Root visual/native review and remote handoff; implementation is committed locally but not yet pushed.
 - [ ] No native-device/logout, signed-build, production, or main-integration claim without corresponding evidence.
 
 ## Completed
 
 - Started from verified canonical main `400b746a4841bab8e4b99d8f83479fd54925c205` with project-sync `observe`, `start --base`, and `task-init` PASS.
 - Merged root's reviewed prerequisite integration `55771134560bb5aa00a2d4fe7e3cd2e5c4801f48` with a normal merge after task-init; no rewrite/reset.
+- Committed owned implementation in `085781ac8c1b7d487ab79d3d54b52e5f0942c0c4`.
 
 ## Verification
 
