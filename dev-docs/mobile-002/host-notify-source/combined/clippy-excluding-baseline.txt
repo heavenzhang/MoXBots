@@ -1,0 +1,2 @@
+    Checking myagents-host-network v0.5.2 (/Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-source-combined/src-tauri/headless-network)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.88s

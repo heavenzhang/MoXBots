@@ -1414,3 +1414,7 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
     }
 }
+
+#[cfg(test)]
+#[path = "mobile_source_combined_fixture.rs"]
+mod source_combined_fixture;

@@ -238,6 +238,11 @@ impl ManagementIpc {
         Self::bind_inner(config, false)
     }
 
+    #[cfg(test)]
+    pub(crate) fn bind_source_fixture(config: &ManagementIpcConfig) -> Result<Self, NetworkError> {
+        Self::bind_inner(config, true)
+    }
+
     fn bind_inner(
         config: &ManagementIpcConfig,
         allow_same_uid: bool,
