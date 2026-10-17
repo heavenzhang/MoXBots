@@ -12,6 +12,7 @@ public final class MoxBotsRemoteModule: Module {
   private var appForeground = true
   private var artifactPresentationFence = 0 // protected by lifecycleLock
   private var backgroundObserver: NSObjectProtocol?
+  private var foregroundObserver: NSObjectProtocol?
   private var uploads: NativeUploadScheduler? // owner queue only
   private var artifactDownloads: NativeArtifactScheduler? // owner queue only
   private var artifactScope: String?
@@ -31,11 +32,21 @@ public final class MoxBotsRemoteModule: Module {
         self.lifecycleLock.lock(); self.appForeground = false; self.lifecycleLock.unlock()
         self.bumpArtifactPresentationFence()
         DispatchQueue.main.async { [weak self] in self?.speech.cancel() }
-        self?.queue.async { [weak self] in
+        self.queue.async { [weak self] in
           self?.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED")
           self?.artifactDownloads?.pause()
           _ = try? self?.connection?.request("{\"version\":1,\"kind\":\"connection.suspend\"}")
         }
+      }
+      self?.foregroundObserver = NotificationCenter.default.addObserver(
+        forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil
+      ) { [weak self] _ in
+        guard let self else { return }
+        self.lifecycleLock.lock()
+        if !self.destroyed { self.appForeground = true }
+        self.lifecycleLock.unlock()
+        // Returning to the foreground permits explicit actions; it never
+        // restarts a paused upload, download, recording or Session operation.
       }
     }
     AsyncFunction("request") { [weak self] (input: String, promise: Promise) in
@@ -112,6 +123,7 @@ public final class MoxBotsRemoteModule: Module {
       guard let self else { return }
       self.lifecycleLock.lock(); self.destroyed = true; self.lifecycleLock.unlock()
       if let observer = self.backgroundObserver { NotificationCenter.default.removeObserver(observer) }
+      if let observer = self.foregroundObserver { NotificationCenter.default.removeObserver(observer) }
       DispatchQueue.main.async { self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
       self.queue.async {
         self.ownerActive = false
