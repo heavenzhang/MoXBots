@@ -110,12 +110,19 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri/headless-network
+          workspaces: |
+            src-tauri/headless-network
+            services/agentnet
       - name: Validate standalone network owner
         run: |
           cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked
@@ -129,6 +136,14 @@ jobs:
           python3 scripts/host/network-install.test.py
           python3 scripts/host/network-control-daemon.test.py
           python3 scripts/host/unified-install.test.py
+      - name: Verify actual notification source across Node, native publisher and service stores
+        timeout-minutes: 15
+        run: |
+          # Compile/fetch the separate locked service fixture before its child
+          # process runs offline. Only isolated temporary owners and loopback
+          # TLS are used; this never enrolls a real device or invokes a real Session.
+          cargo test --manifest-path services/agentnet/Cargo.toml --locked --no-run actual_host_source_service_fixture
+          cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked --offline actual_publish_private_node_source -- --ignored --nocapture
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}

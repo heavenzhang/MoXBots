@@ -23,6 +23,9 @@ class MoxBotsRemoteModule : Module() {
   @Volatile private var ownerActive = true
   @Volatile private var appForeground = true
   private var speech: NativeSpeech? = null
+  private val speechPermission = NativeSpeechPermissionGate() // main-thread only
+  private val speechStartLock = Any() // serialize owner invalidation with the final start check/call
+  private val speechOwnerFence = AtomicLong(0)
   private var uploads: NativeUploadScheduler? = null // owner-thread only
   private var artifactDownloads: NativeArtifactScheduler? = null // owner-thread only
   @Volatile private var artifactScope: String? = null
@@ -36,10 +39,21 @@ class MoxBotsRemoteModule : Module() {
     AsyncFunction("request") { input: String, promise: Promise ->
       val intent = try { if (input.toByteArray(Charsets.UTF_8).size <= 64 * 1024) JSONObject(input) else null } catch (_: Exception) { null }
       val kind = intent?.optString("kind")
+      if (kind in setOf("account.login.start", "account.login.poll", "account.logout", "connection.suspend")) {
+        synchronized(speechStartLock) {
+          speechOwnerFence.incrementAndGet()
+          main.post { speechPermission.cancel(); speech?.cancel() }
+        }
+      }
       if (intent != null && kind != null && kind.startsWith("speech.")) {
         if (intent.length() != 2 || intent.optInt("version") != 1) {
           promise.resolve(failure("MOBILE_INTENT_INVALID"))
-        } else main.post { handleSpeech(kind, promise) }
+        } else {
+          synchronized(speechStartLock) {
+            val speechFence = speechOwnerFence.get()
+            main.post { handleSpeech(kind, promise, speechFence) }
+          }
+        }
       } else if (intent != null && kind != null && kind.startsWith("attachment.")) {
         handleAttachmentIntent(intent, promise)
       } else if (intent != null && kind != null && kind.startsWith("artifact.")) {
@@ -113,10 +127,13 @@ class MoxBotsRemoteModule : Module() {
         }
       }
     }
+    OnActivityEntersForeground {
+      synchronized(speechStartLock) { if (ownerActive) appForeground = true }
+    }
     OnActivityEntersBackground {
-      appForeground = false
+      synchronized(speechStartLock) { appForeground = false; speechOwnerFence.incrementAndGet() }
       artifactPresentationFence.incrementAndGet()
-      main.post { speech?.cancel() }
+      main.post { speechPermission.cancel(); speech?.cancel() }
       owner.execute {
         try { uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED") } catch (_: Exception) { }
         try { artifactDownloads?.pause() } catch (_: Exception) { }
@@ -124,10 +141,9 @@ class MoxBotsRemoteModule : Module() {
       }
     }
     OnDestroy {
-      ownerActive = false
-      appForeground = false
+      synchronized(speechStartLock) { ownerActive = false; appForeground = false; speechOwnerFence.incrementAndGet() }
       main.post {
-        speech?.cancel(); speech = null
+        speechPermission.cancel(); speech?.cancel(); speech = null
         picker?.promise?.resolve(failure("MOBILE_ATTACHMENT_CANCELLED")); picker = null
       }
       owner.execute {
@@ -409,9 +425,12 @@ class MoxBotsRemoteModule : Module() {
   private fun isArtifactAuthorityFailure(code: String) = code.startsWith("ACCOUNT_") || code.startsWith("TARGET_") ||
     code.startsWith("HOST_MANAGEMENT_") || code in setOf("MOBILE_AUTHORIZATION_REQUIRED", "MOBILE_ACCOUNT_CHANGED")
   private fun isCanonicalUuid(value: String) = runCatching { java.util.UUID.fromString(value).toString() == value }.getOrDefault(false)
-  private fun handleSpeech(kind: String, promise: Promise) {
+  private fun handleSpeech(kind: String, promise: Promise, requestedOwnerFence: Long) {
     val context = appContext.reactContext ?: run { promise.resolve(failure("MOBILE_SPEECH_SERVICE_UNAVAILABLE")); return }
-    if (kind == "speech.start" && appContext.currentActivity?.hasWindowFocus() != true) {
+    if (kind == "speech.start" && synchronized(speechStartLock) { speechOwnerFence.get() != requestedOwnerFence }) {
+      promise.resolve(failure("MOBILE_SPEECH_CANCELLED")); return
+    }
+    if (kind == "speech.start" && (!ownerActive || appContext.currentActivity?.hasWindowFocus() != true)) {
       promise.resolve(failure("MOBILE_SPEECH_FOREGROUND_REQUIRED")); return
     }
     if (speech == null) speech = NativeSpeech(context) { event -> sendEvent("speechChanged", event.projection()) }
@@ -424,21 +443,34 @@ class MoxBotsRemoteModule : Module() {
     }
     when (kind) {
       "speech.start" -> {
-        if (context.checkSelfPermission(NativeSpeech.RECORD_AUDIO_PERMISSION) == PackageManager.PERMISSION_GRANTED) engine.start(settle)
-        else {
+        val activity = appContext.currentActivity
+        val token = speechPermission.begin { code -> promise.resolve(failure(code)) } ?: return
+        val allowed = {
+          ownerActive && appForeground && speechOwnerFence.get() == requestedOwnerFence &&
+            activity != null && appContext.currentActivity === activity && !activity.isFinishing && !activity.isDestroyed
+        }
+        val permissionReturned: (Boolean) -> Unit = { permitted ->
+          synchronized(speechStartLock) {
+            speechPermission.resolve(token, permitted, allowed) { engine.start(settle) }
+          }
+        }
+        if (context.checkSelfPermission(NativeSpeech.RECORD_AUDIO_PERMISSION) == PackageManager.PERMISSION_GRANTED) permissionReturned(true)
+        else synchronized(speechStartLock) {
           val permissions = appContext.permissions
-          if (permissions == null) promise.resolve(failure("MOBILE_SPEECH_PERMISSION_REQUIRED"))
-          else permissions.askForPermissions(PermissionsResponseListener {
-            main.post {
-              if (appContext.currentActivity == null || appContext.currentActivity?.isFinishing == true) promise.resolve(failure("MOBILE_SPEECH_FOREGROUND_REQUIRED"))
-              else if (context.checkSelfPermission(NativeSpeech.RECORD_AUDIO_PERMISSION) == PackageManager.PERMISSION_GRANTED) engine.start(settle)
-              else promise.resolve(failure("MOBILE_SPEECH_PERMISSION_DENIED"))
-            }
-          }, NativeSpeech.RECORD_AUDIO_PERMISSION)
+          if (!allowed()) speechPermission.reject(token, "MOBILE_SPEECH_CANCELLED")
+          else if (permissions == null) speechPermission.reject(token, "MOBILE_SPEECH_PERMISSION_REQUIRED")
+          else try {
+            permissions.askForPermissions(PermissionsResponseListener {
+              main.post { permissionReturned(context.checkSelfPermission(NativeSpeech.RECORD_AUDIO_PERMISSION) == PackageManager.PERMISSION_GRANTED) }
+            }, NativeSpeech.RECORD_AUDIO_PERMISSION)
+          } catch (_: Exception) { speechPermission.reject(token, "MOBILE_SPEECH_PERMISSION_REQUIRED") }
         }
       }
-      "speech.stop" -> engine.stop(settle)
-      "speech.cancel" -> { engine.cancel(); settle(Result.success(Unit)) }
+      "speech.stop" -> {
+        synchronized(speechStartLock) { speechOwnerFence.incrementAndGet() }
+        if (speechPermission.cancel()) settle(Result.success(Unit)) else engine.stop(settle)
+      }
+      "speech.cancel" -> { synchronized(speechStartLock) { speechOwnerFence.incrementAndGet() }; speechPermission.cancel(); engine.cancel(); settle(Result.success(Unit)) }
       else -> promise.resolve(failure("MOBILE_INTENT_UNSUPPORTED"))
     }
   }

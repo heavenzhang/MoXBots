@@ -12,6 +12,9 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.frameworks = 'Security', 'SystemConfiguration', 'CoreFoundation', 'Network'
   s.dependency 'ExpoModulesCore'
-  s.source_files = 'ios/**/*.{h,m,mm,swift}'
+  # The Rust C headers belong solely to the vendored framework's module.
+  # Recursing through Frameworks makes CocoaPods re-export those headers from
+  # MoxBotsRemote's umbrella without their framework-relative search paths.
+  s.source_files = 'ios/*.{h,m,mm,swift}'
   s.vendored_frameworks = 'ios/Frameworks/MoxConnectionCore.xcframework'
 end

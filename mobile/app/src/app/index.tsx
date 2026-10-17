@@ -29,6 +29,16 @@ const errorMessages: Record<string, string> = {
   MOBILE_RECEIPT_REQUIRED: '设备要求先确认操作状态。请查询状态后再继续；不会自动重发。',
   ON_DEVICE_UNAVAILABLE: '此设备当前没有可用的本地语音识别服务。',
   MICROPHONE_PERMISSION_DENIED: '麦克风权限未开启。可在系统设置中允许后重试。',
+  MOBILE_SPEECH_PERMISSION_REQUIRED: '尚未获得麦克风权限。请在系统设置中允许后重试；文字草稿已保留。',
+  MOBILE_SPEECH_PERMISSION_DENIED: '语音识别权限未开启。请在系统设置中允许后重试；文字草稿已保留。',
+  MOBILE_SPEECH_MICROPHONE_DENIED: '麦克风权限未开启。请在系统设置中允许后重试；文字草稿已保留。',
+  MOBILE_SPEECH_ON_DEVICE_UNAVAILABLE: '此设备当前没有可用的本地语音识别服务，可以继续使用键盘输入。',
+  MOBILE_SPEECH_LOCALE_UNAVAILABLE: '当前语言的离线语音模型未就绪。请在设备语音服务设置中检查语言支持及模型下载；文字草稿已保留。',
+  MOBILE_SPEECH_FOREGROUND_REQUIRED: '请回到应用前台后重新开始语音输入；文字草稿已保留。',
+  MOBILE_SPEECH_CANCELLED: '已取消语音输入，文字草稿已保留。',
+  MOBILE_SPEECH_NO_MATCH: '没有识别到清晰语音，可以重新录制；文字草稿已保留。',
+  MOBILE_SPEECH_TIMEOUT: '语音识别超时，可以重新录制；文字草稿已保留。',
+  MOBILE_SPEECH_BUSY: '语音服务正忙，请稍后重试；文字草稿已保留。',
   TARGET_UNAVAILABLE: '当前没有可用 Bot，请检查设备连接。',
   ACCOUNT_REPLY_INVALID: '无法读取登录状态，请稍后刷新。',
   SESSION_LIST_REPLY_INVALID: '无法读取会话列表，请稍后重试。',
@@ -95,6 +105,7 @@ function AppBody() {
   const [routeFocusGate] = useState(() => createRouteFocusGate());
   const routeActiveRef = useRef(false);
   const [speechPanelOpen, setSpeechPanelOpen] = useState(false);
+  const [speechPreparing, setSpeechPreparing] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
@@ -237,6 +248,7 @@ function AppBody() {
 
   const applySpeech = useCallback((reply: SpeechReply) => {
     if (!speechActiveRef.current || speechOwnerEpochRef.current !== ownerRef.current.epoch) return;
+    setSpeechPreparing(false);
     speechStateRef.current = reply.state;
     setSpeech(reply);
     const recognizedText = reply.text.trim();
@@ -946,6 +958,7 @@ function AppBody() {
   };
 
   const startSpeech = async () => {
+    if (speechActiveRef.current) return;
     setNotice(null);
     setSpeechPanelOpen(true);
     setSpeech({ kind: 'speech', state: 'idle', text: '', final: false });
@@ -957,15 +970,16 @@ function AppBody() {
     speechOwnerEpochRef.current = ownerRef.current.epoch;
     const ownerEpoch = speechOwnerEpochRef.current;
     speechActiveRef.current = true;
-    speechStateRef.current = 'recording';
-    setSpeech((prior) => ({ ...prior, state: 'recording' }));
+    speechStateRef.current = 'idle';
+    setSpeechPreparing(true);
     try {
       const reply = await requestNative({ version: 1, kind: 'speech.start' });
       if (epoch !== speechEpochRef.current || ownerEpoch !== ownerRef.current.epoch) return;
+      setSpeechPreparing(false);
       if (reply.kind === 'error') { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(reply.code, 'error'); return; }
       if (reply.kind !== 'speech') { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say('SPEECH_REPLY_INVALID', 'error'); return; }
       applySpeech(reply);
-    } catch (error) { if (epoch === speechEpochRef.current && ownerEpoch === ownerRef.current.epoch) { speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(error instanceof Error ? error.message : 'SPEECH_START_FAILED', 'error'); } }
+    } catch (error) { if (epoch === speechEpochRef.current && ownerEpoch === ownerRef.current.epoch) { setSpeechPreparing(false); speechActiveRef.current = false; speechStateRef.current = 'idle'; setSpeech((prior) => ({ ...prior, state: 'idle' })); say(error instanceof Error ? error.message : 'SPEECH_START_FAILED', 'error'); } }
   };
 
   const stopSpeech = async () => {
@@ -990,6 +1004,7 @@ function AppBody() {
     speechActiveRef.current = false;
     speechOwnerEpochRef.current = null;
     speechStateRef.current = 'idle';
+    setSpeechPreparing(false);
     setSpeech({ kind: 'speech', state: 'idle', text: '', final: false });
     setSpeechPanelOpen(false);
     appliedSpeechTextRef.current = '';
@@ -1111,9 +1126,9 @@ function AppBody() {
           {suggestions.length > 0 && <View style={styles.suggestionList}><Text style={styles.menuSectionLabel}>下一步建议 · 点击填入草稿</Text>{suggestions.map((suggestion) => <Pressable key={suggestion} accessibilityRole="button" onPress={() => { saveDraft(suggestion); setSuggestions([]); setComposerMenuOpen(false); }} style={styles.suggestionItem}><Text style={styles.suggestionText}>{suggestion}</Text><ArrowUpRight size={15} color={C.green}/></Pressable>)}</View>}
         </View>}
         {speechPanelOpen && <View style={styles.speechPanel}>
-          <View style={styles.speechPanelHead}><Text style={styles.speechPanelTitle}>{speech.state === 'recording' ? '正在聆听' : speech.state === 'transcribing' ? '正在整理识别结果' : speech.final ? '识别草稿' : '语音输入'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭语音输入" onPress={() => void cancelSpeech()} style={styles.speechClose}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>
-          {isFixtureMode && !speech.text ? <Text style={styles.caption}>Web 演示不会生成识别内容；开发构建会使用设备本地语音服务。</Text> : <TextInput accessibilityLabel="语音识别草稿" value={speech.text} editable={speech.state === 'idle'} multiline onChangeText={(value) => { if (speechOwnerEpochRef.current !== ownerRef.current.epoch) return; setSpeech((prior) => ({ ...prior, text: value })); appliedSpeechTextRef.current = value; const base = speechBaseDraftRef.current.trim(); saveDraftFor(speechDraftKeyRef.current, speechOwnerEpochRef.current, base ? `${base}\n${value}` : value); }} placeholder={speech.state === 'recording' ? '正在聆听…' : '识别到的文字会留在这里，发送前可以编辑。'} placeholderTextColor={C.muted} style={styles.speechTextInput}/>}
-          <View style={styles.speechActions}>{speech.state === 'recording' ? <Pressable accessibilityRole="button" accessibilityLabel="停止录音并识别" onPress={() => void stopSpeech()} style={styles.speechStop}><Text style={styles.speechStopText}>完成录音</Text></Pressable> : speech.state === 'transcribing' ? <View style={styles.speechProgress}><ActivityIndicator color={C.green}/><Text style={styles.caption}>等待识别完成</Text></View> : <Text style={styles.caption}>{speech.final ? '已加入消息草稿，可继续编辑。' : '识别文本不会自动发送。'}</Text>}</View>
+          <View style={styles.speechPanelHead}><Text style={styles.speechPanelTitle}>{speechPreparing ? '正在准备语音输入' : speech.state === 'recording' ? '正在聆听' : speech.state === 'transcribing' ? '正在整理识别结果' : speech.final ? '识别草稿' : '语音输入'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭语音输入" onPress={() => void cancelSpeech()} style={styles.speechClose}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>
+          {isFixtureMode && !speech.text ? <Text style={styles.caption}>Web 演示不会生成识别内容；开发构建会使用设备本地语音服务。</Text> : <TextInput accessibilityLabel="语音识别草稿" value={speech.text} editable={!speechPreparing && speech.state === 'idle'} multiline onChangeText={(value) => { if (speechOwnerEpochRef.current !== ownerRef.current.epoch) return; setSpeech((prior) => ({ ...prior, text: value })); appliedSpeechTextRef.current = value; const base = speechBaseDraftRef.current.trim(); saveDraftFor(speechDraftKeyRef.current, speechOwnerEpochRef.current, base ? `${base}\n${value}` : value); }} placeholder={speech.state === 'recording' ? '正在聆听…' : '识别到的文字会留在这里，发送前可以编辑。'} placeholderTextColor={C.muted} style={styles.speechTextInput}/>}
+          <View style={styles.speechActions}>{speechPreparing ? <View style={styles.speechProgress}><ActivityIndicator color={C.green}/><Text style={styles.caption}>等待设备授权或语音服务，可随时关闭。</Text></View> : speech.state === 'recording' ? <Pressable accessibilityRole="button" accessibilityLabel="停止录音并识别" onPress={() => void stopSpeech()} style={styles.speechStop}><Text style={styles.speechStopText}>完成录音</Text></Pressable> : speech.state === 'transcribing' ? <View style={styles.speechProgress}><ActivityIndicator color={C.green}/><Text style={styles.caption}>等待识别完成</Text></View> : <Text style={styles.caption}>{speech.final ? '已加入消息草稿，可继续编辑。' : '识别文本不会自动发送。'}</Text>}</View>
         </View>}
         {(draftUpdate?.message || draftUpdate?.status === 'restoring' || draftUpdate?.status === 'saving') && <View pointerEvents="none" style={styles.draftStatusOverlay}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.draftStatus, (draftUpdate.status === 'error' || draftUpdate.status === 'conflict') && styles.draftStatusError]}>{draftUpdate.message ?? (draftUpdate.status === 'restoring' ? '正在恢复草稿…' : '正在保存草稿…')}</Text></View>}
         {attachments.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.attachmentStrip} contentContainerStyle={styles.attachmentStripContent}>
@@ -1131,7 +1146,7 @@ function AppBody() {
         <View style={styles.composer}>
           <Pressable accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" onPress={() => setComposerMenuOpen((value) => !value)} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
           <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
-          {draft.trim() || attachments.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={!target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
+          {draft.trim() || attachments.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={!target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speechPreparing ? '正在准备语音输入' : speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speechPreparing || speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
           {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
         </View>
       </View>
