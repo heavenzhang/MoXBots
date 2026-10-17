@@ -13,12 +13,16 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{delete, post},
 };
-use myagents_agentnet_device_core::{DeviceRecord, DeviceStore, SessionContext};
+use myagents_agentnet_device_core::{
+    ChallengeOperation, DeviceError, DeviceRecord, DeviceStore, SessionContext,
+};
 use myagents_agentnet_mobile_notify_core::{
-    Authority, FreshEndpoint, NotifyError, Provider, RegisterEndpointV1, SessionPointer, Store,
+    Authority, FreshEndpoint, HostHintV1, NotifyError, Provider, RegisterEndpointV1,
+    SessionPointer, SourceChallengeState, Store, TargetScope,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
     sync::Arc,
@@ -67,7 +71,14 @@ impl MobileNotificationService {
             .is_none_or(|supported| supported.contains(&provider))
     }
 
-    /// Deliberately not mounted into the production server by this change.
+    fn has_provider(&self) -> bool {
+        self.supported_providers
+            .as_ref()
+            .is_none_or(|supported| !supported.is_empty())
+    }
+
+    /// Mounted by the production server only when mobile notification delivery
+    /// is explicitly enabled with at least one configured provider.
     pub fn router(&self) -> Router<()> {
         Router::new()
             .route("/api/mobile-notify/v1/endpoints", post(register))
@@ -78,6 +89,14 @@ impl MobileNotificationService {
             .route(
                 "/api/mobile-notify/v1/endpoints/{endpoint_id}/events/{event_id}/redeem",
                 post(redeem),
+            )
+            .route(
+                "/api/mobile-notify/v1/source/challenges",
+                post(create_source_challenge),
+            )
+            .route(
+                "/api/mobile-notify/v1/source/hints",
+                post(publish_source_hint),
             )
             .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
             .layer(axum::middleware::from_fn(no_store))
@@ -154,6 +173,45 @@ struct RedemptionResponse {
     target_device_id: String,
     agent_id: String,
     session_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceChallengeRequest {
+    version: u8,
+    #[serde(rename = "sourceEventId")]
+    source_event_id: String,
+    #[serde(rename = "connectionEpoch")]
+    connection_epoch: String,
+    #[serde(rename = "agentId")]
+    agent_id: String,
+    #[serde(rename = "sessionId")]
+    session_id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceHintRequest {
+    version: u8,
+    #[serde(rename = "challengeId")]
+    challenge_id: String,
+    proof: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceChallengeResponse {
+    version: u8,
+    challenge_id: String,
+    nonce: String,
+    expires_at: i64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SourceHintResponse {
+    version: u8,
+    event_id: String,
 }
 
 async fn register(
@@ -241,6 +299,233 @@ async fn redeem(
     Ok(axum::Json(redemption(pointer)))
 }
 
+async fn create_source_challenge(
+    State(service): State<Arc<MobileNotificationService>>,
+    headers: HeaderMap,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<impl IntoResponse, MobileHttpError> {
+    let body = body.map_err(|_| MobileHttpError::bad_request())?;
+    if body.len() > MAX_BODY_BYTES {
+        return Err(MobileHttpError::bad_request());
+    }
+    let request: SourceChallengeRequest =
+        serde_json::from_slice(&body).map_err(|_| MobileHttpError::bad_request())?;
+    if request.version != 1 || !service.has_provider() {
+        return Err(if request.version != 1 {
+            MobileHttpError::bad_request()
+        } else {
+            MobileHttpError::provider_unavailable()
+        });
+    }
+    let challenge = service.with_authority(&headers, |session, authority| {
+        let context = session_context(session);
+        let record = service
+            .devices
+            .read_state(&context, &session.device_id)
+            .map_err(|_| MobileHttpError::unavailable())?
+            .ok_or_else(MobileHttpError::unauthorized)?;
+        require_exact_owner(session, &record)?;
+        let observed = Authority::from_validated_service_state(
+            &record.principal_id,
+            &record.network_id,
+            &record.device_id,
+            &record.identity_binding_id,
+            record.key_generation,
+        )
+        .map_err(MobileHttpError::notify)?;
+        if &observed != authority {
+            return Err(MobileHttpError::unauthorized());
+        }
+        TargetScope::from_validated_host_session(authority, &request.agent_id)
+            .map_err(MobileHttpError::notify)?;
+        HostHintV1::new(&request.source_event_id, &request.session_id)
+            .map_err(MobileHttpError::notify)?;
+        service
+            .store
+            .check_source_challenge_request(
+                authority,
+                &request.source_event_id,
+                &request.connection_epoch,
+                &request.agent_id,
+                &request.session_id,
+                unix_seconds()?,
+            )
+            .map_err(MobileHttpError::notify)?;
+        let challenge = service
+            .devices
+            .create_challenge(
+                &context,
+                ChallengeOperation::RecoverQuery,
+                record.key_generation,
+                &record.key_fingerprint,
+            )
+            .map_err(MobileHttpError::device)?;
+        service
+            .store
+            .bind_source_challenge(
+                authority,
+                &session.session_handle,
+                &challenge.challenge_id,
+                &request.source_event_id,
+                &request.connection_epoch,
+                &request.agent_id,
+                &request.session_id,
+                challenge.expires_at,
+                unix_seconds()?,
+            )
+            .map_err(MobileHttpError::notify)?;
+        Ok(challenge)
+    })?;
+    Ok((
+        StatusCode::CREATED,
+        axum::Json(SourceChallengeResponse {
+            version: 1,
+            challenge_id: challenge.challenge_id,
+            nonce: challenge.nonce,
+            expires_at: challenge.expires_at,
+        }),
+    ))
+}
+
+async fn publish_source_hint(
+    State(service): State<Arc<MobileNotificationService>>,
+    headers: HeaderMap,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<impl IntoResponse, MobileHttpError> {
+    let body = body.map_err(|_| MobileHttpError::bad_request())?;
+    if body.len() > MAX_BODY_BYTES {
+        return Err(MobileHttpError::bad_request());
+    }
+    let request: SourceHintRequest =
+        serde_json::from_slice(&body).map_err(|_| MobileHttpError::bad_request())?;
+    if request.version != 1 || request.proof.len() != 86 || !is_base64url(&request.proof) {
+        return Err(MobileHttpError::bad_request());
+    }
+    if !service.has_provider() {
+        return Err(MobileHttpError::provider_unavailable());
+    }
+    let proof_digest: [u8; 32] = Sha256::digest(request.proof.as_bytes()).into();
+    let event_id = service.with_authority(&headers, |session, authority| {
+        let now = unix_seconds()?;
+        let binding = service
+            .store
+            .source_challenge_for_scope(
+                authority,
+                &session.session_handle,
+                &request.challenge_id,
+                now,
+            )
+            .map_err(MobileHttpError::notify)?;
+        match &binding.state {
+            SourceChallengeState::Finalized {
+                proof_digest: prior_digest,
+                event_id,
+            } => {
+                if prior_digest == &proof_digest {
+                    return Ok(event_id.clone());
+                }
+                return Err(MobileHttpError::challenge_unconfirmed());
+            }
+            SourceChallengeState::ConsumedUnconfirmed => {
+                return Err(MobileHttpError::challenge_unconfirmed());
+            }
+            SourceChallengeState::Pending => {}
+        }
+
+        let context = session_context(session);
+        let record = service
+            .devices
+            .read_state(&context, &session.device_id)
+            .map_err(|_| MobileHttpError::unavailable())?
+            .ok_or_else(MobileHttpError::unauthorized)?;
+        require_exact_owner(session, &record)?;
+        let observed = Authority::from_validated_service_state(
+            &record.principal_id,
+            &record.network_id,
+            &record.device_id,
+            &record.identity_binding_id,
+            record.key_generation,
+        )
+        .map_err(MobileHttpError::notify)?;
+        if &observed != authority {
+            return Err(MobileHttpError::unauthorized());
+        }
+        let verified = match service.devices.consume_proof(
+            &context,
+            ChallengeOperation::RecoverQuery,
+            record.key_generation,
+            &binding.challenge_id,
+            &request.proof,
+        ) {
+            Ok(record) => record,
+            Err(error) => {
+                if matches!(
+                    error,
+                    DeviceError::ProofInvalid
+                        | DeviceError::ChallengeRejected
+                        | DeviceError::ChallengeExpired
+                        | DeviceError::GenerationConflict
+                ) {
+                    let _ = service.store.mark_source_challenge_unconfirmed(
+                        authority,
+                        &session.session_handle,
+                        &binding.challenge_id,
+                        unix_seconds()?,
+                    );
+                    return Err(MobileHttpError::challenge_unconfirmed());
+                }
+                return Err(MobileHttpError::device(error));
+            }
+        };
+        if verified != record {
+            let _ = service.store.mark_source_challenge_unconfirmed(
+                authority,
+                &session.session_handle,
+                &binding.challenge_id,
+                unix_seconds()?,
+            );
+            return Err(MobileHttpError::challenge_unconfirmed());
+        }
+        let target = TargetScope::from_validated_host_session(authority, &binding.agent_id)
+            .map_err(MobileHttpError::notify)?;
+        let hint = HostHintV1::new(&binding.source_event_id, &binding.session_id)
+            .map_err(MobileHttpError::notify)?;
+        let event = service
+            .store
+            .enqueue_hint(
+                authority,
+                &target,
+                &binding.connection_epoch,
+                &hint,
+                unix_seconds()?,
+                86_400,
+            )
+            .map_err(MobileHttpError::notify)?;
+        service
+            .store
+            .finalize_source_challenge(
+                authority,
+                &session.session_handle,
+                &binding.challenge_id,
+                &proof_digest,
+                event.event_id(),
+                unix_seconds()?,
+            )
+            .map_err(MobileHttpError::notify)?;
+        Ok(event.event_id().to_owned())
+    })?;
+    Ok(axum::Json(SourceHintResponse {
+        version: 1,
+        event_id,
+    }))
+}
+
+fn is_base64url(value: &str) -> bool {
+    value
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"_-".contains(&byte))
+}
+
 fn redemption(pointer: SessionPointer) -> RedemptionResponse {
     RedemptionResponse {
         version: 1,
@@ -325,6 +610,27 @@ impl MobileHttpError {
         Self {
             status: StatusCode::SERVICE_UNAVAILABLE,
             code: "MOBILE_NOTIFY_PROVIDER_UNAVAILABLE",
+        }
+    }
+    fn challenge_unconfirmed() -> Self {
+        Self {
+            status: StatusCode::CONFLICT,
+            code: "SOURCE_PROOF_UNCONFIRMED_RETRY_CHALLENGE",
+        }
+    }
+    fn device(error: DeviceError) -> Self {
+        match error {
+            DeviceError::InvalidInput => Self::bad_request(),
+            DeviceError::Storage | DeviceError::UnsafePath => Self::unavailable(),
+            DeviceError::ChallengeRejected
+            | DeviceError::ChallengeExpired
+            | DeviceError::ProofInvalid
+            | DeviceError::GenerationConflict
+            | DeviceError::InvalidSession
+            | DeviceError::DeviceNotFound
+            | DeviceError::OwnerMismatch
+            | DeviceError::DeviceAlreadyClaimed
+            | DeviceError::GenerationExhausted => Self::challenge_unconfirmed(),
         }
     }
     fn notify(error: NotifyError) -> Self {
@@ -518,6 +824,43 @@ mod tests {
             record.key_generation,
         )
         .unwrap()
+    }
+
+    fn source_payload(source_event_id: &str, connection_epoch: &str) -> Value {
+        json!({
+            "version": 1,
+            "sourceEventId": source_event_id,
+            "connectionEpoch": connection_epoch,
+            "agentId": "agent-main",
+            "sessionId": "session-private-ref"
+        })
+    }
+
+    async fn source_challenge(router: Router, token: &str, payload: Value) -> (StatusCode, Value) {
+        call(
+            router,
+            token,
+            "POST",
+            "/api/mobile-notify/v1/source/challenges",
+            Some(payload),
+        )
+        .await
+    }
+
+    async fn source_hint(
+        router: Router,
+        token: &str,
+        challenge_id: &str,
+        proof: &str,
+    ) -> (StatusCode, Value) {
+        call(
+            router,
+            token,
+            "POST",
+            "/api/mobile-notify/v1/source/hints",
+            Some(json!({"version":1,"challengeId":challenge_id,"proof":proof})),
+        )
+        .await
     }
 
     #[tokio::test]
@@ -743,5 +1086,327 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(error["error"]["code"], "REQUEST_INVALID");
+    }
+
+    #[tokio::test]
+    async fn source_hint_requires_device_pop_and_survives_store_reopen() {
+        let f = fixture();
+        let source_event_id = Uuid::new_v4().to_string();
+        let epoch = Uuid::new_v4().to_string();
+        let payload = source_payload(&source_event_id, &epoch);
+        let (status, challenge) =
+            source_challenge(f.router.clone(), &f.mobile_token, payload.clone()).await;
+        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(challenge["version"], 1);
+        let challenge_id = challenge["challengeId"].as_str().unwrap();
+        let nonce = challenge["nonce"].as_str().unwrap();
+        let proof = f.mobile_key.sign_proof(challenge_id, nonce).unwrap();
+
+        let session = f.auth.validate_session(&f.mobile_token).unwrap();
+        let reopened = Arc::new(Store::open(f.store.state_dir()).unwrap());
+        let recovered_router = MobileNotificationService::new(
+            f.auth.clone(),
+            f.devices.clone(),
+            reopened,
+            session.account.network_id,
+        )
+        .with_provider_allowlist([Provider::Fcm])
+        .router();
+        let (status, accepted) = source_hint(
+            recovered_router.clone(),
+            &f.mobile_token,
+            challenge_id,
+            &proof,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(accepted["version"], 1);
+        let event_id = accepted["eventId"].as_str().unwrap();
+        assert!(!accepted.to_string().contains(&source_event_id));
+        assert!(!accepted.to_string().contains(&epoch));
+        assert!(!accepted.to_string().contains("session-private-ref"));
+
+        let (retry_status, retry) =
+            source_hint(recovered_router, &f.mobile_token, challenge_id, &proof).await;
+        assert_eq!(retry_status, StatusCode::OK);
+        assert_eq!(retry["eventId"], event_id);
+    }
+
+    #[tokio::test]
+    async fn source_scope_nonce_and_closed_pointer_contract_fail_closed() {
+        let f = fixture();
+        let source_event_id = Uuid::new_v4().to_string();
+        let epoch = Uuid::new_v4().to_string();
+        let payload = source_payload(&source_event_id, &epoch);
+        let (status, challenge) =
+            source_challenge(f.router.clone(), &f.mobile_token, payload.clone()).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let challenge_id = challenge["challengeId"].as_str().unwrap().to_owned();
+        let proof = f
+            .mobile_key
+            .sign_proof(&challenge_id, challenge["nonce"].as_str().unwrap())
+            .unwrap();
+
+        let other_account =
+            source_hint(f.router.clone(), &f.other_token, &challenge_id, &proof).await;
+        assert_eq!(other_account.0, StatusCode::UNAUTHORIZED);
+        let host_token = issue(&f.auth, "mobile-owner", &f.host_device);
+        let other_device = source_hint(f.router.clone(), &host_token, &challenge_id, &proof).await;
+        assert_eq!(other_device.0, StatusCode::UNAUTHORIZED);
+        let same_device = f.auth.validate_session(&f.mobile_token).unwrap();
+        let second_session = issue(&f.auth, "mobile-owner", &same_device.device_id);
+        let other_session =
+            source_hint(f.router.clone(), &second_session, &challenge_id, &proof).await;
+        assert_eq!(other_session.0, StatusCode::UNAUTHORIZED);
+
+        let wrong_nonce_signature = "A".repeat(86);
+        let (status, error) = source_hint(
+            f.router.clone(),
+            &f.mobile_token,
+            &challenge_id,
+            &wrong_nonce_signature,
+        )
+        .await;
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            error["error"]["code"],
+            "SOURCE_PROOF_UNCONFIRMED_RETRY_CHALLENGE"
+        );
+        assert_eq!(
+            source_hint(f.router.clone(), &f.mobile_token, &challenge_id, &proof)
+                .await
+                .0,
+            StatusCode::CONFLICT,
+            "a consumed bad proof must not later become accepted"
+        );
+
+        let (status, challenge) =
+            source_challenge(f.router.clone(), &f.mobile_token, payload.clone()).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let fresh_id = challenge["challengeId"].as_str().unwrap();
+        let fresh_proof = f
+            .mobile_key
+            .sign_proof(fresh_id, challenge["nonce"].as_str().unwrap())
+            .unwrap();
+        let (status, _) =
+            source_hint(f.router.clone(), &f.mobile_token, fresh_id, &fresh_proof).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, body) = source_challenge(
+            f.router.clone(),
+            &f.mobile_token,
+            json!({
+                "version":1,
+                "sourceEventId":Uuid::new_v4().to_string(),
+                "connectionEpoch":Uuid::new_v4().to_string(),
+                "agentId":"agent-main",
+                "sessionId":"session-private-ref",
+                "targetDeviceId":"forged"
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"]["code"], "REQUEST_INVALID");
+    }
+
+    #[tokio::test]
+    async fn source_challenge_requires_its_own_operation_and_generation() {
+        let f = fixture();
+        let session = f.auth.validate_session(&f.mobile_token).unwrap();
+        let context = session_context(&session);
+        let record = f
+            .devices
+            .read_state(&context, &session.device_id)
+            .unwrap()
+            .unwrap();
+        let identity_challenge = f
+            .devices
+            .create_challenge(
+                &context,
+                ChallengeOperation::RecoverQuery,
+                record.key_generation,
+                &record.key_fingerprint,
+            )
+            .unwrap();
+        let identity_proof = f
+            .mobile_key
+            .sign_proof(&identity_challenge.challenge_id, &identity_challenge.nonce)
+            .unwrap();
+        assert_eq!(
+            source_hint(
+                f.router.clone(),
+                &f.mobile_token,
+                &identity_challenge.challenge_id,
+                &identity_proof
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
+
+        let (status, source) = source_challenge(
+            f.router.clone(),
+            &f.mobile_token,
+            source_payload(&Uuid::new_v4().to_string(), &Uuid::new_v4().to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+        let source_id = source["challengeId"].as_str().unwrap();
+        let source_proof = f
+            .mobile_key
+            .sign_proof(source_id, source["nonce"].as_str().unwrap())
+            .unwrap();
+        let rotate = f
+            .devices
+            .create_challenge(
+                &context,
+                ChallengeOperation::Rotate,
+                record.key_generation,
+                &record.key_fingerprint,
+            )
+            .unwrap();
+        let rotate_proof = f
+            .mobile_key
+            .sign_proof(&rotate.challenge_id, &rotate.nonce)
+            .unwrap();
+        let new_key = DevicePrivateKey::generate().unwrap();
+        f.devices
+            .rotate_with_proof(
+                &context,
+                record.key_generation,
+                &rotate.challenge_id,
+                &rotate_proof,
+                &new_key.csr().unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            source_hint(f.router.clone(), &f.mobile_token, source_id, &source_proof)
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn consumed_without_receipt_needs_fresh_pop_and_deduplicates_event() {
+        let f = fixture();
+        let source_event_id = Uuid::new_v4().to_string();
+        let epoch = Uuid::new_v4().to_string();
+        let payload = source_payload(&source_event_id, &epoch);
+        let (status, challenge) =
+            source_challenge(f.router.clone(), &f.mobile_token, payload.clone()).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let challenge_id = challenge["challengeId"].as_str().unwrap();
+        let proof = f
+            .mobile_key
+            .sign_proof(challenge_id, challenge["nonce"].as_str().unwrap())
+            .unwrap();
+        let session = f.auth.validate_session(&f.mobile_token).unwrap();
+        let context = session_context(&session);
+        let authority = authority(&f.auth, &f.devices, &f.mobile_token);
+        f.devices
+            .consume_proof(
+                &context,
+                ChallengeOperation::RecoverQuery,
+                1,
+                challenge_id,
+                &proof,
+            )
+            .unwrap();
+        let target = TargetScope::from_validated_host_session(&authority, "agent-main").unwrap();
+        let queued = f
+            .store
+            .enqueue_hint(
+                &authority,
+                &target,
+                &epoch,
+                &HostHintV1::new(&source_event_id, "session-private-ref").unwrap(),
+                unix_seconds().unwrap(),
+                600,
+            )
+            .unwrap();
+        assert_eq!(
+            source_hint(f.router.clone(), &f.mobile_token, challenge_id, &proof)
+                .await
+                .0,
+            StatusCode::CONFLICT
+        );
+        let (status, fresh) = source_challenge(f.router.clone(), &f.mobile_token, payload).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let fresh_id = fresh["challengeId"].as_str().unwrap();
+        let fresh_proof = f
+            .mobile_key
+            .sign_proof(fresh_id, fresh["nonce"].as_str().unwrap())
+            .unwrap();
+        let (status, receipt) =
+            source_hint(f.router.clone(), &f.mobile_token, fresh_id, &fresh_proof).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(receipt["eventId"], queued.event_id());
+    }
+
+    #[tokio::test]
+    async fn source_routes_fail_closed_without_configured_provider() {
+        let f = fixture();
+        let session = f.auth.validate_session(&f.mobile_token).unwrap();
+        let router = MobileNotificationService::new(
+            f.auth.clone(),
+            f.devices.clone(),
+            f.store.clone(),
+            session.account.network_id,
+        )
+        .with_provider_allowlist([])
+        .router();
+        let (status, body) = source_challenge(
+            router,
+            &f.mobile_token,
+            source_payload(&Uuid::new_v4().to_string(), &Uuid::new_v4().to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(body["error"]["code"], "MOBILE_NOTIFY_PROVIDER_UNAVAILABLE");
+    }
+
+    #[tokio::test]
+    async fn source_challenge_rejects_bearer_without_claimed_device_key() {
+        let f = fixture();
+        let unclaimed_device = Uuid::new_v4().to_string();
+        let token = issue(&f.auth, "mobile-owner", &unclaimed_device);
+        let (status, error) = source_challenge(
+            f.router.clone(),
+            &token,
+            source_payload(&Uuid::new_v4().to_string(), &Uuid::new_v4().to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(error["error"]["code"], "UNAUTHORIZED");
+    }
+
+    #[tokio::test]
+    async fn rejected_source_rebind_does_not_consume_device_challenge_quota() {
+        let f = fixture();
+        let source_event_id = Uuid::new_v4().to_string();
+        let epoch = Uuid::new_v4().to_string();
+        let original = source_payload(&source_event_id, &epoch);
+        let (status, _) = source_challenge(f.router.clone(), &f.mobile_token, original).await;
+        assert_eq!(status, StatusCode::CREATED);
+
+        for _ in 0..10 {
+            let (status, error) = source_challenge(
+                f.router.clone(),
+                &f.mobile_token,
+                source_payload(&source_event_id, &Uuid::new_v4().to_string()),
+            )
+            .await;
+            assert_eq!(status, StatusCode::CONFLICT);
+            assert_eq!(error["error"]["code"], "MOBILE_NOTIFY_CONFLICT");
+        }
+
+        let (status, _) = source_challenge(
+            f.router.clone(),
+            &f.mobile_token,
+            source_payload(&Uuid::new_v4().to_string(), &Uuid::new_v4().to_string()),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
     }
 }

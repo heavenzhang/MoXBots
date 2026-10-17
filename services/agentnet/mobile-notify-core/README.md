@@ -2,10 +2,12 @@
 
 This crate defines bounded registration and notification-hint contracts plus a
 private SQLite endpoint/outbox owner. `services/agentnet/src/mobile_notification_http.rs`
-is a separate authenticated adapter for local tests and is not mounted by the
-service server. Neither crate contacts APNs/FCM, inspects Host session content,
-authorizes a Host connection, nor executes a Session action. Push delivery,
-provider integration, and cold-start restoration are not implemented.
+is the authenticated service adapter; the service mounts its routes only when
+notifications are explicitly enabled with a configured provider. The delivery
+worker contacts fixed APNs/FCM endpoints, but no credentials or production
+sends are part of this task. Neither crate inspects Host session content, proves
+a Host software role, or executes a Session action. Cold-start restoration
+remains separate.
 
 ## Authority boundary
 
@@ -19,12 +21,16 @@ immediately before claiming/sending a delivery. Never deserialize authority
 values from HTTP, Host, push, or mobile input. Store matching is defense in
 depth, not an authorization decision.
 
-The event source contract is intended for a separately authenticated owned-HTTP
-extension (or authenticated local Host IPC followed by that extension). It does
-not add a WebSocket control message, change the frozen relay protocol, or let
-the blind relay decrypt opaque TLS application traffic. The service adapter must
-verify the source Host connection/epoch and same-principal/network audience
-before calling `enqueue_hint`.
+The source HTTP contract requires a fresh AuthStore session and current
+DeviceStore row, then binds a `RecoverQuery` PoP challenge to the exact source
+event ID, connection-epoch metadata, Agent ID, and Session reference. Only a
+valid signature from the currently enrolled device key can enqueue the hint.
+The connection epoch is stable deduplication metadata, not an old-connection
+authorization token. This proves device-key possession, not Host software role
+or the truth of the claimed Agent/Session relationship. It does not add a
+WebSocket control message, change the frozen relay protocol, or let the blind
+relay decrypt opaque TLS application traffic. Host lifecycle owners must
+establish the real Agent/Session relationship before relying on the hint.
 
 ## Contracts and privacy
 
@@ -39,20 +45,27 @@ service has no independent application-encryption key for this data. Do not
 reuse the signing key. Tokens are redacted from `Debug`, never included in
 projections or fixed error messages, and must never be logged by callers.
 
-A Host hint v1 carries only `sourceEventId`, `sessionId`, and the fixed
-`attention-required` kind. The separate non-deserializable `TargetScope` is
-constructed from the verified Host authority and the service-verified Agent ID
-that owns the Session. Agent IDs follow the mobile wire contract: 1–256 ASCII
-letters, digits, or `._:-`. The target device therefore matches the verified Host
-authority while the Agent ID disambiguates multiple Bots on that Host.
-The store deduplicates by principal/network + source device/binding/generation
-+ source event ID; reuse with different content is rejected. A server-generated
+A source hint v1 carries `sourceEventId`, `connectionEpoch`, `agentId`,
+`sessionId`, and the fixed `attention-required` kind. Agent IDs follow the
+mobile wire contract: 1–256 ASCII letters, digits, or `._:-`. The target device
+therefore matches the attesting device authority while the Agent ID
+disambiguates multiple Bots on that device.
+The source-challenge store deduplicates by full principal/network/device/binding/
+generation scope plus source event ID and retains a digest of epoch and pointer
+for seven days; reuse with changed content is rejected. The hint outbox also
+deduplicates by principal/network + source device/binding/generation + source
+event ID; reuse with different pointer content is rejected. A server-generated
 random `eventId` identifies the resulting notification. The provider envelope
 contains exactly `{ "eventId": "..." }`. Private target/session references
 remain in the local outbox and are returned only to a freshly authenticated
 recipient by `redeem_hint`; callers must then refresh targets and the Session
 snapshot and require a separate human approval. Redemption itself is not an
 approval and never executes an action.
+
+Source challenges expire within five minutes, with at most eight pending per
+device and 10,000 retained globally. Cleanup runs in fixed 100-row batches;
+finalized proof receipts are retained for the dedupe window. A finalized receipt
+is reused only under a fresh identical authority and the same proof digest.
 
 ## Bounds and delivery semantics
 
