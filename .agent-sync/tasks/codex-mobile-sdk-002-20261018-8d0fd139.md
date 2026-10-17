@@ -48,9 +48,8 @@ No fake completion, automatic resend, or protocol changes to existing v1.
   before final extra ABI/scope checks (latest final run will follow).
 - Tests use synthetic keys and real TLS between the SDK and existing Host channel,
   plus original replay/nonce/role/hello/JOSE regression suite. No external services.
-- Final focused run after relay-credit follow-up: 25 tests passed; clippy all-targets
-  with -D warnings passed. macOS host release build passed before credit follow-up;
-  incremental final release build is running.
+- Final focused run after relay-credit follow-up: 26 tests passed; clippy all-targets
+  with -D warnings passed. final macOS host release build passed, including all crate types.
 - `cargo check --manifest-path mobile/core/Cargo.toml --locked --target aarch64-apple-ios`:
   failed at ring C build because `xcrun` cannot locate `iphoneos` SDK. This is a real
   environment failure, not successful native portability validation.
@@ -60,7 +59,7 @@ No fake completion, automatic resend, or protocol changes to existing v1.
 ## Blockers and next step
 
 Parent integrates this local branch/commit and connects native account/WSS owner.
-Worker finishes final command outcomes and appends follow-up record. Android license
+Final worker test, lint, release and dynamic C ABI checks passed; native gates remain open. Android license
 prompt needs the user's answer; Apple SDK absence prevents native iOS validation.
 Local only — not synchronized to remote; parent is sole integration/push owner.
 
@@ -72,3 +71,14 @@ TLS channel sequence enforcement. Core now exposes native-only `relay_credit` an
 and cumulative byte constraints, and withholds drain at protocol channel/socket
 windows. Duplicate/oversized grants close the handle. Actual feed bytes are credited
 only after successful validation. Focused window/duplicate/release tests passed.
+
+## Final worker acceptance
+
+- 26/26 Rust tests passed; clippy `--all-targets -- -D warnings` passed; release build passed.
+- Release dylib loaded through actual C ABI using ctypes: 8 exports present, 24-byte
+  buffer layout, sanitized constructor failure and owned-buffer free passed.
+- Native config `tlsInitiator` must reflect the validated Offer initiator, independent
+  of Controller management role. Dedicated deterministic responder TLS test passed.
+- iOS actual cross-check failed solely at missing `iphoneos` SDK; Android NDK license
+  authorization remains with parent. Neither platform native SDK acceptance is claimed.
+- No remote push, main integration or production release performed by worker.

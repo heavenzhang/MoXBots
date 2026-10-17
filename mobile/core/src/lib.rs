@@ -61,6 +61,7 @@ pub struct NativeConfig {
     certificate: String,
     /// Native must acquire a fresh authenticated snapshot before constructing.
     trust_expires_at: u64,
+    tls_initiator: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -261,7 +262,7 @@ impl MobileClient {
             roots,
             &peer,
             PeerRole::Controller,
-            true,
+            config.tls_initiator,
         )?;
         account.expires_at = account
             .expires_at
@@ -553,6 +554,11 @@ mod tests {
         }
     }
     fn pair() -> (MobileClient, Channel, PairSequences) {
+        pair_with_direction(true)
+    }
+    fn pair_with_direction(
+        controller_tls_initiator: bool,
+    ) -> (MobileClient, Channel, PairSequences) {
         let fixture = crypto::tests::Fixture::new();
         let binding = |scope: DeviceScope, identity: &crypto::TlsIdentity, name: &str| {
             VerifiedPeer::fixture(PeerBinding {
@@ -581,7 +587,7 @@ mod tests {
             fixture.roots(),
             &binding(scope(4), &fixture.second, "second.network.invalid"),
             PeerRole::Controller,
-            true,
+            controller_tls_initiator,
         )
         .unwrap();
         let mut b = Channel::new_management(
@@ -594,7 +600,7 @@ mod tests {
             fixture.roots(),
             &binding(scope(3), &fixture.first, "first.network.invalid"),
             PeerRole::Host,
-            false,
+            !controller_tls_initiator,
         )
         .unwrap();
         let mut sa = PairSequences::default();
@@ -748,6 +754,11 @@ mod tests {
                 .code,
             "MOBILE_RECEIPT_REQUIRED"
         );
+    }
+    #[test]
+    fn native_controller_can_be_the_deterministic_tls_responder() {
+        let (client, host, _) = pair_with_direction(false);
+        assert!(client.channel.ready() && host.ready());
     }
     #[test]
     fn relay_credit_rejects_duplicates_and_releases_bounded_native_writer() {
@@ -930,7 +941,7 @@ mod provisioning_tests {
             json!({"iss":"https://issuer.invalid","aud":service,"sub":"account","iat":now,"nbf":now,"exp":now+300,"jti":uuid::Uuid::new_v4().to_string(),"environment":"development","deviceId":"00000000-0000-0000-0000-000000000003","keyGeneration":1,"sessionHandle":uuid::Uuid::new_v4().to_string(),"cnf":{"jkt":local_key.public_thumbprint().unwrap()},"networkUrl":"https://relay.invalid","rootCertificate":ca.pem()}),
         );
         (
-            json!({"issuer":"https://issuer.invalid","local":serde_json::to_value(super::tests::scope(3)).unwrap(),"target":serde_json::to_value(super::tests::scope(4)).unwrap(),"channelId":uuid::Uuid::new_v4().to_string(),"localEpoch":uuid::Uuid::new_v4().to_string(),"targetEpoch":uuid::Uuid::new_v4().to_string(),"jwks":{"keys":[jwk]},"bootstrap":bootstrap,"localSignedPeer":local,"targetSignedPeer":target,"certificate":certificate,"trustExpiresAt":now+299}),
+            json!({"issuer":"https://issuer.invalid","local":serde_json::to_value(super::tests::scope(3)).unwrap(),"target":serde_json::to_value(super::tests::scope(4)).unwrap(),"channelId":uuid::Uuid::new_v4().to_string(),"localEpoch":uuid::Uuid::new_v4().to_string(),"targetEpoch":uuid::Uuid::new_v4().to_string(),"jwks":{"keys":[jwk]},"bootstrap":bootstrap,"localSignedPeer":local,"targetSignedPeer":target,"certificate":certificate,"trustExpiresAt":now+299,"tlsInitiator":true}),
             key,
         )
     }
