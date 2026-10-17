@@ -27,8 +27,8 @@ All three locked no-run builds passed. Actual same-UID run_owned red retained; o
 
 ## Blockers and unknowns
 
-Root owns the confirmed production empty_catalog gap and will provide an accepted dependency commit. Synthetic SSO, temporary encrypted OS adapter and controlled local supplier are explicitly bounded; phone/push/speech/production gates remain open. Deployment not required for this test package and not authorized to this worker.
+Accepted root catalog dependency 6e26946b has been normally merged. Original Devices/Agents default-disabled remote mount was reproduced, then explicit synthetic-user original revision/mutation PATCH enabled it. Actual target discovery now passes; first mobile.start fails at original headless inner TLS feed (NETWORK_TLS_FAILED). Root owns production chain repair. Temporary peer/connector cfgtest diagnostic diffs were removed and are not committed. Synthetic SSO, temporary encrypted OS adapter and controlled local supplier are explicitly bounded; phone/push/speech/production gates remain open. Deployment not required for this test package and not authorized to this worker.
 
 ## Next step
 
-Integrate root's legitimate Host catalog commit as a normal dependency merge, rebuild with locked crates and run `node scripts/verify-mobile-full-host-e2e.mjs`; capture first original start/terminal or next actual red gap before expansion.
+Merge root's accepted TLS-chain repair as a normal dependency, run `node scripts/verify-mobile-full-host-e2e.mjs`, and capture original encrypted start/receipt/terminal before expanding to attachments. Default-disabled negative case remains explicit; do not change production exposure defaults.

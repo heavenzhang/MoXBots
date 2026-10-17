@@ -158,3 +158,44 @@ command still fails only the two documented parent baseline
 No production lint suppression was added. The actual existing headless CI gate
 `cargo clippy --locked --all-targets -- -D clippy::disallowed_methods
 -D clippy::disallowed_macros` passes (4.78s), retaining those two baseline warnings.
+
+### After accepted catalog dependency `6e26946b`
+
+A normal dependency merge includes root's accepted original Host catalog wiring;
+none of that dependency implementation belongs to this package. Actual native
+Devices/Agents reads now find the original Host Agent with remote mount
+`enabled=false`, `enableRevision=0`, `membershipRevision=1`. The unmodified native
+`targets.list` still returns empty. The separate default-disabled red is retained
+at `/tmp/moxbots-full-e2e-actual-disabled-mount.log` and can be requested with
+`MOXBOTS_FULL_KEEP_MOUNT_DISABLED=1 node scripts/verify-mobile-full-host-e2e.mjs`.
+It is an intentional nonzero negative case, not a passing business assertion.
+
+The test now explicitly models the authorized synthetic human account granting
+remote exposure through the existing admitted native transport. It strictly
+matches actual network/principal/device/localAgent, reads both original
+revisions, calls the original PATCH Mount endpoint with a new mutationId, and
+repeats the same mutation to verify its original idempotent receipt. Original
+account.ensure_current guards run before/after. It never writes metadata DBs,
+injects targets/catalogs, or changes production defaults. Only afterward does
+unmodified `targets.list` discover the original online Agent. The application's
+closed JS intent surface still has no mount-setting action: real user onboarding
+and explicit exposure authorization remain a product gate, not a test pass.
+
+The first actual `mobile.start` then fails during inner channel opening with
+`MOBILE_CHANNEL_CHANGED`. Approved temporary cfg(test) logs (removed afterward,
+not committed) pinpointed original `ChannelClosed` at mobile PeerConnection open,
+then original headless `pairs.feed_management` error `NETWORK_TLS_FAILED`.
+The original relay normalizes peer Close to its own fixed reason; no binding JWT,
+key, raw control frame or whole Debug value was logged. Source inspection shows
+core builds TlsIdentity from a required single leaf while original identity
+owner builds leaf + issuing CA + pinned root. Root owns repair and verification;
+this package does not relax TLS, peer binding or scope checks.
+
+Raw local logs: `/tmp/moxbots-full-e2e-first-business.log` and
+`/tmp/moxbots-full-e2e-headless-close-diagnostic.log`. Default-disabled run exact
+processes 36760/36763/36825 plus original Hosts 36780/36810 exited, ports
+63635/63636 closed. First business run 37296/37298/37317 plus Hosts 37313/37315
+exited, ports 64060/64065 closed. Diagnostic runs' recorded births also reread
+exited (39028/39030/39050/39036/39044, 39717/39719/39747/39743/39745,
+40188/40199/40213/40207/40209), all six original public/service ports had no
+LISTEN. No Session worker/SDK child had started because inner TLS had failed.
