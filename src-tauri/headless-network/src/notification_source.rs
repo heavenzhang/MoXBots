@@ -255,3 +255,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "notification_source_combined_test.rs"]
+mod combined_test;
