@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc,
@@ -40,6 +40,7 @@ use zeroize::Zeroizing;
 
 const MAX_JOURNAL: usize = 128;
 const MAX_PENDING: usize = 64;
+const MAX_CONFIRMED: usize = 4096;
 fn error(code: &'static str) -> NetworkError {
     NetworkError::new(code)
 }
@@ -110,6 +111,7 @@ pub struct MobileClient {
     target: DeviceScope,
     journal: BTreeMap<String, JournalEntry>,
     pending: BTreeMap<String, RemoteSessionRequest>,
+    confirmed: BTreeSet<String>,
     used: bool,
     network_url: String,
     flow: RelayFlow,
@@ -276,6 +278,7 @@ impl MobileClient {
             target: config.target,
             journal: BTreeMap::new(),
             pending: BTreeMap::new(),
+            confirmed: BTreeSet::new(),
             used: false,
             network_url: bootstrap.network_url,
             flow: RelayFlow::default(),
@@ -302,6 +305,9 @@ impl MobileClient {
             .ok_or_else(|| error("MOBILE_OPERATION_REQUIRED"))?;
         let digest = Self::digest(&request, &self.target, &self.account.issuer)?;
         let id = operation_id.as_uuid().to_string();
+        if self.confirmed.contains(&id) {
+            return Err(error("MOBILE_RECEIPT_REQUIRED"));
+        }
         if let Some(prior) = self.journal.get(&id) {
             if prior.record.digest != digest {
                 return Err(error("MOBILE_OPERATION_CONFLICT"));
@@ -366,6 +372,9 @@ impl MobileClient {
             } => {
                 if !self.channel.ready() {
                     return Err(error("CHANNEL_NOT_READY"));
+                }
+                if self.confirmed.contains(&operation_id.as_uuid().to_string()) {
+                    return Err(error("MOBILE_RECEIPT_REQUIRED"));
                 }
                 let entry = self
                     .journal
@@ -485,6 +494,37 @@ impl MobileClient {
             Err(error("MOBILE_RESPONSE_SCOPE_MISMATCH"))
         }
     }
+    fn note_receipt(
+        &mut self,
+        data: &myagents_host_management_protocol::RemoteSessionResult,
+    ) -> Result<(), NetworkError> {
+        use myagents_host_management_protocol::{RemoteReceiptStatus, RemoteSessionResult};
+        if let RemoteSessionResult::Receipt {
+            agent_id,
+            operation_id,
+            status,
+            ..
+        } = data
+        {
+            let id = operation_id.as_uuid().to_string();
+            if matches!(
+                status,
+                RemoteReceiptStatus::Accepted | RemoteReceiptStatus::Rejected
+            ) && self
+                .journal
+                .get(&id)
+                .is_some_and(|entry| entry.record.request.agent_id() == agent_id)
+            {
+                if self.confirmed.len() >= MAX_CONFIRMED {
+                    return Err(error("MOBILE_CONFIRMATION_LIMIT"));
+                }
+                // Retain only the UUID replay tombstone; unknown bodies are never evicted.
+                self.confirmed.insert(id.clone());
+                self.journal.remove(&id);
+            }
+        }
+        Ok(())
+    }
     fn feed(&mut self, bytes: &[u8]) -> Result<Value, NetworkError> {
         let result = self.feed_inner(bytes);
         if result.is_err() {
@@ -514,6 +554,7 @@ impl MobileClient {
                             data.validate()
                                 .map_err(|_| error("MOBILE_RESPONSE_INVALID"))?;
                             Self::validate_response(&request, &data)?;
+                            self.note_receipt(&data)?;
                             out.push(
                                 json!({"kind":"response", "requestId":request_id, "data":data}),
                             );
@@ -642,6 +683,7 @@ mod tests {
                 target: scope(4),
                 journal: BTreeMap::new(),
                 pending: BTreeMap::new(),
+                confirmed: BTreeSet::new(),
                 used: false,
                 network_url: "https://relay.invalid".into(),
                 flow: RelayFlow::default(),
@@ -745,6 +787,56 @@ mod tests {
         assert!(credit.1 > 22);
         assert!(client.take_received_credit().unwrap().is_none());
         assert_eq!(
+            client.status()["unknownOperations"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        client
+            .execute(Intent::Request {
+                request: RemoteSessionRequest::Receipt {
+                    agent_id: "agent".into(),
+                    operation_id,
+                },
+            })
+            .unwrap();
+        let mut receipt_request_id = None;
+        while let Some(frame) = client.drain_frame().unwrap() {
+            for event in host
+                .feed_management(decode_tls_frame(&frame).unwrap().1, &mut host_sequences)
+                .unwrap()
+            {
+                if let ManagementEvent::Request { request_id, .. } = event {
+                    receipt_request_id = Some(request_id);
+                }
+            }
+        }
+        host.send_management(ManagementMessage::Response {
+            request_id: receipt_request_id.unwrap(),
+            result: ResponseResult::RemoteSession {
+                data: RemoteSessionResult::Receipt {
+                    agent_id: "agent".into(),
+                    operation_id,
+                    session_id: Some("session-confirmed".into()),
+                    status: RemoteReceiptStatus::Accepted,
+                    code: None,
+                },
+            },
+        })
+        .unwrap();
+        while let Some(frame) = host.drain_frame().unwrap() {
+            client.feed(&frame).unwrap();
+        }
+        assert!(client.status()["unknownOperations"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        assert!(client.journal.is_empty());
+        assert!(client
+            .confirmed
+            .contains(&operation_id.as_uuid().to_string()));
+        assert_eq!(
             client
                 .call(Intent::Commit {
                     operation_id,
@@ -796,6 +888,61 @@ mod tests {
         assert!(client.take_received_credit().unwrap().is_none());
         client.flow.received = 84;
         assert_eq!(client.take_received_credit().unwrap(), Some((2, 84)));
+    }
+    #[test]
+    fn confirmed_receipts_release_active_capacity_without_evicting_unknowns() {
+        let (mut client, _, _) = pair();
+        let mut ids = Vec::new();
+        for _ in 0..MAX_JOURNAL {
+            let operation_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+            client
+                .execute(Intent::Prepare {
+                    request: start(operation_id),
+                })
+                .unwrap();
+            ids.push(operation_id);
+        }
+        let fresh = CanonicalUuid::new(uuid::Uuid::new_v4());
+        assert_eq!(
+            client
+                .execute(Intent::Prepare {
+                    request: start(fresh)
+                })
+                .unwrap_err(),
+            "MOBILE_JOURNAL_LIMIT"
+        );
+        let receipt = |status| RemoteSessionResult::Receipt {
+            agent_id: "agent".into(),
+            operation_id: ids[0],
+            session_id: None,
+            status,
+            code: None,
+        };
+        client
+            .note_receipt(&receipt(RemoteReceiptStatus::NotFound))
+            .unwrap();
+        assert_eq!(client.journal.len(), MAX_JOURNAL);
+        client
+            .note_receipt(&receipt(RemoteReceiptStatus::Accepted))
+            .unwrap();
+        assert_eq!(client.journal.len(), MAX_JOURNAL - 1);
+        assert_eq!(
+            client
+                .execute(Intent::Prepare {
+                    request: start(ids[0])
+                })
+                .unwrap_err(),
+            "MOBILE_RECEIPT_REQUIRED"
+        );
+        client
+            .execute(Intent::Prepare {
+                request: start(fresh),
+            })
+            .unwrap();
+        assert_eq!(client.journal.len(), MAX_JOURNAL);
+        for id in ids.iter().skip(1) {
+            assert!(client.journal.contains_key(&id.as_uuid().to_string()));
+        }
     }
     #[test]
     fn recovered_unknown_cannot_resend_and_rejects_cross_target_journal() {
