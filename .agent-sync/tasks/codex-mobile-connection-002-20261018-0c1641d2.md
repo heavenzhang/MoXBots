@@ -77,3 +77,24 @@ covers empty, 100-character, slash, control, non-ASCII and oversized identifiers
 99-character acceptance and invalid stored bindings. Locked connection lib suite:
 81 passed; all-targets clippy -D warnings passed. No peer/SDK change in this fix;
 new session.mobile.v1 integration awaits the parent's SDK dependency commit.
+
+## Negotiated session.mobile.v1 connection stage
+
+Parent directed a normal merge from authoritative integration 1618ca0e. Shared
+SDK/protocol add/add conflicts were reported before editing; parent explicitly
+authorized resolving the exact dependency paths from that root revision. Merge
+f61a8fd9 records this dependency integration. Parent should cherry-pick only the
+subsequent connection implementation commit, not this dependency merge.
+
+- [x] Closed version 1 mobile wrapper with RemoteMobileRequest, 48-KiB typed protocol/64-KiB raw intent limits and raw duplicate/unknown field rejection.
+- [x] Explicit mobile.capabilities negotiation on the same retained Combined owner; exact current catalog Agent, account, epoch and response scope fences remain enforced by native and SDK.
+- [x] PrepareMobile → durable native index/full-record write and exact readback → Commit, sharing the original 128 UNKNOWN ledger. Legacy JSON/digests/marker bytes and limits stay compatible.
+- [x] Restore JournalRequest legacy/mobile union before the owner's first RPC; scoped matching target/Agent records only, with no automatic execution resend. Original pending projection adds protocol:'session'|'mobile' per item; parent owns app receipt-method consumption.
+- [x] Mobile and legacy settlement verify stored protocol/target/Agent; cross-protocol same-UUID receipts cannot settle one another. Mobile receipt queries match the original immutable send session. UNKNOWN/Processing/NotFound/Unconfirmed/error retain records; 35-second timeout invalidates owner and reports MOBILE_SESSION_UNKNOWN.
+- [x] Connection locked lib suite 86 passed; independently rerun shared core locked lib suite 39 passed, including real encrypted mTLS mobile/legacy paths, frozen legacy journal, protocol and session/revision response fences. Connection all-targets clippy -D warnings passed. git diff --check passed.
+- [ ] Parent integration review/native app rebuild and actual authorized device/account/Host acceptance remain unproven. No real credentials, model calls, production writes, main merge or release performed by this worker.
+
+Next step: parent cherry-picks only the new connection-owned commit onto its
+already integrated 1618ca0e dependencies, consumes pending.protocol in the app,
+rebuilds the native archive and completes real-device/Host verification. Model
+runtime identity, token usage and monetary cost remain unavailable.

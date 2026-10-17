@@ -8,7 +8,7 @@ use crate::agent_network::{
 use futures_util::FutureExt;
 use moxbots_mobile_core::{Intent, MobileClient};
 use myagents_host_management_protocol::{
-    RemoteAssetRequest as Asset, RemoteSessionRequest as Session,
+    RemoteAssetRequest as Asset, RemoteMobileRequest as Mobile, RemoteSessionRequest as Session,
 };
 use std::time::Instant;
 const ASSET_DEADLINE: Duration = Duration::from_secs(8);
@@ -29,6 +29,7 @@ pub(super) struct PeerConnection {
     created: Instant,
     last_use: Instant,
     assets_negotiated: bool,
+    mobile_negotiated: bool,
 }
 impl PeerConnection {
     pub(super) fn reusable(&self, target: &Target, active: &Arc<AtomicBool>) -> bool {
@@ -261,6 +262,7 @@ impl PeerConnection {
                         created: Instant::now(),
                         last_use: Instant::now(),
                         assets_negotiated: false,
+                        mobile_negotiated: false,
                     });
                 }
             }
@@ -359,6 +361,13 @@ impl PeerConnection {
                 }
             }
         }
+    }
+    async fn mobile_rpc(&mut self, request: Mobile) -> Result<Value, NetworkError> {
+        let submitted = self
+            .sdk
+            .execute(Intent::MobileRequest { request })
+            .map_err(sdk_error)?;
+        self.response(submitted, "mobile-response").await
     }
     async fn asset_rpc(&mut self, request: Asset) -> Result<Value, NetworkError> {
         let submitted = self
@@ -519,11 +528,23 @@ impl MobileConnection {
     }
     fn recover_peer(&self, peer: &mut PeerConnection) -> Result<(), NetworkError> {
         let scope = journal_scope(&peer.c.identity.scope)?;
+        let records = self.recovery_records(&scope, &peer.address.scope, &peer.target.agent)?;
+        peer.sdk
+            .execute(Intent::Recover { records })
+            .map_err(sdk_error)?;
+        Ok(())
+    }
+    fn recovery_records(
+        &self,
+        scope: &str,
+        target: &DeviceScope,
+        agent: &str,
+    ) -> Result<Vec<JournalRecord>, NetworkError> {
         let mut records = Vec::new();
-        for id in self.pending_operations(&scope)? {
+        for id in self.pending_operations(scope)? {
             let Some(bytes) = self
                 .store
-                .read_record(&scope, &format!("operation:{id}"))
+                .read_record(scope, &format!("operation:{id}"))
                 .map_err(store_error)?
             else {
                 continue;
@@ -533,12 +554,18 @@ impl MobileConnection {
             if value["confirmed"] == true {
                 continue;
             }
-            let request: Session = serde_json::from_value(value["request"].clone())
-                .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
-            if request.agent_id() == peer.target.agent
+            let request = journal_request(&value)?;
+            if request
+                .operation_id()
+                .map(|op| op.as_uuid().to_string())
+                .as_deref()
+                != Some(&id)
+            {
+                return Err(err("MOBILE_JOURNAL_INVALID"));
+            }
+            if request.agent_id() == agent
                 && value["target"]
-                    == serde_json::to_value(&peer.address.scope)
-                        .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?
+                    == serde_json::to_value(target).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?
                 && value["issuer"] == self.config.issuer
             {
                 records.push(
@@ -546,10 +573,83 @@ impl MobileConnection {
                 );
             }
         }
-        peer.sdk
-            .execute(Intent::Recover { records })
-            .map_err(sdk_error)?;
-        Ok(())
+        Ok(records)
+    }
+    pub(super) async fn mobile(&mut self, intent: &Value) -> Result<Value, NetworkError> {
+        if serde_json::to_vec(intent)
+            .map_err(|_| err("MOBILE_INTENT_INVALID"))?
+            .len()
+            > 64 * 1024
+        {
+            return Err(err("MOBILE_INTENT_INVALID"));
+        }
+        let target = self.approved_target(intent)?;
+        let request: Mobile = serde_json::from_value(intent["request"].clone())
+            .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
+        request
+            .validate()
+            .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
+        if request.agent_id() != target.agent {
+            return Err(err("MOBILE_TARGET_INVALID"));
+        }
+        match tokio::time::timeout(Duration::from_secs(35), self.mobile_inner(target, request))
+            .await
+        {
+            Ok(Ok(value)) => Ok(value),
+            Ok(Err(error)) => {
+                self.peer = None;
+                self.connected = None;
+                Err(error)
+            }
+            Err(_) => {
+                self.peer = None;
+                self.connected = None;
+                Err(err("MOBILE_SESSION_UNKNOWN"))
+            }
+        }
+    }
+    async fn mobile_inner(
+        &mut self,
+        target: Target,
+        request: Mobile,
+    ) -> Result<Value, NetworkError> {
+        let mut peer = self.retained_peer(&target).await?;
+        // Recovery ran before the SDK owner's first RPC, including capabilities.
+        if !peer.mobile_negotiated && !matches!(request, Mobile::Capabilities { .. }) {
+            let caps = peer
+                .mobile_rpc(Mobile::Capabilities {
+                    version: 1,
+                    agent_id: target.agent.clone(),
+                })
+                .await?;
+            if caps["kind"] != "mobile.capabilities" {
+                self.peer = Some(peer);
+                return Ok(caps);
+            }
+            peer.mobile_negotiated = true;
+        }
+        let wrapped = JournalRequest::Mobile(request.clone());
+        let submitted = if request.mutation() {
+            self.queue_journal(&mut peer, &wrapped)?
+        } else {
+            peer.sdk
+                .execute(Intent::MobileRequest {
+                    request: request.clone(),
+                })
+                .map_err(sdk_error)?
+        };
+        let data = peer.response(submitted, "mobile-response").await?;
+        if matches!(request, Mobile::Capabilities { .. }) && data["kind"] == "mobile.capabilities" {
+            peer.mobile_negotiated = true;
+        }
+        self.settle_journal(
+            &journal_scope(&peer.c.identity.scope)?,
+            &peer.address.scope,
+            &wrapped,
+            &data,
+        )?;
+        self.peer = Some(peer);
+        Ok(data)
     }
     pub(super) async fn session(&mut self, intent: &Value) -> Result<Value, NetworkError> {
         let target = self.approved_target(intent)?;
@@ -620,6 +720,23 @@ impl MobileConnection {
                 })
                 .map_err(sdk_error);
         }
+        self.queue_journal(peer, &JournalRequest::Legacy(request.clone()))
+    }
+    fn write_journal(&self, scope: &str, key: &str, bytes: &[u8]) -> Result<(), NetworkError> {
+        self.store
+            .write_record(scope, key, bytes)
+            .map_err(store_error)?;
+        let read = self.store.read_record(scope, key).map_err(store_error)?;
+        if read.as_deref().map(|b| b.as_slice()) != Some(bytes) {
+            return Err(err("MOBILE_JOURNAL_PERSISTENCE_UNCONFIRMED"));
+        }
+        Ok(())
+    }
+    fn queue_journal(
+        &self,
+        peer: &mut PeerConnection,
+        request: &JournalRequest,
+    ) -> Result<Value, NetworkError> {
         let op = request
             .operation_id()
             .ok_or_else(|| err("MOBILE_OPERATION_REQUIRED"))?
@@ -641,26 +758,21 @@ impl MobileConnection {
                 return Err(err("MOBILE_JOURNAL_LIMIT"));
             }
             pending.push(op.clone());
-            self.store
-                .write_record(
-                    &scope,
-                    "pending-operations",
-                    &serde_json::to_vec(&pending).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
-                )
-                .map_err(store_error)?;
+            self.write_journal(
+                &scope,
+                "pending-operations",
+                &serde_json::to_vec(&pending).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
+            )?;
         }
-        let prepared = peer
-            .sdk
-            .execute(Intent::Prepare {
-                request: request.clone(),
-            })
-            .map_err(sdk_error)?;
+        let prepare = match request {
+            JournalRequest::Legacy(r) => Intent::Prepare { request: r.clone() },
+            JournalRequest::Mobile(r) => Intent::PrepareMobile { request: r.clone() },
+        };
+        let prepared = peer.sdk.execute(prepare).map_err(sdk_error)?;
         let bytes = Zeroizing::new(
             serde_json::to_vec(&prepared["record"]).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
         );
-        self.store
-            .write_record(&scope, &record, &bytes)
-            .map_err(store_error)?;
+        self.write_journal(&scope, &record, &bytes)?;
         peer.sdk
             .execute(
                 serde_json::from_value(
@@ -676,30 +788,79 @@ impl MobileConnection {
         request: &Session,
         data: &Value,
     ) -> Result<(), NetworkError> {
-        if request.mutation() && data["kind"] == "snapshot"
-            || data["kind"] == "receipt"
-                && ["accepted", "rejected"]
-                    .iter()
-                    .any(|status| data["status"] == *status)
+        self.settle_journal(
+            &journal_scope(&peer.c.identity.scope)?,
+            &peer.address.scope,
+            &JournalRequest::Legacy(request.clone()),
+            data,
+        )
+    }
+    fn settle_journal(
+        &self,
+        scope: &str,
+        target: &DeviceScope,
+        request: &JournalRequest,
+        data: &Value,
+    ) -> Result<(), NetworkError> {
+        let receipt = if request.protocol() == "mobile" {
+            "mobile.receipt"
+        } else {
+            "receipt"
+        };
+        let settled =
+            request.protocol() == "session" && request.mutation() && data["kind"] == "snapshot"
+                || data["kind"] == receipt
+                    && ["accepted", "rejected"]
+                        .iter()
+                        .any(|status| data["status"] == *status);
+        if !settled {
+            return Ok(());
+        }
+        let Some(id) = request.operation_id() else {
+            return Ok(());
+        };
+        let op = id.as_uuid().to_string();
+        let key = format!("operation:{op}");
+        let Some(bytes) = self.store.read_record(scope, &key).map_err(store_error)? else {
+            return Ok(());
+        };
+        let stored: Value =
+            serde_json::from_slice(&bytes).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
+        if stored["confirmed"] == true {
+            return Ok(());
+        }
+        let prior = journal_request(&stored)?;
+        // A valid response for another protocol may not settle this protocol's
+        // operation, even when the caller deliberately reuses its UUID.
+        if prior.protocol() != request.protocol() {
+            return Ok(());
+        }
+        if prior.operation_id() != Some(id)
+            || prior.agent_id() != request.agent_id()
+            || stored["issuer"] != self.config.issuer
+            || stored["target"]
+                != serde_json::to_value(target).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?
         {
-            if let Some(id) = request.operation_id() {
-                let op = id.as_uuid().to_string();
-                let scope = journal_scope(&peer.c.identity.scope)?;
-                self.store
-                    .write_record(&scope, &format!("operation:{op}"), b"{\"confirmed\":true}")
-                    .map_err(store_error)?;
-                let mut pending = self.pending_operations(&scope)?;
-                pending.retain(|id| id != &op);
-                self.store
-                    .write_record(
-                        &scope,
-                        "pending-operations",
-                        &serde_json::to_vec(&pending).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
-                    )
-                    .map_err(store_error)?;
+            return Err(err("MOBILE_JOURNAL_INVALID"));
+        }
+        if data["kind"] == receipt
+            && (data["operationId"] != op || data["agentId"] != prior.agent_id())
+        {
+            return Err(err("MOBILE_RESPONSE_SCOPE_MISMATCH"));
+        }
+        if let JournalRequest::Mobile(Mobile::Send { session_id, .. }) = &prior {
+            if data["sessionId"] != *session_id {
+                return Err(err("MOBILE_RESPONSE_SCOPE_MISMATCH"));
             }
         }
-        Ok(())
+        self.write_journal(scope, &key, b"{\"confirmed\":true}")?;
+        let mut pending = self.pending_operations(scope)?;
+        pending.retain(|id| id != &op);
+        self.write_journal(
+            scope,
+            "pending-operations",
+            &serde_json::to_vec(&pending).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
+        )
     }
     pub(super) async fn assets(&mut self, intent: &Value) -> Result<Value, NetworkError> {
         let target = self.approved_target(intent)?;
@@ -929,6 +1090,200 @@ mod tests {
                 .code,
             "MOBILE_ASSET_JOURNAL_LIMIT"
         );
+    }
+    fn journal_record(request: Value, target: &DeviceScope, issuer: &str) -> Value {
+        let request: JournalRequest = serde_json::from_value(request).unwrap();
+        let digest = URL_SAFE_NO_PAD.encode(Sha256::digest(
+            serde_json::to_vec(&(issuer, target, &request)).unwrap(),
+        ));
+        json!({"operationId":request.operation_id().unwrap(),"digest":digest,"request":request,"target":target,"issuer":issuer})
+    }
+    #[test]
+    fn native_recovery_accepts_frozen_legacy_and_mobile_without_rewriting_bytes() {
+        let mut o = owner();
+        let legacy: Value = serde_json::from_slice(include_bytes!(
+            "../../core/tests/fixtures/legacy-journal-v1.json"
+        ))
+        .unwrap();
+        o.config.issuer = legacy["issuer"].as_str().unwrap().into();
+        let target: DeviceScope = serde_json::from_value(legacy["target"].clone()).unwrap();
+        let op = uuid::Uuid::new_v4().to_string();
+        let mobile = journal_record(
+            json!({"kind":"mobile.send","version":1,"agentId":"agent","operationId":op,"sessionId":"session","text":"secret","assetIds":[]}),
+            &target,
+            &o.config.issuer,
+        );
+        let ids = vec![
+            legacy["operationId"].as_str().unwrap().to_owned(),
+            op.clone(),
+        ];
+        o.write_journal(
+            "scope",
+            "pending-operations",
+            &serde_json::to_vec(&ids).unwrap(),
+        )
+        .unwrap();
+        for record in [&legacy, &mobile] {
+            o.write_journal(
+                "scope",
+                &format!("operation:{}", record["operationId"].as_str().unwrap()),
+                &serde_json::to_vec(record).unwrap(),
+            )
+            .unwrap();
+        }
+        let restored = o.recovery_records("scope", &target, "agent").unwrap();
+        assert_eq!(restored.len(), 2);
+        assert_eq!(serde_json::to_value(&restored[0]).unwrap(), legacy);
+        assert_eq!(serde_json::to_value(&restored[1]).unwrap(), mobile);
+        assert!(o
+            .recovery_records("scope", &target, "other-agent")
+            .unwrap()
+            .is_empty());
+        let mut changed = target.clone();
+        changed.key_generation += 1;
+        assert!(o
+            .recovery_records("scope", &changed, "agent")
+            .unwrap()
+            .is_empty());
+        assert_eq!(o.pending_operations("scope").unwrap(), ids);
+        assert_eq!(
+            o.store
+                .read_record("scope", &format!("operation:{op}"))
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            serde_json::to_vec(&mobile).unwrap()
+        );
+    }
+    #[test]
+    fn native_settlement_keeps_unknown_and_foreign_protocol_and_original_session() {
+        let o = owner();
+        let op = uuid::Uuid::new_v4().to_string();
+        let target:DeviceScope=serde_json::from_value(json!({"serviceId":uuid::Uuid::new_v4().to_string(),"environment":"development","networkId":uuid::Uuid::new_v4().to_string(),"principalId":"principal","deviceId":target().device,"keyGeneration":1})).unwrap();
+        let mobile = journal_record(
+            json!({"kind":"mobile.send","version":1,"agentId":"agent","operationId":op,"sessionId":"original","text":"secret","assetIds":[]}),
+            &target,
+            &o.config.issuer,
+        );
+        let original = serde_json::to_vec(&mobile).unwrap();
+        let key = format!("operation:{op}");
+        o.write_journal(
+            "scope",
+            "pending-operations",
+            &serde_json::to_vec(&vec![op.clone()]).unwrap(),
+        )
+        .unwrap();
+        o.write_journal("scope", &key, &original).unwrap();
+        let query: JournalRequest = serde_json::from_value(
+            json!({"kind":"mobile.receipt","version":1,"agentId":"agent","operationId":op}),
+        )
+        .unwrap();
+        let legacy: JournalRequest =
+            serde_json::from_value(json!({"kind":"receipt","agentId":"agent","operationId":op}))
+                .unwrap();
+        let accepted = json!({"kind":"mobile.receipt","version":1,"agentId":"agent","operationId":op,"sessionId":"original","status":"accepted","code":null});
+        for status in ["unknown", "processing", "not-found", "unconfirmed"] {
+            let mut result = accepted.clone();
+            result["status"] = json!(status);
+            o.settle_journal("scope", &target, &query, &result).unwrap();
+            assert_eq!(
+                o.store
+                    .read_record("scope", &key)
+                    .unwrap()
+                    .unwrap()
+                    .as_slice(),
+                original
+            );
+        }
+        let mut wrong_protocol = accepted.clone();
+        wrong_protocol["kind"] = json!("receipt");
+        o.settle_journal("scope", &target, &legacy, &wrong_protocol)
+            .unwrap();
+        assert_eq!(
+            o.store
+                .read_record("scope", &key)
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            original
+        );
+        let mut wrong_session = accepted.clone();
+        wrong_session["sessionId"] = json!("foreign");
+        assert_eq!(
+            o.settle_journal("scope", &target, &query, &wrong_session)
+                .unwrap_err()
+                .code,
+            "MOBILE_RESPONSE_SCOPE_MISMATCH"
+        );
+        o.settle_journal("scope", &target, &query, &accepted)
+            .unwrap();
+        assert!(o.pending_operations("scope").unwrap().is_empty());
+        assert_eq!(
+            o.store
+                .read_record("scope", &key)
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            b"{\"confirmed\":true}"
+        );
+        // The inverse protocol direction cannot settle an original legacy op.
+        let legacy_record = journal_record(
+            json!({"kind":"start","agentId":"agent","operationId":op,"text":"legacy"}),
+            &target,
+            &o.config.issuer,
+        );
+        o.write_journal("scope", &key, &serde_json::to_vec(&legacy_record).unwrap())
+            .unwrap();
+        o.settle_journal("scope", &target, &query, &accepted)
+            .unwrap();
+        assert_eq!(
+            serde_json::from_slice::<Value>(&o.store.read_record("scope", &key).unwrap().unwrap())
+                .unwrap(),
+            legacy_record
+        );
+    }
+    #[test]
+    fn native_journal_requires_exact_os_write_confirmation() {
+        let memory = Box::<crate::ffi::tests::Memory>::default();
+        let o = MobileConnection::new(
+            NativeConfig {
+                issuer: "https://test.example".into(),
+                public_tls_ca: None,
+            },
+            Arc::new(crate::ffi::tests::callbacks(&memory)),
+        )
+        .unwrap();
+        memory.discard.store(true, Ordering::SeqCst);
+        assert_eq!(
+            o.write_journal("scope", "pending-operations", b"[]")
+                .unwrap_err()
+                .code,
+            "MOBILE_JOURNAL_PERSISTENCE_UNCONFIRMED"
+        );
+        memory.discard.store(false, Ordering::SeqCst);
+        o.write_journal("scope", "record", b"original").unwrap();
+        memory.discard.store(true, Ordering::SeqCst);
+        assert_eq!(
+            o.write_journal("scope", "record", b"changed")
+                .unwrap_err()
+                .code,
+            "MOBILE_JOURNAL_PERSISTENCE_UNCONFIRMED"
+        );
+    }
+    #[tokio::test]
+    async fn mobile_requires_current_catalog_agent_and_real_account_without_fallback() {
+        let mut o = owner();
+        o.targets.insert("approved".into(), target());
+        for (agent, expected) in [
+            ("foreign", "MOBILE_TARGET_INVALID"),
+            ("agent", "OWNED_LOGIN_REQUIRED"),
+        ] {
+            let result=o.request(json!({"version":1,"kind":"mobile","targetId":"approved","request":{"kind":"mobile.capabilities","version":1,"agentId":agent}})).await;
+            assert_eq!(result["error"]["code"], expected);
+        }
+        let result=o.request(json!({"version":1,"kind":"mobile","targetId":"approved","request":{"kind":"mobile.start","version":1,"agentId":"agent","operationId":uuid::Uuid::new_v4().to_string(),"assetIds":[],"text":"x".repeat(16001)}})).await;
+        assert_eq!(result["error"]["code"], "MOBILE_INTENT_INVALID");
+        assert!(o.peer.is_none());
     }
     #[tokio::test]
     async fn assets_require_approved_agent_and_real_account_before_any_network_effect() {
