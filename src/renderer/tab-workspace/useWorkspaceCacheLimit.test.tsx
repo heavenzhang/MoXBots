@@ -111,4 +111,18 @@ describe('bounded workspace FIFO cache', () => {
     expect(hook.result.current.state.tabs.map(tab => tab.id)).toEqual(['oldest', 'newest']);
     expect(cleanup).toHaveBeenCalledTimes(1);
   });
+
+  it('keeps a page whose interaction guard becomes protected while editor saving is pending', async () => {
+    let settle!: (value: TabCloseAdmission) => void;
+    const protectedIds = new Set<string>();
+    const prepare = vi.fn(async (_tab: Tab): Promise<TabCloseAdmission> => 'allow')
+      .mockImplementationOnce(() => new Promise(resolve => { settle = resolve; }));
+    const { hook, cleanup } = setup({ prepare, protectedIds });
+    act(() => { hook.result.current.controller.append(page('newest')); });
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1));
+    protectedIds.add('oldest');
+    await act(async () => { settle('allow'); });
+    expect(hook.result.current.state.tabs.map(tab => tab.id)).toEqual(['oldest', 'newest']);
+    expect(cleanup.mock.calls[0]?.[0]).toMatchObject({ id: 'middle' });
+  });
 });

@@ -338,4 +338,4 @@ User authorized nine upstream repairs and consumed-settings-navigation state onl
 
 ## MOXBOTS-SESSION-WINDOWS-001 — 2026-10-17
 
-按用户要求移除全局浏览器式TabBar，以当前会话页面/侧栏为导航；沿原Chat保存与后台继续owner做12页FIFO有界回收，保护输入/录音和活动页面。验收与发布请求见 `dev-docs/session-windows/acceptance.md`，分支任务 `.agent-sync/tasks/codex-session-windows-20261017-31ed5a11.md`。155项定向回归、实际renderer三尺寸与独立代码/截图审阅通过；CI/main以PR为准，原生包/真实会话仍待既定唯一发布owner下一未冻结候选，不操作日常App，不把main合并当已发布。
+按用户要求移除全局浏览器式TabBar，以当前会话页面/侧栏为导航；沿原Chat保存与后台继续owner做12页FIFO有界回收，保护输入/录音和活动页面。验收与发布请求见 `dev-docs/session-windows/acceptance.md`，分支任务 `.agent-sync/tasks/codex-session-windows-20261017-31ed5a11.md`。156项定向回归、实际renderer三尺寸与独立代码/截图审阅通过；CI/main以PR为准，原生包/真实会话仍待既定唯一发布owner下一未冻结候选，不操作日常App，不把main合并当已发布。

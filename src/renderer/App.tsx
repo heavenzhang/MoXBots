@@ -62,7 +62,6 @@ import LinkContextMenuProvider from '@/components/LinkContextMenuProvider';
 import CurrentPageHeader from '@/components/CurrentPageHeader';
 import { resolveTabChrome } from '@/tab-workspace/registry';
 import { useWorkspaceCacheLimit } from '@/tab-workspace/useWorkspaceCacheLimit';
-import { readRemoteDraft } from '@/features/remote-session/drafts';
 import { SessionDeletionContext } from '@/context/SessionDeletionContext';
 import type { AdoptMigratedSessionOptions } from '@/context/TabContext';
 import { useToast } from '@/components/Toast';
@@ -957,15 +956,15 @@ export default function App() {
 
   // Same admission boundary as Record notes: only callbacks live here. The
   // mounted preview retains the draft and owns its IO/transition decision.
-  const fileEditSubmittersRef = useRef(new Map<string, () => Promise<boolean>>());
-  const registerFileEditSubmitter = useCallback((tabId: string, submit: () => Promise<boolean>) => {
-    fileEditSubmittersRef.current.set(tabId, submit);
-    return () => { if (fileEditSubmittersRef.current.get(tabId) === submit) fileEditSubmittersRef.current.delete(tabId); };
+  const fileEditSubmittersRef = useRef(new Map<string, { submit: () => Promise<boolean>; canEvict?: () => boolean }>());
+  const registerFileEditSubmitter = useCallback((tabId: string, submit: () => Promise<boolean>, canEvict?: () => boolean) => {
+    fileEditSubmittersRef.current.set(tabId, { submit, canEvict });
+    return () => { if (fileEditSubmittersRef.current.get(tabId)?.submit === submit) fileEditSubmittersRef.current.delete(tabId); };
   }, []);
   const chatTabLifecycle = useMemo(
     () =>
       createChatTabLifecycle({
-        flushFileEdits: async tabId => fileEditSubmittersRef.current.get(tabId)?.() ?? true,
+        flushFileEdits: async tabId => fileEditSubmittersRef.current.get(tabId)?.submit() ?? true,
         startBackgroundCompletion,
         stopSseProxy,
         releaseTabSession,
@@ -1006,9 +1005,11 @@ export default function App() {
   const canEvictCachedPage = useCallback((tab: Tab): boolean => {
     if (loadingTabs[tab.id] || recordingAdmissionTabsRef.current.has(tab.id)
       || !canEvictComposerTab(tab.id)) return false;
-    if (tab.view === 'chat') return !!tab.sessionId && !isPendingSessionId(tab.sessionId)
+    if (tab.view === 'chat') return fileEditSubmittersRef.current.get(tab.id)?.canEvict?.() === true && !!tab.sessionId && !isPendingSessionId(tab.sessionId)
       && !tab.initialMessage && !tab.pendingFilePreview;
-    if (tab.view === 'remote-session') return !!tab.sessionId && !readRemoteDraft(tab);
+    // Remote interaction cards keep their own unsent answers. Until that
+    // owner attests safe eviction, preserve the page (like other live forms).
+    if (tab.view === 'remote-session') return false;
     if (tab.view === 'record') return !tab.recordingStatus || !['recording', 'paused', 'preparing', 'stopping'].includes(tab.recordingStatus);
     // Configuration/community forms have no automatic-close attestation.
     // Keep their singleton views mounted rather than guessing that a form is clean.
@@ -4730,8 +4731,8 @@ export default function App() {
         for (const submit of pendingRecordNoteSubmittersRef.current.values()) {
           if (!(await submit())) return;
         }
-        for (const submit of fileEditSubmittersRef.current.values()) {
-          if (!(await submit())) return;
+        for (const editor of fileEditSubmittersRef.current.values()) {
+          if (!(await editor.submit())) return;
         }
         await checkpoint.persist(tabWorkspaceController.getSnapshot().tabs, tabWorkspaceController.getSnapshot().activeTabId);
         restarting = (await performRestartAndUpdate(checkpoint, interruptWork)) === 'ok';

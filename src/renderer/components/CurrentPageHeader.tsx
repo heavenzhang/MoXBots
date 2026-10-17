@@ -16,7 +16,7 @@ export default function CurrentPageHeader({ chrome, onClose }: {
     <span className="min-w-0 truncate text-sm font-medium text-[var(--ink)]" data-tauri-drag-region>{chrome.title}</span>
     {chrome.subtitle && chrome.subtitle !== chrome.title && <span className="hidden min-w-0 truncate text-xs text-[var(--ink-muted)] sm:block" data-tauri-drag-region>{chrome.subtitle}</span>}
     <div className="h-full min-w-4 flex-1" data-tauri-drag-region />
-    {onClose && <button type="button" onClick={onClose} aria-label={t('titlebar.close')}
+    {onClose && <button type="button" onClick={onClose} aria-label={t('tabs.closeCurrentPage')} title={t('tabs.closeCurrentPage')}
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]" data-no-drag>
       <CloseIcon className="h-4 w-4" />
     </button>}
