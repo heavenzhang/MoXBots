@@ -3,15 +3,17 @@ import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Mic, MoreHorizontal, Plus } from 'lucide-react-native';
-import { Account, Interaction, PendingOperation, QaScenario, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestNative, selectQaScenario, subscribeSpeechChanges } from '../native';
+import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, Sparkles, X } from 'lucide-react-native';
+import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createSingleFlightPoll, draftKey, mutationDisposition, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
+import { permitsLegacyTextFallback, receiptProtocol, sendProtocol, type MobileMode } from '../mobilePolicy';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
 type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found';
 type Notice = { tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
+type AttachmentItem = { file: NativeAttachment; upload: NativeAttachmentUpload | null; ownerKey: string; errorCode?: string };
 
 const errorMessages: Record<string, string> = {
   MOBILE_RECEIPT_REQUIRED: '设备要求先确认操作状态。请查询状态后再继续；不会自动重发。',
@@ -22,11 +24,31 @@ const errorMessages: Record<string, string> = {
   SESSION_LIST_REPLY_INVALID: '无法读取会话列表，请稍后重试。',
   SESSION_SNAPSHOT_REPLY_INVALID: '无法读取这条会话，请返回后重试。',
   NATIVE_REPLY_INVALID: '设备返回了无法识别的内容，请稍后重试。',
+  MOBILE_PROFILE_MISMATCH: '此设备不支持附件、模型选择或下一步建议；可继续发送纯文本。',
+  MOBILE_INTENT_UNSUPPORTED: '此设备不支持附件、模型选择或下一步建议；可继续发送纯文本。',
+  MOBILE_REMOTE_UNAVAILABLE: '远程服务暂时不可用，请检查连接后重试。',
+  MOBILE_ADMISSION_REQUEST_INVALID: '消息格式暂不受支持，请检查文字和附件后重试。',
+  MOBILE_ADMISSION_RESPONSE_INVALID: '远程服务返回了无法识别的响应，请稍后重试。',
+  MOBILE_CAPABILITY_REQUIRED: '设备能力尚未确认，请刷新后重试。',
+  MOBILE_UPLOAD_CANCELLED: '上传已取消。请移除这个附件并重新选择后再发送。',
+  MOBILE_ATTACHMENT_LIMIT: '一次最多添加 8 个附件。',
+  MOBILE_ATTACHMENT_TOO_LARGE: '附件超过单个文件大小限制。',
+  MOBILE_ATTACHMENT_IMAGE_INVALID: '所选图片无法读取或尺寸过大。',
+  MOBILE_ATTACHMENT_EMPTY: '所选文件为空，无法上传。',
+  MOBILE_ATTACHMENT_UPLOAD_ACTIVE: '附件仍在上传，请先暂停或等待完成。',
+  MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED: '取消状态尚未确认；附件仍保留。请查询状态后重试移除。',
+  MOBILE_UPLOAD_NOT_FOUND: '设备未找到上传记录。请查询或重新选择附件后重试。',
+  MOBILE_ATTACHMENT_NOT_FOUND: '设备未找到本地附件。请重新选择文件。',
+  MOBILE_DRAFT_CONFLICT: '草稿版本发生变化；当前编辑已保留。继续编辑后可重试保存。',
 };
 const receiptLabels: Record<ReceiptStatus | PendingOperation['status'], string> = {
   prepared: '待提交', processing: '处理中', accepted: '已接收', rejected: '未接收',
   unconfirmed: '待确认', 'not-found': '无记录', unknown: '待确认',
 };
+
+function attachmentScopeKey(target: Target | null, sessionId: string | null): string | null {
+  return target ? JSON.stringify([target.targetId, target.identityKey, target.agentId, sessionId]) : null;
+}
 
 function AppBody() {
   const [account, setAccount] = useState<Account | null>(null);
@@ -47,6 +69,13 @@ function AppBody() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
+  const [mobileMode, setMobileMode] = useState<MobileMode>('loading');
+  const [mobileModels, setMobileModels] = useState<{ id: string; label: string }[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [attachmentPicking, setAttachmentPicking] = useState(false);
   const [receiptStates, setReceiptStates] = useState<Record<string, ReceiptStatus>>({});
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
@@ -73,6 +102,16 @@ function AppBody() {
   const speechActiveRef = useRef(false);
   const accountRef = useRef<Account | null>(null);
   const draftPersistenceRef = useRef<DraftPersistence | null>(null);
+  const mobileCatalogEpochRef = useRef(0);
+  const attachmentBatchEpochRef = useRef(0);
+  const attachmentsRef = useRef<AttachmentItem[]>([]);
+  const attachmentQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const attachmentScopeRef = useRef<string | null>(null);
+  const mobileUnknownAttachmentsRef = useRef(new Map<string, { ownerKey: string; localIds: string[]; targetId: string; identityKey: string; agentId: string; principalId: string | null; sessionId: string | null }>());
+  const say = useCallback((text: string, tone: NonNullable<Notice>['tone'] = 'neutral') => {
+    if (/^[A-Z][A-Z0-9_]{2,127}$/.test(text)) setNotice({ text: errorMessages[text] ?? '远程操作暂时不可用，请检查连接后重试。', tone, code: text });
+    else setNotice({ text, tone });
+  }, []);
   useEffect(() => {
     const persistence = new DraftPersistence({
       read: async (targetId, sessionId) => {
@@ -98,8 +137,34 @@ function AppBody() {
       if (draftPersistenceRef.current === persistence) draftPersistenceRef.current = null;
     };
   }, []);
+  const updateAttachments = useCallback((transform: (items: AttachmentItem[]) => AttachmentItem[]) => {
+    setAttachments((current) => {
+      const next = transform(current);
+      attachmentsRef.current = next;
+      return next;
+    });
+  }, []);
+  useEffect(() => subscribeAttachmentUploadChanges((upload) => {
+    const currentScope = attachmentScopeRef.current;
+    if (!currentScope || targetRef.current?.targetId !== upload.targetId || targetRef.current.identityKey !== upload.identityKey || targetRef.current.agentId !== upload.agentId) return;
+    updateAttachments((items) => items.map((item) => item.ownerKey === currentScope && item.file.localId === upload.localId ? { ...item, upload, errorCode: upload.errorCode ?? undefined } : item));
+    if (upload.errorCode) say(upload.errorCode, 'error');
+  }), [say, updateAttachments]);
   const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
     const priorOwner = ownerRef.current;
+    const priorAttachmentScope = attachmentScopeKey(targetRef.current, priorOwner.sessionId);
+    const nextAttachmentScope = attachmentScopeKey(nextTarget, sessionId);
+    if (priorAttachmentScope !== nextAttachmentScope) {
+      attachmentBatchEpochRef.current += 1;
+      for (const item of attachmentsRef.current) {
+        if (item.upload?.state === 'uploading') void requestNative({ version: 1, kind: 'attachment.upload.pause', localId: item.file.localId, targetId: item.upload.targetId });
+      }
+      attachmentsRef.current = [];
+      setAttachments([]);
+      setSelectedModelId(null);
+      setSuggestions([]);
+    }
+    attachmentScopeRef.current = nextAttachmentScope;
     const persistence = draftPersistenceRef.current;
     persistence?.flushOwner(priorOwner.epoch);
     persistence?.deactivate(priorOwner.epoch);
@@ -134,7 +199,7 @@ function AppBody() {
     draftPersistenceRef.current?.edit(key, ownerEpoch, value);
   }, []);
   const saveDraft = useCallback((value: string) => saveDraftFor(activeDraftKeyRef.current, ownerRef.current.epoch, value), [saveDraftFor]);
-  const commitSnapshot = useCallback((value: Snapshot) => { snapshotRef.current = value; setSnapshot(value); }, []);
+  const commitSnapshot = useCallback((value: Snapshot) => { if (snapshotRef.current?.revision !== value.revision) setSuggestions([]); snapshotRef.current = value; setSnapshot(value); }, []);
   const onComposerInputLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
     const width = Math.max(0, event.nativeEvent.layout.width);
     setComposerTextWidth((current) => Math.abs(current - width) > 1 ? width : current);
@@ -168,10 +233,6 @@ function AppBody() {
 
   useEffect(() => subscribeSpeechChanges(applySpeech), [applySpeech]);
 
-  const say = useCallback((text: string, tone: NonNullable<Notice>['tone'] = 'neutral') => {
-    if (/^[A-Z][A-Z0-9_]{2,127}$/.test(text)) setNotice({ text: errorMessages[text] ?? '远程操作暂时不可用，请检查连接后重试。', tone, code: text });
-    else setNotice({ text, tone });
-  }, []);
   const run = useCallback(async (kind: string, action: () => Promise<void>) => {
     const requestOwner = ownerRef.current;
     const requestId = ++loadingEpochRef.current;
@@ -179,6 +240,34 @@ function AppBody() {
     try { await action(); }
     catch (error) { if (viewStillOwned(requestOwner, ownerRef.current)) say(error instanceof Error ? error.message : `NATIVE_${kind.toUpperCase()}_FAILED`, 'error'); }
     finally { if (requestId === loadingEpochRef.current) setLoading(false); }
+  }, [say]);
+
+  const loadMobileCatalog = useCallback(async (selected: Target | null) => {
+    const catalogEpoch = ++mobileCatalogEpochRef.current;
+    if (!selected?.online) {
+      setMobileMode('unavailable'); setMobileModels([]); setSelectedModelId(null); return;
+    }
+    const stillSelected = () => catalogEpoch === mobileCatalogEpochRef.current
+      && targetRef.current?.targetId === selected.targetId
+      && targetRef.current.identityKey === selected.identityKey;
+    setMobileMode('loading'); setMobileModels([]); setSelectedModelId(null); setSuggestions([]);
+    try {
+      const capabilities = await requestMobile(selected.targetId, { version: 1, agentId: selected.agentId, kind: 'mobile.capabilities' });
+      if (!stillSelected()) return;
+      if (capabilities.kind === 'mobile.error') {
+        if (permitsLegacyTextFallback(capabilities.code)) { setMobileMode('legacy'); return; }
+        setMobileMode('error'); say(capabilities.code, 'error'); return;
+      }
+      if (capabilities.kind !== 'mobile.capabilities') { setMobileMode('error'); say('MOBILE_CAPABILITY_REPLY_INVALID', 'error'); return; }
+      setMobileMode('supported');
+      const models = await requestMobile(selected.targetId, { version: 1, agentId: selected.agentId, kind: 'mobile.models' });
+      if (!stillSelected()) return;
+      if (models.kind === 'mobile.models') setMobileModels(models.items);
+      else if (models.kind === 'mobile.error') say(models.code, 'error');
+      else say('MOBILE_MODELS_REPLY_INVALID', 'error');
+    } catch (error) {
+      if (stillSelected()) { setMobileMode('error'); say(error instanceof Error ? error.message : 'MOBILE_CATALOG_FAILED', 'error'); }
+    }
   }, [say]);
 
   const loadAccount = useCallback(async () => {
@@ -214,6 +303,7 @@ function AppBody() {
     }
     const refreshedOwner = moveOwner(nextScreen === 'chat' && !sameLogicalTarget ? 'sessions' : nextScreen, selectedTarget, nextSessionId);
     if (refreshEpoch !== accountRefreshEpochRef.current) return;
+    void loadMobileCatalog(selectedTarget);
     if (selectedTarget?.online && refreshedOwner.screen === 'sessions') {
       const sessionsReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'list', agentId: selectedTarget.agentId, limit: 30 } }));
       if (viewStillOwned(refreshedOwner, ownerRef.current)) {
@@ -235,7 +325,7 @@ function AppBody() {
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
-  }, [commitSnapshot, moveOwner]);
+  }, [commitSnapshot, loadMobileCatalog, moveOwner]);
 
   useEffect(() => {
     const timer = setTimeout(() => { void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error')); }, 0);
@@ -346,7 +436,7 @@ function AppBody() {
       if (result.kind !== 'receipt') throw new Error('MUTATION_RECEIPT_INVALID');
       const stillOwner = viewStillOwned(mutationOwner, ownerRef.current);
       setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
-      if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
+      if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'session', targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
       else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
       if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
       else if (stillOwner && result.status === 'accepted') say('已接收');
@@ -366,21 +456,210 @@ function AppBody() {
     finally { if (sendingId === sendingEpochRef.current) setSending(false); }
   };
 
+  const sendMobile = async (request: Extract<RemoteMobileRequest, { kind: 'mobile.start' | 'mobile.send' }>) => {
+    const selected = targetRef.current;
+    if (!selected || !selected.online) return;
+    const requestOwner = ownerRef.current;
+    const sendingId = ++sendingEpochRef.current;
+    const sendOwnerKey = attachmentScopeRef.current ?? '';
+    const sendPrincipalId = accountRef.current?.principalId ?? null;
+    const localIds = attachmentsRef.current.filter((item) => item.ownerKey === sendOwnerKey).map((item) => item.file.localId);
+    setSending(true); setNotice(null);
+    try {
+      const result = await requestMobile(selected.targetId, request);
+      if (result.kind === 'mobile.error') throw new Error(result.code);
+      if (result.kind !== 'mobile.receipt' || result.operationId !== request.operationId) throw new Error('MOBILE_RECEIPT_INVALID');
+      const stillOwner = viewStillOwned(requestOwner, ownerRef.current) && targetRef.current?.identityKey === selected.identityKey;
+      setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
+      if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') {
+        setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
+        mobileUnknownAttachmentsRef.current.set(result.operationId, { ownerKey: sendOwnerKey, localIds, targetId: selected.targetId, identityKey: selected.identityKey, agentId: selected.agentId, principalId: sendPrincipalId, sessionId: request.kind === 'mobile.send' ? request.sessionId : result.sessionId });
+      } else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
+      if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
+      else if (stillOwner && result.status === 'accepted') say('已接收');
+      else if (stillOwner && result.status === 'unconfirmed') say('结果尚未确认。请查询状态后再继续；这条消息和附件不会自动重发。', 'error');
+      else if (stillOwner && result.status === 'not-found') say('未找到该操作记录，无法判断是否执行。请勿直接重发。', 'error');
+      else if (stillOwner) say(result.code ?? '操作未接收', 'error');
+      if (stillOwner && result.status === 'accepted') {
+        mobileUnknownAttachmentsRef.current.delete(result.operationId);
+        if (request.kind === 'mobile.start') {
+          if (!result.sessionId) throw new Error('MOBILE_RECEIPT_SESSION_REQUIRED');
+          saveDraft('');
+          await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
+          if (!viewStillOwned(requestOwner, ownerRef.current) || targetRef.current?.identityKey !== selected.identityKey) return;
+          await openSnapshot({ sessionId: result.sessionId, title: request.text.slice(0, 48) || '新会话', updatedAt: new Date().toISOString(), preview: request.text || '已添加附件', runtime: '' }, selected);
+        } else {
+          saveDraft('');
+          await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
+        }
+      }
+    } catch (error) { if (viewStillOwned(requestOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'MOBILE_SEND_FAILED', 'error'); }
+    finally { if (sendingId === sendingEpochRef.current) setSending(false); }
+  };
+
+  const cleanupSentAttachments = async (localIds: string[], expectedOwnerKey: string, identityKey: string, principalId: string | null) => {
+    for (const localId of localIds) {
+      if (attachmentScopeRef.current !== expectedOwnerKey || targetRef.current?.identityKey !== identityKey || accountRef.current?.principalId !== principalId) return;
+      try {
+        const reply = await requestNative({ version: 1, kind: 'attachment.remove', localId });
+        if (reply.kind === 'attachment-removed' && attachmentScopeRef.current === expectedOwnerKey && targetRef.current?.identityKey === identityKey && accountRef.current?.principalId === principalId) updateAttachments((items) => items.filter((item) => item.file.localId !== localId));
+      } catch { /* A submitted asset is already scoped to its operation; native cleanup can be retried later. */ }
+    }
+  };
+
   const sendDraft = () => {
     const text = draft.trim();
-    if (!text || !target || sending || blocksMutation) return;
+    if (!target || sending || blocksMutation) return;
+    const plan = sendProtocol(mobileMode, text, selectedModelId, attachments.map((item) => ({ state: item.upload?.state ?? (item.errorCode ? 'error' : 'uploading'), assetId: item.upload?.assetId ?? null })));
+    if (plan === 'blocked') {
+      if (mobileMode === 'supported' && attachments.some((item) => item.upload?.state !== 'ready' || !item.upload.assetId)) say('请等待所有附件上传完成后再发送。', 'neutral');
+      else if (mobileMode === 'legacy' && (attachments.length || selectedModelId)) say('此设备仅支持纯文本消息；请移除附件并取消模型选择。', 'error');
+      else if (mobileMode === 'legacy' && text.length > 8000) say('此设备仅支持最多 8,000 个字符的纯文本消息。', 'error');
+      return;
+    }
+    if (plan === 'mobile') {
+      if (snapshot) void sendMobile({ version: 1, kind: 'mobile.send', agentId: snapshot.agentId, sessionId: snapshot.sessionId, operationId: Crypto.randomUUID(), text, assetIds: attachments.flatMap((item) => item.upload?.assetId ? [item.upload.assetId] : []), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
+      else void sendMobile({ version: 1, kind: 'mobile.start', agentId: target.agentId, operationId: Crypto.randomUUID(), text, assetIds: attachments.flatMap((item) => item.upload?.assetId ? [item.upload.assetId] : []), ...(selectedModelId ? { modelId: selectedModelId } : {}) });
+      return;
+    }
+    if (plan !== 'legacy' || !text) return;
     const operationId = Crypto.randomUUID();
     if (snapshot) void mutation({ kind: 'send', agentId: snapshot.agentId, sessionId: snapshot.sessionId, operationId, text });
     else void mutation({ kind: 'start', agentId: target.agentId, operationId, text });
   };
 
+  const setAttachmentItem = (localId: string, transform: (item: AttachmentItem) => AttachmentItem) => updateAttachments((items) => items.map((item) => item.file.localId === localId ? transform(item) : item));
+  const uploadAttachment = async (file: NativeAttachment, owner: ViewOwner, selected: Target, scopeKey: string, batchEpoch: number) => {
+    if (batchEpoch !== attachmentBatchEpochRef.current || !viewStillOwned(owner, ownerRef.current) || targetRef.current?.targetId !== selected.targetId) return;
+    setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: undefined }));
+    try {
+      const reply = await requestNative({ version: 1, kind: 'attachment.upload', localId: file.localId, targetId: selected.targetId });
+      if (reply.kind === 'error') throw new Error(reply.code);
+      if (reply.kind !== 'attachment-upload' || reply.localId !== file.localId || reply.targetId !== selected.targetId || reply.identityKey !== selected.identityKey || reply.agentId !== selected.agentId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
+      if (batchEpoch !== attachmentBatchEpochRef.current || !viewStillOwned(owner, ownerRef.current) || attachmentScopeRef.current !== scopeKey) return;
+      setAttachmentItem(file.localId, (item) => ({ ...item, upload: reply, errorCode: reply.errorCode ?? undefined }));
+    } catch (error) {
+      const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_UPLOAD_FAILED';
+      if (batchEpoch === attachmentBatchEpochRef.current && viewStillOwned(owner, ownerRef.current) && attachmentScopeRef.current === scopeKey) {
+        setAttachmentItem(file.localId, (item) => ({ ...item, errorCode: code })); say(code, 'error');
+      }
+    }
+  };
+
+  const queueAttachmentUpload = (file: NativeAttachment, owner: ViewOwner, selected: Target, scopeKey: string) => {
+    const batchEpoch = attachmentBatchEpochRef.current;
+    const job = attachmentQueueRef.current.catch(() => undefined).then(() => uploadAttachment(file, owner, selected, scopeKey, batchEpoch));
+    attachmentQueueRef.current = job.catch(() => undefined);
+  };
+
+  const retryAttachment = (item: AttachmentItem) => {
+    if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
+    const selected = targetRef.current;
+    const owner = ownerRef.current;
+    if (!selected || item.ownerKey !== attachmentScopeRef.current || item.upload?.state === 'cancelled') {
+      say('此上传已取消，请移除并重新选择附件。', 'error'); return;
+    }
+    queueAttachmentUpload(item.file, owner, selected, item.ownerKey);
+  };
+
+  const pickAttachment = async (source: 'file' | 'image') => {
+    if (blocksMutation) { say('请先查询待确认操作状态，再添加附件。', 'neutral'); return; }
+    const selected = targetRef.current;
+    const owner = ownerRef.current;
+    const scopeKey = attachmentScopeKey(selected, owner.sessionId);
+    if (!selected || !scopeKey || mobileMode !== 'supported' || !selected.online) { say(mobileMode === 'legacy' ? '此设备仅支持纯文本消息。' : '设备当前不可用，无法添加附件。', 'error'); return; }
+    setAttachmentPicking(true);
+    const batchEpoch = attachmentBatchEpochRef.current;
+    try {
+      const reply = await requestNative({ version: 1, kind: 'attachment.pick', source });
+      if (reply.kind === 'error') throw new Error(reply.code);
+      if (reply.kind !== 'attachment') throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
+      if (batchEpoch !== attachmentBatchEpochRef.current || !viewStillOwned(owner, ownerRef.current) || attachmentScopeRef.current !== scopeKey) {
+        await requestNative({ version: 1, kind: 'attachment.remove', localId: reply.localId });
+        return;
+      }
+      const next = [...attachmentsRef.current, { file: reply, upload: null, ownerKey: scopeKey }];
+      if (next.length > 8) { await requestNative({ version: 1, kind: 'attachment.remove', localId: reply.localId }); throw new Error('MOBILE_ATTACHMENT_LIMIT'); }
+      updateAttachments(() => next);
+      setComposerMenuOpen(false);
+      queueAttachmentUpload(reply, owner, selected, scopeKey);
+    } catch (error) {
+      if (viewStillOwned(owner, ownerRef.current)) say(error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_PICK_FAILED', 'error');
+    } finally {
+      if (viewStillOwned(owner, ownerRef.current)) setAttachmentPicking(false);
+    }
+  };
+
+  const pauseAttachment = async (item: AttachmentItem) => {
+    if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
+    if (!item.upload || !target) return;
+    const owner = ownerRef.current;
+    try {
+      const reply = await requestNative({ version: 1, kind: 'attachment.upload.pause', localId: item.file.localId, targetId: item.upload.targetId });
+      if (reply.kind === 'error') throw new Error(reply.code);
+      if (reply.kind !== 'attachment-upload' || reply.localId !== item.file.localId || reply.targetId !== item.upload.targetId) throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
+      if (viewStillOwned(owner, ownerRef.current)) setAttachmentItem(item.file.localId, (prior) => ({ ...prior, upload: reply, errorCode: reply.errorCode ?? undefined }));
+    } catch (error) { if (viewStillOwned(owner, ownerRef.current)) { const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_PAUSE_FAILED'; setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error'); } }
+  };
+
+  const removeAttachment = async (item: AttachmentItem) => {
+    if (blocksMutation) { say('请先查询待确认操作状态，再管理这条消息的附件。', 'neutral'); return; }
+    const owner = ownerRef.current;
+    try {
+      if (item.upload && item.upload.state !== 'cancelled') {
+        const cancelled = await requestNative({ version: 1, kind: 'attachment.upload.cancel', localId: item.file.localId, targetId: item.upload.targetId });
+        if (cancelled.kind === 'error') throw new Error(cancelled.code);
+        if (cancelled.kind !== 'attachment-upload' || cancelled.state !== 'cancelled' || cancelled.localId !== item.file.localId) throw new Error('MOBILE_ATTACHMENT_CANCEL_UNCONFIRMED');
+      }
+      const removed = await requestNative({ version: 1, kind: 'attachment.remove', localId: item.file.localId });
+      if (removed.kind === 'error') throw new Error(removed.code);
+      if (removed.kind !== 'attachment-removed') throw new Error('MOBILE_ATTACHMENT_REMOVE_INVALID');
+      if (viewStillOwned(owner, ownerRef.current)) updateAttachments((items) => items.filter((entry) => entry.file.localId !== item.file.localId));
+    } catch (error) { if (viewStillOwned(owner, ownerRef.current)) { const code = error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_REMOVE_FAILED'; setAttachmentItem(item.file.localId, (prior) => ({ ...prior, errorCode: code })); say(code, 'error'); } }
+  };
+
+  const fetchSuggestions = async () => {
+    const selected = targetRef.current;
+    const current = snapshotRef.current;
+    const owner = ownerRef.current;
+    if (!selected || !current || mobileMode !== 'supported') { say('下一步建议需要已连接且支持建议的会话。', 'neutral'); return; }
+    setSuggestionsLoading(true);
+    setSuggestions([]);
+    try {
+      const result = await requestMobile(selected.targetId, { version: 1, kind: 'mobile.suggestions', agentId: current.agentId, sessionId: current.sessionId, revision: current.revision });
+      if (!viewStillOwned(owner, ownerRef.current) || snapshotRef.current?.revision !== current.revision) return;
+      if (result.kind === 'mobile.error') throw new Error(result.code);
+      if (result.kind !== 'mobile.suggestions' || result.sessionId !== current.sessionId || result.revision !== current.revision) throw new Error('MOBILE_SUGGESTIONS_REPLY_INVALID');
+      setSuggestions(result.suggestions);
+    } catch (error) { if (viewStillOwned(owner, ownerRef.current)) say(error instanceof Error ? error.message : 'MOBILE_SUGGESTIONS_FAILED', 'error'); }
+    finally { if (viewStillOwned(owner, ownerRef.current)) setSuggestionsLoading(false); }
+  };
+
   const queryPending = async (item: PendingOperation) => {
     const queryOwner = ownerRef.current;
-    const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: item.targetId, request: { kind: 'receipt', agentId: item.agentId, operationId: item.operationId } }));
-    if (result.kind !== 'receipt') throw new Error(result.kind === 'error' ? result.code : 'RECEIPT_REPLY_INVALID');
-    setReceiptStates((states) => ({ ...states, [item.operationId]: result.status }));
-    if (result.status === 'accepted' || result.status === 'rejected') setPending((items) => items.filter((entry) => entry.operationId !== item.operationId));
-    if (viewStillOwned(queryOwner, ownerRef.current)) say(result.status === 'unconfirmed' || result.status === 'not-found' ? `操作状态：${receiptLabels[result.status]}，没有重发。` : `操作状态：${receiptLabels[result.status]}`, result.status === 'unconfirmed' || result.status === 'not-found' ? 'error' : 'neutral');
+    const route = receiptProtocol(item);
+    let status: ReceiptStatus;
+    if (route.kind === 'mobile') {
+      const result = await requestMobile(route.targetId, route.request);
+      if (result.kind === 'mobile.error') throw new Error(result.code);
+      if (result.kind !== 'mobile.receipt' || result.operationId !== item.operationId || (item.sessionId !== null && result.sessionId !== item.sessionId)) throw new Error('MOBILE_RECEIPT_REPLY_INVALID');
+      status = result.status;
+      if (status === 'accepted') {
+        const attached = mobileUnknownAttachmentsRef.current.get(item.operationId);
+        const selected = targetRef.current;
+        const safeToCleanup = attached && selected?.targetId === attached.targetId && selected.identityKey === attached.identityKey
+          && selected.agentId === attached.agentId && accountRef.current?.principalId === attached.principalId
+          && item.sessionId === attached.sessionId;
+        if (safeToCleanup && attached.ownerKey === attachmentScopeRef.current) { await cleanupSentAttachments(attached.localIds, attached.ownerKey, attached.identityKey, attached.principalId); mobileUnknownAttachmentsRef.current.delete(item.operationId); }
+      }
+    } else {
+      const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: route.targetId, request: route.request }));
+      if (result.kind !== 'receipt' || result.operationId !== item.operationId) throw new Error(result.kind === 'error' ? result.code : 'RECEIPT_REPLY_INVALID');
+      status = result.status;
+    }
+    setReceiptStates((states) => ({ ...states, [item.operationId]: status }));
+    if (status === 'accepted' || status === 'rejected') setPending((items) => items.filter((entry) => entry.operationId !== item.operationId));
+    if (viewStillOwned(queryOwner, ownerRef.current)) say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' ? 'error' : 'neutral');
   };
 
   const respond = (item: Interaction, approved: boolean, answers?: Record<string, string>) => {
@@ -488,6 +767,8 @@ function AppBody() {
     try { await selectQaScenario(scenario); await loadAccount(); }
     catch (error) { say(error instanceof Error ? error.message : 'NATIVE_SCENARIO_FAILED', 'error'); }
   };
+  const sendAvailability = sendProtocol(mobileMode, draft.trim(), selectedModelId, attachments.map((item) => ({ state: item.upload?.state ?? (item.errorCode ? 'error' : 'uploading'), assetId: item.upload?.assetId ?? null })));
+  const canSubmit = sendAvailability !== 'blocked' && !!target?.online && !sending && !blocksMutation;
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
@@ -509,7 +790,7 @@ function AppBody() {
       <View style={styles.targetsBar}>
         <Text style={styles.sectionEyebrow}>BOT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: target?.identityKey === item.identityKey }} onPress={() => { if (targetRef.current?.identityKey !== item.identityKey) { moveOwner('sessions', item, null); setSessions([]); } void run('sessions', () => loadSessions(item)); }} style={[styles.targetChip, target?.identityKey === item.identityKey && styles.targetChipActive]}><View style={[styles.dot, !item.online && styles.dotOff]}/><Text style={[styles.targetChipText, target?.identityKey === item.identityKey && styles.targetChipTextActive]} numberOfLines={1}>{item.name}</Text></Pressable>)}
+        {targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: target?.identityKey === item.identityKey }} onPress={() => { if (targetRef.current?.identityKey !== item.identityKey) { moveOwner('sessions', item, null); setSessions([]); void loadMobileCatalog(item); } void run('sessions', () => loadSessions(item)); }} style={[styles.targetChip, target?.identityKey === item.identityKey && styles.targetChipActive]}><View style={[styles.dot, !item.online && styles.dotOff]}/><Text style={[styles.targetChipText, target?.identityKey === item.identityKey && styles.targetChipTextActive]} numberOfLines={1}>{item.name}</Text></Pressable>)}
           {targets.length === 0 && <Text style={styles.caption}>尚未发现可用 Bot</Text>}
         </ScrollView>
       </View>
@@ -539,17 +820,46 @@ function AppBody() {
         {snapshot?.state === 'waiting_user_action' && snapshot.interactions.map((item) => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={sending || blocksMutation}/>) }
       </ScrollView>
       <View style={styles.composerArea}>
-        {composerMenuOpen && <View style={styles.composerMenu}><Pressable onPress={() => { setComposerMenuOpen(false); say('附件选择当前不可用。', 'neutral'); }} style={styles.menuItem}><Text style={styles.menuLabel}>添加附件</Text><Text style={styles.menuHint}>当前不可用</Text></Pressable><Pressable onPress={() => { setComposerMenuOpen(false); void startSpeech(); }} style={styles.menuItem}><Text style={styles.menuLabel}>语音输入</Text><Text style={styles.menuHint}>{isFixtureMode ? '仅开发构建' : '使用设备麦克风'}</Text></Pressable><Pressable onPress={() => { setComposerMenuOpen(false); say('下一步建议当前不可用。', 'neutral'); }} style={styles.menuItem}><Text style={styles.menuLabel}>下一步建议</Text><Text style={styles.menuHint}>当前不可用</Text></Pressable></View>}
+        {composerMenuOpen && <View style={styles.composerMenu}>
+          <View style={styles.menuActionRow}>
+            <Pressable accessibilityRole="button" accessibilityLabel="从文件中选择附件" accessibilityState={{ disabled: attachmentPicking || mobileMode !== 'supported' || blocksMutation }} disabled={attachmentPicking || mobileMode !== 'supported' || blocksMutation} onPress={() => void pickAttachment('file')} style={styles.menuAction}><Paperclip size={16} color={C.green}/><Text style={styles.menuLabel}>文件</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="从照片中选择附件" accessibilityState={{ disabled: attachmentPicking || mobileMode !== 'supported' || blocksMutation }} disabled={attachmentPicking || mobileMode !== 'supported' || blocksMutation} onPress={() => void pickAttachment('image')} style={styles.menuAction}><ImageIcon size={16} color={C.green}/><Text style={styles.menuLabel}>图片</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="语音输入" onPress={() => { setComposerMenuOpen(false); void startSpeech(); }} style={styles.menuAction}><Mic size={16} color={C.green}/><Text style={styles.menuLabel}>语音</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="获取下一步建议" disabled={suggestionsLoading || mobileMode !== 'supported' || !snapshot} onPress={() => void fetchSuggestions()} style={styles.menuAction}><Sparkles size={16} color={C.green}/><Text style={styles.menuLabel}>建议</Text></Pressable>
+          </View>
+          {attachmentPicking && <View style={styles.menuStatus}><ActivityIndicator size="small" color={C.green}/><Text style={styles.menuHint}>正在打开系统文件选择器…</Text></View>}
+          {mobileMode === 'legacy' && <Text style={styles.menuHint}>此设备仅支持纯文本消息，最多 8,000 个字符。</Text>}
+          {mobileMode === 'loading' && <Text style={styles.menuHint}>正在读取设备能力…</Text>}
+          {mobileMode === 'error' && <Text style={styles.menuHint}>设备能力暂时不可用；不会模拟附件、模型或建议结果。</Text>}
+          {mobileMode === 'supported' && <View style={styles.modelOptions}><Text style={styles.menuSectionLabel}>模型</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.optionChips}>
+            <Pressable accessibilityRole="button" accessibilityState={{ selected: selectedModelId === null }} onPress={() => setSelectedModelId(null)} style={[styles.optionChip, selectedModelId === null && styles.optionChipActive]}><Text style={[styles.optionChipText, selectedModelId === null && styles.optionChipTextActive]}>默认</Text></Pressable>
+            {mobileModels.map((model) => <Pressable key={model.id} accessibilityRole="button" accessibilityState={{ selected: selectedModelId === model.id }} onPress={() => setSelectedModelId(model.id)} style={[styles.optionChip, selectedModelId === model.id && styles.optionChipActive]}><Text style={[styles.optionChipText, selectedModelId === model.id && styles.optionChipTextActive]}>{model.label}</Text></Pressable>)}
+          </ScrollView></View>}
+          {suggestionsLoading && <View style={styles.menuStatus}><ActivityIndicator size="small" color={C.green}/><Text style={styles.menuHint}>正在读取本轮建议…</Text></View>}
+          {suggestions.length > 0 && <View style={styles.suggestionList}><Text style={styles.menuSectionLabel}>下一步建议 · 点击填入草稿</Text>{suggestions.map((suggestion) => <Pressable key={suggestion} accessibilityRole="button" onPress={() => { saveDraft(suggestion); setSuggestions([]); setComposerMenuOpen(false); }} style={styles.suggestionItem}><Text style={styles.suggestionText}>{suggestion}</Text><ArrowUpRight size={15} color={C.green}/></Pressable>)}</View>}
+        </View>}
         {speechPanelOpen && <View style={styles.speechPanel}>
           <View style={styles.speechPanelHead}><Text style={styles.speechPanelTitle}>{speech.state === 'recording' ? '正在聆听' : speech.state === 'transcribing' ? '正在整理识别结果' : speech.final ? '识别草稿' : '语音输入'}</Text><Pressable accessibilityRole="button" accessibilityLabel="关闭语音输入" onPress={() => void cancelSpeech()} style={styles.speechClose}><Text style={styles.pendingLink}>关闭</Text></Pressable></View>
           {isFixtureMode && !speech.text ? <Text style={styles.caption}>Web 演示不会生成识别内容；开发构建会使用设备本地语音服务。</Text> : <TextInput accessibilityLabel="语音识别草稿" value={speech.text} editable={speech.state === 'idle'} multiline onChangeText={(value) => { if (speechOwnerEpochRef.current !== ownerRef.current.epoch) return; setSpeech((prior) => ({ ...prior, text: value })); appliedSpeechTextRef.current = value; const base = speechBaseDraftRef.current.trim(); saveDraftFor(speechDraftKeyRef.current, speechOwnerEpochRef.current, base ? `${base}\n${value}` : value); }} placeholder={speech.state === 'recording' ? '正在聆听…' : '识别到的文字会留在这里，发送前可以编辑。'} placeholderTextColor={C.muted} style={styles.speechTextInput}/>}
           <View style={styles.speechActions}>{speech.state === 'recording' ? <Pressable accessibilityRole="button" accessibilityLabel="停止录音并识别" onPress={() => void stopSpeech()} style={styles.speechStop}><Text style={styles.speechStopText}>完成录音</Text></Pressable> : speech.state === 'transcribing' ? <View style={styles.speechProgress}><ActivityIndicator color={C.green}/><Text style={styles.caption}>等待识别完成</Text></View> : <Text style={styles.caption}>{speech.final ? '已加入消息草稿，可继续编辑。' : '识别文本不会自动发送。'}</Text>}</View>
         </View>}
         {(draftUpdate?.message || draftUpdate?.status === 'restoring' || draftUpdate?.status === 'saving') && <View pointerEvents="none" style={styles.draftStatusOverlay}><Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.draftStatus, (draftUpdate.status === 'error' || draftUpdate.status === 'conflict') && styles.draftStatusError]}>{draftUpdate.message ?? (draftUpdate.status === 'restoring' ? '正在恢复草稿…' : '正在保存草稿…')}</Text></View>}
+        {attachments.length > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.attachmentStrip} contentContainerStyle={styles.attachmentStripContent}>
+          {attachments.map((item) => {
+            const upload = item.upload;
+            const status = upload?.state === 'ready' ? '已就绪' : upload?.state === 'uploading' ? `${Math.min(100, Math.round(upload.receivedBytes / Math.max(upload.totalBytes, 1) * 100))}%` : upload?.state === 'paused' ? '已暂停' : upload?.state === 'cancelled' ? '已取消' : item.errorCode ? (errorMessages[item.errorCode] ? '上传失败' : '需要处理') : '等待上传';
+            return <View key={item.file.localId} style={styles.attachmentChip}>
+              <View style={styles.attachmentIcon}>{item.file.image ? <ImageIcon size={15} color={C.green}/> : <FileText size={15} color={C.green}/>}</View>
+              <View style={styles.attachmentCopy}><Text numberOfLines={1} style={styles.attachmentName}>{item.file.name}</Text><Text style={styles.attachmentStatus}>{status}</Text></View>
+              {upload?.state === 'uploading' ? <Pressable accessibilityRole="button" accessibilityLabel={`暂停上传 ${item.file.name}`} accessibilityState={{ disabled: blocksMutation }} disabled={blocksMutation} onPress={() => void pauseAttachment(item)} style={styles.attachmentAction}><Pause size={15} color={C.ink}/></Pressable> : (upload?.state === 'paused' || !!item.errorCode) && upload?.state !== 'cancelled' ? <Pressable accessibilityRole="button" accessibilityLabel={`继续上传 ${item.file.name}`} accessibilityState={{ disabled: blocksMutation }} disabled={blocksMutation} onPress={() => retryAttachment(item)} style={styles.attachmentAction}><Play size={15} color={C.green}/></Pressable> : null}
+              <Pressable accessibilityRole="button" accessibilityLabel={`移除附件 ${item.file.name}`} accessibilityState={{ disabled: blocksMutation }} disabled={blocksMutation} onPress={() => void removeAttachment(item)} style={styles.attachmentAction}><X size={15} color={C.muted}/></Pressable>
+            </View>;
+          })}
+        </ScrollView>}
         <View style={styles.composer}>
           <Pressable accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" onPress={() => setComposerMenuOpen((value) => !value)} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder="发送消息…" placeholderTextColor="#929893" multiline maxLength={8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
-          {draft.trim() ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={!target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : undefined} accessibilityState={{ disabled: sending || blocksMutation || !target?.online }} disabled={sending || blocksMutation || !target?.online} onPress={sendDraft} style={[styles.sendButton, (sending || blocksMutation || !target?.online) && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
+          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
+          {draft.trim() || attachments.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={!target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
           {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
         </View>
       </View>
@@ -597,5 +907,5 @@ const styles = StyleSheet.create({
   chatToolbar: { height: 56, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line }, chatToolbarTitle: { flex: 1, paddingLeft: 5, paddingRight: 8 }, chatTitle: { color: C.ink, fontWeight: '700', fontSize: 15 }, chatSubtitle: { marginTop: 1, color: C.muted, fontSize: 11 }, toolbarAction: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, transcript: { flex: 1 }, transcriptContent: { paddingHorizontal: 16, paddingTop: 18, paddingBottom: 24, flexGrow: 1 }, messageRow: { width: '100%', marginBottom: 16, alignItems: 'flex-start' }, userMessageRow: { alignItems: 'flex-end' }, messageBubble: { maxWidth: '90%', paddingHorizontal: 14, paddingVertical: 11, borderRadius: 16 }, assistantBubble: { backgroundColor: C.canvas, borderTopLeftRadius: 5 }, userBubble: { backgroundColor: C.green, borderTopRightRadius: 5 }, messageText: { fontSize: 15, lineHeight: 22, color: C.ink }, userText: { color: '#fff' }, messageMeta: { marginTop: 8, color: '#DDECE2', fontSize: 11 }, messageTimestamp: { marginTop: 4, marginHorizontal: 5, color: '#969D98', fontSize: 10 }, toolText: { marginTop: 7, color: C.muted, fontSize: 12, lineHeight: 18 }, thinking: { flexDirection: 'row', alignItems: 'center', gap: 9, marginTop: 2, marginBottom: 15, marginLeft: 5 },
   composerArea: { position: 'relative', paddingHorizontal: 12, paddingTop: 1, paddingBottom: 1, borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.paper }, draftStatusOverlay: { position: 'absolute', zIndex: 3, left: 0, right: 0, bottom: 49, alignItems: 'center' }, draftStatus: { maxWidth: '100%', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 9, backgroundColor: C.canvas, color: C.muted, fontSize: 11, lineHeight: 15, textAlign: 'center' }, draftStatusError: { backgroundColor: '#FBEEEC', color: C.red }, composer: { minHeight: 44, maxHeight: 124, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: C.line, backgroundColor: C.paper, borderRadius: 24, paddingHorizontal: 3, paddingVertical: 1 }, plusButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, input: { flex: 1, maxHeight: 106, minHeight: 40, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8, color: C.ink, fontSize: 15, lineHeight: 21 }, inputMeasure: { position: 'absolute', left: 47, top: 1, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 8, fontSize: 15, lineHeight: 21, color: 'transparent', opacity: 0 }, micButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, sendButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: C.green }, sendDisabled: { backgroundColor: '#B7C9BD' },
   notice: { marginHorizontal: 16, marginVertical: 8, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10, backgroundColor: C.canvas }, noticeError: { backgroundColor: '#FBEEEC' }, noticeSuccess: { backgroundColor: C.greenWash }, noticeText: { color: C.ink, fontSize: 12, lineHeight: 17 }, errorDetailsButton: { alignSelf: 'flex-start', marginTop: 5, minHeight: 28, justifyContent: 'center' }, errorCode: { marginTop: 3, color: C.muted, fontSize: 11 }, approvalCard: { marginVertical: 8, padding: 15, borderRadius: 14, borderWidth: 1, borderColor: '#E9DDBD', backgroundColor: '#FFFCF4' }, approvalKicker: { color: C.amber, fontWeight: '700', fontSize: 11 }, approvalTitle: { marginTop: 6, color: C.ink, fontSize: 15, fontWeight: '700' }, approvalDescription: { marginTop: 5, color: C.muted, fontSize: 13, lineHeight: 19 }, questionText: { marginTop: 10, color: C.ink, fontSize: 13, lineHeight: 20 }, approvalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 12 }, denyButton: { minHeight: 42, paddingHorizontal: 16, justifyContent: 'center' }, denyText: { color: C.red, fontWeight: '600' }, allowButton: { minHeight: 42, paddingHorizontal: 15, justifyContent: 'center', borderRadius: 10, backgroundColor: C.green }, allowText: { color: '#fff', fontWeight: '700' },
-  smallMenu: { padding: 12, borderBottomWidth: 1, borderColor: C.line, flexDirection: 'row', justifyContent: 'space-between' }, composerMenu: { marginBottom: 9, padding: 10, backgroundColor: C.canvas, borderRadius: 14 }, speechPanel: { marginBottom: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.canvas }, speechPanelHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, speechPanelTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, speechClose: { minHeight: 32, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }, speechTextInput: { marginTop: 8, minHeight: 50, maxHeight: 110, padding: 9, borderRadius: 9, backgroundColor: C.paper, color: C.ink, fontSize: 14, lineHeight: 20 }, speechActions: { minHeight: 38, justifyContent: 'center', alignItems: 'flex-start', marginTop: 5 }, speechStop: { minHeight: 40, minWidth: 110, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: C.green }, speechStopText: { color: C.paper, fontSize: 13, fontWeight: '700' }, speechProgress: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 8 }, menuItem: { minHeight: 44, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, menuLabel: { color: C.ink, fontSize: 14 }, menuHint: { color: C.muted, fontSize: 11 }, pendingBox: { marginTop: 8, marginBottom: 12, padding: 13, borderRadius: 12, backgroundColor: C.canvas }, pendingTitle: { color: C.ink, fontWeight: '700', fontSize: 13 }, pendingRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, marginTop: 8 }, pendingText: { color: C.muted, fontSize: 12 }, pendingLink: { color: C.green, fontWeight: '600', fontSize: 12 }, pendingRowDisabled: { opacity: 0.55 }, pendingLinkDisabled: { color: C.muted }, fixtureBanner: { minHeight: 27, backgroundColor: '#9A541C', paddingHorizontal: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, fixtureText: { color: '#fff', fontSize: 11, fontWeight: '700' }, qaScenarioToggle: { minHeight: 26, paddingHorizontal: 7, justifyContent: 'center', borderRadius: 7, backgroundColor: '#7D4115' }, qaScenarioOptions: { flexBasis: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 5, paddingBottom: 7 }, qaScenarioOption: { minHeight: 29, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 8, backgroundColor: '#7D4115' }, qaScenarioText: { color: '#fff', fontSize: 10, fontWeight: '600' }, questionBlock: { marginTop: 10 }, answerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 7 }, answerOption: { minHeight: 38, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper }, answerOptionSelected: { borderColor: C.green, backgroundColor: C.greenWash }, answerOptionText: { color: C.muted, fontSize: 12 }, answerOptionTextSelected: { color: C.green, fontWeight: '700' }, answerInput: { minHeight: 42, marginTop: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: C.line, borderRadius: 10, backgroundColor: C.paper, color: C.ink },
+  smallMenu: { padding: 12, borderBottomWidth: 1, borderColor: C.line, flexDirection: 'row', justifyContent: 'space-between' }, composerMenu: { marginBottom: 8, padding: 10, backgroundColor: C.canvas, borderRadius: 14 }, menuActionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 }, menuAction: { minHeight: 42, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, backgroundColor: C.paper }, menuLabel: { color: C.ink, fontSize: 13 }, menuHint: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 5 }, menuStatus: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 8 }, menuSectionLabel: { color: C.muted, fontSize: 11, fontWeight: '700', marginBottom: 6 }, modelOptions: { marginTop: 10 }, optionChips: { gap: 6, paddingRight: 10 }, optionChip: { minHeight: 34, paddingHorizontal: 11, justifyContent: 'center', borderWidth: 1, borderColor: C.line, borderRadius: 17, backgroundColor: C.paper }, optionChipActive: { borderColor: C.green, backgroundColor: C.greenWash }, optionChipText: { color: C.muted, fontSize: 11 }, optionChipTextActive: { color: C.green, fontWeight: '700' }, suggestionList: { marginTop: 9 }, suggestionItem: { minHeight: 39, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line }, suggestionText: { flex: 1, paddingRight: 10, color: C.ink, fontSize: 12, lineHeight: 17 }, attachmentStrip: { maxHeight: 54, marginBottom: 5 }, attachmentStripContent: { gap: 7, paddingHorizontal: 2, alignItems: 'center' }, attachmentChip: { maxWidth: 240, minHeight: 44, paddingLeft: 8, paddingRight: 4, flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 12, borderWidth: 1, borderColor: C.line, backgroundColor: C.canvas }, attachmentIcon: { width: 24, alignItems: 'center' }, attachmentCopy: { maxWidth: 125 }, attachmentName: { color: C.ink, fontSize: 11, fontWeight: '600' }, attachmentStatus: { color: C.muted, fontSize: 10, marginTop: 1 }, attachmentAction: { width: 34, height: 38, alignItems: 'center', justifyContent: 'center' }, speechPanel: { marginBottom: 8, padding: 12, borderRadius: 14, borderWidth: 1, borderColor: C.line, backgroundColor: C.canvas }, speechPanelHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, speechPanelTitle: { color: C.ink, fontSize: 13, fontWeight: '700' }, speechClose: { minHeight: 32, minWidth: 44, justifyContent: 'center', alignItems: 'flex-end' }, speechTextInput: { marginTop: 8, minHeight: 50, maxHeight: 110, padding: 9, borderRadius: 9, backgroundColor: C.paper, color: C.ink, fontSize: 14, lineHeight: 20 }, speechActions: { minHeight: 38, justifyContent: 'center', alignItems: 'flex-start', marginTop: 5 }, speechStop: { minHeight: 40, minWidth: 110, paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderRadius: 10, backgroundColor: C.green }, speechStopText: { color: C.paper, fontSize: 13, fontWeight: '700' }, speechProgress: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 8 }, pendingBox: { marginTop: 8, marginBottom: 12, padding: 13, borderRadius: 12, backgroundColor: C.canvas }, pendingTitle: { color: C.ink, fontWeight: '700', fontSize: 13 }, pendingRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderColor: C.line, marginTop: 8 }, pendingText: { color: C.muted, fontSize: 12 }, pendingLink: { color: C.green, fontWeight: '600', fontSize: 12 }, pendingRowDisabled: { opacity: 0.55 }, pendingLinkDisabled: { color: C.muted }, fixtureBanner: { minHeight: 27, backgroundColor: '#9A541C', paddingHorizontal: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, fixtureText: { color: '#fff', fontSize: 11, fontWeight: '700' }, qaScenarioToggle: { minHeight: 26, paddingHorizontal: 7, justifyContent: 'center', borderRadius: 7, backgroundColor: '#7D4115' }, qaScenarioOptions: { flexBasis: '100%', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 5, paddingBottom: 7 }, qaScenarioOption: { minHeight: 29, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 8, backgroundColor: '#7D4115' }, qaScenarioText: { color: '#fff', fontSize: 10, fontWeight: '600' }, questionBlock: { marginTop: 10 }, answerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 7 }, answerOption: { minHeight: 38, paddingHorizontal: 12, justifyContent: 'center', borderRadius: 19, borderWidth: 1, borderColor: C.line, backgroundColor: C.paper }, answerOptionSelected: { borderColor: C.green, backgroundColor: C.greenWash }, answerOptionText: { color: C.muted, fontSize: 12 }, answerOptionTextSelected: { color: C.green, fontWeight: '700' }, answerInput: { minHeight: 42, marginTop: 7, paddingHorizontal: 10, borderWidth: 1, borderColor: C.line, borderRadius: 10, backgroundColor: C.paper, color: C.ink },
 });
