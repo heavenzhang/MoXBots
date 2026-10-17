@@ -72,3 +72,12 @@ APK SHA256 `cbbf253b3566d6398e1b040e0114bb18f9949511acdc0231e911d23917e6be87`。
 新增cfg(test) shared identity/JWT构造辅助使保守来源摘要改变，已再次重建。Rust源码232320481c2947a38cfc7bd26b8a415334441bec，sourceDirty=false，sourceDigest `4152ed9e2549eab4f0390ad50447bdfd8ae103b54f3d3482dda2a3d0da3b948b`。Rust22.63s，27仪器用例零失败/错误/跳过；offline Release应用打包38s通过。APK SHA256 `ee811a54df61ac933d02a80767bba9973be1f56b3bd63c22da028a418f9cae9c`。已保存 `native-checkpoints/MoxBots-mobile-002-android-offline-test-ee811a54.apk`（在本任务外部output/mobile-002目录），复制SHA及0600核对、原生当前来源/ELF-ZIP16KiB/signature/embeddedJS和专用AVD安装通过。仍为Debug test签名，无原生UI/真实账号/Host/push/物理语音验收。
 
 日志 `/tmp/moxbots-mobile-source-combined-android-native.log`、`/tmp/moxbots-mobile-source-combined-android-apk.log`、`/tmp/moxbots-mobile-source-combined-apk-verified.json`、`/tmp/moxbots-mobile-source-combined-android-install.log`。后续f9859eb9仅扩展headless/service测试fixture，不改变此APK导入的原生来源。
+
+
+## 语音待授权竞态修复后的测试包
+
+本应用包源码913e3b5916843306d397553bc17d04013aac1f62，构建时整个工作树clean；内嵌JS Release构建1m14s。Rust输入仍为23232048/digest4152ed9e，不伪造或修改其原构建记录。新增Kotlin权限gate/stop/lifecycle修复、Preparing状态与提示文案已经在该应用包内；旧ee811a54不包含这些修改。
+
+主Agent最终32项仪器测试0失败/错误/跳过，Gradle8s（其中原有27+readiness1+gate4）；本机中文模型未安装仍为unavailable，未录音/授予权限/下载模型。原生字节与当前来源、ELF/ZIP16KiB、签名、embeddedJS验证通过；专用AVD安装Success。APK SHA256 `a8fe8ed492d0217c783a885ac573372dca817bad46c5cd473f2e9cb4836b0333`，外部文件native-checkpoints/MoxBots-mobile-002-android-offline-test-a8fe8ed4.apk，另有同名.provenance.json记录整个app源码913e与Rust库来源，均0600。Debug测试签名，仍没有原生UI启动/账号/Host/推送/真实ASR/手机/日常分发验收。
+
+日志 `/tmp/moxbots-mobile-speech-permission-accepted-instrumentation.log`、`/tmp/moxbots-mobile-speech-accepted-android-apk.log`、`/tmp/moxbots-mobile-speech-accepted-apk-verified.json`、`/tmp/moxbots-mobile-speech-accepted-android-install.log`。
