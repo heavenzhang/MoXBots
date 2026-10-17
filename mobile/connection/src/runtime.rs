@@ -1439,3 +1439,7 @@ mod wss_tests {
             .expect("pinned TLS/WSS assertion failed");
     }
 }
+
+#[cfg(test)]
+#[path = "full_host_e2e_test.rs"]
+mod full_host_e2e_test;

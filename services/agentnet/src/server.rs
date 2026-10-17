@@ -2503,3 +2503,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mobile_full_e2e_fixture.rs"]
+mod mobile_full_e2e_fixture;
