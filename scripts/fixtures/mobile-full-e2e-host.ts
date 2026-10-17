@@ -95,26 +95,34 @@ try{
   for(const directory of [home,workspace,join(root,'credentials'),ipcDirectory])await mkdir(directory,{recursive:true,mode:0o700});
   await chmod(state,0o700);await chmod(ipcDirectory,0o750);
   await writeFile(join(state,'host.lock'),'',{mode:0o600});
-  const masterKey=randomBytes(32),deviceId=randomUUID();
+  const masterKey=randomBytes(32);
   await writeFile(join(root,'credentials','provider-key'),masterKey,{mode:0o600});
-  await writeFile(join(state,'host-identity.json'),JSON.stringify({hostId:deviceId,schemaVersion:1}),{mode:0o600});
   await new Promise<void>(yes=>supplier.listen(0,'127.0.0.1',yes));
   const address=supplier.address();assert(address&&typeof address!=='string');
   const baseUrl=`http://127.0.0.1:${address.port}`;
   const operator=child(process.execPath,['--import','tsx',join(repository,'src/test/fixtures/mobile-original-host-operator.ts'),workspace,baseUrl]);
   assert.equal((await once(operator,'exit'))[0],0,'operator setup failed');
-  const storePath=join(state,'provider-credentials');await mkdir(storePath,{mode:0o700});
-  const {createHostProviderCredentialOwner}=await import('../../src/host/provider-credentials');
-  const owner=createHostProviderCredentialOwner({hostId:deviceId,storePath,loadMasterKey:()=>Buffer.from(masterKey)});
-  await owner.initialize();assert.equal((await owner.write({providerId:'original-host-fixture',credential:secret,expectedRevision:0,mutationId:randomUUID()})).status,'persisted');
   const require=createRequire(import.meta.url);await mkdir(join(root,'claude-agent-sdk'),{mode:0o700});
   const triple=process.platform==='darwin'?`darwin-${process.arch}`:`linux-${process.arch}`;
   await symlink(require.resolve(`@anthropic-ai/claude-agent-sdk-${triple}/claude`),join(root,'claude-agent-sdk','claude'));
   for(const [entry,target] of [['src/host/main.ts','host-main.mjs'],['src/server/host-session-worker.ts','host-session-worker.mjs']])await build({entryPoints:[join(repository,entry)],outfile:join(root,target),bundle:true,platform:'node',format:'esm',logLevel:'silent',banner:{js:'import {createRequire as __createRequire} from "module"; const require=__createRequire(import.meta.url);'},external:['playwright','playwright/*','playwright-core','playwright-core/*','@playwright/mcp','@playwright/mcp/*']});
   const entry=join(root,'host-main.mjs');const args=process.platform==='linux'?['--exclusive','--nonblock','--no-fork',join(state,'host.lock'),process.execPath,entry,'--serve']:[entry,'--serve'];
-  const host=child(process.platform==='linux'?'/usr/bin/flock':process.execPath,args,{...env,MYAGENTS_HOST_STATE_DIR:state,MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MANAGEMENT_IPC:socketPath,MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:String(process.getuid!()),MYAGENTS_HOST_MANAGEMENT_GID:String(process.getgid!()),MYAGENTS_HOST_MODE:'1',CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'});
-  hostPid=host.pid;hostBirth=processRows().find(r=>r.pid===hostPid)?.birth;record('host-born',{pid:hostPid,pgid:hostPid,birth:hostBirth});
-  await wait('original Host socket',async()=>{if(host.exitCode!==null)throw Error('Host exited');try{return await control('/host/status',{});}catch{return undefined;}});
+  const hostEnvironment={...env,MYAGENTS_HOST_STATE_DIR:state,MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MANAGEMENT_IPC:socketPath,MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:String(process.getuid!()),MYAGENTS_HOST_MANAGEMENT_GID:String(process.getgid!()),MYAGENTS_HOST_MODE:'1',CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'};
+  async function startHost(management=true){
+    const host=child(process.platform==='linux'?'/usr/bin/flock':process.execPath,args,management?hostEnvironment:{...hostEnvironment,MYAGENTS_HOST_MANAGEMENT_IPC:undefined,MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:undefined,MYAGENTS_HOST_MANAGEMENT_GID:undefined});
+    hostPid=host.pid;hostBirth=processRows().find(r=>r.pid===hostPid)?.birth;record('host-born',{pid:hostPid,pgid:hostPid,birth:hostBirth});
+    const status=await wait('original Host socket',async()=>{if(host.exitCode!==null)throw Error('Host exited');try{return await control('/host/status',{});}catch{return undefined;}});
+    return {host,status};
+  }
+  // Only original main creates and persists the synthetic Host ID. Stop it
+  // before local encrypted credential setup to preserve its single writer.
+  const initial=await startHost(false);await wait('original bootstrap ready',async()=>diagnostics.includes('MyAgents Host ready')?true:undefined);const deviceId=initial.status.hostId;assert.equal(typeof deviceId,'string');
+  await stop(initial.host);
+  const storePath=join(state,'provider-credentials');
+  const {createHostProviderCredentialOwner}=await import('../../src/host/provider-credentials');
+  const owner=createHostProviderCredentialOwner({hostId:deviceId as string,storePath,loadMasterKey:()=>Buffer.from(masterKey)});
+  assert.equal((await owner.write({providerId:'original-host-fixture',credential:secret,expectedRevision:0,mutationId:randomUUID()})).status,'persisted');
+  const restarted=await startHost();assert.equal(restarted.status.hostId,deviceId);
   await control('/host/configure',{providerId:'moonshot-coding',model:'k3',executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
   await writeFile(join(root,'host-ready.json'),JSON.stringify({deviceId}),{mode:0o600});
   await wait('fixture completion',async()=>{try{await readFile(join(root,'stop'));return true;}catch{return undefined;}},150_000);
