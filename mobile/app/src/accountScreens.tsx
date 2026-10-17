@@ -1,11 +1,11 @@
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ChevronRight, CircleHelp, HardDrive, Info, LockKeyhole, LogOut, RefreshCw, UserRound } from 'lucide-react-native';
-import { Account, NativeAttachment, requestNative } from './native';
-import { logoutAndConfirm } from './accountPolicy';
+import { Account, NativeAttachment, isFixtureMode, requestNative } from './native';
+import { dismissToExistingRoot, logoutAndConfirm, returnFromAccountRoute } from './accountPolicy';
 
 const color = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', canvas: '#F7F8F6', green: '#26734D', wash: '#E9F3ED', red: '#A7433B' };
 const accountStateLabel: Record<Account['state'], string> = { 'signed-in': '已登录', 'signed-out': '未登录', authenticating: '等待浏览器授权', expired: '登录已过期' };
@@ -49,8 +49,9 @@ function useAccountStatus() {
 
 function AccountFrame({ title, children, onBack }: { title: string; children: React.ReactNode; onBack?: () => void }) {
   const router = useRouter();
-  const back = onBack ?? (() => router.back());
+  const back = onBack ?? (() => returnFromAccountRoute(() => router.canGoBack(), () => router.back(), () => router.replace('/')));
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据</Text></View>}
     <View style={styles.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="返回上一页" onPress={back} hitSlop={8} style={styles.back}><ArrowLeft size={22} color={color.ink}/></Pressable>
       <Text accessibilityRole="header" style={styles.headerTitle}>{title}</Text>
@@ -90,11 +91,11 @@ export function AccountHomeScreen() {
     </View>
     <Text style={styles.section}>应用</Text>
     <View style={styles.card}>
-      <AccountRow icon={<HardDrive size={19} color={color.green}/>} title="本机附件" detail="查看由应用保存的附件元数据" onPress={() => router.push('/account/storage')}/>
+      <AccountRow icon={<HardDrive size={19} color={color.green}/>} title="本机文件" detail="查看待发送文件与图片" onPress={() => router.push('/account/storage')}/>
       <AccountRow icon={<Info size={19} color={color.green}/>} title="关于 MoXBots" detail="应用版本与内部构建信息" onPress={() => router.push('/account/about')}/>
       <AccountRow icon={<CircleHelp size={19} color={color.green}/>} title="使用帮助" detail="登录、Bot、会话与附件" onPress={() => router.push('/account/help')}/>
     </View>
-    <Text style={styles.footnote}>这里仅展示本机 native 接口能够确认的信息。</Text>
+    <Text style={styles.footnote}>账号信息由账号服务提供。</Text>
   </AccountFrame>;
 }
 
@@ -107,7 +108,7 @@ export function ProfileScreen() {
       <KeyValue label="账号标识" value={status.account?.principalId ?? '未提供'} selectable/>
       <KeyValue label="登录状态" value={status.account ? accountStateLabel[status.account.state] : status.busy ? '读取中' : '未知'}/>
     </View>
-    <Text style={styles.footnote}>资料由已授权账号服务提供。当前客户端没有资料编辑接口。</Text>
+    <Text style={styles.footnote}>资料由账号服务提供；当前暂不支持修改。</Text>
   </AccountFrame>;
 }
 
@@ -117,6 +118,38 @@ export function SecurityScreen() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const logoutTriggerRef = useRef<React.ElementRef<typeof Pressable>>(null);
+  const cancelLogoutRef = useRef<React.ElementRef<typeof Pressable>>(null);
+  const confirmLogoutRef = useRef<React.ElementRef<typeof Pressable>>(null);
+  const modalWasOpenRef = useRef(false);
+  const focusButton = (button: React.ElementRef<typeof Pressable> | null) => {
+    if (!button) return;
+    if (Platform.OS === 'web') {
+      (button as React.ElementRef<typeof Pressable> & { focus?: () => void }).focus?.();
+      return;
+    }
+    const node = findNodeHandle(button);
+    if (node != null) AccessibilityInfo.setAccessibilityFocus(node);
+  };
+  useEffect(() => {
+    if (confirmOpen) modalWasOpenRef.current = true;
+    else if (modalWasOpenRef.current) {
+      modalWasOpenRef.current = false;
+      requestAnimationFrame(() => focusButton(logoutTriggerRef.current));
+    }
+  }, [confirmOpen]);
+  const trapModalTab = (event: unknown) => {
+    if (Platform.OS !== 'web') return;
+    const keyEvent = event as { key?: string; shiftKey?: boolean; target?: unknown; preventDefault?: () => void };
+    if (keyEvent.key !== 'Tab') return;
+    if (keyEvent.shiftKey && keyEvent.target === cancelLogoutRef.current) {
+      keyEvent.preventDefault?.();
+      focusButton(confirmLogoutRef.current);
+    } else if (!keyEvent.shiftKey && keyEvent.target === confirmLogoutRef.current) {
+      keyEvent.preventDefault?.();
+      focusButton(cancelLogoutRef.current);
+    }
+  };
   const logout = async () => {
     setLogoutBusy(true);
     setMessage(null);
@@ -127,12 +160,12 @@ export function SecurityScreen() {
           if (reply.kind !== 'account' && reply.kind !== 'error') throw new Error('ACCOUNT_LOGOUT_REPLY_INVALID');
           return reply;
         },
-        () => router.replace('/'),
+        () => dismissToExistingRoot(() => router.dismissTo('/')),
       );
       if (result !== 'confirmed') {
         const latest = status.account;
         const state = latest ? accountStateLabel[latest.state] : '未确认';
-        setMessage(`native 尚未确认退出（当前状态：${state}）。请刷新后检查。`);
+        setMessage(`退出状态尚未确认（当前状态：${state}）。请刷新后检查。`);
         return;
       }
       setConfirmOpen(false);
@@ -150,15 +183,15 @@ export function SecurityScreen() {
       <KeyValue label="登录状态" value={status.account ? accountStateLabel[status.account.state] : status.busy ? '读取中' : '未知'}/>
       {status.account?.displayName && <KeyValue label="账号" value={status.account.displayName}/>}
     </View>
-    <Text style={styles.footnote}>退出会清除本机当前账号的会话上下文。下次使用远程 Bot 时需要重新授权。</Text>
-    <Pressable accessibilityRole="button" accessibilityLabel="退出当前账号" accessibilityState={{ disabled: logoutBusy || status.account?.state !== 'signed-in' }} disabled={logoutBusy || status.account?.state !== 'signed-in'} onPress={() => { setMessage(null); setConfirmOpen(true); }} style={[styles.logoutButton, (logoutBusy || status.account?.state !== 'signed-in') && styles.disabledButton]}>
+    <Text style={styles.footnote}>退出后会断开此账号的连接；下次使用时需要重新登录。</Text>
+    <Pressable ref={logoutTriggerRef} accessibilityRole="button" accessibilityLabel="退出当前账号" accessibilityHint={status.busy || status.error ? '请先确认当前登录状态' : undefined} accessibilityState={{ disabled: logoutBusy || status.busy || !!status.error || status.account?.state !== 'signed-in' }} disabled={logoutBusy || status.busy || !!status.error || status.account?.state !== 'signed-in'} onPress={() => { setMessage(null); setConfirmOpen(true); }} style={[styles.logoutButton, (logoutBusy || status.busy || !!status.error || status.account?.state !== 'signed-in') && styles.disabledButton]}>
       {logoutBusy ? <ActivityIndicator size="small" color={color.red}/> : <LogOut size={18} color={color.red}/>}<Text style={styles.logoutText}>退出当前账号</Text>
     </Pressable>
-    <Modal transparent animationType="fade" visible={confirmOpen} onRequestClose={() => setConfirmOpen(false)}>
-      <View style={styles.modalBackdrop}><View accessibilityViewIsModal style={styles.confirmCard}>
+    <Modal transparent animationType="fade" visible={confirmOpen} onShow={() => { requestAnimationFrame(() => focusButton(cancelLogoutRef.current)); }} onRequestClose={() => setConfirmOpen(false)}>
+      <View style={styles.modalBackdrop}><View accessibilityViewIsModal accessibilityRole="alert" {...({ onKeyDown: trapModalTab } as object)} style={styles.confirmCard}>
         <Text accessibilityRole="header" style={styles.confirmTitle}>退出当前账号？</Text>
-        <Text style={styles.confirmCopy}>本机会清除当前账号的远程连接上下文。已保存在本机安全存储中的草稿不会被当作其他账号的草稿恢复。</Text>
-        <View style={styles.confirmActions}><Pressable accessibilityRole="button" onPress={() => setConfirmOpen(false)} disabled={logoutBusy} style={styles.cancelButton}><Text style={styles.cancelText}>继续使用</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="确认退出账号" onPress={() => void logout()} disabled={logoutBusy} style={styles.confirmButton}>{logoutBusy ? <ActivityIndicator size="small" color="#fff"/> : <Text style={styles.confirmButtonText}>确认退出</Text>}</Pressable></View>
+        <Text style={styles.confirmCopy}>此手机将退出当前账号；远程任务会继续运行，草稿会按账号分别保留。</Text>
+        <View style={styles.confirmActions}><Pressable ref={cancelLogoutRef} accessibilityRole="button" onPress={() => setConfirmOpen(false)} disabled={logoutBusy} style={styles.cancelButton}><Text style={styles.cancelText}>继续使用</Text></Pressable><Pressable ref={confirmLogoutRef} accessibilityRole="button" accessibilityLabel="确认退出账号" onPress={() => void logout()} disabled={logoutBusy} style={styles.confirmButton}>{logoutBusy ? <ActivityIndicator size="small" color="#fff"/> : <Text style={styles.confirmButtonText}>确认退出</Text>}</Pressable></View>
       </View></View>
     </Modal>
   </AccountFrame>;
@@ -182,11 +215,11 @@ export function StorageScreen() {
   useFocusEffect(useCallback(() => { void refresh(); return () => { generation.current += 1; }; }, [refresh]));
   const bytes = (items ?? []).reduce((sum, item) => sum + item.sizeBytes, 0);
   return <AccountFrame title="本机附件">
-    <Text style={styles.intro}>仅显示应用本机附件库返回的文件元数据，不读取文件内容。</Text>
+    <Text style={styles.intro}>这里只列出本机已选择的待发送文件与图片。</Text>
     <View style={styles.statsCard}><View><Text style={styles.statLabel}>附件数量</Text><Text style={styles.statValue}>{busy ? '—' : items?.length ?? '—'}</Text></View><View style={styles.statDivider}/><View><Text style={styles.statLabel}>文件总大小</Text><Text style={styles.statValue}>{busy ? '—' : formatBytes(bytes)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="重新读取附件列表" disabled={busy} onPress={() => void refresh()} style={styles.statsRefresh}><RefreshCw size={17} color={color.green}/></Pressable></View>
     {error && <Text accessibilityRole="alert" style={styles.errorNotice}>{error}</Text>}
-    {busy ? <View style={styles.loading}><ActivityIndicator color={color.green}/><Text style={styles.muted}>正在读取本机附件…</Text></View> : items?.length === 0 ? <View style={styles.emptyCard}><HardDrive size={23} color={color.muted}/><Text style={styles.rowTitle}>本机附件库为空</Text><Text style={styles.rowDetail}>在会话输入区选择文件或图片后，附件会显示在这里。</Text></View> : <View style={styles.card}>{items?.map((item) => <View key={item.localId} style={styles.fileRow}><View style={styles.fileIcon}><HardDrive size={17} color={color.green}/></View><View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{item.name}</Text><Text numberOfLines={1} style={styles.rowDetail}>{item.mimeType} · {formatBytes(item.sizeBytes)}</Text></View></View>)}</View>}
-    <Text style={styles.footnote}>上传状态与移除操作在对应会话中处理；这里不执行清理，避免影响尚未确认的上传任务。</Text>
+    {busy ? <View style={styles.loading}><ActivityIndicator color={color.green}/><Text style={styles.muted}>正在读取本机文件…</Text></View> : items?.length === 0 ? <View style={styles.emptyCard}><HardDrive size={23} color={color.muted}/><Text style={styles.rowTitle}>还没有待发送文件</Text><Text style={styles.rowDetail}>在会话输入区选择文件或图片后，可在这里查看。</Text></View> : <View style={styles.card}>{items?.map((item) => <View key={item.localId} style={styles.fileRow}><View style={styles.fileIcon}><HardDrive size={17} color={color.green}/></View><View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{item.name}</Text><Text numberOfLines={1} style={styles.rowDetail}>{item.mimeType} · {formatBytes(item.sizeBytes)}</Text></View></View>)}</View>}
+    <Text style={styles.footnote}>上传进度和移除文件请在选中文件的会话中查看。</Text>
   </AccountFrame>;
 }
 
@@ -207,7 +240,7 @@ export function HelpScreen() {
     <HelpSection title="会话与草稿" body="选择 Bot 后可打开已有会话或创建新会话。草稿按账号、Bot 和会话分别保存在本机安全存储中；设备离线时可以继续编辑，重新连接后再发送。"/>
     <HelpSection title="附件与语音" body="从输入区的加号菜单选择文件、图片或语音输入。附件需完成上传才可随消息发送；语音识别结果会先进入可编辑草稿，不会自动发送。"/>
     <HelpSection title="待确认操作" body="如果发送结果未确认，请查询同一操作的回执。应用不会自动重新发送未知结果的消息。"/>
-    <HelpSection title="账号安全" body="账号信息由本机 native 连接层读取。退出账号前会二次确认；个人资料当前为只读。"/>
+    <HelpSection title="账号安全" body="账号信息由账号服务提供。退出账号前会二次确认；当前暂不支持修改个人资料。"/>
   </AccountFrame>;
 }
 
@@ -230,6 +263,6 @@ const styles = StyleSheet.create({
   accountCard: { flexDirection: 'row', alignItems: 'center', padding: 16, minHeight: 94, borderRadius: 16, backgroundColor: color.canvas, gap: 13 }, accountMark: { width: 48, height: 48, borderRadius: 24, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center' }, accountCopy: { flex: 1 }, accountName: { color: color.ink, fontSize: 16, fontWeight: '700' }, inline: { flexDirection: 'row', alignItems: 'center', gap: 9 }, muted: { color: color.muted, fontSize: 13 }, refresh: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 38, alignSelf: 'flex-start' }, refreshText: { color: color.green, fontSize: 13, fontWeight: '600' }, section: { marginTop: 24, marginBottom: 10, color: color.muted, fontSize: 12, fontWeight: '700' }, card: { overflow: 'hidden', borderWidth: 1, borderColor: color.line, borderRadius: 14, backgroundColor: '#FFFFFF' }, row: { minHeight: 68, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line }, rowPressed: { backgroundColor: color.canvas }, rowIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center', marginRight: 12 }, rowCopy: { flex: 1 }, rowTitle: { color: color.ink, fontSize: 14, fontWeight: '600' }, rowDetail: { marginTop: 4, color: color.muted, fontSize: 12, lineHeight: 17 }, footnote: { marginTop: 16, color: color.muted, fontSize: 12, lineHeight: 18 },
   keyValue: { minHeight: 58, paddingHorizontal: 15, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, justifyContent: 'center', gap: 5 }, keyLabel: { color: color.muted, fontSize: 12 }, keyText: { color: color.ink, fontSize: 14, lineHeight: 20 }, errorNotice: { color: color.red, backgroundColor: '#FAEFED', padding: 12, borderRadius: 10, marginTop: 14, fontSize: 13, lineHeight: 18 },
   logoutButton: { minHeight: 48, marginTop: 24, borderWidth: 1, borderColor: '#E8C9C5', borderRadius: 12, flexDirection: 'row', gap: 9, alignItems: 'center', justifyContent: 'center' }, logoutText: { color: color.red, fontSize: 14, fontWeight: '600' }, disabledButton: { opacity: 0.5 }, modalBackdrop: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: 'rgba(24,31,26,0.36)' }, confirmCard: { padding: 20, backgroundColor: '#FFFFFF', borderRadius: 18 }, confirmTitle: { color: color.ink, fontSize: 18, fontWeight: '700' }, confirmCopy: { marginTop: 12, color: color.muted, fontSize: 14, lineHeight: 21 }, confirmActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 22 }, cancelButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 10, justifyContent: 'center' }, cancelText: { color: color.ink, fontSize: 14 }, confirmButton: { minWidth: 96, minHeight: 44, paddingHorizontal: 14, borderRadius: 10, backgroundColor: color.red, justifyContent: 'center', alignItems: 'center' }, confirmButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
-  intro: { color: color.muted, fontSize: 14, lineHeight: 21, marginBottom: 16 }, statsCard: { minHeight: 92, paddingHorizontal: 16, borderRadius: 14, backgroundColor: color.canvas, flexDirection: 'row', alignItems: 'center', gap: 18 }, statLabel: { color: color.muted, fontSize: 12 }, statValue: { marginTop: 5, color: color.ink, fontSize: 16, fontWeight: '700' }, statDivider: { width: 1, height: 42, backgroundColor: color.line }, statsRefresh: { marginLeft: 'auto', width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, loading: { paddingVertical: 34, alignItems: 'center', gap: 10 }, emptyCard: { marginTop: 16, minHeight: 140, padding: 20, borderRadius: 14, borderWidth: 1, borderColor: color.line, alignItems: 'center', justifyContent: 'center', gap: 9 }, fileRow: { minHeight: 66, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, gap: 11 }, fileIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center' },
+  intro: { color: color.muted, fontSize: 14, lineHeight: 21, marginBottom: 16 }, statsCard: { minHeight: 92, paddingHorizontal: 16, borderRadius: 14, backgroundColor: color.canvas, flexDirection: 'row', alignItems: 'center', gap: 18 }, statLabel: { color: color.muted, fontSize: 12 }, statValue: { marginTop: 5, color: color.ink, fontSize: 16, fontWeight: '700' }, statDivider: { width: 1, height: 42, backgroundColor: color.line }, statsRefresh: { marginLeft: 'auto', width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, loading: { paddingVertical: 34, alignItems: 'center', gap: 10 }, emptyCard: { marginTop: 16, minHeight: 140, padding: 20, borderRadius: 14, borderWidth: 1, borderColor: color.line, alignItems: 'center', justifyContent: 'center', gap: 9 }, fileRow: { minHeight: 66, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line, gap: 11 }, fileIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: color.wash, alignItems: 'center', justifyContent: 'center' }, fixtureBanner: { minHeight: 27, backgroundColor: '#9A541C', paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center' }, fixtureText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
   aboutMark: { alignItems: 'center', paddingVertical: 30 }, aboutGlyph: { width: 64, height: 64, borderRadius: 20, overflow: 'hidden', textAlign: 'center', textAlignVertical: 'center', backgroundColor: color.wash, color: color.green, fontSize: 32, fontWeight: '800', lineHeight: 64 }, aboutName: { marginTop: 12, color: color.ink, fontSize: 20, fontWeight: '700' }, aboutCaption: { marginTop: 4, color: color.muted, fontSize: 13 }, helpCard: { padding: 15, marginBottom: 10, borderRadius: 13, borderWidth: 1, borderColor: color.line }, helpBody: { marginTop: 7, color: color.muted, fontSize: 13, lineHeight: 20 },
 });
