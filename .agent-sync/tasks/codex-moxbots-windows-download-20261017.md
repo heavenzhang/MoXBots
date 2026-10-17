@@ -23,15 +23,16 @@ The Windows updater remains unsupported (the endpoint returns HTTP 204). Authent
 - [x] Build the pinned 0.5.9 Windows package successfully in run `39044508103`. Full job 36m49s; installer step 34m22s.
 - [x] Retrieve the private, one-day artifact and verify exact installer size (339,742,567 bytes) and SHA-256 (`4db0581ec68a27de136e4d7c2ba2c712a90cfa3d47fba602db4a4b6f54aa18fc`) against the runner metadata; the Windows build job verified product identity, frozen source and installer version metadata. It is unsigned, analytics are disabled and Windows updater artifacts are disabled.
 - [x] Prepare the Windows-ready content-addressed page manifest, preserving the macOS 0.5.6 entry; visually inspect desktop and 390 px mobile states in the in-app browser. No horizontal overflow.
+- [x] Merge metadata PR #110 after all six normal checks passed; merge commit `54456225412e892a6ad15704cdf6dc4acffce8e1` contains head `875b841d12065e24530840bd3177101eba989152` on remote `main`.
+- [x] Recheck the public website by normal TLS GET after the merge: it still serves HTML SHA-256 `623bc1a37d5361de04cd0499e7dbd4f6ae47a7d32e377e47ce480d5880ceebaf` and manifest `releases.98f42775b3e8.json` (SHA-256 `98f42775b3e8ab59a38ec56591bba57a9e6f8dacc3d067e4ce88aa811015c08e`), which has macOS 0.5.6 only and no Windows package.
 
 ## Remaining
 
-- [ ] Run normal CI, merge the verified Windows metadata/page follow-up, and verify remote main contains it.
-- [ ] Configure an authorized SSH upload path for the existing website server. The user confirmed there is no existing Host alias; direct root SSH is denied and no registered identity is available. Do not reuse unrelated keys or ask for private-key contents.
+- [ ] Configure a secure, authorized SSH upload path for the existing website server. The user confirmed there is no existing Host alias; local direct root SSH is denied, no local agent identity is available, and the repository has no Actions secrets, variables or environments for a deployment identity. Do not reuse unrelated keys or ask for private-key contents.
 - [ ] Upload the installer to a new immutable `/download/packages/` path under the existing website lock/backup/release-directory/CAS runbook. Keep the prior page and release for rollback.
 - [ ] Promote only the download-page manifest/reference and package; verify public UI, normal TLS full GET, server size/SHA and existing routes.
-- [ ] Record the server receipt and public evidence, then remove the temporary Actions artifact after successful cloud verification. Do not claim Windows installation/runtime acceptance.
+- [ ] Record the server receipt and public evidence. The one-day Actions artifact expired at `2026-10-18T15:54:38Z`; its verified installer copy remains available in the private local task workspace. Do not claim Windows installation/runtime acceptance.
 
 ## Current state
 
-The build is complete and independently hashed. The ready-state website source is prepared on task branch `codex/moxbots-059-windows-package-metadata`, with macOS 0.5.6 preserved. The public page has not changed. Deployment is blocked only on secure authorized server access; no SSH Host alias or identity exists. Exact build and UI evidence are in `dev-docs/moxbots-059-windows-download.md`.
+The build is complete and independently hashed. The ready-state website metadata is merged into remote `main` at `54456225412e892a6ad15704cdf6dc4acffce8e1`; macOS 0.5.6 is preserved and the Windows entry accurately reports unsigned status and unsupported auto-update. The live website has not changed and still advertises macOS 0.5.6 only. Server publication is blocked on configuring secure authorized access; no SSH Host alias or deployment identity is currently available. The GitHub transfer artifact has expired, while the verified local installer remains in the private task workspace. Exact build and UI evidence are in `dev-docs/moxbots-059-windows-download.md`.
