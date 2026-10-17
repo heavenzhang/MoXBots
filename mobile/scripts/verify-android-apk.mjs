@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nativeSource } from './native-source.mjs';
 
 // Inspect the application APK itself. Instrumentation can supply a missing
 // native dependency from its own APK and hide an application packaging defect.
@@ -28,6 +29,10 @@ const stampPath = path.join(nativeDir, 'native-build.json');
 const stamp = JSON.parse(readFileSync(stampPath, 'utf8'));
 if (stamp.version !== 1 || stamp.target !== 'aarch64-linux-android' || !/^[a-f0-9]{64}$/.test(stamp.librarySha256)) {
   throw new Error('Native build provenance is missing or invalid; rebuild with build-native.mjs android');
+}
+const currentSource = nativeSource(repo);
+if (stamp.sourceScopeVersion !== currentSource.sourceScopeVersion || stamp.sourceDigest !== currentSource.sourceDigest || stamp.sourceDirty || currentSource.sourceDirty) {
+  throw new Error('Native provenance does not match the current clean shared source; rebuild with build-native.mjs android');
 }
 function run(command, args, binary = false) {
   const result = spawnSync(command, args, { cwd: repo, encoding: binary ? undefined : 'utf8', maxBuffer: 64 * 1024 * 1024 });

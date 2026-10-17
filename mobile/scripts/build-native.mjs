@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, copyFileSync, writeFileSync, readFileSync, rmSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { nativeSource } from './native-source.mjs';
 
 const mobile = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repo = path.dirname(mobile);
@@ -18,20 +19,9 @@ function run(command, args, env = {}) {
 }
 function check(file, label) { if (!existsSync(file)) throw new Error(`${label} missing: ${file}`); }
 function provenance(triple, library) {
-  const inputs = ['mobile/connection', 'mobile/core', 'mobile/crypto', 'src-tauri/agent-network-crypto', 'src-tauri/agent-network-protocol', 'src-tauri/host-management-protocol'];
-  const git = args => {
-    const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
-    if (result.status !== 0) throw new Error('Cannot record native source provenance');
-    return result.stdout;
-  };
-  const files = git(['ls-files', '-z', '--', ...inputs]).split('\0').filter(Boolean).sort();
-  const digest = createHash('sha256');
-  for (const file of files) digest.update(file).update('\0').update(createHash('sha256').update(readFileSync(path.join(repo,file))).digest());
   const rustc = spawnSync('rustc', ['--version'], { encoding: 'utf8' });
   if (rustc.status !== 0) throw new Error('Cannot record Rust compiler provenance');
-  const stamp = { version: 1, target: triple, sourceCommit: git(['rev-parse','HEAD']).trim(),
-    sourceDirty: git(['status','--porcelain','--untracked-files=normal','--',...inputs]).trim().length > 0,
-    sourceDigest: digest.digest('hex'), rustc: rustc.stdout.trim(),
+  const stamp = { version: 1, target: triple, ...nativeSource(repo), rustc: rustc.stdout.trim(),
     librarySha256: createHash('sha256').update(readFileSync(library)).digest('hex') };
   writeFileSync(path.join(path.dirname(library),'native-build.json'), JSON.stringify(stamp,null,2)+'\n');
 }
