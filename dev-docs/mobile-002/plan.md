@@ -40,3 +40,16 @@
 | Integration / primary | active | newbranch5f9df604; project-sync gates | inherited runtime, no switch claimed | unknown |
 
 No cost savings or runtime model confirmation inferred from requested settings. Evidence logs/build outputs stay outside Git unless bounded/redacted. No production or daily client writes from subagents.
+
+## 2026-10-18 implementation wave
+
+- Root integrated portable SDK commits `f7d36a40`, `043bcfc1`, `d9c48fa1`, `a120276d` into the task branch, plus feature-gated shared crypto native-store adapter. Shared original JWT/TLS/channel code remains authoritative. Worker reported 27 tests, strict clippy and macOS release; primary reruns focused tests independently. Actual iOS SDK crosscheck failed before Xcode installation; no dual-platform claim.
+- Native Swift Keychain and Android Keystore AEAD record stores and connection C/JNI bindings are root-owned under `mobile/app/modules/moxbots-remote/`. Swift secure store + C header wrapper typecheck passed using the macOS SDK; this is not an iOS build or Keychain runtime acceptance.
+- Account/relay runtime worker `mobile_connection_impl` (requested gpt-6.1-sol / medium) reuses existing login, identity, HTTP/WSS and device admission. Primary review found login intent name mismatch, missing pending-operations projection, target runtime metadata mismatch and identity-store overwrite semantics; repairs are required before acceptance.
+- UI worker `mobile_app_impl` (requested gpt-6-luna / medium) owns Expo58 application, strict typed port and explicit web-only QA fixture. Primary first rendered review rejected two chat toolbars and tall composer. Implementation reports V6 density repair; independent owner `mobile_ui_acceptance` (requested gpt-6-luna / medium) found a startup initialization-order failure. UI remains unaccepted pending repairs and actual retest.
+- User authorized reusing the existing developer account and installing necessary tools, including acceptance of the Android SDK license. Android SDK/NDK/emulator download is ongoing. Xcode is visibly downloading from the official App Store; installed signing, simulator and native build gates remain open. Developer ID identity alone was not counted as an iOS provisioning identity.
+- Public existing AgentNet descriptor read succeeded over ordinary verified TLS at `https://140.143.183.232/api/agent-network/instance`; profile and issuer match existing desktop default. This is discovery only, not authenticated login, Host execution or notification acceptance.
+
+### Representative UI gate
+
+Baseline: accepted V6 `MoxBot/output/mobile-prototype/MOXBOTS-MOBILE-001/qa-v6/06-after-current.png`. Native target widths390/360; current browser fixture is partial evidence, never native keyboard/inset proof. One compact toolbar; one-line resting composer with real mic icon; central transcript priority. Critical journeys: Bot selection/list/new/send/continue/back-draft, query unknown receipt without resending, refresh exact approval, plus/result/detail cancel/back. Visual, interaction and responsive checks remain separate. First actual page must pass before repeated full account/settings/file page patterns are expanded.
