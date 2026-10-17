@@ -114,3 +114,7 @@ original Host source/SDK behavior with a synthetic provider and management scope
 It does not verify Linux systemd/flock, real model/provider/account/WSS/mobile,
 question/plan cards, mid-execution tool cancellation, other artifact formats,
 push service/provider delivery or production. No deployment was performed.
+
+## Primary independent acceptance
+
+Integrated ownedf3b98658/26108f96 (root7278b95b/63c737a8). Primary independently executed the final unchanged interactions script with installed bundled Node24.20:PASS5027ms,6 actual controlled supplier requests; private fixture`.mox-host-interactions-7yM5ko`, log`/tmp/moxbots-mobile-interactions-primary.log`. Wrong generation/turn/request, settled and stopped approvals were rejected by the original owner; fresh deny and Stop wrote no file. Fresh allow ran actual SDK Bash and Read, produced exactly one original ToolAttachment/artifact, and owner readback returned68 bytes with SHA2565e3d382db4dd83d59aa5742793ad6b7903409e865c83bcbc54835049f043bc15. Primary independently validated all PNG chunk CRCs and decompressed scanline size. Exact recorded PIDs17477/17482/17484/17512/17516 were absent after cleanup. Dedicated script/all-src typecheck and focused eslint passed. Accepted only within the original Host/SDK controlled fixture scope; actual WSS/mobile/native/push/production gates remain open.
