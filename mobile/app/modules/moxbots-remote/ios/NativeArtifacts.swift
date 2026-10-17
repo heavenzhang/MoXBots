@@ -41,8 +41,10 @@ final class NativeArtifactCache {
   private let scope: String
   private let root: URL
   private let index = "artifact-cache-index-v1"
-  init(scope: String, bundle: String) throws {
+  private let fault: (String) -> Void
+  init(scope: String, bundle: String, fault: @escaping (String) -> Void = { _ in }) throws {
     self.scope = scope
+    self.fault = fault
     records = SecureRecords(bundle: bundle)
     let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
       .appendingPathComponent("artifacts-v1", isDirectory: true)
@@ -115,7 +117,28 @@ final class NativeArtifactCache {
       values.allSatisfy({ $0.range(of: "^artifact-v1:[0-9a-f]{64}:[A-Za-z0-9-]{1,99}:[0-9a-f-]{36}$", options: .regularExpression) != nil }) else {
       throw NativeFailure("MOBILE_ARTIFACT_CACHE_INVALID")
     }
-    return values
+    var recovered: [String] = []
+    var changed = false
+    for entry in values {
+      let parts = entry.split(separator: ":")
+      guard parts.count == 4 else { throw NativeFailure("MOBILE_ARTIFACT_CACHE_INVALID") }
+      guard let job = try read(identity: String(parts[1]), session: String(parts[2]), id: String(parts[3])) else {
+        let orphan = file(String(parts[1]), String(parts[2]), String(parts[3]))
+        if FileManager.default.fileExists(atPath: orphan.path) { try FileManager.default.removeItem(at: orphan) }
+        changed = true // A process may stop after indexing a reservation but before its sealed job.
+        continue
+      }
+      if job["state"] as? String == "deleting" {
+        let url = file(String(parts[1]), String(parts[2]), String(parts[3]))
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        try records.remove(scope: scope, record: entry)
+        changed = true
+      } else {
+        recovered.append(entry) // Preserve sealed paused, active, and ready jobs.
+      }
+    }
+    if changed { try saveIndex(recovered) }
+    return recovered
   }
   private func saveIndex(_ values: [String]) throws {
     let bytes = try JSONSerialization.data(withJSONObject: values)
@@ -141,6 +164,7 @@ final class NativeArtifactCache {
         old["sha256"] as? String == descriptor.sha256, old["agentId"] as? String == target.agentId else {
         throw NativeFailure("MOBILE_ARTIFACT_DESCRIPTOR_CHANGED")
       }
+      if !values.contains(key) { try saveIndex(values + [key]) }
       return old
     }
     guard values.filter({ $0.hasPrefix("artifact-v1:" + target.identityKey + ":") }).count < 10,
@@ -161,7 +185,9 @@ final class NativeArtifactCache {
       "receivedBytes": 0, "state": "paused", "errorCode": NSNull()
     ]
     try saveIndex(values + [key])
-    do { try write(job) } catch { try? saveIndex(values); throw error }
+    fault("reserve.index")
+    try write(job)
+    fault("reserve.job")
     return job
   }
   func write(_ job: [String: Any]) throws {
@@ -213,14 +239,22 @@ final class NativeArtifactCache {
     while let data = try handle.read(upToCount: 24 * 1024), !data.isEmpty { digest.update(data: data) }
     return digest.finalize().map { String(format: "%02x", $0) }.joined()
   }
+  func recover() throws { _ = try entries() }
   func remove(identity: String, session: String, id: String) throws {
     let key = record(identity, session, id)
-    let values = try entries()
-    guard values.contains(key) else { throw NativeFailure("MOBILE_ARTIFACT_NOT_FOUND") }
+    var values = try entries()
+    guard var job = try read(identity: identity, session: session, id: id) else { throw NativeFailure("MOBILE_ARTIFACT_NOT_FOUND") }
+    if !values.contains(key) { values.append(key); try saveIndex(values) }
+    job["state"] = "deleting"
+    try write(job)
+    fault("delete.marker")
     let url = file(identity, session, id)
     if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    fault("delete.file")
     try records.remove(scope: scope, record: key)
+    fault("delete.record")
     try saveIndex(values.filter { $0 != key })
+    fault("delete.index")
   }
   func url(identity: String, session: String, id: String) -> URL { file(identity, session, id) }
   private static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
@@ -365,6 +399,7 @@ final class NativeArtifactScheduler {
     }
   }
   private func localJob(_ target: NativeArtifactTarget, _ session: String, _ id: String) throws -> [String: Any] {
+    try cache.recover()
     try Self.validateTarget(target); try validateSession(session); try validateID(id)
     guard let job = try cache.read(identity: target.identityKey, session: session, id: id),
       job["agentId"] as? String == target.agentId else { throw NativeFailure("MOBILE_ARTIFACT_NOT_FOUND") }
