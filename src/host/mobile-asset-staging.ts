@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open, realpath, rm } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { InternalManagementAuthority, InternalManagementOperation } from './management-ipc';
 
@@ -30,7 +30,22 @@ export class HostMobileAssetStaging {
       await mkdir(this.root,{recursive:true,mode:0o700});
       const info=await lstat(this.root);
       if(!info.isDirectory()||info.isSymbolicLink()||(info.mode&0o077)!==0)throw new Error('HOST_ASSET_STAGING_UNSAFE');
-      return realpath(this.root);
+      const root=await realpath(this.root);
+      // The in-memory upload ledger intentionally does not survive Host restart.
+      // Reap only our immediate UUID/data layout, in a bounded batch; never
+      // traverse or remove an arbitrary path supplied over IPC.
+      let reaped=0;
+      for(const name of await readdir(root)){
+        if(reaped>=32)break;
+        if(!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(name))continue;
+        const directory=path.join(root,name),dirInfo=await lstat(directory);
+        if(!dirInfo.isDirectory()||dirInfo.isSymbolicLink())continue;
+        const children=await readdir(directory);if(children.length!==1||children[0]!=='data')continue;
+        const dataInfo=await lstat(path.join(directory,'data'));
+        if(!dataInfo.isFile()||dataInfo.isSymbolicLink()||dataInfo.nlink!==1)continue;
+        await rm(directory,{recursive:true,force:false});reaped++;
+      }
+      return root;
     })();
     return this.initialized;
   }
@@ -76,6 +91,7 @@ export class HostMobileAssetStaging {
     throw new Error('ASSET_STAGE_OPERATION_UNSUPPORTED');
   }
   async withReadyAssets<T>(authority:InternalManagementAuthority,request:{agentId:string;sessionId:string;assetIds:string[]},run:(assets:Array<StageBegin&{sourcePath:string}>)=>Promise<T>):Promise<T> {
+    await this.init();
     const scope=authorityKey(authority),items=request.assetIds.map(id=>this.entries.get(this.key(scope,{...request,assetId:id})));
     if(items.some(item=>!item||!item.ready)||new Set(items).size!==items.length)throw new Error('ASSET_UPLOAD_NOT_FOUND');
     const assets=items as Entry[];

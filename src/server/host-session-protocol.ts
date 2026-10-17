@@ -1,7 +1,7 @@
 import type { BotRunIdentity } from '../host/bot-runtime';
 import type { TurnTerminalOutcome } from './session-core/turn-queue';
 
-export type HostSessionOperation = 'describe' | 'send' | 'state' | 'result' | 'permission' | 'stop' | 'shutdown' | 'remote' | 'asset-owner' | 'mobile-send';
+export type HostSessionOperation = 'describe' | 'send' | 'state' | 'result' | 'permission' | 'stop' | 'shutdown' | 'remote' | 'asset-owner' | 'mobile-send' | 'mobile-suggestions';
 export type HostSessionRequest = {
   id: string;
   generation: string;
@@ -15,7 +15,7 @@ export type HostSessionMessage =
   | HostSessionReply
   | { type: 'terminal'; generation: string; sessionId: string; outcome: TurnTerminalOutcome };
 
-const operations = new Set<HostSessionOperation>(['describe', 'send', 'state', 'result', 'permission', 'stop', 'shutdown', 'remote', 'asset-owner', 'mobile-send']);
+const operations = new Set<HostSessionOperation>(['describe', 'send', 'state', 'result', 'permission', 'stop', 'shutdown', 'remote', 'asset-owner', 'mobile-send', 'mobile-suggestions']);
 
 export function isHostSessionRequest(value: unknown): value is HostSessionRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;

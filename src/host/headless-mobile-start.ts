@@ -11,7 +11,7 @@ export async function admitHeadlessMobileStart<TTarget>(input:{
   manifestHash:string;
   begin:(request:StartRequest)=>Promise<{fresh:boolean}>;
   read:(request:StartRequest,manifestHash:string)=>Promise<Receipt>;
-  ensure:(agentId:string)=>Promise<{target:TTarget;sessionId:string}>;
+  ensure:(agentId:string,modelId?:string)=>Promise<{target:TTarget;sessionId:string}>;
   adopt:(request:StartRequest,sessionId:string,manifestHash:string)=>Promise<boolean>;
   dispatch:(target:TTarget,sessionId:string,request:StartRequest)=>Promise<{accepted:boolean}>;
   finish:(request:StartRequest,status:'accepted'|'rejected',sessionId:string,code:string|null)=>Promise<Receipt>;
@@ -21,7 +21,7 @@ export async function admitHeadlessMobileStart<TTarget>(input:{
   if(!begun.fresh)return input.read(request,manifestHash);
   let sessionId:string|undefined;
   try{
-    const ensured=await input.ensure(request.agentId);
+    const ensured=await input.ensure(request.agentId,request.modelId);
     sessionId=ensured.sessionId;
     if(!await input.adopt(request,sessionId,manifestHash))return input.read(request,manifestHash);
     const result=await input.dispatch(ensured.target,sessionId,request);

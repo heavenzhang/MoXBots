@@ -46,4 +46,19 @@ describe('Host UID mobile asset staging',()=>{
     now+=60*60*1000+1;expect(await staging.expire()).toBe(1);
     await expect(staging.withReadyAssets(authority,{agentId:'agent-1',sessionId:'session-1',assetIds:[assetId]},async()=>true)).rejects.toThrow('ASSET_UPLOAD_NOT_FOUND');
   });
+
+  it('initializes the private root for a text-only mobile send',async()=>{
+    const root=path.join(tmpdir(),`mox-empty-mobile-${randomUUID()}`),staging=new HostMobileAssetStaging(root);roots.push(root);
+    await staging.withReadyAssets(authority,{agentId:'agent-1',sessionId:'session-1',assetIds:[]},async assets=>expect(assets).toEqual([]));
+    const {stat}=await import('node:fs/promises');expect((await stat(root)).isDirectory()).toBe(true);
+  });
+
+  it('reaps only bounded orphan UUID staging directories after restart',async()=>{
+    const root=await mkdtemp(path.join(tmpdir(),'mox-orphan-stage-'));roots.push(root);
+    const orphan=path.join(root,randomUUID());await (await import('node:fs/promises')).mkdir(orphan,{mode:0o700});
+    await (await import('node:fs/promises')).writeFile(path.join(orphan,'data'),'partial',{mode:0o600});
+    const staging=new HostMobileAssetStaging(root);
+    await staging.withReadyAssets(authority,{agentId:'agent-1',sessionId:'session-1',assetIds:[]},async()=>undefined);
+    await expect((await import('node:fs/promises')).stat(orphan)).rejects.toMatchObject({code:'ENOENT'});
+  });
 });

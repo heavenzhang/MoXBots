@@ -18,7 +18,7 @@ import type { ImagePayload } from '../runtimes/types';
 import { getAttachmentPath, getSessionMetadata, updateSessionMetadata, saveSessionMetadata, publishSessionForHandoff, claimPreparedSessionForTurnAdmission } from '../SessionStore';
 import { getSessionEngine, runProcessUpdateAdmission } from '../session-engine';
 import { handleAgentShow } from '../admin-api';
-import { handleImModelRoute, imSnapshotObservation, type ImModelOption } from '../routes/im-model-selection';
+import { imSnapshotObservation } from '../routes/im-model-selection';
 import { suggestNextPrompt } from '../session-prompt-suggestion';
 import { snapshotForOwnedSession } from '../utils/session-snapshot';
 import { buildSessionSnapshotPatchUpdates } from '../utils/session-snapshot-patch';
@@ -28,6 +28,7 @@ import { isManagedCodexProviderReady } from '../utils/managed-codex-readiness';
 import { desktopRemoteReceipts as receipts, resolveDesktopRemoteTarget as target } from './desktop';
 import { RemoteSessionError } from './receipts';
 import { buildRemoteSnapshot } from './projection';
+import { resolveRemoteMobileModelChoices } from './mobile-models';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const assetSchema = remoteArtifactDescriptorSchema.omit({artifactId:true}).extend({assetId:z.string().regex(uuid),sourcePath:z.string().min(1).max(4096)}).strict();
@@ -43,22 +44,8 @@ function generationCurrent(generation:string) {if(generation!==process.env.MYAGE
 /** Reuse the product model menu; only the currently frozen execution authority
  * is eligible. Remote selection cannot switch providers, runtimes or permissions. */
 async function models(agentId:string,metadata?:SessionMetadata) {
-  const shown=await handleAgentShow({agentId});if(!shown.success)fail('REMOTE_AGENT_UNAVAILABLE');
-  const defaults=(shown.data as {effectiveDefaults:{runtime:RuntimeType;runtimeSource?:RuntimeSource;providerId?:string}}).effectiveDefaults;
-  const runtime=metadata?.runtime??defaults.runtime;
-  const source=metadata?.runtimeSource??defaults.runtimeSource;
-  const provider=metadata?.providerId??(metadata?undefined:defaults.providerId);
-  const url=new URL('http://internal/api/im/model-options');url.searchParams.set('agentId',agentId);if(metadata)url.searchParams.set('sessionId',metadata.id);
-  const response=await handleImModelRoute('/api/im/model-options',new Request(url));
-  const body=await response?.json() as {success?:boolean;options?:ImModelOption[]}|undefined;
-  if(!response?.ok||!body?.success||!Array.isArray(body.options))fail('REMOTE_MOBILE_MODELS_UNAVAILABLE');
-  const native=(runtime==='codex'||runtime==='claude-code')&&source!=='managed-provider';
-  const options=body.options.filter(option=>!option.requiresNewSession&&(native
-    ? option.selection.kind==='external-cli'&&option.selection.runtime===runtime&&option.selection.runtimeSource===(source??'system-cli')
-    : option.selection.kind==='product-provider'&&!!provider&&option.selection.providerId===provider));
-  const items=options.map(option=>({id:option.selection.model,label:option.name})).filter(item=>item.id.length>0&&item.id.length<=256&&item.label.length>0&&item.label.length<=256&&!/[\p{Cc}]/u.test(item.id+item.label));
-  if(new Set(items.map(item=>item.id)).size!==items.length||items.length>30)fail('REMOTE_MOBILE_MODELS_UNAVAILABLE');
-  return {items,defaults};
+  try{return {items:await resolveRemoteMobileModelChoices(agentId,metadata)}}
+  catch(error){fail(error instanceof Error&&error.message==='REMOTE_AGENT_UNAVAILABLE'?'REMOTE_AGENT_UNAVAILABLE':'REMOTE_MOBILE_MODELS_UNAVAILABLE')}
 }
 async function selectedModel(request:Mutation,metadata?:SessionMetadata) {
   if(request.modelId===undefined)return metadata?.model??null;
