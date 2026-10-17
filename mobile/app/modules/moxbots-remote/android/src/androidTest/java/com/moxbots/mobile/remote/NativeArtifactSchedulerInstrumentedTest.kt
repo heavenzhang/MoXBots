@@ -176,7 +176,7 @@ class NativeArtifactSchedulerInstrumentedTest {
     try {
       assertTrue(file.canonicalPath.startsWith(context.noBackupFilesDir.canonicalPath + File.separator))
       val providerInfo = context.packageManager.resolveContentProvider(authority, 0)
-      assertNotNull("native artifact provider must be declared by the Expo config plugin", providerInfo)
+      assertNotNull("native artifact provider must be declared in the instrumentation application", providerInfo)
       assertEquals(false, providerInfo!!.exported)
       assertTrue(providerInfo.grantUriPermissions)
       val uri = NativeArtifactProviderUris.issue(context, authority, ready)
@@ -329,8 +329,8 @@ class NativeArtifactSchedulerInstrumentedTest {
         second.localFile(target.identityKey, "scope-session", descriptor.artifactId).absolutePath)
       assertNull(first.read(firstScope, otherTarget, "scope-session", descriptor.artifactId))
     } finally {
-      runCatching { first.remove(firstScope, target.identityKey, "scope-session", descriptor.artifactId) }
-      runCatching { second.remove(secondScope, target.identityKey, "scope-session", descriptor.artifactId) }
+      runCatching { first.delete(firstScope, target.identityKey, "scope-session", descriptor.artifactId) }
+      runCatching { second.delete(secondScope, target.identityKey, "scope-session", descriptor.artifactId) }
       runCatching { firstRecords.remove(firstScope, "artifact-cache-index-v1") }
       runCatching { secondRecords.remove(secondScope, "artifact-cache-index-v1") }
     }
@@ -383,7 +383,8 @@ class NativeArtifactSchedulerInstrumentedTest {
     runCatching { f.records.remove(f.scope, "artifact-cache-index-v1") }
   }
 
-  private fun ByteArray.sha256() = MessageDigest.getInstance("SHA-256").digest(this)
-    .joinToString("") { "%02x".format(it.toInt() and 255) }
-  private fun String.sha256() = toByteArray(Charsets.UTF_8).sha256()
 }
+
+private fun ByteArray.sha256() = MessageDigest.getInstance("SHA-256").digest(this)
+    .joinToString("") { "%02x".format(it.toInt() and 255) }
+private fun String.sha256() = toByteArray(Charsets.UTF_8).sha256()
