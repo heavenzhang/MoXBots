@@ -231,3 +231,17 @@ core evidence `/tmp/moxbots-mobile-full-chain-core-{regression,clippy}.log`.
 These production Rust changes invalidate the earlier Android/iOS native input
 digest for current-source acceptance. Previously saved binaries remain labelled
 historical build checkpoints; fresh cross-platform native builds are required.
+
+### Post-chain actual request boundary
+
+After normal dependency merge `0935cf8a`, the actual chain reaches inner mTLS and
+management readiness. First business response still fails
+`MOBILE_CHANNEL_CLOSED`. Approved temporary cfg(test) static-code diagnostics
+pinpoint original management-local-operation `HOST_MANAGEMENT_UNCONFIRMED`, not
+TLS feed/drain failure. Root identified original internal IPC request/response
+`request_id` snake_case against Node's required `requestId`, followed by a second
+raw RemoteMobileResult / ResponseResult projection mismatch. Root owns both
+production repairs; no guard, protocol or Node contract was relaxed here.
+Evidence: `/tmp/moxbots-full-e2e-post-tls-diagnostic.log`. Diagnostic hunks were
+removed. Exact process births 44328/44333/44392/44377/44383 reread exited and
+public54862/service54865 had no LISTEN. No Session worker/SDK had started.
