@@ -190,7 +190,7 @@ try{
   for(const item of outbox){assert.equal(item.agentId,'original-host-agent');assert.equal(item.sessionId,sessionId);assert.equal(item.connectionEpoch,connectionEpoch);assert.equal(item.workerGeneration,completed.generation);}
   record('two-original-terminal-sources-durable',{pending:outbox.length,stableFirstSource:outbox[0]!.sourceEventId===hint.sourceEventId});
   record('PASS',{elapsedMs:Date.now()-started,scope:'actual main + worker + SessionEngine/Store + native SDK, synthetic loopback supplier; no WSS/provider/phone acceptance'});
-}catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',privateFixture:root});process.exitCode=1;}
+}catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',elapsedMs:Date.now()-started,privateFixture:root});process.exitCode=1;}
 finally{
   captureProcesses();
   // Every owned process was born detached; signal only its exact birth PGID.

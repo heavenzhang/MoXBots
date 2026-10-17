@@ -32,13 +32,17 @@ supplier and actual installed SDK/native child. No production changes or calls.
 
 ## Blockers and unknowns
 
-- Original receipt adoption requires a non-null ID but headless start begins
-  null; primary owns production CAS repair. Fixture retains private evidence.
+- Original receipt adoption failure was handed to primary; production fix
+  6fd18b85 was cherry-picked as dependency f027e96d (not owned).
+- Next real Node24 fixture exposes supervisor credential materialization before
+  worker snapshot: `Host credential reference is unavailable`, fail-closed
+  unconfirmed before worker/Session birth. Primary owns route-only projection repair.
+  Both private failure fixtures remain intact; neither operation is replayed.
 - No real provider/account/WSS/phone/production acceptance, all outside this package.
 
 ## Next step
 
-- Integrate primary's reviewed receipt-owner repair as dependency, then execute
+- Integrate primary's reviewed supervisor route projection repair as dependency, then execute
   a fresh private fixture. Do not reuse the unknown original operation to send.
 - Requested model 6.1-sol/medium inherited from assignment; actual serving model,
   tokens and money cost unknown. No external model calls or further delegation.
