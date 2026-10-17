@@ -80,3 +80,16 @@ it('releases only its local heartbeat even when storage cannot be safely opened'
  finally{await chmod(dir,0o700)}
  expect(await owner.beginMobile(request,null)).toMatchObject({fresh:false,receipt:{status:'unconfirmed',sessionId:null}});
 });
+
+it('reads an existing exact attachment intent without requiring consumed staging or rebinding its manifest',async()=>{
+ const {owner}=await fixture(),request={...start(),assetIds:[randomUUID()]};
+ expect(await owner.readExistingMobileIntent(request)).toBeNull();
+ await owner.beginMobile(request,null);await owner.bindHeadlessMobileStart(request,'original-session',manifest);
+ const receipt=await owner.finishMobile(request,'accepted','original-session');
+ expect(await owner.readExistingMobileIntent(request)).toEqual(receipt);
+ for(const changed of [{...request,text:'changed'},{...request,assetIds:[randomUUID()]},{...request,modelId:'different'}]){
+  await expect(owner.readExistingMobileIntent(changed)).rejects.toMatchObject({code:'REMOTE_OPERATION_CONFLICT'});
+ }
+ expect(await owner.readMobileIntent(request,manifest)).toEqual(receipt);
+ await expect(owner.readMobileIntent(request,'b'.repeat(64))).rejects.toMatchObject({code:'REMOTE_OPERATION_CONFLICT'});
+});

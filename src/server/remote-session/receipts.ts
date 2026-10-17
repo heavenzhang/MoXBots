@@ -172,6 +172,14 @@ export function createRemoteReceiptOwner(scope: string, directory = join(homedir
     },
     finish:(raw:RemoteSessionRequest,status:Receipt['status'],sessionId:string|null,code:string|null=null)=>finish(raw,status,sessionId,code) as Promise<Receipt>,
     finishMobile:(raw:RemoteMobileRequest,status:Receipt['status'],sessionId:string|null,code:string|null=null)=>finish(raw,status,sessionId,code) as Promise<MobileReceipt>,
+    async readExistingMobileIntent(raw:RemoteMobileRequest):Promise<MobileReceipt|null>{
+      const {path,digest}=identity(raw);await prepare();const entry=await load(path);
+      if(!entry)return null;
+      if(entry.digest!==digest||entry.receipt.kind!=='mobile.receipt')throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
+      // An exact prior intent is answered from its original receipt. Its assets
+      // may already be consumed; never re-stage, create a worker or execute it.
+      return project(entry) as MobileReceipt;
+    },
     async readMobileIntent(raw:RemoteMobileRequest,assetsDigest:string):Promise<MobileReceipt>{
       const {path,digest}=identity(raw);await prepare();const entry=await load(path);
       if(!entry||entry.digest!==digest||entry.receipt.kind!=='mobile.receipt'||entry.assetsDigest!==undefined&&entry.assetsDigest!==assetsDigest)throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');

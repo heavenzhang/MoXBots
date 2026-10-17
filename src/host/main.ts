@@ -586,6 +586,8 @@ async function serve(): Promise<void> {
             }
             if(request.kind!=='mobile.start'&&request.kind!=='mobile.send')throw new Error('REMOTE_MOBILE_SESSION_REQUIRED');
             assertOrdinaryRemoteAgent(request.agentId,loadConfig({strict:true}).hostBotDelegationsV1);
+            const existingIntent=await remoteReceipts.readExistingMobileIntent(request);
+            if(existingIntent)return remoteMobileResultSchema.parse(existingIntent);
             const stageSessionId=request.kind==='mobile.start'?request.operationId:request.sessionId;
             if(request.kind==='mobile.send'){
               await ensureOwnerWorker(request.agentId,request.sessionId);
