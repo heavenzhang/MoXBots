@@ -4,8 +4,10 @@ This Rust 1.92 crate implements the synchronous, bounded state machine used by
 the parent AgentNet service's WebSocket relay. The HTTP/controller and bounded
 WebSocket transport are in `services/agentnet/src/relay_controller.rs`,
 `relay_http.rs`, and `relay_transport.rs`; this crate itself does not bind a
-listener or perform WebSocket I/O. It does not decrypt inner TLS or authorize
-`op.prepare`, permits, or return routes.
+listener or perform WebSocket I/O. It does not decrypt inner TLS. Existing relay
+state also owns bounded operation/permit/return-route correlations; the parent
+must supply a current `TrustedMountEvidence` while holding MetadataStore policy
+through the transition, in addition to both live AuthStore sessions.
 
 `ValidatedAccess` can only be created by admission-core's cryptographic
 validator. `RelayCore::authorize_device` also requires a live snapshot supplied
@@ -47,7 +49,7 @@ Blocking all opaque frames until Ready would deadlock that handshake. Applicatio
 business admission remains an endpoint responsibility after its cryptographic
 and relay Ready gates; this server cannot distinguish encrypted business bytes.
 
-The crate uses the pinned shared protocol crate and its fixed 1.1 JSON schemas
+The crate uses the pinned shared protocol crate and its fixed 1.2 JSON schemas
 and budgets. The parent service supplies live authorization snapshots and
 durable catalog/policy evidence, serializes mutations against live AuthStore,
 DeviceStore, PeerStore, and MetadataStore state, and delivers bounded effects
@@ -65,4 +67,22 @@ handled by the client/Host management adapter after local user authorization;
 it does not arise from discovery, a same-account relationship, or this relay
 crate. The current management channel carries the fixed encrypted Host
 configuration/resource operations. It does not expose model-invocation,
-permit, mount, or return-route authority.
+permit or mount authority. Those are separately enabled only for explicitly
+enabled same-account Agents through the authenticated metadata and relay owners.
+Metadata-only instances advertise no execution/recovery capability.
+
+Recovery retains no application bytes or retry/outbox. Original session, scope,
+SPKI/certificate fingerprints and identity binding remain pinned. Return epochs
+can change after revalidation; immutable admission epochs cannot, including for
+cached same-attempt permits. First-outage deadlines survive resume attempts and
+are cleared only by exact Ready-channel rebind. The target probes that binding
+before a terminal exists, so recovered online long tasks have no outage timer.
+Both peers receive rebound notification. Legacy peers close immediately.
+Completed op IDs remain bounded tombstones, and revocation/expiry releases routes.
+
+`route.opened` precedes the target permit in the returned effects, but this is
+not a source receipt ACK. A disconnect before confirmed admission remains
+unconfirmed; clients must never replay the original operation. Server restart
+does not preserve these in-memory routes. Current source acceptance is recorded
+in `dev-docs/backend-recovery-20261017/`; deployed/signed-client acceptance is a
+separate gate.

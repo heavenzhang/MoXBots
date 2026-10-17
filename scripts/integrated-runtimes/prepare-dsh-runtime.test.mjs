@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import test from "node:test";
 
-import { acquireRelease, currentTarget, deriveLocalLock, deriveReleaseLock, hasTargetNativeAddon, parseReleaseManifest, prepareDshRuntime, releaseAssetUrl, verifySelectedHandoff } from "./prepare-dsh-runtime.mjs";
+import { acquireRelease, currentTarget, deriveLocalLock, deriveReleaseLock, hasTargetNativeAddon, normalizeReleaseSelection, parseReleaseManifest, prepareDshRuntime, releaseAssetUrl, verifySelectedHandoff } from "./prepare-dsh-runtime.mjs";
 
 const sha = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
@@ -42,6 +42,56 @@ test("manifest must describe all four verified targets at the selected version",
   assert.deepEqual(parseReleaseManifest(Buffer.from(JSON.stringify(fixture)), "0.1.0"), fixture);
   delete fixture.assets["win32-x64"];
   assert.throws(() => parseReleaseManifest(Buffer.from(JSON.stringify(fixture)), "0.1.0"), /all four targets/);
+});
+
+test("owned selection binds publisher, all four verified targets and auditable patched source", () => {
+  const selection = JSON.parse(readFileSync(new URL('./source-patches/moxbots-dsh-release-candidate.json', import.meta.url)));
+  const recipeBytes = readFileSync(new URL('./source-patches/moxbots-child-approval-context.json', import.meta.url));
+  const recipe = JSON.parse(recipeBytes);
+  assert.equal(selection.sourceRecipeSha256, sha(recipeBytes));
+  assert.equal(selection.sourceCommit, recipe.resultCommit);
+  assert.equal(selection.sourcePatchSha256, recipe.patchSha256);
+  assert.equal(selection.upstreamSourceCommit, recipe.baseCommit);
+  assert.equal(sha(readFileSync(new URL(`./source-patches/${recipe.patch}`, import.meta.url))), recipe.patchSha256);
+  const manifest = { ...manifestFixture({ sha256: 'a'.repeat(64), size: 1,
+    handoffSha256: 'b'.repeat(64), runtimeManifestSha256: 'c'.repeat(64), compatibilitySha256: 'd'.repeat(64) }),
+    repository: selection.repository, version: selection.version, tag: selection.tag, sourceCommit: selection.sourceCommit,
+    provenance: { upstreamSourceCommit: selection.upstreamSourceCommit, sourcePatchSha256: selection.sourcePatchSha256,
+      sourceRecipeSha256: selection.sourceRecipeSha256, sourceRecipeCommit: 'e'.repeat(40),
+      sourceRecipePath: 'scripts/integrated-runtimes/source-patches/moxbots-child-approval-context.json' },
+  };
+  for (const target of releaseTargets) manifest.assets[target].name = selection.assetName.replace('{target}', target);
+  const parse = value => parseReleaseManifest(Buffer.from(JSON.stringify(value)), selection);
+  assert.deepEqual(parse(manifest), manifest);
+  assert.equal(releaseAssetUrl(selection.tag, manifest.assets['linux-x64'].name, selection.repository),
+    'https://github.com/heavenzhang/MoXBots/releases/download/dsh-v0.1.18-moxbots.1/moxbots-dsh-v0.1.18-moxbots.1-linux-x64.tar.gz');
+  for (const mutate of [
+    x => { x.repository = 'hAcKlyc/MyAgents-dsh'; },
+    x => { x.sourceCommit = 'f'.repeat(40); },
+    x => { x.provenance.sourcePatchSha256 = 'f'.repeat(64); },
+    x => { x.provenance.sourceRecipeCommit = 'unpublished'; },
+    x => { x.assets['win32-x64'].claim = 'implementation-complete_pending-native-validation'; },
+    x => { x.assets['linux-x64'].name = '../wrong.tar.gz'; },
+  ]) {
+    const invalid = structuredClone(manifest);
+    mutate(invalid);
+    assert.throws(() => parse(invalid));
+  }
+  assert.throws(() => normalizeReleaseSelection({ ...selection, repository: 'unknown/runtime' }), /publisher/);
+  assert.throws(() => normalizeReleaseSelection({ ...selection, tag: 'latest' }), /fixed tag/);
+  assert.throws(() => normalizeReleaseSelection({ ...selection, assetName: '../{target}.tar.gz' }), /fixed tag/);
+});
+
+test("owned release acquisition fails closed without requesting an upstream fallback", async t => {
+  const root = mkdtempSync(resolve(tmpdir(), 'moxbots-dsh-no-fallback-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const selection = JSON.parse(readFileSync(new URL('./source-patches/moxbots-dsh-release-candidate.json', import.meta.url)));
+  const urls = [];
+  await assert.rejects(acquireRelease(root, selection, 'darwin-arm64', async url => {
+    urls.push(url);
+    throw new Error('candidate is not published');
+  }), /candidate is not published/);
+  assert.deepEqual(urls, ['https://github.com/heavenzhang/MoXBots/releases/download/dsh-v0.1.18-moxbots.1/manifest.json']);
 });
 
 test("native module check uses the correct platform package", () => {

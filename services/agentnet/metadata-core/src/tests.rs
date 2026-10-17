@@ -910,3 +910,294 @@ fn human_owner_projection_does_not_require_browser_device_enrollment_or_grant_re
         MetadataError::InvalidSession
     );
 }
+
+fn ready_mounts(
+    store: &MetadataStore,
+    own: &SessionContext,
+    count: usize,
+) -> (String, Vec<String>) {
+    use myagents_agent_network_protocol::CatalogLifecycle::Active;
+    register(store, own);
+    store
+        .mutate_membership(own, &own.device_id, true, 0, &Uuid::new_v4().to_string())
+        .unwrap();
+    let epoch = Uuid::new_v4().to_string();
+    store
+        .set_presence(own, 1, &epoch, Presence::Syncing, None)
+        .unwrap();
+    store
+        .upload_catalog(
+            own,
+            1,
+            &epoch,
+            &snapshot(
+                &epoch,
+                1,
+                (0..count).map(|n| catalog_item(n, Active)).collect(),
+            ),
+        )
+        .unwrap();
+    store
+        .set_presence(own, 1, &epoch, Presence::Ready, Some(1))
+        .unwrap();
+    let mounts = store.list_agents(own, &own.device_id, None, 200).unwrap()["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v["mountId"].as_str().unwrap().to_owned())
+        .collect();
+    (epoch, mounts)
+}
+
+fn enable_request(revision: u64, enabled: bool) -> Value {
+    json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedEnableRevision":revision,"enabled":enabled})
+}
+
+#[test]
+fn mount_mutations_cas_receipts_and_principal_isolation() {
+    let dir = private_dir();
+    let store = MetadataStore::open(dir.path(), profile()).unwrap();
+    let own = context(Uuid::new_v4().to_string());
+    let (_, mounts) = ready_mounts(&store, &own, 1);
+    let mount = &mounts[0];
+    assert!(store.list_callable(&own, None, 200).unwrap()["items"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+    assert_eq!(
+        store.with_callable_mount(&own, mount, |_| ()).unwrap_err(),
+        MetadataError::MountUnavailable
+    );
+    let request = enable_request(0, true);
+    let result = store.mutate_mount(&own, mount, &request).unwrap();
+    validate_metadata(MetadataKind::Mount, &result).unwrap();
+    assert_eq!(result["enableRevision"], 1);
+    assert_eq!(store.mutate_mount(&own, mount, &request).unwrap(), result);
+    assert_eq!(
+        store
+            .get_receipt(&own, request["mutationId"].as_str().unwrap())
+            .unwrap(),
+        result
+    );
+    let mut reused = request.clone();
+    reused["enabled"] = json!(false);
+    assert_eq!(
+        store.mutate_mount(&own, mount, &reused).unwrap_err(),
+        MetadataError::ReceiptConflict
+    );
+    assert_eq!(
+        store
+            .mutate_mount(&own, mount, &enable_request(0, false))
+            .unwrap_err(),
+        MetadataError::EnableConflict
+    );
+    let description = json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedDescriptionRevision":0,"description":"Verified description"});
+    let described = store.mutate_mount(&own, mount, &description).unwrap();
+    assert_eq!(described["descriptionRevision"], 1);
+    assert_eq!(
+        store.mutate_mount(&own, mount, &description).unwrap(),
+        described
+    );
+    let mut stale_description = description.clone();
+    stale_description["mutationId"] = json!(Uuid::new_v4().to_string());
+    assert_eq!(
+        store
+            .mutate_mount(&own, mount, &stale_description)
+            .unwrap_err(),
+        MetadataError::DescriptionConflict
+    );
+    let mut stale_member = enable_request(1, false);
+    stale_member["expectedMembershipRevision"] = json!(0);
+    assert_eq!(
+        store.mutate_mount(&own, mount, &stale_member).unwrap_err(),
+        MetadataError::MembershipConflict
+    );
+    let foreign = SessionContext {
+        principal_id: Uuid::new_v4().to_string(),
+        device_id: Uuid::new_v4().to_string(),
+        ..own.clone()
+    };
+    register(&store, &foreign);
+    assert_eq!(
+        store.resolve_callable(&foreign, mount).unwrap_err(),
+        MetadataError::MountNotFound
+    );
+    assert_eq!(
+        store
+            .mutate_mount(&foreign, mount, &enable_request(1, false))
+            .unwrap_err(),
+        MetadataError::MountNotFound
+    );
+    assert_eq!(
+        store
+            .get_receipt(&foreign, request["mutationId"].as_str().unwrap())
+            .unwrap_err(),
+        MetadataError::ReceiptNotFound
+    );
+    assert!(store.list_callable(&foreign, None, 200).unwrap()["items"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+}
+
+#[test]
+fn callable_resolve_selector_pagination_revalidates_current_permission() {
+    let dir = private_dir();
+    let store = MetadataStore::open(dir.path(), profile()).unwrap();
+    let own = context(Uuid::new_v4().to_string());
+    let (epoch, mounts) = ready_mounts(&store, &own, 3);
+    for mount in &mounts {
+        store
+            .mutate_mount(&own, mount, &enable_request(0, true))
+            .unwrap();
+    }
+    let page = store.list_callable(&own, None, 1).unwrap();
+    validate_metadata(MetadataKind::Callable, &page).unwrap();
+    let resolved = store.resolve_callable(&own, &mounts[0]).unwrap();
+    let reference = myagents_agent_network_protocol::AgentReference::parse(
+        resolved["selector"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(reference.mount_id, mounts[0]);
+    assert_eq!(reference.service_id, store.profile.service_id);
+    assert_eq!(reference.network_id, own.network_id);
+    assert_eq!(resolved["connectionEpoch"], epoch);
+    assert_eq!(resolved["signedBinding"], Value::Null);
+    let current = store
+        .with_callable_mount(&own, &mounts[0], |mount| {
+            assert!(matches!(
+                store.connection.try_lock(),
+                Err(std::sync::TryLockError::WouldBlock)
+            ));
+            mount
+        })
+        .unwrap();
+    assert_eq!(current.device_id, own.device_id);
+    assert_eq!(current.enable_revision, 1);
+    // A frozen directory cursor never returns a newly disabled permission.
+    for mount in &mounts {
+        store
+            .mutate_mount(&own, mount, &enable_request(1, false))
+            .unwrap();
+    }
+    let next = store
+        .list_callable(&own, page["nextCursor"].as_str(), 200)
+        .unwrap();
+    assert!(next["items"].as_array().unwrap().is_empty());
+    assert_eq!(next["complete"], true);
+    assert_eq!(
+        store.resolve_callable(&own, &mounts[0]).unwrap_err(),
+        MetadataError::MountUnavailable
+    );
+    assert_eq!(
+        store.resolve_callable(&own, "bad").unwrap_err(),
+        MetadataError::InvalidInput
+    );
+    assert_eq!(
+        store
+            .list_agents(&own, &own.device_id, page["nextCursor"].as_str(), 1)
+            .unwrap_err(),
+        MetadataError::InvalidCursor
+    );
+}
+
+#[test]
+fn callable_requires_ready_intact_ack_and_leave_clears_enabled_policy() {
+    let dir = private_dir();
+    let store = MetadataStore::open(dir.path(), profile()).unwrap();
+    let own = context(Uuid::new_v4().to_string());
+    let (epoch, mounts) = ready_mounts(&store, &own, 1);
+    let mount = &mounts[0];
+    store
+        .mutate_mount(&own, mount, &enable_request(0, true))
+        .unwrap();
+    store
+        .set_presence(&own, 1, &epoch, Presence::Offline, None)
+        .unwrap();
+    assert_eq!(
+        store
+            .with_callable_mount(&own, mount, |_| panic!("offline cannot commit"))
+            .unwrap_err(),
+        MetadataError::MountUnavailable
+    );
+    store
+        .set_presence(&own, 1, &epoch, Presence::Ready, Some(1))
+        .unwrap();
+    {
+        let connection = store.connection.lock().unwrap();
+        connection
+            .execute("UPDATE catalogs SET payload_hash='corrupt'", [])
+            .unwrap();
+    }
+    assert_eq!(
+        store.resolve_callable(&own, mount).unwrap_err(),
+        MetadataError::MountUnavailable
+    );
+    let description = json!({"mutationId":Uuid::new_v4().to_string(),"expectedMembershipRevision":1,"expectedDescriptionRevision":0,"description":"Retained"});
+    store.mutate_mount(&own, mount, &description).unwrap();
+    store
+        .mutate_membership(&own, &own.device_id, false, 1, &Uuid::new_v4().to_string())
+        .unwrap();
+    store
+        .mutate_membership(&own, &own.device_id, true, 2, &Uuid::new_v4().to_string())
+        .unwrap();
+    let policy = MetadataStore::self_policy_rows(&store.connection.lock().unwrap(), &own).unwrap();
+    assert_eq!(policy[0]["enabled"], false);
+    assert_eq!(policy[0]["enableRevision"], 2);
+    assert_eq!(policy[0]["description"], "Retained");
+}
+
+#[test]
+fn catalog_removal_and_exposure_changes_require_explicit_reenable() {
+    use myagents_agent_network_protocol::CatalogLifecycle::Active;
+    let dir = private_dir();
+    let store = MetadataStore::open(dir.path(), profile()).unwrap();
+    let own = context(Uuid::new_v4().to_string());
+    let (epoch, mounts) = ready_mounts(&store, &own, 1);
+    let mount = &mounts[0];
+    store
+        .mutate_mount(&own, mount, &enable_request(0, true))
+        .unwrap();
+    let mut item = catalog_item(0, Active);
+    item.exposure_revision = 1;
+    store
+        .upload_catalog(&own, 1, &epoch, &snapshot(&epoch, 2, vec![item]))
+        .unwrap();
+    store
+        .set_presence(&own, 1, &epoch, Presence::Ready, Some(2))
+        .unwrap();
+    let policy = store.list_agents(&own, &own.device_id, None, 200).unwrap();
+    assert_eq!(policy["items"][0]["enabled"], false);
+    assert_eq!(policy["items"][0]["enableRevision"], 2);
+    assert_eq!(
+        store.resolve_callable(&own, mount).unwrap_err(),
+        MetadataError::MountUnavailable
+    );
+    store
+        .mutate_mount(&own, mount, &enable_request(2, true))
+        .unwrap();
+    store
+        .upload_catalog(&own, 1, &epoch, &snapshot(&epoch, 3, vec![]))
+        .unwrap();
+    store
+        .set_presence(&own, 1, &epoch, Presence::Ready, Some(3))
+        .unwrap();
+    assert_eq!(
+        store
+            .mutate_mount(&own, mount, &enable_request(4, true))
+            .unwrap_err(),
+        MetadataError::MountUnavailable
+    );
+    let mut restored = catalog_item(0, Active);
+    restored.exposure_revision = 1;
+    store
+        .upload_catalog(&own, 1, &epoch, &snapshot(&epoch, 4, vec![restored]))
+        .unwrap();
+    store
+        .set_presence(&own, 1, &epoch, Presence::Ready, Some(4))
+        .unwrap();
+    let policy = store.list_agents(&own, &own.device_id, None, 200).unwrap();
+    assert_eq!(policy["items"][0]["mountId"], *mount);
+    assert_eq!(policy["items"][0]["enabled"], false);
+    assert_eq!(policy["items"][0]["enableRevision"], 4);
+}

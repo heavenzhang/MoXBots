@@ -62,7 +62,11 @@ Session label 继续表示会话标题/原摘要。来源回执和异步事件�
 
 ### MoXBots owned relay 兼容边界
 
-`services/agentnet/relay-core` 仍只承接设备级 opaque TLS relay，当前 `/v1/me/network` 的 capabilities 为空；未实现 `op.prepare` / permit / return route authority，因此不宣告 `return-resume-v1`，对 `route.resume` 返回 `UNSUPPORTED`。客户端按实际 metadata 协商，legacy route 不跨 socket 保留。Host management 与 remote Session 继续沿原独立的设备通道、Host management protocol 及本地 Session owner，不从新回程协议取得执行权限。客户端恢复单测通过不代表 owned 服务已具备该能力，真实双端验收仍须使用具备 permit/route authority 且宣告该 capability 的服务。
+`services/agentnet/relay-core` 在既有 owner 内管理有界 `op.prepare`、permit 与 return route 关联。`RelayController` 初始化成功后，metadata HTTP owner 才在 `/v1/me/network` 宣告 `typed-rpc` / `permit-v1` / `return-v1` / `return-resume-v1`；metadata-only 实例仍不宣告。调用仅限同 principal/network、显式启用且当前目录完整 ACK 的 Agent，未启用、新增或 exposure 变化的 Agent 不因升级开放。AuthStore → MetadataStore → relay runtime 的锁序覆盖最终 permit / resume / rebind；重验原会话、完整设备 scope、key/certificate fingerprint、binding 及启用 revision。原接纳 epoch 不随回程恢复更新，缓存 permit 不得成为跨 socket 重放许可。
+
+Owned 客户端按四项基础 capability 协商 Agent 业务，额外第五项协商恢复；旧服务保留 management-only。Owned 通道在原 mTLS / 双方 ChannelHello 后按第一个严格 Agent 或 Host management frame 固定 profile，不能在已选通道切换；管理请求遇已有 Agent pair 或已收到 Offer 的未完成 pair 时返回 busy，不抢占 Agent 通道。发出 Open 但尚无 Offer 的竞争由服务端精确关联的非致命 `CHANNEL_PAIR_EXISTS` 收敛，客户端释放被明确拒绝的管理 reservation；取消后只按本连接已登记 controlId 消费迟到管理 Error，不吞未知错误。管理等待期间其它帧在同 actor 的有界带租约 FIFO 中保存并回到原处理入口。Host management 与 remote Session 保留本地授权和原 Session owner，不因发现 capability 获得调用 Agent 的权限。
+
+恢复窗口从首次中断起固定，`route.resume` 只更新已验证的 socket epoch，不能延长期限；双方当前 Ready 的确切 TLS 通道 `route.rebind` 成功后向双方发送 `route.rebound` 才释放期限。目标即使尚无 terminal 也主动恢复该回程，以免正常在线长任务受 15 分钟限制。来源验证 Ready peer/epoch 后解除恢复期限；结果仍由原 Inbox 接纳、结算后 ACK，正文只保留在客户端内存。`route.opened` 与 permit 的入队顺序并非来源已学习关联的 ACK：接纳确认前的断线仍按 unconfirmed 处理，原 start/send 不自动重放。进程/服务重启、登出和身份变化不保证回程恢复。源码、隔离真 socket/TLS 验收及现网已部署版本分别记录，不从 capability 或单测推断真实双已安装客户端验收。
 
 ## 身份、加密与资源
 

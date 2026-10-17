@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/hAcKlyc/MyAgents-dsh.git",
+  "baseCommit": "8f5a36fa3ef7544b5dfeda432f0446531d476707",
+  "patch": "moxbots-child-approval-context.patch",
+  "patchSha256": "e2b202b390f36e0faaceb1a56a3c6823f572ff7e0c19256232c456d8d79bf00f",
+  "resultCommit": "9f98b2818ee82c2e32d392f0b1735032059417f5",
+  "commitName": "MoXBots Runtime Builder",
+  "commitEmail": "runtime-builder@moxbots.invalid",
+  "commitDate": "2026-10-17T12:00:00Z",
+  "commitSubject": "fix(runtime): align child approval guidance and verified check dependencies",
+  "commitBody": "Project the named child delegation context from the effective Host approval policy without changing authorization or native package bytes. Preserve separate repository and accepted consumer lock authorities during checks, project only native and public identity entry points transactionally, and audit packed archives with portable local paths.",
+  "changedPaths": [
+    "packages/runtime-product/src/composition.ts",
+    "packages/runtime-product/src/system-context.ts",
+    "scripts/install-verified-dsh-for-checks.mjs",
+    "scripts/portable-pack-audit-policy.ts",
+    "scripts/verified-dsh-install-policy.d.mts",
+    "scripts/verified-dsh-install-policy.mjs",
+    "scripts/verify-isolated-dsh-checks.ts",
+    "scripts/verify-isolated-dsh-identities.ts",
+    "scripts/verify-repository-security.ts",
+    "specs/ARCHITECTURE.md",
+    "specs/tech_docs/assurance/development-and-local-integration.md",
+    "specs/tech_docs/execution/permissions-interactions-and-plan.md",
+    "tests/child-approval-context.unit.test.ts",
+    "tests/portable-pack-audit.unit.test.ts",
+    "tests/verified-dsh-install.unit.test.ts"
+  ],
+  "nodeVersion": "v24.20.0",
+  "npmVersion": "11.19.0",
+  "acceptedDshManifestSha256": "8a55db844fcfed62e2320d4c0873934c72ea56e4826d359c5af928f388dce6ed"
+}

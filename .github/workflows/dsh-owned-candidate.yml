@@ -1,0 +1,116 @@
+name: Owned DSH candidate
+
+# Scoped PR candidates and explicit runs only. No tag, Release or App is published.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/dsh-owned-candidate.yml'
+      - 'scripts/integrated-runtimes/source-patches/**'
+      - 'scripts/integrated-runtimes/build-moxbots-dsh-runtime.mjs'
+      - 'scripts/integrated-runtimes/package-moxbots-dsh-runtime.mjs'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: owned-dsh-candidate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - target: win32-x64
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
+      COREPACK_HOME: ${{ github.workspace }}/output/moxbots-dsh-corepack
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.20.0
+      - name: Install exact package manager
+        shell: bash
+        run: |
+          npm install --global npm@11.19.0
+          corepack enable
+          if [[ "$RUNNER_OS" == "Windows" ]]; then git config --global core.longpaths true; fi
+      - name: Build pinned source and validate actual native Runtime
+        shell: bash
+        run: |
+          node scripts/integrated-runtimes/build-moxbots-dsh-runtime.mjs \
+            --out "$RUNNER_TEMP/owned-dsh-build" --target '${{ matrix.target }}' \
+            --full-checks --validate-native
+      - name: Reproduce exact source identity in a second checkout
+        shell: bash
+        run: |
+          node scripts/integrated-runtimes/build-moxbots-dsh-runtime.mjs \
+            --out "$RUNNER_TEMP/owned-dsh-source-reproduction" \
+            --source "$RUNNER_TEMP/owned-dsh-build/source" --source-only
+      - name: Package verified native bytes with owned source provenance
+        shell: bash
+        env:
+          RECIPE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node scripts/integrated-runtimes/package-moxbots-dsh-runtime.mjs \
+            --build-root "$RUNNER_TEMP/owned-dsh-build" \
+            --out "$RUNNER_TEMP/owned-dsh-release" --recipe-commit "$RECIPE_COMMIT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owned-dsh-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/owned-dsh-release/*.tar.gz
+            ${{ runner.temp }}/owned-dsh-release/*.owned-dsh-target.json
+          if-no-files-found: error
+          compression-level: 0
+      - name: Preserve bounded failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owned-dsh-failure-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/owned-dsh-build/native-build/native-campaign/native-campaign.json
+            ${{ runner.temp }}/owned-dsh-build/native-build/platforms.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  candidate:
+    needs: native
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.20.0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: owned-dsh-*
+          path: output/owned-dsh-candidate
+          merge-multiple: true
+      - name: Verify four-target manifest and archive integrity
+        run: node scripts/integrated-runtimes/package-moxbots-dsh-runtime.mjs --collect output/owned-dsh-candidate
+      - uses: actions/upload-artifact@v4
+        with:
+          name: owned-dsh-candidate-four-targets
+          path: output/owned-dsh-candidate/
+          if-no-files-found: error
+          compression-level: 0

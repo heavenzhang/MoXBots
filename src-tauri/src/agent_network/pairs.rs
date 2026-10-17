@@ -178,10 +178,17 @@ struct RetiredManagementChannel {
     credits: Option<Credits>,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum RetiredManagementOffer {
+    Close(String),
+    AlreadyClosed,
+}
+
 #[derive(Default)]
 pub(crate) struct Pairs {
     memory: super::memory::MemoryBudget,
     management_role: Option<PeerRole>,
+    owned_flexible: bool,
     allocation: Option<super::memory::Allocation>,
     pending: HashMap<String, PendingOffer>,
     channels: HashMap<String, Entry>,
@@ -201,6 +208,14 @@ impl Pairs {
         Self {
             memory,
             management_role: Some(role),
+            ..Self::default()
+        }
+    }
+    pub(crate) fn new_owned(memory: super::memory::MemoryBudget) -> Self {
+        Self {
+            memory,
+            management_role: Some(PeerRole::Host),
+            owned_flexible: true,
             ..Self::default()
         }
     }
@@ -239,7 +254,11 @@ impl Pairs {
         self.pending.insert(
             id.into(),
             PendingOffer {
-                management_role: self.management_role,
+                management_role: if self.owned_flexible {
+                    None
+                } else {
+                    self.management_role
+                },
                 accepted: false,
                 bytes: Vec::new(),
                 created_at: Instant::now(),
@@ -328,12 +347,25 @@ impl Pairs {
                 initiator,
             )?,
         };
+        if self.owned_flexible && pending.management_role.is_none() {
+            channel.allow_owned_profile()?;
+        }
         let mut management_events = VecDeque::new();
         let mut management_event_bytes = 0usize;
         if !pending.bytes.is_empty() {
             for chunk in pending.bytes.chunks(budget("tlsChunkBytes")) {
                 let sequences = self.sequences.get_mut(&pair).expect("installed sequence");
-                if self.management_role.is_some() {
+                if self.owned_flexible {
+                    let (objects, decoded) = channel.feed_mixed(chunk, sequences)?;
+                    if !objects.is_empty() {
+                        return Err(NetworkError::new("CHANNEL_NOT_READY"));
+                    }
+                    queue_management_events(
+                        &mut management_events,
+                        &mut management_event_bytes,
+                        decoded,
+                    )?;
+                } else if self.management_role.is_some() {
                     let decoded = channel.feed_management(chunk, sequences)?;
                     queue_management_events(
                         &mut management_events,
@@ -394,7 +426,7 @@ impl Pairs {
         channel_id: &str,
         bytes: &[u8],
     ) -> Result<(Vec<BusinessObject>, super::memory::Allocation), NetworkError> {
-        if self.management_role.is_some() {
+        if self.management_role.is_some() && !self.owned_flexible {
             return Err(NetworkError::new("CHANNEL_MODE_MISMATCH"));
         }
         let channel_bytes = self.channels.get(channel_id).map_or_else(
@@ -492,6 +524,95 @@ impl Pairs {
         self.account_buffers()?;
         Ok((events, allocation))
     }
+    pub(crate) fn is_management_channel(&self, id: &str) -> bool {
+        self.channels
+            .get(id)
+            .is_some_and(|entry| entry.channel.is_management())
+    }
+    pub(crate) fn has_peer_channel(&self, peer: &DeviceScope) -> bool {
+        // Pending offers include certificate verification work whose peer has
+        // not been installed yet. Conservatively serialize management with
+        // those openings; this request's retirement reservation is separate.
+        !self.pending.is_empty()
+            || self
+                .channels
+                .values()
+                .any(|entry| entry.channel.peer() == peer)
+    }
+    pub(crate) fn feed_mixed(
+        &mut self,
+        channel_id: &str,
+        bytes: &[u8],
+    ) -> Result<
+        (
+            Vec<BusinessObject>,
+            Vec<ManagementEvent>,
+            super::memory::Allocation,
+        ),
+        NetworkError,
+    > {
+        if !self.owned_flexible {
+            return Err(NetworkError::new("CHANNEL_MODE_MISMATCH"));
+        }
+        let channel_bytes = self.channels.get(channel_id).map_or_else(
+            || {
+                self.pending
+                    .get(channel_id)
+                    .map_or(0, |entry| entry.bytes.len())
+            },
+            |entry| entry.channel.buffered_bytes() + entry.management_event_bytes,
+        );
+        let allocation = self
+            .memory
+            .reserve((channel_bytes + bytes.len()) * 2 + budget("channelQueueBytes"))?;
+        if let Some(pending) = self.pending.get_mut(channel_id) {
+            if !pending.accepted {
+                return Err(NetworkError::new("CHANNEL_NOT_ACCEPTED"));
+            }
+            if pending.bytes.len() + bytes.len() > budget("channelQueueBytes") {
+                return Err(NetworkError::new("CHANNEL_BACKPRESSURE"));
+            }
+            pending.bytes.extend_from_slice(bytes);
+            self.account_buffers()?;
+            return Ok((Vec::new(), Vec::new(), allocation));
+        }
+        let entry = self
+            .channels
+            .get_mut(channel_id)
+            .ok_or_else(|| NetworkError::new("CHANNEL_NOT_FOUND"))?;
+        if !entry.accepted {
+            return Err(NetworkError::new("CHANNEL_NOT_ACCEPTED"));
+        }
+        let mut events: Vec<_> = entry.management_events.drain(..).collect();
+        entry.management_event_bytes = 0;
+        let (objects, decoded) = entry.channel.feed_mixed(
+            bytes,
+            self.sequences
+                .get_mut(&entry.pair)
+                .expect("installed sequence"),
+        )?;
+        if decoded
+            .iter()
+            .any(|event| matches!(event, ManagementEvent::Ready))
+        {
+            entry.management_ready_announced = true;
+        }
+        events.extend(decoded);
+        self.release_unused_management_reservation(channel_id);
+        self.account_buffers()?;
+        Ok((objects, events, allocation))
+    }
+    fn release_unused_management_reservation(&mut self, channel_id: &str) {
+        if self.owned_flexible
+            && self
+                .channels
+                .get(channel_id)
+                .is_some_and(|entry| entry.channel.agent_selected())
+        {
+            self.retired_management
+                .retain(|entry| entry.channel_id != channel_id || entry.known_to_peer);
+        }
+    }
     pub(crate) fn release_credit(
         &mut self,
         id: &str,
@@ -584,7 +705,7 @@ impl Pairs {
             .get_mut(channel_id)
             .ok_or_else(|| NetworkError::new("CHANNEL_NOT_FOUND"))?;
         entry.channel.mark_relay_ready()?;
-        if self.management_role.is_some()
+        if entry.channel.is_management()
             && entry.channel.ready()
             && !entry.management_ready_announced
         {
@@ -727,6 +848,62 @@ impl Pairs {
         }
     }
 
+    /// A cancelled Open may receive its first Offer after control returns to
+    /// the actor. Only this exact, scoped server proof qualifies a late Close.
+    pub(crate) fn retired_management_offer(
+        &self,
+        message: &ServerMessage,
+        connection_scope: &ConnectionScope,
+        local: &DeviceScope,
+        epoch: &str,
+    ) -> Result<Option<RetiredManagementOffer>, NetworkError> {
+        let ServerMessage::ChannelOffer {
+            channel_id,
+            initiator,
+            responder,
+            initiator_connection_epoch,
+            responder_connection_epoch,
+            initiator_binding,
+            responder_binding,
+            ..
+        } = message
+        else {
+            return Ok(None);
+        };
+        let Some(retired) = self
+            .retired_management
+            .iter()
+            .find(|entry| entry.channel_id == *channel_id && entry.known_to_peer)
+        else {
+            return Ok(None);
+        };
+        if self.channels.contains_key(channel_id) || self.pending.contains_key(channel_id) {
+            return Ok(None);
+        }
+        if retired.connection_scope != *connection_scope
+            || retired.local != *local
+            || retired.epoch != epoch
+            || message.scope() != Some(connection_scope)
+        {
+            return Err(NetworkError::new("CONTROL_SCOPE_MISMATCH"));
+        }
+        Offer {
+            channel_id: channel_id.clone(),
+            initiator: initiator.clone(),
+            responder: responder.clone(),
+            initiator_epoch: initiator_connection_epoch.clone(),
+            responder_epoch: responder_connection_epoch.clone(),
+            initiator_binding: initiator_binding.clone(),
+            responder_binding: responder_binding.clone(),
+        }
+        .validate_scope(local, epoch)?;
+        Ok(Some(if retired.closed_seen {
+            RetiredManagementOffer::AlreadyClosed
+        } else {
+            RetiredManagementOffer::Close(channel_id.clone())
+        }))
+    }
+
     /// Consume only valid, same-connection cleanup controls for a channel
     /// retired by this management client. All other controls stay in the
     /// caller's strict current-channel dispatch and are rejected there.
@@ -819,10 +996,13 @@ impl Pairs {
         channel_id: &str,
         object: BusinessObject,
     ) -> Result<(), NetworkError> {
-        if self.management_role.is_some() {
+        if self.management_role.is_some() && !self.owned_flexible {
             return Err(NetworkError::new("CHANNEL_MODE_MISMATCH"));
         }
         let result = self.write_object(channel_id, object);
+        if result.is_ok() {
+            self.release_unused_management_reservation(channel_id);
+        }
         if let Err(error) = &result {
             self.remove(channel_id);
             self.failures.push((channel_id.to_owned(), error.clone()));
@@ -903,7 +1083,8 @@ impl Pairs {
         self.channels
             .values()
             .find(|entry| {
-                entry.channel.peer() == peer
+                (!self.owned_flexible || !entry.channel.is_management())
+                    && entry.channel.peer() == peer
                     && entry.channel.peer_epoch() == epoch
                     && entry.channel.ready()
             })
@@ -2097,5 +2278,147 @@ pub(crate) mod tests {
         );
         pairs.remove("0");
         pairs.reserve("extra").unwrap();
+    }
+    #[test]
+    fn owned_flexible_pair_uses_agent_tls_and_preserves_controller_override_and_busy_peer() {
+        use myagents_agent_network_protocol::{decode_tls_frame, ReturnAck, ReturnSettlement};
+        let (first, second) = management_scopes();
+        let id = uuid::Uuid::new_v4().to_string();
+        let (a_offer, b_offer) = verified_management_offers(Fixture::new(), &id, &first, &second);
+        let mut a = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        let mut b = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        for pairs in [&mut a, &mut b] {
+            pairs.reserve(&id).unwrap();
+            pairs.accepted(&id).unwrap();
+        }
+        assert_eq!(a.pending[&id].management_role, None);
+        a.install(a_offer, &first, "00000000-0000-0000-0000-000000000007")
+            .unwrap();
+        b.install(b_offer, &second, "00000000-0000-0000-0000-000000000008")
+            .unwrap();
+        for _ in 0..32 {
+            while let Some(frame) = a.next_frame().unwrap() {
+                let (objects, events, _lease) = b
+                    .feed_mixed(&id, decode_tls_frame(&frame).unwrap().1)
+                    .unwrap();
+                assert!(objects.is_empty() && events.is_empty());
+            }
+            while let Some(frame) = b.next_frame().unwrap() {
+                let (objects, events, _lease) = a
+                    .feed_mixed(&id, decode_tls_frame(&frame).unwrap().1)
+                    .unwrap();
+                assert!(objects.is_empty() && events.is_empty());
+            }
+            for pairs in [&mut a, &mut b] {
+                for ready in pairs.announce_ready() {
+                    pairs.ready(&ready).unwrap();
+                }
+            }
+            if a.ready_for(&second, "00000000-0000-0000-0000-000000000008")
+                .is_some()
+                && b.ready_for(&first, "00000000-0000-0000-0000-000000000007")
+                    .is_some()
+            {
+                break;
+            }
+        }
+        assert!(a.has_peer_channel(&second));
+        assert_eq!(
+            a.ready_for(&second, "00000000-0000-0000-0000-000000000008"),
+            Some(id.as_str())
+        );
+        let explicit = uuid::Uuid::new_v4().to_string();
+        a.reserve_management_controller(&explicit).unwrap();
+        assert_eq!(
+            a.pending[&explicit].management_role,
+            Some(PeerRole::Controller)
+        );
+        a.remove(&explicit);
+        a.send(
+            &id,
+            BusinessObject::Ack(ReturnAck {
+                version: 1,
+                sender_sequence: 1,
+                op_id: uuid::Uuid::new_v4().to_string(),
+                return_route_id: uuid::Uuid::new_v4().to_string(),
+                event_id: uuid::Uuid::new_v4().to_string(),
+                settlement: ReturnSettlement::Delivered,
+            }),
+        )
+        .unwrap();
+        let mut delivered = 0;
+        while let Some(frame) = a.next_frame().unwrap() {
+            let (objects, events, _lease) = b
+                .feed_mixed(&id, decode_tls_frame(&frame).unwrap().1)
+                .unwrap();
+            assert!(events.is_empty());
+            delivered += objects.len();
+        }
+        assert_eq!(delivered, 1);
+        assert!(a.has_channel(&id) && b.has_channel(&id));
+    }
+    #[test]
+    fn cancelled_management_open_requires_exact_late_offer_before_close_and_pending_is_busy() {
+        let (local, peer) = management_scopes();
+        let epoch = "00000000-0000-0000-0000-000000000007";
+        let scope = ConnectionScope {
+            service_id: local.service_id.clone(),
+            network_id: local.network_id.clone(),
+            boot_epoch: uuid::Uuid::new_v4().to_string(),
+            connection_epoch: epoch.into(),
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        pairs
+            .reserve_management_retirement(&id, &scope, &local)
+            .unwrap();
+        assert!(
+            !pairs.has_peer_channel(&peer),
+            "this request's own retirement reservation is not an opening"
+        );
+        pairs.reserve("uninstalled-agent-offer").unwrap();
+        assert!(pairs.has_peer_channel(&peer));
+        pairs.remove("uninstalled-agent-offer");
+        pairs.retire_management(&id, true);
+        let offer = ServerMessage::ChannelOffer {
+            scope: scope.clone(),
+            channel_id: id.clone(),
+            initiator: local.clone(),
+            responder: peer,
+            initiator_connection_epoch: epoch.into(),
+            responder_connection_epoch: "00000000-0000-0000-0000-000000000008".into(),
+            initiator_binding: None,
+            responder_binding: None,
+        };
+        assert_eq!(
+            pairs
+                .retired_management_offer(&offer, &scope, &local, epoch)
+                .unwrap(),
+            Some(RetiredManagementOffer::Close(id.clone()))
+        );
+        let closed = ServerMessage::ChannelClosed {
+            scope: scope.clone(),
+            channel_id: id,
+            reason: "HANDSHAKE_TIMEOUT".into(),
+        };
+        assert!(pairs
+            .consume_retired_management(&closed, &scope, &local, epoch)
+            .unwrap());
+        assert_eq!(
+            pairs
+                .retired_management_offer(&offer, &scope, &local, epoch)
+                .unwrap(),
+            Some(RetiredManagementOffer::AlreadyClosed)
+        );
+        assert!(!pairs.has_peer_channel(&local));
+        let mut wrong = scope.clone();
+        wrong.connection_epoch = uuid::Uuid::new_v4().to_string();
+        assert_eq!(
+            pairs
+                .retired_management_offer(&offer, &wrong, &local, epoch)
+                .unwrap_err()
+                .code,
+            "CONTROL_SCOPE_MISMATCH"
+        );
     }
 }

@@ -17,6 +17,7 @@ MoXBots 是用户拥有的 MyAgents fork，包含独立品牌桌面客户端、L
 | 综合接续 | `codex-handoff.md` | 多个任务的接续；新增条目不改写其他 owner 事实 |
 | 桌面与 Host 源码 | `src/renderer/`、`src/server/`、`src/shared/`、`src-tauri/`、`scripts/host/` | 桌面、Sidecar、Rust 身份和 Linux Host |
 | owned AgentNet 服务 | `services/agentnet/` | 独立登录、身份、metadata、relay及可选管理员登记控制面；部署与桌面验收另行核实 |
+| Owned DSH Runtime 资源 | `scripts/integrated-runtimes/source-patches/`、`src/shared/integrated-runtimes/dsh-release.json`、`scripts/integrated-runtimes/{build,package}-moxbots-dsh-runtime.mjs` | 固定上游、可重建源码补丁、四平台原生验收及精确 Release 选择；资源发布、Host 进程验收和已安装桌面分别记录于 `dev-docs/backend-recovery-20261017/` |
 | 统一管理员后台 | `services/agentnet/admin-web/`、`src/admin_http.rs`、`src/admin_store.rs`（相对服务目录） | 同源页面、实时账号校验、私有Bot登记/配置/归属与审计；可选有限Host生命周期已接线，运维见ADMINISTRATION.md |
 | 架构与设计规范 | `specs/ARCHITECTURE.md`、`specs/DESIGN.md`、`specs/tech_docs/` | 当前 owner、边界和交互规范 |
 | 有限 Bot 执行（默认关闭） | `services/agentnet/src/execution_*`、`execution-core/`、`src/host/bot-*`、`src-tauri/headless-network/src/bot_execution*` | 真实身份/原操作账本、有限 proof/lease、Host 本地策略和独立IPC；PR23/main75已发布并完成单Bot真实Linux验收；模型接入另见BOTS-MODEL-CENTER-001；共享仍待实施 |

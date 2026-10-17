@@ -45,6 +45,8 @@ pub(crate) struct Channel {
     tls: InnerTls,
     decoder: ObjectDecoder,
     mode: ChannelMode,
+    flexible: bool,
+    flexible_bootstrap: Vec<u8>,
     hello_sent: bool,
     peer_hello: bool,
     relay_ready: bool,
@@ -136,6 +138,8 @@ impl Channel {
             tls,
             decoder: ObjectDecoder::default(),
             mode: ChannelMode::Agent,
+            flexible: false,
+            flexible_bootstrap: Vec::new(),
             hello_sent: false,
             peer_hello: false,
             relay_ready: false,
@@ -156,9 +160,6 @@ impl Channel {
         role: PeerRole,
         tls_initiator: bool,
     ) -> Result<Self, NetworkError> {
-        let management_initiator = role == PeerRole::Controller;
-        let channel_id =
-            CanonicalUuid::parse(&id).map_err(|_| NetworkError::new("CHANNEL_ID_INVALID"))?;
         let mut channel = Self::new(
             id,
             local,
@@ -170,7 +171,14 @@ impl Channel {
             binding,
             tls_initiator,
         )?;
-        channel.mode = ChannelMode::Management(ManagementChannel {
+        channel.select_management(role)?;
+        Ok(channel)
+    }
+    fn select_management(&mut self, role: PeerRole) -> Result<(), NetworkError> {
+        let management_initiator = role == PeerRole::Controller;
+        let channel_id =
+            CanonicalUuid::parse(&self.id).map_err(|_| NetworkError::new("CHANNEL_ID_INVALID"))?;
+        self.mode = ChannelMode::Management(ManagementChannel {
             role,
             initiator: management_initiator,
             state: if management_initiator {
@@ -185,7 +193,133 @@ impl Channel {
             decoder: ManagementDecoder::default(),
             bootstrap: Vec::new(),
         });
-        Ok(channel)
+        self.flexible = false;
+        Ok(())
+    }
+    pub(crate) fn allow_owned_profile(&mut self) -> Result<(), NetworkError> {
+        if self.hello_sent || self.peer_hello || self.is_management() {
+            return Err(NetworkError::new("CHANNEL_MODE_MISMATCH"));
+        }
+        self.flexible = true;
+        Ok(())
+    }
+    pub(crate) fn is_management(&self) -> bool {
+        matches!(self.mode, ChannelMode::Management(_))
+    }
+    pub(crate) fn agent_selected(&self) -> bool {
+        !self.flexible && !self.is_management()
+    }
+    /// Owned channels share TLS and ChannelHello; the first closed-schema
+    /// application frame selects exactly one profile for this channel lifetime.
+    pub(crate) fn feed_mixed(
+        &mut self,
+        bytes: &[u8],
+        sequences: &mut PairSequences,
+    ) -> Result<(Vec<BusinessObject>, Vec<ManagementEvent>), NetworkError> {
+        if !self.flexible {
+            return if self.is_management() {
+                self.feed_management(bytes, sequences)
+                    .map(|events| (Vec::new(), events))
+            } else {
+                self.feed(bytes, sequences)
+                    .map(|objects| (objects, Vec::new()))
+            };
+        }
+        if self.failed {
+            return Err(NetworkError::new("CHANNEL_CLOSED"));
+        }
+        let result = self.feed_mixed_inner(bytes, sequences);
+        if result.is_err() {
+            self.failed = true;
+        }
+        result
+    }
+    fn feed_mixed_inner(
+        &mut self,
+        bytes: &[u8],
+        sequences: &mut PairSequences,
+    ) -> Result<(Vec<BusinessObject>, Vec<ManagementEvent>), NetworkError> {
+        let plaintext = self.tls.feed(bytes)?;
+        self.last_activity = Instant::now();
+        if self.tls.verified() && !self.hello_sent {
+            let hello = BusinessObject::Hello(ChannelHello {
+                version: 1,
+                sender_sequence: sequences.next()?,
+                channel_id: self.id.clone(),
+                source: self.local.clone(),
+                target: self.peer.clone(),
+                source_connection_epoch: self.local_epoch.clone(),
+                target_connection_epoch: self.peer_epoch.clone(),
+            });
+            self.write_object(&hello)?;
+            self.hello_sent = true;
+        }
+        let limit = budget("objectBytes") + 4 + budget("tlsChunkBytes");
+        if plaintext.len() > limit.saturating_sub(self.flexible_bootstrap.len()) {
+            return Err(NetworkError::new("RESOURCE_EXHAUSTED"));
+        }
+        self.flexible_bootstrap
+            .try_reserve_exact(plaintext.len())
+            .map_err(|_| NetworkError::new("RESOURCE_EXHAUSTED"))?;
+        self.flexible_bootstrap.extend_from_slice(&plaintext);
+        loop {
+            if self.flexible_bootstrap.len() < 4 {
+                return Ok((Vec::new(), Vec::new()));
+            }
+            let size = u32::from_be_bytes(
+                self.flexible_bootstrap[..4]
+                    .try_into()
+                    .map_err(|_| NetworkError::new("PROTOCOL_INVALID"))?,
+            ) as usize;
+            let max = if self.peer_hello {
+                budget("objectBytes")
+            } else {
+                budget("controlBytes")
+            };
+            if size == 0 || size > max {
+                return Err(NetworkError::new("MESSAGE_TOO_LARGE"));
+            }
+            let end = size + 4;
+            if self.flexible_bootstrap.len() < end {
+                return Ok((Vec::new(), Vec::new()));
+            }
+            let value: Value = serde_json::from_slice(&self.flexible_bootstrap[4..end])
+                .map_err(|_| NetworkError::new("PROTOCOL_INVALID"))?;
+            if !self.peer_hello {
+                let object = BusinessObject::parse(value).map_err(protocol_error)?;
+                sequences
+                    .incoming
+                    .observe(object.sequence())
+                    .map_err(protocol_error)?;
+                match object {
+                    BusinessObject::Hello(hello)
+                        if hello.channel_id == self.id
+                            && hello.source == self.peer
+                            && hello.target == self.local
+                            && hello.source_connection_epoch == self.peer_epoch
+                            && hello.target_connection_epoch == self.local_epoch =>
+                    {
+                        self.peer_hello = true
+                    }
+                    _ => return Err(NetworkError::new("CHANNEL_HELLO_MISMATCH")),
+                }
+                self.flexible_bootstrap.drain(..end);
+                continue;
+            }
+            let remainder = std::mem::take(&mut self.flexible_bootstrap);
+            if value.get("namespace").is_some() {
+                // Fixed management decoding below checks namespace/version/role,
+                // channel ID and the initial Hello before publishing any event.
+                self.select_management(PeerRole::Host)?;
+                return self
+                    .process_management_plaintext(&remainder)
+                    .map(|events| (Vec::new(), events));
+            }
+            self.flexible = false;
+            return self
+                .process_agent_plaintext(&remainder, sequences)
+                .map(|objects| (objects, Vec::new()));
+        }
     }
     pub(crate) fn peer(&self) -> &DeviceScope {
         &self.peer
@@ -520,8 +654,15 @@ impl Channel {
             self.write_object(&hello)?;
             self.hello_sent = true;
         }
+        self.process_agent_plaintext(&plaintext, sequences)
+    }
+    fn process_agent_plaintext(
+        &mut self,
+        plaintext: &[u8],
+        sequences: &mut PairSequences,
+    ) -> Result<Vec<BusinessObject>, NetworkError> {
         let mut business = Vec::new();
-        for object in self.decoder.push(&plaintext).map_err(protocol_error)? {
+        for object in self.decoder.push(plaintext).map_err(protocol_error)? {
             let object = BusinessObject::parse(object).map_err(protocol_error)?;
             sequences
                 .incoming
@@ -568,6 +709,7 @@ impl Channel {
         if matches!(object, BusinessObject::Hello(_)) {
             return Err(NetworkError::new("PROTOCOL_INVALID"));
         }
+        self.flexible = false;
         object.set_sequence(sequences.next()?);
         self.write_object(&object)
     }
@@ -592,6 +734,7 @@ impl Channel {
     }
     pub(crate) fn buffered_bytes(&self) -> usize {
         self.decoder.buffered_bytes()
+            + self.flexible_bootstrap.len()
             + self.tls.buffered_bytes()
             + match &self.mode {
                 ChannelMode::Agent => 0,
@@ -614,6 +757,9 @@ pub(crate) mod tests {
     use super::*;
     use myagents_agent_network_protocol::{decode_tls_frame, PeerBinding};
     pub(crate) fn ready_pair() -> (Channel, Channel, PairSequences, PairSequences) {
+        ready_pair_profile(false)
+    }
+    fn ready_pair_profile(flexible: bool) -> (Channel, Channel, PairSequences, PairSequences) {
         let fixture = Fixture::new();
         let scope = |n| DeviceScope {
             service_id: "00000000-0000-0000-0000-000000000001".into(),
@@ -664,16 +810,30 @@ pub(crate) mod tests {
             false,
         )
         .unwrap();
+        if flexible {
+            a.allow_owned_profile().unwrap();
+            b.allow_owned_profile().unwrap();
+        }
         let mut sa = PairSequences::default();
         let mut sb = PairSequences::default();
         for _ in 0..20 {
             while let Some(frame) = a.drain_frame().unwrap() {
-                b.feed(decode_tls_frame(&frame).unwrap().1, &mut sb)
-                    .unwrap();
+                if flexible {
+                    b.feed_mixed(decode_tls_frame(&frame).unwrap().1, &mut sb)
+                        .unwrap();
+                } else {
+                    b.feed(decode_tls_frame(&frame).unwrap().1, &mut sb)
+                        .unwrap();
+                }
             }
             while let Some(frame) = b.drain_frame().unwrap() {
-                a.feed(decode_tls_frame(&frame).unwrap().1, &mut sa)
-                    .unwrap();
+                if flexible {
+                    a.feed_mixed(decode_tls_frame(&frame).unwrap().1, &mut sa)
+                        .unwrap();
+                } else {
+                    a.feed(decode_tls_frame(&frame).unwrap().1, &mut sa)
+                        .unwrap();
+                }
             }
             if a.crypto_ready() && b.crypto_ready() {
                 a.mark_relay_ready().unwrap();
@@ -1281,5 +1441,141 @@ pub(crate) mod tests {
                 .code,
             "CHANNEL_MANAGEMENT_HANDSHAKE_MISMATCH"
         );
+    }
+    #[test]
+    fn owned_flexible_tls_first_agent_frame_fixes_mode_and_rejects_management_injection() {
+        let (mut source, mut target, mut ss, mut st) = ready_pair_profile(true);
+        let response = BusinessObject::Response(myagents_agent_network_protocol::RpcResponse {
+            version: 1,
+            sender_sequence: 1,
+            op_id: uuid::Uuid::new_v4().to_string(),
+            request_id: uuid::Uuid::new_v4().to_string(),
+            outcome: myagents_agent_network_protocol::Outcome::Error {
+                error: myagents_agent_network_protocol::BusinessError {
+                    code: "TEST".into(),
+                    message: "Agent only".into(),
+                },
+            },
+        });
+        source.send(response, &mut ss).unwrap();
+        let mut delivered = 0;
+        while let Some(frame) = source.drain_frame().unwrap() {
+            for chunk in decode_tls_frame(&frame).unwrap().1.chunks(3) {
+                let (objects, events) = target.feed_mixed(chunk, &mut st).unwrap();
+                assert!(events.is_empty());
+                delivered += objects.len();
+            }
+        }
+        assert_eq!(delivered, 1);
+        assert!(!target.flexible);
+        assert!(!target.is_management());
+        assert!(target.allow_owned_profile().is_err());
+        let frame = ManagementFrame {
+            namespace: myagents_host_management_protocol::NAMESPACE.into(),
+            version: myagents_host_management_protocol::VERSION,
+            sender_sequence: 1,
+            channel_id: CanonicalUuid::parse(&source.id).unwrap(),
+            message: ManagementMessage::Hello {
+                protocol: myagents_host_management_protocol::PROTOCOL.into(),
+                role: PeerRole::Controller,
+                nonce: CanonicalUuid::new(uuid::Uuid::new_v4()),
+            },
+        };
+        source
+            .tls
+            .write_plaintext(&encode_management(&frame).unwrap())
+            .unwrap();
+        let mut rejected = false;
+        while let Some(frame) = source.drain_frame().unwrap() {
+            rejected |= target
+                .feed_mixed(decode_tls_frame(&frame).unwrap().1, &mut st)
+                .is_err();
+        }
+        assert!(rejected);
+        assert!(target.failed);
+    }
+
+    #[test]
+    fn owned_flexible_tls_management_host_selection_ignores_canonical_tls_direction() {
+        for controller_is_tls_initiator in [true, false] {
+            let (mut controller, mut host, mut sc, mut sh) =
+                management_pair_with_tls_initiator(controller_is_tls_initiator);
+            host.mode = ChannelMode::Agent;
+            host.allow_owned_profile().unwrap();
+            let mut host_ready = false;
+            for _ in 0..32 {
+                while let Some(frame) = controller.drain_frame().unwrap() {
+                    let (objects, events) = host
+                        .feed_mixed(decode_tls_frame(&frame).unwrap().1, &mut sh)
+                        .unwrap();
+                    assert!(objects.is_empty());
+                    host_ready |= events
+                        .iter()
+                        .any(|event| matches!(event, ManagementEvent::Ready));
+                }
+                while let Some(frame) = host.drain_frame().unwrap() {
+                    controller
+                        .feed_management(decode_tls_frame(&frame).unwrap().1, &mut sc)
+                        .unwrap();
+                }
+                if controller.crypto_ready() && host.crypto_ready() {
+                    controller.mark_relay_ready().unwrap();
+                    host.mark_relay_ready().unwrap();
+                }
+                if controller.ready() && host.ready() {
+                    break;
+                }
+            }
+            assert!(controller.ready() && host.ready());
+            assert!(host.is_management());
+            assert!(!host.flexible);
+            let request_id = CanonicalUuid::new(uuid::Uuid::new_v4());
+            controller
+                .send_management(ManagementMessage::Request {
+                    request_id,
+                    method: myagents_host_management_protocol::ManagementMethod::HostSnapshot,
+                    params: RequestParams::Snapshot(
+                        myagents_host_management_protocol::SnapshotParams {},
+                    ),
+                })
+                .unwrap();
+            let mut requests = 0;
+            while let Some(frame) = controller.drain_frame().unwrap() {
+                for chunk in decode_tls_frame(&frame).unwrap().1.chunks(7) {
+                    let (objects, events) = host.feed_mixed(chunk, &mut sh).unwrap();
+                    assert!(objects.is_empty());
+                    requests += events
+                        .iter()
+                        .filter(|event| matches!(event, ManagementEvent::Request { .. }))
+                        .count();
+                }
+            }
+            assert_eq!(requests, 1);
+            let _ = host_ready;
+            let object = BusinessObject::Response(myagents_agent_network_protocol::RpcResponse {
+                version: 1,
+                sender_sequence: sc.next().unwrap(),
+                op_id: uuid::Uuid::new_v4().to_string(),
+                request_id: uuid::Uuid::new_v4().to_string(),
+                outcome: myagents_agent_network_protocol::Outcome::Error {
+                    error: myagents_agent_network_protocol::BusinessError {
+                        code: "TEST".into(),
+                        message: "Agent only".into(),
+                    },
+                },
+            });
+            controller
+                .tls
+                .write_plaintext(&encode_object(&serde_json::to_value(object).unwrap()).unwrap())
+                .unwrap();
+            let mut rejected = false;
+            while let Some(frame) = controller.drain_frame().unwrap() {
+                rejected |= host
+                    .feed_mixed(decode_tls_frame(&frame).unwrap().1, &mut sh)
+                    .is_err();
+            }
+            assert!(rejected);
+            assert!(host.failed);
+        }
     }
 }

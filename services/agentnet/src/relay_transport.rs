@@ -2104,4 +2104,5 @@ mod tests {
         );
         peer_socket.close(None).await.unwrap();
     }
+    include!("relay_recovery_tests.rs");
 }

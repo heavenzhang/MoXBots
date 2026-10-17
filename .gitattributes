@@ -7,3 +7,10 @@ src-tauri/media-worker/compatible-model-packs/*.json text eol=lf
 .github/cliproxy/manifest-v1.json.sig text eol=lf
 src-tauri/src/cliproxy/fixtures/internal-manifest.json text eol=lf
 src-tauri/src/cliproxy/fixtures/internal-manifest.json.sig text eol=lf
+
+# Owned Runtime source digests and provenance compare exact committed bytes.
+scripts/integrated-runtimes/source-patches/* text eol=lf
+scripts/integrated-runtimes/build-moxbots-dsh-runtime.mjs text eol=lf
+scripts/integrated-runtimes/package-moxbots-dsh-runtime.mjs text eol=lf
+scripts/integrated-runtimes/prepare-dsh-runtime.mjs text eol=lf
+.github/workflows/dsh-owned-candidate.yml text eol=lf
