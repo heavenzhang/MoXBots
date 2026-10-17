@@ -1,0 +1,17 @@
+{"event":"local-operator-configured"}
+{"event":"host-born","pid":20301,"pgid":20301,"birth":"Sun Oct 18 07:16:25 2026","node":"v24.20.0"}
+{"event":"mobile-start-receipt","version":1,"agentId":"original-host-agent","kind":"mobile.receipt","operationId":"ba333404-6ad1-4b64-bd78-e95965a4282e","sessionId":"5d4ab850-0b52-4175-b595-0ef16884da54","status":"accepted","code":null}
+{"event":"actual-host-process-tree","processes":[{"pid":20301,"ppid":20282,"pgid":20301,"birth":"Sun Oct 18 07:16:25 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"},{"pid":20303,"ppid":20301,"pgid":20301,"birth":"Sun Oct 18 07:16:26 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"},{"pid":20326,"ppid":20303,"pgid":20301,"birth":"Sun Oct 18 07:16:26 2026","command":"$FIXTURE/claude-agent-sdk/claude"},{"pid":20336,"ppid":20326,"pgid":20301,"birth":"Sun Oct 18 07:16:27 2026","command":"(claude)"}]}
+{"event":"original-terminal-generic-source","kind":"source.hint","sourceEventId":"245ad468-9094-46d1-a7ab-971c4997556c","connectionEpoch":"9603fa0b-5b1b-4453-96c8-27a8ed062415","agentId":"original-host-agent","sessionId":"5d4ab850-0b52-4175-b595-0ef16884da54"}
+{"event":"start-retry-no-session-replay"}
+{"event":"valid-large-image-staging","sizeBytes":5883258,"width":1400,"height":1400}
+{"event":"actual-host-process-tree","processes":[{"pid":20301,"ppid":20282,"pgid":20301,"birth":"Sun Oct 18 07:16:25 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"},{"pid":20303,"ppid":20301,"pgid":20301,"birth":"Sun Oct 18 07:16:26 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"},{"pid":20326,"ppid":20303,"pgid":20301,"birth":"Sun Oct 18 07:16:26 2026","command":"$FIXTURE/claude-agent-sdk/claude"}]}
+{"event":"send-retry-no-session-replay"}
+{"event":"real-session-and-file-persisted","sessionId":"5d4ab850-0b52-4175-b595-0ef16884da54","attachmentBytes":5883258,"sha256":"e0a0c40cdabf471d8a467b3adb3837893474c1de832cc80371ed293cc8ee17c9","supplierCalls":2}
+{"event":"artifact-owner-projection","kind":"owner-page","agentId":"original-host-agent","sessionId":"5d4ab850-0b52-4175-b595-0ef16884da54","items":[],"hasMore":false,"nextBefore":null}
+{"event":"two-original-terminal-sources-durable","pending":2,"stableFirstSource":true}
+{"event":"actual-host-process-tree","processes":[{"pid":20301,"ppid":20282,"pgid":20301,"birth":"Sun Oct 18 07:16:25 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"},{"pid":20303,"ppid":20301,"pgid":20301,"birth":"Sun Oct 18 07:16:26 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"},{"pid":20326,"ppid":20303,"pgid":20301,"birth":"Sun Oct 18 07:16:26 2026","command":"$FIXTURE/claude-agent-sdk/claude"}]}
+{"event":"host-restarted","pid":20398,"pgid":20398,"birth":"Sun Oct 18 07:16:31 2026"}
+{"event":"restart-recovered-same-source-and-receipts-without-session-dispatch","sourceEventId":"245ad468-9094-46d1-a7ab-971c4997556c","originalEpoch":"9603fa0b-5b1b-4453-96c8-27a8ed062415","supplierCalls":2}
+{"event":"PASS","elapsedMs":9554,"scope":"actual main + worker + SessionEngine/Store + native SDK, synthetic loopback supplier; no WSS/provider/phone acceptance"}
+{"event":"actual-host-process-tree","processes":[{"pid":20398,"ppid":20282,"pgid":20398,"birth":"Sun Oct 18 07:16:31 2026","command":"/Applications/MoXBots.app/Contents/Resources/nodejs/bin/node"}]}

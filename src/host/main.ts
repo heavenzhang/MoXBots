@@ -29,6 +29,8 @@ import { createRemoteReceiptOwner } from '../server/remote-session/receipts';
 import { workspacePathsEqual } from '../shared/workspacePath';
 import { resolveAgentRuntimePreference, runtimeTypeForAgentRuntimePreference } from '../shared/integrated-runtimes/identity';
 import { REMOTE_SESSION_BYTES } from '../shared/remoteSession';
+import { REMOTE_ASSET_MAX_BYTES } from '../shared/remoteAssets';
+import { USER_IMAGE_ATTACHMENT_MAX_BYTES } from '../shared/fileTypes';
 import { remoteMobileRequestSchema, remoteMobileResultSchema } from '../shared/remoteMobile';
 import { imSnapshotObservation } from '../server/routes/im-model-selection';
 import { HostMobileAssetStaging } from './mobile-asset-staging';
@@ -606,7 +608,7 @@ async function serve(): Promise<void> {
               }
             }
             return mobileAssetStaging.withReadyAssets(authority,{agentId:request.agentId,sessionId:stageSessionId,assetIds:request.assetIds},async assets=>{
-              if(assets.some(asset=>asset.sizeBytes>20*1024*1024||asset.mimeType.startsWith('image/')&&asset.sizeBytes>5*1024*1024))throw new Error('REMOTE_MOBILE_ASSET_SIZE_LIMIT');
+              if(assets.some(asset=>asset.sizeBytes>REMOTE_ASSET_MAX_BYTES||asset.mimeType.startsWith('image/')&&asset.sizeBytes>USER_IMAGE_ATTACHMENT_MAX_BYTES))throw new Error('REMOTE_MOBILE_ASSET_SIZE_LIMIT');
               const manifest=JSON.stringify(assets.map(({assetId,name,mimeType,sizeBytes,sha256})=>({assetId,name,mimeType,sizeBytes,sha256})));
               const manifestHash=createHash('sha256').update(manifest).digest('hex');
               if(request.kind==='mobile.start'){
