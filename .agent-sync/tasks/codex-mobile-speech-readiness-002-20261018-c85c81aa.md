@@ -15,7 +15,7 @@ Independently probe Android's real on-device recognition readiness on the dedica
 - [x] Probe reports API level, on-device service availability, current RECORD_AUDIO permission and API 33+ installed/pending/supported locale metadata for the `zh-CN` request, with bounded timeout/errors represented as unknown.
 - [x] Use actual `NativeSpeech.start()` only when RECORD_AUDIO is already denied; require stable permission error, idle state, and no recording/transcript events. Never change permission state.
 - [x] Leave implementation, generated native output, frozen crypto/protocol and production paths untouched; commit only the instrumented test, diagnostics evidence and this record.
-- [ ] Push this task branch and run git-project-sync handoff against the explicitly assigned base; record the existing canonical-main start-gate mismatch without rebasing.
+- [x] Push this task branch and run git-project-sync handoff against the explicitly assigned base; record the existing canonical-main start-gate mismatch without rebasing.
 
 ## Completed
 
@@ -35,6 +35,7 @@ Independently probe Android's real on-device recognition readiness on the dedica
 - `node mobile/scripts/build-native.mjs android` — PASS; created ignored native library and generated provenance stamp from current inputs.
 - `:moxbots-remote:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.moxbots.mobile.remote.NativeSpeechReadinessInstrumentedTest` — PASS on API 36; this means the diagnostic assertions passed only.
 - Exact one-command rerun is recorded in `dev-docs/mobile-002/speech-readiness/README.md`.
+- `project-sync.mjs handoff --repo . --remote https://github.com/heavenzhang/MoXBots.git --base 3e10fd5...` — PASS; remote branch SHA equals this task head; task status remains `in-progress`.
 
 ## Blockers and unknowns
 
@@ -44,4 +45,4 @@ Independently probe Android's real on-device recognition readiness on the dedica
 
 ## Next step
 
-Review, commit and normally push this branch, then run `project-sync.mjs handoff --repo . --remote https://github.com/heavenzhang/MoXBots.git --base 3e10fd5ea6a4a5c6caf5e15b9a4013f300e760fb`. Return the owned SHA and transfer the emulator/Gradle lane to the parent task owner. Keep task status `in-progress` because the overall MOXBOTS-MOBILE-002 acceptance remains open.
+Parent task owner reviews this bounded evidence and decides when a controlled, user-visible Chinese model installation and separate ASR capture validation can be authorized. This lane does not perform model installation or microphone capture. Emulator and Gradle access are returned to the parent; leave task status `in-progress` while overall MOXBOTS-MOBILE-002 acceptance remains open.
