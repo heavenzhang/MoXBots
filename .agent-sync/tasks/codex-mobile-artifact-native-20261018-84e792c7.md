@@ -25,22 +25,26 @@ This task starts from canonical main `400b746a4841bab8e4b99d8f83479fd54925c205`.
 
 - Verified project-sync observe at `e04eadd686e05f6a79fad47289e0e66ced7eec4f`; canonical `main` remains `400b746a4841bab8e4b99d8f83479fd54925c205`.
 - Created this isolated task branch from canonical main and passed `start` and `task-init` gates.
-- Merged the already reviewed parent dependency `8e38f61984bc4d9e027f0b10b0cdea3c2e97dc44` normally; it descends from the recorded canonical base. Artifact implementation is in progress; no artifact behavior has been verified yet.
-- Parent inspected the production APK and found the module's imported Rust connection library was packaged only into the instrumentation APK. Added the same native-library source directory to the production `main` source set while preserving androidTest packaging. Awaiting parent serial APK/instrumentation verification.
-- Artifact download/cache/presenter implementation is in progress in this branch and is not part of the focused JNI packaging repair commit.
+- Merged the reviewed parent native upload dependency `8e38f61984bc4d9e027f0b10b0cdea3c2e97dc44` normally, then merged reviewed mobile UI/native dependency branch `55771134560bb5aa00a2d4fe7e3cd2e5c4801f48` normally after rechecking `origin/main` (still the recorded `400b746a4841bab8e4b99d8f83479fd54925c205`). The UI dependency is in its own merge commit and will not be included in the artifact implementation cherry-pick.
+- Parent found the production APK lacked the imported Rust connection library. Added `main.jniLibs.srcDirs = ['native']` while preserving instrumentation packaging in focused commit `101a77a056cdb56fdf888734af4321644db3171c`. Parent cherry-picked it as `8effec3b` and reported production APK packaging checks plus the existing 16 instrumentation tests passed; report: `/tmp/moxbots-mobile-apk-rust-production-check.json`.
+- Implemented native Android/iOS `artifact.*` dispatch, descriptor catalog persistence, scoped private file cache, bounded owner-queue reads, integrity checks, local status/pause/remove, and OS preview/share presenters. Native list pages are encrypted and read-back verified before returning descriptors; subsequent pages must follow the saved cursor. Download requires exact equality with the native catalog descriptor before reserving storage or issuing a read.
+- Added synthetic Android instrumentation cases for native descriptor authorization, pagination cursor fencing, read-only status/pause, explicit resume, fractional-offset rejection, hash mismatch, target loss, stable identity/account cache isolation, and both cache quotas. They have not yet been run by this task; root owns the serial Gradle window.
+- Preserved canonical uppercase outer `NativeConnection` errors (including account/target/host-management codes) as failures that pause local scheduling; only an exact versioned `ASSET_*` error is accepted as the Host asset API's typed error shape. Added a synthetic regression for unversioned `TARGET_REVOKED`.
+- Module config adds a non-exported AndroidX `FileProvider` with a read-only artifact path. JS projections contain descriptors/state only, never filesystem paths or bytes.
 
 ## Verification
 
-- Android compilation/instrumentation is owned by the root serial Gradle window and has not been run by this task.
-- The production JNI packaging change has not yet been rebuilt; parent owns the APK contents, native dependency, alignment, SHA, and instrumented regression checks.
-- iOS compilation requires Xcode license state; this task will not accept any license. Source-level checks are not a substitute for iOS compilation or device testing.
+- `node --check mobile/app/modules/moxbots-remote/app.plugin.js` and `git diff --check` pass after the final source changes.
+- Android artifact implementation and new instrumentation cases await parent serial Gradle compile/run; this task did not start Gradle.
+- Parent verified the earlier JNI packaging repair in an actual debug APK, including native dependency provenance and alignment. That evidence predates the artifact code and does not validate artifact behavior.
+- Swift parsing/compilation is blocked because the machine has not accepted the Xcode license. This task did not accept it. iOS source/runtime behavior remains unverified.
 - Physical-device, real Host artifact, and user-session acceptance are outside this task unless separately assigned.
 
 ## Blockers and unknowns
 
-- Inspect and implement against the actual `src/shared/remoteAssets.ts`, `src/server/remote-session/assets.ts`, `NativeConnection`, module owner queue, and current target approval checks before locking exact schemas.
-- Android FileProvider and iOS QuickLook/share presenter implementation details depend on the existing Expo module/plugin layout and platform APIs.
+- Android instrumentation must compile and pass in the root-owned serial Gradle run. Any failures require preserving reproduction evidence and repairing only owned native files.
+- iOS compile/device verification remains open until the license is handled by the user/authorized build owner.
 
 ## Next step
 
-Read the committed artifact protocol and module lifecycle, then define an injectable native artifact store/scheduler and OS presenter boundary before wiring module intents/events.
+Run static diff review, commit only the artifact module files and task record, then hand the implementation commit to root for serial Android compilation/instrumentation. Report iOS license limitation and keep real Host/device verification explicitly open.
