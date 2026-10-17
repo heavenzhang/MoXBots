@@ -12,6 +12,8 @@ Closed version 1 intents:
 - `targets.list`, `operations.pending`, `connection.suspend`
 - `session` with an opaque current catalog `targetId` and the exact existing `RemoteSessionRequest`
 
+Raw C input is first decoded through closed typed DTOs, preserving duplicate and unknown-field rejection before JSON projection. Same-device/agent target IDs remain stable within the native handle across catalog refresh; logout and suspension clear the catalog scope. Directory snapshots close their idle outer WSS connection, and session requests obtain fresh epochs.
+
 All requests return `{ok:true,value:...}` or `{ok:false,error:{kind:"error",code:UPPERCASE}}`. JS receives only account, login URL, target, pending operation or existing remote-session projections. Target runtime is `null` until obtained from actual Host session metadata. The directory is limited to 100 projected targets and signals truncation with `hasMore`. Unknown pending operations whose target no longer exists remain visible with an empty `targetId`; they cannot authorize a replacement target.
 
 Login obtains a per-login device ID and PKCE verifier, validates the account session, then persists the native account. Device identity and pending enrollment keys use the original full issuer/environment/service/principal/device/generation scope. Joining is an explicit initial mobile enrollment grant persisted as consumed before the original join mutation; ambiguous joins are not retried automatically. The current native flow uses one fresh outer WSS epoch per completed session request; background suspension drops the mobile connection and never stops the remote Host.

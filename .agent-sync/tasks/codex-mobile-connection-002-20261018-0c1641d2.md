@@ -18,6 +18,7 @@ Implement only `mobile/connection/**`: actual owned account PKCE/session validat
 - [x] SDK inner TLS/controller with validated relay direction, native durable prepare/commit, bounded UNKNOWN journal and confirmed markers, fresh approval snapshot and scoped receipt lookup.
 - [x] Foreground connection suspension preserves remote Host execution; unknown operations never automatically resent.
 - [x] Original parity and native owner tests, credential-free loopback HTTP, actual pinned TLS WSS upgrade and foreign-CA rejection.
+- [x] Raw C JSON validates original typed DTOs before normalization, preserving duplicate/unknown-field rejection; same-device/agent opaque catalog IDs survive refresh, removed targets are revoked, and directory snapshots close their unpumped idle WSS epoch.
 - [ ] Parent independent integration review, iOS/Android target build and true native OS store acceptance.
 - [ ] Authorized real account/device/Host session acceptance; not proven by synthetic tests.
 - [ ] Parent remote main integration/push and release, outside this worker's authority.
@@ -28,7 +29,7 @@ Parent shared crypto native-store feature commit c795947a (local cherry-pick eeb
 
 ## Verification and limitations
 
-`cargo test --manifest-path mobile/connection/Cargo.toml --locked --lib`: 64 passed. `cargo clippy --manifest-path mobile/connection/Cargo.toml --locked --all-targets -- -D warnings`: passed. C header syntax checked with clang. README records source ownership, callback contracts, limits and real-device gates. No package installation, real user login/enrollment, model call, live Host effect, main merge, push or deployment was performed. Requested versus runtime-confirmed model/time/token usage remains unknown.
+`cargo test --manifest-path mobile/connection/Cargo.toml --locked --lib`: 66 passed. `cargo clippy --manifest-path mobile/connection/Cargo.toml --locked --all-targets -- -D warnings`: passed. C header syntax checked with clang. README records source ownership, callback contracts, limits and real-device gates. No package installation, real user login/enrollment, model call, live Host effect, main merge, push or deployment was performed. Requested versus runtime-confirmed model/time/token usage remains unknown.
 
 ## Next step
 
