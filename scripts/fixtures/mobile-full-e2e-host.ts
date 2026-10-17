@@ -1,6 +1,6 @@
 /** Explicit original Host + real SessionEngine/SDK/native child loopback. No paid inference. */
 import {strict as assert} from 'node:assert';
-import {randomBytes,randomUUID} from 'node:crypto';
+import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
 import {createServer as httpServer,type ServerResponse} from 'node:http';
 import {once} from 'node:events';
@@ -8,10 +8,12 @@ import {chmod,mkdir,writeFile,readFile,symlink} from 'node:fs/promises';
 import {join,resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
+import {crc32,deflateSync} from 'node:zlib';
 
 
 const repository=resolve(import.meta.dirname,'../..');
 const root=resolve(process.argv[2]);
+const mode=process.argv[3]??'text';assert(['text','assets'].includes(mode));
 assert(root.startsWith('/'));
 await chmod(root,0o700);
 const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'workspaces','default');
@@ -20,6 +22,22 @@ const secret=randomBytes(32).toString('base64url');
 const children:ChildProcess[]=[];
 let diagnostics='',calls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
 const evidence:string[]=[];
+const supplierObservations:Array<{call:number;fileReference:boolean;images:Array<{mimeType:string;sizeBytes:number;sha256:string}>}>=[];
+const digest=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
+function fixturePng(){
+  const width=128,height=128,rows=Buffer.alloc(height*(width*3+1));
+  for(let y=0;y<height;y++)randomBytes(width*3).copy(rows,y*(width*3+1)+1);
+  const chunk=(type:string,data:Buffer)=>{const tag=Buffer.from(type),out=Buffer.alloc(data.length+12);out.writeUInt32BE(data.length);tag.copy(out,4);data.copy(out,8);out.writeUInt32BE(crc32(Buffer.concat([tag,data])),data.length+8);return out;};
+  const header=Buffer.alloc(13);header.writeUInt32BE(width);header.writeUInt32BE(height,4);header[8]=8;header[9]=2;
+  return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(rows)),chunk('IEND',Buffer.alloc(0))]);
+}
+function imageBlocks(value:unknown):Array<{mimeType:string;sizeBytes:number;sha256:string}>{
+  if(Array.isArray(value))return value.flatMap(imageBlocks);
+  if(!value||typeof value!=='object')return [];
+  const object=value as Record<string,unknown>;const source=object.source as Record<string,unknown>|undefined;
+  if(object.type==='image'&&source?.type==='base64'&&typeof source.data==='string'&&typeof source.media_type==='string'){const bytes=Buffer.from(source.data,'base64');return [{mimeType:source.media_type,sizeBytes:bytes.length,sha256:digest(bytes)}];}
+  return Object.values(object).flatMap(imageBlocks);
+}
 const descendants=new Map<number,{pid:number;ppid:number;pgid:number;birth:string;command:string}>();
 function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object});evidence.push(line);console.log(line);}
 function processRows(){
@@ -80,7 +98,7 @@ const supplier=httpServer(async(request,response)=>{
     const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};
     assert.equal(body.model,'original-host-model');
     seenAttachment ||= JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/');
-    calls++;captureProcesses();reply(response);
+    calls++;supplierObservations.push({call:calls,fileReference:JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/'),images:imageBlocks(body.messages)});captureProcesses();reply(response);
   }catch{response.writeHead(500).end();}
 });
 
@@ -95,6 +113,12 @@ try{
   for(const directory of [home,workspace,join(root,'credentials'),ipcDirectory])await mkdir(directory,{recursive:true,mode:0o700});
   await chmod(state,0o700);await chmod(ipcDirectory,0o750);
   await writeFile(join(state,'host.lock'),'',{mode:0o600});
+  if(mode==='assets'){
+    const inputs=join(root,'fixture-inputs');await mkdir(inputs,{mode:0o700});
+    const files=[{name:'fixture.txt',mimeType:'text/plain',bytes:Buffer.from('Original Host fixture attachment bytes.\n')},{name:'fixture.png',mimeType:'image/png',bytes:fixturePng()}];
+    for(const file of files)await writeFile(join(inputs,file.name),file.bytes,{mode:0o600});
+    await writeFile(join(inputs,'manifest.json'),JSON.stringify(files.map(({name,mimeType,bytes})=>({name,mimeType,sizeBytes:bytes.length,sha256:digest(bytes)}))),{mode:0o600});
+  }
   const masterKey=randomBytes(32);
   await writeFile(join(root,'credentials','provider-key'),masterKey,{mode:0o600});
   await new Promise<void>(yes=>supplier.listen(0,'127.0.0.1',yes));
@@ -127,7 +151,16 @@ try{
   await writeFile(join(root,'host-ready.json'),JSON.stringify({deviceId}),{mode:0o600});
   await wait('fixture completion',async()=>{try{await readFile(join(root,'stop'));return true;}catch{return undefined;}},150_000);
   const sessions=JSON.parse(await readFile(join(home,'.myagents','sessions.json'),'utf8').catch(()=>'[]'));
-  await writeFile(join(root,'host-result.json'),JSON.stringify({calls,seenAttachment,sessions}),{mode:0o600});
+  const materialized:Array<{name:string;sizeBytes:number;sha256:string}>=[];
+  if(mode==='assets'){
+    const expected=JSON.parse(await readFile(join(root,'assets-expectation.json'),'utf8')) as {sessionId:string;operationId:string;textAssetId:string;imageAssetId:string};
+    for(const id of Object.values(expected))assert.match(id,/^[0-9a-f-]{36}$/);
+    for(const [name,path] of [['fixture.txt',join(workspace,'myagents_files','remote-mobile',expected.sessionId,expected.operationId,`${expected.textAssetId}.txt`)],['fixture.png',join(home,'.myagents','attachments',expected.sessionId,`${expected.operationId}-${expected.imageAssetId}.png`)]]){
+      const actual=await readFile(path),original=await readFile(join(root,'fixture-inputs',name));assert.deepEqual(actual,original);materialized.push({name,sizeBytes:actual.length,sha256:digest(actual)});
+    }
+    assert.equal(calls,2);assert(supplierObservations[1]?.fileReference);const image=materialized.find(item=>item.name==='fixture.png')!;assert(supplierObservations[1]?.images.some(item=>item.mimeType==='image/png'&&item.sha256===image.sha256&&item.sizeBytes===image.sizeBytes));
+  }
+  await writeFile(join(root,'host-result.json'),JSON.stringify({calls,seenAttachment,sessions,supplierObservations,materialized}),{mode:0o600});
 }catch(error){console.error(String(error));console.error(diagnostics.slice(-6000));process.exitCode=1;}
 finally{captureProcesses();for(const c of children.reverse())await stop(c);
   for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{/* already exited */}}

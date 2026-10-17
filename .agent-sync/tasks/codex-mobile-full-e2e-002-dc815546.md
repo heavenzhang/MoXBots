@@ -13,8 +13,8 @@ Add an explicit isolated source-combined actual MobileConnection → original se
 
 - [x] Original relay-enabled router, temporary AuthStore sessions, pinned public TLS, original identity/current binding checks; no handcrafted bearer, target, catalog or Session result.
 - [x] Original account owners and actual WSS produce a reproducible directory red result at the b217 dependency.
-- [ ] Legitimate original Host registry publication followed by first actual encrypted start, accepted receipt and original terminal.
-- [ ] Continue with real staged file and same-operation duplicate suppression, if first chain passes.
+- [x] Legitimate original Host registry publication followed by first actual encrypted start, accepted receipt and original terminal (accepted root dependency 959d632e).
+- [x] Explicit assets mode: real Rust encrypted uploads, same Session continuation, byte/hash supplier/materialization checks, Native duplicate suppression and receipt recovery (13.36s).
 - [ ] Root independent review/run and integration to actual main.
 
 ## Completed
@@ -27,8 +27,8 @@ All three locked no-run builds passed. Actual same-UID run_owned red retained; o
 
 ## Blockers and unknowns
 
-Accepted root catalog dependency 6e26946b has been normally merged. Original Devices/Agents default-disabled remote mount was reproduced, then explicit synthetic-user original revision/mutation PATCH enabled it. Actual target discovery now passes; first mobile.start fails at original headless inner TLS feed (NETWORK_TLS_FAILED). Root owns production chain repair. Temporary peer/connector cfgtest diagnostic diffs were removed and are not committed. Synthetic SSO, temporary encrypted OS adapter and controlled local supplier are explicitly bounded; phone/push/speech/production gates remain open. Deployment not required for this test package and not authorized to this worker.
+Root accepted catalog, full certificate chain and IPC repairs were normally merged through 959d632e, retaining this task's genuine base. New assets result, test-adapter deletion semantics, default debug stack diagnosis and exact cleanup evidence are in `dev-docs/mobile-002/full-e2e/attachments.md`. A subsequent default-text regression failed once after accepted receipt with MOBILE_CHANNEL_CLOSED around 30s; no retry or production bypass. Root owns source diagnosis/repair. Root integration/main and all phone/OS/production gates remain open.
 
 ## Next step
 
-Merge root's accepted TLS-chain repair as a normal dependency, run `node scripts/verify-mobile-full-host-e2e.mjs`, and capture original encrypted start/receipt/terminal before expanding to attachments. Default-disabled negative case remains explicit; do not change production exposure defaults.
+Root independently review and run owned attachment increment, diagnose retained default-text failure, then integrate. Separate controlled small-stack C ABI probe is deferred until this package is accepted. Deployment is outside this worker scope.
