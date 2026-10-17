@@ -11,7 +11,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{path::PathBuf, time::Duration};
 const LIMIT: usize = myagents_host_management_protocol::REMOTE_SESSION_BYTES;
-async fn post(
+pub(super) async fn post(
     dispatch: &SidecarHttpDispatch,
     path: &str,
     body: Value,
@@ -55,14 +55,14 @@ async fn post(
     }
     Ok((value["data"].take(), allocation))
 }
-fn global(manager: &ManagedSidecarManager) -> Result<SidecarHttpDispatch, NetworkError> {
+pub(super) fn global(manager: &ManagedSidecarManager) -> Result<SidecarHttpDispatch, NetworkError> {
     manager
         .lock()
         .map_err(|_| NetworkError::new("TARGET_OWNER_UNAVAILABLE"))?
         .acquire_global_dispatch()
         .map_err(|_| NetworkError::new("TARGET_OWNER_UNAVAILABLE"))
 }
-fn session(
+pub(super) fn session(
     manager: &ManagedSidecarManager,
     id: &str,
 ) -> Result<Option<SidecarHttpDispatch>, NetworkError> {
