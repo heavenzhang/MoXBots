@@ -20,7 +20,8 @@ type SessionRow = { sessionId: string; title: string; updatedAt: string; preview
 type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found' | 'unknown';
 type Notice = { tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
 function notificationOpenNotice(code: string): NonNullable<Notice> {
-  return { tone: 'error', code, text: code === 'MOBILE_NOTIFICATIONS_DISABLED' ? '会话提醒已停用，请在账号设置中重新启用。' : '暂时无法打开通知对应的会话。可重试读取，或忽略这条通知。' };
+  const registrationRequired = code === 'MOBILE_NOTIFICATIONS_DISABLED' || code === 'MOBILE_NOTIFICATION_REGISTRATION_REQUIRED';
+  return { tone: 'error', code, text: registrationRequired ? '会话提醒未启用，请在账号设置中开启。' : '暂时无法打开通知对应的会话。可重试读取，或忽略这条通知。' };
 }
 type AttachmentItem = { file: NativeAttachment; upload: NativeAttachmentUpload | null; ownerKey: string; errorCode?: string };
 

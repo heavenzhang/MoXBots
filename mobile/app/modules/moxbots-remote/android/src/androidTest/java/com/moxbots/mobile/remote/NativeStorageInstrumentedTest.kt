@@ -70,6 +70,17 @@ class NativeStorageInstrumentedTest {
       val snapshot = JSONObject(connection.request("""{"version":1,"kind":"targets.snapshot"}"""))
       assertEquals("error", snapshot.getString("kind"))
       assertEquals("MOBILE_TARGET_SNAPSHOT_UNAVAILABLE", snapshot.getString("code"))
+      for (intent in listOf(
+        """{"version":1,"kind":"notification.status"}""",
+        """{"version":1,"kind":"notification.open","eventId":"${UUID.randomUUID()}"}""",
+      )) {
+        val notification = JSONObject(connection.request(intent))
+        assertEquals("error", notification.getString("kind"))
+        assertEquals("OWNED_LOGIN_REQUIRED", notification.getString("code"))
+      }
+      val injected = JSONObject(connection.request("""{"version":1,"kind":"notification.register","provider":"fcm","token":"synthetic","installationId":"${UUID.randomUUID()}"}"""))
+      assertEquals("error", injected.getString("kind"))
+      assertEquals("MOBILE_INTENT_INVALID", injected.getString("code"))
     } finally {
       connection.close()
     }

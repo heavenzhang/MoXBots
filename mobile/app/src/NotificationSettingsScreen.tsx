@@ -10,6 +10,7 @@ import { notificationOpens } from './notificationPolicy';
 const color = { ink: '#202522', muted: '#747B76', green: '#26734D', line: '#E7EAE7', red: '#A7433B' };
 const messages: Record<string, string> = {
   MOBILE_AUTHORIZATION_REQUIRED: '请先返回会话页登录，再开启会话提醒。',
+  OWNED_LOGIN_REQUIRED: '请先返回会话页登录，再开启会话提醒。',
   ACCOUNT_BINDING_CHANGED: '账号状态已变化，请刷新后重新开启。',
   MOBILE_NOTIFICATIONS_UNAVAILABLE: '提醒服务暂不可用，请稍后重试。',
   MOBILE_NOTIFICATIONS_NOT_CONFIGURED: '此安装包的推送配置尚未就绪，请使用配置完成的内测版本。',
