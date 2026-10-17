@@ -14,9 +14,11 @@ use crate::agent_network::{
 use crate::IdentityStore;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use futures_util::{SinkExt, StreamExt};
+use moxbots_mobile_core::{JournalRecord, JournalRequest};
 use myagents_agent_network_protocol::{
     CatalogSnapshot, ClientMessage, ConnectionScope, DeviceScope, ServerEnvelope, ServerMessage,
 };
+use myagents_host_management_protocol::CanonicalUuid;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -199,7 +201,7 @@ impl MobileConnection {
                 "writeId",
                 "text",
             ][..]
-        } else if kind == "session" || kind == "assets" {
+        } else if kind == "session" || kind == "assets" || kind == "mobile" {
             &["version", "kind", "targetId", "request"][..]
         } else {
             &["version", "kind"][..]
@@ -341,6 +343,7 @@ impl MobileConnection {
                 Ok(json!({"kind":"connection","state":"suspended"}))
             }
             "session" => self.session(&intent).await,
+            "mobile" => self.mobile(&intent).await,
             "assets" => self.assets(&intent).await,
             "operations.pending" => {
                 self.restore().await?;
@@ -668,6 +671,69 @@ fn journal_scope(scope: &crate::KeyScope) -> Result<String, NetworkError> {
     ))
     .map_err(|_| err("IDENTITY_SCOPE_MISMATCH"))
 }
+// Metadata only; the SDK remains the digest/crypto/recovery authority. The
+// untagged SDK union preserves legacy record JSON exactly.
+trait JournalMetadata {
+    fn agent_id(&self) -> &str;
+    fn session_id(&self) -> Option<&str>;
+    fn operation_id(&self) -> Option<CanonicalUuid>;
+    fn mutation(&self) -> bool;
+    fn protocol(&self) -> &'static str;
+    fn validate(&self) -> Result<(), myagents_host_management_protocol::CodecError>;
+}
+impl JournalMetadata for JournalRequest {
+    fn agent_id(&self) -> &str {
+        match self {
+            Self::Legacy(r) => r.agent_id(),
+            Self::Mobile(r) => r.agent_id(),
+        }
+    }
+    fn session_id(&self) -> Option<&str> {
+        match self {
+            Self::Legacy(r) => r.session_id(),
+            Self::Mobile(r) => r.session_id(),
+        }
+    }
+    fn operation_id(&self) -> Option<CanonicalUuid> {
+        match self {
+            Self::Legacy(r) => r.operation_id(),
+            Self::Mobile(r) => r.operation_id(),
+        }
+    }
+    fn mutation(&self) -> bool {
+        match self {
+            Self::Legacy(r) => r.mutation(),
+            Self::Mobile(r) => r.mutation(),
+        }
+    }
+    fn protocol(&self) -> &'static str {
+        match self {
+            Self::Legacy(_) => "session",
+            Self::Mobile(_) => "mobile",
+        }
+    }
+    fn validate(&self) -> Result<(), myagents_host_management_protocol::CodecError> {
+        match self {
+            Self::Legacy(r) => r.validate(),
+            Self::Mobile(r) => r.validate(),
+        }
+    }
+}
+fn journal_request(record: &Value) -> Result<JournalRequest, NetworkError> {
+    let _: JournalRecord =
+        serde_json::from_value(record.clone()).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
+    let request: JournalRequest = serde_json::from_value(record["request"].clone())
+        .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
+    request
+        .validate()
+        .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
+    if !request.mutation()
+        || request.operation_id().map(|id| json!(id)) != Some(record["operationId"].clone())
+    {
+        return Err(err("MOBILE_JOURNAL_INVALID"));
+    }
+    Ok(request)
+}
 impl MobileConnection {
     fn pending_operations(&self, scope: &str) -> Result<Vec<String>, NetworkError> {
         let Some(bytes) = self
@@ -711,12 +777,7 @@ impl MobileConnection {
             if record["confirmed"] == true {
                 continue;
             }
-            let request: myagents_host_management_protocol::RemoteSessionRequest =
-                serde_json::from_value(record["request"].clone())
-                    .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
-            request
-                .validate()
-                .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
+            let request = journal_request(&record)?;
             let target: DeviceScope = serde_json::from_value(record["target"].clone())
                 .map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
             if record["issuer"] != saved.instance.issuer
@@ -738,7 +799,7 @@ impl MobileConnection {
                 .find(|(_, t)| t.device == target.device_id && t.agent == request.agent_id())
                 .map(|(id, _)| id.as_str())
                 .unwrap_or("");
-            items.push(json!({"targetId":id,"agentId":request.agent_id(),"operationId":op,"sessionId":request.session_id(),"status":"unknown"}));
+            items.push(json!({"protocol":request.protocol(),"targetId":id,"agentId":request.agent_id(),"operationId":op,"sessionId":request.session_id(),"status":"unknown"}));
         }
         Ok(json!({"kind":"operations","items":items}))
     }
@@ -925,6 +986,24 @@ mod tests {
                 &serde_json::to_vec(&record).unwrap(),
             )
             .unwrap();
+        let mobile_op = uuid::Uuid::new_v4().to_string();
+        let mut mobile_record = record.clone();
+        mobile_record["operationId"] = json!(mobile_op);
+        mobile_record["request"] = json!({"kind":"mobile.send","version":1,"agentId":"agent","sessionId":"original-session","operationId":mobile_op,"text":"private-mobile-text","assetIds":[]});
+        o.store
+            .write_record(
+                &scope,
+                &format!("operation:{mobile_op}"),
+                &serde_json::to_vec(&mobile_record).unwrap(),
+            )
+            .unwrap();
+        o.store
+            .write_record(
+                &scope,
+                "pending-operations",
+                &serde_json::to_vec(&vec![op.clone(), mobile_op.clone()]).unwrap(),
+            )
+            .unwrap();
         o.targets.insert(
             "approved-catalog-id".into(),
             Target {
@@ -935,6 +1014,10 @@ mod tests {
         let reply = o.operations_pending().unwrap();
         assert_eq!(reply["items"][0]["targetId"], "approved-catalog-id");
         assert_eq!(reply["items"][0]["operationId"], op);
+        assert_eq!(reply["items"][0]["protocol"], "session");
+        assert_eq!(reply["items"][1]["protocol"], "mobile");
+        assert_eq!(reply["items"][1]["operationId"], mobile_op);
+        assert_eq!(reply["items"][1]["sessionId"], "original-session");
         assert!(!reply.to_string().contains("private"));
         o.targets.clear();
         assert_eq!(o.operations_pending().unwrap()["items"][0]["targetId"], "");

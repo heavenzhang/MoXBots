@@ -168,6 +168,12 @@ enum ClosedIntent {
         write_id: String,
         text: String,
     },
+    #[serde(rename = "mobile")]
+    Mobile {
+        version: u8,
+        target_id: String,
+        request: myagents_host_management_protocol::RemoteMobileRequest,
+    },
     #[serde(rename = "assets")]
     Assets {
         version: u8,
@@ -192,6 +198,11 @@ fn parse_intent(bytes: &[u8]) -> Result<serde_json::Value, ()> {
     ) && bytes.len() > 64 * 1024
     {
         return Err(());
+    }
+    if let ClosedIntent::Mobile { request, .. } = &typed {
+        if bytes.len() > 64 * 1024 || request.validate().is_err() {
+            return Err(());
+        }
     }
     serde_json::from_slice(bytes).map_err(|_| ())
 }
@@ -397,6 +408,33 @@ pub(crate) mod tests {
             write,
             remove,
         }
+    }
+    #[test]
+    fn raw_mobile_is_closed_before_value_normalization_and_bounded_separately() {
+        let valid = serde_json::json!({"version":1,"kind":"mobile","targetId":"approved","request":{"kind":"mobile.start","version":1,"agentId":"agent","operationId":uuid::Uuid::new_v4().to_string(),"text":"hello","assetIds":[]}});
+        let bytes = serde_json::to_vec(&valid).unwrap();
+        assert!(parse_intent(&bytes).is_ok());
+        let raw = String::from_utf8(bytes).unwrap();
+        for duplicate in [
+            raw.replace("\"targetId\":", "\"targetId\":\"another\",\"targetId\":"),
+            raw.replace("\"agentId\":", "\"agentId\":\"foreign\",\"agentId\":"),
+            raw.replace("\"text\":", "\"text\":\"duplicate\",\"text\":"),
+        ] {
+            assert!(parse_intent(duplicate.as_bytes()).is_err());
+        }
+        let mut unknown = valid.clone();
+        unknown["request"]["path"] = serde_json::json!("injected");
+        assert!(parse_intent(&serde_json::to_vec(&unknown).unwrap()).is_err());
+        let mut too_large = valid.clone();
+        too_large["request"]["text"] = serde_json::json!("\0".repeat(9000));
+        assert!(serde_json::to_vec(&too_large).unwrap().len() < 64 * 1024);
+        assert!(parse_intent(&serde_json::to_vec(&too_large).unwrap()).is_err());
+        let mut padded = serde_json::to_vec(&valid).unwrap();
+        padded.extend(vec![b' '; 65536]);
+        assert!(parse_intent(&padded).is_err());
+        let mut wrong_method = valid;
+        wrong_method["kind"] = serde_json::json!("session");
+        assert!(parse_intent(&serde_json::to_vec(&wrong_method).unwrap()).is_err());
     }
     #[test]
     fn raw_drafts_reject_duplicate_unknown_missing_and_oversize_fields() {
