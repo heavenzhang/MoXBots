@@ -147,7 +147,18 @@ pub(crate) async fn raw_request(
     body: Option<Value>,
     token: Option<&str>,
 ) -> Result<(StatusCode, Value), NetworkError> {
-    raw_request_with_limits(http, origin, method, path, body, token, 16 * 1024, MAX_BODY).await
+    raw_request_with_limits(
+        http,
+        origin,
+        method,
+        path,
+        body,
+        token,
+        16 * 1024,
+        MAX_BODY,
+        false,
+    )
+    .await
 }
 async fn raw_request_with_limits(
     http: &reqwest::Client,
@@ -158,7 +169,12 @@ async fn raw_request_with_limits(
     token: Option<&str>,
     request_limit: usize,
     response_limit: usize,
+    allow_start_rejection: bool,
 ) -> Result<(StatusCode, Value), NetworkError> {
+    let optional_start = allow_start_rejection
+        && method == Method::POST
+        && path == "/auth/login/start"
+        && token.is_none();
     // Only callers with fixed, reviewed routes use this private HTTP seam.
     let diagnostic =
         crate::network_diagnostics::RequestDiagnostic::new("owned-account", &method, path);
@@ -185,6 +201,17 @@ async fn raw_request_with_limits(
         .await
         .map_err(|_| NetworkError::cloud("OWNED_ACCOUNT_UNAVAILABLE", 503))?;
     let status = response.status();
+    // Axum's old JSON extractor can reject the new option with plain-text 422
+    // and no cache header. Read no error body and expose only this closed pair
+    // of rejection statuses; all successful/authenticated responses remain strict.
+    if optional_start
+        && matches!(
+            status,
+            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+        )
+    {
+        return Ok((status, Value::Null));
+    }
     if !response
         .headers()
         .get(header::CACHE_CONTROL)
@@ -282,21 +309,62 @@ impl OwnedClient {
         device_id: &str,
         challenge: &str,
     ) -> Result<OwnedLoginStart, NetworkError> {
+        self.start_with_return(device_id, challenge, false).await
+    }
+    pub(crate) async fn start_desktop(
+        &self,
+        device_id: &str,
+        challenge: &str,
+    ) -> Result<OwnedLoginStart, NetworkError> {
+        self.start_with_return(device_id, challenge, true).await
+    }
+    async fn start_with_return(
+        &self,
+        device_id: &str,
+        challenge: &str,
+        desktop: bool,
+    ) -> Result<OwnedLoginStart, NetworkError> {
         if !uuid(device_id)
             || challenge.len() != 43
             || URL_SAFE_NO_PAD.decode(challenge).map(|v| v.len()).ok() != Some(32)
         {
             return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
         }
-        let (status, value) = raw_request(
+        let mut body = json!({"deviceId":device_id,"pkceChallenge":challenge});
+        if desktop {
+            body["browserReturn"] = json!(true);
+            body["browserReturnPath"] = json!("/desktop");
+        }
+        let (mut status, mut value) = raw_request_with_limits(
             &self.http,
             &self.origin,
             Method::POST,
             "/auth/login/start",
-            Some(json!({"deviceId":device_id,"pkceChallenge":challenge})),
+            Some(body),
             None,
+            16 * 1024,
+            MAX_BODY,
+            desktop,
         )
         .await?;
+        // Older services reject the optional return path before creating a
+        // transaction. Preserve their existing polling login during rollout.
+        if desktop
+            && matches!(
+                status,
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+            )
+        {
+            (status, value) = raw_request(
+                &self.http,
+                &self.origin,
+                Method::POST,
+                "/auth/login/start",
+                Some(json!({"deviceId":device_id,"pkceChallenge":challenge})),
+                None,
+            )
+            .await?;
+        }
         if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
         }
@@ -426,6 +494,7 @@ impl OwnedClient {
             Some(token),
             64 * 1024,
             16 * 1024 * 1024,
+            false,
         )
         .await?;
         if status != StatusCode::OK {
@@ -448,6 +517,7 @@ impl OwnedClient {
             Some(token),
             64 * 1024,
             1024 * 1024,
+            false,
         )
         .await?;
         if status != StatusCode::OK {
@@ -486,6 +556,107 @@ fn login_proof(device: &str, transaction: &str, verifier: &str) -> Result<Value,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn desktop_start_uses_opt_in_and_only_retries_explicit_old_service_rejections() {
+        use std::sync::{Arc, Mutex};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for rejected in [None, Some(400), Some(422), Some(503)] {
+            let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
+            let captured = seen.clone();
+            let transaction = uuid::Uuid::new_v4().to_string();
+            let expected_transaction = transaction.clone();
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let expected_requests = if matches!(rejected, Some(400 | 422)) {
+                2
+            } else {
+                1
+            };
+            let server = async move {
+                for _ in 0..expected_requests {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let mut bytes = Vec::new();
+                    let (header_end, size) = loop {
+                        let mut chunk = [0u8; 2048];
+                        let read = stream.read(&mut chunk).await.unwrap();
+                        assert!(read > 0 && bytes.len() + read <= 8192);
+                        bytes.extend_from_slice(&chunk[..read]);
+                        if let Some(pos) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                            let headers = std::str::from_utf8(&bytes[..pos]).unwrap();
+                            let size = headers
+                                .lines()
+                                .find_map(|line| {
+                                    let (key, value) = line.split_once(':')?;
+                                    key.eq_ignore_ascii_case("content-length")
+                                        .then(|| value.trim().parse::<usize>().unwrap())
+                                })
+                                .unwrap();
+                            if bytes.len() >= pos + 4 + size {
+                                break (pos + 4, size);
+                            }
+                        }
+                    };
+                    let body: Value =
+                        serde_json::from_slice(&bytes[header_end..header_end + size]).unwrap();
+                    let first = {
+                        let mut seen = captured.lock().unwrap();
+                        seen.push(body);
+                        seen.len() == 1
+                    };
+                    let (status, headers, body) = if let Some(status) = rejected.filter(|_| first) {
+                        // Old extractor: plain text and no cache header.
+                        (status, "", "request rejected".to_owned())
+                    } else {
+                        (200, "Cache-Control: no-store\r\nContent-Type: application/json\r\n", json!({
+                            "transactionId": transaction,
+                            "authorizationUrl": "https://login.example.test/dex/auth?state=fixture",
+                            "expiresAt": jsonwebtoken::get_current_timestamp() + 120,
+                        }).to_string())
+                    };
+                    let response = format!("HTTP/1.1 {status} Response\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                    stream.write_all(response.as_bytes()).await.unwrap();
+                }
+            };
+            // Test-only HTTP loopback. Production keeps pinned HTTPS/no redirects.
+            #[allow(clippy::disallowed_methods)]
+            let http = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(3))
+                .retry(reqwest::retry::never())
+                .build()
+                .unwrap();
+            let client = OwnedClient {
+                origin,
+                http,
+                instance: instance(),
+            };
+            let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
+            let device = uuid::Uuid::new_v4().to_string();
+            let request = client.start_desktop(&device, &challenge);
+            let (_, result) = tokio::join!(server, request);
+            if rejected == Some(503) {
+                assert!(result.is_err());
+            } else {
+                assert_eq!(result.unwrap().transaction_id, expected_transaction);
+            }
+            let seen = seen.lock().unwrap();
+            assert_eq!(seen[0]["browserReturnPath"], "/desktop");
+            assert_eq!(
+                seen.len(),
+                if matches!(rejected, Some(400 | 422)) {
+                    2
+                } else {
+                    1
+                }
+            );
+            if seen.len() == 2 {
+                assert!(seen[1].get("browserReturn").is_none());
+                assert_eq!(seen[0]["deviceId"], seen[1]["deviceId"]);
+                assert_eq!(seen[0]["pkceChallenge"], seen[1]["pkceChallenge"]);
+            }
+        }
+    }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()
             .unwrap()

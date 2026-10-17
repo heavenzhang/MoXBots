@@ -275,14 +275,14 @@ export function JoinNetworkDialog({
                       ).toLocaleTimeString(),
                     })}
                   </p>
-                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <div className="mt-3 grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => void login.reopen()}
                       disabled={
                         busy || login.checking || login.expired || login.stopped
                       }
-                      className="rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
                     >
                       {t("agentNetwork.ownedLogin.openBrowser")}
                     </button>
@@ -292,11 +292,8 @@ export function JoinNetworkDialog({
                       disabled={
                         busy || login.checking || login.expired || login.stopped
                       }
-                      className="flex items-center gap-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
                     >
-                      {login.checking && (
-                        <LoaderIcon className="h-4 w-4 animate-spin" />
-                      )}
                       {t("agentNetwork.ownedLogin.check")}
                     </button>
                   </div>
