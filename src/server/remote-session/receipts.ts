@@ -142,6 +142,37 @@ export function createRemoteReceiptOwner(scope: string, directory = join(homedir
     read:(agentId:string,operationId:string)=>read(agentId,operationId) as Promise<Receipt>,
     readMobile:(agentId:string,operationId:string)=>read(agentId,operationId,true) as Promise<MobileReceipt>,
     adoptPrepared,
+    async bindHeadlessMobileStart(raw:RemoteMobileRequest,sessionId:string,assetsDigest:string):Promise<boolean>{
+      const {request,path,digest}=identity(raw);await prepare();
+      if(!scope.startsWith('host:')||scope.length<=5||request.kind!=='mobile.start'||!/^[a-f0-9]{64}$/.test(assetsDigest))throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
+      return withFileLock({lockPath:path+'.lock'},async()=>{
+        const entry=await load(path);
+        if(!entry||entry.digest!==digest||entry.receipt.kind!=='mobile.receipt'||entry.admission!==undefined||entry.preparedUntil!==undefined)throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
+        if(entry.adopted){
+          if(entry.receipt.sessionId!==sessionId||entry.assetsDigest!==assetsDigest)throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
+          return false;
+        }
+        if(entry.receipt.sessionId!==null||entry.assetsDigest!==undefined)throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
+        // Only the still-running admission that durably reserved this operation
+        // may attach its newly born Session. Reopening a ledger cannot resume it.
+        if(entry.ownerPid!==process.pid||entry.ownerToken!==PROCESS_OWNER||!active.has(path)||project(entry).status!=='processing')throw new RemoteSessionError('REMOTE_ADMISSION_UNCONFIRMED');
+        const receipt=remoteMobileResultSchema.parse({...entry.receipt,sessionId}) as MobileReceipt;
+        await write(path,{...entry,receipt,adopted:true,assetsDigest,updatedAt:Date.now()});
+        const saved=await load(path);
+        if(!saved||saved.digest!==digest||!saved.adopted||saved.receipt.sessionId!==sessionId||saved.assetsDigest!==assetsDigest)throw new RemoteSessionError('REMOTE_RECEIPT_INVALID');
+        return true;
+      });
+    },
+    async releaseMobileObservation(raw:RemoteMobileRequest):Promise<void>{
+      const {path,digest}=identity(raw);await prepare();
+      await withFileLock({lockPath:path+'.lock'},async()=>{
+        const entry=await load(path);
+        if(!entry||entry.digest!==digest||entry.receipt.kind!=='mobile.receipt')throw new RemoteSessionError('REMOTE_OPERATION_CONFLICT');
+        // Ending local observation does not cancel or retry a worker. Keep the
+        // durable operation/Session binding, but stop claiming a live admission.
+        if(entry.ownerPid===process.pid&&entry.ownerToken===PROCESS_OWNER)active.delete(path);
+      });
+    },
     finish:(raw:RemoteSessionRequest,status:Receipt['status'],sessionId:string|null,code:string|null=null)=>finish(raw,status,sessionId,code) as Promise<Receipt>,
     finishMobile:(raw:RemoteMobileRequest,status:Receipt['status'],sessionId:string|null,code:string|null=null)=>finish(raw,status,sessionId,code) as Promise<MobileReceipt>,
     async readMobileIntent(raw:RemoteMobileRequest,assetsDigest:string):Promise<MobileReceipt>{

@@ -15,20 +15,21 @@ export async function admitHeadlessMobileStart<TTarget>(input:{
   adopt:(request:StartRequest,sessionId:string,manifestHash:string)=>Promise<boolean>;
   dispatch:(target:TTarget,sessionId:string,request:StartRequest)=>Promise<{accepted:boolean}>;
   finish:(request:StartRequest,status:'accepted'|'rejected',sessionId:string,code:string|null)=>Promise<Receipt>;
+  releaseObservation:(request:StartRequest)=>Promise<void>;
 }):Promise<Receipt>{
   const {request,manifestHash}=input;
   const begun=await input.begin(request);
   if(!begun.fresh)return input.read(request,manifestHash);
-  let sessionId:string|undefined;
   try{
     const ensured=await input.ensure(request.agentId,request.modelId);
-    sessionId=ensured.sessionId;
+    const sessionId=ensured.sessionId;
     if(!await input.adopt(request,sessionId,manifestHash))return input.read(request,manifestHash);
     const result=await input.dispatch(ensured.target,sessionId,request);
     return await input.finish(request,result.accepted?'accepted':'rejected',sessionId,result.accepted?null:'REMOTE_MOBILE_ADMISSION_REJECTED');
   }catch{
     // ensure/adopt/IPC loss may follow a Host-side effect. Keep the original
     // receipt authoritative and force explicit reconciliation, never replay.
+    await input.releaseObservation(request);
     return input.read(request,manifestHash);
   }
 }

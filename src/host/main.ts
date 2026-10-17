@@ -621,7 +621,7 @@ async function serve(): Promise<void> {
                     if(!target||target.bot||target.closing||target.sessionId!==created.sessionId||target.generation!==created.generation)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
                     return {target,sessionId:created.sessionId};
                   },
-                  adopt:(value,sessionId,hash)=>remoteReceipts.adoptPrepared(value,sessionId,hash),
+                  adopt:(value,sessionId,hash)=>remoteReceipts.bindHeadlessMobileStart(value,sessionId,hash),
                   dispatch:async(target,sessionId,value)=>{
                     const store=await import('../server/SessionStore'),metadata=store.getSessionMetadata(sessionId);
                     if(!metadata)throw new Error('REMOTE_SESSION_TARGET_CHANGED');
@@ -629,6 +629,7 @@ async function serve(): Promise<void> {
                     return {accepted:!!result&&typeof result==='object'&&(result as {accepted?:unknown}).accepted===true};
                   },
                   finish:(value,status,sessionId,code)=>remoteReceipts.finishMobile(value,status,sessionId,code),
+                  releaseObservation:value=>remoteReceipts.releaseMobileObservation(value),
                 }));
               }
               const begun=await remoteReceipts.beginMobile(request,request.sessionId);
@@ -654,6 +655,7 @@ async function serve(): Promise<void> {
                 // begins, any thrown worker/lifecycle error may have crossed admission;
                 // preserve the original ledger's status for explicit recovery instead of
                 // converting uncertainty into a retryable rejection.
+                await remoteReceipts.releaseMobileObservation(request);
                 return remoteMobileResultSchema.parse(await remoteReceipts.readMobileIntent(request,manifestHash));
               }
             });
