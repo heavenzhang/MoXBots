@@ -724,8 +724,25 @@ impl AssetStore {
         if !(1..=ASSET_MAX_BYTES).contains(&size) {
             return Err(err("ASSET_SIZE_LIMIT"));
         }
+        let source_hash = hash_file(&mut source)?;
+        source.seek(SeekFrom::Start(0))?;
         let _lock = self.lock()?;
         let scope_dir = self.scope_dir(scope)?;
+        // Repeated owner pages must preserve opaque IDs instead of copying the
+        // same immutable result and consuming quota on each refresh. Equality
+        // includes the authenticated scope, session and complete file content.
+        for (_, record) in Self::records(&scope_dir)? {
+            if record.scope == *scope
+                && record.session.as_deref() == Some(session_id)
+                && record.state == UploadState::Ready
+                && record.name == name
+                && record.mime_type == mime_type
+                && record.size == size
+                && record.sha256 == source_hash
+            {
+                return Ok(descriptor(&record));
+            }
+        }
         self.quota(&scope_dir, size)?;
         let id = CanonicalUuid::new(uuid::Uuid::new_v4());
         scope_dir.create_dir(id.as_uuid().to_string())?;
@@ -746,6 +763,9 @@ impl AssetStore {
         drop(file);
         let mut file = Self::data(&dir, false)?;
         let digest = hash_file(&mut file)?;
+        if digest != source_hash {
+            return Err(err("ASSET_SOURCE_CHANGED"));
+        }
         let r = Record {
             scope: scope.clone(),
             id,
@@ -1110,6 +1130,12 @@ mod tests {
         let descriptor = store
             .register_artifact(&s, "session", &source, "output.txt", "text/plain")
             .unwrap();
+        assert_eq!(
+            store
+                .register_artifact(&s, "session", &source, "output.txt", "text/plain")
+                .unwrap(),
+            descriptor
+        );
         assert!(TrustedArtifactSource::from_owner(owner.path(), Path::new("../escape")).is_err());
         let list = RemoteAssetRequest::List {
             version: 1,
@@ -1135,6 +1161,15 @@ mod tests {
         let mut foreign = s.clone();
         foreign.controller_key_generation += 1;
         assert!(store.execute(&foreign, &read).is_err());
+        std::fs::write(owner.path().join("output.txt"), b"updated bytes").unwrap();
+        let changed = store
+            .register_artifact(&s, "session", &source, "output.txt", "text/plain")
+            .unwrap();
+        assert_ne!(changed.artifact_id, descriptor.artifact_id);
+        let other_session = store
+            .register_artifact(&s, "other-session", &source, "output.txt", "text/plain")
+            .unwrap();
+        assert_ne!(other_session.artifact_id, changed.artifact_id);
     }
     #[test]
     fn global_reservations_and_cancel_crash_account_for_real_storage() {
