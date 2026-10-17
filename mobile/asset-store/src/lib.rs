@@ -882,7 +882,12 @@ fn private_dir(dir: &Dir) -> Result<(), StoreError> {
     Ok(())
 }
 fn sync_dir(dir: &Dir) -> Result<(), StoreError> {
-    dir.try_clone()?.into_std_file().sync_all()?;
+    // Linux cap-std directory handles can be O_PATH: cloning retains that
+    // mode and fsync fails with EBADF. Reopen the anchored directory read-only
+    // while retaining no-follow confinement and propagate durability errors.
+    let mut options = OpenOptions::new();
+    options.read(true).follow(FollowSymlinks::No);
+    dir.open_with(".", &options)?.into_std().sync_all()?;
     Ok(())
 }
 
