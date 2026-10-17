@@ -2858,6 +2858,39 @@ async function main() {
         }catch{return jsonResponse({success:false,code:'REMOTE_SESSION_REQUEST_INVALID'},400)}
       }
 
+      if ((pathname === '/api/remote-mobile' || pathname === '/api/remote-mobile/prepare') && request.method === 'POST') {
+        if (pathname.endsWith('/prepare') && sidecarRole !== 'global') return jsonResponse({success:false,code:'REMOTE_GLOBAL_OWNER_REQUIRED'},403);
+        const { hasValidInternalCliCredential } = await import('./external-cli-admission');
+        if (!hasValidInternalCliCredential(request)) return jsonResponse({success:false,code:'INTERNAL_CALLER_REQUIRED'},401);
+        // The remote DTO stays48KiB. Only this local native-owner envelope may
+        // additionally contain bounded verified attachment source metadata.
+        const limit = 96 * 1024;
+        if (Number(request.headers.get('content-length') || 0) > limit) return jsonResponse({success:false,code:'REMOTE_MOBILE_REQUEST_INVALID'},413);
+        try {
+          const reader = request.body?.getReader();
+          const chunks: Uint8Array[] = [];
+          let length = 0;
+          if (reader) {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                length += value.byteLength;
+                if (length > limit) { await reader.cancel(); return jsonResponse({success:false,code:'REMOTE_MOBILE_REQUEST_INVALID'},413); }
+                chunks.push(value);
+              }
+            } finally { reader.releaseLock(); }
+          }
+          const owner = await import('./remote-session/mobile');
+          const body: unknown = JSON.parse(Buffer.concat(chunks,length).toString('utf8'));
+          const result = pathname.endsWith('/prepare')
+            ? await owner.prepareDesktopRemoteMobileSession(body)
+            : await owner.handleDesktopRemoteMobileSession(body,sidecarRole);
+          if (Buffer.byteLength(JSON.stringify(result)) > 48 * 1024) return jsonResponse({success:false,code:'REMOTE_MOBILE_PROJECTION_TOO_LARGE'},413);
+          return jsonResponse(result,result.success?200:409);
+        } catch { return jsonResponse({success:false,code:'REMOTE_MOBILE_REQUEST_INVALID'},400); }
+      }
+
       if (pathname === '/api/remote-assets/resolve' && request.method === 'POST') {
         const { hasValidInternalCliCredential } = await import('./external-cli-admission');
         if (!hasValidInternalCliCredential(request)) return jsonResponse({success:false,code:'INTERNAL_CALLER_REQUIRED'},401);

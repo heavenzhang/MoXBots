@@ -5,6 +5,12 @@ mod agent_network;
 mod ffi;
 #[cfg(test)]
 mod mobile_tests;
+// Exercise the exact desktop admission retention policy with portable Rust
+// tests; this does not claim that the Tauri adapter itself was compiled.
+#[cfg(test)]
+#[allow(dead_code)] // Desktop-only enum variants are unused by this portable harness.
+#[path = "../../../src-tauri/src/agent_network/remote_admission.rs"]
+mod admission_retention_tests;
 pub use ffi::*;
 // Name adapter required by the shared JOSE verifier; no desktop/cloud dependency.
 mod space_cloud {

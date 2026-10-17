@@ -118,7 +118,7 @@ async function checkedDirectory(directory:string,privateMode=false) {
   const stat=await lstat(directory);if(!stat.isDirectory()||stat.isSymbolicLink()||(privateMode&&process.platform!=='win32'&&(stat.mode&0o077)))fail('REMOTE_MOBILE_ASSET_PATH_UNSAFE');
   if(await realpath(directory)!==directory)fail('REMOTE_MOBILE_ASSET_PATH_UNSAFE');
 }
-async function readAsset(asset:Asset):Promise<Buffer> {
+async function readAsset(asset:Asset,retain=true):Promise<Buffer> {
   const root=path.join(homedir(),APP_DATA_DIR_NAME,'remote-assets-v1');
   const relative=path.relative(root,asset.sourcePath),parts=relative.split(path.sep);
   if(asset.sourcePath!==path.join(root,...parts)||parts.length!==3||!/^[a-f0-9]{64}$/.test(parts[0])||!uuid.test(parts[1])||parts[2]!=='data')fail('REMOTE_MOBILE_ASSET_PATH_UNSAFE');
@@ -128,11 +128,24 @@ async function readAsset(asset:Asset):Promise<Buffer> {
   const fd=await open(asset.sourcePath,constants.O_RDONLY|(constants.O_NOFOLLOW??0));
   try {
     const stat=await fd.stat();if(!stat.isFile()||stat.ino!==before.ino||stat.dev!==before.dev||stat.size!==asset.sizeBytes)fail('REMOTE_MOBILE_ASSET_INVALID');
-    const bytes=Buffer.alloc(asset.sizeBytes+1);let offset=0;
-    while(offset<bytes.length){const read=await fd.read(bytes,offset,Math.min(65536,bytes.length-offset),offset);if(!read.bytesRead)break;offset+=read.bytesRead;}
-    const after=await fd.stat();if(offset!==asset.sizeBytes||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||await realpath(asset.sourcePath)!==asset.sourcePath)fail('REMOTE_MOBILE_ASSET_CHANGED');
-    const data=bytes.subarray(0,offset);if(createHash('sha256').update(data).digest('hex')!==asset.sha256)fail('REMOTE_MOBILE_ASSET_HASH_MISMATCH');
-    validateMime(asset.mimeType,data);return data;
+    const bytes=retain?Buffer.alloc(asset.sizeBytes):undefined;
+    const block=Buffer.alloc(65536),header=Buffer.alloc(Math.min(16,asset.sizeBytes));
+    const hash=createHash('sha256');let offset=0;
+    const text=asset.mimeType.startsWith('text/')?new TextDecoder('utf-8',{fatal:true}):undefined;
+    try {
+      while(offset<asset.sizeBytes){
+        const read=await fd.read(block,0,Math.min(block.length,asset.sizeBytes-offset),offset);if(!read.bytesRead)break;
+        const chunk=block.subarray(0,read.bytesRead);
+        if(offset<header.length)chunk.copy(header,offset,0,Math.min(chunk.length,header.length-offset));
+        if(text){if(chunk.includes(0))fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH');try{text.decode(chunk,{stream:true})}catch{fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH')}}
+        hash.update(chunk);if(bytes)chunk.copy(bytes,offset);offset+=chunk.length;
+      }
+      if(text){try{text.decode()}catch{fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH')}}
+      const trailing=await fd.read(block,0,1,offset);
+      const after=await fd.stat();if(offset!==asset.sizeBytes||trailing.bytesRead||after.size!==stat.size||after.mtimeMs!==stat.mtimeMs||await realpath(asset.sourcePath)!==asset.sourcePath)fail('REMOTE_MOBILE_ASSET_CHANGED');
+      if(hash.digest('hex')!==asset.sha256)fail('REMOTE_MOBILE_ASSET_HASH_MISMATCH');
+      validateMime(asset.mimeType,header);return bytes??Buffer.alloc(0);
+    } finally {block.fill(0)}
   } finally {await fd.close()}
 }
 function validateMime(mime:string,bytes:Buffer) {
@@ -140,7 +153,6 @@ function validateMime(mime:string,bytes:Buffer) {
   if(mime.startsWith('image/')&&(!isImageMimeType(mime)||detected!==(mime==='image/jpg'?'image/jpeg':mime)))fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH');
   if(detected&&!mime.startsWith('image/'))fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH');
   if(mime==='application/pdf'&&bytes.subarray(0,5).toString()!=='%PDF-')fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH');
-  if(mime.startsWith('text/')){try{new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch{fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH')}if(bytes.includes(0))fail('REMOTE_MOBILE_ASSET_MIME_MISMATCH');}
 }
 async function controlledChild(root:string,segments:string[]) {
   await checkedDirectory(root);
@@ -159,10 +171,10 @@ function checkAssets(request:Mutation,assets:Asset[]) {
 }
 async function copyAssets(request:Mutation,sessionId:string,workspace:string,assets:Asset[]) {
   // Verify every lease completely before creating any product attachment.
-  const verified:Buffer[]=[];for(const asset of assets)verified.push(await readAsset(asset));
+  for(const asset of assets)await readAsset(asset,false);
   const images:ImagePayload[]=[];const refs:string[]=[];
   for(let i=0;i<assets.length;i++){
-    const asset=assets[i],data=verified[i];
+    const asset=assets[i],data=await readAsset(asset);
     if(isImageMimeType(asset.mimeType)){
       const root=getAttachmentPath('');await mkdir(root,{recursive:true,mode:0o700});
       const directory=await controlledChild(root,[sessionId]);const extension=asset.mimeType==='image/jpeg'||asset.mimeType==='image/jpg'?'jpeg':asset.mimeType.slice(6);

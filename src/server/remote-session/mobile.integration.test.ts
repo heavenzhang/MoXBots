@@ -110,3 +110,19 @@ it('only one concurrent adoption dispatches and a definitive engine refusal crea
  await Promise.all([handle({request:req,generation:'gen'},'session'),handle({request:req,generation:'gen'},'session')]);await settled(req,'rejected');expect(f.send).toHaveBeenCalledTimes(1);
  expect(await handle({request:req,generation:'gen'},'session')).toMatchObject({data:{status:'rejected'}});expect(f.send).toHaveBeenCalledTimes(1);
 });
+
+it('streams UTF-8 verification across a 64KiB boundary and preserves the exact imported bytes',async()=>{
+ const bytes=Buffer.concat([Buffer.alloc(65535,0x61),Buffer.from('中尾')]);
+ const file=await asset(bytes),req=request();req.text='';req.assetIds=[file.assetId];await prepared(req);
+ await handle({request:req,generation:'gen',assets:[file]},'session');await settled(req);
+ const reference=f.send.mock.calls[0][0].text as string;
+ expect(await readFile(join(workspace,reference.slice(1)))).toEqual(bytes);
+});
+it.each(['invalid-utf8','nul'] as const)('rejects %s beyond the first block before copying any product file',async invalid=>{
+ const first=await asset(Buffer.from('valid first asset'));
+ const bytes=Buffer.concat([Buffer.alloc(65535,0x61),invalid==='nul'?Buffer.from([0]):Buffer.from([0xe4,0x80])]);
+ const second=await asset(bytes),req=request();req.assetIds=[first.assetId,second.assetId];await prepared(req);
+ await handle({request:req,generation:'gen',assets:[first,second]},'session');await settled(req,'rejected');
+ expect(f.send).not.toHaveBeenCalled();
+ await expect(readFile(join(workspace,'myagents_files','remote-mobile','session',req.operationId,first.assetId+'.txt'))).rejects.toMatchObject({code:'ENOENT'});
+});

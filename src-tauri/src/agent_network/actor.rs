@@ -1055,6 +1055,17 @@ fn open_asset_store() -> Result<Arc<moxbots_asset_store::AssetStore>, NetworkErr
     }
 }
 enum Work {
+    RemoteMobile {
+        channel_id: String,
+        request_id: myagents_host_management_protocol::CanonicalUuid,
+        result: Result<
+            (
+                myagents_host_management_protocol::ResponseResult,
+                Allocation,
+            ),
+            NetworkError,
+        >,
+    },
     RemoteAssets {
         channel_id: String,
         request_id: myagents_host_management_protocol::CanonicalUuid,
@@ -1501,6 +1512,26 @@ async fn connect(
                                             Work::RemoteAssets{channel_id,request_id,result}
                                         }.boxed());
                                     },
+                                    super::channel::ManagementEvent::Request{request_id,method:myagents_host_management_protocol::ManagementMethod::RemoteMobile,params:myagents_host_management_protocol::RequestParams::RemoteMobile{remote_mobile}} => {
+                                        if work.len()>=budget("pending") {
+                                            pairs.send_management(&channel_id,myagents_host_management_protocol::ManagementMessage::Response{request_id,result:myagents_host_management_protocol::ResponseResult::Error{code:"RESOURCE_EXHAUSTED".into()}})?;
+                                            continue;
+                                        }
+                                        let (controller,_) = pairs.peer(&channel_id)?;
+                                        let controller=controller.clone();let target=local.clone();
+                                        let allocation=owner.memory.reserve(measure(&remote_mobile)?.0*3)?;
+                                        let app=app.clone();let manager=manager.clone();let memory=owner.memory.clone();let channel_id=channel_id.clone();let account=identity.account.clone();let lifetime=connection_lifetime.0.clone();
+                                        work.push(async move {
+                                            let _allocation=allocation;
+                                            let result=async {
+                                                account.ensure_current()?;
+                                                if !lifetime.load(Ordering::Acquire) { return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED")); }
+                                                let store=tokio::task::spawn_blocking(open_asset_store).await.map_err(|_|NetworkError::new("ASSET_STORAGE_UNAVAILABLE"))??;
+                                                super::remote_mobile_target::execute(&app,&manager,remote_mobile,memory,account,lifetime,controller,target,store).await
+                                            }.await;
+                                            Work::RemoteMobile{channel_id,request_id,result}
+                                        }.boxed());
+                                    },
                                     super::channel::ManagementEvent::Request{request_id,..} => {pairs.send_management(&channel_id,myagents_host_management_protocol::ManagementMessage::Response{request_id,result:myagents_host_management_protocol::ResponseResult::Error{code:"METHOD_UNSUPPORTED".into()}})?;},
                                     super::channel::ManagementEvent::Response{..} => {pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id:channel_id.clone(),reason:"HOST_MANAGEMENT_UNEXPECTED_RESPONSE".into()}).await?;},
                                 }
@@ -1638,7 +1669,7 @@ async fn connect(
                             }
                         }
                     }
-                    Work::RemoteSession{channel_id,request_id,result} | Work::RemoteAssets{channel_id,request_id,result} => {
+                    Work::RemoteSession{channel_id,request_id,result} | Work::RemoteAssets{channel_id,request_id,result} | Work::RemoteMobile{channel_id,request_id,result} => {
                         identity.account.ensure_current()?;
                         if owner.generation()!=generation {return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));}
                         if pairs.has_channel(&channel_id) {

@@ -17,7 +17,16 @@ pub(super) async fn post(
     body: Value,
     memory: &MemoryBudget,
 ) -> Result<(Value, Allocation), NetworkError> {
-    let mut response = crate::local_http::json_client(Duration::from_secs(8))
+    post_with_timeout(dispatch, path, body, memory, Duration::from_secs(8)).await
+}
+pub(super) async fn post_with_timeout(
+    dispatch: &SidecarHttpDispatch,
+    path: &str,
+    body: Value,
+    memory: &MemoryBudget,
+    timeout: Duration,
+) -> Result<(Value, Allocation), NetworkError> {
+    let mut response = crate::local_http::json_client(timeout)
         .post(
             dispatch
                 .url_for_path(path)
@@ -176,16 +185,10 @@ async fn admission_state(
         _ => AdmissionState::Pending,
     }
 }
-fn retain_admission(
-    app: tauri::AppHandle,
-    owner: Owner,
-    request: RemoteSessionRequest,
-    generation: u64,
-    memory: MemoryBudget,
-) -> Result<(), NetworkError> {
+pub(super) fn admission_permit() -> Result<tokio::sync::OwnedSemaphorePermit, NetworkError> {
     static ADMISSIONS: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore>> =
         std::sync::OnceLock::new();
-    let permit = ADMISSIONS
+    ADMISSIONS
         .get_or_init(|| {
             std::sync::Arc::new(tokio::sync::Semaphore::new(
                 myagents_agent_network_protocol::budget("pending"),
@@ -193,7 +196,16 @@ fn retain_admission(
         })
         .clone()
         .try_acquire_owned()
-        .map_err(|_| NetworkError::new("RESOURCE_EXHAUSTED"))?;
+        .map_err(|_| NetworkError::new("RESOURCE_EXHAUSTED"))
+}
+fn retain_admission(
+    app: tauri::AppHandle,
+    owner: Owner,
+    request: RemoteSessionRequest,
+    generation: u64,
+    memory: MemoryBudget,
+) -> Result<(), NetworkError> {
+    let permit = admission_permit()?;
     let allocation = memory.reserve(super::memory::measure(&request)?.0 * 3 + 4096)?;
     tauri::async_runtime::spawn(async move {
         let _permit = permit;

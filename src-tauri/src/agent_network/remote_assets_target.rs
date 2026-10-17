@@ -55,8 +55,8 @@ fn guard(
     Ok(())
 }
 
-fn scope_from_verified(
-    request: &RemoteAssetRequest,
+pub(super) fn scope_from_verified(
+    agent_id: &str,
     account: &super::account::NetworkAccountSession,
     controller: &DeviceScope,
     local: &DeviceScope,
@@ -92,7 +92,7 @@ fn scope_from_verified(
         controller_key_generation: controller.key_generation,
         target_device_id: CanonicalUuid::parse(&local.device_id)
             .map_err(|_| NetworkError::new("CHANNEL_SCOPE_MISMATCH"))?,
-        agent_id: request.agent_id().to_owned(),
+        agent_id: agent_id.to_owned(),
     })
 }
 
@@ -261,7 +261,7 @@ pub(crate) async fn execute(
         .map_err(|_| NetworkError::new("HOST_MANAGEMENT_REQUEST_INVALID"))?;
     let guard = || guard(&account, &lifetime);
     guard()?;
-    let scope = scope_from_verified(&request, &account, &controller, &local)?;
+    let scope = scope_from_verified(request.agent_id(), &account, &controller, &local)?;
     precheck(manager, &request, &memory).await?;
     guard()?;
     let (data, allocation) = if matches!(request, RemoteAssetRequest::List { .. }) {
