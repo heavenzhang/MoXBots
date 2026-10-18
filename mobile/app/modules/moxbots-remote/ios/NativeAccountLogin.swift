@@ -64,35 +64,38 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
   private func startAuthorization(_ captured: Int) {
     guard let request, captured == epoch, completion != nil else { return }
     request("{\"version\":1,\"kind\":\"account.login.start\"}") { [weak self] response in
-          DispatchQueue.main.async {
-            guard let self, captured == self.epoch, self.completion != nil else { return }
-            if Self.parse(response)?["code"] as? String == "ACCOUNT_LOGIN_PAUSED" {
-              self.whenForeground { [weak self] in self?.startAuthorization(captured) }; return
-            }
-            guard let value = Self.parse(response), value["kind"] as? String == "login",
-              let rawURL = value["authorizationUrl"] as? String, let url = URL(string: rawURL),
-              url.scheme == "https", url.user == nil, url.password == nil,
-              let expires = value["expiresAt"] as? Double else { self.finish(Self.parse(response)?["kind"] as? String == "error" ? response : Self.failure("ACCOUNT_REPLY_INVALID")); return }
-            // Rust has already checked this URL against the discovered login issuer.
-            self.deadline = expires
-            self.whenForeground { [weak self] in
-              guard let self, self.completion != nil, captured == self.epoch else { return }
-              guard Date().timeIntervalSince1970 < self.deadline else { self.cancelAttempt(expired: true); return }
-            let authentication = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self] _, _ in
-              DispatchQueue.main.async {
-                guard let self, captured == self.epoch, self.completion != nil else { return }
-                self.cancelAttempt()
-              }
-            }
-            authentication.presentationContextProvider = self
-            self.authentication = authentication
-            guard authentication.start() else { self.cancelAttempt(presentationFailed: true); return }
-            let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.poll() }
-            self.timer = timer; RunLoop.main.add(timer, forMode: .common)
-            self.poll()
+      DispatchQueue.main.async {
+        guard let self, captured == self.epoch, self.completion != nil else { return }
+        if Self.parse(response)?["code"] as? String == "ACCOUNT_LOGIN_PAUSED" {
+          self.whenForeground { [weak self] in self?.startAuthorization(captured) }; return
+        }
+        guard let value = Self.parse(response), value["kind"] as? String == "login",
+          let rawURL = value["authorizationUrl"] as? String, let url = URL(string: rawURL),
+          url.scheme == "https", url.user == nil, url.password == nil,
+          let expires = value["expiresAt"] as? Double else {
+          self.finish(Self.parse(response)?["kind"] as? String == "error" ? response : Self.failure("ACCOUNT_REPLY_INVALID")); return
+        }
+        // Rust has already checked this URL against the discovered login issuer.
+        self.deadline = expires
+        self.whenForeground { [weak self] in
+          guard let self, self.completion != nil, captured == self.epoch else { return }
+          guard Date().timeIntervalSince1970 < self.deadline else { self.cancelAttempt(expired: true); return }
+          let authentication = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self] _, error in
+            let userCancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+            DispatchQueue.main.async {
+              guard let self, captured == self.epoch, self.completion != nil else { return }
+              self.cancelAttempt(presentationFailed: !userCancelled)
             }
           }
+          authentication.presentationContextProvider = self
+          self.authentication = authentication
+          guard authentication.start() else { self.cancelAttempt(presentationFailed: true); return }
+          let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.poll() }
+          self.timer = timer; RunLoop.main.add(timer, forMode: .common)
+          self.poll()
         }
+      }
+    }
   }
 
   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { window ?? ASPresentationAnchor() }
