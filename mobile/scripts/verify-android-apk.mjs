@@ -88,11 +88,18 @@ try {
   }
   run(path.join(buildTools, 'zipalign'), ['-P', '16', '-c', '4', apk]);
   const signature = run(path.join(buildTools, 'apksigner'), ['verify', '--verbose', '--print-certs', apk]);
+  // Build-tools 37 emits `V2 Signer: certificate ...`; earlier tools emit
+  // `Signer #1 certificate ...`. Keep a real fingerprint, never nullable
+  // metadata, and reject ambiguous/multiple certificate identities.
+  const signerDigests = [...new Set([...signature.matchAll(
+    /^(?:Signer #\d+ certificate|V\d+(?:\.\d+)? Signer: certificate) SHA-256 digest: ([a-fA-F0-9]{64})\r?$/gm,
+  )].map(match => match[1].toLowerCase()))];
+  if (signerDigests.length !== 1) throw new Error('Expected one verified APK signer certificate fingerprint');
   const value = {
     version: 1, apk, apkSha256: createHash('sha256').update(readFileSync(apk)).digest('hex'),
     nativeBuild: stamp, rustPackagingTransform, containsEmbeddedJs: entries.includes('assets/index.android.bundle'), libraries,
     zipAlignment16KiB: true, signatureVerified: true,
-    signerCertificateSha256: signature.match(/Signer #1 certificate SHA-256 digest: ([a-fA-F0-9]+)/)?.[1] ?? null,
+    signerCertificateSha256: signerDigests[0],
     signingIdentity: /CN=Android Debug/.test(signature) ? 'android-debug-test-key' : 'other-verified-key',
     limitation: 'Artifact checks only; no account, Host, UI, microphone, push, store-signing or real-device acceptance is implied.',
   };

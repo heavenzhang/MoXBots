@@ -1,4 +1,12 @@
-# Current local iOS application build checkpoint
+# Current f033 local iOS application build checkpoint
+
+Clean `f033904ece242d296e6918e989ba32c7a0905cc1` full original Expo/RN application build passed locally (`** BUILD SUCCEEDED **`), after both original Rust Release targets, XCFramework, Pods and native Swift/RN application compilation. Log `/tmp/moxbots-mobile-ios-f033-isolated-full-app.log`. Same task-only detached checkout folder retains the historicalcd864 name; actual HEAD/source stamps aref033, clean.
+
+Saved `MoxBot/output/mobile-002/native-checkpoints/MoxBots-mobile-002-ios-simulator-f033904e.tar.gz`, adjacent `.tar.gz.provenance.json`, both0600. Archive19218970bytes, SHA256 `221dd1211ddd778bf673096815fd0f72a2441cf5398a3eb73bff4045b0d9ea9a`. Actual Info.plist bundlecom.moxbots.mobileinternal/platformiphonesimulator27.1, arm64; actual Mach-O LC_BUILD_VERSION platformIOSSIMULATOR/minos16.4/sdk27.1, embeddedJS5614768bytes. Both native targets clean sourceDigest8254cb5bbbc0ac523ff0f47c2d6823a221e8109c3ea63c4187fa02258f7fc268; device library49efff0cc10f0dc6ed9da9cf2e8d99fb751d76d60ea3c6ca7e0f05c91e0f4b6a, simulator471bc7e42b48cf41404123def9a6188c68b8b3a0a691e875955cfd9e69772dc1.
+
+Installed successfully on dedicated16e/iOS27.0 simulator8505F368-BEAD-401F-89BB-0924B67E40DA. Native CUA recheck still reports Mac locked; existing manual unlock request remains pending. No native launch/UI/SSO/phone/Keychain/push/ASR/signing acceptance. Apple Account local sign-in/provisioning remains pending. Android current-source APK is a separate test-signed artifact; iOS device Rust compilation is not a signed iPhone app.
+
+# Prior cd864 local iOS application build checkpoint
 
 Clean source `cd864a800d2c6b762a2f60fb475995b67725a68c` built locally with Xcode27.1/SDK27.1: original Rust iPhone+Simulator Release targets, XCFramework, Expo prebuild, Pods, owned Swift module and full offline application. Task-only detached build checkout: `/Users/zhangshaohua/.codex/builds/moxbots-mobile-002-ios-cd864a80`. Both native targets sourceDigest `f81118946c577d82fd5ad053920d3226e29a7b3a36fe0e2a75a2b3dbea07c0dd`; device library SHA25677a7049b884c1f721d4404d3ca5d48213e35aec3446af5e5ea2270924b3746e6, simulator library SHA256c604669bccfe68bb9b2f353a4ada890aec3efa456aea8de5f6387e1e8a018a99.
 
