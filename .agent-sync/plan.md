@@ -1,3 +1,7 @@
+## MOXBOTS-MODEL-RECOVERY-001 — 2026-10-19
+
+普通 builtin API Session 与 Goal 的模型故障进入持久等待，沿原native history/动作ledger安全续接；暂停/停止撤销代次并写持久fence，避免重启复活或重复已完成操作。主Agent统一集成，原Rust Goal/Query/SessionStore owner保持。代码、受控真实SDK、UI、CI/main、签名候选及真实Provider验收分开追踪：`.agent-sync/tasks/codex-model-recovery-001-20261019-868cb89a.md`、`dev-docs/model-recovery/acceptance.md`。用户已明确授权测试后正常合main并交唯一publisher `01a12bc2-907a-7702-b6dd-788225c5dfe4`安排下一未冻结桌面版本；不操作日常App或另建发行。无新依赖/配置迁移/公网入口。恢复范围及回退边界见`specs/tech_docs/model_recovery.md`。
+
 ## MOXBOTS-REQUEST-499-20261018
 
 Fix normal background inference and streams incorrectly cancelled by parent turn completion; exact Query/route revocation and Stop remain authoritative. Availability failures get an original call plus three bounded, cancellable pre-delivery retries, independent of optional backup configuration. Never re-enqueue tasks or replay partial output/uncertain writes. Task `.agent-sync/tasks/codex-request-499-20261018-3f1bac55.md`; implementation/paired-loopback/native SDK verification and main delivery evidence `dev-docs/request-499-20261018-acceptance.md`. User explicitly authorized main integration and notifying the registered release owner for the next unfrozen repair. Daily client/task interruption excluded; queued/candidate/published/native-accepted states remain distinct.

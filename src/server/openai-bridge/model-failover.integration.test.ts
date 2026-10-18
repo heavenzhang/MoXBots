@@ -1,9 +1,11 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBridgeHandler } from './handler';
-import { ModelFailoverController } from './model-failover';
+import { ModelFailoverController, type InferenceRecoveryHooks } from './model-failover';
 import type { UpstreamConfig } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
+import { SessionModelRecovery } from '../builtin-session/model-recovery';
+import type { ModelRecoveryState } from '../../shared/modelRecovery';
 
 type RecordedRequest = { path: string; body: Record<string, unknown>; authorization?: string };
 type Fixture = { baseUrl: string; requests: RecordedRequest[] };
@@ -81,6 +83,130 @@ afterEach(async () => {
 });
 
 describe('model failover over real loopback HTTP', () => {
+  it('honors the real upstream Retry-After before any fast repeat of the same provider', async () => {
+    const waiting = deferred();
+    const committed = deferred();
+    let observed: Parameters<InferenceRecoveryHooks['wait']>[1] | undefined;
+    const primary = await fixture((_req, res) => {
+      if (primary.requests.length > 1) { json(res, anthropicText('cooldown respected')); return; }
+      res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '120' });
+      res.end(JSON.stringify({ error: { type: 'rate_limit_error', message: 'concurrency limit' } }));
+    });
+    const config = target(primary, 'anthropic');
+    const controller = new ModelFailoverController({ scope: () => 'rate-limited-root', resolveBackup: () => undefined,
+      onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery: {
+        async wait(_request, failure) { observed = failure; waiting.resolve(); await committed.promise; return 0; },
+        async complete() {},
+      } });
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const pending = handler(request());
+    await waiting.promise;
+    expect(primary.requests).toHaveLength(1);
+    expect(observed).toMatchObject({ status: 429, attempt: 1, retryAfterMs: 120_000, usingBackup: false });
+    committed.resolve();
+    expect((await (await pending).json()).content[0].text).toBe('cooldown respected');
+    expect(primary.requests).toHaveLength(2);
+  });
+
+  it('gives the actual Session recovery owner a cloneable complete inference request after handler parsing', async () => {
+    const primary = await fixture((_req, res) => primary.requests.length <= 4
+      ? json(res, { error: { message: 'overloaded' } }, 503) : json(res, anthropicText('durable owner recovered')));
+    let journal: ModelRecoveryState | undefined;
+    let archived: AnthropicRequest | undefined;
+    let now = Date.now();
+    const owner = new SessionModelRecovery({ read: () => journal,
+      write: async (next, expected, live) => {
+        if (!live() || journal !== expected) return false;
+        journal = next;
+        return true;
+      },
+      current: () => ({ sdkSessionId: 'same-native-history', routeIdentity: 'fixture-route', turnId: 'cloneable-request-root' }),
+      isLive: () => true,
+      prepare: async request => { archived = await request.json() as AnthropicRequest; },
+      now: () => now,
+    });
+    const recovery: InferenceRecoveryHooks = {
+      validateResume: request => owner.validateResume(request),
+      admit: request => owner.admit(request),
+      async wait(request, failure) { expect(await owner.wait(request, failure)).toBe(15_000); now += 15_000; return 0; },
+      complete: request => owner.complete(request), blocked: (request, reason) => owner.blocked(request, reason),
+    };
+    const config = target(primary, 'anthropic');
+    const controller = new ModelFailoverController({ scope: () => 'cloneable-request-root', resolveBackup: () => undefined,
+      onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery });
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const response = await handler(request());
+    expect(response.status).toBe(200);
+    expect((await response.json()).content[0].text).toBe('durable owner recovered');
+    expect(archived?.messages).toEqual([{ role: 'user', content: userText }]);
+    expect(primary.requests).toHaveLength(5);
+    expect(journal).toBeUndefined();
+  });
+
+  it('durably waits after fast exhaustion and resumes only the failed inference with existing tool evidence', async () => {
+    let counter = 0;
+    const checkpointEntered = deferred();
+    const commitCheckpoint = deferred();
+    const waited: number[] = [];
+    let completed = 0;
+    const primary = await fixture((req, res) => {
+      const messages = req.body.messages as AnthropicRequest['messages'];
+      if (messages.length === 1) return json(res, { id: 'durable-tool-message', type: 'message', role: 'assistant',
+        model: 'primary-model', content: [{ type: 'tool_use', id: 'durable-counter', name: 'increment_counter', input: {} }],
+        stop_reason: 'tool_use', usage: { input_tokens: 10, output_tokens: 4 } });
+      if (primary.requests.length < 7) return json(res, { error: { message: 'overloaded' } }, 503);
+      json(res, anthropicText('preserved counter = 1'));
+    });
+    const recovery: InferenceRecoveryHooks = {
+      async wait(_request, failure) {
+        waited.push(failure.attempt);
+        if (waited.length === 1) { checkpointEntered.resolve(); await commitCheckpoint.promise; }
+        return 0;
+      },
+      async complete() { completed++; },
+    };
+    const config = target(primary, 'anthropic');
+    const controller = new ModelFailoverController({ scope: () => 'durable-root', resolveBackup: () => undefined,
+      onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery });
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const first = await (await handler(request())).json();
+    expect(first.stop_reason).toBe('tool_use');
+    counter++;
+    const history: AnthropicRequest['messages'] = [{ role: 'user', content: userText },
+      { role: 'assistant', content: first.content },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'durable-counter', content: String(counter) }] }];
+    const pending = handler(request(history));
+    await checkpointEntered.promise;
+    expect(primary.requests).toHaveLength(5);
+    expect((await handler(request(history))).status).toBe(409);
+    commitCheckpoint.resolve();
+    const response = await pending;
+    expect((await response.json()).content[0].text).toBe('preserved counter = 1');
+    expect(waited).toEqual([4, 5]);
+    expect(primary.requests).toHaveLength(7);
+    expect(primary.requests.slice(1).every(row => JSON.stringify(row.body.messages) === JSON.stringify(history))).toBe(true);
+    expect(counter).toBe(1);
+    expect(completed).toBe(2);
+  });
+
+  it('stops real HTTP inference when the durable wait checkpoint cannot commit', async () => {
+    const primary = await fixture((_req, res) => json(res, { error: { message: 'overloaded' } }, 503));
+    let blocked = 0;
+    const controller = new ModelFailoverController({ scope: () => 'commit-failed', resolveBackup: () => undefined,
+      onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery: {
+        async wait() { throw new Error('durable disk unavailable'); },
+        async complete() { throw new Error('must not complete'); },
+        async blocked() { blocked++; },
+      } });
+    const config = target(primary, 'anthropic');
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const response = await handler(request());
+    expect(response.status).toBe(409);
+    await response.text();
+    expect(primary.requests).toHaveLength(4);
+    expect(blocked).toBe(1);
+  });
+
   it.each(['chat_completions', 'responses'] as const)(
     'continues after one executed tool without repeating it, Anthropic to %s', async format => {
       let counter = 0;

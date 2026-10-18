@@ -231,6 +231,7 @@ function cancelled(): Response {
 export class ContextRecoveryController implements BridgeContextRecovery {
   private state: State | undefined;
   private projectionActive = false;
+  private actionProtectionActive = false;
   private readonly requestGuard = new QueryRequestGuard();
   private retiredScope: string | undefined;
   private readonly requestRetryFences = new Set<object>();
@@ -268,6 +269,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   restoreCheckpoint(body: AnthropicRequest, archive: string, sourceDigest: string): void {
     if (this.state?.inFlight.size) throw new Error('context_recovery_required: Cannot restore during active inference.');
     this.projectionActive = true;
+    this.actionProtectionActive = true;
     const analysis = analyze(body, this.deniedLedger, this.completedLedger);
     if (!analysis || typeof archive !== 'string' || !archive.trim() || archive.length > 4096 || /[\r\n]/.test(archive)
       || createHash('sha256').update(JSON.stringify(body)).digest('hex') !== sourceDigest) {
@@ -281,8 +283,30 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.state = undefined;
   }
 
+  /** Archive and protect this inference's completed actions without reducing native history. */
+  async protectInference(body: AnthropicRequest): Promise<void> {
+    const state = this.current();
+    if (!state || this.options.canRecover?.() === false || this.requestGuard.inFlightCount > 1 || !this.canRetryInference()) {
+      throw new Error('context_recovery_required: The inference has no exclusive recovery authority.');
+    }
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger);
+    if (!analysis || analysis.uncertain.size || state.uncertain.size) {
+      throw new Error('context_recovery_required: An earlier tool outcome requires read-only reconciliation.');
+    }
+    const sourceDigest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    const archive = await this.options.backup(body, { digest: sourceDigest, scope: state.scope });
+    if (this.current() !== state || !this.options.isActive() || this.options.canRecover?.() === false) {
+      throw new Error('context_recovery_required: The recovery owner changed during archival.');
+    }
+    const completed = new Map([...analysis.completed].map(([key, value]) => [key, { ...value, archive, digest: sourceDigest }]));
+    if (!this.mergeLedger(completed, analysis.uncertain)) throw new Error('context_recovery_required: Action ledger capacity exceeded.');
+    for (const [key, value] of completed) state.completed.set(key, value);
+    this.actionProtectionActive = true;
+    await this.persist();
+  }
+
   private restoreLedger(value: unknown): void {
-    this.projectionActive = true;
+    this.actionProtectionActive = true;
     if (!record(value) || value.version !== 1 || !Array.isArray(value.completed)
       || !Array.isArray(value.uncertain) || !Array.isArray(value.denied)
       || typeof value.blocked !== 'boolean') throw new Error('context_recovery_required: Invalid recovery ledger');
@@ -293,6 +317,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       || !value.completed.every(item => Array.isArray(item) && item.length === 2 && validKey(item[0]) && record(item[1]))) {
       throw new Error('context_recovery_required: Corrupt recovery ledger');
     }
+    if (value.projectionActive !== undefined && typeof value.projectionActive !== 'boolean') {
+      throw new Error('context_recovery_required: Invalid recovery projection marker');
+    }
+    this.projectionActive = value.projectionActive !== false;
     this.completedLedger = new Map(value.completed as [string, Evidence][]);
     this.uncertainLedger = new Set(value.uncertain as string[]);
     this.deniedLedger = new Set(value.denied as string[]);
@@ -300,11 +328,12 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   private async persist(): Promise<void> {
-    if (!this.projectionActive || !this.options.persistLedger) return;
+    if (!this.actionProtectionActive || !this.options.persistLedger) return;
     const commit = this.persistenceTail.then(async () => {
       if (this.ledgerBlocked) throw new Error('Recovery ledger is blocked');
       await this.options.persistLedger!({ version: 1, completed: [...this.completedLedger],
-        uncertain: [...this.uncertainLedger], denied: [...this.deniedLedger], blocked: this.ledgerBlocked });
+        uncertain: [...this.uncertainLedger], denied: [...this.deniedLedger], blocked: this.ledgerBlocked,
+        projectionActive: this.projectionActive });
     });
     this.persistenceTail = commit.catch(() => { this.ledgerBlocked = true; });
     try { await commit; }
@@ -321,7 +350,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       try { await this.persist(); } catch { /* execution is already denied */ }
       return denied;
     }
-    if (READ_ONLY_TOOLS.has(name) || !this.projectionActive) return undefined;
+    if (READ_ONLY_TOOLS.has(name) || !this.actionProtectionActive) return undefined;
     const state = this.toolState();
     if (!state) return 'automatic_replay_blocked: Recovery Query is no longer current.';
     const key = toolKey(name, input);
@@ -374,11 +403,11 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   beforeTool(name: string, input: unknown): string | undefined {
     if (READ_ONLY_TOOLS.has(name)) return undefined;
     const state = this.toolState();
-    if (!state) return this.projectionActive || this.ledgerBlocked
+    if (!state) return this.actionProtectionActive || this.ledgerBlocked
       ? 'automatic_replay_blocked: Context recovery belongs to a retired or unbound turn; this action cannot run.' : undefined;
     if (state.blocked || this.ledgerBlocked || this.requestGuard.isBlocked(this.current()?.scope,
       !this.current() || this.options.canRecover?.() === false)) return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
-    if (!state.attempted) return undefined;
+    if (!state.attempted && !this.actionProtectionActive) return undefined;
     const key = toolKey(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
     const evidence = state.completed.get(key);
@@ -409,7 +438,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       this.uncertainLedger.delete(key);
       const evidence = { ...state.completed.get(key), result };
       state.completed.set(key, evidence);
-      if (this.projectionActive && !this.mergeLedger(new Map([[key, evidence]]), new Set())) state.blocked = true;
+      if (this.actionProtectionActive && !this.mergeLedger(new Map([[key, evidence]]), new Set())) state.blocked = true;
     }
   }
 
@@ -487,6 +516,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       for (const [key, value] of completed) state.completed.set(key, value);
       state.recovered = true;
       this.projectionActive = true;
+      this.actionProtectionActive = true;
       try { await this.persist(); } catch { return stop('Recovery ledger could not be durably committed.'); }
       if (!recoveryLive()) return cancelled();
       if (initial) try { this.options.onRecovery?.({ digest: originalDigest, archive }); } catch { /* observability cannot replay inference */ }

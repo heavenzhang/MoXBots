@@ -170,6 +170,101 @@ export async function saveBuiltinContextLedger(sessionId: string, sdkSessionId: 
     });
 }
 
+/** The existing SessionStore lock owns durable inference intent and its control CAS. */
+export async function updateBuiltinModelRecovery(
+    sessionId: string, sdkSessionId: string,
+    next: SessionMetadata['modelRecovery'], expected: SessionMetadata['modelRecovery'],
+    isLive: () => boolean, isCurrentQuery: () => boolean,
+): Promise<boolean> {
+    const active = activeTranscripts.get(sessionId);
+    if (active && !(await active.writer.flush())) return false;
+    let accepted = false;
+    let published: SessionMetadata | undefined;
+    await withSessionsLock(async () => {
+        const rows = readSessionsIndexForWrite();
+        const index = rows.findIndex(row => row.id === sessionId);
+        if (index < 0) return;
+        const current = rows[index];
+        const history = resolveBuiltinSdkSessionId(current) ?? current.id;
+        const matches = isLive() && history === sdkSessionId
+            && current.modelRecovery?.id === expected?.id
+            && current.modelRecovery?.status === expected?.status
+            && current.modelRecovery?.sdkSessionId === expected?.sdkSessionId
+            && current.modelRecovery?.routeIdentity === expected?.routeIdentity
+            && current.modelRecovery?.goalId === expected?.goalId
+            && current.modelRecovery?.turnId === expected?.turnId
+            && current.modelRecovery?.attempt === expected?.attempt
+            && current.modelRecovery?.nextRetryAt === expected?.nextRetryAt
+            && (next?.status === 'paused' || isCurrentQuery());
+        if (!matches) return;
+        // An immutable stop fence remains authoritative even if rewriting the
+        // sessions index fails. Both writes belong to this same Store/lock.
+        if (next?.status === 'paused') {
+            const path = builtinModelRecoveryStopPath(sessionId, next);
+            const dir = join(path, '..');
+            await asyncFs.mkdir(dir, { recursive: true, mode: 0o700 });
+            let file: asyncFs.FileHandle | undefined;
+            try {
+                file = await asyncFs.open(path, 'wx', 0o600);
+                await file.writeFile(JSON.stringify({ version: 1, sessionId, recoveryId: next.id,
+                    sdkSessionId, routeIdentity: next.routeIdentity }));
+                await file.sync();
+            } catch (error) {
+                if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+                if (!builtinModelRecoveryStopped(sessionId, next)) throw new Error('Invalid recovery stop fence');
+            } finally { await file?.close(); }
+            await syncTranscriptDirectory(dir);
+            accepted = true;
+        } else if (next && builtinModelRecoveryStopped(sessionId, next)) {
+            return;
+        }
+        if (!isLive()) return;
+        const updated = { ...current, modelRecovery: next };
+        rows[index] = updated;
+        try {
+            atomicWriteSessionsFile(JSON.stringify(rows, null, 2));
+            const file = await asyncFs.open(SESSIONS_FILE, 'r');
+            try { await file.sync(); } finally { await file.close(); }
+            await syncTranscriptDirectory(MYAGENTS_DIR);
+            published = updated;
+            accepted = true;
+        } catch (error) {
+            if (!accepted) throw error;
+            console.error('[SessionStore] Recovery stop is fenced; metadata publication failed');
+        }
+    });
+    if (published && active) active.adoptPublishedMetadata(published);
+    return accepted;
+}
+
+function builtinModelRecoveryStopPath(sessionId: string, state: NonNullable<SessionMetadata['modelRecovery']>): string {
+    builtinRecoveryPath(sessionId, state.sdkSessionId); // existing Product/native path validation
+    if (!/^[a-zA-Z0-9-]{1,100}$/.test(state.id)) throw new Error('Invalid recovery control identity');
+    return join(MYAGENTS_DIR, 'context-recovery', sessionId, `stopped-${state.id}.json`);
+}
+
+function builtinModelRecoveryStopped(sessionId: string, state: NonNullable<SessionMetadata['modelRecovery']>): boolean {
+    try {
+        const value = JSON.parse(readFileSync(builtinModelRecoveryStopPath(sessionId, state), 'utf8'));
+        if (value.version !== 1 || value.sessionId !== sessionId || value.recoveryId !== state.id
+            || value.sdkSessionId !== state.sdkSessionId || value.routeIdentity !== state.routeIdentity) {
+            throw new Error('Invalid recovery stop fence');
+        }
+        return true;
+    } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        return true; // unreadable control evidence never grants automatic execution
+    }
+}
+
+/** Normalize a stopped chain without relying on a successful index rewrite. */
+export function getBuiltinModelRecovery(sessionId: string): SessionMetadata['modelRecovery'] {
+    const state = getSessionMetadata(sessionId)?.modelRecovery;
+    return state && builtinModelRecoveryStopped(sessionId, state)
+        ? { ...state, status: 'paused', nextRetryAt: state.startedAt, reason: 'Execution was stopped; progress is preserved' }
+        : state;
+}
+
 const SESSIONS_DIR = join(MYAGENTS_DIR, 'sessions');
 const SESSIONS_V2_DIR = join(MYAGENTS_DIR, 'sessions-v2');
 const ATTACHMENTS_DIR = join(MYAGENTS_DIR, 'attachments');
@@ -4410,6 +4505,7 @@ export async function updateSessionMetadata(
         | 'materializationSourceSessionId'
         | 'sdkResumeSessionAt'
         | 'pendingContinueAfterAbort'
+        | 'modelRecovery'
     >> & {
         /** Pin intent. SessionStore owns the canonical ordering timestamp. */
         pinned?: boolean;

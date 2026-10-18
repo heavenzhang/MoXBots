@@ -43,6 +43,42 @@ function deferred<T>() {
 }
 
 describe('bounded inference context recovery', () => {
+  it('arms durable action protection for availability recovery without reducing history', async () => {
+    let ledger: unknown;
+    const h = fixture();
+    const body = history();
+    const controller = new ContextRecoveryController({ scope: () => 'same-turn', isActive: () => true,
+      backup: h.backup, persistLedger: async value => { ledger = structuredClone(value); } });
+    await controller.protectInference(body);
+    expect(h.backup).toHaveBeenCalledTimes(1);
+    expect(ledger).toMatchObject({ projectionActive: false });
+    expect(await controller.authorizeTool('increment_counter', { delta: 1, account: 'test' }))
+      .toContain('already completed successfully');
+    const input = vi.fn(async (actual: AnthropicRequest) => { expect(actual).toEqual(body); return ok(); });
+    await (await controller.run(req(), body, input)).text();
+    expect(input).toHaveBeenCalledTimes(1);
+    const restored = new ContextRecoveryController({ scope: () => 'new-query', isActive: () => true,
+      backup: h.backup, initialLedger: ledger });
+    expect(await restored.authorizeTool('increment_counter', { account: 'test', delta: 1 }))
+      .toContain('already completed successfully');
+  });
+
+  it('does not authorize availability recovery for an uncertain earlier write', async () => {
+    const h = fixture();
+    const body = history();
+    body.messages[2] = { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call-1', is_error: true, content: 'connection closed after write' }] };
+    await expect(h.controller.protectInference(body)).rejects.toThrow('read-only reconciliation');
+    expect(h.backup).not.toHaveBeenCalled();
+  });
+
+  it('stops availability recovery if its durable action ledger cannot be committed', async () => {
+    const h = fixture();
+    const controller = new ContextRecoveryController({ scope: () => 'same-turn', isActive: () => true,
+      backup: h.backup, persistLedger: async () => { throw new Error('disk denied'); } });
+    await expect(controller.protectInference(history())).rejects.toThrow('could not be committed');
+    expect(await controller.authorizeTool('another_write', { id: 2 })).toContain('blocked');
+  });
+
   it('archives before retry, preserves constraints and complete tool pairs, and guards a new-ID repeated action', async () => {
     const h = fixture();
     const body = history();

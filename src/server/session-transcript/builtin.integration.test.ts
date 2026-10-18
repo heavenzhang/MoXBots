@@ -306,6 +306,93 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
+  it('lets only the owned recovery bridge govern native transport timeouts', async () => {
+    vi.stubEnv('HOME', state.home);
+    try {
+    agent.setSidecarPort(15432);
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const providers = join(state.home, '.myagents', 'providers');
+    await mkdir(providers, { recursive: true });
+    await writeFile(join(providers, 'recovery-fixture.json'), JSON.stringify({
+      id: 'recovery-fixture', name: 'fixture', type: 'api',
+      models: [{ model: 'fixture-model' }],
+    }));
+    await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+    const provider = { providerId: 'recovery-fixture', baseUrl: 'http://127.0.0.1:1',
+      apiKey: 'synthetic-not-a-secret' };
+    expect((await import('../builtin-session/model-failover')).sessionApiFailoverEligible(provider)).toBe(true);
+    await agent.setSessionProviderEnv(provider);
+    await agent.setSessionModel('fixture-model');
+    await agent.enqueueUserMessage('Synthetic recovery transport', undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(state.query).toHaveBeenCalled());
+    const env = (state.query.mock.calls.at(-1)![0].options as Options).env;
+    const transportKeys = ['API_TIMEOUT_MS', 'CLAUDE_CODE_MAX_RETRIES', 'CLAUDE_ENABLE_BYTE_WATCHDOG',
+      'CLAUDE_ENABLE_STREAM_WATCHDOG', 'API_FORCE_IDLE_TIMEOUT', 'CLAUDE_CODE_RETRY_WATCHDOG'];
+    expect(Object.fromEntries(transportKeys.map(key => [key, env?.[key]])))
+      .toEqual({ API_TIMEOUT_MS: '2100000', CLAUDE_CODE_MAX_RETRIES: '0',
+      CLAUDE_ENABLE_BYTE_WATCHDOG: '0', CLAUDE_ENABLE_STREAM_WATCHDOG: '0', API_FORCE_IDLE_TIMEOUT: '0',
+      CLAUDE_CODE_RETRY_WATCHDOG: '0' });
+    const utilityProvider = { ...provider, apiProtocol: 'openai' as const };
+    const oneShot = agent.startOneShotBridge(utilityProvider, 'fixture-model', 'Recovery isolation fixture');
+    try {
+      const utilityEnv = agent.buildClaudeSessionEnv(utilityProvider, 'fixture-model', { bridgeToken: oneShot.token });
+      expect(utilityEnv.API_TIMEOUT_MS).not.toBe('2100000');
+      expect(utilityEnv.API_FORCE_IDLE_TIMEOUT).not.toBe('0');
+    } finally { oneShot.release(); }
+    } finally { agent.setSidecarPort(0); vi.unstubAllEnvs(); }
+  });
+
+  it('keeps Stop effective while an explicit recovery resume waits for metadata CAS', async () => {
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const id = randomUUID();
+    await store.saveSessionMetadata({ id, agentDir: workspace, title: 'paused recovery',
+      createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin', sdkSessionId: id,
+      modelRecovery: { version: 1, id: randomUUID(), status: 'paused', sdkSessionId: id,
+        routeIdentity: 'route', turnId: 'old-turn', attempt: 1, startedAt: 1, nextRetryAt: 1, deadlineAt: 100_000, lastStatus: 503 } });
+    await agent.initializeAgent(workspace, null, id, { preWarmDisabled: true });
+    const original = store.updateSessionMetadata;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    let blocked = false;
+    vi.spyOn(store, 'updateSessionMetadata').mockImplementation(async (...args) => {
+      if ('modelRecovery' in args[1] && args[1].modelRecovery === undefined) {
+        blocked = true;
+        await gate;
+      }
+      return original(...args);
+    });
+    const resumed = agent.enqueueUserMessage('Continue the existing task', undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(blocked).toBe(true));
+    expect(await agent.interruptCurrentResponse()).toBe(true);
+    release();
+    expect((await resumed).error).toContain('stopped or superseded');
+    expect(state.query).not.toHaveBeenCalled();
+    expect(store.getSessionMetadata(id)?.modelRecovery?.status).toBe('paused');
+  });
+
+  it('pauses a cold recovery with missing native history instead of replaying the original task', async () => {
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const id = randomUUID();
+    const now = Date.now();
+    await store.saveSessionMetadata({ id, agentDir: workspace, title: 'unverified recovery',
+      createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin', sdkSessionId: id,
+      modelRecovery: { version: 1, id: randomUUID(), status: 'waiting', sdkSessionId: id,
+        routeIdentity: 'unverified-route', turnId: 'old-turn', attempt: 1,
+        startedAt: now, nextRetryAt: now + 15_000, deadlineAt: now + 1_800_000, lastStatus: 503 } });
+    await agent.initializeAgent(workspace, null, id, { preWarmDisabled: true });
+    expect(state.query).not.toHaveBeenCalled();
+    expect(store.getBuiltinModelRecovery(id)?.status).toBe('paused');
+    expect(agent.getMessages()).toHaveLength(0);
+  });
+
   it('normalizes a question before UI delivery and returns the actual answer through builtin canUseTool', async () => {
     const workspace = join(state.home, 'workspace');
     await mkdir(workspace);

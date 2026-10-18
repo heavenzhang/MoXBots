@@ -3,7 +3,7 @@ import { isModelFailoverProvider } from '../../shared/modelFailover';
 import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
 import type { ProviderEnv } from '../provider-types';
 import { findEffectiveProvider, loadConfig, materializeProviderRouteEnv } from '../utils/admin-config';
-import { ModelFailoverController } from '../openai-bridge/model-failover';
+import { ModelFailoverController, type InferenceRecoveryHooks } from '../openai-bridge/model-failover';
 import type { UpstreamConfig } from '../openai-bridge/types/bridge';
 
 export function sessionApiFailoverEligible(env?: ProviderEnv): boolean {
@@ -20,6 +20,7 @@ export function createSessionModelFailover(options: {
   onSwitch: (target: UpstreamConfig, status: number) => void;
   canRetry?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
+  recovery?: InferenceRecoveryHooks;
 }): ModelFailoverController {
   type Ref = NonNullable<ModelFailoverSettings['backup']>;
   let root: { scope: string; primaryIdentity: string; backup?: Ref } | undefined;
@@ -68,6 +69,7 @@ export function createSessionModelFailover(options: {
     canSwitch: options.canSwitch,
     canRetry: options.canRetry,
     retryDelaysMs: options.retryDelaysMs,
+    recovery: options.recovery,
     isActive: options.isLive,
     requestIdentity: identity,
     onSwitch: options.onSwitch,

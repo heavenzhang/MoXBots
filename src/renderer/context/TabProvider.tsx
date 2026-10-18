@@ -56,6 +56,7 @@ import {
 } from '@/../shared/types/runtime';
 import { updateSession } from '@/api/sessionClient';
 import type { SessionMetadata } from '@/api/sessionClient';
+import type { ModelRecoveryState } from '../../shared/modelRecovery';
 import {
   originAnalyticsFields,
   originFromDesktopSurface,
@@ -3094,10 +3095,20 @@ export default function TabProvider({
             attempt?: number;
             maxRetries?: number;
             delayMs?: number;
+            recovery?: Pick<ModelRecoveryState, 'status' | 'nextRetryAt' | 'attempt' | 'reason'> | null;
           } | null;
           if (payload) {
-            const retryKey = `api_retry:${payload.attempt ?? 1}:${payload.maxRetries ?? '?'}`;
-            setSystemStatus(retryKey);
+            if (payload.recovery === null) {
+              setSystemStatus(null);
+              setAgentError(null);
+            } else if (payload.recovery) {
+              setSystemStatus(payload.recovery.status === 'paused'
+                ? 'model_recovery_paused'
+                : `model_recovery:${payload.recovery.nextRetryAt}:${payload.recovery.attempt}`);
+            } else {
+              const retryKey = `api_retry:${payload.attempt ?? 1}:${payload.maxRetries ?? '?'}`;
+              setSystemStatus(retryKey);
+            }
           } else {
             // Retry resolved — streaming resumed. Clear both the retry indicator
             // and any error banner from the failed attempt (e.g. api_retry's
@@ -6322,6 +6333,7 @@ export default function TabProvider({
           session?: SessionMetadata & {
             transcriptSaveStatus?: TranscriptSaveStatus;
             transcriptRecovery?: 'incomplete' | 'unavailable';
+            modelRecovery?: ModelRecoveryState;
             snapshotRevision?: number;
             liveSessionState?: SessionState;
             liveStreamingMessage?: WireSessionMessage | null;
@@ -6509,6 +6521,12 @@ export default function TabProvider({
           }
           setSdkSlashCommands([]);
           setSystemStatus(null);
+          const modelRecovery = response.session.modelRecovery;
+          if (modelRecovery) {
+            setSystemStatus(modelRecovery.status === 'paused'
+              ? 'model_recovery_paused'
+              : `model_recovery:${modelRecovery.nextRetryAt}:${modelRecovery.attempt}`);
+          }
           setSystemNotice(null);
           setAgentError(null);
           setLastTerminalReason(null);

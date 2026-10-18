@@ -195,6 +195,17 @@ function resolveSystemStatus(status: string, t: TFunction<'chat'>): string {
     const max = parts[2] || '?';
     return t('shell.messageList.systemStatus.apiRetry', { attempt, max });
   }
+  if (status === 'model_recovery_paused') {
+    return t('shell.messageList.systemStatus.modelRecoveryPaused');
+  }
+  if (status.startsWith('model_recovery:')) {
+    const [, nextRetryAt, attempt] = status.split(':');
+    const seconds = Math.max(0, Math.ceil((Number(nextRetryAt) - Date.now()) / 1000));
+    return t('shell.messageList.systemStatus.modelRecoveryWaiting', {
+      seconds,
+      attempt: attempt || '1',
+    });
+  }
   return status;
 }
 function getRandomStreamingMessage(t: TFunction<'chat'>): string {
@@ -203,10 +214,10 @@ function getRandomStreamingMessage(t: TFunction<'chat'>): string {
 }
 
 const StatusTimer = memo(function StatusTimer({
-  message,
+  message: messageSource,
   getElapsedSeconds,
 }: {
-  message: string;
+  message: string | (() => string);
   getElapsedSeconds: () => number;
 }) {
   const { t } = useTranslation('chat');
@@ -221,10 +232,20 @@ const StatusTimer = memo(function StatusTimer({
   );
   // The Tab clock keeps advancing without a timer. Re-subscription samples its
   // current value on restore; hidden snapshots never keep a polling loop alive.
-  const elapsedSeconds = useSyncExternalStore(subscribe, getElapsedSeconds);
+  // Include wall-clock seconds in the existing footer clock snapshot. The
+  // query elapsed value can remain unchanged while a persisted recovery seed
+  // is waiting, but the same single tick still has to refresh its countdown.
+  const timerSnapshot = useSyncExternalStore(
+    subscribe,
+    () => `${getElapsedSeconds()}:${Math.floor(Date.now() / 1000)}`,
+  );
+  void timerSnapshot;
+  const elapsedSeconds = getElapsedSeconds();
+  const message = typeof messageSource === 'function' ? messageSource() : messageSource;
+  const isModelRecovery = messageSource instanceof Function;
   const elapsedText =
-    elapsedSeconds > 0 ? formatElapsedTime(elapsedSeconds, t) : null;
-  const displayText = elapsedText ? `${message} (${elapsedText})` : message;
+    !isModelRecovery && elapsedSeconds > 0 ? formatElapsedTime(elapsedSeconds, t) : null;
+  const displayText = isModelRecovery ? resolveSystemStatus(message, t) : elapsedText ? `${message} (${elapsedText})` : message;
   return (
     <div
       data-chat-status-row=""
@@ -322,6 +343,7 @@ type FooterProps = {
   showStatus: boolean;
   waitingForInteraction: boolean;
   statusMessage: string;
+  statusMessageForTimer: string | (() => string);
   getQueryElapsedSeconds: () => number;
   systemNotice?: SystemNotice | null;
   onDismissSystemNotice?: () => void;
@@ -341,6 +363,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
   showStatus,
   waitingForInteraction,
   statusMessage,
+  statusMessageForTimer,
   getQueryElapsedSeconds,
   systemNotice,
   onDismissSystemNotice,
@@ -375,7 +398,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
           <InteractionWaitingStatus message={statusMessage} />
         ) : (
           <StatusTimer
-            message={statusMessage}
+            message={statusMessageForTimer}
             getElapsedSeconds={getQueryElapsedSeconds}
           />
         ))}
@@ -558,6 +581,12 @@ const MessageList = memo(function MessageList({
       : sessionState === 'starting'
         ? t('shell.messageList.starting')
         : streamingStatusMessage;
+  const statusMessageForTimer = useMemo(
+    () => systemStatus?.startsWith('model_recovery:') || systemStatus === 'model_recovery_paused'
+      ? () => resolveSystemStatus(systemStatus, t)
+      : statusMessage,
+    [statusMessage, systemStatus, t],
+  );
 
   // Scroll to bottom after session load / switch. Runs synchronously before
   // the next paint so there's no visible top→bottom jump when the new session's
@@ -794,6 +823,7 @@ const MessageList = memo(function MessageList({
         showStatus,
         waitingForInteraction,
         statusMessage,
+        statusMessageForTimer,
         getQueryElapsedSeconds,
         systemNotice,
         onDismissSystemNotice,
@@ -810,6 +840,7 @@ const MessageList = memo(function MessageList({
       showStatus,
       waitingForInteraction,
       statusMessage,
+      statusMessageForTimer,
       getQueryElapsedSeconds,
       systemNotice,
       onDismissSystemNotice,
