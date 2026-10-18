@@ -21,6 +21,10 @@
 - [ ] CI与远端main实际包含成果；source、fixture/隔离Linux、真实发行/生产分开。
 - [ ] 有证据的发布请求交统一owner，非本聊天发布；日常Mac零触碰。
 
+## Completed
+
+已提交同源安装/发行准备、Linux自动发现引导、原设备token轮换和恢复、Tauri状态读取及独立审阅。关键运行时代码8cdeac561；模型租约测试时钟修复af20d4a32，不改模型权限。测试、UI截图和联合发布/回滚合同见dev-docs/host-onboard-001/。当前源码review门禁与正式发布分别追踪。
+
 ## Ownership and contract
 
 Primary负责架构/接口、Tauri公开installer状态读取、集成/验证/CI/main/记录。host_onboard_ui独占renderer引导及中英文文案；primary独立审查实际渲染/关键行为。host_one_command_installer独占scripts/host，host_session_renewal独占AuthStore/网络HTTP与Rust Host续期路径；各独立worktree和提交，不并发同文件。后续由非实现者独立安全和UI审查。本轮ai-yaoren-local纯内置模式，无外部模型；三worker请求gpt-6.1-sol/high，运行型号/effort及费用未暴露不冒称确认。
@@ -32,6 +36,10 @@ Primary负责架构/接口、Tauri公开installer状态读取、集成/验证/CI
 ## Verification
 
 代码与定向门禁已实现；installer100、UI26、Host191、service166/5既有ignored及双方strict Clippy已通过；合入main631后root复跑UI26和完整TypeScript通过。完整正向Connection恢复proof与真实SPKI格式修复由另一认证聊天独立复审接受。runtime冻结8cdeac561；af20d4a32仅固定既有模型租约测试时钟，保留1800/1801秒边界，无生产权限变化。Test39087695311/Owned39087695420为首轮组合证据；CI/最终main交付回执以PR119当前检查/合并和最终交接为准。具体证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。隔离真实Ubuntu环境探测中。
+
+## Blockers and unknowns
+
+无剩余已知源码安全阻断。最终CI/main尚待正常门禁；隔离Ubuntu24.04.5已验证系统/架构/制品同源，但首次cloud-final尚在处理发行镜像依赖，真实systemd安装结果待PR119最终回执。正式发行浏览器入网、现网101恢复及自然24h续期观察由统一发布owner验收；当前没有公开正式installer，不得据源码生成假发布命令。实际运行模型细分和token/费用不可见，不估算收益。
 
 ## Deployment request
 
