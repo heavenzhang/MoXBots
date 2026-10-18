@@ -57,6 +57,7 @@ describe('serializeTabs', () => {
       hasUnread: true,
       sidecarConfigDisposition: 'adopt',
       initialMessage: { text: 'secret draft' },
+      pendingContinuation: { requestId: 'one-shot', turnId: 'interrupted-turn' },
     });
     const state = serializeTabs([tab], 'a')!;
     expect(state.tabs[0]).toEqual({
@@ -68,6 +69,7 @@ describe('serializeTabs', () => {
     });
     expect(Object.keys(state.tabs[0])).not.toContain('isGenerating');
     expect(Object.keys(state.tabs[0])).not.toContain('initialMessage');
+    expect(Object.keys(state.tabs[0])).not.toContain('pendingContinuation');
   });
 
   it('persists Record identity without runtime recording or seek projections', () => {

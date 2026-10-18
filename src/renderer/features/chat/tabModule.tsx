@@ -68,6 +68,7 @@ export interface ChatRenderBinding {
   onUpdateSessionId: (tabId: string, newSessionId: string, options?: AdoptMigratedSessionOptions) => Promise<boolean>;
   claimSessionOpeningTransition: (sessionId: string, ownerId: string) => (() => void) | null;
   onClearInitialMessage: (tabId: string) => void;
+  onClearContinuation: (tabId: string, requestId: string) => void;
   onSidecarConfigAdopted: (tabId: string) => void;
   onFilePreviewIntentConsumed: (tabId: string, intentId: string) => void;
   sessionNotificationBadgeCounts?: ReadonlyMap<string, number>;
@@ -117,6 +118,10 @@ const ChatTabRenderer = memo(function ChatTabRenderer({
             discussionId={tab.discussionId}
             initialMessage={tab.initialMessage}
             onInitialMessageConsumed={() => binding.onClearInitialMessage(tab.id)}
+            pendingContinuation={tab.pendingContinuation}
+            onContinuationConsumed={() => {
+              if (tab.pendingContinuation) binding.onClearContinuation(tab.id, tab.pendingContinuation.requestId);
+            }}
             sidecarConfigDisposition={tab.sidecarConfigDisposition}
             onSidecarConfigAdopted={() => binding.onSidecarConfigAdopted(tab.id)}
             pendingFilePreview={tab.pendingFilePreview}

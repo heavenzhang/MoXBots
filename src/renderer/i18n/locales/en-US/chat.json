@@ -1262,6 +1262,13 @@
         "18": "Worth taking a little time...",
         "19": "Taking your question seriously..."
       }
+    },
+    "continuation": {
+      "title": "Unfinished task",
+      "detail": "Continue in this conversation with its existing context and progress.",
+      "continue": "Continue unfinished task",
+      "pending": "Continuing…",
+      "unavailable": "This task has changed. Check the conversation before continuing."
     }
   },
   "agentTree": {

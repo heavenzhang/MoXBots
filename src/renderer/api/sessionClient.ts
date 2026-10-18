@@ -53,6 +53,8 @@ export interface MessageUsage {
 }
 
 export interface SessionMetadata {
+    /** Derived by the transcript owner; never an execution/auto-resume command. */
+    continuation?: import('../../shared/sessionContinuation').SessionContinuation;
     transcriptFormat?: 2;
     id: string;
     agentDir: string;

@@ -810,6 +810,7 @@ type SendMessagePayload = {
   primaryContext?: import("../shared/agentMentions").DesktopPrimaryContext;
   agentMentions?: import("../shared/agentMentions").AgentMentionSnapshot[];
   clientRequestId?: string;
+  continueFromTurnId?: string;
   asyncQuestionReply?: AsyncQuestionReply;
   text?: string;
   images?: ImagePayload[];
@@ -3140,6 +3141,10 @@ async function main() {
         if (payload.asyncQuestionReply !== undefined && !isAsyncQuestionReply(payload.asyncQuestionReply)) {
           return jsonResponse({ success: false, error: 'Invalid async question reply.' }, 400);
         }
+        if (payload.continueFromTurnId !== undefined && (
+          typeof payload.continueFromTurnId !== 'string' || !payload.continueFromTurnId.trim()
+          || payload.continueFromTurnId.length > 256
+        )) return jsonResponse({ success: false, error: 'Invalid continuation identity' }, 400);
         if (payload.clientRequestId !== undefined && (
           typeof payload.clientRequestId !== 'string' ||
           !/^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i.test(payload.clientRequestId)
@@ -3269,6 +3274,7 @@ async function main() {
           );
           const result = await goalOrchestrator.sendDesktopMessage(engine, {
             clientRequestId: payload.clientRequestId,
+            continueFromTurnId: payload.continueFromTurnId,
             text,
             agentMentions: payload.agentMentions,
             queryPrimaryContext: payload.primaryContext,
@@ -3291,7 +3297,7 @@ async function main() {
           });
           if (result.error) {
             return jsonResponse(
-              { success: false, error: result.error },
+              { success: false, error: result.error, ...(result.code ? { code: result.code } : {}) },
               result.status ?? 500,
             );
           }

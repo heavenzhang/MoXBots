@@ -302,6 +302,7 @@ type WireSessionMessage = {
   desktopQuery?: Message['desktopQuery'];
   turnId?: string;
   transcriptState?: Message['transcriptState'];
+  messageKind?: Message['messageKind'];
   asyncQuestionReply?: AsyncQuestionReply;
   id: string;
   role: 'user' | 'assistant';
@@ -463,6 +464,7 @@ function wireAssistantToStreamingMessage(
     runtimeTurnAnchor: message.runtimeTurnAnchor,
     turnId: message.turnId,
     transcriptState: message.transcriptState,
+    messageKind: message.messageKind,
     ...getAssistantTurnMetrics(message),
   };
 }
@@ -497,6 +499,7 @@ function wireSessionMessageToMessage(message: WireSessionMessage): Message {
     runtimeTurnAnchor: message.runtimeTurnAnchor,
     turnId: message.turnId,
     transcriptState: message.transcriptState,
+    messageKind: message.messageKind,
     attachments: normalizeWireAttachments(message.attachments),
     metadata: message.metadata,
     desktopQuery: message.desktopQuery,
@@ -5856,6 +5859,7 @@ export default function TabProvider({
       primaryContext?: import('../../shared/agentMentions').DesktopPrimaryContext,
       retryFailedMessageId?: string,
       suppliedClientRequestId?: string,
+      continueFromTurnId?: string,
     ): Promise<boolean> => {
       const trimmed = text.trim();
       if (sidecarConfigDisposition === 'pending' && (!currentSessionIdRef.current || isPendingSessionId(currentSessionIdRef.current))) return false;
@@ -5979,6 +5983,7 @@ export default function TabProvider({
       // IM/Task callers omit the field entirely (undefined = "keep current provider").
       const sendPayload = {
         clientRequestId,
+        continueFromTurnId,
         text: trimmed,
         agentMentions,
         primaryContext,
