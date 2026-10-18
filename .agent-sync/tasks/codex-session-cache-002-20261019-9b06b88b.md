@@ -12,10 +12,10 @@ SESSION-CACHE-002: cached Chat navigation retains its mounted projection; uncach
 ## Acceptance criteria
 
 - [x] Identify source, branch, installed version and original cache/restore failure path.
-- [ ] Cached A→B→A preserves Chat instance/history/draft/scroll and performs no startup/history reload for a healthy cached session.
-- [ ] Cold history is readable while Session Sidecar/SSE are delayed or fail; connection retry preserves that history and draft.
-- [ ] Preview cannot authorize sends, adopt revisions/interactive state, overwrite a newer live snapshot or leak across session/unmount boundaries.
-- [ ] Focused DOM/unit tests, typecheck/lint, web build, rendered browser interaction and independent review.
+- [x] Cached A→B→A preserves Chat instance/history/draft/scroll and performs no startup/history reload for a healthy cached session.
+- [x] Cold history is readable while Session Sidecar/SSE are delayed or fail; connection retry preserves that history and draft.
+- [x] Preview cannot authorize sends, adopt revisions/interactive state, overwrite a newer live snapshot or leak across session/unmount boundaries.
+- [x] Focused DOM/unit tests, typecheck/lint, web build, rendered browser interaction and independent review.
 - [ ] Commit, CI, merge current main, push and verify remote ancestry.
 - [ ] Signed native release and real-user acceptance: queued to existing sole desktop release owner, separately tracked.
 
@@ -27,7 +27,7 @@ SESSION-CACHE-002: cached Chat navigation retains its mounted projection; uncach
 
 ## Verification
 
-Pending. Primary implementation/UI acceptance owner: /root; independent read-only lifecycle/diff reviewer: /root/cache_review (requested gpt-6.1-sol medium for cross-module owner/revision race checks). No external-model calls; tightly coupled implementation remains single writer. Model/token monetary usage unavailable.
+Evidence: `dev-docs/session-cache/acceptance.md`; 236 merged DOM + 41 unit tests, merged typecheck, focused zero-warning lint, build and actual App synthetic-transport UI passed. Primary implementation/UI acceptance owner: /root; independent read-only lifecycle/diff reviewer: /root/cache_review (requested gpt-6.1-sol medium for cross-module owner/revision race checks). No external-model calls; tightly coupled implementation remains single writer. Model/token monetary usage unavailable.
 
 ## Blockers and unknowns
 
@@ -36,4 +36,8 @@ Pending. Primary implementation/UI acceptance owner: /root; independent read-onl
 
 ## Next step
 
-Decouple display-only persisted history from live restore; retain healthy cached navigation, add failure/retry regression tests and rendered browser proof.
+Complete PR #147 CI, integrate current main and verify remote ancestry; then the existing sole release owner takes the queued native candidate and real-user acceptance. Native release is not completed by source/main delivery.
+
+## Deployment request
+
+Required: next unfrozen desktop release, existing sole owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`. Include this branch via PR #147 plus integrated main. No migration/config/credential changes. Preserve daily tasks and existing rollback procedure; test the exact signed artifact on cached A/B navigation, cold history before connection, failed recovery/retry, native-birth sessions and explicit continuation. Source/UI fixtures passed; signed native and real-user-path acceptance remain pending. No message to another chat was sent.
