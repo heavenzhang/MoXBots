@@ -325,11 +325,72 @@ class StatusEventWatcher:
         return self.snapshot()
 
 
+def registry_file_observation():
+    """Fixed original registry contract only; never initialize or repair it."""
+    directory = Path("/var/lib/moxbot-host-test/home/.myagents")
+    observed = {}
+    try:
+        import pwd
+        node = pwd.getpwnam("moxbot-host-test")
+    except Exception:
+        return {name: {"kind": "unsafe"} for name in ("config", "projects")}
+    parent_fd = -1
+    try:
+        parent_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        parent = os.fstat(parent_fd)
+        if parent.st_uid != node.pw_uid or stat.S_IMODE(parent.st_mode) & 0o077:
+            return {name: {"kind": "unsafe"} for name in ("config", "projects")}
+        for name in ("config", "projects"):
+            value, fd = {"kind": "unsafe"}, -1
+            observed[name] = value
+            try:
+                fd = os.open(name + ".json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=parent_fd)
+                info = os.fstat(fd)
+                value.update({"expectedNodeUID": info.st_uid == node.pw_uid, "mode600": stat.S_IMODE(info.st_mode) == 0o600,
+                              "nonpublic": stat.S_IMODE(info.st_mode) & 0o077 == 0})
+                if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1 or info.st_size > 4 * 1024**2
+                        or not value["expectedNodeUID"] or not value["nonpublic"]):
+                    continue
+                raw = bytearray()
+                while len(raw) <= 4 * 1024**2:
+                    block = os.read(fd, min(65536, 4 * 1024**2 + 1 - len(raw)))
+                    if not block:
+                        break
+                    raw.extend(block)
+                if len(raw) > 4 * 1024**2:
+                    continue
+                value["kind"] = "invalidJSON"
+                record = json.loads(raw)
+                value["kind"] = "regular"
+                if name == "config":
+                    agents = record.get("agents") if isinstance(record, dict) else None
+                    value.update({"configIsObject": isinstance(record, dict), "agentsIsArray": isinstance(agents, list),
+                                  "agentCount": len(agents) if isinstance(agents, list) else None})
+                else:
+                    value.update({"projectsIsArray": isinstance(record, list),
+                                  "projectCount": len(record) if isinstance(record, list) else None})
+            except FileNotFoundError:
+                value["kind"] = "missing"
+            except Exception:
+                pass  # only fixed enum/booleans/counts; no exception or file contents
+            finally:
+                if fd >= 0:
+                    os.close(fd)
+    except FileNotFoundError:
+        observed = {name: {"kind": "missing"} for name in ("config", "projects")}
+    except Exception:
+        observed = {name: {"kind": "unsafe"} for name in ("config", "projects")}
+    finally:
+        if parent_fd >= 0:
+            os.close(parent_fd)
+    return observed
+
+
 def runtime_readiness_observation():
     """Read-only closed projections; never a Ready gate, start or recovery."""
     if _GUEST:
         return _GUEST.call("runtime-readiness-observation")
-    observed, pids = {"units": {}}, {}
+    observed, pids = {"units": {}, "registryFiles": registry_file_observation()}, {}
     enums = {"LoadState": {"loaded", "not-found", "error", "masked", "bad-setting", "stub", "merged"},
         "ActiveState": {"active", "inactive", "failed", "activating", "deactivating", "reloading", "maintenance", "refreshing"},
         "SubState": {"running", "exited", "dead", "failed", "start", "start-pre", "start-post", "stop", "stop-sigterm", "auto-restart"},

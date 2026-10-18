@@ -419,6 +419,67 @@ while True: time.sleep(.1)
         self.assertFalse(result["NodeDoctor"]["attempted"])
         self.assertEqual(run.call_count, 2)
 
+    def test_registry_file_projection_distinguishes_missing_partial_corrupt_without_writing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original_open = lab.os.open
+            def open_fixed(path, *arguments, **kwargs):
+                if path == Path("/var/lib/moxbot-host-test/home/.myagents"):
+                    path = root
+                return original_open(path, *arguments, **kwargs)
+            with patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=os.getuid())), patch.object(lab.os, "open", side_effect=open_fixed):
+                result = lab.registry_file_observation()
+                self.assertEqual(result, {"config": {"kind": "missing"}, "projects": {"kind": "missing"}})
+                config, projects = root / "config.json", root / "projects.json"
+                config.write_text('{"providerApiKeys":{"synthetic":"SYNTHETIC_CAPABILITY"}}')
+                config.chmod(0o600)
+                result = lab.registry_file_observation()
+                self.assertEqual(result["config"]["kind"], "regular")
+                self.assertFalse(result["config"]["agentsIsArray"])
+                self.assertIsNone(result["config"]["agentCount"])
+                projects.write_text('{broken SYNTHETIC_CAPABILITY')
+                projects.chmod(0o600)
+                before = {path.name: path.read_bytes() for path in (config, projects)}
+                result = lab.registry_file_observation()
+                self.assertEqual(result["projects"]["kind"], "invalidJSON")
+                self.assertEqual({path.name: path.read_bytes() for path in (config, projects)}, before)
+                config.write_text(json.dumps({"agents": [{"id": "SYNTHETIC_CAPABILITY"}], "token": "SYNTHETIC_CAPABILITY"}))
+                projects.write_text(json.dumps([{"id": "SYNTHETIC_CAPABILITY", "path": "SYNTHETIC_CAPABILITY"}]))
+                before = {path.name: path.read_bytes() for path in (config, projects)}
+                result = lab.registry_file_observation()
+                self.assertEqual(result["config"]["agentCount"], 1)
+                self.assertEqual(result["projects"]["projectCount"], 1)
+                self.assertTrue(result["config"]["expectedNodeUID"] and result["config"]["mode600"] and result["config"]["nonpublic"])
+                self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
+                self.assertEqual({path.name: path.read_bytes() for path in (config, projects)}, before)
+
+    def test_registry_projection_rejects_linked_nonprivate_or_oversize_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            original_open = lab.os.open
+            def open_fixed(path, *arguments, **kwargs):
+                if path == Path("/var/lib/moxbot-host-test/home/.myagents"):
+                    path = root
+                return original_open(path, *arguments, **kwargs)
+            target = root / "target"
+            target.write_text('"SYNTHETIC_CAPABILITY"')
+            target.chmod(0o600)
+            config, projects = root / "config.json", root / "projects.json"
+            config.symlink_to(target)
+            os.link(target, projects)
+            with patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=os.getuid())), patch.object(lab.os, "open", side_effect=open_fixed):
+                result = lab.registry_file_observation()
+                self.assertTrue(all(value["kind"] == "unsafe" for value in result.values()))
+                config.unlink()
+                projects.unlink()
+                config.write_text('{"agents":[]}')
+                config.chmod(0o644)
+                projects.write_bytes(b"x" * (4 * 1024**2 + 1))
+                projects.chmod(0o600)
+                result = lab.registry_file_observation()
+                self.assertTrue(all(value["kind"] == "unsafe" for value in result.values()))
+                self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
+
     def test_observation_failure_keeps_original_installer_failure_and_redacts_reason(self):
         script = 'import sys; print("HOST_INSTALL_INCOMPLETE: join/readiness incomplete; identity and login preserved; rerun the same command"); print("SYNTHETIC_CAPABILITY"); sys.exit(1)'
         child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
