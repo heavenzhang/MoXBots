@@ -2210,68 +2210,77 @@ mod tests {
     }
     #[test]
     fn real_process_commits_serialize_without_losing_routes() {
-        let dir = tempfile::Builder::new()
-            .prefix("mah-credential-slots-process-")
-            .tempdir()
-            .unwrap();
-        let root = dir.path().canonicalize().unwrap().join("routes");
-        fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
-        struct ChildSet(Vec<std::process::Child>);
-        impl Drop for ChildSet {
-            fn drop(&mut self) {
-                for child in &mut self.0 {
-                    if child.try_wait().ok().flatten().is_none() {
-                        let _ = child.kill();
+        // Every isolated round must pass; this is contention coverage, not a
+        // retry after failure. Keep all four real helpers concurrent.
+        for round in 0..20 {
+            let dir = tempfile::Builder::new()
+                .prefix("mah-credential-slots-process-")
+                .tempdir()
+                .unwrap();
+            let root = dir.path().canonicalize().unwrap().join("routes");
+            fs::DirBuilder::new().mode(0o700).create(&root).unwrap();
+            struct ChildSet(Vec<std::process::Child>);
+            impl Drop for ChildSet {
+                fn drop(&mut self) {
+                    for child in &mut self.0 {
+                        if child.try_wait().ok().flatten().is_none() {
+                            let _ = child.kill();
+                        }
+                    }
+                    let end = std::time::Instant::now() + std::time::Duration::from_secs(1);
+                    while std::time::Instant::now() < end {
+                        if self
+                            .0
+                            .iter_mut()
+                            .all(|c| c.try_wait().ok().flatten().is_some())
+                        {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(10));
                     }
                 }
-                let end = std::time::Instant::now() + std::time::Duration::from_secs(1);
-                while std::time::Instant::now() < end {
-                    if self
-                        .0
-                        .iter_mut()
-                        .all(|c| c.try_wait().ok().flatten().is_some())
-                    {
+            }
+            let mut children = ChildSet(Vec::new());
+            let mut ids = Vec::new();
+            for i in 0..4 {
+                let id = format!("session:{}", hash43(format!("process-{i}").as_bytes()));
+                let child = crate::process_cmd::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "agent_network::credential_slots::tests::process_commit_helper",
+                        "--ignored",
+                    ])
+                    .env("MOXBOTS_SLOT_TEST_ROOT", &root)
+                    .env("MOXBOTS_SLOT_TEST_ROUTE", &id)
+                    .stdout(std::process::Stdio::null())
+                    // Isolated helper panics must remain visible in CI. Its only
+                    // inputs are this test's TempDir and generated route hash.
+                    .stderr(std::process::Stdio::inherit())
+                    .spawn()
+                    .unwrap();
+                children.0.push(child);
+                ids.push(id);
+            }
+            let end = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            for index in 0..children.0.len() {
+                loop {
+                    if let Some(status) = children.0[index].try_wait().unwrap() {
+                        assert!(
+                            status.success(),
+                            "isolated route round {round} helper {index} exited {status}"
+                        );
                         break;
+                    }
+                    if std::time::Instant::now() >= end {
+                        panic!("isolated route round {round} helper deadline");
                     }
                     std::thread::sleep(std::time::Duration::from_millis(10));
                 }
             }
-        }
-        let mut children = ChildSet(Vec::new());
-        let mut ids = Vec::new();
-        for i in 0..4 {
-            let id = format!("session:{}", hash43(format!("process-{i}").as_bytes()));
-            let child = crate::process_cmd::new(std::env::current_exe().unwrap())
-                .args([
-                    "--exact",
-                    "agent_network::credential_slots::tests::process_commit_helper",
-                    "--ignored",
-                ])
-                .env("MOXBOTS_SLOT_TEST_ROOT", &root)
-                .env("MOXBOTS_SLOT_TEST_ROUTE", &id)
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .unwrap();
-            children.0.push(child);
-            ids.push(id);
-        }
-        let end = std::time::Instant::now() + std::time::Duration::from_secs(15);
-        for index in 0..children.0.len() {
-            loop {
-                if let Some(status) = children.0[index].try_wait().unwrap() {
-                    assert!(status.success());
-                    break;
-                }
-                if std::time::Instant::now() >= end {
-                    panic!("isolated route helper deadline");
-                }
-                std::thread::sleep(std::time::Duration::from_millis(10));
+            let ledger = Ledger { root };
+            for id in ids {
+                assert!(ledger.route(&id).unwrap());
             }
-        }
-        let ledger = Ledger { root };
-        for id in ids {
-            assert!(ledger.route(&id).unwrap());
         }
     }
     #[test]
