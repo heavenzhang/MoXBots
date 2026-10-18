@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -112,6 +113,57 @@ class RebootGates(unittest.TestCase):
         command.assert_not_called()
         self.assertNotIn("secret-value", stdout.getvalue() + stderr.getvalue())
         self.assertIn("guest-operation-rejected-redacted", stderr.getvalue())
+
+    def test_guest_allows_only_fixed_auth_transient_stop_and_show_for_final_cleanup(self):
+        unit = lab.AUTH_UNITS[1]
+        for command, allowed in ((["systemctl", "stop", unit], True),
+                (["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"], True),
+                (["systemctl", "restart", unit], False),
+                (["systemctl", "stop", "unrelated.service"], False)):
+            payload = {"op": "command", "nonce": "synthetic", "command": command}
+            stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with self.subTest(command=command), patch.object(reboot, "lab_module", return_value=lab), \
+                 patch.object(reboot, "guest_guard", return_value={}), patch.object(reboot.sys, "stdin", stdin), \
+                 patch.object(lab, "run", return_value=subprocess.CompletedProcess(command, 0, b"", b"")) as run, \
+                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(reboot.guest_main(), 0 if allowed else 1)
+                self.assertEqual(run.call_count, 1 if allowed else 0)
+
+    def test_guest_canceled_status_projects_empty_only_and_live_status_still_rejects_empty(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(lab, "STATUS", Path(directory) / "status.json"):
+            lab.STATUS.write_bytes(b"")
+            for op, expected in (("canceled-status-observation", 0), ("status", 1)):
+                payload = {"op": op, "nonce": "synthetic"}
+                stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with self.subTest(op=op), patch.object(reboot, "lab_module", return_value=lab), \
+                     patch.object(reboot, "guest_guard", return_value={}), patch.object(reboot.sys, "stdin", stdin), \
+                     contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    self.assertEqual(reboot.guest_main(), expected)
+                if expected == 0:
+                    self.assertEqual(json.loads(stdout.getvalue())["result"], {"kind": "empty", "ready": False})
+
+    def test_guest_allows_only_fixed_connector_inactive_observation(self):
+        command = ["systemctl", "show", lab.CONNECTOR, "--property=LoadState,ActiveState,MainPID"]
+        payload = {"op": "command", "nonce": "synthetic", "command": command}
+        stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+        with patch.object(reboot, "lab_module", return_value=lab), patch.object(reboot, "guest_guard", return_value={}), \
+             patch.object(reboot.sys, "stdin", stdin), contextlib.redirect_stdout(io.StringIO()), \
+             patch.object(lab, "run", return_value=subprocess.CompletedProcess(command, 0, b"MainPID=0\n", b"")) as run:
+            self.assertEqual(reboot.guest_main(), 0)
+            run.assert_called_once_with(command, timeout=45, check=False)
+
+    def test_guest_runtime_readiness_operation_returns_only_closed_projection(self):
+        payload = {"op": "runtime-readiness-observation", "nonce": "synthetic"}
+        stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+        stdout = io.StringIO()
+        projection = {"NodeDoctor": {"attempted": False}, "status": {"kind": "empty"}}
+        with patch.object(reboot, "lab_module", return_value=lab), patch.object(reboot, "guest_guard", return_value={}), \
+             patch.object(reboot.sys, "stdin", stdin), contextlib.redirect_stdout(stdout), \
+             patch.object(lab, "runtime_readiness_observation", return_value=projection):
+            self.assertEqual(reboot.guest_main(), 0)
+        self.assertEqual(json.loads(stdout.getvalue())["result"], projection)
 
 
 if __name__ == "__main__":
