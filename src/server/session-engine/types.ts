@@ -46,6 +46,8 @@ export type DesktopMessageRequest = {
   /** Product-only primary context supplied by the Goal owner, never raw XML. */
   queryPrimaryContext?: import("../../shared/agentMentions").QueryPrimaryContext;
   clientRequestId?: string;
+  /** Explicit one-shot continuation; admission must still own this exact turn. */
+  continueFromTurnId?: string;
   asyncQuestionReply?: AsyncQuestionReply;
   text: string;
   images?: ImagePayload[];
@@ -76,6 +78,7 @@ export type DesktopMessageRequest = {
 export type DesktopRetryOptions = Pick<DesktopMessageRequest, 'model' | 'reasoningEffort'>;
 
 export type DesktopAdmissionResult = {
+  code?: 'SESSION_CONTINUATION_STALE' | 'SESSION_CONTINUATION_BUSY';
   agentMentionsNeedReselect?: boolean;
   success: boolean;
   queued?: boolean;

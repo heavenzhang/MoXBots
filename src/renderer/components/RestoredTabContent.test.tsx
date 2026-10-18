@@ -108,6 +108,7 @@ function bindings(overrides: Partial<BuiltinTabBindings> = {}): BuiltinTabBindin
       onUpdateSessionId: vi.fn(async () => true),
       claimSessionOpeningTransition: vi.fn(() => () => undefined),
       onClearInitialMessage: vi.fn(),
+      onClearContinuation: vi.fn(),
       onSidecarConfigAdopted: vi.fn(),
       onFilePreviewIntentConsumed: vi.fn(),
     },
