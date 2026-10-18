@@ -1,0 +1,148 @@
+name: Linux Host acceptance candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Full 40-character source commit to build and validate
+        required: true
+        type: string
+  workflow_call:
+    inputs:
+      source_commit:
+        description: Full 40-character source commit to build and validate
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-candidate-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+jobs:
+  candidate:
+    name: Build isolated Linux Host acceptance candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    env:
+      SOURCE_COMMIT: ${{ inputs.source_commit }}
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - name: Validate requested source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_commit }}
+          path: product
+          persist-credentials: false
+
+      - name: Confirm the clean checkout matches the requested commit
+        shell: bash
+        working-directory: product
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
+          test -z "$(git status --porcelain=v1 --untracked-files=normal)"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+          cache: npm
+          cache-dependency-path: product/package-lock.json
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: dtolnay/rust-toolchain@1.92.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            product/src-tauri/headless-network
+            product/services/agentnet
+
+      - name: Install locked Node dependencies and test the candidate packager
+        working-directory: product
+        run: |
+          npm ci
+          python3 ../harness/scripts/host/prepare-acceptance-candidate.test.py
+
+      - name: Build the moxbot-test Host archive from this clean source
+        env:
+          MYAGENTS_HOST_PROFILE: moxbot-test
+          MYAGENTS_HOST_OUTPUT: ${{ runner.temp }}/host-build
+        working-directory: product
+        run: npm run build:host
+
+      - name: Build the Linux x86_64 network connector and service
+        working-directory: product
+        run: |
+          cargo build --locked --release --manifest-path src-tauri/headless-network/Cargo.toml --bin myagents-host-network
+          cargo build --locked --release --manifest-path services/agentnet/Cargo.toml --bin myagents-agentnet-service
+
+      - name: Prepare and validate the local release tree and acceptance candidate
+        shell: bash
+        working-directory: product
+        run: |
+          set -euo pipefail
+          network_artifact="$RUNNER_TEMP/network-artifact"
+          mkdir -m 0700 "$network_artifact"
+          cp src-tauri/headless-network/target/release/myagents-host-network "$network_artifact/myagents-host-network"
+          chmod 0755 "$network_artifact/myagents-host-network"
+          printf '%s\n' "$SOURCE_COMMIT" > "$network_artifact/source-commit.txt"
+          chmod 0644 "$network_artifact/source-commit.txt"
+
+          mapfile -t host_archives < <(find "$RUNNER_TEMP/host-build" -maxdepth 1 -type f -name 'moxbot-host-test-*.tar.gz' -print)
+          test "${#host_archives[@]}" -eq 1
+          python3 scripts/host/prepare-release.py \
+            --host-archive "${host_archives[0]}" \
+            --network-artifact-dir "$network_artifact" \
+            --output "$RUNNER_TEMP/prepared-host-release"
+
+          python3 ../harness/scripts/host/prepare-acceptance-candidate.py \
+            --prepared-release "$RUNNER_TEMP/prepared-host-release" \
+            --service-binary services/agentnet/target/release/myagents-agentnet-service \
+            --source-commit "$SOURCE_COMMIT" \
+            --source-root "$PWD" \
+            --candidate-output "$RUNNER_TEMP/host-acceptance-candidate" \
+            --service-output "$RUNNER_TEMP/host-agentnet-service-artifact" \
+            | tee "$RUNNER_TEMP/host-candidate-producer-receipt.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: host-acceptance-candidate-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/host-acceptance-candidate/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: host-agentnet-service-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/host-agentnet-service-artifact/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Preserve producer receipt for review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-candidate-producer-receipt-${{ inputs.source_commit }}
+          path: ${{ runner.temp }}/host-candidate-producer-receipt.json
+          if-no-files-found: ignore
+          retention-days: 7

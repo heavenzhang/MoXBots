@@ -1,3 +1,14 @@
+## MOXBOTS-HOST-INIT-001 — fresh-install repair, 2026-10-18
+
+The human requested a fix for first-install registry initialization, full acceptance before main integration, then handoff to the existing unified deployment chat; the daily Mac client is excluded. Source/integration owner: `01a13320-dbf9-7c03-b7f3-37e30d15de48`; existing bounded initializer worker: `codex/host-registry-bootstrap-20261018`; isolated Linux/browser acceptance and later `/host` publication owner: `01a12b99-7b38-78b1-831f-9c60257d386a`. One implementation and one integration lane; no competing production writer. Task: `.agent-sync/tasks/codex-host-init-001-20261018-089ddeb0.md`.
+
+- [x] Original actual Ubuntu/Dex/browser failure identified: `config.json` and `projects.json` absent through exit, `catalog → NETWORK_CATALOG_INVALID → stopped`; real authentication/join/WebSocket succeeded. Existing strict catalog regression: primary 7/7 passed.
+- [ ] Implement original Host startup-owned first creation and bounded interrupted-initialization recovery, retaining the original configuration lock domains and strict established-authority checks.
+- [ ] Independently review and verify first start/repeat/crash/concurrent/partial/corrupt/lost authority, plus real fresh browser/join/Ready, renewal and reboot with new exact-source candidate artifacts.
+- [ ] Pass required CI, integrate current main normally and verify remote containment before formal publication handoff.
+
+The staged old dcf immutable release is preserved and stable remains unavailable. It is not a successful fresh-install release. New repair candidates use a new source/release identity; pre-merge acceptance stays isolated. No backend/101 redeployment or daily Mac operation is included.
+
 ## Deployment coordination — MOXBOTS-HOST-PUBLICATION-20261018
 
 - **Deployment chat:** `01a12b99-7b38-78b1-831f-9c60257d386a`, exclusively the existing140 HTTPS `/host` static software distribution for the frozen Ubuntu24/x86_64 release below. This is a separate lane from the already closed cloud/101 binary release; no backend/101 re-upgrade, `/download`, updater, desktop, daily Mac or new listener.
