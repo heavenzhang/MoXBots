@@ -148,6 +148,18 @@ jobs:
         run: npm run build:assets
         env:
           MYAGENTS_BUILD_PROFILE: moxbot
+  # Build independently so real-systemd feedback does not wait for broad UI
+  # tests. Those tests remain separate required gates for the same source.
+  host-package:
+    name: Linux Host package · paired provenance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - name: Cache integrity-pinned Host build resources
         uses: actions/cache@v4
         with:
@@ -211,7 +223,7 @@ jobs:
   # Browser/OIDC admission remains a separate release gate; no account is used.
   host-systemd:
     name: Ubuntu Host installation · actual systemd
-    needs: [js, headless-network]
+    needs: [host-package, headless-network]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:

@@ -87,9 +87,9 @@ def guard(args):
             and os_release.get("VERSION_ID", "").strip('"') == "24.04", "Ubuntu 24.04 is required")
     require(pathlib.Path("/proc/1/comm").read_text().strip() == "systemd", "PID 1 must be real systemd")
     state = run(["systemctl", "is-system-running"], check=False, timeout=15).stdout.decode().strip()
-    # GitHub images can have unrelated degraded baseline units. Record that
-    # baseline without treating starting/offline/maintenance as a booted VM.
-    require(state in {"running", "degraded"}, "systemd has not completed boot: " + state)
+    # A hosted VM can still have unrelated boot jobs. Preserve its global
+    # state; the bounded real unit-manager transaction below gates installation.
+    require(state in {"running", "degraded", "starting"}, "systemd is not available: " + state)
     require("MYAGENTS_HOST_TRANSACTION_LOCK_FD" not in os.environ, "an inherited install transaction is not permitted")
     for value in (args.source_root, args.host_artifact_dir, args.network_artifact_dir, args.output):
         require(value.is_absolute(), "all directories must be absolute")
@@ -186,7 +186,29 @@ def accept(args):
         require(result.returncode == expected, f"{name}: unexpected exit {result.returncode}; see non-secret log")
         return {"exit": result.returncode}
 
+    def probe_manager():
+        command = ["systemd-run", "--quiet", "--wait", "--pipe", "--collect",
+                   "--unit=moxbots-ci-manager-" + uuid.uuid4().hex,
+                   "--property=Type=oneshot", "--property=NoNewPrivileges=yes", "/usr/bin/true"]
+        started = time.monotonic()
+        try:
+            result = run(command, check=False, timeout=30)
+            detail = {"command": command, "exit": result.returncode,
+                      "seconds": round(time.monotonic() - started, 3),
+                      "stdout": result.stdout[-4000:].decode(errors="replace")}
+        except subprocess.TimeoutExpired as error:
+            detail = {"command": command, "exit": None, "timedOut": True,
+                      "seconds": round(time.monotonic() - started, 3),
+                      "stdout": (error.stdout or b"")[-4000:].decode(errors="replace")}
+            (args.output / "unit-manager-probe.log").write_text(json.dumps(detail, indent=2) + "\n")
+            raise Rejected("unit manager probe exceeded 30 seconds") from error
+        (args.output / "unit-manager-probe.log").write_text(json.dumps(detail, indent=2) + "\n")
+        require(result.returncode == 0, "unit manager probe failed; see non-secret log")
+        return {"exit": result.returncode}
+
     try:
+        save()
+        step("unit-manager-ready", probe_manager)
         with tempfile.TemporaryDirectory(prefix="moxbots-ci-systemd-") as temporary:
             scratch = pathlib.Path(temporary)
             source = args.source_root.resolve()
