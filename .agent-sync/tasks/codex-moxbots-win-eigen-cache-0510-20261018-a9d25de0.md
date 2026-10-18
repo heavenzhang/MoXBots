@@ -1,6 +1,6 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/moxbots-win-eigen-cache-0510-20261018 -->
-<!-- git-project-sync-task:base=631bbd34c7f97f3e8bcf6d252e794443e37c521e -->
+<!-- git-project-sync-task:base=3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef -->
 <!-- git-project-sync-task:status=in-progress -->
 
 # MOXBOTS-0510-WINDOWS-EIGEN-CACHE-20261018
@@ -19,8 +19,9 @@ Make the pinned Windows 0.5.10 build tolerate the observed Node Fetch HTTP 406 f
 
 ## Completed
 
-- Exact app source is pinned to `v0.5.10` / `400b746a4841bab8e4b99d8f83479fd54925c205`; current remote `main` base is `631bbd34c7f97f3e8bcf6d252e794443e37c521e`.
+- Exact app source is pinned to `v0.5.10` / `400b746a4841bab8e4b99d8f83479fd54925c205`; initial PR base was `631bbd34c7f97f3e8bcf6d252e794443e37c521e`; it has been synchronized with current remote `main` `3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef`.
 - The first Windows run `39086981403` failed in `Build MoXBots 0.5.10 NSIS installer` before NSIS, because Node Fetch received HTTP 406 while preparing the locked Eigen dependency.
+- PR #120 check run `39087845561`, attempt 2, completed all six PR checks successfully on head `859e1191fc557471086f3d0675eceabaf763bf73`; the retry passed the DOM test that timed out in attempt 1. These checks validate the branch but do not yet prove the Windows packaging workflow on the merged mainline.
 - A full normal-TLS GET from the same official GitLab URL on the Mac returned the locked size and SHA-256. That exact file is validated by the repository's `validateLockedFile` and used only as a local content-addressed cache entry; the frozen source and lock were not changed.
 - Added a narrow Windows workflow step to read and assert the frozen lock entry, download from the exact official URL with `curl.exe`, verify exact size/SHA, and seed the cache. It refuses changed lock metadata or invalid existing/downloaded bytes.
 
@@ -29,7 +30,8 @@ Make the pinned Windows 0.5.10 build tolerate the observed Node Fetch HTTP 406 f
 - Failure evidence: <https://github.com/heavenzhang/MoXBots/actions/runs/39086981403> (step 11; Node Fetch HTTP 406).
 - Mac full source GET: `/private/tmp/moxbots-eigen-5.0.1.tar.gz`; 2,967,272 bytes; SHA-256 `e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec`; normal TLS.
 - Local cache gate: `scripts/document-processing-resource-cache.mjs::validateLockedFile` passed in exact frozen-source worktree.
-- Branch diff and PR/CI/Windows build validation remain pending.
+- The PR branch was synchronized with the latest remote main `3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef` by normal merge commit `03c0d59f5f24eef58de7f2fc5e5a244db8d2caa8`; its three-file net diff remains limited to the task plan, task record, and Windows download workflow.
+- Checks for the synchronized merge head, normal PR merge, post-merge main CI, and the exact 0.5.10 Windows build remain pending.
 
 ## Blockers and unknowns
 
@@ -38,4 +40,4 @@ Make the pinned Windows 0.5.10 build tolerate the observed Node Fetch HTTP 406 f
 
 ## Next step
 
-Review the workflow/task diff, run local whitespace/workflow validation, then commit and open a normal PR from this branch. After required PR checks pass, merge normally and run the pinned Windows workflow from the merged mainline.
+Wait for checks on the synchronized merge head, merge PR #120 normally when green, verify post-merge main CI, and run the pinned Windows workflow from the merged mainline.
