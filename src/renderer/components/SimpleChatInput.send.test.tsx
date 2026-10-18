@@ -853,7 +853,9 @@ describe('SimpleChatInput send paths', () => {
       onGoalCancel: vi.fn(),
     });
 
-    expect(screen.getByText('Round 1 · Ship the architecture closure')).toBeInTheDocument();
+    expect(screen.getByText('Goal Mode running')).toBeInTheDocument();
+    expect(screen.getByText('Round 1')).toBeInTheDocument();
+    expect(screen.getByText('Ship the architecture closure')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel goal' })).toBeInTheDocument();
     expect(screen.getByText('Scheduled task running')).toBeInTheDocument();
   });

@@ -1,23 +1,23 @@
-import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { i18n } from '@/i18n';
-import type { SessionGoal } from '@/types/sessionGoal';
-import GoalStatusBar from './GoalStatusBar';
+import { i18n } from "@/i18n";
+import type { SessionGoal } from "@/types/sessionGoal";
+import GoalStatusBar from "./GoalStatusBar";
 
 function goal(overrides: Partial<SessionGoal> = {}): SessionGoal {
   return {
-    id: 'goal-1',
-    workspacePath: '/workspace',
-    sessionId: 'session-1',
-    objective: 'Finish the release',
-    status: 'active',
+    id: "goal-1",
+    workspacePath: "/workspace",
+    sessionId: "session-1",
+    objective: "Finish the release",
+    status: "active",
     endConditions: { aiCanExit: true },
     notifyEnabled: true,
-    permissionMode: '',
+    permissionMode: "",
     turnCount: 3,
-    createdAt: '2026-07-11T00:00:00.000Z',
-    updatedAt: '2026-07-11T00:00:00.000Z',
+    createdAt: "2026-07-11T00:00:00.000Z",
+    updatedAt: "2026-07-11T00:00:00.000Z",
     totalDurationMs: 0,
     totalTokens: 0,
     revision: 1,
@@ -27,12 +27,12 @@ function goal(overrides: Partial<SessionGoal> = {}): SessionGoal {
   };
 }
 
-describe('GoalStatusBar', () => {
+describe("GoalStatusBar", () => {
   beforeEach(async () => {
-    await i18n.changeLanguage('en-US');
+    await i18n.changeLanguage("en-US");
   });
 
-  it('shows a live Goal round and explicit cancel action', () => {
+  it("shows a live Goal round and explicit cancel action", () => {
     render(
       <GoalStatusBar
         goal={goal({ isExecuting: true, executionNumber: 4 })}
@@ -42,29 +42,34 @@ describe('GoalStatusBar', () => {
       />,
     );
 
-    expect(screen.getByText(/Round 4.*Finish the release/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel goal' })).toBeInTheDocument();
+    expect(screen.getByText("Round 4 executing")).toBeInTheDocument();
+    expect(screen.getByText("Finish the release")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Cancel goal" }),
+    ).toBeInTheDocument();
   });
 
-  it('keeps resume and cancel available while paused', () => {
+  it("keeps resume and cancel available while paused", () => {
     render(
       <GoalStatusBar
-        goal={goal({ status: 'paused' })}
+        goal={goal({ status: "paused" })}
         onResume={vi.fn()}
         onCancel={vi.fn()}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Resume' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel goal' })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Cancel goal" }),
+    ).toBeInTheDocument();
   });
 
-  it('shows whole-Goal execution totals after terminal settlement', () => {
+  it("shows whole-Goal execution totals after terminal settlement", () => {
     render(
       <GoalStatusBar
         goal={goal({
-          status: 'complete',
-          terminalReason: 'Goal achieved',
+          status: "complete",
+          terminalReason: "Goal achieved",
           totalDurationMs: 125_000,
           totalTokens: 12_345,
         })}
@@ -72,22 +77,26 @@ describe('GoalStatusBar', () => {
       />,
     );
 
-    expect(screen.getByText('Total time 2m 5s · Total usage 12.3K tokens')).toBeInTheDocument();
-    expect(screen.queryByText('Goal achieved')).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Total time 2m 5s · Total usage 12.3K tokens"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Goal achieved")).not.toBeInTheDocument();
   });
 
-  it('shows explicit zero totals instead of a live-round fallback', () => {
-    render(<GoalStatusBar goal={goal({ status: 'complete', turnCount: 0 })} />);
+  it("shows explicit zero totals instead of a live-round fallback", () => {
+    render(<GoalStatusBar goal={goal({ status: "complete", turnCount: 0 })} />);
 
-    expect(screen.getByText('Total time 0ms · Total usage 0 tokens')).toBeInTheDocument();
+    expect(
+      screen.getByText("Total time 0ms · Total usage 0 tokens"),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Round/)).not.toBeInTheDocument();
   });
 
-  it('does not expose incomplete totals while the terminal turn is settling', () => {
+  it("does not expose incomplete totals while the terminal turn is settling", () => {
     render(
       <GoalStatusBar
         goal={goal({
-          status: 'complete',
+          status: "complete",
           isExecuting: true,
           totalDurationMs: 60_000,
           totalTokens: 1_000,
@@ -96,7 +105,18 @@ describe('GoalStatusBar', () => {
       />,
     );
 
-    expect(screen.getByText('Finalizing goal summary...')).toBeInTheDocument();
+    expect(screen.getByText("Finalizing goal summary...")).toBeInTheDocument();
     expect(screen.queryByText(/Total usage/)).not.toBeInTheDocument();
+  });
+  it("routes explicit actions without turning objective text into a hidden control", () => {
+    const onEdit = vi.fn();
+    const onCancel = vi.fn();
+    render(<GoalStatusBar goal={goal()} onEdit={onEdit} onCancel={onCancel} />);
+    fireEvent.click(screen.getByText("Finish the release"));
+    expect(onEdit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Edit goal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel goal" }));
+    expect(onEdit).toHaveBeenCalledTimes(1);
+    expect(onCancel).toHaveBeenCalledTimes(1);
   });
 });

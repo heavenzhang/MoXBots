@@ -174,6 +174,8 @@ macOS 输入出现不可见控制字符时，遵循 [WKWebView 输入防护](tec
 - 提交失败保留输入；连续录入场景提交成功后保持焦点。
 - 文本域自增长必须有上限，超过后由自身滚动，不持续推走主要内容。
 
+目标模式与待办的层级、展开、状态和键盘规则见 [`tech_docs/goal_todo_interaction.md`](tech_docs/goal_todo_interaction.md)。
+
 ### 5.3 卡片与资源行
 
 主卡片用于设置区块和独立资源：`paper-elevated`、`radius-lg`，需要结构边界时使用 `line`。紧凑列表卡片默认无描边、无静态阴影，hover 只提升到 `shadow-sm`，不位移。

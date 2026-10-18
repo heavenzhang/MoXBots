@@ -219,6 +219,12 @@
     "expandAll": "Expand all"
   },
   "agentStatus": {
+    "details": "Task progress details",
+    "todos": "Todo",
+    "agents": "Agents",
+    "inProgress": "In progress",
+    "pending": "Pending",
+    "completedCount": "Completed ({{count}})",
     "expand": "Expand Agent status panel",
     "collapse": "Collapse Agent status panel",
     "background": "Background",
