@@ -1,0 +1,83 @@
+{
+  "scope": "Actual About JSX extracted unchanged; synthetic Settings owner state and callbacks. Browser component/interaction verification, not native Tauri or real IPC acceptance.",
+  "reviewer": "root (independent worker unavailable after usage limit)",
+  "cases": [
+    {
+      "name": "checking",
+      "width": 1200,
+      "height": 900,
+      "pass": true
+    },
+    {
+      "name": "known",
+      "width": 1200,
+      "height": 900,
+      "pass": true
+    },
+    {
+      "name": "unknown",
+      "width": 1200,
+      "height": 900,
+      "pass": true
+    },
+    {
+      "name": "retrying",
+      "width": 1200,
+      "height": 900,
+      "pass": true
+    },
+    {
+      "name": "failed",
+      "width": 1200,
+      "height": 900,
+      "pass": true
+    },
+    {
+      "name": "ready",
+      "width": 1200,
+      "height": 900,
+      "pass": true
+    },
+    {
+      "name": "checking",
+      "width": 390,
+      "height": 844,
+      "pass": true
+    },
+    {
+      "name": "known",
+      "width": 390,
+      "height": 844,
+      "pass": true
+    },
+    {
+      "name": "unknown",
+      "width": 390,
+      "height": 844,
+      "pass": true
+    },
+    {
+      "name": "retrying",
+      "width": 390,
+      "height": 844,
+      "pass": true
+    },
+    {
+      "name": "failed",
+      "width": 390,
+      "height": 844,
+      "pass": true
+    },
+    {
+      "name": "ready",
+      "width": 390,
+      "height": 844,
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "hashes": {
+    "src/renderer/pages/settings/SettingsPage.tsx": "ec9bec2eb22845bd5fbb8f42fe10bd66896ad9fed519f60bf0bf5c626a1f1882",
+    "src/renderer/components/UpdateDownloadStatus.tsx": "dbe18c01c3c7d943f6b4c5e441b6a61f320b9825dc91c0081a5312eecb769606"
+  }
+}
