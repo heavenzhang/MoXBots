@@ -3,11 +3,11 @@ import { SessionContinuationBanner, type ContinuationRequest } from '@/component
 import { matchesSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAction';
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
+import { projectErrorMessageResend } from './errorMessageResend';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
 import type { Message } from "@/types/chat";
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
-import { desktopContextOf } from "../../shared/agentMentions";
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import {
   AsyncQuestionContext,
@@ -6066,19 +6066,23 @@ export default function Chat({
     [performRetryFromUserMessage],
   );
 
-  // Banner-level retry: find the last real user message in the session and rewind+resend it.
-  // Used by the agentError banner's 「重新发送」 button (issue #183).
+  // Error-banner resend preserves history and files. Explicit answer regeneration
+  // above still uses the backend's atomic rewind + replay operation.
   const [unconfirmedRetry, setUnconfirmedRetry] = useState<Message | null>(null);
   const resendFailedMessage = useCallback(async (userMsg: Message) => {
-    if (!messagesRef.current.some(message => message.id === userMsg.id)) return;
-    // A lost response can be repaired by replay while the confirmation is open.
-    // Recheck the current projection before issuing another request.
-    if (userMsg.metadata?.clientRequestId && messagesRef.current.some(message =>
-      message.role === 'user' && message.deliveryStatus === undefined &&
-      message.metadata?.clientRequestId === userMsg.metadata?.clientRequestId)) return;
-    const text = typeof userMsg.content === 'string' ? userMsg.content : '';
-    const admitted = await handleSendMessageRef.current(text, restoreMessageImages(userMsg.attachments), undefined, { agentMentions: userMsg.desktopQuery?.agentMentions, primaryContext: desktopContextOf(userMsg.desktopQuery?.primaryContext), requiredSystemSkill: userMsg.desktopQuery?.requiredSystemSkill }, undefined, userMsg.id);
-    if (admitted === true && chatInputRef.current?.getCurrentValue().trim() === text) chatInputRef.current.setValue('');
+    if (conversationOperationPendingRef.current) return;
+    const resend = projectErrorMessageResend(userMsg, messagesRef.current);
+    if (!resend) return;
+    conversationOperationPendingRef.current = true;
+    const resendSessionId = sessionIdRef.current;
+    try {
+      const admitted = await handleSendMessageRef.current(resend.text, resend.images, undefined,
+        resend.context, resend.asyncQuestionReply, resend.retryFailedMessageId);
+      if (sessionIdRef.current !== resendSessionId) return;
+      if (admitted === true && chatInputRef.current?.getCurrentValue().trim() === resend.text) chatInputRef.current.setValue('');
+    } finally {
+      conversationOperationPendingRef.current = false;
+    }
   }, []);
   const handleRetryLastUserMessage = useCallback(() => {
     const msgs = messagesRef.current;
@@ -6105,9 +6109,8 @@ export default function Chat({
       else resendFailedMessage(userMsg);
       return;
     }
-    setAgentError(null);
-    performRetryFromUserMessage(userMsg);
-  }, [agentErrorUserMessageId, performRetryFromUserMessage, setAgentError, resendFailedMessage]);
+    void resendFailedMessage(userMsg);
+  }, [agentErrorUserMessageId, resendFailedMessage]);
 
   // Fork = create a new independent session branch at a specific assistant message
   const handleFork = useCallback((assistantMessageId: string) => {
@@ -6641,7 +6644,8 @@ export default function Chat({
                   }
                 }
                 const resumeBoundaryRejected = agentError === NATIVE_RESUME_BOUNDARY_MESSAGE;
-                const canRetry = !!lastUserMsg && !isLoading && !resumeBoundaryRejected;
+                const canRetry = !!lastUserMsg && !isLoading && !resumeBoundaryRejected
+                  && projectErrorMessageResend(lastUserMsg, msgs) !== null;
                 return (
                   <div className="relative z-10 flex-shrink-0 border-b border-[var(--line)] bg-[var(--paper-inset)] px-4 py-2 text-xs text-[var(--ink)]">
                     <div className="mx-auto flex max-w-3xl items-start gap-2">
