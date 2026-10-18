@@ -115,10 +115,27 @@ def canceled_status_observation():
     return {"kind": "json-non-ready", "ready": False}
 
 
-def canceled_connector_inactive():
+def canceled_connector_inactive(observation=None, save_observation=None):
     result = host_run(["systemctl", "show", CONNECTOR, "--property=LoadState,ActiveState,MainPID"])
-    properties = dict(line.split("=", 1) for line in result.stdout.decode().splitlines())
-    need(properties == {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"},
+    rows = [line.partition("=") for line in result.stdout.decode("ascii", errors="replace").splitlines()]
+    properties = {key: value for key, _, value in rows}
+    load_states = {"loaded", "not-found", "bad-setting", "error", "merged", "masked", "stub"}
+    active_states = {"active", "reloading", "inactive", "failed", "activating", "deactivating", "maintenance", "refreshing"}
+    fields_valid = (len(rows) == 3 and all(separator == "=" for _, separator, _ in rows)
+                    and set(properties) == {"LoadState", "ActiveState", "MainPID"}
+                    and properties.get("LoadState") in load_states
+                    and properties.get("ActiveState") in active_states
+                    and re.fullmatch(r"[0-9]{1,10}", properties.get("MainPID", "")) is not None)
+    projection = {"fieldsValid": fields_valid,
+        "loadState": properties.get("LoadState") if properties.get("LoadState") in load_states else "unknown-redacted",
+        "activeState": properties.get("ActiveState") if properties.get("ActiveState") in active_states else "unknown-redacted",
+        "mainPidIsZero": properties.get("MainPID") == "0"}
+    if observation is not None:
+        observation.update(projection)
+    if save_observation:
+        save_observation()  # persist only the closed projection before assertion
+    need(fields_valid and projection["loadState"] == "loaded" and projection["mainPidIsZero"]
+         and projection["activeState"] in {"inactive", "failed"},
          "canceled-install-connector-inactive")
     return True
 
@@ -971,7 +988,9 @@ def accept(args):
                 need(canceled["sessions"] == [] and canceled["principals"] == 0 and canceled["rotations"] == 0
                      and canceled["catalogs"] == 0 and hits(canceled_routes, "join") == 0
                      and hits(canceled_routes, "cancel") >= 1, "native-cancel-no-account-session-or-join"))
-            step("canceled-install-connector-inactive-with-zero-MainPID", canceled_connector_inactive)
+            summary["canceledConnectorObservation"] = {}
+            step("canceled-install-connector-inactive-with-zero-MainPID", lambda:
+                canceled_connector_inactive(summary["canceledConnectorObservation"], save))
             summary["canceledStatusObservation"] = step("canceled-install-non-Ready-status-observation", canceled_status_observation)
             step("canceled-install-no-Ready-or-join-and-identity-preserved", lambda: True)
             step("same-command-resume-real-Chromium-OIDC-auto-join", lambda:

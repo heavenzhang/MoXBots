@@ -345,13 +345,28 @@ while True: time.sleep(.1)
                 (b"LoadState=loaded\nActiveState=active\nMainPID=0\n", False),
                 (b"LoadState=loaded\nActiveState=inactive\nMainPID=123\n", False),
                 (b"LoadState=not-found\nActiveState=inactive\nMainPID=0\n", False),
-                (b"LoadState=loaded\nActiveState=failed\nMainPID=0\n", False)):
+                (b"LoadState=loaded\nActiveState=failed\nMainPID=0\n", True),
+                (b"LoadState=loaded\nActiveState=failed\nMainPID=123\n", False),
+                (b"LoadState=loaded\nActiveState=activating\nMainPID=0\n", False),
+                (b"LoadState=loaded\nActiveState=deactivating\nMainPID=0\n", False),
+                (b"LoadState=loaded\nActiveState=inactive\nMainPID=0\nMainPID=0\n", False),
+                (b"LoadState=loaded\nActiveState=inactive\nMainPID=bad\n", False),
+                (b"LoadState=loaded\nActiveState=inactive\nMainPID=0\nUnexpected=secret\n", False)):
             with self.subTest(state=state), patch.object(lab, "host_run", return_value=subprocess.CompletedProcess([], 0, state, b"")):
                 if expected:
                     self.assertTrue(lab.canceled_connector_inactive())
                 else:
                     with self.assertRaisesRegex(lab.Rejected, "canceled-install-connector-inactive"):
                         lab.canceled_connector_inactive()
+
+    def test_canceled_connector_saves_closed_projection_before_rejection(self):
+        observation, saved = {}, []
+        state = b"LoadState=loaded\nActiveState=SYNTHETIC_CAPABILITY\nMainPID=123\n"
+        with patch.object(lab, "host_run", return_value=subprocess.CompletedProcess([], 0, state, b"")):
+            with self.assertRaisesRegex(lab.Rejected, "canceled-install-connector-inactive"):
+                lab.canceled_connector_inactive(observation, lambda: saved.append(dict(observation)))
+        self.assertEqual(saved, [{"fieldsValid": False, "loadState": "loaded", "activeState": "unknown-redacted", "mainPidIsZero": False}])
+        self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(observation))
 
     def test_failure_exception_projection_has_only_fixed_class_names(self):
         errors = (json.JSONDecodeError("SYNTHETIC_CAPABILITY", "secret", 0),
