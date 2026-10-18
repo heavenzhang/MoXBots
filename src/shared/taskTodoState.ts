@@ -71,6 +71,49 @@ export function parseTaskUpdateSuccess(result: string | undefined): boolean | un
   }
 }
 
+/**
+ * Parse a `TaskUpdate` result into the mutation it confirms:
+ * `{ success, taskId, statusChange: { from, to }, task? }`.
+ *
+ * Loaded history can arrive without `parsedInput` (the client history projection
+ * drops tool inputs once an old message must be shrunk), so the result is the
+ * only record of *which* task changed and to *what* status. Without this fallback
+ * every replayed status transition is silently skipped and the whole list reads
+ * as pending.
+ */
+export function parseTaskUpdateResult(result: string | undefined): {
+  taskId: string;
+  status?: TaskTodoStatus | 'deleted';
+  subject?: string;
+} | undefined {
+  if (!result) return undefined;
+  try {
+    const parsed = asObject(JSON.parse(result));
+    const taskId = typeof parsed?.taskId === 'string' ? parsed.taskId : undefined;
+    if (!taskId) return undefined;
+
+    const statusChange = asObject(parsed?.statusChange);
+    const rawStatus =
+      typeof statusChange?.to === 'string' ? statusChange.to
+        : typeof parsed?.status === 'string' ? parsed.status
+          : undefined;
+    const status =
+      rawStatus === 'deleted' ? 'deleted'
+        : rawStatus === undefined ? undefined
+          : normalizeStatus(rawStatus);
+
+    const task = asObject(parsed?.task);
+    const subject = typeof task?.subject === 'string' ? task.subject : undefined;
+    return {
+      taskId,
+      ...(status ? { status } : {}),
+      ...(subject ? { subject } : {}),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 interface TaskListResultTask {
   owner?: string;
   id: string;
@@ -179,18 +222,23 @@ export function accumulateTaskTodos(calls: TaskToolCall[]): DerivedTaskTodo[] {
 
     if (call.name === 'TaskUpdate') {
       const input = call.parsedInput as TaskUpdateInput | undefined;
-      const id = typeof input?.taskId === 'string' ? input.taskId : undefined;
+      // Loaded history may have lost parsedInput; the settled result still
+      // records the task id and the confirmed status transition.
+      const settled = parseTaskUpdateResult(call.result);
+      const id = typeof input?.taskId === 'string' ? input.taskId : settled?.taskId;
       if (!id) continue;
       // A rejected update never touches the list.
       if (parseTaskUpdateSuccess(call.result) === false) continue;
-      if (input?.status === 'deleted') {
+      const status = input?.status ?? settled?.status;
+      if (status === 'deleted') {
         remove(id);
         continue;
       }
       const patch: Partial<DerivedTaskTodo> = {};
-      if (typeof input?.subject === 'string') patch.content = input.subject;
+      const subject = typeof input?.subject === 'string' ? input.subject : settled?.subject;
+      if (typeof subject === 'string') patch.content = subject;
       if (typeof input?.activeForm === 'string') patch.activeForm = input.activeForm;
-      if (input?.status) patch.status = normalizeStatus(input.status);
+      if (status) patch.status = normalizeStatus(status);
       // Don't spawn a blank row from a metadata-only update for an unknown task.
       if (!byId.has(id) && patch.content === undefined && patch.status === undefined) continue;
       upsert(id, patch);

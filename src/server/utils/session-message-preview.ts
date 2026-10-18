@@ -13,6 +13,14 @@ import {
 export const CLIENT_HISTORY_AUXILIARY_MAX_BYTES = 256 * 1024;
 const MAX_JSON_SHRINK_DEPTH = 8;
 
+// SDK 0.3.142 Task tools. Their inputs and results are the only record of the
+// session's todo state: the Agent Status panel replays them across history to
+// derive each task's current status. They are tiny, so the auxiliary shrink
+// budget must never truncate them into invalid JSON or drop them wholesale.
+const TASK_TOOL_NAMES = new Set(['TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList']);
+const TASK_TOOL_STRING_BYTES = 512;
+const TASK_LIST_MAX_TASKS = 500;
+
 interface StructuredShrinkLimits {
   thinkingBytes: number;
   toolStringBytes: number;
@@ -104,6 +112,58 @@ function truncateStringForHistory(value: string, maxBytes: number): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isTaskToolName(name: unknown): boolean {
+  return typeof name === 'string' && TASK_TOOL_NAMES.has(name);
+}
+
+function isTaskToolBlock(block: Record<string, unknown>): boolean {
+  return isRecord(block.tool) && isTaskToolName(block.tool.name);
+}
+
+/**
+ * Keep a Task tool result parseable. Status derivation in the renderer depends
+ * on `JSON.parse` succeeding: a raw byte truncation silently invalidates the
+ * payload, so `TaskList` snapshots are compacted field-by-field (never dropping
+ * tasks, because the snapshot reconciles and prunes by id) and every other Task
+ * result is shrunk structurally, which always emits valid JSON.
+ */
+function shrinkTaskToolResultForHistory(name: string, value: string): string {
+  if (name === 'TaskList') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      const tasks = isRecord(parsed) ? parsed.tasks : undefined;
+      if (Array.isArray(tasks)) {
+        const compacted = tasks.flatMap((task) => {
+          if (!isRecord(task) || typeof task.id !== 'string') return [];
+          return [{
+            id: task.id,
+            subject: typeof task.subject === 'string'
+              ? truncateStringForHistory(task.subject, TASK_TOOL_STRING_BYTES)
+              : '',
+            status: typeof task.status === 'string' ? task.status : 'pending',
+            ...(typeof task.owner === 'string' && task.owner ? { owner: task.owner } : {}),
+          }];
+        });
+        // Never emit a partial snapshot: consumers prune ids absent from it.
+        // A real task list is small; compact it whole.
+        return JSON.stringify({ tasks: compacted });
+      }
+    } catch {
+      // Fall through to the generic structural shrink.
+    }
+  }
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return JSON.stringify(shrinkJsonValueForHistory(
+      parsed,
+      TASK_TOOL_STRING_BYTES,
+      TASK_LIST_MAX_TASKS,
+    ));
+  } catch {
+    return truncateStringForHistory(value, TASK_TOOL_STRING_BYTES * 2);
+  }
 }
 
 function isStructuredBlockArray(value: unknown): value is Record<string, unknown>[] {
@@ -330,7 +390,14 @@ function shrinkStructuredContentForClient(content: string): string | null {
         if (key in block.tool) tool[key] = block.tool[key];
       }
       if (typeof block.tool.result === 'string') {
-        tool.result = truncateStringForHistory(block.tool.result, 256);
+        // Task tool payloads are load-bearing (todo status replay), so they stay
+        // valid JSON instead of the generic raw truncation.
+        tool.result = isTaskToolName(block.tool.name)
+          ? shrinkTaskToolResultForHistory(block.tool.name as string, block.tool.result)
+          : truncateStringForHistory(block.tool.result, 256);
+      }
+      if (isTaskToolName(block.tool.name) && typeof block.tool.inputJson === 'string' && block.tool.inputJson) {
+        tool.inputJson = shrinkJsonStringForHistory(block.tool.inputJson, 256, 20, 512);
       }
       output.tool = tool;
     }
@@ -349,16 +416,32 @@ function capBlockCountForHistory(
   const auxiliary = blocks.flatMap((block, index) => typeof block.text === 'string' ? [] : [index]);
   const retained = new Set<number>();
   let used = 2;
+
+  // Task tool blocks are small and carry the session's whole todo state; keep
+  // them ahead of the generic head/tail sampling so a large history cannot
+  // erase the status record.
+  for (const index of auxiliary) {
+    if (!isTaskToolBlock(blocks[index])) continue;
+    const cost = utf8Size(JSON.stringify(blocks[index])) + 1;
+    if (used + cost > Math.floor(maxBytes * 0.9)) break;
+    used += cost;
+    retained.add(index);
+  }
+
   let lo = 0;
   let hi = auxiliary.length - 1;
   let takeHead = true;
   while (lo <= hi) {
     const index = auxiliary[takeHead ? lo : hi];
+    if (takeHead) lo++; else hi--;
+    if (retained.has(index)) {
+      takeHead = !takeHead;
+      continue;
+    }
     const cost = utf8Size(JSON.stringify(blocks[index])) + 1;
     if (used + cost > Math.floor(maxBytes * 0.9)) break;
     used += cost;
     retained.add(index);
-    if (takeHead) lo++; else hi--;
     takeHead = !takeHead;
   }
   const omitted = auxiliary.length - retained.size;

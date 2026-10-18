@@ -1,4 +1,5 @@
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
+import { projectErrorMessageResend } from '../pages/errorMessageResend';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -205,6 +206,13 @@ function Probe() {
         const failed = historyMessages.find(message => message.deliveryStatus === 'failed');
         if (failed) void sendMessage('hello', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, failed.id);
       }}>resend failed message</button>
+      <button type="button" onClick={() => {
+        const original = historyMessages.find(message => message.id === 'admitted-error-user');
+        const resend = original && projectErrorMessageResend(original, historyMessages);
+        if (resend) void sendMessage(resend.text, resend.images, undefined, undefined, undefined, undefined,
+          undefined, undefined, resend.context.requiredSystemSkill, resend.asyncQuestionReply,
+          resend.context.agentMentions, resend.context.primaryContext, resend.retryFailedMessageId);
+      }}>resend admitted error</button>
       <button type="button" onClick={() => void resetSession()}>reset session</button>
       <button type="button" onClick={() => void stopResponse()}>stop response</button>
       <button type="button" onClick={() => {
@@ -833,6 +841,29 @@ describe('TabProvider session activity ownership', () => {
     emit('chat:status', { sessionState: 'idle' });
     expect(readActivity()).toMatchObject({ isLoading: false, historyCount: 1 });
     expect(JSON.parse(screen.getByTestId('history-delivery').textContent!)).toEqual([null]);
+  });
+
+  it('resends an admitted provider failure without retracting earlier messages or invoking native rewind', async () => {
+    const sessionId = 'pending-admitted-error';
+    tauriHarness.proxyFetch.mockResolvedValue(new Response(JSON.stringify({ success: true })));
+    render(<TabProvider tabId="admitted-error" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId, transcriptFormat: 2, sessionState: 'idle' });
+    for (const message of [
+      { id: 'admitted-error-user', role: 'user', content: 'original request', sdkUuid: 'native-user' },
+      { id: 'partial-work', role: 'assistant', content: 'partial tool work already performed', sdkUuid: 'native-assistant' },
+    ]) emit('chat:transcript-operation', { sessionId, operation: { kind: 'message-create', message: { ...message, timestamp: new Date(0).toISOString() } } });
+    emit('chat:agent-error', { message: 'API Error: 499 Model request superseded or cancelled', userMessageId: 'admitted-error-user' });
+    fireEvent.click(screen.getByRole('button', { name: 'resend admitted error' }));
+    await waitFor(() => expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(1));
+    const [url, options] = tauriHarness.proxyFetch.mock.calls[0];
+    expect(String(url)).toMatch(/\/chat\/send$/);
+    expect(JSON.parse(String(options?.body))).toMatchObject({ text: 'original request', sessionId });
+    expect(JSON.parse(screen.getByTestId('history-content').textContent!)).toEqual([
+      'original request', 'partial tool work already performed', 'original request',
+    ]);
+    expect(JSON.parse(screen.getByTestId('history-identities').textContent!).slice(0, 2).map((message: { id: string }) => message.id))
+      .toEqual(['admitted-error-user', 'partial-work']);
   });
 
   it('shows a send immediately in the existing queue while the Runtime is starting', async () => {
