@@ -183,6 +183,8 @@ async fn raw_request_with_limits(
         && method == Method::POST
         && path == "/auth/login/start"
         && token.is_none();
+    let inspect_session =
+        method == Method::GET && path == "/auth/session" && token.is_some() && body.is_none();
     // Only callers with fixed, reviewed routes use this private HTTP seam.
     let diagnostic =
         crate::network_diagnostics::RequestDiagnostic::new("owned-account", &method, path);
@@ -247,6 +249,12 @@ async fn raw_request_with_limits(
     } else {
         serde_json::from_slice(&bytes).map_err(|_| NetworkError::new("OWNED_RESPONSE_INVALID"))?
     };
+    // Session inspection needs to map a confirmed unauthorized response to an
+    // invalid saved session. Keep this exception closed to its fixed bearer GET;
+    // transport failures and every other status retain the normal error mapping.
+    if inspect_session && status == StatusCode::UNAUTHORIZED {
+        return Ok((status, value));
+    }
     if !status.is_success() {
         return Err(NetworkError::cloud(
             value["error"]["code"]
@@ -969,8 +977,20 @@ mod tests {
             (200, true, wrong_device, "OWNED_SESSION_INVALID"),
             (200, true, wrong_network, "OWNED_SESSION_INVALID"),
             (200, true, expired, "OWNED_SESSION_INVALID"),
+            (
+                401,
+                true,
+                json!({"error":"unauthorized"}),
+                "OWNED_SESSION_INVALID",
+            ),
             (201, true, valid.clone(), "OWNED_SESSION_INVALID"),
             (200, false, valid.clone(), "OWNED_RESPONSE_INVALID"),
+            (
+                503,
+                true,
+                json!({"error":{"code":"SERVICE_BUSY"}}),
+                "SERVICE_BUSY",
+            ),
         ] {
             let error = session_response_case(
                 instance.clone(),
@@ -985,6 +1005,9 @@ mod tests {
             .err()
             .expect("invalid session inspection must fail");
             assert_eq!(error.code, expected_code);
+            if status == 503 {
+                assert!(error.retryable);
+            }
         }
 
         let mut changed_expiry = valid;
@@ -995,7 +1018,6 @@ mod tests {
             network_id: instance.network_id.clone(),
             expires_at: now + 600,
         };
-        drop(base);
         let error = session_response_case(
             instance,
             device,
@@ -1009,6 +1031,38 @@ mod tests {
         .err()
         .expect("snapshot expiry drift must fail");
         assert_eq!(error.code, "OWNED_SESSION_INVALID");
+    }
+    #[tokio::test]
+    async fn inspect_session_transport_failure_keeps_transport_error_mapping() {
+        use tokio::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            drop(stream);
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance: instance(),
+        };
+        let device = uuid::Uuid::new_v4().to_string();
+        let token = "a".repeat(43);
+        let request = client.inspect_session(&device, &token);
+        let (_, result) = tokio::join!(server, request);
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("closed HTTP connection must fail"),
+        };
+        assert_eq!(error.code, "OWNED_ACCOUNT_UNAVAILABLE");
+        assert!(error.retryable);
     }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()

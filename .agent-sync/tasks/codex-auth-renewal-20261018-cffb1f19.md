@@ -15,7 +15,7 @@
 - [x] 核实际仓库/remote/main/clean base9269dd8c，独立分支与同步start通过。
 - [x] 截图和只读日志定位：0.5.9 owned login start返回OWNED_LOGIN_INVALID；通知SPACE_*错误分开。101原connector83e48946为ACCOUNT_SESSION_EXPIRED，Host本体正常。
 - [x] 真实HTTPS六次start/cancel复现TTL300/本地301钟差拒绝，未登录/入网；修复回归与交付另行记录。
-- [ ] 原owner修复并保留PKCE、同账号/设备/信任、取消及迟到结果边界。
+- [x] 原owner登录修复/严格inspect_session及270s服务兼容，PKCE/设备/信任/取消/迟到边界回归，独审401映射缺口修复后源审通过；生产状态独立。
 - [ ] 设计并实现可撤销、原设备绑定、持久化/并发/重放安全的自动续期，不能用延长TTL、明文密码计划任务或复制Mac token替代。
 - [ ] Host bounded重连/续期/进程重启恢复、断网/撤销/过期/崩溃窗口回归通过，原管理binding及身份不被替换。
 - [ ] 定向测试、完整相关回归、独立安全审查、UI/隔离原生及真实协议联调通过；代码/模拟/真实分别记证据。
@@ -28,7 +28,7 @@
 
 ## Verification
 
-工作区 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-auth-renewal；原101 device cc8fc885-529b-43e9-8a58-ee7c5f2a4c58 / principal ea1e144e-a432-48c0-bf5a-cf29d3da3b56。现PID1921064，旧MyAgents两个PID未变。只读证据存项目pointer output/auth-renewal-20261018；秘密仅留既有私有凭据owner，不打印或入Git。当前登录时钟边界修复和inspect_session API正在定向回归。现有network-install30、network-control-daemon6、unified-install11共47测试通过；useOwnedLoginFlow16+OwnedAccountEntry22共38通过；无新制品/部署/真实账号登录通过声明。详细决策和证据见dev-docs/auth-renewal-20261018.md。
+工作区 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-auth-renewal；原101 device cc8fc885-529b-43e9-8a58-ee7c5f2a4c58 / principal ea1e144e-a432-48c0-bf5a-cf29d3da3b56。现PID1921064，旧MyAgents两个PID未变。只读证据存项目pointer output/auth-renewal-20261018；秘密仅留既有私有凭据owner，不打印或入Git。登录/API定向7和headless全183通过，主Agent独立重跑定向7通过；server start兼容/PKCE2通过，全service/clippy仍进行；独审401错误合同已修并通过复审。现有network-install30、network-control-daemon6、unified-install11共47测试通过；useOwnedLoginFlow16+OwnedAccountEntry22共38通过；无新制品/部署/真实账号登录通过声明。详细决策和证据见dev-docs/auth-renewal-20261018.md。
 
 ## Deployment coordination
 
