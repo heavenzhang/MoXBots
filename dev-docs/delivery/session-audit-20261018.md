@@ -78,7 +78,7 @@
 
 审计读取基线main：`baa1a637f40b56b7ff64d4f7e8473a87b6bf8c47`。快照原件、commit/PR包含核验、PR104七文件blob、组合模式原会话指令、工作树状态及跟进回执位于项目指针的私有`work/session-audit-20261018/`。本文件只保存非秘密索引，不提交会话正文、凭据、SDK日志或构建制品。
 
-本轮6个Codex原负责人消息均被发送工具接受；这只证明投递。后台日志原owner已恢复执行、Host owner回报聚合PR137、看板owner已回报内容已在main；其他结果以其最终实际Gitref为准。用户在审计期间归档的聊天不为继续催办而自动重开。
+本轮6个Codex原负责人消息均被发送工具接受；这只证明投递。后台日志原owner已恢复执行、Host owner回报聚合PR137、看板owner已回报内容已在main；其他结果以其最终实际Gitref为准。审计期间已归档的聊天不为继续催办而自动重开。
 
 官网历史已在既有下载路径公开，真实发布回执见[`website-release-history.md`](../releases/website-release-history.md)。独立发布前源码/截图/脚本审阅通过；单独发布后独审因账户用量限制未运行，Root亲验公网原文与交互。该边界不改写为独审PASS。
 
