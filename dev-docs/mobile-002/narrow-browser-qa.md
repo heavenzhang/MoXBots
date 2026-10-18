@@ -1,0 +1,7 @@
+# Narrow browser regression checkpoint
+
+Primary CUA used a temporary actual browser viewport override390×844 then360×800 against explicit development-only web fixtures (`__DEV__ && web && EXPO_PUBLIC_MOBILE_QA=1`). This is synthetic browser data/storage, not native, phone, keyboard, microphone or real Host proof. No product UI source was changed by this check. Root integration301 has the same app inputs asf033.
+
+Observed: existing conversation opens and returns to original list; new conversation opens with original Bot and empty draft. No horizontal overflow (documentWidth390/360 equals actual viewportWidth). Resting textarea40px and composer48px at both sizes. Four-line390 draft expands textarea102/composer106 then returns40/48 on clearing. Microphone icon is visible for empty draft; file/image/voice/suggestion/model actions are disclosed only via plus menu. Model selection changes its accessible selected label; closing menu returns to original composition, then list/new paths work.
+
+Actual saved screenshots outside Git under `MoxBot/output/mobile-002/ui-checkpoints/`: `session-390x844-f033.png`, `session-360x800-f033.png`, `new-session-360x800-f033.png`. Browser viewport reset and temporary tab closed afterward. Initial unused127.0.0.1 iframe harness could not reach the IPv6-localhost-only Metro binding; successful QA used the observedlocalhost URL and documented viewport capability directly. It is not an app outage or iframe acceptance.

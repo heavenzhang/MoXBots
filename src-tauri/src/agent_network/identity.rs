@@ -155,6 +155,57 @@ pub(crate) struct NetworkIdentity {
     key: Arc<DevicePrivateKey>,
 }
 impl NetworkIdentity {
+    /// Isolated publisher test only: the actual source HTTP signs this original
+    /// key, registered in the fixture's real DeviceStore. WSS/bootstrap is absent.
+    #[cfg(test)]
+    pub(crate) fn source_fixture(
+        account: NetworkAccountSession,
+        key: Arc<DevicePrivateKey>,
+        generation: u64,
+    ) -> Result<Self, NetworkError> {
+        let NetworkAccountSession::Owned(owned) = &account else {
+            return Err(NetworkError::new("IDENTITY_SCOPE_MISMATCH"));
+        };
+        let scope = KeyScope {
+            issuer: owned.descriptor.issuer.clone(),
+            service_id: owned.descriptor.service_id.clone(),
+            environment: owned.descriptor.environment.clone(),
+            principal_id: owned.session.principal_id.clone(),
+            device_id: owned.device_id.clone(),
+            key_generation: generation,
+        };
+        let now = jsonwebtoken::get_current_timestamp();
+        let access = AccessClaims {
+            iss: scope.issuer.clone(),
+            aud: "isolated-source-test".into(),
+            sub: scope.principal_id.clone(),
+            iat: now,
+            nbf: now,
+            exp: now + 300,
+            jti: uuid::Uuid::new_v4().to_string(),
+            environment: scope.environment.clone(),
+            device_id: scope.device_id.clone(),
+            key_generation: generation,
+            session_handle: uuid::Uuid::new_v4().to_string(),
+            cnf: super::jwt::KeyConfirmation {
+                jkt: key.public_fingerprint()?,
+            },
+        };
+        let verifier =
+            AccountVerifier::source_fixture(account.clone(), owned.descriptor.jwks.clone())?;
+        Ok(Self {
+            scope,
+            peer: None,
+            access,
+            token: Zeroizing::new("unused-synthetic-wss-token".into()),
+            network_url: owned.descriptor.issuer.replace("https:", "wss:"),
+            root_certificate: owned.descriptor.root_certificate.clone(),
+            verifier,
+            key,
+            account,
+        })
+    }
+
     /// Public issuer confirmation lets the registry checkpoint revocation even
     /// when the retiring private key was lost. Persist this before enrollment.
     pub(crate) async fn revoked_scope(

@@ -5,27 +5,132 @@ name: Test
 # not just locally. Required check: a PR that fails this cannot merge.
 on:
   workflow_dispatch:
+    inputs:
+      mobile_ios_app:
+        description: Build only the unsigned offline iOS simulator app
+        type: boolean
+        default: false
   pull_request:
   push:
     branches: [main, "dev/**"]
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}
+  group: test-${{ github.workflow }}-${{ github.ref }}-${{ inputs.mobile_ios_app || false }}
   cancel-in-progress: true
 
 jobs:
+  mobile-ios-app:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_ios_app }}
+    name: iOS simulator · unsigned offline app
+    runs-on: macos-26
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/app/package-lock.json
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mobile/connection
+          cache-on-failure: true
+      - run: npm ci --prefix mobile/app
+      - name: Build complete app with actual Expo, Pods and Rust framework
+        env:
+          EXPO_PUBLIC_MOBILE_QA: '0'
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p output/mobile-ios-simulator
+          node mobile/scripts/build-ios-simulator.mjs 2>&1 | tee output/mobile-ios-simulator/build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mobile-ios-simulator-${{ github.sha }}
+          retention-days: 7
+          path: |
+            output/mobile-ios-simulator/build.log
+            output/mobile-ios-simulator/source-commit.txt
+            output/mobile-ios-simulator/acceptance.txt
+            output/mobile-ios-simulator/*.tar.gz
+            mobile/app/modules/moxbots-remote/ios/Frameworks/MoxConnectionCore.xcframework/**/native-build.json
+          if-no-files-found: error
+
+  mobile-portable:
+    if: ${{ !inputs.mobile_ios_app }}
+    name: mobile SDK · app policy
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: mobile/app/package-lock.json
+      - run: npm ci --prefix mobile/app
+      - run: npm --prefix mobile/app run typecheck
+      - run: npm --prefix mobile/app run lint
+      - run: npm --prefix mobile/app run test:policy
+      - uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            mobile/crypto
+            mobile/core
+            mobile/connection
+            mobile/asset-store
+            src-tauri/host-management-protocol
+            services/agentnet/mobile-notify-core
+      - name: Validate portable controller, journal, wire and byte owners
+        run: |
+          # The imported desktop store harness launches a hardcoded root-module
+          # subprocess test name; it runs in its original crate, not this module adapter.
+          cargo test --manifest-path mobile/crypto/Cargo.toml --locked --features native-store native_store_tests
+          cargo clippy --manifest-path mobile/crypto/Cargo.toml --locked --features native-store --all-targets -- -D warnings
+          cargo test --manifest-path mobile/core/Cargo.toml --locked
+          cargo clippy --manifest-path mobile/core/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path mobile/connection/Cargo.toml --locked
+          cargo clippy --manifest-path mobile/connection/Cargo.toml --locked --all-targets -- -D clippy::disallowed_methods -D clippy::disallowed_macros
+          cargo test --manifest-path mobile/asset-store/Cargo.toml --locked
+          cargo clippy --manifest-path mobile/asset-store/Cargo.toml --locked --all-targets -- -D warnings
+          cargo test --manifest-path src-tauri/host-management-protocol/Cargo.toml --locked
+          cargo test --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked
+          cargo clippy --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked --all-targets -- -D warnings
+
   headless-network:
+    if: ${{ !inputs.mobile_ios_app }}
     name: headless AgentNet connector · no desktop
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Verify original Host mobile admission, images, approvals and restart recovery
+        if: runner.os == 'Linux'
+        timeout-minutes: 5
+        run: |
+          node --import tsx scripts/verify-mobile-original-host-loopback.ts
+          node --import tsx scripts/verify-mobile-original-host-loopback.ts --image-boundary
+          node --import tsx scripts/verify-mobile-original-host-interactions.ts
       - uses: dtolnay/rust-toolchain@1.92.0
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri/headless-network
+          workspaces: |
+            src-tauri/headless-network
+            services/agentnet
+            mobile/connection
       - name: Validate standalone network owner
         run: |
           cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked
@@ -40,6 +145,22 @@ jobs:
           python3 scripts/host/network-control-daemon.test.py
           python3 scripts/host/unified-install.test.py
           python3 scripts/host/one-command.test.py
+      - name: Verify actual notification source across Node, native publisher and service stores
+        timeout-minutes: 15
+        run: |
+          # Compile/fetch the separate locked service fixture before its child
+          # process runs offline. Only isolated temporary owners and loopback
+          # TLS are used; this never enrolls a real device or invokes a real Session.
+          cargo test --manifest-path services/agentnet/Cargo.toml --locked --no-run actual_host_source_service_fixture
+          cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked --offline actual_publish_private_node_source -- --ignored --nocapture
+      - name: Verify original encrypted mobile and Host session chain
+        timeout-minutes: 15
+        run: |
+          # Actual original clients, TLS/WSS, Host/SDK and SessionStore; isolated
+          # synthetic login and loopback supplier only. No production grants.
+          node scripts/verify-mobile-full-host-e2e.mjs
+          node scripts/verify-mobile-full-host-e2e.mjs --assets
+          node scripts/verify-mobile-full-host-e2e.mjs --ffi
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}
@@ -65,6 +186,7 @@ jobs:
   # The headless identity store must build without Tauri/GTK or a desktop
   # credential service. Actual systemd projection is a separate server gate.
   headless-identity:
+    if: ${{ !inputs.mobile_ios_app }}
     name: headless identity store · no desktop
     # Match the first authorized Linux acceptance server's glibc baseline.
     runs-on: ubuntu-24.04
@@ -112,6 +234,7 @@ jobs:
   # loopback-only network via setup-integration.ts. Real Provider / SDK smoke
   # lives in `credentialed` and is intentionally excluded from public CI.
   js:
+    if: ${{ !inputs.mobile_ios_app }}
     name: typecheck · lint · tests · build smoke
     runs-on: ubuntu-latest
     steps:
@@ -264,6 +387,7 @@ jobs:
   # disallowed_methods/macros here; ordinary Clippy warnings stay non-fatal
   # until they are cleaned up in a dedicated phase.
   rust:
+    if: ${{ !inputs.mobile_ios_app }}
     name: cargo test · clippy redlines
     runs-on: ubuntu-latest
     steps:
@@ -324,6 +448,7 @@ jobs:
   # type-check or execute `cfg(windows)`. Run workspace IO tests natively:
   # compile-only checks cannot detect invalid OS rename parameters (#641).
   windows-rust:
+    if: ${{ !inputs.mobile_ios_app }}
     name: Windows cargo check · workspace IO
     runs-on: windows-latest
     steps:
@@ -434,6 +559,7 @@ jobs:
   # CLIProxy native lifecycle fixtures require a supported Unix platform.
   # Keep Linux's broad Rust gate; apple-metal requires the Xcode 26 SDK.
   macos-cliproxy:
+    if: ${{ !inputs.mobile_ios_app }}
     name: macOS CLIProxy lifecycle
     runs-on: macos-26
     steps:
@@ -444,7 +570,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.92.0
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            mobile/connection
+      - name: Check iOS native core against actual device and simulator SDKs
+        run: node mobile/scripts/check-ios-native.mjs
       - name: Prepare signed CLIProxy build inputs
         run: node scripts/prepare-cliproxy.mjs
       - name: Prepare non-executed Tauri resource paths

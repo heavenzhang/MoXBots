@@ -373,6 +373,10 @@ User authorized owned relay terminal recovery first, then DSH child approval gui
 按用户要求移除全局浏览器式TabBar，以当前会话页面/侧栏为导航；沿原Chat保存与后台继续owner做12页FIFO有界回收，保护输入/录音和活动页面。验收与发布请求见 `dev-docs/session-windows/acceptance.md`，分支任务 `.agent-sync/tasks/codex-session-windows-20261017-31ed5a11.md`。156项定向回归、实际renderer三尺寸与独立代码/截图审阅通过；CI/main以PR为准，原生包/真实会话仍待既定唯一发布owner下一未冻结候选，不操作日常App，不把main合并当已发布。
 
 
+## MOXBOTS-MOBILE-002 — 2026-10-18
+
+User approved RN/TS/Expo custom native builds plus a portable Rust controller SDK, existing AgentNet/Host/Session owners, first internal trial then store preparation. Full daily-use delivery and three real gates are tracked at `dev-docs/mobile-002/plan.md` and `.agent-sync/tasks/codex-mobile-002-20261018-75c72088.md`. No mock/local validation closes actual iOS/Android, push, Host execution or signing gates. Existing sole desktop updater deployment remains unchanged; new mobile/shared-service target deployments require scoped owner/target, backup and rollback. Current root owns mobile code/integration; no parallel production action.
+
 ## MOXBOTS-AUTH-RENEWAL-20261018
 
 用户明确要求修复浏览器已登录而客户端登录失败，并为101 Host增加安全续期/断线恢复，保留原设备、测试/main并部署101，不动日常Mac。登录工作分支codex/auth-renewal-20261018拥有owned_login.rs的时钟边界/严格session检查及server.rs start的保守270s旧版兼容；匿名真实HTTPS复现TTL300被1秒钟差判为301拒绝，测试事务均已取消。续期核心复用并行MOXBOTS-HOST-ONBOARD-001唯一owner，禁止双写AuthStore/account/transport/connector。先合登录修复，再由续期方吸收做组合CI及真实部署；沿当前唯一统一部署聊天串行，未授予开发worker生产权限，不以Git合入当安装/续期完成。任务记录.agent-sync/tasks/codex-auth-renewal-20261018-cffb1f19.md维护真实验收和未完成边界。

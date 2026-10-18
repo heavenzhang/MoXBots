@@ -1,3 +1,5 @@
+#[path = "catalog.rs"]
+pub(crate) mod catalog;
 #[path = "../../src/agent_network/catalog_ack.rs"]
 pub(crate) mod catalog_ack;
 
@@ -23,6 +25,7 @@ use myagents_agent_network_protocol::{
     budget, CatalogSnapshot, ChangeScope, ClientMessage, ServerEnvelope, ServerMessage,
 };
 use myagents_host_management_protocol::{ManagementMessage, PeerRole};
+use sha2::Digest;
 use std::{
     path::Path,
     sync::{
@@ -61,8 +64,8 @@ pub(crate) fn hello() -> ClientMessage {
     }
 }
 pub(crate) fn empty_catalog(epoch: String) -> Result<serde_json::Value, NetworkError> {
-    // This dedicated owner exposes no Agent registry or business invoke adapter.
-    // Empty is its explicit product configuration, never a fallback after read failure.
+    // Unmanaged headless owners explicitly expose no registry. Managed owners
+    // must read their original Host registry and never fall back after failure.
     let value = serde_json::to_value(CatalogSnapshot {
         version: 1,
         connection_epoch: epoch,
@@ -166,6 +169,339 @@ fn require_captured_binding(actual: &str, captured: &str) -> Result<(), NetworkE
         Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"))
     }
 }
+fn verify_binding_snapshot(
+    account_binding: &str,
+    management_binding: &str,
+    captured_binding: &str,
+) -> Result<(), NetworkError> {
+    require_captured_binding(account_binding, captured_binding)?;
+    require_captured_binding(management_binding, captured_binding)
+}
+fn mobile_asset_scope(
+    identity: &NetworkIdentity,
+    peer: &myagents_agent_network_protocol::DeviceScope,
+    local: &myagents_agent_network_protocol::DeviceScope,
+    connection: &myagents_agent_network_protocol::ConnectionScope,
+    agent_id: &str,
+) -> Result<moxbots_asset_store::AssetScope, NetworkError> {
+    use myagents_host_management_protocol::CanonicalUuid;
+    if peer.network_id != local.network_id
+        || connection.network_id != local.network_id
+        || peer.service_id != local.service_id
+        || connection.service_id != local.service_id
+        || peer.environment != local.environment
+    {
+        return Err(NetworkError::new("ASSET_SCOPE_MISMATCH"));
+    }
+    Ok(moxbots_asset_store::AssetScope {
+        issuer: identity.account.issuer().to_owned(),
+        service_id: CanonicalUuid::parse(&local.service_id)
+            .map_err(|_| NetworkError::new("ASSET_SCOPE_INVALID"))?,
+        environment: local.environment.clone(),
+        network_id: CanonicalUuid::parse(&local.network_id)
+            .map_err(|_| NetworkError::new("ASSET_SCOPE_INVALID"))?,
+        principal_id: identity.account.principal_id()?.to_owned(),
+        controller_device_id: CanonicalUuid::parse(&peer.device_id)
+            .map_err(|_| NetworkError::new("ASSET_SCOPE_INVALID"))?,
+        controller_key_generation: peer.key_generation,
+        target_device_id: CanonicalUuid::parse(&local.device_id)
+            .map_err(|_| NetworkError::new("ASSET_SCOPE_INVALID"))?,
+        agent_id: agent_id.to_owned(),
+    })
+}
+#[derive(Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OwnerItem {
+    source_id: String,
+    name: String,
+    mime_type: String,
+    size_bytes: u64,
+    sha256: String,
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OwnerPage {
+    kind: String,
+    agent_id: String,
+    session_id: String,
+    items: Vec<OwnerItem>,
+    has_more: bool,
+    next_before: Option<String>,
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OwnerChunk {
+    kind: String,
+    source_id: String,
+    offset: u64,
+    data_base64: String,
+    sha256: String,
+    eof: bool,
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct StageAck {
+    kind: String,
+    asset_id: String,
+    received_bytes: u64,
+    ready: bool,
+}
+fn validate_stage_ack(
+    value: serde_json::Value,
+    asset_id: &str,
+    received: u64,
+    ready: bool,
+) -> Result<(), NetworkError> {
+    if value.get("kind").and_then(serde_json::Value::as_str) == Some("error") {
+        return Err(NetworkError::new("ASSET_STAGE_FAILED"));
+    }
+    let ack: StageAck = serde_json::from_value(value)
+        .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+    if ack.kind != "stage"
+        || ack.asset_id != asset_id
+        || ack.received_bytes != received
+        || ack.ready != ready
+    {
+        return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+    }
+    Ok(())
+}
+async fn store_execute(
+    store: std::sync::Arc<moxbots_asset_store::AssetStore>,
+    scope: moxbots_asset_store::AssetScope,
+    request: myagents_host_management_protocol::RemoteAssetRequest,
+) -> Result<myagents_host_management_protocol::RemoteAssetResult, NetworkError> {
+    tokio::task::spawn_blocking(move || store.execute(&scope, &request))
+        .await
+        .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
+        .map_err(|error| NetworkError::new(error.code))
+}
+
+fn verify_mobile_authority(
+    runtime: ManagementRuntime<'_>,
+    identity: &NetworkIdentity,
+    captured_binding: &str,
+) -> Result<(), NetworkError> {
+    identity.account.ensure_current()?;
+    runtime.binding.verify()?;
+    verify_binding_snapshot(
+        identity.account.binding_id(),
+        runtime.binding.account_binding(),
+        captured_binding,
+    )
+}
+
+async fn mobile_internal_request(
+    runtime: ManagementRuntime<'_>,
+    identity: &NetworkIdentity,
+    captured_binding: &str,
+    request_id: myagents_host_management_protocol::CanonicalUuid,
+    authority: crate::management_ipc::InternalAuthority,
+    operation: crate::management_ipc::InternalOperation,
+) -> Result<serde_json::Value, NetworkError> {
+    verify_mobile_authority(runtime, identity, captured_binding)?;
+    let result = runtime
+        .ipc
+        .request_internal(request_id, authority, operation)
+        .await;
+    // Preserve the post-call authority gate even when Node/IPC returned an
+    // error. Any account switch or revoked local grant takes precedence.
+    verify_mobile_authority(runtime, identity, captured_binding)?;
+    result
+}
+
+async fn owner_list(
+    runtime: ManagementRuntime<'_>,
+    identity: &NetworkIdentity,
+    captured_binding: &str,
+    request_id: myagents_host_management_protocol::CanonicalUuid,
+    authority: crate::management_ipc::InternalAuthority,
+    scope: moxbots_asset_store::AssetScope,
+    request: myagents_host_management_protocol::RemoteAssetRequest,
+) -> Result<myagents_host_management_protocol::RemoteAssetResult, NetworkError> {
+    use myagents_host_management_protocol::{
+        CanonicalUuid, RemoteAssetRequest as R, RemoteAssetResult as O,
+    };
+    let R::List {
+        agent_id,
+        session_id,
+        limit,
+        before,
+        ..
+    } = request
+    else {
+        return Err(NetworkError::new("ASSET_REQUEST_INVALID"));
+    };
+    let store = runtime.ipc.asset_store();
+    let scope_copy = scope.clone();
+    let session_copy = session_id.clone();
+    let page_value = mobile_internal_request(
+        runtime,
+        identity,
+        captured_binding,
+        request_id,
+        authority.clone(),
+        crate::management_ipc::InternalOperation::OwnerList {
+            agent_id: agent_id.clone(),
+            session_id: session_id.clone(),
+            limit,
+            before,
+        },
+    )
+    .await?;
+    if page_value.get("kind").and_then(serde_json::Value::as_str) == Some("error") {
+        let code = page_value
+            .get("code")
+            .and_then(serde_json::Value::as_str)
+            .filter(|v| {
+                !v.is_empty()
+                    && v.len() <= 128
+                    && v.bytes()
+                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b == b'_')
+            })
+            .unwrap_or("REMOTE_ASSET_OWNER_FAILED");
+        return Ok(O::Error {
+            version: 1,
+            code: code.into(),
+        });
+    }
+    let page: OwnerPage = serde_json::from_value(page_value)
+        .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+    if page.kind != "owner-page"
+        || page.agent_id != agent_id
+        || page.session_id != session_id
+        || page.items.len() > limit as usize
+        || page.has_more != page.next_before.is_some()
+    {
+        return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+    }
+    let mut items = Vec::with_capacity(page.items.len());
+    for item in page.items {
+        CanonicalUuid::parse(&item.source_id)
+            .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+        let store_for_find = store.clone();
+        let scope_for_find = scope_copy.clone();
+        let session_for_find = session_copy.clone();
+        let metadata = item.clone();
+        let existing = tokio::task::spawn_blocking(move || {
+            store_for_find.find_owner_source(
+                &scope_for_find,
+                &session_for_find,
+                moxbots_asset_store::OwnerSourceMetadata {
+                    source_id: &metadata.source_id,
+                    name: &metadata.name,
+                    mime_type: &metadata.mime_type,
+                    size_bytes: metadata.size_bytes,
+                    sha256: &metadata.sha256,
+                },
+            )
+        })
+        .await
+        .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
+        .map_err(|error| NetworkError::new(error.code))?;
+        let descriptor = if let Some(existing) = existing {
+            existing
+        } else {
+            let upload = CanonicalUuid::new(uuid::Uuid::new_v4());
+            store_execute(
+                store.clone(),
+                scope_copy.clone(),
+                R::UploadBegin {
+                    version: 1,
+                    agent_id: agent_id.clone(),
+                    upload_id: upload,
+                    name: item.name.clone(),
+                    mime_type: item.mime_type.clone(),
+                    size_bytes: item.size_bytes,
+                    sha256: item.sha256.clone(),
+                },
+            )
+            .await?;
+            let mut offset = 0u64;
+            while offset < item.size_bytes {
+                let chunk_value = mobile_internal_request(
+                    runtime,
+                    identity,
+                    captured_binding,
+                    request_id,
+                    authority.clone(),
+                    crate::management_ipc::InternalOperation::OwnerRead {
+                        agent_id: agent_id.clone(),
+                        session_id: session_id.clone(),
+                        source_id: item.source_id.clone(),
+                        offset,
+                        max_bytes: 24 * 1024,
+                    },
+                )
+                .await?;
+                let chunk: OwnerChunk = serde_json::from_value(chunk_value)
+                    .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+                if chunk.kind != "owner-chunk"
+                    || chunk.source_id != item.source_id
+                    || chunk.offset != offset
+                {
+                    return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+                }
+                let bytes = base64::Engine::decode(
+                    &base64::engine::general_purpose::STANDARD,
+                    &chunk.data_base64,
+                )
+                .map_err(|_| NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))?;
+                if bytes.is_empty()
+                    || bytes.len() > 24 * 1024
+                    || format!("{:x}", sha2::Sha256::digest(&bytes)) != chunk.sha256
+                    || offset + bytes.len() as u64 > item.size_bytes
+                    || chunk.eof != (offset + bytes.len() as u64 == item.size_bytes)
+                {
+                    return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
+                }
+                store_execute(
+                    store.clone(),
+                    scope_copy.clone(),
+                    R::UploadChunk {
+                        version: 1,
+                        agent_id: agent_id.clone(),
+                        upload_id: upload,
+                        offset,
+                        data_base64: chunk.data_base64,
+                        sha256: chunk.sha256,
+                    },
+                )
+                .await?;
+                offset += bytes.len() as u64;
+            }
+            store_execute(
+                store.clone(),
+                scope_copy.clone(),
+                R::UploadFinish {
+                    version: 1,
+                    agent_id: agent_id.clone(),
+                    upload_id: upload,
+                },
+            )
+            .await?;
+            let store_for_bind = store.clone();
+            let scope_for_bind = scope_copy.clone();
+            let sess = session_copy.clone();
+            let source_id = item.source_id.clone();
+            tokio::task::spawn_blocking(move || {
+                store_for_bind.bind_ready_upload(&scope_for_bind, &sess, upload, &source_id)
+            })
+            .await
+            .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
+            .map_err(|error| NetworkError::new(error.code))?
+        };
+        items.push(descriptor);
+    }
+    Ok(O::List {
+        version: 1,
+        agent_id,
+        session_id,
+        items,
+        has_more: page.has_more,
+        next_before: page.next_before,
+    })
+}
 #[derive(Clone, Copy)]
 struct ManagementRuntime<'a> {
     ipc: &'a crate::management_ipc::ManagementIpc,
@@ -268,13 +604,22 @@ async fn connect(
     .await?;
     let (scope, local, _) = initial_hello(&mut socket, &identity).await?;
     publish(owner, path, "catalog", Some(&scope.network_id), false, None)?;
+    let initial_catalog = if let Some(runtime) = management {
+        catalog::read_initial_catalog(runtime.ipc, runtime.binding, &identity, &scope, &local)
+            .await?
+    } else {
+        empty_catalog(scope.connection_epoch.clone())?
+    };
     let uploaded = transport
         .json(
             NetworkRoute::Catalog,
             &identity.token,
-            Some(empty_catalog(scope.connection_epoch.clone())?),
+            Some(initial_catalog),
         )
         .await?;
+    if let Some(runtime) = management {
+        catalog::verify_current(runtime.binding, &identity, &scope, &local)?;
+    }
     catalog_ack::validate_catalog_ack(&uploaded, &scope.connection_epoch, 1).map_err(|error| {
         NetworkError::new(match error {
             catalog_ack::CatalogAckError::Invalid => "CATALOG_INVALID",
@@ -294,6 +639,31 @@ async fn connect(
         },
     )
     .await?;
+    let source_ready = Arc::new(AtomicBool::new(false));
+    let source_signal = source_ready.clone();
+    let source_identity = identity.clone();
+    let source_scope = scope.clone();
+    let source_local = local.clone();
+    let source_publisher = async move {
+        if let (Some(connection), Some(runtime)) = (owned, management) {
+            let authority = crate::management_ipc::LocalSourceAuthority {
+                connection: source_scope,
+                local: source_local,
+                account_binding: source_identity.account.binding_id().into(),
+                management_binding: runtime.binding.account_binding().into(),
+            };
+            crate::notification_source::run(
+                connection,
+                runtime.ipc,
+                runtime.binding,
+                source_identity,
+                authority,
+                source_signal,
+            )
+            .await;
+        }
+        std::future::pending::<()>().await;
+    };
     let mut ready = false;
     let mut execution_fence: Option<ExecutionFence> = None;
     let management_enabled =
@@ -304,6 +674,7 @@ async fn connect(
     let mut last_server = Instant::now();
     let mut last_ping = Instant::now();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
+    let connection_loop = async {
     loop {
         if let Err(error) = identity.account.ensure_current() {
             // A lost response may cross the old local deadline. Only a pending
@@ -337,7 +708,7 @@ async fn connect(
         if owned.is_some() { crate::agent_network::owned_profile::control(&envelope.message)?; }
         control_gate(&envelope.message,&scope,true,true)?;
         match envelope.message{
-        ServerMessage::Ready{catalog_seq:1,..} if !ready=>{ready=true;backoff.recovered();publish(owner,path,"ready",Some(&scope.network_id),true,None)?;execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;},
+        ServerMessage::Ready{catalog_seq:1,..} if !ready=>{ready=true;source_ready.store(true,Ordering::Release);backoff.recovered();publish(owner,path,"ready",Some(&scope.network_id),true,None)?;execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;},
         ServerMessage::Changed{change:ChangeScope::Settings|ChangeScope::Catalog,..}=>{drop(execution_fence.take());publish(owner,path,"hydrating",Some(&scope.network_id),false,None)?;policy=if owned.is_some(){policy::hydrate_owned(&transport,&identity.token,&local).await?}else{policy::hydrate(&transport,&identity.token,&local).await?};if identity.account.is_management_only()&&!policy.joined{return Err(NetworkError::new("OWNED_MEMBERSHIP_REQUIRED"));}publish(owner,path,if ready{"ready"}else{"hydrating"},Some(&scope.network_id),ready,None)?;if ready{execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;}},
         ServerMessage::Changed{..} if identity.account.is_management_only()=>{
             drop(execution_fence.take());
@@ -392,7 +763,7 @@ async fn connect(
             if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.credit(&channel_id,sequence,received_bytes){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} } }
         },
         ServerMessage::ChannelReady{channel_id,..}=>{
-            if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.ready(&channel_id){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} else { let (events,allocation)=pairs.feed_management(&channel_id,&[]) ?; handle_management_events(&mut socket,pairs,&scope,&channel_id,events,management,&identity).await?; drop(allocation); } } else { send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_NOT_FOUND".into()}).await?; } }
+            if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.ready(&channel_id){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} else { let (events,allocation)=pairs.feed_management(&channel_id,&[]) ?; handle_management_events(&mut socket,pairs,&scope,&local,&channel_id,events,management,&identity).await?; drop(allocation); } } else { send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_NOT_FOUND".into()}).await?; } }
         },
         ServerMessage::ChannelClosed{channel_id,..}=>{if let Some(pairs)=pairs.as_mut(){pairs.remove(&channel_id);} pending_offers.remove(&channel_id);},
         ServerMessage::Error{code,retryable}=>{let mut e=NetworkError::cloud(&code,400);e.retryable=retryable;return Err(e);},
@@ -409,7 +780,7 @@ async fn connect(
             }
             identity.account.ensure_current()?;
             let (events,allocation)=match pairs.feed_management(&channel_id,payload){Ok(value)=>value,Err(error)=>{pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;continue;}};
-            handle_management_events(&mut socket,pairs,&scope,&channel_id,events,management,&identity).await?;
+            handle_management_events(&mut socket,pairs,&scope,&local,&channel_id,events,management,&identity).await?;
             if pairs.has_channel(&channel_id) {
                 let (sequence,received_bytes)=pairs.release_credit(&channel_id,bytes.len())?;
                 send(&mut socket,ClientMessage::Credit{scope:scope.clone(),channel_id,sequence,received_bytes}).await?;
@@ -456,12 +827,31 @@ async fn connect(
         }
         }}
     }
+    };
+    poll_connection_with_source(connection_loop, source_publisher).await
+}
+
+/// Keep the source future progressing while a socket branch awaits the same
+/// private IPC mutex. Both futures remain scoped to this connection; returning
+/// or cancelling the connection immediately drops the source and its locks.
+async fn poll_connection_with_source<C, S>(connection: C, source: S) -> C::Output
+where
+    C: std::future::Future,
+    S: std::future::Future<Output = ()>,
+{
+    tokio::pin!(connection);
+    tokio::pin!(source);
+    tokio::select! {
+        result = &mut connection => result,
+        () = &mut source => connection.await,
+    }
 }
 
 async fn handle_management_events(
     socket: &mut crate::agent_network::transport::NetworkSocket,
     pairs: &mut Pairs,
     scope: &myagents_agent_network_protocol::ConnectionScope,
+    local: &myagents_agent_network_protocol::DeviceScope,
     channel_id: &str,
     events: Vec<ManagementEvent>,
     management: Option<ManagementRuntime<'_>>,
@@ -490,13 +880,182 @@ async fn handle_management_events(
                 identity.account.ensure_current()?;
                 if let Some(runtime) = management {
                     runtime.binding.verify()?;
+                    require_captured_binding(
+                        identity.account.binding_id(),
+                        runtime.binding.account_binding(),
+                    )?;
                 }
                 let result = match management {
                     Some(runtime) => {
-                        runtime
-                            .ipc
-                            .request(channel_id, request_id, method, params)
-                            .await
+                        match (method, params) {
+                            (
+                                myagents_host_management_protocol::ManagementMethod::RemoteAssets,
+                                myagents_host_management_protocol::RequestParams::RemoteAssets {
+                                    remote_assets,
+                                },
+                            ) => {
+                                let (peer, peer_epoch) = pairs.peer(channel_id)?;
+                                let captured_binding = identity.account.binding_id().to_owned();
+                                let authority = crate::management_ipc::InternalAuthority {
+                                    connection: scope.clone(),
+                                    peer: peer.clone(),
+                                    peer_epoch: peer_epoch.to_owned(),
+                                    local: local.clone(),
+                                    account_binding: captured_binding.clone(),
+                                    management_binding: runtime
+                                        .binding
+                                        .account_binding()
+                                        .to_owned(),
+                                };
+                                if matches!(
+                                    remote_assets,
+                                    myagents_host_management_protocol::RemoteAssetRequest::List { .. }
+                                ) {
+                                    let asset_scope = mobile_asset_scope(
+                                        identity,
+                                        peer,
+                                        local,
+                                        scope,
+                                        remote_assets.agent_id(),
+                                    )?;
+                                    owner_list(runtime,identity,&captured_binding,request_id,authority,asset_scope,remote_assets).await
+                                    .map(|data|myagents_host_management_protocol::ResponseResult::RemoteAssets{data})
+                                } else {
+                                    let asset_scope = mobile_asset_scope(
+                                        identity,
+                                        peer,
+                                        local,
+                                        scope,
+                                        remote_assets.agent_id(),
+                                    )?;
+                                    let store = runtime.ipc.asset_store();
+                                    let request = remote_assets.clone();
+                                    let data = tokio::task::spawn_blocking(move || store.execute(&asset_scope, &request))
+                                    .await.map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
+                                    .unwrap_or_else(|error| myagents_host_management_protocol::RemoteAssetResult::Error { version:1, code:error.code.into() });
+                                    Ok(myagents_host_management_protocol::ResponseResult::RemoteAssets { data })
+                                }
+                            }
+                            (
+                                myagents_host_management_protocol::ManagementMethod::RemoteMobile,
+                                myagents_host_management_protocol::RequestParams::RemoteMobile {
+                                    remote_mobile,
+                                },
+                            ) => {
+                                let (peer, peer_epoch) = pairs.peer(channel_id)?;
+                                let captured_binding = identity.account.binding_id().to_owned();
+                                let authority = crate::management_ipc::InternalAuthority {
+                                    connection: scope.clone(),
+                                    peer: peer.clone(),
+                                    peer_epoch: peer_epoch.to_owned(),
+                                    local: local.clone(),
+                                    account_binding: captured_binding.clone(),
+                                    management_binding: runtime
+                                        .binding
+                                        .account_binding()
+                                        .to_owned(),
+                                };
+                                let staged_mobile = match &remote_mobile {
+                                    myagents_host_management_protocol::RemoteMobileRequest::Start{agent_id,operation_id,asset_ids,..} => Some((agent_id, operation_id.as_uuid().to_string(), asset_ids)),
+                                    myagents_host_management_protocol::RemoteMobileRequest::Send{agent_id,session_id,asset_ids,..} => Some((agent_id, session_id.clone(), asset_ids)),
+                                    _ => None,
+                                };
+                                if let Some((agent_id, session_id, asset_ids)) = staged_mobile {
+                                    if !asset_ids.is_empty() {
+                                        let asset_scope = mobile_asset_scope(
+                                            identity, peer, local, scope, agent_id,
+                                        )?;
+                                        let store = runtime.ipc.asset_store();
+                                        for asset in asset_ids {
+                                            let store = store.clone();
+                                            let scope_for_lease = asset_scope.clone();
+                                            let asset_id = *asset;
+                                            let lease = tokio::task::spawn_blocking(move || {
+                                                store.ready_asset_lease(&scope_for_lease, asset_id)
+                                            })
+                                            .await
+                                            .map_err(|_| {
+                                                NetworkError::new("ASSET_STORE_UNAVAILABLE")
+                                            })?
+                                            .map_err(|error| NetworkError::new(error.code))?;
+                                            let asset_id = asset.as_uuid().to_string();
+                                            let stage=crate::management_ipc::InternalOperation::StageBegin{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone(),name:lease.name.clone(),mime_type:lease.mime_type.clone(),size_bytes:lease.size_bytes,sha256:lease.sha256.clone()};
+                                            let begin_ack = mobile_internal_request(
+                                                runtime,
+                                                identity,
+                                                &captured_binding,
+                                                request_id,
+                                                authority.clone(),
+                                                stage,
+                                            )
+                                            .await?;
+                                            validate_stage_ack(begin_ack, &asset_id, 0, false)?;
+                                            let mut file =
+                                                lease.file().try_clone().map_err(|_| {
+                                                    NetworkError::new("ASSET_IO_FAILED")
+                                                })?;
+                                            use std::io::{Read, Seek, SeekFrom};
+                                            file.seek(SeekFrom::Start(0)).map_err(|_| {
+                                                NetworkError::new("ASSET_IO_FAILED")
+                                            })?;
+                                            let mut offset = 0u64;
+                                            while offset < lease.size_bytes {
+                                                let len = (lease.size_bytes - offset).min(24 * 1024)
+                                                    as usize;
+                                                let mut bytes = vec![0u8; len];
+                                                file.read_exact(&mut bytes).map_err(|_| {
+                                                    NetworkError::new("ASSET_IO_FAILED")
+                                                })?;
+                                                let sha256 =
+                                                    format!("{:x}", sha2::Sha256::digest(&bytes));
+                                                let data_base64 = base64::Engine::encode(
+                                                    &base64::engine::general_purpose::STANDARD,
+                                                    &bytes,
+                                                );
+                                                offset += len as u64;
+                                                let ack=mobile_internal_request(runtime,identity,&captured_binding,request_id,authority.clone(),crate::management_ipc::InternalOperation::StageChunk{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone(),offset:offset-len as u64,data_base64,sha256}).await?;
+                                                validate_stage_ack(ack, &asset_id, offset, false)?;
+                                            }
+                                            let finish_ack=mobile_internal_request(runtime,identity,&captured_binding,request_id,authority.clone(),crate::management_ipc::InternalOperation::StageFinish{agent_id:agent_id.clone(),session_id:session_id.clone(),asset_id:asset_id.clone()}).await?;
+                                            validate_stage_ack(
+                                                finish_ack, &asset_id, offset, true,
+                                            )?;
+                                        }
+                                    }
+                                }
+                                mobile_internal_request(
+                                        runtime,
+                                        identity,
+                                        &captured_binding,
+                                        request_id,
+                                        authority,
+                                        crate::management_ipc::InternalOperation::Mobile {
+                                            request: remote_mobile,
+                                        },
+                                    )
+                                    .await
+                                    .and_then(|value| {
+                                        if value.get("kind").and_then(serde_json::Value::as_str)==Some("error") {
+                                            let code=value.get("code").and_then(serde_json::Value::as_str)
+                                                .filter(|v|!v.is_empty()&&v.len()<=128&&v.bytes().all(|b|b.is_ascii_uppercase()||b.is_ascii_digit()||b==b'_'))
+                                                .unwrap_or("REMOTE_MOBILE_OPERATION_FAILED");
+                                            Ok(myagents_host_management_protocol::ResponseResult::RemoteMobile{
+                                                data:myagents_host_management_protocol::RemoteMobileResult::Error{version:1,code:code.into()},
+                                            })
+                                        } else {
+                                            serde_json::from_value(value)
+                                                .map(|data|myagents_host_management_protocol::ResponseResult::RemoteMobile{data})
+                                                .map_err(|_|NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"))
+                                        }
+                                    })
+                            }
+                            (method, params) => {
+                                runtime
+                                    .ipc
+                                    .request(channel_id, request_id, method, params)
+                                    .await
+                            }
+                        }
                     }
                     None => Err(NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED")),
                 };
@@ -739,6 +1298,56 @@ async fn run_context(
 }
 #[cfg(test)]
 mod tests {
+    #[tokio::test(flavor = "current_thread")]
+    async fn source_progresses_while_connection_waits_for_its_ipc_lock() {
+        let lock = tokio::sync::Mutex::new(());
+        let (started, waiting) = tokio::sync::oneshot::channel();
+        let (release, response) = tokio::sync::oneshot::channel();
+        let source = async {
+            let guard = lock.lock().await;
+            started.send(()).unwrap();
+            response.await.unwrap();
+            drop(guard);
+            std::future::pending::<()>().await;
+        };
+        let connection = async {
+            waiting.await.unwrap();
+            // The source owns the lock before the simulated socket branch
+            // awaits it. That branch wakes the response, requiring the source
+            // to be polled again before this request can complete.
+            assert!(lock.try_lock().is_err());
+            release.send(()).unwrap();
+            let _guard = lock.lock().await;
+            42
+        };
+        assert_eq!(
+            tokio::time::timeout(
+                Duration::from_millis(500),
+                poll_connection_with_source(connection, source),
+            )
+            .await
+            .expect("source must progress while the request waits"),
+            42
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn connection_completion_cancels_source_and_releases_its_lock() {
+        let lock = tokio::sync::Mutex::new(());
+        let (started, waiting) = tokio::sync::oneshot::channel();
+        let source = async {
+            let _guard = lock.lock().await;
+            started.send(()).unwrap();
+            std::future::pending::<()>().await;
+        };
+        let connection = async {
+            waiting.await.unwrap();
+            assert!(lock.try_lock().is_err());
+            "closed"
+        };
+        assert_eq!(poll_connection_with_source(connection, source).await, "closed");
+        assert!(lock.try_lock().is_ok());
+    }
     use super::*;
     #[test]
     fn renewal_schedule_is_before_expiry_jittered_and_rate_bounded() {
@@ -845,4 +1454,29 @@ mod tests {
             "ACCOUNT_BINDING_CHANGED"
         );
     }
+
+    #[test]
+    fn binding_change_after_staging_prevents_mobile_dispatch() {
+        let captured = uuid::Uuid::new_v4().to_string();
+        let management = captured.clone();
+        assert!(verify_binding_snapshot(&captured, &management, &captured).is_ok());
+        let account = uuid::Uuid::new_v4().to_string();
+        let mut dispatched = false;
+        // Staging may have completed under the original binding. The final
+        // dispatch gate must observe a subsequent account replacement.
+        if verify_binding_snapshot(&account, &management, &captured).is_ok() {
+            dispatched = true;
+        }
+        assert!(!dispatched);
+        assert_eq!(
+            verify_binding_snapshot(&account, &management, &captured)
+                .unwrap_err()
+                .code,
+            "ACCOUNT_BINDING_CHANGED"
+        );
+    }
 }
+
+#[cfg(test)]
+#[path = "mobile_full_e2e_fixture.rs"]
+mod mobile_full_e2e_fixture;

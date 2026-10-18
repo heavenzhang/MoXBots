@@ -132,6 +132,7 @@ async fn execute() -> Result<(), NetworkError> {
             };
             Some(crate::management_ipc::ManagementIpcConfig {
                 socket: PathBuf::from(required("--management-socket")?),
+                asset_root: root.join("remote-assets-v1"),
                 host_uid: parse_id("--management-host-uid")?,
                 management_gid: parse_id("--management-gid")?,
             })

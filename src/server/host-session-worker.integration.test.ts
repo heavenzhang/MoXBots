@@ -141,6 +141,11 @@ describe('headless Host Session worker bootstrap', () => {
     expect(await first.request('permission', { requestId: 'not-pending', decision: 'allow_once' })).toMatchObject({ ok: false });
     const remoteBound={agentId:'agent',sessionId:first.ready.sessionId};
     expect(await first.request('remote',{remoteSession:{...remoteBound,kind:'send',operationId:randomUUID(),text:'must remain unauthorized'}})).toMatchObject({ok:false,error:'REMOTE_SESSION_EXECUTION_NOT_AUTHORIZED'});
+    // Exercise the real worker branch: a standard UUID must pass request
+    // admission and reach the execution authorization gate.
+    expect(await first.request('mobile-send',{agentId:'remote-birth-agent',sessionId:first.ready.sessionId,
+      operationId:'11111111-1111-4111-8111-111111111111',expectedObservation:'0'.repeat(64),text:'must remain unauthorized',assets:[]}))
+      .toMatchObject({ok:false,error:'REMOTE_SESSION_EXECUTION_NOT_AUTHORIZED'});
     expect(await first.request('remote',{remoteSession:{...remoteBound,sessionId:randomUUID(),kind:'get',limit:1}})).toMatchObject({ok:false,error:'REMOTE_SESSION_TARGET_CHANGED'});
     expect(await first.request('remote',{remoteSession:{...remoteBound,kind:'respond',operationId:randomUUID(),generation:'old-generation',turnId:'old-turn',requestId:'not-pending',interaction:'permission',approved:true}})).toMatchObject({ok:false,error:'REMOTE_SESSION_INTERACTION_EXPIRED'});
     expect(await first.request('remote',{remoteSession:{...remoteBound,kind:'stop',operationId:randomUUID(),generation:'old-generation',turnId:'old-turn'}})).toMatchObject({ok:false,error:'REMOTE_SESSION_INTERACTION_EXPIRED'});
@@ -162,6 +167,9 @@ describe('headless Host Session worker bootstrap', () => {
     expect(await remote.request('describe')).toMatchObject({ok:true,data:{config:{providerId:'anthropic-sub',model:'claude-sonnet-4-6',permissionMode:'plan'}}});
     const remoteSnapshot=await remote.request('remote',{remoteSession:{kind:'get',agentId:'remote-birth-agent',sessionId:remote.ready.sessionId,limit:3}});
     expect(remoteSnapshot).toMatchObject({ok:true,data:{kind:'snapshot',sessionId:remote.ready.sessionId,state:'idle',interactions:[]}});
+    const snapshotData=(remoteSnapshot as {data:{revision:string}}).data;
+    expect(await remote.request('mobile-suggestions',{agentId:'remote-birth-agent',sessionId:remote.ready.sessionId,revision:snapshotData.revision}))
+      .toMatchObject({ok:false,error:'REMOTE_MOBILE_SUGGESTIONS_UNAVAILABLE'});
     await remote.request('shutdown');
     expect(JSON.parse(await readFile(configPath,'utf8')).hostSettings).toEqual(hostConfig.hostSettings);
   });

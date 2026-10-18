@@ -5,6 +5,9 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { HostConfigError, HostManagementUpgradeRequired } from "./management";
 import { HostProviderCredentialError } from "./provider-credentials";
 import { remoteSessionRequestSchema } from '../shared/remoteSession';
+import { remoteAssetRequestSchema } from '../shared/remoteAssets';
+import { remoteMobileRequestSchema } from '../shared/remoteMobile';
+import { z } from 'zod';
 
 const MAX_FRAME = 64 * 1024;
 const MAX_RECEIVE = 256 * 1024;
@@ -33,6 +36,49 @@ type Dispatcher = (
   method: Request["method"],
   params: Record<string, unknown>,
 ) => Promise<unknown>;
+
+const internalAuthoritySchema = z.object({
+  connection: z.object({serviceId:z.string().min(1).max(256),networkId:z.string().min(1).max(256),bootEpoch:z.string().min(1).max(256),connectionEpoch:z.string().min(1).max(256)}).strict(),
+  peer: z.object({serviceId:z.string().min(1).max(256),environment:z.string().min(1).max(128),networkId:z.string().min(1).max(256),principalId:z.string().min(1).max(256),deviceId:z.string().min(1).max(256),keyGeneration:z.number().int().nonnegative().safe()}).strict(),
+  peerEpoch:z.string().min(1).max(256),
+  local: z.object({serviceId:z.string().min(1).max(256),environment:z.string().min(1).max(128),networkId:z.string().min(1).max(256),principalId:z.string().min(1).max(256),deviceId:z.string().min(1).max(256),keyGeneration:z.number().int().nonnegative().safe()}).strict(),
+  accountBinding:z.string().min(1).max(256), managementBinding:z.string().min(1).max(256),
+}).strict().refine(value=>value.accountBinding===value.managementBinding && value.connection.networkId===value.local.networkId && value.peer.networkId===value.local.networkId);
+const internalOperationSchema = z.discriminatedUnion('kind', [
+  z.object({kind:z.literal('asset.stage.begin'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),assetId:z.string().uuid(),name:z.string().min(1).max(256),mimeType:z.string().min(3).max(128),sizeBytes:z.number().int().min(1).max(20*1024*1024),sha256:z.string().regex(/^[0-9a-f]{64}$/)}).strict(),
+  z.object({kind:z.literal('asset.stage.chunk'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),assetId:z.string().uuid(),offset:z.number().int().min(0).max(20*1024*1024),dataBase64:z.string().min(4).max(32768).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),sha256:z.string().regex(/^[0-9a-f]{64}$/)}).strict().refine(value=>{const bytes=Buffer.from(value.dataBase64,'base64');return bytes.length>0&&bytes.length<=24*1024&&bytes.toString('base64')===value.dataBase64}),
+  z.object({kind:z.literal('asset.stage.finish'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),assetId:z.string().uuid()}).strict(),
+  z.object({kind:z.literal('assets.request'),request:remoteAssetRequestSchema}).strict(),
+  z.object({kind:z.literal('mobile.request'),request:remoteMobileRequestSchema}).strict(),
+  z.object({kind:z.literal('asset.owner.list'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),limit:z.number().int().min(1).max(30),before:z.string().max(256).optional()}).strict(),
+  z.object({kind:z.literal('asset.owner.read'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),sourceId:z.string().uuid(),offset:z.number().int().min(0).max(20*1024*1024),maxBytes:z.number().int().min(1).max(24*1024)}).strict(),
+]);
+export type InternalManagementAuthority = z.infer<typeof internalAuthoritySchema>;
+export type InternalManagementOperation = z.infer<typeof internalOperationSchema>;
+export function parseInternalManagementRequest(value:unknown, expectedDeviceId:string) {
+  if(!plain(value)||!exactKeys(value,['kind','requestId','authority','operation'])||value.kind!=='internal-request'||typeof value.requestId!=='string'||!UUID.test(value.requestId))return null;
+  const authority=internalAuthoritySchema.safeParse(value.authority),operation=internalOperationSchema.safeParse(value.operation);
+  if(!authority.success||!operation.success||authority.data.local.deviceId!==expectedDeviceId)return null;
+  return {requestId:value.requestId,authority:authority.data,operation:operation.data};
+}
+
+const localSourceAuthoritySchema = z.object({
+  connection: internalAuthoritySchema.shape.connection,
+  local: internalAuthoritySchema.shape.local,
+  accountBinding: z.string().uuid(), managementBinding:z.string().uuid(),
+}).strict().refine(a => a.accountBinding===a.managementBinding && a.connection.networkId===a.local.networkId && a.connection.serviceId===a.local.serviceId && UUID.test(a.connection.connectionEpoch));
+const localSourceOperationSchema=z.discriminatedUnion('kind',[
+  z.object({kind:z.literal('catalog.snapshot'),cursor:z.string().min(1).max(128).optional()}).strict(),
+  z.object({kind:z.literal('source.peek')}).strict(),
+  z.object({kind:z.literal('source.ack'),sourceEventId:z.string().uuid(),eventId:z.string().uuid()}).strict(),
+]);
+export type LocalSourceAuthority=z.infer<typeof localSourceAuthoritySchema>;
+export type LocalSourceOperation=z.infer<typeof localSourceOperationSchema>;
+export function parseLocalSourceRequest(value:unknown,deviceId:string){
+  if(!plain(value)||!exactKeys(value,['kind','requestId','authority','operation'])||value.kind!=='local-source-request'||typeof value.requestId!=='string'||!UUID.test(value.requestId))return null;
+  const authority=localSourceAuthoritySchema.safeParse(value.authority),operation=localSourceOperationSchema.safeParse(value.operation);
+  return authority.success&&operation.success&&authority.data.local.deviceId===deviceId?{requestId:value.requestId,authority:authority.data,operation:operation.data}:null;
+}
 
 class IpcError extends Error {
   constructor(
@@ -313,6 +359,9 @@ export async function connectHostManagementIpc(options: {
   expectedUid: number;
   expectedGid: number;
   dispatch: Dispatcher;
+  expectedDeviceId?: string;
+  dispatchLocalSource?: (authority:LocalSourceAuthority,operation:LocalSourceOperation)=>Promise<unknown>;
+  dispatchInternal?: (authority:InternalManagementAuthority,operation:InternalManagementOperation)=>Promise<unknown>;
   isShuttingDown: () => boolean;
   onFailure?: (code: string) => void;
 }): Promise<{ close(): Promise<void> }> {
@@ -493,6 +542,30 @@ export async function connectHostManagementIpc(options: {
                 session,
                 new IpcError("MANAGEMENT_IPC_INVALID_FRAME"),
               );
+              return;
+            }
+            if(message.kind==='local-source-request') {
+              const parsed=options.expectedDeviceId?parseLocalSourceRequest(message,options.expectedDeviceId):null;
+              if(!parsed||!options.dispatchLocalSource){closeSession(session,new IpcError('MANAGEMENT_IPC_INVALID_FRAME'));return;}
+              let result:unknown;
+              try{result=await options.dispatchLocalSource(parsed.authority,parsed.operation);}catch{result={kind:'error',code:'SOURCE_UNAVAILABLE'};}
+              if(session.connected&&current===session&&!stopped&&!options.isShuttingDown())await send({kind:'local-source-response',requestId:parsed.requestId,authority:parsed.authority,result});
+              return;
+            }
+            if(message.kind==='internal-request') {
+              const parsed=options.expectedDeviceId ? parseInternalManagementRequest(message,options.expectedDeviceId):null;
+              if(!parsed||!options.dispatchInternal) {
+                await send({kind:'internal-response',requestId:typeof message.requestId==='string'?message.requestId:'',authority:plain(message.authority)?message.authority:{},result:{kind:'error',code:'INVALID_REQUEST'}});
+                return;
+              }
+              try {
+                const result=await options.dispatchInternal(parsed.authority,parsed.operation);
+                if(Buffer.byteLength(JSON.stringify({kind:'internal-response',requestId:parsed.requestId,authority:parsed.authority,result}))>MAX_FRAME) throw new IpcError('MANAGEMENT_IPC_RESPONSE_SIZE');
+                if(session.connected&&current===session&&!stopped&&!options.isShuttingDown()) await send({kind:'internal-response',requestId:parsed.requestId,authority:parsed.authority,result});
+              } catch(error) {
+                const code=error instanceof Error&&/^[A-Z0-9_]{1,128}$/.test(error.message)?error.message:'OWNER_OPERATION_FAILED';
+                if(session.connected&&current===session&&!stopped&&!options.isShuttingDown()) await send({kind:'internal-response',requestId:parsed.requestId,authority:parsed.authority,result:{kind:'error',code}});
+              }
               return;
             }
             if (

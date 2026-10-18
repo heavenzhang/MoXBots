@@ -1,0 +1,102 @@
+[
+  {
+    "profile": "debug-first",
+    "requestedCallerStackBytes": 524288,
+    "observedCallerStackBytes": 536576,
+    "processBirthsAbsent": 5,
+    "closedPorts": [
+      65145,
+      65142
+    ],
+    "log": "/tmp/moxbots-mobile-ffi-primary-first.log",
+    "passed": false,
+    "stage": "account.login.start",
+    "result": "SIGABRT stack overflow"
+  },
+  {
+    "profile": "debug-boxed",
+    "requestedCallerStackBytes": 524288,
+    "observedCallerStackBytes": 536576,
+    "processBirthsAbsent": 5,
+    "closedPorts": [
+      65495,
+      65494
+    ],
+    "log": "/tmp/moxbots-mobile-ffi-primary-boxed.log",
+    "passed": false,
+    "stage": "account.login.start",
+    "result": "SIGABRT stack overflow"
+  },
+  {
+    "profile": "accidental-debug-repeat",
+    "requestedCallerStackBytes": 524288,
+    "observedCallerStackBytes": 536576,
+    "processBirthsAbsent": 5,
+    "closedPorts": [
+      50086,
+      50079
+    ],
+    "log": "/tmp/moxbots-mobile-ffi-accidental-debug-repeat.log",
+    "passed": false,
+    "stage": "account.login.start",
+    "result": "SIGABRT stack overflow"
+  },
+  {
+    "profile": "release",
+    "requestedCallerStackBytes": 524288,
+    "observedCallerStackBytes": 536576,
+    "processBirthsAbsent": 7,
+    "closedPorts": [
+      51973,
+      51965
+    ],
+    "log": "/tmp/moxbots-mobile-ffi-primary-release.log",
+    "passed": true,
+    "seconds": 14.15,
+    "supplierCalls": 1,
+    "persistedSessions": 1,
+    "handleFreed": true
+  },
+  {
+    "profile": "final-text",
+    "passed": true,
+    "seconds": 11.95,
+    "processBirthsAbsent": 8,
+    "closedPorts": [
+      53131,
+      53126
+    ],
+    "supplierCalls": 1,
+    "persistedSessions": 1,
+    "log": "/tmp/moxbots-mobile-ffi-final-text.log"
+  },
+  {
+    "profile": "final-assets",
+    "passed": true,
+    "seconds": 14.16,
+    "processBirthsAbsent": 9,
+    "closedPorts": [
+      53443,
+      53442
+    ],
+    "supplierCalls": 2,
+    "persistedSessions": 1,
+    "log": "/tmp/moxbots-mobile-ffi-final-assets.log"
+  },
+  {
+    "profile": "final-release",
+    "passed": true,
+    "seconds": 10.6,
+    "processBirthsAbsent": 9,
+    "closedPorts": [
+      54307,
+      54301
+    ],
+    "supplierCalls": 1,
+    "persistedSessions": 1,
+    "log": "/tmp/moxbots-mobile-ffi-final-release.log",
+    "requestedCallerStackBytes": 524288,
+    "observedCallerStackBytes": 536576,
+    "handleFreed": true
+  }
+]
