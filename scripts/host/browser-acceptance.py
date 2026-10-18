@@ -59,6 +59,17 @@ SAFE_STATUS_ERRORS = SAFE_CLI_ERRORS | frozenset({"NETWORK_TRANSPORT_FAILED", "N
     "DEVICE_NOT_REGISTERED", "CATALOG_CAPACITY", "HOST_MANAGEMENT_UNAVAILABLE",
     "HOST_MANAGEMENT_IPC_PEER_REJECTED", "HOST_MANAGEMENT_REQUEST_TOO_LARGE"})
 
+# Source-reviewed P2 startup paths: cli -> encrypted store/discovery -> lock/IPC.
+SAFE_STARTUP_ERRORS = SAFE_STATUS_ERRORS | frozenset({"NETWORK_DESCRIPTOR_INVALID", "OWNED_ACCOUNT_UNAVAILABLE",
+    "OWNED_RESPONSE_INVALID", "OWNED_RESPONSE_TOO_LARGE", "OWNED_PIN_CORRUPT", "PUBLIC_TLS_CA_UNAVAILABLE",
+    "PUBLIC_TLS_CA_INVALID", "DEVICE_ID_INVALID", "ACCOUNT_STATE_SCOPE_MISMATCH", "OWNED_STATE_SCOPE_MISMATCH",
+    "OWNED_SCOPE_INVALID", "NETWORK_CREDENTIAL_BACKEND_UNSUPPORTED", "NETWORK_CREDENTIAL_STORE_UNAVAILABLE",
+    "NETWORK_CREDENTIAL_KEY_MISSING", "NETWORK_CREDENTIAL_GENERATION_CONFLICT", "NETWORK_CREDENTIAL_CORRUPT",
+    "NETWORK_CREDENTIAL_PATH_UNSAFE", "NETWORK_CREDENTIAL_PERSISTENCE_UNCONFIRMED", "NETWORK_KEY_INVALID",
+    "OWNER_LOCK_UNAVAILABLE", "OWNER_LOCK_UNSAFE", "OWNER_ALREADY_RUNNING", "STATUS_PATH_UNSAFE", "STATUS_UNAVAILABLE",
+    "HOST_MANAGEMENT_IPC_PATH_INVALID", "HOST_MANAGEMENT_IPC_IDENTITY_INVALID", "HOST_MANAGEMENT_IPC_PATH_EXISTS",
+    "HOST_MANAGEMENT_IPC_BIND_FAILED", "ASSET_STORE_UNAVAILABLE"})
+
 PRODUCT = "58d5247d7692acb816f211e1af7ef1891871bd6a"
 RELEASE = "20261018152704-58d5247d7692"
 PUBLIC = "https://140.143.183.232"
@@ -515,29 +526,101 @@ def startup_contract_observation():
     return observed
 
 
-def runtime_readiness_observation():
+def project_startup_errors(raw):
+    """Each journal JSON record contains one MESSAGE; no arbitrary value escapes."""
+    counts, unknown = collections.Counter(), False
+    lines = raw.splitlines()
+    for line in lines[:30]:
+        try:
+            record = json.loads(line)
+            message = record.get("MESSAGE") if isinstance(record, dict) else None
+            if not isinstance(message, str):
+                continue
+            value = json.loads(message)  # whole MESSAGE, not a substring or prefixed log
+            if not isinstance(value, dict) or value.get("status") != "error":
+                continue
+            code = value.get("code")
+            if isinstance(code, str) and code in SAFE_STARTUP_ERRORS:
+                counts[code] += 1
+            else:
+                unknown = True
+        except (ValueError, TypeError):
+            pass  # non-JSON progress, system messages and all raw strings are discarded
+    return {"codeCounts": dict(sorted(counts.items())), "unknownCodeObserved": unknown, "truncated": len(lines) > 30}
+
+
+def connector_startup_error_observation():
+    # Fixed current boot/unit/read-only journal query. Never follow or persist it.
+    command = ["journalctl", "--boot=0", "--unit=" + CONNECTOR, "--lines=30", "--no-pager", "--quiet",
+               "--output=json", "--output-fields=MESSAGE"]
+    process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    raw, truncated = bytearray(), False
+    selector = selectors.DefaultSelector()
+    try:
+        selector.register(process.stdout, selectors.EVENT_READ)
+        deadline = time.monotonic() + 2
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            need(remaining > 0, "startup-journal-read-deadline")
+            for key, _ in selector.select(timeout=min(0.1, remaining)):
+                block = os.read(key.fd, min(16384, 65537 - len(raw)))
+                if not block:
+                    selector.unregister(key.fileobj)
+                    continue
+                raw.extend(block)
+                if len(raw) > 65536:
+                    truncated = True
+                    break
+            if truncated:
+                break
+        if not truncated:
+            need(process.wait(timeout=max(0.01, deadline - time.monotonic())) == 0, "startup-journal-read-failed")
+        # Never parse a partial trailing record when the byte cap was reached.
+        bounded = bytes(raw[:65536])
+        if truncated:
+            bounded = bounded.rsplit(b"\n", 1)[0] if b"\n" in bounded else b""
+        result = project_startup_errors(bounded)
+        result["truncated"] = result["truncated"] or truncated
+        return result
+    finally:
+        selector.close()
+        if process.poll() is None:
+            process.terminate()  # only this diagnostic's owned journalctl process
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=1)
+        process.stdout.close()
+        raw.clear()
+
+
+def runtime_readiness_observation(*, include_startup_errors=False):
     """Read-only closed projections; never a Ready gate, start or recovery."""
+    need(type(include_startup_errors) is bool, "runtime-startup-errors-flag")
     if _GUEST:
-        return _GUEST.call("runtime-readiness-observation")
+        return _GUEST.call("runtime-readiness-observation", include_startup_errors=include_startup_errors)
     observed, pids = {"units": {}, "registryFiles": registry_file_observation(),
                       "startupContract": startup_contract_observation()}, {}
     enums = {"LoadState": {"loaded", "not-found", "error", "masked", "bad-setting", "stub", "merged"},
         "ActiveState": {"active", "inactive", "failed", "activating", "deactivating", "reloading", "maintenance", "refreshing"},
         "SubState": {"running", "exited", "dead", "failed", "start", "start-pre", "start-post", "stop", "stop-sigterm", "auto-restart"},
-        "Result": {"success", "exit-code", "signal", "timeout", "start-limit-hit", "resources", "protocol", "core-dump", "oom-kill"}}
+        "Result": {"success", "exit-code", "signal", "timeout", "start-limit-hit", "resources", "protocol", "core-dump", "oom-kill"},
+        "Restart": {"no", "on-success", "on-failure", "on-abnormal", "on-watchdog", "on-abort", "always"}}
     for label, unit in (("Node", NODE), ("connector", CONNECTOR)):
         try:
-            raw = run(["systemctl", "show", unit, "--property=LoadState,ActiveState,SubState,Result,ExecMainStatus,MainPID"], timeout=2).stdout
+            raw = run(["systemctl", "show", unit, "--property=LoadState,ActiveState,SubState,Result,ExecMainStatus,MainPID,Restart,NRestarts"], timeout=2).stdout
             rows = [line.partition("=") for line in raw.decode("ascii", errors="replace").splitlines()]
             fields = {key: value for key, _, value in rows}
-            valid = (len(rows) == 6 and all(separator == "=" for _, separator, _ in rows)
-                     and set(fields) == set(enums) | {"ExecMainStatus", "MainPID"})
+            valid = (len(rows) == 8 and all(separator == "=" for _, separator, _ in rows)
+                     and set(fields) == set(enums) | {"ExecMainStatus", "MainPID", "NRestarts"})
             values = {key: fields.get(key) if fields.get(key) in allowed else "unknown-redacted" for key, allowed in enums.items()}
-            for key in ("ExecMainStatus", "MainPID"):
+            for key in ("ExecMainStatus", "MainPID", "NRestarts"):
                 valid = valid and re.fullmatch(r"[0-9]{1,10}", fields.get(key, "")) is not None
             pids[label] = int(fields["MainPID"]) if valid else 0
             values.update({"fieldsValid": valid, "mainPidPositive": pids[label] > 0,
-                           "execMainStatus": int(fields["ExecMainStatus"]) if valid and int(fields["ExecMainStatus"]) <= 255 else None})
+                           "execMainStatus": int(fields["ExecMainStatus"]) if valid and int(fields["ExecMainStatus"]) <= 255 else None,
+                           "restartCount": int(fields["NRestarts"]) if valid and int(fields["NRestarts"]) <= 1000000 else None})
             observed["units"][label] = values
         except Exception:
             observed["units"][label] = {"observationUnavailable": True}
@@ -610,6 +693,14 @@ def runtime_readiness_observation():
                     "stoppingFalse": value.get("stopping") is False})
         except Exception:
             doctor["observationUnavailable"] = True
+    connector = observed["units"].get("connector", {})
+    if (include_startup_errors and connector.get("fieldsValid") and connector.get("LoadState") == "loaded"
+            and connector.get("ActiveState") == "failed" and connector.get("mainPidPositive") is False
+            and observed.get("status", {}).get("kind") in {"empty", "missing"}):
+        try:
+            observed["connectorStartupErrors"] = connector_startup_error_observation()
+        except Exception:
+            observed["connectorStartupErrors"] = {"observationUnavailable": True}
     return observed
 
 
@@ -1088,7 +1179,7 @@ def post_reboot_ready(private, diagnostics, save_diagnostics=None):
         # One final existing closed RPC, before caller cleanup. Keeping it outside
         # the wait avoids adding SSH/doctor work to every readiness poll.
         try:
-            snapshot = runtime_readiness_observation()
+            snapshot = runtime_readiness_observation(include_startup_errors=True)
             need(isinstance(snapshot, dict), "post-reboot-diagnostic-object")
             diagnostics["lastRuntimeObservation"] = snapshot
         except Exception:

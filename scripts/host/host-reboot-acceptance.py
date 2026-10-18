@@ -153,7 +153,9 @@ def guest_main():
         elif op == "canceled-status-observation":
             result = lab.canceled_status_observation()
         elif op == "runtime-readiness-observation":
-            result = lab.runtime_readiness_observation()
+            include_errors = payload.get("include_startup_errors", False)
+            lab.need(type(include_errors) is bool, "guest-runtime-startup-errors-flag")
+            result = lab.runtime_readiness_observation(include_startup_errors=include_errors)
         elif op == "identity-hashes":
             result = lab.installed_identity_hashes()
         elif op == "persistent-hashes":

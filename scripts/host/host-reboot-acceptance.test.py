@@ -169,9 +169,26 @@ class RebootGates(unittest.TestCase):
         projection = {"NodeDoctor": {"attempted": False}, "status": {"kind": "empty"}}
         with patch.object(reboot, "lab_module", return_value=lab), patch.object(reboot, "guest_guard", return_value={}), \
              patch.object(reboot.sys, "stdin", stdin), contextlib.redirect_stdout(stdout), \
-             patch.object(lab, "runtime_readiness_observation", return_value=projection):
+             patch.object(lab, "runtime_readiness_observation", return_value=projection) as runtime:
             self.assertEqual(reboot.guest_main(), 0)
+            runtime.assert_called_once_with(include_startup_errors=False)
         self.assertEqual(json.loads(stdout.getvalue())["result"], projection)
+
+
+    def test_guest_runtime_startup_flag_is_bool_only_and_uses_no_new_operation(self):
+        for value in (True, False, 1, 0, "true", None, [], {}):
+            payload = {"op": "runtime-readiness-observation", "nonce": "synthetic", "include_startup_errors": value}
+            stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+            stdout = io.StringIO()
+            with patch.object(reboot, "lab_module", return_value=lab), patch.object(reboot, "guest_guard", return_value={}), \
+                 patch.object(reboot.sys, "stdin", stdin), contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(io.StringIO()), \
+                 patch.object(lab, "runtime_readiness_observation", return_value={}) as runtime:
+                self.assertEqual(reboot.guest_main(), 0 if type(value) is bool else 1)
+            if type(value) is bool:
+                runtime.assert_called_once_with(include_startup_errors=value)
+            else:
+                runtime.assert_not_called()
+            self.assertNotIn("SYNTHETIC_CAPABILITY", stdout.getvalue())
 
 
 if __name__ == "__main__":
