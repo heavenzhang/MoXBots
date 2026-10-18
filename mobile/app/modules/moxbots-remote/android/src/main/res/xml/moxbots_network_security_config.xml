@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <base-config cleartextTrafficPermitted="false" />
+  <!-- The original platform verifier downloads CA-signed public CRLs here.
+       Application requests remain HTTPS-only; do not permit general HTTP.
+       rustls/rustls-platform-verifier#221 documents this Android requirement. -->
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">c.lencr.org</domain>
+  </domain-config>
+</network-security-config>

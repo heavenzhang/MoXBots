@@ -1,8 +1,10 @@
 import { createServer, type Server } from 'node:http';
 import { Readable } from 'node:stream';
 import { isHostProviderId } from '../shared/hostProviderConfig';
-import { randomUUID } from 'node:crypto';
-import { isAbsolute, resolve } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { lstat, mkdir, open, readFile, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { format } from 'node:util';
 import { bootstrapFromEnvironment } from '../host/bot-session-bootstrap';
 import { rejectCloudModelRetry } from '../host/cloud-model';
@@ -12,6 +14,7 @@ import { assertOrdinaryRemoteAgent } from '../host/remote-session';
 import { settleHostSessionAdmission } from '../host/remote-admission';
 import { isHostSessionRequest, type HostSessionMessage, type HostSessionRequest } from './host-session-protocol';
 import { installHostSessionCredential, installHostCloudModelCredential, resolveHostCloudModelProvider } from './utils/host-credentials';
+import { isImageMimeType, USER_IMAGE_ATTACHMENT_MAX_BYTES } from '../shared/fileTypes';
 
 // The supervisor is the only process owner. This entry owns exactly one existing
 // Product Session binding, and never implements a second SDK or transcript store.
@@ -99,7 +102,10 @@ async function main(): Promise<void> {
     const providerId = bot?.provider_id ?? process.env.MYAGENTS_HOST_PROVIDER_ID?.trim();
     if (!model || !providerId) throw new Error('New Host Session requires an explicit Provider/model route');
     const remoteBirth = process.env.MYAGENTS_HOST_REMOTE_AGENT_BIRTH === '1' ? config.resolveWorkspaceConfig(workspace):undefined;
-    const route = remoteBirth?.providerRoute ?? routes.createConcreteProviderRoute(providerId, model);
+    const selectedRemoteModel=process.env.MYAGENTS_HOST_REMOTE_MODEL?.trim();
+    const route = remoteBirth?.providerRoute
+      ? selectedRemoteModel ? {...remoteBirth.providerRoute,model:selectedRemoteModel}:remoteBirth.providerRoute
+      : routes.createConcreteProviderRoute(providerId, model);
     if (!routes.isConcreteProviderRoute(route) || route.providerId !== providerId || route.model !== model) throw new Error('Host Agent birth provider identity changed');
     const prepared = await engine.materializePendingDesktopSession({
       workspacePath: workspace, phase: 'prepare',
@@ -144,6 +150,7 @@ async function main(): Promise<void> {
   const send = (message: HostSessionMessage) => { if (process.connected) process.send?.(redact(message)); };
   let loopbackBridge: Server | undefined;
   let cloudModelOutcomeUnknown=false;
+  const ownerSources = new Map<string,{agentId:string;sessionId:string;root:string;relative:string;name:string;mimeType:string;sizeBytes:number;sha256:string;dev:number;ino:number;mtimeMs:number}>();
   async function ensureLoopbackBridge() {
     if (loopbackBridge) return;
     const [{createBridgeHandler},{lookupBridge,hasBridge},{registerBridgeSeedFn}]=await Promise.all([import('./openai-bridge'),import('./openai-bridge/bridge-registry'),import('./bridge-cache')]);
@@ -218,6 +225,91 @@ async function main(): Promise<void> {
   async function operate(request: HostSessionRequest): Promise<unknown> {
     const args = request.args ?? {};
     switch (request.operation) {
+      case 'asset-owner': {
+        if(bot)throw new Error('REMOTE_SESSION_PRIVATE');
+        if(args.sessionId!==sessionId||typeof args.agentId!=='string')throw new Error('REMOTE_ASSET_OWNER_CHANGED');
+        validateRemoteAgent(args.agentId);
+        if(args.kind==='list'){
+          if(!Number.isSafeInteger(args.limit)||Number(args.limit)<1||Number(args.limit)>30||(args.before!==undefined&&(typeof args.before!=='string'||args.before.length>256)))throw new Error('REMOTE_ASSET_REQUEST_INVALID');
+          const resolver=await import('./remote-session/assets');
+          const page=await resolver.resolveDesktopRemoteArtifacts({agentId:args.agentId,sessionId,limit:args.limit,before:args.before});
+          if(!page.success)throw new Error(page.code);
+          const items=[];
+          for(const item of page.data.items){
+            if(!item.root||!item.relative||isAbsolute(item.relative)||item.relative.split(sep).some(part=>!part||part==='.'||part==='..'))throw new Error('REMOTE_ARTIFACT_UNAVAILABLE');
+            const absolute=join(item.root,item.relative),canonical=await realpath(absolute),stat=await lstat(absolute);
+            if(canonical!==absolute||!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size<1||stat.size>20*1024*1024)throw new Error('REMOTE_ARTIFACT_UNAVAILABLE');
+            const root=await realpath(item.root);if(root!==item.root||!absolute.startsWith(root+sep))throw new Error('REMOTE_ARTIFACT_UNAVAILABLE');
+            const fd=await open(absolute,constants.O_RDONLY|(constants.O_NOFOLLOW??0));const digest=createHash('sha256'),buffer=Buffer.alloc(24*1024);let offset=0;
+            try{while(offset<stat.size){const read=await fd.read(buffer,0,Math.min(buffer.length,stat.size-offset),offset);if(!read.bytesRead)throw new Error('REMOTE_ARTIFACT_CHANGED');digest.update(buffer.subarray(0,read.bytesRead));offset+=read.bytesRead;}}
+            finally{buffer.fill(0);await fd.close();}
+            const sha256=digest.digest('hex');const sourceId=createHash('sha256').update(JSON.stringify([args.agentId,sessionId,absolute,sha256])).digest('hex').slice(0,32).replace(/^(.{12})./,(_,a)=>`${a}4`).replace(/^(.{16})(.)/,(_,a,b)=>`${a}${((parseInt(b,16)&3)|8).toString(16)}`).replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,'$1-$2-$3-$4-$5');
+            ownerSources.set(sourceId,{agentId:args.agentId,sessionId,root:item.root,relative:item.relative,name:item.name,mimeType:item.mimeType,sizeBytes:stat.size,sha256,dev:stat.dev,ino:stat.ino,mtimeMs:stat.mtimeMs});
+            while(ownerSources.size>256)ownerSources.delete(ownerSources.keys().next().value!);
+            items.push({sourceId,name:item.name,mimeType:item.mimeType,sizeBytes:stat.size,sha256});
+          }
+          return {kind:'owner-page',agentId:args.agentId,sessionId,items,hasMore:page.data.hasMore,nextBefore:page.data.nextBefore};
+        }
+        if(args.kind==='read'){
+          if(typeof args.sourceId!=='string'||!Number.isSafeInteger(args.offset)||!Number.isSafeInteger(args.maxBytes)||Number(args.maxBytes)<1||Number(args.maxBytes)>24*1024)throw new Error('REMOTE_ASSET_REQUEST_INVALID');
+          const entry=ownerSources.get(args.sourceId);if(!entry||entry.agentId!==args.agentId||entry.sessionId!==sessionId)throw new Error('REMOTE_ASSET_NOT_FOUND');
+          if(Number(args.offset)<0||Number(args.offset)>entry.sizeBytes)throw new Error('REMOTE_ASSET_RANGE_INVALID');
+          const absolute=join(entry.root,entry.relative);if(await realpath(absolute)!==absolute)throw new Error('REMOTE_ARTIFACT_CHANGED');
+          const before=await lstat(absolute);if(!before.isFile()||before.isSymbolicLink()||before.nlink!==1||before.dev!==entry.dev||before.ino!==entry.ino||before.size!==entry.sizeBytes||before.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');
+          const fd=await open(absolute,constants.O_RDONLY|(constants.O_NOFOLLOW??0));try{const stat=await fd.stat();if(stat.dev!==entry.dev||stat.ino!==entry.ino||stat.size!==entry.sizeBytes||stat.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');const data=Buffer.alloc(Math.min(Number(args.maxBytes),entry.sizeBytes-Number(args.offset)));const result=await fd.read(data,0,data.length,Number(args.offset));if(result.bytesRead!==data.length)throw new Error('REMOTE_ARTIFACT_CHANGED');const after=await fd.stat();if(after.dev!==entry.dev||after.ino!==entry.ino||after.size!==entry.sizeBytes||after.mtimeMs!==entry.mtimeMs)throw new Error('REMOTE_ARTIFACT_CHANGED');return {kind:'owner-chunk',sourceId:args.sourceId,offset:Number(args.offset),dataBase64:data.toString('base64'),sha256:createHash('sha256').update(data).digest('hex'),eof:Number(args.offset)+data.length===entry.sizeBytes};}finally{await fd.close();}
+        }
+        throw new Error('REMOTE_ASSET_REQUEST_INVALID');
+      }
+      case 'mobile-suggestions': {
+        if(bot||typeof args.agentId!=='string'||args.sessionId!==sessionId||typeof args.revision!=='string'||args.revision.length>128)throw new Error('REMOTE_MOBILE_REQUEST_INVALID');
+        validateRemoteAgent(args.agentId);
+        const [{buildRemoteSnapshot},{suggestNextPrompt}]=await Promise.all([import('./remote-session/projection'),import('./session-prompt-suggestion')]);
+        const before=await buildRemoteSnapshot(args.agentId,sessionId,generation!,30);
+        if(before.revision!==args.revision)throw new Error('REMOTE_MOBILE_REVISION_CHANGED');
+        const anchor=before.messages.at(-1);if(!anchor||anchor.role!=='assistant')throw new Error('REMOTE_MOBILE_SUGGESTIONS_UNAVAILABLE');
+        const suggestion=await suggestNextPrompt(engine,{sessionId,anchorMessageId:anchor.id});
+        if((await buildRemoteSnapshot(args.agentId,sessionId,generation!,30)).revision!==args.revision)throw new Error('REMOTE_MOBILE_REVISION_CHANGED');
+        if(suggestion.availability!=='supported'||suggestion.suggestion&&suggestion.suggestion.length>512)throw new Error('REMOTE_MOBILE_SUGGESTIONS_UNAVAILABLE');
+        return {kind:'mobile.suggestions',version:1,agentId:args.agentId,sessionId,revision:args.revision,suggestions:suggestion.suggestion?[suggestion.suggestion]:[]};
+      }
+      case 'mobile-send': {
+        if(bot||typeof args.agentId!=='string'||args.sessionId!==sessionId||typeof args.operationId!=='string'||! /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(args.operationId)||typeof args.text!=='string'||args.text.length>16000||!Array.isArray(args.assets)||args.assets.length>8)throw new Error('REMOTE_MOBILE_REQUEST_INVALID');
+        if(args.modelId!==undefined&&(typeof args.modelId!=='string'||args.modelId.length<1||args.modelId.length>256||/[\p{Cc}]/u.test(args.modelId)))throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+        if(typeof args.expectedObservation!=='string'||!/^[0-9a-f]{64}$/.test(args.expectedObservation))throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+        if(process.env.MYAGENTS_HOST_EXECUTION_AUTHORIZED!=='1')throw new Error('REMOTE_SESSION_EXECUTION_NOT_AUTHORIZED');
+        validateRemoteAgent(args.agentId);
+        const {imSnapshotObservation}=await import('./routes/im-model-selection');
+        const ownedMetadata=store.getSessionMetadata(sessionId);
+        if(!ownedMetadata||imSnapshotObservation(ownedMetadata)!==args.expectedObservation)throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+        const stageRoot=process.env.MYAGENTS_HOST_ASSET_STAGING_ROOT;if(args.assets.length>0&&(!stageRoot||await realpath(stageRoot)!==stageRoot))throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
+        const images:import('./runtimes/types').ImagePayload[]=[],refs:string[]=[];
+        for(const raw of args.assets){
+          if(!stageRoot)throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
+          if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+          const asset=raw as Record<string,unknown>;
+          if(typeof asset.assetId!=='string'||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(asset.assetId)||typeof asset.sourcePath!=='string'||typeof asset.name!=='string'||typeof asset.mimeType!=='string'||typeof asset.sha256!=='string'||!/^[0-9a-f]{64}$/.test(asset.sha256)||!Number.isSafeInteger(asset.sizeBytes)||Number(asset.sizeBytes)<1||Number(asset.sizeBytes)>20*1024*1024)throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+          const rel=relative(stageRoot,asset.sourcePath);const parts=rel.split(sep);if(resolve(asset.sourcePath)!==asset.sourcePath||parts.length!==2||!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(parts[0])||parts[1]!=='data'||await realpath(asset.sourcePath)!==asset.sourcePath)throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+          const info=await lstat(asset.sourcePath);if(!info.isFile()||info.isSymbolicLink()||info.nlink!==1||info.size!==asset.sizeBytes)throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+          const bytes=await readFile(asset.sourcePath);if(createHash('sha256').update(bytes).digest('hex')!==asset.sha256)throw new Error('REMOTE_MOBILE_ASSET_HASH_MISMATCH');
+          if(isImageMimeType(asset.mimeType)){
+            if(bytes.length>USER_IMAGE_ATTACHMENT_MAX_BYTES)throw new Error('REMOTE_MOBILE_ASSET_SIZE_LIMIT');
+            const detected=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]))?'image/png':bytes[0]===255&&bytes[1]===216&&bytes[2]===255?'image/jpeg':/^GIF8[79]a/.test(bytes.subarray(0,6).toString('ascii'))?'image/gif':bytes.subarray(0,4).toString()==='RIFF'&&bytes.subarray(8,12).toString()==='WEBP'?'image/webp':undefined;
+            if(!detected||detected!==(asset.mimeType==='image/jpg'?'image/jpeg':asset.mimeType))throw new Error('REMOTE_MOBILE_ASSET_MIME_MISMATCH');
+            const attachmentRoot=store.getAttachmentPath('');await mkdir(attachmentRoot,{recursive:true,mode:0o700});const canonicalRoot=await realpath(attachmentRoot);
+            await mkdir(join(canonicalRoot,sessionId),{recursive:true,mode:0o700});const filename=`${args.operationId}-${asset.assetId}.${asset.mimeType==='image/jpeg'||asset.mimeType==='image/jpg'?'jpeg':asset.mimeType.slice(6)}`;const file=join(canonicalRoot,sessionId,filename);if(await realpath(dirname(file))!==join(canonicalRoot,sessionId))throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
+            const fd=await open(file,'wx',0o600);try{await fd.writeFile(bytes);await fd.sync()}finally{await fd.close()}
+            images.push({kind:'attachment_ref',id:asset.assetId,name:asset.name,mimeType:asset.mimeType,sizeBytes:Number(asset.sizeBytes),relativePath:`${sessionId}/${filename}`});
+          }else{
+            if(asset.mimeType==='application/pdf'&&bytes.subarray(0,5).toString()!=='%PDF-')throw new Error('REMOTE_MOBILE_ASSET_MIME_MISMATCH');
+            if(asset.mimeType.startsWith('text/')){if(bytes.includes(0))throw new Error('REMOTE_MOBILE_ASSET_MIME_MISMATCH');try{new TextDecoder('utf-8',{fatal:true}).decode(bytes)}catch{throw new Error('REMOTE_MOBILE_ASSET_MIME_MISMATCH');}}
+            const workspaceRoot=await realpath(workspacePath);const folder=join(workspaceRoot,'myagents_files','remote-mobile',sessionId,args.operationId);await mkdir(folder,{recursive:true,mode:0o700});if(await realpath(folder)!==folder||!folder.startsWith(workspaceRoot+sep))throw new Error('REMOTE_MOBILE_ASSET_UNAVAILABLE');
+            const suffix=extname(asset.name).slice(1).toLowerCase();const filename=`${asset.assetId}${/^[a-z0-9]{1,12}$/.test(suffix)?'.'+suffix:''}`;const file=join(folder,filename);const fd=await open(file,'wx',0o600);try{await fd.writeFile(bytes);await fd.sync()}finally{await fd.close()};refs.push(`@myagents_files/remote-mobile/${sessionId}/${args.operationId}/${filename}`);
+          }
+          bytes.fill(0);
+        }
+        const text=[args.text,...refs].filter(Boolean).join('\n');if(!text&&images.length===0)throw new Error('A bounded non-empty text is required');
+        return operate({...request,operation:'send',args:{text,images,clientRequestId:args.operationId,remote:true,remoteMobile:true,remoteObservation:args.expectedObservation,remoteAgentId:args.agentId,...(typeof args.modelId==='string'?{modelId:args.modelId}:{})}});
+      }
       case 'remote': {
         if (bot) throw new Error('REMOTE_SESSION_PRIVATE');
         const remote = remoteSessionRequestSchema.parse(args.remoteSession);
@@ -255,22 +347,33 @@ async function main(): Promise<void> {
       case 'send': {
         if (bot && !bot.cloud_model) throw new Error('Delegated Bot v1 supports lifecycle only; model invocation is not authorized');
         if (!bot?.cloud_model && process.env.MYAGENTS_HOST_EXECUTION_AUTHORIZED !== '1') throw new Error('Model execution requires explicit Host execution authorization');
-        if (typeof args.text !== 'string' || !args.text.trim() || args.text.length > 100_000) throw new Error('A bounded non-empty text is required');
+        const mobileImages=args.remote===true?validateMobileImages(args.images,sessionId):undefined;
+        if (typeof args.text !== 'string' || (!args.text.trim()&&!mobileImages?.length) || args.text.length > 100_000) throw new Error('A bounded non-empty text is required');
         if(bot?.cloud_model)resolveHostCloudModelProvider(bot.provider_id,bot.model);
         const snapshot = store.getSessionMetadata(sessionId);
         if (!routes.isConcreteProviderRoute(snapshot?.providerRoute)) throw new Error('Session Provider/model route is unavailable');
-        const provider = config.materializeProviderRouteEnv(snapshot.providerRoute);
+        const selectedModel=args.remoteMobile===true&&typeof args.modelId==='string'?args.modelId:undefined;
+        if(selectedModel&&snapshot.providerRoute.kind!=='provider')throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
+        const providerRoute=selectedModel&&snapshot.providerRoute.kind==='provider'?{...snapshot.providerRoute,model:selectedModel}:snapshot.providerRoute;
+        const frozenObservation=JSON.stringify([snapshot.providerRoute,snapshot.model,snapshot.runtime,snapshot.runtimeSource,snapshot.permissionMode,snapshot.configSnapshotAt]);
+        const provider = config.materializeProviderRouteEnv(providerRoute);
         if (provider?.apiKey) credentials.add(provider.apiKey);
         if (provider?.apiProtocol === 'openai') await ensureLoopbackBridge();
         if (snapshot.providerRoute.kind === 'provider' && !provider) throw new Error('Session Provider credential is unavailable');
+        if(args.remoteMobile===true){
+          if(typeof args.remoteObservation!=='string'||!/^[0-9a-f]{64}$/.test(args.remoteObservation))throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+          const {imSnapshotObservation}=await import('./routes/im-model-selection');
+          if(imSnapshotObservation(snapshot)!==args.remoteObservation)throw new Error('REMOTE_SESSION_OWNER_CHANGED');
+        }
         const result = await engine.sendDesktopMessage({
-          text: args.text, sessionId, workspacePath, scenario: { type: 'desktop' },
-          providerRoute: snapshot.providerRoute, permissionMode: args.remote === true ? snapshot.permissionMode ?? 'custom':'custom',
+          text: args.text, images: mobileImages, sessionId, workspacePath, scenario: { type: 'desktop' },
+          providerRoute, ...(selectedModel?{model:selectedModel}:{}), permissionMode: args.remote === true ? snapshot.permissionMode ?? 'custom':'custom',
           clientRequestId: typeof args.clientRequestId === 'string' ? args.clientRequestId : randomUUID(), turnBoundaryOnly: true,
           beforeDispatch: async () => {
             if (typeof args.remoteAgentId==='string') {
               try {validateRemoteAgent(args.remoteAgentId);} catch {return {accepted:false,error:'REMOTE_SESSION_AGENT_UNAVAILABLE'};}
             }
+            if(args.remoteMobile===true){const current=store.getSessionMetadata(sessionId);const {imSnapshotObservation}=await import('./routes/im-model-selection');if(!current||imSnapshotObservation(current)!==args.remoteObservation||JSON.stringify([current.providerRoute,current.model,current.runtime,current.runtimeSource,current.permissionMode,current.configSnapshotAt])!==frozenObservation)return {accepted:false,error:'REMOTE_SESSION_OWNER_CHANGED'};}
             return { accepted: !closing, ...(closing ? { error: 'Host worker is shutting down' } : {}) };
           },
           onTerminal: outcome => { send({ type: 'terminal', generation: generation!, sessionId, outcome }); },
@@ -306,6 +409,17 @@ async function main(): Promise<void> {
     const project=config.loadProjects({strict:true}).find(item=>item.agentId===agentId);
     if (!registered || registered.id!==agentId || !registered.enabled || !project || !isProjectVisibleToUser(project) || isProjectArchived(project) || resolve(project.path)!==resolve(workspace!)) throw new Error('REMOTE_SESSION_AGENT_UNAVAILABLE');
   }
+  function validateMobileImages(value:unknown,boundSessionId:string):import('./runtimes/types').ImagePayload[]|undefined {
+    if(value===undefined)return undefined;
+    if(!Array.isArray(value)||value.length>8)throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+    return value.map(raw=>{
+      if(!raw||typeof raw!=='object'||Array.isArray(raw))throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+      const image=raw as Record<string,unknown>;
+      if(Object.keys(image).some(key=>!['kind','id','name','mimeType','sizeBytes','relativePath'].includes(key))||image.kind!=='attachment_ref'||typeof image.id!=='string'||typeof image.name!=='string'||typeof image.mimeType!=='string'||!isImageMimeType(image.mimeType)||!Number.isSafeInteger(image.sizeBytes)||Number(image.sizeBytes)<1||Number(image.sizeBytes)>USER_IMAGE_ATTACHMENT_MAX_BYTES||typeof image.relativePath!=='string')throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+      const pieces=image.relativePath.split('/');if(pieces.length!==2||pieces[0]!==boundSessionId||pieces.some(piece=>!piece||piece==='.'||piece==='..'||piece.includes('\\')))throw new Error('REMOTE_MOBILE_ASSET_INVALID');
+      return image as unknown as import('./runtimes/types').ImagePayload;
+    });
+  }
   process.on('message', (value: unknown) => {
     if (!isHostSessionRequest(value)) return;
     if (value.generation !== generation) {
@@ -322,13 +436,13 @@ async function main(): Promise<void> {
         // Only this entry's fixed validation messages may cross IPC. Provider
         // and SDK errors may carry bearer material and remain server diagnostics.
         const message = error instanceof Error ? error.message : '';
-        const safe = /^(REMOTE_SESSION_[A-Z_]+$|BOT_MODEL_NOT_AUTHORIZED$|Delegated Bot v1|Model execution requires|A bounded|Session Provider|OpenAI protocol requires|Session message admission|Session dispatch|Permission |Question |Plan |Interactive )/.test(message);
+        const safe = /^(REMOTE_(?:SESSION|MOBILE|ASSET)_[A-Z_]+$|BOT_MODEL_NOT_AUTHORIZED$|Delegated Bot v1|Model execution requires|A bounded|Session Provider|OpenAI protocol requires|Session message admission|Session dispatch|Permission |Question |Plan |Interactive )/.test(message);
         send({ type: 'reply', generation: generation!, id: value.id, ok: false, error: safe ? message : 'Host Session operation failed; inspect worker diagnostics' });
       }
     };
     // Human responses and Stop must remain reachable while a send is waiting
     // for dispatch admission; serializing them behind that promise deadlocks.
-    if (value.operation === 'send' || (value.operation === 'remote' && (value.args?.remoteSession as {kind?:unknown}|undefined)?.kind === 'send')) serial = serial.then(handle);
+    if (value.operation === 'send' || value.operation === 'mobile-send' || (value.operation === 'remote' && (value.args?.remoteSession as {kind?:unknown}|undefined)?.kind === 'send')) serial = serial.then(handle);
     else void handle();
   });
   for (const signal of ['SIGTERM', 'SIGINT'] as const) process.on(signal, () => { void shutdown().finally(() => process.exit(0)); });

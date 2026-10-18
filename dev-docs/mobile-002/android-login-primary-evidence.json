@@ -1,0 +1,56 @@
+{
+  "task": "MOXBOTS-MOBILE-002",
+  "scope": "Original Android JNI/shipping Rust -> deployed public service PKCE start and original pending-login logout/cancel only",
+  "productionChanges": [
+    "One CA CRL host policy, HTTP denied by default, no trust/crypto fallback",
+    "Original OwnedClient login response upper validity uses existing protocol clockSkewSeconds=30; expired values remain rejected"
+  ],
+  "primary": {
+    "androidOffline": {
+      "tests": 34,
+      "passed": 33,
+      "skipped": 1,
+      "failures": 0,
+      "errors": 0,
+      "seconds": 8.83,
+      "xml": "/tmp/moxbots-mobile-login-final-offline.xml"
+    },
+    "androidExplicitLive": {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "seconds": 5.145,
+      "xml": "/tmp/moxbots-mobile-android-live-login-cleanup-final.xml"
+    },
+    "rustConnection": {
+      "passed": 107,
+      "ignored": 1,
+      "seconds": 1.86
+    },
+    "strictClippy": "passed -D warnings",
+    "agentDocs": "passed"
+  },
+  "independentReview": {
+    "worker": "mobile_login_review",
+    "requestedModel": "gpt-6.1-sol",
+    "requestedEffort": "medium",
+    "actualRoutingAndUsage": "unknown",
+    "findings": "P2 test cleanup exception ordering fixed and independently rechecked; production bounds accepted"
+  },
+  "retainedFailures": [
+    "Android TLS blocked public CA CRL; original verifier code4 with absent OCSP responder",
+    "After CRL repair, login expiryDelta301 exceeded previous300 bound",
+    "Probe mistakenly called nonexistent account.login.cancel; repaired to original account.logout"
+  ],
+  "notAccepted": [
+    "Browser SSO completion/account enrollment",
+    "Real deployed Host Session path",
+    "iOS live login/native UI",
+    "Physical phones",
+    "Push/background authorization",
+    "Real Mandarin ASR",
+    "Internal developer signing",
+    "Main/production delivery"
+  ]
+}

@@ -115,6 +115,14 @@ pub(crate) struct OwnedLoginStart {
     pub expires_at: u64,
     pub authorization_url: String,
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OwnedSessionInspection {
+    principal_id: String,
+    network_id: String,
+    device_id: String,
+    expires_at: u64,
+}
 pub(crate) enum OwnedPoll {
     Pending,
     Authenticated(OwnedSession),
@@ -147,34 +155,51 @@ pub(crate) async fn raw_request(
     body: Option<Value>,
     token: Option<&str>,
 ) -> Result<(StatusCode, Value), NetworkError> {
-    raw_request_with_limits(
+    raw_request_with_profile(
         http,
         origin,
         method,
         path,
         body,
         token,
-        16 * 1024,
-        MAX_BODY,
-        false,
+        OwnedRequestProfile::Standard,
     )
     .await
 }
-async fn raw_request_with_limits(
+#[derive(Clone, Copy)]
+enum OwnedRequestProfile {
+    Standard,
+    OptionalDesktopStart,
+    Community,
+    Feedback,
+    MobileNotification,
+}
+impl OwnedRequestProfile {
+    fn limits(self) -> (usize, usize) {
+        match self {
+            Self::Standard | Self::OptionalDesktopStart => (16 * 1024, MAX_BODY),
+            Self::Community => (64 * 1024, 16 * 1024 * 1024),
+            Self::Feedback => (64 * 1024, 1024 * 1024),
+            Self::MobileNotification => (8 * 1024, 8 * 1024),
+        }
+    }
+}
+async fn raw_request_with_profile(
     http: &reqwest::Client,
     origin: &str,
     method: Method,
     path: &str,
     body: Option<Value>,
     token: Option<&str>,
-    request_limit: usize,
-    response_limit: usize,
-    allow_start_rejection: bool,
+    profile: OwnedRequestProfile,
 ) -> Result<(StatusCode, Value), NetworkError> {
-    let optional_start = allow_start_rejection
+    let (request_limit, response_limit) = profile.limits();
+    let optional_start = matches!(profile, OwnedRequestProfile::OptionalDesktopStart)
         && method == Method::POST
         && path == "/auth/login/start"
         && token.is_none();
+    let inspect_session =
+        method == Method::GET && path == "/auth/session" && token.is_some() && body.is_none();
     // Only callers with fixed, reviewed routes use this private HTTP seam.
     let diagnostic =
         crate::network_diagnostics::RequestDiagnostic::new("owned-account", &method, path);
@@ -212,6 +237,11 @@ async fn raw_request_with_limits(
     {
         return Ok((status, Value::Null));
     }
+    // An unmounted optional mobile notification router commonly returns plain
+    // 404 without JSON/no-store. It never authorizes a successful registration.
+    if status == StatusCode::NOT_FOUND && path.starts_with("/api/mobile-notify/v1/endpoints") {
+        return Err(NetworkError::new("MOBILE_NOTIFICATIONS_UNAVAILABLE"));
+    }
     if !response
         .headers()
         .get(header::CACHE_CONTROL)
@@ -239,6 +269,12 @@ async fn raw_request_with_limits(
     } else {
         serde_json::from_slice(&bytes).map_err(|_| NetworkError::new("OWNED_RESPONSE_INVALID"))?
     };
+    // Session inspection needs to map a confirmed unauthorized response to an
+    // invalid saved session. Keep this exception closed to its fixed bearer GET;
+    // transport failures and every other status retain the normal error mapping.
+    if inspect_session && status == StatusCode::UNAUTHORIZED {
+        return Ok((status, value));
+    }
     if !status.is_success() {
         return Err(NetworkError::cloud(
             value["error"]["code"]
@@ -324,6 +360,18 @@ impl OwnedClient {
         challenge: &str,
         desktop: bool,
     ) -> Result<OwnedLoginStart, NetworkError> {
+        self.start_with_return_and_clock(device_id, challenge, desktop, || {
+            jsonwebtoken::get_current_timestamp()
+        })
+        .await
+    }
+    async fn start_with_return_and_clock(
+        &self,
+        device_id: &str,
+        challenge: &str,
+        desktop: bool,
+        now: impl Fn() -> u64,
+    ) -> Result<OwnedLoginStart, NetworkError> {
         if !uuid(device_id)
             || challenge.len() != 43
             || URL_SAFE_NO_PAD.decode(challenge).map(|v| v.len()).ok() != Some(32)
@@ -335,16 +383,18 @@ impl OwnedClient {
             body["browserReturn"] = json!(true);
             body["browserReturnPath"] = json!("/desktop");
         }
-        let (mut status, mut value) = raw_request_with_limits(
+        let (mut status, mut value) = raw_request_with_profile(
             &self.http,
             &self.origin,
             Method::POST,
             "/auth/login/start",
             Some(body),
             None,
-            16 * 1024,
-            MAX_BODY,
-            desktop,
+            if desktop {
+                OwnedRequestProfile::OptionalDesktopStart
+            } else {
+                OwnedRequestProfile::Standard
+            },
         )
         .await?;
         // Older services reject the optional return path before creating a
@@ -370,14 +420,13 @@ impl OwnedClient {
         }
         let started: OwnedLoginStart =
             serde_json::from_value(value).map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
-        let now = jsonwebtoken::get_current_timestamp();
+        let now = now();
+        let expires_at = normalize_start_deadline(now, started.expires_at)?;
         let authorization = url::Url::parse(&started.authorization_url)
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
         let issuer = url::Url::parse(&self.instance.login_issuer)
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
         if !uuid(&started.transaction_id)
-            || started.expires_at <= now
-            || started.expires_at > now.saturating_add(300)
             || authorization.origin() != issuer.origin()
             || authorization.scheme() != "https"
             || !authorization.username().is_empty()
@@ -387,7 +436,10 @@ impl OwnedClient {
         {
             return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
         }
-        Ok(started)
+        Ok(OwnedLoginStart {
+            expires_at,
+            ..started
+        })
     }
     pub(crate) async fn poll(
         &self,
@@ -459,23 +511,53 @@ impl OwnedClient {
         session: &OwnedSession,
     ) -> Result<(), NetworkError> {
         session.validate(&self.instance)?;
+        let inspected = self.inspect_session(device, &session.access_token).await?;
+        if inspected.principal_id != session.principal_id
+            || inspected.network_id != session.network_id
+            || inspected.expires_at != session.expires_at
+        {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
+        Ok(())
+    }
+    pub(crate) async fn inspect_session(
+        &self,
+        device: &str,
+        token: &str,
+    ) -> Result<OwnedSession, NetworkError> {
+        if !uuid(device)
+            || token.len() != 43
+            || !token
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
         let (status, value) = raw_request(
             &self.http,
             &self.origin,
             Method::GET,
             "/auth/session",
             None,
-            Some(&session.access_token),
+            Some(token),
         )
         .await?;
-        if status != StatusCode::OK
-            || value
-                != json!({"principalId":session.principal_id,
-            "networkId":session.network_id,"deviceId":device,"expiresAt":session.expires_at})
-        {
+        if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_SESSION_INVALID"));
         }
-        Ok(())
+        let inspected: OwnedSessionInspection = serde_json::from_value(value)
+            .map_err(|_| NetworkError::new("OWNED_SESSION_INVALID"))?;
+        if inspected.device_id != device || inspected.network_id != self.instance.network_id {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
+        let session = OwnedSession {
+            access_token: token.to_owned(),
+            expires_at: inspected.expires_at,
+            principal_id: inspected.principal_id,
+            network_id: inspected.network_id,
+        };
+        session.validate(&self.instance)?;
+        Ok(session)
     }
     pub(crate) async fn community_request(
         &self,
@@ -485,16 +567,14 @@ impl OwnedClient {
         let (method, path, body) = request.route()?;
         // Community lists/details contain full user text. Keep identity limits
         // unchanged while allowing the server's bounded 100 topics/200 replies.
-        let (status, value) = raw_request_with_limits(
+        let (status, value) = raw_request_with_profile(
             &self.http,
             &self.origin,
             method,
             &path,
             body,
             Some(token),
-            64 * 1024,
-            16 * 1024 * 1024,
-            false,
+            OwnedRequestProfile::Community,
         )
         .await?;
         if status != StatusCode::OK {
@@ -508,22 +588,101 @@ impl OwnedClient {
         token: &str,
     ) -> Result<Value, NetworkError> {
         let (method, path, body) = request.route()?;
-        let (status, value) = raw_request_with_limits(
+        let (status, value) = raw_request_with_profile(
             &self.http,
             &self.origin,
             method,
             &path,
             body,
             Some(token),
-            64 * 1024,
-            1024 * 1024,
-            false,
+            OwnedRequestProfile::Feedback,
         )
         .await?;
         if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
         }
         request.response(value)
+    }
+    /// Fixed optional mobile routes only; reuse pinned TLS, no redirects/retries,
+    /// sensitive bearer handling and bounded strict no-store JSON HTTP.
+    pub(crate) async fn notification_request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+        token: &str,
+    ) -> Result<Value, NetworkError> {
+        let suffix = path
+            .strip_prefix("/api/mobile-notify/v1/endpoints")
+            .ok_or_else(|| NetworkError::new("OWNED_REQUEST_INVALID"))?;
+        let parts: Vec<_> = suffix.split('/').collect();
+        let expected = if suffix.is_empty() && method == Method::POST && body.is_some() {
+            StatusCode::CREATED
+        } else if parts.len() == 2
+            && parts[0].is_empty()
+            && uuid(parts[1])
+            && method == Method::DELETE
+            && body.is_none()
+            || parts.len() == 5
+                && parts[0].is_empty()
+                && uuid(parts[1])
+                && parts[2] == "events"
+                && uuid(parts[3])
+                && parts[4] == "redeem"
+                && method == Method::POST
+                && body == Some(json!({"version":1}))
+        {
+            StatusCode::OK
+        } else {
+            return Err(NetworkError::new("OWNED_REQUEST_INVALID"));
+        };
+        let (status, value) = raw_request_with_profile(
+            &self.http,
+            &self.origin,
+            method,
+            path,
+            body,
+            Some(token),
+            OwnedRequestProfile::MobileNotification,
+        )
+        .await?;
+        if status != expected {
+            return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
+        }
+        Ok(value)
+    }
+    /// Fixed source PoP routes; optional capability failure never retries HTTP.
+    pub(crate) async fn notification_source_request(
+        &self,
+        path: &str,
+        body: Value,
+        token: &str,
+    ) -> Result<Value, NetworkError> {
+        if !matches!(
+            path,
+            "/api/mobile-notify/v1/source/challenges" | "/api/mobile-notify/v1/source/hints"
+        ) {
+            return Err(NetworkError::new("OWNED_REQUEST_INVALID"));
+        }
+        let (status, value) = raw_request_with_profile(
+            &self.http,
+            &self.origin,
+            Method::POST,
+            path,
+            Some(body),
+            Some(token),
+            OwnedRequestProfile::MobileNotification,
+        )
+        .await?;
+        let expected = if path == "/api/mobile-notify/v1/source/challenges" {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        };
+        if status != expected {
+            return Err(NetworkError::new("OWNED_NOTIFICATION_SOURCE_UNAVAILABLE"));
+        }
+        Ok(value)
     }
     pub(crate) async fn identity_request(
         &self,
@@ -539,6 +698,23 @@ impl OwnedClient {
         }
         Ok(value)
     }
+}
+
+const START_MAX_LIFETIME_SECONDS: u64 = 300;
+const START_CLOCK_SKEW_SECONDS: u64 = 30;
+
+fn normalize_start_deadline(now: u64, expires_at: u64) -> Result<u64, NetworkError> {
+    let max_lifetime = START_MAX_LIFETIME_SECONDS
+        .checked_add(START_CLOCK_SKEW_SECONDS)
+        .and_then(|seconds| now.checked_add(seconds))
+        .ok_or_else(|| NetworkError::new("OWNED_LOGIN_INVALID"))?;
+    let conservative_deadline = now
+        .checked_add(START_MAX_LIFETIME_SECONDS)
+        .ok_or_else(|| NetworkError::new("OWNED_LOGIN_INVALID"))?;
+    if expires_at <= now || expires_at > max_lifetime {
+        return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
+    }
+    Ok(expires_at.min(conservative_deadline))
 }
 fn login_proof(device: &str, transaction: &str, verifier: &str) -> Result<Value, NetworkError> {
     if !uuid(device)
@@ -557,15 +733,161 @@ fn login_proof(device: &str, transaction: &str, verifier: &str) -> Result<Value,
 mod tests {
     use super::*;
 
+    async fn start_response_case(
+        status: u16,
+        no_store: bool,
+        value: Value,
+        now: u64,
+    ) -> Result<OwnedLoginStart, NetworkError> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            loop {
+                let mut chunk = [0u8; 2048];
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0 && bytes.len() + read <= 8192);
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(pos) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&bytes[..pos]).unwrap();
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (key, value) = line.split_once(':')?;
+                            key.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if bytes.len() >= pos + 4 + content_length {
+                        break;
+                    }
+                }
+            }
+            let cache = if no_store {
+                "Cache-Control: no-store\r\n"
+            } else {
+                ""
+            };
+            let body = value.to_string();
+            let response = format!(
+                "HTTP/1.1 {status} Response\r\n{cache}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance: instance(),
+        };
+        let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
+        let device = uuid::Uuid::new_v4().to_string();
+        let request = client.start_with_return_and_clock(&device, &challenge, true, || now);
+        let (_, result) = tokio::join!(server, request);
+        result
+    }
+
+    async fn session_response_case(
+        instance: OwnedInstance,
+        device: String,
+        token: String,
+        status: u16,
+        no_store: bool,
+        value: Value,
+        snapshot: Option<OwnedSession>,
+    ) -> Result<OwnedSession, NetworkError> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let expected_token = token.clone();
+        let server = async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            loop {
+                let mut chunk = [0u8; 2048];
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0 && bytes.len() + read <= 8192);
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(pos) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&bytes[..pos]).unwrap();
+                    let authorization = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (key, value) = line.split_once(':')?;
+                            key.eq_ignore_ascii_case("authorization")
+                                .then(|| value.trim())
+                        })
+                        .unwrap_or_default();
+                    assert!(authorization == format!("Bearer {expected_token}"));
+                    break;
+                }
+            }
+            let cache = if no_store {
+                "Cache-Control: no-store\r\n"
+            } else {
+                ""
+            };
+            let body = value.to_string();
+            let response = format!(
+                "HTTP/1.1 {status} Response\r\n{cache}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance,
+        };
+        let request = async {
+            if let Some(snapshot) = snapshot {
+                client
+                    .validate_session(&device, &snapshot)
+                    .await
+                    .map(|()| snapshot)
+            } else {
+                client.inspect_session(&device, &token).await
+            }
+        };
+        let (_, result) = tokio::join!(server, request);
+        result
+    }
+
     #[tokio::test]
     async fn desktop_start_uses_opt_in_and_only_retries_explicit_old_service_rejections() {
         use std::sync::{Arc, Mutex};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        for rejected in [None, Some(400), Some(422), Some(503)] {
+        for (rejected, lifetime) in [
+            (None, 120),
+            (Some(400), 120),
+            (Some(422), 120),
+            (Some(503), 120),
+            // Exercise the actual start response path with a server deadline
+            // one second beyond the client's normal maximum.
+            (None, 301),
+        ] {
             let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
             let captured = seen.clone();
             let transaction = uuid::Uuid::new_v4().to_string();
             let expected_transaction = transaction.clone();
+            let request_now = jsonwebtoken::get_current_timestamp();
+            let server_expiry = request_now + lifetime;
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let origin = format!("http://{}", listener.local_addr().unwrap());
             let expected_requests = if matches!(rejected, Some(400 | 422)) {
@@ -611,7 +933,7 @@ mod tests {
                         (200, "Cache-Control: no-store\r\nContent-Type: application/json\r\n", json!({
                             "transactionId": transaction,
                             "authorizationUrl": "https://login.example.test/dex/auth?state=fixture",
-                            "expiresAt": jsonwebtoken::get_current_timestamp() + 120,
+                            "expiresAt": server_expiry,
                         }).to_string())
                     };
                     let response = format!("HTTP/1.1 {status} Response\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
@@ -633,12 +955,15 @@ mod tests {
             };
             let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
             let device = uuid::Uuid::new_v4().to_string();
-            let request = client.start_desktop(&device, &challenge);
+            let request =
+                client.start_with_return_and_clock(&device, &challenge, true, || request_now);
             let (_, result) = tokio::join!(server, request);
             if rejected == Some(503) {
                 assert!(result.is_err());
             } else {
-                assert_eq!(result.unwrap().transaction_id, expected_transaction);
+                let started = result.unwrap();
+                assert_eq!(started.transaction_id, expected_transaction);
+                assert_eq!(started.expires_at, request_now + lifetime.min(300));
             }
             let seen = seen.lock().unwrap();
             assert_eq!(seen[0]["browserReturnPath"], "/desktop");
@@ -656,6 +981,329 @@ mod tests {
                 assert_eq!(seen[0]["pkceChallenge"], seen[1]["pkceChallenge"]);
             }
         }
+    }
+    #[tokio::test]
+    async fn source_routes_use_pinned_tls_and_native_device_pop_without_http_retries() {
+        use p256::ecdsa::{signature::Verifier, Signature, VerifyingKey};
+        use std::io::{Read, Write};
+        let certified = rcgen::generate_simple_self_signed(vec!["localhost".into()]).unwrap();
+        let certificate = certified.cert.pem();
+        let tls = rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(
+            vec![certified.cert.der().clone()],
+            rustls::pki_types::PrivatePkcs8KeyDer::from(certified.signing_key.serialize_der())
+                .into(),
+        )
+        .unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!(
+            "https://localhost:{}",
+            listener.local_addr().unwrap().port()
+        );
+        let key = crypto::DevicePrivateKey::generate().unwrap();
+        let jwk = key.public_jwk().unwrap();
+        let mut point = vec![4];
+        point.extend(URL_SAFE_NO_PAD.decode(jwk["x"].as_str().unwrap()).unwrap());
+        point.extend(URL_SAFE_NO_PAD.decode(jwk["y"].as_str().unwrap()).unwrap());
+        let verifier = VerifyingKey::from_sec1_bytes(&point).unwrap();
+        let challenge = uuid::Uuid::new_v4().to_string();
+        let expected_challenge = challenge.clone();
+        let nonce = URL_SAFE_NO_PAD.encode([7u8; 32]);
+        let expected_nonce = nonce.clone();
+        let server = std::thread::spawn(move || {
+            for step in 0..3 {
+                let (socket, _) = listener.accept().unwrap();
+                socket
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut stream = rustls::StreamOwned::new(
+                    rustls::ServerConnection::new(std::sync::Arc::new(tls.clone())).unwrap(),
+                    socket,
+                );
+                let mut bytes = Vec::new();
+                let (end, size) = loop {
+                    let mut b = [0; 2048];
+                    let n = stream.read(&mut b).unwrap();
+                    assert!(n > 0 && bytes.len() + n <= 8192);
+                    bytes.extend_from_slice(&b[..n]);
+                    if let Some(end) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                        let size = headers
+                            .lines()
+                            .find_map(|l| {
+                                let (k, v) = l.split_once(':')?;
+                                k.eq_ignore_ascii_case("content-length")
+                                    .then(|| v.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
+                        if bytes.len() >= end + 4 + size {
+                            break (end + 4, size);
+                        }
+                    }
+                };
+                let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                assert!(headers
+                    .to_ascii_lowercase()
+                    .contains("authorization: bearer source-test-token"));
+                let body: Value = serde_json::from_slice(&bytes[end..end + size]).unwrap();
+                let (status, reply) = match step {
+                    0 => {
+                        assert!(
+                            headers.starts_with("POST /api/mobile-notify/v1/source/challenges ")
+                        );
+                        assert_eq!(body["version"], 1);
+                        (
+                            201,
+                            json!({"version":1,"challengeId":expected_challenge,"nonce":expected_nonce,"expiresAt":jsonwebtoken::get_current_timestamp()+60}),
+                        )
+                    }
+                    1 => {
+                        assert!(headers.starts_with("POST /api/mobile-notify/v1/source/hints "));
+                        assert_eq!(body["challengeId"], expected_challenge);
+                        let signature = Signature::from_slice(
+                            &URL_SAFE_NO_PAD
+                                .decode(body["proof"].as_str().unwrap())
+                                .unwrap(),
+                        )
+                        .unwrap();
+                        let mut signed =
+                            format!("MyAgents Agent Network PoP v1\n{expected_challenge}\n")
+                                .into_bytes();
+                        signed.extend([7u8; 32]);
+                        verifier.verify(&signed, &signature).unwrap();
+                        (
+                            200,
+                            json!({"version":1,"eventId":uuid::Uuid::new_v4().to_string()}),
+                        )
+                    }
+                    _ => (404, json!({"code":"NOT_FOUND"})),
+                };
+                let body = reply.to_string();
+                let response=format!("HTTP/1.1 {status} Response\r\nCache-Control: no-store\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                stream.write_all(response.as_bytes()).unwrap();
+                stream.flush().unwrap();
+            }
+        });
+        let mut pin = instance();
+        pin.issuer = origin;
+        let client = OwnedClient::pinned(pin, Some(&certificate)).unwrap();
+        let response=client.notification_source_request("/api/mobile-notify/v1/source/challenges",json!({"version":1,"sourceEventId":uuid::Uuid::new_v4().to_string(),"connectionEpoch":uuid::Uuid::new_v4().to_string(),"agentId":"agent-1","sessionId":uuid::Uuid::new_v4().to_string()}),"source-test-token").await.unwrap();
+        let proof = key
+            .sign_proof(
+                response["challengeId"].as_str().unwrap(),
+                response["nonce"].as_str().unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            client
+                .notification_source_request(
+                    "/api/mobile-notify/v1/source/hints",
+                    json!({"version":1,"challengeId":challenge,"proof":proof}),
+                    "source-test-token"
+                )
+                .await
+                .unwrap()["version"],
+            1
+        );
+        assert!(client
+            .notification_source_request(
+                "/api/mobile-notify/v1/source/challenges",
+                json!({"version":1}),
+                "source-test-token"
+            )
+            .await
+            .is_err());
+        assert!(client
+            .notification_source_request("/api/unrelated", json!({}), "source-test-token")
+            .await
+            .is_err());
+        server.join().unwrap();
+    }
+    #[test]
+    fn start_deadline_allows_bounded_clock_skew_and_clamps_to_client_limit() {
+        let now = 1_000;
+        for lifetime in [300, 301, 330] {
+            assert_eq!(
+                normalize_start_deadline(now, now + lifetime).unwrap(),
+                now + 300
+            );
+        }
+        for lifetime in [0, 331] {
+            assert!(normalize_start_deadline(now, now + lifetime).is_err());
+        }
+        assert!(normalize_start_deadline(now, now - 1).is_err());
+        assert!(normalize_start_deadline(u64::MAX - 100, u64::MAX - 50).is_err());
+    }
+    #[tokio::test]
+    async fn desktop_start_keeps_strict_deadline_schema_url_status_and_no_store_checks() {
+        let now = jsonwebtoken::get_current_timestamp();
+        let base = || {
+            json!({
+                "transactionId": uuid::Uuid::new_v4().to_string(),
+                "authorizationUrl": "https://login.example.test/dex/auth?state=fixture",
+                "expiresAt": now + 120,
+            })
+        };
+
+        let mut expired = base();
+        expired["expiresAt"] = json!(now.saturating_sub(1));
+        let mut over_skew = base();
+        over_skew["expiresAt"] = json!(now + 331);
+        let mut unknown = base();
+        unknown["unexpected"] = json!(true);
+        let mut bad_url = base();
+        bad_url["authorizationUrl"] = json!("https://other.example.test/auth");
+
+        for (status, no_store, value, expected_code) in [
+            (200, true, expired, "OWNED_LOGIN_INVALID"),
+            (200, true, over_skew, "OWNED_LOGIN_INVALID"),
+            (200, true, unknown, "OWNED_LOGIN_INVALID"),
+            (200, true, bad_url, "OWNED_LOGIN_INVALID"),
+            (201, true, base(), "OWNED_LOGIN_INVALID"),
+            (200, false, base(), "OWNED_RESPONSE_INVALID"),
+        ] {
+            let error = start_response_case(status, no_store, value, now)
+                .await
+                .err()
+                .expect("invalid start response must fail");
+            assert_eq!(error.code, expected_code);
+        }
+    }
+    #[tokio::test]
+    async fn inspect_session_requires_exact_authorized_server_snapshot() {
+        let now = jsonwebtoken::get_current_timestamp();
+        let token = "a".repeat(43);
+        let instance = instance();
+        let device = uuid::Uuid::new_v4().to_string();
+        let base = || {
+            json!({
+                "principalId": uuid::Uuid::new_v4().to_string(),
+                "networkId": instance.network_id,
+                "deviceId": device,
+                "expiresAt": now + 600,
+            })
+        };
+
+        let valid = base();
+        let session = session_response_case(
+            instance.clone(),
+            device.clone(),
+            token.clone(),
+            200,
+            true,
+            valid.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(session.network_id, instance.network_id);
+        assert_eq!(session.expires_at, now + 600);
+        assert_eq!(session.access_token, token);
+
+        let mut unknown = base();
+        unknown["unexpected"] = json!(true);
+        let mut wrong_device = base();
+        wrong_device["deviceId"] = json!(uuid::Uuid::new_v4().to_string());
+        let mut wrong_network = base();
+        wrong_network["networkId"] = json!(uuid::Uuid::new_v4().to_string());
+        let mut expired = base();
+        expired["expiresAt"] = json!(now.saturating_sub(1));
+        for (status, no_store, value, expected_code) in [
+            (200, true, unknown, "OWNED_SESSION_INVALID"),
+            (200, true, wrong_device, "OWNED_SESSION_INVALID"),
+            (200, true, wrong_network, "OWNED_SESSION_INVALID"),
+            (200, true, expired, "OWNED_SESSION_INVALID"),
+            (
+                401,
+                true,
+                json!({"error":"unauthorized"}),
+                "OWNED_SESSION_INVALID",
+            ),
+            (201, true, valid.clone(), "OWNED_SESSION_INVALID"),
+            (200, false, valid.clone(), "OWNED_RESPONSE_INVALID"),
+            (
+                503,
+                true,
+                json!({"error":{"code":"SERVICE_BUSY"}}),
+                "SERVICE_BUSY",
+            ),
+        ] {
+            let error = session_response_case(
+                instance.clone(),
+                device.clone(),
+                token.clone(),
+                status,
+                no_store,
+                value,
+                None,
+            )
+            .await
+            .err()
+            .expect("invalid session inspection must fail");
+            assert_eq!(error.code, expected_code);
+            if status == 503 {
+                assert!(error.retryable);
+            }
+        }
+
+        let mut changed_expiry = valid;
+        changed_expiry["expiresAt"] = json!(now + 601);
+        let stale_snapshot = OwnedSession {
+            access_token: token.clone(),
+            principal_id: changed_expiry["principalId"].as_str().unwrap().to_owned(),
+            network_id: instance.network_id.clone(),
+            expires_at: now + 600,
+        };
+        let error = session_response_case(
+            instance,
+            device,
+            token,
+            200,
+            true,
+            changed_expiry,
+            Some(stale_snapshot),
+        )
+        .await
+        .err()
+        .expect("snapshot expiry drift must fail");
+        assert_eq!(error.code, "OWNED_SESSION_INVALID");
+    }
+    #[tokio::test]
+    async fn inspect_session_transport_failure_keeps_transport_error_mapping() {
+        use tokio::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            drop(stream);
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance: instance(),
+        };
+        let device = uuid::Uuid::new_v4().to_string();
+        let token = "a".repeat(43);
+        let request = client.inspect_session(&device, &token);
+        let (_, result) = tokio::join!(server, request);
+        let error = match result {
+            Err(error) => error,
+            Ok(_) => panic!("closed HTTP connection must fail"),
+        };
+        assert_eq!(error.code, "OWNED_ACCOUNT_UNAVAILABLE");
+        assert!(error.retryable);
     }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()

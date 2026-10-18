@@ -1,0 +1,39 @@
+[
+  {
+    "mode": "text",
+    "actualTestSeconds": 11.07,
+    "supplierCalls": 1,
+    "persistedSessions": 1,
+    "processBirthsAbsent": 7,
+    "closedPorts": [
+      54270
+    ],
+    "materialized": [],
+    "log": "/tmp/moxbots-mobile-source-poll-text.log",
+    "limitation": "Controlled synthetic SSO/encrypted test store/loopback model; no phone or production acceptance."
+  },
+  {
+    "mode": "assets",
+    "actualTestSeconds": 13.12,
+    "supplierCalls": 2,
+    "persistedSessions": 1,
+    "processBirthsAbsent": 9,
+    "closedPorts": [
+      54562
+    ],
+    "materialized": [
+      {
+        "name": "fixture.txt",
+        "sizeBytes": 40,
+        "sha256": "a4655a06160a240466fdd4c63bdf211481b08224db7ced1cc08f97ecf8fd6906"
+      },
+      {
+        "name": "fixture.png",
+        "sizeBytes": 49363,
+        "sha256": "b671ed7409125a2a0bc4371584cd710c3e55a46e97e3f453f74af325991fd8c7"
+      }
+    ],
+    "log": "/tmp/moxbots-mobile-source-poll-assets.log",
+    "limitation": "Controlled synthetic SSO/encrypted test store/loopback model; no phone or production acceptance."
+  }
+]

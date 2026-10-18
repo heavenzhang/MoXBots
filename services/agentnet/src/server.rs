@@ -47,6 +47,10 @@ use zeroize::Zeroizing;
 const MAX_HTTP_BODY: usize = 8 * 1024;
 const MAX_PROVIDER_BODY: usize = 256 * 1024;
 const MAX_TRANSACTIONS: usize = 1024;
+// Older desktop clients reject start deadlines beyond their local now + 300s.
+// Leave a bounded clock margin without extending either advertised or actual
+// authorization lifetime. Account session lifetimes are independent.
+const MAX_LOGIN_TRANSACTION_SECONDS: u64 = 270;
 const COMPLETION_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Sign-in complete</title><p>Sign-in complete. Return to the application.</p>";
 
 #[derive(Deserialize)]
@@ -75,6 +79,8 @@ pub struct ServiceFileConfig {
     pub execution: bool,
     #[serde(default)]
     pub model_center: Option<crate::model_center_authority::ModelCenterConfig>,
+    #[serde(default)]
+    pub mobile_notifications: Option<crate::mobile_notification_delivery::MobileNotificationConfig>,
 }
 fn default_session_ttl() -> u64 {
     86_400
@@ -288,6 +294,28 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
         session_ttl: Duration::from_secs(config.session_ttl_seconds),
     };
     let store = Arc::new(AuthStore::open(&config.state_dir, &auth)?);
+    let mobile_notifications = config
+        .mobile_notifications
+        .as_ref()
+        .filter(|settings| settings.enabled)
+        .map(|settings| {
+            let devices = Arc::new(
+                myagents_agentnet_device_core::DeviceStore::open(&config.state_dir)
+                    .map_err(|_| AuthError::Storage)?,
+            );
+            let notify = Arc::new(
+                myagents_agentnet_mobile_notify_core::Store::open(&config.state_dir)
+                    .map_err(|_| AuthError::Storage)?,
+            );
+            crate::mobile_notification_delivery::MobileNotificationRuntime::open(
+                store.clone(),
+                devices,
+                notify,
+                &config.network_id,
+                settings,
+            )
+        })
+        .transpose()?;
     let feedback = FeedbackService::open(
         store.clone(),
         &config.state_dir,
@@ -439,6 +467,11 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
     let router = assemble_feature_routes(router, identity, network, relay, &config.issuer)
         .merge(feedback.router())
         .merge(community.router());
+    let router = if let Some(mobile) = &mobile_notifications {
+        router.merge(mobile.router())
+    } else {
+        router
+    };
     let router = if let Some(admin) = administration {
         router.merge(admin.router())
     } else {
@@ -460,12 +493,18 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
     let listener = TcpListener::bind(config.listen)
         .await
         .map_err(|_| AuthError::Configuration)?;
-    axum::serve(listener, router)
+    let worker =
+        mobile_notifications.map(|runtime| tokio::spawn(std::sync::Arc::new(runtime).run_worker()));
+    let serve_result = axum::serve(listener, router)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await
-        .map_err(|_| AuthError::Storage)
+        .map_err(|_| AuthError::Storage);
+    if let Some(worker) = worker {
+        worker.abort();
+    }
+    serve_result
 }
 
 /// Merge the optional feature routers into the same production router used by
@@ -571,6 +610,13 @@ fn validate_config(c: &ServiceFileConfig) -> Result<(), AuthError> {
     if c.relay && (c.identity.is_none() || c.network.is_none()) {
         return Err(AuthError::Configuration);
     }
+    if c.mobile_notifications
+        .as_ref()
+        .is_some_and(|settings| settings.enabled)
+        && (c.identity.is_none() || c.network.is_none())
+    {
+        return Err(AuthError::Configuration);
+    }
     let issuer = Url::parse(&c.issuer).map_err(|_| AuthError::OidcConfiguration)?;
     let callback = Url::parse(&c.callback_url).map_err(|_| AuthError::OidcConfiguration)?;
     if issuer.scheme() != "https"
@@ -674,7 +720,9 @@ async fn start(
         return Err(ApiError::BadRequest);
     }
     let now = unix_now().map_err(|_| ApiError::Internal)?;
-    let expires = now + app.flow.ttl.as_secs() as i64;
+    let expires = now
+        .checked_add(app.flow.ttl.as_secs().min(MAX_LOGIN_TRANSACTION_SECONDS) as i64)
+        .ok_or(ApiError::Internal)?;
     let tx = Uuid::new_v4().to_string();
     let state = URL_SAFE_NO_PAD.encode(random::<[u8; 32]>());
     let nonce = URL_SAFE_NO_PAD.encode(random::<[u8; 32]>());
@@ -1627,9 +1675,19 @@ mod tests {
             relay: false,
             administration: None,
             model_center: None,
+            mobile_notifications: None,
             execution: false,
         };
         assert!(validate_config(&good).is_ok());
+        good.mobile_notifications = Some(
+            crate::mobile_notification_delivery::MobileNotificationConfig {
+                enabled: true,
+                apns: None,
+                fcm: None,
+            },
+        );
+        assert!(validate_config(&good).is_err());
+        good.mobile_notifications = None;
         good.relay = true;
         assert!(validate_config(&good).is_err());
         good.relay = false;
@@ -1650,6 +1708,7 @@ mod tests {
         });
         let config: ServiceFileConfig = serde_json::from_value(value).unwrap();
         assert!(!config.relay);
+        assert!(config.mobile_notifications.is_none());
     }
 
     #[tokio::test]
@@ -1984,6 +2043,38 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn login_start_keeps_actual_and_advertised_deadlines_within_legacy_clock_margin() {
+        for configured_seconds in [5, 300, 900] {
+            let (mut app, _dir) = test_app();
+            Arc::get_mut(&mut app).unwrap().flow.ttl = Duration::from_secs(configured_seconds);
+            let before = unix_now().unwrap();
+            let (_, Json(started)) = start(
+                State(app.clone()),
+                Json(StartRequest {
+                    device_id: "22222222-2222-4222-8222-222222222222".into(),
+                    pkce_challenge: URL_SAFE_NO_PAD.encode([1u8; 32]),
+                    browser_return: false,
+                    browser_return_path: None,
+                }),
+            )
+            .await
+            .unwrap();
+            let after = unix_now().unwrap();
+            let lifetime = configured_seconds.min(270) as i64;
+            assert!(started.expires_at >= before + lifetime);
+            assert!(started.expires_at <= after + lifetime);
+            assert_eq!(
+                app.flow.pending.lock().unwrap()[&started.transaction_id].expires_at,
+                started.expires_at
+            );
+            // The old client's upper-bound check still passes when its clock
+            // trails the server by up to 30 seconds.
+            let legacy_client_now = after - 30;
+            assert!(started.expires_at <= legacy_client_now + 300);
+        }
     }
 
     #[tokio::test]
@@ -2450,3 +2541,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "mobile_full_e2e_fixture.rs"]
+mod mobile_full_e2e_fixture;

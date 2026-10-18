@@ -1,0 +1,19 @@
+{
+  "scope": "isolated original MobileConnection/TLS/WSS/Host/SDK/SessionStore; synthetic login and controlled supplier",
+  "primaryElapsedSeconds": 11.02,
+  "defaultMountEnabled": false,
+  "explicitRevisionApiEnable": true,
+  "originalSessionId": "9703fb2c-e6bd-46c7-aec3-b762e9633ecd",
+  "originalReceiptStatus": "accepted",
+  "originalTerminal": "complete",
+  "supplierCalls": 1,
+  "persistedSessionCount": 1,
+  "duplicateIntentCode": "MOBILE_RECEIPT_REQUIRED",
+  "readOnlyReceiptRecoveryMatched": true,
+  "recordedProcessesCheckedExited": 9,
+  "loopbackPortsCheckedClosed": 2,
+  "phoneAcceptance": false,
+  "realProviderAcceptance": false,
+  "realSSOAcceptance": false,
+  "productionDeployment": false
+}

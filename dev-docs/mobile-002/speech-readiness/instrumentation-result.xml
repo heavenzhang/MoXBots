@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuites tests="1" failures="0" errors="0" skipped="0" time="0.322" timestamp="2026-10-17T22:26:05" hostname="localhost">
+  <testsuite name="com.moxbots.mobile.remote.NativeSpeechReadinessInstrumentedTest" tests="1" failures="0" errors="0" skipped="0" time="0.035" timestamp="2026-10-17T22:26:05" hostname="localhost">
+    <properties>
+      <property name="device" value="MoxBotsMobile002(AVD) - 16" />
+      <property name="flavor" value="" />
+      <property name="project" value=":moxbots-remote" />
+    </properties>
+    <testcase name="reportsOnDeviceChineseReadinessAndPermissionDeniedStartWithoutRecording" classname="com.moxbots.mobile.remote.NativeSpeechReadinessInstrumentedTest" time="0.035" />
+  </testsuite>
+</testsuites>
