@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Explicit live probe uses the same networking permission as the app. -->
+  <uses-permission android:name="android.permission.INTERNET" />
   <!-- Match the production config plugin's package-visibility query for the
        library's standalone instrumentation host. -->
   <queries>
@@ -8,7 +10,7 @@
   </queries>
   <!-- Library instrumentation has its own application, separate from Expo's
        generated app manifest. Exercise the real provider through its resolver. -->
-  <application>
+  <application android:networkSecurityConfig="@xml/moxbots_network_security_config">
     <provider
       android:name="com.moxbots.mobile.remote.NativeArtifactProvider"
       android:authorities="${applicationId}.moxbots.artifacts"

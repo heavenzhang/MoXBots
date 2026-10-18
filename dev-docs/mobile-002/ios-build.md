@@ -1,4 +1,14 @@
-# iOS full application build checkpoint
+# Current local iOS application build checkpoint
+
+Clean source `cd864a800d2c6b762a2f60fb475995b67725a68c` built locally with Xcode27.1/SDK27.1: original Rust iPhone+Simulator Release targets, XCFramework, Expo prebuild, Pods, owned Swift module and full offline application. Task-only detached build checkout: `/Users/zhangshaohua/.codex/builds/moxbots-mobile-002-ios-cd864a80`. Both native targets sourceDigest `f81118946c577d82fd5ad053920d3226e29a7b3a36fe0e2a75a2b3dbea07c0dd`; device library SHA25677a7049b884c1f721d4404d3ca5d48213e35aec3446af5e5ea2270924b3746e6, simulator library SHA256c604669bccfe68bb9b2f353a4ada890aec3efa456aea8de5f6387e1e8a018a99.
+
+Saved `MoxBot/output/mobile-002/native-checkpoints/MoxBots-mobile-002-ios-simulator-cd864a80.tar.gz`, adjacent `.tar.gz.provenance.json`, both0600. Archive SHA256 `eec278a1a59410a0d3d739153bedabb9d97ac5cc429298d79aeca31a4c408dfd`,19219062bytes. Actual Info.plist: `com.moxbots.mobileinternal`, iphonesimulator27.1, minimum16.4; arm64 Mach-O and embedded Hermes JS5614768bytes verified. Installed successfully on dedicated iPhone16e/iOS27.0 simulator8505F368-BEAD-401F-89BB-0924B67E40DA. No launch/UI acceptance yet: CUA reports the Mac locked again; user manual unlock requested.
+
+Original Documents-root build failed at generated ExpoModulesJSI CodeSign with forbidden FinderInfo/FileProvider extended attributes. Preserved failure `/tmp/moxbots-mobile-ios-local-full-app.log`. Clean isolated build produced the same exact source outside Documents without those attributes, succeeded; log `/tmp/moxbots-mobile-ios-isolated-full-app.log`. No vendor patch, signing-verification disable or global xattr removal. Apple explains the bundle metadata rejection in [QA1940](https://developer.apple.com/library/archive/qa/qa1940/_index.html).
+
+Apple SDK agreement and initial components are explicitly authorized and complete; CLI first-launch check passed. Official iOS27.1 runtime installed but supports only the installed iPhone Duo device type; attempted16e creation failed147. Official iOS27.0 installed for standard iPhone16e, booted successfully. Only task simulators created/booted/shut down. Apple Account sign-in remains pending local user action; no paired physical iPhone found. Unsigned simulator package is not an iPhone/TestFlight/internal signed release and proves no microphone, push, Host or daily-use path.
+
+# Historical iOS full application build checkpoint
 
 Exact application build source: `f6ffc3990c804070bad99b113bfa34f7c4341bd8`.
 [Actual complete build39076091630](https://github.com/heavenzhang/MoXBots/actions/runs/39076091630) succeeded; job117523438364, artifact12117391203, `mobile-ios-simulator-f6ffc3990c804070bad99b113bfa34f7c4341bd8` (19683711-byte uploaded ZIP).

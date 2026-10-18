@@ -9,6 +9,16 @@ use std::time::Duration;
 use zeroize::{Zeroize, Zeroizing};
 
 const MAX_BODY: usize = 128 * 1024;
+fn valid_login_expiry(expires: u64, now: u64) -> bool {
+    // Use the original protocol's skew budget, as JWT/PoP already do. A
+    // server-created 300s transaction can look 301s away on a slightly slow
+    // phone. This never extends the server transaction or accepts expiry.
+    expires > now
+        && expires
+            <= now
+                .saturating_add(300)
+                .saturating_add(myagents_agent_network_protocol::budget("clockSkewSeconds") as u64)
+}
 pub(crate) const INSTANCE_PATH: &str = "/api/agent-network/instance";
 
 #[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -381,8 +391,7 @@ impl OwnedClient {
         let issuer = url::Url::parse(&self.instance.login_issuer)
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
         if !uuid(&started.transaction_id)
-            || started.expires_at <= now
-            || started.expires_at > now.saturating_add(300)
+            || !valid_login_expiry(started.expires_at, now)
             || authorization.origin() != issuer.origin()
             || authorization.scheme() != "https"
             || !authorization.username().is_empty()
@@ -646,6 +655,21 @@ fn login_proof(device: &str, transaction: &str, verifier: &str) -> Result<Value,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn login_expiry_uses_existing_skew_without_accepting_expired_or_unbounded_times() {
+        let now = 1_000;
+        let skew = myagents_agent_network_protocol::budget("clockSkewSeconds") as u64;
+        assert!(!valid_login_expiry(now - 1, now));
+        assert!(!valid_login_expiry(now, now));
+        for expires in [now + 1, now + 300, now + 301, now + 300 + skew] {
+            assert!(valid_login_expiry(expires, now));
+        }
+        assert!(!valid_login_expiry(now + 301 + skew, now));
+        assert!(!valid_login_expiry(u64::MAX, now));
+        assert!(valid_login_expiry(u64::MAX, u64::MAX - 1));
+        assert!(!valid_login_expiry(u64::MAX, u64::MAX));
+    }
 
     #[tokio::test]
     async fn desktop_start_uses_opt_in_and_only_retries_explicit_old_service_rejections() {
