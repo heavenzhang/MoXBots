@@ -1,3 +1,12 @@
+## Deployment coordination — MOXBOTS-AUTH-RENEWAL-20261018 scoped transfer
+
+- **Deployment chat:** `01a12b99-7b38-78b1-831f-9c60257d386a`, only the existing owned AgentNet service on140.143.183.232 and existing MoX Node/connector pair on101.42.11.29 for this authentication and recovery release.
+- **Designation:** On2026-10-18 the human explicitly authorized: “授权本聊天接管云服务和 101 的发布，先与原发布方完成交接，避免双写。保留原设备身份、密钥和配置，部署后验证登录、Bots Ready、自动续期和断线恢复，不要动我日常用的 Mac 客户端。” This replaces the old publisher for these two targets only, after its explicit handoff.
+- **Handoff/admission:** Preparing; original source coordinator withdrew previous queued cloud/101 requests and confirmed no target writes, lease or unfinished transaction. Original publisher must explicitly acknowledge target release and disclose active/queued operations before this chat takes a target lock or writes production. Silence is not handoff. Desktop, Windows, website, public installer pointers, updater, Nginx/TLS and daily Mac are excluded.
+- **Pinned release:** Accepted main `dcf8d9a60976c160e2b2aca33313c668c071132c`, tree `e689d190488ddf2935c867c364810914ac3bc819`, PR118+119. Actual main Test39093243865 and Owned39093243842 passed; artifacts independently verified against actual source-commit.txt and SHA256SUMS. Later main commits do not join this release.
+- **Runbook/state:** Preserve original AuthStore, device/private key, Host configuration, provider ciphertext, finite grants and production86400s TTL. Cloud binary first, then same-source paired Node+connector on101 after fresh idle/lock/consistent backup checks. Follow `dev-docs/auth-renewal-production-20261018.md`; keep secrets/runtime state private. Roll back program/pointers with ownership checks; never overwrite a committed token rotation or revocation with old auth state.
+- **Current release:** Preparing; source/main/tests/artifacts accepted, production not yet changed. Real login, same-device authenticated directory/Bots Ready, renewal and recovery require separate receipts; natural24h renewal remains distinct from the accepted short-TTL real AuthStore tests.
+
 ## MOXBOTS-HOST-ONBOARD-001 — 2026-10-18
 
 用户启动Ubuntu24.04/x86_64一条命令安装、浏览器授权自动入网与有效会话自动续期；代码/测试/main由01a13320-dbf9-7c03-b7f3-37e30d15de48负责，发行交既定统一部署聊天01a12bc2-907a-7702-b6dd-788225c5dfe4。任务 `.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`。新public installer必须验证正式元数据可用后才展示命令，复用原身份/加密存储/撤销owner；没有新模型授权或生产操作。对日常Mac不安装、不更新、不重启。source/CI/main与正式bundle/服务发布/真实生产按门禁分开，发布请求仅排队不改变当前冻结发行。
