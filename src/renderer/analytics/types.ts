@@ -249,7 +249,9 @@ export type EventName =
   | 'floating_ball_expand'
   | 'floating_ball_pet_select'
   // 服务端统一 AI turn 事件。由 trackServer() 上报，但仍属于同一事件契约。
-  | 'ai_turn_complete';
+  | 'ai_turn_complete'
+  // 自动选模型：每个被路由的新轮次一条，不含用户原文。
+  | 'auto_route_decide';
 
 /**
  * session_new 事件参数

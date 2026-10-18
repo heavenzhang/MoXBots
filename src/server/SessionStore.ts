@@ -4532,6 +4532,7 @@ export async function updateSessionMetadata(
         | 'providerExecutionIdentity'
         | 'providerRouteRepairedAt'
         | 'providerEnvJson'
+        | 'modelMode'
         | 'configSnapshotAt'
         | 'materializationState'
         | 'materializationSourceSessionId'

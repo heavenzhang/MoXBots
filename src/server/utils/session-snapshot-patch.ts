@@ -12,7 +12,8 @@ type SessionSnapshotPatchKey =
   | 'providerId'
   | 'providerRoute'
   | 'providerExecutionIdentity'
-  | 'providerEnvJson';
+  | 'providerEnvJson'
+  | 'modelMode';
 
 export type SessionSnapshotPatchPayload = {
   [K in SessionSnapshotPatchKey]?: SessionMetadata[K] | null;
@@ -29,6 +30,7 @@ const SNAPSHOT_KEYS = [
   'providerRoute',
   'providerExecutionIdentity',
   'providerEnvJson',
+  'modelMode',
 ] as const satisfies ReadonlyArray<keyof SessionSnapshotPatchPayload>;
 
 const BASELINE_KEYS = [

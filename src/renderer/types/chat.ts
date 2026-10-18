@@ -1,3 +1,4 @@
+import type { AutoRouteRecord } from '../../shared/autoRoute';
 import type { ExecutionTiming } from '../../shared/executionTiming';
 import type { StreamRecoveryEvidence } from '../../shared/streamRecovery';
 import type { AsyncQuestionSet, AsyncQuestionReply } from '../../shared/asyncUserQuestions';
@@ -193,6 +194,8 @@ export interface MessageMetadata {
   source: MessageSource;
   sourceId?: string;
   senderName?: string;
+  /** How auto routing chose this turn's model. */
+  autoRoute?: AutoRouteRecord;
 }
 
 export interface ModelUsageEntry {

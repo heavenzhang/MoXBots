@@ -107,6 +107,11 @@ import type {
   ScheduledTurnPreparationResult,
 } from './types';
 import { decideBuiltinInjectedTurnResult } from '../session-core/turn-result-policy';
+import { applyAutoRouteAdmission, type AutoRoutableRequest } from '../auto-route/admission';
+import { routeTurn } from '../auto-route/router';
+import { trackServer } from '../analytics';
+import { modelSupportsModality } from '../utils/model-capabilities';
+import type { AutoRouteRecord } from '../../shared/autoRoute';
 import type { DispatchGuard, TurnTerminalOutcome } from '../session-core/turn-queue';
 import {
   ensureRegisteredAgentSessionOrigin,
@@ -114,6 +119,7 @@ import {
   getSessionData,
   getActiveSessionTranscript,
   getSessionMetadata,
+  updateSessionMetadata,
 } from '../SessionStore';
 import type { SessionMessage } from '../types/session';
 import { getLatestAssistantResultFromMessages, NO_TEXT_RESPONSE } from '../inbox/latest-result';
@@ -167,6 +173,38 @@ function taskProviderRoutingOwner(
     return { kind: 'agent', agentId: agent.id };
   }
   return { kind: 'session', sessionId: request.sessionId };
+}
+
+/**
+ * Auto routing for a new turn on the bound Session. Returns a routed copy of
+ * the request (the caller's object is never mutated) and the route record.
+ */
+async function autoRouteRequest<T extends AutoRoutableRequest & { sessionId: string }>(
+  request: T,
+  text: string,
+  options: { hasImages?: boolean; source: string },
+): Promise<{ request: T; record?: AutoRouteRecord }> {
+  if (getSessionId() !== request.sessionId) return { request };
+  const routed = { ...request };
+  const record = await applyAutoRouteAdmission(routed, { sessionId: request.sessionId, text, ...options }, {
+    getSessionMetadata,
+    isSessionBusy,
+    getMessages,
+    current: () => ({ providerId: getSessionProviderId(), model: getSessionModel(), env: getSessionProviderEnv() }),
+    route: input => routeTurn(input),
+    updateSessionMetadata: (sessionId, updates, precondition) => updateSessionMetadata(sessionId, updates, precondition),
+    broadcast,
+    trackDecision: params => trackServer('auto_route_decide', params),
+    supportsImages: model => modelSupportsModality(model, 'image'),
+  });
+  return record ? { request: routed, record } : { request };
+}
+
+function withAutoRouteRecord<M extends { source: import('../types/session').SessionSource }>(
+  metadata: M | undefined,
+  record: AutoRouteRecord | undefined,
+): M | undefined {
+  return metadata && record ? { ...metadata, autoRoute: record } : metadata;
 }
 
 // runInjectedTurn requires an explicit promotion acknowledgement even when no
@@ -415,7 +453,8 @@ export function createBuiltinSessionEngine(): SessionEngine {
       return hasBuiltinQueuedTurnByOwner(owner);
     },
 
-    async sendDesktopMessage(request: DesktopMessageRequest): Promise<DesktopAdmissionResult> {
+    async sendDesktopMessage(incoming: DesktopMessageRequest): Promise<DesktopAdmissionResult> {
+      let request = incoming;
       if (request.asyncQuestionReply) return { success: false, status: 400, error: 'This session has no asynchronous runtime question.' };
       const permissionMode = asBuiltinPermissionMode(request.permissionMode);
       if (request.permissionMode !== undefined && permissionMode === undefined) {
@@ -425,6 +464,11 @@ export function createBuiltinSessionEngine(): SessionEngine {
       if (request.backgroundAgentPermissionMode) {
         setBackgroundAgentPermissionMode(request.backgroundAgentPermissionMode);
       }
+      const auto = await autoRouteRequest(request, request.desktopQuery?.visibleText ?? request.text, {
+        hasImages: (request.images?.length ?? 0) > 0,
+        source: 'desktop',
+      });
+      request = auto.request;
       const routed = providerEnvForRouteRequest(request);
       if (routed.error) {
         return { success: false, error: routed.error, status: routed.status };
@@ -443,7 +487,11 @@ export function createBuiltinSessionEngine(): SessionEngine {
         routed.model,
         routed.providerEnv,
         request.reasoningEffort,
-        { source: 'desktop', ...(request.clientRequestId ? { clientRequestId: request.clientRequestId } : {}) },
+        {
+          source: 'desktop',
+          ...(request.clientRequestId ? { clientRequestId: request.clientRequestId } : {}),
+          ...(auto.record ? { autoRoute: auto.record } : {}),
+        },
         undefined,
         undefined,
         request.analyticsSource,
@@ -491,8 +539,13 @@ export function createBuiltinSessionEngine(): SessionEngine {
       };
     },
 
-    async enqueueImMessage(request: ImMessageRequest): Promise<ImAdmissionResult> {
-      await setInteractionScenario(request.scenario);
+    async enqueueImMessage(incoming: ImMessageRequest): Promise<ImAdmissionResult> {
+      await setInteractionScenario(incoming.scenario);
+      const auto = await autoRouteRequest(incoming, incoming.message, {
+        hasImages: (incoming.images?.length ?? 0) > 0,
+        source: 'im',
+      });
+      const request = auto.request;
       const routed = providerEnvForRouteRequest(request);
       if (routed.error) {
         return { success: false, error: routed.error, status: routed.status };
@@ -504,7 +557,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         routed.model,
         routed.providerEnv,
         request.reasoningEffort,
-        request.metadata,
+        withAutoRouteRecord(request.metadata, auto.record),
         request.requestId,
         undefined,
         undefined,
@@ -529,8 +582,13 @@ export function createBuiltinSessionEngine(): SessionEngine {
       return cancelBuiltinImRequest(requestId, reason as CancelReason | undefined);
     },
 
-    async enqueueBackgroundMessage(request) {
-      await setInteractionScenario(request.scenario);
+    async enqueueBackgroundMessage(incoming) {
+      await setInteractionScenario(incoming.scenario);
+      const auto = await autoRouteRequest(incoming, incoming.text, {
+        hasImages: (incoming.images?.length ?? 0) > 0,
+        source: 'background',
+      });
+      const request = auto.request;
       const routed = providerEnvForRouteRequest(request);
       if (routed.error) {
         return { success: false, error: routed.error, status: routed.status };
@@ -542,7 +600,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         routed.model,
         routed.providerEnv,
         request.reasoningEffort,
-        request.metadata,
+        withAutoRouteRecord(request.metadata, auto.record),
         undefined,
         undefined,
         undefined,
@@ -754,14 +812,20 @@ export function createBuiltinSessionEngine(): SessionEngine {
       }
     },
 
-    async runInjectedTurn(request: InjectedTurnRequest): Promise<InjectedTurnResult> {
-      const deadline = Date.now() + request.timeoutMs;
-      const isGoal = request.turnOwner?.kind === 'goal';
-      if (isGoal && getSessionId() !== request.sessionId) {
+    async runInjectedTurn(incoming: InjectedTurnRequest): Promise<InjectedTurnResult> {
+      const deadline = Date.now() + incoming.timeoutMs;
+      const isGoal = incoming.turnOwner?.kind === 'goal';
+      if (isGoal && getSessionId() !== incoming.sessionId) {
         return { success: false, enqueued: false, error: 'Goal Session binding changed before continuation', status: 409 };
       }
-      await setInteractionScenario(request.scenario);
-      if (isGoal && getSessionId() !== request.sessionId) {
+      await setInteractionScenario(incoming.scenario);
+      // Only owners that opt in (Tasks without a pinned model) are routed;
+      // heartbeat, memory and Goal turns keep the Session's model.
+      const auto = incoming.autoRoute === true
+        ? await autoRouteRequest(incoming, incoming.prompt, { source: 'task' })
+        : { request: incoming, record: undefined };
+      const request = auto.request;
+      if (isGoal && getSessionId() !== incoming.sessionId) {
         return { success: false, enqueued: false, error: 'Goal Session binding changed during continuation preparation', status: 409 };
       }
       getAndClearLastAgentError();
@@ -787,7 +851,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         routed.model,
         routed.providerEnv,
         request.reasoningEffort,
-        request.metadata,
+        withAutoRouteRecord(request.metadata, auto.record),
         undefined,
         undefined,
         undefined,

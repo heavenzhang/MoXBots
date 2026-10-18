@@ -4467,6 +4467,8 @@ async function main() {
           providerRoute?: ProviderRoute | null;
           providerExecutionIdentity?: RuntimeBackedProviderIdentity | null;
           providerEnvJson?: string | null;
+          /** 'auto' lets each new turn pick its tier; 'manual' pins the chosen model. */
+          modelMode?: 'auto' | 'manual' | null;
           origin?: SessionOrigin | null;
         }
 
@@ -4513,6 +4515,17 @@ async function main() {
         ) {
           return jsonResponse(
             { success: false, error: 'pinned must be a boolean.' },
+            400,
+          );
+        }
+        if (
+          payload.modelMode !== undefined &&
+          payload.modelMode !== null &&
+          payload.modelMode !== 'auto' &&
+          payload.modelMode !== 'manual'
+        ) {
+          return jsonResponse(
+            { success: false, error: "modelMode must be 'auto', 'manual' or null." },
             400,
           );
         }

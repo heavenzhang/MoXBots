@@ -38,6 +38,7 @@ import {
 } from './utils/background-agent-permission';
 import { createBridgeProgressContext, getBridgeProgressContext, registerBridge as registerBridgeInRegistry,
   unregisterBridge as unregisterBridgeInRegistry, type BridgeProgressContext, type UpstreamBridgeConfig } from './openai-bridge/bridge-registry';
+import { getAutoRouteBackup } from './auto-route/session-state';
 import { createSessionModelFailover, sessionApiFailoverEligible } from './builtin-session/model-failover';
 import { getScriptDir } from './utils/runtime';
 import { getSidecarPort } from './session-core/sidecar-port';
@@ -2029,6 +2030,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => ({ env: configState.currentProviderEnv, model: configState.currentModel ?? '',
           turnId: currentBridgeInferenceScope() }),
+        autoBackup: () => getAutoRouteBackup(productSessionId),
         onSwitch: (target, status) => {
           const text = `主模型暂时不可用（HTTP ${status}），已切换备用模型 ${target.providerId} / ${target.model}，沿用当前进度继续执行。`;
           const product = getBuiltinProductContent();
@@ -9316,7 +9318,7 @@ export async function enqueueUserMessage(
   // #324 — reasoning effort setting ('default' | level). undefined = caller
   // doesn't manage effort (cron/IM/heartbeat) → current session value stays.
   reasoningEffort?: string,
-  metadata?: { source: SessionSource; sourceId?: string; senderName?: string; clientRequestId?: string },
+  metadata?: { source: SessionSource; sourceId?: string; senderName?: string; clientRequestId?: string; autoRoute?: import('../shared/autoRoute').AutoRouteRecord },
   // Pattern A — IM trace ID. Forwarded from /api/im/chat (Rust generates at edge).
   // Desktop / cron / heartbeat callers omit this — those paths get no IM identity.
   requestId?: string,

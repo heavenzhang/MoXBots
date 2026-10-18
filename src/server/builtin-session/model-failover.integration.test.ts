@@ -118,4 +118,33 @@ describe('Session API failover authority', () => {
     expect(await response.text()).not.toContain('unsafe tool');
     expect(execute).toHaveBeenCalledTimes(pinned ? 6 : 5);
   });
+  it('uses the auto-route backup when no failover backup is configured', async () => {
+    fixture.config = {};
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+      isLive: () => true, onSwitch: switched, autoBackup: () => ({ providerId: 'backup', modelId: 'b' }) });
+    const execute = vi.fn(async target => new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }));
+    expect((await controller.run(request(), { providerId: 'primary', baseUrl: primary.baseUrl! }, execute)).status).toBe(200);
+    expect(switched).toHaveBeenCalledTimes(1);
+  });
+  it('an enabled user backup wins over the auto-route backup', async () => {
+    fixture.providers.other = { id: 'other', type: 'api', models: [{ model: 'c' }] };
+    fixture.envs.other = { providerId: 'other', baseUrl: 'http://other.test', apiKey: 'fixture-other' };
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+      isLive: () => true, onSwitch: vi.fn(), autoBackup: () => ({ providerId: 'other', modelId: 'c' }) });
+    const used: string[] = [];
+    const execute = vi.fn(async target => { used.push(target.providerId); return new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }); });
+    await controller.run(request(), { providerId: 'primary', baseUrl: primary.baseUrl! }, execute);
+    expect(used.at(-1)).toBe('backup');
+  });
+  it('the auto-route backup still has to share provider history', async () => {
+    fixture.config = {};
+    fixture.envs.backup = { providerId: 'backup', baseUrl: 'https://api.anthropic.com', apiKey: 'other' };
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+      isLive: () => true, onSwitch: switched, autoBackup: () => ({ providerId: 'backup', modelId: 'b' }) });
+    const execute = vi.fn(async () => new Response('{}', { status: 503 }));
+    expect((await controller.run(request(), { providerId: 'primary', baseUrl: primary.baseUrl! }, execute)).status).toBe(503);
+    expect(switched).not.toHaveBeenCalled();
+  });
 });

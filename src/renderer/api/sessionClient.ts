@@ -15,6 +15,7 @@ import {
 import { materializePendingSessionConfig, type MaterializePostBody, type MaterializeResponse } from './sessionMaterialize';
 import type { ContextUsage } from '../../shared/types/context-usage';
 import type { ProviderRoute } from '../../shared/providerRoute';
+import type { ModelMode } from '../../shared/autoRoute';
 import type { RuntimeBackedProviderIdentity } from '../../shared/providerExecution';
 import type { RuntimeSource } from '../../shared/types/runtime';
 import type { OfficialToolId } from '../../shared/official-tools';
@@ -112,6 +113,8 @@ export interface SessionMetadata {
     enabledOfficialToolIds?: OfficialToolId[];
     providerId?: string;
     providerRoute?: ProviderRoute;
+    /** Absent means 'auto'. */
+    modelMode?: ModelMode;
     /** Provider-facing identity for runtime-backed providers such as Managed Codex. */
     providerExecutionIdentity?: RuntimeBackedProviderIdentity;
     providerRouteRepairedAt?: string;

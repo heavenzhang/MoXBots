@@ -24,6 +24,7 @@ export type ProductSessionSnapshotPatch = Pick<
   | 'providerId'
   | 'providerRoute'
   | 'providerEnvJson'
+  | 'modelMode'
 >;
 
 export type PendingProductSessionMaterialization = {
@@ -180,6 +181,7 @@ export function applyProductSessionSnapshotPatch(
   apply('providerId', patch.providerId);
   apply('providerRoute', patch.providerRoute);
   apply('providerEnvJson', patch.providerEnvJson);
+  apply('modelMode', patch.modelMode);
   if (wroteSnapshot) metadata.configSnapshotAt = new Date().toISOString();
 }
 
@@ -208,6 +210,7 @@ function buildProductSessionSnapshotMetadataPatch(
   apply('providerId', patch.providerId);
   apply('providerRoute', patch.providerRoute);
   apply('providerEnvJson', patch.providerEnvJson);
+  apply('modelMode', patch.modelMode);
   if (!wroteSnapshot) return null;
   updates.configSnapshotAt = new Date().toISOString();
   return updates as Partial<ProductSessionSnapshotPatch> & Pick<SessionMetadata, 'configSnapshotAt'>;

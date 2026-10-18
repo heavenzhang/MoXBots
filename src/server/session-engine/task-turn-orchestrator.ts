@@ -329,6 +329,8 @@ export function createTaskTurnOrchestrator() {
               providerRoute: prepared.providerRoute,
               providerEnv: prepared.providerEnv,
               providerRoutingRecovery: prepared.providerRoutingRecovery,
+              // A Task that names its own model keeps it.
+              autoRoute: !payload.model && !payload.providerId,
               runtimeConfig: prepared.runtimeConfig ?? null,
               analyticsOrigin: origin,
               assistantChannelDelivery: 'caller-owned',

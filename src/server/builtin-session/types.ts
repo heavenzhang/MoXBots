@@ -1,3 +1,4 @@
+import type { AutoRouteRecord } from '../../shared/autoRoute';
 import type { TurnProviderAnalytics } from '../session-core/turn-analytics';
 import type { Query, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type {
@@ -100,6 +101,7 @@ export type MessageWire = {
     source: SessionSource;
     sourceId?: string;
     senderName?: string;
+    autoRoute?: AutoRouteRecord;
   };
   usage?: MessageUsage;
   toolCount?: number;

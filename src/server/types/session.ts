@@ -17,6 +17,7 @@ export type {
 import { randomUUID } from 'crypto';
 import type { RuntimeSource, RuntimeType } from '../../shared/types/runtime';
 import type { ContextUsage } from '../../shared/types/context-usage';
+import type { ModelMode } from '../../shared/autoRoute';
 import { deriveSessionTitle } from '../../shared/sessionTitle';
 import type { ProviderRoute } from '../../shared/providerRoute';
 import type { RuntimeBackedProviderIdentity } from '../../shared/providerExecution';
@@ -166,6 +167,8 @@ export interface SessionMetadata {
   providerId?: string;
   /** Snapshot provider/model route identity. This is the canonical builtin provider identity. */
   providerRoute?: ProviderRoute;
+  /** Model selection mode. Absent means 'auto': each new turn picks its model tier. */
+  modelMode?: ModelMode;
   /** Provider-facing identity for runtime-backed providers such as Managed Codex. */
   providerExecutionIdentity?: RuntimeBackedProviderIdentity;
   /** Last time a legacy route was deterministically repaired. Diagnostic only. */

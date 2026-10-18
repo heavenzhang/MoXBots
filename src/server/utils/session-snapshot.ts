@@ -40,6 +40,7 @@ export type OwnedSessionSnapshot = Pick<
   | 'providerRoute'
   | 'providerExecutionIdentity'
   | 'providerEnvJson'
+  | 'modelMode'
 >;
 
 /** Clone the frozen execution identity owned by an existing Session branch source. */
@@ -77,6 +78,7 @@ export function snapshotForForkedSession(
     providerRoute: source.providerRoute ?? fallback?.providerRoute,
     providerExecutionIdentity: source.providerExecutionIdentity ?? fallback?.providerExecutionIdentity,
     providerEnvJson: source.providerEnvJson ?? fallback?.providerEnvJson,
+    ...(source.modelMode ? { modelMode: source.modelMode } : {}),
     // A fork is always an owned Session. Legacy sources followed Agent config,
     // so their caller supplies the effective owned snapshot at the fork boundary.
     configSnapshotAt: source.configSnapshotAt ?? fallback?.configSnapshotAt ?? new Date().toISOString(),

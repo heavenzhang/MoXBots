@@ -1,3 +1,4 @@
+import type { AutoRouteRecord } from '../autoRoute';
 import type { AsyncQuestionReply } from '../asyncUserQuestions';
 
 /**
@@ -55,6 +56,8 @@ export interface MessageSourceMetadata {
     source: SessionSource;
     sourceId?: string;
     senderName?: string;
+    /** How auto routing chose this turn's model. Never carries message text. */
+    autoRoute?: AutoRouteRecord;
 }
 
 /**

@@ -185,6 +185,8 @@ export type InjectedTurnRequest = {
   providerRoute?: ProviderRoute;
   /** Ephemeral owner-aware recovery for a route that becomes unavailable at final dispatch. */
   providerRoutingRecovery?: string;
+  /** Let auto routing pick this turn's model when the Session is in auto mode. */
+  autoRoute?: boolean;
   runtimeConfig?: RuntimeConfig | null;
   metadata?: { source: SessionSource; sourceId?: string; senderName?: string };
   analyticsOrigin?: SessionOrigin;

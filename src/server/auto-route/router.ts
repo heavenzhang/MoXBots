@@ -136,6 +136,10 @@ export interface RouteTurnInput {
   currentEnv?: ProviderEnv;
   lastTurnAt?: number;
   contextUsed?: number;
+  /** No conversation yet, so any provider history is acceptable. */
+  freshHistory?: boolean;
+  /** Extra per-turn requirement, e.g. image input. */
+  accept?: (ref: AutoModelRef) => boolean;
   signal?: AbortSignal;
 }
 
@@ -175,12 +179,15 @@ export async function routeTurn(
   // Switching across provider history identities starts a fresh SDK session
   // (the conversation would be lost), so auto routing never does it.
   const isUsable = (entry: AutoTierEntry) => {
+    if (input.accept && !input.accept(entry)) return false;
     const env = envFor(entry);
     if (!env) return false;
-    if (!input.current) return true;
+    if (input.freshHistory) return true;
+    // An existing conversation is checked even when the current model is
+    // unknown (Session default): its env still fixes the history identity.
     return canResumeAcrossBuiltinProviderHistory({
       currentProviderEnv: input.currentEnv,
-      currentModel: input.current.model,
+      currentModel: input.current?.model,
       nextProviderEnv: env === 'subscription' ? undefined : env,
       nextModel: entry.model,
     });

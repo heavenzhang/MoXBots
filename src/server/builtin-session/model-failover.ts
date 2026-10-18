@@ -21,8 +21,14 @@ export function createSessionModelFailover(options: {
   canRetry?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
   recovery?: InferenceRecoveryHooks;
+  /** Auto routing's next model in the turn's tier; used when no backup is configured. */
+  autoBackup?: () => NonNullable<ModelFailoverSettings['backup']> | undefined;
 }): ModelFailoverController {
   type Ref = NonNullable<ModelFailoverSettings['backup']>;
+  const sameRef = (a: Ref | undefined, b: Ref) => a?.providerId === b.providerId && a.modelId === b.modelId;
+  // An enabled user backup wins; otherwise auto routing may supply one.
+  const pickRef = (settings: ModelFailoverSettings | undefined): Ref | undefined =>
+    (settings?.enabled === true ? settings.backup : undefined) ?? options.autoBackup?.();
   let root: { scope: string; primaryIdentity: string; backup?: Ref } | undefined;
   const identity = () => {
     const { env, model } = options.current();
@@ -34,8 +40,7 @@ export function createSessionModelFailover(options: {
     if (!options.isLive() || !sessionApiFailoverEligible(env)) return undefined;
     const config = loadConfig();
     const settings = config.modelFailover as ModelFailoverSettings | undefined;
-    if (settings?.enabled !== true || settings.backup?.providerId !== ref.providerId
-      || settings.backup.modelId !== ref.modelId) return undefined;
+    if (!sameRef(pickRef(settings), ref)) return undefined;
     if (ref.providerId === env!.providerId && ref.modelId === current.model) return undefined;
     const provider = findEffectiveProvider(ref.providerId, config);
     if (!provider || !isModelFailoverProvider(provider) || !Array.isArray(provider.models)
@@ -59,7 +64,7 @@ export function createSessionModelFailover(options: {
       // must survive that change. Never re-pin a different backup mid-turn.
       if (root) return root.primaryIdentity === identity() ? root.scope : undefined;
       const current = options.current();
-      const ref = (loadConfig().modelFailover as ModelFailoverSettings | undefined)?.backup;
+      const ref = pickRef(loadConfig().modelFailover as ModelFailoverSettings | undefined);
       if (!current.turnId) return undefined;
       const backup = typeof ref?.providerId === 'string' && typeof ref.modelId === 'string' && resolveBackup(ref) ? { ...ref } : undefined;
       root = { scope: JSON.stringify([current.turnId, identity()]), primaryIdentity: identity(), backup };
