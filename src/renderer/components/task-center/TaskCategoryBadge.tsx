@@ -7,7 +7,7 @@
 // Four categories, four icons, four color families — all reuse existing
 // DESIGN.md tokens (no new colors introduced):
 //
-//   loop       → Flag    + --heartbeat   ("目标模式")
+//   loop       → Target    + --heartbeat   ("目标模式")
 //   once       → Play    + --accent-warm ("一次性")
 //   scheduled  → Clock   + --success     ("定时")
 //   recurring  → Repeat  + --info        ("周期")
@@ -20,7 +20,7 @@
 
 import {
   ClockIcon,
-  FlagIcon,
+  TargetIcon,
   PlayIcon,
   RepeatIcon,
 } from '@/components/icons';
@@ -38,7 +38,7 @@ interface CategoryStyle {
 
 const CATEGORY_STYLE: Record<Category, CategoryStyle> = {
   loop: {
-    icon: FlagIcon,
+    icon: TargetIcon,
     bg: 'bg-[var(--heartbeat-bg)]',
     fg: 'text-[var(--heartbeat)]',
   },
