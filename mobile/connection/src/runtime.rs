@@ -176,13 +176,15 @@ impl MobileConnection {
         self.connected = None;
         self.peer = None;
         self.clear_targets();
-        if let Some(p) = self.pending.take() {
-            return self
-                .client
+        if let Some(p) = self.pending.as_ref() {
+            // Keep the original proof for an explicit retry after transport or
+            // server failure; losing it would turn retry into a false success.
+            self.client
                 .as_ref()
                 .unwrap()
                 .cancel(&p.device, &p.transaction, &p.verifier)
-                .await;
+                .await?;
+            self.pending = None;
         }
         Ok(())
     }

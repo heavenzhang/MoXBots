@@ -2,6 +2,53 @@ import type { Account } from './native';
 
 type LogoutReply = Account | { kind: 'error'; code: string };
 
+/** One synchronous owner for login mutations and their asynchronous projections.
+ * Cancellation quarantines reads until logout explicitly confirms signed-out. */
+export function createLoginAttemptGate() {
+  let epoch = 0;
+  let action: 'start' | 'cancel' | null = null;
+  let pending = false;
+  let cancelling = false;
+  return {
+    capture: () => epoch,
+    owns: (captured: number) => captured === epoch,
+    isCurrent: (captured: number) => captured === epoch && !cancelling,
+    canRead: () => action === null && !cancelling,
+    beginStart(): number | null {
+      if (action || pending || cancelling) return null;
+      action = 'start';
+      return ++epoch;
+    },
+    beginCancel(): number | null {
+      if (action) return null;
+      action = 'cancel';
+      cancelling = true;
+      return ++epoch;
+    },
+    observe(captured: number, state: Account['state']): boolean {
+      if (captured !== epoch || cancelling) return false;
+      pending = state === 'authenticating';
+      return true;
+    },
+    confirmCancel(captured: number): boolean {
+      if (captured !== epoch || action !== 'cancel') return false;
+      pending = false;
+      cancelling = false;
+      return true;
+    },
+    finish(captured: number): void { if (captured === epoch) action = null; },
+    invalidate(): void { epoch += 1; action = null; },
+  };
+}
+
+export function loginNeedsPolling(state: Account['state']): boolean {
+  return state === 'authenticating';
+}
+
+export function loginPollNeedsStatus(code: string): boolean {
+  return code === 'OWNED_LOGIN_EXPIRED' || code === 'OWNED_LOGIN_REQUIRED';
+}
+
 /** Continue the UI logout path only after the native owner confirms signed-out. */
 export async function logoutAndConfirm(
   requestLogout: () => Promise<LogoutReply>,
