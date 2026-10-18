@@ -33,6 +33,7 @@ Canonical repository `https://github.com/heavenzhang/MoXBots.git`, base main `92
 - Base and current remote main at task start: `9269dd8c52c423a180bfba366c8f0434a90db005`.
 - `v0.5.10^{}` resolves to `400b746a4841bab8e4b99d8f83479fd54925c205`; app identity in Tauri config is `MoXBots`, `com.moxbot.app`, `0.5.10`.
 - `git diff --cached --check`: PASS before initial commit.
+- Public website normal-TLS preflight: `/download/` returns 6335B HTML SHA-256 `623bc1a37d5361de04cd0499e7dbd4f6ae47a7d32e377e47ce480d5880ceebaf`, references `releases.98f42775b3e8.json` SHA-256 `98f42775b3e8ab59a38ec56591bba57a9e6f8dacc3d067e4ce88aa811015c08e`, and the live HTML has no Windows card. Main source has a separate accepted Windows download-card layout and content-addressed JS; site publish must include that UI/source alongside the new release manifest, while preserving all other files.
 - Windows build workflow not run yet; no 0.5.10 Windows artifact or public website change exists.
 
 ## Blockers and unknowns

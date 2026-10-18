@@ -293,7 +293,7 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 - **Deployment designation:** 用户在当前发布聊天直接要求构建 0.5.10 并发布 Windows 下载；既有桌面发布负责人负责本次官网 Windows 下载页发布。App 源码冻结在 `v0.5.10` / `400b746a4841bab8e4b99d8f83479fd54925c205`。
 - **Targets and limits:** 仅官网 `https://140.143.183.232/download/` 与 `/download/packages/` 不可变 Windows 安装包、内容寻址下载清单及页面引用；保留既有内容，按维护锁、备份、不可变目录与 current-pointer CAS 发布。Windows updater 未实现，页面如实说明不支持；若无 Authenticode 证书，显示 `NotSigned` 与可能的 SmartScreen/Unknown Publisher 提示。
 - **Runbook and exclusions:** 沿用 `services/website/README.md` 和 `.agent-sync/tasks/codex-moxbots-windows-download-20261017.md` 记录的步骤。不得写入 `/updates/*`、更改 updater stable、Nginx/TLS/auth/Host 或操作日常客户端。Updater 私钥仅限 updater，禁止复用为网站写入身份。
-- **Current state:** 0.5.10 专用 `windows-latest` 构建工作流在任务分支准备，源 SHA 固定。网站发布仍缺最小权限上传身份；用户确认没有现成 SSH Host alias，仓库此前也无 Actions 网站部署凭据。身份未配置前只做私有候选包和元数据准备，不声称公开页已发布。
+- **Current state:** 0.5.10 专用 `windows-latest` 构建工作流在任务分支准备，源 SHA 固定。网站发布仍缺最小权限上传身份；用户确认没有现成 SSH Host alias，仓库此前也无 Actions 网站部署凭据。身份未配置前只做私有候选包和元数据准备，不声称公开页已发布。 线上页面已做正常 TLS 只读核验：HTML 6335B / SHA-256 `623bc1a37d5361de04cd0499e7dbd4f6ae47a7d32e377e47ce480d5880ceebaf`，仅引用 0.5.6 清单 `releases.98f42775b3e8.json`（469B / SHA-256 `98f42775b3e8ab59a38ec56591bba57a9e6f8dacc3d067e4ce88aa811015c08e`），实际 HTML 无 Windows 卡片。发布 0.5.10 Windows 前须把仓库已合入的下载页 HTML 与新下载 JS 一起复制到不可变静态版本，再更新内容寻址清单引用；保留所有其他文件和旧版本。
 - **Task record:** `.agent-sync/tasks/codex-moxbots-windows-0510-r2-20261018-45a2522c.md`；证据目录 `dev-docs/windows-0510/`。
 
 - **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`，MoxBots桌面端统一打包负责人。
