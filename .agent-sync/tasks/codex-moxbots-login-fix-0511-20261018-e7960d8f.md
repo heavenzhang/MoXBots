@@ -54,6 +54,7 @@ Prepare the next MoXBots desktop patch from current main so browser-completed Ow
 - `project-sync.mjs start`: PASS for this worktree at exact base `f4e775f597803aca41e8816b88c711a7262e723d`.
 - `project-sync.mjs task-init`: PASS; task record path is this file.
 - Exact `origin/main` base is `f4e775f597803aca41e8816b88c711a7262e723d`; it includes desktop callback wiring (PR #103) and bounded clock-skew handling (PR #118), while immutable `v0.5.10` predates PR #118.
+- After PR #125 opened, `origin/main` advanced to `6fa9767bc8298a9a59be27cdef846abf572271d5` via PR #124. The intervening change only adds authentication-renewal handoff records; it was reviewed and merged into this candidate branch without conflicts. The desktop candidate remains based on current main, and the new candidate head still needs CI.
 - `PATH="/opt/homebrew/opt/node@24/bin:$PATH" npm run test:dom -- src/renderer/features/agent-network/useOwnedLoginFlow.test.tsx`: 16 passed.
 - `cargo test --locked --manifest-path services/agentnet/Cargo.toml login_start --no-fail-fast`: 2 passed.
 - `node --test scripts/build-assets.test.mjs`: 9 passed; `bash -n build_macos.sh` and `git diff --check` passed.
@@ -74,4 +75,4 @@ Prepare the next MoXBots desktop patch from current main so browser-completed Ow
 
 ## Next step
 
-Review and commit only the version, candidate-note and build-safety changes, then open a normal protected-branch PR and wait for required CI. Separately verify the existing updater signing input and use the MoxBots-specific build entry, not the generic MyAgents script. Obtain a concrete isolated QA entry before launching any signed app with the shared bundle identity.
+Commit this task-record synchronization, push the updated PR #125 branch, then verify the new head's required CI and merge it through the normal PR flow. Separately verify the existing updater signing input and use the MoxBots-specific build entry, not the generic MyAgents script. Obtain a concrete isolated QA entry before launching any signed app with the shared bundle identity.
