@@ -126,6 +126,8 @@ real native browser/DPoP/network acceptance.
    Existing offline tests cover root/systemd fixtures and rollback logic; they do
    not substitute for these actual systemd/browser checks.
 
+The `host-systemd` Test workflow job also installs the actual same-run Host/native artifacts on a fresh GitHub-hosted Ubuntu24.04 VM. Its guarded `systemd-acceptance.py` refuses existing MoX namespaces, verifies real Node IPC and encrypted credentials, persists disabled configuration through the original writer, and checks repeated installation, actual flock contention, busy-update refusal and exact second-component rollback. Only non-secret logs/summary are uploaded. It never starts the network connector, browser authorization, Session or model, so actual OIDC/join/Ready remain the separate release checks above.
+
 Run the offline checks without real credentials:
 
 ```sh

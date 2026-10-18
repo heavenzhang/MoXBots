@@ -25,6 +25,7 @@ import sys
 import tarfile
 import tempfile
 import time
+import uuid
 
 PROFILE = "moxbot-test"
 NODE = "moxbot-host-test.service"
@@ -51,8 +52,8 @@ def require(condition, detail):
         raise Rejected(detail)
 
 
-def run(args, *, check=True, timeout=240):
-    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
+def run(args, *, check=True, timeout=240, input=None):
+    result = subprocess.run(args, input=input, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=timeout)
     if check and result.returncode:
         raise Rejected(f"command failed: {args!r}: {result.stdout[-4000:].decode(errors='replace')}")
     return result
@@ -121,8 +122,8 @@ def guard(args):
             pass
         else:
             raise Rejected("existing service group is protected: " + name)
-        unit = run(["systemctl", "show", name + ".service", "--property=LoadState", "--value"], timeout=15)
-        require(unit.stdout.decode().strip() == "not-found", "existing loaded unit is protected: " + name)
+        unit = run(["systemctl", "show", name + ".service", "--property=LoadState", "--value"], check=False, timeout=15)
+        require(unit.returncode in {0, 1, 4} and unit.stdout.decode().strip() == "not-found", "existing loaded unit is protected: " + name)
     return state
 
 
@@ -216,11 +217,28 @@ def accept(args):
                     "--network-artifact-dir", str(staged_network), "--network-sha256", network_sha,
                     "--network-source-commit", args.source_commit, "--owned-instance", ORIGIN]
             step("fresh-systemd-install", lambda: install("fresh", base))
+            doctor()
+            # Use the existing local writer to create real, disabled configuration.
+            # No provider key is supplied and no Session/model is started.
+            configuration = {"expectedRevision": 0, "providerId": "moonshot-coding",
+                             "model": "synthetic-ci-disabled", "executionAuthorized": False,
+                             "mutationId": str(uuid.uuid4())}
+            receipt = json.loads(run(["/opt/moxbot-host-test/bin/moxbot-host", "configure"],
+                                     input=json.dumps(configuration).encode(), timeout=30).stdout)
+            require(receipt.get("status") == "persisted" and receipt.get("revision") == 1
+                    and receipt.get("settings", {}).get("executionAuthorized") is False,
+                    "local configuration writer did not persist a disabled revision")
+            config = pathlib.Path(PERSISTED[1])
+            require(config.is_file() and not config.is_symlink(), "persisted configuration is missing")
+            step("disabled-local-config-persisted", lambda: {"revision": 1, "executionAuthorized": False})
             first, first_doctor = snapshot(), doctor()
+            require(first_doctor.get("settings", {}).get("model") == "synthetic-ci-disabled"
+                    and first_doctor["settings"]["executionAuthorized"] is False,
+                    "actual Node IPC does not reflect persisted disabled configuration")
             summary["hostId"] = first_doctor["hostId"]
             require(first["node"]["ActiveState"] == "active" and first["node"]["UnitFileState"] == "enabled", "Node unit not active/enabled")
             require(first["network"]["ActiveState"] == "inactive" and first["network"]["UnitFileState"] == "disabled", "network must remain inactive/disabled")
-            for key in (PERSISTED[0], PERSISTED[2], PERSISTED[3], PERSISTED[4]):
+            for key in (PERSISTED[0], PERSISTED[1], PERSISTED[2], PERSISTED[3], PERSISTED[4]):
                 require(first["fileSha256"][key] is not None, "identity/encrypted credential missing: " + key)
             step("real-node-ipc-and-encrypted-credentials", lambda: {"hostId": first_doctor["hostId"], "nodePid": first["node"]["MainPID"]})
             step("repeat-install", lambda: install("repeat", base))
