@@ -10,7 +10,8 @@
 - [x] 修改后3个文件92项定向测试通过：sidebarOrganization、globalSidebarPreference、GlobalSidebar。覆盖新旧多个置顶、比已排序项更新的新条目、无保存顺序、输入/偏好不变、真实菜单意图/权威返回、置顶/取消及重新挂载。
 - [x] 全量TypeScript无输出通过；4个修改文件ESLint无错误通过。baseline-browser-mapping仅工具数据时效提示，未为此修改依赖。
 - [x] 实际Chromium正式GlobalSidebar交互：1440×900、900×900，工作区/自定义分区共4组，均完成置顶立即上移→刷新保留→取消恢复→刷新保留；无pageerror。原生元数据API/存储用合成替身，非真实后端或原生验收。
-- [ ] Web构建、Git/CI与远端main最终状态见任务记录/PR。
+- [x] 默认profile Web构建与31项Theme映射/8项preset检查通过；MoXBots profile实际浏览器4组另行通过。
+- [ ] Git/CI与远端main最终状态以PR132的检查及mergeCommit/远端祖先核验为准。
 - [ ] 正式签名包发布、真实Tauri持久化和用户当前会话验收：待既定唯一桌面发布会话下一未冻结批次。日常App未替换或重启。
 
 本地可追溯输出：`/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/output/pin-order-001/`（run.mjs、journeys.mjs、mock.ts、fixture.tsx、results.json和四张pinned截图）。命令：`MYAGENTS_BUILD_PROFILE=moxbot <node24> <output>/run.mjs`。只允许127.0.0.1网络、独立浏览器临时profile；不使用用户Chrome或真实业务数据。

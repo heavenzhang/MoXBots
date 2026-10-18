@@ -408,3 +408,8 @@ Actual simulator native runtime follow-up: `dev-docs/mobile-002/ios-native-runti
 ## MOXBOTS-0510-WINDOWS-EIGEN-CACHE-20261018
 
 The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when Node Fetch received HTTP 406 for the exact Eigen 5.0.1 URL in the frozen app resource lock. A normal-TLS full GET from the same GitLab URL matched the lock's 2,967,272-byte size and SHA-256 `e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec`; the exact bytes also passed the repository cache validator on macOS. Task branch `codex/moxbots-win-eigen-cache-0510-20261018` adds a fail-closed Windows workflow step to read the frozen lock, retrieve through standard `curl.exe` TLS, verify the pinned size/hash, and seed only the content-addressed cache. The app tag/source/resource lock remain unchanged. PR CI and a merged-main Windows build must pass before artifact use. Website upload still requires a separate least-privilege identity; do not reuse updater credentials. Details: `.agent-sync/tasks/codex-moxbots-win-eigen-cache-0510-20261018-a9d25de0.md`.
+
+
+## MOXBOTS-PIN-001 — 2026-10-18
+
+用户反馈侧栏点击置顶后位置不变。现有organization投影优先应用pinnedAt，统一工作区/根列表/自定义分区/拖拽源，保留手工顺序用于取消置顶恢复。92项定向回归、类型/lint、默认Web构建及MoXBots实际Chromium两尺寸4组通过；CI/main以PR132为准。任务`.agent-sync/tasks/codex-pin-order-001-20261018.md`，验收和发布请求`dev-docs/pin-order/acceptance.md`。下一未冻结桌面发布由既定唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4串行执行；本聊天不安装/重启日常App、不回写冻结包、不向其它聊天发消息。

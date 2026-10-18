@@ -11,12 +11,13 @@
 - [x] Reproduce failure with regression tests before repair.
 - [x] Implement and review small sorting fix.
 - [x] Focused unit/DOM (92 pass), full typecheck, targeted lint, actual Chromium checks (1440/900 × workspace/section).
-- [ ] Web build in progress.
-- [ ] Commit, CI, merge and verify remote main contains result.
+- [x] Default-profile Web build and Theme checks pass; MoXBots-profile actual browser 4/4 groups pass.
+- [x] Commit and push repair branch; PR132: https://github.com/heavenzhang/MoXBots/pull/132.
+- [ ] CI, merge and remote main inclusion: authoritative final check/mergeCommit are on PR132; source task must verify ancestry and remote refs before reporting delivery.
 - [ ] Desktop package release and real native acceptance: queued for existing sole desktop publisher 01a12bc2-907a-7702-b6dd-788225c5dfe4, next unfrozen batch. No concurrent install/restart, frozen artifact replacement, server action or message to another chat.
 
 ## Evidence and next step
-User screenshot shows pins retained below unpinned rows. `sortWorkspaceSessions` sorts pins first, then `orderSidebarItems` reapplies saved rank without pin awareness. Regression first failed in all three relevant DOM cases. All four call sites now respect pin priority; no saved data changes. Acceptance and publisher request: `dev-docs/pin-order/acceptance.md`. Next: finish build, commit/CI/main delivery.
+User screenshot shows pins retained below unpinned rows. `sortWorkspaceSessions` sorts pins first, then `orderSidebarItems` reapplies saved rank without pin awareness. Regression first failed in all three relevant DOM cases. All four call sites now respect pin priority; no saved data changes. Acceptance and publisher request: `dev-docs/pin-order/acceptance.md`. Default Web build and MoXBots actual renderer checks passed. Next: PR132 CI/main delivery, then native release remains queued.
 
 ## Execution
 Selection: bounded coupled bug, one primary and deterministic tooling. No model/effort change or external calls; explicitly ai-yaoren-local native-only. Primary exact runtime model/effort and token/cost accounting unavailable. UI baseline is existing sidebar at desktop/rail sizes; use synthetic data only.
