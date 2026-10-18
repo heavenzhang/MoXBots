@@ -1,0 +1,116 @@
+{
+  "task": "MOXBOTS-MOBILE-002",
+  "scope": "Actual original simulator Swift/C ABI/Keychain/attachment owners; explicit original deployed HTTPS start/logout cancel, no completed SSO/enroll/Host/model/push/speech/UI/phone acceptance",
+  "runs": {
+    "offline": {
+      "output": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-ios-native-bA81JW",
+      "archive": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-20261018/offline-native-tests.xcresult.tar.gz",
+      "archiveSha256": "12388e7d32d5de2a59b99b21c508f31a0d47cd78c3a8e94ae01b323262932df1",
+      "archiveBytes": 51710,
+      "result": "Passed",
+      "total": 4,
+      "passed": 3,
+      "failed": 0,
+      "skipped": 1,
+      "expectedFailures": 0,
+      "cases": [
+        {
+          "name": "testExplicitOriginalIosLoginStartsAndCancelsWithoutAuthenticating",
+          "result": "Skipped"
+        },
+        {
+          "name": "testKeychainIsolationPersistenceProtectionAndOversizeAtomicity",
+          "result": "Passed"
+        },
+        {
+          "name": "testOriginalImageAdmissionChunkBytesScopeAndPersistentIndex",
+          "result": "Passed"
+        },
+        {
+          "name": "testOriginalSwiftCAbiLoadsAndRejectsUnauthenticatedOperationsOffline",
+          "result": "Passed"
+        }
+      ],
+      "nativeBuild": {
+        "version": 1,
+        "target": "aarch64-apple-ios-sim",
+        "sourceScopeVersion": 2,
+        "sourceCommit": "02c2fe419935bb48d25b9b5f81020c7dd44ac267",
+        "sourceDirty": false,
+        "sourceDigest": "eea5df3be892ec02695c25289ebffb4f6e3f24256589695d860bf4444f423c6c",
+        "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+        "librarySha256": "752a5b3aeddef73e1bf0d60636bd64f54c5a140becafbd6ce741766c82df0193"
+      },
+      "compiledInputHashes": {
+        "mobile/app/modules/moxbots-remote/ios/SecureRecords.swift": "2281a88e0b98b8c5a0321e93acccc2a6a3215b32076be725bbbe01e267e0d094",
+        "mobile/app/modules/moxbots-remote/ios/NativeConnection.swift": "8e859a5078a200d505c6f2c6274ef0c95c1003e37f71dd99e84c05b74cce8f96",
+        "mobile/app/modules/moxbots-remote/ios/NativeAttachments.swift": "abe8a7763f1a8c493ed9e2029e93d1c9cc122f19762391c4ab774462f45db479",
+        "mobile/tests/ios-native/Host.swift": "1450921dca7ab151df1d98655110c29853dd00fa42a8fd98830927b4afb73c10",
+        "mobile/tests/ios-native/NativeOwnersTests.swift": "8d6a20649c7759ac137279fe48824e9295c43650bbf7f5aa3c91496b12c963be",
+        "mobile/tests/ios-native/project.rb": "db8a153fc36f46771387d1be454bfd535ebfd9cea52b81a930fb487a98b28212",
+        "mobile/scripts/test-ios-native.mjs": "fe14907fe7a62ffba432c9f6fab87cc4a45a82d1860abbfeaeb6dba5e7e0f04b",
+        "mobile/scripts/native-source.mjs": "639b63eb3b646fb76dd6cada9060464be81c30e990dbf49bb7747edc3de9e4a2"
+      },
+      "executionCheckout": "3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef",
+      "harnessGitStatusAtExecution": "?? mobile/scripts/test-ios-native.mjs\n?? mobile/tests/ios-native/Host.swift\n?? mobile/tests/ios-native/NativeOwnersTests.swift\n?? mobile/tests/ios-native/project.rb",
+      "rustSourceUnchanged": true,
+      "compiledInputsUnchanged": true,
+      "resultsAccepted": true
+    },
+    "explicitLive": {
+      "output": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-ios-native-ZZ8We7",
+      "archive": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-20261018/explicitLive-native-tests.xcresult.tar.gz",
+      "archiveSha256": "b4ae1f47134e598779b9dffec906ec653bf6c472ce2c6e3d6db129bb06766e63",
+      "archiveBytes": 43488361,
+      "result": "Passed",
+      "total": 4,
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0,
+      "expectedFailures": 0,
+      "cases": [
+        {
+          "name": "testExplicitOriginalIosLoginStartsAndCancelsWithoutAuthenticating",
+          "result": "Passed"
+        },
+        {
+          "name": "testKeychainIsolationPersistenceProtectionAndOversizeAtomicity",
+          "result": "Passed"
+        },
+        {
+          "name": "testOriginalImageAdmissionChunkBytesScopeAndPersistentIndex",
+          "result": "Passed"
+        },
+        {
+          "name": "testOriginalSwiftCAbiLoadsAndRejectsUnauthenticatedOperationsOffline",
+          "result": "Passed"
+        }
+      ],
+      "nativeBuild": {
+        "version": 1,
+        "target": "aarch64-apple-ios-sim",
+        "sourceScopeVersion": 2,
+        "sourceCommit": "02c2fe419935bb48d25b9b5f81020c7dd44ac267",
+        "sourceDirty": false,
+        "sourceDigest": "eea5df3be892ec02695c25289ebffb4f6e3f24256589695d860bf4444f423c6c",
+        "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+        "librarySha256": "752a5b3aeddef73e1bf0d60636bd64f54c5a140becafbd6ce741766c82df0193"
+      },
+      "compiledInputHashes": {
+        "mobile/app/modules/moxbots-remote/ios/SecureRecords.swift": "2281a88e0b98b8c5a0321e93acccc2a6a3215b32076be725bbbe01e267e0d094",
+        "mobile/app/modules/moxbots-remote/ios/NativeConnection.swift": "8e859a5078a200d505c6f2c6274ef0c95c1003e37f71dd99e84c05b74cce8f96",
+        "mobile/app/modules/moxbots-remote/ios/NativeAttachments.swift": "abe8a7763f1a8c493ed9e2029e93d1c9cc122f19762391c4ab774462f45db479",
+        "mobile/tests/ios-native/Host.swift": "1450921dca7ab151df1d98655110c29853dd00fa42a8fd98830927b4afb73c10",
+        "mobile/tests/ios-native/NativeOwnersTests.swift": "8d6a20649c7759ac137279fe48824e9295c43650bbf7f5aa3c91496b12c963be",
+        "mobile/tests/ios-native/project.rb": "db8a153fc36f46771387d1be454bfd535ebfd9cea52b81a930fb487a98b28212",
+        "mobile/scripts/test-ios-native.mjs": "fe14907fe7a62ffba432c9f6fab87cc4a45a82d1860abbfeaeb6dba5e7e0f04b",
+        "mobile/scripts/native-source.mjs": "639b63eb3b646fb76dd6cada9060464be81c30e990dbf49bb7747edc3de9e4a2"
+      },
+      "executionCheckout": "3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef",
+      "harnessGitStatusAtExecution": "?? mobile/scripts/test-ios-native.mjs\n?? mobile/tests/ios-native/Host.swift\n?? mobile/tests/ios-native/NativeOwnersTests.swift\n?? mobile/tests/ios-native/project.rb",
+      "rustSourceUnchanged": true,
+      "compiledInputsUnchanged": true,
+      "resultsAccepted": true
+    }
+  }
+}
