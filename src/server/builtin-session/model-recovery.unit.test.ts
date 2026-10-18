@@ -278,6 +278,37 @@ describe('SessionModelRecovery', () => {
     expect(restoredOwner.isWaiting()).toBe(false);
   });
 
+  it.each([
+    ['rebound turn', 'successor-turn'],
+    ['same turn', 'turn-1'],
+  ])('persists stop during held admission prepare for a %s', async (_label, turnId) => {
+    const h = harness();
+    const seed = h.create();
+    await seed.wait(request(), failure());
+    const saved = h.read()!;
+    h.setCurrent({ sdkSessionId: 'native-1', routeIdentity: 'route-1', turnId, goalId: 'goal-1' });
+    let release!: () => void;
+    h.prepare.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    const recovery = h.create();
+    const req = request();
+    const admission = recovery.admit(req);
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+
+    await expect(recovery.pause('stop during cold admission')).resolves.toBe(true);
+    expect(h.read()).toMatchObject({
+      id: saved.id,
+      status: 'paused',
+      reason: 'stop during cold admission',
+      attempt: saved.attempt,
+      turnId,
+    });
+    release();
+    await expect(admission).rejects.toThrow();
+    const reopened = h.create();
+    await expect(reopened.admit(request())).rejects.toThrow('stop during cold admission');
+    expect(h.read()).toMatchObject({ status: 'paused', reason: 'stop during cold admission' });
+  });
+
   it('does not let a stale constructor snapshot pause a successor turn checkpoint', async () => {
     const h = harness();
     const seed = h.create();

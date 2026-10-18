@@ -444,8 +444,6 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
         // superseded). It is safe to treat this local owner's stop as complete,
         // but never write the stale source over that checkpoint.
         if (current && (!expected || !sameCheckpoint(current, expected))) return true;
-        if (wasPending && current
-          && (source.turnId !== current.turnId || source.attempt !== current.attempt + 1)) return true;
         return await this.options.write(paused, expected, live);
       } catch {
         // Local eligibility is already revoked; do not permit a late retry.
