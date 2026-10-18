@@ -106,8 +106,15 @@ function Preview() {
               isExecuting={goal.status === "active"}
               executionNumber={2}
               onEdit={() => setReceipt("编辑目标：1 次回调")}
+              onPause={() => {
+                setGoal({ ...goal, status: "paused", isExecuting: false });
+                setReceipt("暂停目标：1 次回调（合成）");
+              }}
               onCancel={() => setReceipt("取消目标：1 次回调（合成）")}
-              onResume={() => setReceipt("继续目标：1 次回调")}
+              onResume={() => {
+                setGoal({ ...goal, status: "active", isExecuting: true });
+                setReceipt("继续目标：1 次回调");
+              }}
               onDismiss={() => setReceipt("关闭目标状态：1 次回调")}
             />
             <textarea

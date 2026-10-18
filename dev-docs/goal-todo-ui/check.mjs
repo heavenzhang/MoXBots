@@ -18,7 +18,7 @@ page.on("pageerror", (e) => errors.push(String(e)));
 const checks = [];
 const pass = (name) => checks.push(name);
 try {
-  await page.goto("http://127.0.0.1:5188/dev-docs/goal-todo-ui/preview.html", {
+  await page.goto(`${process.env.GOAL_TODO_BASE_URL || "http://127.0.0.1:5188"}/dev-docs/goal-todo-ui/preview.html`, {
     waitUntil: "networkidle",
     timeout: 120000,
   });
@@ -60,10 +60,18 @@ try {
   assert.match(await page.getByRole("status").innerText(), /取消目标：1/);
   pass("goal edit and cancel callbacks");
   await page.getByLabel("消息输入").fill("未发送的草稿");
-  await page.getByRole("combobox", { name: "目标状态" }).selectOption("paused");
+  await page.getByRole("button", { name: "暂停", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  assert.match(await page.getByRole("status").innerText(), /暂停目标：1/);
+  assert.equal(await page.getByRole("button", { name: "暂停", exact: true }).count(), 0);
+  assert.equal(await page.getByRole("button", { name: "取消目标", exact: true }).count(), 1);
+  assert.equal(await page.getByLabel("消息输入").inputValue(), "未发送的草稿");
+  await page.screenshot({ path: `${output}/goal-paused.png` });
+  pass("keyboard pause keeps cancel and unsent draft, switches to resume");
   await page.getByRole("button", { name: "继续", exact: true }).click();
   assert.match(await page.getByRole("status").innerText(), /继续目标：1/);
-  pass("paused resume callback");
+  assert.equal(await page.getByRole("button", { name: "暂停", exact: true }).count(), 1);
+  pass("paused resume callback restores pause");
   for (const state of ["complete", "blocked", "canceled"]) {
     await page.getByRole("combobox", { name: "目标状态" }).selectOption(state);
     await page.getByRole("button", { name: "关闭目标状态" }).click();
@@ -128,6 +136,17 @@ try {
   await progress.focus(); await progress.press('Escape');
   assert.equal(await expand().getAttribute('aria-expanded'),'false');
   pass('320x720 simultaneous long goal/list: bounded objective keyboard scrolling, progress keyboard scrolling, Composer reachable, Escape focus');
+  await page.getByRole('button', { name: '暂停', exact: true }).scrollIntoViewIfNeeded();
+  const pauseButton = page.getByRole('button', { name: '暂停', exact: true });
+  const cancelButton = page.getByRole('button', { name: '取消目标', exact: true });
+  for (const button of [pauseButton, cancelButton]) {
+    const box = await button.boundingBox();
+    assert(box && box.x >= 0 && box.x + box.width <= 320 && box.height >= 32);
+  }
+  await pauseButton.click();
+  await page.getByRole('button', { name: '继续', exact: true }).waitFor();
+  await page.screenshot({ path: `${output}/narrow-320-paused.png` });
+  pass('320px pause/cancel hit areas and pause interaction');
   assert.deepEqual(errors, []);
   await writeFile(
     `${output}/results.json`,
