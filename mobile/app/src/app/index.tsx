@@ -5,7 +5,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
-import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
+import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, loginInApp, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
 import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
@@ -42,6 +42,11 @@ const errorMessages: Record<string, string> = {
   MOBILE_SPEECH_BUSY: '语音服务正忙，请稍后重试；文字草稿已保留。',
   TARGET_UNAVAILABLE: '当前没有可用 Bot，请检查设备连接。',
   ACCOUNT_REPLY_INVALID: '无法读取登录状态，请稍后刷新。',
+  ACCOUNT_NETWORK_ACCESS_DENIED: '请在 iPhone 设置中允许 MoXBots 使用无线数据，然后重试。',
+  ACCOUNT_NETWORK_UNAVAILABLE: '暂时无法连接账号服务，请检查网络后重试。',
+  ACCOUNT_LOGIN_PRESENTATION_FAILED: '登录窗口未能打开，请重试。',
+  ACCOUNT_CANCEL_UNCONFIRMED: '取消尚未确认，请重试取消。',
+  ACCOUNT_LOGIN_INTERRUPTED: '登录已中断，请重试。',
   ACCOUNT_BROWSER_OPEN_FAILED: '无法打开登录浏览器。可以取消当前登录后重试。',
   SESSION_LIST_REPLY_INVALID: '无法读取会话列表，请稍后重试。',
   SESSION_SNAPSHOT_REPLY_INVALID: '无法读取这条会话，请返回后重试。',
@@ -996,7 +1001,22 @@ function AppBody() {
     setNotice(null);
     accountRefreshEpochRef.current += 1;
     setLoginAction('start');
+    let nativeRefresh = false;
+    let nativeCancelUnconfirmed = false;
     try {
+      if (Platform.OS === 'ios' && !isFixtureMode) {
+        nativeRefresh = true;
+        const reply = await loginInApp();
+        if (!loginAttemptGate.isCurrent(epoch)) return;
+        if (reply.kind === 'error') {
+          nativeCancelUnconfirmed = reply.code === 'ACCOUNT_CANCEL_UNCONFIRMED';
+          throw new Error(reply.code);
+        }
+        if (!loginAttemptGate.observe(epoch, reply.state)) return;
+        accountRef.current = reply; setAccount(reply);
+        setLoginStarted(loginNeedsPolling(reply.state)); setCancelUnconfirmed(false);
+        return;
+      }
       const reply = await requestNative({ version: 1, kind: 'account.login.start' });
       if (!loginAttemptGate.isCurrent(epoch)) return;
       if (reply.kind !== 'login') throw new Error(reply.kind === 'error' ? reply.code : 'LOGIN_REPLY_INVALID');
@@ -1012,6 +1032,13 @@ function AppBody() {
       if (loginAttemptGate.owns(epoch)) {
         loginAttemptGate.finish(epoch);
         setLoginAction(null);
+        if (nativeCancelUnconfirmed) {
+          const cancelEpoch = loginAttemptGate.beginCancel();
+          if (cancelEpoch !== null) loginAttemptGate.finish(cancelEpoch);
+          setCancelUnconfirmed(true); setLoginStarted(false);
+        } else if (nativeRefresh) {
+          void loadAccount().catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));
+        }
       }
     }
   };
@@ -1156,18 +1183,18 @@ function AppBody() {
       <View style={styles.loginCard}>
         <View style={styles.logoMark}><Text style={styles.logoMarkText}>M</Text></View>
         <Text style={styles.title}>连接你的 Agent</Text>
-        <Text style={styles.subtitle}>通过已授权的设备打开同一会话。账号凭据由本机安全存储。</Text>
+        <Text style={styles.subtitle}>登录后，随时继续电脑上的会话。</Text>
         {!!notice && <NoticeView notice={notice}/>}
         {account?.state === 'authenticating' || loginStarted || cancelUnconfirmed ? <View style={styles.pendingLogin}>
           {!cancelUnconfirmed && <ActivityIndicator color={C.green}/>}
-          <Text style={styles.body}>{cancelUnconfirmed ? '取消登录尚未确认' : '等待浏览器完成授权…'}</Text>
-          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '授权后会自动检查登录状态，也可以取消后重试。'}</Text>
+          <Text style={styles.body}>{cancelUnconfirmed ? '取消登录尚未确认' : '等待完成账号登录…'}</Text>
+          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '登录后自动返回会话列表。窗口已关闭时，可以取消后重试。'}</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login_cancel', cancelLogin)} style={styles.secondaryButton}>
             <Text style={styles.secondaryText}>{loginAction === 'cancel' ? '正在取消…' : cancelUnconfirmed ? '重试取消登录' : '取消登录'}</Text>
           </Pressable>
-        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login', startLogin)} style={styles.primaryButton}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在发起登录…' : '使用浏览器登录'}</Text></Pressable>}
+        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login', startLogin)} style={styles.primaryButton}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在连接账号服务…' : '登录账号'}</Text></Pressable>}
         {loading && <ActivityIndicator style={{ marginTop: 16 }} color={C.green}/>}
-        {loginAction === null && !cancelUnconfirmed && <Text style={styles.caption}>登录状态不可用时，可以重试刷新。</Text>}
+        {loginAction === null && !cancelUnconfirmed && <Text style={styles.caption}>{Platform.OS === 'ios' ? '在 App 内安全登录，使用与电脑端相同的账号。' : '使用与电脑端相同的账号。'}</Text>}
       </View>
     </View>}
 

@@ -93,9 +93,18 @@ const notificationIntentSchema = z.discriminatedUnion('kind', [
 ]);
 const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, artifactListReply, artifactDownload, artifactAction, notificationReply, notificationOpenReply, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
 
-type RemoteBridge = { request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void }; addListener(event: 'attachmentUploadChanged', listener: (payload: NativeAttachmentUpload) => void): { remove(): void }; addListener(event: 'artifactDownloadChanged', listener: (payload: ArtifactDownload) => void): { remove(): void } };
+type RemoteBridge = { loginInApp(): Promise<string>; request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void }; addListener(event: 'attachmentUploadChanged', listener: (payload: NativeAttachmentUpload) => void): { remove(): void }; addListener(event: 'artifactDownloadChanged', listener: (payload: ArtifactDownload) => void): { remove(): void } };
 function getRemoteBridge(): RemoteBridge {
   return requireNativeModule<RemoteBridge>('MoxBotsRemote');
+}
+
+/** iOS system authentication sheet; the native owner keeps the authorization URL. */
+export async function loginInApp(): Promise<Account | { kind: 'error'; code: string }> {
+  if (Platform.OS !== 'ios' || isFixtureMode) throw new Error('ACCOUNT_LOGIN_PRESENTATION_FAILED');
+  const raw: unknown = JSON.parse(await getRemoteBridge().loginInApp());
+  const result = nativeReply.safeParse(raw);
+  if (!result.success || !['account', 'error'].includes(result.data.kind)) throw new Error('ACCOUNT_REPLY_INVALID');
+  return result.data as Account | { kind: 'error'; code: string };
 }
 
 function moduleRequest(intent: NativeIntent): Promise<unknown> {

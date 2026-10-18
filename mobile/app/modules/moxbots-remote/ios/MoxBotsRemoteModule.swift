@@ -17,6 +17,7 @@ public final class MoxBotsRemoteModule: Module {
   private var artifactDownloads: NativeArtifactScheduler? // owner queue only
   private var artifactScope: String?
   private var attachmentPicker: NativeAttachmentPicker? // main-thread owned
+  private let accountLogin = NativeAccountLogin() // main-thread presentation only
   private lazy var speech = NativeSpeech { [weak self] event in
     self?.sendEvent("speechChanged", event.projection)
   }
@@ -31,7 +32,7 @@ public final class MoxBotsRemoteModule: Module {
         guard let self else { return }
         self.lifecycleLock.lock(); self.appForeground = false; self.lifecycleLock.unlock()
         self.bumpArtifactPresentationFence()
-        DispatchQueue.main.async { [weak self] in self?.speech.cancel() }
+        DispatchQueue.main.async { [weak self] in self?.speech.cancel(); self?.accountLogin.setForeground(false) }
         self.queue.async { [weak self] in
           self?.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED")
           self?.artifactDownloads?.pause()
@@ -45,8 +46,29 @@ public final class MoxBotsRemoteModule: Module {
         self.lifecycleLock.lock()
         if !self.destroyed { self.appForeground = true }
         self.lifecycleLock.unlock()
+        DispatchQueue.main.async { [weak self] in self?.accountLogin.setForeground(true) }
         // Returning to the foreground permits explicit actions; it never
         // restarts a paused upload, download, recording or Session operation.
+      }
+    }
+    AsyncFunction("loginInApp") { [weak self] (promise: Promise) in
+      guard let self else { promise.resolve(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
+      DispatchQueue.main.async {
+        self.accountLogin.begin(
+          origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232",
+          request: { [weak self] input, completion in
+            guard let self else { completion(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
+            self.queue.async {
+              guard self.ownerActive else { completion(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
+              self.bumpArtifactPresentationFence()
+              self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
+              self.artifactDownloads?.pause(); self.artifactScope = nil
+              do { completion(try self.ensureConnection().request(input)) }
+              catch let error as NativeFailure { completion(Self.failure(error.code)) }
+              catch { completion(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")) }
+            }
+          }, completion: { promise.resolve($0) }
+        )
       }
     }
     AsyncFunction("request") { [weak self] (input: String, promise: Promise) in
@@ -124,7 +146,7 @@ public final class MoxBotsRemoteModule: Module {
       self.lifecycleLock.lock(); self.destroyed = true; self.lifecycleLock.unlock()
       if let observer = self.backgroundObserver { NotificationCenter.default.removeObserver(observer) }
       if let observer = self.foregroundObserver { NotificationCenter.default.removeObserver(observer) }
-      DispatchQueue.main.async { self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
+      DispatchQueue.main.async { self.accountLogin.close(); self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
       self.queue.async {
         self.ownerActive = false
         self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED")
