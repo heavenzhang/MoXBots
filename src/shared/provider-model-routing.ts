@@ -1,5 +1,5 @@
 import type { ModelEntity, Provider } from './config-types';
-import { getOpenCodeGoOfficialProtocol, OPENCODE_GO_PROVIDER_ID } from './opencode-go';
+import { getOpenCodeGoOfficialProtocol, OPENCODE_GO_BASE_URL, OPENCODE_GO_OPENAI_BASE_URL, OPENCODE_GO_PROVIDER_ID } from './opencode-go';
 import {
   MODEL_PROTOCOL_PRIORITY, parseSupportedProtocols, TOKENDANCE_PROVIDER_ID,
   type ModelProtocol,
@@ -39,7 +39,17 @@ export function resolveProviderForModel<T extends ModelRoutingProvider>(provider
     throw new Error(`Model '${modelId}' has no known execution protocol for ${provider.name ?? provider.id}. Set its protocol in model settings or refresh the catalog.`);
   }
   const isAnthropic = protocol === 'anthropic:messages';
-  const baseUrl = provider.modelProtocolBaseUrls?.[protocol];
+  let baseUrl = provider.modelProtocolBaseUrls?.[protocol];
+  // Existing session/provider snapshots can still carry the older bundled
+  // paths. Upgrade only those exact official defaults; custom endpoints remain
+  // owned by their configuration and must never be silently overwritten.
+  if (provider.id === OPENCODE_GO_PROVIDER_ID && baseUrl) {
+    const normalizedUrl = baseUrl.replace(/\/+$/, '');
+    if (normalizedUrl === 'https://opencode.ai/zen/go'
+      || normalizedUrl === 'https://opencode.ai/zen/go/v1') {
+      baseUrl = isAnthropic ? OPENCODE_GO_BASE_URL : OPENCODE_GO_OPENAI_BASE_URL;
+    }
+  }
   if (!baseUrl) throw new Error(`Provider '${provider.id}' does not define an endpoint for ${protocol}.`);
   return {
     ...provider,

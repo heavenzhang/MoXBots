@@ -28,9 +28,9 @@ describe('OpenCode Go execution materialization', () => {
     const messages = route('minimax-m3');
     const responses = route('grok-4.7');
     const chat = route('kimi-k3');
-    expect(messages).toMatchObject({ apiProtocol: 'anthropic', baseUrl: 'https://opencode.ai/zen/go', authType: 'api_key' });
-    expect(responses).toMatchObject({ apiProtocol: 'openai', upstreamFormat: 'responses', baseUrl: 'https://opencode.ai/zen/go/v1' });
-    expect(chat).toMatchObject({ apiProtocol: 'openai', upstreamFormat: 'chat_completions', baseUrl: 'https://opencode.ai/zen/go/v1' });
+    expect(messages).toMatchObject({ apiProtocol: 'anthropic', baseUrl: 'https://opencode.ai/inference/go/anthropic', authType: 'api_key' });
+    expect(responses).toMatchObject({ apiProtocol: 'openai', upstreamFormat: 'responses', baseUrl: 'https://opencode.ai/inference/go/openai/v1' });
+    expect(chat).toMatchObject({ apiProtocol: 'openai', upstreamFormat: 'chat_completions', baseUrl: 'https://opencode.ai/inference/go/openai/v1' });
     expect(route('future-go').upstreamFormat).toBe('responses');
     expect(providerEnvEqual(messages, responses)).toBe(false);
     expect(providerEnvEqual(responses, chat)).toBe(false);
