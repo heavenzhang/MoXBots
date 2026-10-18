@@ -693,7 +693,7 @@ mod tests {
         let body = bytes.clone();
         let (url, requests, server) = server(2, move |index, _, stream| {
             let response = if index == 0 {
-                full(&body)[..full(&body).len() - 16].to_vec()
+                full(&body)[..full(&body).len() - (body.len() - 16)].to_vec()
             } else {
                 partial(&body, 16)
             };
@@ -721,7 +721,7 @@ mod tests {
         let body = bytes.clone();
         let (url, requests, server) = server(2, move |index, _, stream| {
             let response = if index == 0 {
-                full(&body)[..full(&body).len() - 16].to_vec()
+                full(&body)[..full(&body).len() - (body.len() - 16)].to_vec()
             } else {
                 partial(&body, 16)
             };
@@ -736,7 +736,7 @@ mod tests {
             .is_err());
         assert_eq!(
             recovered_partial(dir.path()).unwrap().unwrap(),
-            ("9.9.9".into(), 16, Some(32))
+            ("9.9.9".into(), 16, Some(bytes.len() as u64))
         );
         let path = download(&client(), dir.path(), &artifact, &policy(), |_| {})
             .await
@@ -845,7 +845,7 @@ mod tests {
                 if complete { 1 } else { 2 },
                 move |index, _, stream| {
                     if index == 0 {
-                        stream.write_all(b"HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */32\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+                        stream.write_all(format!("HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */{}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n", body.len()).as_bytes()).unwrap();
                     } else {
                         stream.write_all(&full(&body)).unwrap();
                     }
@@ -857,7 +857,7 @@ mod tests {
                 dir.path(),
                 &artifact,
                 if complete { &bytes } else { &bytes[..16] },
-                32,
+                bytes.len() as u64,
             );
             let path = download(&client(), dir.path(), &artifact, &policy(), |_| {})
                 .await
@@ -899,8 +899,9 @@ mod tests {
     #[tokio::test]
     async fn exact_length_does_not_bypass_signature_or_create_pending() {
         let (_, bytes) = fixture("http://127.0.0.1/");
+        let corrupt = vec![b'X'; bytes.len()];
         let (url, _, server) = server(1, move |_, _, stream| {
-            stream.write_all(&full(&[b'X'; 32])).unwrap()
+            stream.write_all(&full(&corrupt)).unwrap()
         });
         let (artifact, _) = fixture(&url);
         let dir = TempDir::new().unwrap();
@@ -912,7 +913,6 @@ mod tests {
         let failure = download(&client(), dir.path(), &artifact, &policy(), |_| {})
             .await
             .unwrap_err();
-        assert_eq!(bytes.len(), 32);
         assert_eq!(failure.code, "signature");
         assert!(regular(&dir.path().join(DATA_FILE)).unwrap().is_none());
         assert_eq!(
