@@ -655,29 +655,49 @@ describe('builtin V2 execution independent of product storage', () => {
       configSnapshotAt: new Date().toISOString(),
     });
     const active = store.getActiveSessionTranscript(metadata.id)!;
-    vi.spyOn(active.file, 'append').mockImplementation(() => new Promise<void>(resolve => { releaseWrite = resolve; }));
+    let appendReleased = false;
+    const appendBarrier = new Promise<void>(resolve => {
+      releaseWrite = () => { appendReleased = true; resolve(); };
+    });
+    vi.spyOn(active.file, 'append').mockReturnValue(appendBarrier);
     expect(await active.writer.flush(20)).toBe(false);
     const config = await import('../utils/admin-config');
     expect(config.resolveWorkspaceConfig(workspace, metadata, { includeMcp: false }).providerRoute)
       .toMatchObject({ providerId: 'anthropic-sub', model: 'claude-sonnet-4-6' });
-    const repair = vi.spyOn(store, 'updateSessionMetadata');
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const originalRepair = store.updateSessionMetadata;
+    let pendingRepair: ReturnType<typeof originalRepair> | undefined;
+    let repairSettled = false;
+    const repair = vi.spyOn(store, 'updateSessionMetadata').mockImplementation((...args) => {
+      const result = originalRepair(...args);
+      if (args[0] === metadata.id && args[1].providerRoute) {
+        pendingRepair = result;
+        void result.then(() => { repairSettled = true; }, () => { repairSettled = true; });
+      }
+      return result;
+    });
+    // Prove dependency independence while storage stays blocked. A one-second
+    // wall-clock race also measured unrelated startup scheduling under load;
+    // the unchanged integration-test deadline still bounds a real deadlock.
     try {
-      const completed = (async () => {
-        await agent.initializeAgent(workspace, null, metadata.id);
-        let finish!: (outcome: TurnTerminalOutcome) => void;
-        const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
-        const admission = await agent.enqueueUserMessage('continue fork', [], undefined, undefined, undefined, undefined,
-          undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
-        expect(admission.error).toBeUndefined();
-        return terminal;
-      })();
-      await expect(Promise.race([completed, new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error('AI waited for optional product route repair')), 1_000);
-      })])).resolves.toMatchObject({ status: 'complete' });
+      await agent.initializeAgent(workspace, null, metadata.id);
+      let finish!: (outcome: TurnTerminalOutcome) => void;
+      const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+      const admission = await agent.enqueueUserMessage('continue fork', [], undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+      expect(admission.error).toBeUndefined();
+      await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+      expect(appendReleased).toBe(false);
+      expect(pendingRepair).toBeDefined();
+      expect(repairSettled).toBe(false);
+      expect(state.query).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({ model: 'claude-sonnet-4-6' }),
+      }));
       expect(repair).toHaveBeenCalledWith(metadata.id, expect.objectContaining({ providerRoute: expect.any(Object) }), expect.any(Function));
       expect(await active.writer.flush(20)).toBe(false);
-    } finally { clearTimeout(timeout); }
+    } finally {
+      releaseWrite?.();
+      await pendingRepair;
+    }
   });
 
   it('preserves acknowledged queue order and exact materialized fork/rewind boundaries', async () => {

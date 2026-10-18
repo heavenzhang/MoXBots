@@ -23,9 +23,9 @@ SDK sources checked: installed `sdk.d.ts`, `sdk-tools.d.ts` (0.3.296) and [offic
 - [x] Partial stream/duplicate fingerprint safety and old background/new foreground ownership isolation.
 - [x] Actual SDK/native background Agent and MCP exactly-once fixture.
 - [x] Actual SDK/native failover and partial-stream fixtures.
-- [ ] Typecheck, changed-file lint, build and final normal CI.
-- [ ] Remote main delivery verified by fetch and ancestry/file content.
-- [ ] Registered release owner receives exact accepted main and queues unfrozen repair.
+- [x] Typecheck, changed-file lint, build and final normal CI39145233968 on642e2820.
+- [x] Remote mainfe82002e verified by fetch, source ancestry and exact CI/main tree.
+- [x] Registered release owner received acceptedmain and queued final0512 combination; no signed/native/publication claim.
 
 Raw local evidence is in the project pointer `output/request-499-20261018/`; machine-only absolute paths and generated logs are not committed as product data. Initial reproduction failures are retained separately from final success.
 

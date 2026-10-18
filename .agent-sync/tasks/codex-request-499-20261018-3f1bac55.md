@@ -16,12 +16,12 @@ Fix foreground completion incorrectly cancelling valid background inference/stre
 - [x] Explicit abort and retired Query/route reject late output and stop queued retries.
 - [x] Initial safe availability failure gets up to three retries, with bounded cancellable backoff; failures after delivery never replay tools.
 - [x] Focused paired-controller loopback regression and real SDK/native + local MCP counter pass.
-- [ ] Normal CI and independent review pass; merge current main, push and verify remote main contains delivered changes.
-- [ ] Unified release owner receives exact accepted main revision and queues next unfrozen repair; signed/native release is tracked separately.
+- [x] Normal CI and independent review pass; current-main integration and remote ancestry/tree verified for642e/mainfe82002e.
+- [x] Unified release owner received acceptedmain and included it in the next unfrozen0512 union; signed/native release is tracked separately.
 
 ## Completed
 
-- Preceding read-only investigation independently confirmed lifecycle misclassification and locally reproduced 499 without a model call. Product implementation and focused/native fixture acceptance completed; final normal CI/main delivery pending integration. Six focused files contain 126 assertions and five actual native SDK fixture modes are accepted locally; see `dev-docs/request-499-20261018-acceptance.md`.
+- Preceding read-only investigation independently confirmed lifecycle misclassification and locally reproduced 499 without a model call. Product implementation and focused/native fixture acceptance completed; final normalCI/source main delivered642e/mainfe82002e; signed/native publication remains separately pending. Six focused files contain 126 assertions and five actual native SDK fixture modes are accepted locally; see `dev-docs/request-499-20261018-acceptance.md`.
 
 ## Verification
 
@@ -33,4 +33,8 @@ Fix foreground completion incorrectly cancelling valid background inference/stre
 
 ## Next step
 
-- Source is ready for normal PR/CI and current-main integration. Verify the remote main contains the reviewed commit; notify the registered release owner with immutable main and acceptance evidence. Final main/publication receipts are retained under the project pointer docs/output; this ready-for-review record describes the candidate gates and does not claim installation.
+- Source/main delivery is verified. Unified publisher completes final0512 unionCI/main, freeze/build/sign/native/publication gates; do not claim the installed daily client contains this feature. Final immutable source/main receipt below and private pointer preserve the integration transfer.
+
+## Final source/main handoff by authorized integrator
+
+Original owner completed combined source642e28206658dfd1f643304aa7a9609c1388d5e0 and normalCI39145233968 (nine applicable successes, conditional iOS skip), then its chat became notLoaded/interrupted and two coordination sends failed. Human explicitly transferred ordinary PR144 merge/remote verification to unified publisher. Root normally merged as mainfe82002ede98dd7e3f839fc45a36525efa2452cf at2026-10-18T16:55:13Z, fetched and verified source ancestry and exact CI/main tree848bc2c127ad1ebe97fecd2a3e4e2b1509d80e31. Native install/production remain open; next unfrozen0512 publisher is integrating this acceptedmain with141 throughPR143 and must pass final combination gates before freeze. No daily application action.

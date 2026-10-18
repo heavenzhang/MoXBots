@@ -445,3 +445,13 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## GOAL-PAUSE-001 — 2026-10-18
 
 运行Goal条新增暂停，与既有继续/取消并列，复用原Rust暂停/停止/持久化owner。局部UI由主Agent自验，DOM86项与浏览器10组通过；CI/main、正式包/真实任务分别追踪。任务记录 `.agent-sync/tasks/codex-goal-pause-001-20261018-3d82257d.md`，验收 `dev-docs/goal-pause-001-acceptance.md`。保留唯一桌面发布owner和下一未冻结版本边界，不重启日常App、不改既有冻结包。
+
+## Deployment coordination — MOXBOTS-0512-UPDATE-RECOVERY-20261018
+
+- **Deployment chat:** 01a12bc2-907a-7702-b6dd-788225c5dfe4, existing unified desktop updater owner.
+- **Designation:** User source01a14f82 authorized next-unfrozen release; human later explicitly transferred ordinary144 main integration to this publisher. Source150 conveyed its human-authorized next-unfrozen release handoff. Existing desktop signing scope retained.
+- **Targets/runbook:** macOS arm64 own updater on existing140 only; final candidate-owned reviewed scripts. Preserve immutable0511. No backend/Host/mobile/Windows/website changes or daily interruption authority inferred.
+- **Current release:** Preparing0.5.12, not frozen/built/published. Accepted138/142/145/144 main plus sidebar885 and accepted149 main51db53b0/150 main4dcb3d7c deliberately included before freeze. Exact141/08bc aggregated into143 by source agreement. BothToast suites,141 stop function/interrupt regression and144 Query guard modules preserved. Current combined source requires normalCI/main and actual remote containment before freeze.
+- **Native ownership:** Daily0511 may be active; Root has no fresh maintenance window. Prepare concrete signed/notarized/stapled candidate first, then request only the missing window. No launch/quit/stop/replace or force/counter-reset workaround.
+- **Acceptance:** Actual updater resume/stop/durable install, Goal pause/continue/cancel, original-session explicit continuation, background request/retry/Stop, sidebar pointer/zoom, error-banner resend/reopen without rewind, and recorded Task status. Controlled/local/SDK/native/external-model evidence stay separate.
+- **Record:** dev-docs/releases/moxbots-0.5.12.md and current branch task; private evidence work/release-0512-20261018/owner/. Uncommitted team mode and unfinished mobile/Host remain outside release claims.

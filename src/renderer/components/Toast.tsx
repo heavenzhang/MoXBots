@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useState, useMemo } from 'react';
+import { createContext, useContext, useCallback, useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import {
@@ -16,6 +16,7 @@ interface Toast {
     id: string;
     message: string;
     type: ToastType;
+    duration: number;
 }
 
 interface ToastContextValue {
@@ -62,10 +63,17 @@ const typeConfig = {
     },
 };
 
-function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
+function ToastItem({ toast, onClose }: { toast: Toast; onClose: (id: string) => void }) {
     const { t } = useTranslation('common');
     const config = typeConfig[toast.type];
     const Icon = config.icon;
+
+    // A visible notice owns its timer. Manual dismissal/provider unmount must
+    // release it, and sibling notices must not reset an existing deadline.
+    useEffect(() => {
+        const timer = setTimeout(() => onClose(toast.id), toast.duration);
+        return () => clearTimeout(timer);
+    }, [toast.id, toast.duration, onClose]);
 
     return (
         <div
@@ -82,7 +90,7 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
             <button
                 type="button"
                 aria-label={t('actions.close')}
-                onClick={onClose}
+                onClick={() => onClose(toast.id)}
                 className={`ml-2 p-0.5 rounded-md hover:bg-black/5 dark:hover:bg-white/10 transition-colors ${config.text}`}
             >
                 <CloseIcon className="h-4 w-4" />
@@ -101,13 +109,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     const showToast = useCallback((message: string, type: ToastType = 'info', duration?: number) => {
         const id = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        setToasts((prev) => [...prev, { id, message, type }]);
-
-        // Auto dismiss
-        setTimeout(() => {
-            removeToast(id);
-        }, duration ?? DEFAULT_TOAST_DURATION);
-    }, [removeToast]);
+        setToasts((prev) => [...prev, { id, message, type, duration: duration ?? DEFAULT_TOAST_DURATION }]);
+    }, []);
 
     const success = useCallback((message: string, duration?: number) => showToast(message, 'success', duration), [showToast]);
     const error = useCallback((message: string, duration?: number) => showToast(message, 'error', duration ?? ERROR_TOAST_DURATION), [showToast]);
@@ -129,7 +132,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-2 pointer-events-none">
                     {toasts.map((toast) => (
                         <div key={toast.id} className="pointer-events-auto">
-                            <ToastItem toast={toast} onClose={() => removeToast(toast.id)} />
+                            <ToastItem toast={toast} onClose={removeToast} />
                         </div>
                     ))}
                 </div>,
