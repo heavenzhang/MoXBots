@@ -12,7 +12,7 @@ Add a manually dispatched, source-pinned CI workflow that creates a non-public L
 
 ## Acceptance criteria
 
-- A manual workflow accepts only a full 40-character commit and verifies the checkout is exact and clean.
+- Manual dispatch and reusable-workflow call both accept only a full 40-character commit and verify the checkout is exact and clean.
 - The moxbot-test Host archive, Linux x86_64 network connector, and AgentNet service are built from that source checkout.
 - Existing release preparation and consumer validation pass before candidate bytes are staged under RUNNER_TEMP.
 - Candidate artifact contains exactly bootstrap.py, bundle.tar.gz, and canonical candidate-meta.json; service artifact contains exactly the service ELF and source-commit.txt.
@@ -21,7 +21,7 @@ Add a manually dispatched, source-pinned CI workflow that creates a non-public L
 
 ## Completed
 
-- Added `.github/workflows/host-candidate.yml` with only a manual full-SHA input, clean source checkout, Node 24.20.0, Rust 1.92.0, Host build, connector/service release builds, existing prepare-release consumer, and candidate staging.
+- Added `.github/workflows/host-candidate.yml` with manual dispatch and reusable-workflow full-SHA inputs, clean source checkout, Node 24.20.0, Rust 1.92.0, Host build, connector/service release builds, existing prepare-release consumer, and candidate staging.
 - Added `scripts/host/prepare-acceptance-candidate.py` to verify source, prepared release receipt, exact Host consumer contract, Linux ELF service, output containment, and closed artifact payloads. It prints a bounded producer receipt for root-side pinning; it contains no publicOrigin.
 - Added six offline tests in `scripts/host/prepare-acceptance-candidate.test.py`.
 

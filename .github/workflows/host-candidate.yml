@@ -7,6 +7,12 @@ on:
         description: Full 40-character source commit to build and validate
         required: true
         type: string
+  workflow_call:
+    inputs:
+      source_commit:
+        description: Full 40-character source commit to build and validate
+        required: true
+        type: string
 
 permissions:
   contents: read
