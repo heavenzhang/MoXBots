@@ -2,12 +2,26 @@ import type { ModelEntity } from './config-types';
 import type { ModelProtocol } from './tokendance';
 
 export const OPENCODE_GO_PROVIDER_ID = 'opencode-go';
-export const OPENCODE_GO_BASE_URL = 'https://opencode.ai/zen/go';
-export const OPENCODE_GO_MODEL_LIST_URL = `${OPENCODE_GO_BASE_URL}/v1/models`;
+export const OPENCODE_GO_BASE_URL = 'https://opencode.ai/inference/go/anthropic';
+export const OPENCODE_GO_OPENAI_BASE_URL = 'https://opencode.ai/inference/go/openai/v1';
+// The catalog is public; it describes the service, not a key's subscription,
+// quota or regional eligibility. Keep it separate from inference transports.
+export const OPENCODE_GO_MODEL_LIST_URL = 'https://opencode.ai/inference/go/v1/models';
+export const OPENCODE_GO_CATALOG_USER_AGENT = 'MoXBots/model-discovery';
 
-// OpenCode Go Endpoints table, checked 2026-09-29: https://opencode.ai/docs/go/#endpoints
-// The /models response has IDs but no endpoint/protocol field. Keep this table
-// explicit; neither a model name nor its owning vendor establishes a route.
+/** Official endpoint uses Google native generateContent, which this provider
+ * adapter cannot execute. Do not invite users to guess an OpenAI protocol.
+ * Unknown future IDs still use the existing explicit protocol selection flow.
+ */
+export function isOpenCodeGoDiscoverableModel(modelId: string): boolean {
+  return modelId !== 'gemini-4-argon-contributor';
+}
+
+// OpenCode Go Endpoints snapshot, 2026-09-29; transport paths rechecked 2026-10-18: https://opencode.ai/docs/go/#endpoints
+// The public /models response has IDs but no endpoint/protocol field. Preserve
+// historical entries so an update never deletes a user selection; a known
+// protocol does not establish current account/model availability. New entries
+// require an explicit documented route, not a guess based on name/vendor.
 const rows: Array<[string, string, string, ModelProtocol]> = [
   ['grok-4.7', 'Grok 4.7', 'grok', 'openai:responses'],
   ['grok-4.6', 'Grok 4.6', 'grok', 'openai:responses'],

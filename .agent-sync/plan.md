@@ -363,3 +363,7 @@ User authorized owned relay terminal recovery first, then DSH child approval gui
 ## MOXBOTS-SESSION-WINDOWS-001 — 2026-10-17
 
 按用户要求移除全局浏览器式TabBar，以当前会话页面/侧栏为导航；沿原Chat保存与后台继续owner做12页FIFO有界回收，保护输入/录音和活动页面。验收与发布请求见 `dev-docs/session-windows/acceptance.md`，分支任务 `.agent-sync/tasks/codex-session-windows-20261017-31ed5a11.md`。156项定向回归、实际renderer三尺寸与独立代码/截图审阅通过；CI/main以PR为准，原生包/真实会话仍待既定唯一发布owner下一未冻结候选，不操作日常App，不把main合并当已发布。
+
+## MODEL-PICKER-CATALOG-20261018
+
+备用模型搜索名称/ID/供应商，按供应商及密钥配置筛选，保留持久选择及原writer。OpenRouter改为账号过滤目录，OpenCode Go目录及三协议路由更新为当前官方路径；历史用户模型和自定义URL不删除、不覆盖。任务 `.agent-sync/tasks/codex-model-picker-catalog-20261018-834707ac.md`，验证 `dev-docs/model-picker-catalog-20261018/`。源码/回归/CI/main与统一桌面发行及真实供应商推理分别追踪；本任务不调用付费推理、不替换日常包，不接管登记的唯一发布owner。

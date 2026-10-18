@@ -2320,6 +2320,13 @@
     "unavailable": "模型当前不可用"
   },
   "modelFailover": {
+    "providerFilter": "筛选供应商",
+    "allProviders": "全部供应商",
+    "keyOnly": "仅显示已配置密钥",
+    "search": "搜索模型名称或 ID…",
+    "noMatches": "没有匹配的模型，请调整搜索或筛选条件。",
+    "keyConfigured": "已配置密钥",
+    "keyMissing": "未配置密钥",
     "title": "备用模型",
     "enable": "启用模型自动切换",
     "description": "当前会话选定的模型作为主模型。重试后仍不可用时，在可安全续接的情况下由一个备用模型继续本轮；下一轮恢复使用主模型。",
