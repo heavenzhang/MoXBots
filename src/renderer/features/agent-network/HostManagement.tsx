@@ -36,16 +36,19 @@ const inputClass =
 
 export function HostManagement({
   locator,
-  online,
+  online: peerOnline,
+  connectionReady = true,
   adapter = hostManagementAdapter,
 }: {
   locator: HostLocator;
   online: boolean;
+  connectionReady?: boolean;
   /** Explicit dependency injection for isolated tests; production uses only the
    * protocol-gated adapter above, never a fixture or runtime mock flag. */
   adapter?: HostManagementAdapter;
 }) {
   const { t } = useTranslation("app");
+  const online = connectionReady && peerOnline;
   const [expanded, setExpanded] = useState(false);
   const sectionId = useId();
   const pages = [
@@ -70,6 +73,7 @@ export function HostManagement({
   const { connectionId, principalId, authGeneration, networkId, deviceId } =
     locator;
   useEffect(() => {
+    if (!connectionReady) return;
     const abort = new AbortController();
     const setAccess = (value: HostAccess) =>
       setResponse({ key: requestKey, adapter, access: value });
@@ -109,6 +113,7 @@ export function HostManagement({
     return () => abort.abort();
   }, [
     adapter,
+    connectionReady,
     connectionId,
     principalId,
     authGeneration,
@@ -143,7 +148,11 @@ export function HostManagement({
           {t("agentNetwork.host.title")}
         </span>
         <span className="text-xs text-[var(--ink-muted)]">
-          {t(`agentNetwork.host.states.${status}`)}
+          {t(
+            connectionReady
+              ? `agentNetwork.host.states.${status}`
+              : "agentNetwork.connectionUnavailable",
+          )}
         </span>
       </button>
       <div
@@ -151,6 +160,11 @@ export function HostManagement({
         hidden={!expanded}
         className="border-t border-[var(--line-subtle)] px-3.5 py-4"
       >
+        {!connectionReady && (
+          <p role="status" className="mb-3 text-sm text-[var(--ink-muted)]">
+            {t("agentNetwork.deviceStatusUnknown")}
+          </p>
+        )}
         <div
           role="tablist"
           aria-label={t("agentNetwork.host.pages.navigation")}
@@ -218,6 +232,7 @@ export function HostManagement({
                 <button
                   type="button"
                   className={secondary}
+                  disabled={!connectionReady}
                   onClick={() => setRetry((value) => value + 1)}
                 >
                   {t("agentNetwork.retry")}
@@ -253,6 +268,7 @@ export function HostManagement({
               key={hostAddressKey(access.snapshot.address)}
               initial={access.snapshot}
               online={online}
+              connectionReady={connectionReady}
               adapter={adapter}
               onAccessChanged={(next) =>
                 setResponse({ key: requestKey, adapter, access: next })
@@ -268,11 +284,13 @@ export function HostManagement({
 function HostConfiguration({
   initial,
   online,
+  connectionReady,
   adapter,
   onAccessChanged,
 }: {
   initial: HostSnapshot;
   online: boolean;
+  connectionReady: boolean;
   adapter: HostManagementAdapter;
   onAccessChanged: (access: HostAccess) => void;
 }) {
@@ -619,7 +637,7 @@ function HostConfiguration({
             .join(" · "),
         })}
       </p>
-      {!current.online && (
+      {!current.online && connectionReady && (
         <p role="status" className="text-sm text-[var(--warning)]">
           {t("agentNetwork.host.offline")}
         </p>

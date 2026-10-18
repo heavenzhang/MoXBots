@@ -27,8 +27,13 @@ export function osName(platform: string): string {
 }
 
 /** Connection wording only means something once the device is in the network. */
-export function deviceStatusText(t: TFunction, device: NetworkDevice): string {
+export function deviceStatusText(
+  t: TFunction,
+  device: NetworkDevice,
+  connectionReady = true,
+): string {
   if (!device.joined) return t("agentNetwork.notJoined");
+  if (!connectionReady) return t("agentNetwork.deviceStatusUnknown");
   if (device.connectionState === "ready") return t("agentNetwork.online");
   if (device.connectionState === "syncing") return t("agentNetwork.syncing");
   return device.lastNetworkSeenAt
@@ -52,11 +57,17 @@ export function sortAgents(items: NetworkAgent[]): NetworkAgent[] {
   );
 }
 
-export function DeviceIcon({ device }: { device: NetworkDevice }) {
+export function DeviceIcon({
+  device,
+  connectionReady = true,
+}: {
+  device: NetworkDevice;
+  connectionReady?: boolean;
+}) {
   const dot =
-    device.connectionState === "ready"
+    connectionReady && device.connectionState === "ready"
       ? "bg-[var(--success)]"
-      : device.connectionState === "syncing"
+      : connectionReady && device.connectionState === "syncing"
         ? "bg-[var(--accent)]"
         : "bg-[var(--ink-faint)]";
   return (

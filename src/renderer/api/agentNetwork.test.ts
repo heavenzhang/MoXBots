@@ -15,6 +15,12 @@ beforeEach(() => {
   setNetworkReadScope(null);
 });
 describe("network read and settings outcome", () => {
+  it("classifies only explicit connection timeouts without misclassifying generic failures", () => {
+    expect(networkErrorKey({ code: "NETWORK_CONNECTION_TIMEOUT" })).toBe("connectionTimeout");
+    expect(networkErrorKey({ code: "NETWORK_CONNECTION_TIMEOUT" }, "mutation")).toBe("unconfirmed");
+    expect(networkErrorKey({ code: "NETWORK_TRANSPORT_FAILED" })).toBe("failed");
+    expect(networkErrorKey({ code: "NETWORK_REQUEST_UNCONFIRMED" }, "mutation")).toBe("unconfirmed");
+  });
   it("uses the explicit owned-credential restore and cancellation commands", async () => {
     invoke.mockResolvedValueOnce({ revision: 8 }).mockResolvedValueOnce(undefined);
     await expect(

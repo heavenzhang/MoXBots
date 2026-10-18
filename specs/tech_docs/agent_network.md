@@ -190,3 +190,9 @@ Rust 外部 HTTP owner 通过 `network_diagnostics::RequestDiagnostic` 记录阶
 Project 保存仅在目录字段（身份、名称、图标、路径、可见性、归档状态、exposure revision）变化时通知；打开工作区/排序/模型偏好不会产生目录上传。Agent/Project 复合写入复用 `notification: 'deferred'`，最终两份磁盘状态提交后统一发布。已持久化写入不能因通知失败被报告为回滚；通知错误保留明确日志，已有重连继续从磁盘恢复。
 
 回传日志只记录 op/route/event/request/watch/turn 关联 ID、阶段与规范化原因，不记录正文、名称或凭据。Node 的 unconfirmed 表示当前调用未确认最终送达；Rust 可能仍在恢复窗口内持有结果，最终 ACK/过期以 App 日志为准。
+
+### 连接状态与设备状态的展示边界
+
+网络选择器和页面banner共用`features/agent-network/networkStatus.ts`，已确认的登录失效和凭据授权提示优先于中间连接态。HTTP owner仅将reqwest确认的期限到达投影为`NETWORK_CONNECTION_TIMEOUT`；连接拒绝、服务/协议错误保留各owner错误。不确定写的UI仍沿原unconfirmed语义，不以超时提示允许重放。
+
+设备在线/同步/离线来自当前Ready网络的目录；网络失联时仅保留设备缓存用于导航，卡片和详情必须显示状态未知并中和旧在线圆点，不能从缓存宣称设备真实离线。相关回归与真实恢复边界见`dev-docs/cloud-network-recovery/acceptance.md`。

@@ -137,7 +137,7 @@ export function DeviceDetails({
           className="flex max-h-[min(760px,90dvh)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-[var(--paper-elevated)] shadow-xl"
         >
           <header className="flex items-center gap-3.5 px-6 pb-4 pt-5">
-            <DeviceIcon device={device} />
+            <DeviceIcon device={device} connectionReady={connectionReady} />
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-2">
                 <h2
@@ -149,7 +149,7 @@ export function DeviceDetails({
                 {isLocal && <LocalTag />}
               </div>
               <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
-                {osName(device.platform)} · {deviceStatusText(t, device)}
+                {osName(device.platform)} · {deviceStatusText(t, device, connectionReady)}
               </p>
             </div>
             <DeviceMenu
@@ -205,7 +205,8 @@ export function DeviceDetails({
                   deviceId: device.deviceId,
                   authGeneration,
                 }}
-                online={connectionReady && device.connectionState === "ready"}
+                connectionReady={connectionReady}
+                online={device.connectionState === "ready"}
               />
             ) : (
               <HostManagement
@@ -218,7 +219,8 @@ export function DeviceDetails({
                   deviceId: device.deviceId,
                   authGeneration,
                 }}
-                online={connectionReady && device.connectionState === "ready"}
+                connectionReady={connectionReady}
+                online={device.connectionState === "ready"}
               />
             )}
             <h3 className="mb-1.5 flex items-baseline gap-2 text-sm font-semibold text-[var(--ink-muted)]">
