@@ -129,6 +129,8 @@ export function parseSidebarOrganization(value: unknown): SidebarOrganization {
 }
 
 export interface SidebarOrderOptions<T> {
+  /** Pin priority overrides saved drag order; newest pins lead the container. */
+  pinnedAt?: (item: T) => string | undefined;
   /**
    * Item birth timestamp. Items absent from the saved order but younger than
    * every arranged item are treated as newly created and lead the container;
@@ -144,7 +146,7 @@ function itemTime(value: string | undefined): number {
 }
 
 /**
- * Apply a saved prefix order while preserving the source order of IDs not yet loaded.
+ * Apply pin priority, then a saved prefix order, preserving unloaded IDs.
  *
  * With `createdAt`, items that the saved order has never seen and that are younger
  * than every arranged item are new arrivals rather than hidden or unloaded ones,
@@ -157,9 +159,9 @@ export function orderSidebarItems<T>(
   order: readonly string[] | undefined,
   options?: SidebarOrderOptions<T>,
 ): T[] {
-  if (!order?.length || items.length < 2) return [...items];
+  if (items.length < 2 || (!order?.length && !options?.pinnedAt)) return [...items];
   const rank = new Map<string, number>();
-  order.forEach((id, index) => {
+  order?.forEach((id, index) => {
     if (!rank.has(id)) rank.set(id, index);
   });
   const createdAt = options?.createdAt;
@@ -179,12 +181,20 @@ export function orderSidebarItems<T>(
       return {
         item,
         index,
+        pinnedAt: options?.pinnedAt?.(item),
         rank: itemRank,
         // Without any arranged item on screen there is no watermark, so nothing is new.
         fresh: !Number.isNaN(time) && !Number.isNaN(watermark) && time > watermark,
       };
     })
     .sort((a, b) => {
+      // Pinning is an explicit priority action, even after a saved drag order or
+      // a new arrival. Keep the saved order intact so unpin restores it.
+      if (Boolean(a.pinnedAt) !== Boolean(b.pinnedAt)) return a.pinnedAt ? -1 : 1;
+      if (a.pinnedAt && b.pinnedAt) {
+        const pinnedTime = (itemTime(b.pinnedAt) || 0) - (itemTime(a.pinnedAt) || 0);
+        if (pinnedTime) return pinnedTime;
+      }
       if (a.fresh !== b.fresh) return a.fresh ? -1 : 1;
       if (a.rank === undefined && b.rank === undefined)
         return a.index - b.index;

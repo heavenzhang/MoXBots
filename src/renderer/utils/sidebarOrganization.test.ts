@@ -235,6 +235,24 @@ describe('sidebarOrganization', () => {
     ]);
   });
 
+  it.each([undefined, ['arranged', 'pin-old', 'pin-new']])(
+    'keeps newest pins ahead of new arrivals and manual order %j without changing saved data',
+    (order) => {
+      const input = [
+        { id: 'fresh', createdAt: '2026-10-18T00:00:00Z', pinnedAt: undefined },
+        { id: 'pin-old', createdAt: '2026-08-01T00:00:00Z', pinnedAt: '2026-10-17T01:00:00Z' },
+        { id: 'arranged', createdAt: '2026-10-10T00:00:00Z', pinnedAt: undefined },
+        { id: 'pin-new', createdAt: '2026-07-01T00:00:00Z', pinnedAt: '2026-10-18T01:00:00Z' },
+      ];
+      const snapshot = structuredClone({ input, order });
+      expect(orderSidebarItems(input, (item) => item.id, order, {
+        createdAt: (item) => item.createdAt,
+        pinnedAt: (item) => item.pinnedAt,
+      }).map((item) => item.id)).toEqual(['pin-new', 'pin-old', 'fresh', 'arranged']);
+      expect({ input, order }).toEqual(snapshot);
+    },
+  );
+
   it('keeps older unsaved items trailing so hidden or unloaded slots survive', () => {
     const at = (id: string, createdAt: string) => ({ id, createdAt });
     const input = [
