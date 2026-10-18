@@ -17,7 +17,7 @@ Complete the previously human-authorized Ubuntu24.04/x86_64 one-command Host pub
 - [x] Independently verify candidate bootstrap/bundle/full manifest and exact frozen source; no same-release regeneration.
 - [ ] Fresh disposable Ubuntu24/systemd real Dex/Chromium one-command install, actual account/join/Ready, repeat/recovery and relevant failure gates; no production credentials/device substitution.
 - [ ] Publish immutable assets then gated stable script/index under original nonblocking maintenance locks, fresh backup/CAS/ownership-checked rollback; no unrelated paths/config changes.
-- [ ] Normal TLS anonymous full public GET/size/SHA/strict consumer and bounded route preservation; real source/identity boundaries explicit.
+- [x] Normal TLS anonymous full public GET/size/SHA/strict consumer/both gzip CRC and15 bounded routes passed; original failed transport observation retained.
 - [ ] CI, normal main delivery, remote SHA/tree and final publication receipts.
 
 ## Completed
@@ -45,3 +45,12 @@ Fresh-browser worker head f73f0b1b was independently read and integrated. Eight 
 Scoped owner registration/handoff is on actual main viaPR127/f6ddc0b4. Immutable-only staging accepted2026-10-18T10:53Z with unchanged backend/Dex/master PIDs and website/updater inventory; backup and owner-checked rollback are private. Stable is still unavailable. Primary sole anonymous normal-TLS171501596B GET remains in progress; do not duplicate. External small-route timeout during the1Mbps bulk transfer is not a pass; retry after it completes. Details and exact product pins remain in `dev-docs/host-publication-20261018.md`.
 
 Reboot/browser task d340+ab271 adds actual KVM reboot, bounded verified public-byte cache and original-account-expiry+3s verification. Integrating latestmain f6dd into that task produced expected add/add conflicts because main had cherry-picked byte-identical originalf73; resolved the four known files by preserving reviewed newer task versions after confirming no delta between originalf73 and main for those paths. All other main content retained. Primary reran13browser+8reboot+20consumer tests successfully. Actual exact-head CI/manual real gates and stable enablement remain pending.
+
+
+## Current resume point
+
+The original public full GET completed and passed171501596B/SHA/complete M consumer/both gzip CRC;15 external routes matched baseline after the stream. PR128/mainffaf0005 delivered the registered harness, with nine applicable CI checks. No repeat origin download or immutable staging is needed.
+
+PR129 owns disposable harness repairs. Actual native cancellation and zero AuthStore/account/join gates passed in run39126879253; that run then failed its overly narrow negative connector-state check without saving actual fields. Head1deb1975 saves closed fields first and requires loaded + inactive-or-failed + MainPID0, retaining all positive Ready/identity checks. Primary25 browser/11 reboot tests passed; actual cached standard39127494986 and normal CI39127316285 pending. Use only reviewed public cache run39122985915/artifact12135552859; no local duplicate artifact download completed or claimed.
+
+Next: inspect actual standard summary, then real short-TTL renewal beyond original expiry and actual KVM reboot on disposable CI. Keep stable unavailable until all real gates pass, PR129 current-head CI/main is accepted, and fresh four-lock/config/lease ownership admission permits available-pointer CAS. Cloud/101 accepted release remains closed; daily Mac untouched.
