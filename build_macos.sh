@@ -96,16 +96,8 @@ fi
 echo -e "  签名身份: ${CYAN}${APPLE_SIGNING_IDENTITY}${NC}"
 echo ""
 
-# ========================================
-# 清理残留进程
-# ========================================
-echo -e "${BLUE}[准备] 清理残留进程...${NC}"
-pkill -f "node.*src/server/index.ts" 2>/dev/null || true
-pkill -f "node.*server-dist.js" 2>/dev/null || true
-pkill -f "MyAgents.app" 2>/dev/null || true
-sleep 1
-echo -e "${GREEN}✓ 进程已清理${NC}"
-echo ""
+# Build outputs and resource staging are scoped to this checkout. Do not kill
+# desktop apps or Sidecars: they may own active user tasks in another checkout.
 
 # 架构选择
 echo -e "${YELLOW}请选择目标架构:${NC}"
