@@ -269,6 +269,8 @@ jobs:
           node --import tsx/esm scripts/verify-model-failover-loopback.ts
           node --import tsx/esm scripts/verify-model-failover-loopback.ts --stream-failure
           node --import tsx/esm scripts/verify-model-failover-loopback.ts --stop-during-retry
+      - name: Verify durable model waiting and same-history safe continuation with native SDK
+        run: node --import tsx/esm scripts/verify-model-recovery-loopback.ts
       # Typecheck does not exercise esbuild/Vite bundling, raw imports, or
       # runtime entrypoint packaging. These cheap smoke builds catch that class.
       - run: npm run build:server
