@@ -98,6 +98,7 @@ import {
   type BuiltinTabBindings,
 } from '@/tab-workspace/builtinComposition';
 import { useTabWorkspaceController } from '@/tab-workspace/useTabWorkspaceController';
+import type { CapturedTabIdentity } from '@/tab-workspace/workspaceState';
 import {
   isRecordingSnapshotOlder,
   recordingSnapshotFromTab,
@@ -2391,6 +2392,14 @@ export default function App() {
     [tabWorkspaceController],
   );
 
+  const clearContinuation = useCallback((tabId: string, requestId: string) => {
+    tabWorkspaceController.update(tabId, 'chat', (tab) =>
+      tab.pendingContinuation?.requestId === requestId
+        ? { ...tab, pendingContinuation: undefined }
+        : tab,
+    );
+  }, [tabWorkspaceController]);
+
   // Called by Chat after it has adopted a joined sidecar's config. Move the tab to
   // 'push' so the user's SUBSEQUENT in-tab edits push to the sidecar normally (the
   // adoption is one-shot). Push effects don't replay on adopt→push because they key
@@ -2693,7 +2702,7 @@ export default function App() {
       sessionId: string,
       sessionAgentDir: string,
       title: string,
-      opts?: { pendingFilePreview?: FilePreviewIntent },
+      opts?: { pendingFilePreview?: FilePreviewIntent; onTargetCaptured?: (target: CapturedTabIdentity) => void },
     ): Promise<boolean> => {
       if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
@@ -2723,6 +2732,8 @@ export default function App() {
       flushSync(() => {
         tabWorkspaceController.append(newTab, { mount: 'immediate' });
       });
+      const targetCapture = tabWorkspaceController.capture(newTab.id);
+      if (targetCapture) opts?.onTargetCaptured?.(targetCapture);
       const materialized = await materializeExistingSessionTab(
         newTab.id,
         sessionId,
@@ -2751,7 +2762,7 @@ export default function App() {
       sessionAgentDir: string,
       title: string,
       historyEntrySource?: HistoryEntrySource,
-      options?: { pendingFilePreview?: FilePreviewIntent },
+      options?: { pendingFilePreview?: FilePreviewIntent; onTargetCaptured?: (target: CapturedTabIdentity) => void },
     ): Promise<boolean> => {
       const releaseTransition = tryClaimSessionResourceTransition(
         sessionResourceTransitionsRef.current,
@@ -2786,6 +2797,8 @@ export default function App() {
           // synchronously, then reconcile its process owner without yanking focus
           // back if the user moves elsewhere during a slow revive.
           setActiveTabId(targetTabId);
+          const targetCapture = tabWorkspaceController.capture(targetTabId);
+          if (targetCapture) options?.onTargetCaptured?.(targetCapture);
           const materialized = await materializeExistingSessionTab(
             targetTabId,
             sessionId,
@@ -2828,6 +2841,7 @@ export default function App() {
           title || getFolderName(sessionAgentDir),
           {
             pendingFilePreview: options?.pendingFilePreview,
+            onTargetCaptured: options?.onTargetCaptured,
           },
         );
       } finally {
@@ -4622,6 +4636,33 @@ export default function App() {
     [handleOpenTargetSession],
   );
 
+  const handleContinueSidebarSession = useCallback(
+    async (session: SessionMetadata, project: Project): Promise<boolean> => {
+      if (APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) return false;
+      const continuation = session.continuation;
+      if (!continuation || session.archived || session.systemMaintenanceKind) return false;
+      const targetCaptures: CapturedTabIdentity[] = [];
+      const opened = await handleOpenTargetSession(
+        session.id, project.path, getSessionDisplayText(session), 'global_sidebar',
+        { onTargetCaptured: (target) => targetCaptures.push(target) },
+      );
+      const captured = targetCaptures[0];
+      if (!opened || !captured) return false;
+      const target = tabWorkspaceController.getSnapshot().tabs.find(
+        (tab) => tab.id === captured.id && tab.view === 'chat' && tab.sessionId === session.id,
+      );
+      if (target?.view !== 'chat' || target.isGenerating || target.pendingContinuation) return false;
+      // CAS against the exact navigation owner captured before materialization.
+      // A late open cannot transfer this click to a replacement Session tab.
+      return tabWorkspaceController.replaceMany([{
+        captured,
+        replacement: { ...target, pendingContinuation: { requestId: crypto.randomUUID(), turnId: continuation.turnId } },
+        mount: 'immediate',
+      }]) === 1;
+    },
+    [handleOpenTargetSession, tabWorkspaceController],
+  );
+
   const handleDeleteSession = useCallback(
     async (sessionId: string) => {
       const releaseTransition = tryClaimSessionResourceTransition(
@@ -4899,6 +4940,7 @@ export default function App() {
       onUpdateSessionId: updateTabSessionId,
       claimSessionOpeningTransition,
       onClearInitialMessage: clearInitialMessage,
+      onClearContinuation: clearContinuation,
       onSidecarConfigAdopted: markSidecarConfigAdopted,
       onFilePreviewIntentConsumed: handleFilePreviewIntentConsumed,
       sessionNotificationBadgeCounts,
@@ -4909,6 +4951,7 @@ export default function App() {
       tabErrors,
       claimSessionOpeningTransition,
       clearInitialMessage,
+      clearContinuation,
       handleFilePreviewIntentConsumed,
       handleForkSession,
       handleLaunchRuntimeBackedProviderSession,
@@ -5071,6 +5114,7 @@ export default function App() {
             onOpenProjectBoard={handleOpenProjectBoard}
             onOpenWorkspace={handleOpenWorkspaceFromSidebar}
             onOpenSession={handleOpenSidebarSession}
+            onContinueSession={handleContinueSidebarSession}
             onRenameSession={renamePersistedSession}
             historyTagIntent={historyTagIntent}
             onHistoryTagIntentConsumed={handleHistoryTagIntentConsumed}

@@ -1,3 +1,6 @@
+import { isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
+import { SessionContinuationBanner, type ContinuationRequest } from '@/components/SessionContinuationBanner';
+import { matchesSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAction';
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
@@ -631,6 +634,8 @@ interface ChatProps {
   onOpenSessionInNewTab?: (sessionId: string, title: string) => void;
   /** Initial message from Launcher for auto-send on workspace open */
   initialMessage?: InitialMessage;
+  pendingContinuation?: ContinuationRequest;
+  onContinuationConsumed?: () => void;
   discussionId?: string;
   startupError?: string | null;
   onRetryStartup?: () => Promise<void | undefined>;
@@ -678,6 +683,8 @@ export default function Chat({
   onOpenSession,
   onOpenSessionInNewTab,
   initialMessage,
+  pendingContinuation,
+  onContinuationConsumed,
   discussionId,
   startupError,
   onRetryStartup,
@@ -4716,6 +4723,7 @@ export default function Chat({
       context?: import('../../shared/agentMentions').QueryMentionContext,
       explicitReply?: AsyncQuestionReply,
       retryFailedMessageId?: string,
+      continueFromTurnId?: string,
     ): Promise<boolean | void> => {
       if (!retryFailedMessageId) {
         const uncertain = messagesRef.current.find(message => message.role === 'user' && message.deliveryUnconfirmed && typeof message.content === 'string' && message.content === text.trim());
@@ -4870,6 +4878,8 @@ export default function Chat({
           context?.agentMentions,
           context?.primaryContext,
           retryFailedMessageId,
+          undefined,
+          continueFromTurnId,
         );
         if (admitted && reply)
           setQuestionDraft((current) =>
@@ -4922,6 +4932,30 @@ export default function Chat({
   // Ref-stabilize handleSendMessage for handleRetry (avoids frequent re-creation)
   const handleSendMessageRef = useRef(handleSendMessage);
   handleSendMessageRef.current = handleSendMessage;
+
+  const continuationHistory = useMemo(() => [...historyMessages, ...messages], [historyMessages, messages]);
+  const continuation = currentRuntime === 'builtin' && matchesSessionContinuation(sessionMeta?.continuation, continuationHistory)
+    ? sessionMeta.continuation : undefined;
+  const continuationReady = isConnected && !isSessionLoading
+    && sidecarConfigDisposition !== 'pending' && goalRestoreReady;
+  const continuationBlocked = isLoading || sessionState !== 'idle'
+    || sessionGoalState.isExecuting || sessionGoalState.goal?.status === 'active'
+    || !!activeCurrentSessionCronTask || !!pendingPermission || !!pendingAskUserQuestion
+    || !!pendingExitPlanMode || !!pendingEnterPlanMode
+    || !!goalDraftConfig || (cronState.isEnabled && !cronState.task)
+    || queuedMessages.length > 0 || !!sessionRestoreError || !!questionTarget;
+  const handleContinueUnfinished = useCallback(async (expectedTurnId: string): Promise<boolean> => {
+    if (isComposerUpdateCheckpointLocked() || !continuationReady || continuationBlocked || !sessionId
+      || sessionIdRef.current !== sessionId
+      || !matchesSessionContinuation(sessionMeta?.continuation, continuationHistory, expectedTurnId)) return false;
+    if (sessionGoalState.goal?.status === 'paused') return !!(await resumeGoal());
+    // This is a new explicit instruction in the original Session. It does not
+    // rewind/resend the original prompt or clear the user's composer draft.
+    return (await handleSendMessageRef.current(SESSION_CONTINUATION_PROMPT, undefined, undefined, undefined, undefined, undefined, expectedTurnId)) === true;
+  }, [continuationReady, continuationBlocked, sessionId, sessionMeta?.continuation, continuationHistory, sessionGoalState.goal?.status, resumeGoal]);
+  const handleContinuationUnavailable = useCallback(() => {
+    toastRef.current.warning(t('shell.continuation.unavailable'));
+  }, [t]);
 
   const questionActions = useMemo<AsyncQuestionActions>(() => ({
     answered: [...historyMessages, ...messages].flatMap(message => message.role === 'user' && message.asyncQuestionReply ? [message.asyncQuestionReply] : []),
@@ -6562,6 +6596,18 @@ export default function Chat({
             <RuntimeDiagnosticsBanner
               diagnostics={runtimeDiagnostics}
               onDiagnose={handleDiagnoseRuntimeDiagnostics}
+            />
+
+            <SessionContinuationBanner
+              key={sessionId ?? 'pending'}
+              sessionId={sessionId ?? ''}
+              turnId={continuation?.turnId}
+              ready={continuationReady}
+              blocked={continuationBlocked}
+              request={pendingContinuation}
+              onConsumed={onContinuationConsumed}
+              onContinue={handleContinueUnfinished}
+              onUnavailable={handleContinuationUnavailable}
             />
 
             {discussionId && <TaskDiscussionRecovery discussionId={discussionId} messages={historyMessages} active={!showStartupOverlay || !!agentError || !!startupError} onRetryStartup={startupError ? onRetryStartup : undefined} onRestore={input => {

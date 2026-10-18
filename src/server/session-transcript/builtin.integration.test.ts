@@ -2230,6 +2230,51 @@ it('rechecks background work after awaited materialization, before SDK yield', a
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
 });
 
+it.each(['success', 'late-completion', 'double-click'])('checks explicit continuation at the actual builtin commit boundary (%s)', async mode => {
+  const platform = await import('../utils/platform');
+  vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
+  vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
+  vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
+  const workspace = join(state.home, 'continuation-workspace');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const active = store.getActiveSessionTranscript(meta.id)!;
+  active.writer.observe({ kind: 'message-create', message: { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't' } });
+  active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'interrupted' } });
+  await active.writer.flush();
+  if (mode === 'late-completion') {
+    const claim = store.claimPreparedSessionForTurnAdmission;
+    vi.spyOn(store, 'claimPreparedSessionForTurnAdmission').mockImplementation(async (...args) => {
+      const result = await claim(...args);
+      active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'complete' } });
+      return result;
+    });
+  }
+  const engine = (await import('../session-engine/selector')).getSessionEngine();
+  const send = () => engine.sendDesktopMessage({ text: 'Explicit continuation',
+    continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
+    scenario: { type: 'desktop' } });
+  const results = await Promise.all(mode === 'double-click' ? [send(), send()] : [send()]);
+  const result = results.find(receipt => receipt.success) ?? results[0];
+  if (mode === 'late-completion') {
+    expect(result).toMatchObject({ success: false, code: 'SESSION_CONTINUATION_STALE' });
+    expect(state.sdkInputs).toHaveLength(0);
+    expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task']);
+  } else {
+    expect(result.success).toBe(true);
+    expect(results.filter(receipt => receipt.success)).toHaveLength(1);
+    await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(1));
+    expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task', 'Explicit continuation']);
+    const repeated = await engine.sendDesktopMessage({ text: 'Explicit continuation',
+      continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
+      scenario: { type: 'desktop' } });
+    expect(repeated).toMatchObject({ success: false, code: 'SESSION_CONTINUATION_STALE' });
+    expect(state.sdkInputs).toHaveLength(1);
+  }
+});
+
 it('acknowledges Stop of promoted local input without yielding it to the SDK (#648)', async () => {
   const platform = await import('../utils/platform');
   vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });

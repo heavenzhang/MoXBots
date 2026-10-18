@@ -210,6 +210,7 @@ export interface MessageUsage {
 }
 
 export interface Message {
+  messageKind?: 'diagnostic';
   /** Local send presentation only; never written into the product transcript. */
   deliveryStatus?: 'sending' | 'failed';
   /** Transport loss cannot prove rejection; inspect history before resending. */

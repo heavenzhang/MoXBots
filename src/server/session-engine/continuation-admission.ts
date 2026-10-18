@@ -1,0 +1,82 @@
+import { getActiveSessionTranscript } from '../SessionStore';
+import { deriveSessionContinuation } from '../../shared/sessionContinuation';
+import type { DispatchGuard, DispatchGuardResult } from '../session-core/turn-queue';
+import type { DesktopAdmissionResult, DesktopMessageRequest, SessionEngine } from './types';
+
+const STALE = '此会话的任务状态已变化，请查看当前进度后再继续。';
+const BUSY = '此会话已有任务运行、排队或等待确认，请先查看当前进度。';
+type Rejection = DesktopAdmissionResult & { success: false; code: NonNullable<DesktopAdmissionResult['code']> };
+
+function reject(code: Rejection['code'], error = code === 'SESSION_CONTINUATION_BUSY' ? BUSY : STALE): Rejection {
+  return { success: false, status: 409, code, error };
+}
+
+/** Reuse the Runtime queue's promotion and synchronous commit boundary. This
+ * creates no additional lock/queue owner, and never infers work from text. */
+export function prepareContinuationAdmission(engine: SessionEngine, request: DesktopMessageRequest) {
+  if (request.continueFromTurnId === undefined) return undefined;
+  // External guards currently do not honor validateAtCommit, and perform
+  // asynchronous extension/process preparation after their guard. Fail closed.
+  if (engine.kind !== 'builtin') return { accepted: false as const,
+    result: reject('SESSION_CONTINUATION_STALE', '此运行环境暂不支持安全的一键继续，请打开会话后手动继续。') };
+  const source = getActiveSessionTranscript(request.sessionId);
+  const sourceGeneration = source?.writer.status.generation;
+  let canceled = false;
+  let failure: Rejection | undefined;
+  const check = (entry: boolean): Rejection | undefined => {
+    const current = getActiveSessionTranscript(request.sessionId);
+    const continuation = current && deriveSessionContinuation(current.writer.projection);
+    const identity = engine.getRuntimeIdentity();
+    if (canceled || !source || current !== source || current.hasPendingMutation
+      || current.writer.status.generation !== sourceGeneration
+      || !continuation || continuation.turnId !== request.continueFromTurnId
+      || continuation.status === 'running' || request.asyncQuestionReply
+      || (identity.boundSessionId ?? identity.sessionId) !== request.sessionId) {
+      return reject('SESSION_CONTINUATION_STALE');
+    }
+    const live = engine.getLiveSessionState();
+    // Builtin enqueue itself projects starting/running before promotion, while
+    // the guarded user input remains invisible. At dispatch, the unchanged
+    // canonical stopped turn proves this is still preparation, not a new turn.
+    if ((entry && (engine.isBusy() || live.sessionState !== 'idle'))
+      || (!entry && !['idle', 'starting', 'running'].includes(live.sessionState))
+      || live.waitingForUser || live.backgroundWorkActive || live.hasBackgroundWork
+      || engine.getQueueStatus().some(item => item.id !== request.queueId)
+      || engine.getStreamReplaySnapshot().pendingInteractiveRequests.length > 0) {
+      return reject('SESSION_CONTINUATION_BUSY');
+    }
+    return undefined;
+  };
+  const initial = check(true);
+  if (initial) return { accepted: false as const, result: initial };
+  const prior = request.beforeDispatch;
+  const remember = (result: Rejection): DispatchGuardResult => {
+    failure = result;
+    return { accepted: false, code: result.code, error: result.error };
+  };
+  const rollback = (): Promise<void> => Promise.resolve(prior?.cancel?.());
+  const guard: DispatchGuard = async () => {
+    const stale = check(false);
+    if (stale) return { ...remember(stale), rollbackBeforeReject: rollback() };
+    const preceding = await prior?.() ?? { accepted: true };
+    if (!preceding.accepted) return preceding;
+    const after = check(false);
+    if (after) return { ...remember(after), rollbackBeforeReject: rollback() };
+    return {
+      ...preceding,
+      validateAtCommit: () => {
+        const result = preceding.validateAtCommit?.() ?? { accepted: true };
+        if (!result.accepted) return result;
+        const changed = check(false);
+        return changed ? { ...remember(changed), rollbackBeforeReject: rollback() } : result;
+      },
+    };
+  };
+  guard.cancel = () => { canceled = true; return prior?.cancel?.(); };
+  return {
+    accepted: true as const,
+    guard,
+    revalidateEntry: () => check(true),
+    rejection: (error?: string): DesktopAdmissionResult => failure ?? reject('SESSION_CONTINUATION_STALE', error ?? STALE),
+  };
+}

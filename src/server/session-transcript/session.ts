@@ -17,7 +17,7 @@ export interface SessionTranscriptOptions {
   publishMetadata: (metadata: SessionMetadata, patch: Partial<SessionMetadata>, birth: boolean, committed: TranscriptCommitTarget) => Promise<SessionMetadata>;
   prepareReplacement?: (source: TranscriptCommitTarget, target: TranscriptCommitTarget) => Promise<void>;
   contentBoundMetadataKeys?: readonly (keyof SessionMetadata)[];
-  deriveMetadata: (projection: TranscriptProjection) => Pick<SessionMetadata, 'stats' | 'lastMessagePreview'>;
+  deriveMetadata: (projection: TranscriptProjection) => Pick<SessionMetadata, 'stats' | 'lastMessagePreview' | 'continuation'>;
   onStatus: (status: TranscriptSaveStatus) => void;
   publishMutationIntent: (sourceMetadata: SessionMetadata, intent: PendingConversationMutation) => Promise<void>;
 }
