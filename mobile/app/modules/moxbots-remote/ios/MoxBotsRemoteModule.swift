@@ -60,6 +60,12 @@ public final class MoxBotsRemoteModule: Module {
             guard let self else { completion(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
             self.queue.async {
               guard self.ownerActive else { completion(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
+              self.lifecycleLock.lock()
+              let mayDispatch = !self.destroyed && self.appForeground
+              self.lifecycleLock.unlock()
+              if !mayDispatch && input != "{\"version\":1,\"kind\":\"account.logout\"}" {
+                completion(Self.failure("ACCOUNT_LOGIN_PAUSED")); return
+              }
               self.bumpArtifactPresentationFence()
               self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
               self.artifactDownloads?.pause(); self.artifactScope = nil

@@ -14,6 +14,7 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
   private var epoch = 0
   private var inFlight = false
   private var foreground = true
+  private var foregroundAction: (() -> Void)?
   private var deadline: TimeInterval = 0
   private var window: UIWindow?
 
@@ -51,15 +52,32 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
           self.finish(Self.failure(code == NSURLErrorDataNotAllowed ? "ACCOUNT_NETWORK_ACCESS_DENIED" : "ACCOUNT_NETWORK_UNAVAILABLE"))
           return
         }
-        request("{\"version\":1,\"kind\":\"account.login.start\"}") { [weak self] response in
+        self.whenForeground { [weak self] in self?.startAuthorization(captured) }
+      }
+    }.resume()
+  }
+
+  private func whenForeground(_ action: @escaping () -> Void) {
+    if foreground { action() } else { foregroundAction = action }
+  }
+
+  private func startAuthorization(_ captured: Int) {
+    guard let request, captured == epoch, completion != nil else { return }
+    request("{\"version\":1,\"kind\":\"account.login.start\"}") { [weak self] response in
           DispatchQueue.main.async {
             guard let self, captured == self.epoch, self.completion != nil else { return }
+            if Self.parse(response)?["code"] as? String == "ACCOUNT_LOGIN_PAUSED" {
+              self.foreground = false
+              self.foregroundAction = { [weak self] in self?.startAuthorization(captured) }; return
+            }
             guard let value = Self.parse(response), value["kind"] as? String == "login",
               let rawURL = value["authorizationUrl"] as? String, let url = URL(string: rawURL),
               url.scheme == "https", url.user == nil, url.password == nil,
-              let expires = value["expiresAt"] as? Double else { self.finish(response); return }
+              let expires = value["expiresAt"] as? Double else { self.finish(Self.parse(response)?["kind"] as? String == "error" ? response : Self.failure("ACCOUNT_REPLY_INVALID")); return }
             // Rust has already checked this URL against the discovered login issuer.
             self.deadline = expires
+            self.whenForeground { [weak self] in
+              guard let self, self.completion != nil, captured == self.epoch else { return }
             let authentication = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self] _, _ in
               DispatchQueue.main.async {
                 guard let self, captured == self.epoch, self.completion != nil else { return }
@@ -72,17 +90,18 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
             let timer = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.poll() }
             self.timer = timer; RunLoop.main.add(timer, forMode: .common)
             self.poll()
+            }
           }
         }
-      }
-    }.resume()
   }
 
   func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { window ?? ASPresentationAnchor() }
 
   func setForeground(_ active: Bool) {
     foreground = active
-    if active { poll() }
+    if active {
+      let action = foregroundAction; foregroundAction = nil; action?(); poll()
+    }
   }
 
   private func poll() {
@@ -96,24 +115,30 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
         self.inFlight = false
         guard let value = Self.parse(response) else { self.finish(Self.failure("ACCOUNT_REPLY_INVALID")); return }
         if value["kind"] as? String == "account", value["state"] as? String == "authenticating" { return }
+        if value["kind"] as? String == "error" {
+          let code = value["code"] as? String ?? "ACCOUNT_REPLY_INVALID"
+          if ["OWNED_ACCOUNT_UNAVAILABLE", "ACCOUNT_LOGIN_PAUSED", "MOBILE_REQUEST_TIMEOUT"].contains(code) { return }
+          self.cancelAttempt(failureCode: code); return
+        }
         // Only the Rust signed-in projection proves completion, after persistence.
-        self.finish(response)
+        if value["kind"] as? String == "account", value["state"] as? String == "signed-in" { self.finish(response) }
+        else { self.cancelAttempt(failureCode: "ACCOUNT_REPLY_INVALID") }
       }
     }
   }
 
-  private func cancelAttempt(presentationFailed: Bool = false, expired: Bool = false) {
+  private func cancelAttempt(presentationFailed: Bool = false, expired: Bool = false, failureCode: String? = nil) {
     guard completion != nil, let request else { return }
     epoch += 1 // stale polls and the programmatic sheet cancellation cannot win
     let captured = epoch
-    timer?.invalidate(); timer = nil
+    timer?.invalidate(); timer = nil; foregroundAction = nil
     authentication?.cancel(); authentication = nil
     request("{\"version\":1,\"kind\":\"account.logout\"}") { [weak self] response in
       DispatchQueue.main.async {
         guard let self, captured == self.epoch, self.completion != nil else { return }
         let value = Self.parse(response)
         if value?["kind"] as? String == "account", value?["state"] as? String == "signed-out" {
-          self.finish(presentationFailed ? Self.failure("ACCOUNT_LOGIN_PRESENTATION_FAILED") : expired ? Self.failure("OWNED_LOGIN_EXPIRED") : response)
+          self.finish(presentationFailed ? Self.failure("ACCOUNT_LOGIN_PRESENTATION_FAILED") : expired ? Self.failure("OWNED_LOGIN_EXPIRED") : failureCode.map(Self.failure) ?? response)
         } else {
           // The original owner retains the pending proof for an explicit retry.
           self.finish(Self.failure("ACCOUNT_CANCEL_UNCONFIRMED"))
@@ -130,7 +155,7 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
     timer?.invalidate(); timer = nil
     authentication?.cancel(); authentication = nil
     network?.invalidateAndCancel(); network = nil
-    request = nil; window = nil; inFlight = false
+    request = nil; window = nil; inFlight = false; foregroundAction = nil
     callback?(response)
   }
 
