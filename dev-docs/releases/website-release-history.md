@@ -14,7 +14,7 @@ The public history explicitly distinguishes published channel availability from 
 
 - [x] Plain-language cumulative content and seven version anchors.
 - [x] Local page and production-shaped download-link preview prepared.
-- [ ] Independent UI review and responsive interaction acceptance.
+- [x] Independent content/source and actual desktop/320px screenshot review; Root actual link/anchor/return interactions and 1280/390/320px no-overflow checks. Reviewer did not independently replay those actions. A narrow-title wrap suggestion was fixed with an intact phrase.
 - [ ] Normal CI, main integration and remote containment.
 - [ ] Static overlay published and actual public link/navigation verified.
 
