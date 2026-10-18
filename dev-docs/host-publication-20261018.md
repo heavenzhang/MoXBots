@@ -16,10 +16,15 @@ only prepares the existing HTTPS origin's `/host` static software distribution.
 No backend/101 reinstall, desktop updater, `/download` change, daily Mac operation,
 new listener, model call, grant extension or new production test device is included.
 
-Public distribution is **not published**. The shared Nginx/static publication
-window is pending reconciliation with the existing publisher. No target-changing
-action is allowed until the scoped owner is recorded on main and competing
-active/queued transactions have been explicitly reconciled.
+Public distribution is **not published**. Original source/historical cloud
+operator01a13320 explicitly withdrew all old unaccepted Host/static/Nginx requests,
+reports no active/queued writes or leases, and confirmed no known accepted /host
+job or shared-ingress transaction was omitted. The desktop publisher has not
+answered the separate occupancy inquiry; this is not an ACK or lease. The new
+target follows the actual human takeover and original one-command authority,
+not silence. Before each short write, canonical ownership plus fresh actual
+config/process/lock/lease admission must exclude conflicting writers. A real
+occupancy blocks the window; an unrelated signing task is not evidence of one.
 
 ## Frozen bytes and trust
 

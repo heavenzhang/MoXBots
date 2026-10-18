@@ -14,7 +14,7 @@ Complete the previously human-authorized Ubuntu24.04/x86_64 one-command Host pub
 
 - [x] Verify original human request and exact clean-M source/candidate metadata.
 - [ ] Reconcile current /host publication owner/queued operations/locks and record scoped target ownership on main.
-- [ ] Independently verify candidate bootstrap/bundle/full manifest and exact frozen source; no same-release regeneration.
+- [x] Independently verify candidate bootstrap/bundle/full manifest and exact frozen source; no same-release regeneration.
 - [ ] Fresh disposable Ubuntu24/systemd real Dex/Chromium one-command install, actual account/join/Ready, repeat/recovery and relevant failure gates; no production credentials/device substitution.
 - [ ] Publish immutable assets then gated stable script/index under original nonblocking maintenance locks, fresh backup/CAS/ownership-checked rollback; no unrelated paths/config changes.
 - [ ] Normal TLS anonymous full public GET/size/SHA/strict consumer and bounded route preservation; real source/identity boundaries explicit.
@@ -30,8 +30,12 @@ Repository https://github.com/heavenzhang/MoXBots.git, clean base a7ea1e91b0007d
 
 ## Blockers and unknowns
 
-Original static publisher was asked to disclose /host active/queued operations and handoff. Shared Nginx route editing requires original window/locks and exact target-only change; do not infer overlap or a prohibition from unrelated Apple notarization. Fresh real browser harness is missing; prior systemd10phase and short AuthStore renewal pass do not substitute for full one-command browser gate. No existing daily/production Host may be reused as a fresh-install target.
+Actual original source/cloud publisher explicitly withdrew old unaccepted /host requests and confirmed no known accepted target or Nginx transaction was omitted; its own writes/queue/lease/locks are zero. Desktop publisher has not answered occupancy inquiry: no ACK/lease inferred; current target uses direct human authority plus fresh short-window admission. Shared Nginx route editing requires original window/locks and exact target-only change; do not infer overlap or a prohibition from unrelated Apple notarization. Fresh real browser harness is missing; prior systemd10phase and short AuthStore renewal pass do not substitute for full one-command browser gate. No existing daily/production Host may be reused as a fresh-install target.
 
 ## Next step
 
 Check actual /host handoff, independently verify the frozen candidate, review the worker lab interface and prepare target-only serving/CAS/rollback. Publish only after the actual window and respective gate are resolved; leave stable unavailable while isolated browser acceptance is pending.
+
+## Integration checkpoint
+
+Fresh-browser worker head f73f0b1b was independently read and integrated. Eight harness checks and20 strict-consumer tests pass; no real browser CI is claimed yet. Actual synthetic Dex/Chromium authorization, native cancellation/resume, bad-SHA no-install, repeat no-login/no-rotation, connector restart and60s natural AuthStore renewal remain manual workflow gates. A separate real nested-VM reboot gate is being implemented; service restart is not reboot. Private target-only publication and successful/failed ownership-checked rollback helpers received independent review;9 rollback failure/foreign-owner branches passed. This is local/CI preparation, not production publication.
