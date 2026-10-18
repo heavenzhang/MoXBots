@@ -219,6 +219,12 @@
     "expandAll": "展开全部"
   },
   "agentStatus": {
+    "details": "任务进度详情",
+    "todos": "待办",
+    "agents": "协作",
+    "inProgress": "进行中",
+    "pending": "待处理",
+    "completedCount": "已完成 {{count}} 项",
     "expand": "展开 Agent 状态面板",
     "collapse": "收起 Agent 状态面板",
     "background": "后台",

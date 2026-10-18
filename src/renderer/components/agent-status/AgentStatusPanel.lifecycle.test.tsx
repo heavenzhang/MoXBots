@@ -94,9 +94,32 @@ describe('AgentStatusPanel child lifecycle group', () => {
     ];
     const { container } = render(<AgentStatusPanel containerRef={createRef<HTMLElement>()} onJumpToTool={() => undefined} />);
     act(() => vi.advanceTimersByTime(80));
-    expect(screen.getByText('Todo 1/3')).toBeTruthy();
+    expect(screen.getByText('待办 1/3')).toBeTruthy();
     expect(container.querySelector('[data-current-todo]')).toHaveTextContent('正在核对工资汇总逻辑');
     expect(container.querySelector('[data-current-todo]')).not.toHaveTextContent('发布中');
+  });
+
+  it('keeps completed work behind disclosure and restores focus on Escape', () => {
+    panelHarness.sessionState = 'running';
+    panelHarness.agentPlanTodos = [
+      { key: 'done', content: 'Finished', activeForm: 'Finished', status: 'completed' },
+      { key: 'pending', content: 'Later', activeForm: 'Later', status: 'pending' },
+      { key: 'active', content: 'Current', activeForm: 'Working now', status: 'in_progress' },
+    ];
+    render(<AgentStatusPanel containerRef={createRef<HTMLElement>()} onJumpToTool={() => undefined} />);
+    act(() => vi.advanceTimersByTime(80));
+    const toggle = screen.getByRole('button', { name: '展开 Agent 状态面板' });
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Finished')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')[0]).toHaveTextContent('Working now');
+    const disclosure = screen.getByRole('button', { name: '已完成 1 项' });
+    fireEvent.click(disclosure);
+    expect(screen.getByText('Finished')).toBeVisible();
+    disclosure.focus();
+    fireEvent.keyDown(disclosure, { key: 'Escape' });
+    expect(toggle).toHaveFocus();
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Finished')).not.toBeInTheDocument();
   });
 
 
@@ -210,7 +233,7 @@ describe('AgentStatusPanel child lifecycle group', () => {
     act(() => vi.advanceTimersByTime(40));
 
     act(() => vi.advanceTimersByTime(40)); // live-turn arm precedes terminal presentation
-    expect(screen.getByText('Agents 1')).toBeInTheDocument();
+    expect(screen.getByText('协作 1')).toBeInTheDocument();
     const panel = screen.getByRole('button', { name: '展开 Agent 状态面板' }).parentElement;
     expect(panel).toHaveClass('opacity-100');
     act(() => vi.advanceTimersByTime(499));
@@ -221,6 +244,6 @@ describe('AgentStatusPanel child lifecycle group', () => {
     panelHarness.messages = [messageWithLifecycle('completed')];
     render(<AgentStatusPanel containerRef={createRef<HTMLElement>()} onJumpToTool={() => undefined} />);
     act(() => vi.advanceTimersByTime(100));
-    expect(screen.queryByText('Agents 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('协作 1')).not.toBeInTheDocument();
   });
 });
