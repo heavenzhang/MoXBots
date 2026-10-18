@@ -619,6 +619,95 @@ while True: time.sleep(.1)
             self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
             self.assertEqual((outside / "config.json").read_text(), "SYNTHETIC_CAPABILITY")
 
+    def test_post_reboot_deadline_remains_90_and_final_guest_projection_precedes_failure(self):
+        diagnostics, saved, calls = {}, [], []
+        projection = {"units": {"connector": {"LoadState": "loaded", "ActiveState": "failed", "SubState": "failed",
+                       "Result": "start-limit-hit", "execMainStatus": 1, "mainPidPositive": False}},
+                      "status": {"kind": "missing"}, "NodeDoctor": {"attempted": False},
+                      "startupContract": {"marker": {"phase": "committed"}, "identityMatchesMarker": True}}
+        class Guest:
+            def call(self, op):
+                calls.append(op)
+                self_outer.assertEqual(op, "runtime-readiness-observation")
+                return projection
+        self_outer = self
+        def bounded(operation, timeout):
+            self.assertEqual(timeout, 90)
+            for _ in range(3):
+                with self.assertRaisesRegex(lab.Rejected, "^connector-not-ready$"):
+                    operation()
+            raise lab.Rejected("bounded-readiness-deadline")
+        with patch.object(lab, "_GUEST", Guest()), patch.object(lab, "ready", side_effect=lab.Rejected("connector-not-ready")), \
+             patch.object(lab, "wait_for", side_effect=bounded), patch.object(lab, "run", side_effect=AssertionError("no extra command")):
+            with self.assertRaisesRegex(lab.Rejected, "^bounded-readiness-deadline$"):
+                lab.post_reboot_ready(Path("unused"), diagnostics, lambda: saved.append(dict(diagnostics)))
+        self.assertEqual(calls, ["runtime-readiness-observation"])
+        self.assertEqual(diagnostics["pollCount"], 3)
+        self.assertFalse(diagnostics["gatePassed"])
+        self.assertEqual(diagnostics["lastPollFailure"], {"stage": "connector-not-ready", "exceptionClass": "Rejected"})
+        self.assertEqual(saved[-1]["lastRuntimeObservation"]["units"]["connector"]["Result"], "start-limit-hit")
+        self.assertIs(diagnostics["lastRuntimeObservation"], projection)
+
+    def test_post_reboot_observation_and_save_failures_never_override_original_error_or_leak(self):
+        for error in (lab.Rejected("SYNTHETIC_CAPABILITY"), OSError("SYNTHETIC_CAPABILITY"),
+                      subprocess.TimeoutExpired(["SYNTHETIC_CAPABILITY"], 1)):
+            diagnostics = {}
+            def bounded(operation, timeout):
+                self.assertEqual(timeout, 90)
+                return operation()
+            with patch.object(lab, "ready", side_effect=error), patch.object(lab, "wait_for", side_effect=bounded), \
+                 patch.object(lab, "runtime_readiness_observation", side_effect=RuntimeError("SYNTHETIC_CAPABILITY")), \
+                 patch.object(lab, "run", side_effect=AssertionError("no repair")):
+                with self.assertRaises(type(error)) as raised:
+                    lab.post_reboot_ready(Path("unused"), diagnostics, lambda: (_ for _ in ()).throw(RuntimeError("SYNTHETIC_CAPABILITY")))
+            self.assertIs(raised.exception, error)
+            self.assertTrue(diagnostics["runtimeObservationUnavailable"] and diagnostics["diagnosticSaveFailed"])
+            self.assertFalse(diagnostics["gatePassed"])
+            self.assertEqual(diagnostics["lastPollFailure"]["stage"], "unknown-redacted")
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
+
+    def test_post_reboot_AuthStore_projection_is_conditional_closed_and_never_masks_deadline(self):
+        state = {"sessions": [["SYNTHETIC_CAPABILITY"]], "principals": 1,
+                 "devices": [["SYNTHETIC_CAPABILITY", 1, 0, "ready", 7, 7, 2]], "catalogs": 1, "items": 0}
+        for stage, broken in (("connector-not-ready", False), ("real-AuthStore-membership-empty-catalog-ready", False),
+                              ("real-AuthStore-membership-empty-catalog-ready", True)):
+            diagnostics = {}
+            def bounded(operation, timeout):
+                self.assertEqual(timeout, 90)
+                with self.assertRaises(lab.Rejected):
+                    operation()
+                raise lab.Rejected("bounded-readiness-deadline")
+            with patch.object(lab, "ready", side_effect=lab.Rejected(stage)), patch.object(lab, "wait_for", side_effect=bounded), \
+                 patch.object(lab, "runtime_readiness_observation", return_value={}), \
+                 patch.object(lab, "db_snapshot", return_value=state,
+                              side_effect=RuntimeError("SYNTHETIC_CAPABILITY") if broken else None) as db:
+                with self.assertRaisesRegex(lab.Rejected, "^bounded-readiness-deadline$"):
+                    lab.post_reboot_ready(Path("unused"), diagnostics)
+            self.assertEqual(db.call_count, int(stage == "real-AuthStore-membership-empty-catalog-ready"))
+            if broken:
+                self.assertTrue(diagnostics["AuthStoreObservationUnavailable"])
+            elif db.call_count:
+                self.assertEqual(diagnostics["AuthStoreProjection"], {"sessionCount": 1, "principalCount": 1,
+                    "deviceCount": 1, "catalogCount": 1, "catalogItemCount": 0, "joinedDeviceCount": 1, "readyDeviceCount": 1,
+                    "singleDeviceEpochsMatch": True, "singleDeviceCatalogSequencePositive": True})
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
+
+    def test_post_reboot_success_returns_original_DB_even_when_diagnostic_fails(self):
+        original = {"sessions": [["SYNTHETIC_CAPABILITY"]]}
+        for broken in (False, True):
+            diagnostics = {}
+            def bounded(operation, timeout):
+                self.assertEqual(timeout, 90)
+                return operation()
+            with patch.object(lab, "ready", return_value=original), patch.object(lab, "wait_for", side_effect=bounded), \
+                 patch.object(lab, "runtime_readiness_observation", return_value={"NodeDoctor": {"attempted": True}},
+                              side_effect=RuntimeError("SYNTHETIC_CAPABILITY") if broken else None) as observe:
+                result = lab.post_reboot_ready(Path("unused"), diagnostics)
+            self.assertIs(result, original)
+            self.assertTrue(diagnostics["gatePassed"])
+            self.assertEqual(observe.call_count, 1)
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
+
     def test_runtime_observation_does_not_attempt_doctor_without_Node_PID(self):
         state = b"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\n"
         with patch.object(lab, "run", return_value=subprocess.CompletedProcess([], 0, state, b"")) as run:
