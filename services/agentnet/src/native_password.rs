@@ -936,4 +936,307 @@ mod tests {
             ));
         }
     }
+
+    // Only the isolated CI script supplies these synthetic credentials and CA.
+    // No environment-controlled endpoint is used by ordinary tests or production.
+    #[cfg(unix)]
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RealDexFixture {
+        issuer: String,
+        ca_path: PathBuf,
+        client_id: String,
+        client_secret: Zeroizing<String>,
+        username: String,
+        password: Zeroizing<String>,
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    #[ignore = "requires opt-in isolated Dex v2.46.0 container; run scripts/test-native-password-dex.sh"]
+    async fn password_real_dex_tls_confidential_client_pkce_lifecycle() {
+        assert_eq!(std::env::var("MOXBOTS_REAL_DEX_TEST").as_deref(), Ok("1"));
+        let fixture_path = PathBuf::from(
+            std::env::var_os("MOXBOTS_REAL_DEX_FIXTURE").expect("isolated fixture required"),
+        );
+        assert_eq!(fs::metadata(&fixture_path).unwrap().mode() & 0o077, 0);
+        let fixture_bytes = Zeroizing::new(fs::read(fixture_path).unwrap());
+        let fixture: RealDexFixture =
+            serde_json::from_slice(&fixture_bytes).expect("invalid isolated fixture");
+        let origin = Url::parse(&fixture.issuer).unwrap();
+        assert_eq!(origin.scheme(), "https");
+        assert_eq!(origin.host_str(), Some("127.0.0.1"));
+        assert!(origin.port().is_some());
+        assert_eq!(origin.path(), "/dex");
+        assert!(origin.username().is_empty() && origin.password().is_none());
+        assert!(origin.query().is_none() && origin.fragment().is_none());
+        assert!(fixture.client_id.starts_with("isolated-native-"));
+        assert!(fixture.username.ends_with("@example.test"));
+        let untrusted = Client::builder()
+            .https_only(true)
+            .no_proxy()
+            .tls_built_in_root_certs(false)
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        assert!(
+            untrusted
+                .get(format!(
+                    "{}/.well-known/openid-configuration",
+                    fixture.issuer
+                ))
+                .send()
+                .await
+                .is_err(),
+            "test TLS must require its CA"
+        );
+        let ca = reqwest::Certificate::from_pem(&fs::read(&fixture.ca_path).unwrap()).unwrap();
+        let http = Client::builder()
+            .redirect(Policy::none())
+            .https_only(true)
+            .no_proxy()
+            .tls_built_in_root_certs(false)
+            .add_root_certificate(ca)
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(15))
+            .build()
+            .unwrap();
+        let discovery_http = http.clone();
+        let discovery_origin = origin.clone();
+        let metadata = CoreProviderMetadata::discover_async(
+            IssuerUrl::new(fixture.issuer.clone()).unwrap(),
+            &move |r| bounded_call(discovery_http.clone(), discovery_origin.clone(), r),
+        )
+        .await
+        .expect("real TLS discovery/JWKS failed");
+        assert_eq!(metadata.issuer().as_str(), fixture.issuer);
+        assert!(!metadata.jwks().keys().is_empty());
+        assert!(same_origin(
+            &origin,
+            metadata.authorization_endpoint().url()
+        ));
+        assert!(same_origin(
+            &origin,
+            metadata.token_endpoint().as_ref().unwrap().url()
+        ));
+        assert!(same_origin(&origin, metadata.jwks_uri().url()));
+        let (mut app, _dir) = test_app();
+        let owner = Arc::get_mut(&mut app).unwrap();
+        owner.http = http;
+        owner.origin = origin;
+        owner.client = CoreClient::from_provider_metadata(
+            metadata.clone(),
+            ClientId::new(fixture.client_id.clone()),
+            Some(ClientSecret::new(fixture.client_secret.to_string())),
+        )
+        .set_token_uri((*metadata.token_endpoint().as_ref().unwrap()).clone())
+        .set_redirect_uri(
+            RedirectUrl::new("https://agent.example.test/auth/callback".into()).unwrap(),
+        );
+        owner.verification = Verification::new(
+            metadata,
+            ClientId::new(fixture.client_id.clone()),
+            ClientSecret::new(fixture.client_secret.to_string()),
+        );
+        owner.password_login = PasswordLogin::new(true);
+
+        // Same production route/extractor for missing consent; no transaction or
+        // attempt may exist. False also exercises the production exchange seam,
+        // whose counter would dispatch to REAL Dex if incorrectly reached.
+        let router = Router::new()
+            .route("/auth/login/password", post(login))
+            .with_state(app.clone());
+        let mut value = consent_request();
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/login/password")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(value.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        value["consentAccepted"] = serde_json::json!(false);
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/auth/login/password")
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(value.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let exchange_app = app.clone();
+        let count = calls.clone();
+        assert!(matches!(
+            login_using(
+                app.clone(),
+                serde_json::from_value(value).unwrap(),
+                move |u, p, n| async move {
+                    count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    exchange_password(&exchange_app, &u, &p, &n).await
+                },
+                no_keys
+            )
+            .await,
+            Err(ApiError::BadRequest)
+        ));
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0);
+        assert_eq!(app.password_login.rates.lock().unwrap().global.1, 0);
+        assert!(app.flow.pending.lock().unwrap().is_empty());
+
+        // Independent REAL password-grant identity establishes an AuthStore
+        // principal through verified issuer/sub, never username. This is NOT an
+        // authorization-code/browser comparison or a production account check.
+        let nonce = "isolated-independent-identity-nonce";
+        let token = exchange_password(&app, &fixture.username, &fixture.password, nonce)
+            .await
+            .expect("real confidential password grant failed");
+        let id_token = token.id_token().expect("real provider omitted ID token");
+        let keys = app.verification.cache.lock().unwrap().keys.clone();
+        let verifier = app.verification.verifier(keys.clone());
+        let claims = id_token
+            .claims(&verifier, &Nonce::new(nonce.into()))
+            .expect("real ID token invalid");
+        let subject = VerifiedSubject::from_verified_claims(
+            claims.issuer().as_str().into(),
+            claims.subject().as_str().into(),
+        )
+        .unwrap();
+        let existing = app.store.issue_session(&subject, DEVICE).unwrap();
+        assert!(
+            id_token
+                .claims(&verifier, &Nonce::new("wrong-nonce".into()))
+                .is_err()
+        );
+        let wrong_audience = CoreIdTokenVerifier::new_confidential_client(
+            ClientId::new("wrong-client".into()),
+            ClientSecret::new(fixture.client_secret.to_string()),
+            IssuerUrl::new(fixture.issuer.clone()).unwrap(),
+            keys.clone(),
+        );
+        assert!(
+            id_token
+                .claims(&wrong_audience, &Nonce::new(nonce.into()))
+                .is_err()
+        );
+        let wrong_issuer = CoreIdTokenVerifier::new_confidential_client(
+            ClientId::new(fixture.client_id.clone()),
+            ClientSecret::new(fixture.client_secret.to_string()),
+            IssuerUrl::new("https://wrong.example.test".into()).unwrap(),
+            keys,
+        );
+        assert!(
+            id_token
+                .claims(&wrong_issuer, &Nonce::new(nonce.into()))
+                .is_err()
+        );
+
+        // All lifecycle starts below run the ORIGINAL handler and real exchange.
+        let mut valid = request(&fixture.username);
+        valid.password = Zeroizing::new(fixture.password.to_string());
+        let started = match login(State(app.clone()), Ok(Json(valid))).await {
+            Ok((StatusCode::OK, Json(started))) => started,
+            _ => panic!("real password handler failed"),
+        };
+        let projection = serde_json::to_value(&started).unwrap();
+        assert_eq!(projection.as_object().unwrap().len(), 2);
+        assert!(matches!(
+            poll(
+                State(app.clone()),
+                Json(poll_request(&started.transaction_id, &"z".repeat(43)))
+            )
+            .await,
+            Err(ApiError::Unauthorized)
+        ));
+        let result = body(
+            poll(
+                State(app.clone()),
+                Json(poll_request(&started.transaction_id, VERIFIER)),
+            )
+            .await
+            .unwrap(),
+        )
+        .await;
+        assert_eq!(result["principalId"], existing.account.principal_id);
+        assert_eq!(result["networkId"], existing.account.network_id);
+        assert!(
+            app.store
+                .validate_session(result["accessToken"].as_str().unwrap())
+                .is_ok()
+        );
+        assert!(matches!(
+            poll(
+                State(app.clone()),
+                Json(poll_request(&started.transaction_id, VERIFIER))
+            )
+            .await,
+            Err(ApiError::BadRequest)
+        ));
+        for expire in [false, true] {
+            let mut valid = request(&fixture.username);
+            valid.password = Zeroizing::new(fixture.password.to_string());
+            let started = match login(State(app.clone()), Ok(Json(valid))).await {
+                Ok((StatusCode::OK, Json(started))) => started,
+                _ => panic!("real lifecycle start failed"),
+            };
+            if expire {
+                // TEST ONLY: advance local transaction deadline, NOT token expiry.
+                app.flow
+                    .pending
+                    .lock()
+                    .unwrap()
+                    .get_mut(&started.transaction_id)
+                    .unwrap()
+                    .expires_at = unix_now().unwrap() - 1;
+            } else {
+                assert_eq!(
+                    cancel(
+                        State(app.clone()),
+                        Json(CancelRequest {
+                            transaction_id: started.transaction_id.clone(),
+                            device_id: DEVICE.into(),
+                            pkce_verifier: Zeroizing::new(VERIFIER.into()),
+                        })
+                    )
+                    .await
+                    .unwrap()
+                    .into_response()
+                    .status(),
+                    StatusCode::NO_CONTENT
+                );
+            }
+            assert!(
+                poll(
+                    State(app.clone()),
+                    Json(poll_request(&started.transaction_id, VERIFIER))
+                )
+                .await
+                .is_err()
+            );
+            assert!(app.flow.pending.lock().unwrap().is_empty());
+        }
+        let wrong = request(&fixture.username);
+        let response = match login(State(app.clone()), Ok(Json(wrong))).await {
+            Err(error) => error.into_response(),
+            Ok(_) => panic!("real Dex accepted wrong password"),
+        };
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            body(response).await,
+            serde_json::json!({"error":{"code":"OWNED_CREDENTIALS_INVALID"}})
+        );
+        assert!(app.flow.pending.lock().unwrap().is_empty());
+        println!(
+            "REAL_DEX_RESULT TLS discovery/JWKS/token; nonce/issuer/audience/signature verified; consent gates; original PKCE once/principal/network/cancel/local-deadline/wrong-password passed (no real token-expiry wait)"
+        );
+    }
 }

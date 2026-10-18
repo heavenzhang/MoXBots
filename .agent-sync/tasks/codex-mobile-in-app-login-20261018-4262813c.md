@@ -79,3 +79,10 @@ Scope dependency: existing cloud service deployment owner is01a12b99-7b38-78b1-8
 - [x] C ABI routing repair, closed consent contract, focused tests and independent source review.
 - [ ] Fresh C ABI/consent frameworks and signed app, actual phone retry/keyboard/consent.
 - [ ] Explicit human approval of the concrete native confirmation replacement; latest combined CI/main; sole-owner service rollout and real account/persistence/Host acceptance.
+
+## Real Dex integration preparation
+
+- Added an opt-in ignored integration test that uses the actual official Dexv2.46.0 binary, plus one loopback-only Linux Docker fixture script and an explicit existing owned-service CI step. The script fixes the local Unix engine, uses only generated synthetic identities/client secrets and temporary CA-only HTTPS, records the immutable image ID/digest/version, and cleans its named container/temp directory. No production configuration or remote Docker engine is used.
+- Test contract: actual TLS discovery/JWKS/password token and nonce/issuer/audience/signature checks, original handler/PKCE poll one-time use, wrong password, cancellation and explicit test-only local transaction deadline advancement. Principal baseline is an independently verified real password-grant subject through original AuthStore, not an actual browser authorization-code or production-account comparison.
+- Local new test compilation,13focused cases,strictClippy,fmt,shell/Python syntax and diff checks passed. The one real-Dex case remains ignored locally because no local daemon exists; only the explicit Linux CI step can supply real-provider acceptance. First compilation type failure is retained in the private log and not counted as success.
+- Corrected device/simulator iOS and Android Rust frameworks built from the clean C ABI/consent source. New app packages are in progress; source93d on the phone still predates this repair. The initial iOS framework command omitted scoped DEVELOPER_DIR and failed before compilation; its log is retained, then the scoped Xcode environment rebuild passed without changing global developer selection.
