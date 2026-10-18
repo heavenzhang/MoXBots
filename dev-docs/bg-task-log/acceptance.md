@@ -14,12 +14,12 @@ Query finalization releases its task registry. An open dialog preserves the last
 
 ## Evidence and acceptance
 
-- [x] Primary inspected the actual report's SDK receipt shape without committing command/log contents.
+- [x] Primary inspected the actual report's SDK receipt shape without committing command/log contents. Production log reader also read the exact reported existing .output file: ready,10bytes, no truncation; raw log content not saved to evidence. This verifies file compatibility only, not the installed proxy/UI.
 - [x] Backend focused suites: 297 cases across Session read route, runtime boundary, exact Query owners, full builtin transcript iterator, SessionEngine. Initial test-mock export failure corrected; original failed log kept. After filesystem hardening, 65 focused cases rerun and passed.
 - [x] Primary DOM: 22 cases across task dialog and existing panel lifecycle (9 + 13), including no card, panel fade, serial polling, empty/missing/unavailable, error/recovery, abort/stale response, text safety, focus and Query-retired terminal preservation.
 - [x] Independent IAB actual production React components with synthetic task/API data: no-card click, empty/missing/long, light/dark, keyboard focus cycle/Escape, delayed completion/failure/disconnect/Session switch; 390×844 and 1440×900. Final independent record: ../bg-task-log-001/ui-review.md.
 - [x] Primary IAB actual click and Escape/focus restore, 390 dark long output, normal light running, preserved draft. Screenshots in task evidence folder (01-running-light.png, 02-narrow-dark-long.png, ui-review/03-wide-running.png).
-- [x] Final typecheck, MoXBots web/server builds and8production-theme checks. Full lint rerun pending after fixing one unused fixture import (initial full lint failure retained).
+- [x] Final typecheck, full lint/dependency/docs gates, MoXBots web/server builds and8production-theme checks passed using Node24.21.0. Initial full lint failed on one unused fixture import; fixed and full lint reran successfully. Existing dependency no-orphans warnings remain warnings; no dependency errors.
 - [x] Primary final mixed63focused cases passed (panel/dialog/derived status, background store, i18n parity and route tests); full backend coverage above is separately recorded.
 - [ ] Exact candidate normal PR CI and main containment.
 - [ ] Signed desktop release and installed native actual-user-path acceptance by sole release owner.

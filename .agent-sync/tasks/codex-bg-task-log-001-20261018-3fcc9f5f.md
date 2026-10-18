@@ -16,7 +16,7 @@ BG-TASK-LOG-001：修复任务列表点击无反应，点击直接打开当前�
 - [x] 会话范围只读后台状态/有界日志接口，真实终态与日志缺失分离。
 - [x] 点击即时详情、加载/空/缺失/错误/恢复、自动刷新、完成后保持窗口。
 - [x] 窄宽/浅深、长文本、键盘/焦点、异步Session切换与关闭取消验收。
-- [ ] 后端/DOM回归、typecheck/lint/build、独立UI审阅。
+- [x] 后端/DOM回归、typecheck/lint/build、独立UI审阅。
 - [ ] 提交/PR/CI/最新主干整合与远端包含核验。
 - [ ] 唯一桌面发布会话收到已验收发布请求；签名包/安装/真实路径另核。
 
@@ -30,4 +30,4 @@ BG-TASK-LOG-001：修复任务列表点击无反应，点击直接打开当前�
 
 ## Blockers and next step
 
-源码/模拟验收/真实联调/main/生产验收分别记录。实现完成；后端297项、前端22项及最终mixed63项通过，独立IAB与主Agent关键路径通过，typecheck/web/server构建通过；full lint因fixture未使用import修正后重跑。下一步完成lint并提交最新主干整合/PR正常CI。
+源码/模拟验收/真实联调/main/生产验收分别记录。实现完成；后端297项、前端22项及最终mixed63项通过，独立IAB与主Agent关键路径通过，typecheck/web/server构建通过；full lint/dependency/docs已通过，真实报告日志文件读取ready（不保存原文）。最新main798f3a9c无冲突整合，下一步PR正常CI与主干交付；正式签名发行和原生用户路径待唯一owner。
