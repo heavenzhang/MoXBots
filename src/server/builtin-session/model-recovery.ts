@@ -58,10 +58,21 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   private boundRequest: Request | undefined;
   private boundEpoch: number | undefined;
   private completing: Promise<void> | undefined;
+  private pauseInFlight: { key: string; promise: Promise<boolean> } | undefined;
   private readonly requestRecoveryIds = new WeakMap<Request, string>();
 
   constructor(private readonly options: SessionModelRecoveryOptions) {
     this.now = options.now ?? Date.now;
+    try {
+      const stored = options.read() as unknown;
+      if (validModelRecovery(stored)) {
+        this.localState = stored;
+        if (stored.status === 'waiting') this.persistedExpected = stored;
+      }
+    } catch {
+      // A constructor snapshot is advisory only. Admission still reads and
+      // validates the authoritative checkpoint before allowing inference.
+    }
   }
 
   isWaiting(): boolean {
@@ -86,6 +97,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     this.persistedExpected = undefined;
     this.boundRequest = undefined;
     this.boundEpoch = undefined;
+    this.pauseInFlight = undefined;
   }
 
   /** Admit only an exact, previously checkpointed recovery request after restoring its safety ledger. */
@@ -386,7 +398,12 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   }
 
   /** Revokes in-flight prepare/write authority synchronously before durable pause. */
-  async pause(reason: string, source = this.pending ?? this.localState): Promise<boolean> {
+  pause(reason: string, source = this.pending ?? this.localState): Promise<boolean> {
+    const key = source ? JSON.stringify([
+      source.id, source.sdkSessionId, source.routeIdentity, source.turnId, source.attempt,
+    ]) : undefined;
+    if (key && this.pauseInFlight?.key === key) return this.pauseInFlight.promise;
+
     const epoch = ++this.epoch;
     const wasPending = !!source && this.pending?.id === source.id;
     const expected = source
@@ -399,7 +416,9 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     if (!source) {
       this.localState = undefined;
       this.notify(null);
-      return true;
+      // Do not cache an empty-owner stop: the next wait may establish a new
+      // checkpoint that must be independently stoppable.
+      return Promise.resolve(true);
     }
     const paused: ModelRecoveryState = {
       ...source,
@@ -412,24 +431,32 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     // The Query may already have been retired by Goal pause/stop. The store
     // writer performs the authoritative same-id/status/native-history CAS.
     const live = () => this.epoch === epoch;
-    try {
-      const current = this.options.read();
-      if (!current && expected) return true;
-      if (current?.id === source.id && current.status === 'paused'
-        && current.sdkSessionId === source.sdkSessionId
-        && current.routeIdentity === source.routeIdentity) return true;
-      // A changed checkpoint belongs to a newer Query (or was already
-      // superseded). It is safe to treat this local owner's stop as complete,
-      // but never write the stale source over that checkpoint.
-      if (current && (!expected || !sameCheckpoint(current, expected))) return true;
-      if (wasPending && current
-        && (source.turnId !== current.turnId || source.attempt !== current.attempt + 1)) return true;
-      return await this.options.write(paused, expected, live);
-    } catch {
-      // Local eligibility is already revoked; do not permit a late retry.
-      return false;
-    }
-    return false;
+    // Install the record before reading/writing so reentrant stop paths can
+    // join this same durable fence rather than invalidating its epoch.
+    const operation = Promise.resolve().then(async () => {
+      try {
+        const current = this.options.read();
+        if (!current && expected) return true;
+        if (current?.id === source.id && current.status === 'paused'
+          && current.sdkSessionId === source.sdkSessionId
+          && current.routeIdentity === source.routeIdentity) return true;
+        // A changed checkpoint belongs to a newer Query (or was already
+        // superseded). It is safe to treat this local owner's stop as complete,
+        // but never write the stale source over that checkpoint.
+        if (current && (!expected || !sameCheckpoint(current, expected))) return true;
+        if (wasPending && current
+          && (source.turnId !== current.turnId || source.attempt !== current.attempt + 1)) return true;
+        return await this.options.write(paused, expected, live);
+      } catch {
+        // Local eligibility is already revoked; do not permit a late retry.
+        return false;
+      }
+    });
+    const tracked = operation.finally(() => {
+      if (this.pauseInFlight?.promise === tracked) this.pauseInFlight = undefined;
+    });
+    if (key) this.pauseInFlight = { key, promise: tracked };
+    return tracked;
   }
 
   private requestLive(request: Request): boolean {

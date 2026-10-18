@@ -16,7 +16,8 @@ MOXBOTS-MODEL-RECOVERY-001：普通 builtin API Session 与 Goal 的模型不可
 - [x] Stop/Goal暂停撤销epoch并持久停止fence；存储失败显式回报。
 - [x] 真实SessionStore与SDK受控故障路径；SDK计数始终1。
 - [ ] 最新main组合检查、完整CI、正常合入及远端包含核验。
-- [ ] UI实际浏览器、发布交接接收；原生签名包/真实Provider生产验收由唯一publisher单独追踪。
+- [x] UI实际浏览器目视、倒计时/状态转换/原Goal回调通过；合成fixture边界明确。
+- [ ] 发布交接接收；原生签名包/真实Provider生产验收由唯一publisher单独追踪。
 
 ## Completed
 
@@ -32,7 +33,7 @@ MOXBOTS-MODEL-RECOVERY-001：普通 builtin API Session 与 Goal 的模型不可
 
 ## Next step
 
-收集最终检查、修复UI fixture运行错误、提交并同步最新main后正常PR/CI，通知唯一publisher `01a12bc2-907a-7702-b6dd-788225c5dfe4`，核接收后记录发布批次。
+最新main PR143/150均已组合，本地361定向、133 DOM、126最终控制组与2更新Stop回执通过（有重叠，不相加）。正常PR/CI合入并核远端后，通知唯一publisher `01a12bc2-907a-7702-b6dd-788225c5dfe4`，核接收后记录发布批次。
 
 ## Deployment request
 

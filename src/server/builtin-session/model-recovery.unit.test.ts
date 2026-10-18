@@ -160,6 +160,58 @@ describe('SessionModelRecovery', () => {
     expect(h.read()).toMatchObject({ status: 'waiting' });
   });
 
+  it('coalesces duplicate pauses while a durable stop write is held', async () => {
+    const h = harness();
+    const recovery = h.create();
+    await recovery.wait(request(), failure());
+    let release!: () => void;
+    h.write.mockImplementationOnce(async (next, expected, isLive) => new Promise<boolean>(resolve => {
+      release = () => {
+        const committed = isLive() && h.read() === expected;
+        if (committed) h.setState(next);
+        resolve(committed);
+      };
+    }));
+    const first = recovery.pause('interrupt stop');
+    expect(recovery.isWaiting()).toBe(false);
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    const second = recovery.pause('abort stop');
+    expect(second).toBe(first);
+    release();
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+    expect(h.write).toHaveBeenCalledTimes(2); // initial checkpoint plus one shared pause write
+    expect(h.read()).toMatchObject({ status: 'paused', reason: 'interrupt stop' });
+  });
+
+  it('detaches a held old pause when a new turn is explicitly reset', async () => {
+    const h = harness();
+    const recovery = h.create();
+    await recovery.wait(request(), failure());
+    let release!: () => void;
+    h.write.mockImplementationOnce(async (next, expected, isLive) => new Promise<boolean>(resolve => {
+      release = () => {
+        const committed = isLive() && h.read() === expected;
+        if (committed) h.setState(next);
+        resolve(committed);
+      };
+    }));
+    const oldPause = recovery.pause('old turn stopped');
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+
+    h.setState(undefined); // Explicit owner CAS-cleared the paused checkpoint.
+    recovery.resetForNewTurn();
+    h.setCurrent({ sdkSessionId: 'native-1', routeIdentity: 'route-1', turnId: 'turn-new', goalId: 'goal-1' });
+    await recovery.wait(request(), failure());
+    const newCheckpoint = h.read()!;
+    await expect(recovery.pause('new turn stopped')).resolves.toBe(true);
+    const newPaused = h.read()!;
+    release();
+    await expect(oldPause).resolves.toBe(false);
+    expect(h.read()).toEqual(newPaused);
+    expect(h.read()).toMatchObject({ id: newCheckpoint.id, turnId: 'turn-new', status: 'paused' });
+  });
+
   it('rejects a concurrent different Request for the same owner', async () => {
     const h = harness();
     let release!: () => void;
@@ -214,6 +266,36 @@ describe('SessionModelRecovery', () => {
     h.setCurrent(undefined);
     await recovery.pause('goal stopped');
     expect(h.read()).toMatchObject({ status: 'paused', reason: 'goal stopped' });
+  });
+
+  it('pauses a persisted checkpoint from a fresh owner before its first HTTP admission', async () => {
+    const h = harness();
+    const seed = h.create();
+    await seed.wait(request(), failure());
+    const restoredOwner = h.create(); // Constructor snapshots the durable waiting checkpoint.
+    await expect(restoredOwner.pause('stopped before first admission')).resolves.toBe(true);
+    expect(h.read()).toMatchObject({ status: 'paused', reason: 'stopped before first admission' });
+    expect(restoredOwner.isWaiting()).toBe(false);
+  });
+
+  it('does not let a stale constructor snapshot pause a successor turn checkpoint', async () => {
+    const h = harness();
+    const seed = h.create();
+    await seed.wait(request(), failure());
+    const staleOwner = h.create();
+    const saved = h.read()!;
+    const successor = {
+      ...saved,
+      turnId: 'successor-turn',
+      attempt: saved.attempt + 1,
+      nextRetryAt: saved.nextRetryAt + 15_000,
+    };
+    h.setState(successor);
+    h.setCurrent({ sdkSessionId: 'native-1', routeIdentity: 'route-1', turnId: 'successor-turn', goalId: 'goal-1' });
+    h.write.mockClear();
+    await expect(staleOwner.pause('old owner stop')).resolves.toBe(true);
+    expect(h.read()).toEqual(successor);
+    expect(h.write).not.toHaveBeenCalled();
   });
 
   it('does not pause over a same-id checkpoint rebound by a newer Query', async () => {

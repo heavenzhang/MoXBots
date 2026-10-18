@@ -306,7 +306,7 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
-  it('lets only the owned recovery bridge govern native transport timeouts', async () => {
+  it.each([true, false])('owns recovery transport and requires durable update Stop acknowledgement (%s)', async durable => {
     vi.stubEnv('HOME', state.home);
     try {
       agent.setSidecarPort(15432);
@@ -342,6 +342,18 @@ describe('builtin V2 execution independent of product storage', () => {
         expect(utilityEnv.API_TIMEOUT_MS).not.toBe('2100000');
         expect(utilityEnv.API_FORCE_IDLE_TIMEOUT).not.toBe('0');
       } finally { oneShot.release(); }
+      let releaseStop!: (value: boolean) => void;
+      const acknowledgement = new Promise<boolean>(resolve => { releaseStop = resolve; });
+      const recovery = await import('../builtin-session/model-recovery');
+      const pause = vi.spyOn(recovery.SessionModelRecovery.prototype, 'pause').mockReturnValue(acknowledgement);
+      const stopping = agent.stopBuiltinSessionForUpdate().then(() => 'stopped', error => String(error));
+      try {
+        await vi.waitFor(() => expect(pause).toHaveBeenCalled());
+        // Storage acknowledgement must not delay the local cancellation.
+        const lifecycle = await import('../builtin-session/lifecycle');
+        expect(lifecycle.lifecycleState.abortRequested).toBe(true);
+      } finally { releaseStop(durable); }
+      expect(await stopping).toBe(durable ? 'stopped' : 'Error: UPDATE_ACTIVITY_UNKNOWN: MODEL_RECOVERY_STOP_NOT_DURABLE');
     } finally { agent.setSidecarPort(0); vi.unstubAllEnvs(); }
   });
 

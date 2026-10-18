@@ -10314,6 +10314,10 @@ function settleCancelledInputActivity(): boolean {
 export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = () => undefined): Promise<void> {
   assertCurrent();
   const interruptedTurn = isTurnInFlight() ? getCurrentTurnSourceItem() : null;
+  // The updater must receive durable Stop evidence before it may exit the
+  // process. pause() revokes immediately and coalesces the abort path's call.
+  const recoveryStop = activeSessionModelRecovery?.pause('Application update stopped model recovery')
+    ?? Promise.resolve(true);
   if (lifecycleState.preWarmTimer) {
     clearTimeout(lifecycleState.preWarmTimer);
     setPreWarmTimer(null);
@@ -10343,6 +10347,8 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
   if (lifecycleState.query || lifecycleState.processing || lifecycleState.preWarming) {
     throw new Error('UPDATE_ACTIVITY_UNKNOWN');
   }
+  if (!(await recoveryStop)) throw new Error('UPDATE_ACTIVITY_UNKNOWN: MODEL_RECOVERY_STOP_NOT_DURABLE');
+  assertCurrent();
   // Query abort can exit without an SDK result. Its finally clears streaming
   // flags but does not publish a turn terminal, leaving Goal/Cron execute-sync
   // (and its update admission) waiting until its full execution deadline.
