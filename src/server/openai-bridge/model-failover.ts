@@ -58,7 +58,9 @@ export class ModelFailoverController implements BridgeModelFailover {
     if (!lease) return replayBlocked();
     // Only root-owned recovery may change provider. Ordinary primary inference and
     // its bounded pre-delivery retries remain valid across a parent turn boundary.
-    const rootLive = () => queryLive() && !!state && !state.retired && this.state === state
+    // A request admitted with ambiguous ownership cannot acquire a foreground root
+    // merely because the background registry clears during a network await.
+    const rootLive = () => !ambiguous && queryLive() && !!state && !state.retired && this.state === state
       && this.options.scope() === scope && this.options.canSwitch?.() !== false;
     let usingBackup = state?.backup === true && !ambiguous;
     const live = () => queryLive() && !lease.isBlocked();

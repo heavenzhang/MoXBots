@@ -6,7 +6,7 @@
 
 设置 → 模型供应商 → 备用模型。当前会话选定模型保持主模型，用户选择一个明确的 Provider/model 对并开启；默认关闭。模型目录/API key 无效时不能开启。既有 Query 的开启状态在下一次空闲发送时经原配置重建入口生效，不中断已有任务或后台 Agent。备用身份与关闭状态逐请求重读；当前轮接管后优先备用，下一轮回到主模型。
 
-支持内置 Claude Agent SDK 的普通 API 模型，包含 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses。主备必须经过既有 providerHistory policy（含精确 model isolation）；与主模型同一对、被禁用/删除或缺凭据的备用不参与。订阅/OAuth、专属 cloud-session grant、DSH 与外部 CLI 保持原执行 authority，不借 API 配置切换。已存在 SDK 后台任务时不发起新接管，因为公共 Query token 不能证明请求归属哪个 root。普通 API 模型即使未配置备用，也经同一 Query 的有限推理重试控制器；后台推理仍可对未交付的临时故障有限重试主模型。
+支持内置 Claude Agent SDK 的普通 API 模型，包含 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses。主备必须经过既有 providerHistory policy（含精确 model isolation）；与主模型同一对、被禁用/删除或缺凭据的备用不参与。订阅/OAuth、专属 cloud-session grant、DSH 与外部 CLI 保持原执行 authority，不借 API 配置切换。已存在 SDK 后台任务时不发起新接管，因为公共 Query token 不能证明请求归属哪个 root。普通 API 模型即使未配置备用，也经同一 Query 的有限推理重试控制器；后台推理仍可对未交付的临时故障有限重试主模型。能否切备或缩减历史在请求接纳时固定，后台列表随后归零不能把旧后台请求升级成前台恢复 owner；动态撤销门禁仍持续生效。
 
 ## Owner 与执行位置
 

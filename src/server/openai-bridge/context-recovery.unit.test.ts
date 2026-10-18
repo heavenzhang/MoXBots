@@ -524,4 +524,25 @@ describe('bounded inference context recovery', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+
+  it('does not grant recovery to an admitted background request when the background registry clears', async () => {
+    const h = fixture(); h.owner.canRecover = false;
+    const pending = deferred<void>();
+    const execute = vi.fn(async () => { await pending.promise; return overflow(); });
+    const result = h.controller.run(req(), history(), execute);
+    h.owner.canRecover = true;
+    pending.resolve();
+    expect((await result).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(h.backup).not.toHaveBeenCalled();
+    expect(h.onRecovery).not.toHaveBeenCalled();
+    const foreground = history();
+    foreground.messages.push({ role: 'user', content: 'A later, unambiguous foreground inference.' });
+    let calls = 0;
+    const next = await h.controller.run(req(), foreground, async () => ++calls === 1 ? overflow() : ok());
+    expect(next.status).toBe(200); await next.text();
+    expect(calls).toBe(2);
+    expect(h.backup).toHaveBeenCalledTimes(1);
+  });
+
 });

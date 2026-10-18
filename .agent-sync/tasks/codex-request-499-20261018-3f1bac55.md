@@ -21,7 +21,7 @@ Fix foreground completion incorrectly cancelling valid background inference/stre
 
 ## Completed
 
-- Preceding read-only investigation independently confirmed lifecycle misclassification and locally reproduced 499 without a model call. Product implementation and focused/native fixture acceptance completed; final normal CI/main delivery pending integration. Six focused files contain 122 assertions and five actual native SDK fixture modes are accepted locally; see `dev-docs/request-499-20261018-acceptance.md`.
+- Preceding read-only investigation independently confirmed lifecycle misclassification and locally reproduced 499 without a model call. Product implementation and focused/native fixture acceptance completed; final normal CI/main delivery pending integration. Six focused files contain 126 assertions and five actual native SDK fixture modes are accepted locally; see `dev-docs/request-499-20261018-acceptance.md`.
 
 ## Verification
 

@@ -47,6 +47,22 @@ describe('bounded Query request retries', () => {
     expect(execute).toHaveBeenCalledTimes(8);
   });
 
+  it('never promotes an admitted background request to foreground recovery when background work clears', async () => {
+    let canSwitch = false;
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const switched = vi.fn();
+    const controller = new ModelFailoverController({ scope: () => 'new-foreground-root',
+      canSwitch: () => canSwitch, resolveBackup: () => backup, onSwitch: switched, retryDelaysMs });
+    const execute = vi.fn(async (_target: UpstreamConfig) => { await pending; return transient(); });
+    const result = controller.run(request(), primary, execute, 'background-at-birth');
+    canSwitch = true;
+    release();
+    expect((await result).status).toBe(503);
+    expect(execute.mock.calls.map(call => call[0].providerId)).toEqual(['primary', 'primary', 'primary', 'primary']);
+    expect(switched).not.toHaveBeenCalled();
+  });
+
   it('uses a cancellable 250/750/1500ms backoff rather than a hot retry loop', async () => {
     vi.useFakeTimers();
     const controller = new ModelFailoverController({ scope: () => 'foreground', resolveBackup: () => undefined, onSwitch: vi.fn() });

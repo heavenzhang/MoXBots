@@ -403,6 +403,86 @@ describe('Query-owned background inference through both recovery controllers', (
     expect(h.switches).toEqual([]);
   });
 
+  it('does not upgrade a background-admitted 503 request into foreground failover when the background registry drains', async () => {
+    const backgroundArrived = gate();
+    const releaseBackground = gate();
+    const backgroundText = 'background admitted while the new foreground scope already exists';
+    const primary = await fixture(async (req, res) => {
+      if (req.body.messages[0].content === backgroundText) {
+        backgroundArrived.resolve();
+        await releaseBackground.promise;
+      }
+      json(res, { error: { message: 'temporary 503' } }, 503);
+    });
+    const backup = await fixture((_req, res) => json(res, message('genuine foreground recovered')));
+    const h = harness(primary, backup);
+    h.owner.scope = 'new-foreground-scope-with-old-background';
+    h.owner.recoveryAllowed = false;
+    const pending = h.handler(request(backgroundText));
+    await bounded(backgroundArrived.promise);
+    h.owner.recoveryAllowed = true;
+    releaseBackground.resolve();
+    const background = await bounded(pending);
+    expect(background.status).toBe(503);
+    await background.text();
+    expect(primary.requests).toHaveLength(4);
+    expect(backup.requests).toHaveLength(0);
+    expect(h.switches).toEqual([]);
+
+    const foreground = await h.handler(request('genuine new foreground inference after the registry drained'));
+    expect(foreground.status).toBe(200);
+    expect(await foreground.json()).toMatchObject({ content: [{ text: 'genuine foreground recovered' }] });
+    expect(primary.requests).toHaveLength(8);
+    expect(backup.requests).toHaveLength(1);
+    expect(h.switches).toEqual(['backup']);
+  });
+
+  it('does not upgrade a background-admitted overflow request into context recovery when the background registry drains', async () => {
+    const backgroundArrived = gate();
+    const releaseBackground = gate();
+    const backgroundText = 'background overflowing request admitted beside a new foreground scope';
+    const history = (text: string): AnthropicRequest['messages'] => [
+      { role: 'user', content: text },
+      { role: 'assistant', content: 'old safely archivable evidence '.repeat(2_000) },
+      { role: 'user', content: 'Preserve the existing result and continue.' },
+      { role: 'assistant', content: 'The original action is already complete.' },
+    ];
+    const primary = await fixture(async (req, res) => {
+      if (req.body.messages[0].content === backgroundText) {
+        backgroundArrived.resolve();
+        await releaseBackground.promise;
+      }
+      if (JSON.stringify(req.body.messages).length > 10_000) {
+        json(res, { error: { type: 'context_length_exceeded', message: 'Maximum context length exceeded' } }, 400);
+      } else json(res, message('genuine foreground context recovered'));
+    });
+    const backup = await fixture((_req, res) => json(res, message('unexpected backup')));
+    const h = harness(primary, backup);
+    h.owner.scope = 'new-foreground-scope-with-old-background';
+    h.owner.recoveryAllowed = false;
+    const originalBackgroundHistory = history(backgroundText);
+    const pending = h.handler(request('', { messages: originalBackgroundHistory }));
+    await bounded(backgroundArrived.promise);
+    h.owner.recoveryAllowed = true;
+    releaseBackground.resolve();
+    const background = await bounded(pending);
+    expect(background.status).toBe(409);
+    await background.text();
+    expect(primary.requests).toHaveLength(1);
+    expect(primary.requests[0].body.messages).toEqual(originalBackgroundHistory);
+    expect(h.archives).toEqual([]);
+    expect(h.ledgers).toEqual([]);
+
+    const foreground = await h.handler(request('', { messages: history('genuine foreground overflow after the registry drained') }));
+    expect(foreground.status).toBe(200);
+    expect(await foreground.json()).toMatchObject({ content: [{ text: 'genuine foreground context recovered' }] });
+    expect(primary.requests).toHaveLength(3);
+    expect(h.archives).toEqual(['new-foreground-scope-with-old-background']);
+    expect(h.ledgers).toHaveLength(1);
+    expect(backup.requests).toHaveLength(0);
+    expect(h.switches).toEqual([]);
+  });
+
   it('does not inherit a foreground backup pin when background ownership becomes ambiguous', async () => {
     const primary = await fixture((_req, res) => json(res, { error: { message: 'temporary primary failure' } }, 503));
     const backup = await fixture((_req, res) => json(res, message('foreground recovered')));
