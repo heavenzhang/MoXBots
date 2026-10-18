@@ -534,14 +534,10 @@ def guard(args):
     need(args.product_source.is_absolute() and args.output.is_absolute(), "absolute-paths-required")
     need(not args.output.exists(), "summary-output-must-be-new")
     cached = getattr(args, "cached_public_payload", None)
-    run_id = getattr(args, "cached_public_run", "")
-    artifact_id = getattr(args, "cached_public_artifact_id", "")
-    need(bool(cached) == bool(run_id) == bool(artifact_id), "public-cache-path-and-IDs-required-together")
-    for value in (run_id, artifact_id):
-        need(not value or re.fullmatch(r"[1-9][0-9]{0,19}", value), "public-cache-positive-integer-IDs-only")
+    candidate = getattr(args, "candidate_payload", None)
+    validate_payload_inputs(args)
     exported = getattr(args, "export_public_cache", None)
-    need(not (cached and exported), "cached-input-must-not-be-republished-as-fresh-GET")
-    for value in (cached, exported):
+    for value in (cached, candidate, exported):
         if value:
             need(value.is_absolute() and value.resolve() == value
                  and value != args.output and not value.is_relative_to(args.output)
@@ -588,11 +584,52 @@ def public_cache_meta_bytes():
     return (json.dumps(public_cache_meta(), sort_keys=True, indent=2) + "\n").encode()
 
 
+def candidate_meta_bytes():
+    # Candidate artifacts are not evidence of a public HTTPS download. Pins still
+    # come from the reviewed harness commit, never from untrusted artifact data.
+    value = {key: val for key, val in public_cache_meta().items() if key != "publicOrigin"}
+    value["transport"] = "candidate-ci-artifact"
+    return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+
+
+def validate_payload_inputs(args):
+    for prefix in ("cached_public", "candidate"):
+        path = getattr(args, prefix + "_payload", None)
+        run_id = getattr(args, prefix + "_run", "")
+        artifact_id = getattr(args, prefix + "_artifact_id", "")
+        need(bool(path) == bool(run_id) == bool(artifact_id), "payload-path-and-IDs-required-together")
+        need(all(not value or re.fullmatch(r"[1-9][0-9]{0,19}", value)
+                 for value in (run_id, artifact_id)), "payload-positive-integer-IDs-only")
+    cached = getattr(args, "cached_public_payload", None)
+    candidate = getattr(args, "candidate_payload", None)
+    exported = getattr(args, "export_public_cache", None)
+    need(sum(bool(value) for value in (cached, candidate, exported)) <= 1,
+         "payload-transports-mutually-exclusive")
+
+
+def payload_input_summary(args):
+    candidate = getattr(args, "candidate_payload", None)
+    cached = getattr(args, "cached_public_payload", None)
+    if candidate:
+        return {"kind": "isolated-candidate-artifact", "transport": "candidate-ci-artifact",
+            "normalTLSFullGETThisRun": False, "publicOrigin": None,
+            "candidateRun": args.candidate_run, "candidateArtifactId": args.candidate_artifact_id,
+            "firstPublicFullGETRun": None, "firstPublicFullGETArtifactId": None,
+            "candidateMetaSha256": hashlib.sha256(candidate_meta_bytes()).hexdigest()}
+    return {"kind": "cached-immutable-public-bytes" if cached else "normal-TLS-public-full-GET",
+        "transport": "GitHub-Actions-cache-of-previous-normal-TLS-full-GET" if cached else "normal-TLS-public-full-GET",
+        "normalTLSFullGETThisRun": not bool(cached), "publicOrigin": PUBLIC,
+        "cachedPublicRun": args.cached_public_run or None, "cachedPublicArtifactId": args.cached_public_artifact_id or None,
+        "firstPublicFullGETRun": args.cached_public_run or os.environ.get("GITHUB_RUN_ID"),
+        "firstPublicFullGETArtifactId": args.cached_public_artifact_id or None,
+        "cacheMetaSha256": hashlib.sha256(public_cache_meta_bytes()).hexdigest()}
+
+
 def checked_public_copy(source, target, size, sha256):
     # Copy once into this root-private snapshot, then verify the copied bytes;
     # never trust a mutable downloaded artifact path after an earlier hash check.
     import stat
-    fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
         need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == size,
@@ -609,15 +646,20 @@ def checked_public_copy(source, target, size, sha256):
         os.close(fd)
 
 
-def import_public_cache(directory, release):
+def import_payload_snapshot(directory, release, *, candidate=False):
+    meta_name = "candidate-meta.json" if candidate else "cache-meta.json"
     need(directory.is_dir() and not directory.is_symlink()
-         and {path.name for path in directory.iterdir()} == set(PINS) | {"cache-meta.json"}, "public-cache-exact-three-file-whitelist")
-    expected = public_cache_meta_bytes()
-    checked_public_copy(directory / "cache-meta.json", release / "cache-meta.json", len(expected), hashlib.sha256(expected).hexdigest())
-    need((release / "cache-meta.json").read_bytes() == expected, "public-cache-fixed-meta-bytes")
+         and {path.name for path in directory.iterdir()} == set(PINS) | {meta_name}, "public-cache-exact-three-file-whitelist")
+    expected = candidate_meta_bytes() if candidate else public_cache_meta_bytes()
+    checked_public_copy(directory / meta_name, release / meta_name, len(expected), hashlib.sha256(expected).hexdigest())
+    need((release / meta_name).read_bytes() == expected, "public-cache-fixed-meta-bytes")
     for filename, (size, sha256) in PINS.items():
         checked_public_copy(directory / filename, release / filename, size, sha256)
-    (release / "cache-meta.json").unlink()
+    (release / meta_name).unlink()
+
+
+def import_public_cache(directory, release):
+    import_payload_snapshot(directory, release)
 
 
 def export_public_cache(directory, release):
@@ -656,7 +698,9 @@ def prepare_candidate(args, private):
     web = private / "www"
     release = web / "host/releases" / RELEASE
     release.mkdir(parents=True)
-    if args.cached_public_payload:
+    if getattr(args, "candidate_payload", None):
+        import_payload_snapshot(args.candidate_payload, release, candidate=True)
+    elif args.cached_public_payload:
         import_public_cache(args.cached_public_payload, release)
     else:
         for filename, (size, sha256) in PINS.items():
@@ -1247,13 +1291,7 @@ def accept(args):
     summary = {"schemaVersion": 1, "productSource": PRODUCT, "releaseId": RELEASE,
         "harnessSource": run(["git", "-c", "safe.directory=*", "-C", str(Path(__file__).resolve().parents[2]), "rev-parse", "HEAD"]).stdout.decode().strip(),
         "mode": args.mode, "steps": [], "passed": False,
-        "publicPayloadInput": {"kind": "cached-immutable-public-bytes" if args.cached_public_payload else "normal-TLS-public-full-GET",
-            "transport": "GitHub-Actions-cache-of-previous-normal-TLS-full-GET" if args.cached_public_payload else "normal-TLS-public-full-GET",
-            "normalTLSFullGETThisRun": not bool(args.cached_public_payload), "publicOrigin": PUBLIC,
-            "cachedPublicRun": args.cached_public_run or None, "cachedPublicArtifactId": args.cached_public_artifact_id or None,
-            "firstPublicFullGETRun": args.cached_public_run or os.environ.get("GITHUB_RUN_ID"),
-            "firstPublicFullGETArtifactId": args.cached_public_artifact_id or None,
-            "cacheMetaSha256": hashlib.sha256(public_cache_meta_bytes()).hexdigest()},
+        "publicPayloadInput": payload_input_summary(args),
         "serviceArtifact": {"runId": "39093243842", "artifactId": "12123324723", "name": "owned-agentnet-auth-linux",
                             "sha256": SERVICE_SHA, "bytes": 27513232},
         "immutablePayloads": {name: {"sha256": pin[1], "bytes": pin[0]} for name, pin in PINS.items()},
@@ -1544,6 +1582,9 @@ def main():
     parser.add_argument("--cached-public-run", default="")
     parser.add_argument("--cached-public-artifact-id", default="")
     parser.add_argument("--export-public-cache", type=Path)
+    parser.add_argument("--candidate-payload", type=Path)
+    parser.add_argument("--candidate-run", default="")
+    parser.add_argument("--candidate-artifact-id", default="")
     args = parser.parse_args()
     try:
         if args.preflight:

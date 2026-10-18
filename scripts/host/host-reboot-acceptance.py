@@ -346,7 +346,9 @@ def coordinator(args):
     lab = lab_module()
     lab.guard(argparse.Namespace(product_source=args.product_source, output=args.output,
         cached_public_payload=args.cached_public_payload, cached_public_run=args.cached_public_run,
-        cached_public_artifact_id=args.cached_public_artifact_id))
+        cached_public_artifact_id=args.cached_public_artifact_id,
+        candidate_payload=args.candidate_payload, candidate_run=args.candidate_run,
+        candidate_artifact_id=args.candidate_artifact_id))
     try:
         probe = kvm_probe(lab)
     except lab.Rejected as error:
@@ -424,6 +426,9 @@ def coordinator(args):
             if args.cached_public_payload:
                 command += ["--cached-public-payload", str(args.cached_public_payload), "--cached-public-run", args.cached_public_run,
                             "--cached-public-artifact-id", args.cached_public_artifact_id]
+            if args.candidate_payload:
+                command += ["--candidate-payload", str(args.candidate_payload), "--candidate-run", args.candidate_run,
+                            "--candidate-artifact-id", args.candidate_artifact_id]
             # Browser driver already prints only fixed gates. Keep even that raw pipe
             # in memory here and forward only the fixed pass/fail marker alphabet.
             result = lab.run(command, timeout=2400, check=False)
@@ -473,6 +478,9 @@ def main():
     parser.add_argument("--cached-public-payload", type=Path)
     parser.add_argument("--cached-public-run", default="")
     parser.add_argument("--cached-public-artifact-id", default="")
+    parser.add_argument("--candidate-payload", type=Path)
+    parser.add_argument("--candidate-run", default="")
+    parser.add_argument("--candidate-artifact-id", default="")
     args = parser.parse_args()
     try:
         coordinator(args)

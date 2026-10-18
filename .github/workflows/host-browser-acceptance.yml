@@ -16,6 +16,14 @@ on:
         description: Optional reviewed exact public payload cache artifact ID; empty means full public GET
         type: string
         default: ''
+      candidate_run:
+        description: Reviewed same-repository isolated candidate run; pair with artifact ID, excludes public cache
+        type: string
+        default: ''
+      candidate_artifact_id:
+        description: Exact candidate artifact; integrity pins remain in reviewed harness source
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -48,12 +56,14 @@ jobs:
         env:
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
           CACHED_PUBLIC_ARTIFACT_ID: ${{ inputs.cached_public_artifact_id }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
         run: |
           python3 - <<'PY'
           import os, re
-          values = [os.environ[name] for name in ('CACHED_PUBLIC_RUN', 'CACHED_PUBLIC_ARTIFACT_ID')]
-          if bool(values[0]) != bool(values[1]) or any(value and not re.fullmatch(r'[1-9][0-9]{0,19}', value) for value in values):
-              raise SystemExit('Cache run and artifact IDs must be paired positive integers')
+          pairs = [(os.environ[a], os.environ[b]) for a, b in [('CACHED_PUBLIC_RUN', 'CACHED_PUBLIC_ARTIFACT_ID'), ('CANDIDATE_RUN', 'CANDIDATE_ARTIFACT_ID')]]
+          if sum(bool(pair[0]) for pair in pairs) > 1 or any(bool(a) != bool(b) or any(v and not re.fullmatch(r'[1-9][0-9]{0,19}', v) for v in (a,b)) for a,b in pairs):
+              raise SystemExit('Select exactly one paired candidate or public-cache transport, or fresh public GET')
           PY
       - uses: actions/download-artifact@v4
         if: inputs.cached_public_run != '' && inputs.cached_public_artifact_id != ''
@@ -63,6 +73,15 @@ jobs:
           github-token: ${{ github.token }}
           repository: heavenzhang/MoXBots
           path: ${{ runner.temp }}/host-public-cache-input
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: inputs.candidate_run != '' && inputs.candidate_artifact_id != ''
+        with:
+          artifact-ids: ${{ inputs.candidate_artifact_id }}
+          run-id: ${{ inputs.candidate_run }}
+          github-token: ${{ github.token }}
+          repository: heavenzhang/MoXBots
+          path: ${{ runner.temp }}/host-candidate-input
           merge-multiple: true
       - uses: actions/download-artifact@v4
         with:
@@ -88,9 +107,13 @@ jobs:
           ACCEPTANCE_MODE: ${{ inputs.mode }}
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
           CACHED_PUBLIC_ARTIFACT_ID: ${{ inputs.cached_public_artifact_id }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
         run: |
           public_args=()
-          if [[ -n "$CACHED_PUBLIC_RUN" ]]; then
+          if [[ -n "$CANDIDATE_RUN" ]]; then
+            public_args=(--candidate-payload "$RUNNER_TEMP/host-candidate-input" --candidate-run "$CANDIDATE_RUN" --candidate-artifact-id "$CANDIDATE_ARTIFACT_ID")
+          elif [[ -n "$CACHED_PUBLIC_RUN" ]]; then
             public_args=(--cached-public-payload "$RUNNER_TEMP/host-public-cache-input" --cached-public-run "$CACHED_PUBLIC_RUN" --cached-public-artifact-id "$CACHED_PUBLIC_ARTIFACT_ID")
           elif [[ "$ACCEPTANCE_MODE" = standard ]]; then
             public_args=(--export-public-cache "$RUNNER_TEMP/host-public-cache-export")
@@ -98,7 +121,7 @@ jobs:
           sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-browser-venv/bin/python" harness/scripts/host/browser-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --service-artifact "$RUNNER_TEMP/host-browser-service-M" --output "$RUNNER_TEMP/host-browser-summary" --mode "$ACCEPTANCE_MODE" "${public_args[@]}"
       - name: Upload only three verified public immutable cache files
         id: public-cache-upload
-        if: always() && inputs.mode == 'standard' && inputs.cached_public_run == '' && inputs.cached_public_artifact_id == ''
+        if: always() && inputs.mode == 'standard' && inputs.cached_public_run == '' && inputs.cached_public_artifact_id == '' && inputs.candidate_run == '' && inputs.candidate_artifact_id == ''
         uses: actions/upload-artifact@v4
         with:
           name: host-public-payload-M-${{ github.run_id }}

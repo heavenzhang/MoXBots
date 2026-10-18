@@ -29,6 +29,74 @@ class Response(io.BytesIO):
 
 
 class HarnessGates(unittest.TestCase):
+    def test_candidate_snapshot_has_distinct_provenance_and_fixed_integrity(self):
+        payloads = {"bootstrap.py": b"synthetic-bootstrap", "bundle.tar.gz": b"synthetic-bundle"}
+        pins = {name: (len(data), hashlib.sha256(data).hexdigest()) for name, data in payloads.items()}
+        for scenario in ("valid", "public-meta", "foreign-source", "tampered", "hardlink", "fifo"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory, patch.object(lab, "PINS", pins):
+                root = Path(directory)
+                incoming, restored = root / "candidate", root / "restored"
+                incoming.mkdir()
+                restored.mkdir()
+                for name, data in payloads.items():
+                    (incoming / name).write_bytes(data)
+                meta = lab.candidate_meta_bytes()
+                if scenario == "public-meta":
+                    meta = lab.public_cache_meta_bytes()
+                elif scenario == "foreign-source":
+                    value = json.loads(meta)
+                    value["sourceCommit"] = "0" * 40
+                    meta = (json.dumps(value, sort_keys=True, indent=2) + "\n").encode()
+                (incoming / "candidate-meta.json").write_bytes(meta)
+                if scenario == "tampered":
+                    (incoming / "bundle.tar.gz").write_bytes(b"x" * pins["bundle.tar.gz"][0])
+                elif scenario == "hardlink":
+                    os.link(incoming / "bundle.tar.gz", root / "linked")
+                elif scenario == "fifo":
+                    (incoming / "bundle.tar.gz").unlink()
+                    os.mkfifo(incoming / "bundle.tar.gz")
+                if scenario == "valid":
+                    lab.import_payload_snapshot(incoming, restored, candidate=True)
+                    self.assertEqual({p.name for p in restored.iterdir()}, set(pins))
+                    for name, data in payloads.items():
+                        self.assertEqual((restored / name).read_bytes(), data)
+                else:
+                    with self.assertRaises((lab.Rejected, OSError)):
+                        lab.import_payload_snapshot(incoming, restored, candidate=True)
+
+    def test_candidate_input_cannot_claim_public_download_or_export_public_cache(self):
+        args = SimpleNamespace(candidate_payload=Path("/candidate"), candidate_run="123", candidate_artifact_id="456",
+            cached_public_payload=None, cached_public_run="", cached_public_artifact_id="", export_public_cache=None)
+        lab.validate_payload_inputs(args)
+        value = lab.payload_input_summary(args)
+        self.assertFalse(value["normalTLSFullGETThisRun"])
+        self.assertIsNone(value["publicOrigin"])
+        self.assertIsNone(value["firstPublicFullGETRun"])
+        self.assertIsNone(value["firstPublicFullGETArtifactId"])
+        self.assertEqual(value["transport"], "candidate-ci-artifact")
+        self.assertEqual(value["candidateArtifactId"], "456")
+        self.assertNotIn("publicOrigin", json.loads(lab.candidate_meta_bytes()))
+        for field, invalid in (("candidate_run", ""), ("candidate_artifact_id", "x;secret"),
+                               ("export_public_cache", Path("/export"))):
+            with self.subTest(field=field):
+                bad = SimpleNamespace(**{**vars(args), field: invalid})
+                with self.assertRaises(lab.Rejected):
+                    lab.validate_payload_inputs(bad)
+        both = SimpleNamespace(**{**vars(args), "cached_public_payload": Path("/public"),
+            "cached_public_run": "111", "cached_public_artifact_id": "222"})
+        with self.assertRaisesRegex(lab.Rejected, "mutually-exclusive"):
+            lab.validate_payload_inputs(both)
+
+    def test_candidate_workflows_never_export_candidate_as_public_cache(self):
+        browser = (ROOT / ".github/workflows/host-browser-acceptance.yml").read_text()
+        reboot = (ROOT / ".github/workflows/host-reboot-acceptance.yml").read_text()
+        for workflow in (browser, reboot):
+            self.assertIn("repository: heavenzhang/MoXBots", workflow)
+            self.assertIn('public_args=(--candidate-payload', workflow)
+            self.assertIn("sum(bool(pair[0]) for pair in pairs) > 1", workflow)
+        export_guard = next(line for line in browser.splitlines() if "if: always() && inputs.mode" in line)
+        self.assertIn("inputs.candidate_run == '' && inputs.candidate_artifact_id == ''", export_guard)
+
     def test_exact_M_launcher_bootstrap_and_index_reproduce_producer(self):
         source = subprocess.check_output(["git", "-C", str(ROOT), "show", lab.PRODUCT + ":scripts/host/one-command.py"])
         self.assertEqual(hashlib.sha256(lab.launcher(source)).hexdigest(), lab.INSTALL_SHA)
