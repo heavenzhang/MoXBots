@@ -2250,7 +2250,9 @@ mod tests {
                 .env("MOXBOTS_SLOT_TEST_ROOT", &root)
                 .env("MOXBOTS_SLOT_TEST_ROUTE", &id)
                 .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
+                // Isolated helper panics must remain visible in CI. Its only
+                // inputs are this test's TempDir and generated route hash.
+                .stderr(std::process::Stdio::inherit())
                 .spawn()
                 .unwrap();
             children.0.push(child);
@@ -2260,7 +2262,10 @@ mod tests {
         for index in 0..children.0.len() {
             loop {
                 if let Some(status) = children.0[index].try_wait().unwrap() {
-                    assert!(status.success());
+                    assert!(
+                        status.success(),
+                        "isolated route helper {index} exited {status}"
+                    );
                     break;
                 }
                 if std::time::Instant::now() >= end {
