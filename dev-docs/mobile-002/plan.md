@@ -1,6 +1,17 @@
 # MOXBOTS-MOBILE-002 execution plan
 
-Current primary checkpoint (2026-10-18):
+## Current authoritative checkpoint — 2026-10-18
+
+Original mobile product source is delivered through PR113 on main3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef. Its pre-merge and exact post-merge Test/Owned CI passed. Current original Android native start/cancel:2pass2.639s; offline33pass/1 opt-in skip7.651s; shared connection110pass/1ignored and strict Clippy pass. Clean02c2fe419 candidate APK673d4659 and unsigned simulator archive89606c9a are verified/installed, sharing native digesteea5df3be892ec02695c25289ebffb4f6e3f24256589695d860bf4444f423c6c. They are not signed phone/TestFlight or production acceptance.
+
+Missing iOS runtime evidence is now partially closed: actual original Swift/C ABI/Release Rust, real iOS Keychain isolation/protection/256KiB bounds and original ImageIO/attachment index/multichunk owners passed on dedicated16e/iOS27.0, SDK27.1. Default3pass/onlylive skipped; explicit original deployed HTTPS start/logout cancel4pass/0skip. Exact case names/counts and Rust plus Swift/harness hashes are checked; accepted hashes match committed blobs. Independent review/repair and final live result recheck passed. Test host's initial Scene failure is retained. Details `ios-native-runtime.md`, `ios-native-primary-evidence.json`; reproduction `mobile/tests/ios-native/README.md`.
+
+This follow-up is PR121. Its original test/evidence commit's full Test39090821185 passed. Latest main8ed2b4e1b74b25cc4e5533119aa66cf3eb335809 (only concurrent manual Windows release cache workflow and handoff docs) is normally merged; phone/native/harness inputs remain unchanged. Final combined follow-up CI/main integration remains open. No mobile or shared-service production deployment.
+
+Full original everyday-use objective remains open: product UI/keyboard/pickers/preview and actual phone/SSO/Host; APNs/FCM/background/cold-start authorization recovery; real microphone/Chinese ASR; internal signing/distribution. Mac remains locked. Current metadata query:0 iOS development/distribution identities,0 profiles, only Mac Developer ID; all4 Apple device entries are simulated and Android has1 emulator/0 phones. This is not proof of Apple account absence. Local Apple sign-in, Firebase project/config and physical-device prerequisites remain pending. No unchanged ASR download retry, trust downgrade or production permission expansion.
+
+## Prior packaging/integration checkpoint (retained history)
+
 
 Original Android JNI/shipping Rust → deployed public service PKCE start and original pending-login cancellation passed2 native cases in5.145s. Offline module33 pass/1 explicit network test skipped in8.830s; Rust107 pass/1ignored and strict all-target Clippy pass. Bounded CA CRL policy and original30s skew budget repair are independently reviewed, including fixed test cleanup. Source/evidence: `dev-docs/mobile-002/android-live-login.md` and `android-login-primary-evidence.json`.
 

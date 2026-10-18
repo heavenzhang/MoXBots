@@ -36,6 +36,10 @@ Continue MOXBOTS-MOBILE-002 without shrinking its everyday-use objective: add mi
 - Full goal not complete. Test host/Keychain acceptance is simulator-only and does not prove product UI, device lock/backup or real-user execution.
 - Existing deployment ownership remains; no production/updater/service/model changes or external messaging.
 
+## Integration checkpoint
+
+Original test/evidence commit full Test39090821185 passed. Latest main8ed2b4e1b74b25cc4e5533119aa66cf3eb335809 normally merged, preserving its manual Windows release cache and all handoff records; original phone/native/test inputs unchanged. Final combined CI/main proof remains open; no production action. Project map and overall plan now route to actual iOS runtime evidence instead of older build-only status.
+
 ## Next step
 
 - Final committed-content comparison and normal CI/main delivery; then resume original real-user gates when local environment/config becomes available.
