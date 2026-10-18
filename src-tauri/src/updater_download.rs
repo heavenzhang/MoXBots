@@ -681,7 +681,7 @@ mod tests {
         (url, requests, handle)
     }
     fn client() -> Client {
-        Client::builder().no_proxy().build().unwrap()
+        crate::local_http::builder().build().unwrap()
     }
     fn seed(dir: &Path, artifact: &Artifact, bytes: &[u8], total: u64) {
         let mut meta = prepare(dir, artifact).unwrap();

@@ -897,10 +897,13 @@ async fn check_and_download_inner(app: &AppHandle) -> Result<Option<String>, Str
         };
         // Manifest checks retain a short deadline. Artifact bodies instead use
         // connect and idle bounds, so a healthy large transfer may run for hours.
-        let client = proxy_config::build_client_with_proxy(
-            reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(15)),
-        )
-        .map_err(|_| "无法创建更新下载连接。".to_string())?;
+        // External updater traffic must inherit the general proxy policy.
+        // local_http intentionally bypasses proxies and is only for loopback.
+        #[allow(clippy::disallowed_methods)]
+        let artifact_builder =
+            reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(15));
+        let client = proxy_config::build_client_with_proxy(artifact_builder)
+            .map_err(|_| "无法创建更新下载连接。".to_string())?;
         let path = match crate::updater_download::download(
             &client,
             &dir,

@@ -16,7 +16,7 @@ Fix interrupted update downloads with persistent partial files, bounded retries 
 - [x] Retry transient failures with bounded backoff; surface readable terminal failure and retained bytes; allow manual retry.
 - [x] Require exact package signature before ready/pending; corrupted/changed responses must fail closed.
 - [x] Expose one Rust download snapshot/event; show percent, bytes, rate, retry state and persistent error in About.
-- [x]11 isolated native product-module Rust tests,22 updater/confirmation DOM +15 Settings/Linux tests, TypeScript, changed-source ESLint and production Web build passed. Full CI remains separate.
+- [x]11 isolated native product-module Rust tests,23 updater/confirmation DOM +15 Settings/Linux tests, TypeScript, changed-source ESLint and production Web build passed. Full CI remains separate.
 - [x] Root running UI review at desktop and narrow widths; 12 Chromium cases and screenshot inspection. Independent worker could not execute after usage limit; independence is not claimed.
 - [ ] Normal PR/CI/main delivery; verify remote main contains change.
 - [x] Queue signed native release and real A-to-B/active-task protection checks with existing release owner; no interruption of active tasks.
@@ -38,7 +38,7 @@ Original installed 0.5.9 discovered stable0.5.11; download reached76% then body-
 
 ## Verification and delivery state
 
-Code: implemented. Focused renderer:22 updater/confirmation +15 Settings/Linux tests passed. TypeScript, changed-source ESLint and production Web build passed. Root Chromium actual extracted About JSX:12 cases passed at1200×900/390×844, zero page errors; snapshots in dev-docs/updater-resume/qa/. Rust transport loopback:11 native macOS arm64 actual-module tests passed; latest full CI still pending; earlier CI compiled product but found test fixture length mismatch (34 bytes vs hardcoded32), corrected. Main authority is PR138; merge/remote containment must be verified. Signed native production: not released or accepted; live app/tasks untouched. No credentials or private user records in this task.
+Code: implemented. Focused renderer:23 updater/confirmation +15 Settings/Linux tests passed. TypeScript, changed-source ESLint and production Web build passed. Root Chromium actual extracted About JSX:12 cases passed at1200×900/390×844, zero page errors; snapshots in dev-docs/updater-resume/qa/. Rust transport loopback:11 native macOS arm64 actual-module tests passed; latest full CI still pending; earlier CI compiled product but found test fixture length mismatch (34 bytes vs hardcoded32), corrected. Main authority is PR138; merge/remote containment must be verified. Signed native production: not released or accepted; live app/tasks untouched. No credentials or private user records in this task.
 
 ## Next step
 
@@ -53,3 +53,5 @@ Final local transport evidence: `dev-docs/updater-resume/transport-results.json`
 ## Blockers and unknowns
 
 Latest required PR138 CI and normal main merge are still open. Existing release owner has acknowledged queueing but signed native A-to-B installation, actual old-client bootstrap transfer and busy-task native acceptance remain unperformed. This development chat must not switch production stable or restart daily work. Independent UI execution was unavailable after worker usage limits; root-owned browser/visual verification is recorded as self-review. The precise network hop responsible for the original long-response disconnect remains unidentified; resilient transport is verified independently.
+
+Final source review added a regression for failed newer replacement retry while an older package stays ready.23 focused updater DOM tests pass; loopback tests now use the existing local_http builder to satisfy the architecture guard, with11 native transport cases passing again. Production artifact requests keep the existing general proxy authority; no localhost bypass is applied to remote updater traffic.

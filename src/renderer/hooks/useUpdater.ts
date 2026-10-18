@@ -111,7 +111,9 @@ export function useUpdater(): UseUpdaterResult {
             return 'error';
         }
         // Use refs for guards — immune to stale closure on rapid clicks
-        if (updateReadyRef.current) return 'downloading';
+        // A newer replacement may have failed while an older package remains ready.
+        // Its explicit retry must reach Rust rather than returning the old ready flag.
+        if (updateReadyRef.current && downloadStateRef.current.phase !== 'failed') return 'downloading';
         if (checkingRef.current || retryInFlightRef.current) return 'downloading';
 
         checkingRef.current = true;

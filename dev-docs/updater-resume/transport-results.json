@@ -14,8 +14,8 @@
     "updater_download::tests::changed_identity_discards_old_bytes_and_hides_url_credentials",
     "updater_download::tests::inconsistent_ranges_and_totals_restart_from_zero"
   ],
-  "sourceSha256": "69e3592267b56ecb5eebcf73b414263be69e16f720324277670939d31c80dc5d",
-  "rawLog": "/private/tmp/moxbots-updater-transport-final.log",
+  "sourceSha256": "e636ca4be68d5401866d73f48c8370f9e62bd8f39a897d29a83819865d21fd7c",
+  "rawLog": "/private/tmp/moxbots-updater-transport-helper.log",
   "limitations": [
     "Whole desktop native run was not launched",
     "Existing product config, tasks, credentials and production untouched"

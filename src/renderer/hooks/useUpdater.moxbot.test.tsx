@@ -188,3 +188,20 @@ it('passes interruption permission only for an explicitly confirmed restart', as
   expect(mocks.relaunch).not.toHaveBeenCalled();
   unmount();
 });
+
+
+it('retries a failed newer download while preserving an older ready package', async () => {
+  const failed = { revision: 10, phase: 'failed', version: '0.5.4', downloaded: 1024, total: 4096, percent: 25, bytesPerSecond: null, attempt: 3, maxAttempts: 3, retryAtMs: null, errorCode: 'network', error: 'connection interrupted', retryable: true };
+  const { result, unmount } = renderHook(() => useUpdater());
+  await act(async () => {
+    mocks.handlers.get('updater:ready-to-restart')!({ payload: { version: '0.5.3' } });
+    mocks.handlers.get('updater:download-state')!({ payload: failed });
+  });
+  expect(result.current.updateReady).toBe(true);
+  mocks.invoke.mockImplementation(async (command: string) => command === 'get_update_download_state' ? failed : false);
+  await act(async () => { await result.current.checkForUpdate(); });
+  expect(mocks.invoke).toHaveBeenCalledWith('check_and_download_update');
+  expect(mocks.invoke).not.toHaveBeenCalledWith('install_pending_update');
+  expect(mocks.relaunch).not.toHaveBeenCalled();
+  unmount();
+});
