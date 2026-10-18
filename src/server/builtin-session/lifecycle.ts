@@ -1,4 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { BackgroundTaskDetailResult, BackgroundTaskDetail } from '../../shared/types/background-task';
+import { readRegisteredTaskOutput } from './background-task-output';
 import type { Query, SDKBackgroundTasksChangedMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { SystemInitInfo } from '../../shared/types/system';
 import { compareBackgroundTaskRuns } from '../../shared/backgroundTaskRun';
@@ -54,12 +56,17 @@ export type QueryBackgroundTaskInfo = {
   toolUseId?: string;
   description?: string;
   runId?: string;
+  outputPath?: string;
+  command?: string;
 };
 
 type QueryBackgroundTask = {
   info: QueryBackgroundTaskInfo;
   active: boolean;
   terminalRich?: boolean;
+  status?: BackgroundTaskDetail['status'];
+  finishedAt?: number;
+  summary?: string;
 };
 // Completed runs remain here for dual-channel enrichment and late-event rejection,
 // until the exact Query finalizer releases the registry.
@@ -295,6 +302,10 @@ export function recordQueryBackgroundTask(
   if (previous && order === 0) {
     if (info.toolUseId !== undefined) previous.info.toolUseId = info.toolUseId;
     if (info.description !== undefined) previous.info.description = info.description;
+    if (info.agentType !== undefined) previous.info.agentType = info.agentType;
+    if (info.startedAt !== undefined && previous.info.startedAt === undefined) previous.info.startedAt = info.startedAt;
+    if (info.outputPath !== undefined) previous.info.outputPath = info.outputPath;
+    if (info.command !== undefined) previous.info.command = info.command;
   } else {
     tasks.set(taskId, { info, active: true });
   }
@@ -319,6 +330,42 @@ export function readQueryBackgroundTasks(query: Query | null): Array<{ id: strin
     .map(([id, task]) => ({ id, ...task.info }));
 }
 
+/** Current Query and run remain authoritative across asynchronous filesystem reads. */
+export async function readQueryBackgroundTaskDetail(
+  authority: BuiltinQueryAuthority | null,
+  toolUseId: string,
+): Promise<BackgroundTaskDetailResult> {
+  if (!isCurrentQueryAuthority(authority)) return { success: false, errorCode: 'BACKGROUND_TASK_NOT_FOUND' };
+  const entry = [...(queryBackgroundTasks.get(authority.query)?.entries() ?? [])]
+    .find(([, task]) => task.info.toolUseId === toolUseId);
+  if (!entry) return { success: false, errorCode: 'BACKGROUND_TASK_NOT_FOUND' };
+  const [taskId, task] = entry;
+  const info = { ...task.info };
+  const output = await readRegisteredTaskOutput(info.outputPath, taskId, authority.expectedSdkSessionId);
+  if (!isCurrentQueryAuthority(authority)
+    || queryBackgroundTasks.get(authority.query)?.get(taskId) !== task
+    || task.info.runId !== info.runId || task.info.toolUseId !== toolUseId) {
+    return { success: false, errorCode: 'BACKGROUND_TASK_CHANGED' };
+  }
+  return { success: true, task: {
+    taskId, toolUseId, runId: info.runId, description: task.info.description,
+    taskType: task.info.agentType, status: task.active ? 'running' : task.status ?? 'unknown',
+    startedAt: task.info.startedAt, finishedAt: task.finishedAt, command: task.info.command,
+    summary: task.summary, ...output, updatedAt: Date.now(),
+  } };
+}
+
+/** Capture only an existing run's SDK result; a stale tool result cannot reopen it. */
+export function recordQueryBackgroundTaskOutput(
+  query: Query | null, taskId: string, toolUseId: string, outputPath: string,
+): boolean {
+  if (!query || querySession !== query) return false;
+  const task = queryBackgroundTasks.get(query)?.get(taskId);
+  if (!task || task.info.toolUseId !== toolUseId) return false;
+  task.info.outputPath = outputPath;
+  return true;
+}
+
 export function hasQueryBackgroundTasks(query: Query | null = querySession): boolean {
   return Boolean(query && [...(queryBackgroundTasks.get(query)?.values() ?? [])].some(task => task.active));
 }
@@ -338,7 +385,7 @@ export function hasQueryBackgroundWork(): boolean {
 export function completeQueryBackgroundTask(
   query: Query | null,
   taskId: string,
-  terminal: { runId?: string; rich?: boolean; toolUseId?: string } = {},
+  terminal: { runId?: string; rich?: boolean; toolUseId?: string; status?: BackgroundTaskDetail['status']; finishedAt?: number; summary?: string; outputPath?: string } = {},
 ): { removed: boolean; becameQuiescent: boolean; broadcast: boolean; enriching?: boolean; info?: QueryBackgroundTaskInfo } {
   const ignored = { removed: false, becameQuiescent: false, broadcast: false };
   if (!query) return ignored;
@@ -363,6 +410,10 @@ export function completeQueryBackgroundTask(
   task.active = false;
   task.terminalRich = Boolean(task.terminalRich || rich);
   if (terminal.toolUseId) task.info.toolUseId = terminal.toolUseId;
+  if (terminal.status) task.status ??= terminal.status;
+  if (terminal.finishedAt !== undefined) task.finishedAt ??= terminal.finishedAt;
+  if (terminal.summary) task.summary = terminal.summary;
+  if (terminal.outputPath) task.info.outputPath = terminal.outputPath;
   tasks.set(taskId, task);
   return { removed, becameQuiescent: removed && !hasQueryBackgroundTasks(query), broadcast, enriching, info: task.info };
 }

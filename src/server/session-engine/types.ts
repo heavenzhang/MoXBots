@@ -426,6 +426,7 @@ export interface SessionEngine {
   getLiveSessionState(): SessionEngineLiveState;
   getWorkProgressSnapshot?(): import("../../shared/sessionWorkProgress").SessionWorkProgress;
   getLatestAssistantResult(): Promise<SessionEngineLatestResult>;
+  getBackgroundTaskDetail?(toolUseId: string): Promise<import('../../shared/types/background-task').BackgroundTaskDetailResult>;
   getStreamReplaySnapshot(): SessionEngineStreamReplaySnapshot;
   getSessionConfigSnapshot(): SessionEngineConfigSnapshot;
   inspectRuntime?(runtime: RuntimeType): Promise<import('../../shared/types/runtime').RuntimeInspection | null>;

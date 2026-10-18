@@ -756,6 +756,48 @@ describe('builtin V2 execution independent of product storage', () => {
     expect((await active.file.read()).projection.messages).toEqual(active.writer.projection.messages);
   });
 
+  it('reads a local_bash raw receipt output before structured result rendering discards its path', async () => {
+    state.protocolFrames = [
+      { type: 'system', subtype: 'task_started', task_id: 'background-bash', run_id: 'run-1',
+        tool_use_id: 'background-call', task_type: 'local_bash', description: 'isolated background job' },
+      { type: 'user', tool_use_result: { stdout: '', stderr: '', backgroundTaskId: 'background-bash' },
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'background-call', content: '' }] } },
+      { type: 'system', subtype: 'task_updated', task_id: 'background-bash', run_id: 'run-1', patch: { status: 'completed' } },
+    ];
+    let inspected = false;
+    state.beforeFrame.mockImplementation(async frame => {
+      if (frame.type === 'user' && frame.tool_use_result) {
+        const output = join(state.home, frame.session_id, 'tasks', 'background-bash.output');
+        await mkdir(join(state.home, frame.session_id, 'tasks'), { recursive: true });
+        await writeFile(output, '真实隔离日志\n');
+        frame.message.content[0].content = `Command running in background with ID: background-bash. Output is being written to: ${output}. You will be notified when it completes. To check interim output, use Read on that file path.`;
+      }
+      if (frame.subtype === 'task_updated') {
+        const detail = await agent.getBuiltinBackgroundTaskDetail('background-call');
+        expect(detail).toMatchObject({ success: true, task: { taskId: 'background-bash', status: 'running',
+          taskType: 'local_bash', output: '真实隔离日志\n', outputState: 'ready' } });
+        expect(JSON.stringify(detail)).not.toContain('.output');
+        const progress = JSON.stringify(agent.getBuiltinWorkProgressSnapshot());
+        expect(progress).not.toContain('.output');
+        expect(progress).not.toContain('outputPath');
+        inspected = true;
+      }
+    });
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let finish!: (outcome: TurnTerminalOutcome) => void;
+    const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+    await agent.enqueueUserMessage('question', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+    await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+    expect(inspected).toBe(true);
+    expect(await agent.getBuiltinBackgroundTaskDetail('background-call')).toMatchObject({ success: true,
+      task: { status: 'completed', output: '真实隔离日志\n' } });
+  });
+
   it('settles each background execution and rejects the previous run after resume', async () => {
     const start = (run: string) => ({ type: 'system', subtype: 'task_started', task_id: 'agent', run_id: run, tool_use_id: `tool-${run}` });
     const updated = (run: string) => ({ type: 'system', subtype: 'task_updated', task_id: 'agent', run_id: run, patch: { status: 'completed' } });
