@@ -452,6 +452,15 @@ export async function withAgentConfigIntentLock<T>(
   }
 }
 
+/** Fresh Host bootstrap shares the original composite and per-file writers. */
+export async function withHostRegistryBootstrapLocks<T>(fn: () => Promise<T>): Promise<T> {
+  return withAgentConfigIntentLock(() => withFileLock({
+    lockPath: getProjectsPath() + '.lock', timeoutMs: CONFIG_LOCK_TIMEOUT_MS, staleMs: CONFIG_LOCK_STALE_MS,
+  }, () => withFileLock({
+    lockPath: getConfigPath() + '.lock', timeoutMs: CONFIG_LOCK_TIMEOUT_MS, staleMs: CONFIG_LOCK_STALE_MS,
+  }, fn)));
+}
+
 function writeFileSynced(path: string, content: string, strict = false): void {
   // A strict owner never follows a pre-existing temp symlink or truncates a hardlink.
   if (strict) { try { unlinkSync(path); } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; } }

@@ -1,3 +1,14 @@
+## MOXBOTS-HOST-INIT-001 — fresh-install repair, 2026-10-18
+
+The human requested a fix for first-install registry initialization, full acceptance before main integration, then handoff to the existing unified deployment chat; the daily Mac client is excluded. Source/integration and publication owner: `01a12b99-7b38-78b1-831f-9c60257d386a` (human-authorized takeover2026-10-18; original01a13320 explicitly handed back and remains read-only); existing bounded initializer worker: `codex/host-registry-bootstrap-20261018`; isolated Linux/browser acceptance and later `/host` publication owner: `01a12b99-7b38-78b1-831f-9c60257d386a`. One implementation and one integration lane; no competing production writer. Current delivery task: `.agent-sync/tasks/codex-host-init-delivery-20261018-50e7aad8.md`; original source record is historical.
+
+- [x] Original actual Ubuntu/Dex/browser failure identified: `config.json` and `projects.json` absent through exit, `catalog → NETWORK_CATALOG_INVALID → stopped`; real authentication/join/WebSocket succeeded. Existing strict catalog regression: primary 7/7 passed.
+- [x] Implement original Host startup-owned first creation and bounded interrupted-initialization recovery, retaining the original configuration lock domains and strict established-authority checks.
+- [ ] Independently review and verify first start/repeat/crash/concurrent/partial/corrupt/lost authority, plus real fresh browser/join/Ready, renewal and reboot with new exact-source candidate artifacts.
+- [ ] Pass required CI, integrate current main normally and verify remote containment before formal publication handoff.
+
+The staged old dcf immutable release is preserved and stable remains unavailable. It is not a successful fresh-install release. New repair candidates use a new source/release identity; pre-merge acceptance stays isolated. No backend/101 redeployment or daily Mac operation is included.
+
 ## BG-TASK-LOG-001 — 2026-10-18
 
 用户要求修复后台任务行点击无响应，并直接查看状态/执行日志。既有Exact Query/run registry经SessionEngine提供只读受限64KiB日志；任务详情不依赖原工具卡片，终态/断网/记录释放保留已读日志，键盘与窄屏适配。范围及分项验收 `.agent-sync/tasks/codex-bg-task-log-001-20261018-3fcc9f5f.md`、`dev-docs/bg-task-log/acceptance.md`。source/模拟联调/CI/main/原生发行分别追踪；用户明确授权修复验收后发送给既定唯一桌面发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4安排下一未冻结版本。本聊天不重启日常App、不打断活动任务、不改既有冻结包/稳定更新源，无配置或业务数据迁移。
