@@ -13,7 +13,7 @@ Complete the previously human-authorized Ubuntu24.04/x86_64 one-command Host pub
 ## Acceptance criteria
 
 - [x] Verify original human request and exact clean-M source/candidate metadata.
-- [ ] Reconcile current /host publication owner/queued operations/locks and record scoped target ownership on main.
+- [x] Reconcile current /host publication owner/queued operations/locks and record scoped target ownership on main.
 - [x] Independently verify candidate bootstrap/bundle/full manifest and exact frozen source; no same-release regeneration.
 - [ ] Fresh disposable Ubuntu24/systemd real Dex/Chromium one-command install, actual account/join/Ready, repeat/recovery and relevant failure gates; no production credentials/device substitution.
 - [ ] Publish immutable assets then gated stable script/index under original nonblocking maintenance locks, fresh backup/CAS/ownership-checked rollback; no unrelated paths/config changes.
@@ -39,3 +39,9 @@ Check actual /host handoff, independently verify the frozen candidate, review th
 ## Integration checkpoint
 
 Fresh-browser worker head f73f0b1b was independently read and integrated. Eight harness checks and20 strict-consumer tests pass; no real browser CI is claimed yet. Actual synthetic Dex/Chromium authorization, native cancellation/resume, bad-SHA no-install, repeat no-login/no-rotation, connector restart and60s natural AuthStore renewal remain manual workflow gates. A separate real nested-VM reboot gate is being implemented; service restart is not reboot. Private target-only publication and successful/failed ownership-checked rollback helpers received independent review;9 rollback failure/foreign-owner branches passed. This is local/CI preparation, not production publication.
+
+## Immutable staging and harness integration follow-up
+
+Scoped owner registration/handoff is on actual main viaPR127/f6ddc0b4. Immutable-only staging accepted2026-10-18T10:53Z with unchanged backend/Dex/master PIDs and website/updater inventory; backup and owner-checked rollback are private. Stable is still unavailable. Primary sole anonymous normal-TLS171501596B GET remains in progress; do not duplicate. External small-route timeout during the1Mbps bulk transfer is not a pass; retry after it completes. Details and exact product pins remain in `dev-docs/host-publication-20261018.md`.
+
+Reboot/browser task d340+ab271 adds actual KVM reboot, bounded verified public-byte cache and original-account-expiry+3s verification. Integrating latestmain f6dd into that task produced expected add/add conflicts because main had cherry-picked byte-identical originalf73; resolved the four known files by preserving reviewed newer task versions after confirming no delta between originalf73 and main for those paths. All other main content retained. Primary reran13browser+8reboot+20consumer tests successfully. Actual exact-head CI/manual real gates and stable enablement remain pending.

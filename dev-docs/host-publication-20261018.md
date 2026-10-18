@@ -16,7 +16,7 @@ only prepares the existing HTTPS origin's `/host` static software distribution.
 No backend/101 reinstall, desktop updater, `/download` change, daily Mac operation,
 new listener, model call, grant extension or new production test device is included.
 
-Public distribution is **not published**. Original source/historical cloud
+Immutable files are staged; the public stable index remains **unavailable**. Original source/historical cloud
 operator01a13320 explicitly withdrew all old unaccepted Host/static/Nginx requests,
 reports no active/queued writes or leases, and confirmed no known accepted /host
 job or shared-ingress transaction was omitted. The desktop publisher has not
@@ -99,3 +99,11 @@ from isolated browser/short-session or durable server catalog evidence.
 Private candidate and receipts reside under the project pointer's
 `output/host-onboard-001/public-candidate-dcf` and
 `output/host-publication-20261018`; no runtime files or secrets are committed here.
+
+## Immutable staging receipt and remaining gates
+
+PR127 merged as main `f6ddc0b41625c08d7aee6ae1ff1ae688608e5649` after nine applicable CI checks. The four original nonblocking locks admitted one short staging transaction on2026-10-18T10:53Z. Existing ingress exact-byte CAS, explicit public755/644 admission, nginx-user readability, `nginx -t` and graceful reload passed. Cloud/Dex/Nginx master PIDs and website/updater inventories stayed unchanged; no backend or101 change occurred. Private backup and owner-checked rollback readiness are retained. The exact immutable release is present and stable is the exact closed `schemaVersion:1,status:unavailable` index; staging is not installation acceptance or stable enablement.
+
+Primary's sole anonymous normal-TLS full bundle GET is in progress at about1Mbps. Bootstrap full size/SHA passed. One external small-route sweep hit a TLS handshake timeout during this bulk transfer and is not recorded as a pass; same-server verified-TLS health and exact unavailable index passed. Complete GET/strict archive/CRC verification and an external route retry remain pending.
+
+The separate reboot/browser CI harness adds real KVM guest boot_id verification with no TCG fallback. Timeout budgets accommodate the measured public link. One cold standard run may export only the verified public bootstrap, bundle and fixed provenance metadata; subsequent renewal/reboot runs must name the reviewed same-repository run/artifact IDs, rerun all M consumer checks, and explicitly report cached transport rather than a new public download. Private lab keys/account/VM data are never upload paths. Public artifact permissions are explicitly checked from the actual nonroot runner user. Renewal must retain the original identity and Ready/IPC beyond the original60s account deadline plus3s, without a new login/join. Offline13 browser,8 reboot safety and20 consumer tests pass; actual browser, old-expiry and true-reboot runs remain pending. Product M/candidate bytes remain unchanged.

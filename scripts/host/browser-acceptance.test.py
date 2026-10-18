@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -99,6 +100,89 @@ class HarnessGates(unittest.TestCase):
         self.assertEqual(line.strip(), "log_format bounded '$route $status $has_dpop $has_auth';")
         self.assertNotIn("$request_uri", config)
         self.assertNotIn("$args", config)
+
+    def test_public_cache_exports_and_imports_only_fixed_three_verified_files(self):
+        payloads = {"bootstrap.py": b"synthetic-bootstrap", "bundle.tar.gz": b"synthetic-bundle"}
+        pins = {name: (len(data), hashlib.sha256(data).hexdigest()) for name, data in payloads.items()}
+        with tempfile.TemporaryDirectory() as directory, patch.object(lab, "PINS", pins):
+            root = Path(directory)
+            release, restored = root / "release", root / "restored"
+            release.mkdir()
+            restored.mkdir()
+            for name, data in payloads.items():
+                (release / name).write_bytes(data)
+            exported = root / "public-cache"
+            lab.export_public_cache(exported, release)
+            self.assertEqual(exported.stat().st_mode & 0o777, 0o755)
+            self.assertTrue(all(path.stat().st_mode & 0o777 == 0o644 for path in exported.iterdir()))
+            self.assertEqual({path.name for path in exported.iterdir()}, set(pins) | {"cache-meta.json"})
+            self.assertEqual((exported / "cache-meta.json").read_bytes(), lab.public_cache_meta_bytes())
+            lab.import_public_cache(exported, restored)
+            self.assertEqual({path.name for path in restored.iterdir()}, set(pins))
+            self.assertTrue(all((restored / name).read_bytes() == data for name, data in payloads.items()))
+            with self.assertRaisesRegex(lab.Rejected, "public-cache-export-must-be-new"):
+                lab.export_public_cache(exported, release)
+
+    def test_public_cache_rejects_extra_file_symlink_tampering_and_foreign_metadata(self):
+        payloads = {"bootstrap.py": b"bootstrap", "bundle.tar.gz": b"bundle"}
+        pins = {name: (len(data), hashlib.sha256(data).hexdigest()) for name, data in payloads.items()}
+        for scenario in ("extra", "symlink", "tamper", "foreign-meta"):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory, patch.object(lab, "PINS", pins):
+                root = Path(directory)
+                cache, restored = root / "cache", root / "restored"
+                cache.mkdir()
+                restored.mkdir()
+                for name, data in payloads.items():
+                    (cache / name).write_bytes(data)
+                (cache / "cache-meta.json").write_bytes(lab.public_cache_meta_bytes())
+                if scenario == "extra":
+                    (cache / "unexpected-state.json").write_text("synthetic")
+                elif scenario == "symlink":
+                    (cache / "bootstrap.py").unlink()
+                    (root / "source").write_bytes(payloads["bootstrap.py"])
+                    (cache / "bootstrap.py").symlink_to(root / "source")
+                elif scenario == "tamper":
+                    (cache / "bundle.tar.gz").write_bytes(b"x" * pins["bundle.tar.gz"][0])
+                else:
+                    value = lab.public_cache_meta()
+                    value["publicOrigin"] = "https://foreign.invalid"
+                    (cache / "cache-meta.json").write_text(json.dumps(value))
+                with self.assertRaises((lab.Rejected, OSError)):
+                    lab.import_public_cache(cache, restored)
+
+    def test_failed_public_cache_export_never_publishes_partial_directory(self):
+        pins = {"bootstrap.py": (3, hashlib.sha256(b"abc").hexdigest()),
+                "bundle.tar.gz": (3, hashlib.sha256(b"def").hexdigest())}
+        with tempfile.TemporaryDirectory() as directory, patch.object(lab, "PINS", pins):
+            root = Path(directory)
+            release = root / "release"
+            release.mkdir()
+            (release / "bootstrap.py").write_bytes(b"abc")
+            (release / "bundle.tar.gz").write_bytes(b"bad")
+            with self.assertRaisesRegex(lab.Rejected, "public-cache-copy-size-SHA"):
+                lab.export_public_cache(root / "export", release)
+            self.assertFalse((root / "export").exists())
+            self.assertEqual({path.name for path in root.iterdir()}, {"release"})
+
+    def test_public_cache_metadata_contains_only_fixed_public_provenance(self):
+        value = lab.public_cache_meta()
+        self.assertEqual(set(value), {"schemaVersion", "publicOrigin", "sourceCommit", "releaseId", "transport", "files"})
+        self.assertEqual(value["transport"], "normal-tls-full-get")
+        self.assertEqual(value["sourceCommit"], lab.PRODUCT)
+        self.assertEqual(value["publicOrigin"], lab.PUBLIC)
+        self.assertEqual(set(value["files"]), {"bootstrap.py", "bundle.tar.gz"})
+
+    def test_public_artifact_read_admission_uses_actual_sudo_UID_without_hardcoded_user(self):
+        with patch.dict(lab.os.environ, {"SUDO_UID": "1234"}), \
+             patch("pwd.getpwuid", return_value=SimpleNamespace(pw_name="synthetic-uploader")), \
+             patch.object(lab, "run") as run:
+            self.assertTrue(lab.public_readability([Path("/non-secret/summary.json")]))
+        self.assertEqual(run.call_args.args[0], ["runuser", "-u", "synthetic-uploader", "--", "test", "-r", "/non-secret/summary.json"])
+        for value in ("0", "", "1;unexpected"):
+            with self.subTest(value=value), patch.dict(lab.os.environ, {"SUDO_UID": value}), patch.object(lab, "run") as run:
+                with self.assertRaisesRegex(lab.Rejected, "nonroot-uploader-UID-required"):
+                    lab.public_readability([Path("/non-secret/summary.json")])
+                run.assert_not_called()
 
 
 if __name__ == "__main__":
