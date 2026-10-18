@@ -8,18 +8,16 @@
 // 5. User clicks → restartAndUpdate() → app restarts with new version
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { listenWithCleanup } from '@/utils/tauriListen';
 import { relaunch } from '@tauri-apps/plugin-process';
 
 import { track } from '@/analytics';
-import { i18n } from '@/i18n';
 import { isTauriEnvironment } from '@/utils/browserMock';
 import { isDebugMode } from '@/utils/debug';
 import { isLinuxDesktop } from '@/utils/desktopPlatform';
-import { compareVersions } from '../../shared/utils';
 import { getPlatform } from '@/identity/deviceIdentity';
+import { IDLE_UPDATER_DOWNLOAD, parseUpdaterDownloadState, type UpdaterDownloadState } from '../../shared/updaterDownload';
 
 export interface UpdateReadyInfo {
     version: string;
@@ -52,6 +50,7 @@ interface UseUpdaterResult {
      *  the button hides because the version it claims to be "ready" may be
      *  about to be replaced (or, on first-time download, isn't on disk yet). */
     preparing: boolean;
+    downloadState: UpdaterDownloadState;
     /** Manually trigger an update check. Returns result for caller to show toast feedback. */
     checkForUpdate: () => Promise<CheckUpdateResult>;
     /** Version of a pending update discovered on startup (Windows/macOS, from disk) */
@@ -66,15 +65,12 @@ const usesDeferredInstall = (): boolean => /^(darwin|windows)-/.test(getPlatform
 // Periodic check interval: 30 minutes
 const CHECK_INTERVAL_MS = 30 * 60 * 1000;
 
-function updaterText(key: string): string {
-    return String(i18n.t(`app:updater.${key}`));
-}
-
 export function useUpdater(): UseUpdaterResult {
     const [updateReady, setUpdateReady] = useState(false);
     const [updateVersion, setUpdateVersion] = useState<string | null>(null);
     const [checking, setChecking] = useState(false);
-    const [downloading, setDownloading] = useState(false);
+    const [downloadState, setDownloadState] = useState<UpdaterDownloadState>(IDLE_UPDATER_DOWNLOAD);
+    const downloading = downloadState.phase === 'downloading' || downloadState.phase === 'retrying';
     const [installing, setInstalling] = useState(false);
     const [preparing, setPreparing] = useState(false);
     // Windows/macOS: version from disk-persisted pending update (shown as startup dialog)
@@ -84,18 +80,30 @@ export function useUpdater(): UseUpdaterResult {
     // Ref guards for checkForUpdate to prevent race conditions on rapid clicks.
     // State values in a useCallback closure can be stale; refs are always current.
     const checkingRef = useRef(false);
-    const downloadingRef = useRef(false);
     const installingRef = useRef(false);
-    // Cache app version — it never changes during a session, no need to IPC every time.
-    const appVersionRef = useRef<string | null>(null);
+    const downloadStateRef = useRef(downloadState);
+    const retryInFlightRef = useRef(false);
+
+    const applyDownloadState = useCallback((value: unknown) => {
+        const next = parseUpdaterDownloadState(value);
+        if (!next || next.revision < downloadStateRef.current.revision) return;
+        downloadStateRef.current = next;
+        setDownloadState(next);
+        setChecking(next.phase === 'checking');
+        setPreparing(next.phase === 'checking' || next.phase === 'downloading' || next.phase === 'retrying');
+        if (next.version) setUpdateVersion(next.version);
+        if (next.phase === 'ready' && next.version) {
+            setUpdateVersion(next.version);
+            setUpdateReady(true);
+        }
+    }, []);
 
     // Keep ref in sync with state
     useEffect(() => {
         updateReadyRef.current = updateReady;
     }, [updateReady]);
 
-    // Manual update check: test connectivity → compare version → download if needed
-    // Returns a result string so the caller can show appropriate toast feedback.
+    // Trigger the updater, then read its authoritative snapshot for the UI.
     const checkForUpdate = useCallback(async (): Promise<CheckUpdateResult> => {
         if (isLinuxDesktop()) return 'error'; // deb upgrades are installed manually.
         if (!isTauriEnvironment()) {
@@ -103,75 +111,48 @@ export function useUpdater(): UseUpdaterResult {
             return 'error';
         }
         // Use refs for guards — immune to stale closure on rapid clicks
-        if (updateReadyRef.current) return 'downloading';  // Already downloaded, pending restart
-        if (checkingRef.current || downloadingRef.current) return 'downloading';  // In progress
+        if (updateReadyRef.current) return 'downloading';
+        if (checkingRef.current || retryInFlightRef.current) return 'downloading';
 
         checkingRef.current = true;
         setChecking(true);
-        // When background download is already in progress, we keep the downloading
-        // spinner visible and let the updater:ready-to-restart event clear it.
-        let keepDownloadingState = false;
         try {
-            // Step 1: Get remote version
-            const result = await invoke('test_update_connectivity') as string;
-            // The updater service uses HTTP 204 when no release is published.
-            // Its empty body is a successful check, not a malformed manifest.
-            const statusMatch = result.match(/^Status:\s*(\d{3})(?:\s|$)/m);
-            if (statusMatch?.[1] === '204') return 'up-to-date';
-            if (statusMatch && statusMatch[1] !== '200') {
-                throw new Error(`Update check HTTP ${statusMatch[1]}`);
-            }
-            const versionMatch = result.match(/version:\s*([^\n]+)/);
-            if (!versionMatch) {
-                throw new Error(updaterText('remoteVersionParseFailed'));
-            }
-            const remoteVer = versionMatch[1].trim();
-
-            // Step 2: Get local version (cached) and compare
-            if (!appVersionRef.current) {
-                appVersionRef.current = await getVersion();
-            }
-            const comparison = compareVersions(remoteVer, appVersionRef.current);
-
-            if (comparison <= 0) {
-                // Already up to date
-                return 'up-to-date';
-            }
-
-            // Step 3: New version available → download
-            checkingRef.current = false;
-            setChecking(false);
-            downloadingRef.current = true;
-            setDownloading(true);
-            setUpdateVersion(remoteVer);
-
-            const downloaded = await invoke('check_and_download_update') as boolean;
-            if (downloaded) {
-                // updater:ready-to-restart event will also fire and set updateReady
-                setUpdateReady(true);
-                return 'downloading';
-            }
-            // check_and_download_update returned false, but we already confirmed
-            // comparison > 0 (newer version exists). This typically means the Rust
-            // background download is already in progress (UPDATE_IN_PROGRESS lock).
-            // Keep downloading spinner visible — updater:ready-to-restart event will
-            // call setDownloading(false) and setUpdateReady(true) when background finishes.
-            keepDownloadingState = true;
+            retryInFlightRef.current = true;
+            await invoke('check_and_download_update');
+            const snapshot = await invoke('get_update_download_state');
+            const state = parseUpdaterDownloadState(snapshot);
+            if (!state) return 'error';
+            applyDownloadState(state);
+            const phase = state.phase;
+            if (phase === 'failed') return 'error';
+            if (phase === 'idle') return 'up-to-date';
             return 'downloading';
         } catch (err) {
             console.error('[useUpdater] Manual check failed:', err);
+            try {
+                const snapshot = await invoke('get_update_download_state');
+                if (parseUpdaterDownloadState(snapshot)) applyDownloadState(snapshot);
+                else if (downloadStateRef.current.phase === 'checking') {
+                    const idle = { ...downloadStateRef.current, phase: 'idle' as const };
+                    downloadStateRef.current = idle;
+                    setDownloadState(idle);
+                    setPreparing(false);
+                }
+            } catch {
+                if (downloadStateRef.current.phase === 'checking') {
+                    const idle = { ...downloadStateRef.current, phase: 'idle' as const };
+                    downloadStateRef.current = idle;
+                    setDownloadState(idle);
+                    setPreparing(false);
+                }
+            }
             return 'error';
         } finally {
-            // Always reset checking guards
             checkingRef.current = false;
+            retryInFlightRef.current = false;
             setChecking(false);
-            // Only reset downloading if not handed off to background download
-            if (!keepDownloadingState) {
-                downloadingRef.current = false;
-                setDownloading(false);
-            }
         }
-    }, []); // Stable reference — all mutable state accessed via refs
+    }, [applyDownloadState]);
 
     // Dismiss the startup pending update dialog (keeps "Restart to Update" button visible)
     const dismissPendingUpdate = useCallback(() => {
@@ -299,39 +280,46 @@ export function useUpdater(): UseUpdaterResult {
         }
         const ac = new AbortController();
 
-        void listenWithCleanup<UpdateReadyInfo>('updater:ready-to-restart', (event) => {
+        const subscriptions = [listenWithCleanup<UpdateReadyInfo>('updater:ready-to-restart', (event) => {
             if (isDebugMode()) {
                 console.log('[useUpdater] Event received: updater:ready-to-restart', event.payload);
             }
             setUpdateVersion(event.payload.version);
             setUpdateReady(true);
-            downloadingRef.current = false;
-            setDownloading(false);
-            setPreparing(false);
-        }, ac.signal);
+        }, ac.signal),
 
         // `download-started` hides the install button: the bytes that
         // would back a click are mid-replacement, so the click target
         // is briefly inconsistent. Mirror via `download-failed` to
         // un-hide if the download couldn't commit.
-        void listenWithCleanup<UpdateReadyInfo>('updater:download-started', (event) => {
+        listenWithCleanup<UpdateReadyInfo>('updater:download-started', (event) => {
             if (isDebugMode()) {
                 console.log('[useUpdater] Event received: updater:download-started', event.payload);
             }
-            setPreparing(true);
-        }, ac.signal);
+            if (downloadStateRef.current.revision < 0) setPreparing(true);
+        }, ac.signal),
 
-        void listenWithCleanup<UpdateReadyInfo>('updater:download-failed', (event) => {
+        listenWithCleanup<UpdateReadyInfo>('updater:download-failed', (event) => {
             if (isDebugMode()) {
                 console.log('[useUpdater] Event received: updater:download-failed', event.payload);
             }
-            downloadingRef.current = false;
-            setDownloading(false);
-            setPreparing(false);
-        }, ac.signal);
+            if (downloadStateRef.current.revision < 0) setPreparing(false);
+        }, ac.signal),
+
+        listenWithCleanup<UpdaterDownloadState>('updater:download-state', (event) => {
+            applyDownloadState(event.payload);
+        }, ac.signal)];
+        // Subscribe first, then hydrate. Revision fencing prevents an older
+        // snapshot response from overwriting an event delivered in between.
+        void Promise.all(subscriptions).then(() => {
+            if (ac.signal.aborted) return null;
+            return invoke('get_update_download_state');
+        }).then(value => { if (!ac.signal.aborted) applyDownloadState(value); }).catch((error) => {
+            console.warn('[useUpdater] Unable to hydrate download state:', error);
+        });
 
         return () => ac.abort();
-    }, []);
+    }, [applyDownloadState]);
 
     // Windows/macOS: check for a pending update on disk at startup
     // If found, show a dialog prompting the user to install it
@@ -400,6 +388,7 @@ export function useUpdater(): UseUpdaterResult {
         downloading,
         installing,
         preparing,
+        downloadState,
         checkForUpdate,
         pendingUpdateOnStartup,
         dismissPendingUpdate,

@@ -4,7 +4,7 @@
 
 ## 产品语义
 
-更新检查与下载默认静默进行。用户只在新版本已可安装时看到「重启更新」入口：
+更新检查与下载在后台进行，不停止任务。关于页持续显示检查、下载进度、自动重试及失败原因；只有新版本已可安装时才提供「重启更新」入口：
 
 ```text
 应用启动
@@ -98,7 +98,7 @@ verified-clean handoff 只证明进程与锁已释放，安装资源的完整替
 | `updater:download-started` | 新版本的 pending state 正在构建 | 设置 `preparing`，隐藏安装入口 |
 | `updater:download-failed` | 本次下载或持久化未完成 | 清除 `preparing`；不能据此推断旧 package 仍完整 |
 | `updater:ready-to-restart` | 对应版本已经形成可安装状态 | 设置 `updateReady` 并显示版本 |
-| 下载进度事件 | 后台状态或诊断 | 不改变“静默下载”的产品语义 |
+| `updater:download-state` | Rust 全量下载状态与递增 revision | 关于页显示进度、速度、重试和持续失败原因；不触发安装 |
 
 `CustomTitleBar`、Settings 和启动 pending 对话框必须共用 `useUpdater` 的同一状态，不各自推导更新是否可安装。
 
@@ -129,3 +129,13 @@ Mox profile 使用独立更新地址、公钥与0.5.3发行版本，MyAgents默�
 确认重启的用户行为以本文「用户确认重启与活动保护」为准：056提供明确的停止并重启路径，默认未确认调用保持非中断语义。此改动不回写已发布的不可变055，也不使旧客户端自动获得新准入逻辑。原生签名包中的真实有任务更新、录音保存、草稿恢复和安装失败路径仍须分别验收。
 
 安装和下载共享pending guard，install前用profile pinned public key复验磁盘字节，不能依赖早先download验签。签名失败清理失效pending，用户可重新检查下载。上游可下载资源继续用原资源签名根，不替换为Mox更新密钥。
+
+## 可续传下载与状态恢复
+
+`updater_download.rs` 仅负责现有 updater 的传输与完整性验证，`updater.rs` 继续拥有并发准入、状态快照、pending 提交和安装。`updater.partial.bin` / `updater.partial.json` 是未完成的传输缓存，不能作为 pending 安装；其身份绑定 target、version、URL、签名与 pinned key。清单身份变化必须重新下载，不混用旧字节。Range 响应严格匹配 offset/total；200 表示服务器未采用 Range，必须截断后重下；完整包最终仍需签名校验。
+
+连接和空闲读取使用有界等待，整个大型包不受短总时限限制。暂时性失败最多三次退避重试并保留已落盘部分，最终失败可手动重试；所有阶段只准备更新，不停止、安装或重启。签名失败不形成 ready。传输/磁盘/范围错误保留安全可读原因，不暴露含凭据的 URL。
+
+`get_update_download_state` 返回与 `updater:download-state` 相同的 Rust 全量快照。Renderer 安装监听后再查询快照，并以 revision 拒绝迟到旧状态；多个窗口/设置入口不能另建进度 owner。阶段包括 idle/checking/downloading/retrying/failed/ready，投影字节、已知总量/百分比、速率、尝试次数/重试时间与错误。未知总量不推测百分比。失败持续显示，重试按钮沿原检查/下载入口；跨启动恢复 partial 只表示可恢复下载，不表示可安装。
+
+回归和正式发行边界见 [`../../dev-docs/updater-resume/acceptance.md`](../../dev-docs/updater-resume/acceptance.md)。此实现不能回写已经安装的旧客户端；正式修复还需对应新签名包及不打断活动任务的原生验收。

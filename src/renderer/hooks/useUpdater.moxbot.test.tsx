@@ -43,18 +43,17 @@ beforeEach(() => {
 });
 
 it.each([
-  ['Status: 204 No Content\nBody length: 0 bytes', 'up-to-date'],
-  ['Status: 503 Service Unavailable\nversion: 0.9.0', 'error'],
-  ['Status: 200 OK\ninvalid JSON', 'error'],
-])('handles manual update response %s without starting a download', async (response, expected) => {
-  mocks.invoke.mockImplementation(async (command: string) => command === 'test_update_connectivity' ? response : null);
+  [{ revision: 1, phase: 'downloading', version: '0.5.3', downloaded: 1, total: null, percent: null, bytesPerSecond: null, attempt: 1, maxAttempts: 3, retryAtMs: null, errorCode: null, error: null, retryable: false }, 'downloading'],
+  [{ revision: 1, phase: 'failed', version: '0.5.3', downloaded: 100, total: 200, percent: 50, bytesPerSecond: null, attempt: 3, maxAttempts: 3, retryAtMs: null, errorCode: 'network', error: 'offline', retryable: true }, 'error'],
+])('uses the updater snapshot after a manual check', async (snapshot, expected) => {
+  mocks.invoke.mockImplementation(async (command: string) => command === 'get_update_download_state' ? snapshot : false);
   const { result, unmount } = renderHook(() => useUpdater());
   await act(async () => {
     expect(await result.current.checkForUpdate()).toBe(expected);
   });
   expect(result.current.checking).toBe(false);
-  expect(result.current.downloading).toBe(false);
-  expect(mocks.invoke).not.toHaveBeenCalledWith('check_and_download_update');
+  expect(result.current.downloading).toBe(snapshot.phase === 'downloading');
+  expect(mocks.invoke).toHaveBeenCalledWith('check_and_download_update');
   expect(mocks.invoke).not.toHaveBeenCalledWith('install_pending_update');
   unmount();
 });
@@ -76,6 +75,20 @@ it("MoxBots downloads in the background but never installs when an update become
   expect(mocks.invoke).toHaveBeenCalledWith("check_and_download_update");
   expect(mocks.invoke).not.toHaveBeenCalledWith("install_pending_update");
   expect(mocks.relaunch).not.toHaveBeenCalled();
+  unmount();
+});
+
+it('hydrates a background failure after subscribing and ignores snapshots older than events', async () => {
+  const failed = { revision: 4, phase: 'failed', version: '0.5.3', downloaded: 1024, total: 4096, percent: 25, bytesPerSecond: null, attempt: 3, maxAttempts: 3, retryAtMs: null, errorCode: 'network', error: 'offline', retryable: true };
+  let resolveSnapshot!: (value: unknown) => void;
+  mocks.invoke.mockImplementation((command: string) => command === 'get_update_download_state' ? new Promise(resolve => { resolveSnapshot = resolve; }) : Promise.resolve(false));
+  const { result, unmount } = renderHook(() => useUpdater());
+  await act(async () => {
+    mocks.handlers.get('updater:download-state')!({ payload: { ...failed, revision: 5, phase: 'downloading' } });
+  });
+  await act(async () => { resolveSnapshot(failed); await Promise.resolve(); });
+  expect(result.current.downloadState.revision).toBe(5);
+  expect(result.current.downloadState.phase).toBe('downloading');
   unmount();
 });
 
@@ -136,30 +149,31 @@ it("rejects a corrupted pending package and requires a new verified download", a
 
 
 it('clears a failed background download spinner so a manual retry reaches Rust', async () => {
-  mocks.invoke.mockImplementation(async (command: string) => command === 'test_update_connectivity' ? 'version: 0.5.3' : false);
+  mocks.invoke.mockImplementation(async (command: string) => command === 'get_update_download_state' ? ({ revision: 3, phase: 'failed', version: '0.5.3', downloaded: 42, total: 100, percent: 42, bytesPerSecond: null, attempt: 3, maxAttempts: 3, retryAtMs: null, errorCode: 'network', error: 'offline', retryable: true }) : false);
   const { result, unmount } = renderHook(() => useUpdater());
-  await act(async () => { expect(await result.current.checkForUpdate()).toBe('downloading'); });
-  expect(result.current.downloading).toBe(true);
+  await act(async () => { expect(await result.current.checkForUpdate()).toBe('error'); });
+  expect(result.current.downloading).toBe(false);
+  expect(result.current.downloadState.phase).toBe('failed');
   await act(async () => { mocks.handlers.get('updater:download-failed')!({ payload: { version: '0.5.3' } }); });
   expect(result.current.downloading).toBe(false);
   await act(async () => { await result.current.checkForUpdate(); });
-  expect(mocks.invoke.mock.calls.filter(([command]) => command === 'test_update_connectivity')).toHaveLength(2);
+  expect(mocks.invoke.mock.calls.filter(([command]) => command === 'check_and_download_update')).toHaveLength(2);
   unmount();
 });
 
 
 it('allows re-downloading after a background handoff became ready but the saved signature was invalid', async () => {
-  mocks.invoke.mockImplementation(async (command: string) => command === 'test_update_connectivity' ? 'version: 0.5.3' : false);
+  mocks.invoke.mockImplementation(async (command: string) => command === 'get_update_download_state' ? ({ revision: 3, phase: 'failed', version: '0.5.3', downloaded: 0, total: null, percent: null, bytesPerSecond: null, attempt: 1, maxAttempts: 3, retryAtMs: null, errorCode: null, error: null, retryable: true }) : false);
   const { result, unmount } = renderHook(() => useUpdater());
   await act(async () => { await result.current.checkForUpdate(); });
   await act(async () => { mocks.handlers.get('updater:ready-to-restart')!({ payload: { version: '0.5.3' } }); });
   mocks.invoke.mockImplementation(async (command: string) => {
     if (command === 'install_pending_update') throw 'UPDATE_SIGNATURE_INVALID';
-    return command === 'test_update_connectivity' ? 'version: 0.5.3' : false;
+    return command === 'get_update_download_state' ? ({ revision: 4, phase: 'downloading', version: '0.5.3', downloaded: 0, total: null, percent: null, bytesPerSecond: null, attempt: 1, maxAttempts: 3, retryAtMs: null, errorCode: null, error: null, retryable: false }) : false;
   });
   await act(async () => { expect(await result.current.restartAndUpdate()).toBe('signature-error'); });
   await act(async () => { await result.current.checkForUpdate(); });
-  expect(mocks.invoke.mock.calls.filter(([command]) => command === 'test_update_connectivity')).toHaveLength(2);
+  expect(mocks.invoke.mock.calls.filter(([command]) => command === 'check_and_download_update')).toHaveLength(2);
   unmount();
 });
 

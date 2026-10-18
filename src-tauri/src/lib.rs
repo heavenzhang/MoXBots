@@ -93,6 +93,7 @@ pub mod terminal;
 pub mod thought;
 mod tray;
 mod updater;
+mod updater_download;
 pub mod utils;
 pub mod wake_lock;
 mod webview_policy;
@@ -511,6 +512,7 @@ pub fn run() {
             browser_resource::cmd_browser_resource_maintain,
             // Updater commands
             updater::check_and_download_update,
+            updater::get_update_download_state,
             updater::restart_app,
             updater::test_update_connectivity,
             updater::check_pending_update,
