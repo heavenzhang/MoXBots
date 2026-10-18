@@ -124,6 +124,7 @@ function AppBody() {
   const [loginStarted, setLoginStarted] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const passwordInputRef = useRef<TextInput | null>(null);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const snapshotRef = useRef<Snapshot | null>(null);
@@ -1169,9 +1170,9 @@ function AppBody() {
         {!!notice && <NoticeView notice={notice}/>}
         {!loginStarted && !cancelUnconfirmed && account?.state !== 'authenticating' && <View style={styles.loginFields}>
           <Text style={styles.fieldLabel}>账号</Text>
-          <TextInput accessibilityLabel="账号" placeholder="输入账号邮箱" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" editable={loginAction === null} style={styles.loginInput}/>
+          <TextInput accessibilityLabel="账号" placeholder="输入账号邮箱" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
           <Text style={styles.fieldLabel}>密码</Text>
-          <TextInput accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" editable={loginAction === null} onSubmitEditing={() => { if (username.trim() && password && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
+          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { if (username.trim() && password && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
         </View>}
 
         {account?.state === 'authenticating' || loginStarted || cancelUnconfirmed ? <View style={styles.pendingLogin}>
@@ -1181,7 +1182,7 @@ function AppBody() {
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login_cancel', cancelLogin)} style={styles.secondaryButton}>
             <Text style={styles.secondaryText}>{loginAction === 'cancel' ? '正在取消…' : cancelUnconfirmed ? '重试取消登录' : '取消登录'}</Text>
           </Pressable>
-        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null || !username.trim() || !password }} disabled={loginAction !== null || !username.trim() || !password} onPress={() => void run('login', startLogin)} style={styles.primaryButton}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在登录…' : '登录'}</Text></Pressable>}
+        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null || !username.trim() || !password }} disabled={loginAction !== null || !username.trim() || !password} onPress={() => void run('login', startLogin)} style={[styles.primaryButton, (!username.trim() || !password) && { opacity: 0.5 }]}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在登录…' : '登录'}</Text></Pressable>}
         {loading && <ActivityIndicator style={{ marginTop: 16 }} color={C.green}/>}
         {loginAction === null && !cancelUnconfirmed && <Text style={styles.caption}>使用与桌面版相同的账号，无需单独登录管理后台。</Text>}
       </View></ScrollView>
