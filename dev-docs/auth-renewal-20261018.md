@@ -37,7 +37,10 @@ The existing descriptor and login poll response are strict contracts; renewal mu
 - [x] Login/session-inspection module: 7 tests passed, including real-wire 401, retryable 503, closed connection, 301-second start, strict schema and immutable expiry. The primary reran this module independently.
 - [x] Complete headless connector suite: 183 passed, 0 failed.
 - [x] Service login/start compatibility and PKCE/device/cancel tests: 2 passed.
-- [ ] Full service suite and clippy redlines.
+- [x] Full service suite: 159 passed, 0 failed, 5 manual browser fixtures ignored by their original test configuration.
+- [x] Headless clippy redlines passed. A pre-existing argument-count warning was then removed using four closed request profiles with unchanged limits; all 183 headless tests passed again and independent source review confirmed equivalent behavior.
+- [x] Final headless and service clippy `--all-targets -- -D warnings` passed.
+- [ ] Exact-head CI and remote main integration.
 - [x] Independent source review of the login/API and service compatibility change passed after repairing the 401 contract; this is not acceptance of the separate renewal implementation.
 - [ ] Single renewal implementation, independent security review and combined tests.
 - [ ] Remote main integration with exact-head required CI and ancestry/tree verification.

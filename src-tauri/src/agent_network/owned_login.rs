@@ -155,31 +155,44 @@ pub(crate) async fn raw_request(
     body: Option<Value>,
     token: Option<&str>,
 ) -> Result<(StatusCode, Value), NetworkError> {
-    raw_request_with_limits(
+    raw_request_with_profile(
         http,
         origin,
         method,
         path,
         body,
         token,
-        16 * 1024,
-        MAX_BODY,
-        false,
+        OwnedRequestProfile::Standard,
     )
     .await
 }
-async fn raw_request_with_limits(
+#[derive(Clone, Copy)]
+enum OwnedRequestProfile {
+    Standard,
+    OptionalDesktopStart,
+    Community,
+    Feedback,
+}
+impl OwnedRequestProfile {
+    fn limits(self) -> (usize, usize) {
+        match self {
+            Self::Standard | Self::OptionalDesktopStart => (16 * 1024, MAX_BODY),
+            Self::Community => (64 * 1024, 16 * 1024 * 1024),
+            Self::Feedback => (64 * 1024, 1024 * 1024),
+        }
+    }
+}
+async fn raw_request_with_profile(
     http: &reqwest::Client,
     origin: &str,
     method: Method,
     path: &str,
     body: Option<Value>,
     token: Option<&str>,
-    request_limit: usize,
-    response_limit: usize,
-    allow_start_rejection: bool,
+    profile: OwnedRequestProfile,
 ) -> Result<(StatusCode, Value), NetworkError> {
-    let optional_start = allow_start_rejection
+    let (request_limit, response_limit) = profile.limits();
+    let optional_start = matches!(profile, OwnedRequestProfile::OptionalDesktopStart)
         && method == Method::POST
         && path == "/auth/login/start"
         && token.is_none();
@@ -363,16 +376,18 @@ impl OwnedClient {
             body["browserReturn"] = json!(true);
             body["browserReturnPath"] = json!("/desktop");
         }
-        let (mut status, mut value) = raw_request_with_limits(
+        let (mut status, mut value) = raw_request_with_profile(
             &self.http,
             &self.origin,
             Method::POST,
             "/auth/login/start",
             Some(body),
             None,
-            16 * 1024,
-            MAX_BODY,
-            desktop,
+            if desktop {
+                OwnedRequestProfile::OptionalDesktopStart
+            } else {
+                OwnedRequestProfile::Standard
+            },
         )
         .await?;
         // Older services reject the optional return path before creating a
@@ -545,16 +560,14 @@ impl OwnedClient {
         let (method, path, body) = request.route()?;
         // Community lists/details contain full user text. Keep identity limits
         // unchanged while allowing the server's bounded 100 topics/200 replies.
-        let (status, value) = raw_request_with_limits(
+        let (status, value) = raw_request_with_profile(
             &self.http,
             &self.origin,
             method,
             &path,
             body,
             Some(token),
-            64 * 1024,
-            16 * 1024 * 1024,
-            false,
+            OwnedRequestProfile::Community,
         )
         .await?;
         if status != StatusCode::OK {
@@ -568,16 +581,14 @@ impl OwnedClient {
         token: &str,
     ) -> Result<Value, NetworkError> {
         let (method, path, body) = request.route()?;
-        let (status, value) = raw_request_with_limits(
+        let (status, value) = raw_request_with_profile(
             &self.http,
             &self.origin,
             method,
             &path,
             body,
             Some(token),
-            64 * 1024,
-            1024 * 1024,
-            false,
+            OwnedRequestProfile::Feedback,
         )
         .await?;
         if status != StatusCode::OK {

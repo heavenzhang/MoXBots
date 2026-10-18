@@ -28,7 +28,7 @@
 
 ## Verification
 
-工作区 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-auth-renewal；原101 device cc8fc885-529b-43e9-8a58-ee7c5f2a4c58 / principal ea1e144e-a432-48c0-bf5a-cf29d3da3b56。现PID1921064，旧MyAgents两个PID未变。只读证据存项目pointer output/auth-renewal-20261018；秘密仅留既有私有凭据owner，不打印或入Git。登录/API定向7和headless全183通过，主Agent独立重跑定向7通过；server start兼容/PKCE2通过，全service/clippy仍进行；独审401错误合同已修并通过复审。现有network-install30、network-control-daemon6、unified-install11共47测试通过；useOwnedLoginFlow16+OwnedAccountEntry22共38通过；无新制品/部署/真实账号登录通过声明。详细决策和证据见dev-docs/auth-renewal-20261018.md。
+工作区 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-auth-renewal；原101 device cc8fc885-529b-43e9-8a58-ee7c5f2a4c58 / principal ea1e144e-a432-48c0-bf5a-cf29d3da3b56。现PID1921064，旧MyAgents两个PID未变。只读证据存项目pointer output/auth-renewal-20261018；秘密仅留既有私有凭据owner，不打印或入Git。登录/API定向7和headless全183通过，主Agent独立重跑定向7通过；server start兼容/PKCE2、全service159通过/5手动fixture按原配置ignored；headless clippy redlines通过，封闭request profile清除原9参warning后183再通过，headless+service strict clippy -D warnings均通过，exact-head CI仍进行；独审401错误合同已修并通过复审。现有network-install30、network-control-daemon6、unified-install11共47测试通过；useOwnedLoginFlow16+OwnedAccountEntry22共38通过；无新制品/部署/真实账号登录通过声明。详细决策和证据见dev-docs/auth-renewal-20261018.md。
 
 ## Deployment coordination
 
