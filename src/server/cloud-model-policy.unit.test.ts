@@ -1,13 +1,17 @@
 import {randomUUID,createHash} from 'node:crypto';
-import {describe,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {assertCloudModelAdmission,obtainCloudModelLease,validateCloudModelPolicy,parseCloudModelLease,cloudSessionProviderId,type CloudModelPolicy,type CloudModelLease} from '../host/cloud-model';
 import {parseHostBotBootstrap} from '../host/bot-session-bootstrap';
 import {canonicalBytes} from '../../services/agentnet/execution-core/js/index.mjs';
+// Keep the one-second lease boundary stable across awaited transport cases.
+const testNow=Date.now();
 const bot=randomUUID(),ref=randomUUID();
 const policy:CloudModelPolicy={service_origin:'https://cloud.example.test',allowed_bot_ids:[bot],allowed_model_refs:[ref],expires_at:Math.floor(Date.now()/1000)+3600,max_daily_tokens:1000,max_output_tokens:100,access_credential:'systemd-credential:bot-model-access'};
 const lease:CloudModelLease={session_id:randomUUID(),model_ref:ref,provider_id:randomUUID(),model:'mock-model-v1',provider_revision:1,model_revision:1,gateway_base_url:'',api_protocol:'anthropic',max_output_tokens:100,max_total_tokens:1000,expires_at:Math.floor(Date.now()/1000)+600};
 lease.gateway_base_url=`${policy.service_origin}/api/bot-model/sessions/${lease.session_id}`;
 describe('finite platform model admission',()=>{
+  beforeEach(()=>{vi.spyOn(Date,'now').mockReturnValue(testNow);});
+  afterEach(()=>{vi.restoreAllMocks();});
   it('is default off and preserves exact Host/Bot/model scope, expiry and token caps',()=>{
     const parent={...policy};validateCloudModelPolicy(policy,parent);
     for(const denied of [undefined,{...policy,expires_at:1},{...policy,allowed_bot_ids:[randomUUID()]},{...policy,allowed_model_refs:[randomUUID()]}])expect(()=>assertCloudModelAdmission(denied,bot,ref,100)).toThrow('BOT_MODEL_NOT_AUTHORIZED');
@@ -26,6 +30,8 @@ describe('finite platform model admission',()=>{
     for(const modified of [{...lease,gateway_base_url:'https://evil.test'},{...lease,model_ref:randomUUID()},{...lease,expires_at:Math.floor(Date.now()/1000)+1801},{...lease,max_total_tokens:1001},{...lease,upstream_api_key:'must-never-cross'}]){
       await expect(obtainCloudModelLease({policy,bot_id:bot,host_id:randomUUID(),model_ref:ref,daily_tokens:1000,access_token:access,fetch:async()=>new Response(JSON.stringify({...modified,access_token:sessionToken}))})).rejects.toThrow('BOT_MODEL_LEASE_INVALID');
     }
+    const boundary={...lease,expires_at:Math.floor(Date.now()/1000)+1800};
+    await expect(obtainCloudModelLease({policy,bot_id:bot,host_id:randomUUID(),model_ref:ref,daily_tokens:1000,access_token:access,fetch:async()=>new Response(JSON.stringify({...boundary,access_token:sessionToken}))})).resolves.toMatchObject({lease:boundary});
     await expect(obtainCloudModelLease({policy,bot_id:bot,host_id:randomUUID(),model_ref:ref,daily_tokens:1000,access_token:access,fetch:async()=>new Response('secret echoed',{status:401})})).rejects.toThrow('BOT_MODEL_GATEWAY_REJECTED');
   });
   it('freezes the model/provider revisions in new Session bootstrap, refuses bearer insertion and never changes an old model',()=>{
