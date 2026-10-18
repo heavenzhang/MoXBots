@@ -346,6 +346,27 @@ export async function handleSessionReadRoute(
   request: Request,
   url: URL,
 ): Promise<Response | null> {
+  if (pathname === '/api/session/background-task') {
+    const respond = (body: unknown, status = 200): Response => {
+      const response = jsonResponse(body, status);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    };
+    if (request.method !== 'GET') return respond({ success: false, errorCode: 'METHOD_NOT_ALLOWED' }, 405);
+    const ids = url.searchParams.getAll('toolUseId');
+    if (ids.length !== 1 || !/^[a-zA-Z0-9_-]{1,256}$/.test(ids[0] ?? '')) {
+      return respond({ success: false, errorCode: 'INVALID_TOOL_USE_ID' }, 400);
+    }
+    const engine = getSessionEngine();
+    if (!engine.getBackgroundTaskDetail) return respond({ success: false, errorCode: 'BACKGROUND_TASK_UNSUPPORTED' });
+    try {
+      const result = await engine.getBackgroundTaskDetail(ids[0]!);
+      return respond(result);
+    } catch {
+      return respond({ success: false, errorCode: 'BACKGROUND_TASK_UNAVAILABLE' }, 503);
+    }
+  }
+
   if (pathname === '/api/session-state' && request.method === 'GET') {
     const engine = getSessionEngine();
     const liveState = engine.getLiveSessionState();
