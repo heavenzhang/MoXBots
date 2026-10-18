@@ -32,3 +32,7 @@ Root accepted catalog, full certificate chain and IPC repairs were normally merg
 ## Next step
 
 Root independently review and run owned attachment increment, diagnose retained default-text failure, then integrate. Separate controlled small-stack C ABI probe is deferred until this package is accepted. Deployment is outside this worker scope.
+
+### Controlled C ABI continuation
+
+Added optional --ffi512KiB caller through original C ABI, same encrypted Store callback owner and cfg(test)-only mount borrowing. First build failed before a native invocation due cross-worktree cached same-protocol-crate path identities; the source/locks were not altered to bypass it. The delegated role stopped at a tool content-classification error; root observed the runner terminal and takes over primary integration/actual acceptance. No C ABI, phone or production pass is claimed. Details full-e2e/ffi-probe.md.

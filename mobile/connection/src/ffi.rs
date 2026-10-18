@@ -251,6 +251,20 @@ pub struct MoxConnection {
     runtime: tokio::runtime::Runtime,
     connection: MobileConnection,
 }
+// Test-only original owner borrowing for explicit synthetic-user setup. This
+// does not extend the product ABI or closed application intent surface.
+#[cfg(test)]
+impl MoxConnection {
+    pub(crate) fn fixture_owner_operation(
+        &mut self,
+        operation: impl for<'a> FnOnce(
+            &'a mut MobileConnection,
+        )
+            -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + 'a>>,
+    ) {
+        self.runtime.block_on(operation(&mut self.connection));
+    }
+}
 fn buffer(value: serde_json::Value) -> MoxConnectionBuffer {
     let b = serde_json::to_vec(&value)
         .unwrap_or_default()

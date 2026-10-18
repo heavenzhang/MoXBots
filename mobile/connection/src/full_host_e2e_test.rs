@@ -113,6 +113,220 @@ fn fixture_encrypted_store_preserves_binary_empty_delete_and_rewrite() {
         .unwrap()
         .is_none());
 }
+// The raw C handle never crosses a thread boundary. Only owned DTOs and reply
+// channels cross; the encrypted callback context remains alive through free.
+enum FfiCommand {
+    Request(Value, tokio::sync::oneshot::Sender<Value>),
+    Mount(String, bool, tokio::sync::oneshot::Sender<()>),
+}
+struct FfiOwner {
+    commands: Option<std::sync::mpsc::Sender<FfiCommand>>,
+    caller: Option<std::thread::JoinHandle<()>>,
+}
+unsafe extern "C" fn ffi_store_read(
+    context: *mut std::ffi::c_void,
+    scope: *const u8,
+    scope_len: usize,
+    record: *const u8,
+    record_len: usize,
+    out: *mut u8,
+    capacity: usize,
+) -> i64 {
+    let store = &*(context as *const Store);
+    let scope = std::str::from_utf8(std::slice::from_raw_parts(scope, scope_len)).unwrap();
+    let record = std::str::from_utf8(std::slice::from_raw_parts(record, record_len)).unwrap();
+    match store.read_record(scope, record) {
+        Ok(None) => -1,
+        Ok(Some(bytes)) if bytes.len() <= capacity => {
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, bytes.len());
+            bytes.len() as i64
+        }
+        _ => -2,
+    }
+}
+unsafe extern "C" fn ffi_store_write(
+    context: *mut std::ffi::c_void,
+    scope: *const u8,
+    scope_len: usize,
+    record: *const u8,
+    record_len: usize,
+    bytes: *const u8,
+    len: usize,
+) -> i32 {
+    let store = &*(context as *const Store);
+    let scope = std::str::from_utf8(std::slice::from_raw_parts(scope, scope_len)).unwrap();
+    let record = std::str::from_utf8(std::slice::from_raw_parts(record, record_len)).unwrap();
+    if store
+        .write_record(scope, record, std::slice::from_raw_parts(bytes, len))
+        .is_ok()
+    {
+        0
+    } else {
+        -1
+    }
+}
+unsafe extern "C" fn ffi_store_remove(
+    context: *mut std::ffi::c_void,
+    scope: *const u8,
+    scope_len: usize,
+    record: *const u8,
+    record_len: usize,
+) -> i32 {
+    let store = &*(context as *const Store);
+    let scope = std::str::from_utf8(std::slice::from_raw_parts(scope, scope_len)).unwrap();
+    let record = std::str::from_utf8(std::slice::from_raw_parts(record, record_len)).unwrap();
+    if store.remove_record(scope, record).is_ok() {
+        0
+    } else {
+        -1
+    }
+}
+impl FfiOwner {
+    async fn new(config: NativeConfig, store: Arc<Store>) -> Self {
+        let (commands, receive) = std::sync::mpsc::channel();
+        let (ready, readiness) = tokio::sync::oneshot::channel();
+        let caller = std::thread::Builder::new()
+            .name("mobile-cabi-512k".into())
+            .stack_size(512 * 1024)
+            .spawn(move || {
+                use crate::ffi::*;
+                observe_stack("cabi-caller-before-new");
+                let callbacks = MoxConnectionStore {
+                    context: Arc::as_ptr(&store) as *mut std::ffi::c_void,
+                    read: ffi_store_read,
+                    write: ffi_store_write,
+                    remove: ffi_store_remove,
+                };
+                let config = serde_json::to_vec(
+                    &json!({"issuer":config.issuer,"publicTlsCa":config.public_tls_ca}),
+                )
+                .unwrap();
+                let mut error = MoxConnectionBuffer {
+                    data: std::ptr::null_mut(),
+                    len: 0,
+                    status: 0,
+                };
+                let handle = unsafe {
+                    mox_connection_new(config.as_ptr(), config.len(), callbacks, &mut error)
+                };
+                if handle.is_null() {
+                    let value: Value = unsafe {
+                        serde_json::from_slice(std::slice::from_raw_parts(error.data, error.len))
+                            .unwrap()
+                    };
+                    unsafe { mox_connection_buffer_free(error) };
+                    panic!("original C ABI new failed: {value}");
+                }
+                // Local guard stays on this caller thread and never gains
+                // Send/Sync; ordinary assertion unwinding still releases owner.
+                struct Handle(*mut MoxConnection);
+                impl Drop for Handle {
+                    fn drop(&mut self) {
+                        unsafe { mox_connection_free(self.0) };
+                    }
+                }
+                let handle = Handle(handle);
+                ready.send(()).unwrap();
+                for command in receive {
+                    match command {
+                        FfiCommand::Request(value, reply) => {
+                            eprintln!("cabi-probe-input-kind={}", value["kind"]);
+                            let bytes = serde_json::to_vec(&value).unwrap();
+                            let result = unsafe {
+                                mox_connection_request(handle.0, bytes.as_ptr(), bytes.len())
+                            };
+                            let value: Value = unsafe {
+                                serde_json::from_slice(std::slice::from_raw_parts(
+                                    result.data,
+                                    result.len,
+                                ))
+                                .unwrap()
+                            };
+                            let status = result.status;
+                            unsafe { mox_connection_buffer_free(result) };
+                            assert_eq!(status == 0, value["ok"] == true);
+                            reply.send(value).unwrap();
+                        }
+                        FfiCommand::Mount(host, authorize, reply) => {
+                            eprintln!(
+                                "cabi-probe-test-setup mount-authorize={authorize} stage=begin"
+                            );
+                            unsafe { &mut *handle.0 }.fixture_owner_operation(move |owner| {
+                                Box::pin(async move {
+                                    if authorize {
+                                        authorize_fixture_mount(owner, &host).await;
+                                    } else {
+                                        fixture_mount(owner, &host).await;
+                                    }
+                                })
+                            });
+                            eprintln!(
+                                "cabi-probe-test-setup mount-authorize={authorize} stage=complete"
+                            );
+                            reply.send(()).unwrap();
+                        }
+                    }
+                }
+                drop(handle);
+                drop(store);
+                eprintln!("cabi-probe-handle-freed=true");
+            })
+            .unwrap();
+        readiness.await.unwrap();
+        Self {
+            commands: Some(commands),
+            caller: Some(caller),
+        }
+    }
+    async fn request(&self, value: Value) -> Value {
+        let (reply, result) = tokio::sync::oneshot::channel();
+        self.commands
+            .as_ref()
+            .unwrap()
+            .send(FfiCommand::Request(value, reply))
+            .unwrap();
+        result.await.unwrap()
+    }
+    async fn mount(&self, host: &str, authorize: bool) {
+        let (reply, result) = tokio::sync::oneshot::channel();
+        self.commands
+            .as_ref()
+            .unwrap()
+            .send(FfiCommand::Mount(host.into(), authorize, reply))
+            .unwrap();
+        result.await.unwrap();
+    }
+}
+impl Drop for FfiOwner {
+    fn drop(&mut self) {
+        drop(self.commands.take());
+        self.caller.take().unwrap().join().unwrap();
+    }
+}
+enum FixtureOwner {
+    Direct(MobileConnection),
+    Ffi(FfiOwner),
+}
+impl FixtureOwner {
+    async fn request(&mut self, value: Value) -> Value {
+        match self {
+            Self::Direct(owner) => owner.request(value).await,
+            Self::Ffi(owner) => owner.request(value).await,
+        }
+    }
+    async fn mount(&mut self, host: &str, authorize: bool) {
+        match self {
+            Self::Direct(owner) => {
+                if authorize {
+                    authorize_fixture_mount(owner, host).await;
+                } else {
+                    fixture_mount(owner, host).await;
+                }
+            }
+            Self::Ffi(owner) => owner.mount(host, authorize).await,
+        }
+    }
+}
 fn private(path: &Path, value: &Value) {
     let mut f = fs::OpenOptions::new()
         .write(true)
@@ -513,8 +727,8 @@ async fn original_mobile_wss_host_chain() {
         let service=std::env::var("MOXBOTS_FULL_SERVICE_TEST_BIN").expect("build service test binary first");spawn(&mut children,&root,&service,&["server::mobile_full_e2e_fixture::original_relay_service_fixture","--ignored","--exact","--nocapture"],"service");
         let ready=wait_json(&root.join("service-ready.json")).await;let address=ready["address"].as_str().unwrap().to_owned();let acceptor=tokio_rustls::TlsAcceptor::from(Arc::new(tls));
         tasks.spawn(async move{let mut connections=tokio::task::JoinSet::new();loop{let (tcp,_)=public.accept().await.unwrap();let acceptor=acceptor.clone();let address=address.clone();connections.spawn(async move{if let Ok(mut tls)=acceptor.accept(tcp).await{if let Ok(mut service)=tokio::net::TcpStream::connect(address).await{let _=tokio::io::copy_bidirectional(&mut tls,&mut service).await;}}});}});
-        let mode=std::env::var("MOXBOTS_FULL_MODE").unwrap_or_else(|_|"text".into());assert!(["text","assets"].contains(&mode.as_str()));
-        let node=std::env::var("MOXBOTS_FULL_NODE").unwrap_or_else(|_|"node".into());let helper=repo.join("scripts/fixtures/mobile-full-e2e-host.ts");spawn(&mut children,&root,&node,&["--import","tsx",helper.to_str().unwrap(),root.to_str().unwrap(),&mode],"node");
+        let mode=std::env::var("MOXBOTS_FULL_MODE").unwrap_or_else(|_|"text".into());assert!(["text","assets","ffi"].contains(&mode.as_str()));
+        let node=std::env::var("MOXBOTS_FULL_NODE").unwrap_or_else(|_|"node".into());let helper=repo.join("scripts/fixtures/mobile-full-e2e-host.ts");spawn(&mut children,&root,&node,&["--import","tsx",helper.to_str().unwrap(),root.to_str().unwrap(),if mode=="ffi" {"text"} else {&mode}],"node");
         let host_ready=wait_json(&root.join("host-ready.json")).await;
         let host=std::env::var("MOXBOTS_FULL_HOST_TEST_BIN").expect("build headless test binary first");spawn(&mut children,&root,&host,&["agent_network::connector::mobile_full_e2e_fixture::original_headless_connector_fixture","--ignored","--exact","--nocapture"],"headless");
         let status=std::time::Instant::now();loop{let v=wait_json(&root.join("headless-status.json")).await;if v["ready"]==true{break;}assert!(status.elapsed()<Duration::from_secs(35),"headless not ready: {v}");tokio::time::sleep(Duration::from_millis(100)).await;}
@@ -523,13 +737,13 @@ async fn original_mobile_wss_host_chain() {
             tokio::time::sleep(Duration::from_secs(60)).await;
         }
         let state=root.join("mobile-state");fs::create_dir(&state).unwrap();fs::set_permissions(&state,fs::Permissions::from_mode(0o700)).unwrap();let mut kek=[0u8;32];fs::File::open("/dev/urandom").unwrap().read_exact(&mut kek).unwrap();
-        let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let mut owner=MobileConnection::new(NativeConfig{issuer,public_tls_ca:Some(cert.pem())},store).unwrap();
+        let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let config=NativeConfig{issuer,public_tls_ca:Some(cert.pem())};let mut owner=if mode=="ffi" {FixtureOwner::Ffi(FfiOwner::new(config,store).await)} else {FixtureOwner::Direct(MobileConnection::new(config,store).unwrap())};
         ok(owner.request(json!({"version":1,"kind":"account.login.start"})).await);let account=ok(owner.request(json!({"version":1,"kind":"account.login.poll"})).await);assert_eq!(account["state"],"signed-in");
         let host_device=host_ready["deviceId"].as_str().unwrap();
-        fixture_mount(&mut owner,host_device).await;
+        owner.mount(host_device,false).await;
         let disabled=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-default-mobile-targets={disabled}");assert!(disabled["items"].as_array().unwrap().is_empty());
         assert!(std::env::var("MOXBOTS_FULL_KEEP_MOUNT_DISABLED").as_deref()!=Ok("1"),"ORIGINAL_HOST_MOUNT_DISABLED: real catalog present; explicit synthetic-user mount authorization intentionally withheld");
-        authorize_fixture_mount(&mut owner,host_device).await;
+        owner.mount(host_device,true).await;
         let targets=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-mobile-targets={targets}");
         let target=targets["items"].as_array().unwrap().iter().find(|v|v["agentId"]=="original-host-agent").expect("original explicitly authorized Host Agent must be discovered through the actual directory");
         let operation_id=uuid::Uuid::new_v4().to_string();
@@ -565,6 +779,7 @@ async fn original_mobile_wss_host_chain() {
         let recovered=ok(owner.request(json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.receipt","version":1,"agentId":"original-host-agent","operationId":operation_id}})).await);
         assert_eq!(recovered,receipt,"same original operation is queried without redispatch");
         if mode=="assets" {
+            let FixtureOwner::Direct(mut owner)=owner else {unreachable!()};
             let send_probe=json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.send","version":1,"agentId":"original-host-agent","sessionId":receipt["sessionId"],"operationId":uuid::Uuid::new_v4().to_string(),"text":"unpolled future size probe","assetIds":[]}});
             let probe=owner.request(send_probe.clone());eprintln!("native-future-bytes constructed-only.mobile.send.request={}",std::mem::size_of_val(&probe));drop(probe);
             let probe=owner.request_inner(send_probe);eprintln!("native-future-bytes constructed-only.mobile.send.request_inner={}",std::mem::size_of_val(&probe));drop(probe);
