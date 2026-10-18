@@ -120,7 +120,7 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
         if value["kind"] as? String == "account", value["state"] as? String == "authenticating" { return }
         if value["kind"] as? String == "error" {
           let code = value["code"] as? String ?? "ACCOUNT_REPLY_INVALID"
-          if ["OWNED_ACCOUNT_UNAVAILABLE", "ACCOUNT_LOGIN_PAUSED", "MOBILE_REQUEST_TIMEOUT"].contains(code) { return }
+          if ["OWNED_ACCOUNT_UNAVAILABLE", "ACCOUNT_LOGIN_PAUSED", "MOBILE_REQUEST_TIMEOUT", "NETWORK_CONNECTION_TIMEOUT"].contains(code) { return }
           self.cancelAttempt(failureCode: code); return
         }
         // Only the Rust signed-in projection proves completion, after persistence.
