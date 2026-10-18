@@ -1,0 +1,70 @@
+name: Host fresh browser acceptance (pinned M)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Lab-only session lifetime; neither mode executes a model or business task
+        type: choice
+        options: [standard, renewal]
+        default: standard
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: host-browser-acceptance
+  cancel-in-progress: false
+
+jobs:
+  disposable-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/host-browser-browsers
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: dcf8d9a60976c160e2b2aca33313c668c071132c
+          path: product-M
+          persist-credentials: false
+      - name: Refuse anything except an empty disposable canonical CI VM
+        run: |
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/browser-acceptance.py --preflight --product-source "$GITHUB_WORKSPACE/product-M" --output "$RUNNER_TEMP/host-browser-summary"
+      - uses: actions/download-artifact@v4
+        with:
+          artifact-ids: '12123324723'
+          run-id: '39093243842'
+          github-token: ${{ github.token }}
+          repository: heavenzhang/MoXBots
+          path: ${{ runner.temp }}/host-browser-service-M
+          merge-multiple: true
+      - name: Prepare browser dependencies on this disposable VM
+        run: |
+          # Prevent the package postinst from starting a default public listener.
+          ! systemctl is-active --quiet nginx.service
+          ! pgrep -x nginx
+          sudo systemctl mask nginx.service
+          sudo apt-get update -qq
+          sudo apt-get install --no-install-recommends -y nginx libnss3-tools apache2-utils python3-venv
+          python3 -m venv "$RUNNER_TEMP/host-browser-venv"
+          "$RUNNER_TEMP/host-browser-venv/bin/pip" install 'playwright==1.58.0'
+          "$RUNNER_TEMP/host-browser-venv/bin/python" -m playwright install --with-deps chromium
+      - name: Exact M public bytes, real Dex browser, AuthStore, DPoP, join, catalog and Ready
+        env:
+          ACCEPTANCE_MODE: ${{ inputs.mode }}
+        run: |
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-browser-venv/bin/python" harness/scripts/host/browser-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --service-artifact "$RUNNER_TEMP/host-browser-service-M" --output "$RUNNER_TEMP/host-browser-summary" --mode "$ACCEPTANCE_MODE"
+      - name: Upload only the explicit non-secret summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-browser-acceptance-${{ inputs.mode }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/host-browser-summary/summary.json
+          if-no-files-found: warn
+          retention-days: 14
