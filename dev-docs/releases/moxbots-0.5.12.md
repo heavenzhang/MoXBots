@@ -15,3 +15,7 @@ The running0.5.9 installer gate can itself fail; a newfeed does not repair old c
 | Public full download/promotion | Not started; existing0511 preserved |
 
 Record final source/tag/artifact hashes, real test actor/environment and failures/rollback here after actual results. Detailed checklist and boundaries: `.agent-sync/tasks/codex-release-0512-20261018-a176f4c0.md`. Runtime/secret evidence remains in the private project pointer.
+
+## Candidate preparation / CI prerequisite
+
+Root repaired an existingToast timeout leak exposed by141 normalCI: notice timers are released on close/unmount without changing visual markup or duration. Red3/4 reproduced; focused lifecycle and send-path tests63/63 green; targetedlint passed. Version-sync3 tests and both Cargo locked/offline metadata checks passed. These are candidate source checks, not signed or native update acceptance. Goal pausePR142 is reported main311ecfd5 and will be verified during source synchronization.
