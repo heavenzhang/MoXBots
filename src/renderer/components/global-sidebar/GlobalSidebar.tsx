@@ -2007,7 +2007,7 @@ function WorkspaceTree({
       ),
       (session) => `session:${session.id}`,
       organizing ? organization.orders[`workspace:${project.id}`] : undefined,
-      { createdAt: (session) => session.createdAt },
+      { createdAt: (session) => session.createdAt, pinnedAt: (session) => session.pinnedAt },
     );
     const limit = sessionLimits[key] ?? SESSION_PAGE_SIZE;
     const workspaceSessionState =
@@ -2135,6 +2135,7 @@ function WorkspaceTree({
     ),
     (project) => `workspace:${project.id}`,
     organizing ? organization.orders.root : undefined,
+    { pinnedAt: (project) => project.pinnedAt },
   );
   type SectionEntry = {
     id: string;
@@ -2159,6 +2160,7 @@ function WorkspaceTree({
       entries,
       (entry) => entry.id,
       organization.orders[sectionId],
+      { pinnedAt: (entry) => entry.session ? entry.session.pinnedAt : entry.project.pinnedAt },
     );
   };
   const containerItems = (container: string): string[] => {
@@ -2179,7 +2181,7 @@ function WorkspaceTree({
         ),
         (session) => `session:${session.id}`,
         organization.orders[container],
-        { createdAt: (session) => session.createdAt },
+        { createdAt: (session) => session.createdAt, pinnedAt: (session) => session.pinnedAt },
       ).map((session) => `session:${session.id}`);
     }
     return sectionEntries(container).map((entry) => entry.id);
