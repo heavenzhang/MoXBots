@@ -15,7 +15,7 @@ The human explicitly transferred integration and publication to01a12b99-7b38-78b
 
 - [x] Start from current mainbaa1a637, independent branch; explicit owner transfer and handback.
 - [x] Integrate reviewed product8d112633 and tools2580 through source combinationdf1; preserve the original source history.
-- [ ] Exact clean-source candidate with matching Node/connector/service provenance and real artifact digests.
+- [x] Exact clean-source candidate with matching Node/connector/service provenance and real artifact digests.
 - [ ] Fresh Ubuntu24/browser/auto-join/Ready/catalog/repeat, natural lab expiry renewal and true KVM reboot accepted.
 - [ ] Required combined CI and proportionate regressions; remote main contains accepted source and runtime tree.
 - [ ] Fresh production admission, backup/CAS/ownership rollback, immutable bytes, full anonymous normal-TLS validation and final stable pointer acceptance.
@@ -45,3 +45,5 @@ Exact PR137 CI39135711670 found a separate existing mobile fixture order issue: 
 Current producer receipt and pins are recorded in `dev-docs/host-init-001/acceptance.md`. Same-P isolated gates remain pending; actual Ubuntu Session3/3 from failed-elsewhere CI39135711670 is confirmed. Original mobile fixture repair632/565 and concurrent mainad654 are integrated; latest full CI must be rerun at the final pinning head.
 
 Actual pre-auth run39139286069 narrowed failure to extra dedicated HOME entries already present before Node. New-account useradd now skips inherited skeleton; existing authority and accounts remain untouched. A new exact-source candidate is required; P23 is historical, not publishable. Offline41/13/7 pass; real post-Ready no-inherited-skeleton gate is added. Headless CI39139281388 passed all original chain/mobile fixtures at pre-HOME-fix08ad3; new bytes still require full actual acceptance.
+
+New product P2 `58d5247d7692acb816f211e1af7ef1891871bd6a` actually built in39140386138 and full strict consumer passed; matching candidate12141158740/service12141537459 are pinned for isolated acceptance. Next: actual new-source standard/renewal/realKVM and full CI; no main merge/publication before those gates.

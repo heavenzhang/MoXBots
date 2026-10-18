@@ -64,3 +64,16 @@ The new-account installer branch now passes `useradd --no-create-home`, then use
 The actual fresh-browser harness adds an explicit post-Ready check that the new private HOME contains no inherited skeleton entries, while keeping strict authenticated Ready and all previous assertions. Offline browser41/reboot13/producer7, bash syntax and diff checks passed. Independent source assessment accepted the narrow new-account change; the new artifact's real Ubuntu install, repeat/identity preservation, rollback, renewal and KVM reboot remain required. Old candidateP23 and old public immutableM are preserved as historical failed candidates and are not the next published release.
 
 Run39139281388 at08ad382f has now passed the complete headless connector job, including the repaired third encrypted Host chain and the two other original Host fixtures. The actual systemd job is no longer dependency-skipped; it remains pending for that older pre-HOME-fix head. Do not use it as acceptance of the new installer bytes.
+
+### New exact-source candidate P2 (prepared, not accepted/public)
+
+Producer run39140386138 succeeded from clean source `58d5247d7692acb816f211e1af7ef1891871bd6a`, release `20261018152704-58d5247d7692`. Candidate Actions artifact12141158740, ZIP digest64169cd911d2e0561f0d1b2cac25cafc32abdfaee23821d52d04c3a57e28014b; service artifact12141537459, ZIP digestab7eb4503b01ec5f29666fc7eed277fe26e40489374d154be413adf9fecd892b. The same-source service bytes are unchanged from P1 (27510672, SHA59e2a8ed29d8c6c9dada0df284c58e76a34e05d2018582a2c45ae234fe6c64bd); provenance sidecar is P2 from the actual new build.
+
+| File | Bytes | SHA256 |
+| --- | ---: | --- |
+| bootstrap.py | 24272 | 522ee5f0d7a100c3a808bdd3a0745b31bc430138d2628d7a935d715ab74c3e5a |
+| bundle.tar.gz | 171496242 | 3181bf17a51f1c5bd5cfe646af3ff3bddc4c0ae711e4f4120a795a60ad7c152c |
+| install.sh | 24313 | c317033d7bf4ae77160e2a528ae83e88d4f3edd4a59f771af2b98fba10a6853b |
+| stable.json | 643 | 697204f6c467b5f66c4555588ad9b65122f7bef01d90cabc3e60bd2b4a211002 |
+
+Original strict full consumer passed in the producer. Primary reconstructed bootstrap and exact installer/stable bytes from P2 and matched these actual digests. No new public complete GET, browser install, renewal, reboot or new-source full CI is claimed yet. Old P1 failures and old M immutable paths are preserved.
