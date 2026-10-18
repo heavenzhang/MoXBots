@@ -21,3 +21,5 @@ Record final source/tag/artifact hashes, real test actor/environment and failure
 Root repaired an existingToast timeout leak exposed by141 normalCI: notice timers are released on close/unmount without changing visual markup or duration. Red3/4 reproduced; focused lifecycle and send-path tests63/63 green; targetedlint passed. Version-sync3 tests and both Cargo locked/offline metadata checks passed. These are candidate source checks, not signed or native update acceptance. Goal pausePR142 is reported main311ecfd5 and will be verified during source synchronization.
 
 Current source combination includes acceptedGoal pause142 and updater138. Sharedplan append conflict was resolved preserving both owners. Root version/Toast preparation will follow normalCI/main before final stop-fix freeze; no package or native result is inferred.
+
+Combined102 DOM regressions acrossToast/input/Goal/updater passed after absorbing source138/142. Complete normalCI for this preparation PR is still required; source141, formal package and native acceptance remain open.
