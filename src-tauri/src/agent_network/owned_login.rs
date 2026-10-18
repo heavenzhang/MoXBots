@@ -1314,14 +1314,14 @@ mod tests {
         for stall_body in [false, true] {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let origin = format!("http://{}", listener.local_addr().unwrap());
-            let server = tokio::spawn(async move {
+            let server = async move {
                 let (mut socket, _) = listener.accept().await.unwrap();
                 if stall_body {
                     socket.write_all(b"HTTP/1.1 200 OK\r\nCache-Control: no-store\r\nContent-Length: 2\r\nConnection: close\r\n\r\n").await.unwrap();
                 }
                 std::future::pending::<()>().await;
                 drop(socket);
-            });
+            };
             #[allow(clippy::disallowed_methods)]
             let http = reqwest::Client::builder()
                 .no_proxy()
@@ -1334,12 +1334,13 @@ mod tests {
                 http,
                 instance: instance(),
             };
-            let error = client
-                .inspect_session(&uuid::Uuid::new_v4().to_string(), &"a".repeat(43))
-                .await
-                .err()
-                .expect("fixture must exceed request deadline");
-            server.abort();
+            let device = uuid::Uuid::new_v4().to_string();
+            let token = "a".repeat(43);
+            let request = client.inspect_session(&device, &token);
+            let error = tokio::select! {
+                result = request => result.err().expect("fixture must exceed request deadline"),
+                _ = server => panic!("fixture must wait for the request deadline"),
+            };
             assert_eq!(error.code, "NETWORK_CONNECTION_TIMEOUT");
             assert!(error.retryable);
             assert_ne!(error.code, "OWNED_SESSION_INVALID");

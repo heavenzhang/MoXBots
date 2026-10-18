@@ -190,21 +190,22 @@ mod tests {
     async fn confirmed_request_deadline_is_distinct_from_a_transport_failure() {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
+        let server = async move {
             let (socket, _) = listener.accept().await.unwrap();
             // Keep an accepted socket open without responding, until cancelled.
             std::future::pending::<()>().await;
             drop(socket);
-        });
-        let error = crate::local_http::builder()
+        };
+        let request = crate::local_http::builder()
             .timeout(std::time::Duration::from_millis(50))
             .build()
             .unwrap()
             .get(format!("http://{address}/fixture?private=secret"))
-            .send()
-            .await
-            .unwrap_err();
-        server.abort();
+            .send();
+        let error = tokio::select! {
+            result = request => result.unwrap_err(),
+            _ = server => panic!("fixture must wait for the request deadline"),
+        };
         assert!(error.is_timeout());
         assert_eq!(
             network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),

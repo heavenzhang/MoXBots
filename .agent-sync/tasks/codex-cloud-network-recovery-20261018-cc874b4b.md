@@ -22,7 +22,7 @@
 
 源码权威 https://github.com/heavenzhang/MoXBots.git，main；本任务分支codex/cloud-network-recovery-20261018。
 - 主负责人：连接排查、Rust错误投影、集成/交付；network_status_ui：renderer实现（Sol medium）；network_ui_review：独立合成实际页面验收（Luna medium）。精确token/费用未暴露。
-- 103项DOM/API测试通过；状态修订后的3项恢复回归通过；局部eslint/diff-check通过。其余检查另记。
+- 最终150项DOM/API/Host测试通过；类型检查、本地全量ESLint、默认和最终MoXBots Web构建通过；Rust208通过/2既有ignored。独立UI1280/760/390通过，1处P2修复复验关闭。首轮CI新增测试tokio::spawn被clippy拒绝，已改为直接并发future，未绕门禁。
 - 云instance/Dex公共发现响应200；同TLS13握手通过。独立同crypto/reqwest探针先复现5s超时，随后继承代理/直连都发生过成功与超时，不能认定代理为唯一原因。探针保留平台证书校验，无全局代理/证书信任修改。
 - 运行基线 /Applications/MoXBots.app v0.5.9；日志官方SPACE_REAUTH_REQUIRED和owned-account5s timeout。实际连接状态/账号恢复待原生owner核对，不从HTTP200推断在线。
 
@@ -41,4 +41,4 @@
 
 ## Next step
 
-完成Rust与UI验收，提交精确修复并通过PR/CI交付main；将不可变SHA交指定owner，验证原账号在线和设备真实状态。
+PR134已创建，完整CI首轮39131394887定位测试夹具红线并修复；待新一轮正常CI通过后交付main，再将不可变SHA交指定owner，验证原账号在线和设备真实状态。

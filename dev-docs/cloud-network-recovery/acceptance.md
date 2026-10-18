@@ -11,11 +11,12 @@
 ## Verification
 
 - 初轮JS103项全过；补官方reauth5态后NetworkSelector30/API35全过。最后108整组107成功，既有onboarding等待用例一次在高负载超过原1秒门限；原断言、门限未改，单独复验通过，之前两轮整组通过。保留这一轮失败记录，不把重试写作零失败。
-- TypeScript全量 `tsc --noEmit` exit0；变更TS文件ESLint和diff-check通过。
+- 最终五个相关DOM/API/Host套件150/150通过。TypeScript全量 `tsc --noEmit` exit0，PR首轮typecheck/lint阶段通过；本地全量ESLint、变更TS文件ESLint和diff-check通过。
 - `cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked --lib`：208通过、0失败、2既有ignored；包含共享owned HTTP路径与真实loopback超时/连接拒绝，保持保存会话的错误语义。
 - 主桌面官方账号模块由正常PR Rust/native CI另行验证；本地headless不能替代原生构建。
 - P2 Host管理提示冲突已修复；两个Host套件41项、页面集成与缓存恢复4项通过。独立实际组件1280/760/390视口、选择器、卡片/详情与恢复流程复验通过，见[review-ui.md](review-ui.md)。
-- 默认和MoXBots profile Web生产构建通过（既有chunk大小提示保留）；Host提示最终修复后由PR构建重新覆盖。最终CI、主干SHA随交付补充。
+- 默认和MoXBots profile Web生产构建通过（既有chunk大小提示保留）；最终Host提示修复后的MoXBots构建通过。最终CI、主干SHA另见交付回执。
+- 首轮CI39131394887：headless208测试通过，但本次新增测试夹具使用tokio::spawn被既有clippy红线拦住。已改为测试直接拥有的并发future/select，未加allow或降低规则；修复后208项再次通过，使用与CI一致的disallowed_methods/disallowed_macros严格clippy通过；新一轮完整CI继续记录。
 
 ## Live recovery evidence
 
