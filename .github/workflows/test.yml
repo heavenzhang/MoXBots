@@ -39,6 +39,7 @@ jobs:
           python3 scripts/host/network-install.test.py
           python3 scripts/host/network-control-daemon.test.py
           python3 scripts/host/unified-install.test.py
+          python3 scripts/host/one-command.test.py
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}

@@ -6,9 +6,8 @@ import OverlayBackdrop from "@/components/OverlayBackdrop";
 import { CloseIcon } from "@/components/icons";
 import { useCloseLayer } from "@/hooks/useCloseLayer";
 import { isImeComposingEvent } from "@/utils/imeKeyboard";
-import { copyPlainText } from "@/utils/clipboard";
 import { openExternal } from "@/utils/openExternal";
-import { APP_BUILD_PROFILE, APP_WEBSITE_URL } from "../../../shared/appProfile";
+import { APP_WEBSITE_URL } from "../../../shared/appProfile";
 import {
   allCallableAgents,
   allNetworkDevices,
@@ -17,9 +16,8 @@ import {
   type NetworkSnapshot,
 } from "@/api/agentNetwork";
 import { currentNetworkGeneration } from "./store";
+import { LinuxHostInstall } from "./LinuxHostInstall";
 
-export const HOST_INSTALL_INSTRUCTIONS =
-  "https://github.com/heavenzhang/MoXBots/blob/178b8047f78e51f843e5c0636d2e0182f192c8b1/scripts/host/README.md#unified-local-host--owned-agentnet-test-installation";
 const buttonClass =
   "rounded-lg border border-[var(--line)] px-3 py-2 text-sm hover:bg-[var(--hover-bg)] disabled:cursor-not-allowed disabled:opacity-50";
 const primaryClass =
@@ -73,6 +71,14 @@ export function HostOnboarding({
     snapshot.revision,
     snapshot.state,
   ]);
+  // Directory change notifications advance revision without changing enrollment identity.
+  const linuxScope = JSON.stringify([
+    connectionId,
+    snapshot.authGeneration,
+    snapshot.principalId,
+    snapshot.networkId,
+    snapshot.state,
+  ]);
   const {
     refs: { setFloating },
     context,
@@ -100,12 +106,6 @@ export function HostOnboarding({
   const count =
     current?.callable?.items.filter((agent) => agent.deviceId === targetId)
       .length ?? 0;
-  const commands = ["start", "wait", "join"]
-    .map(
-      (action) =>
-        `sudo python3 scripts/host/network-control.py --profile ${APP_BUILD_PROFILE === "moxbot" ? "moxbot-test" : "myagents-test"} ${action}`,
-    )
-    .join("\n");
   async function act(action: () => Promise<void>, success?: string) {
     setNotice(null);
     try {
@@ -219,290 +219,283 @@ export function HostOnboarding({
               <CloseIcon className="h-4 w-4" />
             </button>
           </header>
-          <ol
-            aria-label={text("title")}
-            className="grid grid-cols-2 gap-2 border-y border-[var(--line-subtle)] bg-[var(--paper-inset)] px-5 py-3 text-xs sm:grid-cols-4 sm:px-6"
-          >
-            {[1, 2, 3, 4].map((index) => (
-              <li
-                key={index}
-                aria-current={step === index ? "step" : undefined}
-                className={`flex items-center gap-2 ${step === index ? "font-semibold text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}
+          {kind === "linux" && step > 1 ? (
+            <LinuxHostInstall
+              key={linuxScope}
+              connectionId={connectionId}
+              snapshot={snapshot}
+              networkName={networkName}
+              localDeviceId={localDeviceId}
+              onBack={() => setStep(1)}
+              onClose={onClose}
+              onManage={onManage}
+            />
+          ) : (
+            <>
+              <ol
+                aria-label={text("title")}
+                className="grid grid-cols-2 gap-2 border-y border-[var(--line-subtle)] bg-[var(--paper-inset)] px-5 py-3 text-xs sm:grid-cols-4 sm:px-6"
               >
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current">
-                  {index}
-                </span>
-                {text(`step${index}`)}
-              </li>
-            ))}
-          </ol>
-          <div className="min-h-0 overflow-y-auto px-5 py-5 text-sm leading-relaxed sm:px-6">
-            {step === 1 && (
-              <fieldset className="space-y-3">
-                <legend className="mb-3 font-semibold">{text("step1")}</legend>
-                {(["desktop", "linux"] as const).map((option) => (
-                  <label
-                    key={option}
-                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${kind === option ? "border-[var(--accent)] bg-[var(--paper-inset)]" : "border-[var(--line)]"}`}
+                {[1, 2, 3, 4].map((index) => (
+                  <li
+                    key={index}
+                    aria-current={step === index ? "step" : undefined}
+                    className={`flex items-center gap-2 ${step === index ? "font-semibold text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}
                   >
-                    <input
-                      type="radio"
-                      name="host-kind"
-                      value={option}
-                      checked={kind === option}
-                      onChange={() => {
-                        setKind(option);
-                        setInstalled(false);
-                        setJoined(false);
-                      }}
-                      className="mt-1"
-                    />
-                    <span>
-                      <span className="block font-semibold">
-                        {text(option)}
-                      </span>
-                      <span className="mt-1 block text-[var(--ink-muted)]">
-                        {text(`${option}Hint`)}
-                      </span>
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-current">
+                      {index}
                     </span>
-                  </label>
+                    {text(`step${index}`)}
+                  </li>
                 ))}
-              </fieldset>
-            )}
-            {step === 2 && (
-              <div className="space-y-4">
-                <h3 className="font-semibold">
-                  {text(kind === "desktop" ? "desktopInstall" : "linuxInstall")}
-                </h3>
-                <p className="text-[var(--ink-muted)]">
-                  {text(
-                    kind === "desktop"
-                      ? "desktopInstallBody"
-                      : "linuxInstallBody",
-                  )}
-                </p>
-                {kind === "linux" && (
-                  <p className="rounded-xl bg-[var(--paper-inset)] p-3 text-[var(--ink-secondary)]">
-                    {text("linuxLimit")}
-                  </p>
+              </ol>
+              <div className="min-h-0 overflow-y-auto px-5 py-5 text-sm leading-relaxed sm:px-6">
+                {step === 1 && (
+                  <fieldset className="space-y-3">
+                    <legend className="mb-3 font-semibold">
+                      {text("step1")}
+                    </legend>
+                    {(["desktop", "linux"] as const).map((option) => (
+                      <label
+                        key={option}
+                        className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${kind === option ? "border-[var(--accent)] bg-[var(--paper-inset)]" : "border-[var(--line)]"}`}
+                      >
+                        <input
+                          type="radio"
+                          name="host-kind"
+                          value={option}
+                          checked={kind === option}
+                          onChange={() => {
+                            setKind(option);
+                            setInstalled(false);
+                            setJoined(false);
+                          }}
+                          className="mt-1"
+                        />
+                        <span>
+                          <span className="block font-semibold">
+                            {text(option)}
+                          </span>
+                          <span className="mt-1 block text-[var(--ink-muted)]">
+                            {text(`${option}Hint`)}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
                 )}
-                <button
-                  type="button"
-                  className={buttonClass}
-                  onClick={() =>
-                    void act(() =>
-                      openExternal(
-                        kind === "desktop"
-                          ? `${APP_WEBSITE_URL.replace(/\/$/, "")}/download/`
-                          : HOST_INSTALL_INSTRUCTIONS,
-                      ),
-                    )
-                  }
-                >
-                  {text(kind === "desktop" ? "download" : "instructions")}
-                </button>
-                <label className="flex items-start gap-2 border-t border-[var(--line-subtle)] pt-4">
-                  <input
-                    type="checkbox"
-                    checked={installed}
-                    onChange={(event) => setInstalled(event.target.checked)}
-                    className="mt-1"
-                  />
-                  {text("installed")}
-                </label>
-              </div>
-            )}
-            {step === 3 && (
-              <div className="space-y-4">
-                <h3 className="font-semibold">{text("loginTitle")}</h3>
-                <p className="text-[var(--ink-muted)]">
-                  {text(kind === "desktop" ? "desktopLogin" : "linuxLogin")}
-                </p>
-                <div className="break-words rounded-xl border border-[var(--line)] p-3">
-                  <p className="text-xs text-[var(--ink-muted)]">
-                    {text("network")}
-                  </p>
-                  <p className="mt-1 font-semibold">
-                    {networkName || text("official")}
-                  </p>
-                  {!official && (
-                    <p className="mt-1 break-all font-mono text-xs">
-                      {serviceUrl || "—"}
-                    </p>
-                  )}
-                </div>
-                <p className="text-[var(--ink-muted)]">{text("sameAccount")}</p>
-                {kind === "linux" && (
-                  <>
+                {step === 2 && (
+                  <div className="space-y-4">
+                    <h3 className="font-semibold">{text("desktopInstall")}</h3>
                     <p className="text-[var(--ink-muted)]">
-                      {text(official ? "linuxOfficial" : "linuxOwned")}
+                      {text("desktopInstallBody")}
                     </p>
-                    <pre
-                      aria-label={text("commands")}
-                      className="overflow-x-auto rounded-xl bg-[var(--paper-inset)] p-3 text-xs"
-                    >
-                      {commands}
-                    </pre>
                     <button
                       type="button"
                       className={buttonClass}
                       onClick={() =>
-                        void act(() => copyPlainText(commands), text("copied"))
+                        void act(() =>
+                          openExternal(
+                            `${APP_WEBSITE_URL.replace(/\/$/, "")}/download/`,
+                          ),
+                        )
                       }
                     >
-                      {text("copy")}
+                      {text("download")}
                     </button>
-                  </>
+                    <label className="flex items-start gap-2 border-t border-[var(--line-subtle)] pt-4">
+                      <input
+                        type="checkbox"
+                        checked={installed}
+                        onChange={(event) => setInstalled(event.target.checked)}
+                        className="mt-1"
+                      />
+                      {text("installed")}
+                    </label>
+                  </div>
                 )}
-                <label className="flex items-start gap-2 border-t border-[var(--line-subtle)] pt-4">
-                  <input
-                    type="checkbox"
-                    checked={joined}
-                    onChange={(event) => setJoined(event.target.checked)}
-                    className="mt-1"
-                  />
-                  {text("loginDone")}
-                </label>
-              </div>
-            )}
-            {step === 4 && (
-              <div className="space-y-4">
-                <p className="font-semibold">{text("select")}</p>
-                <CustomSelect
-                  ariaLabel={text("select")}
-                  value={targetId}
-                  placeholder={text("choose")}
-                  disabled={busy || !ready || targets.length === 0}
-                  options={targets.map((item) => ({
-                    value: item.deviceId,
-                    label: `${item.name} · ${item.deviceId}`,
-                  }))}
-                  onChange={setTargetId}
-                  size="md"
-                />
-                <button
-                  type="button"
-                  disabled={busy || !ready}
-                  className={buttonClass}
-                  onClick={() => void check()}
-                >
-                  {text(busy ? "checking" : "refresh")}
-                </button>
-                {!ready || (current && !current.devices) ? (
-                  <p role="alert" className="text-[var(--error)]">
-                    {text("readError")}
-                  </p>
-                ) : (
-                  <p className="text-xs text-[var(--ink-muted)]">
-                    {text("notFound")}
-                  </p>
-                )}
-                <dl aria-live="polite" className="grid gap-3 sm:grid-cols-2">
-                  {[
-                    ["online", onlineText],
-                    ["execution", executionText],
-                  ].map(([label, value]) => (
-                    <div
-                      key={label}
-                      className="rounded-xl border border-[var(--line)] p-4"
-                    >
-                      <dt className="text-xs text-[var(--ink-muted)]">
-                        {text(label)}
-                      </dt>
-                      <dd
-                        className={`mt-2 font-semibold ${label === "online" && online && !busy ? "text-[var(--success)]" : "text-[var(--ink)]"}`}
-                      >
-                        {value}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-                {current &&
-                  (!current.devices?.complete ||
-                    !current.callable?.complete) && (
-                    <p className="text-xs text-[var(--ink-muted)]">
-                      {text(
-                        current.devices && current.callable
-                          ? "partial"
-                          : "unavailable",
-                      )}
+                {step === 3 && (
+                  <div className="space-y-4">
+                    <h3 className="font-semibold">{text("loginTitle")}</h3>
+                    <p className="text-[var(--ink-muted)]">
+                      {text("desktopLogin")}
                     </p>
-                  )}
-                <p className="text-[var(--ink-muted)]">
-                  {text("executionHint")}
-                </p>
-                {targetId === localDeviceId && (
-                  <p className="text-xs text-[var(--ink-muted)]">
-                    {text("localHint")}
+                    <div className="break-words rounded-xl border border-[var(--line)] p-3">
+                      <p className="text-xs text-[var(--ink-muted)]">
+                        {text("network")}
+                      </p>
+                      <p className="mt-1 font-semibold">
+                        {networkName || text("official")}
+                      </p>
+                      {!official && (
+                        <p className="mt-1 break-all font-mono text-xs">
+                          {serviceUrl || "—"}
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[var(--ink-muted)]">
+                      {text("sameAccount")}
+                    </p>
+                    <label className="flex items-start gap-2 border-t border-[var(--line-subtle)] pt-4">
+                      <input
+                        type="checkbox"
+                        checked={joined}
+                        onChange={(event) => setJoined(event.target.checked)}
+                        className="mt-1"
+                      />
+                      {text("loginDone")}
+                    </label>
+                  </div>
+                )}
+                {step === 4 && (
+                  <div className="space-y-4">
+                    <p className="font-semibold">{text("select")}</p>
+                    <CustomSelect
+                      ariaLabel={text("select")}
+                      value={targetId}
+                      placeholder={text("choose")}
+                      disabled={busy || !ready || targets.length === 0}
+                      options={targets.map((item) => ({
+                        value: item.deviceId,
+                        label: `${item.name} · ${item.deviceId}`,
+                      }))}
+                      onChange={setTargetId}
+                      size="md"
+                    />
+                    <button
+                      type="button"
+                      disabled={busy || !ready}
+                      className={buttonClass}
+                      onClick={() => void check()}
+                    >
+                      {text(busy ? "checking" : "refresh")}
+                    </button>
+                    {!ready || (current && !current.devices) ? (
+                      <p role="alert" className="text-[var(--error)]">
+                        {text("readError")}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-[var(--ink-muted)]">
+                        {text("notFound")}
+                      </p>
+                    )}
+                    <dl
+                      aria-live="polite"
+                      className="grid gap-3 sm:grid-cols-2"
+                    >
+                      {[
+                        ["online", onlineText],
+                        ["execution", executionText],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-xl border border-[var(--line)] p-4"
+                        >
+                          <dt className="text-xs text-[var(--ink-muted)]">
+                            {text(label)}
+                          </dt>
+                          <dd
+                            className={`mt-2 font-semibold ${label === "online" && online && !busy ? "text-[var(--success)]" : "text-[var(--ink)]"}`}
+                          >
+                            {value}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                    {current &&
+                      (!current.devices?.complete ||
+                        !current.callable?.complete) && (
+                        <p className="text-xs text-[var(--ink-muted)]">
+                          {text(
+                            current.devices && current.callable
+                              ? "partial"
+                              : "unavailable",
+                          )}
+                        </p>
+                      )}
+                    <p className="text-[var(--ink-muted)]">
+                      {text("executionHint")}
+                    </p>
+                    {targetId === localDeviceId && (
+                      <p className="text-xs text-[var(--ink-muted)]">
+                        {text("localHint")}
+                      </p>
+                    )}
+                    <p className="text-xs text-[var(--ink-muted)]">
+                      {text("boundary")}
+                    </p>
+                    {current?.devices && (
+                      <p className="text-xs text-[var(--ink-subtle)]">
+                        {text("observed", {
+                          time: new Date(current.time).toLocaleTimeString(),
+                        })}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      disabled={!online || busy || !current}
+                      className={buttonClass}
+                      onClick={() => {
+                        if (device && online && current && !busy)
+                          onManage(device);
+                      }}
+                    >
+                      {text("manage")}
+                    </button>
+                    <p className="text-xs text-[var(--ink-muted)]">
+                      {text("finishHint")}
+                    </p>
+                  </div>
+                )}
+                {notice && (
+                  <p
+                    role="status"
+                    className="mt-3 text-sm text-[var(--ink-muted)]"
+                  >
+                    {notice}
                   </p>
                 )}
-                <p className="text-xs text-[var(--ink-muted)]">
-                  {text("boundary")}
-                </p>
-                {current?.devices && (
-                  <p className="text-xs text-[var(--ink-subtle)]">
-                    {text("observed", {
-                      time: new Date(current.time).toLocaleTimeString(),
-                    })}
-                  </p>
-                )}
+              </div>
+              <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--line-subtle)] px-5 py-4 sm:px-6">
                 <button
                   type="button"
-                  disabled={!online || busy || !current}
                   className={buttonClass}
                   onClick={() => {
-                    if (device && online && current && !busy) onManage(device);
+                    setNotice(null);
+                    if (step === 1) onClose();
+                    else setStep(step - 1);
                   }}
                 >
-                  {text("manage")}
+                  {text(step === 1 ? "close" : "back")}
                 </button>
-                <p className="text-xs text-[var(--ink-muted)]">
-                  {text("finishHint")}
-                </p>
-              </div>
-            )}
-            {notice && (
-              <p role="status" className="mt-3 text-sm text-[var(--ink-muted)]">
-                {notice}
-              </p>
-            )}
-          </div>
-          <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-[var(--line-subtle)] px-5 py-4 sm:px-6">
-            <button
-              type="button"
-              className={buttonClass}
-              onClick={() => {
-                setNotice(null);
-                if (step === 1) onClose();
-                else setStep(step - 1);
-              }}
-            >
-              {text(step === 1 ? "close" : "back")}
-            </button>
-            {step < 4 ? (
-              <button
-                type="button"
-                className={primaryClass}
-                disabled={(step === 2 && !installed) || (step === 3 && !joined)}
-                onClick={() => {
-                  setNotice(null);
-                  setStep(step + 1);
-                  if (step === 3) void check();
-                }}
-              >
-                {text("next")}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className={primaryClass}
-                disabled={!online || busy || !current}
-                onClick={onClose}
-              >
-                {text("done")}
-              </button>
-            )}
-          </footer>
+                {step < 4 ? (
+                  <button
+                    type="button"
+                    className={primaryClass}
+                    disabled={
+                      (step === 2 && !installed) || (step === 3 && !joined)
+                    }
+                    onClick={() => {
+                      setNotice(null);
+                      setStep(step + 1);
+                      if (step === 3) void check();
+                    }}
+                  >
+                    {text("next")}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={primaryClass}
+                    disabled={!online || busy || !current}
+                    onClick={onClose}
+                  >
+                    {text("done")}
+                  </button>
+                )}
+              </footer>
+            </>
+          )}
         </section>
       </FloatingFocusManager>
     </OverlayBackdrop>

@@ -1,0 +1,42 @@
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/host-onboard-001-20261018 -->
+<!-- git-project-sync-task:base=9269dd8c52c423a180bfba366c8f0434a90db005 -->
+<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:scaffold=false -->
+
+# Task: MOXBOTS-HOST-ONBOARD-001
+
+## Objective
+
+用户明确授权Ubuntu24.04/x86_64一条命令安装Host、浏览器授权后自动入网与会话自动续期；测试后提交main，发布交由统一部署聊天；不安装、重启或更新日常Mac。
+
+## Acceptance criteria
+
+- [x] 核实际repo/main/worktree，隔离分支，保留其他聊天修改。
+- [ ] 同源HTTPS正式入口及严格版本/hash/平台检查，统一安装事务/重复安装/繁忙拒绝/回滚。
+- [ ] 复制一条命令，无凭据参数；正式浏览器授权→等待→显式同principal绑定续接→auto join/run，自启与ready核实。
+- [ ] 有效会话的原设备DPoP续期；过期/注销/换key/跨scope拒绝；加密CAS原绑定/handle不变、并发与未知结果受控。
+- [ ] 添加Host界面取消Linux人工安装/登录勾选，真实目录自动检查；loading/unavailable/error/ready与账号切换拒绝陈旧响应。
+- [ ] 安装器/认证/HTTP/connector/界面回归与独立安全和UI审查、适用Linux隔离验证。
+- [ ] CI与远端main实际包含成果；source、fixture/隔离Linux、真实发行/生产分开。
+- [ ] 有证据的发布请求交统一owner，非本聊天发布；日常Mac零触碰。
+
+## Ownership and contract
+
+Primary负责架构/接口、Tauri公开installer状态读取、集成/验证/CI/main/记录。host_onboard_ui独占renderer引导及中英文文案；primary独立审查实际渲染/关键行为。host_one_command_installer独占scripts/host，host_session_renewal独占AuthStore/网络HTTP与Rust Host续期路径；各独立worktree和提交，不并发同文件。后续由非实现者独立安全和UI审查。本轮ai-yaoren-local纯内置模式，无外部模型；三worker请求gpt-6.1-sol/high，运行型号/effort及费用未暴露不冒称确认。
+
+正式分发GET /host/stable.json<=16KiB；strict unavailable或available profile=moxbot-test/platform=ubuntu-24.04-x86_64，固定/host/install.sh和releaseId路径、sourceCommit与hash/bytes。没有可验证已发布元数据时不展示可执行命令。信任为正常HTTPS来源与hash完整性，不虚称发行签名。Installer复用原统一安装、加密store、systemd owner；不得复制desktop token、删除identity pin或启用模型执行。
+
+续期POST /v1/session/renew走既有设备access/DPoP准入，AuthStore原session事务更新expiry，同principal/device/network/handle/key校验；handle/local binding保留，客户端在原加密owner先存候选，原AuthStore事务轮换token hash，旧bearer立即对所有validate路径失效，无新owner，不复活已过期/撤销session，不延长有限Bot/model grants。客户端CAS持久化后原binding安全重新连接，原业务操作不回放。
+
+## Verification
+
+尚未完成，具体命令和证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。隔离真实Ubuntu环境探测中。
+
+## Deployment request
+
+Required; queued给01a12bc2-907a-7702-b6dd-788225c5dfe4（MoxBots桌面端统一打包负责人），用户本次明确指定统一发布，已发送启动协调。需要同源码正式Host+connector bundle和同源installer静态路径、owned服务续期路由、客户端入口联合冻结；不得混入已冻结发行；此请求不等于已发布/可以改日常Mac。交付后补main SHA/digest/测试/备份回退和真实生产验收门槛。
+
+## Next step
+
+实现互斥模块，完成根UI与集成检查，确认真实Linux隔离验证方式；接收worker真实提交后主审，不以自报完成代替接受。

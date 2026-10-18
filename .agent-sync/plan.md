@@ -1,3 +1,7 @@
+## MOXBOTS-HOST-ONBOARD-001 — 2026-10-18
+
+用户启动Ubuntu24.04/x86_64一条命令安装、浏览器授权自动入网与有效会话自动续期；代码/测试/main由01a13320-dbf9-7c03-b7f3-37e30d15de48负责，发行交既定统一部署聊天01a12bc2-907a-7702-b6dd-788225c5dfe4。任务 `.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`。新public installer必须验证正式元数据可用后才展示命令，复用原身份/加密存储/撤销owner；没有新模型授权或生产操作。对日常Mac不安装、不更新、不重启。source/CI/main与正式bundle/服务发布/真实生产按门禁分开，发布请求仅排队不改变当前冻结发行。
+
 ## MOXBOTS-UI-ZOOM-002 — 2026-10-16
 
 修复Ctrl+后文本域水平滚动条；仅改输入/建议的横轴策略和grid收缩约束。真实组件Chromium/WebKit各60组、相关107测试、类型/lint及MoXBots web构建通过；CI/main以PR76与任务记录继续追踪。源码任务`.agent-sync/tasks/codex-ui-zoom-scrollbar-20261016-d37165e0.md`，验收`dev-docs/ui-zoom-scrollbar-acceptance.md`；queued发布请求由既有统一部署聊天处理下一未冻结批次，不操作日常/QA客户端、不回写055/056。

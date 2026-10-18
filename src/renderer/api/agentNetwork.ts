@@ -80,6 +80,21 @@ export function networkSnapshot(
 ): Promise<NetworkSnapshot> {
   return invoke("cmd_agent_network_snapshot", { connectionId });
 }
+
+export type HostInstallerInfo = {
+  status: "available" | "unavailable";
+  command?: string;
+  releaseId?: string;
+  sourceCommit?: string;
+};
+
+/** Rust validates publication metadata at this connection's pinned issuer. */
+export function hostInstallerInfo(
+  connectionId: string,
+  authGeneration: number,
+): Promise<HostInstallerInfo> {
+  return invoke("cmd_agent_network_host_installer", { connectionId, authGeneration });
+}
 const directoryReads = new Map<string, Promise<unknown>>();
 const readScopes = new Map<string, string>();
 /** In-flight reuse only; no response or permission cache. A newly observed

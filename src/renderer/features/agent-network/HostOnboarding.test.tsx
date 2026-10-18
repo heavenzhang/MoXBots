@@ -13,6 +13,7 @@ import type {
 } from "@/api/agentNetwork";
 const mocks = vi.hoisted(() => ({
   devices: vi.fn(),
+  installer: vi.fn(),
   callable: vi.fn(),
   open: vi.fn(),
   copy: vi.fn(),
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("@/api/agentNetwork", () => ({
   allNetworkDevices: mocks.devices,
+  hostInstallerInfo: mocks.installer,
   allCallableAgents: mocks.callable,
 }));
 vi.mock("@/utils/openExternal", () => ({ openExternal: mocks.open }));
@@ -27,7 +29,7 @@ vi.mock("@/utils/clipboard", () => ({ copyPlainText: mocks.copy }));
 vi.mock("./store", () => ({
   currentNetworkGeneration: () => mocks.generation,
 }));
-import { HostOnboarding, HOST_INSTALL_INSTRUCTIONS } from "./HostOnboarding";
+import { HostOnboarding } from "./HostOnboarding";
 const snapshot: NetworkSnapshot = {
   state: "ready",
   networkId: "network",
@@ -62,6 +64,10 @@ const props = {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.generation = 1;
+  mocks.installer.mockResolvedValue({
+    status: "available",
+    command: "curl https://network.example/install.sh | sh",
+  });
   mocks.devices.mockResolvedValue({ items: [device], complete: true });
   mocks.callable.mockResolvedValue({ items: [], complete: true });
 });
@@ -201,40 +207,120 @@ describe("Host onboarding", () => {
     expect(screen.queryByText("已在线")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "完成引导" })).toBeDisabled();
   });
-  it("provides test-scoped Linux instructions and copies only explicit enrollment commands", async () => {
+  it("opens a separate Linux command flow without installation acknowledgements", async () => {
     render(<HostOnboarding {...props} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Linux 服务器/ }));
+    next();
+    await screen.findByRole("button", { name: "复制命令" });
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.getByText("1. 复制安装命令")).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    expect(
+      screen.queryByRole("button", { name: "下一步" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "上一步" }));
+    expect(screen.getByRole("radio", { name: /Linux 服务器/ })).toBeChecked();
+  });
+  it("keeps the parent Escape close behavior for Linux", async () => {
+    render(<HostOnboarding {...props} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Linux 服务器/ }));
+    next();
+    await screen.findByRole("button", { name: "复制命令" });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+  it("discards a late installer response after switching accounts", async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.installer.mockReturnValueOnce(
+      new Promise((r) => {
+        resolve = r;
+      }),
+    );
+    const view = render(<HostOnboarding {...props} />);
     fireEvent.click(screen.getByRole("radio", { name: /Linux 服务器/ }));
     next();
     expect(
-      screen.getByText(/当前没有适用于此网络的公开一键安装包/),
+      screen.getByText("正在读取此网络的安装发布信息…"),
     ).toBeInTheDocument();
-    fireEvent.click(
-      screen.getByRole("button", { name: "打开 Linux 安装说明" }),
+    mocks.installer.mockResolvedValue({ status: "unavailable" });
+    mocks.generation = 2;
+    view.rerender(
+      <HostOnboarding
+        {...props}
+        snapshot={{
+          ...snapshot,
+          principalId: "next-account",
+          authGeneration: 2,
+          revision: 2,
+        }}
+      />,
     );
-    await waitFor(() =>
-      expect(mocks.open).toHaveBeenCalledWith(HOST_INSTALL_INSTRUCTIONS),
+    await screen.findByText(/此网络尚未发布可验证/);
+    await act(async () =>
+      resolve({ status: "available", command: "old-account-command" }),
     );
-    fireEvent.click(screen.getByRole("checkbox"));
-    next();
-    fireEvent.click(screen.getByRole("button", { name: "复制命令" }));
-    await screen.findByText("已复制");
-    expect(mocks.copy).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "scripts/host/network-control.py --profile myagents-test start",
-      ),
-    );
-    expect(mocks.copy.mock.calls[0][0]).not.toContain("https://");
+    expect(screen.queryByText("old-account-command")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "复制命令" }),
+    ).not.toBeInTheDocument();
   });
-  it("handles copy failure and Escape dismissal", async () => {
-    mocks.copy.mockRejectedValue(new Error("denied"));
-    render(<HostOnboarding {...props} />);
+  it("resets Linux waiting state on scope change and rejects late device success", async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.devices
+      .mockResolvedValueOnce({ items: [], complete: true })
+      .mockReturnValue(
+        new Promise((r) => {
+          resolve = r;
+        }),
+      );
+    const view = render(<HostOnboarding {...props} />);
     fireEvent.click(screen.getByRole("radio", { name: /Linux 服务器/ }));
     next();
-    fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(await screen.findByRole("button", { name: "复制命令" }));
+    await screen.findByText("在终端完成安装和浏览器授权");
+    view.rerender(
+      <HostOnboarding
+        {...props}
+        snapshot={{ ...snapshot, networkId: "next-network", revision: 2 }}
+      />,
+    );
+    await screen.findByRole("button", { name: "复制命令" });
+    await act(async () => resolve({ items: [device], complete: true }));
+    expect(screen.queryByText("已在线")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "完成引导" }),
+    ).not.toBeInTheDocument();
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+  it("preserves Linux enrollment across a same-account ready directory revision", async () => {
+    let resolve!: (value: unknown) => void;
+    mocks.devices
+      .mockResolvedValueOnce({ items: [], complete: true })
+      .mockReturnValue(
+        new Promise((r) => {
+          resolve = r;
+        }),
+      );
+    const view = render(<HostOnboarding {...props} />);
+    fireEvent.click(screen.getByRole("radio", { name: /Linux 服务器/ }));
     next();
-    fireEvent.click(screen.getByRole("button", { name: "复制命令" }));
-    await screen.findByText("操作失败，请重试。");
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(props.onClose).toHaveBeenCalledOnce();
+    fireEvent.click(await screen.findByRole("button", { name: "复制命令" }));
+    await screen.findByText("在终端完成安装和浏览器授权");
+    view.rerender(
+      <HostOnboarding {...props} snapshot={{ ...snapshot, revision: 2 }} />,
+    );
+    expect(screen.getByText("在终端完成安装和浏览器授权")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "复制命令" }),
+    ).not.toBeInTheDocument();
+    await act(async () => resolve({ items: [device], complete: true }));
+    expect(
+      screen.getByText("目标 Host 已加入网络并在线。"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "完成引导" })).toBeEnabled();
+    expect(mocks.installer).toHaveBeenCalledOnce();
+    expect(mocks.copy).toHaveBeenCalledOnce();
   });
 });
