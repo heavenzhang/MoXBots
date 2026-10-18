@@ -92,11 +92,12 @@ pub(crate) async fn read_account_response_body(
     diagnostic: &RequestDiagnostic,
 ) -> Result<Vec<u8>, NetworkError> {
     let mut bytes = Vec::new();
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| NetworkError::new("NETWORK_ACCOUNT_UNAVAILABLE"))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        NetworkError::new(crate::network_diagnostics::network_error_code(
+            &error,
+            "NETWORK_ACCOUNT_UNAVAILABLE",
+        ))
+    })? {
         if bytes.len() + chunk.len() > 65536 {
             diagnostic.failure("body", "capacity", Some(response.status().as_u16()), None);
             return Err(NetworkError::new("NETWORK_ACCOUNT_RESPONSE_INVALID"));
@@ -140,10 +141,12 @@ async fn request(
     if let Some(body) = body {
         req = req.json(&body);
     }
-    let mut response = diagnostic
-        .send(req)
-        .await
-        .map_err(|_| NetworkError::cloud("NETWORK_ACCOUNT_UNAVAILABLE", 503))?;
+    let mut response = diagnostic.send(req).await.map_err(|error| {
+        NetworkError::cloud(
+            crate::network_diagnostics::network_error_code(&error, "NETWORK_ACCOUNT_UNAVAILABLE"),
+            503,
+        )
+    })?;
     let status = response.status();
     let retry_after = crate::agent_network::reconnect::retry_after(&response);
     let bytes = Zeroizing::new(read_account_response_body(&mut response, &diagnostic).await?);

@@ -41,12 +41,15 @@ const buttonClass =
 
 export function OwnedHostManagement({
   locator,
-  online,
+  online: peerOnline,
+  connectionReady = true,
 }: {
   locator: HostLocator;
   online: boolean;
+  connectionReady?: boolean;
 }) {
   const { t } = useTranslation("app");
+  const online = connectionReady && peerOnline;
   const key = hostLocatorKey(locator);
   const { connectionId, principalId, networkId, deviceId, authGeneration } =
     locator;
@@ -270,9 +273,13 @@ export function OwnedHostManagement({
           {t("agentNetwork.ownedHost.refresh")}
         </button>
       </div>
-        {!online && (
+      {!online && (
         <p role="status" className="text-sm text-[var(--ink-muted)]">
-          {t("agentNetwork.ownedHost.offline")}
+          {t(
+            connectionReady
+              ? "agentNetwork.ownedHost.offline"
+              : "agentNetwork.deviceStatusUnknown",
+          )}
         </p>
       )}
       {online && !snapshot && !extendedSnapshot && !notice && (

@@ -413,6 +413,9 @@ Actual simulator native runtime follow-up: `dev-docs/mobile-002/ios-native-runti
 
 The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when Node Fetch received HTTP 406 for the exact Eigen 5.0.1 URL in the frozen app resource lock. A normal-TLS full GET from the same GitLab URL matched the lock's 2,967,272-byte size and SHA-256 `e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec`; the exact bytes also passed the repository cache validator on macOS. Task branch `codex/moxbots-win-eigen-cache-0510-20261018` adds a fail-closed Windows workflow step to read the frozen lock, retrieve through standard `curl.exe` TLS, verify the pinned size/hash, and seed only the content-addressed cache. The app tag/source/resource lock remain unchanged. PR CI and a merged-main Windows build must pass before artifact use. Website upload still requires a separate least-privilege identity; do not reuse updater credentials. Details: `.agent-sync/tasks/codex-moxbots-win-eigen-cache-0510-20261018-a9d25de0.md`.
 
+## CLOUD-NETWORK-RECOVERY-20261018
+
+区分登录/凭据授权、连接超时/不可用与Ready网络内的设备离线；失联时设备缓存为状态未知。源分支codex/cloud-network-recovery-20261018，记录`.agent-sync/tasks/codex-cloud-network-recovery-20261018-cc874b4b.md`，验收`dev-docs/cloud-network-recovery/acceptance.md`。用户已授权协调既定桌面及云发布聊天；不接管其targets或中断活动任务。云/101只读确认原设备当前Ready，桌面原账号恢复和修复版原生验收仍单独开放。
 
 ## Deployment coordination — MOXBOTS-RELEASE-NOTES-001 (2026-10-18)
 
