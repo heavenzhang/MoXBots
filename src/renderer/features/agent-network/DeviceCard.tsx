@@ -16,6 +16,7 @@ const VISIBLE_AGENTS = 3;
 
 export function DeviceCard({
   device,
+  connectionReady,
   catalog,
   isLocal,
   busy,
@@ -27,6 +28,7 @@ export function DeviceCard({
   onRename,
 }: {
   device: NetworkDevice;
+  connectionReady: boolean;
   /** `undefined` while the catalog is still loading. */
   catalog: DeviceCatalog | undefined;
   isLocal: boolean;
@@ -51,7 +53,7 @@ export function DeviceCard({
         {isLocal && <LocalTag />}
       </div>
       <p className="mt-0.5 truncate text-xs text-[var(--ink-muted)]">
-        {osName(device.platform)} · {deviceStatusText(t, device)}
+        {osName(device.platform)} · {deviceStatusText(t, device, connectionReady)}
       </p>
     </div>
   );
@@ -78,7 +80,7 @@ export function DeviceCard({
       <article className="relative rounded-xl border border-dashed border-[var(--line-strong)] p-[18px] transition-colors hover:bg-[var(--paper-elevated)]">
         {openLayer}
         <div className="pointer-events-none relative flex items-center gap-3">
-          <DeviceIcon device={device} />
+          <DeviceIcon device={device} connectionReady={connectionReady} />
           {heading}
           <button
             type="button"
@@ -146,7 +148,7 @@ export function DeviceCard({
     <article className="relative flex flex-col gap-3.5 rounded-xl border border-[var(--line-subtle)] bg-[var(--paper-elevated)] p-[18px] transition-[box-shadow,border-color] hover:border-[var(--line)] hover:shadow-sm">
       {openLayer}
       <div className="pointer-events-none relative flex items-start gap-3">
-        <DeviceIcon device={device} />
+        <DeviceIcon device={device} connectionReady={connectionReady} />
         {heading}
         <div className="pointer-events-auto -mr-1 -mt-1 shrink-0">
           <DeviceMenu

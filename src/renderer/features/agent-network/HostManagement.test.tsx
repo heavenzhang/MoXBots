@@ -193,6 +193,33 @@ describe("Host management UI v0 seam (isolated fixtures only)", () => {
     fireEvent.click(screen.getByRole("button", { name: /Host 管理/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("暂时无法读取");
   });
+  it("distinguishes network unavailability from peer offline without enabling remote operations", async () => {
+    const { adapter, rerender } = await mount();
+    edit();
+    adapter.inspect.mockClear();
+    rerender(<HostManagement locator={locator} online connectionReady={false} adapter={adapter} />);
+    expect(screen.getByText("设备状态未知（网络未连接）")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Host 管理/ })).toHaveTextContent("连接不可用");
+    expect(screen.queryByText("无法连接 Host。禁止发送修改，未提交草稿已保留。")).not.toBeInTheDocument();
+    expect(save()).toBeDisabled();
+    expect(screen.getByRole("button", { name: "读取最新状态" })).toBeDisabled();
+    fireEvent.click(save());
+    expect(adapter.inspect).not.toHaveBeenCalled();
+    expect(adapter.read).not.toHaveBeenCalled();
+    expect(adapter.mutate).not.toHaveBeenCalled();
+    rerender(<HostManagement locator={locator} online={false} connectionReady adapter={adapter} />);
+    expect(screen.getByRole("button", { name: /Host 管理/ })).toHaveTextContent("离线");
+    expect(screen.queryByText("设备状态未知（网络未连接）")).not.toBeInTheDocument();
+    expect(screen.getByText("无法连接 Host。禁止发送修改，未提交草稿已保留。")).toBeInTheDocument();
+    expect(save()).toBeDisabled();
+  });
+  it("does not inspect a cached online Host while the network is unavailable", () => {
+    const adapter = fixture();
+    render(<HostManagement locator={locator} online connectionReady={false} adapter={adapter} />);
+    fireEvent.click(screen.getByRole("button", { name: /Host 管理/ }));
+    expect(screen.getByText("设备状态未知（网络未连接）")).toBeInTheDocument();
+    expect(adapter.inspect).not.toHaveBeenCalled();
+  });
   it("retains draft while offline and across closing; invalid input never submits", async () => {
     const { adapter, rerender, unmount } = await mount();
     edit();
