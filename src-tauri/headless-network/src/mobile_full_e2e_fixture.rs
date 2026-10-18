@@ -71,9 +71,11 @@ async fn original_headless_connector_fixture() {
             Some(&connection),
             Some(&root.join("headless-status.json")),
             true,
-            Some(&ipc),
-            Some(&binding),
-            None,
+            super::RunFeatures {
+                management_ipc: Some(&ipc),
+                management_binding: Some(&binding),
+                ..Default::default()
+            },
         ),
     )
     .await
