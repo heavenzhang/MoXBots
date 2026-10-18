@@ -57,3 +57,9 @@ New product P2 `58d5247d7692acb816f211e1af7ef1891871bd6a` actually built in39140
 - [ ] Immutable publication, full anonymous normal-TLS/size/SHA/CRC, stable pair CAS and live acceptance.
 
 Evidence locations and closed summary hashes are recorded in dev-docs/host-init-001/acceptance.md. All production remains unchanged by this installer correction.
+
+## Postboot diagnosis and current blockers
+
+P2 true KVM39142568416 and closed diagnostic39143984499 both booted a new kernel but failed the unchanged90s postboot Ready gate. Node/identity/registry are healthy; connector exits1 before status/socket. No exact startup root cause is claimed yet. A strictly scoped known-code/restart metadata probe is being prepared in the dedicated harness branch; no product/state repair or production action is used to pass the test.
+
+Full c6 CI39143964717 passed8 applicable jobs but one transient PermissionPrompt copied-label DOM case failed (2604 pass/1fail). Test-only controlled clock repair retains exact payload/permission assertions; root targeted11 pass and independent review accepted it. Current repair commit needs new full CI after integration. Local full candidate archive/consumer/ZIP and nested CRC now pass; public transport remains untested for P2.
