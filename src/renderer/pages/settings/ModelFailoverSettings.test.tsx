@@ -54,6 +54,52 @@ describe('backup model settings', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it('searches names and IDs, supports keyboard choice, empty results and reopening', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const many = { ...provider, models: [...provider.models, { model: 'other-id', modelName: 'Human friendly', modelSeries: 'fixture' }] };
+    render(<ModelFailoverSettings value={undefined} providers={[many]} apiKeys={keys} updateConfig={update} />);
+    const trigger = screen.getByRole('button', { name: 'Backup provider and model' });
+    fireEvent.click(trigger);
+    const search = screen.getByRole('searchbox');
+    expect(search).toHaveFocus();
+    fireEvent.keyDown(search, { key: 'Escape', isComposing: true });
+    expect(search).toBeVisible();
+    fireEvent.change(search, { target: { value: 'missing' } });
+    expect(screen.getByText('No matching models. Try another search or filter.')).toBeVisible();
+    fireEvent.change(search, { target: { value: 'HUMAN friendly' } });
+    expect(screen.queryByRole('button', { name: /Backup Provider · backup-model/ })).toBeNull();
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    const choice = screen.getByRole('button', { name: /Backup Provider · other-id/ });
+    expect(choice).toHaveFocus();
+    fireEvent.click(choice);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, backup: { providerId: provider.id, modelId: 'other-id' } } }));
+    expect(trigger).toHaveFocus();
+    fireEvent.click(trigger);
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' });
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('filters providers and keys without changing the saved selection or writing config', async () => {
+    const update = vi.fn();
+    const other = { ...provider, id: 'other-provider', name: 'Other Provider' };
+    render(<ModelFailoverSettings value={{ enabled: true, backup }} providers={[provider, other]} apiKeys={keys} updateConfig={update} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Filter by provider' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Other Provider' }));
+    const trigger = screen.getByRole('button', { name: 'Backup provider and model' });
+    expect(trigger).toHaveTextContent('Backup Provider · backup-model');
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('button', { name: /Backup Provider · backup-model/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Other Provider · backup-model/ })).toBeVisible();
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'API key configured only' }));
+    fireEvent.click(trigger);
+    expect(screen.queryByRole('button', { name: /Other Provider · backup-model/ })).toBeNull();
+    expect(trigger).toHaveTextContent('Backup Provider · backup-model');
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('enables a ready backup and displays only the persisted state', async () => {
     const update = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<ModelFailoverSettings value={{ enabled: false, backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);

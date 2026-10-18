@@ -1,5 +1,36 @@
-import { describe, expect, it } from 'vitest';
-import { parseModelsResponse } from './modelDiscoveryService';
+import { describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
+import { PRESET_PROVIDERS } from '../types';
+import { fetchProviderModels, parseModelsResponse } from './modelDiscoveryService';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+
+describe('OpenRouter account model discovery', () => {
+  const provider = PRESET_PROVIDERS.find(candidate => candidate.id === 'openrouter')!;
+
+  it('uses the authenticated account-filtered catalog instead of the global catalog', async () => {
+    vi.mocked(invoke).mockResolvedValue({ data: [{ id: 'allowed/model' }] });
+    const models = await fetchProviderModels(provider, 'test-account-key');
+    expect(invoke).toHaveBeenLastCalledWith('cmd_fetch_provider_models', expect.objectContaining({
+      url: 'https://openrouter.ai/api/v1/models/user',
+      authHeaderName: 'Authorization', authHeaderValue: 'Bearer test-account-key',
+    }));
+    expect(models.map(model => model.id)).toEqual(['allowed/model']);
+  });
+
+  it('requires a key even though an unauthenticated catalog may return HTTP 200', async () => {
+    vi.mocked(invoke).mockClear();
+    await expect(fetchProviderModels(provider, undefined)).rejects.toThrow('API Key is required');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('preserves account-filtered empty responses and errors without falling back to the global catalog', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ data: [] });
+    expect(await fetchProviderModels(provider, 'test-account-key')).toEqual([]);
+    vi.mocked(invoke).mockRejectedValueOnce(new Error('HTTP 403'));
+    await expect(fetchProviderModels(provider, 'test-account-key')).rejects.toThrow('HTTP 403');
+  });
+});
 
 describe('model catalog response boundary', () => {
   it.each([
@@ -51,5 +82,12 @@ describe('model catalog response boundary', () => {
       id: 'current', displayName: 'Current', contextLength: 200000, maxOutputTokens: 8192,
     })]);
     expect(parseModelsResponse({ data: [{ id: 'retired', status: 'Shutdown' }] })).toEqual([]);
+  });
+
+  it('reads OpenRouter architecture video and declared reasoning parameters', () => {
+    expect(parseModelsResponse({ data: [{
+      id: 'provider/visual-reasoner', architecture: { input_modalities: ['text', 'image', 'video'] },
+      supported_parameters: ['tools', 'reasoning_effort'],
+    }] })).toEqual([expect.objectContaining({ supportsImage: true, supportsVideo: true, supportsReasoning: true })]);
   });
 });

@@ -8,7 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import type { Provider, ModelEntity } from '../types';
 import { parseSupportedProtocols, TOKENDANCE_PROVIDER_ID, type ModelProtocol } from '../../../shared/tokendance';
-import { OPENCODE_GO_PROVIDER_ID } from '../../../shared/opencode-go';
+import { isOpenCodeGoDiscoverableModel, OPENCODE_GO_CATALOG_USER_AGENT, OPENCODE_GO_PROVIDER_ID } from '../../../shared/opencode-go';
 
 // ============= Types =============
 
@@ -31,6 +31,7 @@ export interface DiscoveredModel {
 /**
  * Fetch models from a provider via external HTTP.
  * - anthropic-api: Anthropic REST API (x-api-key auth)
+ * - OpenRouter: account-filtered /v1/models/user (Bearer auth)
  * - Other providers: OpenAI-compatible /v1/models (Bearer auth)
  * - anthropic-sub: not supported (no API key, SDK returns aliases not real model IDs)
  */
@@ -51,10 +52,17 @@ export async function fetchProviderModels(
     providerId: provider.id,
     authHeaderName: publicCatalog ? null : isAnthropicApi ? 'x-api-key' : 'Authorization',
     authHeaderValue: publicCatalog ? null : isAnthropicApi ? apiKey : `Bearer ${apiKey}`,
-    extraHeaders: isAnthropicApi ? { 'anthropic-version': '2023-06-01' } : null,
+    // Go requires clients to identify themselves. Its public catalog also
+    // rejects generic/default HTTP client identities (observed HTTP 403).
+    extraHeaders: isAnthropicApi ? { 'anthropic-version': '2023-06-01' }
+      : provider.id === OPENCODE_GO_PROVIDER_ID
+        ? { 'User-Agent': OPENCODE_GO_CATALOG_USER_AGENT, Accept: 'application/json' }
+        : null,
   });
 
-  return parseModelsResponse(body);
+  const models = parseModelsResponse(body);
+  return provider.id === OPENCODE_GO_PROVIDER_ID
+    ? models.filter(model => isOpenCodeGoDiscoverableModel(model.id)) : models;
 }
 
 export function isTokenDanceConversationModel(model: DiscoveredModel): boolean {
@@ -130,12 +138,15 @@ function mapRawToDiscovered(m: Record<string, unknown>): DiscoveredModel {
   const supportsVideo =
     toBoolOrUndef(m.supports_video_in) ||
     inputMods?.includes('video') ||
+    archInputMods?.includes('video') ||
     undefined;
 
   const supportsReasoning =
     toBoolOrUndef(m.supports_reasoning) ||
     toBoolOrUndef(caps?.reasoning) ||
     toBoolOrUndef(asRecordOrUndef(caps?.thinking)?.supported) ||
+    (Array.isArray(m.supported_parameters)
+      && m.supported_parameters.some(parameter => parameter === 'reasoning' || parameter === 'reasoning_effort')) ||
     undefined;
 
   return {

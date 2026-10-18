@@ -57,14 +57,25 @@ describe('Token Dance public model discovery', () => {
 });
 
 describe('OpenCode Go public model discovery', () => {
+  it('excludes the documented Google-native model while preserving unknown IDs for explicit protocol setup', async () => {
+    vi.mocked(invoke).mockResolvedValue({ data: [
+      { id: 'gemini-4-argon-contributor' }, { id: 'future-go' }, { id: 'kimi-k3' },
+    ] });
+    expect((await fetchProviderModels(go, 'must-not-send')).map(model => model.id))
+      .toEqual(['future-go', 'kimi-k3']);
+    expect(invoke).toHaveBeenLastCalledWith('cmd_fetch_provider_models', expect.objectContaining({
+      authHeaderName: null, authHeaderValue: null,
+    }));
+  });
   it('parses the observed ID-only directory without inventing a protocol or sending a Key', async () => {
     const observed = { data: [{ id: 'future-go', object: 'model', created: 1790658758, owned_by: 'opencode' }] };
     vi.mocked(invoke).mockResolvedValue(observed);
     const models = await fetchProviderModels(go, undefined);
     expect(invoke).toHaveBeenCalledWith('cmd_fetch_provider_models', expect.objectContaining({
-      url: 'https://opencode.ai/zen/go/v1/models',
+      url: 'https://opencode.ai/inference/go/v1/models',
       authHeaderName: null,
       authHeaderValue: null,
+      extraHeaders: { 'User-Agent': 'MoXBots/model-discovery', Accept: 'application/json' },
     }));
     expect(models).toEqual([{ id: 'future-go', displayName: undefined, ownedBy: 'opencode', contextLength: undefined,
       maxOutputTokens: undefined, supportsImage: undefined, supportsVideo: undefined,
