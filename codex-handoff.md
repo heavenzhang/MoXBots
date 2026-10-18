@@ -1,5 +1,11 @@
 # Codex Handoff
 
+## MOXBOTS-HOST-ONBOARD-001（2026-10-18，当前源码任务）
+
+权威仓库https://github.com/heavenzhang/MoXBots.git，任务分支codex/host-onboard-001-20261018、PR119。Ubuntu24.04/x86_64一键安装、浏览器授权后自动入网与原设备有效会话令牌轮换已实现；installer100/UI26/Host190与定向authority tests通过，完整正向恢复proof和最终联合CI/main仍在收口。具体当前事实以任务`.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`和`dev-docs/host-onboard-001/acceptance.md`为准，勿将下方历史2026-10-14状态当本次版本。
+
+用户本次明确发布交统一聊天01a12bc2-907a-7702-b6dd-788225c5dfe4，本聊天不部署现网、不改日常Mac；发布、实际OIDC/Host与自然24h观察门禁及安全回退在`dev-docs/host-onboard-001/release-handoff.md`。同handle轮换不延长finite grants，pending旧binary兼容需先resolve，不能恢复旧auth快照掩盖未知commit。共享owned_login.rs/server.rs由另一个已授权认证聊天唯一维护并以精确commit吸收。
+
 ## 当前试用安装、公开下载及桌面凭据状态（2026-10-14）
 
 2026-10-14 更新：用户明确要求安装并把同包放到官网；仅 5f1a8feb 获本次授权，84fd35f8 未安装或运行。5f 已从 a838 直接备份更新，严格签名与19组资源复核，真实启动成功，内置 Sidecar 来源5f且与构建字节一致。七项 exact-source CI 已通过。旧应用及数据完整备份，原 MyAgents 未改动。

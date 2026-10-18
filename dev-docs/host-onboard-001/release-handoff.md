@@ -1,0 +1,29 @@
+# MOXBOTS-HOST-ONBOARD-001 release request
+
+Status: queued, not published. Source integration is [PR119](https://github.com/heavenzhang/MoXBots/pull/119); final main/CI evidence belongs in [acceptance](acceptance.md) and the task record. Only the designated deployment chat `01a12bc2-907a-7702-b6dd-788225c5dfe4` (MoxBots桌面端统一打包负责人) owns publication. This development task does not operate production or install, restart or update the daily Mac client.
+
+## Joint candidate and order
+
+1. Reconcile the existing release lock and frozen batch. Fetch clean accepted main and select one exact source commit, not mixed branch artifacts. Obtain matching `headless-host-linux`, `headless-network-linux` and `owned-agentnet-auth-linux` artifacts from its green workflow runs; verify their recorded `source-commit.txt` and SHA256SUMS. Preserve the exact artifacts, run IDs, source tree and review receipt.
+2. In that same clean source checkout, run `python3 scripts/host/prepare-release.py --host-archive ABS_MOXBOT_ARCHIVE --network-artifact-dir ABS_NETWORK_DIRECTORY --output ABS_NEW_DIRECTORY`. The output directory must not already exist and must be outside source. It contains the actual immutable bundle/bootstrap, index, stable script and `release-review.json`; it is not a publication receipt. See [installer runbook](../../scripts/host/README.md).
+3. Use a normal system-trusted HTTPS origin. First deploy the compatible owned service route `/v1/session/renew` and login-start clock-skew compatibility, then validate a staged candidate. Upload immutable `/host/releases/<releaseId>/` before atomically switching `/host/install.sh` and finally `/host/stable.json`. Keep unavailable metadata until the candidate passes. Serve only under existing HTTPS ingress; do not create a Host public listener. Hashes provide integrity; no publisher signature is claimed.
+4. Desktop entry code ships through the existing unified client release. Its UI must not show an executable command before the published index validates. Do not update or launch the daily Mac as part of this request. A published server/installer and a released desktop build are distinct deliverables.
+
+## Required release acceptance
+
+- Fresh Ubuntu24.04/x86_64/systemd: one command, actual browser authorization using the intended account, auto join and server Ready. Confirm HostID, principal, network, key generation, Node doctor and actual device-directory row. An empty callable catalog is valid; it does not prove model execution.
+- Repeat the same release without changing identity, credentials, configuration or the active Node PID; refuse a busy upgrade. Exercise cancellation, authorization expiry, interrupted download and failed-install rollback with controlled data.
+- An isolated instance may use `session_ttl_seconds` in its private service config for accelerated renewal tests. Use the same accepted binaries. Verify actual token replacement (without exporting it), same session handle/key/local binding, server expiry advancement when due, response-loss recovery after the old local deadline, outage/restart recovery, revoke rejection and no register/rejoin side effects. Never alter production TTL/expiry to accelerate a test.
+- For existing 101.42.11.29, its historical session is already expired. Reuse its identity and perform formal same-account browser authorization; never resurrect its expired token or copy the Mac's token. Preserve current finite/context/cloud-model flags and grants, drain active work before maintenance, and verify original identity, Ready, disconnect/restart and user directory. No model calls or expanded grants are authorized by this request.
+- A production 24-hour cycle is an observation gate until it occurs naturally. Early rotation need not advance expiry under the half-TTL server rule. Separate isolated short-TTL evidence, immediate production readiness, and later natural-cycle observation.
+
+## Backup and rollback
+
+Record the live source/binary digests, active tasks, identity/config/encrypted-state fingerprints and a verified private backup before maintenance. Never put keys, tokens, raw encrypted-state snapshots, private account links or service config in Git.
+
+- Withdraw the public index or atomically restore its prior reviewed pointer to stop new installations; retain immutable release directories.
+- Cloud schema change is additive. An older server can read the current session hash and ignore the tombstone table; it lacks renewal, so the older expiry behavior returns. Preserve the live authentication database and revocations.
+- A successfully adopted account serializes the original four fields; an in-flight `renewal` candidate intentionally makes older strict readers fail closed. Resolve/adopt that candidate through the new owner before rolling the connector back. If its result cannot be confirmed, stop, preserve identity/ciphertext and use formal reauthentication through the approved owner.
+- Do not restore a pre-rotation account snapshot to recover a now-invalid old bearer. Do not restore an old AuthStore database over live state: that can revive revoked permissions. Backups are for controlled reconciliation, not blind authentication rollback. Finite Bot/model grants never extend with account renewal.
+
+The deployment owner records the exact running artifacts, actual browser/Host results, rollback readiness and any remaining observation gate, then links the release receipt back to PR119 and the task record. Queue acceptance is not deployment completion.

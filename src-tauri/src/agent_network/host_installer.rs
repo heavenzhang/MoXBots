@@ -66,7 +66,21 @@ fn invalid() -> NetworkError {
 
 fn origin(value: &str) -> Result<url::Url, NetworkError> {
     let url = url::Url::parse(value).map_err(|_| invalid())?;
-    if url.scheme() != "https"
+    // Match the public bootstrap's supported DNS/IPv4 origin contract.
+    let supported_host = match url.host() {
+        Some(url::Host::Ipv4(_)) => true,
+        Some(url::Host::Domain(host)) => {
+            !host.starts_with('.')
+                && !host.ends_with('.')
+                && !host.contains("..")
+                && host
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'.' || b == b'-')
+        }
+        _ => false,
+    };
+    if !supported_host
+        || url.scheme() != "https"
         || url.origin().ascii_serialization() != value
         || url.host_str().is_none()
         || !url.username().is_empty()
@@ -142,11 +156,15 @@ pub(crate) async fn fetch(issuer: &str) -> Result<InstallerInfo, NetworkError> {
     endpoint.set_path("/host/stable.json");
     // Public installers must also work on a clean Ubuntu machine. Do not add
     // a desktop-private CA here that curl and the Linux bootstrap do not have.
+    // Fixed external HTTPS origin; the localhost builder is inappropriate here.
+    #[allow(clippy::disallowed_methods)]
     let builder = reqwest::Client::builder()
         .https_only(true)
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
-        .timeout(Duration::from_secs(10));
+        .timeout(Duration::from_secs(10))
+        .retry(reqwest::retry::never())
+        .tls_backend_preconfigured(super::crypto::external_tls_config()?);
     let client = builder
         .build()
         .map_err(|_| NetworkError::new("HOST_INSTALLER_UNAVAILABLE"))?;
@@ -248,6 +266,14 @@ mod tests {
             &serde_json::to_vec(&manifest()).unwrap()
         )
         .is_err());
+        for issuer in [
+            "https://[::1]",
+            "https://owned.example.",
+            "https://bad_host.example",
+            "https://bad..example",
+        ] {
+            assert!(parse(issuer, &serde_json::to_vec(&manifest()).unwrap()).is_err());
+        }
         assert!(parse("https://owned.example", &vec![b' '; MAX_INDEX + 1]).is_err());
     }
 }

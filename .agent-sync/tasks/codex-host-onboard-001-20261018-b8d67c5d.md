@@ -31,7 +31,7 @@ Primary负责架构/接口、Tauri公开installer状态读取、集成/验证/CI
 
 ## Verification
 
-尚未完成，具体命令和证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。隔离真实Ubuntu环境探测中。
+代码与定向门禁已实现；installer100、UI26、Host190及strict Clippy、authority store10/realHTTP2已通过，完整正向Connection恢复proof与最终联合CI/main仍待完成。具体证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。隔离真实Ubuntu环境探测中。
 
 ## Deployment request
 
@@ -39,4 +39,4 @@ Required; queued给01a12bc2-907a-7702-b6dd-788225c5dfe4（MoxBots桌面端统一
 
 ## Next step
 
-实现互斥模块，完成根UI与集成检查，确认真实Linux隔离验证方式；接收worker真实提交后主审，不以自报完成代替接受。
+补完整正向Connection恢复proof；将其与当前全部共享源码冻结，完成精确head CI、Ubuntu相称验收与main交付。发布交接dev-docs/host-onboard-001/release-handoff.md，不以队列接受当已发布。

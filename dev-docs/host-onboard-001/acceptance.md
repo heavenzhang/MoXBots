@@ -1,13 +1,25 @@
 # MOXBOTS-HOST-ONBOARD-001 acceptance
 
-Scope: Ubuntu24.04/x86_64 one-command install, browser authorization/automatic enrollment and same-device valid-session renewal. Source/main delivery; publication is queued with unified owner. Daily Mac, production services/Hosts are excluded from this implementation/test task.
+Scope: Ubuntu24.04/x86_64 one-command install, browser authorization/automatic enrollment and same-device valid-session rotation. Source/main delivery is separate from publication, which is assigned to the unified owner. Daily Mac and production services/Hosts are excluded from this development/test task. No paid model calls.
 
-## Checklist
+| Gate | Current evidence | Status |
+| --- | --- | --- |
+| Installer code and integrity/recovery | Installer commit7bc70c44b (integrated413d538cf); one-command20, control8, network-install30, unified11, existing Node installer/bootstrap31. Primary independently reran new20 tests, passed. Verified local HTTPS fixture, strict source/platform/archive/digest, cancel, lock lifetime and same-release no-restart. | Focused tests pass; actual release installation separately tracked |
+| Session rotation authority | AuthStore IMMEDIATE transaction, exact device/DPoP/session/key scope, old bearer immediately invalid, original-expiry logout alias, inert retired-hash tombstones, 65,536-rotation cap. Worker final focused store10/10 and real HTTP2/2 passed. | Focused real protocol tests pass |
+| Encrypted client and lifecycle | Final own source5e6069ff: pending-before-send CAS, exact-candidate retries, original deadline recovery, account/key/handle fences, same-principal pre-publish grant fence, CLI preflight before policy projection. Host190/190 and strict Clippy passed against shared final helper f0a4d2ee. | Pass; complete positive recovery proof test being added |
+| Shared login compatibility | Peer62ea/504b/f0a4 integrated; start clocks skew bounded; service start actual/advertised deadline conservatively min(TTL,270); exact inspect401 differs from transport/503. Final shared file SHA25608155cf75198e09e3519c2f0f820dcabc6f4fbd0c8c3ef30497dbae98376c25c. | Peer independent review and targeted/full tests pass; combined CI pending |
+| Renderer | DOM26/26, full TypeScript without diagnostics, targeted ESLint/Prettier; primary actual built-in-browser 390/768/1440 copy→waiting→new ready target→management callback. [UI report](ui-review.md). | Synthetic UI pass; native release separately tracked |
+| Publication discovery | Strict streamed16KiB metadata at selected owned issuer, normal public/platform TLS, no private CA, no proxy/redirect/retry, same auth/record/actor fences. [Independent review](publication-review.md), edition2021 real-crypto harness2/2. | Focused pass; full Tauri/Clippy pending |
+| Ubuntu systemd | Task-owned Lima/QEMU with no host mounts. First full cloud image had cold-boot device/AppArmor timeouts and was stopped; minimal verified Ubuntu24.04.5/x86_64 boots and reports systemd255, curl and Python3. Logs in private task output. | Real environment available; candidate installation not yet accepted |
+| Combined CI and main | PR119, latest sync baseline main03f652dd2; source/tests/source-artifact mapping must be rechecked at final head. | Pending; draft PR is not main delivery |
+| Publication/production | [Joint release request and rollback gates](release-handoff.md); queued unified chat01a12bc2-907a-7702-b6dd-788225c5dfe4. | Delegated, not performed here |
 
-- [ ] Installer and exact immutable release contract tests.
-- [ ] DPoP AuthStore renewal/live revoke/key/generation/foreign/expired cases.
-- [ ] Encrypted CAS, restart, account replacement and bounded reconnect tests.
-- [ ] Renderer interactions, 390/768/1440 visual checks and independent review.
-- [ ] Isolated Ubuntu systemd actual path (environment pending).
-- [ ] Combined CI/main provenance.
-- [ ] Complete release handoff (no production/daily client operations).
+## Repairs and proof boundaries
+
+Independent review rejected indefinite extension of the same bearer because other routes use bearer-only admission; implementation now rotates it in the original AuthStore. Additional findings fixed pre-publication principal fencing, original-expiry logout aliases with inert tombstones, pending recovery before CLI policy projection, recovery across the old local deadline, and catalog revision resetting the UI. An initial standalone Rust harness missed the desktop edition2021 restriction; CI caught it and source/harness were corrected. A wrong-SPKI HTTP negative fixture initially supplied an empty body and tested400 parsing instead of key rejection; it now supplies valid input and retains the401 assertion (ec401c45a).
+
+Tests using synthetic TLS/identities or encrypted scratch storage establish their stated protocol/state paths. They do not prove a real OIDC user login, released systemd candidate, production Host, model call or natural24-hour renewal cycle. The index stays unavailable until a real immutable release is published. Rollback must preserve current auth state and resolve pending candidates before an older binary reads it; see release handoff.
+
+## Execution record
+
+Primary owns architecture, Tauri discovery, integration, independent UI/installer review and main delivery. Native workers: host_one_command_installer (installer and independent discovery review), host_session_renewal (authority/client lifecycle), host_onboard_ui (renderer). Three independent scopes used gpt-6.1-sol/high requests because of cross-process auth/installation/async UI failure risk; runtime model/effort and token/fee totals are not exposed. The separate authorized auth chat owned shared owned_login.rs/server.rs and provided readonly security reviews; no file authority overlap. No external models were called: ai-yaoren-local native mode. Significant repairs stayed with the original owners. Actual package/test counts above are measured/reported test outcomes; no estimated token savings are claimed.
