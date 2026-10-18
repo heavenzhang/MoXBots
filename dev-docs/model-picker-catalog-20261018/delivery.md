@@ -6,7 +6,7 @@
 
 - 备用模型下拉支持大小写不敏感的模型 ID、显示名、供应商、多关键词检索；供应商与已配置密钥可组合筛选。筛选仅改变菜单展示，不写盘、不丢失现有选择；清空选择仍按原配置 writer 关闭自动备用。
 - 复用 CustomSelect / Popover 与产品主题，保留现有未开启搜索的调用方。搜索获得焦点、方向键定位、Enter 原生按钮选择、Escape 返回触发器，IME 组合输入不触发菜单快捷键。
-- OpenRouter 使用认证的账号过滤模型目录；Go 更新目录及三个 transport 路径，精确旧默认路径仅在执行投影中升级，不写回自定义地址/模型。
+- OpenRouter 内置供应商及使用官方HTTPS `/api`、`/api/v1` 的自定义供应商均使用认证的账号过滤目录；显式目录URL、代理主机和任意自定义路径保留。Go 更新目录及三个 transport 路径，精确旧默认路径仅在执行投影中升级，不写回自定义地址/模型。
 - 不增加推理探测、自动删除历史模型、自动变更备用配置或真实业务写入。密钥配置状态不等同于推理可用。
 
 API 来源与实际无费用 GET 结果见 [api-verification.md](api-verification.md)，浏览器合成场景验收见 [ui-acceptance.md](ui-acceptance.md)。
@@ -31,4 +31,4 @@ API 来源与实际无费用 GET 结果见 [api-verification.md](api-verificatio
 
 主 Agent 负责界面、集成、代码审查、验收与 main 交付；catalog_api 负责 API/协议与回归；ui_acceptance 独立验收合成页面。请求模型为 gpt-6.1-sol/high（API）、gpt-6-luna/medium（UI）；运行时未提供可确认的模型/effort用量与费用统计。两条独立工作流避免了共享产品文件并发编辑，主 Agent 审查实际 diff。一次搜索焦点测试发现 portal 延后挂载，已用稳定挂载 ref 修复并复验；独审发现密钥suffix未被屏幕阅读器关联，补充aria-describedby并通过DOM及240项实际页面复验。UI脚本状态重置与selector错误在验收准备中修正，不作为产品缺陷。
 
-后续同类任务先核对产品 profile 与真实配置 owner，避免用上游 `.myagents` 配置推断 MoXBots `.moxbot` 凭据状态。
+后续同类任务先核对产品profile、截图对应的实际供应商ID及配置owner，避免把自定义供应商当内置供应商、或用上游 `.myagents` 配置推断 MoXBots `.moxbot` 凭据状态。主Agent最终核到截图使用自定义Openrouter，补齐官方base识别并以该配置自己的凭据GET200/468复验，追加26项发现服务回归通过。

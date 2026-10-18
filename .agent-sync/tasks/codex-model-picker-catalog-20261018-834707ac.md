@@ -20,7 +20,7 @@
 
 ## Completed
 
-已实现搜索/供应商与密钥过滤、保留选择和原保存流程；OpenRouter账号目录、Go官方目录与三协议路径修复；旧精确默认URL升级、自定义URL保留。主 Agent 拥有 UI/集成；catalog_api 负责 API/协议，ui_acceptance 负责独立合成页面审阅。
+已实现搜索/供应商与密钥过滤、保留选择和原保存流程；OpenRouter内置及官方base自定义供应商账号目录、Go官方目录与三协议路径修复；旧精确默认URL升级、自定义URL保留。主 Agent 拥有 UI/集成；catalog_api 负责 API/协议，ui_acceptance 负责独立合成页面审阅。
 
 ## Verification
 

@@ -18,6 +18,30 @@ describe('OpenRouter account model discovery', () => {
     expect(models.map(model => model.id)).toEqual(['allowed/model']);
   });
 
+  it.each(['https://openrouter.ai/api', 'https://openrouter.ai/api/v1/'])(
+    'also uses the account catalog for a custom provider at %s', async baseUrl => {
+      vi.mocked(invoke).mockResolvedValue({ data: [{ id: 'allowed/custom-model' }] });
+      const custom = { id: 'custom-fixture', config: { baseUrl } };
+      await fetchProviderModels(custom, 'custom-provider-key');
+      expect(invoke).toHaveBeenLastCalledWith('cmd_fetch_provider_models', expect.objectContaining({
+        providerId: custom.id, url: 'https://openrouter.ai/api/v1/models/user',
+        authHeaderValue: 'Bearer custom-provider-key',
+      }));
+    },
+  );
+
+  it('preserves explicit catalogs and proxy hosts for custom providers', async () => {
+    vi.mocked(invoke).mockResolvedValue({ data: [] });
+    const custom = { id: 'custom-fixture', config: { baseUrl: 'https://openrouter.ai/api/v1' },
+      modelListUrl: 'https://custom.invalid/account-models' };
+    await fetchProviderModels(custom, 'custom-provider-key');
+    expect(invoke).toHaveBeenLastCalledWith('cmd_fetch_provider_models', expect.objectContaining({ url: custom.modelListUrl }));
+    await fetchProviderModels({ id: custom.id, config: { baseUrl: 'https://openrouter.ai.proxy.invalid/api/v1' } }, 'custom-provider-key');
+    expect(invoke).toHaveBeenLastCalledWith('cmd_fetch_provider_models', expect.objectContaining({ url: 'https://openrouter.ai.proxy.invalid/api/v1/models' }));
+    await fetchProviderModels({ id: custom.id, config: { baseUrl: 'https://openrouter.ai/custom/v1' } }, 'custom-provider-key');
+    expect(invoke).toHaveBeenLastCalledWith('cmd_fetch_provider_models', expect.objectContaining({ url: 'https://openrouter.ai/custom/v1/models' }));
+  });
+
   it('requires a key even though an unauthenticated catalog may return HTTP 200', async () => {
     vi.mocked(invoke).mockClear();
     await expect(fetchProviderModels(provider, undefined)).rejects.toThrow('API Key is required');

@@ -65,3 +65,9 @@ Results: **7 test files, 81 tests passed**. First test command: 6 files / 80 tes
 - Existing historical Go preset entries were preserved to avoid deleting user selections. Their known protocol mapping does not claim current catalog membership or account availability.
 - Real native model-picker interaction, packaged desktop release, production installation, and real supplier inference remain separate acceptance steps owned by the coordinating task. No release or account mutation was performed by this API subtask.
 - Runtime model and reasoning-effort metadata were not exposed; task total elapsed time was not measured. Only test durations above are measured.
+
+## Custom provider follow-up
+
+Primary-agent inspection of the screenshot and the relevant current MoXBots provider configuration established that the shown “Openrouter” is a custom provider at the official HTTPS `/api/v1` base, with no explicit catalog URL. Updating only the bundled provider would leave this route on the general directory. `resolveModelListUrl` now recognizes only OpenRouter's exact official HTTPS `/api` and `/api/v1` bases and infers `/api/v1/models/user`. Explicit `modelListUrl`, other hosts (including lookalikes), custom paths and query-bearing bases keep their existing behavior. The configured custom provider's own key is retained; no credential is borrowed from the bundled provider.
+
+Primary-agent real read-only GET using this custom provider's existing credential returned HTTP200 / 468 entries on 2026-10-18 around 09:15 +08:00. The key, custom provider ID and raw private configuration were not recorded. Two discovery test files now pass 26 cases including three added custom-provider cases. Targeted ESLint also passed. This is an additional focused verification, overlapping the prior 81-case group rather than an independent additive total.

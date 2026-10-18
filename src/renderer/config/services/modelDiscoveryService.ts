@@ -82,6 +82,20 @@ function resolveModelListUrl(provider: Pick<Provider, 'config' | 'modelListUrl'>
   if (!baseUrl) return null;
   const trimmed = baseUrl.replace(/\/+$/, '');
 
+  // Users can configure OpenRouter as a custom provider too. Infer the
+  // account catalog only for its exact official API bases; explicit catalog
+  // URLs above, proxy hosts and arbitrary custom paths retain their owner.
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.origin === 'https://openrouter.ai'
+      && (parsed.pathname === '/api' || parsed.pathname === '/api/v1')
+      && !parsed.search && !parsed.hash) {
+      return 'https://openrouter.ai/api/v1/models/user';
+    }
+  } catch {
+    // Keep malformed URL rejection at the existing native request boundary.
+  }
+
   if (/\/anthropic$/i.test(trimmed)) {
     return `${trimmed.slice(0, -'/anthropic'.length)}/v1/models`;
   }
