@@ -47,6 +47,10 @@ use zeroize::Zeroizing;
 const MAX_HTTP_BODY: usize = 8 * 1024;
 const MAX_PROVIDER_BODY: usize = 256 * 1024;
 const MAX_TRANSACTIONS: usize = 1024;
+// Older desktop clients reject start deadlines beyond their local now + 300s.
+// Leave a bounded clock margin without extending either advertised or actual
+// authorization lifetime. Account session lifetimes are independent.
+const MAX_LOGIN_TRANSACTION_SECONDS: u64 = 270;
 const COMPLETION_PAGE: &str = "<!doctype html><meta charset=utf-8><title>Sign-in complete</title><p>Sign-in complete. Return to the application.</p>";
 
 #[derive(Deserialize)]
@@ -674,7 +678,9 @@ async fn start(
         return Err(ApiError::BadRequest);
     }
     let now = unix_now().map_err(|_| ApiError::Internal)?;
-    let expires = now + app.flow.ttl.as_secs() as i64;
+    let expires = now
+        .checked_add(app.flow.ttl.as_secs().min(MAX_LOGIN_TRANSACTION_SECONDS) as i64)
+        .ok_or(ApiError::Internal)?;
     let tx = Uuid::new_v4().to_string();
     let state = URL_SAFE_NO_PAD.encode(random::<[u8; 32]>());
     let nonce = URL_SAFE_NO_PAD.encode(random::<[u8; 32]>());
@@ -1984,6 +1990,38 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[tokio::test]
+    async fn login_start_keeps_actual_and_advertised_deadlines_within_legacy_clock_margin() {
+        for configured_seconds in [5, 300, 900] {
+            let (mut app, _dir) = test_app();
+            Arc::get_mut(&mut app).unwrap().flow.ttl = Duration::from_secs(configured_seconds);
+            let before = unix_now().unwrap();
+            let (_, Json(started)) = start(
+                State(app.clone()),
+                Json(StartRequest {
+                    device_id: "22222222-2222-4222-8222-222222222222".into(),
+                    pkce_challenge: URL_SAFE_NO_PAD.encode([1u8; 32]),
+                    browser_return: false,
+                    browser_return_path: None,
+                }),
+            )
+            .await
+            .unwrap();
+            let after = unix_now().unwrap();
+            let lifetime = configured_seconds.min(270) as i64;
+            assert!(started.expires_at >= before + lifetime);
+            assert!(started.expires_at <= after + lifetime);
+            assert_eq!(
+                app.flow.pending.lock().unwrap()[&started.transaction_id].expires_at,
+                started.expires_at
+            );
+            // The old client's upper-bound check still passes when its clock
+            // trails the server by up to 30 seconds.
+            let legacy_client_now = after - 30;
+            assert!(started.expires_at <= legacy_client_now + 300);
+        }
     }
 
     #[tokio::test]
