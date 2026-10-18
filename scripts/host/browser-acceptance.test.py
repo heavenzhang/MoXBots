@@ -4,8 +4,12 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
+import signal
+import stat
 import subprocess
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -183,6 +187,105 @@ class HarnessGates(unittest.TestCase):
                 with self.assertRaisesRegex(lab.Rejected, "nonroot-uploader-UID-required"):
                     lab.public_readability([Path("/non-secret/summary.json")])
                 run.assert_not_called()
+
+    def test_authorization_JSON_is_detected_across_chunks_multiline_and_progress_prefix(self):
+        raw = b'fixed progress {"authorizationUrl":\n "https://127.0.0.1:24443/dex/auth?state=synthetic",\n "expiresAt":42}\n'
+        for boundary in (1, 18, 42, len(raw) - 2):
+            output = bytearray(raw[:boundary])
+            lab.installer_json_records(output)  # partial objects are not errors
+            output.extend(raw[boundary:])
+            values = lab.installer_json_records(output)
+            self.assertEqual(len(values), 1)
+            self.assertIn("authorizationUrl", values[0])
+
+    def test_interrupt_targets_only_verified_installer_owner_in_another_process_group(self):
+        with patch.object(lab, "installer_owner", return_value={"pid": 2301, "birth": "42", "sameGroupAsPipeline": False}), \
+             patch.object(lab, "proc_birth", return_value="42"), patch.object(lab.os, "kill") as kill, patch.object(lab.os, "killpg") as killpg:
+            result = lab.interrupt_installer_owner(100)
+        kill.assert_called_once_with(2301, signal.SIGINT)
+        killpg.assert_not_called()
+        self.assertTrue(result["installerOwnerFound"])
+        self.assertFalse(result["installerOwnerSameGroupAsPipeline"])
+        with patch.object(lab, "installer_owner", return_value={"pid": 2301, "birth": "42", "sameGroupAsPipeline": False}), \
+             patch.object(lab, "proc_birth", return_value="changed"), patch.object(lab.os, "kill") as kill:
+            with self.assertRaisesRegex(lab.Rejected, "installer-owner-process-birth-changed"):
+                lab.interrupt_installer_owner(100)
+            kill.assert_not_called()
+
+    def test_owner_search_requires_exact_M_bytes_and_only_walks_owned_descendants(self):
+        source = subprocess.check_output(["git", "-C", str(ROOT), "show", lab.PRODUCT + ":scripts/host/one-command.py"])
+        bootstrap = source.replace(b"from __future__ import annotations\n",
+            b"from __future__ import annotations\nEXPECTED_SOURCE_COMMIT = " + repr(lab.PRODUCT).encode() + b"\n", 1)
+        for tampered in (False, True):
+            with self.subTest(tampered=tampered), tempfile.TemporaryDirectory(prefix="moxbots-bootstrap-") as directory:
+                stage = Path(directory).resolve()
+                path = stage / "bootstrap.py"
+                path.write_bytes(bootstrap if not tampered else b"X" + bootstrap[1:])
+                original_text, original_bytes, original_lstat = Path.read_text, Path.read_bytes, Path.lstat
+                def text(value, *args, **kwargs):
+                    if str(value) == "/proc/100/task/100/children":
+                        return "200"
+                    if str(value) == "/proc/200/task/200/children":
+                        return ""
+                    return original_text(value, *args, **kwargs)
+                def data(value, *args, **kwargs):
+                    if str(value) == "/proc/100/cmdline":
+                        return b"bash\0-c\0fixed-public-command\0"
+                    if str(value) == "/proc/200/cmdline":
+                        return b"\0".join([b"/usr/bin/python3", os.fsencode(path), b"--instance", lab.ORIGIN.encode(),
+                                             b"--index", os.fsencode(stage / "stable.json"), b""])
+                    return original_bytes(value, *args, **kwargs)
+                def metadata(value, *args, **kwargs):
+                    if value == path:
+                        return SimpleNamespace(st_mode=stat.S_IFREG | 0o600, st_uid=0, st_nlink=1, st_size=len(bootstrap))
+                    return original_lstat(value, *args, **kwargs)
+                with patch.object(Path, "read_text", text), patch.object(Path, "read_bytes", data), \
+                     patch.object(Path, "lstat", metadata), patch.object(lab, "proc_birth", return_value="42"), \
+                     patch.object(lab.os, "getpgid", side_effect=lambda pid: pid):
+                    if tampered:
+                        with self.assertRaisesRegex(lab.Rejected, "installer-owner-must-be-exact-M-bootstrap"):
+                            lab.installer_owner(100)
+                    else:
+                        self.assertEqual(lab.installer_owner(100), {"pid": 200, "birth": "42", "sameGroupAsPipeline": False})
+
+    def test_streamed_cancel_fixture_finishes_and_summary_never_contains_capability(self):
+        script = r'''import json, signal, sys, time
+def canceled(*unused):
+    print("Authorization interrupted.", flush=True)
+    sys.exit(130)
+signal.signal(signal.SIGINT, canceled)
+print(json.dumps({"status":"error","code":"AUTH_NOT_PENDING"}), flush=True)
+print(json.dumps({"status":"error","code":"SYNTHETIC_SECRET_UNKNOWN_CODE"}), flush=True)
+print("Open the short authorization URL below fixed progress ", end="", flush=True)
+print(json.dumps({"authorizationUrl":"https://127.0.0.1:24443/dex/auth?state=SYNTHETIC_CAPABILITY", "expiresAt":42}, indent=2), flush=True)
+while True: time.sleep(.1)
+'''
+        child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        diagnostics = {}
+        def interrupt(pid):
+            self.assertEqual(pid, child.pid)
+            os.kill(pid, signal.SIGINT)
+            return {"installerOwnerFound": True, "installerOwnerSameGroupAsPipeline": False,
+                    "interruptTarget": "verified-M-bootstrap-owner-only"}
+        try:
+            with tempfile.TemporaryDirectory() as directory, patch.object(lab.subprocess, "Popen", return_value=child), \
+                 patch.object(lab, "interrupt_installer_owner", side_effect=interrupt), \
+                 patch.object(lab, "installed_identity_hashes", return_value={"identity": "same"}), \
+                 patch.object(lab, "auth_unit_observation", return_value={"wait": {"ActiveState": "inactive"}}):
+                result = lab.install_with_browser(Path(directory), Path(directory), "synthetic", "synthetic", "cancel", diagnostics=diagnostics)
+            self.assertEqual(result, {"identity": "same"})
+            self.assertTrue(diagnostics["authorizationJsonSeen"] and diagnostics["interruptSent"] and diagnostics["pipeEOF"])
+            self.assertEqual(diagnostics["childExitCode"], 130)
+            self.assertIn("AUTH_NOT_PENDING", diagnostics["knownCliErrorCodes"])
+            self.assertTrue(diagnostics["unknownCliErrorCodeObserved"])
+            serialized = json.dumps(diagnostics)
+            self.assertNotIn("SYNTHETIC_CAPABILITY", serialized)
+            self.assertNotIn("SYNTHETIC_SECRET_UNKNOWN_CODE", serialized)
+            self.assertNotIn("https://", serialized)
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,11 @@ import uuid
 
 sys.dont_write_bytecode = True  # imports must not add generated files to clean product M
 _GUEST = None  # optional strictly guarded nested-KVM target; default lane is local
+SAFE_CLI_ERRORS = frozenset({"OWNED_REAUTH_REQUIRED", "SPACE_REAUTH_REQUIRED", "ACCOUNT_SESSION_EXPIRED",
+    "ACCOUNT_AUTH_REVOKED", "NOT_AUTHENTICATED", "OWNED_SESSION_INVALID", "AUTH_CANCELLED", "AUTH_NOT_PENDING",
+    "AUTH_EXPIRED", "AUTH_SCOPE_MISMATCH", "AUTH_ATTEMPT_STALE", "AUTH_EXPIRY_INVALID", "OWNED_STATE_CORRUPT",
+    "CLI_USAGE_INVALID", "NETWORK_PROXY_INVALID", "PUBLIC_TLS_CA_UNSAFE", "NETWORK_CONTROL_REJECTED",
+    "HOST_MANAGEMENT_GRANT_MISSING", "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED"})
 
 PRODUCT = "dcf8d9a60976c160e2b2aca33313c668c071132c"
 RELEASE = "20261018032115-dcf8d9a60976"
@@ -519,7 +524,105 @@ def browser_flow(payload):
             browser.close()
 
 
-def install_with_browser(private, browser_home, email, password, action):
+def installer_json_records(output):
+    """Decode complete objects independent of pipe chunks/newlines/prefix text.
+
+    These objects may contain capabilities and stay in driver memory only.
+    Diagnostic projection below never serializes a record or arbitrary value.
+    """
+    text = bytes(output).decode("utf-8", errors="replace")
+    decoder, cursor, values = json.JSONDecoder(), 0, []
+    while (start := text.find("{", cursor)) >= 0:
+        try:
+            value, end = decoder.raw_decode(text, start)
+        except ValueError:
+            cursor = start + 1
+            continue
+        if isinstance(value, dict):
+            values.append(value)
+        cursor = end
+    return values
+
+
+def proc_birth(pid):
+    return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+
+
+def installer_owner(root_pid):
+    """Inspect only this invocation's bounded descendant tree; never global ps.
+
+    sudo may create a different process group. A signal to the shell pipeline's
+    group can therefore miss the actual Python owner or interrupt its parent
+    waiter first. Identify the inner verified M bootstrap, not a systemd auth
+    transient unit or another Python process, before sending the one SIGINT.
+    """
+    import stat
+    pending, visited, matches = [root_pid], set(), []
+    while pending:
+        pid = pending.pop()
+        if pid in visited:
+            continue
+        visited.add(pid)
+        need(len(visited) <= 128, "installer-descendant-tree-bound")
+        try:
+            children = Path(f"/proc/{pid}/task/{pid}/children").read_text().split()
+            pending.extend(int(child) for child in children)
+            argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+            if argv and argv[-1] == b"":
+                argv.pop()
+            if len(argv) != 6 or argv[2:5] != [b"--instance", ORIGIN.encode(), b"--index"]:
+                continue
+            if not re.fullmatch(r"python3(?:\.[0-9]+)?", Path(os.fsdecode(argv[0])).name):
+                continue
+            path = Path(os.fsdecode(argv[1]))
+            if path.name != "bootstrap.py" or not path.parent.name.startswith("moxbots-bootstrap-"):
+                continue
+            born = proc_birth(pid)
+            info = path.lstat()
+            need(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1
+                 and path.resolve() == path and info.st_size == PINS["bootstrap.py"][0]
+                 and digest(path) == PINS["bootstrap.py"][1], "installer-owner-must-be-exact-M-bootstrap")
+            index_path = Path(os.fsdecode(argv[5]))
+            need(index_path.parent == path.parent and index_path.name == "stable.json", "installer-owner-fixed-index-argv")
+            need(proc_birth(pid) == born, "installer-owner-process-birth-changed")
+            matches.append({"pid": pid, "birth": born, "sameGroupAsPipeline": os.getpgid(pid) == os.getpgid(root_pid)})
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    need(len(matches) == 1, "exactly-one-owned-M-installer-required")
+    return matches[0]
+
+
+def interrupt_installer_owner(root_pid):
+    owner = installer_owner(root_pid)
+    need(proc_birth(owner["pid"]) == owner["birth"], "installer-owner-process-birth-changed")
+    os.kill(owner["pid"], signal.SIGINT)
+    return {"installerOwnerFound": True, "installerOwnerSameGroupAsPipeline": owner["sameGroupAsPipeline"],
+            "interruptTarget": "verified-M-bootstrap-owner-only"}
+
+
+def auth_unit_observation():
+    if _GUEST:
+        return _GUEST.call("auth-unit-observation")
+    fields = {"LoadState": {"loaded", "not-found", "error", "masked"},
+        "ActiveState": {"active", "inactive", "failed", "activating", "deactivating", "reloading"},
+        "SubState": {"running", "exited", "dead", "failed", "start", "start-pre", "start-post", "stop", "stop-sigterm"},
+        "Result": {"success", "exit-code", "signal", "timeout", "start-limit-hit", "resources", "protocol", "core-dump"}}
+    observed = {}
+    for action in ("start", "wait", "cancel"):
+        unit = "moxbot-host-network-test-auth-" + action + ".service"
+        raw = run(["systemctl", "show", unit, "--property=LoadState,ActiveState,SubState,Result,ExecMainStatus"], check=False, timeout=5).stdout
+        values = {}
+        for line in raw.decode(errors="replace").splitlines():
+            key, _, value = line.partition("=")
+            if key in fields:
+                values[key] = value if value in fields[key] else "other"
+            elif key == "ExecMainStatus" and re.fullmatch(r"[0-9]{1,3}", value):
+                values[key] = int(value)
+        observed[action] = values
+    return observed
+
+
+def install_with_browser(private, browser_home, email, password, action, *, diagnostics=None, save_diagnostics=None):
     # Deliberately the literal public curl | sudo bash command, with ordinary TLS.
     command = f"set -o pipefail; curl --fail --silent --show-error {ORIGIN}/host/install.sh | sudo bash -s -- --instance {ORIGIN}"
     child = (_GUEST.popen_install() if _GUEST else subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE,
@@ -529,34 +632,74 @@ def install_with_browser(private, browser_home, email, password, action):
     interrupt_at = None
     interrupted = False
     cancellation_identity = None
+    diagnostics = diagnostics if diagnostics is not None else {}
+    owner_signal = {}
+    pipe_eof = False
+    started = time.monotonic()
+    last_observation = 0
+    def observe():
+        nonlocal last_observation
+        records = installer_json_records(output)
+        known, unknown = set(), False
+        for value in records:
+            if value.get("status") != "error":
+                continue
+            code = value.get("code")
+            if isinstance(code, dict):
+                code = code.get("code")
+            if isinstance(code, str) and code in SAFE_CLI_ERRORS:
+                known.add(code)
+            else:
+                unknown = True
+        diagnostics.update({"action": action, "seconds": round(time.monotonic() - started, 3),
+            "authorizationJsonSeen": seen, "interruptSent": interrupted,
+            "childExited": child.poll() is not None, "childExitCode": child.poll(), "pipeEOF": pipe_eof,
+            "outputBytes": len(output), "completeJSONObjectCount": len(records), "knownCliErrorCodes": sorted(known),
+            "unknownCliErrorCodeObserved": unknown, "authPromptSeen": b"Open the short authorization URL below" in output,
+            "readyMarkerSeen": b"MoXBots Host ready." in output,
+            "interruptedMarkerSeen": b"Authorization interrupted." in output,
+            "installerFailureMarkerSeen": b"HOST_INSTALL_INCOMPLETE:" in output, **owner_signal})
+        try:
+            diagnostics["authUnits"] = auth_unit_observation()
+        except Exception:
+            diagnostics["authUnitObservationUnavailable"] = True
+        counts = route_counts(private)
+        diagnostics["routes"] = {"startRequests": hits(counts, "start", False), "pollRequests": hits(counts, "poll", False),
+            "completedPolls": completed_polls(counts), "cancelRequests": hits(counts, "cancel", False),
+            "cancelSuccesses": hits(counts, "cancel"), "joinSuccesses": hits(counts, "join")}
+        if save_diagnostics:
+            save_diagnostics()
+        last_observation = time.monotonic()
     selector = selectors.DefaultSelector()
     selector.register(child.stdout, selectors.EVENT_READ)
     deadline = time.monotonic() + 270
     try:
         while selector.get_map():
+            if time.monotonic() - last_observation >= 10:
+                observe()
             need(time.monotonic() < deadline, "install-browser-deadline")
             if interrupt_at is not None and time.monotonic() >= interrupt_at and not interrupted:
-                # Only this installation's process group, never the lab servers
-                # or systemd units. M owns the cancellation/revocation operation.
+                # Signal only the verified inner M owner. Its Python exception
+                # handler must invoke native cancel; neither outer waiter nor
+                # independently owned auth-wait unit receives our SIGINT.
                 need(child.poll() is None, "installer-exited-before-native-cancel")
-                interrupted = True
                 if _GUEST:
-                    _GUEST.call("interrupt-install")
+                    owner_signal = _GUEST.call("interrupt-install")
                 else:
-                    os.killpg(child.pid, signal.SIGINT)
+                    owner_signal = interrupt_installer_owner(child.pid)
+                interrupted = True
+                observe()
             for key, _ in selector.select(timeout=0.5):
                 block = os.read(key.fd, 65536)
                 if not block:
                     selector.unregister(key.fileobj)
+                    pipe_eof = not bool(selector.get_map())
                     continue
                 output.extend(block)
                 need(len(output) < 2 * 1024**2, "install-output-bound")
-                # Product owned-auth-start emits one complete JSON line.
-                for line in bytes(output).splitlines():
-                    try:
-                        value = json.loads(line)
-                    except (ValueError, UnicodeDecodeError):
-                        continue
+                # Actual M uses compact println. This also accepts split writes,
+                # pretty objects or fixed surrounding progress without logging.
+                for value in installer_json_records(output):
                     if isinstance(value, dict) and "authorizationUrl" in value and not seen:
                         need(action in {"authorize", "cancel"}, "unexpected-browser-request")
                         seen = True
@@ -587,6 +730,12 @@ def install_with_browser(private, browser_home, email, password, action):
         need(seen == (action == "authorize"), "browser-count-contract")
         return True
     finally:
+        try:
+            observe()  # before cleanup so true failure phase/units survive as booleans
+        except Exception:
+            diagnostics["finalObservationUnavailable"] = True
+            if save_diagnostics:
+                save_diagnostics()
         selector.close()
         if child.poll() is None:
             if _GUEST:
@@ -640,6 +789,11 @@ def accept(args):
         save()
         print("passed: " + name, flush=True)
         return result
+
+    def install(action, private, browser_home, email, password):
+        diagnostics = summary.setdefault("installerDiagnostics", {}).setdefault(action, {})
+        return install_with_browser(private, browser_home, email, password, action,
+                                    diagnostics=diagnostics, save_diagnostics=save)
 
     processes = []
     container = "moxbots-browser-lab-" + uuid.uuid4().hex
@@ -712,7 +866,7 @@ def accept(args):
             (web / "host/stable.json").write_text(json.dumps(damaged, indent=2) + "\n")
             installation_attempted = True
             try:
-                step("real-curl-bad-bundle-digest-rejected", lambda: install_with_browser(private, browser_home, email, password, "reject"))
+                step("real-curl-bad-bundle-digest-rejected", lambda: install("reject", private, browser_home, email, password))
                 # Run the original guarded no-namespace/account/unit checks again;
                 # only the output location differs because summary now exists.
                 if _GUEST:
@@ -726,7 +880,7 @@ def accept(args):
             finally:
                 (web / "host/stable.json").write_bytes(original_index)
             canceled_identity = step("fresh-authorization-interrupt-uses-M-native-cancel", lambda:
-                install_with_browser(private, browser_home, email, password, "cancel"))
+                install("cancel", private, browser_home, email, password))
             canceled = db_snapshot(private)
             need(canceled["sessions"] == [] and canceled["principals"] == 0 and canceled["rotations"] == 0
                  and canceled["catalogs"] == 0 and hits(route_counts(private), "join") == 0
@@ -736,7 +890,7 @@ def accept(args):
                  "canceled-install-connector-inactive")
             step("canceled-install-no-Ready-or-join-and-identity-preserved", lambda: True)
             step("same-command-resume-real-Chromium-OIDC-auto-join", lambda:
-                install_with_browser(private, browser_home, email, password, "authorize"))
+                install("authorize", private, browser_home, email, password))
             need(installed_identity_hashes().items() >= canceled_identity.items(), "resume-preserves-original-Host-identity-config-KEKs")
             first = step("real-DPoP-empty-catalog-and-Ready", lambda: wait_for(lambda: ready(private)))
             counts = route_counts(private)
@@ -748,7 +902,7 @@ def accept(args):
                 host_run(["systemctl", "is-enabled", "--quiet", unit])
             before_files = persistent_hashes()
             before_pid = node_pid()
-            step("same-command-repeat-without-browser", lambda: install_with_browser(private, browser_home, email, password, "repeat"))
+            step("same-command-repeat-without-browser", lambda: install("repeat", private, browser_home, email, password))
             second = ready(private)
             second_counts = route_counts(private)
             need(before_pid > 0 and node_pid() == before_pid and persistent_hashes() == before_files,

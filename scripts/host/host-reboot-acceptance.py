@@ -156,6 +156,8 @@ def guest_main():
             result = lab.persistent_hashes(payload["include_accounts"])
         elif op == "listeners":
             result = sorted(lab.tcp_listeners())
+        elif op == "auth-unit-observation":
+            result = lab.auth_unit_observation()
         elif op == "trust-ca":
             value = payload.get("certificate", "")
             lab.need(isinstance(value, str) and len(value) < 65536 and value.startswith("-----BEGIN CERTIFICATE-----"), "guest-CA-format")
@@ -169,8 +171,11 @@ def guest_main():
             record = json.loads(private_file(INSTALL_PROCESS))
             lab.need(record["nonce"] == marker["nonce"] and process_birth(record["pid"]) == record["birth"]
                      and os.getpgid(record["pid"]) == record["pid"], "guest-owned-process-birth-check")
-            os.killpg(record["pid"], signal.SIGINT if op == "interrupt-install" else signal.SIGTERM)
-            result = True
+            if op == "interrupt-install":
+                result = lab.interrupt_installer_owner(record["pid"])
+            else:
+                os.killpg(record["pid"], signal.SIGTERM)
+                result = True
         elif op == "reboot":
             lab.run(["systemctl", "--no-block", "reboot"])
             result = True
