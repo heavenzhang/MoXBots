@@ -368,3 +368,7 @@ User authorized owned relay terminal recovery first, then DSH child approval gui
 ## MOXBOTS-AUTH-RENEWAL-20261018
 
 用户明确要求修复浏览器已登录而客户端登录失败，并为101 Host增加安全续期/断线恢复，保留原设备、测试/main并部署101，不动日常Mac。登录工作分支codex/auth-renewal-20261018拥有owned_login.rs的时钟边界/严格session检查及server.rs start的保守270s旧版兼容；匿名真实HTTPS复现TTL300被1秒钟差判为301拒绝，测试事务均已取消。续期核心复用并行MOXBOTS-HOST-ONBOARD-001唯一owner，禁止双写AuthStore/account/transport/connector。先合登录修复，再由续期方吸收做组合CI及真实部署；沿当前唯一统一部署聊天串行，未授予开发worker生产权限，不以Git合入当安装/续期完成。任务记录.agent-sync/tasks/codex-auth-renewal-20261018-cffb1f19.md维护真实验收和未完成边界。
+
+## MODEL-PICKER-CATALOG-20261018
+
+备用模型搜索名称/ID/供应商，按供应商及密钥配置筛选，保留持久选择及原writer。OpenRouter改为账号过滤目录，OpenCode Go目录及三协议路由更新为当前官方路径；历史用户模型和自定义URL不删除、不覆盖。任务 `.agent-sync/tasks/codex-model-picker-catalog-20261018-834707ac.md`，验证 `dev-docs/model-picker-catalog-20261018/`。源码/回归/CI/main与统一桌面发行及真实供应商推理分别追踪；本任务不调用付费推理、不替换日常包，不接管登记的唯一发布owner。
