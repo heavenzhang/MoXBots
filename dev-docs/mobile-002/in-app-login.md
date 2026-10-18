@@ -15,7 +15,7 @@ The iPhone additionally performs a bounded, credential-free, nonredirecting ephe
 ## Acceptance status
 
 - Before this change: development signing, real device installation, bundle/version readback and process launch passed. Real login failed and is retained as evidence.
-- Native password source implementation: in progress; focused SDK/service tests and independent UI review underway.
+- Native password implementation: SDK116pass/1ignored +strictClippy; mobile typecheck/lint/policy55pass; service10targeted pass +strictClippy +193pass/7ignored full rerun with4threads. Original default-parallel notification25ms failure retained; no notification implementation/timeout changed. Independent source/UI review passed, rendered UI pending.
 - Previous policy55/typecheck/lint checks do not prove the new password flow. Current results recorded in task receipt after completion.
 - Physical form, password verification, account persistence, Host session, voice and background notifications: not yet accepted.
 - Server publication follows the existing scoped cloud deployment owner; this mobile task has not changed production or the user's daily desktop.
