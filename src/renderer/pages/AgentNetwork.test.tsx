@@ -421,6 +421,58 @@ describe("Agent network account and device management", () => {
       screen.queryByRole("button", { name: /了解 Agent 组网/ }),
     ).not.toBeInTheDocument();
   });
+  it("distinguishes a connection timeout from sign-in and peer offline status", async () => {
+    mocks.selected = "owned";
+    mocks.ownedAccount = { state: "authenticated", principalId: "account", expiresAt: null };
+    mocks.snapshot = { ...mocks.snapshot, state: "disconnected", error: { code: "NETWORK_CONNECTION_TIMEOUT", retryable: true } };
+    render(<AgentNetwork />);
+    expect(await screen.findByRole("status")).toHaveTextContent("连接 Agent 网络超时，正在自动重试。设备状态暂时无法确认。");
+    fireEvent.click(screen.getByRole("button", { name: "选择网络" }));
+    expect(await screen.findByRole("menuitemradio")).toHaveTextContent("连接超时");
+    expect(screen.queryByText("离线")).not.toBeInTheDocument();
+    expect(screen.queryByText("需要登录")).not.toBeInTheDocument();
+    expect(mocks.devices).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Owned Host management hint consistent with unknown device presence during a network outage", async () => {
+    mocks.selected = "owned";
+    mocks.ownedAccount = { state: "authenticated", principalId: "account", expiresAt: null };
+    mocks.devices.mockResolvedValue({ items: [{ ...device, joined: true, connectionState: "offline" }], complete: true });
+    const view = render(<AgentNetwork />);
+    await screen.findByRole("heading", { name: device.name });
+    mocks.snapshot = { ...mocks.snapshot, state: "disconnected", revision: 2, error: { code: "NETWORK_CONNECTION_TIMEOUT", retryable: true } };
+    view.rerender(<AgentNetwork />);
+    fireEvent.click(screen.getByRole("button", { name: "查看 Fixture Mac 的设备详情" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("macOS · 设备状态未知（网络未连接）")).toBeInTheDocument();
+    expect(within(dialog).getByText("设备状态未知（网络未连接）")).toBeInTheDocument();
+    expect(within(dialog).queryByText("设备离线，恢复在线后可管理。")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "刷新" })).toBeDisabled();
+  });
+
+  it.each(["offline", "ready", "syncing"] as const)(
+    "marks cached %s presence unknown in cards and details during an outage, then restores confirmed status",
+    async (connectionState) => {
+      mocks.devices.mockResolvedValue({ items: [{ ...device, joined: true, connectionState }], complete: true });
+      const view = render(<AgentNetwork />);
+      const heading = await screen.findByRole("heading", { name: device.name });
+      const card = heading.closest("article")!;
+      const expected = connectionState === "offline" ? "离线" : connectionState === "ready" ? "在线" : "同步中";
+      expect(within(card).getByText(`macOS · ${expected}`)).toBeInTheDocument();
+      mocks.snapshot = { ...mocks.snapshot, state: "disconnected", revision: 2, error: { code: "NETWORK_CONNECTION_TIMEOUT", retryable: true } };
+      view.rerender(<AgentNetwork />);
+      expect(within(card).getByText("macOS · 设备状态未知（网络未连接）")).toBeInTheDocument();
+      expect(within(card).queryByText(`macOS · ${expected}`)).not.toBeInTheDocument();
+      fireEvent.click(within(card).getByRole("button", { name: "查看 Fixture Mac 的设备详情" }));
+      const dialog = screen.getByRole("dialog");
+      expect(within(dialog).getByText("macOS · 设备状态未知（网络未连接）")).toBeInTheDocument();
+      mocks.snapshot = { ...mocks.snapshot, state: "ready", revision: 3, error: null };
+      view.rerender(<AgentNetwork />);
+      await waitFor(() => expect(within(dialog).getByText(`macOS · ${expected}`)).toBeInTheDocument());
+      expect(within(card).getByText(`macOS · ${expected}`)).toBeInTheDocument();
+    },
+  );
+
   it.each([
     [
       "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED",
@@ -465,6 +517,10 @@ describe("Agent network account and device management", () => {
     expect(screen.queryByText(/正在自动重连/)).not.toBeInTheDocument();
     expect(mocks.request).not.toHaveBeenCalled();
     expect(mocks.logout).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "选择网络" }));
+    expect(screen.getByRole("menuitemradio")).toHaveTextContent("需要登录");
+    expect(screen.queryByText("离线")).not.toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
     mocks.ownedAccount = { ...mocks.ownedAccount, state: "authenticated" };
     mocks.snapshot = { ...mocks.snapshot, state: "ready", error: null, revision: 2 };
     view.rerender(<AgentNetwork />);

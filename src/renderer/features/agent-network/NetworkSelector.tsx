@@ -19,6 +19,7 @@ import {
   cancelOwnedCredentialRestore,
   type NetworkRegistry,
 } from "@/api/agentNetwork";
+import { networkStatusLabel } from "./networkStatus";
 import { acceptNetworkRegistry } from "./store";
 import { JoinNetworkDialog } from "./JoinNetworkDialog";
 import { APP_BUILD_PROFILE } from "../../../shared/appProfile";
@@ -379,21 +380,13 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
               }}
             >
               <span
-                className={`h-2 w-2 shrink-0 rounded-full ${c.snapshot.state === "ready" && !c.removing ? "bg-emerald-600" : "bg-[var(--ink-subtle)]"}`}
+                className={`h-2 w-2 shrink-0 rounded-full ${networkStatusLabel(c) === "agentNetwork.online" ? "bg-emerald-600" : "bg-[var(--ink-subtle)]"}`}
               />
               <span className="min-w-0 flex-1 truncate">
                 {c.official ? t("agentNetwork.officialNetwork") : c.name}
               </span>
               <span className="shrink-0 text-xs text-[var(--ink-muted)]">
-                {t(
-                  c.removing
-                    ? "agentNetwork.removalPending"
-                    : c.snapshot.state === "ready"
-                      ? "agentNetwork.online"
-                      : c.snapshot.state === "connecting"
-                        ? "agentNetwork.connecting"
-                        : "agentNetwork.offline",
-                )}
+                {t(networkStatusLabel(c))}
               </span>
             </button>
           ))}

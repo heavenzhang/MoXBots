@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import type { NetworkRegistry } from "@/api/agentNetwork";
+import type { NetworkRegistry, NetworkSnapshot } from "@/api/agentNetwork";
 const calls = vi.hoisted(() => ({
   select: vi.fn(),
   join: vi.fn(),
@@ -64,6 +64,51 @@ beforeEach(() => {
   calls.restoreCredentials.mockResolvedValue({ ...registry, revision: 12 });
   calls.cancelRestore.mockResolvedValue(undefined);
 });
+it.each(["signedOut", "connecting", "disconnected", "unavailable", "error"])(
+  "shows official reauthentication as sign-in required even when the transport state is %s",
+  (state) => {
+    const target: NetworkRegistry = {
+      ...registry,
+      connections: registry.connections.map((connection) => connection.official ? {
+        ...connection,
+        snapshot: {
+          ...connection.snapshot,
+          // `error` exercises forward-compatible runtime input; current typed
+          // snapshots use disconnected or unavailable for connection failure.
+          state: state as NetworkSnapshot["state"],
+          error: { code: "SPACE_REAUTH_REQUIRED", retryable: false },
+        },
+      } : connection),
+    };
+    render(<NetworkSelector registry={target} />);
+    fireEvent.click(screen.getByRole("button", { name: "选择网络" }));
+    expect(screen.getByRole("menuitemradio", { name: /官方网络/ })).toHaveTextContent("需要登录");
+  },
+);
+
+it("keeps authentication, credential authorization and transport failures distinct", async () => {
+  const target: NetworkRegistry = {
+    ...registry,
+    connections: registry.connections.map((connection, index) => ({
+      ...connection,
+      snapshot: {
+        ...connection.snapshot,
+        state: index === 0 ? "signedOut" : "disconnected",
+        error: index === 0 ? null : {
+          code: index === 1 ? "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED" : "NETWORK_TRANSPORT_FAILED",
+          retryable: index === 2,
+        },
+      },
+    })),
+  };
+  render(<NetworkSelector registry={target} />);
+  fireEvent.click(screen.getByRole("button", { name: "选择网络" }));
+  expect(await screen.findByRole("menuitemradio", { name: /官方网络/ })).toHaveTextContent("需要登录");
+  expect(screen.getByRole("menuitemradio", { name: /Team A/ })).toHaveTextContent("需要授权");
+  expect(screen.getByRole("menuitemradio", { name: /Team B/ })).toHaveTextContent("连接不可用");
+  expect(screen.queryByText("离线")).not.toBeInTheDocument();
+});
+
 it("defaults to the original official heading without network controls", () => {
   render(<NetworkSelector registry={{ ...registry, selfhostEnabled: undefined }} />);
   expect(screen.getByRole("heading", {name: "AgentNet 局域网络"})).toBeInTheDocument();

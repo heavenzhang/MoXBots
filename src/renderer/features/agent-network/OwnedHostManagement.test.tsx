@@ -73,6 +73,37 @@ async function selectHostRoot() {
   await waitFor(() => expect(select).toBeEnabled());
   fireEvent.click(select);
 }
+it("distinguishes an unavailable network from confirmed peer offline and keeps remote actions disabled", async () => {
+  const f = fixture();
+  invoke.mockImplementation((_command, { request }) => request.method === "host.capabilities"
+    ? Promise.reject({ code: "HOST_MANAGEMENT_EXTENSIONS_UNAVAILABLE" })
+    : Promise.resolve({ scope: f.scope, result: f.snapshot }));
+  const view = render(<OwnedHostManagement locator={f.locator} online />);
+  await screen.findByLabelText("Kimi API Key");
+  invoke.mockClear();
+  view.rerender(<OwnedHostManagement locator={f.locator} online connectionReady={false} />);
+  expect(screen.getByText("设备状态未知（网络未连接）")).toBeInTheDocument();
+  expect(screen.queryByText("设备离线，恢复在线后可管理。")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
+  const save = screen.getByRole("button", { name: "保存密钥" });
+  expect(save).toBeDisabled();
+  fireEvent.click(save);
+  expect(invoke).not.toHaveBeenCalled();
+  view.rerender(<OwnedHostManagement locator={f.locator} online={false} connectionReady />);
+  expect(screen.getByText("设备离线，恢复在线后可管理。")).toBeInTheDocument();
+  expect(screen.queryByText("设备状态未知（网络未连接）")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
+  expect(invoke).not.toHaveBeenCalled();
+});
+
+it("does not inspect a cached online Host while its network connection is unavailable", () => {
+  const f = fixture();
+  render(<OwnedHostManagement locator={f.locator} online connectionReady={false} />);
+  expect(screen.getByText("设备状态未知（网络未连接）")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "刷新" })).toBeDisabled();
+  expect(invoke).not.toHaveBeenCalled();
+});
+
 it("clears the write-only credential, submits once and reads the actual owner after save", async () => {
   const f = fixture();
   let finish!: (value: unknown) => void;
