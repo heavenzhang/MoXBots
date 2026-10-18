@@ -109,6 +109,77 @@ describe('session-message-preview', () => {
     expect(input[900]).toEqual(body);
   });
 
+  it('keeps Task tool payloads valid and complete when history must be capped', () => {
+    const tasks = Array.from({ length: 10 }, (_, i) => ({
+      id: String(i + 1),
+      subject: `任务 ${i + 1}：报销审批规则改造`,
+      status: i < 5 ? 'completed' : 'pending',
+      blockedBy: [],
+    }));
+    const taskListBlock = {
+      type: 'tool_use',
+      id: 'block-tasklist',
+      tool: {
+        id: 'call-tasklist',
+        name: 'TaskList',
+        inputJson: '{}',
+        result: JSON.stringify({ tasks }),
+      },
+    };
+    const taskUpdateBlock = {
+      type: 'tool_use',
+      id: 'block-taskupdate',
+      tool: {
+        id: 'call-taskupdate',
+        name: 'TaskUpdate',
+        inputJson: JSON.stringify({ taskId: '6', status: 'completed' }),
+        result: JSON.stringify({
+          success: true,
+          taskId: '6',
+          updatedFields: ['status'],
+          statusChange: { from: 'pending', to: 'completed' },
+        }),
+      },
+    };
+    const filler = Array.from({ length: 1800 }, (_, i) => ({
+      type: 'tool_use',
+      id: `block-${i}`,
+      tool: { id: `call-${i}`, name: 'Read', inputJson: '{"p":1}', result: 'x'.repeat(1000) },
+    }));
+    // Bury the Task blocks in the middle so the head/tail cap would omit them.
+    const original = JSON.stringify([
+      ...filler.slice(0, 900),
+      taskListBlock,
+      taskUpdateBlock,
+      ...filler.slice(900),
+    ]);
+
+    const output = shrinkSessionMessageForClient(msg(original));
+    expect(Buffer.byteLength(output.content, 'utf8')).toBeLessThan(CLIENT_HISTORY_AUXILIARY_MAX_BYTES);
+    expect(output.content).not.toBe(original);
+
+    const parsed = JSON.parse(output.content) as Array<{
+      tool?: { id?: string; name?: string; inputJson?: string; result?: string };
+    }>;
+    const taskList = parsed.find((block) => block.tool?.id === 'call-tasklist');
+    const taskUpdate = parsed.find((block) => block.tool?.id === 'call-taskupdate');
+
+    expect(taskList?.tool?.name).toBe('TaskList');
+    const listResult = JSON.parse(taskList?.tool?.result ?? '{}') as { tasks?: typeof tasks };
+    expect(listResult.tasks?.map((t) => [t.id, t.status])).toEqual([
+      ['1', 'completed'], ['2', 'completed'], ['3', 'completed'], ['4', 'completed'], ['5', 'completed'],
+      ['6', 'pending'], ['7', 'pending'], ['8', 'pending'], ['9', 'pending'], ['10', 'pending'],
+    ]);
+
+    expect(taskUpdate?.tool?.name).toBe('TaskUpdate');
+    expect(JSON.parse(taskUpdate?.tool?.inputJson ?? '{}')).toMatchObject({ taskId: '6', status: 'completed' });
+    expect(JSON.parse(taskUpdate?.tool?.result ?? '{}')).toMatchObject({
+      success: true,
+      taskId: '6',
+      statusChange: { to: 'completed' },
+    });
+  });
+
   it('keeps normal history messages unchanged by reference', () => {
     const input = msg('short message');
     expect(shrinkSessionMessageForClient(input)).toBe(input);
