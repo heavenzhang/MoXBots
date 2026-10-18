@@ -1,6 +1,10 @@
 # MOXBOTS-MOBILE-002 execution plan
 
-## Latest active repair — 2026-10-18
+## Current accepted implementation
+
+Original iOS Keychain/simulator fault is confirmed by same-source signing controls and repaired by Xcode ad-hoc signing, with strict package gates. Product source228 plus fixture-only658 now has fresh dual-platform native/app packages, real iOS first-screen and two explicit login-cancel cycles, Rust112/1ignored/Clippy, mobile55policy/type/lint, Android33/1skip + real2 and iOS3/1skip + real4 all accepted. See login-cancel-primary-evidence.json and ios-native-runtime.md. No pending-SSO process-death persistence claim; second Safari handoff via system Home remains observed and not counted as full SSO acceptance. Final combined CI/main delivery must be read from PR121/actual remote main and task output receipt. User real-account choice pending; physical phones, signed-in original Host/Session path, APNs/FCM, real voice and internal signed distribution remain open. No production deployment.
+
+## Prior active repair — 2026-10-18
 
 Source126 combined9normal CI jobs and fresh dual-platform native/package gates passed. Same-source signing-disabled control reproduces full-App Keychain failure; exact Xcode ad-hoc archive restores first-screen/refresh, without removing data. Actual Safari unauthenticated login reached; no SSO completion. That workflow exposed missing cancel UI and native loss of cancel proof on failure. Current app55policy/type/lint and native112pass/1ignored/strict Clippy pass; deterministic original-code503 regression retained. Fresh compiled native/app cancellation UI and final CI/main integration remain pending. Current126 packages are historical for this newer repair. Details: ios-native-runtime.md, simulator-signing-primary-evidence.json and active task record. Apple team retrieval and Firebase/physical-device/push/speech gates remain open.
 

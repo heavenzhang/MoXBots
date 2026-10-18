@@ -78,3 +78,10 @@ User confirmed unlock and no existing Firebase project. CUA now accesses Xcode a
 - Next: commit/push repair, rebuild native/app, real UI cancellation/return and final CI/main receipt. Physical/SSO/Host/push/speech/internal trial gates stay open. Apple teams query failed; Firebase explicitly absent.
 
 - Fresh228 app build and Android offline33/1 (4.152s)/explicit2 (2.802s) succeeded. Native XCTest build failed before running cases because capturing the implicitly unwrapped fixture bundle inferred String? across the async boundary. Fixed with explicit XCTUnwrap before dispatch; failure /tmp/moxbots-mobile-228-ios-native-offline.log and result23NVGq preserved. Product code/native inputs unchanged by this fixture-only correction; fresh native execution remains required.
+
+## Accepted current candidate / integration handoff
+
+- Product228, fixture658; native source900f6697. Fresh original iOS3/1 and4/0 strict gates pass; explicit cases0.641s/testing phase6.040s, no repeated post-diagnostics timeout. Android33/1 (4.152s), explicit2 (2.802s); both new Release native/app builds and actual artifact gates pass. Packages55db16dd/bd95703a and private provenance/raw results in task output; source-bound summaries committed.
+- Primary CUA accepted real iOS first-screen/refresh and two original start/cancel cycles, restored login action/cleared notice; second Safari handoff reached system Home, returning to still-running App recovered pending and cancel. Full SSO not accepted. Pending/cancelled screenshots retained.
+- Final normal CI/main outcome is authoritative at PR121 and actual remote main; output host-integration-20261018.md and main-delivery receipt retain observed result. Source task remains in-progress for original full-goal gates. Recheck actual Git/PR status before assuming integration needs repeating.
+- User real-account manual SSO choice pending. No Firebase project; Xcode team retrieval failed; no physical-phone/push/voice/internal trial acceptance or production release. No original authority or frozen dependency changes.

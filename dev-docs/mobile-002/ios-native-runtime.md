@@ -2,7 +2,17 @@
 
 The previous full iOS build did not establish runtime or Keychain acceptance. A separate simulator XCTest host now directly compiles the three original product Swift owners and links the existing shipping Release Rust framework. The host references original Swift directly. Packaging and original cancellation repairs are tracked below; no trust policy or executor replacement.
 
-## Latest checkpoint
+## Accepted cancellation candidate
+
+Current product source228bd8dcc7e26d843ecb589fbc0f2d75cc8ffa6d, native digest900f669714a3ac3b619d34a3e70c5d41e986a33de139718a3f314316674ea1b5. Checkout65817e3e2 only corrects an optional Swift test fixture across the async boundary; shipping inputs match228 exactly. Initial228 test-host compilation failed before any cases; explicit XCTUnwrap repair and retained failure are recorded in the task. The renewed original iOS runtime passes offline3/1 and explicit4/0, runner0, source/hash/case gates pass. Explicit tests0.641s and Xcode testing phase6.040s, with asserted background queue and no repeated diagnostic timeout. No diagnostics were suppressed.
+
+New APK55db16dd (49,852,972bytes) and ad-hoc simulator archivebd95703a (18,994,243bytes) are archived with exact provenance in task output. Android actual original module33pass/1skip4.152s and real-service2pass2.802s; APK native bytes/16KiB/embeddedJS/test signature and actual default-deny/single-CRL-host policy pass. iOS strict sealed signature/simulator entitlement sections/arm64-IOSSIMULATOR/embeddedJS verified. Both packages installed on dedicated task emulators. Test signing/ad-hoc do not establish phone or store signing.
+
+CUA real installed iOS Release App: first-screen/refresh good; original Safari unauthenticated login form visible; return to pending state with cancel; explicit cancel confirms signed-out and re-enables start; new start clears old success notice; second pending attempt can also cancel. Second browser handoff showed system Home; app process remained alive, returning through its icon recovered pending/cancel. Keep this observation for full browser/SSO follow-up. No credentials, completed SSO, enrollment, Bot/model/business writes. Native UI screenshots: output native-checkpoints/ios-login-pending-228bd8dc.png and ios-login-cancelled-228bd8dc.png.
+
+Source evidence: login-cancel-primary-evidence.json and renewed source658 runs in ios-native-primary-evidence.json. Rust112pass/1ignored/strict Clippy, primary mobile55policy/typecheck/lint and independent review accepted. Final combined CI/main outcome is tracked by PR121 and the task-output delivery receipt; do not infer it from native tests. Full everyday-use goal remains open. Manual real-account SSO choice is pending; no existing Firebase project, Apple team fetch fails and no physical-phone acceptance.
+
+## Prior checkpoint (retained)
 
 Source1268347d12f534057417a4c214faf60c33e42c80 normally integrates Host renewal main. Test39094018994 passed9normal jobs including actual Ubuntu systemd; optional iOS packaging skipped. New source-bound APK031839f4 and Xcode ad-hoc simulator archive3e856279 are retained in task output. Android offline33pass/1skip4.465s, explicit original start/cancel2pass2.947s; Rust111pass/1ignored and strict Clippy. Actual iOS offline3pass/1skip and explicit4pass/0skip, runner0 and strict case/hash gates passed. Live cases took0.754s; Xcode subsequently spent600s collecting diagnostics and timed out that collection while the test command succeeded. Keep those facts separate.
 

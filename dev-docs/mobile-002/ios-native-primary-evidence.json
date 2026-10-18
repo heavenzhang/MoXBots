@@ -238,6 +238,148 @@
       "archivePath": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-1268347d/live-native-tests.xcresult.tar.gz",
       "postTestDiagnosticTimeoutSeconds": 600,
       "boundary": "Source126 only; later cancel implementation and async test queue require renewed native acceptance."
+    },
+    "source658-offline": {
+      "source": {
+        "sourceScopeVersion": 2,
+        "sourceCommit": "65817e3e2e01ab1efe17b4458609c6b87d851913",
+        "sourceDirty": false,
+        "sourceDigest": "900f669714a3ac3b619d34a3e70c5d41e986a33de139718a3f314316674ea1b5"
+      },
+      "nativeBuild": {
+        "version": 1,
+        "target": "aarch64-apple-ios-sim",
+        "sourceScopeVersion": 2,
+        "sourceCommit": "228bd8dcc7e26d843ecb589fbc0f2d75cc8ffa6d",
+        "sourceDirty": false,
+        "sourceDigest": "900f669714a3ac3b619d34a3e70c5d41e986a33de139718a3f314316674ea1b5",
+        "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+        "librarySha256": "b43495502d18a180d8238d001cc5b444a0dc273c4bf6316d1971baa505283388"
+      },
+      "compiledInputHashes": {
+        "mobile/app/modules/moxbots-remote/ios/SecureRecords.swift": "2281a88e0b98b8c5a0321e93acccc2a6a3215b32076be725bbbe01e267e0d094",
+        "mobile/app/modules/moxbots-remote/ios/NativeConnection.swift": "8e859a5078a200d505c6f2c6274ef0c95c1003e37f71dd99e84c05b74cce8f96",
+        "mobile/app/modules/moxbots-remote/ios/NativeAttachments.swift": "abe8a7763f1a8c493ed9e2029e93d1c9cc122f19762391c4ab774462f45db479",
+        "mobile/tests/ios-native/Host.swift": "1450921dca7ab151df1d98655110c29853dd00fa42a8fd98830927b4afb73c10",
+        "mobile/tests/ios-native/NativeOwnersTests.swift": "f480add648d5fc8a6aecb7e98078e73dc7d23d3c5df312b10884dbc07b396db9",
+        "mobile/tests/ios-native/project.rb": "db8a153fc36f46771387d1be454bfd535ebfd9cea52b81a930fb487a98b28212",
+        "mobile/scripts/test-ios-native.mjs": "fe14907fe7a62ffba432c9f6fab87cc4a45a82d1860abbfeaeb6dba5e7e0f04b",
+        "mobile/scripts/native-source.mjs": "639b63eb3b646fb76dd6cada9060464be81c30e990dbf49bb7747edc3de9e4a2"
+      },
+      "summary": {
+        "devicesAndConfigurations": [
+          {
+            "device": {
+              "architecture": "arm64",
+              "deviceId": "8505F368-BEAD-401F-89BB-0924B67E40DA",
+              "deviceName": "MoXBots-Mobile-002-iPhone",
+              "modelName": "iPhone 16e",
+              "osBuildNumber": "24A434",
+              "osVersion": "27.0",
+              "platform": "iOS Simulator"
+            },
+            "expectedFailures": 0,
+            "failedTests": 0,
+            "passedTests": 3,
+            "skippedTests": 1,
+            "testPlanConfiguration": {
+              "configurationId": "1",
+              "configurationName": "Test Scheme Action"
+            }
+          }
+        ],
+        "environmentDescription": "NativeOwnersTests \u00b7 Built with macOS 26.6",
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "finishTime": 1792296058.848,
+        "passedTests": 3,
+        "result": "Passed",
+        "runtimeWarnings": [],
+        "skippedTests": 1,
+        "startTime": 1792296041.284,
+        "statistics": [],
+        "testFailures": [],
+        "title": "Test - NativeOwnersTests",
+        "topInsights": [],
+        "totalTestCount": 4
+      },
+      "runnerExit": 0,
+      "resultChecksPassed": true,
+      "archiveSha256": "56da597ade8a92b0350c90039d45ddfb8e0b3234640479bd239f078f6f447d61",
+      "archivePath": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-65817e3e/offline-native-tests.xcresult.tar.gz",
+      "postTestDiagnosticTimeoutSeconds": 0,
+      "offMainOriginalConnectionLifetime": false
+    },
+    "source658-live": {
+      "source": {
+        "sourceScopeVersion": 2,
+        "sourceCommit": "65817e3e2e01ab1efe17b4458609c6b87d851913",
+        "sourceDirty": false,
+        "sourceDigest": "900f669714a3ac3b619d34a3e70c5d41e986a33de139718a3f314316674ea1b5"
+      },
+      "nativeBuild": {
+        "version": 1,
+        "target": "aarch64-apple-ios-sim",
+        "sourceScopeVersion": 2,
+        "sourceCommit": "228bd8dcc7e26d843ecb589fbc0f2d75cc8ffa6d",
+        "sourceDirty": false,
+        "sourceDigest": "900f669714a3ac3b619d34a3e70c5d41e986a33de139718a3f314316674ea1b5",
+        "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+        "librarySha256": "b43495502d18a180d8238d001cc5b444a0dc273c4bf6316d1971baa505283388"
+      },
+      "compiledInputHashes": {
+        "mobile/app/modules/moxbots-remote/ios/SecureRecords.swift": "2281a88e0b98b8c5a0321e93acccc2a6a3215b32076be725bbbe01e267e0d094",
+        "mobile/app/modules/moxbots-remote/ios/NativeConnection.swift": "8e859a5078a200d505c6f2c6274ef0c95c1003e37f71dd99e84c05b74cce8f96",
+        "mobile/app/modules/moxbots-remote/ios/NativeAttachments.swift": "abe8a7763f1a8c493ed9e2029e93d1c9cc122f19762391c4ab774462f45db479",
+        "mobile/tests/ios-native/Host.swift": "1450921dca7ab151df1d98655110c29853dd00fa42a8fd98830927b4afb73c10",
+        "mobile/tests/ios-native/NativeOwnersTests.swift": "f480add648d5fc8a6aecb7e98078e73dc7d23d3c5df312b10884dbc07b396db9",
+        "mobile/tests/ios-native/project.rb": "db8a153fc36f46771387d1be454bfd535ebfd9cea52b81a930fb487a98b28212",
+        "mobile/scripts/test-ios-native.mjs": "fe14907fe7a62ffba432c9f6fab87cc4a45a82d1860abbfeaeb6dba5e7e0f04b",
+        "mobile/scripts/native-source.mjs": "639b63eb3b646fb76dd6cada9060464be81c30e990dbf49bb7747edc3de9e4a2"
+      },
+      "summary": {
+        "devicesAndConfigurations": [
+          {
+            "device": {
+              "architecture": "arm64",
+              "deviceId": "8505F368-BEAD-401F-89BB-0924B67E40DA",
+              "deviceName": "MoXBots-Mobile-002-iPhone",
+              "modelName": "iPhone 16e",
+              "osBuildNumber": "24A434",
+              "osVersion": "27.0",
+              "platform": "iOS Simulator"
+            },
+            "expectedFailures": 0,
+            "failedTests": 0,
+            "passedTests": 4,
+            "skippedTests": 0,
+            "testPlanConfiguration": {
+              "configurationId": "1",
+              "configurationName": "Test Scheme Action"
+            }
+          }
+        ],
+        "environmentDescription": "NativeOwnersTests \u00b7 Built with macOS 26.6",
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "finishTime": 1792296073.428,
+        "passedTests": 4,
+        "result": "Passed",
+        "runtimeWarnings": [],
+        "skippedTests": 0,
+        "startTime": 1792296060.779,
+        "statistics": [],
+        "testFailures": [],
+        "title": "Test - NativeOwnersTests",
+        "topInsights": [],
+        "totalTestCount": 4
+      },
+      "runnerExit": 0,
+      "resultChecksPassed": true,
+      "archiveSha256": "9e842a09f99873f1e8534f91a5f72d2c6c304b44dc05ebb887bccf5a3bfd732a",
+      "archivePath": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-65817e3e/live-native-tests.xcresult.tar.gz",
+      "postTestDiagnosticTimeoutSeconds": 0,
+      "offMainOriginalConnectionLifetime": true
     }
   }
 }
