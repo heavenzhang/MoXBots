@@ -26,7 +26,7 @@
 
 ## SIDEBAR-ORDER-20261019 — 固定项目顺序
 
-用户要求点击任务不改变项目位置。侧栏持久保存项目 fallback 顺序，已有拖拽/置顶规则继续优先，新项目追加；Launcher 最近使用独立保留。102项定向测试、1440/900px四组实际renderer交互已通过，TypeScript/CI/main/原生发行分开追踪。任务 `.agent-sync/tasks/codex-sidebar-order-20261019-66662e4b.md`，证据 `dev-docs/sidebar-order/acceptance.md`。本聊天不并发覆盖已有发行owner或用户日常App。
+用户要求点击任务不改变项目位置。侧栏持久保存项目 fallback 顺序，已有拖拽/置顶规则继续优先，新项目追加；Launcher 最近使用独立保留。102项定向测试、全量TypeScript、ESLint、1440/900px四组实际renderer交互已通过，CI/main/原生发行分开追踪。任务 `.agent-sync/tasks/codex-sidebar-order-20261019-66662e4b.md`，证据 `dev-docs/sidebar-order/acceptance.md`。本聊天不并发覆盖已有发行owner或用户日常App。
 
 ## MOXBOTS-PIN-001 — 2026-10-18
 
