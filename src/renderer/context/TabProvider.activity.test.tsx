@@ -360,8 +360,9 @@ describe('Tab-owned query clock integration', () => {
     emit('chat:status', { sessionState: 'running' });
     emit('chat:system-status', { status: 'api_retry:1:3' });
     expect(tab!.systemStatus).toBe('api_retry:1:3');
-    emit('chat:api-retry', { recovery: { status: 'waiting', nextRetryAt: Date.now() + 5_000, attempt: 2 } });
-    expect(tab!.systemStatus).toBe(`model_recovery:${Date.now() + 5_000}:2`);
+    const nextRecoveryAt = Date.now() + 5_000;
+    emit('chat:api-retry', { recovery: { status: 'waiting', nextRetryAt: nextRecoveryAt, attempt: 2 } });
+    expect(tab!.systemStatus).toBe(`model_recovery:${nextRecoveryAt}:2`);
     emit('chat:api-retry', { recovery: { status: 'paused', nextRetryAt: Date.now(), attempt: 2, reason: 'sensitive internal detail' } });
     expect(tab!.systemStatus).toBe('model_recovery_paused');
     emit('chat:api-retry', { recovery: null });

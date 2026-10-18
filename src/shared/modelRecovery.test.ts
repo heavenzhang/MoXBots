@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { modelRecoveryDelay, validModelRecovery, type ModelRecoveryState } from './modelRecovery';
+import { MODEL_RECOVERY_WINDOW_MS, modelRecoveryDelay, validModelRecovery, type ModelRecoveryState } from './modelRecovery';
 
 describe('persistent model recovery policy', () => {
   it('backs off finitely while honoring a longer upstream Retry-After', () => {
@@ -12,7 +12,8 @@ describe('persistent model recovery policy', () => {
     const state: ModelRecoveryState = { version: 1, id: 'epoch', sdkSessionId: 'native', routeIdentity: 'route',
       turnId: 'turn', status: 'waiting', attempt: 1, startedAt: 10, nextRetryAt: 20, deadlineAt: 30, lastStatus: 503 };
     expect(validModelRecovery(state)).toBe(true);
-    for (const patch of [{ version: 2 }, { id: '' }, { nextRetryAt: 31 }, { deadlineAt: 10 }, { attempt: -1 }, { nextRetryAt: Number.NaN }]) {
+    for (const patch of [{ version: 2 }, { id: '' }, { nextRetryAt: 31 }, { deadlineAt: 10 },
+      { deadlineAt: state.startedAt + MODEL_RECOVERY_WINDOW_MS + 1 }, { attempt: -1 }, { nextRetryAt: Number.NaN }]) {
       expect(validModelRecovery({ ...state, ...patch })).toBe(false);
     }
   });

@@ -48,4 +48,6 @@ Review findings repaired: persistence failure must not report durable Stop; time
 
 ## Final-source verification, CI, main and release receipt
 
-Pending integration. This section will be updated before final handoff; immutable Git refs and CI runs define delivered source.
+Merged `4dcb3d7c34fc315a810fd30cdc9b036569805c2b` (PR150) into the task branch, preserving error-resend and Task history changes. Local combined source checks: 361 unit/integration tests across 13 files passed (`merged-focused.log`, 208.87s); 133 production-component DOM tests passed (`merged-dom-fixed.log`, 32.68s); full TypeScript check and server bundle passed. Targeted ESLint passed (only existing baseline-browser-mapping age advisory); classification: 414 server tests, 116 integration, 6 credentialed. The DOM assertion originally read two different real-time timestamps and failed by 2ms; it now captures one timestamp and retains the same state assertion.
+
+Concurrent main then advanced to PR143 (`a766d1a2ad300cf1acc5e45fd3105c378cdebfe0`). Its updater Stop/terminal acknowledgement changes will be preserved and combined with our durable Stop acknowledgement before final CI. Final pause-coalescing/deadline validation tests, exact CI/main and publisher receipts are pending; immutable Git refs define delivered source.

@@ -28,7 +28,8 @@ export function validModelRecovery(value: unknown): value is ModelRecoveryState 
     && (row.goalId === undefined || typeof row.goalId === 'string')
     && Number.isSafeInteger(row.attempt) && row.attempt > 0
     && [row.startedAt, row.nextRetryAt, row.deadlineAt].every(Number.isSafeInteger)
-    && row.deadlineAt > row.startedAt && row.nextRetryAt >= row.startedAt
+    && row.deadlineAt > row.startedAt && row.deadlineAt - row.startedAt <= MODEL_RECOVERY_WINDOW_MS
+    && row.nextRetryAt >= row.startedAt
     && row.nextRetryAt <= row.deadlineAt && Number.isInteger(row.lastStatus);
 }
 
