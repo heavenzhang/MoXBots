@@ -221,10 +221,12 @@ async fn raw_request_with_profile(
         bearer.set_sensitive(true);
         request = request.header(header::AUTHORIZATION, bearer);
     }
-    let mut response = diagnostic
-        .send(request)
-        .await
-        .map_err(|_| NetworkError::cloud("OWNED_ACCOUNT_UNAVAILABLE", 503))?;
+    let mut response = diagnostic.send(request).await.map_err(|error| {
+        NetworkError::cloud(
+            crate::network_diagnostics::network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
+            503,
+        )
+    })?;
     let status = response.status();
     // Axum's old JSON extractor can reject the new option with plain-text 422
     // and no cache header. Read no error body and expose only this closed pair
@@ -254,11 +256,12 @@ async fn raw_request_with_profile(
         return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
     }
     let mut bytes = Zeroizing::new(Vec::new());
-    while let Some(chunk) = response
-        .chunk()
-        .await
-        .map_err(|_| NetworkError::cloud("OWNED_ACCOUNT_UNAVAILABLE", 503))?
-    {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        NetworkError::cloud(
+            crate::network_diagnostics::network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
+            503,
+        )
+    })? {
         if bytes.len().saturating_add(chunk.len()) > response_limit {
             return Err(NetworkError::new("OWNED_RESPONSE_TOO_LARGE"));
         }
@@ -1305,6 +1308,44 @@ mod tests {
         assert_eq!(error.code, "OWNED_ACCOUNT_UNAVAILABLE");
         assert!(error.retryable);
     }
+    #[tokio::test]
+    async fn owned_request_timeout_preserves_saved_session_and_reports_deadline() {
+        use tokio::io::AsyncWriteExt;
+        for stall_body in [false, true] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let server = tokio::spawn(async move {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                if stall_body {
+                    socket.write_all(b"HTTP/1.1 200 OK\r\nCache-Control: no-store\r\nContent-Length: 2\r\nConnection: close\r\n\r\n").await.unwrap();
+                }
+                std::future::pending::<()>().await;
+                drop(socket);
+            });
+            #[allow(clippy::disallowed_methods)]
+            let http = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_millis(100))
+                .retry(reqwest::retry::never())
+                .build()
+                .unwrap();
+            let client = OwnedClient {
+                origin,
+                http,
+                instance: instance(),
+            };
+            let error = client
+                .inspect_session(&uuid::Uuid::new_v4().to_string(), &"a".repeat(43))
+                .await
+                .err()
+                .expect("fixture must exceed request deadline");
+            server.abort();
+            assert_eq!(error.code, "NETWORK_CONNECTION_TIMEOUT");
+            assert!(error.retryable);
+            assert_ne!(error.code, "OWNED_SESSION_INVALID");
+        }
+    }
+
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()
             .unwrap()

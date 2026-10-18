@@ -16,6 +16,15 @@ pub(crate) fn error_category(error: &reqwest::Error) -> &'static str {
     }
 }
 
+/// Preserve the owner's fallback; only a confirmed reqwest deadline is a timeout.
+pub(crate) fn network_error_code(error: &reqwest::Error, fallback: &'static str) -> &'static str {
+    if error.is_timeout() {
+        "NETWORK_CONNECTION_TIMEOUT"
+    } else {
+        fallback
+    }
+}
+
 pub(crate) fn safe_request_id(value: Option<&str>) -> Option<&str> {
     value.filter(|value| {
         !value.is_empty()
@@ -177,6 +186,51 @@ mod tests {
         }
         assert!(safe_request_id(Some(&"x".repeat(129))).is_none());
     }
+    #[tokio::test]
+    async fn confirmed_request_deadline_is_distinct_from_a_transport_failure() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            // Keep an accepted socket open without responding, until cancelled.
+            std::future::pending::<()>().await;
+            drop(socket);
+        });
+        let error = crate::local_http::builder()
+            .timeout(std::time::Duration::from_millis(50))
+            .build()
+            .unwrap()
+            .get(format!("http://{address}/fixture?private=secret"))
+            .send()
+            .await
+            .unwrap_err();
+        server.abort();
+        assert!(error.is_timeout());
+        assert_eq!(
+            network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
+            "NETWORK_CONNECTION_TIMEOUT"
+        );
+        let closed = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = closed.local_addr().unwrap();
+        drop(closed);
+        let error = crate::local_http::builder()
+            .build()
+            .unwrap()
+            .get(format!("http://{address}/fixture"))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(!error.is_timeout());
+        assert_eq!(
+            network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
+            "OWNED_ACCOUNT_UNAVAILABLE"
+        );
+        assert_eq!(
+            network_error_code(&error, "NETWORK_TRANSPORT_FAILED"),
+            "NETWORK_TRANSPORT_FAILED"
+        );
+    }
+
     #[tokio::test]
     async fn reqwest_projection_drops_secret_url() {
         let error = crate::local_http::builder()
