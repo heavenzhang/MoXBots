@@ -96,14 +96,14 @@ fn parse(issuer: &str, bytes: &[u8]) -> Result<InstallerInfo, NetworkError> {
         return Err(invalid());
     }
     let manifest: Manifest = serde_json::from_slice(bytes).map_err(|_| invalid())?;
-    let Manifest::Available(m) = manifest else {
-        if let Manifest::Unavailable(m) = manifest
-            && m.schema_version == 1
-            && m.status == "unavailable"
-        {
-            return Ok(InstallerInfo::unavailable());
+    let m = match manifest {
+        Manifest::Available(m) => m,
+        Manifest::Unavailable(m) => {
+            if m.schema_version == 1 && m.status == "unavailable" {
+                return Ok(InstallerInfo::unavailable());
+            }
+            return Err(invalid());
         }
-        return Err(invalid());
     };
     let (date, suffix) = m.release_id.split_once('-').ok_or_else(invalid)?;
     if m.schema_version != 1
@@ -183,7 +183,7 @@ pub(crate) async fn fetch(issuer: &str) -> Result<InstallerInfo, NetworkError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{Value, json};
+    use serde_json::{json, Value};
     fn manifest() -> Value {
         json!({"schemaVersion":1,"status":"available","profile":"moxbot-test","platform":"ubuntu-24.04-x86_64",
             "scriptPath":"/host/install.sh","releaseId":"20261018090000-aaaaaaaaaaaa","sourceCommit":"a".repeat(40),
@@ -197,20 +197,17 @@ mod tests {
             &serde_json::to_vec(&manifest()).unwrap(),
         )
         .unwrap();
-        assert!(
-            info.command
-                .unwrap()
-                .contains("--instance 'https://140.143.183.232'")
-        );
-        assert!(
-            parse(
-                "https://owned.example",
-                br#"{"schemaVersion":1,"status":"unavailable"}"#
-            )
-            .unwrap()
+        assert!(info
             .command
-            .is_none()
-        );
+            .unwrap()
+            .contains("--instance 'https://140.143.183.232'"));
+        assert!(parse(
+            "https://owned.example",
+            br#"{"schemaVersion":1,"status":"unavailable"}"#
+        )
+        .unwrap()
+        .command
+        .is_none());
         for (field, value) in [
             ("profile", json!("myagents-test")),
             ("platform", json!("linux-arm64")),
@@ -236,27 +233,21 @@ mod tests {
                 "{field}"
             );
         }
-        assert!(
-            parse(
-                "https://owned.example",
-                br#"{"schemaVersion":1,"status":"unavailable","command":"bad"}"#
-            )
-            .is_err()
-        );
-        assert!(
-            parse(
-                "http://owned.example",
-                &serde_json::to_vec(&manifest()).unwrap()
-            )
-            .is_err()
-        );
-        assert!(
-            parse(
-                "https://owned.example/path",
-                &serde_json::to_vec(&manifest()).unwrap()
-            )
-            .is_err()
-        );
+        assert!(parse(
+            "https://owned.example",
+            br#"{"schemaVersion":1,"status":"unavailable","command":"bad"}"#
+        )
+        .is_err());
+        assert!(parse(
+            "http://owned.example",
+            &serde_json::to_vec(&manifest()).unwrap()
+        )
+        .is_err());
+        assert!(parse(
+            "https://owned.example/path",
+            &serde_json::to_vec(&manifest()).unwrap()
+        )
+        .is_err());
         assert!(parse("https://owned.example", &vec![b' '; MAX_INDEX + 1]).is_err());
     }
 }
