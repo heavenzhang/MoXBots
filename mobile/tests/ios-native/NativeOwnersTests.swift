@@ -176,7 +176,7 @@ final class NativeOwnersTests: XCTestCase {
     }
     // The production Expo owner executes these blocking calls on its serial
     // module queue. Keep TLS/Keychain work off the UI thread in this host too.
-    let storageBundle = bundle
+    let storageBundle = try XCTUnwrap(bundle)
     try await withCheckedThrowingContinuation { (completion: CheckedContinuation<Void, Error>) in
       DispatchQueue(label: "com.moxbots.native-validation.live-owner").async {
         let result = Result<Void, Error> {
