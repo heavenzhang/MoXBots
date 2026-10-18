@@ -112,6 +112,45 @@ jobs:
           New-Item -ItemType Directory -Path app/src-tauri/nsis -Force | Out-Null
           Copy-Item -LiteralPath $download -Destination app/src-tauri/nsis/Git-Installer.exe -Force
 
+      - name: Seed the exact lock-verified Eigen cache entry
+        shell: pwsh
+        run: |
+          $lock = Get-Content 'app/src-tauri/document-worker/resource-lock.json' -Raw | ConvertFrom-Json
+          $eigenEntries = @($lock.speechInference.dependencies | Where-Object { $_.id -eq 'eigen' })
+          if ($eigenEntries.Count -ne 1) { throw "Expected one locked Eigen resource; found $($eigenEntries.Count)." }
+
+          $resource = $eigenEntries[0]
+          $expectedUrl = 'https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz'
+          $expectedSha256 = 'e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec'
+          $expectedSize = 2967272
+          if ($resource.url -ne $expectedUrl -or $resource.archiveName -ne 'eigen-5.0.1.tar.gz' -or
+              $resource.sha256 -ne $expectedSha256 -or $resource.size -ne $expectedSize) {
+            throw 'The frozen 0.5.10 Eigen resource lock changed; review the upstream resource before building.'
+          }
+
+          $cacheDirectory = 'app/src-tauri/resources/document-processing-cache/downloads'
+          New-Item -ItemType Directory -Path $cacheDirectory -Force | Out-Null
+          $cachedPath = Join-Path $cacheDirectory "$expectedSha256-$($resource.archiveName)"
+          if (Test-Path -LiteralPath $cachedPath -PathType Leaf) {
+            $cacheSize = (Get-Item -LiteralPath $cachedPath).Length
+            $cacheHash = (Get-FileHash -LiteralPath $cachedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($cacheSize -ne $expectedSize -or $cacheHash -ne $expectedSha256) {
+              throw 'The preexisting Eigen cache entry failed its locked size/SHA-256 check.'
+            }
+          } else {
+            $download = Join-Path $env:RUNNER_TEMP 'eigen-5.0.1.tar.gz'
+            curl.exe --fail --location --retry 3 --connect-timeout 20 --max-time 1800 --silent --show-error --output $download $expectedUrl
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+            $downloadSize = (Get-Item -LiteralPath $download).Length
+            $downloadHash = (Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($downloadSize -ne $expectedSize -or $downloadHash -ne $expectedSha256) {
+              throw "Official Eigen archive failed the pinned size/SHA-256 check: $downloadSize bytes, $downloadHash"
+            }
+            Move-Item -LiteralPath $download -Destination $cachedPath
+          }
+          Write-Host "Verified Eigen 5.0.1 lock bytes and seeded the content-addressed native resource cache ($expectedSize bytes, $expectedSha256)."
+
       - name: Build MoXBots 0.5.10 NSIS installer
         shell: pwsh
         run: |
