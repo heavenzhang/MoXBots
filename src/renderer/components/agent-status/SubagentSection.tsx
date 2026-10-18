@@ -104,7 +104,7 @@ const SubagentSection = memo(function SubagentSection({ subagents, containerRef:
         </span>
       </div>
       {/* V6: 行间分隔线（subtle，不抢视觉） */}
-      <div className="max-h-[160px] divide-y divide-[var(--line-subtle)]/60 overflow-y-auto">
+      <div className="divide-y divide-[var(--line-subtle)]/60">
         {subagents.map(s => (
           <MemoSubagentRow key={s.id} subagent={s} onJumpToTool={onJumpToTool} />
         ))}

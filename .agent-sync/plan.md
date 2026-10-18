@@ -360,6 +360,10 @@ User authorized owned relay terminal recovery first, then DSH child approval gui
 排队卡片独立编辑/取消、32px常驻操作区、真实撤回拒绝与网络错误反馈，保留原Runtime裁决。日志确认SDK not-cancelled/409被UI吞掉；不假删已接收项，不隐式停止任务。源码/125项定向/完整类型和MoXBots web构建已通过；实际IAB、CI/main与下一未冻结原生发布分别追踪。任务 `.agent-sync/tasks/codex-queued-message-controls-20261017-99ad1762.md`，验收 `dev-docs/queued-message-controls/acceptance.md`。发布仍由既定统一owner串行，不回写已发布0.5.9、不向其它聊天发送消息。
 
 
+## GOAL-TODO-UI-20261018
+
+目标模式与待办视觉/交互改造：中性目标状态条、状态与正文分层、全文展开、明确动作；紧凑待办摘要、当前项优先、完成项折叠与键盘/有界滚动。规范 `specs/tech_docs/goal_todo_interaction.md`，验收 `dev-docs/goal-todo-ui/acceptance.md`，任务 `.agent-sync/tasks/codex-goal-todo-ui-20261018-e7f5543d.md`。不改执行/持久化 owner。代码/main/合成组件和正式签名包/原生真实路径分别跟踪；发布仍交既定唯一 owner 下一未冻结版本，不进入已冻结0510，不并发发布或重启日常任务。此记录不表示已通知另一聊天。
+
 ## MOXBOTS-SESSION-WINDOWS-001 — 2026-10-17
 
 按用户要求移除全局浏览器式TabBar，以当前会话页面/侧栏为导航；沿原Chat保存与后台继续owner做12页FIFO有界回收，保护输入/录音和活动页面。验收与发布请求见 `dev-docs/session-windows/acceptance.md`，分支任务 `.agent-sync/tasks/codex-session-windows-20261017-31ed5a11.md`。156项定向回归、实际renderer三尺寸与独立代码/截图审阅通过；CI/main以PR为准，原生包/真实会话仍待既定唯一发布owner下一未冻结候选，不操作日常App，不把main合并当已发布。

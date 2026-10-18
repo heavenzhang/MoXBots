@@ -2,8 +2,8 @@
 //
 // Todo 三态 icon + SubAgent 运行 icon。严格对照需求截图的视觉语言：
 //   - pending      ☐ 空心方框（ink-muted）
-//   - in_progress  ■ 实心方块（accent-warm 橙色）
-//   - completed    ☑ 勾选（success 绿）+ 删除线由调用方加在文本上
+//   - in_progress  ■ Accent 方块
+//   - completed    ☑ 勾选（success 绿）
 
 import { CheckIcon } from '@/components/icons';
 
@@ -24,7 +24,7 @@ export function TodoInProgressIcon({ className = '' }: IconProps) {
   return (
     <span
       aria-hidden
-      className={`inline-block size-3.5 shrink-0 rounded-[3px] bg-[var(--accent-warm)] ${className}`}
+      className={`inline-block size-3.5 shrink-0 rounded-[3px] bg-[var(--accent)] ${className}`}
     />
   );
 }
