@@ -1,0 +1,15 @@
+import React, { useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import './theme/themes/codex.css';
+import { i18n } from './i18n';
+import { ModelFailoverSettings } from './pages/settings/ModelFailoverSettings';
+import type { Provider } from '../shared/config-types';
+import type { ModelFailoverSettings as Settings } from '../shared/modelFailover';
+void i18n.changeLanguage('zh-CN');
+const providers: Provider[] = ['Openrouter', 'OpenCode Go', '备用服务商'].map((name, index) => ({
+ id: String(index), name, vendor:'custom',cloudProvider:'fixture',type:'api',isBuiltin:false,apiProtocol:'openai',config:{baseUrl:'https://fixture.invalid'},enabled:true,primaryModel:'kimi-k2.6',
+ models: Array.from({length:80}, (_, model) => ({model: model === 0 ? 'kimi-k2.6' : `deepseek/model-${model}`,modelName: model === 0 ? 'Kimi 模型' : `模型 ${model}`,modelSeries:'fixture'})),
+}));
+function App(){const [value,setValue]=useState<Settings>({enabled:true,backup:{providerId:'0',modelId:'kimi-k2.6'}});return <main style={{maxWidth:900, margin:'40px auto', padding:16}}><ModelFailoverSettings value={value} providers={providers} apiKeys={{'0':'fixture','1':'fixture'}} updateConfig={async patch=>{setValue(patch.modelFailover!);}} /></main>}
+createRoot(document.getElementById('root')!).render(<App />);

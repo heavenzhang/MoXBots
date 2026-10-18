@@ -3,7 +3,7 @@
 import { APP_BUILD_PROFILE } from './appProfile';
 
 import { TOKENDANCE_MODELS, TOKENDANCE_MODEL_LIST_URL, TOKENDANCE_PROVIDER_ID, type ModelProtocol } from './tokendance';
-import { OPENCODE_GO_BASE_URL, OPENCODE_GO_MODEL_LIST_URL, OPENCODE_GO_MODELS, OPENCODE_GO_PROVIDER_ID } from './opencode-go';
+import { OPENCODE_GO_BASE_URL, OPENCODE_GO_OPENAI_BASE_URL, OPENCODE_GO_MODEL_LIST_URL, OPENCODE_GO_MODELS, OPENCODE_GO_PROVIDER_ID } from './opencode-go';
 
 import type {
   HeartbeatConfig,
@@ -1727,8 +1727,8 @@ export const PRESET_PROVIDERS: Provider[] = [
     modelRouting: 'per-model',
     modelProtocolBaseUrls: {
       'anthropic:messages': OPENCODE_GO_BASE_URL,
-      'openai:responses': `${OPENCODE_GO_BASE_URL}/v1`,
-      'openai:chat-completions': `${OPENCODE_GO_BASE_URL}/v1`,
+      'openai:responses': OPENCODE_GO_OPENAI_BASE_URL,
+      'openai:chat-completions': OPENCODE_GO_OPENAI_BASE_URL,
     },
     config: { baseUrl: OPENCODE_GO_BASE_URL },
     authType: 'api_key',
@@ -2514,6 +2514,9 @@ export const PRESET_PROVIDERS: Provider[] = [
     isBuiltin: true,
     authType: 'auth_token_clear_api_key',
     websiteUrl: 'https://openrouter.ai/',
+    // Respect this key's provider preferences, privacy settings and guardrails.
+    // This filtered catalog still does not prove balance or inference success.
+    modelListUrl: 'https://openrouter.ai/api/v1/models/user',
     config: {
       baseUrl: 'https://openrouter.ai/api',
     },
