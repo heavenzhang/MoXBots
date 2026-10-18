@@ -1,0 +1,25 @@
+{
+  "sourceCommit": "1268347d12f534057417a4c214faf60c33e42c80",
+  "sameJs": true,
+  "sameInfoPlist": true,
+  "unsignedJsSha256": "0b25cb2ff65c8bcbd997e871c3e65b0939c0f9755fb74283e104b1c2e9109f42",
+  "signedJsSha256": "0b25cb2ff65c8bcbd997e871c3e65b0939c0f9755fb74283e104b1c2e9109f42",
+  "unsignedHasSimulatorEntitlements": false,
+  "unsignedIsLinkerOnly": true,
+  "unsignedExecutableSha256": "d57a2a0f7b6969d1fb81bb9979df6379badc453a22aea32f69153f2f7a8d3139",
+  "sameDeviceAndBundle": true,
+  "dataNotRemoved": true,
+  "uiNegativeControl": "MOBILE_SECURE_STORE_UNAVAILABLE",
+  "nativeBuild": {
+    "version": 1,
+    "target": "aarch64-apple-ios-sim",
+    "sourceScopeVersion": 2,
+    "sourceCommit": "1268347d12f534057417a4c214faf60c33e42c80",
+    "sourceDirty": false,
+    "sourceDigest": "1eb51595982690c995c50c51c26c1e59e0472b3e392964165e267ecb6cb12c6e",
+    "rustc": "rustc 1.92.0 (ded5c06cf 2025-12-08)",
+    "librarySha256": "3eca7165cc65854bc97c5e3b494f2f6d6469b4ef3188dd85289282001ba5e148"
+  },
+  "positiveBeforeNegative": "signed-out UI and explicit refresh without secure-store error; actual original login start reached unauthenticated Safari login page",
+  "uiRestorePositive": "same exact archived executable reinstalled, original app data retained; no secure-store error on native first screen"
+}

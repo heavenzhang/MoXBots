@@ -1,0 +1,118 @@
+{
+  "task": "MOXBOTS-MOBILE-002",
+  "appBuildSourceCommit": "228bd8dcc7e26d843ecb589fbc0f2d75cc8ffa6d",
+  "validationCheckout": "65817e3e2e01ab1efe17b4458609c6b87d851913",
+  "nativeSourceDigest": "900f669714a3ac3b619d34a3e70c5d41e986a33de139718a3f314316674ea1b5",
+  "localRust": {
+    "passed": 112,
+    "ignored": 1,
+    "strictClippy": true,
+    "originalBeforeRegression": "failed at pending.is_some after TLS HTTP503",
+    "fixedRegression": "explicit same-proof DELETE retry204 then no third HTTP"
+  },
+  "mobileAppChecks": {
+    "policyPassed": 55,
+    "typecheck": true,
+    "lint": true
+  },
+  "android": {
+    "offline": {
+      "total": 34,
+      "passed": 33,
+      "skipped": 1,
+      "failed": 0,
+      "seconds": 4.152,
+      "caseNames": [
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.downloadRequiresNativeListedDescriptorAndRejectsChangedJsMetadata",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.readOnlyProviderUsesVerifiedDisplayMetadataAndNoBackupFiles",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.targetLossAndDigestMismatchNeverProduceAReadyProjection",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.identicalArtifactKeysAreIsolatedByAccountAndStableIdentity",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.cacheEnforcesPerTargetAndPerAccountQuotasBeforeReservation",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.legacyFilesDirArtifactIsMigratedWithoutLosingVerifiedMetadata",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.listDownloadStatusAndPauseAreLocalAndFinalFileIsVerified",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.listPaginationMustFollowTheDurablySavedCursor",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.malformedFractionalOffsetPausesWithoutExposingUnverifiedFile",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.cacheRecoversEveryReservationAndRemovalCrashBoundary",
+        "com.moxbots.mobile.remote.NativeArtifactSchedulerInstrumentedTest.unversionedConnectionFailureIsPreservedAndNeverTreatedAsAssetNotFound",
+        "com.moxbots.mobile.remote.NativeLiveLoginInstrumentedTest.cleartextIsLimitedToPublicIssuerRevocationLists",
+        "com.moxbots.mobile.remote.NativeLiveLoginInstrumentedTest.originalAndroidClientStartsAndCancelsLoginWithoutAuthenticating",
+        "com.moxbots.mobile.remote.NativeSpeechPermissionGateInstrumentedTest.cancelledPermissionCallbackCannotStartOrCancelANewerAttempt",
+        "com.moxbots.mobile.remote.NativeSpeechPermissionGateInstrumentedTest.secondPendingStartDoesNotReplaceTheFirstPermissionRequest",
+        "com.moxbots.mobile.remote.NativeSpeechPermissionGateInstrumentedTest.backgroundOrChangedOwnerRefusesAnOtherwiseGrantedPermission",
+        "com.moxbots.mobile.remote.NativeSpeechPermissionGateInstrumentedTest.permissionDenialAndMissingPermissionOwnerSettleOnceWithoutStarting",
+        "com.moxbots.mobile.remote.NativeSpeechReadinessInstrumentedTest.reportsOnDeviceChineseReadinessAndPermissionDeniedStartWithoutRecording",
+        "com.moxbots.mobile.remote.NativeStorageInstrumentedTest.secureRecordsEncryptScopeAndRejectOversizeWithoutReplacingOldValue",
+        "com.moxbots.mobile.remote.NativeStorageInstrumentedTest.pickedContentUriIsHashedChunkedScopedAndRemoved",
+        "com.moxbots.mobile.remote.NativeStorageInstrumentedTest.nativeConnectionLoadsJniAndReportsSignedOutWithoutNetworkLogin",
+        "com.moxbots.mobile.remote.NativeStorageInstrumentedTest.attachmentImportRejectsFileUriEmptyOversizeAndNonImageImage",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.persistedPausedJobBlocksASecondUploadUntilRecovery",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.unknownCancelResultRemainsPausedWithSameIdAndNoBlindRetry",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.unknownStatusPausesAndExplicitResumeReusesTheSameUploadId",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.indexWriteFailureLeavesNoActiveCurrentAndSameProcessRetrySchedulesStatus",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.readyStatusOnlyChecksExistenceAndExplicitStartReconfirmsWithFinish",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.explicitPauseInvalidatesQueuedChunkAndResumeChecksStatusWithoutNewId",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.unconfirmedSecureJournalPreventsEveryRemoteEffect",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.statusOnlyNeverBeginsOrChunksAndExplicitStartResumesSameUpload",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.statusNotFoundInvalidatesCachedReadyAsset",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.targetLossPausesAndCancelChecksRemoteStatusBeforeCancel",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.startPersistsBeforeStatusThenSendsVerifiedChunkAndFinishes",
+        "com.moxbots.mobile.remote.NativeUploadSchedulerInstrumentedTest.fractionalProtocolNumbersAreRejectedWithoutAdvancingUpload"
+      ]
+    },
+    "live": {
+      "total": 2,
+      "passed": 2,
+      "skipped": 0,
+      "failed": 0,
+      "seconds": 2.802,
+      "caseNames": [
+        "com.moxbots.mobile.remote.NativeLiveLoginInstrumentedTest.cleartextIsLimitedToPublicIssuerRevocationLists",
+        "com.moxbots.mobile.remote.NativeLiveLoginInstrumentedTest.originalAndroidClientStartsAndCancelsLoginWithoutAuthenticating"
+      ]
+    },
+    "artifact": {
+      "file": "MoxBots-mobile-002-android-offline-test-228bd8dc.apk",
+      "sha256": "55db16dd9a4aece6b52ed18edd75b0edd028ff3edf64692e029a033eabf8fdb1",
+      "bytes": 49852972
+    }
+  },
+  "ios": {
+    "artifact": {
+      "file": "MoxBots-mobile-002-ios-simulator-228bd8dc.tar.gz",
+      "sha256": "bd95703a77081be1e03434aa4a79ce02b6ac8479bce003968166f2a55482e2b5",
+      "bytes": 18994243
+    },
+    "offline": {
+      "passed": 3,
+      "skipped": 1,
+      "failed": 0,
+      "runnerExit": 0
+    },
+    "live": {
+      "passed": 4,
+      "skipped": 0,
+      "failed": 0,
+      "runnerExit": 0,
+      "caseSeconds": 0.641,
+      "xcodeTestingPhaseSeconds": 6.04,
+      "postTestDiagnosticTimeout": false
+    }
+  },
+  "ui": {
+    "tool": "CUA DeviceHub actual installed Release App; no QA fixture",
+    "firstScreenAndRefresh": true,
+    "originalUnauthenticatedSafariPageReached": true,
+    "confirmedCancelCycles": 2,
+    "canStartAgainAfterCancel": true,
+    "oldSuccessNoticeClearedOnNewStart": true,
+    "secondBrowserHandoffObservedHome": true,
+    "appStillRunningAndCancelWorkedAfterHomeReturn": true,
+    "fullSsoCompleted": false,
+    "remoteModelOrBotOperation": false
+  },
+  "boundaries": [
+    "No physical phones, actual signed-in Host/Session user path, notifications/provider deployment, recording/ASR or store signing accepted",
+    "User confirms no existing Firebase project; Xcode development-team retrieval fails",
+    "Awaiting user choice on manual real-account SSO; no chat password requested"
+  ]
+}

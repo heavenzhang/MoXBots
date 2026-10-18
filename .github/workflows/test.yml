@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       mobile_ios_app:
-        description: Build only the unsigned offline iOS simulator app
+        description: Build only the ad-hoc signed offline iOS simulator app
         type: boolean
         default: false
   pull_request:
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   mobile-ios-app:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mobile_ios_app }}
-    name: iOS simulator · unsigned offline app
+    name: iOS simulator · ad-hoc offline app
     runs-on: macos-26
     timeout-minutes: 50
     steps:
