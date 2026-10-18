@@ -922,6 +922,29 @@ mod tests {
         server.join().unwrap();
     }
 
+    #[tokio::test]
+    async fn unknown_total_is_streamed_and_verified_without_fabricated_percentage() {
+        let (_, bytes) = fixture("http://127.0.0.1/");
+        let body = bytes.clone();
+        let (url, _, server) = server(1, move |_, _, stream| {
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
+                .unwrap();
+            stream.write_all(&body).unwrap();
+        });
+        let (artifact, _) = fixture(&url);
+        let dir = TempDir::new().unwrap();
+        let mut events = Vec::new();
+        let path = download(&client(), dir.path(), &artifact, &policy(), |event| {
+            events.push(event)
+        })
+        .await
+        .unwrap();
+        assert_eq!(fs::read(path).unwrap(), bytes);
+        assert!(events.iter().all(|event| event.total.is_none()));
+        server.join().unwrap();
+    }
+
     #[test]
     fn oversized_and_malformed_headers_are_rejected() {
         for (name, value) in [

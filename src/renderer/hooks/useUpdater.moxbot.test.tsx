@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   relaunch: vi.fn(),
   handlers: new Map<
     string,
-    (event: { payload: { version: string } }) => void
+    (event: { payload: Record<string, unknown> }) => void
   >(),
 }));
 vi.mock("../../shared/appProfile", () => ({ APP_BUILD_PROFILE: "moxbot" }));
@@ -34,7 +34,7 @@ beforeEach(() => {
   mocks.listen.mockImplementation(
     (
       name: string,
-      callback: (event: { payload: { version: string } }) => void,
+      callback: (event: { payload: Record<string, unknown> }) => void,
     ) => {
       mocks.handlers.set(name, callback);
       return Promise.resolve();

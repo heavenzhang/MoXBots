@@ -17,15 +17,15 @@ The fix extends the existing Rust updater owner. No task, Session, Sidecar, runt
 
 ## Verification ledger
 
-| Layer                            | Status        | Evidence / limitation                                                                                        |
-| -------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------ |
-| Original live failure            | Confirmed     | Client unified log + read-only server access log, private sanitized extracts outside Git                     |
-| Transport deterministic loopback | Pending       | Drop/resume, restart recovery,200 fallback, inconsistent Range/416, timeout/retry, signature and path safety |
-| Renderer automated               | Pending       | Background snapshot, revision fencing, progress/failure/retry, Linux disable and unchanged install guards    |
-| Running UI                       | Pending       | Independent reviewer; About using synthetic IPC at1200×900 and390×844                                        |
-| Source integration               | Pending       | Type/lint/build, normal CI and remote main containment                                                       |
-| Native signed package / A-to-B   | Not performed | Existing unified publisher owns packaging/install; active tasks must not be interrupted                      |
-| Production installation          | Not performed | Daily app and ongoing work untouched                                                                         |
+| Layer                            | Status              | Evidence / limitation                                                                                                                                                                                                             |
+| -------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Original live failure            | Confirmed           | Client unified log + read-only server access log, private sanitized extracts outside Git                                                                                                                                          |
+| Transport deterministic loopback | Pending             | Drop/resume, restart recovery,200 fallback, inconsistent Range/416, timeout/retry, signature and path safety                                                                                                                      |
+| Renderer automated               | Passed (focused)    | 22 updater/confirmation DOM +15 Settings/Linux cases; one unrelated Settings case initially timed out under load, isolated rerun passed                                                                                           |
+| Running UI                       | Passed (root-owned) | 12 actual extracted About JSX synthetic state/layout/keyboard cases at1200×900 and390×844, zero page errors; `qa/results.json` and screenshots. Independent worker could not execute after usage limit; not native IPC acceptance |
+| Source integration               | Pending             | Type/lint/build, normal CI and remote main containment                                                                                                                                                                            |
+| Native signed package / A-to-B   | Not performed       | Existing unified publisher owns packaging/install; active tasks must not be interrupted                                                                                                                                           |
+| Production installation          | Not performed       | Daily app and ongoing work untouched                                                                                                                                                                                              |
 
 ## Release request
 
@@ -38,3 +38,9 @@ Native acceptance must exercise a real signed A-to-B download interruption and r
 ## Execution record
 
 Root owns diagnosis, contract, integration, main delivery and release handoff. `download_backend` (requested gpt-6.1-sol/high) implements transport/integrity because incorrect resume can corrupt update bytes; `download_ui` (requested gpt-6-luna/medium) implements existing About flow; `updater_review` (requested gpt-6-luna/medium) independently reviews running synthetic UI. Exact effective model/billing/token usage not exposed; no cost saving claimed. Native-only workflow, no model escalation in this task. Root performs overall source and critical-path acceptance; worker reports alone are not acceptance.
+
+## Review and repair record
+
+Primary review corrected initial implementation defects: stale hydration could race listener installation, no-update result could announce downloading, checking failure could hide retained bytes, signature/range reset needed actual retained-byte refresh, and retrying needed byte count/backoff visibility. Root added accessible progress semantics, removed an empty ready panel, bounded progress refresh for slow streams, distinguished safe network/status causes, and fixed React purity/effect lint findings. All source changes remain under review until final transport/CI gates pass.
+
+Three workers participated with requested settings listed above; their turns hit a runtime usage limit before final acceptance. Root took over remaining implementation, ran actual browser UI checks and inspected desktop/narrow screenshots. Independent UI review is therefore incomplete; source/browser root acceptance is explicitly self-review. No model upgrade or cost saving is claimed; token/billing data unavailable. Parallel implementation shortened the initial code path qualitatively, but handoff and limit recovery added review work. Retain the one-owner state contract and run slow-stream progress tests before future UI handoffs.
