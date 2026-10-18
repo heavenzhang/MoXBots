@@ -2,7 +2,7 @@
 import {strict as assert} from 'node:assert';
 import {randomBytes,randomUUID,createHash} from 'node:crypto';
 import {spawn,execFileSync,type ChildProcess} from 'node:child_process';
-import {createServer as httpServer,type ServerResponse} from 'node:http';
+import {createServer as httpServer,request as httpRequest,type ServerResponse} from 'node:http';
 import {createServer as unixServer,type Socket} from 'node:net';
 import {once} from 'node:events';
 import {chmod,mkdir,mkdtemp,writeFile,readFile,symlink,readdir} from 'node:fs/promises';
@@ -130,13 +130,6 @@ try{
   for(const directory of [home,workspace,join(root,'credentials')])await mkdir(directory,{recursive:true,mode:0o700});
   await chmod(state,0o700);await writeFile(join(state,'host.lock'),'',{mode:0o600});
   await mkdir(ipcDirectory,{mode:0o750});await chmod(ipcDirectory,0o750);
-  await writeFile(join(root,'credentials','provider-key'),randomBytes(32),{mode:0o600});
-  await new Promise<void>(yes=>supplier.listen(0,'127.0.0.1',yes));
-  const address=supplier.address();assert(address&&typeof address!=='string');
-  const baseUrl=`http://127.0.0.1:${address.port}`;
-  const operator=child(process.execPath,['--import','tsx',join(repository,'src/test/fixtures/mobile-original-host-operator.ts'),workspace,baseUrl]);
-  assert.equal((await once(operator,'exit'))[0],0,'original local operator configuration failed');
-  record('local-operator-configured');
   const require=createRequire(import.meta.url);
   await mkdir(join(root,'claude-agent-sdk'),{mode:0o700});
   const triple=process.platform==='darwin'?`darwin-${process.arch}`:`linux-${process.arch}`;
@@ -144,18 +137,63 @@ try{
   for(const [entry,target] of [['src/host/main.ts','host-main.mjs'],['src/server/host-session-worker.ts','host-session-worker.mjs']])await build({entryPoints:[join(repository,entry)],outfile:join(root,target),bundle:true,platform:'node',format:'esm',logLevel:'silent',
     banner:{js:'import {createRequire as __createRequire} from "module"; const require=__createRequire(import.meta.url);'},
     external:['playwright','playwright/*','playwright-core','playwright-core/*','@playwright/mcp','@playwright/mcp/*']});
-  listener.listen(socketPath);await once(listener,'listening');await chmod(socketPath,0o660);
   const entry=join(root,'host-main.mjs');
   const hostArgs=process.platform==='linux'?['--exclusive','--nonblock','--no-fork',join(state,'host.lock'),process.execPath,entry,'--serve']:[entry,'--serve'];
+  const hostCommand=process.platform==='linux'?'/usr/bin/flock':process.execPath;
+  // The real startup owner must establish fresh authority before the original
+  // operator changes registry data. Never seed identity or registry fixtures.
+  const bootstrapEnvironment={...env,MYAGENTS_HOST_STATE_DIR:state,
+    MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MODE:'1'};
+  for(const path of [join(state,'host-identity.json'),join(home,'.myagents','config.json'),join(home,'.myagents','projects.json')])
+    await assert.rejects(readFile(path),{code:'ENOENT'});
+  const bootstrapOffset=diagnostics.length;
+  const bootstrap=child(hostCommand,hostArgs,bootstrapEnvironment);
+  await wait('original Host fresh bootstrap',async()=>{
+    if(bootstrap.exitCode!==null||bootstrap.signalCode!==null)throw Error('FIXTURE_BOOTSTRAP_EXITED');
+    return diagnostics.slice(bootstrapOffset).includes('MyAgents Host ready (private Unix control;')?true:undefined;
+  });
+  const bootstrapStatus=await new Promise<{hostId:string;configured:boolean;activeSession:unknown;stopping:boolean}>((resolveStatus,reject)=>{
+    // Read the same private status contract as doctor without a second bundled
+    // CLI's startup/lifetime becoming part of this readiness observation.
+    const call=httpRequest({socketPath:join(root,'control.sock'),path:'/host/status',method:'POST',agent:false},response=>{
+      const chunks:Buffer[]=[];let size=0;
+      response.on('data',(chunk:Buffer)=>{size+=chunk.length;if(size>8192)response.destroy(Error('FIXTURE_BOOTSTRAP_STATUS_TOO_LARGE'));else chunks.push(chunk);});
+      response.on('error',reject);
+      response.on('end',()=>{try{const value=JSON.parse(Buffer.concat(chunks).toString());assert.equal(value.ok,true);resolveStatus(value.data);}catch{reject(Error('FIXTURE_BOOTSTRAP_STATUS_INVALID'));}});
+    });
+    call.setTimeout(2000,()=>call.destroy(Error('FIXTURE_BOOTSTRAP_STATUS_TIMEOUT')));
+    call.on('error',reject);call.end('{}');
+  });
+  const identityBytes=await readFile(join(state,'host-identity.json'));
+  assert.equal(bootstrapStatus.hostId,JSON.parse(identityBytes.toString()).hostId);
+  assert.equal(bootstrapStatus.configured,false);assert.equal(bootstrapStatus.activeSession,null);assert.equal(bootstrapStatus.stopping,false);
+  assert.equal(await readFile(join(home,'.myagents','config.json'),'utf8'),'{"agents":[]}\n');
+  assert.equal(await readFile(join(home,'.myagents','projects.json'),'utf8'),'[]\n');
+  await stop(bootstrap);
+  assert.equal(bootstrap.exitCode,0,'fresh Host bootstrap must exit normally');assert.equal(bootstrap.signalCode,null);
+  assert.equal(calls,0);assert.equal(peer,undefined);
+  record('original-host-bootstrap-ready-and-stopped',{emptyRegistry:true,noManagement:true,noSupplierCalls:true});
+  await writeFile(join(root,'credentials','provider-key'),randomBytes(32),{mode:0o600});
+  await new Promise<void>(yes=>supplier.listen(0,'127.0.0.1',yes));
+  const address=supplier.address();assert(address&&typeof address!=='string');
+  const baseUrl=`http://127.0.0.1:${address.port}`;
+  const operator=child(process.execPath,['--import','tsx',join(repository,'src/test/fixtures/mobile-original-host-operator.ts'),workspace,baseUrl]);
+  assert.equal((await once(operator,'exit'))[0],0,'original local operator configuration failed');
+  record('local-operator-configured');
+  assert.deepEqual(await readFile(join(state,'host-identity.json')),identityBytes);
+  const configuredRegistry=await Promise.all(['config.json','projects.json'].map(name=>readFile(join(home,'.myagents',name))));
+  listener.listen(socketPath);await once(listener,'listening');await chmod(socketPath,0o660);
   const hostEnvironment={...env,
     MYAGENTS_HOST_STATE_DIR:state,MYAGENTS_HOST_SOCKET:join(root,'control.sock'),MYAGENTS_HOST_MANAGEMENT_IPC:socketPath,
     MYAGENTS_HOST_MANAGEMENT_NETWORK_UID:String(process.getuid!()),MYAGENTS_HOST_MANAGEMENT_GID:String(process.getgid!()),MYAGENTS_HOST_MODE:'1',
     CREDENTIALS_DIRECTORY:join(root,'credentials'),MYAGENTS_HOST_PROVIDER_KEY_CREDENTIAL:'provider-key'};
-  const hostCommand=process.platform==='linux'?'/usr/bin/flock':process.execPath;
   const host=child(hostCommand,hostArgs,hostEnvironment);
   hostPid=host.pid;hostBirth=processRows().find(row=>row.pid===hostPid)?.birth;
   record('host-born',{pid:hostPid,pgid:hostPid,birth:hostBirth,node:process.version});
   await wait('real Host startup',async()=>{if(host.exitCode!==null)throw Error('FIXTURE_HOST_EXITED');return peer&&diagnostics.includes('management IPC connected')?true:undefined;});
+  assert.deepEqual(await readFile(join(state,'host-identity.json')),identityBytes);
+  assert.deepEqual(await Promise.all(['config.json','projects.json'].map(name=>readFile(join(home,'.myagents',name)))),configuredRegistry);
+  record('original-host-reused-bootstrap-identity-and-operator-registry');
   const rejected=await management('config.provider.set',{provider:{id:'forbidden-loopback',name:'Forbidden portable loopback',apiProtocol:'anthropic',authType:'api_key',baseUrl},model:'original-host-model',workspace:{rootId:'workspaces',relativePath:'default'},executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
   assert.equal((rejected.result as {kind:string}).kind,'error');
   assert.equal((rejected.result as {code:string}).code,'INVALID_REQUEST');
