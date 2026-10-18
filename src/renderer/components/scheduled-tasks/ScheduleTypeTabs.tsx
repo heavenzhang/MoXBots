@@ -17,7 +17,7 @@
  */
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { ClockIcon, CalendarIcon, FlagIcon } from '@/components/icons';
+import { ClockIcon, CalendarIcon, TargetIcon } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
 import type { CronSchedule } from '@/types/cronTask';
 import CronExpressionInput from './CronExpressionInput';
@@ -44,7 +44,7 @@ interface ScheduleTypeTabsProps {
 }
 
 const TABS: { kind: ScheduleKind; labelKey: string; icon: typeof ClockIcon }[] = [
-  { kind: 'loop', labelKey: 'cron.scheduleTabs.loop', icon: FlagIcon },
+  { kind: 'loop', labelKey: 'cron.scheduleTabs.loop', icon: TargetIcon },
   { kind: 'recurring', labelKey: 'cron.scheduleTabs.recurring', icon: ClockIcon },
   { kind: 'at', labelKey: 'cron.scheduleTabs.once', icon: CalendarIcon },
 ];

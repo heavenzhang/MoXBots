@@ -17,8 +17,8 @@
 - [x] 待办紧凑摘要、当前任务优先、完成折叠、共享滚动、键盘语义。
 - [x] 维护权威交互规范与合成组件验收入口。
 - [x] 39项定向DOM回归、8组实际组件视觉/交互、独立审阅。
-- [ ] TypeScript、限定lint及CI：最终状态查询PR#117和本地交付证据。
-- [ ] 正常 CI、同步最新主干、合并并核验远端 main。
+- [x] TypeScript、限定lint及CI：PR#117 最终6/6通过。
+- [x] 正常 CI、同步最新主干、合并并核验远端 main（b6c6d3529177453e61edf6fc03ce6deac6c89b31）。
 - [ ] 下一未冻结正式包和原生真实目标/待办验收（统一发布 owner）。
 
 ## Completed
@@ -39,4 +39,4 @@
 
 ## Next step
 
-PR#117（https://github.com/heavenzhang/MoXBots/pull/117）正在正常CI；通过后同步main并合入，核验remote ancestry。正式包由唯一发布owner后续处理。
+PR#117已合入远端main，CI6/6、联合DOM98/98、实际组件浏览器8组通过。按用户补充完成 GOAL-ICON-20261018 后，将整批已合入改动发送至唯一发布owner，纳入下一未冻结正式包并完成原生验收；不打断活动任务。
