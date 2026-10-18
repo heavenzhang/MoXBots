@@ -262,6 +262,13 @@ jobs:
           node --import tsx/esm scripts/verify-context-recovery-loopback.ts
           node --import tsx/esm scripts/verify-context-recovery-loopback.ts --auto
           node --import tsx/esm scripts/verify-context-recovery-loopback.ts --fail-compact
+      - name: Verify native SDK background lifetimes and bounded inference retries
+        run: |
+          node --import tsx/esm scripts/verify-background-lifecycle-loopback.ts
+          node --import tsx/esm scripts/verify-background-lifecycle-loopback.ts --after-recovery
+          node --import tsx/esm scripts/verify-model-failover-loopback.ts
+          node --import tsx/esm scripts/verify-model-failover-loopback.ts --stream-failure
+          node --import tsx/esm scripts/verify-model-failover-loopback.ts --stop-during-retry
       # Typecheck does not exercise esbuild/Vite bundling, raw imports, or
       # runtime entrypoint packaging. These cheap smoke builds catch that class.
       - run: npm run build:server

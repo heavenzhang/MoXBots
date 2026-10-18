@@ -318,7 +318,7 @@ describe('bounded inference context recovery', () => {
       isActive: () => true, backup: async () => '/private/archive/next.json', initialCheckpoint: checkpoint });
     expect(replacement.beforeTool('increment_counter', { account: 'test', delta: 1 })).toContain('/private/archive/restored.json');
     replacement.endTurn();
-    expect(replacement.beforeTool('increment_counter', { account: 'test', delta: 1 })).toContain('already completed');
+    expect(replacement.beforeTool('increment_counter', { account: 'test', delta: 1 })).toContain('automatic_replay_blocked');
     const fresh = fixture();
     fresh.controller.recordToolResult('increment_counter', { account: 'test', delta: 1 }, 'counter=1');
     expect(fresh.controller.beforeTool('increment_counter', { account: 'test', delta: 1 })).toBeUndefined();
@@ -489,6 +489,60 @@ describe('bounded inference context recovery', () => {
   it('rejects corrupt or oversized persisted ledgers before inference starts', () => {
     expect(() => new ContextRecoveryController({ scope: () => 'turn', isActive: () => true,
       backup: async () => 'unused', initialLedger: { version: 2 } })).toThrow('context_recovery_required');
+  });
+
+
+  it('does not accumulate unarmed background successes into the Query recovery ledger', async () => {
+    const h = fixture();
+    h.owner.scope = undefined;
+    for (let index = 0; index < 3000; index++) {
+      h.controller.recordToolResult('background_write', { index }, { saved: true });
+    }
+    h.owner.scope = 'fresh-foreground';
+    let calls = 0;
+    const response = await h.controller.run(req(), history(), async () => ++calls === 1 ? overflow() : ok());
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(calls).toBe(2);
+    expect(h.controller.beforeTool('increment_counter', { account: 'test', delta: 1 })).toContain('already completed');
+  });
+
+  it('bounds armed background settlement and blocks further actions without losing prior evidence', async () => {
+    const h = fixture();
+    let calls = 0;
+    const first = await h.controller.run(req(), history(), async () => ++calls === 1 ? overflow() : ok());
+    await first.text();
+    h.controller.endTurn(); h.owner.scope = undefined;
+    for (let index = 0; index < 2200; index++) {
+      h.controller.recordToolResult('background_write', { index }, { saved: true });
+    }
+    expect(h.controller.beforeTool('background_write', { index: 3000 })).toContain('blocked');
+    expect(h.controller.canRetryInference()).toBe(false);
+    const execute = vi.fn(async () => ok());
+    const response = await h.controller.run(req(), history(), execute);
+    expect(response.status).toBe(409);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+
+  it('does not grant recovery to an admitted background request when the background registry clears', async () => {
+    const h = fixture(); h.owner.canRecover = false;
+    const pending = deferred<void>();
+    const execute = vi.fn(async () => { await pending.promise; return overflow(); });
+    const result = h.controller.run(req(), history(), execute);
+    h.owner.canRecover = true;
+    pending.resolve();
+    expect((await result).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(h.backup).not.toHaveBeenCalled();
+    expect(h.onRecovery).not.toHaveBeenCalled();
+    const foreground = history();
+    foreground.messages.push({ role: 'user', content: 'A later, unambiguous foreground inference.' });
+    let calls = 0;
+    const next = await h.controller.run(req(), foreground, async () => ++calls === 1 ? overflow() : ok());
+    expect(next.status).toBe(200); await next.text();
+    expect(calls).toBe(2);
+    expect(h.backup).toHaveBeenCalledTimes(1);
   });
 
 });

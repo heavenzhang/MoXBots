@@ -1,3 +1,7 @@
+## MOXBOTS-REQUEST-499-20261018
+
+Fix normal background inference and streams incorrectly cancelled by parent turn completion; exact Query/route revocation and Stop remain authoritative. Availability failures get an original call plus three bounded, cancellable pre-delivery retries, independent of optional backup configuration. Never re-enqueue tasks or replay partial output/uncertain writes. Task `.agent-sync/tasks/codex-request-499-20261018-3f1bac55.md`; implementation/paired-loopback/native SDK verification and main delivery evidence `dev-docs/request-499-20261018-acceptance.md`. User explicitly authorized main integration and notifying the registered release owner for the next unfrozen repair. Daily client/task interruption excluded; queued/candidate/published/native-accepted states remain distinct.
+
 ## BG-TASK-LOG-001 — 2026-10-18
 
 用户要求修复后台任务行点击无响应，并直接查看状态/执行日志。既有Exact Query/run registry经SessionEngine提供只读受限64KiB日志；任务详情不依赖原工具卡片，终态/断网/记录释放保留已读日志，键盘与窄屏适配。范围及分项验收 `.agent-sync/tasks/codex-bg-task-log-001-20261018-3fcc9f5f.md`、`dev-docs/bg-task-log/acceptance.md`。source/模拟联调/CI/main/原生发行分别追踪；用户明确授权修复验收后发送给既定唯一桌面发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4安排下一未冻结版本。本聊天不重启日常App、不打断活动任务、不改既有冻结包/稳定更新源，无配置或业务数据迁移。
