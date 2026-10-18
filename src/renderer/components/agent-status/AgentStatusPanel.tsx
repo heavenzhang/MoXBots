@@ -19,6 +19,8 @@ import { useTabStateOptional } from "@/context/TabContext";
 
 import { SubagentRunningIcon } from "./icons";
 import SubagentSection from "./SubagentSection";
+import BackgroundTaskDialog from "./BackgroundTaskDialog";
+import type { SubagentStatus } from './types';
 import TodoSection from "./TodoSection";
 import { useAgentStatusState } from "./useAgentStatusState";
 
@@ -134,18 +136,33 @@ const AgentStatusPanel = memo(function AgentStatusPanel({
   const detailsId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   const toggle = useCallback(() => setExpanded((v) => !v), []);
+  const [selected, setSelected] = useState<{ sessionId: string | null; subagent: SubagentStatus } | null>(null);
+  const openTask = useCallback((subagent: SubagentStatus) => {
+    setSelected({ sessionId: tab?.sessionId ?? null, subagent });
+  }, [tab?.sessionId]);
+  const closeTask = useCallback(() => setSelected(null), []);
+  const selectedInSession = selected?.sessionId === (tab?.sessionId ?? null) ? selected : null;
+  useEffect(() => {
+    if (!selected || selected.sessionId === (tab?.sessionId ?? null)) return;
+    const frame = requestAnimationFrame(() => setSelected(null));
+    return () => cancelAnimationFrame(frame);
+  }, [tab?.sessionId, selected]);
 
-  if (!mounted) return null;
+  if (!mounted && !selectedInSession) return null;
 
   return (
-    // 卡片级 DOM——定位/居中/右边界对齐由父级 SimpleChatInput 内的「panel 行」
-    // 负责。和 QueuedMessagesPanel 同居一个 `flex items-end justify-end gap-2`
-    // 行：当 queue 同时存在时 `[&:not(:only-child)]:mr-auto` 把 Todo 推到左侧，
-    // queue 自然落到右侧；只剩 Todo 时 `:only-child` 触发，无 mr-auto，
-    // justify-end 把它保持在右边。这样原来 `bottom-[8rem]` 的硬编码偏移和与
-    // queue 的 z-20 撞车都被布局消化了，输入框高度变化（图片附件、textarea
-    // 长大、cron status bar）也不再让 Todo 偏离 queue。
+    <>
+    {selectedInSession && <BackgroundTaskDialog
+      key={`${selectedInSession.sessionId}:${selectedInSession.subagent.id}`}
+      subagent={state.subagents.find(agent => agent.id === selectedInSession.subagent.id) ?? selectedInSession.subagent}
+      sessionId={selectedInSession.sessionId}
+      messages={messages}
+      onClose={closeTask}
+      onJumpToTool={onJumpToTool}
+    />}
+    {/* The log dialog outlives the transient status card and its fade. */}
     <div
+      hidden={!mounted}
       aria-hidden={!opaque}
       inert={!opaque}
       className={`flex w-[min(360px,100%)] min-w-0 flex-col overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] shadow-sm transition-opacity duration-200 motion-reduce:transition-none [&:not(:only-child)]:mr-auto ${
@@ -188,11 +205,13 @@ const AgentStatusPanel = memo(function AgentStatusPanel({
               subagents={state.subagents}
               containerRef={containerRef}
               onJumpToTool={onJumpToTool}
+              onOpenTask={openTask}
             />
           </>
         )}
       </div>
     </div>
+    </>
   );
 });
 
