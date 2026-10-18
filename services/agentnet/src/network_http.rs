@@ -1389,8 +1389,8 @@ pub(crate) mod tests {
         assert_eq!(first["data"]["networkId"], before.account.network_id);
         assert_eq!(first["data"]["sessionHandle"], before.session_handle);
         assert!(first["data"]["expiresAt"].as_i64().unwrap() >= now + 3600);
-        // Simulate response loss: same session with a fresh proof gets the
-        // exact same projection and never replaces the opaque account token.
+        // Simulate response loss: the same candidate with a fresh proof gets
+        // the same projection; the original account bearer remains retired.
         let (status, repeated, _) = f.request(&a, "POST", "/v1/session/renew", "").await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(repeated, first);
@@ -1498,7 +1498,7 @@ pub(crate) mod tests {
                 &a,
                 "POST",
                 "/v1/session/renew",
-                "",
+                &json!({"sessionToken":URL_SAFE_NO_PAD.encode([92u8;32])}).to_string(),
                 &renewal_proof
             )
             .await
