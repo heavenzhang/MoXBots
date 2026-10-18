@@ -1,4 +1,4 @@
-import { createContext, useContext, useCallback, useState, useMemo } from 'react';
+import { createContext, useContext, useCallback, useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import {
@@ -93,8 +93,22 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
 
 export function ToastProvider({ children }: { children: ReactNode }) {
     const [toasts, setToasts] = useState<Toast[]>([]);
+    const dismissTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+
+    useEffect(() => {
+        const timers = dismissTimers.current;
+        return () => {
+            timers.forEach((timer) => clearTimeout(timer));
+            timers.clear();
+        };
+    }, []);
 
     const removeToast = useCallback((id: string) => {
+        const timer = dismissTimers.current.get(id);
+        if (timer !== undefined) {
+            clearTimeout(timer);
+            dismissTimers.current.delete(id);
+        }
         setToasts((prev) => prev.filter((t) => t.id !== id));
     }, []);
 
@@ -104,9 +118,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         setToasts((prev) => [...prev, { id, message, type }]);
 
         // Auto dismiss
-        setTimeout(() => {
+        const timer = setTimeout(() => {
             removeToast(id);
         }, duration ?? DEFAULT_TOAST_DURATION);
+        dismissTimers.current.set(id, timer);
     }, [removeToast]);
 
     const success = useCallback((message: string, duration?: number) => showToast(message, 'success', duration), [showToast]);
