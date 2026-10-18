@@ -31,6 +31,12 @@ test('direct Tauri builds retain the public asset hook', () => {
   assert.equal(config.build.beforeBuildCommand, 'npm run build:assets');
 });
 
+test('macOS release build never terminates desktop apps or Sidecars', () => {
+  const source = read('build_macos.sh');
+  assert.match(source, /Build outputs and resource staging are scoped to this checkout/);
+  assert.doesNotMatch(source, /\b(?:pkill|killall)\b/);
+});
+
 test('explicit platform builds prepare assets before disabling only the invocation hook', () => {
   for (const file of ['build_macos.sh', 'build_dev.sh', 'build_windows.ps1', 'build_dev_win.ps1']) {
     const source = read(file);
