@@ -518,14 +518,26 @@ type PolicyProjection<'a> = Option<&'a (dyn Fn() -> Result<(), NetworkError> + S
 /// leaves the old expiry untouched and never immediately retries a mutation.
 #[derive(Default)]
 struct SessionRenewalSchedule {
+    observed_expiry: Option<u64>,
+    due_at: u64,
     next_attempt: u64,
     failures: u32,
 }
 impl SessionRenewalSchedule {
-    fn due(&self, expires_at: u64, now: u64, jitter: u16) -> bool {
+    fn due(&mut self, expires_at: u64, now: u64, jitter: u16) -> bool {
+        if self.observed_expiry != Some(expires_at) {
+            // Arm once from the admitted snapshot. A fresh short-lived account
+            // must not rotate immediately after becoming visible as Ready.
+            // Keep this deadline across reconnects and jitter samples; only a
+            // different authoritative expiry arms a new window.
+            let lead = (900 + u64::from(jitter % 61))
+                .min((expires_at.saturating_sub(now) / 2).max(1));
+            self.observed_expiry = Some(expires_at);
+            self.due_at = expires_at.saturating_sub(lead);
+        }
         now < expires_at
             && now >= self.next_attempt
-            && expires_at.saturating_sub(now) <= 900 + u64::from(jitter % 61)
+            && now >= self.due_at
     }
     fn attempted(&mut self, now: u64, jitter: u16, success: bool, remaining: u64) {
         self.failures = if success {
@@ -542,6 +554,53 @@ impl SessionRenewalSchedule {
         };
         self.next_attempt =
             now.saturating_add(delay.min(300) + u64::from(jitter % 16).min(remaining / 4));
+    }
+    async fn renew_if_due(
+        &mut self,
+        connection: &crate::owned::Connection,
+        identity: &NetworkIdentity,
+        transport: &NetworkTransport,
+    ) -> Result<(), NetworkError> {
+        let NetworkAccountSession::Owned(account) = &identity.account else {
+            return Ok(());
+        };
+        let now = jsonwebtoken::get_current_timestamp();
+        let id = uuid::Uuid::new_v4();
+        let jitter = u16::from_le_bytes([id.as_bytes()[0], id.as_bytes()[1]]);
+        if !self.due(account.session.expires_at, now, jitter) {
+            return Ok(());
+        }
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            connection.renew_session(identity, transport),
+        )
+        .await;
+        let finished_at = jsonwebtoken::get_current_timestamp();
+        self.attempted(
+            finished_at,
+            jitter,
+            matches!(&result, Ok(Ok(_))),
+            account.session.expires_at.saturating_sub(finished_at),
+        );
+        match result {
+            Ok(Ok(true)) => Err(NetworkError::new("OWNED_SESSION_RENEWED")),
+            Ok(Err(error))
+                if [
+                    "ACCOUNT_BINDING_CHANGED",
+                    "OWNED_REAUTH_REQUIRED",
+                    "OWNED_SESSION_INVALID",
+                    "SESSION_REAUTH_REQUIRED",
+                    "ACCOUNT_SESSION_EXPIRED",
+                    "OWNED_INSTANCE_TRUST_CHANGED",
+                    "NETWORK_TRUST_CHANGED",
+                ]
+                .contains(&error.code.as_str()) =>
+            {
+                Err(error)
+            }
+            // Unknown responses retain the candidate and original deadline.
+            _ => Ok(()),
+        }
     }
 }
 async fn connect(
@@ -582,6 +641,11 @@ async fn connect(
         memory.clone(),
         identity.account.public_tls_ca(),
     )?);
+    if let Some(connection) = owned {
+        // If a previously armed deadline arrived while disconnected, finish
+        // rotation before advertising a new epoch or consuming the join grant.
+        renewal.renew_if_due(connection, &identity, &transport).await?;
+    }
     if let NetworkAccountSession::Owned(account) = &identity.account {
         // One operator grant belongs to this run, not each reconnect.
         let grant = consume_join_grant(join_authorized, &account.join_authorized);
@@ -792,20 +856,8 @@ async fn connect(
         let now = jsonwebtoken::get_current_timestamp();
         if identity.access.exp <= now { return Err(NetworkError::new("NETWORK_TOKEN_EXPIRED")); }
         if ready {
-            if let (Some(connection), NetworkAccountSession::Owned(account)) = (owned, &identity.account) {
-                let id = uuid::Uuid::new_v4();
-                let jitter = u16::from_le_bytes([id.as_bytes()[0], id.as_bytes()[1]]);
-                if renewal.due(account.session.expires_at, now, jitter) {
-                    let result = tokio::time::timeout(Duration::from_secs(10), connection.renew_session(&identity, &transport)).await;
-                    renewal.attempted(now, jitter, matches!(&result, Ok(Ok(_))), account.session.expires_at.saturating_sub(now));
-                    match result {
-                        Ok(Ok(true)) => return Err(NetworkError::new("OWNED_SESSION_RENEWED")),
-                        Ok(Err(error)) if ["ACCOUNT_BINDING_CHANGED", "OWNED_REAUTH_REQUIRED", "OWNED_SESSION_INVALID", "SESSION_REAUTH_REQUIRED", "ACCOUNT_SESSION_EXPIRED", "OWNED_INSTANCE_TRUST_CHANGED", "NETWORK_TRUST_CHANGED"].contains(&error.code.as_str()) => return Err(error),
-                        // Transient errors, unsupported servers and unknown
-                        // responses retain the live connection and old expiry.
-                        _ => {},
-                    }
-                }
+            if let Some(connection) = owned {
+                renewal.renew_if_due(connection, &identity, &transport).await?;
             }
         }
         // Access is a separate short-lived snapshot. Refresh it by a deliberate
@@ -1352,10 +1404,10 @@ mod tests {
     #[test]
     fn renewal_schedule_is_before_expiry_jittered_and_rate_bounded() {
         let mut schedule = SessionRenewalSchedule::default();
-        assert!(!schedule.due(10_000, 1, 0));
+        assert!(!schedule.due(10_000, 1, 60));
         assert!(!schedule.due(10_000, 9_039, 60));
         assert!(schedule.due(10_000, 9_040, 60));
-        assert!(!schedule.due(10_000, 9_040, 0));
+        assert!(schedule.due(10_000, 9_040, 0));
         assert!(!schedule.due(10_000, 10_000, 60));
         schedule.attempted(9_040, 0, false, 960);
         assert!(!schedule.due(10_000, 9_069, 60));
@@ -1369,8 +1421,24 @@ mod tests {
         assert_eq!(schedule.failures, 0);
         schedule.attempted(100, 0, true, 60);
         assert_eq!(schedule.next_attempt, 115);
-        // Short TTL still renews while valid and cannot revive an expired one.
-        assert!(SessionRenewalSchedule::default().due(120, 100, 0));
+        // A fresh short TTL waits until half its observed lifetime instead of
+        // disconnecting immediately after Ready. Reconnect cannot postpone it.
+        let mut short = SessionRenewalSchedule::default();
+        assert!(!short.due(1_000, 100, 0));
+        assert!(!short.due(1_000, 549, 60));
+        assert!(short.due(1_000, 550, 0));
+        assert!(short.due(1_000, 551, 60));
+        short.attempted(550, 0, true, 450);
+        assert!(!short.due(1_450, 551, 60));
+        assert!(!short.due(1_450, 1_000, 0));
+        assert!(short.due(1_450, 1_001, 60));
+        let mut daily = SessionRenewalSchedule::default();
+        assert!(!daily.due(86_400, 0, 0));
+        assert!(!daily.due(86_400, 85_499, 60));
+        assert!(daily.due(86_400, 85_500, 0));
+        let mut last_second = SessionRenewalSchedule::default();
+        assert!(last_second.due(120, 119, 0));
+        assert!(!last_second.due(120, 120, 60));
         assert!(!SessionRenewalSchedule::default().due(120, 120, 0));
     }
     #[test]

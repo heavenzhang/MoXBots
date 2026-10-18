@@ -36,7 +36,11 @@ async fn original_relay_service_fixture() {
             &AuthConfig {
                 network_id: network.clone(),
                 login_ttl: Duration::from_secs(120),
-                session_ttl: Duration::from_secs(900),
+                session_ttl: Duration::from_secs(if config["shortRenewal"] == true {
+                    60
+                } else {
+                    900
+                }),
             },
         )
         .unwrap(),
@@ -94,7 +98,29 @@ async fn original_relay_service_fixture() {
         Some(relay),
         &origin,
     );
-    let router = router.layer(axum::middleware::map_response(super::no_store));
+    let renewal_marker = root.join("renewal-observed.json");
+    let router = router
+        .layer(axum::middleware::map_response(super::no_store))
+        .layer(axum::middleware::from_fn(
+            move |request: axum::extract::Request, next: axum::middleware::Next| {
+                let renewal_marker = renewal_marker.clone();
+                async move {
+                    // Synthetic loopback fixture only: retain failure provenance
+                    // without bodies, credentials, query strings or headers.
+                    let method = request.method().clone();
+                    let path = request.uri().path().to_owned();
+                    let response = next.run(request).await;
+                    eprintln!(
+                        "fixture-http method={method} path={path} status={}",
+                        response.status().as_u16()
+                    );
+                    if path == "/v1/session/renew" && response.status().is_success() {
+                        private(&renewal_marker, &serde_json::json!({"status":200}));
+                    }
+                    response
+                }
+            },
+        ));
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     private(
         &root.join("service-ready.json"),

@@ -35,7 +35,7 @@ Primary负责架构/接口、Tauri公开installer状态读取、集成/验证/CI
 
 ## Verification
 
-代码与定向门禁已实现；installer100、UI26、Host191、service166/5既有ignored及双方strict Clippy已通过；合入main631后root复跑UI26和完整TypeScript通过。完整正向Connection恢复proof与真实SPKI格式修复由另一认证聊天独立复审接受。runtime冻结8cdeac561；af20d4a32仅固定既有模型租约测试时钟，保留1800/1801秒边界，无生产权限变化。Test39087695311/Owned39087695420为首轮组合证据；CI/最终main交付回执以PR119当前检查/合并和最终交接为准。具体证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。本机TCG Ubuntu启动/PID1-D-Bus阻断已记录，未安装Host并正常停VM；增加真实GitHub-hosted Ubuntu24.04 systemd门禁，拒绝已有namespace，仅安装测试包并保留network inactive/disabled，无browser/auth/model。
+代码与定向门禁已实现；installer100、UI26、Host191、service166/5既有ignored及双方strict Clippy已通过；合入main631后root复跑UI26和完整TypeScript通过。完整正向Connection恢复proof与真实SPKI格式修复由另一认证聊天独立复审接受。首轮runtime8cdeac561；最新main mobile组合已补3f53e98dc通知只读并发修复、相对expiry固定调度/Ready前续期及独立实际AuthStore60s轮换后业务验收（不改原900s fixture/生产TTL）；af20d4a32仅固定既有模型租约测试时钟，保留1800/1801秒边界，无生产权限变化。Test39087695311/Owned39087695420为首轮组合证据；CI/最终main交付回执以PR119当前检查/合并和最终交接为准。具体证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。本机TCG Ubuntu启动/PID1-D-Bus阻断已记录，未安装Host并正常停VM；增加真实GitHub-hosted Ubuntu24.04 systemd门禁，拒绝已有namespace，仅安装测试包并保留network inactive/disabled，无browser/auth/model。
 
 ## Blockers and unknowns
 

@@ -161,6 +161,7 @@ jobs:
           node scripts/verify-mobile-full-host-e2e.mjs
           node scripts/verify-mobile-full-host-e2e.mjs --assets
           node scripts/verify-mobile-full-host-e2e.mjs --ffi
+          node scripts/verify-mobile-full-host-e2e.mjs --renewal
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}

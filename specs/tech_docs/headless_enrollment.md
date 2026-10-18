@@ -44,4 +44,6 @@ Linux 引导取消人工安装/登录勾选，复制命令成功后在五分钟�
 
 会话续期走现有设备 access/DPoP admission 与原 AuthStore 事务。长期在线不能无限延长同一个人类 bearer：客户端先在原加密 owner CAS 保存候选，服务端轮换原 session 的 token hash 并延长有效期，session handle、设备 key、local binding 保持。旧 bearer 对所有 AuthStore.validate 路径立即失效；有限 Bot/model grant 不随之延长。未知响应与重启通过候选的真实服务端 session 和同设备 PoP 身份确认后采用；不得猜有效期、复活已过期/撤销会话或隐式重入网。
 
+连接器按首次可信快照固定续期时间：提前量取 900–960 秒与当时剩余有效期一半的较小值，至少保留 1 秒机会；跨重连与后续 jitter 不重置，服务端有效期变化后重新计算。重试退避从请求完成时计算，不延长原 expiry。已到期的调度在公开新 Ready epoch 和消费 join grant 之前处理；新建短会话不会刚 Ready 就触发轮换。轮换会重建连接快照，已发送的业务写入不得自动重放，只走原有回执恢复。通知发布只读该连接的账户快照，不参与 pending candidate 的恢复或采用。
+
 实现与测试、隔离 Linux、主干、正式制品及生产验收分别记录在 [acceptance](../../dev-docs/host-onboard-001/acceptance.md)。本任务不操作日常 Mac，发布由统一部署聊天负责。
