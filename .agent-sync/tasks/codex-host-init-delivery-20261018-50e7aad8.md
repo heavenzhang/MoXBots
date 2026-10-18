@@ -35,3 +35,9 @@ Candidate, supported-platform actual gates, combined CI, main and formal publica
 ## Next step
 
 Normally merge source combinationdf1, freeze a clean candidate source and run the registered candidate-build lane. Do not merge main or publish until actual acceptance closes.
+
+## First exact-source candidate attempt
+
+Run39135706200 actually built the P23cc Node archive, connector and service and completed original prepare-release (release20261018142341-23ccbded83f2). The additional packager rejected an input type/link-count/size/mode before exporting payloads; only an empty receipt artifact was uploaded. This is failed candidate construction, not accepted bytes. The packager checks the Cargo service input before bundle paths. A Cargo-style nlink2 regression reproduces the strict rejection, while an ordinary single-link identical snapshot passes; retain that guard and snapshot the build output before packaging. The next run records actual source/snapshot link counts to verify the inferred build-output explanation. Producer receipt is exposed only after successful completion, so failures cannot upload an empty JSON receipt. Seven producer offline tests passed; no product runtime/source change or public mutation.
+
+Exact PR137 CI39135711670 found a separate existing mobile fixture order issue: operator writes established config before the first original Host identity. Preserve the product's rejection and repair only those two fixtures by first booting/stopping the actual original main before the original operator; do not seed registry/identity. Dedicated worker owns that fix. All failures remain open until corrected actual Ubuntu checks pass.

@@ -184,6 +184,20 @@ class CandidateBuilderTests(unittest.TestCase):
         self.assertFalse(self.candidate_out.exists())
         self.assertFalse(self.service_out.exists())
 
+    def test_cargo_style_hardlink_requires_an_ordinary_verified_snapshot(self):
+        alias = self.root / "cargo-deps-binary"
+        os.link(self.service, alias)
+        self.assertEqual(self.service.stat().st_nlink, 2)
+        with self.assertRaises(builder.CandidateError):
+            self._run()
+        snapshot = self.root / "service-snapshot"
+        shutil.copyfile(self.service, snapshot)
+        snapshot.chmod(0o755)
+        self.assertEqual(snapshot.read_bytes(), self.service.read_bytes())
+        self.assertEqual(snapshot.stat().st_nlink, 1)
+        self.service = snapshot
+        self.assertEqual(self._run()["sourceCommit"], self.commit)
+
     def test_dirty_source_and_wrong_commit_are_rejected(self):
         (self.source / "source.txt").write_text("dirty\n")
         with self.assertRaises(builder.CandidateError):

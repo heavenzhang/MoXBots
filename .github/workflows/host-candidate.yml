@@ -105,6 +105,20 @@ jobs:
           chmod 0755 "$network_artifact/myagents-host-network"
           printf '%s\n' "$SOURCE_COMMIT" > "$network_artifact/source-commit.txt"
           chmod 0644 "$network_artifact/source-commit.txt"
+          # Cargo may hardlink its release binary to target/release/deps. Take
+          # a private ordinary-file snapshot; keep the packager's nlink=1 guard.
+          service_snapshot="$RUNNER_TEMP/candidate-service-binary"
+          test ! -e "$service_snapshot"
+          cp services/agentnet/target/release/myagents-agentnet-service "$service_snapshot"
+          chmod 0755 "$service_snapshot"
+          cmp services/agentnet/target/release/myagents-agentnet-service "$service_snapshot"
+          python3 - "$service_snapshot" <<'PY'
+          import json, pathlib, sys
+          source = pathlib.Path('services/agentnet/target/release/myagents-agentnet-service').stat()
+          snapshot = pathlib.Path(sys.argv[1]).stat()
+          assert snapshot.st_nlink == 1 and snapshot.st_size == source.st_size
+          print(json.dumps({'serviceBuildOutputLinkCount':source.st_nlink,'snapshotLinkCount':snapshot.st_nlink,'bytes':snapshot.st_size}))
+          PY
 
           mapfile -t host_archives < <(find "$RUNNER_TEMP/host-build" -maxdepth 1 -type f -name 'moxbot-host-test-*.tar.gz' -print)
           test "${#host_archives[@]}" -eq 1
@@ -115,12 +129,13 @@ jobs:
 
           python3 ../harness/scripts/host/prepare-acceptance-candidate.py \
             --prepared-release "$RUNNER_TEMP/prepared-host-release" \
-            --service-binary services/agentnet/target/release/myagents-agentnet-service \
+            --service-binary "$service_snapshot" \
             --source-commit "$SOURCE_COMMIT" \
             --source-root "$PWD" \
             --candidate-output "$RUNNER_TEMP/host-acceptance-candidate" \
             --service-output "$RUNNER_TEMP/host-agentnet-service-artifact" \
-            | tee "$RUNNER_TEMP/host-candidate-producer-receipt.json"
+            > "$RUNNER_TEMP/host-candidate-producer-receipt.json.tmp"
+          mv "$RUNNER_TEMP/host-candidate-producer-receipt.json.tmp" "$RUNNER_TEMP/host-candidate-producer-receipt.json"
 
       - uses: actions/upload-artifact@v4
         with:
