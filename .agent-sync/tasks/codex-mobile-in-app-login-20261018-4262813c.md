@@ -7,7 +7,7 @@
 
 ## Objective
 
-Continue MOXBOTS-MOBILE-002: repair the observed physical iPhone login failure and present existing authentication inside the app. No new password authority, service deployment, account switch or credential export.
+Continue MOXBOTS-MOBILE-002: repair the observed physical iPhone login failure and present existing authentication inside the app. Reuse the original account authority; no account switch or credential export. Internal phone installation is authorized; the existing scoped cloud owner handles the required optional service rollout.
 
 ## Acceptance criteria
 
@@ -17,7 +17,7 @@ Continue MOXBOTS-MOBILE-002: repair the observed physical iPhone login failure a
 - [ ] Focused checks, independent review, signed phone install.
 - [ ] CI, commit and remote main delivery.
 - [ ] Real SSO/session list accepted or precise remaining user step recorded.
-- Server deployment: not applicable; internal phone installation authorized.
+- Server deployment: required for native password login; queued with the existing scoped cloud owner. No production target writes by this task.
 
 ## Completed
 
@@ -29,7 +29,7 @@ Continue MOXBOTS-MOBILE-002: repair the observed physical iPhone login failure a
 
 ## Blockers and unknowns
 
-- Service has PKCE/OIDC, no native password API. System auth sheet retains original owner. Network permission cause remains a hypothesis until physical retest.
+- The new optional native password adapter is implemented and locally tested, but the running service/Dex configuration and real phone login are not yet accepted. Network permission cause remains a hypothesis until physical retest.
 - Full remote, speech, notifications acceptance remains separate.
 
 ## Next step
@@ -46,10 +46,11 @@ The system authentication sheet was built/signed/installed but did not meet the 
 - [x] SDK116pass/1ignored +strictClippy; mobile typecheck/lint +policy55pass; independent source/UI review.
 - [x] Backend final targeted10pass and strictClippy; full-service first run192pass/1fail/7ignored (unchanged25ms notification fixture did not receive request before timeout), bounded4-thread final rerun193pass/0fail/7ignored; unchanged25ms case passes both focused and in full rerun. Original failure retained.
 - [ ] Fresh native framework/app/prebuild/sign/install and actual input/keyboard/return acceptance.
-- [ ] Actual existing Dex private config and original cloud owner deployment handoff/approval. Committed bootstrap does not enable password grant. No production writes or account/identity changes performed.
+- [x] User approval and concrete deployment handoff sent to the existing cloud owner.
+- [ ] Actual existing Dex private config, publication and real account verification. Committed bootstrap does not enable password grant. No production writes or account/identity changes performed by this task.
 - [ ] Current CI, main delivery, real password sign-in/persistence/Host/voice/notification paths.
 
-Scope dependency: existing cloud service deployment owner is01a12b99-7b38-78b1-831f-9c60257d386a. This task cannot independently deploy its code/config under the committed coordination policy. Ready change and exact release request will be recorded before seeking permission to coordinate that owner.
+Scope dependency: existing cloud service deployment owner is01a12b99-7b38-78b1-831f-9c60257d386a. This task cannot independently deploy its code/config under the committed coordination policy. The user explicitly authorized notifying and coordinating that owner; the concrete release request has been sent, with preparation only until final main/CI proof.
 
 ## Native password candidate acceptance update
 
@@ -58,3 +59,11 @@ Scope dependency: existing cloud service deployment owner is01a12b99-7b38-78b1-8
 - Independent UI source/typecheck/policy55 checks passed, but tool render unavailable in worker; root owns actual physical form/keyboard checks.
 - Both iOS Rust device/simulator Release frameworks rebuilt from clean b77d85f2f inputs, native source provenance retained in external build tree. Actual app prebuild/sign/install pending.
 - Cloud handoff request: publish this normally reviewed/CI-accepted service code via existing scoped owner01a12b99; review actual Dex local account/MFA/consent policy, preserve all user IDs/client secrets/issuer and existing grants, enable only original confidential local-password path plus service native_password_login, take original private backup/locks and verify same-principal native password login/poll/cancel before acceptance. Never rerun bootstrap or copy provider credentials to app. No production changes have occurred in this task.
+
+## Coordinated delivery update
+
+- Full CI passed for the native password/branding source (Test run39139836079 and Owned AgentNet run39139836136); iOS simulator CI is explicitly skipped, not counted as device acceptance.
+- Fresh main311ecfd52 goal-pause changes were inspected and normally merged; they do not change mobile/shared-native/auth service inputs. Combined-head CI remains required before main delivery.
+- iOS signed app and Android Release builds continue; the installed phone still has the superseded sheet candidate until the new native form is installed.
+- The user reconfirmed the iPhone is unlocked and explicitly authorized coordinating cloud owner01a12b99-7b38-78b1-831f-9c60257d386a. The actual tool send succeeded. Owner was asked to inspect/prepare first, wait for final main/CI, preserve original identities/secrets/policies and follow its existing locks/backup/rollback. No production write by this task is implied.
+- Next: finish incremental packages at the final reviewed source, strict signature/provenance and real form/keyboard checks, normal main delivery, then coordinate same-account service and iPhone authentication/persistence. Full Host, speech and notification acceptance remains separate.

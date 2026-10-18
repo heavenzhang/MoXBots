@@ -16,6 +16,6 @@ The iPhone additionally performs a bounded, credential-free, nonredirecting ephe
 
 - Before this change: development signing, real device installation, bundle/version readback and process launch passed. Real login failed and is retained as evidence.
 - Native password implementation: SDK116pass/1ignored +strictClippy; mobile typecheck/lint/policy55pass; service10targeted pass +strictClippy +193pass/7ignored full rerun with4threads. Original default-parallel notification25ms failure retained; no notification implementation/timeout changed. Independent source/UI review passed, rendered UI pending.
-- Previous policy55/typecheck/lint checks do not prove the new password flow. Current results recorded in task receipt after completion.
+- Native password source CI passed: Test39139836079 and Owned AgentNet39139836136. The iOS simulator job is skipped. Freshly merged main changes require combined-head CI; no CI result substitutes for phone acceptance.
 - Physical form, password verification, account persistence, Host session, voice and background notifications: not yet accepted.
-- Server publication follows the existing scoped cloud deployment owner; this mobile task has not changed production or the user's daily desktop.
+- User explicitly authorized notifying/coordinating the existing scoped cloud deployment owner; concrete preparation request sent. Publication waits for final main/CI and the original owner's live policy/config/backup checks. This mobile task has not changed production or the user's daily desktop.
