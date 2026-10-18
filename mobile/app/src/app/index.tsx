@@ -124,7 +124,7 @@ function AppBody() {
   const [loginStarted, setLoginStarted] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const passwordInputRef = useRef<TextInput | null>(null);
+  const passwordInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const snapshotRef = useRef<Snapshot | null>(null);
