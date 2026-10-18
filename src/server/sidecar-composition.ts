@@ -201,6 +201,7 @@ const COMMON_ADMIN_PREFIXES = [
   'plugin/',
   'readme/',
   'record/',
+  'route/',
   'runtime/',
   'skill/',
   'speech/',

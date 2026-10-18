@@ -106,6 +106,8 @@ export interface ModelEntity extends Pick<RuntimeModelInfo, 'supportedReasoningE
   supportedProtocols?: ModelProtocol[];
   /** User-selected route when the supplier does not identify a unique one. */
   executionProtocol?: ModelProtocol;
+  /** Auto-routing tier this entry declares. Absent = inferred (see shared/autoRoute.ts). */
+  tier?: 'fast' | 'balanced' | 'strong';
 
   // === 来源标记 ===
   source?: 'preset' | 'discovered' | 'manual';
@@ -139,6 +141,7 @@ export function mergePresetModelWithCustomEntry(
       outputModalities: preset.outputModalities ?? custom.outputModalities,
       supportedProtocols: custom.supportedProtocols ?? preset.supportedProtocols,
       executionProtocol: custom.executionProtocol ?? preset.executionProtocol,
+      tier: preset.tier ?? custom.tier,
     };
   }
 
@@ -153,6 +156,7 @@ export function mergePresetModelWithCustomEntry(
     outputModalities: custom.outputModalities ?? preset.outputModalities,
     supportedProtocols: custom.supportedProtocols ?? preset.supportedProtocols,
     executionProtocol: custom.executionProtocol ?? preset.executionProtocol,
+    tier: custom.tier ?? preset.tier,
   };
 }
 
@@ -931,6 +935,8 @@ export interface DshCollaborationSettings {
 export interface AppConfig {
   /** Optional builtin API-model failover. Main selection remains Session-owned. */
   modelFailover?: import('./modelFailover').ModelFailoverSettings;
+  /** Auto model routing. Absent = on with inferred tiers. */
+  autoRouting?: import('./autoRoute').AutoRoutingSettings;
   // Default settings for new projects
   defaultProviderId?: string;
   defaultPermissionMode: PermissionMode;

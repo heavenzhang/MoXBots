@@ -101,6 +101,10 @@ export interface ModelCapability {
    * without turning every omitted flag into an unsupported capability.
    */
   inputModalitySupport?: Partial<Record<NonTextModalityKind, ModelModalitySupportEvidence>>;
+  /** List output price, USD per million tokens. LiteLLM only; drives auto-route tiering. */
+  outputCostPerMillion?: number;
+  /** Whether the model reasons before answering. LiteLLM only; picks a quick classifier. */
+  supportsReasoning?: boolean;
   source: ModelCapabilitySource;
 }
 
@@ -264,6 +268,8 @@ function mergeCapabilityInto(
     inputModalitySupport: Object.keys(inputModalitySupport ?? {}).length > 0
       ? inputModalitySupport
       : undefined,
+    outputCostPerMillion: existing.outputCostPerMillion ?? cap.outputCostPerMillion,
+    supportsReasoning: existing.supportsReasoning ?? cap.supportsReasoning,
     source: existing.source, // keep the highest-priority source's label
   });
 }
@@ -384,6 +390,14 @@ function loadPresetCustomModels(home: string): Record<string, unknown> | null {
  *    that defines that field agrees. Never select an arbitrary entry or max:
  *    provider-enforced limits legitimately differ for the same tail (#516).
  */
+/** LiteLLM prices per token; tiering reads USD per million. Zero/free and bogus values are unknown. */
+function readLiteLLMOutputCostPerMillion(value: unknown): number | undefined {
+  const perToken = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN;
+  if (!Number.isFinite(perToken) || perToken <= 0) return undefined;
+  // Round away float noise (2e-5 * 1e6 = 20.000000000000004).
+  return Math.round(perToken * 1e6 * 1e6) / 1e6;
+}
+
 export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> {
   const out = new Map<string, ModelCapability>();
   if (!raw || typeof raw !== 'object') return out;
@@ -402,7 +416,12 @@ export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> 
     const contextLength = coercePositiveFinite(e.max_input_tokens) ?? coercePositiveFinite(e.max_tokens);
     const maxOutputTokens = coercePositiveFinite(e.max_output_tokens);
     const modality = readLiteLLMModalityEvidence(e);
-    if (!contextLength && !maxOutputTokens && !modality.inputModalitySupport) continue;
+    const outputCostPerMillion = readLiteLLMOutputCostPerMillion(e.output_cost_per_token);
+    const supportsReasoning = typeof e.supports_reasoning === 'boolean' ? e.supports_reasoning : undefined;
+    if (
+      !contextLength && !maxOutputTokens && !modality.inputModalitySupport
+      && outputCostPerMillion === undefined && supportsReasoning === undefined
+    ) continue;
     const cap: ModelCapability = {
       ...(contextLength ? { contextLength } : {}),
       ...(maxOutputTokens ? { maxOutputTokens } : {}),
@@ -410,6 +429,8 @@ export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> 
       ...(modality.inputModalitySupport
         ? { inputModalitySupport: modality.inputModalitySupport }
         : {}),
+      ...(outputCostPerMillion !== undefined ? { outputCostPerMillion } : {}),
+      ...(supportsReasoning !== undefined ? { supportsReasoning } : {}),
       source: 'litellm',
     };
     if (!out.has(key)) out.set(key, cap);
@@ -423,7 +444,7 @@ export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> 
 
   const consensusField = (
     candidates: ParsedCatalogEntry[],
-    field: 'contextLength' | 'maxOutputTokens',
+    field: 'contextLength' | 'maxOutputTokens' | 'outputCostPerMillion',
   ): number | undefined => {
     const values = new Set(
       candidates
@@ -450,6 +471,15 @@ export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> 
     const authority = canonical.length > 0 ? canonical : candidates;
     const contextLength = consensusField(authority, 'contextLength');
     const maxOutputTokens = consensusField(authority, 'maxOutputTokens');
+    // A price or reasoning flag is exposed through the tail only when every
+    // candidate that states it agrees — same rule as the token limits.
+    const outputCostPerMillion = consensusField(authority, 'outputCostPerMillion');
+    const reasoningValues = new Set(
+      authority
+        .map(candidate => candidate.cap.supportsReasoning)
+        .filter((value): value is boolean => typeof value === 'boolean'),
+    );
+    const supportsReasoning = reasoningValues.size === 1 ? reasoningValues.values().next().value : undefined;
     const inputModalitySupport = Object.fromEntries(
       NON_TEXT_MODALITY_KINDS.flatMap(kind => {
         const evidence = consensusModality(authority, kind);
@@ -460,6 +490,8 @@ export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> 
       !contextLength
       && !maxOutputTokens
       && Object.keys(inputModalitySupport ?? {}).length === 0
+      && outputCostPerMillion === undefined
+      && supportsReasoning === undefined
     ) continue;
     const alias: ModelCapability = {
       ...(contextLength ? { contextLength } : {}),
@@ -467,6 +499,8 @@ export function parseLiteLLMCatalog(raw: unknown): Map<string, ModelCapability> 
       ...(Object.keys(inputModalitySupport ?? {}).length > 0
         ? { inputModalitySupport }
         : {}),
+      ...(outputCostPerMillion !== undefined ? { outputCostPerMillion } : {}),
+      ...(supportsReasoning !== undefined ? { supportsReasoning } : {}),
       source: 'litellm',
     };
     for (const tail of new Set(candidates.map(candidate => candidate.tail))) {

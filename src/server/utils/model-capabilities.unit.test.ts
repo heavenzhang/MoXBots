@@ -218,6 +218,29 @@ describe('parseLiteLLMCatalog', () => {
     expect(m.get('model-x')?.inputModalitySupport?.image).toBeUndefined();
   });
 
+  it('keeps the output price per million and the reasoning flag for auto-route tiering', () => {
+    const m = parseLiteLLMCatalog({
+      'claude-opus-5-5': { mode: 'chat', max_input_tokens: 1_000_000, output_cost_per_token: 2e-5, supports_reasoning: true },
+      'price-only': { mode: 'chat', output_cost_per_token: '0.000003' },
+      'free-model': { mode: 'chat', max_input_tokens: 8192, output_cost_per_token: 0 },
+    });
+    expect(m.get('claude-opus-5-5')).toMatchObject({ outputCostPerMillion: 20, supportsReasoning: true });
+    expect(m.get('price-only')?.outputCostPerMillion).toBe(3);
+    expect(m.get('free-model')?.outputCostPerMillion).toBeUndefined();
+  });
+
+  it('exposes a tail price only when the qualified entries agree', () => {
+    const m = parseLiteLLMCatalog({
+      'vendor-a/model-y': { mode: 'chat', output_cost_per_token: 4e-6, supports_reasoning: true },
+      'vendor-b/model-y': { mode: 'chat', output_cost_per_token: 8e-6, supports_reasoning: true },
+      'vendor-a/model-z': { mode: 'chat', output_cost_per_token: 1e-6 },
+      'vendor-b/model-z': { mode: 'chat', output_cost_per_token: 1e-6 },
+    });
+    expect(m.get('model-y')?.outputCostPerMillion).toBeUndefined();
+    expect(m.get('model-y')?.supportsReasoning).toBe(true);
+    expect(m.get('model-z')?.outputCostPerMillion).toBe(1);
+  });
+
   it('is robust to non-object / null inputs', () => {
     expect(parseLiteLLMCatalog(null).size).toBe(0);
     expect(parseLiteLLMCatalog('nope').size).toBe(0);

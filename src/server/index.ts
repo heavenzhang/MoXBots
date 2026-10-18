@@ -1604,6 +1604,9 @@ async function routeAdminApi(
     return await api.handleSpeechList(
       payload as Parameters<typeof api.handleSpeechList>[0],
     );
+  if (route === 'route/tiers') return await api.handleRouteTiers();
+  if (route === 'route/explain')
+    return await api.handleRouteExplain(payload as Parameters<typeof api.handleRouteExplain>[0]);
   if (route === 'vision/readme') return await api.handleVisionReadme();
   if (route === 'vision/models') return api.handleVisionModels();
   if (route === 'vision/analyze')

@@ -20,6 +20,7 @@ export const INTERNAL_CLI_FLAGS: Readonly<Record<string, readonly string[]>> = {
   "tool/remove": ["purge"],
   "tool/env": ["env"],
   "vision/analyze": ["image","prompt","promptFile"],
+  "route/explain": ["promptFile"],
   "model/add": ["id","name","type","apiKey","baseUrl","models","aliases","vendor","websiteUrl","timeout","disableNonessential"],
   "model/remove": ["id"],
   "model/set-key": ["apiKey","id"],

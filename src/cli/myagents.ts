@@ -416,6 +416,7 @@ Commands:
   vision    Official image-understanding CLI tool
   tool      Manage registered CLI tools (Lab-gated; enable in Settings first)
   model     Manage model providers
+  route     Inspect auto model routing (tiers, dry-run explain)
   agent     Discover local/network Agents; manage local settings and channels
   network   Inspect, authorize and restore saved Owned network connections
   runtime   Inspect Agent Runtimes (list installed + describe models/modes)
@@ -816,6 +817,35 @@ export function commandResultExitCode(result: Record<string, unknown>): 0 | 1 | 
 // ---------------------------------------------------------------------------
 // Output formatting
 // ---------------------------------------------------------------------------
+
+
+const ROUTE_TIER_LABELS: Record<string, string> = { fast: 'fast', balanced: 'balanced', strong: 'strong' };
+
+function printRouteResult(action: string, data: Record<string, unknown> | undefined): void {
+  if (!data) return;
+  if (data.enabled === false) {
+    console.log('Auto routing is off (Settings -> Models -> Auto routing).');
+    return;
+  }
+  if (action === 'tiers') {
+    const classifier = data.classifier as { providerId?: string; model?: string; chosenBy?: string } | null;
+    console.log(`Classifier: ${classifier ? `${classifier.providerId}/${classifier.model} (${classifier.chosenBy})` : 'none'}`);
+    const tiers = (data.tiers ?? {}) as Record<string, Array<{ providerId: string; model: string; source: string }>>;
+    for (const tier of ['fast', 'balanced', 'strong']) {
+      const entries = tiers[tier] ?? [];
+      console.log(`\n${ROUTE_TIER_LABELS[tier]} (${entries.length})`);
+      for (const entry of entries) console.log(`  ${entry.providerId}/${entry.model}  [${entry.source}]`);
+    }
+    return;
+  }
+  console.log(`Tier:       ${String(data.tier)}`);
+  console.log(`Model:      ${String(data.providerId)}/${String(data.model)}${data.effort ? ` · effort ${String(data.effort)}` : ''}`);
+  console.log(`Reason:     ${String(data.reason)}${data.switches ? '' : ' (no switch)'}`);
+  if (data.backup) console.log(`Backup:     ${String(data.backup)}`);
+  if (data.classifier) console.log(`Classifier: ${String(data.classifier)} · ${String(data.classifierLatencyMs)}ms`);
+  if (data.classifierError) console.log(`Classifier error: ${String(data.classifierError)}`);
+  console.log('Dry run: the Session model was not changed.');
+}
 
 export function printResult(
   group: string,
@@ -1288,6 +1318,10 @@ export function printResult(
   }
   if (group === 'runtime' && action === 'diagnose') {
     printRuntimeDiagnose(result.data as Record<string, unknown>);
+    return;
+  }
+  if (group === 'route' && (action === 'explain' || action === 'tiers')) {
+    printRouteResult(action, result.data as Record<string, unknown> | undefined);
     return;
   }
   if (group === 'vision' && action === 'analyze') {
@@ -3443,6 +3477,7 @@ const PUBLISHED_ADMIN_ROUTES = new Set([
   'mcp/oauth/discover', 'mcp/oauth/start', 'mcp/oauth/status', 'mcp/oauth/revoke',
   'tool/list', 'tool/info', 'tool/add', 'tool/remove', 'tool/enable', 'tool/disable', 'tool/readme', 'tool/env',
   'vision/readme', 'vision/models', 'vision/analyze',
+  'route/tiers', 'route/explain',
   'model/list', 'model/add', 'model/remove', 'model/set-key', 'model/set-default', 'model/verify',
   'agent/list', 'agent/create', 'agent/current', 'agent/show', 'agent/enable', 'agent/disable', 'agent/archive', 'agent/unarchive',
   'agent/set', 'agent/channel/list', 'agent/channel/add', 'agent/channel/remove', 'agent/runtime-status',
@@ -3468,7 +3503,7 @@ const PUBLISHED_ADMIN_ROUTES = new Set([
 ]);
 
 const PUBLISHED_COMMAND_GROUPS = new Set([
-  'anydoc', 'speech', 'mcp', 'tool', 'vision', 'model', 'agent', 'runtime', 'diagnose', 'cron', 'goal', 'im', 'widget',
+  'anydoc', 'speech', 'mcp', 'tool', 'vision', 'route', 'model', 'agent', 'runtime', 'diagnose', 'cron', 'goal', 'im', 'widget',
   'plugin', 'cc-plugin', 'skill', 'config', 'task', 'thought', 'record', 'space', 'issue', 'session',
   'status', 'reload', 'version', 'network',
 ]);
@@ -4997,6 +5032,18 @@ export function buildRequestBody(
         process.exit(1);
       }
       return { images, prompt, promptFile };
+    }
+    return {};
+  }
+
+  if (group === 'route') {
+    if (action === 'explain') {
+      if (typeof flags.promptFile !== 'string' || !flags.promptFile.trim()) {
+        console.error(`Error: route explain requires --prompt-file <path>.`);
+        console.error(`  Usage: ${APP_CLI_NAME} route explain --prompt-file request.txt`);
+        process.exit(2);
+      }
+      return { prompt: readTextFileFlag(flags.promptFile, 'prompt-file', 2) };
     }
     return {};
   }

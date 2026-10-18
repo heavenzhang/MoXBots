@@ -1041,6 +1041,20 @@ export async function handleMcpOAuthRevoke(payload: {
 }
 
 // ---------------------------------------------------------------------------
+// Auto Routing (read-only)
+// ---------------------------------------------------------------------------
+
+export async function handleRouteTiers(): Promise<AdminResponse> {
+  const { handleRouteTiers: tiers } = await import('./auto-route/admin');
+  return tiers(getSessionEngine().getCurrentSessionContext().sessionMeta ?? null);
+}
+
+export async function handleRouteExplain(payload: { prompt?: unknown }): Promise<AdminResponse> {
+  const { handleRouteExplain: explain } = await import('./auto-route/admin');
+  return explain(payload, getSessionEngine().getCurrentSessionContext().sessionMeta ?? null);
+}
+
+// ---------------------------------------------------------------------------
 // Official Vision CLI Tool Handlers
 // ---------------------------------------------------------------------------
 
@@ -3274,6 +3288,26 @@ Options for 'oauth start' (manual mode):
   --client-secret  OAuth client secret
   --scopes         Scopes (comma or space separated)
   --callback-port  Local callback port`,
+
+  route: `${APP_CLI_NAME} route — Inspect auto model routing
+
+Auto routing picks each new turn's model from three tiers (fast, balanced,
+strong) with a small classifier model. These commands only read; they never
+change a Session's model.
+
+Commands:
+  tiers                    Show the three tiers and the classifier model
+  explain                  Classify one request and show the model it would get
+
+Options for 'explain':
+  --prompt-file <path>     Text file with the request to classify
+  --json                   Output machine-readable JSON
+
+Examples:
+  ${APP_CLI_NAME} route tiers
+  ${APP_CLI_NAME} route explain --prompt-file request.txt
+
+The request text is sent to the classifier model's provider.`,
 
   vision: `${APP_CLI_NAME} vision — Official image-understanding helper
 
