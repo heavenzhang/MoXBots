@@ -12,18 +12,19 @@ Add a manually dispatched, source-pinned CI workflow that creates a non-public L
 
 ## Acceptance criteria
 
-- Manual dispatch and reusable-workflow call both accept only a full 40-character commit and verify the checkout is exact and clean.
+- Manual dispatch and reusable-workflow call both accept only a full 40-character commit and verify the product checkout is exact and clean; the helper/tool checkout is independently pinned to the caller SHA.
 - The moxbot-test Host archive, Linux x86_64 network connector, and AgentNet service are built from that source checkout.
 - Existing release preparation and consumer validation pass before candidate bytes are staged under RUNNER_TEMP.
 - Candidate artifact contains exactly bootstrap.py, bundle.tar.gz, and canonical candidate-meta.json; service artifact contains exactly the service ELF and source-commit.txt.
 - Offline tests reject dirty/mismatched source, modified package bytes, invalid service ELF, and unsafe output locations.
+- The helper dynamically imports the strict consumer from product P; a scratch Git product checkout lacking this helper still builds a candidate through its own `scripts/host/one-command.py`.
 - No workflow run, release, server, or production action is performed in this task.
 
 ## Completed
 
-- Added `.github/workflows/host-candidate.yml` with manual dispatch and reusable-workflow full-SHA inputs, clean source checkout, Node 24.20.0, Rust 1.92.0, Host build, connector/service release builds, existing prepare-release consumer, and candidate staging.
-- Added `scripts/host/prepare-acceptance-candidate.py` to verify source, prepared release receipt, exact Host consumer contract, Linux ELF service, output containment, and closed artifact payloads. It prints a bounded producer receipt for root-side pinning; it contains no publicOrigin.
-- Added six offline tests in `scripts/host/prepare-acceptance-candidate.test.py`.
+- Added `.github/workflows/host-candidate.yml` with manual dispatch and reusable-workflow full-SHA inputs, separate caller-SHA harness and product-P checkouts, Node 24.20.0, Rust 1.92.0, Host build, connector/service release builds, existing prepare-release consumer, and candidate staging.
+- Added `scripts/host/prepare-acceptance-candidate.py` to verify source, prepared release receipt, exact Host consumer from product P, Linux ELF service, output containment, and closed artifact payloads. It prints a bounded producer receipt for root-side pinning; it contains no publicOrigin.
+- Added six offline tests in `scripts/host/prepare-acceptance-candidate.test.py`, including a real temporary Git product checkout that omits the helper.
 
 ## Verification
 
