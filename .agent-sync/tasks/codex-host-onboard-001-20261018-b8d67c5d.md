@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/host-onboard-001-20261018 -->
 <!-- git-project-sync-task:base=9269dd8c52c423a180bfba366c8f0434a90db005 -->
-<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:status=ready-for-review -->
 <!-- git-project-sync-task:scaffold=false -->
 
 # Task: MOXBOTS-HOST-ONBOARD-001
@@ -13,11 +13,11 @@
 ## Acceptance criteria
 
 - [x] 核实际repo/main/worktree，隔离分支，保留其他聊天修改。
-- [ ] 同源HTTPS正式入口及严格版本/hash/平台检查，统一安装事务/重复安装/繁忙拒绝/回滚。
-- [ ] 复制一条命令，无凭据参数；正式浏览器授权→等待→显式同principal绑定续接→auto join/run，自启与ready核实。
-- [ ] 有效会话的原设备DPoP续期；过期/注销/换key/跨scope拒绝；加密CAS原绑定/handle不变、并发与未知结果受控。
-- [ ] 添加Host界面取消Linux人工安装/登录勾选，真实目录自动检查；loading/unavailable/error/ready与账号切换拒绝陈旧响应。
-- [ ] 安装器/认证/HTTP/connector/界面回归与独立安全和UI审查、适用Linux隔离验证。
+- [x] 同源HTTPS正式入口及严格版本/hash/平台检查，统一安装事务/重复安装/繁忙拒绝/回滚。
+- [x] 一条无凭据命令及Host侧浏览器授权→同principal续接→auto join/run代码和协议/安装器测试；实际发行浏览器路径由统一owner验收。
+- [x] 有效会话的原设备DPoP续期；过期/注销/换key/跨scope拒绝；加密CAS原绑定/handle不变、并发与未知结果受控。
+- [x] 添加Host界面取消Linux人工安装/登录勾选，真实目录自动检查；loading/unavailable/error/ready与账号切换拒绝陈旧响应。
+- [x] 安装器/认证/真实Axum HTTP/connector/界面回归与非实现者安全/UI审查；实际Ubuntu安装另列证据，不等同生产。
 - [ ] CI与远端main实际包含成果；source、fixture/隔离Linux、真实发行/生产分开。
 - [ ] 有证据的发布请求交统一owner，非本聊天发布；日常Mac零触碰。
 
@@ -31,7 +31,7 @@ Primary负责架构/接口、Tauri公开installer状态读取、集成/验证/CI
 
 ## Verification
 
-代码与定向门禁已实现；installer100、UI26、Host190及strict Clippy、authority store10/realHTTP2已通过，完整正向Connection恢复proof与最终联合CI/main仍待完成。具体证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。隔离真实Ubuntu环境探测中。
+代码与定向门禁已实现；installer100、UI26、Host191、service166/5既有ignored及双方strict Clippy已通过；合入main631后root复跑UI26和完整TypeScript通过。完整正向Connection恢复proof与真实SPKI格式修复由另一认证聊天独立复审接受。runtime冻结8cdeac561；af20d4a32仅固定既有模型租约测试时钟，保留1800/1801秒边界，无生产权限变化。Test39087695311/Owned39087695420为首轮组合证据；CI/最终main交付回执以PR119当前检查/合并和最终交接为准。具体证据在dev-docs/host-onboard-001/acceptance.md累计。生产/101/82/日常Mac不作为测试目标，不通过改变现网TTL或模型权限测试。隔离真实Ubuntu环境探测中。
 
 ## Deployment request
 
@@ -39,4 +39,6 @@ Required; queued给01a12bc2-907a-7702-b6dd-788225c5dfe4（MoxBots桌面端统一
 
 ## Next step
 
-补完整正向Connection恢复proof；将其与当前全部共享源码冻结，完成精确head CI、Ubuntu相称验收与main交付。发布交接dev-docs/host-onboard-001/release-handoff.md，不以队列接受当已发布。
+代码已冻结并完成独立复审；完成精确head CI、Ubuntu相称验收与main交付，最终main/CI回执归档PR119及发布owner交接。发布交接dev-docs/host-onboard-001/release-handoff.md，不以队列接受当已发布。
+
+本记录为合入前review快照；最后两个checkbox为CI/main及发布交接门禁，最终远端main SHA、精确CI和统一owner队列回执归档PR119最终交付记录，并作为后续状态入口。发布/实际OIDC/自然24h观察仍由release-handoff指定owner承接，不因本源码任务完成而宣称生产完成。
