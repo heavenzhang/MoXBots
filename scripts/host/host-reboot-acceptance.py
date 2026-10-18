@@ -330,13 +330,18 @@ def download_image(private, lab):
 
 def coordinator(args):
     lab = lab_module()
-    lab.guard(argparse.Namespace(product_source=args.product_source, output=args.output))
+    lab.guard(argparse.Namespace(product_source=args.product_source, output=args.output,
+        cached_public_payload=args.cached_public_payload, cached_public_run=args.cached_public_run,
+        cached_public_artifact_id=args.cached_public_artifact_id))
     try:
         probe = kvm_probe(lab)
     except lab.Rejected as error:
         args.output.mkdir(mode=0o755)
+        args.output.chmod(0o755)
         (args.output / "summary.json").write_text(json.dumps({"passed": False, "status": "blocked", "gate": str(error),
             "TCGFallback": False, "reboot": "not-tested", "productionTouched": False}, indent=2) + "\n")
+        (args.output / "summary.json").chmod(0o644)
+        lab.public_readability([args.output / "summary.json"])
         raise
     if args.probe_only:
         print("passed: real-KVM-create-VM-ioctl")
@@ -402,9 +407,12 @@ def coordinator(args):
             command = [sys.executable, str(Path(__file__).with_name("browser-acceptance.py")),
                 "--product-source", str(args.product_source), "--service-artifact", str(args.service_artifact),
                 "--output", str(args.output), "--guest-target-json", str(target)]
+            if args.cached_public_payload:
+                command += ["--cached-public-payload", str(args.cached_public_payload), "--cached-public-run", args.cached_public_run,
+                            "--cached-public-artifact-id", args.cached_public_artifact_id]
             # Browser driver already prints only fixed gates. Keep even that raw pipe
             # in memory here and forward only the fixed pass/fail marker alphabet.
-            result = lab.run(command, timeout=900, check=False)
+            result = lab.run(command, timeout=2400, check=False)
             for line in result.stdout.decode(errors="replace").splitlines():
                 if re.fullmatch(r"passed: [A-Za-z0-9-]+", line):
                     print(line, flush=True)
@@ -415,14 +423,20 @@ def coordinator(args):
             summary["guestSSH"] = "private guest NAT:22, outer host forwarding only127.0.0.1:22222, preseeded pinned host key"
             summary["guestSSHHostPublicKeySha256"] = hashlib.sha256((private / "guest-host-key.pub").read_bytes()).hexdigest()
             (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+            args.output.chmod(0o755)
+            (args.output / "summary.json").chmod(0o644)
+            lab.public_readability([args.output / "summary.json"])
             lab.need(result.returncode == 0 and summary.get("passed") is True, "reboot-browser-driver-failed-see-redacted-summary")
         except Exception as error:
             if not args.output.exists():
                 args.output.mkdir(mode=0o755)
+            args.output.chmod(0o755)
             if not (args.output / "summary.json").exists():
                 gate = str(error) if isinstance(error, lab.Rejected) else "unexpected-coordinator-error-redacted"
                 (args.output / "summary.json").write_text(json.dumps({"passed": False, "status": "failed", "gate": gate,
                     "TCGFallback": False, "KVMProbe": probe, "reboot": "not-tested", "productionTouched": False}, indent=2) + "\n")
+                (args.output / "summary.json").chmod(0o644)
+                lab.public_readability([args.output / "summary.json"])
             raise
         finally:
             if qemu is not None and qemu.poll() is None:
@@ -442,6 +456,9 @@ def main():
     parser.add_argument("--service-artifact", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--probe-only", action="store_true")
+    parser.add_argument("--cached-public-payload", type=Path)
+    parser.add_argument("--cached-public-run", default="")
+    parser.add_argument("--cached-public-artifact-id", default="")
     args = parser.parse_args()
     try:
         coordinator(args)

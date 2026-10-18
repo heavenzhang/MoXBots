@@ -89,6 +89,16 @@ def host_status():
     return _GUEST.call("status") if _GUEST else json.loads(STATUS.read_bytes())
 
 
+def public_readability(paths):
+    import pwd
+    uid = os.environ.get("SUDO_UID", "")
+    need(re.fullmatch(r"[1-9][0-9]{0,9}", uid), "nonroot-uploader-UID-required")
+    username = pwd.getpwuid(int(uid)).pw_name
+    for path in paths:
+        run(["runuser", "-u", username, "--", "test", "-r", str(path)], timeout=15)
+    return True
+
+
 def digest(path):
     value = hashlib.sha256()
     with path.open("rb") as stream:
@@ -128,6 +138,22 @@ def guard(args):
         host_artifact_dir=args.product_source, network_artifact_dir=args.product_source, output=args.output))
     need(args.product_source.is_absolute() and args.output.is_absolute(), "absolute-paths-required")
     need(not args.output.exists(), "summary-output-must-be-new")
+    cached = getattr(args, "cached_public_payload", None)
+    run_id = getattr(args, "cached_public_run", "")
+    artifact_id = getattr(args, "cached_public_artifact_id", "")
+    need(bool(cached) == bool(run_id) == bool(artifact_id), "public-cache-path-and-IDs-required-together")
+    for value in (run_id, artifact_id):
+        need(not value or re.fullmatch(r"[1-9][0-9]{0,19}", value), "public-cache-positive-integer-IDs-only")
+    exported = getattr(args, "export_public_cache", None)
+    need(not (cached and exported), "cached-input-must-not-be-republished-as-fresh-GET")
+    for value in (cached, exported):
+        if value:
+            need(value.is_absolute() and value.resolve() == value
+                 and value != args.output and not value.is_relative_to(args.output)
+                 and value.is_relative_to(Path(os.environ["RUNNER_TEMP"]).resolve())
+                 and not value.is_relative_to(args.product_source.resolve()), "public-cache-isolated-RUNNER-TEMP-directory")
+    if exported:
+        need(not os.path.lexists(exported), "public-cache-export-must-be-new")
     for port in (24443, 25556, 28080):
         with socket.socket() as probe:
             try:
@@ -157,6 +183,64 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def public_cache_meta():
+    return {"schemaVersion": 1, "publicOrigin": PUBLIC, "sourceCommit": PRODUCT,
+        "releaseId": RELEASE, "transport": "normal-tls-full-get",
+        "files": {name: {"bytes": pin[0], "sha256": pin[1]} for name, pin in PINS.items()}}
+
+
+def public_cache_meta_bytes():
+    return (json.dumps(public_cache_meta(), sort_keys=True, indent=2) + "\n").encode()
+
+
+def checked_public_copy(source, target, size, sha256):
+    # Copy once into this root-private snapshot, then verify the copied bytes;
+    # never trust a mutable downloaded artifact path after an earlier hash check.
+    import stat
+    fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size == size,
+             "public-cache-regular-file-size")
+        total, hasher = 0, hashlib.sha256()
+        with os.fdopen(fd, "rb", closefd=False) as stream, target.open("xb") as out:
+            while block := stream.read(1024**2):
+                total += len(block)
+                need(total <= size, "public-cache-copy-byte-bound")
+                hasher.update(block)
+                out.write(block)
+        need(total == size and hasher.hexdigest() == sha256, "public-cache-copy-size-SHA")
+    finally:
+        os.close(fd)
+
+
+def import_public_cache(directory, release):
+    need(directory.is_dir() and not directory.is_symlink()
+         and {path.name for path in directory.iterdir()} == set(PINS) | {"cache-meta.json"}, "public-cache-exact-three-file-whitelist")
+    expected = public_cache_meta_bytes()
+    checked_public_copy(directory / "cache-meta.json", release / "cache-meta.json", len(expected), hashlib.sha256(expected).hexdigest())
+    need((release / "cache-meta.json").read_bytes() == expected, "public-cache-fixed-meta-bytes")
+    for filename, (size, sha256) in PINS.items():
+        checked_public_copy(directory / filename, release / filename, size, sha256)
+    (release / "cache-meta.json").unlink()
+
+
+def export_public_cache(directory, release):
+    # Separate fresh directory outside every lab/secret/summary root. Only public
+    # immutable payloads and the fixed metadata are ever copied or published.
+    need(not os.path.lexists(directory), "public-cache-export-must-be-new")
+    with tempfile.TemporaryDirectory(prefix="moxbots-public-cache-stage-", dir=directory.parent) as scratch:
+        staging = Path(scratch)
+        for filename, (size, sha256) in PINS.items():
+            checked_public_copy(release / filename, staging / filename, size, sha256)
+            (staging / filename).chmod(0o644)
+        (staging / "cache-meta.json").write_bytes(public_cache_meta_bytes())
+        (staging / "cache-meta.json").chmod(0o644)
+        need({path.name for path in staging.iterdir()} == set(PINS) | {"cache-meta.json"}, "public-cache-export-whitelist")
+        staging.chmod(0o755)
+        os.rename(staging, directory)
+
+
 def get_exact(url, target, size, sha256):
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect(),
         urllib.request.HTTPSHandler(context=ssl.create_default_context()))
@@ -177,8 +261,11 @@ def prepare_candidate(args, private):
     web = private / "www"
     release = web / "host/releases" / RELEASE
     release.mkdir(parents=True)
-    for filename, (size, sha256) in PINS.items():
-        get_exact(f"{PUBLIC}/host/releases/{RELEASE}/{filename}", release / filename, size, sha256)
+    if args.cached_public_payload:
+        import_public_cache(args.cached_public_payload, release)
+    else:
+        for filename, (size, sha256) in PINS.items():
+            get_exact(f"{PUBLIC}/host/releases/{RELEASE}/{filename}", release / filename, size, sha256)
     source = (args.product_source / "scripts/host/one-command.py").read_bytes()
     script = launcher(source)
     need(hashlib.sha256(script).hexdigest() == INSTALL_SHA, "M-installer-byte-reproduction")
@@ -193,6 +280,11 @@ def prepare_candidate(args, private):
     unpacked = private / "validated-bundle"
     unpacked.mkdir()
     consumer.unpack_bundle(release / "bundle.tar.gz", unpacked, index())
+    if args.export_public_cache:
+        need(not args.export_public_cache.is_relative_to(private) and not private.is_relative_to(args.export_public_cache),
+             "public-cache-must-be-outside-private-lab")
+        export_public_cache(args.export_public_cache, release)
+        public_readability([args.export_public_cache / name for name in (*PINS, "cache-meta.json")])
     return web
 
 
@@ -515,19 +607,29 @@ def accept(args):
     global _GUEST
     guard(args)
     args.output.mkdir(mode=0o755)
+    args.output.chmod(0o755)  # coordinator's inherited umask077 must not block uploader traversal
     summary = {"schemaVersion": 1, "productSource": PRODUCT, "releaseId": RELEASE,
         "harnessSource": run(["git", "-c", "safe.directory=*", "-C", str(Path(__file__).resolve().parents[2]), "rev-parse", "HEAD"]).stdout.decode().strip(),
         "mode": args.mode, "steps": [], "passed": False,
+        "publicPayloadInput": {"kind": "cached-immutable-public-bytes" if args.cached_public_payload else "normal-TLS-public-full-GET",
+            "transport": "GitHub-Actions-cache-of-previous-normal-TLS-full-GET" if args.cached_public_payload else "normal-TLS-public-full-GET",
+            "normalTLSFullGETThisRun": not bool(args.cached_public_payload), "publicOrigin": PUBLIC,
+            "cachedPublicRun": args.cached_public_run or None, "cachedPublicArtifactId": args.cached_public_artifact_id or None,
+            "firstPublicFullGETRun": args.cached_public_run or os.environ.get("GITHUB_RUN_ID"),
+            "firstPublicFullGETArtifactId": args.cached_public_artifact_id or None,
+            "cacheMetaSha256": hashlib.sha256(public_cache_meta_bytes()).hexdigest()},
         "serviceArtifact": {"runId": "39093243842", "artifactId": "12123324723", "name": "owned-agentnet-auth-linux",
                             "sha256": SERVICE_SHA, "bytes": 27513232},
         "immutablePayloads": {name: {"sha256": pin[1], "bytes": pin[0]} for name, pin in PINS.items()},
         "reboot": "not-tested: GitHub-hosted runner has no supported resume after VM reboot",
         "productionAccountOrUIAcceptance": "not-tested: synthetic isolated lab account only",
-        "freshExpiry": "not-tested: existing offline expiry rejection tests are separate evidence",
+        "freshBrowserExpiry": "not-tested: existing offline browser-authorization expiry tests are separate evidence",
+        "originalAccountExpiryCrossed": False,
         "modelInvoked": False, "businessTaskCreated": False, "executionEnabled": False}
 
     def save():
         (args.output / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+        (args.output / "summary.json").chmod(0o644)  # explicit non-secret artifact readable by runner uploader
 
     def step(name, operation):
         summary["currentGate"] = name
@@ -555,6 +657,9 @@ def accept(args):
                 step("nested-KVM-guest-profile-UUID-nonce-empty-namespace", _GUEST.prepare)
             binary = step("exact-M-service-artifact", lambda: verify_service(args))
             web = step("exact-M-public-bytes-and-launcher", lambda: prepare_candidate(args, private))
+            summary["publicPayloadCacheExported"] = bool(args.export_public_cache)
+            save()
+            step("nonroot-uploader-can-read-public-summary", lambda: public_readability([args.output / "summary.json"]))
             ca_installed, browser_home = step("normal-OS-and-Chromium-CA-trust", lambda: install_ca(private))
             if _GUEST:
                 step("guest-normal-OS-CA-and-loopback-reverse-forward", lambda: _GUEST.configure_ca((private / "lab-ca.crt").read_text()))
@@ -666,6 +771,26 @@ def accept(args):
                      and third["devices"][0][7:] == second["devices"][0][7:] and node_pid() == before_pid
                      and persistent_hashes(False) == stable, "natural-renewal-preserves-identity-and-Node")
                 need(hits(route_counts(private), "renew", dpop=True) > hits(second_counts, "renew", dpop=True), "natural-renewal-DPoP-proof")
+                original_expiry = second["sessions"][0][4]
+                def beyond_original_account_expiry():
+                    if time.time() < original_expiry + 3:
+                        return False
+                    current = ready(private)
+                    need(current["sessions"][0][4] > time.time() and current["sessions"][0][5] is None
+                         and current["sessions"][0][:3] == second["sessions"][0][:3]
+                         and current["devices"][0][7:] == second["devices"][0][7:]
+                         and current["devices"][0][1:3] == second["devices"][0][1:3]
+                         and node_pid() == before_pid and persistent_hashes(False) == stable,
+                         "beyond-original-account-expiry-live-session-identity-and-Node")
+                    current_counts = route_counts(private)
+                    need(all(hits(second_counts, route, False) == hits(current_counts, route, False)
+                             for route in ("start", "poll", "callback", "dex-token", "join")),
+                         "beyond-original-account-expiry-no-new-login-or-join")
+                    return current
+                third = step("Ready-and-Node-IPC-beyond-original-account-expiry-plus-3s", lambda:
+                    wait_for(beyond_original_account_expiry, timeout=75))
+                summary["originalAccountExpiryCrossed"] = True
+                save()
             else:
                 third = second
             pid = int(host_run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout)
@@ -738,6 +863,12 @@ def accept(args):
             if not cleanup_ok:
                 summary["passed"] = False
             save()
+            try:
+                public_readability([args.output / "summary.json"])
+            except Exception:
+                summary["passed"] = False
+                summary["failureGate"] = "nonroot-uploader-cannot-read-public-summary"
+                save()
     need(summary["passed"], "lab-or-cleanup-failed")
 
 
@@ -759,6 +890,10 @@ def main():
     parser.add_argument("--mode", choices=("standard", "renewal"), default="standard")
     parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--guest-target-json", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--cached-public-payload", type=Path)
+    parser.add_argument("--cached-public-run", default="")
+    parser.add_argument("--cached-public-artifact-id", default="")
+    parser.add_argument("--export-public-cache", type=Path)
     args = parser.parse_args()
     try:
         if args.preflight:
