@@ -33,6 +33,7 @@ from urllib.parse import urlsplit
 import uuid
 
 sys.dont_write_bytecode = True  # imports must not add generated files to clean product M
+_GUEST = None  # optional strictly guarded nested-KVM target; default lane is local
 
 PRODUCT = "dcf8d9a60976c160e2b2aca33313c668c071132c"
 RELEASE = "20261018032115-dcf8d9a60976"
@@ -78,6 +79,14 @@ def run(command, *, data=None, timeout=60, env=None, check=True):
     need(not check or result.returncode == 0, "bounded-subprocess-rejected")
     need(len(result.stdout) + len(result.stderr) <= 4 * 1024**2, "subprocess-output-bound")
     return result
+
+
+def host_run(command, **kwargs):
+    return _GUEST.run(command, **kwargs) if _GUEST else run(command, **kwargs)
+
+
+def host_status():
+    return _GUEST.call("status") if _GUEST else json.loads(STATUS.read_bytes())
 
 
 def digest(path):
@@ -320,6 +329,8 @@ def installed_identity_hashes():
     # First-install cancellation has no issued device key yet. Pending account
     # ciphertext must change when native cancel clears that attempt; the Host
     # identity, config (including absence), KEKs and any device keys must not.
+    if _GUEST:
+        return _GUEST.call("identity-hashes")
     paths = IDENTITY_FILES + sorted(Path("/var/lib/moxbot-host-network-test").glob("key-*.sealed"))
     need(IDENTITY_FILES[0].is_file() and IDENTITY_FILES[2].is_file() and IDENTITY_FILES[3].is_file(),
          "first-install-identity-and-KEKs-required")
@@ -328,6 +339,8 @@ def installed_identity_hashes():
 
 
 def persistent_hashes(include_accounts=True):
+    if _GUEST:
+        return _GUEST.call("persistent-hashes", include_accounts=include_accounts)
     paths = IDENTITY_FILES + sorted(Path("/var/lib/moxbot-host-network-test").glob("key-*.sealed"))
     if include_accounts:
         paths += sorted(Path("/var/lib/moxbot-host-network-test").glob("state-*.sealed"))
@@ -352,7 +365,7 @@ def wait_for(operation, timeout=45):
 
 
 def node_pid():
-    return int(run(["systemctl", "show", NODE, "--property=MainPID", "--value"]).stdout)
+    return int(host_run(["systemctl", "show", NODE, "--property=MainPID", "--value"]).stdout)
 
 
 def tcp_listeners():
@@ -362,17 +375,19 @@ def tcp_listeners():
 def only_lab_listeners(baseline):
     need(tcp_listeners() - baseline == {"127.0.0.1:24443", "127.0.0.1:25556", "127.0.0.1:28080"},
          "new-listeners-must-be-exact-loopback-lab-only")
+    if _GUEST:
+        _GUEST.check_listeners()
     return True
 
 
 def ready(private):
-    value = json.loads(STATUS.read_bytes())
+    value = host_status()
     need(value.get("state") == "ready" and value.get("ready") is True and value.get("errorCode") is None,
          "connector-not-ready")
     need(time.time() - value.get("updatedAt", 0) < 30, "connector-stale-status")
-    pid = int(run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout)
+    pid = int(host_run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout)
     need(pid > 0 and value.get("pid") == pid, "connector-status-pid")
-    doctor = json.loads(run(["/opt/moxbot-host-test/bin/moxbot-host", "doctor"]).stdout)
+    doctor = json.loads(host_run(["/opt/moxbot-host-test/bin/moxbot-host", "doctor"]).stdout)
     need(doctor.get("hostId") == value.get("deviceId") and doctor.get("runtime", {}).get("node") == "24.20.0"
          and doctor.get("runtime", {}).get("sdkBinaryPresent") is True
          and doctor.get("activeSession") is None and doctor.get("stopping") is False, "real-Node-doctor")
@@ -415,8 +430,8 @@ def browser_flow(payload):
 def install_with_browser(private, browser_home, email, password, action):
     # Deliberately the literal public curl | sudo bash command, with ordinary TLS.
     command = f"set -o pipefail; curl --fail --silent --show-error {ORIGIN}/host/install.sh | sudo bash -s -- --instance {ORIGIN}"
-    child = subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, start_new_session=True)
+    child = (_GUEST.popen_install() if _GUEST else subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, start_new_session=True))
     output = bytearray()
     seen = False
     interrupt_at = None
@@ -433,7 +448,10 @@ def install_with_browser(private, browser_home, email, password, action):
                 # or systemd units. M owns the cancellation/revocation operation.
                 need(child.poll() is None, "installer-exited-before-native-cancel")
                 interrupted = True
-                os.killpg(child.pid, signal.SIGINT)
+                if _GUEST:
+                    _GUEST.call("interrupt-install")
+                else:
+                    os.killpg(child.pid, signal.SIGINT)
             for key, _ in selector.select(timeout=0.5):
                 block = os.read(key.fd, 65536)
                 if not block:
@@ -479,6 +497,11 @@ def install_with_browser(private, browser_home, email, password, action):
     finally:
         selector.close()
         if child.poll() is None:
+            if _GUEST:
+                try:
+                    _GUEST.call("abort-install")
+                except Exception:
+                    pass  # the coordinator still terminates only its owned VM
             os.killpg(child.pid, signal.SIGTERM)
             try:
                 child.wait(timeout=10)
@@ -489,6 +512,7 @@ def install_with_browser(private, browser_home, email, password, action):
 
 
 def accept(args):
+    global _GUEST
     guard(args)
     args.output.mkdir(mode=0o755)
     summary = {"schemaVersion": 1, "productSource": PRODUCT, "releaseId": RELEASE,
@@ -525,9 +549,15 @@ def accept(args):
     with tempfile.TemporaryDirectory(prefix="moxbots-browser-lab-", dir=os.environ["RUNNER_TEMP"]) as scratch:
         private = Path(scratch)
         try:
+            if args.guest_target_json:
+                target_module = load_module("host_reboot_target", Path(__file__).with_name("host-reboot-acceptance.py"))
+                _GUEST = target_module.GuestTarget(args.guest_target_json, run, need)
+                step("nested-KVM-guest-profile-UUID-nonce-empty-namespace", _GUEST.prepare)
             binary = step("exact-M-service-artifact", lambda: verify_service(args))
             web = step("exact-M-public-bytes-and-launcher", lambda: prepare_candidate(args, private))
             ca_installed, browser_home = step("normal-OS-and-Chromium-CA-trust", lambda: install_ca(private))
+            if _GUEST:
+                step("guest-normal-OS-CA-and-loopback-reverse-forward", lambda: _GUEST.configure_ca((private / "lab-ca.crt").read_text()))
             need(shutil.which("docker") is not None, "docker-required")
             run(["docker", "info"], timeout=20)
             # Real source bootstrap creates only synthetic Dex configuration; no AuthStore sessions are injected.
@@ -580,10 +610,13 @@ def accept(args):
                 step("real-curl-bad-bundle-digest-rejected", lambda: install_with_browser(private, browser_home, email, password, "reject"))
                 # Run the original guarded no-namespace/account/unit checks again;
                 # only the output location differs because summary now exists.
-                namespace_guard = load_module("post_rejection_namespace_guard", Path(__file__).with_name("systemd-acceptance.py"))
-                namespace_guard.guard(argparse.Namespace(source_root=args.product_source, source_commit=PRODUCT,
-                    host_artifact_dir=args.product_source, network_artifact_dir=args.product_source,
-                    output=args.output.parent / ("host-browser-never-created-" + uuid.uuid4().hex)))
+                if _GUEST:
+                    _GUEST.call("empty-namespace")
+                else:
+                    namespace_guard = load_module("post_rejection_namespace_guard", Path(__file__).with_name("systemd-acceptance.py"))
+                    namespace_guard.guard(argparse.Namespace(source_root=args.product_source, source_commit=PRODUCT,
+                        host_artifact_dir=args.product_source, network_artifact_dir=args.product_source,
+                        output=args.output.parent / ("host-browser-never-created-" + uuid.uuid4().hex)))
                 step("bad-digest-created-no-Host-unit-account-or-state", lambda: True)
             finally:
                 (web / "host/stable.json").write_bytes(original_index)
@@ -593,8 +626,8 @@ def accept(args):
             need(canceled["sessions"] == [] and canceled["principals"] == 0 and canceled["rotations"] == 0
                  and canceled["catalogs"] == 0 and hits(route_counts(private), "join") == 0
                  and hits(route_counts(private), "cancel") >= 1, "native-cancel-no-account-session-or-join")
-            need(not json.loads(STATUS.read_bytes()).get("ready", False), "canceled-install-not-Ready")
-            need(run(["systemctl", "is-active", "--quiet", CONNECTOR], check=False).returncode != 0,
+            need(not host_status().get("ready", False), "canceled-install-not-Ready")
+            need(host_run(["systemctl", "is-active", "--quiet", CONNECTOR], check=False).returncode != 0,
                  "canceled-install-connector-inactive")
             step("canceled-install-no-Ready-or-join-and-identity-preserved", lambda: True)
             step("same-command-resume-real-Chromium-OIDC-auto-join", lambda:
@@ -606,8 +639,8 @@ def accept(args):
                  and hits(counts, "dex-token") == 1 and hits(counts, "join", dpop=True) == 1
                  and hits(counts, "catalog", dpop=True) >= 1, "browser-auth-and-DPoP-route-evidence")
             for unit in (NODE, CONNECTOR):
-                run(["systemctl", "is-active", "--quiet", unit])
-                run(["systemctl", "is-enabled", "--quiet", unit])
+                host_run(["systemctl", "is-active", "--quiet", unit])
+                host_run(["systemctl", "is-enabled", "--quiet", unit])
             before_files = persistent_hashes()
             before_pid = node_pid()
             step("same-command-repeat-without-browser", lambda: install_with_browser(private, browser_home, email, password, "repeat"))
@@ -635,16 +668,30 @@ def accept(args):
                 need(hits(route_counts(private), "renew", dpop=True) > hits(second_counts, "renew", dpop=True), "natural-renewal-DPoP-proof")
             else:
                 third = second
-            pid = int(run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout)
-            run(["systemctl", "restart", CONNECTOR], timeout=40)
+            pid = int(host_run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout)
+            host_run(["systemctl", "restart", CONNECTOR], timeout=40)
             fourth = step("connector-systemd-restart-recovers-Ready", lambda: wait_for(lambda: ready(private)))
-            need(int(run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout) != pid,
+            need(int(host_run(["systemctl", "show", CONNECTOR, "--property=MainPID", "--value"]).stdout) != pid,
                  "restart-must-replace-connector-PID")
             need(node_pid() == before_pid and persistent_hashes(False) == stable
                  and fourth["sessions"][0][:3] == third["sessions"][0][:3]
                  and fourth["devices"][0][1:3] == third["devices"][0][1:3]
                  and fourth["devices"][0][7:] == third["devices"][0][7:], "restart-preserves-original-identity-session-membership")
             step("Host-opened-no-new-TCP-listener", lambda: only_lab_listeners(baseline_listeners))
+            if _GUEST:
+                pre_boot_hashes = persistent_hashes()
+                pre_boot_db = db_snapshot(private)
+                pre_boot_counts = route_counts(private)
+                reboot_evidence = step("true-KVM-guest-reboot-and-new-boot-id", _GUEST.reboot)
+                post_boot_db = step("original-Host-boot-autostart-Ready-and-Node-IPC", lambda: wait_for(lambda: ready(private), 90))
+                need(persistent_hashes() == pre_boot_hashes and post_boot_db["sessions"] == pre_boot_db["sessions"]
+                     and post_boot_db["devices"][0][1:3] == pre_boot_db["devices"][0][1:3]
+                     and post_boot_db["devices"][0][7:] == pre_boot_db["devices"][0][7:], "true-reboot-preserves-identity-config-ciphertext-session-membership")
+                post_boot_counts = route_counts(private)
+                need(all(hits(pre_boot_counts, route, False) == hits(post_boot_counts, route, False)
+                         for route in ("start", "poll", "callback", "dex-token", "join", "renew")), "true-reboot-zero-login-join-renewal")
+                step("reboot-identity-ciphertext-and-no-new-auth-or-join", lambda: only_lab_listeners(baseline_listeners))
+                summary["reboot"] = reboot_evidence
             summary["browserAuthorizations"] = 1
             summary["freshCancellationAndSameCommandResumeObserved"] = True
             summary["badDigestRejectedBeforeInstallation"] = True
@@ -660,8 +707,8 @@ def accept(args):
             if installation_attempted:
                 for unit in (CONNECTOR, NODE):
                     try:
-                        run(["systemctl", "stop", unit], timeout=30, check=False)
-                        need(run(["systemctl", "is-active", "--quiet", unit], timeout=15, check=False).returncode != 0,
+                        host_run(["systemctl", "stop", unit], timeout=30, check=False)
+                        need(host_run(["systemctl", "is-active", "--quiet", unit], timeout=15, check=False).returncode != 0,
                              "owned-unit-still-active-after-cleanup")
                     except Rejected:
                         cleanup_ok = False
@@ -684,6 +731,9 @@ def accept(args):
                     run(["update-ca-certificates"], timeout=60)
                 except Rejected:
                     cleanup_ok = False
+            if _GUEST:
+                _GUEST.close()
+                _GUEST = None
             summary["cleanupCompleted"] = cleanup_ok
             if not cleanup_ok:
                 summary["passed"] = False
@@ -708,6 +758,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--mode", choices=("standard", "renewal"), default="standard")
     parser.add_argument("--preflight", action="store_true")
+    parser.add_argument("--guest-target-json", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
         if args.preflight:
