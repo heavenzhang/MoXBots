@@ -274,6 +274,10 @@ Rust 按 `(sidecar key, generation)` 把控制请求和 SSE 代理到当前进�
 
 已恢复历史 Tab 以 REST 读取历史和当前状态，再按 revision 接收 SSE 增量，并拒绝 cold-history replay 覆盖该 baseline。尚未采用 REST baseline 的 SSE-native 新生会话，可在重连时采用有序 cold-history snapshot 修复遗漏的正文与创建事件；详见 [V2 transcript](./session_transcript_v2.md)。不能把断线期间缺失的 SSE 当成历史不存在。
 
+历史首屏与执行恢复分离：TabProvider 在首次进入持久 Session 时，通过 Global 的既有 `/sessions/:id?limit=80` 读取 SessionStore 展示预览，不等待目标 Sidecar/SSE。预览只投影消息，不采纳进程局部 revision、idle、队列或待审批，不解除操作门禁。目标 Sidecar 的原 REST snapshot 与 SSE fence 仍独占实时恢复；迟到预览不能覆盖 ready/live-recovery、新生会话、已切换身份或已卸载 Tab。
+
+已挂载缓存页切换保留同一 Chat/TabProvider、历史、草稿和阅读位置，不重读历史；后台 exact-owner ensure/reconcile 继续由 Rust 裁决。连接失败或确认目标进程已移除时，App 保留 Chat 并投影连接错误，普通会话可在原 Tab 重试；错误在 owner 恢复成功前不清除。预览可读和执行可用是两个状态：前者解除全屏历史遮罩，后者仍由 `isSessionLoading`/connectionError 门禁控制发送、审批等操作。失败提示与恢复状态采用非遮挡 notice。
+
 SSE transport 断开不代表用户取消，也不拥有 abort 权限。turn 继续执行并持久化；只有显式 Stop、Session lifecycle 命令、Runtime terminal 或 Sidecar termination 能改变执行状态。
 
 会改变当前 Session snapshot、队列边界或阻塞式交互 UI 的事件必须携带 `sessionId`，并通过 `sessionScopedEventGuards.ts` 与当前 Tab identity 比较。pending→real 等已被 lifecycle authority 确认的 identity upgrade 可以沿用 transport；普通 real→real 历史导航必须 new/jump/revive 到目标 Tab，不能把旧连接标签当业务 authority。

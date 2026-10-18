@@ -54,7 +54,7 @@ import {
   type RuntimeSource,
   type RuntimeType,
 } from '@/../shared/types/runtime';
-import { updateSession } from '@/api/sessionClient';
+import { getSessionHistoryPreview, updateSession } from '@/api/sessionClient';
 import type { SessionMetadata } from '@/api/sessionClient';
 import {
   originAnalyticsFields,
@@ -703,6 +703,7 @@ interface TabProviderProps {
   sidecarConfigDisposition?: import("@/features/chat/tabContract").SidecarConfigDisposition;
   /** Whether this Tab is currently visible — fed into TabActiveContext for useTabActive() consumers */
   isActive?: boolean;
+  connectionError?: string | null;
   /** Callback when generating state changes (for close confirmation) */
   onGeneratingChange?: (isGenerating: boolean) => void;
   /** Callback when sessionId changes (e.g., backend creates real session from pending-xxx) */
@@ -934,6 +935,7 @@ export default function TabProvider({
   sessionId = null,
   sessionTitle,
   sidecarConfigDisposition = 'push',
+  connectionError = null,
   isActive,
   onGeneratingChange,
   onSessionIdChange,
@@ -1026,6 +1028,7 @@ export default function TabProvider({
     pendingDesktopMessagesRef.current = next;
     rawSetPendingDesktopMessages(next);
   }, []);
+  const [displayedHistorySessionId, setDisplayedHistorySessionId] = useState<string | null>(null);
   const [historyMessages, rawSetHistoryMessages] = useState<Message[]>([]);
   // Publish each event's projection before React batches its rendering. A
   // second SSE event/RAF callback in the same batch must see the first one.
@@ -1055,6 +1058,7 @@ export default function TabProvider({
         if (remaining.length !== pending.length) setPendingDesktopMessages(remaining);
       }
       historyMessagesRef.current = next;
+      if (next.length) setDisplayedHistorySessionId(currentSessionIdRef.current);
       rawSetHistoryMessages(next);
     },
     [setPendingDesktopMessages],
@@ -1072,6 +1076,7 @@ export default function TabProvider({
           ? action(streamingMessageRef.current)
           : action;
         streamingMessageRef.current = next;
+      if (next) setDisplayedHistorySessionId(currentSessionIdRef.current);
       rawSetStreamingMessage(next);
     },
     [],
@@ -1169,7 +1174,10 @@ export default function TabProvider({
     },
     [],
   );
-  const isSessionLoading =
+  const hasSessionHistory = Boolean(currentSessionId && displayedHistorySessionId === currentSessionId);
+  const connectionErrorRef = useRef(connectionError);
+  connectionErrorRef.current = connectionError;
+  const isSessionLoading = Boolean(connectionError) ||
     persistedRestoreLifecycle.phase === 'restoring' ||
     persistedRestoreLifecycle.phase === 'failed';
   const sessionRestoreError =
@@ -1288,7 +1296,8 @@ export default function TabProvider({
   }, []);
   const [lastTerminalReason, setLastTerminalReason] =
     useState<TerminalReason | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
+  const [transportConnected, setIsConnected] = useState(false);
+  const isConnected = transportConnected && !connectionError;
   const [pendingPermissions, setPendingPermissions] = useState<
     PermissionRequest[]
   >([]);
@@ -1348,6 +1357,9 @@ export default function TabProvider({
     // lastContextUsage; new-session paths (reset/adopt) also clear explicitly for immediacy.
     liveContextUsageSessionIdRef.current = null;
     setContextUsage(null);
+    if (shouldPreservePendingBirthSnapshots) {
+      setDisplayedHistorySessionId(previous => previous === previousSessionId ? sessionId ?? null : previous);
+    }
     if (!shouldPreservePendingBirthSnapshots) {
       if (previousSessionId !== sessionId) { setPendingDesktopMessages([]); setQueuedMessages([]); }
       setAgentPlanTodos(null);
@@ -5848,7 +5860,7 @@ export default function TabProvider({
       const trimmed = text.trim();
       if (sidecarConfigDisposition === 'pending' && (!currentSessionIdRef.current || isPendingSessionId(currentSessionIdRef.current))) return false;
       if (!trimmed && (!images || images.length === 0)) return false;
-      if (isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
+      if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
         return false;
       const visibleQueueText = queueDisplayText(trimmed);
 
@@ -6433,6 +6445,7 @@ export default function TabProvider({
         }
         historyMessagesRef.current = projectedMessages;
         setHistoryMessages(projectedMessages);
+        setDisplayedHistorySessionId(targetSessionId);
 
         pendingTextRef.current = '';
         if (revealRafRef.current != null) {
@@ -6900,6 +6913,32 @@ export default function TabProvider({
     clearSseAttachFallback,
   ]);
 
+  // Read the persisted display projection immediately, independently of the
+  // target execution process. Live REST/SSE remains the sole action/revision
+  // authority. In particular, a disk preview never marks restoration ready.
+  useEffect(() => {
+    if (!sessionId || isPendingSessionId(sessionId)) return;
+    const initialRestore = persistedRestoreLifecycleRef.current;
+    if (initialRestore.sessionId !== sessionId || initialRestore.mode !== 'initial' ||
+      initialRestore.phase !== 'restoring') return;
+    const controller = new AbortController();
+    void getSessionHistoryPreview(sessionId, controller.signal).then(preview => {
+      const restore = persistedRestoreLifecycleRef.current;
+      if (!preview || controller.signal.aborted || !isMountedRef.current ||
+        currentSessionIdRef.current !== sessionId || restore.sessionId !== sessionId ||
+        restore.mode !== 'initial' || restore.phase === 'ready' || restore.phase === 'inactive' ||
+        isNewSessionRef.current || resetBirthPendingRef.current) return;
+      const projected = preview.messages.map(wireSessionMessageToMessage);
+      historyMessagesRef.current = projected;
+      setHistoryMessages(projected);
+      setDisplayedHistorySessionId(sessionId);
+    }).catch(() => {
+      // A failed disk read must not fail or restart live recovery. Its existing
+      // error/retry owner remains responsible for the connected snapshot.
+    });
+    return () => controller.abort();
+  }, [sessionId, setHistoryMessages]);
+
   const retryCurrentSessionRestore = useCallback(
     async (targetMessageId?: string): Promise<CurrentSessionRestoreResult> => {
       const targetSessionId = currentSessionIdRef.current;
@@ -6973,7 +7012,7 @@ export default function TabProvider({
   // Cancel a queued message — returns the original text (for restoring to input)
   const cancelQueuedMessage = useCallback(
     async (queueId: string): Promise<string | null> => {
-      if (isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
+      if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
         return null;
       try {
         const response = await postJson<{
@@ -7017,7 +7056,7 @@ export default function TabProvider({
   // Does NOT optimistically remove from queue — queue:started SSE is the single source of truth
   const forceExecuteQueuedMessage = useCallback(
     async (queueId: string): Promise<boolean> => {
-      if (isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
+      if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
         return false;
       const sid = currentSessionIdRef.current ?? sessionId;
       const releaseSendTransition = sid
@@ -7058,7 +7097,7 @@ export default function TabProvider({
       decision: 'deny' | 'allow_once' | 'always_allow',
       requestIdOverride?: string,
     ) => {
-      if (isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase)) {
+      if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase)) {
         throw new Error(
           'Permission response is unavailable while Session restore is unresolved',
         );
@@ -7116,7 +7155,7 @@ export default function TabProvider({
   // Respond to AskUserQuestion request
   const respondAskUserQuestion = useCallback(
     async (requestId: string, answers: AskUserQuestionAnswers | null) => {
-      if (isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase)) {
+      if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase)) {
         throw new Error(
           'Question response is unavailable while Session restore is unresolved',
         );
@@ -7160,7 +7199,7 @@ export default function TabProvider({
   // hung waiting for a response that never arrives.
   const respondExitPlanMode = useCallback(
     async (approved: boolean, feedback?: string): Promise<boolean> => {
-      if (isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
+      if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
         return false;
       if (!pendingExitPlanMode) return false;
       const snapshot = pendingExitPlanMode;
@@ -7211,6 +7250,7 @@ export default function TabProvider({
       isLoading,
       getQueryElapsedSeconds,
       isSessionLoading,
+      hasSessionHistory,
       sessionRestoreError,
       sessionRestoreMode,
       sessionState,
@@ -7272,6 +7312,7 @@ export default function TabProvider({
       hasMoreBefore,
       isLoading,
       isSessionLoading,
+      hasSessionHistory,
       sessionRestoreError,
       sessionRestoreMode,
       sessionState,

@@ -57,6 +57,12 @@ const sseHarness = vi.hoisted(() => {
   return { state, connection };
 });
 
+const historyPreview = vi.hoisted(() => vi.fn(async (_sessionId: string, _signal: AbortSignal): Promise<{ id: string; messages: Array<{ id: string; role: 'assistant'; content: string; timestamp: string }> } | null> => null));
+vi.mock('@/api/sessionClient', async importOriginal => ({
+  ...await importOriginal<typeof import('@/api/sessionClient')>(),
+  getSessionHistoryPreview: historyPreview,
+}));
+
 const tauriHarness = vi.hoisted(() => ({
   proxyFetch: vi.fn(),
   ensureSessionSidecar: vi.fn(async () => undefined),
@@ -134,6 +140,7 @@ function Probe() {
     sessionId,
     isLoading,
     isSessionLoading,
+    hasSessionHistory,
     sessionRestoreError,
     sessionState,
     historyMessages,
@@ -180,6 +187,7 @@ function Probe() {
       <output data-testid="mcp-runtime-generation">{mcpEffectiveSnapshot?.runtimeGeneration ?? ''}</output>
       <output data-testid="streaming-content">{JSON.stringify(streamingMessage?.content ?? null)}</output>
       <output data-testid="session-loading">{String(isSessionLoading)}</output>
+      <output data-testid="history-readable">{String(hasSessionHistory)}</output>
       <output data-testid="session-restore-error">{sessionRestoreError ?? ''}</output>
       <output data-testid="history-content">{JSON.stringify(historyMessages.map(message => message.content))}</output>
       <output data-testid="history-unconfirmed">{JSON.stringify(historyMessages.map(message => !!message.deliveryUnconfirmed))}</output>
@@ -493,6 +501,7 @@ describe('TabProvider session activity ownership', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    historyPreview.mockResolvedValue(null);
     sseHarness.state.connected = false;
     sseHarness.state.generation = 1;
     sseHarness.state.eventHandler = null;
@@ -2491,6 +2500,86 @@ describe('TabProvider session activity ownership', () => {
     );
 
     await waitFor(() => expect(readInitTools()).toEqual([]));
+  });
+
+  it('shows persisted history while execution/SSE is unavailable, without unlocking sends', async () => {
+    const target = 'history-before-runtime';
+    sseHarness.connection.connect.mockImplementationOnce(async () => {});
+    historyPreview.mockResolvedValueOnce({ id: target, messages: [{ id: 'disk-row', role: 'assistant', content: 'Readable before connection', timestamp: new Date(0).toISOString() }] });
+    render(<TabProvider tabId="preview" agentDir="/tmp/workspace" sessionId={target} sidecarConfigDisposition="pending" claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('history-content')).toHaveTextContent('Readable before connection'));
+    expect(screen.getByTestId('history-readable')).toHaveTextContent('true');
+    expect(screen.getByTestId('session-loading')).toHaveTextContent('true');
+    expect(screen.getByTestId('connected')).toHaveTextContent('false');
+    expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(screen.getByTestId('send-receipt')).toHaveTextContent('false'));
+    expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
+  });
+
+  it('discards a delayed disk preview after the live snapshot commits', async () => {
+    let resolvePreview!: (value: Awaited<ReturnType<typeof historyPreview>>) => void;
+    historyPreview.mockReturnValueOnce(new Promise(resolve => { resolvePreview = resolve; }));
+    tauriHarness.proxyFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, session: {
+      id: 'live-wins', messages: [{ id: 'live-row', role: 'assistant', content: 'Newest live snapshot', timestamp: new Date(0).toISOString() }], snapshotRevision: 42,
+    } }), { status: 200 }));
+    render(<TabProvider tabId="live-wins" agentDir="/tmp/workspace" sessionId="live-wins" claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    await act(async () => resolvePreview({ id: 'live-wins', messages: [{ id: 'stale-row', role: 'assistant', content: 'Stale disk', timestamp: new Date(0).toISOString() }] }));
+    expect(screen.getByTestId('history-content')).toHaveTextContent('Newest live snapshot');
+    expect(screen.getByTestId('history-content')).not.toHaveTextContent('Stale disk');
+  });
+
+  it('preserves cached history across disconnect failure and active-tab changes', async () => {
+    tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({ success: true, session: {
+      id: 'cached-readable', messages: [{ id: 'row', role: 'assistant', content: 'Keep cached history', timestamp: new Date(0).toISOString() }], snapshotRevision: 3,
+    } }), { status: 200 }));
+    const view = (isActive: boolean, connectionError: string | null = null) => <TabProvider tabId="cached" agentDir="/tmp/workspace" sessionId="cached-readable" isActive={isActive} connectionError={connectionError} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>;
+    const { rerender } = render(view(true));
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    const reads = tauriHarness.proxyFetch.mock.calls.length;
+    const previews = historyPreview.mock.calls.length;
+    rerender(view(false));
+    rerender(view(true));
+    expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(reads);
+    expect(historyPreview).toHaveBeenCalledTimes(previews);
+    rerender(view(true, 'Connection lost'));
+    expect(screen.getByTestId('history-content')).toHaveTextContent('Keep cached history');
+    expect(screen.getByTestId('history-readable')).toHaveTextContent('true');
+    expect(screen.getByTestId('session-loading')).toHaveTextContent('true');
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(screen.getByTestId('send-receipt')).toHaveTextContent('false'));
+  });
+
+  it('keeps SSE-native cached history readable after a connection failure', async () => {
+    const view = (connectionError: string | null = null) => <TabProvider tabId="native-cache" agentDir="/tmp/workspace" sessionId="pending-native-cache" connectionError={connectionError} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>;
+    const { rerender } = render(view());
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:message-replay', { message: { id: 'native-row', role: 'assistant', content: 'Native cached reply', timestamp: new Date(0).toISOString() } });
+    expect(screen.getByTestId('history-content')).toHaveTextContent('Native cached reply');
+    rerender(view('Connection lost'));
+    expect(screen.getByTestId('history-readable')).toHaveTextContent('true');
+    expect(screen.getByTestId('history-content')).toHaveTextContent('Native cached reply');
+    expect(screen.getByTestId('session-loading')).toHaveTextContent('true');
+    expect(historyPreview).not.toHaveBeenCalled();
+  });
+
+  it('ignores a disk preview for a previous Session identity even if its transport ignores abort', async () => {
+    sseHarness.connection.connect.mockImplementation(async () => {});
+    let resolvePreview!: (value: Awaited<ReturnType<typeof historyPreview>>) => void;
+    historyPreview.mockReturnValueOnce(new Promise(resolve => { resolvePreview = resolve; }));
+    const view = (sessionId: string) => <TabProvider tabId="preview-identity" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>;
+    const { rerender } = render(view('previous-preview'));
+    await waitFor(() => expect(historyPreview).toHaveBeenCalled());
+    const signal = historyPreview.mock.calls.at(-1)![1];
+    rerender(view('pending-new-birth'));
+    expect(signal.aborted).toBe(true);
+    await act(async () => resolvePreview({ id: 'previous-preview', messages: [{ id: 'old', role: 'assistant', content: 'Do not leak old history', timestamp: new Date(0).toISOString() }] }));
+    expect(screen.getByTestId('history-content')).not.toHaveTextContent('Do not leak old history');
+    sseHarness.connection.connect.mockImplementation(async () => {
+      sseHarness.state.connected = true;
+      sseHarness.state.statusHandler?.('connected');
+    });
   });
 
   it('keeps cold history invisible until the normalized REST snapshot is ready', async () => {

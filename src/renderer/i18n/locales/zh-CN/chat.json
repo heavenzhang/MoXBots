@@ -988,6 +988,9 @@
       "subtitle": "非图片文件将复制到 myagents_files 并自动引用"
     },
     "boot": {
+      "loadingHistory": "正在加载聊天记录",
+      "reconnecting": "正在恢复连接，聊天记录可继续查看",
+      "connectionFailed": "连接恢复失败，聊天记录已保留",
       "loading": "AI 启动中",
       "restoreFailed": "对话加载失败，请重新打开或切换对话后重试",
       "retry": "重试"

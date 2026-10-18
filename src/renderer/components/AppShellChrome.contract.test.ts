@@ -86,16 +86,16 @@ describe('App Shell chrome contract', () => {
       '<Suspense fallback={<ChatBootOverlay />}>',
     );
     expect(app).not.toContain(') : isLoading ? (\n        <ChatBootOverlay />');
-    expect(chat).toContain('show={showStartupOverlay || isSessionLoading}');
+    expect(chat).toContain('show={!hasSessionHistory && (showStartupOverlay || isSessionLoading)}');
     // The launch query belongs only to MessageList, underneath the boot shell.
     expect(chat).not.toContain('initialMessage={showStartupOverlay');
     expect(chat).toContain('onItemsRendered={handleStartupItemsRendered}');
-    expect(chat).toContain('error={sessionRestoreError}');
+    expect(chat).toContain('error={startupError || sessionRestoreError}');
     expect(chat).not.toContain(
       "isSessionLoading && sessionRestoreMode === 'live-recovery'",
     );
     expect(chat).toMatch(/if\s*\(\s*isSessionLoading\s*\|\|\s*\(!text/);
-    expect(chat).toContain('sendBlocked={isSessionLoading}');
+    expect(chat).toContain('sendBlocked={isSessionLoading || Boolean(startupError)}');
     expect(
       tabProvider.match(/isRestoreActionBlocked/g)?.length ?? 0,
     ).toBeGreaterThanOrEqual(6);

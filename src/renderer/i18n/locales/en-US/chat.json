@@ -988,6 +988,9 @@
       "subtitle": "Non-image files will be copied to myagents_files and referenced automatically."
     },
     "boot": {
+      "loadingHistory": "Loading chat history",
+      "reconnecting": "Reconnecting. You can keep reading this chat.",
+      "connectionFailed": "Connection failed. Your chat history is still available.",
       "loading": "Starting AI",
       "restoreFailed": "Couldn't load this chat. Reopen it or switch chats to try again.",
       "retry": "Try again"

@@ -707,6 +707,7 @@ export default function Chat({
     isLoading,
     getQueryElapsedSeconds,
     isSessionLoading,
+    hasSessionHistory,
     sessionRestoreError,
     sessionState,
     sessionRuntime,
@@ -1543,6 +1544,7 @@ export default function Chat({
     onStartupItemsRendered,
   } = useChatStartupOverlay({
     hasInitialMessage: hadInitialMessage.current,
+    hasSessionHistory,
     initialClientRequestId: initialMessage?.clientRequestId,
     startupError,
     isConnected,
@@ -6528,19 +6530,38 @@ export default function Chat({
             {/* Unified boot overlay — same component App renders as the lazy-Chat
               Suspense fallback, so the chunk-load → mount handoff is seamless: ONE
               continuous "AI 启动中" state from the Launcher→Chat flip through the
-              sidecar boot. Persisted history keeps the same shell until its REST
-              projection commits, so cold SSE replay is never a visible phase. */}
+              sidecar boot. Persisted history reveals from the display-only disk
+              preview; live restoration keeps its action fence without covering
+              readable rows. Cold SSE replay never owns the first history frame. */}
             <ChatBootOverlay
-              show={showStartupOverlay || isSessionLoading}
-              error={sessionRestoreError}
+              show={!hasSessionHistory && (showStartupOverlay || isSessionLoading)}
+              loadingText={sessionId && !isPendingSessionId(sessionId) && !hadInitialMessage.current ? t('shell.boot.loadingHistory') : undefined}
+              error={startupError || sessionRestoreError}
               onRetry={
-                sessionRestoreError && sessionId
+                (startupError || sessionRestoreError) && sessionId
                   ? () => {
-                      void retryCurrentSessionRestore();
+                      void (async () => {
+                        await onRetryStartup?.();
+                        await retryCurrentSessionRestore();
+                      })();
                     }
                   : undefined
               }
             />
+
+            {hasSessionHistory && (isSessionLoading || !isConnected || startupError) && (
+              <div role="status" className="z-10 flex shrink-0 items-center justify-center gap-2 border-b border-[var(--line)] bg-[var(--paper-elevated)] px-4 py-2 text-xs text-[var(--ink-muted)]">
+                <span>{t(startupError || sessionRestoreError ? 'shell.boot.connectionFailed' : 'shell.boot.reconnecting')}</span>
+                {(startupError || sessionRestoreError) && (
+                  <button type="button" className="shrink-0 underline underline-offset-2" onClick={() => {
+                    void (async () => {
+                      await onRetryStartup?.();
+                      await retryCurrentSessionRestore();
+                    })();
+                  }}>{t('shell.boot.retry')}</button>
+                )}
+              </div>
+            )}
 
             {/* SDK 0.2.91+ terminal_reason banner. For error-severity reasons that
               already surface via agentError (image_error / model_error), suppress
@@ -6821,7 +6842,7 @@ export default function Chat({
               onSend={handleSendMessage}
               onStop={handleStop}
               active={isActive}
-              sendBlocked={isSessionLoading}
+              sendBlocked={isSessionLoading || Boolean(startupError)}
               nextPromptSuggestion={nextPromptSuggestion}
               isLoading={
                 isLoading ||

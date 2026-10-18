@@ -118,6 +118,7 @@
     "teamUnavailable": "协作空间已被开发者关闭"
   },
   "appChrome": {
+    "sessionConnectionLost": "连接已断开，请重试恢复连接。",
     "updateVerifyFailed": "无法验证更新（网络异常），请稍后重试",
     "updateExpiredRedownloading": "已下载的更新已过期，正在重新下载新版本...",
     "updateInstallBlocked": "后台服务仍在退出，更新包已保留，请稍后重试或重启电脑后安装",
