@@ -14,7 +14,7 @@ The human explicitly transferred integration and publication to01a12b99-7b38-78b
 ## Acceptance criteria
 
 - [x] Start from current mainbaa1a637, independent branch; explicit owner transfer and handback.
-- [ ] Integrate reviewed product8d112633 and tools2580 through source combinationdf1; preserve the original source history.
+- [x] Integrate reviewed product8d112633 and tools2580 through source combinationdf1; preserve the original source history.
 - [ ] Exact clean-source candidate with matching Node/connector/service provenance and real artifact digests.
 - [ ] Fresh Ubuntu24/browser/auto-join/Ready/catalog/repeat, natural lab expiry renewal and true KVM reboot accepted.
 - [ ] Required combined CI and proportionate regressions; remote main contains accepted source and runtime tree.
