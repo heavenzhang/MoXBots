@@ -57,9 +57,13 @@ export default function BackgroundTaskDialog({
   }, []);
 
   useEffect(() => {
-    const update = () => {
+    const update = (readAgain = false) => {
       const status = getBackgroundTaskStatus(subagent.id, sessionId);
-      if (!isTerminalStatus(status)) return;
+      if (!isTerminalStatus(status)) {
+        setTerminalStatus(null);
+        if (readAgain) setRefresh(value => value + 1);
+        return;
+      }
       setTerminalStatus(status === 'error' ? 'failed' : status);
       // One final read captures the last output. If the Query has retired,
       // its terminal event still owns status and the last readable log stays.
@@ -68,7 +72,7 @@ export default function BackgroundTaskDialog({
     const onStatus = (event: Event) => {
       const detail = (event as CustomEvent<{ sessionId?: string | null; toolUseId?: string }>).detail;
       if ((detail?.sessionId ?? null) !== sessionId || detail?.toolUseId !== subagent.id) return;
-      update();
+      update(true);
     };
     update();
     window.addEventListener(BACKGROUND_TASK_STATUS_EVENT, onStatus);

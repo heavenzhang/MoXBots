@@ -30,12 +30,12 @@ BG-TASK-LOG-001：修复任务列表点击无反应，点击直接打开当前�
 
 ## Blockers and unknowns
 
-源码/模拟验收/真实联调/main/生产验收分别记录。实现完成；后端297项、前端22项及最终mixed63项通过，独立IAB与主Agent关键路径通过，typecheck/web/server构建通过；full lint/dependency/docs已通过，真实报告日志文件读取ready（不保存原文）。最新main798f3a9c无冲突整合，下一步PR正常CI与主干交付；正式签名发行和原生用户路径待唯一owner。
+源码/模拟验收/真实联调/main/生产验收分别记录。实现完成；后端297项、mixed63项及后续23项DOM回归通过，独立IAB与主Agent关键路径通过，typecheck/web/server构建通过；full lint/dependency/docs已通过，真实报告日志文件读取ready（不保存原文）。最新main798f3a9c无冲突整合，下一步PR正常CI与主干交付；正式签名发行和原生用户路径待唯一owner。
 
 ## Verification
 
 - Node24.21.0 full typecheck/lint/dependency/docs/web/server gates passed; initial fixture unused import fixed and lint rerun.
-- Backend297focused cases, later65security subset, route12 and8background iterator/projection checks passed. Primary22DOM and final63mixed cases passed; counts overlap and are not summed.
+- Backend297focused cases, later65security subset, route12 and8background iterator/projection checks passed. Primary23DOM and final63mixed cases passed; counts overlap and are not summed.
 - Independent IAB390×844/1440×900 light/dark and actual click/keyboard/long/terminal/error/Session transitions passed. Source and controlled integration evidence: `dev-docs/bg-task-log/acceptance.md`.
 - Production file reader read original reported existing10byte output without persisting content; installed native proxy/user-path still unverified.
 

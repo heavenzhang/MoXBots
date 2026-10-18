@@ -72,6 +72,21 @@ describe('background task details', () => {
     expect(screen.queryByText('运行中每 2 秒刷新')).toBeNull();
   });
 
+  it('clears the old terminal presentation when a new run reuses the task tool identity', async () => {
+    registerBackgroundTask('b123', agent.id, { runId: 'run-1' }, 's1');
+    render(dialog()); await settle();
+    harness.apiGet.mockResolvedValue({ success: true, task: task({ status: 'completed', runId: 'run-1' }) });
+    act(() => { setBackgroundTaskStatus('b123', 'completed', agent.id, 's1', 'run-1'); });
+    await settle();
+    expect(screen.getByRole('status').textContent).toContain('已完成');
+    harness.apiGet.mockResolvedValue({ success: true, task: task({ status: 'running', runId: 'run-2', output: 'New run' }) });
+    act(() => { registerBackgroundTask('b123', agent.id, { runId: 'run-2' }, 's1'); });
+    await settle();
+    expect(screen.getByRole('status').textContent).toContain('运行中');
+    expect(screen.getByText('New run')).toBeTruthy();
+    expect(screen.getByText('运行中每 2 秒刷新')).toBeTruthy();
+  });
+
   it.each(['empty', 'missing', 'unavailable'] as const)('explains %s output without declaring completion', async outputState => {
     harness.apiGet.mockResolvedValue({ success: true, task: task({ output: '', outputState }) });
     render(dialog()); await settle();

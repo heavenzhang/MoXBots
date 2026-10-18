@@ -30,6 +30,8 @@
 
 异步读取随 Session、任务和手动刷新隔离，effect cleanup 会 abort 已过期请求；终态事件优先保留真实终态并触发最后一次日志读取。Session 改变时先隐藏旧详情、下一帧清除选中项，避免旧输出显示到新 Session。失败保留上一份日志并呈现未确认状态和可用刷新入口。未发现额外需要主 Agent 修复的 UI 问题。
 
+最终复审同一工具身份被新一轮运行复用的边界：匹配的 running 状态事件会清除旧终态展示并重读详情，初始化时的普通 running 状态不会额外触发重复读取；新增回归覆盖 `run-1 completed → run-2 running` 并断言新输出及轮询提示恢复。未发现新的 UI 问题。本机独立重跑该用例受 Node 运行时限制：当前 `v22.23.0`，项目要求 `>=24.14.0`，Vitest 在启动前退出；本段仅记录源码/测试审阅，主 Agent 的测试结果需另行确认。
+
 ## 浏览器验收记录
 
 隔离 fixture：`http://127.0.0.1:5273/`，通过 CUA IAB 操作；运行期数据均为合成数据。页面开始时生产 Tailwind class 未纳入 fixture CSS 扫描，导致 dialog 在 AX 树可见但截图不可见；主 Agent 为 fixture 加入 renderer `@source` 后重新加载，视觉显示正常。该问题属于 fixture 配置，不是产品源码。
