@@ -188,14 +188,17 @@ impl MobileConnection {
         }
         Ok(())
     }
-    async fn request_inner(&mut self, intent: Value) -> Result<Value, NetworkError> {
+    async fn request_inner(&mut self, mut intent: Value) -> Result<Value, NetworkError> {
         if intent["version"] != 1 || intent.as_object().is_none() {
             return Err(err("MOBILE_INTENT_INVALID"));
         }
         let kind = intent["kind"]
             .as_str()
-            .ok_or_else(|| err("MOBILE_INTENT_INVALID"))?;
-        let allowed = if kind == "draft.read" {
+            .ok_or_else(|| err("MOBILE_INTENT_INVALID"))?
+            .to_owned();
+        let allowed = if kind == "account.login.password" {
+            &["version", "kind", "username", "password"][..]
+        } else if kind == "draft.read" {
             &["version", "kind", "targetId", "sessionId"][..]
         } else if kind == "draft.write" {
             &[
@@ -224,7 +227,7 @@ impl MobileConnection {
         {
             return Err(err("MOBILE_INTENT_INVALID"));
         }
-        match kind {
+        match kind.as_str() {
             "notification.register"
             | "notification.refresh"
             | "notification.status"
@@ -236,7 +239,35 @@ impl MobileConnection {
                 self.restore().await?;
                 Ok(self.account_view())
             }
-            "account.login.start" => {
+            "account.login.start" | "account.login.password" => {
+                // Password is transient, never a pending or secure-store record.
+                let password = if kind == "account.login.password" {
+                    let raw = intent
+                        .get_mut("password")
+                        .map(Value::take)
+                        .ok_or_else(|| err("OWNED_CREDENTIALS_INVALID"))?;
+                    let Value::String(value) = raw else {
+                        return Err(err("OWNED_CREDENTIALS_INVALID"));
+                    };
+                    let secret = Zeroizing::new(value);
+                    if secret.is_empty() || secret.len() > 1024 || secret.contains('\0') {
+                        return Err(err("OWNED_CREDENTIALS_INVALID"));
+                    }
+                    Some(secret)
+                } else {
+                    None
+                };
+                let username = if password.is_some() {
+                    let name = intent["username"]
+                        .as_str()
+                        .ok_or_else(|| err("OWNED_CREDENTIALS_INVALID"))?;
+                    if name.is_empty() || name.len() > 256 || name.contains(['\r', '\n', '\0']) {
+                        return Err(err("OWNED_CREDENTIALS_INVALID"));
+                    }
+                    Some(name.to_owned())
+                } else {
+                    None
+                };
                 self.restore().await?;
                 if self
                     .saved
@@ -262,22 +293,44 @@ impl MobileConnection {
                 );
                 let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
                 let device = uuid::Uuid::new_v4().to_string();
-                let start = self
-                    .client
-                    .as_ref()
-                    .unwrap()
-                    .start(&device, &challenge)
-                    .await?;
+                let (transaction, expires, authorization_url) =
+                    if let (Some(username), Some(password)) = (username, password) {
+                        let start = self
+                            .client
+                            .as_ref()
+                            .unwrap()
+                            .start_password(&device, &challenge, &username, &password)
+                            .await?;
+                        (start.transaction_id, start.expires_at, None)
+                    } else {
+                        let start = self
+                            .client
+                            .as_ref()
+                            .unwrap()
+                            .start(&device, &challenge)
+                            .await?;
+                        (
+                            start.transaction_id,
+                            start.expires_at,
+                            Some(start.authorization_url),
+                        )
+                    };
                 self.pending = Some(PendingLogin {
                     device,
                     verifier,
-                    transaction: start.transaction_id,
-                    expires: start.expires_at,
+                    transaction,
+                    expires,
                 });
-                Ok(
-                    json!({"kind":"login","authorizationUrl":start.authorization_url,"expiresAt":start.expires_at}),
-                )
+                if let Some(authorization_url) = authorization_url {
+                    Ok(
+                        json!({"kind":"login","authorizationUrl":authorization_url,"expiresAt":expires}),
+                    )
+                } else {
+                    // Original poll consumes proof and persists the account.
+                    Ok(self.account_view())
+                }
             }
+
             "account.login.poll" => {
                 let p = self
                     .pending
@@ -1284,6 +1337,26 @@ mod tests {
                 .await,
             json!({"ok":true,"value":{"kind":"operations","items":[]}})
         );
+    }
+    #[tokio::test]
+    async fn password_login_rejects_malformed_secrets_before_network_or_persistence() {
+        let mut o = owner();
+        for value in [
+            json!({"version":1,"kind":"account.login.password","username":"test@example.test"}),
+            json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":""}),
+            json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":7}),
+            json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":"x".repeat(1025)}),
+            json!({"version":1,"kind":"account.login.password","username":"bad\naccount","password":"synthetic-password"}),
+        ] {
+            let reply = o.request(value).await;
+            assert_eq!(reply["error"]["code"], "OWNED_CREDENTIALS_INVALID");
+            assert!(!reply.to_string().contains("synthetic-password"));
+            assert!(o.client.is_none());
+            assert!(o.pending.is_none());
+            assert!(o.saved.is_none());
+        }
+        let reply = o.request(json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":"synthetic-password","issuer":"https://evil.test"})).await;
+        assert_eq!(reply["error"]["code"], "MOBILE_INTENT_INVALID");
     }
     #[test]
     fn fresh_approval_requires_actionable_for_approve_but_preserves_explicit_deny() {

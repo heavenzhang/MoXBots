@@ -1,20 +1,21 @@
-# iPhone in-app account login
+# Native account login on iPhone and Android
 
-Task: MOXBOTS-MOBILE-002. The first installed physical-iPhone login failed before reaching an account page (`OWNED_ACCOUNT_UNAVAILABLE`, discovery connection category, 2ms). Installation and process launch had succeeded; this is not a signing failure.
+Task MOXBOTS-MOBILE-002. The installed iPhone signed and launched successfully, but the first account discovery failed (`OWNED_ACCOUNT_UNAVAILABLE`, connection category, 2ms). The attempted system authentication sheet did not meet the user requirement and is superseded by an ordinary native account/password form. It is not accepted as completed login.
 
-The iOS app now presents the existing provider page with `ASWebAuthenticationSession`. This is a system authentication sheet inside the app, not a new native password API. The service exposes PKCE start/callback/poll/cancel/session; credentials are entered only into the existing provider. The original Rust owner validates the authorization origin, owns the verifier, exchanges polling proof and persists the account in Keychain. JavaScript receives only the final closed account/error projection.
+The form uses the same MoXBots account as desktop. It never opens a browser or asks the user to enter the management console. It clears the password UI state on submission; passwords are transient in JavaScript/native memory and neither logged, persisted nor automatically retried. Session credentials, PKCE verifier and device identity remain in the original Rust/OS secure-store owner. The original protocol is extended only with the closed `account.login.password` intent. It validates fields, starts a server-verified Ready transaction, then consumes it through the existing proof-bound poll. An uncertain result does not replay the password.
 
-The provider's HTTPS callback must reach the service to complete code/nonce verification. It is not intercepted as an authentication-session completion URL. With no service change, the system sheet uses the supported nullable callback-scheme initializer and closes only after the original native poll confirms signed-in. See [Apple ASWebAuthenticationSession](https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession) and [RFC8252 section7](https://www.rfc-editor.org/rfc/rfc8252.html#section-7).
+`POST /auth/login/password` is an optional, default-off adapter to the original confidential Dex client and local password connector. It validates signed provider claims with a random nonce and retains the original issuer/sub to principal mapping, network and TTL. Provider secrets/tokens never enter the mobile app. Rate/concurrency limits and strict request/response bounds apply. See [service contract](../mobile-003-native-password-service.md). Running service configuration and deployment are independent required gates; no production capability is inferred from local tests. Existing browser login for other clients is preserved.
 
-A credential-free, nonredirecting, ephemeral HEAD request to the configured public instance endpoint exercises the iOS system network path before raw sockets on first installation. This can expose per-app network access handling; it does not authenticate or replace the Rust descriptor/TLS checks. A network-permission cause is not claimed without physical evidence. No TLS bypass, HTTP login fallback or additional background mode is introduced.
+The iPhone additionally performs a bounded, credential-free, nonredirecting ephemeral HEAD to the configured instance endpoint using system networking. This gives iOS the opportunity to handle per-app network access before the Rust socket request, without relaxing TLS or creating a second identity authority. The cause of the original connection failure remains unconfirmed until actual phone retest. Password submission is gated again on actual foreground dispatch on both platforms.
 
-The native sheet owns a bounded single-flight poll while the app is foregrounded; start and actual owner-queue dispatch also check foreground. Temporary transport failures retain the page until the original deadline. Before opening a delayed page, the deadline is checked again. Explicit cancellation fences late replies and calls the original logout. Only confirmed signed-out releases cancellation; failure preserves the original proof and the JS cancellation quarantine. Module destruction closes local presentation; remote cancellation is not guaranteed after process death.
+## Desktop brand reuse
 
-## Verification
+`mobile/app/assets/moxbots-mark.png`, Android adaptive foreground/monochrome and splash assets reuse the exact canonical `src/renderer/assets/brand/moxbots-icon.png`. The 1024px iOS icon is a deterministic resize/composite of that original mark on opaque white, with no shape redraw or generated alternative. Expo's generic artwork is no longer configured. The native login page uses the same mark. Native generated icon catalogs, installed launcher appearance and splash rendering require a fresh prebuild/package/reinstall.
 
-- Mobile TypeScript, focused ESLint and existing 55 policy cases passed.
-- Swift core typechecks for real-device and simulator SDKs passed. The broader script reached unchanged Rust checks and was interrupted to bound local build concurrency; that Rust check is not reported as passed. CI owns the unchanged-Rust regression gate.
-- Independent source review identified and closed foreground dispatch, transient poll, stale pause callback and pre-presentation expiry defects. No worker operated the user's phone.
-- Full signed build, actual inside-app form, cancel/reopen/background checks and real SSO: pending physical retest.
+## Acceptance status
 
-Android authentication remains the existing external-browser flow in this iPhone-specific repair. No server deployment or new account authority. Full Host, voice and notification acceptance remains separate.
+- Before this change: development signing, real device installation, bundle/version readback and process launch passed. Real login failed and is retained as evidence.
+- Native password source implementation: in progress; focused SDK/service tests and independent UI review underway.
+- Previous policy55/typecheck/lint checks do not prove the new password flow. Current results recorded in task receipt after completion.
+- Physical form, password verification, account persistence, Host session, voice and background notifications: not yet accepted.
+- Server publication follows the existing scoped cloud deployment owner; this mobile task has not changed production or the user's daily desktop.

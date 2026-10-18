@@ -117,6 +117,13 @@ pub(crate) struct OwnedLoginStart {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct OwnedPasswordLoginStart {
+    pub transaction_id: String,
+    pub expires_at: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct OwnedSessionInspection {
     principal_id: String,
     network_id: String,
@@ -228,6 +235,17 @@ async fn raw_request_with_profile(
         )
     })?;
     let status = response.status();
+    // Older servers have no native-password route. This closed failure never
+    // authorizes a session and must not silently open a browser instead.
+    if path == "/auth/login/password"
+        && token.is_none()
+        && matches!(
+            status,
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
+        )
+    {
+        return Err(NetworkError::new("OWNED_PASSWORD_LOGIN_UNAVAILABLE"));
+    }
     // Axum's old JSON extractor can reject the new option with plain-text 422
     // and no cache header. Read no error body and expose only this closed pair
     // of rejection statuses; all successful/authenticated responses remain strict.
@@ -443,6 +461,41 @@ impl OwnedClient {
             expires_at,
             ..started
         })
+    }
+    pub(crate) async fn start_password(
+        &self,
+        device_id: &str,
+        challenge: &str,
+        username: &str,
+        password: &str,
+    ) -> Result<OwnedPasswordLoginStart, NetworkError> {
+        if !uuid(device_id)
+            || challenge.len() != 43
+            || URL_SAFE_NO_PAD.decode(challenge).map(|v| v.len()).ok() != Some(32)
+            || username.is_empty()
+            || username.len() > 256
+            || username.contains(['\r', '\n', '\0'])
+            || password.is_empty()
+            || password.len() > 1024
+            || password.contains('\0')
+        {
+            return Err(NetworkError::new("OWNED_CREDENTIALS_INVALID"));
+        }
+        let (status, value) = raw_request(
+            &self.http, &self.origin, Method::POST, "/auth/login/password",
+            Some(json!({"deviceId":device_id,"pkceChallenge":challenge,"username":username,"password":password})), None,
+        ).await?;
+        if status != StatusCode::OK {
+            return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
+        }
+        let mut started: OwnedPasswordLoginStart =
+            serde_json::from_value(value).map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
+        if !uuid(&started.transaction_id) {
+            return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
+        }
+        started.expires_at =
+            normalize_start_deadline(jsonwebtoken::get_current_timestamp(), started.expires_at)?;
+        Ok(started)
     }
     pub(crate) async fn poll(
         &self,
@@ -1347,6 +1400,102 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn password_start_uses_exact_route_and_closed_response_without_exposing_secret() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        for (status, body, expected) in [
+            (
+                200,
+                json!({"transactionId":uuid::Uuid::new_v4().to_string(),"expiresAt":jsonwebtoken::get_current_timestamp()+180}),
+                None,
+            ),
+            (
+                401,
+                json!({"error":{"code":"OWNED_CREDENTIALS_INVALID"}}),
+                Some("OWNED_CREDENTIALS_INVALID"),
+            ),
+            (
+                503,
+                json!({"error":{"code":"OWNED_PASSWORD_LOGIN_UNAVAILABLE"}}),
+                Some("OWNED_PASSWORD_LOGIN_UNAVAILABLE"),
+            ),
+            (
+                429,
+                json!({"error":{"code":"OWNED_PASSWORD_LOGIN_RATE_LIMITED"}}),
+                Some("OWNED_PASSWORD_LOGIN_RATE_LIMITED"),
+            ),
+            (
+                200,
+                json!({"transactionId":uuid::Uuid::new_v4().to_string(),"expiresAt":jsonwebtoken::get_current_timestamp()+180,"accessToken":"must-not-cross"}),
+                Some("OWNED_LOGIN_INVALID"),
+            ),
+        ] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let device = uuid::Uuid::new_v4().to_string();
+            let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
+            let expected_request = json!({"deviceId":device,"pkceChallenge":challenge,"username":"test@example.test","password":"synthetic-password"});
+            let server = async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                loop {
+                    let mut chunk = [0u8; 2048];
+                    let n = stream.read(&mut chunk).await.unwrap();
+                    assert!(n > 0 && bytes.len() + n <= 8192);
+                    bytes.extend_from_slice(&chunk[..n]);
+                    if let Some(pos) = bytes.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers = std::str::from_utf8(&bytes[..pos]).unwrap();
+                        assert!(headers.starts_with("POST /auth/login/password HTTP/1.1"));
+                        assert!(!headers.to_lowercase().contains("authorization:"));
+                        let count = headers
+                            .lines()
+                            .find_map(|l| {
+                                let (k, v) = l.split_once(':')?;
+                                k.eq_ignore_ascii_case("content-length")
+                                    .then(|| v.trim().parse::<usize>().unwrap())
+                            })
+                            .unwrap();
+                        if bytes.len() >= pos + 4 + count {
+                            assert_eq!(
+                                serde_json::from_slice::<Value>(&bytes[pos + 4..pos + 4 + count])
+                                    .unwrap(),
+                                expected_request
+                            );
+                            break;
+                        }
+                    }
+                }
+                let body = body.to_string();
+                let response = format!("HTTP/1.1 {status} Response\r\nCache-Control: no-store\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len());
+                stream.write_all(response.as_bytes()).await.unwrap();
+            };
+            #[allow(clippy::disallowed_methods)]
+            let http = reqwest::Client::builder()
+                .no_proxy()
+                .timeout(Duration::from_secs(3))
+                .retry(reqwest::retry::never())
+                .build()
+                .unwrap();
+            let client = OwnedClient {
+                origin,
+                http,
+                instance: instance(),
+            };
+            let request = client.start_password(
+                &device,
+                &challenge,
+                "test@example.test",
+                "synthetic-password",
+            );
+            let (_, result) = tokio::join!(server, request);
+            if let Some(expected) = expected {
+                assert_eq!(result.err().unwrap().code, expected);
+            } else {
+                let started = result.unwrap();
+                assert_eq!(started.transaction_id.len(), 36);
+            }
+        }
+    }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()
             .unwrap()

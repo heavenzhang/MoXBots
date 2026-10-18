@@ -35,3 +35,18 @@ Continue MOXBOTS-MOBILE-002: repair the observed physical iPhone login failure a
 ## Next step
 
 - Focused checks/review, build, sign and install without deleting data; exercise actual login/cancel.
+
+## User correction: native password form and desktop logo
+
+The system authentication sheet was built/signed/installed but did not meet the actual requirement; it is superseded, not accepted. The user explicitly requires a native username/password form, no browser handoff or separate management-console login. Phone app/launcher/startup assets must reuse the desktop blue MoXBots logo.
+
+- [x] RN native form, transient password cleared on submission, both-platform foreground gates, original Rust PKCE/Ready/poll/session path.
+- [x] Existing Dex confidential-client password adapter, default-off, random nonce/original signed-claim validation, closed errors, bounded concurrency/rates. No duplicate user/password store.
+- [x] Canonical desktop brand file reused; opaque1024px launcher icon exported, Android adaptive/default artwork replaced.
+- [x] SDK116pass/1ignored +strictClippy; mobile typecheck/lint +policy55pass; independent source/UI review.
+- [x] Backend final targeted10pass and strictClippy; full-service first run192pass/1fail/7ignored (unchanged25ms notification fixture did not receive request before timeout), bounded-concurrency recheck pending.
+- [ ] Fresh native framework/app/prebuild/sign/install and actual input/keyboard/return acceptance.
+- [ ] Actual existing Dex private config and original cloud owner deployment handoff/approval. Committed bootstrap does not enable password grant. No production writes or account/identity changes performed.
+- [ ] Current CI, main delivery, real password sign-in/persistence/Host/voice/notification paths.
+
+Scope dependency: existing cloud service deployment owner is01a12b99-7b38-78b1-831f-9c60257d386a. This task cannot independently deploy its code/config under the committed coordination policy. Ready change and exact release request will be recorded before seeking permission to coordinate that owner.
