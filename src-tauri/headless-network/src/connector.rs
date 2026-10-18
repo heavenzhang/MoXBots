@@ -627,7 +627,6 @@ async fn connect(
         }
         std::future::pending::<()>().await;
     };
-    tokio::pin!(source_publisher);
     let mut ready = false;
     let mut execution_fence: Option<ExecutionFence> = None;
     let management_enabled =
@@ -638,10 +637,10 @@ async fn connect(
     let mut last_server = Instant::now();
     let mut last_ping = Instant::now();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
+    let connection_loop = async {
     loop {
         identity.account.ensure_current()?;
         tokio::select! {
-        _=&mut source_publisher=>{},
         incoming=socket.next()=>{
         last_server=Instant::now();
         match incoming{
@@ -750,6 +749,24 @@ async fn connect(
             }
         }
         }}
+    }
+    };
+    poll_connection_with_source(connection_loop, source_publisher).await
+}
+
+/// Keep the source future progressing while a socket branch awaits the same
+/// private IPC mutex. Both futures remain scoped to this connection; returning
+/// or cancelling the connection immediately drops the source and its locks.
+async fn poll_connection_with_source<C, S>(connection: C, source: S) -> C::Output
+where
+    C: std::future::Future,
+    S: std::future::Future<Output = ()>,
+{
+    tokio::pin!(connection);
+    tokio::pin!(source);
+    tokio::select! {
+        result = &mut connection => result,
+        () = &mut source => connection.await,
     }
 }
 
@@ -1180,6 +1197,56 @@ async fn run_context(
 }
 #[cfg(test)]
 mod tests {
+    #[tokio::test(flavor = "current_thread")]
+    async fn source_progresses_while_connection_waits_for_its_ipc_lock() {
+        let lock = tokio::sync::Mutex::new(());
+        let (started, waiting) = tokio::sync::oneshot::channel();
+        let (release, response) = tokio::sync::oneshot::channel();
+        let source = async {
+            let guard = lock.lock().await;
+            started.send(()).unwrap();
+            response.await.unwrap();
+            drop(guard);
+            std::future::pending::<()>().await;
+        };
+        let connection = async {
+            waiting.await.unwrap();
+            // The source owns the lock before the simulated socket branch
+            // awaits it. That branch wakes the response, requiring the source
+            // to be polled again before this request can complete.
+            assert!(lock.try_lock().is_err());
+            release.send(()).unwrap();
+            let _guard = lock.lock().await;
+            42
+        };
+        assert_eq!(
+            tokio::time::timeout(
+                Duration::from_millis(500),
+                poll_connection_with_source(connection, source),
+            )
+            .await
+            .expect("source must progress while the request waits"),
+            42
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn connection_completion_cancels_source_and_releases_its_lock() {
+        let lock = tokio::sync::Mutex::new(());
+        let (started, waiting) = tokio::sync::oneshot::channel();
+        let source = async {
+            let _guard = lock.lock().await;
+            started.send(()).unwrap();
+            std::future::pending::<()>().await;
+        };
+        let connection = async {
+            waiting.await.unwrap();
+            assert!(lock.try_lock().is_err());
+            "closed"
+        };
+        assert_eq!(poll_connection_with_source(connection, source).await, "closed");
+        assert!(lock.try_lock().is_ok());
+    }
     use super::*;
     #[test]
     fn owned_hello_does_not_advertise_agent_execution_and_join_is_not_replayed() {

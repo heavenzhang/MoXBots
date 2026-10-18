@@ -158,6 +158,7 @@ jobs:
           # Actual original clients, TLS/WSS, Host/SDK and SessionStore; isolated
           # synthetic login and loopback supplier only. No production grants.
           node scripts/verify-mobile-full-host-e2e.mjs
+          node scripts/verify-mobile-full-host-e2e.mjs --assets
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}
