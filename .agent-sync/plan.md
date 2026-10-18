@@ -1,3 +1,7 @@
+## BG-TASK-LOG-001 — 2026-10-18
+
+用户要求修复后台任务行点击无响应，并直接查看状态/执行日志。既有Exact Query/run registry经SessionEngine提供只读受限64KiB日志；任务详情不依赖原工具卡片，终态/断网/记录释放保留已读日志，键盘与窄屏适配。范围及分项验收 `.agent-sync/tasks/codex-bg-task-log-001-20261018-3fcc9f5f.md`、`dev-docs/bg-task-log/acceptance.md`。source/模拟联调/CI/main/原生发行分别追踪；用户明确授权修复验收后发送给既定唯一桌面发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4安排下一未冻结版本。本聊天不重启日常App、不打断活动任务、不改既有冻结包/稳定更新源，无配置或业务数据迁移。
+
 ## Deployment coordination — MOXBOTS-HOST-PUBLICATION-20261018
 
 - **Deployment chat:** `01a12b99-7b38-78b1-831f-9c60257d386a`, exclusively the existing140 HTTPS `/host` static software distribution for the frozen Ubuntu24/x86_64 release below. This is a separate lane from the already closed cloud/101 binary release; no backend/101 re-upgrade, `/download`, updater, desktop, daily Mac or new listener.
@@ -422,5 +426,9 @@ The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when No
 - **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, current unified desktop release owner, solely this static history overlay.
 - **Designation:** User explicitly requested “总结一下更新记录，放到下载页面可以链接查看”. This authorizes a cumulative public history page and a link in the existing download page. It does not authorize candidate installer promotion.
 - **Targets and runbook:** Existing `https://140.143.183.232/download/` index link and embedded `#release-history` section plus its scoped `download.<hash>.css`. Reuse authenticated cloud SSH configuration for this exact static overlay; no updater signing identity is used for website access. Read fresh pointer/index, hold all four existing maintenance locks, back up, copy the live immutable tree, apply only two files, CAS-switch the symlink, verify public navigation, keep owned rollback. Details: `dev-docs/releases/website-release-history.md`.
-- **Current release:** PR131 source/local/independent review and nine applicable CI/main passed; first public standalone HTML path404 was owned-rolled-back. Existing-route inline history fix, independent review, final CI/main and production acceptance tracked separately in the task record. Preserve the live 0.5.6 manual manifest, download scripts and packages; own updater 0.5.11 remains separate. Historical 0.5.10 installer upload-route limitation is not a claim that the candidate was released and remains outside this overlay.
+- **Current release:** Accepted: initial unsupported standalone path404 was owned-rolled-back, then corrected PR135 source1bf1a489 passed nine applicable CI/normal mainbaa1a637. Existing-route `/download/#release-history` two-file overlay is live; normal browser raw hashes and actual desktop/320/390 navigation passed, with independent prepublication review; separate postpublication independent review unavailable due to account usage limit. Final receipts and limits are in the task/release record. Preserve the live 0.5.6 manual manifest, download scripts and packages; own updater 0.5.11 remains separate. Historical 0.5.10 installer upload-route limitation is not a claim that the candidate was released and remains outside this overlay.
 - **Exclusions:** No binary upload/build, stable feed write, desktop operation, Nginx/TLS/auth/Host change, service restart or new permission. Other deployment lanes and their owners remain unchanged.
+
+## MOXBOTS-SESSION-AUDIT-20261018
+
+用户要求梳理未归档会话、跟进已改完未入主干的成果。43个root快照与实际工作树/PR/main交叉核对；组合模型原任务定位到MoXBots自身SDK会话5025b9bb，39文件未提交且仍预览；不可再与已交付PR73主备切换混为一谈。PR133、Host聚合137（吸收129）、mobile136、updater-resume分别由原owner继续；已消息跟进，不冒称完成。PR104七文件blob已与main/v0.5.11相同，避免重复合并。置顶132/网络134已main，下一未冻结候选另验。逐会话证据/下一步见`dev-docs/delivery/session-audit-20261018.md`；本轮不归档聊天、不启动发布、不操作客户端。

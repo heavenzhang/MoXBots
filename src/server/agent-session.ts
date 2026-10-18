@@ -298,6 +298,7 @@ export type {
 } from './builtin-session/types';
 import type { ProviderEnv } from './provider-types';
 export { stripPlaywrightResults } from './builtin-session/transcript-persistence';
+import { extractBackgroundTaskOutputPath } from './builtin-session/background-task-output';
 export { hasBuiltinActivityForUpdate, setUpdateRestartFrozen } from './builtin-session/lifecycle';
 import {
   clearQueryMcpPrewarmOwner,
@@ -306,6 +307,8 @@ import {
   hasQueryBackgroundTask,
   hasQueryBackgroundTasks,
   readQueryBackgroundTasks,
+  readQueryBackgroundTaskDetail,
+  recordQueryBackgroundTaskOutput,
   hasQueryBackgroundWork,
   replaceQueryBackgroundActivity,
   readQueryMcpStatuses,
@@ -7825,6 +7828,16 @@ export function getAgentState(): {
   return { agentDir, sessionState, hasInitialPrompt };
 }
 
+export async function getBuiltinBackgroundTaskDetail(toolUseId: string) {
+  const authority = getCurrentQueryAuthority();
+  if (!authority || authority.productSessionId !== getSessionId()) {
+    return { success: false as const, errorCode: 'BACKGROUND_TASK_NOT_FOUND' };
+  }
+  const result = await readQueryBackgroundTaskDetail(authority, toolUseId);
+  if (authority.productSessionId !== getSessionId()) return { success: false as const, errorCode: 'BACKGROUND_TASK_CHANGED' };
+  return result;
+}
+
 export function getBuiltinWorkProgressSnapshot() {
   return deriveSessionWorkProgress(getBuiltinMessages(), { live: true,
     activeBackground: readQueryBackgroundTasks(lifecycleState.query) });
@@ -12758,7 +12771,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         const taskMsg = sdkMessage as { subtype?: string; task_id?: string; run_id?: string;
           tool_use_id?: string; description?: string; task_type?: string;
           status?: string; summary?: string; output_file?: string;
-          patch?: { status?: string; error?: string; description?: string } };
+          patch?: { status?: string; error?: string; description?: string; end_time?: number } };
         if (taskMsg.subtype === 'task_started' && taskMsg.task_id) {
           const recorded = recordQueryBackgroundTask(activeQuery, taskMsg.task_id, {
             toolUseId: taskMsg.tool_use_id,
@@ -12786,6 +12799,10 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               runId: taskMsg.run_id,
               rich: Boolean(summary.trim() || outputFile),
               toolUseId: taskMsg.tool_use_id,
+              status: status === 'killed' ? 'stopped' : status,
+              finishedAt: taskMsg.patch?.end_time ?? Date.now(),
+              summary,
+              outputPath: outputFile || undefined,
             });
             if (completion.broadcast) {
               broadcast('chat:task-notification', {
@@ -13372,6 +13389,13 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               // SDK priority-now receipts leave the original call running;
               // only its later actual result may settle loading/in-flight state.
               if (isDetachedSdkToolResult(toolUseResultData)) continue;
+              // Register the raw SDK receipt before structured rendering drops its Output path.
+              const backgroundTaskId = toolUseResultData && typeof toolUseResultData === 'object'
+                ? (toolUseResultData as { backgroundTaskId?: unknown }).backgroundTaskId : undefined;
+              const backgroundOutput = extractBackgroundTaskOutputPath(toolResultBlock.content);
+              if (typeof backgroundTaskId === 'string' && backgroundOutput) {
+                recordQueryBackgroundTaskOutput(activeQuery, backgroundTaskId, toolResultBlock.tool_use_id, backgroundOutput);
+              }
               const renderParts = extractSdkToolResultRenderParts(toolResultBlock.content, toolUseResultData);
               const contentStr = renderParts.text;
 

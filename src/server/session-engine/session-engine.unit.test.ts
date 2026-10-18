@@ -112,6 +112,7 @@ const mocks = vi.hoisted(() => {
         : state.builtinTurnIdentity
     )),
     getBuiltinWorkProgressSnapshot: vi.fn(),
+    getBuiltinBackgroundTaskDetail: vi.fn(async () => ({ success: false as const, errorCode: 'BACKGROUND_TASK_NOT_FOUND' })),
     getBuiltinExecutionStartedAt: vi.fn<() => string | undefined>(() => undefined),
     getAgentState: vi.fn<() => Record<string, unknown>>(() => ({ sessionState: 'idle', agentDir: '/workspace' })),
     getBuiltinLiveSessionSnapshot: vi.fn<() => Record<string, unknown> | null>(() => null),
@@ -379,6 +380,7 @@ vi.mock('../agent-session', async () => ({
   getAgentState: mocks.getAgentState,
   getBuiltinExecutionStartedAt: mocks.getBuiltinExecutionStartedAt,
   getBuiltinWorkProgressSnapshot: mocks.getBuiltinWorkProgressSnapshot,
+  getBuiltinBackgroundTaskDetail: mocks.getBuiltinBackgroundTaskDetail,
   isBuiltinWaitingForUser: mocks.isBuiltinWaitingForUser,
   getBuiltinLiveSessionSnapshot: mocks.getBuiltinLiveSessionSnapshot,
   getBuiltinMcpEffectiveSnapshot: mocks.getBuiltinMcpEffectiveSnapshot,

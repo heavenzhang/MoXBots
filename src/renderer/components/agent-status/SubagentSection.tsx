@@ -1,15 +1,9 @@
-// PRD 0.2.17 — Agent Status Panel
-//
-// 展开态的 SUBAGENTS 区：列出活跃 subagent，sync + background 混排，background 加
-// [bg] 徽标区分（PRD D10）。点击行 → 对话流滚动到对应 TaskTool 卡片并高亮（PRD D11）。
-//
-// 跳转交由 Chat 通过 onJumpToTool 注入：ChatScrollController message jump（解决虚拟化卸载）+
-// 二阶段 querySelector 高亮，scope 在 chat container ref（解决多 Tab 同 Session DOM
-// 冲突）。见 Chat.tsx::handleJumpToTool（cross-review C1/C2 修复）。
+// Runtime task rows open a read-only status/log dialog. Original-message
+// navigation remains a secondary action inside that dialog.
 
 import { memo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SuccessIcon, XCircleIcon, StopCircleIcon } from '@/components/icons';
+import { SuccessIcon, XCircleIcon, StopCircleIcon, ChevronRightIcon } from '@/components/icons';
 
 import { SubagentRunningIcon } from './icons';
 import type { SubagentStatus } from './types';
@@ -19,24 +13,27 @@ interface SubagentSectionProps {
   subagents: SubagentStatus[];
   containerRef: React.RefObject<HTMLElement | null>;
   onJumpToTool: (toolId: string) => void;
+  onOpenTask?: (subagent: SubagentStatus) => void;
 }
 
 interface SubagentRowProps {
   subagent: SubagentStatus;
   onJumpToTool: (toolId: string) => void;
+  onOpenTask?: (subagent: SubagentStatus) => void;
 }
 
-function SubagentRow({ subagent, onJumpToTool }: SubagentRowProps) {
+function SubagentRow({ subagent, onJumpToTool, onOpenTask }: SubagentRowProps) {
   const { t } = useTranslation('app');
   const elapsed = useElapsedSeconds(subagent.startedAt, subagent.finishedAt);
 
   const onClick = useCallback(() => {
     if (!subagent.id) return;
-    onJumpToTool(subagent.id);
-  }, [subagent.id, onJumpToTool]);
+    if (onOpenTask) onOpenTask(subagent);
+    else onJumpToTool(subagent.id);
+  }, [subagent, onJumpToTool, onOpenTask]);
 
   // 单行紧凑布局：[●] agentType[后台] description(truncate)…  elapsed
-  // tokens / tool count 在收起单行里省略；用户要细节就跳转到对话流里的 TaskTool 卡片看。
+  // Detail belongs to the dialog, including tasks without a transcript card.
   // 完整 description 走 title 属性 tooltip。
   const titleParts = [
     subagent.agentType,
@@ -49,8 +46,9 @@ function SubagentRow({ subagent, onJumpToTool }: SubagentRowProps) {
     <button
       type="button"
       onClick={onClick}
-      title={tooltip}
-      className="group flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-[var(--paper-inset)]/60"
+      title={`${t('backgroundTask.view')} · ${tooltip}`}
+      aria-haspopup={onOpenTask ? 'dialog' : undefined}
+      className="group flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-[var(--paper-inset)]/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
     >
       {subagent.status === 'running' ? (
         <SubagentRunningIcon />
@@ -81,13 +79,15 @@ function SubagentRow({ subagent, onJumpToTool }: SubagentRowProps) {
           {elapsed}
         </span>
       )}
+      <ChevronRightIcon className="size-3.5 shrink-0 text-[var(--ink-muted)]" />
     </button>
   );
 }
 
 const MemoSubagentRow = memo(SubagentRow);
 
-const SubagentSection = memo(function SubagentSection({ subagents, containerRef: _containerRef, onJumpToTool }: SubagentSectionProps) {
+const SubagentSection = memo(function SubagentSection({ subagents, containerRef: _containerRef, onJumpToTool, onOpenTask }: SubagentSectionProps) {
+  const { t } = useTranslation('app');
   // containerRef 当前留作前向 API 兼容（onJumpToTool 已内部使用 Chat 持有的 ref），
   // 解构出来防止下游 row 重复签名。下划线前缀显式标记暂不使用——保留是为后续 row 内
   // 直接做轻量 DOM 探测（如自己探测是否已 mounted 以跳过 Virtuoso 滚动）留个口子。
@@ -97,7 +97,7 @@ const SubagentSection = memo(function SubagentSection({ subagents, containerRef:
     <div className="py-1.5">
       <div className="flex items-center justify-between px-3 pb-1 pt-0.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
-          SubAgents
+          {t('backgroundTask.tasks')}
         </span>
         <span className="text-xs tabular-nums text-[var(--ink-muted)]">
           {subagents.length}
@@ -106,7 +106,7 @@ const SubagentSection = memo(function SubagentSection({ subagents, containerRef:
       {/* V6: 行间分隔线（subtle，不抢视觉） */}
       <div className="divide-y divide-[var(--line-subtle)]/60">
         {subagents.map(s => (
-          <MemoSubagentRow key={s.id} subagent={s} onJumpToTool={onJumpToTool} />
+          <MemoSubagentRow key={s.id} subagent={s} onJumpToTool={onJumpToTool} onOpenTask={onOpenTask} />
         ))}
       </div>
     </div>
