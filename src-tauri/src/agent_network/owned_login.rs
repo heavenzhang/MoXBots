@@ -115,6 +115,14 @@ pub(crate) struct OwnedLoginStart {
     pub expires_at: u64,
     pub authorization_url: String,
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OwnedSessionInspection {
+    principal_id: String,
+    network_id: String,
+    device_id: String,
+    expires_at: u64,
+}
 pub(crate) enum OwnedPoll {
     Pending,
     Authenticated(OwnedSession),
@@ -324,6 +332,18 @@ impl OwnedClient {
         challenge: &str,
         desktop: bool,
     ) -> Result<OwnedLoginStart, NetworkError> {
+        self.start_with_return_and_clock(device_id, challenge, desktop, || {
+            jsonwebtoken::get_current_timestamp()
+        })
+        .await
+    }
+    async fn start_with_return_and_clock(
+        &self,
+        device_id: &str,
+        challenge: &str,
+        desktop: bool,
+        now: impl Fn() -> u64,
+    ) -> Result<OwnedLoginStart, NetworkError> {
         if !uuid(device_id)
             || challenge.len() != 43
             || URL_SAFE_NO_PAD.decode(challenge).map(|v| v.len()).ok() != Some(32)
@@ -370,14 +390,13 @@ impl OwnedClient {
         }
         let started: OwnedLoginStart =
             serde_json::from_value(value).map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
-        let now = jsonwebtoken::get_current_timestamp();
+        let now = now();
+        let expires_at = normalize_start_deadline(now, started.expires_at)?;
         let authorization = url::Url::parse(&started.authorization_url)
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
         let issuer = url::Url::parse(&self.instance.login_issuer)
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
         if !uuid(&started.transaction_id)
-            || started.expires_at <= now
-            || started.expires_at > now.saturating_add(300)
             || authorization.origin() != issuer.origin()
             || authorization.scheme() != "https"
             || !authorization.username().is_empty()
@@ -387,7 +406,10 @@ impl OwnedClient {
         {
             return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
         }
-        Ok(started)
+        Ok(OwnedLoginStart {
+            expires_at,
+            ..started
+        })
     }
     pub(crate) async fn poll(
         &self,
@@ -459,23 +481,53 @@ impl OwnedClient {
         session: &OwnedSession,
     ) -> Result<(), NetworkError> {
         session.validate(&self.instance)?;
+        let inspected = self.inspect_session(device, &session.access_token).await?;
+        if inspected.principal_id != session.principal_id
+            || inspected.network_id != session.network_id
+            || inspected.expires_at != session.expires_at
+        {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
+        Ok(())
+    }
+    pub(crate) async fn inspect_session(
+        &self,
+        device: &str,
+        token: &str,
+    ) -> Result<OwnedSession, NetworkError> {
+        if !uuid(device)
+            || token.len() != 43
+            || !token
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
         let (status, value) = raw_request(
             &self.http,
             &self.origin,
             Method::GET,
             "/auth/session",
             None,
-            Some(&session.access_token),
+            Some(token),
         )
         .await?;
-        if status != StatusCode::OK
-            || value
-                != json!({"principalId":session.principal_id,
-            "networkId":session.network_id,"deviceId":device,"expiresAt":session.expires_at})
-        {
+        if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_SESSION_INVALID"));
         }
-        Ok(())
+        let inspected: OwnedSessionInspection = serde_json::from_value(value)
+            .map_err(|_| NetworkError::new("OWNED_SESSION_INVALID"))?;
+        if inspected.device_id != device || inspected.network_id != self.instance.network_id {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
+        let session = OwnedSession {
+            access_token: token.to_owned(),
+            expires_at: inspected.expires_at,
+            principal_id: inspected.principal_id,
+            network_id: inspected.network_id,
+        };
+        session.validate(&self.instance)?;
+        Ok(session)
     }
     pub(crate) async fn community_request(
         &self,
@@ -540,6 +592,23 @@ impl OwnedClient {
         Ok(value)
     }
 }
+
+const START_MAX_LIFETIME_SECONDS: u64 = 300;
+const START_CLOCK_SKEW_SECONDS: u64 = 30;
+
+fn normalize_start_deadline(now: u64, expires_at: u64) -> Result<u64, NetworkError> {
+    let max_lifetime = START_MAX_LIFETIME_SECONDS
+        .checked_add(START_CLOCK_SKEW_SECONDS)
+        .and_then(|seconds| now.checked_add(seconds))
+        .ok_or_else(|| NetworkError::new("OWNED_LOGIN_INVALID"))?;
+    let conservative_deadline = now
+        .checked_add(START_MAX_LIFETIME_SECONDS)
+        .ok_or_else(|| NetworkError::new("OWNED_LOGIN_INVALID"))?;
+    if expires_at <= now || expires_at > max_lifetime {
+        return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
+    }
+    Ok(expires_at.min(conservative_deadline))
+}
 fn login_proof(device: &str, transaction: &str, verifier: &str) -> Result<Value, NetworkError> {
     if !uuid(device)
         || !uuid(transaction)
@@ -557,15 +626,161 @@ fn login_proof(device: &str, transaction: &str, verifier: &str) -> Result<Value,
 mod tests {
     use super::*;
 
+    async fn start_response_case(
+        status: u16,
+        no_store: bool,
+        value: Value,
+        now: u64,
+    ) -> Result<OwnedLoginStart, NetworkError> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            loop {
+                let mut chunk = [0u8; 2048];
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0 && bytes.len() + read <= 8192);
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(pos) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&bytes[..pos]).unwrap();
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (key, value) = line.split_once(':')?;
+                            key.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    if bytes.len() >= pos + 4 + content_length {
+                        break;
+                    }
+                }
+            }
+            let cache = if no_store {
+                "Cache-Control: no-store\r\n"
+            } else {
+                ""
+            };
+            let body = value.to_string();
+            let response = format!(
+                "HTTP/1.1 {status} Response\r\n{cache}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance: instance(),
+        };
+        let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
+        let device = uuid::Uuid::new_v4().to_string();
+        let request = client.start_with_return_and_clock(&device, &challenge, true, || now);
+        let (_, result) = tokio::join!(server, request);
+        result
+    }
+
+    async fn session_response_case(
+        instance: OwnedInstance,
+        device: String,
+        token: String,
+        status: u16,
+        no_store: bool,
+        value: Value,
+        snapshot: Option<OwnedSession>,
+    ) -> Result<OwnedSession, NetworkError> {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let expected_token = token.clone();
+        let server = async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            loop {
+                let mut chunk = [0u8; 2048];
+                let read = stream.read(&mut chunk).await.unwrap();
+                assert!(read > 0 && bytes.len() + read <= 8192);
+                bytes.extend_from_slice(&chunk[..read]);
+                if let Some(pos) = bytes.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&bytes[..pos]).unwrap();
+                    let authorization = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (key, value) = line.split_once(':')?;
+                            key.eq_ignore_ascii_case("authorization")
+                                .then(|| value.trim())
+                        })
+                        .unwrap_or_default();
+                    assert!(authorization == format!("Bearer {expected_token}"));
+                    break;
+                }
+            }
+            let cache = if no_store {
+                "Cache-Control: no-store\r\n"
+            } else {
+                ""
+            };
+            let body = value.to_string();
+            let response = format!(
+                "HTTP/1.1 {status} Response\r\n{cache}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            stream.write_all(response.as_bytes()).await.unwrap();
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance,
+        };
+        let request = async {
+            if let Some(snapshot) = snapshot {
+                client
+                    .validate_session(&device, &snapshot)
+                    .await
+                    .map(|()| snapshot)
+            } else {
+                client.inspect_session(&device, &token).await
+            }
+        };
+        let (_, result) = tokio::join!(server, request);
+        result
+    }
+
     #[tokio::test]
     async fn desktop_start_uses_opt_in_and_only_retries_explicit_old_service_rejections() {
         use std::sync::{Arc, Mutex};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        for rejected in [None, Some(400), Some(422), Some(503)] {
+        for (rejected, lifetime) in [
+            (None, 120),
+            (Some(400), 120),
+            (Some(422), 120),
+            (Some(503), 120),
+            // Exercise the actual start response path with a server deadline
+            // one second beyond the client's normal maximum.
+            (None, 301),
+        ] {
             let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
             let captured = seen.clone();
             let transaction = uuid::Uuid::new_v4().to_string();
             let expected_transaction = transaction.clone();
+            let request_now = jsonwebtoken::get_current_timestamp();
+            let server_expiry = request_now + lifetime;
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let origin = format!("http://{}", listener.local_addr().unwrap());
             let expected_requests = if matches!(rejected, Some(400 | 422)) {
@@ -611,7 +826,7 @@ mod tests {
                         (200, "Cache-Control: no-store\r\nContent-Type: application/json\r\n", json!({
                             "transactionId": transaction,
                             "authorizationUrl": "https://login.example.test/dex/auth?state=fixture",
-                            "expiresAt": jsonwebtoken::get_current_timestamp() + 120,
+                            "expiresAt": server_expiry,
                         }).to_string())
                     };
                     let response = format!("HTTP/1.1 {status} Response\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
@@ -633,12 +848,15 @@ mod tests {
             };
             let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
             let device = uuid::Uuid::new_v4().to_string();
-            let request = client.start_desktop(&device, &challenge);
+            let request =
+                client.start_with_return_and_clock(&device, &challenge, true, || request_now);
             let (_, result) = tokio::join!(server, request);
             if rejected == Some(503) {
                 assert!(result.is_err());
             } else {
-                assert_eq!(result.unwrap().transaction_id, expected_transaction);
+                let started = result.unwrap();
+                assert_eq!(started.transaction_id, expected_transaction);
+                assert_eq!(started.expires_at, request_now + lifetime.min(300));
             }
             let seen = seen.lock().unwrap();
             assert_eq!(seen[0]["browserReturnPath"], "/desktop");
@@ -656,6 +874,141 @@ mod tests {
                 assert_eq!(seen[0]["pkceChallenge"], seen[1]["pkceChallenge"]);
             }
         }
+    }
+    #[test]
+    fn start_deadline_allows_bounded_clock_skew_and_clamps_to_client_limit() {
+        let now = 1_000;
+        for lifetime in [300, 301, 330] {
+            assert_eq!(
+                normalize_start_deadline(now, now + lifetime).unwrap(),
+                now + 300
+            );
+        }
+        for lifetime in [0, 331] {
+            assert!(normalize_start_deadline(now, now + lifetime).is_err());
+        }
+        assert!(normalize_start_deadline(now, now - 1).is_err());
+        assert!(normalize_start_deadline(u64::MAX - 100, u64::MAX - 50).is_err());
+    }
+    #[tokio::test]
+    async fn desktop_start_keeps_strict_deadline_schema_url_status_and_no_store_checks() {
+        let now = jsonwebtoken::get_current_timestamp();
+        let base = || {
+            json!({
+                "transactionId": uuid::Uuid::new_v4().to_string(),
+                "authorizationUrl": "https://login.example.test/dex/auth?state=fixture",
+                "expiresAt": now + 120,
+            })
+        };
+
+        let mut expired = base();
+        expired["expiresAt"] = json!(now.saturating_sub(1));
+        let mut over_skew = base();
+        over_skew["expiresAt"] = json!(now + 331);
+        let mut unknown = base();
+        unknown["unexpected"] = json!(true);
+        let mut bad_url = base();
+        bad_url["authorizationUrl"] = json!("https://other.example.test/auth");
+
+        for (status, no_store, value, expected_code) in [
+            (200, true, expired, "OWNED_LOGIN_INVALID"),
+            (200, true, over_skew, "OWNED_LOGIN_INVALID"),
+            (200, true, unknown, "OWNED_LOGIN_INVALID"),
+            (200, true, bad_url, "OWNED_LOGIN_INVALID"),
+            (201, true, base(), "OWNED_LOGIN_INVALID"),
+            (200, false, base(), "OWNED_RESPONSE_INVALID"),
+        ] {
+            let error = start_response_case(status, no_store, value, now)
+                .await
+                .err()
+                .expect("invalid start response must fail");
+            assert_eq!(error.code, expected_code);
+        }
+    }
+    #[tokio::test]
+    async fn inspect_session_requires_exact_authorized_server_snapshot() {
+        let now = jsonwebtoken::get_current_timestamp();
+        let token = "a".repeat(43);
+        let instance = instance();
+        let device = uuid::Uuid::new_v4().to_string();
+        let base = || {
+            json!({
+                "principalId": uuid::Uuid::new_v4().to_string(),
+                "networkId": instance.network_id,
+                "deviceId": device,
+                "expiresAt": now + 600,
+            })
+        };
+
+        let valid = base();
+        let session = session_response_case(
+            instance.clone(),
+            device.clone(),
+            token.clone(),
+            200,
+            true,
+            valid.clone(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert_eq!(session.network_id, instance.network_id);
+        assert_eq!(session.expires_at, now + 600);
+        assert_eq!(session.access_token, token);
+
+        let mut unknown = base();
+        unknown["unexpected"] = json!(true);
+        let mut wrong_device = base();
+        wrong_device["deviceId"] = json!(uuid::Uuid::new_v4().to_string());
+        let mut wrong_network = base();
+        wrong_network["networkId"] = json!(uuid::Uuid::new_v4().to_string());
+        let mut expired = base();
+        expired["expiresAt"] = json!(now.saturating_sub(1));
+        for (status, no_store, value, expected_code) in [
+            (200, true, unknown, "OWNED_SESSION_INVALID"),
+            (200, true, wrong_device, "OWNED_SESSION_INVALID"),
+            (200, true, wrong_network, "OWNED_SESSION_INVALID"),
+            (200, true, expired, "OWNED_SESSION_INVALID"),
+            (201, true, valid.clone(), "OWNED_SESSION_INVALID"),
+            (200, false, valid.clone(), "OWNED_RESPONSE_INVALID"),
+        ] {
+            let error = session_response_case(
+                instance.clone(),
+                device.clone(),
+                token.clone(),
+                status,
+                no_store,
+                value,
+                None,
+            )
+            .await
+            .err()
+            .expect("invalid session inspection must fail");
+            assert_eq!(error.code, expected_code);
+        }
+
+        let mut changed_expiry = valid;
+        changed_expiry["expiresAt"] = json!(now + 601);
+        let stale_snapshot = OwnedSession {
+            access_token: token.clone(),
+            principal_id: changed_expiry["principalId"].as_str().unwrap().to_owned(),
+            network_id: instance.network_id.clone(),
+            expires_at: now + 600,
+        };
+        drop(base);
+        let error = session_response_case(
+            instance,
+            device,
+            token,
+            200,
+            true,
+            changed_expiry,
+            Some(stale_snapshot),
+        )
+        .await
+        .err()
+        .expect("snapshot expiry drift must fail");
+        assert_eq!(error.code, "OWNED_SESSION_INVALID");
     }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()
