@@ -1882,7 +1882,7 @@ function asBuiltinPermissionMode(value: unknown): string | undefined {
 export function resolveWorkspaceConfig(
   agentDir: string,
   sessionMeta?: SessionMetadata | null,
-  options?: { includeMcp?: boolean },
+  options?: { includeMcp?: boolean; includeProviderEnv?: boolean },
 ): WorkspaceResolvedConfig {
   const config = loadConfig();
   // MCP resolution is the expensive part here (walks all agents, intersects
@@ -1890,6 +1890,10 @@ export function resolveWorkspaceConfig(
   // don't need it — the frontend's /api/mcp/set is authoritative — so callers
   // can short-circuit via `{ includeMcp: false }` to skip it entirely.
   const includeMcp = options?.includeMcp !== false;
+  // A Host supervisor selects the original route before a worker exists. It
+  // must not resolve the worker-only credential snapshot (or legacy secrets).
+  // Execution callers keep materializing the environment by default.
+  const includeProviderEnv = options?.includeProviderEnv !== false;
 
   const projects = loadProjects();
   const matchingProjects = projects.filter((p) =>
@@ -2000,7 +2004,7 @@ export function resolveWorkspaceConfig(
     providerId = isConcreteProviderRoute(providerRoute)
       ? providerRoute.providerId
       : sessionMeta?.providerId;
-    providerEnv = isConcreteProviderRoute(providerRoute)
+    providerEnv = !includeProviderEnv ? undefined : isConcreteProviderRoute(providerRoute)
       ? materializeProviderRouteEnv(providerRoute, config)
       : providerId
         ? resolveProviderEnv(providerId, config, sessionMeta?.model)
@@ -2017,25 +2021,25 @@ export function resolveWorkspaceConfig(
         providers: providersForRouteResolution(config),
       });
       providerRoute = isConcreteProviderRoute(route) ? route : undefined;
-      providerEnv = resolveProviderEnv(
+      providerEnv = includeProviderEnv ? resolveProviderEnv(
         providerId,
         config,
         providerRoute?.model,
-      );
+      ) : undefined;
     }
   }
   // Legacy env fallback: once a canonical providerRoute exists, live materialization
   // wins and the old providerEnvJson blob must not override it. Only route-less
   // historical data may still decode providerEnvJson for back-compat.
   // decodeProviderEnvSnapshot still enforces the global disable gate.
-  if (sessionMeta?.providerEnvJson && !isConcreteProviderRoute(providerRoute)) {
+  if (includeProviderEnv && sessionMeta?.providerEnvJson && !isConcreteProviderRoute(providerRoute)) {
     const decoded = decodeProviderEnvSnapshot(
       sessionMeta.providerEnvJson,
       providerId,
       config,
     );
     if (decoded) providerEnv = decoded;
-  } else if (!snapshotOwnsConfig && !providerEnv && agent?.providerEnvJson) {
+  } else if (includeProviderEnv && !snapshotOwnsConfig && !providerEnv && agent?.providerEnvJson) {
     // Backward-compat: legacy sessions without a snapshot fall back to agent's persisted env
     const decoded = decodeProviderEnvSnapshot(
       agent.providerEnvJson as string,

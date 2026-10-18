@@ -104,6 +104,17 @@ impl VerificationKeyCache {
 }
 
 impl AccountVerifier {
+    #[cfg(test)]
+    pub(crate) fn source_fixture(
+        account: NetworkAccountSession,
+        jwks: Value,
+    ) -> Result<Self, NetworkError> {
+        Ok(Self {
+            account,
+            keys: VerificationKeyCache::new(checked_jwks(jwks)?),
+        })
+    }
+
     pub(crate) async fn new(account: NetworkAccountSession) -> Result<Self, NetworkError> {
         let keys = checked_jwks(account.request(AccountOperation::Jwks, None).await?)?;
         Ok(Self {

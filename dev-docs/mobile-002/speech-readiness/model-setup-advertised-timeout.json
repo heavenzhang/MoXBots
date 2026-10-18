@@ -1,0 +1,62 @@
+{
+  "device": "sdk_gphone64_arm64",
+  "sdk": 36,
+  "locale": "zh-CN",
+  "onDeviceRecognitionAvailable": true,
+  "recordAudioPermission": "DENIED",
+  "supportStatus": "ok",
+  "supportDetail": "callback_success",
+  "installedOnDeviceLanguages": [
+    "en-US"
+  ],
+  "pendingOnDeviceLanguages": [],
+  "supportedOnDeviceLanguages": [
+    "de-DE",
+    "es-ES",
+    "fr-FR",
+    "it-IT",
+    "en-AU",
+    "en-GB",
+    "en-IE",
+    "en-SG",
+    "ja-JP",
+    "de-AT",
+    "de-BE",
+    "de-CH",
+    "en-CA",
+    "en-IN",
+    "es-US",
+    "fr-BE",
+    "fr-CA",
+    "fr-CH",
+    "hi-IN",
+    "id-ID",
+    "it-CH",
+    "ko-KR",
+    "pt-BR",
+    "th-TH",
+    "cmn-Hans-CN",
+    "cmn-Hant-TW",
+    "pl-PL",
+    "ru-RU",
+    "tr-TR",
+    "vi-VN"
+  ],
+  "readiness": "unavailable",
+  "negativeStart": {
+    "status": "permission_denied_closed",
+    "errorCode": "MOBILE_SPEECH_PERMISSION_REQUIRED",
+    "startCallbackCount": 1,
+    "stateAfterStart": "idle",
+    "emittedEventCount": 0,
+    "recordingEventObserved": false,
+    "transcriptEventObserved": false
+  },
+  "modelDownloadTriggered": true,
+  "modelSetup": {
+    "triggered": true,
+    "modelLocale": "cmn-Hans-CN",
+    "status": "bounded_wait_expired",
+    "lastProgressPercent": -1
+  }
+}
