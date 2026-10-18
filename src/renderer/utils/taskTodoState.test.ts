@@ -215,6 +215,86 @@ describe('accumulateTaskTodos', () => {
       { id: 'ghost', content: 'recovered', status: 'in_progress', activeForm: 'recovered' },
     ]);
   });
+
+  // Loaded history can arrive without tool inputs (the client projection drops
+  // them once a message must be shrunk). The result is then the only record of
+  // the mutation, and dropping it made every replayed task read as pending.
+  describe('TaskUpdate result fallback when parsedInput is absent', () => {
+    it('applies the confirmed status transition from statusChange.to', () => {
+      const todos = accumulateTaskTodos([
+        create('t1', 'build'),
+        {
+          name: 'TaskUpdate',
+          parsedInput: undefined,
+          result: JSON.stringify({
+            success: true,
+            taskId: 't1',
+            updatedFields: ['status'],
+            statusChange: { from: 'pending', to: 'in_progress' },
+          }),
+        },
+        {
+          name: 'TaskUpdate',
+          parsedInput: undefined,
+          result: JSON.stringify({
+            success: true,
+            taskId: 't1',
+            updatedFields: ['status'],
+            statusChange: { from: 'in_progress', to: 'completed' },
+          }),
+        },
+      ]);
+      expect(todos).toEqual([
+        { id: 't1', content: 'build', status: 'completed', activeForm: 'build' },
+      ]);
+    });
+
+    it('removes a task when the confirmed transition is to deleted', () => {
+      const todos = accumulateTaskTodos([
+        create('t1', 'one'),
+        create('t2', 'two'),
+        {
+          name: 'TaskUpdate',
+          parsedInput: undefined,
+          result: JSON.stringify({
+            success: true,
+            taskId: 't1',
+            updatedFields: ['status'],
+            statusChange: { from: 'pending', to: 'deleted' },
+          }),
+        },
+      ]);
+      expect(todos.map(t => t.id)).toEqual(['t2']);
+    });
+
+    it('still ignores a rejected mutation', () => {
+      const todos = accumulateTaskTodos([
+        create('t1', 'task'),
+        {
+          name: 'TaskUpdate',
+          parsedInput: undefined,
+          result: JSON.stringify({ success: false, taskId: 't1', error: 'not found' }),
+        },
+      ]);
+      expect(todos[0].status).toBe('pending');
+    });
+
+    it('replays a served history slice with no inputs to the true statuses', () => {
+      const served = [
+        { name: 'TaskCreate', parsedInput: undefined, result: JSON.stringify({ task: { id: '1', subject: 'one' } }) },
+        { name: 'TaskCreate', parsedInput: undefined, result: JSON.stringify({ task: { id: '2', subject: 'two' } }) },
+        { name: 'TaskCreate', parsedInput: undefined, result: JSON.stringify({ task: { id: '3', subject: 'three' } }) },
+        { name: 'TaskUpdate', parsedInput: undefined, result: JSON.stringify({ success: true, taskId: '1', updatedFields: ['status'], statusChange: { from: 'pending', to: 'in_progress' } }) },
+        { name: 'TaskUpdate', parsedInput: undefined, result: JSON.stringify({ success: true, taskId: '1', updatedFields: ['status'], statusChange: { from: 'in_progress', to: 'completed' } }) },
+        { name: 'TaskUpdate', parsedInput: undefined, result: JSON.stringify({ success: true, taskId: '2', updatedFields: ['status'], statusChange: { from: 'in_progress', to: 'completed' } }) },
+      ];
+      expect(accumulateTaskTodos(served).map(t => [t.id, t.status])).toEqual([
+        ['1', 'completed'],
+        ['2', 'completed'],
+        ['3', 'pending'],
+      ]);
+    });
+  });
 });
 
 describe('getTaskListSnapshot', () => {
