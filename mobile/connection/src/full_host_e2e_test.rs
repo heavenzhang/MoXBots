@@ -304,7 +304,7 @@ impl Drop for FfiOwner {
     }
 }
 enum FixtureOwner {
-    Direct(MobileConnection),
+    Direct(Box<MobileConnection>),
     Ffi(FfiOwner),
 }
 impl FixtureOwner {
@@ -737,7 +737,7 @@ async fn original_mobile_wss_host_chain() {
             tokio::time::sleep(Duration::from_secs(60)).await;
         }
         let state=root.join("mobile-state");fs::create_dir(&state).unwrap();fs::set_permissions(&state,fs::Permissions::from_mode(0o700)).unwrap();let mut kek=[0u8;32];fs::File::open("/dev/urandom").unwrap().read_exact(&mut kek).unwrap();
-        let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let config=NativeConfig{issuer,public_tls_ca:Some(cert.pem())};let mut owner=if mode=="ffi" {FixtureOwner::Ffi(FfiOwner::new(config,store).await)} else {FixtureOwner::Direct(MobileConnection::new(config,store).unwrap())};
+        let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let config=NativeConfig{issuer,public_tls_ca:Some(cert.pem())};let mut owner=if mode=="ffi" {FixtureOwner::Ffi(FfiOwner::new(config,store).await)} else {FixtureOwner::Direct(Box::new(MobileConnection::new(config,store).unwrap()))};
         ok(owner.request(json!({"version":1,"kind":"account.login.start"})).await);let account=ok(owner.request(json!({"version":1,"kind":"account.login.poll"})).await);assert_eq!(account["state"],"signed-in");
         let host_device=host_ready["deviceId"].as_str().unwrap();
         owner.mount(host_device,false).await;
