@@ -398,6 +398,12 @@ while True: time.sleep(.1)
             self.assertEqual(result["status"]["errorCode"], "NETWORK_TRANSPORT_FAILED")
             self.assertTrue(result["NodeDoctor"]["nodeVersionMatches"] and result["NodeDoctor"]["sdkBinaryPresent"])
             self.assertTrue(result["managementSocket"]["contractMatches"])
+            for code in ("NETWORK_UPGRADE_REJECTED", "NETWORK_HELLO_TIMEOUT", "NETWORK_CONNECTION_TIMEOUT",
+                         "NETWORK_CERTIFICATE_INVALID", "NETWORK_CATALOG_UNAVAILABLE", "CATALOG_NOT_CURRENT",
+                         "NETWORK_METADATA_INVALID", "NETWORK_METADATA_SCOPE_MISMATCH", "NETWORK_PAGE_INVALID",
+                         "DEVICE_NOT_REGISTERED", "CATALOG_CAPACITY"):
+                status["errorCode"] = code
+                self.assertEqual(lab.runtime_readiness_observation()["status"]["errorCode"], code)
             status.update({"state": "SYNTHETIC_CAPABILITY", "errorCode": "SYNTHETIC_CAPABILITY"})
             unknown = lab.runtime_readiness_observation()
         for result in (result, unknown):
