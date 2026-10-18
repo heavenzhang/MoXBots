@@ -288,6 +288,14 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 - **Runbook and exclusions:** 复用官网现有维护锁、备份、不可变 release 目录、symlink CAS 原子切换及选择性回滚。不得改 `/updates/*`、updater manifest/stable、Nginx/TLS、auth、Host、其他网站服务、macOS 下载资产或日常客户端；不扩大权限或中断任务。
 - **Current state:** PR #110 的 Windows 0.5.9 metadata 已经六项常规 CI 通过并正常合入 `main`，合并 SHA 为 `54456225412e892a6ad15704cdf6dc4acffce8e1`；冻结源码、页面文案与移动/桌面本地验收记录见 `.agent-sync/tasks/codex-moxbots-windows-download-20261017.md` 和 `dev-docs/moxbots-059-windows-download.md`。线上页面经正常 TLS 复核仍只有 macOS 0.5.6，Windows 包尚未上传。用户确认本机没有服务器 SSH Host alias，仓库也没有现存部署身份；下一步须先配置安全授权的上传通道，再按既有官网锁、备份、不可变目录和 symlink CAS runbook 发布并复验。GitHub 一日传输 artifact 已过期，本地已校验安装包保存在私有任务工作区。Windows 未签名、自动更新不支持，未作 Windows 安装/运行验收。
 
+### MOXBOTS-WINDOWS-DOWNLOAD-0510 — 2026-10-18
+
+- **Deployment designation:** 用户在当前发布聊天直接要求构建 0.5.10 并发布 Windows 下载；既有桌面发布负责人负责本次官网 Windows 下载页发布。App 源码冻结在 `v0.5.10` / `400b746a4841bab8e4b99d8f83479fd54925c205`。
+- **Targets and limits:** 仅官网 `https://140.143.183.232/download/` 与 `/download/packages/` 不可变 Windows 安装包、内容寻址下载清单及页面引用；保留既有内容，按维护锁、备份、不可变目录与 current-pointer CAS 发布。Windows updater 未实现，页面如实说明不支持；若无 Authenticode 证书，显示 `NotSigned` 与可能的 SmartScreen/Unknown Publisher 提示。
+- **Runbook and exclusions:** 沿用 `services/website/README.md` 和 `.agent-sync/tasks/codex-moxbots-windows-download-20261017.md` 记录的步骤。不得写入 `/updates/*`、更改 updater stable、Nginx/TLS/auth/Host 或操作日常客户端。Updater 私钥仅限 updater，禁止复用为网站写入身份。
+- **Current state:** 0.5.10 专用 `windows-latest` 构建工作流在任务分支准备，源 SHA 固定。网站发布仍缺最小权限上传身份；用户确认没有现成 SSH Host alias，仓库此前也无 Actions 网站部署凭据。身份未配置前只做私有候选包和元数据准备，不声称公开页已发布。
+- **Task record:** `.agent-sync/tasks/codex-moxbots-windows-0510-r2-20261018-45a2522c.md`；证据目录 `dev-docs/windows-0510/`。
+
 - **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`，MoxBots桌面端统一打包负责人。
 - **Designation:** 既定唯一发布owner仍为本聊天。最新用户于2026-10-16在修复聊天`01a1420f-245b-7f22-8a0f-4caaaf31b91b`明确回复“授权发送并安排修复版”；Root实际核读human message`01a142d4-9285-7c93-a968-52d61de5ab7d`，覆盖下一未冻结修复版及任务空闲后启用、不中断任务。原056授权和交付保持其发行记录，不将开发者转述自身当新增授权。
 - **Targets and runbook:** 本次仅既有macOS arm64 MoXBots own updater `https://140.143.183.232/updates/stable/darwin-aarch64.json`、`/srv/moxbots/updates`及其不可变归档/原子stable；流程`scripts/moxbot-updates/README.md`与`release.mjs`。复用原Developer ID、公证profile、正式Reader和自有签名根。允许确认任务空闲、Mac手动解锁且启用前兼容配置备份就绪后，在本机启用新版并验证已有授权账号；不主动停止运行任务。不扩展路径/端口，不部署auth/Host/网站服务，不扩大External Calls/模型权限。
