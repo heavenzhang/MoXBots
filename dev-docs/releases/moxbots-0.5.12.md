@@ -4,11 +4,11 @@ Task: MOXBOTS-0512-UPDATE-RECOVERY-20261018. This is a preparation record; no fr
 
 Planned batch: accepted PR141 stop/admission settlement and PR138 interrupted-download recovery, plus already-main pin/network/background-log changes. All source/main/combined gates must pass before version freeze. User authorized the original source chat to arrange the next unfrozen release through the existing unified desktop publisher. Do not replace0.5.11 with different bytes.
 
-The running0.5.9 installer gate can itself fail; a newfeed does not repair old code. Keep old-version recovery, new candidate native behavior and public distribution acceptance separate. At preparation time, the original source chat owns daily UI for a separately authorized once-only0511 upgrade; this publisher does not interfere.
+The running0.5.9 installer gate can itself fail; a newfeed does not repair old code. Keep old-version recovery, new candidate native behavior and public distribution acceptance separate. The original source chat completed a separately authorized signed manual recovery of the daily app to0.5.11 and released its UI window. That is not a successful old-button A-to-B test. This publisher has no fresh native maintenance window and does not interfere.
 
 | Layer | Current result |
 | --- | --- |
-| Source141/138 | 138 main8e60805e verified;141 normalCI/main pending; not frozen |
+| Source141/138 | 138 main8e60805e verified;141 exact08bc5e9bb being aggregated intoPR143 by explicit source-owner agreement; not frozen |
 | Version/main | Local0.5.12 metadata, sync-version3tests passed; normalCI/main pending |
 | Formal package, Reader, Apple/notary/updater signature | Not started |
 | Real native stop/install, busy/unknown, persistence | Not accepted |
@@ -23,3 +23,9 @@ Root repaired an existingToast timeout leak exposed by141 normalCI: notice timer
 Current source combination includes acceptedGoal pause142 and updater138. Sharedplan append conflict was resolved preserving both owners. Root version/Toast preparation will follow normalCI/main before final stop-fix freeze; no package or native result is inferred.
 
 Combined102 DOM regressions acrossToast/input/Goal/updater passed after absorbing source138/142. Complete normalCI for this preparation PR is still required; source141, formal package and native acceptance remain open.
+
+## Source141 aggregation agreement
+
+The source owner approved merging exact08bc5e9bb58245e5f27ed507123e5c6aae58350b into releasePR143 and transferring only its normalCI/main integration to this publisher. Preserve its ancestry and exact AgentSession/integration-test blobs. Choose the release branch ToastItem effect cleanup and retain both Toast.test.tsx and Toast.lifecycle.test.tsx, including the retained-context late-callback case. The source owner will read-only verify the final main receipt. Its independent continuation featurePR145 stays separate;499PR144 is not accepted solely by a source report. All final gates remain open until recorded results.
+
+Aggregate local regression:168 server/integration and105 DOM tests passed; targeted lint/whitespace passed. Source141 AgentSession/test blobs and both test suites preserved; no native/server publication implied.
