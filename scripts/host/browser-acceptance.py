@@ -79,6 +79,7 @@ NODE = "moxbot-host-test.service"
 CONNECTOR = "moxbot-host-network-test.service"
 AUTH_UNITS = tuple("moxbot-host-network-test-auth-" + action + ".service" for action in ("start", "wait", "cancel"))
 STATUS = Path("/run/moxbot-host-network-test/status.json")
+_BOOTSTRAP_STATE = Path("/var/lib/moxbot-host-test")
 IDENTITY_FILES = [
     Path("/var/lib/moxbot-host-test/host-identity.json"),
     Path("/var/lib/moxbot-host-test/home/.myagents/config.json"),
@@ -173,6 +174,11 @@ def safe_exception_class(error):
 def installer_failure_reason(output):
     # Exact frozen-M phrases only. Never retain the suffix or exception text.
     phrases = {
+        b"Service did not become ready with the expected Node and Claude SDK; rolling back": "Node-install-readiness-rollback",
+        b"Host package installation failed; its installer performed its own rollback": "Host-install-own-rollback",
+        b"Host install failed and prior Host state could not be restored": "Host-rollback-unconfirmed",
+        b"network install failed and Host rollback could not be verified": "Host-rollback-unconfirmed",
+        b"owned network package installation failed; prior Host release and unit were restored": "network-install-prior-Host-restored",
         b"HOST_INSTALL_INCOMPLETE: join/readiness incomplete; identity and login preserved; rerun the same command": "join-or-readiness-incomplete",
         b"HOST_INSTALL_INCOMPLETE: Node Host IPC readiness check failed": "Node-IPC-contract-failed",
         b"HOST_INSTALL_INCOMPLETE: existing connector needs operator attention; inspect network status and rerun after maintenance": "existing-connector-needs-attention",
@@ -390,11 +396,130 @@ def registry_file_observation():
     return observed
 
 
+def startup_contract_observation():
+    """Fixed P bootstrap input metadata only. Never journal, credentials or repair."""
+    import pwd
+    try:
+        node_uid = pwd.getpwnam("moxbot-host-test").pw_uid
+    except KeyError:
+        return {"nodeAccountPresent": False}
+    observed, handles, names = {"nodeAccountPresent": True, "directories": {}}, {}, {}
+
+    def directory(path):
+        fd = os.open(path.anchor, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        safe = True
+        try:
+            for part in path.parts[1:]:
+                parent = os.fstat(fd)
+                sticky = parent.st_uid == 0 and bool(parent.st_mode & stat.S_ISVTX)
+                safe = safe and parent.st_uid in {0, node_uid} and not (stat.S_IMODE(parent.st_mode) & (0o6000 if sticky else 0o7000))
+                safe = safe and (not (parent.st_mode & 0o022) or sticky)
+                next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
+                os.close(fd)
+                fd = next_fd
+            info = os.fstat(fd)
+            value = {"kind": "directory", "canonicalPathMatches": path.resolve(strict=True) == path,
+                     "ancestorsSafe": bool(safe), "expectedNodeUID": info.st_uid == node_uid,
+                     "private700": stat.S_IMODE(info.st_mode) == 0o700}
+            if not all(value[key] for key in ("canonicalPathMatches", "ancestorsSafe", "expectedNodeUID", "private700")):
+                os.close(fd)
+                return value, -1, None
+            entries = set()
+            with os.scandir(fd) as iterator:
+                for entry in iterator:
+                    if len(entries) >= 128:
+                        value["entryLimitExceeded"] = True
+                        return value, fd, None
+                    entries.add(entry.name)  # names remain private, including unknown names
+            return value, fd, entries
+        except Exception:
+            os.close(fd)
+            raise
+
+    def authority_file(name):
+        fd = -1
+        value = {"kind": "unsafe"}
+        try:
+            fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=handles["state"])
+            info = os.fstat(fd)
+            value.update({"expectedNodeUID": info.st_uid == node_uid, "mode600": stat.S_IMODE(info.st_mode) == 0o600,
+                          "singleLink": info.st_nlink == 1})
+            if not stat.S_ISREG(info.st_mode) or info.st_size > 1024 or not all(value[key] for key in ("expectedNodeUID", "mode600", "singleLink")):
+                return value, None
+            raw = os.read(fd, 1025)
+            if len(raw) != info.st_size or len(raw) > 1024:
+                return value, None
+            value["kind"] = "invalidJSON"
+            data = json.loads(raw)
+            value["kind"] = "regular"
+            return value, data
+        except FileNotFoundError:
+            return {"kind": "missing"}, None
+        except Exception:
+            return value, None
+        finally:
+            if fd >= 0:
+                os.close(fd)
+
+    try:
+        paths = {"state": _BOOTSTRAP_STATE, "home": _BOOTSTRAP_STATE / "home",
+                 "registry": _BOOTSTRAP_STATE / "home/.myagents", "workspaces": _BOOTSTRAP_STATE / "workspaces",
+                 "defaultWorkspace": _BOOTSTRAP_STATE / "workspaces/default"}
+        for label, path in paths.items():
+            try:
+                value, fd, entries = directory(path)
+                observed["directories"][label] = value
+                if fd >= 0:
+                    handles[label], names[label] = fd, entries
+            except FileNotFoundError:
+                observed["directories"][label] = {"kind": "missing"}
+            except Exception:
+                observed["directories"][label] = {"kind": "unsafe"}
+        skel = {".bashrc", ".bash_logout", ".profile"}
+        namespace = observed["freshNamespace"] = {}
+        if names.get("state") is not None:
+            namespace["stateEntriesMatchFreshContract"] = names["state"] <= {"home", "host.lock", "workspaces"}
+        if names.get("home") is not None:
+            namespace["homeEntriesMatchFreshContract"] = names["home"] <= skel | {".myagents"}
+            skel_safe = True
+            for name in names["home"] & skel:
+                info = os.stat(name, dir_fd=handles["home"], follow_symlinks=False)
+                skel_safe = skel_safe and stat.S_ISREG(info.st_mode) and info.st_uid == node_uid and info.st_nlink == 1 and not (info.st_mode & 0o022)
+            namespace["skelMetadataMatches"] = bool(skel_safe)
+        for label in ("workspaces", "defaultWorkspace"):
+            if names.get(label) is not None:
+                namespace[label + "Empty"] = not bool(names[label])
+        if names.get("registry") is not None:
+            namespace["registryHasExtraEntry"] = bool(names["registry"] - {"config.json", "projects.json", "agent-config-intent.lock", "projects.json.lock", "config.json.lock"})
+        if "state" in handles:
+            identity_meta, identity = authority_file("host-identity.json")
+            marker_meta, marker = authority_file("registry-bootstrap-v1.json")
+            def canonical_uuid(value):
+                return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", value) is not None
+            identity_ok = (isinstance(identity, dict) and set(identity) == {"hostId", "schemaVersion"}
+                           and type(identity.get("schemaVersion")) is int and identity["schemaVersion"] == 1 and canonical_uuid(identity.get("hostId")))
+            marker_ok = (isinstance(marker, dict) and set(marker) == {"version", "purpose", "hostId", "transaction", "phase"}
+                         and type(marker.get("version")) is int and marker["version"] == 1 and marker.get("purpose") == "host-registry-bootstrap"
+                         and canonical_uuid(marker.get("hostId")) and canonical_uuid(marker.get("transaction"))
+                         and isinstance(marker.get("phase"), str) and marker["phase"] in {"pending", "committed"})
+            identity_meta["schemaMatches"] = bool(identity_ok)
+            marker_meta["phase"] = marker["phase"] if marker_ok else ("missing" if marker_meta["kind"] == "missing" else "invalid")
+            observed.update({"identity": identity_meta, "marker": marker_meta,
+                             "identityMatchesMarker": bool(identity_ok and marker_ok and identity["hostId"] == marker["hostId"])})
+    except Exception:
+        observed["observationUnavailable"] = True
+    finally:
+        for fd in handles.values():
+            os.close(fd)
+    return observed
+
+
 def runtime_readiness_observation():
     """Read-only closed projections; never a Ready gate, start or recovery."""
     if _GUEST:
         return _GUEST.call("runtime-readiness-observation")
-    observed, pids = {"units": {}, "registryFiles": registry_file_observation()}, {}
+    observed, pids = {"units": {}, "registryFiles": registry_file_observation(),
+                      "startupContract": startup_contract_observation()}, {}
     enums = {"LoadState": {"loaded", "not-found", "error", "masked", "bad-setting", "stub", "merged"},
         "ActiveState": {"active", "inactive", "failed", "activating", "deactivating", "reloading", "maintenance", "refreshing"},
         "SubState": {"running", "exited", "dead", "failed", "start", "start-pre", "start-post", "stop", "stop-sigterm", "auto-restart"},
@@ -1179,7 +1304,7 @@ def install_with_browser(private, browser_home, email, password, action, *, diag
             "catalogRequests": hits(counts, "catalog", False), "catalogSuccesses": hits(counts, "catalog"),
             "websocketRequests": hits(counts, "ws", False),
             "websocketUpgrades": sum(n for (route, status, _, _), n in counts.items() if route == "ws" and status == 101)}
-        if action == "authorize":
+        if action in {"authorize", "cancel"}:
             try:
                 snapshot = runtime_readiness_observation()
                 snapshot["seconds"] = round(time.monotonic() - started, 3)
@@ -1188,7 +1313,7 @@ def install_with_browser(private, browser_home, email, password, action, *, diag
                 del history[:-32]
             except Exception:
                 diagnostics["runtimeObservationUnavailable"] = True
-            if child.poll() is not None:
+            if action == "authorize" and child.poll() is not None:
                 try:
                     state = db_snapshot(private)
                     diagnostics["AuthStoreProjection"] = {"sessionCount": len(state["sessions"]), "principalCount": state["principals"],
