@@ -9,6 +9,14 @@ import { createBridgeHandler } from '../src/server/openai-bridge/handler';
 import { ModelFailoverController } from '../src/server/openai-bridge/model-failover';
 
 const streamFailure = process.argv.includes('--stream-failure');
+const stopDuringRetry = process.argv.includes('--stop-during-retry');
+let interruptSdk: (() => Promise<unknown>) | undefined;
+let interruptRequested = false;
+let interruptScheduled = false;
+let stopFence = false;
+let interruptTask: Promise<void> | undefined;
+let interruptCompleted = false;
+const interruptFailures: string[] = [];
 const scratch = await mkdtemp(join(tmpdir(), 'moxbots-failover-native-'));
 let counter = 0;
 let primaryCalls = 0;
@@ -52,6 +60,13 @@ const upstream = createServer(async (req, res) => {
         setTimeout(() => res.destroy(), 25);
         return;
       }
+      if (stopDuringRetry && !interruptScheduled) {
+        interruptScheduled = true;
+        setTimeout(() => {
+          stopFence = true; interruptRequested = true;
+          interruptTask = interruptSdk?.().then(() => { interruptCompleted = true; }).catch(error => { interruptFailures.push(String(error)); });
+        }, 50);
+      }
       res.writeHead(503, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'fixture outage' } }));
     } else message(res, true);
@@ -62,6 +77,8 @@ const upstreamAddress = upstream.address();
 if (!upstreamAddress || typeof upstreamAddress === 'string') throw new Error('No fixture port');
 const base = `http://127.0.0.1:${upstreamAddress.port}`;
 const failover = new ModelFailoverController({ scope: () => 'native-root',
+  // Product Stop marks its existing interrupt owner before awaiting SDK transport cancellation.
+  canRetry: () => !stopFence,
   resolveBackup: () => ({ providerId: 'backup', baseUrl: `${base}/backup`, apiProtocol: 'anthropic', model: 'backup-fixture', apiKey: 'fixture-backup' }),
   onSwitch: () => { switches++; } });
 const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'primary',
@@ -106,20 +123,22 @@ try {
       HTTP_PROXY: '', HTTPS_PROXY: '', ALL_PROXY: '', http_proxy: '', https_proxy: '', all_proxy: '',
     },
   } });
+  interruptSdk = () => run.interrupt();
   let nativeFailed = false;
   try {
     for await (const event of run) {
       if (event.type === 'system' && event.subtype === 'init') nativeSessionId = event.session_id;
       if (event.type === 'result') results.push(event);
     }
-  } catch (error) { nativeFailed = true; if (!streamFailure) throw error; } finally { run.close(); }
+  } catch (error) { nativeFailed = true; if (!streamFailure && !stopDuringRetry) throw error; } finally { if (stopDuringRetry && interruptTask) await interruptTask; run.close(); }
   assert.equal(counter, 1);
-  assert.equal(primaryCalls, streamFailure ? 2 : 3); // first tool, then two availability failures
-  assert.equal(backupCalls, streamFailure ? 0 : 1);
-  assert.equal(switches, streamFailure ? 0 : 1);
-  if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
+  assert.equal(primaryCalls, streamFailure || stopDuringRetry ? 2 : 5); // first tool, then initial availability failure plus three retries
+  assert.equal(backupCalls, streamFailure || stopDuringRetry ? 0 : 1);
+  assert.equal(switches, streamFailure || stopDuringRetry ? 0 : 1);
+  if (stopDuringRetry) { assert(interruptRequested); assert(interruptCompleted); assert.equal(interruptFailures.length, 0); }
+  else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, streamFailure, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

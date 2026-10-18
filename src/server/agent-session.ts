@@ -1782,8 +1782,8 @@ async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<Up
  * subprocess that will see a (possibly different) URL.
  */
 function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): void {
-  const failoverEnabled = (loadAdminConfig().modelFailover as { enabled?: boolean } | undefined)?.enabled === true
-    && sessionApiFailoverEligible(configState.currentProviderEnv);
+  // Safe pre-delivery primary retries do not depend on configuring a backup.
+  const failoverEnabled = sessionApiFailoverEligible(configState.currentProviderEnv);
   const contextRecoveryEnabled = contextRecoveryApiRoute(configState.currentProviderEnv);
   if (configState.currentProviderEnv?.apiProtocol !== 'openai'
     && !failoverEnabled && !contextRecoveryEnabled) {
@@ -1811,13 +1811,12 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
   if (!activeSessionBridgeToken) {
     activeSessionBridgeToken = randomUUID();
     const token = activeSessionBridgeToken;
+    const productSessionId = sessionId;
+    const routeIdentity = () => JSON.stringify([configState.currentProviderEnv?.providerId,
+      configState.currentProviderEnv?.baseUrl, configState.currentModel]);
+    const isCurrent = () => activeSessionBridgeToken === token && sessionId === productSessionId
+      && !lifecycleState.abortRequested;
     if (contextRecoveryEnabled) {
-      const productSessionId = sessionId;
-      const routeIdentity = () => JSON.stringify([configState.currentProviderEnv?.providerId,
-        configState.currentProviderEnv?.baseUrl, configState.currentModel]);
-      const route = routeIdentity();
-      const isCurrent = () => activeSessionBridgeToken === token && sessionId === productSessionId
-        && route === routeIdentity() && !lifecycleState.abortRequested;
       const nativeHistoryId = getCurrentProductSessionMetadata()?.sdkSessionId ?? productSessionId;
       let initialLedger: unknown;
       try { initialLedger = loadBuiltinContextLedger(productSessionId, nativeHistoryId); }
@@ -1827,6 +1826,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         persistLedger: ledger => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent),
         scope: () => getCurrentTurnSourceItem()?.id,
         isActive: isCurrent,
+        requestIdentity: routeIdentity,
         canRecover: () => !hasBuiltinBackgroundWork(),
         backup: (body, metadata) => archiveBuiltinContextRequest(productSessionId, body, metadata, isCurrent),
         onRecovery: () => {
@@ -1837,8 +1837,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
     }
     if (failoverEnabled) {
       activeSessionModelFailover = createSessionModelFailover({
-        isLive: () => activeSessionBridgeToken === token && !lifecycleState.abortRequested
-          && (sessionState === 'running' || sessionState === 'starting'),
+        isLive: isCurrent,
+        canRetry: () => !builtinInterrupt.isInterrupting()
+          && activeSessionContextRecovery?.canRetryInference() !== false,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => ({ env: configState.currentProviderEnv, model: configState.currentModel ?? '',
           turnId: getCurrentTurnSourceItem()?.id }),
@@ -9342,11 +9343,9 @@ export async function enqueueUserMessage(
   );
   const nextModel = model ?? configState.currentModel;
   const modelChanged = !isSessionBusy && model !== undefined && model !== configState.currentModel;
-  // Apply a global opt-in change only at this existing idle configuration
-  // boundary. A pre-warmed Anthropic Query has its endpoint baked into env.
+  // API inference recovery is Query-owned even when no backup is selected.
   const failoverBridgeChanged = !isSessionBusy && !hasBuiltinBackgroundWork()
-    && ((loadAdminConfig().modelFailover as { enabled?: boolean } | undefined)?.enabled === true
-      && sessionApiFailoverEligible(effectiveProviderEnv)) !== !!activeSessionModelFailover;
+    && sessionApiFailoverEligible(effectiveProviderEnv) !== !!activeSessionModelFailover;
   const crossesProviderHistoryBoundary = !isSessionBusy
     && (providerChanged || modelChanged)
     && !canResumeAcrossBuiltinProviderHistory({
