@@ -40,10 +40,16 @@ The existing descriptor and login poll response are strict contracts; renewal mu
 - [x] Full service suite: 159 passed, 0 failed, 5 manual browser fixtures ignored by their original test configuration.
 - [x] Headless clippy redlines passed. A pre-existing argument-count warning was then removed using four closed request profiles with unchanged limits; all 183 headless tests passed again and independent source review confirmed equivalent behavior.
 - [x] Final headless and service clippy `--all-targets -- -D warnings` passed.
-- [ ] Exact-head CI and remote main integration.
-- [x] Independent source review of the login/API and service compatibility change passed after repairing the 401 contract; this is not acceptance of the separate renewal implementation.
-- [ ] Single renewal implementation, independent security review and combined tests.
+- [x] Login exact-head625 CI (Test39087732715 / Owned39087732694), all seven checks; PR118 normally merged into remote main e87654fbdf050157b2f50b620fe7e0f69e7cd6cc.
+- [x] Independent source review of the login/API and service compatibility change passed after repairing the 401 contract; the separate renewal source was subsequently accepted by primary and independent review at8cdeac561.
+- [x] Single renewal source8cdeac561, primary and independent security review, real-key positive recovery plus three foreign-scope rejection cases; Host191/service166 with5 existing ignored, strict all-targets Clippy. PR119 final CI/main and actual101 acceptance remain separate.
 - [ ] Remote main integration with exact-head required CI and ancestry/tree verification.
 - [ ] Unified owner deployment with fresh backup/rollback, identity preservation, actual renewal, disconnect/restart recovery and Bots Ready verification.
 
 These pending gates are not acceptance claims. Main delivery does not update the installed daily Mac client.
+
+## Main receipt and joint continuation (2026-10-18)
+
+PR118 merged normally with exact head62515eaa39df1763a77141670afa2c8899f4f8c6 after all seven checks succeeded. Remote main e87654fbdf050157b2f50b620fe7e0f69e7cd6cc has parents b6c6d352/62515eaa and tree bae916c5be1142ed0d08725150db4d1c702af216, identical to the independently verified merge preview. Node24 combined Auth/Goal/Todo DOM116 and full typecheck passed; the concurrent Goal UI did not change auth/Host/service Rust.
+
+The authentication task remains in-progress. PR119 must deliver the combined renewal source through its own gates. The unified deployment owner then schedules the compatible cloud plus original101 connector maintenance separately from the frozen desktop/Windows/public-installer batch. Preserve original identity/Node/configuration/finite grants, use one formal same-account authorization for the expired session, and independently verify actual login, Bots Ready, renewal/reconnect/restart and later natural24-hour observation. No production or daily Mac action is implied by this source receipt.

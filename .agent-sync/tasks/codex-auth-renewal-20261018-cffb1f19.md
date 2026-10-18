@@ -16,10 +16,11 @@
 - [x] 截图和只读日志定位：0.5.9 owned login start返回OWNED_LOGIN_INVALID；通知SPACE_*错误分开。101原connector83e48946为ACCOUNT_SESSION_EXPIRED，Host本体正常。
 - [x] 真实HTTPS六次start/cancel复现TTL300/本地301钟差拒绝，未登录/入网；修复回归与交付另行记录。
 - [x] 原owner登录修复/严格inspect_session及270s服务兼容，PKCE/设备/信任/取消/迟到边界回归，独审401映射缺口修复后源审通过；生产状态独立。
-- [ ] 设计并实现可撤销、原设备绑定、持久化/并发/重放安全的自动续期，不能用延长TTL、明文密码计划任务或复制Mac token替代。
-- [ ] Host bounded重连/续期/进程重启恢复、断网/撤销/过期/崩溃窗口回归通过，原管理binding及身份不被替换。
+- [x] 设计并实现可撤销、原设备绑定、持久化/并发/重放安全的自动续期，不能用延长TTL、明文密码计划任务或复制Mac token替代。
+- [x] Host bounded重连/续期/进程重启恢复、断网/撤销/过期/崩溃窗口回归通过，原管理binding及身份不被替换。
 - [ ] 定向测试、完整相关回归、独立安全审查、UI/隔离原生及真实协议联调通过；代码/模拟/真实分别记证据。
-- [ ] 同步最新main、exact-head CI、正常PR合入、核remote ancestry/tree。
+- [x] 登录PR118 exact625七CI通过、正常合入远端main e87654fbdf050157b2f50b620fe7e0f69e7cd6cc；parent b6/625与合并tree bae916c5be1142ed0d08725150db4d1c702af216已核实。
+- [ ] 联合续期PR119最终CI/main与实际部署验收（不能由PR118替代）。
 - [ ] 唯一操作owner核101空闲/锁/备份，部署已验候选、验真续期/断线/重启/目录ready和保全；不动日常Mac、不扩大模型权限。
 
 ## Completed
@@ -28,7 +29,7 @@
 
 ## Verification
 
-工作区 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-auth-renewal；原101 device cc8fc885-529b-43e9-8a58-ee7c5f2a4c58 / principal ea1e144e-a432-48c0-bf5a-cf29d3da3b56。现PID1921064，旧MyAgents两个PID未变。只读证据存项目pointer output/auth-renewal-20261018；秘密仅留既有私有凭据owner，不打印或入Git。登录/API定向7和headless全183通过，主Agent独立重跑定向7通过；server start兼容/PKCE2、全service159通过/5手动fixture按原配置ignored；headless clippy redlines通过，封闭request profile清除原9参warning后183再通过，headless+service strict clippy -D warnings均通过，exact-head CI仍进行；独审401错误合同已修并通过复审。现有network-install30、network-control-daemon6、unified-install11共47测试通过；useOwnedLoginFlow16+OwnedAccountEntry22共38通过；无新制品/部署/真实账号登录通过声明。详细决策和证据见dev-docs/auth-renewal-20261018.md。
+工作区 /Users/zhangshaohua/Documents/Codex/2026-10-18/moxbots-auth-renewal；原101 device cc8fc885-529b-43e9-8a58-ee7c5f2a4c58 / principal ea1e144e-a432-48c0-bf5a-cf29d3da3b56。现PID1921064，旧MyAgents两个PID未变。只读证据存项目pointer output/auth-renewal-20261018；秘密仅留既有私有凭据owner，不打印或入Git。登录/API定向7和headless全183通过，主Agent独立重跑定向7通过；server start兼容/PKCE2、全service159通过/5手动fixture按原配置ignored；headless clippy redlines通过，封闭request profile清除原9参warning后183再通过，headless+service strict clippy -D warnings均通过，登录exact625七CI全绿并由PR118交main e87654fb；独审401错误合同已修并通过复审。现有network-install30、network-control-daemon6、unified-install11共47测试通过；useOwnedLoginFlow16+OwnedAccountEntry22共38通过；无新制品/部署/真实账号登录通过声明。详细决策和证据见dev-docs/auth-renewal-20261018.md。
 
 ## Deployment coordination
 
@@ -36,8 +37,10 @@
 
 ## Blockers and unknowns
 
-当前AuthStore无refresh，24h到期需一次正式认证后建立后续续期；存在并行实现，已协调互斥且不重复生产操作。独立安全审查已拒绝同bearer无限延期，唯一续期owner接受原AuthStore内轮换opaque token；需对实际新代码确认原session_handle/binding、撤销/未知结果及旧token失效；真实迁移、生产续期和断线恢复仍未完成。日常Mac操作与更新明确排除。
+101既有session已到期，必须一次正式认证后建立后续续期，不能复活旧token。唯一续期实现8cdeac561已由主Agent和独立审阅接受，Host191/service166（5既有ignored）与严格Clippy通过；实际读日志确认真实key恢复fixture。PR119最终组合CI/main及真实迁移、生产续期和断线恢复仍未完成。日常Mac操作与更新明确排除。
 
 ## Next step
 
-已复现服务端合法TTL300但时钟差+1导致本地301被拒绝；login_diagnosis_1018仅修改owned_login.rs（有界30s误差并clamp本地有效期≤300s、严格inspect_session）。主Agent独占server.rs start，将实际/advertised登录事务上限保守缩为270s以兼容旧版且不需更新日常Mac；不扩大短TTL/账号TTL，配套服务仍待统一owner部署。Host续期复用并行MOXBOTS-HOST-ONBOARD-001唯一实现（worktree moxbots-host-onboard，AuthStore/network_http/connector/account/transport），不写重叠文件；主Agent联合安全评审与验收。先交登录修复与严格inspect_session主干，续期方吸收后跑组合CI/真实部署。
+登录修复已交远端main，唯一续期owner完成PR119最终门禁及主干交付后，由统一部署聊天协调兼容cloud与101 connector的串行维护窗口；不需等待无关桌面/Windows/公网installer发行，但不能跳过实际source/CI/备份/授权。保留原Host/Node/有限grants，由本认证聊天独立核实际网页登录、101 Ready/恢复及后续自然24h；整个task仍in-progress，不把源码合入当生产通过。
+
+登录组合证据：main b6 Goal/Todo与625合并tree bae916c5be1142ed0d08725150db4d1c702af216，Node24隔离组合DOM116与完整typecheck通过；Test39087732715及Owned39087732694共7项成功。PR118已更新最终主干回执。
