@@ -659,6 +659,24 @@ describe('TabProvider session activity ownership', () => {
     expect(tab!.historyMessages[0].deliveryStatus).toBeUndefined();
   });
 
+  it('sends an exact continuation condition in the original Session without a question reply', async () => {
+    tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
+    function CaptureContinuation() {
+      const state = useTabState();
+      return <button onClick={() => { void state.sendMessage('continue', undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, 'exact-old-turn'); }}>continue exact turn</button>;
+    }
+    render(<TabProvider tabId="continue-wire" agentDir="/tmp/workspace" sessionId="pending-continuation" claimSessionOpeningTransition={allowSessionOpening}><CaptureContinuation /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId: 'pending-continuation', transcriptFormat: 2, sessionState: 'idle' });
+    fireEvent.click(screen.getByRole('button', { name: 'continue exact turn' }));
+    await waitFor(() => expect(tauriHarness.proxyFetch).toHaveBeenCalled());
+    const sent = tauriHarness.proxyFetch.mock.calls.find(([url]) => String(url).endsWith('/chat/send'));
+    const payload = JSON.parse(String(sent?.[1]?.body));
+    expect(payload).toMatchObject({ sessionId: 'pending-continuation', text: 'continue', continueFromTurnId: 'exact-old-turn' });
+    expect(payload.asyncQuestionReply).toBeUndefined();
+  });
+
   it.each(['echo-first', 'canonical-first'] as const)(
     'shows a send before HTTP admission and adopts it once with %s V2 events', async order => {
       const sessionId = 'pending-immediate-send';

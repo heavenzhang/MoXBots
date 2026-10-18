@@ -20,6 +20,7 @@ import {
   updateExternalRuntimeConfig,
 } from "../runtimes/external-session";
 import { prepareDesktopQuery } from "./query-reminder";
+import { prepareContinuationAdmission } from './continuation-admission';
 import { createBuiltinSessionEngine } from "./builtin-adapter";
 import { createExternalSessionEngine } from "./external-adapter";
 import { createDshSessionEngine } from "../integrated-runtimes/dsh/adapter";
@@ -73,8 +74,21 @@ function queryFacade(engine: SessionEngine): SessionEngine {
     ...engine,
     sendDesktopMessage: (request) =>
       withExecutionAdmission(async () => {
+        const continuation = prepareContinuationAdmission(engine, request);
+        if (continuation && !continuation.accepted) return continuation.result;
         const prepared = await prepareDesktopQuery(request);
+        // Query preparation may await discovery/config IO. Do not let an
+        // obsolete click enter the queue while another source starts work.
+        if (continuation?.accepted) {
+          const rejected = continuation.revalidateEntry();
+          if (rejected) return rejected;
+          prepared.request = { ...prepared.request, beforeDispatch: continuation.guard };
+        }
         const result = await engine.sendDesktopMessage(prepared.request);
+        if (continuation?.accepted && result.success && result.dispatchAcceptance) {
+          const receipt = await result.dispatchAcceptance;
+          if (!receipt.accepted) return continuation.rejection(receipt.error);
+        }
         return {
           ...result,
           ...(prepared.needsReselect
