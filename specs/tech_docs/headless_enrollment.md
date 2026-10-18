@@ -31,3 +31,19 @@ myagents-host-network <auth-start|auth-wait|auth-cancel|run|status>
 ## 验收边界
 
 CI 独立编译并检查依赖不含 Tauri/GTK/keyring/Secret Service，执行关键账号状态、协议就绪与安装安全测试；这些结果不能证明官方服务接入。真实验收需要 Linux systemd、用户浏览器授权、桌面同账号设备目录、在线状态及重启恢复证据。Provider 配置和模型执行后置，不将其未配置当作入网失败；新增远程 Host 管理仍须正式协议与服务端支持。
+
+## Owned Host 一键安装与续期（MOXBOTS-HOST-ONBOARD-001）
+
+本节扩展现有 owned adapter，不修改官方协议包或新增授权 owner。首版仅 Ubuntu 24.04 / x86_64 / glibc / systemd，安装事务复用 `scripts/host/unified-install.py`，公开组合包准备与消费见 [Host installer runbook](../../scripts/host/README.md)。只支持系统正常信任的 HTTPS；不把桌面私有 CA 误当成干净服务器已有的信任，也不提供忽略证书验证的命令。
+
+`/host/stable.json` 提供严格、有限大小的同源分发索引。正式同 SHA Host/connector 制品准备完成并经统一发布 owner 发布后，renderer 才能从 Rust 的固定 owned issuer 查询到 available 命令。索引、bootstrap、组合包及内部文件逐层核 source/profile/platform/size/SHA；HTTPS 与摘要提供来源传输及完整性，不宣称发行签名。候选准备不是发布。
+
+一次安装命令串联安装、浏览器正式授权、同 principal 校验、显式 join、系统自启和 Ready 检查。账号 Token 不进入命令、Node 或 renderer。原加密账号/设备身份/既有 grant 保留；已存在 grant 时，浏览器返回其他 principal 必须在账号发布前拒绝。没有模型/执行配置仍可作为空目录 Host 入网，不自动授予有限 Bot 执行或模型访问。
+
+Linux 引导取消人工安装/登录勾选，复制命令成功后在五分钟内串行读取设备与 callable 目录。完整安装前基线用于避免误认已在线设备；名称与 ID 可明确选定目标。当前账号/网络、auth generation 或连接状态改变使旧响应失效；单纯目录 revision 不重置安装等待。设备 Ready 与实际模型执行分开呈现。
+
+会话续期走现有设备 access/DPoP admission 与原 AuthStore 事务。长期在线不能无限延长同一个人类 bearer：客户端先在原加密 owner CAS 保存候选，服务端轮换原 session 的 token hash 并延长有效期，session handle、设备 key、local binding 保持。旧 bearer 对所有 AuthStore.validate 路径立即失效；有限 Bot/model grant 不随之延长。未知响应与重启通过候选的真实服务端 session 和同设备 PoP 身份确认后采用；不得猜有效期、复活已过期/撤销会话或隐式重入网。
+
+连接器按首次可信快照固定续期时间：提前量取 900–960 秒与当时剩余有效期一半的较小值，至少保留 1 秒机会；跨重连与后续 jitter 不重置，服务端有效期变化后重新计算。重试退避从请求完成时计算，不延长原 expiry。已到期的调度在公开新 Ready epoch 和消费 join grant 之前处理；新建短会话不会刚 Ready 就触发轮换。轮换会重建连接快照，已发送的业务写入不得自动重放，只走原有回执恢复。通知发布只读该连接的账户快照，不参与 pending candidate 的恢复或采用。
+
+实现与测试、隔离 Linux、主干、正式制品及生产验收分别记录在 [acceptance](../../dev-docs/host-onboard-001/acceptance.md)。本任务不操作日常 Mac，发布由统一部署聊天负责。

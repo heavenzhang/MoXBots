@@ -510,6 +510,98 @@ struct ManagementRuntime<'a> {
 struct ConnectionFeatures<'a> {
     management: Option<ManagementRuntime<'a>>,
     execution: &'a Option<Arc<BotExecution>>,
+    renewal: &'a mut SessionRenewalSchedule,
+    projection: PolicyProjection<'a>,
+}
+type PolicyProjection<'a> = Option<&'a (dyn Fn() -> Result<(), NetworkError> + Sync)>;
+/// Per-run bounded scheduling survives reconnects. A failed/unknown response
+/// leaves the old expiry untouched and never immediately retries a mutation.
+#[derive(Default)]
+struct SessionRenewalSchedule {
+    observed_expiry: Option<u64>,
+    due_at: u64,
+    next_attempt: u64,
+    failures: u32,
+}
+impl SessionRenewalSchedule {
+    fn due(&mut self, expires_at: u64, now: u64, jitter: u16) -> bool {
+        if self.observed_expiry != Some(expires_at) {
+            // Arm once from the admitted snapshot. A fresh short-lived account
+            // must not rotate immediately after becoming visible as Ready.
+            // Keep this deadline across reconnects and jitter samples; only a
+            // different authoritative expiry arms a new window.
+            let lead = (900 + u64::from(jitter % 61))
+                .min((expires_at.saturating_sub(now) / 2).max(1));
+            self.observed_expiry = Some(expires_at);
+            self.due_at = expires_at.saturating_sub(lead);
+        }
+        now < expires_at
+            && now >= self.next_attempt
+            && now >= self.due_at
+    }
+    fn attempted(&mut self, now: u64, jitter: u16, success: bool, remaining: u64) {
+        self.failures = if success {
+            0
+        } else {
+            self.failures.saturating_add(1)
+        };
+        let delay = if success {
+            (remaining / 4).clamp(15, 60)
+        } else {
+            15u64
+                .saturating_mul(1 << self.failures.min(4))
+                .min((remaining / 2).max(5))
+        };
+        self.next_attempt =
+            now.saturating_add(delay.min(300) + u64::from(jitter % 16).min(remaining / 4));
+    }
+    async fn renew_if_due(
+        &mut self,
+        connection: &crate::owned::Connection,
+        identity: &NetworkIdentity,
+        transport: &NetworkTransport,
+    ) -> Result<(), NetworkError> {
+        let NetworkAccountSession::Owned(account) = &identity.account else {
+            return Ok(());
+        };
+        let now = jsonwebtoken::get_current_timestamp();
+        let id = uuid::Uuid::new_v4();
+        let jitter = u16::from_le_bytes([id.as_bytes()[0], id.as_bytes()[1]]);
+        if !self.due(account.session.expires_at, now, jitter) {
+            return Ok(());
+        }
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            connection.renew_session(identity, transport),
+        )
+        .await;
+        let finished_at = jsonwebtoken::get_current_timestamp();
+        self.attempted(
+            finished_at,
+            jitter,
+            matches!(&result, Ok(Ok(_))),
+            account.session.expires_at.saturating_sub(finished_at),
+        );
+        match result {
+            Ok(Ok(true)) => Err(NetworkError::new("OWNED_SESSION_RENEWED")),
+            Ok(Err(error))
+                if [
+                    "ACCOUNT_BINDING_CHANGED",
+                    "OWNED_REAUTH_REQUIRED",
+                    "OWNED_SESSION_INVALID",
+                    "SESSION_REAUTH_REQUIRED",
+                    "ACCOUNT_SESSION_EXPIRED",
+                    "OWNED_INSTANCE_TRUST_CHANGED",
+                    "NETWORK_TRUST_CHANGED",
+                ]
+                .contains(&error.code.as_str()) =>
+            {
+                Err(error)
+            }
+            // Unknown responses retain the candidate and original deadline.
+            _ => Ok(()),
+        }
+    }
 }
 async fn connect(
     owner: &Owner,
@@ -522,6 +614,7 @@ async fn connect(
 ) -> Result<(), NetworkError> {
     let management = features.management;
     let execution = features.execution;
+    let renewal = features.renewal;
     let account = if let Some(owned) = owned {
         owned
             .account(join_authorized.load(Ordering::Acquire))
@@ -531,6 +624,9 @@ async fn connect(
         official.upsert_device().await?;
         NetworkAccountSession::Official(official)
     };
+    if let Some(project) = features.projection {
+        project()?;
+    }
     if let Some(runtime) = management {
         runtime.binding.verify()?;
         require_captured_binding(account.binding_id(), runtime.binding.account_binding())?;
@@ -545,6 +641,11 @@ async fn connect(
         memory.clone(),
         identity.account.public_tls_ca(),
     )?);
+    if let Some(connection) = owned {
+        // If a previously armed deadline arrived while disconnected, finish
+        // rotation before advertising a new epoch or consuming the join grant.
+        renewal.renew_if_due(connection, &identity, &transport).await?;
+    }
     if let NetworkAccountSession::Owned(account) = &identity.account {
         // One operator grant belongs to this run, not each reconnect.
         let grant = consume_join_grant(join_authorized, &account.join_authorized);
@@ -639,7 +740,26 @@ async fn connect(
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let connection_loop = async {
     loop {
-        identity.account.ensure_current()?;
+        if let Err(error) = identity.account.ensure_current() {
+            // A lost response may cross the old local deadline. Only a pending
+            // candidate for this exact captured credential may recover via
+            // live server inspection and existing PoP, never a new login.
+            let recovered = match owned {
+                Some(connection)
+                    if ["OWNED_SESSION_INVALID", "ACCOUNT_SESSION_EXPIRED"]
+                        .contains(&error.code.as_str()) =>
+                {
+                    connection
+                        .recover_expired_snapshot(&identity.account)
+                        .await?
+                }
+                _ => false,
+            };
+            if recovered {
+                return Err(NetworkError::new("OWNED_SESSION_RENEWED"));
+            }
+            return Err(error);
+        }
         tokio::select! {
         incoming=socket.next()=>{
         last_server=Instant::now();
@@ -733,7 +853,16 @@ async fn connect(
         },_=>return Err(NetworkError::new("NETWORK_CONNECTION_CLOSED"))}
         if let Some(pairs)=pairs.as_mut(){ drain_management(&mut socket,pairs,&scope).await?; }
         },_=tick.tick()=>{
-        if identity.access.exp<=jsonwebtoken::get_current_timestamp(){return Err(NetworkError::new("NETWORK_TOKEN_EXPIRED"));}
+        let now = jsonwebtoken::get_current_timestamp();
+        if identity.access.exp <= now { return Err(NetworkError::new("NETWORK_TOKEN_EXPIRED")); }
+        if ready {
+            if let Some(connection) = owned {
+                renewal.renew_if_due(connection, &identity, &transport).await?;
+            }
+        }
+        // Access is a separate short-lived snapshot. Refresh it by a deliberate
+        // reconnect while the account is live, preserving keys and one-shot join.
+        if owned.is_some() && identity.access.exp <= now.saturating_add(identity.access.exp.saturating_sub(identity.access.iat).saturating_div(4).clamp(1, 60)) { return Err(NetworkError::new("NETWORK_ACCESS_RECONNECT")); }
         if last_server.elapsed()>Duration::from_millis(budget("offlineMs")as u64){return Err(NetworkError::new("NETWORK_CONNECTION_TIMEOUT"));}
         if last_ping.elapsed()>=Duration::from_millis(budget("pingMs")as u64){socket.send(Message::Text("ma-network-ping".into())).await.map_err(|_|NetworkError::new("NETWORK_CONNECTION_CLOSED"))?;last_ping=Instant::now();}
         // Reading the real relay policy is a Ready precondition; zero mounts do not
@@ -1082,7 +1211,7 @@ async fn drain_management(
     Ok(())
 }
 pub(crate) async fn run(owner: Arc<Owner>, path: Option<&Path>) -> Result<(), NetworkError> {
-    run_context(owner, None, path, false, None, None, None).await
+    run_context(owner, None, path, false, RunFeatures::default()).await
 }
 pub(crate) async fn run_owned(
     owner: Arc<Owner>,
@@ -1091,6 +1220,7 @@ pub(crate) async fn run_owned(
     join_authorized: bool,
     execution: Option<Arc<BotExecution>>,
     management: Option<&crate::management_ipc::ManagementIpcConfig>,
+    projection: PolicyProjection<'_>,
 ) -> Result<(), NetworkError> {
     // Pin this run to the encrypted local account generation before creating
     // the reverse listener. A later login must start a new operator run.
@@ -1111,9 +1241,12 @@ pub(crate) async fn run_owned(
         Some(connection),
         path,
         join_authorized,
-        ipc.as_ref(),
-        management_binding.as_ref(),
-        execution,
+        RunFeatures {
+            management_ipc: ipc.as_ref(),
+            management_binding: management_binding.as_ref(),
+            execution,
+            projection,
+        },
     )
     .await
 }
@@ -1124,15 +1257,26 @@ fn management_hello() -> ClientMessage {
         previous_connection: None,
     }
 }
+#[derive(Default)]
+struct RunFeatures<'a> {
+    management_ipc: Option<&'a crate::management_ipc::ManagementIpc>,
+    management_binding: Option<&'a crate::management_admission::ManagementBinding>,
+    execution: Option<Arc<BotExecution>>,
+    projection: PolicyProjection<'a>,
+}
 async fn run_context(
     owner: Arc<Owner>,
     owned: Option<&crate::owned::Connection>,
     path: Option<&Path>,
     join_authorized: bool,
-    management_ipc: Option<&crate::management_ipc::ManagementIpc>,
-    management_binding: Option<&crate::management_admission::ManagementBinding>,
-    execution: Option<Arc<BotExecution>>,
+    features: RunFeatures<'_>,
 ) -> Result<(), NetworkError> {
+    let RunFeatures {
+        management_ipc,
+        management_binding,
+        execution,
+        projection,
+    } = features;
     if management_ipc.is_some() != management_binding.is_some() {
         return Err(NetworkError::new("HOST_MANAGEMENT_BINDING_INVALID"));
     }
@@ -1142,13 +1286,19 @@ async fn run_context(
     let join_authorized = AtomicBool::new(join_authorized);
     let mut admission_failed = false;
     let mut backoff = ReconnectBackoff::default();
+    let mut renewal = SessionRenewalSchedule::default();
     loop {
         publish(&owner, path, "connecting", None, false, None)?;
-        let result = tokio::select! {r=connect(&owner,path,&mut backoff,owned,&join_authorized,&mut admission_failed,ConnectionFeatures {management,execution:&execution})=>r,_=crate::shutdown()=>{publish(&owner,path,"stopped",None,false,None)?;return Ok(());}};
+        let result = tokio::select! {r=connect(&owner,path,&mut backoff,owned,&join_authorized,&mut admission_failed,ConnectionFeatures {management,execution:&execution,renewal:&mut renewal,projection})=>r,_=crate::shutdown()=>{publish(&owner,path,"stopped",None,false,None)?;return Ok(());}};
         let error = result.unwrap_err();
+        if ["OWNED_SESSION_RENEWED", "NETWORK_ACCESS_RECONNECT"].contains(&error.code.as_str()) {
+            continue;
+        }
         let state = if [
             "SPACE_REAUTH_REQUIRED",
             "OWNED_REAUTH_REQUIRED",
+            "OWNED_SESSION_INVALID",
+            "SESSION_REAUTH_REQUIRED",
             "ACCOUNT_AUTH_REVOKED",
             "NOT_AUTHENTICATED",
         ]
@@ -1181,6 +1331,9 @@ async fn run_context(
         {
             // The reverse listener is pinned to this run's owned account. A
             // revoked/replaced binding ends the run instead of inheriting it.
+            return Err(error);
+        }
+        if ["OWNED_SESSION_INVALID", "SESSION_REAUTH_REQUIRED"].contains(&error.code.as_str()) {
             return Err(error);
         }
         // An uncertain enrollment mutation is not a transport retry.
@@ -1248,6 +1401,46 @@ mod tests {
         assert!(lock.try_lock().is_ok());
     }
     use super::*;
+    #[test]
+    fn renewal_schedule_is_before_expiry_jittered_and_rate_bounded() {
+        let mut schedule = SessionRenewalSchedule::default();
+        assert!(!schedule.due(10_000, 1, 60));
+        assert!(!schedule.due(10_000, 9_039, 60));
+        assert!(schedule.due(10_000, 9_040, 60));
+        assert!(schedule.due(10_000, 9_040, 0));
+        assert!(!schedule.due(10_000, 10_000, 60));
+        schedule.attempted(9_040, 0, false, 960);
+        assert!(!schedule.due(10_000, 9_069, 60));
+        assert!(schedule.due(10_000, 9_070, 60));
+        for _ in 0..100 {
+            schedule.attempted(9_070, 15, false, 930);
+        }
+        assert_eq!(schedule.next_attempt, 9_325);
+        schedule.attempted(9_100, 0, true, 900);
+        assert_eq!(schedule.next_attempt, 9_160);
+        assert_eq!(schedule.failures, 0);
+        schedule.attempted(100, 0, true, 60);
+        assert_eq!(schedule.next_attempt, 115);
+        // A fresh short TTL waits until half its observed lifetime instead of
+        // disconnecting immediately after Ready. Reconnect cannot postpone it.
+        let mut short = SessionRenewalSchedule::default();
+        assert!(!short.due(1_000, 100, 0));
+        assert!(!short.due(1_000, 549, 60));
+        assert!(short.due(1_000, 550, 0));
+        assert!(short.due(1_000, 551, 60));
+        short.attempted(550, 0, true, 450);
+        assert!(!short.due(1_450, 551, 60));
+        assert!(!short.due(1_450, 1_000, 0));
+        assert!(short.due(1_450, 1_001, 60));
+        let mut daily = SessionRenewalSchedule::default();
+        assert!(!daily.due(86_400, 0, 0));
+        assert!(!daily.due(86_400, 85_499, 60));
+        assert!(daily.due(86_400, 85_500, 0));
+        let mut last_second = SessionRenewalSchedule::default();
+        assert!(last_second.due(120, 119, 0));
+        assert!(!last_second.due(120, 120, 60));
+        assert!(!SessionRenewalSchedule::default().due(120, 120, 0));
+    }
     #[test]
     fn owned_hello_does_not_advertise_agent_execution_and_join_is_not_replayed() {
         let owned = serde_json::to_value(management_hello()).unwrap();

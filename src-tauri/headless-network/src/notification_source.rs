@@ -1,6 +1,10 @@
 //! Optional generic hint publisher. Never owns or replays Session commands.
 use crate::{
-    agent_network::{account::NetworkAccountSession, identity::NetworkIdentity, NetworkError},
+    agent_network::{
+        account::{NetworkAccountSession, OwnedAccount},
+        identity::NetworkIdentity,
+        NetworkError,
+    },
     management_admission::ManagementBinding,
     management_ipc::{LocalSourceAuthority, LocalSourceOperation, ManagementIpc},
     owned::Connection,
@@ -78,6 +82,21 @@ fn current(
     }
     Ok(())
 }
+// Notification publication shares the immutable connection snapshot. Only the
+// connector's renewal owner may recover/adopt a staged candidate while online.
+// A retired bearer can fail the optional hint request; reconnect supplies the
+// next snapshot without a second account writer racing the renewal CAS.
+pub(crate) fn publication_account<'a>(
+    identity: &'a NetworkIdentity,
+    binding: &ManagementBinding,
+    authority: &LocalSourceAuthority,
+) -> Result<&'a OwnedAccount, NetworkError> {
+    current(identity, binding, authority)?;
+    let NetworkAccountSession::Owned(account) = &identity.account else {
+        return Err(invalid());
+    };
+    Ok(account)
+}
 async fn peek(ipc: &ManagementIpc, a: &LocalSourceAuthority) -> Result<Option<Hint>, NetworkError> {
     let value = ipc
         .request_local_source(
@@ -117,15 +136,7 @@ async fn publish(
         return Ok(false);
     };
     current(identity, binding, a)?;
-    // Read the original Rust-owned credential store afresh, never use WSS token.
-    let account = connection.account(false).await?;
-    current(identity, binding, a)?;
-    let NetworkAccountSession::Owned(account) = account else {
-        return Err(invalid());
-    };
-    if account.connection_id != a.account_binding {
-        return Err(invalid());
-    }
+    let account = publication_account(identity, binding, a)?;
     let value=connection.client.notification_source_request("/api/mobile-notify/v1/source/challenges",serde_json::json!({"version":1,"sourceEventId":item.source_event_id,"connectionEpoch":item.connection_epoch,"agentId":item.agent_id,"sessionId":item.session_id}),&account.session.access_token).await?;
     current(identity, binding, a)?;
     let challenge: Challenge = serde_json::from_value(value).map_err(|_| invalid())?;

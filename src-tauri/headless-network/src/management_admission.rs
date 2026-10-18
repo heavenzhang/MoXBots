@@ -128,6 +128,28 @@ fn validate_grant(record: &GrantRecord) -> Result<(), NetworkError> {
     Ok(())
 }
 
+/// Browser authentication may refresh a managed profile only for the already
+/// pinned principal. This read-only fence precedes account publication; it
+/// neither renews a grant nor creates one for a fresh installation.
+pub(crate) fn validate_existing_principal(
+    owner: &Owner,
+    principal: &str,
+) -> Result<(), NetworkError> {
+    if !canonical_uuid(principal) {
+        return Err(NetworkError::new("HOST_MANAGEMENT_REBIND_REQUIRED"));
+    }
+    let Some(bytes) = owner.store.load_state(&namespace(&owner.scope)?)? else {
+        return Ok(());
+    };
+    let record: GrantRecord = serde_json::from_slice(&bytes)
+        .map_err(|_| NetworkError::new("HOST_MANAGEMENT_GRANT_CORRUPT"))?;
+    validate_grant(&record)?;
+    if record.scope != owner.scope || record.principal_id != principal {
+        return Err(NetworkError::new("HOST_MANAGEMENT_REBIND_REQUIRED"));
+    }
+    Ok(())
+}
+
 /// Explicit local operator renewal only. Never creates a missing grant or changes
 /// its authority scope; the caller must retain the profile daemon run lock.
 pub(crate) fn renew(owner: &Owner, account: &NetworkAccountSession) -> Result<bool, NetworkError> {
@@ -247,6 +269,79 @@ mod tests {
     }
 
     #[test]
+    fn existing_principal_fence_prevents_foreign_browser_account_publication() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let scope = test_scope();
+        let owner = Owner {
+            store: store(&root),
+            scope: scope.clone(),
+            trust_fingerprint: "a".repeat(64),
+        };
+        let principal = uuid::Uuid::new_v4().to_string();
+        validate_existing_principal(&owner, &principal).unwrap(); // fresh install
+        let original = record(scope, &principal, &uuid::Uuid::new_v4().to_string());
+        let binding = pin_record(owner.store.clone(), original.clone()).unwrap();
+        let now = jsonwebtoken::get_current_timestamp();
+        let (mut state, raw) = owner.read().unwrap();
+        state.begin("x".repeat(43), now);
+        state.pending.as_mut().unwrap().transaction_id = Some(uuid::Uuid::new_v4().to_string());
+        let attempt = state.revision.clone();
+        state.claim_poll(&attempt, now).unwrap();
+        owner
+            .commit(raw.as_deref().map(|v| v.as_slice()), &state)
+            .unwrap();
+        let (_, raw) = owner.read().unwrap();
+        let claimed = raw.unwrap();
+        let mut session = crate::agent_network::owned_login::OwnedSession {
+            access_token: "z".repeat(43),
+            expires_at: now + 300,
+            principal_id: uuid::Uuid::new_v4().to_string(),
+            network_id: owner.scope.network_id.clone(),
+        };
+        assert_eq!(
+            crate::owned::publish_authenticated(&owner, &mut state, &claimed, &attempt, &session)
+                .unwrap_err()
+                .code,
+            "HOST_MANAGEMENT_REBIND_REQUIRED"
+        );
+        assert!(owner.read().unwrap().0.account.is_none());
+        assert!(state.account.is_none());
+        binding.verify().unwrap();
+        session.principal_id = principal.clone();
+        crate::owned::publish_authenticated(&owner, &mut state, &claimed, &attempt, &session)
+            .unwrap();
+        assert_eq!(
+            owner.read().unwrap().0.account.unwrap().principal,
+            principal
+        );
+        // The account may publish, but the old grant still requires explicit
+        // renew-management; this login did not silently update its binding.
+        binding.verify().unwrap();
+        let mut foreign_scope = Owner {
+            store: owner.store.clone(),
+            scope: owner.scope.clone(),
+            trust_fingerprint: "a".repeat(64),
+        };
+        foreign_scope.scope.network_id = uuid::Uuid::new_v4().to_string();
+        assert!(validate_existing_principal(&foreign_scope, &principal).is_err());
+        let key = namespace(&owner.scope).unwrap();
+        let bytes = owner.store.load_state(&key).unwrap().unwrap();
+        owner
+            .store
+            .compare_exchange_state(&key, Some(&bytes), b"{}")
+            .unwrap();
+        assert_eq!(
+            validate_existing_principal(&owner, &principal)
+                .unwrap_err()
+                .code,
+            "HOST_MANAGEMENT_GRANT_CORRUPT"
+        );
+    }
+
+    #[test]
     fn encrypted_operator_grant_survives_restart_and_rejects_account_replacement() {
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
@@ -324,6 +419,57 @@ mod tests {
     }
     fn bytes(record: &GrantRecord) -> Zeroizing<Vec<u8>> {
         Zeroizing::new(serde_json::to_vec(record).unwrap())
+    }
+    #[test]
+    fn session_rotation_never_renews_or_rebinds_existing_finite_management_authority() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        let (_dir, disk, old) = renewal_fixture();
+        let binding = pin_record(disk.clone(), old.clone()).unwrap();
+        let grant_before = disk
+            .load_state(&namespace(&old.scope).unwrap())
+            .unwrap()
+            .unwrap();
+        let owner = Owner {
+            store: disk.clone(),
+            scope: old.scope.clone(),
+            trust_fingerprint: "a".repeat(64),
+        };
+        let (mut state, raw) = owner.read().unwrap();
+        let now = jsonwebtoken::get_current_timestamp();
+        state.account = Some(crate::owned_state::Account {
+            binding: old.account_binding.clone(),
+            principal: old.principal_id.clone(),
+            token: URL_SAFE_NO_PAD.encode([81u8; 32]),
+            expires_at: now + 60,
+            renewal: None,
+        });
+        owner
+            .commit(raw.as_deref().map(|v| v.as_slice()), &state)
+            .unwrap();
+        let (_, raw) = owner.read().unwrap();
+        let candidate = URL_SAFE_NO_PAD.encode([82u8; 32]);
+        let staged = owner
+            .stage_renewal(
+                &raw.unwrap(),
+                crate::owned_state::PendingRenewal {
+                    token: candidate.clone(),
+                    session_handle: uuid::Uuid::new_v4().to_string(),
+                    key_generation: 1,
+                    key_fingerprint: URL_SAFE_NO_PAD.encode([11u8; 32]),
+                },
+            )
+            .unwrap();
+        owner
+            .commit_renewal(&staged, &candidate, now + 3600)
+            .unwrap();
+        binding.verify().unwrap();
+        assert_eq!(
+            disk.load_state(&namespace(&old.scope).unwrap())
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            grant_before.as_slice()
+        );
     }
     #[test]
     fn renewal_changes_only_existing_binding_and_is_durable_idempotent() {

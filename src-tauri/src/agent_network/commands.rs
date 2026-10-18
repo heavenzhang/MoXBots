@@ -238,6 +238,15 @@ pub(crate) async fn cmd_agent_network_request(
 }
 
 #[tauri::command]
+pub(crate) async fn cmd_agent_network_host_installer(
+    state: tauri::State<'_, super::actor::ManagedAgentNetwork>,
+    connection_id: String,
+    auth_generation: u64,
+) -> Result<super::host_installer::InstallerInfo, NetworkError> {
+    state.host_installer(&connection_id, auth_generation).await
+}
+
+#[tauri::command]
 pub(crate) async fn cmd_agent_discovery(
     local_only: Option<bool>,
     manager: tauri::State<'_, crate::sidecar::ManagedSidecarManager>,

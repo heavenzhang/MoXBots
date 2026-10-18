@@ -27,6 +27,7 @@ MoXBots 是用户拥有的 MyAgents fork，包含独立品牌桌面客户端、L
 | 项目看板 | `src/renderer/features/project-board/`、`pages/ProjectBoard.tsx`，`dev-docs/project-board.md` | 按真实Task/Session展示工作区执行概况；API、原生、生产验收分开追踪 |
 | 桌面协作社区 | `src/renderer/features/community/`、`features/account/ownedAccountSelection.ts`、`src-tauri/src/agent_network/community.rs` | 复用现有 Owned 账号，通过 Rust 闭集 HTTPS 接口浏览、发帖与回复；入口含个人菜单/更多，真实登录与原生发行另验 |
 | 远程 Agent 会话 | `src/renderer/features/remote-session/`、`src/server/remote-session/`、`src-tauri/src/agent_network/remote_*`、`src/host/remote-session.ts` | 同账号正式会话入口、快照同步、原Session owner/配置冻结、审批与未确认回执；机制见 `specs/tech_docs/remote_agent_session.md`，真实双端/原生发布另验 |
+| Host 一键入网与续期 | `scripts/host/{one-command.py,prepare-release.py}`、`src-tauri/src/agent_network/host_installer.rs`、`headless-network/src/{owned*,connector.rs}`（后者相对src-tauri） | 同源不可变Ubuntu24.04/x86_64分发、浏览器授权与自动join、原AuthStore令牌轮换及加密候选恢复；源码/隔离/统一发行边界见 `dev-docs/host-onboard-001/acceptance.md` |
 | 测试 | 相邻 `*.test.*`、Rust crate tests、`scripts/host/*test*`；根 `package.json` 与 `.github/workflows/` | 命令以源码为准；文档任务不扩大为模型或生产测试 |
 | 运维与发布 | `services/agentnet/README.md`、`specs/guides/`、`dev-docs/moxbot-trial.md` | 非秘密说明；真实账号、备份和钥匙留在原 owner 私有目录 |
 

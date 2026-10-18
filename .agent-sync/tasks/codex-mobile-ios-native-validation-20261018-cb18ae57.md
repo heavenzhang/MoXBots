@@ -52,3 +52,9 @@ Original test/evidence commit full Test39090821185 passed. Latest main8ed2b4e1b7
 - Fixture mount now explicitly awaits inspect and StrictMode effects in async act. Added independent deferred requests proving active result publication, live signal, real unmount abort and stale-result isolation; second request count and distinct deferred explicitly checked after review.
 - Primary focused file16pass; full DOM/typecheck/final combined CI pending. No timeout/retry/skip relaxation. Diagnostic logs retained at /tmp/moxbots-mobile-host-lifecycle-*.log and original failure /tmp/moxbots-mobile-ios-native-final-ci-failure.log.
 - Selection: reuse one independent reviewer for bounded lifecycle diagnosis; no new worker. Existing requested gpt-6.1-sol/medium due cross-lifecycle uncertainty, runtime routing/cost unknown. Native-only ai-yaoren-local; no external model call.
+
+## Host renewal main integration
+
+Main advanced to dcf8d9a60976c160e2b2aca33313c668c071132c (PR119). Normal merge has no conflicts. Its original Host renewal changes include shared Rust native provenance inputs, so02c2 packages and runtime acceptance are retained as historical source-bound evidence rather than called current. No original mobile owner is replaced.
+
+Primary local original300-file DOM run:299 files/2548 cases pass, one unrelated Settings browser-resource focus case fails (139.84s); original Host case and new lifecycle case pass. Failure log /tmp/moxbots-mobile-ios-native-full-dom.log retained. Typecheck and focused ESLint pass. Settings focused diagnosis and merged-source full regression remain pending; no pass inferred from isolated checks.

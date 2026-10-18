@@ -373,7 +373,9 @@ class ControlTests(unittest.TestCase):
             def run(args, **kwargs):
                 order.append(tuple(args))
                 is_network_probe = args[:3] == ["systemctl", "is-active", "--quiet"] and args[3] == control.DAEMON_UNIT
-                return type("Result", (), {"returncode": 1 if is_network_probe else 0})()
+                return type("Result", (), {"returncode": 1 if is_network_probe else 0,
+                    "stdout": json.dumps({"hostId": "11111111-2222-4333-8444-555555555555",
+                                          "activeSession": None, "stopping": False}).encode()})()
 
             def write_new(path, payload, mode):
                 path.parent.mkdir(parents=True, exist_ok=True)
