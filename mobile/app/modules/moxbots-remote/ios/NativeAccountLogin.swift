@@ -67,8 +67,7 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
           DispatchQueue.main.async {
             guard let self, captured == self.epoch, self.completion != nil else { return }
             if Self.parse(response)?["code"] as? String == "ACCOUNT_LOGIN_PAUSED" {
-              self.foreground = false
-              self.foregroundAction = { [weak self] in self?.startAuthorization(captured) }; return
+              self.whenForeground { [weak self] in self?.startAuthorization(captured) }; return
             }
             guard let value = Self.parse(response), value["kind"] as? String == "login",
               let rawURL = value["authorizationUrl"] as? String, let url = URL(string: rawURL),
@@ -78,6 +77,7 @@ final class NativeAccountLogin: NSObject, ASWebAuthenticationPresentationContext
             self.deadline = expires
             self.whenForeground { [weak self] in
               guard let self, self.completion != nil, captured == self.epoch else { return }
+              guard Date().timeIntervalSince1970 < self.deadline else { self.cancelAttempt(expired: true); return }
             let authentication = ASWebAuthenticationSession(url: url, callbackURLScheme: nil) { [weak self] _, _ in
               DispatchQueue.main.async {
                 guard let self, captured == self.epoch, self.completion != nil else { return }
