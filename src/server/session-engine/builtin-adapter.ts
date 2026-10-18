@@ -18,6 +18,7 @@ import {
   getAgentState,
   getBuiltinExecutionStartedAt,
   getBuiltinWorkProgressSnapshot,
+  getBuiltinBackgroundTaskDetail,
   getBuiltinLiveSessionSnapshot,
   getBuiltinSessionCompletionTerminal,
   getCurrentMcpServers,
@@ -279,6 +280,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
     },
 
     publishTranscriptSaveStatus(status) { publishBuiltinTranscriptSaveStatus(status); },
+    getBackgroundTaskDetail(toolUseId) { return getBuiltinBackgroundTaskDetail(toolUseId); },
     getWorkProgressSnapshot() { return getBuiltinWorkProgressSnapshot(); },
     getLiveSessionState() {
       const executionStartedAt = getBuiltinExecutionStartedAt();
