@@ -347,9 +347,12 @@ while True: time.sleep(.1)
             with tempfile.TemporaryDirectory() as directory, patch.object(lab.subprocess, "Popen", return_value=child), \
                  patch.object(lab, "interrupt_installer_owner", side_effect=interrupt), \
                  patch.object(lab, "installed_identity_hashes", return_value={"identity": "same"}), \
-                 patch.object(lab, "auth_unit_observation", return_value={"wait": {"ActiveState": "inactive"}}):
+                 patch.object(lab, "auth_unit_observation", return_value={"wait": {"ActiveState": "inactive"}}), \
+                 patch.object(lab, "runtime_readiness_observation", return_value={"closedProjection": True}) as runtime:
                 result = lab.install_with_browser(Path(directory), Path(directory), "synthetic", "synthetic", "cancel", diagnostics=diagnostics)
             self.assertEqual(result, {"identity": "same"})
+            self.assertGreaterEqual(runtime.call_count, 2)
+            self.assertTrue(diagnostics["runtimeReadinessObservations"][-1]["closedProjection"])
             self.assertTrue(diagnostics["authorizationJsonSeen"] and diagnostics["interruptSent"] and diagnostics["pipeEOF"])
             self.assertEqual(diagnostics["childExitCode"], 130)
             self.assertIn("AUTH_NOT_PENDING", diagnostics["knownCliErrorCodes"])
@@ -487,6 +490,131 @@ while True: time.sleep(.1)
             for secret in (expected, "SYNTHETIC_CAPABILITY", "12345", "23456"):
                 self.assertNotIn(secret, serialized)
         self.assertTrue(all(kwargs["timeout"] <= 2 for _, kwargs in commands))
+
+    def test_p_installer_failure_phrases_are_closed_and_never_keep_suffixes(self):
+        phrases = {
+            b"Service did not become ready with the expected Node and Claude SDK; rolling back": "Node-install-readiness-rollback",
+            b"Host package installation failed; its installer performed its own rollback": "Host-install-own-rollback",
+            b"Host install failed and prior Host state could not be restored": "Host-rollback-unconfirmed",
+            b"network install failed and Host rollback could not be verified": "Host-rollback-unconfirmed",
+            b"owned network package installation failed; prior Host release and unit were restored": "network-install-prior-Host-restored",
+        }
+        for phrase, code in phrases.items():
+            with self.subTest(code=code):
+                self.assertEqual(lab.installer_failure_reason(b"SYNTHETIC_CAPABILITY\n" + phrase + b"\nSYNTHETIC_CAPABILITY"), [code])
+                self.assertEqual(lab.installer_failure_reason(phrase + b" SYNTHETIC_CAPABILITY\n"), [])
+                self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(lab.installer_failure_reason(phrase + b"\n")))
+
+    def test_pre_auth_cancel_observes_but_still_rejects_without_native_auth(self):
+        script = 'import sys; print("Service did not become ready with the expected Node and Claude SDK; rolling back"); print("SYNTHETIC_CAPABILITY"); sys.exit(1)'
+        for broken in (False, True):
+            child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+            diagnostics = {}
+            try:
+                with tempfile.TemporaryDirectory() as directory, patch.object(lab.subprocess, "Popen", return_value=child), \
+                     patch.object(lab, "auth_unit_observation", return_value={}), \
+                     patch.object(lab, "runtime_readiness_observation", side_effect=RuntimeError("SYNTHETIC_CAPABILITY") if broken else None,
+                                  return_value={"startupContract": {"nodeAccountPresent": False}}) as runtime:
+                    with self.assertRaisesRegex(lab.Rejected, "^canceled-command-must-not-succeed$"):
+                        lab.install_with_browser(Path(directory), Path(directory), "synthetic", "synthetic", "cancel", diagnostics=diagnostics)
+                self.assertGreaterEqual(runtime.call_count, 2)
+                self.assertFalse(diagnostics["authorizationJsonSeen"] or diagnostics["interruptSent"])
+                self.assertEqual(diagnostics["installerFailureReasons"], ["Node-install-readiness-rollback"])
+                self.assertTrue(diagnostics["runtimeObservationUnavailable"] if broken else diagnostics["runtimeReadinessObservations"])
+                self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    child.wait(timeout=5)
+                child.stdout.close()
+
+    def test_startup_metadata_is_fixed_bounded_readonly_and_keeps_authority_private(self):
+        host_id, transaction = "123e4567-e89b-42d3-a456-426614174000", "223e4567-e89b-42d3-a456-426614174000"
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            state = base / "state"
+            def observe():
+                with patch.object(lab, "_BOOTSTRAP_STATE", state), patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=os.getuid())):
+                    return lab.startup_contract_observation()
+            self.assertTrue(all(value == {"kind": "missing"} for value in observe()["directories"].values()))
+            self.assertEqual(list(base.iterdir()), [])
+            for relative in ("home/.myagents", "workspaces/default"):
+                (state / relative).mkdir(parents=True, mode=0o700)
+            for path in (state, state / "home", state / "workspaces"):
+                path.chmod(0o700)
+            identity, marker = state / "host-identity.json", state / "registry-bootstrap-v1.json"
+            identity.write_text(json.dumps({"hostId": host_id, "schemaVersion": 1}))
+            marker.write_text(json.dumps({"hostId": host_id, "transaction": transaction, "version": 1,
+                                          "purpose": "host-registry-bootstrap", "phase": "committed"}))
+            for path in (identity, marker):
+                path.chmod(0o600)
+            (state / "home/.profile").write_text("SYNTHETIC_CAPABILITY")
+            (state / "home/.profile").chmod(0o644)
+            (state / "SYNTHETIC_CAPABILITY").write_text("SYNTHETIC_CAPABILITY")
+            (state / "home/.myagents/config.json").write_text('{"agents":[],"token":"SYNTHETIC_CAPABILITY"}')
+            before = {str(path.relative_to(state)): (path.read_bytes(), path.stat().st_ino) for path in state.rglob("*") if path.is_file()}
+            original_open = lab.os.open
+            def readonly_open(path, flags, *args, **kwargs):
+                self.assertFalse(flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_TRUNC | os.O_APPEND))
+                return original_open(path, flags, *args, **kwargs)
+            with patch.object(lab.os, "open", side_effect=readonly_open), \
+                 patch.object(lab.os, "mkdir", side_effect=AssertionError("no seed")), \
+                 patch.object(lab.os, "unlink", side_effect=AssertionError("no cleanup")), \
+                 patch.object(lab.os, "rename", side_effect=AssertionError("no repair")):
+                result = observe()
+            self.assertTrue(result["identityMatchesMarker"])
+            self.assertEqual(result["marker"]["phase"], "committed")
+            self.assertTrue(result["identity"]["mode600"] and result["identity"]["singleLink"])
+            self.assertFalse(result["freshNamespace"]["stateEntriesMatchFreshContract"])
+            self.assertTrue(result["freshNamespace"]["homeEntriesMatchFreshContract"] and result["freshNamespace"]["skelMetadataMatches"])
+            self.assertTrue(result["freshNamespace"]["defaultWorkspaceEmpty"])
+            self.assertEqual({str(path.relative_to(state)): (path.read_bytes(), path.stat().st_ino) for path in state.rglob("*") if path.is_file()}, before)
+            for secret in (host_id, transaction, "SYNTHETIC_CAPABILITY", str(base)):
+                self.assertNotIn(secret, json.dumps(result))
+            marker.write_text('{broken SYNTHETIC_CAPABILITY')
+            result = observe()
+            self.assertEqual(result["marker"]["kind"], "invalidJSON")
+            self.assertEqual(result["marker"]["phase"], "invalid")
+            self.assertFalse(result["identityMatchesMarker"])
+            marker.write_text(json.dumps({"hostId": host_id, "transaction": transaction, "version": 1,
+                                          "purpose": "host-registry-bootstrap", "phase": "SYNTHETIC_CAPABILITY"}))
+            self.assertEqual(observe()["marker"]["phase"], "invalid")
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(observe()))
+            marker.unlink()
+            self.assertEqual(observe()["marker"]["phase"], "missing")
+            self.assertFalse(observe()["identityMatchesMarker"])
+            os.link(identity, marker)
+            self.assertEqual(observe()["identity"]["kind"], "unsafe")
+            marker.unlink()
+            identity.unlink()
+            identity.symlink_to(state / "SYNTHETIC_CAPABILITY")
+            self.assertEqual(observe()["identity"]["kind"], "unsafe")
+            identity.unlink()
+            for index in range(129):
+                (state / ("unknown-" + str(index))).touch()
+            self.assertTrue(observe()["directories"]["state"]["entryLimitExceeded"])
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(observe()))
+
+    def test_startup_metadata_never_follows_registry_symlink_or_reads_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve()
+            state, outside = base / "state", base / "SYNTHETIC_CAPABILITY"
+            (state / "home").mkdir(parents=True, mode=0o700)
+            state.chmod(0o700)
+            outside.mkdir(mode=0o700)
+            (outside / "config.json").write_text("SYNTHETIC_CAPABILITY")
+            (state / "home/.myagents").symlink_to(outside, target_is_directory=True)
+            original_open = lab.os.open
+            def fixed_open(path, *args, **kwargs):
+                self.assertNotIn("credentials", str(path))
+                self.assertNotIn("SYNTHETIC_CAPABILITY", str(path))
+                return original_open(path, *args, **kwargs)
+            with patch.object(lab, "_BOOTSTRAP_STATE", state), patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=os.getuid())), \
+                 patch.object(lab.os, "open", side_effect=fixed_open):
+                result = lab.startup_contract_observation()
+            self.assertEqual(result["directories"]["registry"]["kind"], "unsafe")
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
+            self.assertEqual((outside / "config.json").read_text(), "SYNTHETIC_CAPABILITY")
 
     def test_runtime_observation_does_not_attempt_doctor_without_Node_PID(self):
         state = b"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\n"
