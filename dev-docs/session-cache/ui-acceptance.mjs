@@ -36,12 +36,8 @@ await context.route('**/*',async route=>{
  return route.continue();
 });
 await page.goto('http://127.0.0.1:8907/',{waitUntil:'domcontentloaded'});
-console.log('INITIAL',await page.locator('body').innerText(),errors);
-await page.screenshot({path:`${output}/initial-debug.png`});
-await page.waitForTimeout(15000);
-console.log('READY', await page.locator('body').innerText(),errors);
-await page.screenshot({path:`${output}/ready-debug.png`});
-await page.getByText('会话缓存验收',{exact:true}).first().click();
+await page.waitForSelector('[data-tab-workspace]',{timeout:180000});
+await page.locator('[data-global-sidebar-workspace-row] button[data-sidebar-drag-surface]').first().press('Enter');
 await page.getByText('缓存验收会话 A',{exact:true}).first().click({timeout:60000});
 await page.getByText('这是会话 A 的聊天记录，连接恢复前也可以阅读。',{exact:true}).waitFor({timeout:60000});
 const cold={readableBeforeConnection:await page.getByText('正在恢复连接，聊天记录可继续查看',{exact:true}).isVisible(),openStreams:await page.evaluate(()=>window.__proofStreams.filter(s=>s.readyState===0).length)};
