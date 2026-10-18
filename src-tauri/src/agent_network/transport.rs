@@ -4,7 +4,7 @@
 use super::crypto::{external_tls_config_with_ca, DevicePrivateKey};
 use super::NetworkError;
 use crate::network_diagnostics::{
-    error_category, response_request_id, safe_request_id, RequestDiagnostic,
+    error_category, network_error_code, response_request_id, safe_request_id, RequestDiagnostic,
 };
 use myagents_agent_network_protocol::{budget, validate_metadata, MetadataKind};
 use reqwest::header::{HeaderValue, AUTHORIZATION};
@@ -217,7 +217,7 @@ impl NetworkTransport {
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|_| NetworkError::new("NETWORK_TRANSPORT_FAILED"))?
+            .map_err(|error| request_failure(&error))?
         {
             let size = bytes
                 .len()
@@ -265,7 +265,7 @@ impl NetworkTransport {
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|_| NetworkError::new("NETWORK_TRANSPORT_FAILED"))?
+            .map_err(|error| request_failure(&error))?
         {
             let size = bytes
                 .len()
@@ -314,7 +314,7 @@ impl NetworkTransport {
         while let Some(chunk) = response
             .chunk()
             .await
-            .map_err(|_| NetworkError::new("NETWORK_TRANSPORT_FAILED"))?
+            .map_err(|error| request_failure(&error))?
         {
             let size = bytes
                 .len()
@@ -401,7 +401,7 @@ impl NetworkTransport {
                         .header("DPoP", proof),
                 )
                 .await
-                .map_err(|_| NetworkError::new("NETWORK_TRANSPORT_FAILED"))?;
+                .map_err(|error| request_failure(&error))?;
             if response.status() == reqwest::StatusCode::UNAUTHORIZED && attempt == 0 {
                 if let Some(nonce) = response
                     .headers()
@@ -656,6 +656,15 @@ fn body_failure(
     error.retry_after = retry_after;
     error
 }
+fn request_failure(error: &reqwest::Error) -> NetworkError {
+    let code = network_error_code(error, "NETWORK_TRANSPORT_FAILED");
+    if code == "NETWORK_CONNECTION_TIMEOUT" {
+        NetworkError::cloud(code, 504)
+    } else {
+        NetworkError::new(code)
+    }
+}
+
 async fn read_response_body(
     response: &mut reqwest::Response,
     allocation: &mut super::memory::Allocation,
@@ -672,11 +681,7 @@ async fn read_response_body(
             Some(status.as_u16()),
             request_id.as_deref(),
         );
-        body_failure(
-            status,
-            retry_after,
-            NetworkError::new("NETWORK_TRANSPORT_FAILED"),
-        )
+        body_failure(status, retry_after, request_failure(&error))
     })? {
         if bytes.len() + chunk.len() > budget("catalogBytes") {
             diagnostic.failure("body", "size", Some(status.as_u16()), request_id.as_deref());

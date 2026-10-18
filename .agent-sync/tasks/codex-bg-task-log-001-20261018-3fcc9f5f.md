@@ -30,7 +30,7 @@ BG-TASK-LOG-001：修复任务列表点击无反应，点击直接打开当前�
 
 ## Blockers and unknowns
 
-源码/模拟验收/真实联调/main/生产验收分别记录。实现完成；后端297项、mixed63项及后续23项DOM回归通过，独立IAB与主Agent关键路径通过，typecheck/web/server构建通过；full lint/dependency/docs已通过，真实报告日志文件读取ready（不保存原文）。最新main798f3a9c无冲突整合，下一步PR正常CI与主干交付；正式签名发行和原生用户路径待唯一owner。
+源码/模拟验收/真实联调/main/生产验收分别记录。实现完成；后端297项、mixed63项及后续23项DOM回归通过，独立IAB与主Agent关键路径通过，typecheck/web/server构建通过；full lint/dependency/docs已通过，真实报告日志文件读取ready（不保存原文）。PR133候选bfa81f69及主干同步候选66843d89正常CI均通过（39131340599、39132415509，各9项成功/1项条件跳过）。继续整合main baa1a637（并发网络恢复/侧栏与发布记录）；仅计划文件追加段落冲突，保留双方并将本任务段落移至文件开头以免反复尾部追加冲突。组合检查、最新候选CI与远端主干包含待完成；正式签名发行和原生用户路径待唯一owner。
 
 ## Verification
 

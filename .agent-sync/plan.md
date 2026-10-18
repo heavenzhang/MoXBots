@@ -1,3 +1,7 @@
+## BG-TASK-LOG-001 — 2026-10-18
+
+用户要求修复后台任务行点击无响应，并直接查看状态/执行日志。既有Exact Query/run registry经SessionEngine提供只读受限64KiB日志；任务详情不依赖原工具卡片，终态/断网/记录释放保留已读日志，键盘与窄屏适配。范围及分项验收 `.agent-sync/tasks/codex-bg-task-log-001-20261018-3fcc9f5f.md`、`dev-docs/bg-task-log/acceptance.md`。source/模拟联调/CI/main/原生发行分别追踪；用户明确授权修复验收后发送给既定唯一桌面发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4安排下一未冻结版本。本聊天不重启日常App、不打断活动任务、不改既有冻结包/稳定更新源，无配置或业务数据迁移。
+
 ## Deployment coordination — MOXBOTS-HOST-PUBLICATION-20261018
 
 - **Deployment chat:** `01a12b99-7b38-78b1-831f-9c60257d386a`, exclusively the existing140 HTTPS `/host` static software distribution for the frozen Ubuntu24/x86_64 release below. This is a separate lane from the already closed cloud/101 binary release; no backend/101 re-upgrade, `/download`, updater, desktop, daily Mac or new listener.
@@ -19,6 +23,10 @@
 ## MOXBOTS-HOST-ONBOARD-001 — 2026-10-18
 
 用户启动Ubuntu24.04/x86_64一条命令安装、浏览器授权自动入网与有效会话自动续期；代码/测试/main由01a13320-dbf9-7c03-b7f3-37e30d15de48负责，发行交既定统一部署聊天01a12bc2-907a-7702-b6dd-788225c5dfe4。任务 `.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`。新public installer必须验证正式元数据可用后才展示命令，复用原身份/加密存储/撤销owner；没有新模型授权或生产操作。对日常Mac不安装、不更新、不重启。source/CI/main与正式bundle/服务发布/真实生产按门禁分开，发布请求仅排队不改变当前冻结发行。
+
+## MOXBOTS-PIN-001 — 2026-10-18
+
+用户反馈侧栏点击置顶后位置不变。现有organization投影优先应用pinnedAt，统一工作区/根列表/自定义分区/拖拽源，保留手工顺序用于取消置顶恢复。92项定向回归、类型/lint、默认Web构建及MoXBots实际Chromium两尺寸4组通过；CI/main以PR132为准。任务`.agent-sync/tasks/codex-pin-order-001-20261018.md`，验收和发布请求`dev-docs/pin-order/acceptance.md`。下一未冻结桌面发布由既定唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4串行执行；用户已明确授权合入后通知既定发布会话并安排下一未冻结版本及不打断任务的原生验收；本聊天不并发安装/重启日常App或回写冻结包。
 
 ## MOXBOTS-UI-ZOOM-002 — 2026-10-16
 
@@ -409,15 +417,14 @@ Actual simulator native runtime follow-up: `dev-docs/mobile-002/ios-native-runti
 
 The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when Node Fetch received HTTP 406 for the exact Eigen 5.0.1 URL in the frozen app resource lock. A normal-TLS full GET from the same GitLab URL matched the lock's 2,967,272-byte size and SHA-256 `e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec`; the exact bytes also passed the repository cache validator on macOS. Task branch `codex/moxbots-win-eigen-cache-0510-20261018` adds a fail-closed Windows workflow step to read the frozen lock, retrieve through standard `curl.exe` TLS, verify the pinned size/hash, and seed only the content-addressed cache. The app tag/source/resource lock remain unchanged. PR CI and a merged-main Windows build must pass before artifact use. Website upload still requires a separate least-privilege identity; do not reuse updater credentials. Details: `.agent-sync/tasks/codex-moxbots-win-eigen-cache-0510-20261018-a9d25de0.md`.
 
-## BG-TASK-LOG-001 — 2026-10-18
+## CLOUD-NETWORK-RECOVERY-20261018
 
-用户要求修复后台任务行点击无响应，并直接查看状态/执行日志。既有Exact Query/run registry经SessionEngine提供只读受限64KiB日志；任务详情不依赖原工具卡片，终态/断网/记录释放保留已读日志，键盘与窄屏适配。范围及分项验收 `.agent-sync/tasks/codex-bg-task-log-001-20261018-3fcc9f5f.md`、`dev-docs/bg-task-log/acceptance.md`。source/模拟联调/CI/main/原生发行分别追踪；用户明确授权修复验收后发送给既定唯一桌面发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4安排下一未冻结版本。本聊天不重启日常App、不打断活动任务、不改既有冻结包/稳定更新源，无配置或业务数据迁移。
-
+区分登录/凭据授权、连接超时/不可用与Ready网络内的设备离线；失联时设备缓存为状态未知。源分支codex/cloud-network-recovery-20261018，记录`.agent-sync/tasks/codex-cloud-network-recovery-20261018-cc874b4b.md`，验收`dev-docs/cloud-network-recovery/acceptance.md`。用户已授权协调既定桌面及云发布聊天；不接管其targets或中断活动任务。云/101只读确认原设备当前Ready，桌面原账号恢复和修复版原生验收仍单独开放。
 
 ## Deployment coordination — MOXBOTS-RELEASE-NOTES-001 (2026-10-18)
 
 - **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, current unified desktop release owner, solely this static history overlay.
 - **Designation:** User explicitly requested “总结一下更新记录，放到下载页面可以链接查看”. This authorizes a cumulative public history page and a link in the existing download page. It does not authorize candidate installer promotion.
-- **Targets and runbook:** Existing `https://140.143.183.232/download/` index link plus `changelog.html` and its content-addressed CSS. Reuse authenticated cloud SSH configuration for this exact static overlay; no updater signing identity is used for website access. Read fresh pointer/index, hold all four existing maintenance locks, back up, copy the live immutable tree, apply only three files, CAS-switch the symlink, verify public navigation, keep owned rollback. Details: `dev-docs/releases/website-release-history.md`.
-- **Current release:** Source/local preview prepared; independent content/UI review, normal CI/main, production overlay and public acceptance tracked separately in the task record. Preserve the live 0.5.6 manual manifest, download scripts and packages; own updater 0.5.11 remains separate. Historical 0.5.10 installer upload-route limitation is not a claim that the candidate was released and remains outside this overlay.
+- **Targets and runbook:** Existing `https://140.143.183.232/download/` index link and embedded `#release-history` section plus its scoped `download.<hash>.css`. Reuse authenticated cloud SSH configuration for this exact static overlay; no updater signing identity is used for website access. Read fresh pointer/index, hold all four existing maintenance locks, back up, copy the live immutable tree, apply only two files, CAS-switch the symlink, verify public navigation, keep owned rollback. Details: `dev-docs/releases/website-release-history.md`.
+- **Current release:** PR131 source/local/independent review and nine applicable CI/main passed; first public standalone HTML path404 was owned-rolled-back. Existing-route inline history fix, independent review, final CI/main and production acceptance tracked separately in the task record. Preserve the live 0.5.6 manual manifest, download scripts and packages; own updater 0.5.11 remains separate. Historical 0.5.10 installer upload-route limitation is not a claim that the candidate was released and remains outside this overlay.
 - **Exclusions:** No binary upload/build, stable feed write, desktop operation, Nginx/TLS/auth/Host change, service restart or new permission. Other deployment lanes and their owners remain unchanged.

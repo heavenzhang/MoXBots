@@ -841,6 +841,73 @@ describe('GlobalSidebar rail flyout', () => {
     expect(mocks.taskData.actions.applySessionMetadata).toHaveBeenCalledWith(updated, 1);
   });
 
+  it.each(['workspace', 'section'] as const)(
+    'moves a pinned Session ahead of saved %s order and restores that order on unpin/remount',
+    async (container) => {
+      mocks.forcedRail = false;
+      const project = { id: 'project-1', name: 'Project one', path: '/work/project-one' };
+      const recent = { id: 'recent', agentDir: project.path, title: 'Recent chat', createdAt: '2026-09-02T00:00:00Z', lastActiveAt: '2026-09-02T12:00:00Z' };
+      const older = { id: 'older', agentDir: project.path, title: 'Pin me', createdAt: '2026-07-20T00:00:00Z', lastActiveAt: '2026-07-20T00:00:00Z' };
+      mocks.projects.push(project);
+      mocks.taskData.sessions = [recent, older];
+      const key = container === 'workspace' ? 'workspace:project-1' : 'section:work';
+      const organization = {
+        sections: container === 'section' ? [{ id: key, name: 'Work', collapsed: false }] : [],
+        placements: container === 'section' ? { 'session:recent': key, 'session:older': key } : {},
+        orders: { [key]: ['session:recent', 'session:older'] },
+      };
+      window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+        version: 1, preferredMode: 'expanded', expandedWorkspaceKeys: [project.path],
+        hasSeededDefaultExpansion: true, showAutomationSessions: true, sessionView: 'all', organization,
+      }));
+      const titles = () => Array.from(document.querySelectorAll('[data-global-sidebar-session-title]')).map((element) => element.textContent);
+      mocks.updateSession.mockImplementation(async (_id, patch) => ({ ...older, pinnedAt: patch.pinned ? '2026-09-02T13:00:00Z' : undefined }));
+      const view = renderSidebar();
+      expect(titles()).toEqual(['Recent chat', 'Pin me']);
+      const togglePin = async (label: 'pin' | 'unpin') => {
+        fireEvent.contextMenu(screen.getByText('Pin me').closest<HTMLElement>('[data-global-sidebar-session-row]')!);
+        fireEvent.click(screen.getByRole('button', { name: String(i18n.t(`launcher:rightRail.${label}`)) }));
+        await vi.waitFor(() => expect(mocks.updateSession).toHaveBeenCalledWith('older', { pinned: label === 'pin' }));
+        const updated = await mocks.updateSession.mock.results.at(-1)!.value;
+        expect(mocks.taskData.actions.applySessionMetadata).toHaveBeenLastCalledWith(updated, 1);
+        // Publish the authoritative response as the real store does; no optimistic pin state.
+        mocks.taskData.sessions = [recent, updated];
+        view.rerender(sidebar());
+      };
+      await togglePin('pin');
+      expect(titles()).toEqual(['Pin me', 'Recent chat']);
+      view.unmount();
+      const reloaded = renderSidebar();
+      expect(titles()).toEqual(['Pin me', 'Recent chat']);
+      reloaded.unmount();
+      // Continue against the same persisted order after a reload.
+      const unpinView = renderSidebar();
+      fireEvent.contextMenu(screen.getByText('Pin me').closest<HTMLElement>('[data-global-sidebar-session-row]')!);
+      fireEvent.click(screen.getByRole('button', { name: String(i18n.t('launcher:rightRail.unpin')) }));
+      await vi.waitFor(() => expect(mocks.updateSession).toHaveBeenLastCalledWith('older', { pinned: false }));
+      const unpinned = await mocks.updateSession.mock.results.at(-1)!.value;
+      mocks.taskData.sessions = [recent, unpinned];
+      unpinView.rerender(sidebar());
+      expect(titles()).toEqual(['Recent chat', 'Pin me']);
+      expect(JSON.parse(window.localStorage.getItem(GLOBAL_SIDEBAR_PREFERENCE_KEY)!).organization).toEqual(organization);
+    },
+  );
+
+  it('keeps a pinned workspace ahead of its saved root order', () => {
+    mocks.forcedRail = false;
+    mocks.projects.push(
+      { id: 'recent', name: 'Recent Agent', path: '/work/recent' },
+      { id: 'older', name: 'Pinned Agent', path: '/work/older', pinnedAt: '2026-09-02T13:00:00Z' },
+    );
+    window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+      version: 1, preferredMode: 'expanded', hasSeededDefaultExpansion: true,
+      organization: { sections: [], placements: {}, orders: { root: ['workspace:recent', 'workspace:older'] } },
+    }));
+    renderSidebar();
+    const rows = Array.from(document.querySelectorAll('[data-sidebar-item]')).map((element) => element.getAttribute('data-sidebar-item'));
+    expect(rows).toEqual(['workspace:older', 'workspace:recent']);
+  });
+
   it('hides archived chats from all and favorites, and exposes them in the archived view', () => {
     mocks.forcedRail = false;
     mocks.projects.push({ id: 'project-1', name: 'Project one', path: '/work/project-one' });

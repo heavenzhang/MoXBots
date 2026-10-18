@@ -43,40 +43,8 @@ import {
 
 import { HostOnboarding } from "@/features/agent-network/HostOnboarding";
 import { NetworkHeader } from "@/features/agent-network/NetworkHeader";
+import { networkStatusMessage } from "@/features/agent-network/networkStatus";
 import { NetworkSelector } from "@/features/agent-network/NetworkSelector";
-
-const stoppedOwnedConnectionErrors = new Set([
-  "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED",
-  "NETWORK_CREDENTIAL_STORE_UNAVAILABLE",
-  "NETWORK_CREDENTIAL_STORE_INVALID",
-  "OWNED_SESSION_RECORD_MISSING",
-  "KEY_GENERATION_CONFLICT",
-  "NETWORK_CREDENTIAL_GENERATION_CONFLICT",
-]);
-
-function networkStatusMessage(
-  snapshot: NetworkSnapshot,
-  official: boolean,
-  ownedAccount?: NetworkConnection["ownedAccount"],
-) {
-  // Registry owns credential/session validity, including expiry without an actor.
-  if (!official && ownedAccount?.state === "signInRequired")
-    return "agentNetwork.errors.ownedSignInRequired";
-  if (
-    !official &&
-    snapshot.state === "disconnected" &&
-    snapshot.error &&
-    (stoppedOwnedConnectionErrors.has(snapshot.error.code) ||
-      networkErrorKey(snapshot.error) === "ownedSignInRequired")
-  ) {
-    return `agentNetwork.errors.${networkErrorKey(snapshot.error)}`;
-  }
-  if (snapshot.error?.code === "NETWORK_REMOVAL_UNCONFIRMED")
-    return "agentNetwork.errors.removalPending";
-  if (snapshot.state === "connecting") return "agentNetwork.connecting";
-  if (snapshot.state === "disconnected") return "agentNetwork.reconnecting";
-  return `agentNetwork.errors.${networkErrorKey(snapshot.error)}`;
-}
 
 export default function AgentNetwork({
   isActive = true,
@@ -453,6 +421,7 @@ function AgentNetworkContent({
     <DeviceCard
       key={device.deviceId}
       device={device}
+      connectionReady={snapshot.state === "ready"}
       catalog={catalogs[device.deviceId]}
       isLocal={device.deviceId === localId}
       busy={busy[device.deviceId] ?? false}

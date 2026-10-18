@@ -276,6 +276,8 @@ export function networkErrorKey(
     typeof error === "object" && error !== null && "code" in error
       ? String(error.code)
       : "";
+  if (code === "NETWORK_CONNECTION_TIMEOUT")
+    return operation === "mutation" ? "unconfirmed" : "connectionTimeout";
   if (code === "NETWORK_FEATURE_DISABLED") return "featureDisabled";
   if (
     [
