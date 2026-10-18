@@ -1,0 +1,170 @@
+name: MoXBots Windows 0.5.10 download package
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: moxbots-windows-download-0510
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Build pinned MoXBots Windows installer
+    runs-on: windows-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout build recipe
+        uses: actions/checkout@v4
+        with:
+          path: builder
+
+      - name: Checkout frozen 0.5.10 application source
+        uses: actions/checkout@v4
+        with:
+          ref: v0.5.10
+          path: app
+          fetch-depth: 0
+
+      - name: Verify source and overlay isolated MoXBots Windows packaging
+        shell: pwsh
+        env:
+          EXPECTED_SOURCE_COMMIT: 400b746a4841bab8e4b99d8f83479fd54925c205
+        run: |
+          $sourceCommit = (git -C app rev-parse HEAD).Trim()
+          if ($sourceCommit -ne $env:EXPECTED_SOURCE_COMMIT) {
+            throw "Unexpected 0.5.10 source commit: $sourceCommit"
+          }
+
+          $config = Get-Content app/src-tauri/tauri.moxbot.conf.json -Raw | ConvertFrom-Json
+          if ($config.productName -ne 'MoXBots' -or $config.identifier -ne 'com.moxbot.app' -or $config.version -ne '0.5.10') {
+            throw 'The frozen release tag does not contain the expected MoXBots 0.5.10 identity.'
+          }
+
+          Copy-Item builder/build_windows.ps1 app/build_windows.ps1 -Force
+          Copy-Item builder/src-tauri/tauri.moxbot.windows.conf.json app/src-tauri/tauri.moxbot.windows.conf.json -Force
+          New-Item -ItemType Directory -Path app/src-tauri/nsis -Force | Out-Null
+          Copy-Item builder/src-tauri/nsis/hooks.moxbot.nsh app/src-tauri/nsis/hooks.moxbot.nsh -Force
+
+          $windowsConfig = Get-Content app/src-tauri/tauri.moxbot.windows.conf.json -Raw
+          $hooks = Get-Content app/src-tauri/nsis/hooks.moxbot.nsh -Raw
+          if ($windowsConfig -notmatch 'hooks\.moxbot\.nsh' -or $windowsConfig -notmatch '"createUpdaterArtifacts"\s*:\s*false') {
+            throw 'MoXBots Windows config must select isolated installer hooks and disable updater artifacts.'
+          }
+          if ($hooks -match '\.myagents' -or $hooks -notmatch '\.moxbot') {
+            throw 'MoXBots installer hooks contain an unsafe cross-product process scope.'
+          }
+          Write-Host "Verified application source $sourceCommit and isolated MoXBots Windows overlay."
+
+      - name: Install the frozen Node.js runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.20.0
+
+      - name: Match the frozen Windows Node and npm versions
+        shell: pwsh
+        run: |
+          $expectedNodeVersion = '24.20.0'
+          $expectedNpmVersion = '11.19.0'
+          $nodeVersion = (node --version).Trim().TrimStart('v')
+          if ($nodeVersion -ne $expectedNodeVersion) { throw "Node.js $nodeVersion does not match the frozen Windows runtime $expectedNodeVersion." }
+          npm install --global "npm@$expectedNpmVersion"
+          $npmVersion = (npm --version).Trim()
+          if ($npmVersion -ne $expectedNpmVersion) { throw "npm $npmVersion does not match the frozen Windows runtime $expectedNpmVersion." }
+
+      - name: Install Rust toolchain and Windows target
+        uses: dtolnay/rust-toolchain@1.92.0
+        with:
+          targets: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri
+
+      - name: Install repository-pinned NSIS 3.13
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'nsis-3.13.zip'
+          node app/scripts/ci/download-nsis.mjs $archive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $nsisRoot = Join-Path $env:RUNNER_TEMP 'moxbots-nsis'
+          Expand-Archive -LiteralPath $archive -DestinationPath $nsisRoot -Force
+          $makensisDir = Join-Path $nsisRoot 'nsis-3.13'
+          $makensis = Join-Path $makensisDir 'makensis.exe'
+          if (!(Test-Path -LiteralPath $makensis -PathType Leaf)) { throw "NSIS 3.13 is missing: $makensis" }
+          $version = (& $makensis /VERSION).Trim()
+          if ($LASTEXITCODE -ne 0 -or $version -ne 'v3.13') { throw "Unexpected NSIS version: $version" }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value $makensisDir
+
+      - name: Stage verified Git for Windows installer for NSIS
+        shell: pwsh
+        run: |
+          $version = '2.52.0'
+          $uri = "https://github.com/git-for-windows/git/releases/download/v$version.windows.1/Git-$version-64-bit.exe"
+          $download = Join-Path $env:RUNNER_TEMP 'Git-Installer.exe'
+          Invoke-WebRequest -Uri $uri -OutFile $download
+          $signature = Get-AuthenticodeSignature -LiteralPath $download
+          if ($signature.Status -ne 'Valid') { throw "Git installer signature is not valid: $($signature.Status)" }
+          New-Item -ItemType Directory -Path app/src-tauri/nsis -Force | Out-Null
+          Copy-Item -LiteralPath $download -Destination app/src-tauri/nsis/Git-Installer.exe -Force
+
+      - name: Build MoXBots 0.5.10 NSIS installer
+        shell: pwsh
+        run: |
+          & app/build_windows.ps1 -MoXBots -NonInteractive -SkipPortable
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify installer identity and record provenance
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: 400b746a4841bab8e4b99d8f83479fd54925c205
+          BUILDER_COMMIT: ${{ github.sha }}
+        run: |
+          $bundleDir = 'app/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis'
+          $installers = @(Get-ChildItem -LiteralPath $bundleDir -Filter '*.exe' -File | Where-Object { $_.Name -match '(?i)moxbots' -and $_.Name -match '0\.5\.10' })
+          if ($installers.Count -ne 1) { throw "Expected exactly one MoXBots 0.5.10 installer; found $($installers.Count)." }
+
+          $installer = $installers[0]
+          $appExe = Get-Item 'app/src-tauri/target/x86_64-pc-windows-msvc/release/myagents.exe'
+          if ($appExe.VersionInfo.ProductName -ne 'MoXBots' -or $appExe.VersionInfo.FileVersion -notlike '0.5.10*') {
+            throw "Application binary identity mismatch: $($appExe.VersionInfo.ProductName) $($appExe.VersionInfo.FileVersion)"
+          }
+          if ($installer.VersionInfo.ProductName -ne 'MoXBots' -or $installer.VersionInfo.FileVersion -notlike '0.5.10*') {
+            throw "Installer metadata identity mismatch: $($installer.VersionInfo.ProductName) $($installer.VersionInfo.FileVersion)"
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+          if ($signature.Status -notin @('Valid', 'NotSigned')) { throw "Unexpected installer signature status: $($signature.Status)" }
+          $outputDir = 'app/output/moxbots-windows-0.5.10'
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          Copy-Item -LiteralPath $installer.FullName -Destination (Join-Path $outputDir $installer.Name)
+          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $metadata = [ordered]@{
+            productName = 'MoXBots'
+            identifier = 'com.moxbot.app'
+            version = '0.5.10'
+            platform = 'windows-x86_64'
+            installer = $installer.Name
+            sizeBytes = $installer.Length
+            sha256 = $hash
+            authenticodeStatus = [string]$signature.Status
+            analyticsEnabled = ($env:VITE_ANALYTICS_ENABLED -eq 'true' -and -not [string]::IsNullOrWhiteSpace($env:VITE_ANALYTICS_API_KEY) -and -not [string]::IsNullOrWhiteSpace($env:VITE_ANALYTICS_ENDPOINT))
+            windowsUpdater = 'unsupported; updater artifacts disabled'
+            sourceTag = 'v0.5.10'
+            sourceCommit = $env:SOURCE_COMMIT
+            builderCommit = $env:BUILDER_COMMIT
+          }
+          $metadata | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $outputDir 'release-metadata.json') -Encoding utf8
+          $metadata | ConvertTo-Json -Depth 5
+
+      - name: Keep package as a private short-lived transfer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: moxbots-windows-x64-0.5.10
+          path: app/output/moxbots-windows-0.5.10/
+          if-no-files-found: error
+          retention-days: 1
