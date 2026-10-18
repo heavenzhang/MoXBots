@@ -34,7 +34,7 @@ Candidate, supported-platform actual gates, combined CI, main and formal publica
 
 ## Next step
 
-Candidate P23cc is built and pinned from successful run39136956964. Execute actual isolated standard/renewal/KVM gates and refreshed combined CI including concurrent mainad654. Do not merge main or publish until actual acceptance closes.
+Current frozen product is P2 `58d5247d7692acb816f211e1af7ef1891871bd6a`, producer39140386138/R20261018152704-58d5247d7692. Real standard39141103331 and natural lab renewal39141765786 passed; true KVM39142568416 is pending. Old P23/M are failed history. Full f0 CI39141026610 and duplicate manual39141095371 both passed9 applicable jobs. Latest main8e60805e is integrated; finish current combined CI, real reboot and remote main before public append/TLS verification/promotion. Never relabel old artifacts or change existing101/Mac for this installer lane.
 
 ## First exact-source candidate attempt
 
@@ -47,3 +47,13 @@ Current producer receipt and pins are recorded in `dev-docs/host-init-001/accept
 Actual pre-auth run39139286069 narrowed failure to extra dedicated HOME entries already present before Node. New-account useradd now skips inherited skeleton; existing authority and accounts remain untouched. A new exact-source candidate is required; P23 is historical, not publishable. Offline41/13/7 pass; real post-Ready no-inherited-skeleton gate is added. Headless CI39139281388 passed all original chain/mobile fixtures at pre-HOME-fix08ad3; new bytes still require full actual acceptance.
 
 New product P2 `58d5247d7692acb816f211e1af7ef1891871bd6a` actually built in39140386138 and full strict consumer passed; matching candidate12141158740/service12141537459 are pinned for isolated acceptance. Next: actual new-source standard/renewal/realKVM and full CI; no main merge/publication before those gates.
+
+## Current gates
+
+- [x] Same-P2 real standard browser/Dex/Ready/repeat/restart and inherited-skeleton exclusion.
+- [x] Same-P2 lab natural rotation and Ready beyond original account expiry+3s; original identity retained.
+- [x] Full f0 PR CI9 applicable checks and actual systemd ten-phase receipt.
+- [ ] Same-P2 true KVM guest reboot, new combined head CI, remote main containment.
+- [ ] Immutable publication, full anonymous normal-TLS/size/SHA/CRC, stable pair CAS and live acceptance.
+
+Evidence locations and closed summary hashes are recorded in dev-docs/host-init-001/acceptance.md. All production remains unchanged by this installer correction.
