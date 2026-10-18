@@ -10174,6 +10174,7 @@ function settleCancelledInputActivity(): boolean {
  * work and delayed warm-up. Stop-button semantics only own the current turn. */
 export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = () => undefined): Promise<void> {
   assertCurrent();
+  const interruptedTurn = isTurnInFlight() ? getCurrentTurnSourceItem() : null;
   if (lifecycleState.preWarmTimer) {
     clearTimeout(lifecycleState.preWarmTimer);
     setPreWarmTimer(null);
@@ -10203,6 +10204,29 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
   if (lifecycleState.query || lifecycleState.processing || lifecycleState.preWarming) {
     throw new Error('UPDATE_ACTIVITY_UNKNOWN');
   }
+  // Query abort can exit without an SDK result. Its finally clears streaming
+  // flags but does not publish a turn terminal, leaving Goal/Cron execute-sync
+  // (and its update admission) waiting until its full execution deadline.
+  // Only settle after termination/rollback proof, and never rewrite an existing
+  // complete/error terminal. Admission remains frozen during this settlement.
+  const source = getCurrentTurnSourceItem();
+  if (source && (source === interruptedTurn || source.onTerminal)
+    && getLastSessionCompletionTerminal()?.turnId !== source.id) {
+    const terminal = handleMessageStopped();
+    broadcast('chat:message-stopped', withSessionCompletionTerminal(null, terminal));
+  }
+  // Domain acknowledgement can retry while management is unavailable. Keep
+  // the updater bounded without cancelling that owner's durable settlement.
+  let observerTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      waitForCurrentTurnTerminalObserver(),
+      new Promise<never>((_, reject) => {
+        observerTimer = setTimeout(() => reject(new Error('UPDATE_ACTIVITY_UNKNOWN')), 10_000);
+      }),
+    ]);
+  } finally { if (observerTimer) clearTimeout(observerTimer); }
+  assertCurrent();
   isStreamingMessage = false;
   setSessionState('idle');
   if (transcriptState.messages.length > 0) await persistMessagesToStorage();
