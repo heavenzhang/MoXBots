@@ -15,6 +15,7 @@ import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactCha
 import { notificationOpens, notificationSnapshotMatches } from '../notificationPolicy';
 import { clearHandledNotification } from '../notifications';
 import { createLoginAttemptGate, loginNeedsPolling, loginPollNeedsStatus, logoutAndConfirm } from '../accountPolicy';
+import moxbotsMark from '../../assets/moxbots-mark.png';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -1164,7 +1165,7 @@ function AppBody() {
     {screen === 'login' && <View style={styles.loginPage}>
       <Topbar right={loginAction !== null || cancelUnconfirmed ? undefined : { label: '刷新', onPress: () => void run('account', loadAccount) }}/>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginScroll}><View style={styles.loginCard}>
-        <Image source={require('../../assets/moxbots-mark.png')} accessibilityLabel="MoXBots" style={styles.logoMark} resizeMode="contain"/>
+        <Image source={moxbotsMark} accessibilityLabel="MoXBots" style={styles.logoMark} resizeMode="contain"/>
         <Text style={styles.title}>连接你的 Agent</Text>
         <Text style={styles.subtitle}>登录后，随时继续电脑上的会话。</Text>
         {!!notice && <NoticeView notice={notice}/>}
