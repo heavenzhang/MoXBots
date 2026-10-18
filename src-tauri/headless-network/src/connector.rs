@@ -305,7 +305,26 @@ async fn connect(
     let mut last_ping = Instant::now();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     loop {
-        identity.account.ensure_current()?;
+        if let Err(error) = identity.account.ensure_current() {
+            // A lost response may cross the old local deadline. Only a pending
+            // candidate for this exact captured credential may recover via
+            // live server inspection and existing PoP, never a new login.
+            let recovered = match owned {
+                Some(connection)
+                    if ["OWNED_SESSION_INVALID", "ACCOUNT_SESSION_EXPIRED"]
+                        .contains(&error.code.as_str()) =>
+                {
+                    connection
+                        .recover_expired_snapshot(&identity.account)
+                        .await?
+                }
+                _ => false,
+            };
+            if recovered {
+                return Err(NetworkError::new("OWNED_SESSION_RENEWED"));
+            }
+            return Err(error);
+        }
         tokio::select! {
         incoming=socket.next()=>{
         last_server=Instant::now();

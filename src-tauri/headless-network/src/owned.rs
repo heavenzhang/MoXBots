@@ -318,12 +318,37 @@ impl Connection {
         })
     }
     pub(crate) async fn recover_pending_renewal(&self) -> Result<(), NetworkError> {
+        self.recover_pending_for(None).await.map(|_| ())
+    }
+    pub(crate) async fn recover_expired_snapshot(
+        &self,
+        captured: &NetworkAccountSession,
+    ) -> Result<bool, NetworkError> {
+        let NetworkAccountSession::Owned(captured) = captured else {
+            return Ok(false);
+        };
+        self.recover_pending_for(Some((&captured.binding_id, &captured.session.access_token)))
+            .await
+    }
+    async fn recover_pending_for(
+        &self,
+        expected: Option<(&str, &str)>,
+    ) -> Result<bool, NetworkError> {
         let (state, raw) = self.owner.read()?;
         let Some(account) = state.account.as_ref() else {
-            return Ok(());
+            return if expected.is_some() {
+                Err(NetworkError::new("OWNED_REAUTH_REQUIRED"))
+            } else {
+                Ok(false)
+            };
         };
+        if expected
+            .is_some_and(|(binding, token)| account.binding != binding || account.token != token)
+        {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
         let Some(pending) = account.renewal.as_ref() else {
-            return Ok(());
+            return Ok(false);
         };
         self.instance
             .ensure_same_trust(&self.client.public_instance().await?)?;
@@ -345,7 +370,7 @@ impl Connection {
                 {
                     return Err(NetworkError::new("AUTH_SCOPE_MISMATCH"));
                 }
-                return Ok(());
+                return Ok(false);
             }
             Err(error) => return Err(error),
         };
@@ -394,7 +419,8 @@ impl Connection {
                 .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?,
             &candidate,
             recovered.session.expires_at,
-        )
+        )?;
+        Ok(true)
     }
     pub async fn account(
         &self,
@@ -798,6 +824,24 @@ mod tests {
                 .owner
                 .commit(raw.as_deref().map(|v| v.as_slice()), &state)
                 .unwrap();
+            // Expired-connection recovery must never inherit a replacement
+            // login or a different captured opaque credential.
+            assert_eq!(
+                connection
+                    .recover_pending_for(Some((&uuid::Uuid::new_v4().to_string(), &old_token)))
+                    .await
+                    .unwrap_err()
+                    .code,
+                "ACCOUNT_BINDING_CHANGED"
+            );
+            assert_eq!(
+                connection
+                    .recover_pending_for(Some((&binding, &URL_SAFE_NO_PAD.encode([94u8; 32]))))
+                    .await
+                    .unwrap_err()
+                    .code,
+                "ACCOUNT_BINDING_CHANGED"
+            );
             drop(connection); // candidate durable, POST never sent
             let mut replies = vec![
                 (200u16, serde_json::to_value(&instance).unwrap(), None),

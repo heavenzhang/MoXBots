@@ -301,6 +301,7 @@ impl Owner {
         {
             return Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"));
         }
+        account.token.zeroize();
         account.token = candidate.into();
         account.expires_at = expires_at;
         account.renewal = None;
@@ -573,6 +574,11 @@ mod tests {
         assert_eq!(renewed.revision, state.revision);
         assert_eq!(a.expires_at, now + 3600);
         assert!(a.renewal.is_none());
+        // An adopted account keeps the old strict serialized shape, allowing
+        // rollback only after the new owner has resolved the pending rotation.
+        let adopted_shape = serde_json::to_value(&renewed).unwrap();
+        assert!(adopted_shape["account"].get("renewal").is_none());
+        assert_eq!(adopted_shape["account"].as_object().unwrap().len(), 4);
         assert!(owner
             .commit_renewal(&staged, &candidate, now + 7200)
             .is_err());
