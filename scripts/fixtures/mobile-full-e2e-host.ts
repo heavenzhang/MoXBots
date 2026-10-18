@@ -124,8 +124,6 @@ try{
   await new Promise<void>(yes=>supplier.listen(0,'127.0.0.1',yes));
   const address=supplier.address();assert(address&&typeof address!=='string');
   const baseUrl=`http://127.0.0.1:${address.port}`;
-  const operator=child(process.execPath,['--import','tsx',join(repository,'src/test/fixtures/mobile-original-host-operator.ts'),workspace,baseUrl]);
-  assert.equal((await once(operator,'exit'))[0],0,'operator setup failed');
   const require=createRequire(import.meta.url);await mkdir(join(root,'claude-agent-sdk'),{mode:0o700});
   const triple=process.platform==='darwin'?`darwin-${process.arch}`:`linux-${process.arch}`;
   await symlink(require.resolve(`@anthropic-ai/claude-agent-sdk-${triple}/claude`),join(root,'claude-agent-sdk','claude'));
@@ -140,13 +138,29 @@ try{
   }
   // Only original main creates and persists the synthetic Host ID. Stop it
   // before local encrypted credential setup to preserve its single writer.
-  const initial=await startHost(false);await wait('original bootstrap ready',async()=>diagnostics.includes('MyAgents Host ready')?true:undefined);const deviceId=initial.status.hostId;assert.equal(typeof deviceId,'string');
-  await stop(initial.host);
+  for(const path of [join(state,'host-identity.json'),join(home,'.myagents','config.json'),join(home,'.myagents','projects.json')])
+    await assert.rejects(readFile(path),{code:'ENOENT'});
+  const initial=await startHost(false);await wait('original bootstrap ready',async()=>diagnostics.includes('MyAgents Host ready')?true:undefined);
+  const deviceId=initial.status.hostId;assert.equal(typeof deviceId,'string');
+  assert.equal(initial.status.configured,false);assert.equal(initial.status.activeSession,null);assert.equal(calls,0);
+  const originalIdentity=await readFile(join(state,'host-identity.json'));
+  assert.equal(JSON.parse(originalIdentity.toString()).hostId,deviceId);
+  assert.deepEqual(JSON.parse(await readFile(join(home,'.myagents','config.json'),'utf8')),{agents:[]});
+  assert.deepEqual(JSON.parse(await readFile(join(home,'.myagents','projects.json'),'utf8')),[]);
+  await stop(initial.host);assert.equal(initial.host.exitCode,0,'original bootstrap did not stop cleanly');
+  // Operator configuration must follow original authority initialization. Never
+  // seed a registry before its identity or weaken established-authority checks.
+  const operator=child(process.execPath,['--import','tsx',join(repository,'src/test/fixtures/mobile-original-host-operator.ts'),workspace,baseUrl]);
+  assert.equal((await once(operator,'exit'))[0],0,'operator setup failed');
+  assert.deepEqual(await readFile(join(state,'host-identity.json')),originalIdentity);
+  const configuredRegistry=await Promise.all(['config.json','projects.json'].map(name=>readFile(join(home,'.myagents',name))));
   const storePath=join(state,'provider-credentials');
   const {createHostProviderCredentialOwner}=await import('../../src/host/provider-credentials');
   const owner=createHostProviderCredentialOwner({hostId:deviceId as string,storePath,loadMasterKey:()=>Buffer.from(masterKey)});
   assert.equal((await owner.write({providerId:'original-host-fixture',credential:secret,expectedRevision:0,mutationId:randomUUID()})).status,'persisted');
   const restarted=await startHost();assert.equal(restarted.status.hostId,deviceId);
+  assert.deepEqual(await readFile(join(state,'host-identity.json')),originalIdentity);
+  assert.deepEqual(await Promise.all(['config.json','projects.json'].map(name=>readFile(join(home,'.myagents',name)))),configuredRegistry);
   await control('/host/configure',{providerId:'moonshot-coding',model:'k3',executionAuthorized:true,expectedRevision:0,mutationId:randomUUID()});
   await writeFile(join(root,'host-ready.json'),JSON.stringify({deviceId}),{mode:0o600});
   await wait('fixture completion',async()=>{try{await readFile(join(root,'stop'));return true;}catch{return undefined;}},150_000);
