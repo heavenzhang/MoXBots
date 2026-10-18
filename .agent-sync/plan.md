@@ -362,7 +362,7 @@ User authorized owned relay terminal recovery first, then DSH child approval gui
 
 ## GOAL-TODO-UI-20261018
 
-目标模式与待办视觉/交互改造：中性目标状态条、状态与正文分层、全文展开、明确动作；紧凑待办摘要、当前项优先、完成项折叠与键盘/有界滚动。规范 `specs/tech_docs/goal_todo_interaction.md`，验收 `dev-docs/goal-todo-ui/acceptance.md`，任务 `.agent-sync/tasks/codex-goal-todo-ui-20261018-e7f5543d.md`。不改执行/持久化 owner。代码/main/合成组件和正式签名包/原生真实路径分别跟踪；发布仍交既定唯一 owner 下一未冻结版本，不进入已冻结0510，不并发发布或重启日常任务。此记录不表示已通知另一聊天。
+目标模式与待办视觉/交互改造：中性目标状态条、状态与正文分层、全文展开、明确动作；紧凑待办摘要、当前项优先、完成项折叠与键盘/有界滚动。规范 `specs/tech_docs/goal_todo_interaction.md`，验收 `dev-docs/goal-todo-ui/acceptance.md`，任务 `.agent-sync/tasks/codex-goal-todo-ui-20261018-e7f5543d.md`。不改执行/持久化 owner。代码/main/合成组件和正式签名包/原生真实路径分别跟踪；发布仍交既定唯一 owner 下一未冻结版本，不进入已冻结0510，不并发发布或重启日常任务。图标补充 GOAL-ICON-20261018：草稿/执行态/任务中心目标标记统一共享 TargetIcon，任务 `.agent-sync/tasks/codex-goal-icon-20261018-a96f71e6.md`。用户已明确授权向既定统一发布会话发送整批改动和原生验收要求；发送回执与正式包验收分别记录。
 
 ## MOXBOTS-SESSION-WINDOWS-001 — 2026-10-17
 

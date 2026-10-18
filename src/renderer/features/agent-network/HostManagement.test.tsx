@@ -87,7 +87,7 @@ function fixture(snapshot = host()) {
     inspect: vi.fn(
       async (): Promise<HostAccess> => ({ status: "ready", snapshot }),
     ),
-    read: vi.fn(async () => snapshot),
+    read: vi.fn<HostManagementAdapter["read"]>(async () => snapshot),
     mutate: vi.fn<HostManagementAdapter["mutate"]>(),
     receipt: vi.fn<HostManagementAdapter["receipt"]>(),
     testProvider: vi.fn(async () => ({ ok: false })),
@@ -100,7 +100,12 @@ async function mount(adapter = fixture(), online = true, strict = false) {
   const rendered = render(
     strict ? <StrictMode>{content}</StrictMode> : content,
   );
-  fireEvent.click(screen.getByRole("button", { name: /Host 管理/ }));
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: /Host 管理/ }));
+    await Promise.all(
+      adapter.inspect.mock.results.map((result) => result.value),
+    );
+  });
   await screen.findByLabelText("默认模型");
   return { ...rendered, adapter };
 }
@@ -392,6 +397,44 @@ describe("Host management UI v0 seam (isolated fixtures only)", () => {
     expect(
       screen.getByRole("button", { name: "测试已生效配置" }),
     ).toBeDisabled();
+  });
+  it("publishes an active StrictMode owner's refresh and aborts it on actual unmount", async () => {
+    const adapter = fixture();
+    let finish!: (value: HostSnapshot) => void;
+    let readSignal: AbortSignal | undefined;
+    adapter.read.mockImplementation((_address, signal) => {
+      readSignal = signal;
+      return new Promise((resolve) => {
+        finish = resolve;
+      });
+    });
+    const first = await mount(adapter, true, true);
+    fireEvent.click(screen.getByRole("button", { name: "读取最新状态" }));
+    expect(adapter.read).toHaveBeenCalledOnce();
+    expect(readSignal).toBeDefined();
+    expect(readSignal?.aborted).toBe(false);
+    const finishFirst = finish;
+    await act(async () => finishFirst(host({ initialization: "error" })));
+    expect(readSignal?.aborted).toBe(false);
+    expect(
+      screen.getByRole("button", { name: /Host 管理\s*异常/ }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "读取最新状态" }));
+    expect(adapter.read).toHaveBeenCalledTimes(2);
+    const oldSignal = readSignal;
+    const finishOld = finish;
+    expect(finishOld).not.toBe(finishFirst);
+    first.unmount();
+    expect(oldSignal?.aborted).toBe(true);
+    await mount(fixture(), true, true);
+    await act(async () => finishOld(host({ initialization: "error" })));
+    expect(
+      screen.getByRole("button", { name: /Host 管理\s*待配置/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /Host 管理\s*异常/ }),
+    ).not.toBeInTheDocument();
   });
   it("latest owner status updates after StrictMode remount and revoked read permission hides the form", async () => {
     const adapter = fixture();

@@ -7,7 +7,7 @@
 
 ## Objective
 
-Continue MOXBOTS-MOBILE-002 without shrinking its everyday-use objective: add missing actual iOS native SDK/Keychain/attachment acceptance while the Mac is locked. User-authorized original Host/session architecture and Git destination remain unchanged. No product executor, account, permissions or deployment changes.
+Continue MOXBOTS-MOBILE-002 without shrinking its everyday-use objective: add missing actual iOS native SDK/Keychain/attachment acceptance while the Mac is locked. User-authorized original Host/session architecture and Git destination remain unchanged. No product executor, account, permissions or deployment changes. The integration also contains a test-only desktop Host lifecycle regression after combined CI failed; product Host source remains unchanged.
 
 ## Acceptance criteria
 
@@ -43,3 +43,12 @@ Original test/evidence commit full Test39090821185 passed. Latest main8ed2b4e1b7
 ## Next step
 
 - Final committed-content comparison and normal CI/main delivery; then resume original real-user gates when local environment/config becomes available.
+
+## Combined CI diagnostic and concurrent main
+
+- Normally absorbed main149f5edfbe3fd66fe98e21a01bff13c58ca0d691 goal icon changes and task records without conflicts.
+- Test39092169100: frontend DOM failed the existing StrictMode Host status-refresh case; six other normal jobs passed. Original isolated file15pass and ten runs of the original case passed. Original CI trigger remains unknown.
+- Profiler commit-reentry experiment exposed an aborted signal but is not a real browser-click reproduction. Independent review rejected using it as proof of a production defect; all experimental product changes withdrawn.
+- Fixture mount now explicitly awaits inspect and StrictMode effects in async act. Added independent deferred requests proving active result publication, live signal, real unmount abort and stale-result isolation; second request count and distinct deferred explicitly checked after review.
+- Primary focused file16pass; full DOM/typecheck/final combined CI pending. No timeout/retry/skip relaxation. Diagnostic logs retained at /tmp/moxbots-mobile-host-lifecycle-*.log and original failure /tmp/moxbots-mobile-ios-native-final-ci-failure.log.
+- Selection: reuse one independent reviewer for bounded lifecycle diagnosis; no new worker. Existing requested gpt-6.1-sol/medium due cross-lifecycle uncertainty, runtime routing/cost unknown. Native-only ai-yaoren-local; no external model call.
