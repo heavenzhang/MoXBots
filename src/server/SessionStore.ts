@@ -22,6 +22,7 @@ import { join } from 'path';
 import * as asyncFs from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 
+import { deriveSessionContinuation } from '../shared/sessionContinuation';
 import type { DshProjectionCursor, MessageUsage, PendingConversationMutation, PendingDshMutation, PendingDshRootOperation, SessionMetadata, SessionData, SessionMessage, SessionStats } from './types/session';
 import type { PendingDshInput } from './types/session';
 import { createSessionMetadata, generateSessionTitle, ownsSessionMetadataBirth } from './types/session';
@@ -296,6 +297,7 @@ function createActiveTranscript(metadata: SessionMetadata, birth: boolean, decod
             const messages = [...projection.messages.values()];
             return {
                 stats: calculateSessionStats(messages),
+                continuation: deriveSessionContinuation(projection),
                 lastMessagePreview: resolveLastVisibleTurnPreview(messages.filter(message => message.role === 'user')
                     .map(message => ({ role: message.role, content: typeof message.content === 'string'
                         ? message.content : JSON.stringify(message.content) }))).preview,

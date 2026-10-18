@@ -253,6 +253,59 @@ describe('GlobalSidebar rail flyout', () => {
     vi.unstubAllGlobals();
   });
 
+  it('continues only the selected unfinished Session and prevents repeat clicks during navigation', async () => {
+    mocks.forcedRail = false;
+    const project = { id: 'project-1', name: 'Project one', path: '/work/project-one' };
+    const session = { id: 'interrupted', agentDir: project.path, title: 'Unfinished work',
+      createdAt: '2026-09-02T00:00:00Z', lastActiveAt: '2026-09-02T12:00:00Z',
+      continuation: { turnId: 'turn-1', rootUserMessageId: 'user-1', status: 'interrupted' } };
+    mocks.projects.push(project);
+    mocks.taskData.sessions.push(session);
+    window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+      version: 1, preferredMode: 'expanded', expandedWorkspaceKeys: [project.path],
+      hasSeededDefaultExpansion: true, showAutomationSessions: true, sessionView: 'all',
+    }));
+    let resolve!: (value: boolean) => void;
+    const onContinueSession = vi.fn(() => new Promise<boolean>(done => { resolve = done; }));
+    const onOpenSession = vi.fn(async () => true);
+    renderSidebar({ onContinueSession, onOpenSession });
+    const button = screen.getByRole('button', { name: '继续未完成任务' });
+    expect(button.closest('button')?.parentElement?.closest('button')).toBeNull();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onContinueSession).toHaveBeenCalledExactlyOnceWith(session, project);
+    expect(onOpenSession).not.toHaveBeenCalled();
+    expect(button).toBeDisabled();
+    await act(async () => resolve(false));
+    expect(button).toBeEnabled();
+  });
+
+  it.each(['complete', 'protected', 'generating', 'maintenance', 'archived', 'external'] as const)(
+    'does not offer continuation for a %s Session', async kind => {
+      mocks.forcedRail = false;
+      const project = { id: 'project-1', name: 'Project one', path: '/work/project-one' };
+      const session = { id: 'session-1', agentDir: project.path, title: 'History',
+        createdAt: '2026-09-02T00:00:00Z', lastActiveAt: '2026-09-02T12:00:00Z',
+        ...(kind === 'complete' ? {} : { continuation: { turnId: 'turn-1', rootUserMessageId: 'user-1', status: 'stopped' } }),
+        ...(kind === 'maintenance' ? { systemMaintenanceKind: 'memory_auto_update' } : {}),
+        ...(kind === 'archived' ? { archived: true } : {}),
+        ...(kind === 'external' ? { runtime: 'codex' } : {}),
+      };
+      mocks.projects.push(project);
+      mocks.taskData.sessions.push(session);
+      window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+        version: 1, preferredMode: 'expanded', expandedWorkspaceKeys: [project.path],
+        hasSeededDefaultExpansion: true, showAutomationSessions: true, sessionView: 'all',
+      }));
+      if (kind === 'protected') mocks.taskData.deleteProtectedSessionIds.add(session.id);
+      renderSidebar({ onContinueSession: vi.fn(async () => true), ...(kind === 'generating' ? {
+        tabs: [launcherTab, { id: 'busy', view: 'chat', sessionId: session.id, agentDir: project.path,
+          title: session.title, sidecarConfigDisposition: 'adopt', isGenerating: true }],
+      } : {}) });
+      expect(screen.queryByRole('button', { name: '继续未完成任务' })).not.toBeInTheDocument();
+    },
+  );
+
   it('opens a project board separately from workspace expansion and new chat', async () => {
     mocks.projects.push({id:'project-1',name:'Project one',path:'/work/project-one'});
     const onOpenProjectBoard = vi.fn();

@@ -97,6 +97,7 @@ import {
   HelperIcon,
   MoreIcon,
   PlusIcon,
+  PlayIcon,
   SearchIcon,
   SettingsIcon,
   SidebarIcon,
@@ -234,6 +235,7 @@ interface GlobalSidebarProps {
   ) => Promise<boolean>;
   onOpenProjectBoard?: (project: Project) => void;
   onOpenSession: (session: SessionMetadata, project: Project) => Promise<boolean>;
+  onContinueSession?: (session: SessionMetadata, project: Project) => Promise<boolean>;
   onRenameSession: (sessionId: string, title: string) => Promise<SessionMetadata | null>;
   historyTagIntent?: { id: number; tag: string } | null;
   onHistoryTagIntentConsumed?: (id: number) => void;
@@ -516,6 +518,7 @@ export default memo(function GlobalSidebar({
   onOpenWorkspace,
   onOpenProjectBoard,
   onOpenSession,
+  onContinueSession,
   onRenameSession,
   historyTagIntent,
   onHistoryTagIntentConsumed,
@@ -1087,6 +1090,18 @@ export default memo(function GlobalSidebar({
     }
   }, [closeFlyout, onOpenSession, touchProject]);
 
+  const handleContinueSession = useCallback(async (session: SessionMetadata, project: Project) => {
+    const sourceActiveTabId = activeTabIdRef.current;
+    const interactionGeneration = resourceSurfaceInteractionGenerationRef.current;
+    const opened = await onContinueSession?.(session, project);
+    if (opened) {
+      if (activeTabIdRef.current === sourceActiveTabId
+        && resourceSurfaceInteractionGenerationRef.current === interactionGeneration) closeFlyout();
+      void touchProject(project.id).catch(() => {});
+    }
+    return opened === true;
+  }, [closeFlyout, onContinueSession, touchProject]);
+
   const handleConfirmDeleteSession = useCallback(async () => {
     if (!pendingDeleteSession) return;
     const target = pendingDeleteSession;
@@ -1195,6 +1210,7 @@ export default memo(function GlobalSidebar({
       onOpenWorkspace={handleOpenWorkspace}
       onOpenProjectBoard={onOpenProjectBoard ? (project) => { onOpenProjectBoard(project); closeFlyout(); } : undefined}
       onOpenSession={handleOpenSession}
+      onContinueSession={onContinueSession ? handleContinueSession : undefined}
       onTogglePin={handleTogglePin}
       onAgentSettings={(project, origin) => {
         rememberChildLayerOrigin(origin);
@@ -1709,6 +1725,7 @@ interface WorkspaceTreeProps {
   onOpenWorkspace: (project: Project) => void;
   onOpenProjectBoard?: (project: Project) => void;
   onOpenSession: (session: SessionMetadata, project: Project) => void;
+  onContinueSession?: (session: SessionMetadata, project: Project) => Promise<boolean>;
   onTogglePin: (project: Project) => void;
   onAgentSettings: (project: Project, origin?: HTMLElement | null) => void;
   onArchive: (project: Project) => void;
@@ -1821,6 +1838,7 @@ function WorkspaceTree({
   onOpenWorkspace,
   onOpenProjectBoard,
   onOpenSession,
+  onContinueSession,
   onTogglePin,
   onAgentSettings,
   onArchive,
@@ -1975,6 +1993,7 @@ function WorkspaceTree({
           session.id,
         )}
         onOpen={() => onOpenSession(session, project)}
+        onContinue={onContinueSession ? () => onContinueSession(session, project) : undefined}
         onToggleFavorite={() => onToggleFavorite(session)}
         onTogglePin={() => onToggleSessionPin(session)}
         onArchiveChanged={() => viewMenuRef.current?.focus()}
@@ -2785,6 +2804,7 @@ interface SessionRowProps {
   unreadNotificationCount: number;
   deleteProtected: boolean;
   onOpen: () => void;
+  onContinue?: () => Promise<boolean>;
   onToggleFavorite: () => void;
   onTogglePin: () => void;
   onArchiveChanged: () => void;
@@ -2808,6 +2828,7 @@ function SessionRow({
   unreadNotificationCount,
   deleteProtected,
   onOpen,
+  onContinue,
   onToggleFavorite,
   onTogglePin,
   onArchiveChanged,
@@ -2826,6 +2847,13 @@ function SessionRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const displayTitle = getSessionDisplayText(session);
   const fullTitle = getFullSessionDisplayText(session);
+  const [continuing, setContinuing] = useState(false);
+  const continuationInFlight = useRef(false);
+  const canContinue = !!onContinue && !!session.continuation && !deleteProtected
+    && (session.runtime === undefined || session.runtime === 'builtin')
+    && !session.archived && !session.systemMaintenanceKind
+    && tab?.view !== 'remote-session' && !(tab?.view === 'chat' && (tab.isGenerating || tab.pendingContinuation));
+
   const menuRef = useRef<HTMLButtonElement | null>(null);
   const setMenu = useCallback((open: boolean) => {
     setMenuOpen(open);
@@ -2894,6 +2922,28 @@ function SessionRow({
           {formatTime(session.lastActiveAt, new Date(), locale)}
         </span>
       </button>
+      {canContinue && (
+        <Tip label={tLauncher('rightRail.continueUnfinished')} align="end">
+          <button
+            type="button"
+            aria-label={tLauncher('rightRail.continueUnfinished')}
+            disabled={continuing}
+            className="global-sidebar-action-button mr-9 flex shrink-0 items-center justify-center rounded-md text-[var(--accent)] hover:bg-[var(--paper-inset)] disabled:opacity-50"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={async (event) => {
+              event.stopPropagation();
+              if (continuationInFlight.current) return;
+              continuationInFlight.current = true;
+              setContinuing(true);
+              try { await onContinue?.(); }
+              catch (error) { console.error('[GlobalSidebar] Failed to continue Session:', error); }
+              finally { continuationInFlight.current = false; setContinuing(false); }
+            }}
+          >
+            <PlayIcon className="h-3.5 w-3.5" />
+          </button>
+        </Tip>
+      )}
       <div
         className={`absolute inset-y-0 flex w-9 items-center justify-end transition-opacity ${
           menuOpen
