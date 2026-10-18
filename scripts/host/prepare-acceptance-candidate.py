@@ -41,12 +41,12 @@ def sha256_file(path: pathlib.Path) -> str:
     return digest.hexdigest()
 
 
-def strict_json(path: pathlib.Path, limit: int) -> dict:
+def strict_json(path: pathlib.Path, limit: int, consumer_module=consumer) -> dict:
     if path.is_symlink() or not path.is_file() or path.stat().st_size > limit:
         raise CandidateError("candidate metadata file is unsafe or oversized")
     try:
-        value = consumer.strict_json(path.read_bytes())
-    except (consumer.Rejected, OSError) as exc:
+        value = consumer_module.strict_json(path.read_bytes())
+    except (consumer_module.Rejected, OSError) as exc:
         raise CandidateError("candidate metadata JSON is invalid") from exc
     return value
 
@@ -78,7 +78,22 @@ def _regular_file(path: pathlib.Path, *, max_size: int, executable: bool = False
     return info
 
 
-def _candidate_paths(prepared: pathlib.Path, source_commit: str) -> tuple[str, pathlib.Path, pathlib.Path, dict]:
+def load_source_consumer(source_root: pathlib.Path):
+    """Load the strict consumer from product commit P, never from the harness checkout."""
+    path = source_root / "scripts/host/one-command.py"
+    _regular_file(path, max_size=1024 * 1024)
+    source_spec = importlib.util.spec_from_file_location("source_host_consumer", path)
+    if source_spec is None or source_spec.loader is None:
+        raise CandidateError("source checkout does not provide the Host consumer")
+    source_consumer = importlib.util.module_from_spec(source_spec)
+    try:
+        source_spec.loader.exec_module(source_consumer)
+    except Exception as exc:
+        raise CandidateError("source Host consumer could not be loaded") from exc
+    return source_consumer
+
+
+def _candidate_paths(prepared: pathlib.Path, source_commit: str, source_consumer) -> tuple[str, pathlib.Path, pathlib.Path, dict]:
     if prepared.is_symlink() or not prepared.is_dir():
         raise CandidateError("prepared release directory is unsafe")
     expected_top = {"install.sh", "stable.json", "release-review.json", "releases"}
@@ -87,10 +102,10 @@ def _candidate_paths(prepared: pathlib.Path, source_commit: str) -> tuple[str, p
     install_script = prepared / "install.sh"
     _regular_file(install_script, max_size=BOOTSTRAP_LIMIT, executable=True)
     stable_path = prepared / "stable.json"
-    index = strict_json(stable_path, 16384)
+    index = strict_json(stable_path, 16384, source_consumer)
     try:
-        consumer.validate_index(index)
-    except consumer.Rejected as exc:
+        source_consumer.validate_index(index)
+    except source_consumer.Rejected as exc:
         raise CandidateError("prepared release index failed the Host consumer contract") from exc
     if index["profile"] != "moxbot-test" or index["sourceCommit"] != source_commit:
         raise CandidateError("prepared release profile or source commit mismatch")
@@ -104,7 +119,7 @@ def _candidate_paths(prepared: pathlib.Path, source_commit: str) -> tuple[str, p
     bootstrap = release / "bootstrap.py"
     bundle = release / "bundle.tar.gz"
     _regular_file(bootstrap, max_size=BOOTSTRAP_LIMIT)
-    _regular_file(bundle, max_size=consumer.MAX_BUNDLE)
+    _regular_file(bundle, max_size=source_consumer.MAX_BUNDLE)
     bootstrap_bytes = bootstrap.read_bytes()
     if (len(bootstrap_bytes) != index["bootstrapBytes"]
             or hashlib.sha256(bootstrap_bytes).hexdigest() != index["bootstrapSha256"]
@@ -116,10 +131,10 @@ def _candidate_paths(prepared: pathlib.Path, source_commit: str) -> tuple[str, p
     try:
         compile(bootstrap_bytes, str(bootstrap), "exec")
         with tempfile.TemporaryDirectory(prefix="moxbots-host-candidate-verify-") as temp:
-            bundle_manifest = consumer.unpack_bundle(bundle, pathlib.Path(temp) / "verified", index)
-    except (SyntaxError, consumer.Rejected, OSError, tarfile.TarError) as exc:
+            bundle_manifest = source_consumer.unpack_bundle(bundle, pathlib.Path(temp) / "verified", index)
+    except (SyntaxError, source_consumer.Rejected, OSError, tarfile.TarError) as exc:
         raise CandidateError("prepared release failed strict Host consumer validation") from exc
-    review = strict_json(prepared / "release-review.json", 65536)
+    review = strict_json(prepared / "release-review.json", 65536, source_consumer)
     review_keys = {"schemaVersion", "sourceCommit", "sourceClean", "publisherSignature", "trust",
                    "installScriptSha256", "publication", "releaseIndex", "bundleManifest"}
     if (set(review) != review_keys or review["schemaVersion"] != 1 or review["sourceCommit"] != source_commit
@@ -165,13 +180,14 @@ def prepare_candidate(prepared: pathlib.Path, service_binary: pathlib.Path, sour
                       source_root: pathlib.Path = ROOT) -> dict:
     source_root = source_root.resolve(strict=True)
     require_clean_source(source_root, source_commit)
+    source_consumer = load_source_consumer(source_root)
     runner_temp = _runner_temp_root()
     if candidate_output == service_output:
         raise CandidateError("candidate and service artifacts require distinct output directories")
     _new_output(candidate_output, runner_temp, source_root)
     _new_output(service_output, runner_temp, source_root)
     _verify_service(service_binary)
-    release_id, bootstrap, bundle, _review = _candidate_paths(prepared, source_commit)
+    release_id, bootstrap, bundle, _review = _candidate_paths(prepared, source_commit, source_consumer)
 
     candidate_stage = pathlib.Path(tempfile.mkdtemp(prefix=".candidate-", dir=runner_temp))
     service_stage = pathlib.Path(tempfile.mkdtemp(prefix=".service-", dir=runner_temp))
@@ -250,12 +266,14 @@ def main() -> int:
     parser.add_argument("--prepared-release", type=pathlib.Path, required=True)
     parser.add_argument("--service-binary", type=pathlib.Path, required=True)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--source-root", type=pathlib.Path, default=ROOT,
+                        help="clean product checkout P containing scripts/host/one-command.py")
     parser.add_argument("--candidate-output", type=pathlib.Path, required=True)
     parser.add_argument("--service-output", type=pathlib.Path, required=True)
     args = parser.parse_args()
     try:
         result = prepare_candidate(args.prepared_release, args.service_binary, args.source_commit,
-                                   args.candidate_output, args.service_output)
+                                   args.candidate_output, args.service_output, args.source_root)
         print(json.dumps(result, sort_keys=True))
         return 0
     except (CandidateError, consumer.Rejected, OSError, ValueError, subprocess.SubprocessError,

@@ -6,6 +6,7 @@ import io
 import json
 import os
 import pathlib
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -28,11 +29,15 @@ class CandidateBuilderTests(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         self.source = self.root / "source"
         self.source.mkdir()
+        product_consumer = self.source / "scripts/host/one-command.py"
+        product_consumer.parent.mkdir(parents=True)
+        shutil.copyfile(builder.consumer.__file__, product_consumer)
+        (self.source / ".gitignore").write_text("__pycache__/\n")
         subprocess.run(["git", "init", "-q", str(self.source)], check=True)
         subprocess.run(["git", "-C", str(self.source), "config", "user.email", "candidate@example.invalid"], check=True)
         subprocess.run(["git", "-C", str(self.source), "config", "user.name", "Candidate Test"], check=True)
         (self.source / "source.txt").write_text("clean source fixture\n")
-        subprocess.run(["git", "-C", str(self.source), "add", "source.txt"], check=True)
+        subprocess.run(["git", "-C", str(self.source), "add", ".gitignore", "source.txt", "scripts/host/one-command.py"], check=True)
         subprocess.run(["git", "-C", str(self.source), "commit", "-qm", "fixture"], check=True)
         self.commit = subprocess.check_output(["git", "-C", str(self.source), "rev-parse", "HEAD"], text=True).strip()
         self.runner = self.root / "runner-temp"
@@ -145,6 +150,8 @@ class CandidateBuilderTests(unittest.TestCase):
                                          self.candidate_out, self.service_out, self.source)
 
     def test_builds_exact_candidate_and_service_payloads(self):
+        self.assertNotEqual(builder.ROOT.resolve(), self.source.resolve())
+        self.assertFalse((self.source / "scripts/host/prepare-acceptance-candidate.py").exists())
         result = self._run()
         self.assertEqual(result["status"], "prepared-not-published")
         self.assertEqual(result["transport"], "candidate-ci-artifact")

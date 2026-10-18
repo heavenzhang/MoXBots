@@ -39,11 +39,19 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.sha }}
+          path: harness
+          persist-credentials: false
+
+      - uses: actions/checkout@v4
+        with:
           ref: ${{ inputs.source_commit }}
+          path: product
           persist-credentials: false
 
       - name: Confirm the clean checkout matches the requested commit
         shell: bash
+        working-directory: product
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$SOURCE_COMMIT"
@@ -53,6 +61,7 @@ jobs:
         with:
           node-version: 24.20.0
           cache: npm
+          cache-dependency-path: product/package-lock.json
 
       - uses: actions/setup-python@v5
         with:
@@ -63,27 +72,31 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            src-tauri/headless-network
-            services/agentnet
+            product/src-tauri/headless-network
+            product/services/agentnet
 
       - name: Install locked Node dependencies and test the candidate packager
+        working-directory: product
         run: |
           npm ci
-          python3 scripts/host/prepare-acceptance-candidate.test.py
+          python3 ../harness/scripts/host/prepare-acceptance-candidate.test.py
 
       - name: Build the moxbot-test Host archive from this clean source
         env:
           MYAGENTS_HOST_PROFILE: moxbot-test
           MYAGENTS_HOST_OUTPUT: ${{ runner.temp }}/host-build
+        working-directory: product
         run: npm run build:host
 
       - name: Build the Linux x86_64 network connector and service
+        working-directory: product
         run: |
           cargo build --locked --release --manifest-path src-tauri/headless-network/Cargo.toml --bin myagents-host-network
           cargo build --locked --release --manifest-path services/agentnet/Cargo.toml --bin myagents-agentnet-service
 
       - name: Prepare and validate the local release tree and acceptance candidate
         shell: bash
+        working-directory: product
         run: |
           set -euo pipefail
           network_artifact="$RUNNER_TEMP/network-artifact"
@@ -100,10 +113,11 @@ jobs:
             --network-artifact-dir "$network_artifact" \
             --output "$RUNNER_TEMP/prepared-host-release"
 
-          python3 scripts/host/prepare-acceptance-candidate.py \
+          python3 ../harness/scripts/host/prepare-acceptance-candidate.py \
             --prepared-release "$RUNNER_TEMP/prepared-host-release" \
             --service-binary services/agentnet/target/release/myagents-agentnet-service \
             --source-commit "$SOURCE_COMMIT" \
+            --source-root "$PWD" \
             --candidate-output "$RUNNER_TEMP/host-acceptance-candidate" \
             --service-output "$RUNNER_TEMP/host-agentnet-service-artifact" \
             | tee "$RUNNER_TEMP/host-candidate-producer-receipt.json"
