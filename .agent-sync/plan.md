@@ -432,3 +432,12 @@ The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when No
 ## MOXBOTS-SESSION-AUDIT-20261018
 
 用户要求梳理未归档会话、跟进已改完未入主干的成果。43个root快照与实际工作树/PR/main交叉核对；组合模型原任务定位到MoXBots自身SDK会话5025b9bb，39文件未提交且仍预览；不可再与已交付PR73主备切换混为一谈。PR133、Host聚合137（吸收129）、mobile136、updater-resume分别由原owner继续；已消息跟进，不冒称完成。PR104七文件blob已与main/v0.5.11相同，避免重复合并。置顶132/网络134已main，下一未冻结候选另验。逐会话证据/下一步见`dev-docs/delivery/session-audit-20261018.md`；本轮不归档聊天、不启动发布、不操作客户端。
+
+## Deployment coordination — MOXBOTS-0512-UPDATE-RECOVERY-20261018
+
+- **Deployment chat:** 01a12bc2-907a-7702-b6dd-788225c5dfe4, existing unified desktop updater owner.
+- **Designation:** User in source thread01a14f82 confirmed the canonical repository and authorized notifying this publisher and arranging a next-unfrozen release. Source user messages read directly; previous desktop signing/publication scope retained.
+- **Targets/runbook:** macOS arm64 own updater on existing140 server only; scripts/moxbot-updates and final candidate-owned reviewed scripts. No backend/Host/mobile/Windows targets or daily interruption authority inferred.
+- **Current release:** Preparing0.5.12; final141/138 normalCI/main and version metadata must pass before freeze/build. Existing0511 immutable and stable preserved. Old059 recovery, new candidate real native and public distribution are separate gates.
+- **Native ownership:** Source thread01a14f82 currently owns a newly human-authorized once-only0511 restart update. This publisher remains off native UI until that owner releases it; active CRM work preserved. No false admission/Stopped or force-kill workaround.
+- **Record:** dev-docs/releases/moxbots-0.5.12.md and branch task record. Private evidence in project work/release-0512-20261018/owner/; secrets/bundles stay out of Git.
