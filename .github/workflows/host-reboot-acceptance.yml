@@ -1,4 +1,4 @@
-name: Host true KVM guest reboot acceptance (pinned M)
+name: Host true KVM guest reboot acceptance (pinned P)
 
 on:
   workflow_dispatch:
@@ -45,12 +45,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: dcf8d9a60976c160e2b2aca33313c668c071132c
-          path: product-M
+          ref: 23ccbded83f2b6db8042c5e6be33b74c670b4809
+          path: product-P
           persist-credentials: false
       - name: Require an actual usable nested KVM VM; never fall back to TCG
         run: |
-          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --output "$RUNNER_TEMP/host-reboot-summary" --probe-only
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-P" --output "$RUNNER_TEMP/host-reboot-summary" --probe-only
       - name: Validate optional reviewed public cache IDs
         if: ${{ !inputs.capability_only }}
         env:
@@ -86,11 +86,11 @@ jobs:
       - uses: actions/download-artifact@v4
         if: ${{ !inputs.capability_only }}
         with:
-          artifact-ids: '12123324723'
-          run-id: '39093243842'
+          artifact-ids: '12140730503'
+          run-id: '39136956964'
           github-token: ${{ github.token }}
           repository: heavenzhang/MoXBots
-          path: ${{ runner.temp }}/host-reboot-service-M
+          path: ${{ runner.temp }}/host-reboot-service-P
           merge-multiple: true
       - name: Prepare disposable guest and outer real browser lab
         if: ${{ !inputs.capability_only }}
@@ -117,7 +117,7 @@ jobs:
           elif [[ -n "$CACHED_PUBLIC_RUN" ]]; then
             public_args=(--cached-public-payload "$RUNNER_TEMP/host-public-cache-input" --cached-public-run "$CACHED_PUBLIC_RUN" --cached-public-artifact-id "$CACHED_PUBLIC_ARTIFACT_ID")
           fi
-          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-reboot-venv/bin/python" harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --service-artifact "$RUNNER_TEMP/host-reboot-service-M" --output "$RUNNER_TEMP/host-reboot-summary" "${public_args[@]}"
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-reboot-venv/bin/python" harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-P" --service-artifact "$RUNNER_TEMP/host-reboot-service-P" --output "$RUNNER_TEMP/host-reboot-summary" "${public_args[@]}"
       - name: Upload only explicit non-secret reboot or KVM blocker summary
         if: always()
         uses: actions/upload-artifact@v4

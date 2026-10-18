@@ -59,17 +59,21 @@ SAFE_STATUS_ERRORS = SAFE_CLI_ERRORS | frozenset({"NETWORK_TRANSPORT_FAILED", "N
     "DEVICE_NOT_REGISTERED", "CATALOG_CAPACITY", "HOST_MANAGEMENT_UNAVAILABLE",
     "HOST_MANAGEMENT_IPC_PEER_REJECTED", "HOST_MANAGEMENT_REQUEST_TOO_LARGE"})
 
-PRODUCT = "dcf8d9a60976c160e2b2aca33313c668c071132c"
-RELEASE = "20261018032115-dcf8d9a60976"
+PRODUCT = "23ccbded83f2b6db8042c5e6be33b74c670b4809"
+RELEASE = "20261018144013-23ccbded83f2"
 PUBLIC = "https://140.143.183.232"
 ORIGIN = "https://127.0.0.1:24443"
 DEX_IMAGE = "ghcr.io/dexidp/dex:v2.46.0"
-SERVICE_SHA = "b73f5d462504e2d5a132d672ad85ba660605404ef21c46d4af937f92b5748d63"
+SERVICE_BYTES = 27510672
+SERVICE_RUN = "39136956964"
+SERVICE_ARTIFACT_ID = "12140730503"
+SERVICE_ARTIFACT_NAME = "host-agentnet-service-23ccbded83f2b6db8042c5e6be33b74c670b4809"
+SERVICE_SHA = "59e2a8ed29d8c6c9dada0df284c58e76a34e05d2018582a2c45ae234fe6c64bd"
 INSTALL_SHA = "c317033d7bf4ae77160e2a528ae83e88d4f3edd4a59f771af2b98fba10a6853b"
-STABLE_SHA = "00961ca2d710dcbad5bc6cb0c95ad0ac4bf5be6aff801c4bf86037642da5ebce"
+STABLE_SHA = "bad36186bbefbe03efb9dc383daf79d0278c43e755bba9b2a4134d0d7a58e7b3"
 PINS = {
-    "bootstrap.py": (24272, "877fff3bf5810de7d20cc9a43ac2d49b6f9c28f29a39ba61ac3f54c168040e9c"),
-    "bundle.tar.gz": (171501596, "304be176df11f9d4a952dab560160e7bdbe7af0c92dfa9eeeba6435cff037ae2"),
+    "bootstrap.py": (24272, "d937206327a1f2109727b08e9f37303a67b02e8d74518b252b1ca0aec8f4bd0c"),
+    "bundle.tar.gz": (171491680, "61ac68f2472ce4e5e8abbf692b91554aff3b63befb515e20cec4b8d5715c32e0"),
 }
 NODE = "moxbot-host-test.service"
 CONNECTOR = "moxbot-host-network-test.service"
@@ -730,7 +734,7 @@ def prepare_candidate(args, private):
 def verify_service(args):
     need(args.service_artifact is not None and args.service_artifact.is_absolute(), "service-artifact-required")
     binary = args.service_artifact / "myagents-agentnet-service"
-    need(binary.is_file() and not binary.is_symlink() and binary.stat().st_size == 27513232,
+    need(binary.is_file() and not binary.is_symlink() and binary.stat().st_size == SERVICE_BYTES,
          "service-M-regular-size")
     need(digest(binary) == SERVICE_SHA, "service-M-sha")
     need((args.service_artifact / "source-commit.txt").read_bytes() == (PRODUCT + "\n").encode(), "service-M-provenance")
@@ -1292,8 +1296,8 @@ def accept(args):
         "harnessSource": run(["git", "-c", "safe.directory=*", "-C", str(Path(__file__).resolve().parents[2]), "rev-parse", "HEAD"]).stdout.decode().strip(),
         "mode": args.mode, "steps": [], "passed": False,
         "publicPayloadInput": payload_input_summary(args),
-        "serviceArtifact": {"runId": "39093243842", "artifactId": "12123324723", "name": "owned-agentnet-auth-linux",
-                            "sha256": SERVICE_SHA, "bytes": 27513232},
+        "serviceArtifact": {"runId": SERVICE_RUN, "artifactId": SERVICE_ARTIFACT_ID, "name": SERVICE_ARTIFACT_NAME,
+                            "sha256": SERVICE_SHA, "bytes": SERVICE_BYTES},
         "immutablePayloads": {name: {"sha256": pin[1], "bytes": pin[0]} for name, pin in PINS.items()},
         "reboot": "not-tested: GitHub-hosted runner has no supported resume after VM reboot",
         "productionAccountOrUIAcceptance": "not-tested: synthetic isolated lab account only",

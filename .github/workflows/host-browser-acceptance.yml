@@ -1,4 +1,4 @@
-name: Host fresh browser acceptance (pinned M)
+name: Host fresh browser acceptance (pinned P)
 
 on:
   workflow_dispatch:
@@ -56,12 +56,12 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: dcf8d9a60976c160e2b2aca33313c668c071132c
-          path: product-M
+          ref: 23ccbded83f2b6db8042c5e6be33b74c670b4809
+          path: product-P
           persist-credentials: false
       - name: Refuse anything except an empty disposable canonical CI VM
         run: |
-          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/browser-acceptance.py --preflight --product-source "$GITHUB_WORKSPACE/product-M" --output "$RUNNER_TEMP/host-browser-summary"
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/browser-acceptance.py --preflight --product-source "$GITHUB_WORKSPACE/product-P" --output "$RUNNER_TEMP/host-browser-summary"
       - name: Validate optional reviewed public cache IDs
         env:
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
@@ -95,11 +95,11 @@ jobs:
           merge-multiple: true
       - uses: actions/download-artifact@v4
         with:
-          artifact-ids: '12123324723'
-          run-id: '39093243842'
+          artifact-ids: '12140730503'
+          run-id: '39136956964'
           github-token: ${{ github.token }}
           repository: heavenzhang/MoXBots
-          path: ${{ runner.temp }}/host-browser-service-M
+          path: ${{ runner.temp }}/host-browser-service-P
           merge-multiple: true
       - name: Prepare browser dependencies on this disposable VM
         run: |
@@ -112,7 +112,7 @@ jobs:
           python3 -m venv "$RUNNER_TEMP/host-browser-venv"
           "$RUNNER_TEMP/host-browser-venv/bin/pip" install 'playwright==1.58.0'
           "$RUNNER_TEMP/host-browser-venv/bin/python" -m playwright install --with-deps chromium
-      - name: Exact M public bytes, real Dex browser, AuthStore, DPoP, join, catalog and Ready
+      - name: Exact P candidate or public bytes, real Dex browser, AuthStore, DPoP, join, catalog and Ready
         env:
           ACCEPTANCE_MODE: ${{ inputs.mode }}
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
@@ -128,7 +128,7 @@ jobs:
           elif [[ "$ACCEPTANCE_MODE" = standard ]]; then
             public_args=(--export-public-cache "$RUNNER_TEMP/host-public-cache-export")
           fi
-          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-browser-venv/bin/python" harness/scripts/host/browser-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --service-artifact "$RUNNER_TEMP/host-browser-service-M" --output "$RUNNER_TEMP/host-browser-summary" --mode "$ACCEPTANCE_MODE" "${public_args[@]}"
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-browser-venv/bin/python" harness/scripts/host/browser-acceptance.py --product-source "$GITHUB_WORKSPACE/product-P" --service-artifact "$RUNNER_TEMP/host-browser-service-P" --output "$RUNNER_TEMP/host-browser-summary" --mode "$ACCEPTANCE_MODE" "${public_args[@]}"
       - name: Upload only three verified public immutable cache files
         id: public-cache-upload
         if: always() && inputs.mode == 'standard' && inputs.cached_public_run == '' && inputs.cached_public_artifact_id == '' && inputs.candidate_run == '' && inputs.candidate_artifact_id == ''

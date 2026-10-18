@@ -15,7 +15,7 @@ The human explicitly transferred integration and publication to01a12b99-7b38-78b
 
 - [x] Start from current mainbaa1a637, independent branch; explicit owner transfer and handback.
 - [x] Integrate reviewed product8d112633 and tools2580 through source combinationdf1; preserve the original source history.
-- [ ] Exact clean-source candidate with matching Node/connector/service provenance and real artifact digests.
+- [x] Exact clean-source candidate with matching Node/connector/service provenance and real artifact digests.
 - [ ] Fresh Ubuntu24/browser/auto-join/Ready/catalog/repeat, natural lab expiry renewal and true KVM reboot accepted.
 - [ ] Required combined CI and proportionate regressions; remote main contains accepted source and runtime tree.
 - [ ] Fresh production admission, backup/CAS/ownership rollback, immutable bytes, full anonymous normal-TLS validation and final stable pointer acceptance.
@@ -34,10 +34,12 @@ Candidate, supported-platform actual gates, combined CI, main and formal publica
 
 ## Next step
 
-Normally merge source combinationdf1, freeze a clean candidate source and run the registered candidate-build lane. Do not merge main or publish until actual acceptance closes.
+Candidate P23cc is built and pinned from successful run39136956964. Execute actual isolated standard/renewal/KVM gates and refreshed combined CI including concurrent mainad654. Do not merge main or publish until actual acceptance closes.
 
 ## First exact-source candidate attempt
 
 Run39135706200 actually built the P23cc Node archive, connector and service and completed original prepare-release (release20261018142341-23ccbded83f2). The additional packager rejected an input type/link-count/size/mode before exporting payloads; only an empty receipt artifact was uploaded. This is failed candidate construction, not accepted bytes. The packager checks the Cargo service input before bundle paths. A Cargo-style nlink2 regression reproduces the strict rejection, while an ordinary single-link identical snapshot passes; retain that guard and snapshot the build output before packaging. The next run records actual source/snapshot link counts to verify the inferred build-output explanation. Producer receipt is exposed only after successful completion, so failures cannot upload an empty JSON receipt. Seven producer offline tests passed; no product runtime/source change or public mutation.
 
 Exact PR137 CI39135711670 found a separate existing mobile fixture order issue: operator writes established config before the first original Host identity. Preserve the product's rejection and repair only those two fixtures by first booting/stopping the actual original main before the original operator; do not seed registry/identity. Dedicated worker owns that fix. All failures remain open until corrected actual Ubuntu checks pass.
+
+Current producer receipt and pins are recorded in `dev-docs/host-init-001/acceptance.md`. Same-P isolated gates remain pending; actual Ubuntu Session3/3 from failed-elsewhere CI39135711670 is confirmed. Original mobile fixture repair632/565 and concurrent mainad654 are integrated; latest full CI must be rerun at the final pinning head.
