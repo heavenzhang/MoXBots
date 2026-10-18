@@ -26,7 +26,7 @@ Review rejected indefinite extension of a fixed account bearer. Community, feedb
 
 The client must persist a renewal candidate in its original encrypted owner before submitting it. A lost response or crash must be resolved against the server's actual candidate session and original identity, without reviving expired/revoked rights or overwriting a later login/logout. Revocation races, stale snapshots, two renewers and failed persistence need explicit tests. Reconnect must use the original device/key and must not replay business writes or expand finite Bot/model grants.
 
-The existing descriptor and login poll response are strict contracts; renewal must not add fields to them. The login module's proposed `inspect_session(device, token)` reads the existing `/auth/session` response under the original transport and validation gates. Existing `validate_session` must continue rejecting any principal, network or expiry mismatch with its immutable snapshot.
+The existing descriptor and login poll response are strict contracts; renewal must not add fields to them. The login module's proposed `inspect_session(device, token)` reads the existing `/auth/session` response under the original transport and validation gates. Existing `validate_session` continues rejecting any principal, network or expiry mismatch with its immutable snapshot. A confirmed 401 from the exact authenticated GET is mapped to an invalid saved session only after no-store and bounded JSON validation. Network failures and 5xx remain distinguishable; treating them as an invalid token would incorrectly drive recovery. Independent review found this missing 401 contract and the added real-wire regression closes it.
 
 ## Verification and delivery
 
@@ -34,7 +34,11 @@ The existing descriptor and login poll response are strict contracts; renewal mu
 - [x] Read-only 101 status: original network connector expired; Host process active. No production writes.
 - [x] Existing Host script suites: network-install 30, network-control-daemon 6 and unified-install 11 passed (47 total).
 - [x] Renderer login/callback/cancel/account isolation: useOwnedLoginFlow 16 and OwnedAccountEntry 22 passed (38 total). These use the test renderer, not the daily Mac.
-- [ ] Login, legacy service compatibility and session-inspection regression tests and full headless/service suites.
+- [x] Login/session-inspection module: 7 tests passed, including real-wire 401, retryable 503, closed connection, 301-second start, strict schema and immutable expiry. The primary reran this module independently.
+- [x] Complete headless connector suite: 183 passed, 0 failed.
+- [x] Service login/start compatibility and PKCE/device/cancel tests: 2 passed.
+- [ ] Full service suite and clippy redlines.
+- [x] Independent source review of the login/API and service compatibility change passed after repairing the 401 contract; this is not acceptance of the separate renewal implementation.
 - [ ] Single renewal implementation, independent security review and combined tests.
 - [ ] Remote main integration with exact-head required CI and ancestry/tree verification.
 - [ ] Unified owner deployment with fresh backup/rollback, identity preservation, actual renewal, disconnect/restart recovery and Bots Ready verification.
