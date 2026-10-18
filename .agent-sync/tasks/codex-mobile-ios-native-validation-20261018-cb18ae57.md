@@ -58,3 +58,13 @@ Original test/evidence commit full Test39090821185 passed. Latest main8ed2b4e1b7
 Main advanced to dcf8d9a60976c160e2b2aca33313c668c071132c (PR119). Normal merge has no conflicts. Its original Host renewal changes include shared Rust native provenance inputs, so02c2 packages and runtime acceptance are retained as historical source-bound evidence rather than called current. No original mobile owner is replaced.
 
 Primary local original300-file DOM run:299 files/2548 cases pass, one unrelated Settings browser-resource focus case fails (139.84s); original Host case and new lifecycle case pass. Failure log /tmp/moxbots-mobile-ios-native-full-dom.log retained. Typecheck and focused ESLint pass. Settings focused diagnosis and merged-source full regression remain pending; no pass inferred from isolated checks.
+
+## Native UI resumed and simulator signing diagnostic
+
+User confirmed unlock and no existing Firebase project. CUA now accesses Xcode and the dedicated iOS27.0 Device Hub. Existing Apple account entry is visible; Teams loading is not signing/profile proof. APNs/FCM still unaccepted.
+
+- Actual source02c2 full application launches but shows MOBILE_SECURE_STORE_UNAVAILABLE. Initial package was built with signing disabled. Keychain protection is unchanged.
+- Preserved original archive. Copied App to a unique /tmp path, applied normal ad-hoc codesign and installed on the same dedicated simulator without uninstall/Keychain removal. Error still reproduced; manual resign alone is not a fix.
+- Original product and manually resigned executable omit __TEXT __entitlements/__ents_der, while the accepted Xcode-native test host contains both. This supports an Xcode simulator-entitlement hypothesis, not yet a confirmed fix.
+- Simulator builder now requests Xcode ad-hoc signing rather than disabling signing and verifies strict signature, ad-hoc/non-linker resource sealing and both simulator entitlement sections. It requires no Apple development identity or provisioning; it does not enable true device signing. Actual full build and same-data UI retest pending.
+- Maina823 merged-source DOM301files/2564cases passed with4workers (251.61s). Earlier normal-parallel Settings focus failure retained; isolated Settings2pass. Typecheck/focused lint pass. Both updated Android/iOS Release Rust libraries built; new native runtime/package acceptance pending.
