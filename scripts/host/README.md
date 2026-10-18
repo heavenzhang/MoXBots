@@ -1,5 +1,141 @@
 # Linux Host test package
 
+## One-command owned Host enrollment candidate
+
+`one-command.py` and `prepare-release.py` implement the maintained public entry
+`<owned HTTPS origin>/host/install.sh --instance <same origin>` for the fixed
+`moxbot-test` namespace on **Ubuntu 24.04 x86_64 only**. This is source and local
+release preparation; no public release or real browser enrollment is implied by
+these files. The product must show the command only after a verified available
+index from its selected owned instance. Missing/404/unavailable indices mean the
+installer is not published yet.
+
+After publication, the user runs one command (the origin below is a placeholder):
+
+```sh
+curl --fail --silent --show-error --proto '=https' --tlsv1.2 https://owned.example/host/install.sh | sudo bash -s -- --instance https://owned.example
+```
+
+The command contains no credentials. It checks Ubuntu/architecture/root, obtains
+the bounded index over verified HTTPS without redirects or proxy/cookie/credential
+headers, verifies the immutable bootstrap and bundle sizes and SHA-256, validates
+the complete bundle and Host file manifests, and invokes the existing unified
+installer. Its shared transaction lock remains held through installation, browser
+authorization, same-principal management renewal when needed, explicit enrollment,
+boot activation, native readiness, Node IPC readiness and the final HostID output.
+The short authorization URL is forwarded only to the invoking terminal by the
+existing `systemd-run --pipe` control. It is never captured or written by the
+installer. Browser authorization is still a human action on another device.
+
+An already usable installation reuses its account, keys, identity, configuration,
+release and Node PID. A prior completed login can recover its join without a new
+login. Connection/trust/corrupt-state failures stop with an actionable incomplete
+state rather than automatically rotating authorization. Cancellation or expired
+authorization preserves identity/configuration; rerun the same command to recover.
+Existing running connectors are left running on a failed check. Changed IPC
+drop-ins require an idle Node Host before restart. No code here deletes identity
+pins, changes principal/scope, enables execution/cloud models, extends finite
+execution/model grants or calls a model.
+
+Trust is **verified HTTPS same-origin transport plus SHA-256 integrity**. This
+path does not provide or claim a publisher signature, and does not repurpose the
+desktop updater's minisign key. The stable shell script is trusted through the
+selected origin's normal TLS certificate verification. Every subsequent executable
+byte is staged privately and checked before execution. Release metadata can name
+only the exact fixed paths below; arbitrary URLs, redirects, encoded traversal,
+archive links/special files, duplicate paths and unlisted files are rejected.
+
+`GET /host/stable.json` is limited to 16 KiB and accepts an exact object:
+
+```text
+{ schemaVersion: 1, status: "unavailable" }
+```
+
+or, when actually prepared and published, all of these exact fields:
+
+```text
+schemaVersion: 1
+status: "available"
+profile: "moxbot-test"
+platform: "ubuntu-24.04-x86_64"
+scriptPath: "/host/install.sh"
+releaseId: "<14-digit UTC timestamp>-<sourceCommit first 12 hex>"
+sourceCommit: "<40 lowercase hex>"
+bootstrapPath: "/host/releases/<releaseId>/bootstrap.py"
+bootstrapSha256: "<64 lowercase hex>"
+bootstrapBytes: <integer 1..262144>
+bundlePath: "/host/releases/<releaseId>/bundle.tar.gz"
+bundleSha256: "<64 lowercase hex>"
+bundleBytes: <integer 1..2147483648>
+```
+
+The bundle contains only `manifest.json`, `host.tar.gz`,
+`network/{myagents-host-network,source-commit.txt}` and
+`installers/{install.sh,unified-install.py,network-install.py,network-control.py}`.
+The outer manifest pins exact file bytes, sizes and modes. Host source must be
+clean, profile/target/release must match, and Host, native connector and pinned
+installer source must name the same full commit. The preparation tool validates
+all components and verifies the final archive again before creating its candidate
+directory. It refuses dirty/changed source and existing output directories.
+
+Prepare from the final combined clean commit, with a Host archive built by
+`MYAGENTS_HOST_PROFILE=moxbot-test node scripts/host/build.mjs` and a Linux x86_64
+native CI artifact from that same commit:
+
+```sh
+python3 scripts/host/prepare-release.py \
+  --host-archive /absolute/path/to/moxbot-host-test-<releaseId>.tar.gz \
+  --network-artifact-dir /absolute/path/to/native-ci-artifact \
+  --output /absolute/path/outside-checkout/host-candidate
+```
+
+The new output contains `install.sh`, `stable.json`,
+`releases/<releaseId>/{bootstrap.py,bundle.tar.gz}` and `release-review.json` with
+actual derived digests and `publication: not-published`. The unified deployment
+owner must review/serve the immutable release directory first, then update the
+stable script and index; publication and acceptance are separate gates. Never
+publish synthetic fixture values or overwrite a release directory. Roll back the
+stable index/script together to a retained previously accepted release; installed
+version changes retain the existing installers' stop/backup/rollback requirements.
+
+### Isolated Ubuntu acceptance
+
+Use a disposable Ubuntu 24.04 x86_64 VM with systemd 255 and no access to existing
+production Hosts or daily desktop state. Install the ordinary `curl`, `python3`,
+`bash`, `tar`, `sha256sum`, `getconf`, `flock`, `sudo` and `systemd-creds` tools.
+Serve the prepared candidate at one test HTTPS origin with a certificate trusted
+by that VM; keep both metadata and bundle on the exact same origin. Use a dedicated
+test account on an isolated owned-service instance with execution/cloud models
+disabled. A local fake service can exercise rejection paths, but cannot establish
+real native browser/DPoP/network acceptance.
+
+1. Record the candidate's review JSON/source SHA; snapshot the VM. Run the public
+   command, complete browser authorization without recording its URL, and verify
+   final HostID, both fixed units active/enabled, ready projection and Node doctor.
+2. Repeat exactly; compare Node PID and identity/config/encrypted-key hashes. No
+   browser prompt, renewal/rotation, new identity or restart is acceptable.
+3. Reboot the VM and verify the same identity, native readiness and Node IPC;
+   confirm no new TCP listener and no execution grant or model call.
+4. Restore the clean VM snapshot for bad digest, foreign path/origin/profile/source,
+   oversized manifest, archive links/traversal, concurrent installer and canceled/
+   expired browser tests. Verify no install before validation and preserved state
+   on cancellation. Resume by rerunning the same public command.
+5. On a separate installed snapshot, test a different release while active/busy
+   (refused), stopped update, injected second-component failure and verified
+   rollback. Back up identity/config/encrypted files privately before this test.
+   Existing offline tests cover root/systemd fixtures and rollback logic; they do
+   not substitute for these actual systemd/browser checks.
+
+Run the offline checks without real credentials:
+
+```sh
+python3 scripts/host/one-command.test.py
+python3 scripts/host/network-control-daemon.test.py
+python3 scripts/host/network-install.test.py
+python3 scripts/host/unified-install.test.py
+node --test scripts/host/install.test.mjs scripts/host/bootstrap.test.mjs
+```
+
 The separate Rust AgentNet connector, browser authorization and its real enrollment gate are described in [headless enrollment](../../specs/tech_docs/headless_enrollment.md). It does not require Provider/model credentials to publish an empty device catalog. The Node package below retains local execution ownership; a root-configured `MYAGENTS_HOST_NETWORK_STATUS` path and `MYAGENTS_HOST_NETWORK_UID` may expose the Rust connector's bounded diagnostic report through `doctor`, without granting Node access to account or device secrets.
 
 From the repository root, run `node scripts/host/build.mjs`. It cross-builds Linux x64/glibc bundles on macOS, downloads the pinned Node 24.20.0 and Claude SDK Linux x64 artifacts, and writes an unsigned test archive under `output/host/`. The package manifest records the closed profile, source commit/dirty flag, versions, resource pins, and each installed file's SHA-256, size, and mode. The `.sha256` sidecar detects transfer damage; it is not a publisher signature. A clean default build emits `install-<releaseId>.sh` pinned to the matching `host-test-<releaseId>` GitHub prerelease. To build the separate MoX test profile, use `MYAGENTS_HOST_PROFILE=moxbot-test node scripts/host/build.mjs`; it emits `moxbot-host-test-<releaseId>.tar.gz` and `install-moxbot-<releaseId>.sh`, pinned to `host-test-moxbot-<releaseId>`. Dirty builds still produce development archives but deliberately omit the bootstrap.

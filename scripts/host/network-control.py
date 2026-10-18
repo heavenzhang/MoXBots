@@ -503,6 +503,7 @@ def _activate_owned(command: str, config: dict, device_id: str) -> int:
     created_host_dropin = False
     created_status_dropin = False
     join_override_created = False
+    host_restarted = False
     try:
         if command == "join":
             _ensure_root_dropin_dir(DAEMON_DROPIN_DIR)
@@ -521,8 +522,20 @@ def _activate_owned(command: str, config: dict, device_id: str) -> int:
             _wait_management_socket(config)
             _, created_host_dropin = _host_dropin(config)
             created_status_dropin = _host_status_dropin(config)
-            subprocess.run(["systemctl", "daemon-reload"], check=True)
-            subprocess.run(["systemctl", "restart" if host_was_active else "start", HOST_UNIT.name], check=True)
+            if created_host_dropin or created_status_dropin or not host_was_active:
+                if host_was_active:
+                    doctor = subprocess.run([str(pathlib.Path("/opt") / NODE_USER / "bin" /
+                        ("moxbot-host" if PROFILE == "moxbot-test" else "myagents-host")), "doctor"],
+                        check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=15)
+                    if len(doctor.stdout) > 65536:
+                        raise ValueError("Node Host status is oversized")
+                    value = json.loads(doctor.stdout)
+                    if (not isinstance(value, dict) or "activeSession" not in value or value["activeSession"] is not None
+                            or value.get("stopping") is not False or value.get("hostId") != device_id):
+                        raise ValueError("Node Host is busy or its status is unknown; stop it during maintenance before changing IPC")
+                subprocess.run(["systemctl", "daemon-reload"], check=True)
+                host_restarted = host_was_active
+                subprocess.run(["systemctl", "restart" if host_was_active else "start", HOST_UNIT.name], check=True)
         if join_override_created:
             JOIN_DROPIN.unlink()
             subprocess.run(["systemctl", "daemon-reload"], check=True)
@@ -533,7 +546,7 @@ def _activate_owned(command: str, config: dict, device_id: str) -> int:
             subprocess.run(["systemctl", "daemon-reload"], check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         _remove_created_host_dropin(created_host_dropin)
-        if (created_host_dropin or created_status_dropin) and host_was_active:
+        if host_restarted:
             subprocess.run(["systemctl", "restart", HOST_UNIT.name], check=False,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         if not network_was_active:
@@ -624,11 +637,24 @@ def main() -> int:
     parser.add_argument("--profile", choices=("myagents-test", "moxbot-test"), default="myagents-test")
     parser.add_argument("--enable-on-boot", action="store_true", help="persist an explicitly run/joined, ready owned connector across boots")
     args = parser.parse_args()
+    lock_fd = None
     try:
+        # The public installer retains this same transaction lock through login
+        # and join. Standalone controls cannot race installs or each other.
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("network_control_transaction", pathlib.Path(__file__).with_name("unified-install.py"))
+        transaction = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(transaction)
+        if os.geteuid() != 0:
+            raise PermissionError("run this operator control as root")
+        lock_fd = transaction._acquire_lock()
         return run_control(args.command, args.profile, enable_on_boot=args.enable_on_boot)
-    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
         print(json.dumps({"status": "error", "code": "NETWORK_CONTROL_REJECTED", "detail": str(exc)}), file=sys.stderr)
         return 1
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
 
 
 if __name__ == "__main__":
