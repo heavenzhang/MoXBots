@@ -6,8 +6,12 @@ on:
       mode:
         description: Lab-only session lifetime; neither mode executes a model or business task
         type: choice
-        options: [standard, renewal]
+        options: [standard, renewal, candidate-build]
         default: standard
+      source_commit:
+        description: Full reviewed source SHA for candidate-build only; no main or production mutation
+        type: string
+        default: ''
       cached_public_run:
         description: Optional reviewed same-repository public payload cache run ID; pair with artifact ID
         type: string
@@ -34,7 +38,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  candidate-build:
+    if: inputs.mode == 'candidate-build'
+    uses: ./.github/workflows/host-candidate.yml
+    with:
+      source_commit: ${{ inputs.source_commit }}
   disposable-browser:
+    if: inputs.mode != 'candidate-build'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:

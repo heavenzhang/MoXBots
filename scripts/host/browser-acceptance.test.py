@@ -96,6 +96,14 @@ class HarnessGates(unittest.TestCase):
             self.assertIn("sum(bool(pair[0]) for pair in pairs) > 1", workflow)
         export_guard = next(line for line in browser.splitlines() if "if: always() && inputs.mode" in line)
         self.assertIn("inputs.candidate_run == '' && inputs.candidate_artifact_id == ''", export_guard)
+        self.assertIn("uses: ./.github/workflows/host-candidate.yml", browser)
+        self.assertIn("if: inputs.mode != 'candidate-build'", browser)
+        producer = (ROOT / ".github/workflows/host-candidate.yml").read_text()
+        self.assertIn("workflow_call:", producer)
+        self.assertIn("ref: ${{ github.sha }}\n          path: harness", producer)
+        self.assertIn("ref: ${{ inputs.source_commit }}\n          path: product", producer)
+        self.assertIn('--source-root "$PWD"', producer)
+        self.assertNotIn("secrets: inherit", producer + browser)
 
     def test_exact_M_launcher_bootstrap_and_index_reproduce_producer(self):
         source = subprocess.check_output(["git", "-C", str(ROOT), "show", lab.PRODUCT + ":scripts/host/one-command.py"])
