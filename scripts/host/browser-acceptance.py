@@ -481,6 +481,7 @@ def startup_contract_observation():
             namespace["stateEntriesMatchFreshContract"] = names["state"] <= {"home", "host.lock", "workspaces"}
         if names.get("home") is not None:
             namespace["homeEntriesMatchFreshContract"] = names["home"] <= skel | {".myagents"}
+            namespace["homeHasNoSkeletonEntries"] = not bool(names["home"] & skel)
             skel_safe = True
             for name in names["home"] & skel:
                 info = os.stat(name, dir_fd=handles["home"], follow_symlinks=False)
@@ -1550,6 +1551,14 @@ def accept(args):
                 install("authorize", private, browser_home, email, password))
             need(installed_identity_hashes().items() >= canceled_identity.items(), "resume-preserves-original-Host-identity-config-KEKs")
             first = step("real-DPoP-empty-catalog-and-Ready", lambda: wait_for(lambda: ready(private)))
+            def fresh_home():
+                observation = runtime_readiness_observation().get("startupContract", {})
+                namespace = observation.get("freshNamespace", {})
+                need(namespace.get("homeEntriesMatchFreshContract") is True
+                     and namespace.get("homeHasNoSkeletonEntries") is True,
+                     "fresh-dedicated-home-must-not-inherit-system-skeleton")
+                return {"freshHomeContractMatched": True, "inheritedSkeletonAbsent": True}
+            step("fresh-dedicated-HOME-excludes-system-skeleton", fresh_home)
             counts = route_counts(private)
             need(hits(counts, "start") == 2 and completed_polls(counts) == 1 and hits(counts, "callback") == 1
                  and hits(counts, "dex-token") == 1 and hits(counts, "join", dpop=True) == 1
