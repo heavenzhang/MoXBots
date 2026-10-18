@@ -3,6 +3,10 @@ name: Host true KVM guest reboot acceptance (pinned M)
 on:
   workflow_dispatch:
     inputs:
+      capability_only:
+        description: Probe actual KVM_CREATE_VM only; skip dependencies, payload GET and installation
+        type: boolean
+        default: false
       cached_public_run:
         description: Optional reviewed same-repository public payload cache run ID; pair with artifact ID
         type: string
@@ -48,6 +52,7 @@ jobs:
         run: |
           sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --output "$RUNNER_TEMP/host-reboot-summary" --probe-only
       - name: Validate optional reviewed public cache IDs
+        if: ${{ !inputs.capability_only }}
         env:
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
           CACHED_PUBLIC_ARTIFACT_ID: ${{ inputs.cached_public_artifact_id }}
@@ -61,7 +66,7 @@ jobs:
               raise SystemExit('Select exactly one paired candidate or public-cache transport, or fresh public GET')
           PY
       - uses: actions/download-artifact@v4
-        if: inputs.cached_public_run != '' && inputs.cached_public_artifact_id != ''
+        if: ${{ !inputs.capability_only && inputs.cached_public_run != '' && inputs.cached_public_artifact_id != '' }}
         with:
           artifact-ids: ${{ inputs.cached_public_artifact_id }}
           run-id: ${{ inputs.cached_public_run }}
@@ -70,7 +75,7 @@ jobs:
           path: ${{ runner.temp }}/host-public-cache-input
           merge-multiple: true
       - uses: actions/download-artifact@v4
-        if: inputs.candidate_run != '' && inputs.candidate_artifact_id != ''
+        if: ${{ !inputs.capability_only && inputs.candidate_run != '' && inputs.candidate_artifact_id != '' }}
         with:
           artifact-ids: ${{ inputs.candidate_artifact_id }}
           run-id: ${{ inputs.candidate_run }}
@@ -79,6 +84,7 @@ jobs:
           path: ${{ runner.temp }}/host-candidate-input
           merge-multiple: true
       - uses: actions/download-artifact@v4
+        if: ${{ !inputs.capability_only }}
         with:
           artifact-ids: '12123324723'
           run-id: '39093243842'
@@ -87,6 +93,7 @@ jobs:
           path: ${{ runner.temp }}/host-reboot-service-M
           merge-multiple: true
       - name: Prepare disposable guest and outer real browser lab
+        if: ${{ !inputs.capability_only }}
         run: |
           ! systemctl is-active --quiet nginx.service
           ! pgrep -x nginx
@@ -97,6 +104,7 @@ jobs:
           "$RUNNER_TEMP/host-reboot-venv/bin/pip" install 'playwright==1.58.0'
           "$RUNNER_TEMP/host-reboot-venv/bin/python" -m playwright install --with-deps chromium
       - name: Fresh real browser install and true guest reboot with original identity
+        if: ${{ !inputs.capability_only }}
         env:
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
           CACHED_PUBLIC_ARTIFACT_ID: ${{ inputs.cached_public_artifact_id }}

@@ -20,6 +20,14 @@ lab = reboot.lab_module()
 
 
 class RebootGates(unittest.TestCase):
+    def test_capability_only_workflow_skips_every_download_and_install_step(self):
+        text = (Path(__file__).resolve().parents[2] / ".github/workflows/host-reboot-acceptance.yml").read_text()
+        self.assertIn("capability_only:", text)
+        self.assertIn("--probe-only", text)
+        for block in text.split("      - ")[1:]:
+            if any(value in block for value in ("actions/download-artifact@", "Prepare disposable guest", "Fresh real browser install")):
+                self.assertIn("!inputs.capability_only", block)
+
     def test_KVM_requires_real_create_VM_ioctl_and_closes_both_descriptors(self):
         with patch.object(lab, "environment_guard"), patch.object(Path, "exists", return_value=True), \
              patch.object(Path, "stat", return_value=SimpleNamespace(st_mode=stat.S_IFCHR)), \
