@@ -412,3 +412,11 @@ The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when No
 ## CLOUD-NETWORK-RECOVERY-20261018
 
 区分登录/凭据授权、连接超时/不可用与Ready网络内的设备离线；失联时设备缓存为状态未知。源分支codex/cloud-network-recovery-20261018，记录`.agent-sync/tasks/codex-cloud-network-recovery-20261018-cc874b4b.md`，验收`dev-docs/cloud-network-recovery/acceptance.md`。用户已授权协调既定桌面及云发布聊天；不接管其targets或中断活动任务。云/101只读确认原设备当前Ready，桌面原账号恢复和修复版原生验收仍单独开放。
+
+## Deployment coordination — MOXBOTS-RELEASE-NOTES-001 (2026-10-18)
+
+- **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, current unified desktop release owner, solely this static history overlay.
+- **Designation:** User explicitly requested “总结一下更新记录，放到下载页面可以链接查看”. This authorizes a cumulative public history page and a link in the existing download page. It does not authorize candidate installer promotion.
+- **Targets and runbook:** Existing `https://140.143.183.232/download/` index link plus `changelog.html` and its content-addressed CSS. Reuse authenticated cloud SSH configuration for this exact static overlay; no updater signing identity is used for website access. Read fresh pointer/index, hold all four existing maintenance locks, back up, copy the live immutable tree, apply only three files, CAS-switch the symlink, verify public navigation, keep owned rollback. Details: `dev-docs/releases/website-release-history.md`.
+- **Current release:** Source/local preview prepared; independent content/UI review, normal CI/main, production overlay and public acceptance tracked separately in the task record. Preserve the live 0.5.6 manual manifest, download scripts and packages; own updater 0.5.11 remains separate. Historical 0.5.10 installer upload-route limitation is not a claim that the candidate was released and remains outside this overlay.
+- **Exclusions:** No binary upload/build, stable feed write, desktop operation, Nginx/TLS/auth/Host change, service restart or new permission. Other deployment lanes and their owners remain unchanged.
