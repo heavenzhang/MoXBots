@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/host-candidate-ci-20261018 -->
 <!-- git-project-sync-task:base=96010acb710dfa864ddad979fe1d0b6dc49df69a -->
-<!-- git-project-sync-task:status=review -->
+<!-- git-project-sync-task:status=ready-for-review -->
 <!-- git-project-sync-task:scaffold=false -->
 
 # Task: Prepare isolated Linux Host acceptance candidate artifact workflow
