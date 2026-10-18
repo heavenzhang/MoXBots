@@ -142,7 +142,7 @@ impl State {
                         || !uuid(&r.session_handle)
                         || r.key_generation == 0
                         || r.key_generation > 9_007_199_254_740_991
-                        || !valid_fingerprint(&r.key_fingerprint)
+                        || !valid_key_fingerprint(&r.key_fingerprint)
                 })
         }) {
             return Err(NetworkError::new("OWNED_STATE_CORRUPT"));
@@ -216,6 +216,15 @@ fn valid_fingerprint(value: &str) -> bool {
         && value
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+// Device identity uses canonical base64url SHA-256 SPKI, whereas the local
+// trust pin above is encoded as hexadecimal. Keep both formats strict.
+fn valid_key_fingerprint(value: &str) -> bool {
+    use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+    value.len() == 43
+        && URL_SAFE_NO_PAD
+            .decode(value)
+            .is_ok_and(|bytes| bytes.len() == 32 && URL_SAFE_NO_PAD.encode(bytes) == value)
 }
 pub(crate) struct Owner {
     pub store: Arc<EncryptedIdentityStore>,
@@ -531,12 +540,33 @@ mod tests {
         let (_, raw) = owner.read().unwrap();
         let original = raw.unwrap();
         let candidate = URL_SAFE_NO_PAD.encode([2u8; 32]);
+        let fingerprint = crate::agent_network::crypto::DevicePrivateKey::generate()
+            .unwrap()
+            .public_fingerprint()
+            .unwrap();
         let pending = || PendingRenewal {
             token: candidate.clone(),
             session_handle: uuid::Uuid::new_v4().to_string(),
             key_generation: 1,
-            key_fingerprint: "b".repeat(64),
+            key_fingerprint: fingerprint.clone(),
         };
+        for invalid in [
+            "b".repeat(64),
+            URL_SAFE_NO_PAD.encode([11u8; 31]),
+            format!("{}=", fingerprint),
+            "!".repeat(43),
+            format!("{}B", "A".repeat(42)), // nonzero unused base64 bits
+        ] {
+            let mut invalid_pending = pending();
+            invalid_pending.key_fingerprint = invalid;
+            assert_eq!(
+                owner
+                    .stage_renewal(&original, invalid_pending)
+                    .unwrap_err()
+                    .code,
+                "OWNED_STATE_CORRUPT"
+            );
+        }
         let staged = owner.stage_renewal(&original, pending()).unwrap();
         assert!(owner.stage_renewal(&original, pending()).is_err()); // two renewers
         let restarted = super::tests::owner(&root, scope.clone(), &[49; 32]);
@@ -552,6 +582,17 @@ mod tests {
                 .unwrap()
                 .token,
             candidate
+        );
+        assert_eq!(
+            crash_state
+                .account
+                .as_ref()
+                .unwrap()
+                .renewal
+                .as_ref()
+                .unwrap()
+                .key_fingerprint,
+            fingerprint
         );
         assert_eq!(
             crash_state.account.as_ref().unwrap().token,
@@ -591,7 +632,7 @@ mod tests {
                     token: URL_SAFE_NO_PAD.encode([4u8; 32]),
                     session_handle: uuid::Uuid::new_v4().to_string(),
                     key_generation: 1,
-                    key_fingerprint: "b".repeat(64),
+                    key_fingerprint: URL_SAFE_NO_PAD.encode([11u8; 32]),
                 },
             )
             .unwrap();

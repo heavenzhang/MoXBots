@@ -25,6 +25,8 @@ jsonwebtoken = { version = "=11.1.0", default-features = false, features = ["rus
 libc = "0.2.180"
 rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std"] }
 [dev-dependencies]
+myagents-agentnet-identity-core = { path = "../../services/agentnet/identity-core" }
+myagents-agentnet-device-core = { path = "../../services/agentnet/device-core" }
 myagents-agent-network-crypto = { path = "../agent-network-crypto", features = ["test-support"] }
 tempfile = "3"
 rcgen = { version = "=0.14.10", default-features = false, features = ["ring", "pem"] }

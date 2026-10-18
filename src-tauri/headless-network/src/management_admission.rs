@@ -455,7 +455,7 @@ mod tests {
                     token: candidate.clone(),
                     session_handle: uuid::Uuid::new_v4().to_string(),
                     key_generation: 1,
-                    key_fingerprint: "b".repeat(64),
+                    key_fingerprint: URL_SAFE_NO_PAD.encode([11u8; 32]),
                 },
             )
             .unwrap();

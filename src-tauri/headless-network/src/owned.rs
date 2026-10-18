@@ -817,7 +817,7 @@ mod tests {
                     token: candidate.clone(),
                     session_handle: uuid::Uuid::new_v4().to_string(),
                     key_generation: 1,
-                    key_fingerprint: "b".repeat(64),
+                    key_fingerprint: URL_SAFE_NO_PAD.encode([11u8; 32]),
                 }),
             });
             connection
@@ -1045,7 +1045,7 @@ mod tests {
                     token: candidate.clone(),
                     session_handle: uuid::Uuid::new_v4().to_string(),
                     key_generation: 1,
-                    key_fingerprint: "b".repeat(64),
+                    key_fingerprint: URL_SAFE_NO_PAD.encode([11u8; 32]),
                 },
             )
             .unwrap();
@@ -1187,3 +1187,7 @@ mod tests {
         assert!(read_ca(Path::new("ca.pem")).is_err());
     }
 }
+
+#[cfg(test)]
+#[path = "owned_recovery_tests.rs"]
+mod signed_recovery_tests;
