@@ -31,6 +31,10 @@ The staged old dcf immutable release is preserved and stable remains unavailable
 
 用户启动Ubuntu24.04/x86_64一条命令安装、浏览器授权自动入网与有效会话自动续期；代码/测试/main由01a13320-dbf9-7c03-b7f3-37e30d15de48负责，发行交既定统一部署聊天01a12bc2-907a-7702-b6dd-788225c5dfe4。任务 `.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`。新public installer必须验证正式元数据可用后才展示命令，复用原身份/加密存储/撤销owner；没有新模型授权或生产操作。对日常Mac不安装、不更新、不重启。source/CI/main与正式bundle/服务发布/真实生产按门禁分开，发布请求仅排队不改变当前冻结发行。
 
+## MOXBOTS-PIN-001 — 2026-10-18
+
+用户反馈侧栏点击置顶后位置不变。现有organization投影优先应用pinnedAt，统一工作区/根列表/自定义分区/拖拽源，保留手工顺序用于取消置顶恢复。92项定向回归、类型/lint、默认Web构建及MoXBots实际Chromium两尺寸4组通过；CI/main以PR132为准。任务`.agent-sync/tasks/codex-pin-order-001-20261018.md`，验收和发布请求`dev-docs/pin-order/acceptance.md`。下一未冻结桌面发布由既定唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4串行执行；用户已明确授权合入后通知既定发布会话并安排下一未冻结版本及不打断任务的原生验收；本聊天不并发安装/重启日常App或回写冻结包。
+
 ## MOXBOTS-UI-ZOOM-002 — 2026-10-16
 
 修复Ctrl+后文本域水平滚动条；仅改输入/建议的横轴策略和grid收缩约束。真实组件Chromium/WebKit各60组、相关107测试、类型/lint及MoXBots web构建通过；CI/main以PR76与任务记录继续追踪。源码任务`.agent-sync/tasks/codex-ui-zoom-scrollbar-20261016-d37165e0.md`，验收`dev-docs/ui-zoom-scrollbar-acceptance.md`；queued发布请求由既有统一部署聊天处理下一未冻结批次，不操作日常/QA客户端、不回写055/056。
