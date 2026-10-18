@@ -1,32 +1,46 @@
-# Build and publish the MoXBots 0.5.10 Windows download
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/moxbots-windows-0510-r2-20261018 -->
+<!-- git-project-sync-task:base=9269dd8c52c423a180bfba366c8f0434a90db005 -->
+<!-- git-project-sync-task:status=in-progress -->
 
-Task ID: `MOXBOTS-0510-WINDOWS-DOWNLOAD-20261018`
+# MOXBOTS-0510-WINDOWS-DOWNLOAD-20261018
 
-- Canonical repository: `https://github.com/heavenzhang/MoXBots.git`
-- Base main: `9269dd8c52c423a180bfba366c8f0434a90db005`
-- Frozen app source: `v0.5.10` / `400b746a4841bab8e4b99d8f83479fd54925c205`
-- Target: `https://140.143.183.232/download/` and `/download/packages/` only.
+## Objective
 
-## To do and acceptance
+Build a Windows x64 installer from the exact frozen MoXBots `v0.5.10` source and publish it on the existing download page, preserving existing releases and the daily app.
 
-- [ ] Add a pinned, isolated `windows-latest` package workflow; verify source commit, version/product identity, MoXBots-specific NSIS hooks, toolchains, installer size/SHA and Authenticode result.
-- [ ] Run the workflow, independently retrieve the one-day private artifact, and preserve the runner metadata and exact hash receipt.
-- [ ] Prepare download-page metadata with accurate signing status and `windowsUpdater: unsupported`; do not claim Windows installation/runtime validation.
-- [ ] Publish only through the existing website maintenance locks, backup, immutable release folder and current-pointer CAS; verify UI and complete normal-TLS package GET.
+## Acceptance criteria
+
+- [ ] A version-pinned `windows-latest` workflow validates source commit, version/product identity, MoXBots-specific installer hooks, pinned toolchains and installer metadata.
+- [ ] Independently retrieve the one-day private Actions artifact and verify its size and SHA-256 against runner metadata; report the actual Authenticode result.
+- [ ] Prepare page metadata that accurately reports Authenticode and `windowsUpdater: unsupported`; no unsupported Windows updater claim.
+- [ ] Publish through existing website maintenance locks, backup, immutable release directory and current-pointer CAS; preserve rollback and every existing asset.
+- [ ] Verify public download-page UI plus complete normal-TLS package GET with exact size and SHA. Do not infer install/runtime acceptance from package or download success.
+
+## Scope and boundaries
+
+Canonical repository `https://github.com/heavenzhang/MoXBots.git`, base main `9269dd8c52c423a180bfba366c8f0434a90db005`; frozen app source tag `v0.5.10`, commit `400b746a4841bab8e4b99d8f83479fd54925c205`. Target only `https://140.143.183.232/download/` and its immutable `/download/packages/` Windows asset and metadata. Do not modify `/updates/*`, Nginx/TLS/auth/Host, existing assets, or operate the daily desktop app. The updater key is not a website upload credential.
 
 ## Completed
 
-- [x] Confirmed latest remote main and started this clean isolated branch from exact main SHA.
-- [x] Verified source tag `v0.5.10` points to the release-frozen app commit.
-- [x] Added a version-pinned workflow copied from the accepted 0.5.9 path, with its exact 0.5.10 source SHA, distinct concurrency/artifact names, MoXBots isolated NSIS hooks, fixed Node/npm/Rust/NSIS and disabled updater artifacts.
+- [x] Verified exact source tag and clean remote main; `observe` and `start` passed on the isolated task worktree.
+- [x] Added a dedicated workflow copied from the accepted 0.5.9 process, pinned to the 0.5.10 SHA, with distinct artifact/concurrency/output names and disabled updater artifacts.
+- [x] Added the deployment scope and publication gates to the shared plan.
+- [ ] Workflow CI, Actions build, independent artifact verification, page metadata/main delivery and public website publication remain pending.
 
-## Limits and blockers
+## Verification
 
-- App source must remain exactly `400b746a`; later main commits are only the builder recipe and must never enter the Windows release source.
-- No Authenticode certificate/Actions secret is configured. The accepted workflow may produce `NotSigned`; publish only with that status disclosed and expected Windows security prompts explained.
-- The user confirmed no website SSH Host alias exists. A dedicated least-privilege website upload identity is absent; the macOS updater key cannot be reused for website writes. Website publication stays blocked until an authorized channel is configured.
-- Do not modify `/updates/*`, stable updater data, Nginx/TLS/auth/Host or the daily desktop app.
+- Base and current remote main at task start: `9269dd8c52c423a180bfba366c8f0434a90db005`.
+- `v0.5.10^{}` resolves to `400b746a4841bab8e4b99d8f83479fd54925c205`; app identity in Tauri config is `MoXBots`, `com.moxbot.app`, `0.5.10`.
+- `git diff --cached --check`: PASS before initial commit.
+- Windows build workflow not run yet; no 0.5.10 Windows artifact or public website change exists.
 
-## Next action
+## Blockers and unknowns
 
-Validate and push the builder branch, run the private Windows workflow from this branch, then inspect the complete candidate and update this record before opening/merging the page metadata change. Request only the missing website upload channel before any static-site mutation.
+- No Authenticode certificate or Actions signing secret is configured. If the artifact is `NotSigned`, the site must disclose the unsigned status and possible SmartScreen/Unknown Publisher prompt.
+- The user confirmed there is no existing website SSH Host alias; earlier 0.5.9 work found no authorized website deployment identity or repository Actions secret. A dedicated least-privilege website upload channel is required before website writes. Do not reuse updater credentials.
+- Windows installation and runtime behavior remain unverified unless separately tested on Windows.
+
+## Next step
+
+Run PR CI for this pinned workflow, merge only after all required checks pass, dispatch the private Windows build from main, independently validate the original artifact, then request the missing website upload identity before publication.
