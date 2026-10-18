@@ -363,3 +363,7 @@ MOXBOTS-057-NETWORK-RELEASE-20261016 固定源码ee055458af8823a611503450424ecad
 ### 2026-10-17 最终更新分发
 
 冻结source/tagv0.5.8=12449。完整外部GET336365173B SHA155e6a68、正常TLS/stat-hash-stat/17原件独审与Mac自有签名通过；stable058于03:18Z公开核验SHA51eb69bf；发布后独审012f22b2后同任务finish释放锁，旧057完整归档与回滚保留。日常057客户端未安装/退出/重启；正式binary/Reader、IME/ASR/真实Host模型等边界仍保留。最终记录按当前分支正常PR/CI/main交付，详细非秘密证据摘要见dev-docs/releases/moxbots-0.5.8.md。不能重复start/collect/promote或覆盖同版。
+
+## 2026-10-18 — MOXBOTS-LOGIN-FIX-0511-20261018
+
+0.5.11 source/tag固定 `15be9d6fda17c464afa54ee675d10f1d7fd4507f` / `v0.5.11`；签名、公证、自有更新签名、精确候选真实网页登录/冷启动和独立UI通过。日常磁盘0.5.9未替换；无远程模型/Host调用。受锁归档stage已完成，唯一外部完整TLS GET仍进行，stable暂0.5.9，禁止重复stage/start或提前promote。当前交付记录见 `dev-docs/releases/moxbots-0.5.11.md`、`.agent-sync/tasks/codex-release-0511-delivery-20261018-29f55182.md`；私有项目指针work/release-0511-20261018/owner含exact controls/原件/后续步骤。待正常公网门禁和独审通过后，由唯一updater owner串行promote/public-check/finish，再补实际交付记录并正常CI/main。
