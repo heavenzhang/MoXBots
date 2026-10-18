@@ -347,6 +347,27 @@ describe('GlobalSidebar rail flyout', () => {
     expect(document.querySelector('[data-global-account-trigger]')).toBeNull();
   });
 
+  it('keeps project positions after activity updates and remounts, appending new projects', () => {
+    mocks.forcedRail = false;
+    mocks.projects = [
+      { id: 'a', name: 'Alpha', path: '/a', lastOpened: '2026-10-18T00:00:00Z' },
+      { id: 'b', name: 'Beta', path: '/b', lastOpened: '2026-10-17T00:00:00Z' },
+    ];
+    const names = () => Array.from(document.querySelectorAll('[data-global-sidebar-workspace-row]'))
+      .map((row) => row.textContent?.includes('Alpha') ? 'a' : row.textContent?.includes('Beta') ? 'b' : 'c');
+    const view = renderSidebar();
+    expect(names()).toEqual(['a', 'b']);
+    mocks.projects = [mocks.projects[0], { ...mocks.projects[1], lastOpened: '2026-10-19T00:00:00Z' }];
+    view.rerender(sidebar());
+    expect(names()).toEqual(['a', 'b']);
+    view.unmount();
+    const remount = renderSidebar();
+    expect(names()).toEqual(['a', 'b']);
+    mocks.projects = [{ id: 'c', name: 'Gamma', path: '/c', lastOpened: '2026-10-20T00:00:00Z' }, ...mocks.projects];
+    remount.rerender(sidebar());
+    expect(names()).toEqual(['a', 'b', 'c']);
+  });
+
   it('renders healthy workspaces alongside invalid persisted Project rows without modifying them', () => {
     mocks.forcedRail = false;
     mocks.projects = [
