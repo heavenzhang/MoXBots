@@ -382,3 +382,7 @@ Actual simulator native runtime follow-up: `dev-docs/mobile-002/ios-native-runti
 ## MODEL-PICKER-CATALOG-20261018
 
 备用模型搜索名称/ID/供应商，按供应商及密钥配置筛选，保留持久选择及原writer。OpenRouter改为账号过滤目录，OpenCode Go目录及三协议路由更新为当前官方路径；历史用户模型和自定义URL不删除、不覆盖。任务 `.agent-sync/tasks/codex-model-picker-catalog-20261018-834707ac.md`，验证 `dev-docs/model-picker-catalog-20261018/`。源码/回归/CI/main与统一桌面发行及真实供应商推理分别追踪；本任务不调用付费推理、不替换日常包，不接管登记的唯一发布owner。
+
+## MOXBOTS-0510-WINDOWS-EIGEN-CACHE-20261018
+
+The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when Node Fetch received HTTP 406 for the exact Eigen 5.0.1 URL in the frozen app resource lock. A normal-TLS full GET from the same GitLab URL matched the lock's 2,967,272-byte size and SHA-256 `e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec`; the exact bytes also passed the repository cache validator on macOS. Task branch `codex/moxbots-win-eigen-cache-0510-20261018` adds a fail-closed Windows workflow step to read the frozen lock, retrieve through standard `curl.exe` TLS, verify the pinned size/hash, and seed only the content-addressed cache. The app tag/source/resource lock remain unchanged. PR CI and a merged-main Windows build must pass before artifact use. Website upload still requires a separate least-privilege identity; do not reuse updater credentials. Details: `.agent-sync/tasks/codex-moxbots-win-eigen-cache-0510-20261018-a9d25de0.md`.
