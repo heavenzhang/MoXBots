@@ -106,27 +106,30 @@ fn get_myagents_dir() -> Result<std::path::PathBuf, String> {
 /// Atomically save pending update bytes + metadata to disk
 /// Writes to .tmp first, then renames to avoid partial files
 #[cfg(any(target_os = "windows", target_os = "macos"))]
-fn save_pending_update_to_disk(version: &str, bytes: &[u8]) -> Result<(), String> {
+fn save_pending_update_to_disk(
+    version: &str,
+    verified_path: &std::path::Path,
+) -> Result<(), String> {
     let dir = get_myagents_dir()?;
-    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create dir: {}", e))?;
-
+    // Transport has already completed and verified this exact file. Promotion
+    // happens under UPDATE_IN_PROGRESS, shared with install admission.
     let bin_path = dir.join("pending_update.bin");
-    let bin_tmp = dir.join("pending_update.bin.tmp");
     let meta_path = dir.join("pending_update.json");
-
-    // Write binary atomically: tmp → rename
-    std::fs::write(&bin_tmp, bytes).map_err(|e| format!("Failed to write update binary: {}", e))?;
-    std::fs::rename(&bin_tmp, &bin_path)
-        .map_err(|e| format!("Failed to rename update binary: {}", e))?;
-
-    // Write metadata
+    for path in [&bin_path, &meta_path] {
+        if let Ok(meta) = std::fs::symlink_metadata(path) {
+            if !meta.file_type().is_file() {
+                return Err("更新缓存路径不是普通文件。".to_string());
+            }
+        }
+    }
+    std::fs::rename(verified_path, &bin_path)
+        .map_err(|_| "无法提交已验证的更新文件。".to_string())?;
     let meta = PendingUpdateMeta {
         version: version.to_string(),
     };
-    let json =
-        serde_json::to_string(&meta).map_err(|e| format!("Failed to serialize metadata: {}", e))?;
-    std::fs::write(&meta_path, json).map_err(|e| format!("Failed to write metadata: {}", e))?;
-
+    let json = serde_json::to_vec(&meta).map_err(|_| "无法保存更新版本。".to_string())?;
+    std::fs::write(&meta_path, json).map_err(|_| "无法保存更新版本。".to_string())?;
+    crate::updater_download::clear_partial(&dir).map_err(|error| error.message.to_string())?;
     Ok(())
 }
 
@@ -425,6 +428,128 @@ pub struct DownloadProgress {
     pub percent: Option<u32>,
 }
 
+/// Rust owns the latest complete snapshot; late subscribers query this same owner.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DownloadState {
+    pub revision: u64,
+    pub phase: String,
+    pub version: Option<String>,
+    pub downloaded: u64,
+    pub total: Option<u64>,
+    pub percent: Option<u32>,
+    pub bytes_per_second: Option<u64>,
+    pub attempt: u32,
+    pub max_attempts: u32,
+    pub retry_at_ms: Option<u64>,
+    pub error_code: Option<String>,
+    pub error: Option<String>,
+    pub retryable: bool,
+}
+impl Default for DownloadState {
+    fn default() -> Self {
+        Self {
+            revision: 0,
+            phase: "idle".into(),
+            version: None,
+            downloaded: 0,
+            total: None,
+            percent: None,
+            bytes_per_second: None,
+            attempt: 0,
+            max_attempts: crate::updater_download::MAX_ATTEMPTS,
+            retry_at_ms: None,
+            error_code: None,
+            error: None,
+            retryable: false,
+        }
+    }
+}
+static DOWNLOAD_STATE: std::sync::LazyLock<std::sync::Mutex<DownloadState>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(DownloadState::default()));
+
+fn publish_download_state(app: &AppHandle, change: impl FnOnce(&mut DownloadState)) {
+    let snapshot = {
+        let mut state = DOWNLOAD_STATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        change(&mut state);
+        state.revision = state.revision.saturating_add(1);
+        state.percent = state
+            .total
+            .filter(|total| *total > 0)
+            .map(|total| (state.downloaded.saturating_mul(100) / total).min(100) as u32);
+        state.clone()
+    };
+    let _ = app.emit("updater:download-state", snapshot);
+}
+
+fn fail_download(app: &AppHandle, error: &crate::updater_download::Failure) {
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    let retained = get_myagents_dir().ok().and_then(|dir| {
+        crate::updater_download::recovered_partial(&dir)
+            .ok()
+            .flatten()
+    });
+    publish_download_state(app, |state| {
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        {
+            if let Some((version, downloaded, total)) = retained {
+                state.version = Some(version);
+                state.downloaded = downloaded;
+                state.total = total;
+            } else {
+                state.downloaded = 0;
+                state.total = None;
+            }
+        }
+        state.phase = "failed".into();
+        state.bytes_per_second = None;
+        state.retry_at_ms = None;
+        state.error_code = Some(error.code.into());
+        state.error = Some(error.message.clone());
+        state.retryable = error.retryable;
+    });
+}
+
+#[tauri::command]
+pub fn get_update_download_state(app: AppHandle) -> DownloadState {
+    // Hydrate only an untouched owner. Active requests and terminal states must
+    // never be replaced by a late disk read from a subscriber.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    if !UPDATE_IN_PROGRESS.load(Ordering::SeqCst) {
+        let mut state = DOWNLOAD_STATE
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if state.revision == 0
+            && update_disabled_reason(cfg!(debug_assertions), std::env::consts::OS).is_none()
+        {
+            if let Ok(dir) = get_myagents_dir() {
+                if let Ok(Some((version, downloaded, total))) =
+                    crate::updater_download::recovered_partial(&dir)
+                {
+                    state.revision = 1;
+                    state.phase = "failed".into();
+                    state.version = Some(version);
+                    state.downloaded = downloaded;
+                    state.total = total;
+                    state.percent = total
+                        .filter(|total| *total > 0)
+                        .map(|total| (downloaded.saturating_mul(100) / total).min(100) as u32);
+                    state.error_code = Some("network".into());
+                    state.error = Some("上次更新下载未完成，可继续下载。".into());
+                    state.retryable = true;
+                }
+            }
+        }
+    }
+    let _ = app;
+    DOWNLOAD_STATE
+        .lock()
+        .unwrap_or_else(|error| error.into_inner())
+        .clone()
+}
+
 /// Build an updater with user's proxy configuration applied.
 /// Reads proxy settings from ~/.myagents/config.json:
 /// - Proxy enabled → `.proxy(url)`
@@ -513,6 +638,67 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
     // RAII guard ensures flag is reset even if function panics/errors
     let _guard = UpdateGuard;
 
+    publish_download_state(app, |state| {
+        state.phase = "checking".into();
+        state.bytes_per_second = None;
+        state.retry_at_ms = None;
+        state.error_code = None;
+        state.error = None;
+        state.retryable = false;
+        state.attempt = 0;
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        if let Ok(dir) = get_myagents_dir() {
+            if let Ok(Some((version, downloaded, total))) =
+                crate::updater_download::recovered_partial(&dir)
+            {
+                state.version = Some(version);
+                state.downloaded = downloaded;
+                state.total = total;
+            }
+        }
+    });
+    let result = check_and_download_inner(app).await;
+    match &result {
+        Ok(None) => {
+            let ready = DOWNLOAD_STATE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .phase
+                == "ready";
+            if !ready {
+                publish_download_state(app, |state| state.phase = "idle".into());
+            }
+        }
+        Err(_) => {
+            let failed = DOWNLOAD_STATE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .phase
+                == "failed";
+            if !failed {
+                fail_download(
+                    app,
+                    &crate::updater_download::Failure::new(
+                        "manifest",
+                        "检查更新失败，请检查网络后重试。",
+                        true,
+                    ),
+                );
+            }
+            let version = DOWNLOAD_STATE
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .version
+                .clone()
+                .unwrap_or_default();
+            let _ = app.emit("updater:download-failed", UpdateReadyInfo { version });
+        }
+        _ => {}
+    }
+    result
+}
+
+async fn check_and_download_inner(app: &AppHandle) -> Result<Option<String>, String> {
     // Get platform target (e.g., "darwin-aarch64", "darwin-x86_64")
     let target = get_update_target();
     let current_version = app.package_info().version.to_string();
@@ -523,7 +709,13 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
         app,
         format!(
             "[Updater] Checking for updates... Current: v{}, Target: {}, Endpoint: {:?}",
-            current_version, target, app.config().plugins.0.get("updater").and_then(|config| config.get("endpoints"))
+            current_version,
+            target,
+            app.config()
+                .plugins
+                .0
+                .get("updater")
+                .and_then(|config| config.get("endpoints"))
         ),
     );
 
@@ -546,6 +738,24 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
                     "[Updater] Check failed!\n  Display: {}\n  Debug: {}\n  Note: Use 'Test Update Connectivity' in Settings > About > Developer for detailed diagnostics",
                     error_display, error_debug
                 ),
+            );
+            let (code, detail) = match &e {
+                tauri_plugin_updater::Error::Reqwest(error) if error.is_timeout() => (
+                    "timeout",
+                    "连接更新服务器超时，已保留未完成的下载，请重试。",
+                ),
+                tauri_plugin_updater::Error::Reqwest(error) if error.is_connect() => (
+                    "network",
+                    "无法连接更新服务器，请检查网络或代理设置后重试。",
+                ),
+                tauri_plugin_updater::Error::Reqwest(_) => {
+                    ("network", "读取更新信息失败，请检查网络后重试。")
+                }
+                _ => ("manifest", "更新信息无效或服务器暂时不可用，请重试。"),
+            };
+            fail_download(
+                app,
+                &crate::updater_download::Failure::new(code, detail, true),
             );
             return Err(format!("Update check failed: {}", e));
         }
@@ -594,6 +804,7 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
                 // DOWNLOADED_VERSION is set only after save_pending_update_to_disk
                 // succeeds (line 440), so disk == version here. Cache aligned.
                 cache_update(update.clone());
+                emit_update_ready(app, &version);
                 return Ok(None);
             }
             if !is_version_greater(&version, dv) {
@@ -627,60 +838,6 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
             version
         ),
     );
-
-    // Download with progress events to frontend
-    let app_clone = app.clone();
-    let downloaded = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let last_emitted_percent = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-    let downloaded_clone = downloaded.clone();
-    let last_emitted_clone = last_emitted_percent.clone();
-
-    let on_chunk = move |chunk_length: usize, content_length: Option<u64>| {
-        let new_downloaded = downloaded_clone
-            .fetch_add(chunk_length as u64, std::sync::atomic::Ordering::SeqCst)
-            + chunk_length as u64;
-
-        if let Some(total) = content_length.filter(|&t| t > 0) {
-            let percent = ((new_downloaded as f64 / total as f64 * 100.0) as u32).min(100);
-            let last = last_emitted_clone.load(std::sync::atomic::Ordering::SeqCst);
-
-            // Emit event every 2% and log every 25%
-            if percent >= last + 2 || (percent == 100 && last != 100) {
-                last_emitted_clone.store(percent, std::sync::atomic::Ordering::SeqCst);
-
-                let _ = app_clone.emit(
-                    "updater:download-progress",
-                    DownloadProgress {
-                        downloaded: new_downloaded,
-                        total: Some(total),
-                        percent: Some(percent),
-                    },
-                );
-
-                // Log at 25% intervals (less verbose)
-                if percent / 25 > last / 25 {
-                    logger::info(
-                        &app_clone,
-                        format!("[Updater] Download progress: {}%", percent),
-                    );
-                }
-            }
-        } else {
-            // No Content-Length: emit byte count every 5MB
-            let mb = new_downloaded / (5 * 1024 * 1024);
-            let prev_mb = (new_downloaded - chunk_length as u64) / (5 * 1024 * 1024);
-            if mb > prev_mb {
-                let _ = app_clone.emit(
-                    "updater:download-progress",
-                    DownloadProgress {
-                        downloaded: new_downloaded,
-                        total: None,
-                        percent: None,
-                    },
-                );
-            }
-        }
-    };
 
     // Windows/macOS: download and persist only. Installing on macOS replaces
     // the running .app bundle; doing that in the background leaves macOS TCC
@@ -720,41 +877,92 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
             },
         );
 
-        let bytes = match update.download(on_chunk, || {}).await {
-            Ok(b) => b,
-            Err(e) => {
+        let dir = get_myagents_dir()?;
+        let public_key = app
+            .config()
+            .plugins
+            .0
+            .get("updater")
+            .and_then(|config| config.get("pubkey"))
+            .and_then(|value| value.as_str())
+            .ok_or_else(|| "UPDATE_SIGNING_KEY_NOT_CONFIGURED".to_string())?
+            .to_string();
+        let artifact = crate::updater_download::Artifact {
+            target: target.to_string(),
+            version: version.clone(),
+            url: update.download_url.clone(),
+            signature: update.signature.clone(),
+            public_key,
+            headers: update.headers.clone(),
+        };
+        // Manifest checks retain a short deadline. Artifact bodies instead use
+        // connect and idle bounds, so a healthy large transfer may run for hours.
+        // External updater traffic must inherit the general proxy policy.
+        // local_http intentionally bypasses proxies and is only for loopback.
+        #[allow(clippy::disallowed_methods)]
+        let artifact_builder =
+            reqwest::Client::builder().connect_timeout(std::time::Duration::from_secs(15));
+        let client = proxy_config::build_client_with_proxy(artifact_builder)
+            .map_err(|_| "无法创建更新下载连接。".to_string())?;
+        let path = match crate::updater_download::download(
+            &client,
+            &dir,
+            &artifact,
+            &crate::updater_download::Policy::default(),
+            |progress| {
+                publish_download_state(app, |state| {
+                    state.version = Some(version.clone());
+                    state.phase = if progress.retry_at_ms.is_some() {
+                        "retrying"
+                    } else {
+                        "downloading"
+                    }
+                    .into();
+                    state.downloaded = progress.downloaded;
+                    state.total = progress.total;
+                    state.bytes_per_second = progress.bytes_per_second;
+                    state.attempt = progress.attempt;
+                    state.retry_at_ms = progress.retry_at_ms;
+                    state.error_code = progress.failure.as_ref().map(|error| error.code.into());
+                    state.error = progress.failure.as_ref().map(|error| error.message.clone());
+                    state.retryable = progress
+                        .failure
+                        .as_ref()
+                        .is_some_and(|error| error.retryable);
+                });
                 let _ = app.emit(
-                    "updater:download-failed",
-                    UpdateReadyInfo {
-                        version: version.clone(),
+                    "updater:download-progress",
+                    DownloadProgress {
+                        downloaded: progress.downloaded,
+                        total: progress.total,
+                        percent: progress.total.filter(|total| *total > 0).map(|total| {
+                            (progress.downloaded.saturating_mul(100) / total).min(100) as u32
+                        }),
                     },
                 );
-                return Err(format!("Silent download failed: {}", e));
+            },
+        )
+        .await
+        {
+            Ok(path) => path,
+            Err(error) => {
+                fail_download(app, &error);
+                return Err(error.message.into());
             }
         };
-
-        logger::info(
-            app,
-            format!(
-                "[Updater] Downloaded {} bytes for v{}, saving to disk...",
-                bytes.len(),
-                version
-            ),
-        );
-
-        // Save to disk — install_pending_update will read from here
-        if let Err(e) = save_pending_update_to_disk(&version, &bytes) {
-            logger::error(
-                app,
-                format!("[Updater] Failed to save update to disk: {}", e),
+        let commit_version = version.clone();
+        if tokio::task::spawn_blocking(move || save_pending_update_to_disk(&commit_version, &path))
+            .await
+            .map_err(|_| "更新文件保存任务失败。".to_string())?
+            .is_err()
+        {
+            let error = crate::updater_download::Failure::new(
+                "disk",
+                "无法保存更新文件，请检查磁盘空间和文件权限。",
+                true,
             );
-            let _ = app.emit(
-                "updater:download-failed",
-                UpdateReadyInfo {
-                    version: version.clone(),
-                },
-            );
-            return Err(format!("Failed to persist update: {}", e));
+            fail_download(app, &error);
+            return Err(error.message.into());
         }
 
         // CRITICAL: align cache only AFTER disk write commits. The atomic
@@ -768,24 +976,7 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-    {
-        let _ = app.emit(
-            "updater:download-started",
-            UpdateReadyInfo {
-                version: version.clone(),
-            },
-        );
-
-        if let Err(e) = update.download_and_install(on_chunk, || {}).await {
-            let _ = app.emit(
-                "updater:download-failed",
-                UpdateReadyInfo {
-                    version: version.clone(),
-                },
-            );
-            return Err(format!("Silent download failed: {}", e));
-        }
-    }
+    return Err("UPDATER_MANUAL_INSTALL_REQUIRED".into());
 
     // Track this version as the latest downloaded (latest-wins protocol)
     *DOWNLOADED_VERSION.lock().unwrap_or_else(|e| e.into_inner()) = Some(version.clone());
@@ -800,6 +991,15 @@ async fn check_and_download_silently(app: &AppHandle) -> Result<Option<String>, 
 }
 
 fn emit_update_ready(app: &AppHandle, version: &str) {
+    publish_download_state(app, |state| {
+        state.phase = "ready".into();
+        state.version = Some(version.to_string());
+        state.bytes_per_second = None;
+        state.retry_at_ms = None;
+        state.error_code = None;
+        state.error = None;
+        state.retryable = false;
+    });
     logger::info(
         app,
         format!("[Updater] Update v{} is ready; notifying frontend", version),
@@ -821,6 +1021,10 @@ pub async fn check_and_download_update(app: AppHandle) -> Result<bool, String> {
     logger::info(&app, "[Updater] Manual update check requested");
 
     if let Some(reason) = update_disabled_reason(cfg!(debug_assertions), std::env::consts::OS) {
+        fail_download(
+            &app,
+            &crate::updater_download::Failure::new("manifest", reason, false),
+        );
         return Err(reason.to_string());
     }
 
@@ -1026,21 +1230,39 @@ pub async fn install_pending_update(
         // Download verification cannot cover bytes subsequently read from disk.
         // Tauri install(bytes) does not verify signatures; recheck against the
         // selected product's pinned key before freezing or stopping any owner.
-        let public_key = app.config().plugins.0.get("updater")
+        let public_key = app
+            .config()
+            .plugins
+            .0
+            .get("updater")
             .and_then(|config| config.get("pubkey"))
             .and_then(|key| key.as_str())
             .ok_or_else(|| "UPDATE_SIGNING_KEY_NOT_CONFIGURED".to_string())?;
         if crate::resource_signature::verify_minisign_bytes_with_key(
-            &bytes, &update.signature, public_key, "pending app update",
-        ).is_err() {
+            &bytes,
+            &update.signature,
+            public_key,
+            "pending app update",
+        )
+        .is_err()
+        {
             clear_pending_update_from_disk();
             return Err("UPDATE_SIGNATURE_INVALID".to_string());
         }
         // Only a confirmed manual action may stop work. Omitted/false preserves
         // the previous non-interrupting contract for other callers.
         let guard = if crate::app_dirs::IS_MOXBOT {
-            Some(crate::sidecar::prepare_update_restart(&app, state.inner(), interrupt_work == Some(true)).await?)
-        } else { None };
+            Some(
+                crate::sidecar::prepare_update_restart(
+                    &app,
+                    state.inner(),
+                    interrupt_work == Some(true),
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
 
         #[cfg(target_os = "macos")]
         {
@@ -1057,10 +1279,14 @@ pub async fn install_pending_update(
                 format!("[Updater] Installing macOS update v{}...", pending_version),
             );
             if let Err(error) = update.install(bytes) {
-                if let Some(guard) = guard { guard.release().await; }
+                if let Some(guard) = guard {
+                    guard.release().await;
+                }
                 return Err(format!("Installation failed: {}", error));
             }
-            if let Some(guard) = guard { guard.commit_restart(); }
+            if let Some(guard) = guard {
+                guard.commit_restart();
+            }
             logger::info(&app, "[Updater] macOS update installed; restarting now");
             app.request_restart();
             return Ok(());
@@ -1076,7 +1302,9 @@ pub async fn install_pending_update(
             // intact on every failure path above.
             let _update_shutdown_guard = if crate::app_dirs::IS_MOXBOT {
                 None // prepare_update_restart already holds exclusive admission.
-            } else { Some(crate::sidecar::begin_update_shutdown()?) };
+            } else {
+                Some(crate::sidecar::begin_update_shutdown()?)
+            };
             logger::info(
                 &app,
                 "[Updater] Quiescing app owners before NSIS install...",
@@ -1239,7 +1467,11 @@ pub async fn test_update_connectivity(app: AppHandle) -> Result<String, String> 
 
     // Diagnostics and real checks share the selected product configuration.
     // A MoXBots build must never fall back to the upstream update service.
-    let endpoint = app.config().plugins.0.get("updater")
+    let endpoint = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
         .and_then(|config| config.get("endpoints"))
         .and_then(|endpoints| endpoints.as_array())
         .and_then(|endpoints| endpoints.first())
@@ -1256,7 +1488,11 @@ pub async fn test_update_connectivity(app: AppHandle) -> Result<String, String> 
     let current_version = app.package_info().version.to_string();
     #[allow(clippy::disallowed_methods)]
     let builder = reqwest::Client::builder()
-        .user_agent(format!("{}-Updater/{}", crate::app_dirs::APP_DISPLAY_NAME, current_version))
+        .user_agent(format!(
+            "{}-Updater/{}",
+            crate::app_dirs::APP_DISPLAY_NAME,
+            current_version
+        ))
         .timeout(std::time::Duration::from_secs(30));
 
     let client = proxy_config::build_client_with_proxy(builder)

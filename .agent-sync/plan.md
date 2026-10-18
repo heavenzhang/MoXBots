@@ -429,15 +429,25 @@ The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when No
 - **Current release:** Accepted: initial unsupported standalone path404 was owned-rolled-back, then corrected PR135 source1bf1a489 passed nine applicable CI/normal mainbaa1a637. Existing-route `/download/#release-history` two-file overlay is live; normal browser raw hashes and actual desktop/320/390 navigation passed, with independent prepublication review; separate postpublication independent review unavailable due to account usage limit. Final receipts and limits are in the task/release record. Preserve the live 0.5.6 manual manifest, download scripts and packages; own updater 0.5.11 remains separate. Historical 0.5.10 installer upload-route limitation is not a claim that the candidate was released and remains outside this overlay.
 - **Exclusions:** No binary upload/build, stable feed write, desktop operation, Nginx/TLS/auth/Host change, service restart or new permission. Other deployment lanes and their owners remain unchanged.
 
+
+## MOXBOTS-UPDATER-RESUME-20261018 — next unfrozen desktop release
+
+PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry/resume, pinned-signature readiness and a persistent About download state/error/retry panel. Existing install confirmation and busy/unknown task admission are unchanged; downloads never stop or restart work. Root owns code/CI/main, real native signed A-to-B remains with existing desktop publisher `01a12bc2-907a-7702-b6dd-788225c5dfe4`. User explicitly authorized notification and scheduling; publisher acknowledged queueing, pending final main/CI receipt, without changing0.5.11 or touching daily tasks. Task `.agent-sync/tasks/codex-updater-resume-20261018-27c04aa3.md`; source/loopback/UI/native boundaries and bootstrap requirement for old0.5.9 are in `dev-docs/updater-resume/acceptance.md`. Final PR/remote refs define integration status; generated resources/cache are excluded.
+
 ## MOXBOTS-SESSION-AUDIT-20261018
 
 用户要求梳理未归档会话、跟进已改完未入主干的成果。43个root快照与实际工作树/PR/main交叉核对；组合模型原任务定位到MoXBots自身SDK会话5025b9bb，39文件未提交且仍预览；不可再与已交付PR73主备切换混为一谈。PR133、Host聚合137（吸收129）、mobile136、updater-resume分别由原owner继续；已消息跟进，不冒称完成。PR104七文件blob已与main/v0.5.11相同，避免重复合并。置顶132/网络134已main，下一未冻结候选另验。逐会话证据/下一步见`dev-docs/delivery/session-audit-20261018.md`；本轮不归档聊天、不启动发布、不操作客户端。
+
+## GOAL-PAUSE-001 — 2026-10-18
+
+运行Goal条新增暂停，与既有继续/取消并列，复用原Rust暂停/停止/持久化owner。局部UI由主Agent自验，DOM86项与浏览器10组通过；CI/main、正式包/真实任务分别追踪。任务记录 `.agent-sync/tasks/codex-goal-pause-001-20261018-3d82257d.md`，验收 `dev-docs/goal-pause-001-acceptance.md`。保留唯一桌面发布owner和下一未冻结版本边界，不重启日常App、不改既有冻结包。
 
 ## Deployment coordination — MOXBOTS-0512-UPDATE-RECOVERY-20261018
 
 - **Deployment chat:** 01a12bc2-907a-7702-b6dd-788225c5dfe4, existing unified desktop updater owner.
 - **Designation:** User in source thread01a14f82 confirmed the canonical repository and authorized notifying this publisher and arranging a next-unfrozen release. Source user messages read directly; previous desktop signing/publication scope retained.
 - **Targets/runbook:** macOS arm64 own updater on existing140 server only; scripts/moxbot-updates and final candidate-owned reviewed scripts. No backend/Host/mobile/Windows targets or daily interruption authority inferred.
-- **Current release:** Preparing0.5.12; final141/138 normalCI/main and version metadata must pass before freeze/build. Existing0511 immutable and stable preserved. Old059 recovery, new candidate real native and public distribution are separate gates.
-- **Native ownership:** Source thread01a14f82 currently owns a newly human-authorized once-only0511 restart update. This publisher remains off native UI until that owner releases it; active CRM work preserved. No false admission/Stopped or force-kill workaround.
+- **Current release:** Preparing0.5.12;138 is main8e60805e,141 finalCI/main and version/Toast cleanup must pass before freeze/build. Existing0511 immutable and stable preserved. Old059 recovery, new candidate real native and public distribution are separate gates.
+- **Native ownership:** Source thread01a14f82 reported signed manual recovery to0511 and released its temporary UI control. Root has not acquired a new maintenance window; user activity remains protected. No false admission/Stopped or force-kill workaround.
+- **Intake:** Goal pause142 is acceptedmain; new499 request has no sourceSHA yet and is reserved only if acceptedmain before freeze, otherwise the next unfrozen batch. Do not freeze unfinished source or add an indefinite gate.
 - **Record:** dev-docs/releases/moxbots-0.5.12.md and branch task record. Private evidence in project work/release-0512-20261018/owner/; secrets/bundles stay out of Git.

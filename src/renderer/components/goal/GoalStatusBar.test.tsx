@@ -49,6 +49,21 @@ describe("GoalStatusBar", () => {
     ).toBeInTheDocument();
   });
 
+  it.each([true, false])("pauses an active goal while executing=%s", (isExecuting) => {
+    const onPause = vi.fn();
+    const onCancel = vi.fn();
+    render(<GoalStatusBar goal={goal()} isExecuting={isExecuting} onPause={onPause} onCancel={onCancel} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(onPause).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Resume" })).not.toBeInTheDocument();
+  });
+
+  it.each(["paused", "complete", "blocked", "canceled"] as const)("hides pause for %s goals", (status) => {
+    render(<GoalStatusBar goal={goal({ status })} onPause={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Pause" })).not.toBeInTheDocument();
+  });
+
   it("keeps resume and cancel available while paused", () => {
     render(
       <GoalStatusBar

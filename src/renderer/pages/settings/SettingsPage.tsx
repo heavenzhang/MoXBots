@@ -187,6 +187,8 @@ import {
   type ManagedCodexRuntimeBusyAction,
 } from './managedCodexRuntimePresentation';
 import { AppearanceModeControl } from './components/AppearanceModeControl';
+import { UpdateDownloadStatus } from '@/components/UpdateDownloadStatus';
+import { IDLE_UPDATER_DOWNLOAD } from '../../../shared/updaterDownload';
 import { MarkdownReadingSizeControl } from './components/MarkdownReadingSizeControl';
 import { ThemePresetSelect } from './components/ThemePresetSelect';
 import { ProviderConnectionFields } from './ProviderConnectionFields';
@@ -349,6 +351,7 @@ export default function Settings({
   updateDownloading,
   updateInstalling,
   updatePreparing,
+  updateDownloadState = IDLE_UPDATER_DOWNLOAD,
   onCheckForUpdate,
   onRestartAndUpdate,
 }: SettingsProps) {
@@ -604,27 +607,6 @@ export default function Settings({
     },
     [summonEnabled, summonAccelerator],
   );
-
-  // Download progress — listen directly for Tauri events to avoid re-render blast radius
-  // through the MemoizedTabContent tree (only Settings needs this value)
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  useEffect(() => {
-    if (mode !== 'settings') return;
-    if (!isTauriEnvironment()) return;
-    const ac = new AbortController();
-    void listenWithCleanup<{ percent: number | null }>(
-      'updater:download-progress',
-      (event) => {
-        setDownloadProgress(event.payload.percent);
-      },
-      ac.signal,
-    );
-    return () => ac.abort();
-  }, [mode]);
-  // Reset progress when download completes (updateReady becomes true)
-  useEffect(() => {
-    if (propUpdateReady) setDownloadProgress(null);
-  }, [propUpdateReady]);
 
   const handleAddBotToWorkspace = useCallback(
     async (
@@ -6162,30 +6144,7 @@ export default function Settings({
                       {tSettings('about.manualLinuxUpdate')}
                     </p>
                   )}
-                  {!linuxDesktop && updateDownloading && propUpdateVersion && (
-                    <div className="mt-3 space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-[var(--ink-secondary)]">
-                        <LoaderIcon className="h-4 w-4 animate-spin text-[var(--accent)]" />
-                        <span>
-                          {tSettings('about.downloadingVersion', {
-                            version: propUpdateVersion,
-                            progress:
-                              downloadProgress != null
-                                ? `... ${downloadProgress}%`
-                                : '...',
-                          })}
-                        </span>
-                      </div>
-                      {downloadProgress != null && (
-                        <div className="h-1.5 w-48 overflow-hidden rounded-full bg-[var(--paper-inset)]">
-                          <div
-                            className="h-full rounded-full bg-[var(--accent)] transition-all duration-300"
-                            style={{ width: `${downloadProgress}%` }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  {!linuxDesktop && <UpdateDownloadStatus state={updateDownloadState} checking={updateChecking === true} onRetry={onCheckForUpdate} />}
                   {/* Hidden during silent replacement (updatePreparing) for the
                                         same reason CustomTitleBar hides its button: pending bytes
                                         are mid-replacement, click would hit inconsistent state. */}

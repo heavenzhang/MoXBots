@@ -823,6 +823,7 @@ describe('SimpleChatInput send paths', () => {
 
   it('shows Goal and scheduled Task state independently', async () => {
     await i18n.changeLanguage('en-US');
+    const onGoalPause = vi.fn();
     renderInput({
       cronTask: {
         status: 'running',
@@ -850,6 +851,7 @@ describe('SimpleChatInput send paths', () => {
         isExecuting: false,
       },
       onCronStop: vi.fn(),
+      onGoalPause,
       onGoalCancel: vi.fn(),
     });
 
@@ -857,6 +859,8 @@ describe('SimpleChatInput send paths', () => {
     expect(screen.getByText('Round 1')).toBeInTheDocument();
     expect(screen.getByText('Ship the architecture closure')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Cancel goal' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    expect(onGoalPause).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Scheduled task running')).toBeInTheDocument();
   });
 

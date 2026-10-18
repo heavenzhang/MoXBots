@@ -6932,8 +6932,15 @@ export default function Chat({
               onCronStop={handleCronStop}
               onCronDismissStopped={handleCronDismissStopped}
               onGoalEdit={handleGoalEditOpen}
+              onGoalPause={() => {
+                void pauseGoal().then((goal) => {
+                  if (!goal) toastRef.current.error(tTask('cron.statusBar.pauseGoalFailed'));
+                });
+              }}
               onGoalResume={() => {
-                void resumeGoal();
+                void resumeGoal().then((goal) => {
+                  if (!goal) toastRef.current.error(tTask('cron.statusBar.resumeGoalFailed'));
+                });
               }}
               onGoalCancel={handleGoalCancelOpen}
               onGoalDismiss={handleGoalDismiss}
