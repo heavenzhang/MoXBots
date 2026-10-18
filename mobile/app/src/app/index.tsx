@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, Check, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, loginWithPassword, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
@@ -45,6 +45,7 @@ const errorMessages: Record<string, string> = {
   ACCOUNT_REPLY_INVALID: '无法读取登录状态，请稍后刷新。',
   OWNED_PASSWORD_LOGIN_RATE_LIMITED: '尝试次数较多，请稍后再试。',
   OWNED_CREDENTIALS_INVALID: '账号或密码不正确，请重新输入。',
+  OWNED_NATIVE_CONSENT_REQUIRED: '请先确认账号信息授权。',
   OWNED_PASSWORD_LOGIN_UNAVAILABLE: '账号服务尚未启用手机直接登录，请联系管理员更新服务。',
   ACCOUNT_LOGIN_PAUSED: '登录已暂停，请回到 App 后重试。',
   ACCOUNT_NETWORK_ACCESS_DENIED: '请在 iPhone 设置中允许 MoXBots 使用无线数据，然后重试。',
@@ -124,6 +125,7 @@ function AppBody() {
   const [speechPreparing, setSpeechPreparing] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
   const [username, setUsername] = useState('');
+  const [loginConsent, setLoginConsent] = useState(false);
   const [password, setPassword] = useState('');
   const passwordInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
@@ -1004,6 +1006,7 @@ function AppBody() {
   };
 
   const startLogin = async () => {
+    if (!loginConsent) { say('请先确认账号信息授权。', 'error'); return; }
     const epoch = loginAttemptGate.beginStart();
     if (epoch === null) return;
     setNotice(null);
@@ -1011,8 +1014,9 @@ function AppBody() {
     setLoginAction('start');
     const submittedPassword = password;
     setPassword('');
+    setLoginConsent(false);
     try {
-      const reply = await loginWithPassword(username.trim(), submittedPassword);
+      const reply = await loginWithPassword(username.trim(), submittedPassword, true);
       if (!loginAttemptGate.isCurrent(epoch)) return;
       if (reply.kind === 'error') throw new Error(reply.code);
       if (!loginAttemptGate.observe(epoch, reply.state)) return;
@@ -1173,17 +1177,18 @@ function AppBody() {
           <Text style={styles.fieldLabel}>账号</Text>
           <TextInput accessibilityLabel="账号" placeholder="输入账号邮箱" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
           <Text style={styles.fieldLabel}>密码</Text>
-          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { if (username.trim() && password && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
+          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { if (username.trim() && password && loginConsent && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
+          <Pressable accessibilityRole="checkbox" accessibilityLabel="允许 MoXBots 使用我的账号标识、名称和邮箱来关联设备与会话" accessibilityState={{ checked: loginConsent, disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => setLoginConsent((value) => !value)} style={styles.consentRow}><View style={[styles.consentBox, loginConsent && styles.consentBoxChecked]}>{loginConsent && <Check size={14} color="#fff"/>}</View><Text style={styles.consentLabel}>允许 MoXBots 使用我的账号标识、名称和邮箱，关联设备与会话。</Text></Pressable>
         </View>}
 
         {account?.state === 'authenticating' || loginStarted || cancelUnconfirmed ? <View style={styles.pendingLogin}>
           {!cancelUnconfirmed && <ActivityIndicator color={C.green}/>}
           <Text style={styles.body}>{cancelUnconfirmed ? '取消登录尚未确认' : '正在确认登录…'}</Text>
-          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '确认后自动进入会话列表。无需再打开网页。'}</Text>
+          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '登录成功后自动进入会话列表。'}</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login_cancel', cancelLogin)} style={styles.secondaryButton}>
             <Text style={styles.secondaryText}>{loginAction === 'cancel' ? '正在取消…' : cancelUnconfirmed ? '重试取消登录' : '取消登录'}</Text>
           </Pressable>
-        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null || !username.trim() || !password }} disabled={loginAction !== null || !username.trim() || !password} onPress={() => void run('login', startLogin)} style={[styles.primaryButton, (!username.trim() || !password) && { opacity: 0.5 }]}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在登录…' : '登录'}</Text></Pressable>}
+        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null || !username.trim() || !password || !loginConsent }} disabled={loginAction !== null || !username.trim() || !password || !loginConsent} onPress={() => void run('login', startLogin)} style={[styles.primaryButton, (!username.trim() || !password || !loginConsent) && { opacity: 0.5 }]}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在登录…' : '同意并登录'}</Text></Pressable>}
         {loading && <ActivityIndicator style={{ marginTop: 16 }} color={C.green}/>}
         {loginAction === null && !cancelUnconfirmed && <Text style={styles.caption}>使用与桌面版相同的账号，无需单独登录管理后台。</Text>}
       </View></ScrollView>
@@ -1302,7 +1307,7 @@ export default function App() { return <SafeAreaProvider><AppBody/></SafeAreaPro
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.paper }, fill: { flex: 1 }, appFrame: Platform.OS === 'web' ? { width: '100%', maxWidth: 480, alignSelf: 'center', borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.line } : {}, topbar: { height: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 44, height: 44, justifyContent: 'center' }, backText: { fontSize: 34, lineHeight: 40, color: C.ink, fontWeight: '300' }, brand: { marginLeft: 4, flexDirection: 'row', alignItems: 'baseline', gap: 7 }, brandName: { color: C.ink, fontSize: 14, fontWeight: '800', letterSpacing: 1.1 }, brandSub: { color: C.muted, fontSize: 9, fontWeight: '700', letterSpacing: 1.4 }, headerRight: { flex: 1 }, headerAction: { marginLeft: 'auto', minWidth: 52, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }, headerActionText: { color: C.green, fontSize: 14, fontWeight: '600' }, accountAvatar: { width: 44, height: 44, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
-  loginPage: { flex: 1, backgroundColor: C.canvas }, loginScroll: { flexGrow: 1, paddingBottom: 24 }, loginFields: { marginTop: 24, gap: 8 }, fieldLabel: { color: C.ink, fontSize: 13, marginTop: 8 }, loginInput: { height: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: C.line, borderRadius: 10, fontSize: 16, color: C.ink, backgroundColor: C.canvas }, loginCard: { marginHorizontal: 24, marginTop: 32, padding: 24, borderRadius: 20, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line }, logoMark: { width: 72, height: 72, marginLeft: -12 }, title: { marginTop: 18, fontSize: 24, letterSpacing: -0.4, fontWeight: '700', color: C.ink }, subtitle: { marginTop: 6, color: C.muted, fontSize: 14, lineHeight: 21 }, primaryButton: { height: 50, marginTop: 24, borderRadius: 12, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 15, fontWeight: '700' }, pendingLogin: { alignItems: 'center', paddingVertical: 25, gap: 10 }, body: { color: C.ink, fontSize: 15 }, caption: { color: C.muted, fontSize: 12, lineHeight: 18 },
+  loginPage: { flex: 1, backgroundColor: C.canvas }, loginScroll: { flexGrow: 1, paddingBottom: 24 }, loginFields: { marginTop: 24, gap: 8 }, consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, minHeight: 48, paddingVertical: 8, marginTop: 8 }, consentBox: { width: 22, height: 22, borderWidth: 1, borderColor: C.line, borderRadius: 5, alignItems: 'center', justifyContent: 'center' }, consentBoxChecked: { backgroundColor: C.green, borderColor: C.green }, consentLabel: { flex: 1, color: C.muted, fontSize: 12, lineHeight: 18 }, fieldLabel: { color: C.ink, fontSize: 13, marginTop: 8 }, loginInput: { height: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: C.line, borderRadius: 10, fontSize: 16, color: C.ink, backgroundColor: C.canvas }, loginCard: { marginHorizontal: 24, marginTop: 32, padding: 24, borderRadius: 20, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line }, logoMark: { width: 72, height: 72, marginLeft: -12 }, title: { marginTop: 18, fontSize: 24, letterSpacing: -0.4, fontWeight: '700', color: C.ink }, subtitle: { marginTop: 6, color: C.muted, fontSize: 14, lineHeight: 21 }, primaryButton: { height: 50, marginTop: 24, borderRadius: 12, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 15, fontWeight: '700' }, pendingLogin: { alignItems: 'center', paddingVertical: 25, gap: 10 }, body: { color: C.ink, fontSize: 15 }, caption: { color: C.muted, fontSize: 12, lineHeight: 18 },
   targetsBar: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }, sectionEyebrow: { color: C.muted, fontWeight: '700', fontSize: 10, letterSpacing: 1.2, marginBottom: 9 }, chips: { gap: 8, paddingRight: 18 }, targetChip: { minHeight: 44, maxWidth: 220, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderRadius: 22, borderWidth: 1, borderColor: C.line, gap: 8 }, targetChipActive: { borderColor: C.green, backgroundColor: C.greenWash }, targetChipText: { color: C.muted, fontSize: 13, fontWeight: '600' }, targetChipTextActive: { color: C.green }, dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green }, dotOff: { backgroundColor: '#B5BBB7' },
   listHead: { paddingHorizontal: 20, paddingTop: 13, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, newButton: { height: 44, paddingHorizontal: 14, borderRadius: 12, backgroundColor: C.green, justifyContent: 'center' }, newButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' }, sessionList: { paddingHorizontal: 16, paddingBottom: 30 }, sessionRow: { flexDirection: 'row', alignItems: 'center', minHeight: 78, paddingHorizontal: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: C.line }, sessionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: C.canvas, alignItems: 'center', justifyContent: 'center' }, sessionIconText: { fontSize: 18, color: C.green }, sessionCopy: { marginLeft: 12, flex: 1 }, sessionTitle: { color: C.ink, fontWeight: '600', fontSize: 15 }, sessionPreview: { color: C.muted, fontSize: 12, marginTop: 5 }, chevron: { marginLeft: 8, color: '#A7AEA9', fontSize: 25 },
   empty: { flex: 1, minHeight: 185, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 30 }, emptyTitle: { color: C.ink, fontSize: 16, fontWeight: '700', textAlign: 'center' }, emptyDetail: { marginTop: 6, maxWidth: 280, color: C.muted, fontSize: 13, lineHeight: 20, textAlign: 'center' }, secondaryButton: { marginTop: 15, paddingHorizontal: 18, height: 42, borderRadius: 11, borderWidth: 1, borderColor: C.line, justifyContent: 'center' }, secondaryText: { color: C.green, fontSize: 13, fontWeight: '600' },

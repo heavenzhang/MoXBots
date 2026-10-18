@@ -468,7 +468,11 @@ impl OwnedClient {
         challenge: &str,
         username: &str,
         password: &str,
+        consent_accepted: bool,
     ) -> Result<OwnedPasswordLoginStart, NetworkError> {
+        if !consent_accepted {
+            return Err(NetworkError::new("OWNED_NATIVE_CONSENT_REQUIRED"));
+        }
         if !uuid(device_id)
             || challenge.len() != 43
             || URL_SAFE_NO_PAD.decode(challenge).map(|v| v.len()).ok() != Some(32)
@@ -483,7 +487,7 @@ impl OwnedClient {
         }
         let (status, value) = raw_request(
             &self.http, &self.origin, Method::POST, "/auth/login/password",
-            Some(json!({"deviceId":device_id,"pkceChallenge":challenge,"username":username,"password":password})), None,
+            Some(json!({"deviceId":device_id,"pkceChallenge":challenge,"username":username,"password":password,"consentAccepted":consent_accepted})), None,
         ).await?;
         if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
@@ -1434,7 +1438,7 @@ mod tests {
             let origin = format!("http://{}", listener.local_addr().unwrap());
             let device = uuid::Uuid::new_v4().to_string();
             let challenge = URL_SAFE_NO_PAD.encode([1u8; 32]);
-            let expected_request = json!({"deviceId":device,"pkceChallenge":challenge,"username":"test@example.test","password":"synthetic-password"});
+            let expected_request = json!({"deviceId":device,"pkceChallenge":challenge,"username":"test@example.test","password":"synthetic-password","consentAccepted":true});
             let server = async move {
                 let (mut stream, _) = listener.accept().await.unwrap();
                 let mut bytes = Vec::new();
@@ -1486,6 +1490,7 @@ mod tests {
                 &challenge,
                 "test@example.test",
                 "synthetic-password",
+                true,
             );
             let (_, result) = tokio::join!(server, request);
             if let Some(expected) = expected {
@@ -1495,6 +1500,39 @@ mod tests {
                 assert_eq!(started.transaction_id.len(), 36);
             }
         }
+    }
+    #[tokio::test]
+    async fn password_login_requires_explicit_consent_before_http() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_millis(50))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin: format!("http://{}", listener.local_addr().unwrap()),
+            http,
+            instance: instance(),
+        };
+        let error = client
+            .start_password(
+                &uuid::Uuid::new_v4().to_string(),
+                &URL_SAFE_NO_PAD.encode([7u8; 32]),
+                "test@example.test",
+                "synthetic-password",
+                false,
+            )
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "OWNED_NATIVE_CONSENT_REQUIRED");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(30), listener.accept())
+                .await
+                .is_err()
+        );
     }
     fn instance() -> OwnedInstance {
         let mut jwk = crypto::DevicePrivateKey::generate()

@@ -74,6 +74,8 @@ pub(super) struct PasswordRequest {
     pkce_challenge: String,
     username: Zeroizing<String>,
     password: Zeroizing<String>,
+    // Required on every attempt. No serde default and no remembered approval.
+    consent_accepted: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +102,7 @@ impl IntoResponse for PasswordApiError {
             }
         };
         let (status, code) = match error {
+            ApiError::BadRequest => (StatusCode::BAD_REQUEST, "invalid_request"),
             ApiError::CredentialsInvalid => (StatusCode::UNAUTHORIZED, "OWNED_CREDENTIALS_INVALID"),
             ApiError::PasswordUnavailable => (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -243,6 +246,11 @@ where
     K: FnOnce() -> KF,
     KF: Future<Output = Result<CoreJsonWebKeySet, ApiError>>,
 {
+    // This is explicit native confirmation for this confidential client's
+    // openid/profile/email disclosure, not a Dex consent-record mutation.
+    if !req.consent_accepted {
+        return Err(ApiError::BadRequest);
+    }
     if !app.password_login.enabled {
         return Err(ApiError::PasswordUnavailable);
     }
@@ -365,6 +373,7 @@ mod tests {
             pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(VERIFIER.as_bytes())),
             username: Zeroizing::new(username.into()),
             password: Zeroizing::new("synthetic-password".into()),
+            consent_accepted: true,
         }
     }
     async fn no_keys() -> Result<CoreJsonWebKeySet, ApiError> {
@@ -657,11 +666,11 @@ mod tests {
             .layer(axum::middleware::map_response(no_store));
         for (value, status) in [
             (
-                serde_json::json!({"deviceId":DEVICE,"pkceChallenge":"a".repeat(43),"username":"u","password":"p"}),
+                serde_json::json!({"deviceId":DEVICE,"pkceChallenge":"a".repeat(43),"username":"u","password":"p","consentAccepted":true}),
                 StatusCode::SERVICE_UNAVAILABLE,
             ),
             (
-                serde_json::json!({"deviceId":DEVICE,"pkceChallenge":"a".repeat(43),"username":"u","password":"p","issuer":"forbidden"}),
+                serde_json::json!({"deviceId":DEVICE,"pkceChallenge":"a".repeat(43),"username":"u","password":"p","consentAccepted":true,"issuer":"forbidden"}),
                 StatusCode::UNPROCESSABLE_ENTITY,
             ),
             (
@@ -692,6 +701,135 @@ mod tests {
                     serde_json::json!({"error":{"code":"invalid_request"}})
                 }
             );
+        }
+    }
+
+    fn consent_request() -> serde_json::Value {
+        serde_json::json!({"deviceId":DEVICE,
+            "pkceChallenge":URL_SAFE_NO_PAD.encode(Sha256::digest(VERIFIER.as_bytes())),
+            "username":"synthetic@example.test","password":"synthetic-password"})
+    }
+
+    #[tokio::test]
+    async fn password_missing_or_false_consent_never_calls_provider_or_creates_ready() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        for accepted in [None, Some(false)] {
+            let (app, _dir) = enabled();
+            let calls = Arc::new(AtomicUsize::new(0));
+            let provider_calls = calls.clone();
+            let mut value = consent_request();
+            if let Some(accepted) = accepted {
+                value["consentAccepted"] = serde_json::json!(accepted);
+            }
+            let result = match serde_json::from_value::<PasswordRequest>(value) {
+                Ok(req) => {
+                    login_using(
+                        app.clone(),
+                        req,
+                        move |_, _, nonce| async move {
+                            provider_calls.fetch_add(1, Ordering::SeqCst);
+                            Ok(signed_response(
+                                signing(false),
+                                &nonce,
+                                "https://dex.example.test",
+                                "agentnet-test",
+                                unix_now().unwrap() + 300,
+                            ))
+                        },
+                        no_keys,
+                    )
+                    .await
+                }
+                Err(_) => Err(ApiError::BadRequest),
+            };
+            assert!(matches!(result, Err(ApiError::BadRequest)));
+            assert_eq!(calls.load(Ordering::SeqCst), 0);
+            assert_eq!(app.flow.pending.lock().unwrap().len(), 0);
+            assert_eq!(app.password_login.rates.lock().unwrap().global.1, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn password_true_consent_verifies_provider_before_creating_one_ready() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let (app, _dir) = enabled();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider_calls = calls.clone();
+        let mut value = consent_request();
+        value["consentAccepted"] = serde_json::json!(true);
+        let req: PasswordRequest = serde_json::from_value(value).unwrap();
+        let reply = login_using(
+            app.clone(),
+            req,
+            move |_, _, nonce| async move {
+                provider_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(signed_response(
+                    signing(false),
+                    &nonce,
+                    "https://dex.example.test",
+                    "agentnet-test",
+                    unix_now().unwrap() + 300,
+                ))
+            },
+            no_keys,
+        )
+        .await
+        .unwrap()
+        .1
+        .0;
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let pending = app.flow.pending.lock().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert!(matches!(
+            pending[&reply.transaction_id].phase,
+            Phase::Ready(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn password_http_consent_is_required_literal_true_and_failures_are_closed() {
+        let (app, _dir) = enabled();
+        let router = Router::new()
+            .route("/auth/login/password", post(login))
+            .with_state(app.clone())
+            .layer(axum::extract::DefaultBodyLimit::max(MAX_HTTP_BODY))
+            .layer(axum::middleware::map_response(no_store));
+        for (consent, status) in [
+            (None, StatusCode::UNPROCESSABLE_ENTITY),
+            (Some(serde_json::json!(false)), StatusCode::BAD_REQUEST),
+            (
+                Some(serde_json::json!("true")),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+            (
+                Some(serde_json::Value::Null),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            ),
+        ] {
+            let mut value = consent_request();
+            if let Some(consent) = consent {
+                value["consentAccepted"] = consent;
+            }
+            let response = router
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/auth/login/password")
+                        .header(header::CONTENT_TYPE, "application/json")
+                        .body(Body::from(value.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), status);
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+            assert_eq!(
+                body(response).await,
+                serde_json::json!({"error":{"code":"invalid_request"}})
+            );
+            assert!(app.flow.pending.lock().unwrap().is_empty());
+            assert_eq!(app.password_login.rates.lock().unwrap().global.1, 0);
         }
     }
 

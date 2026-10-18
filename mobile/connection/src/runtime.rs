@@ -197,7 +197,7 @@ impl MobileConnection {
             .ok_or_else(|| err("MOBILE_INTENT_INVALID"))?
             .to_owned();
         let allowed = if kind == "account.login.password" {
-            &["version", "kind", "username", "password"][..]
+            &["version", "kind", "username", "password", "consentAccepted"][..]
         } else if kind == "draft.read" {
             &["version", "kind", "targetId", "sessionId"][..]
         } else if kind == "draft.write" {
@@ -240,6 +240,9 @@ impl MobileConnection {
                 Ok(self.account_view())
             }
             "account.login.start" | "account.login.password" => {
+                if kind == "account.login.password" && intent["consentAccepted"] != true {
+                    return Err(err("OWNED_NATIVE_CONSENT_REQUIRED"));
+                }
                 // Password is transient, never a pending or secure-store record.
                 let password = if kind == "account.login.password" {
                     let raw = intent
@@ -299,7 +302,7 @@ impl MobileConnection {
                             .client
                             .as_ref()
                             .unwrap()
-                            .start_password(&device, &challenge, &username, &password)
+                            .start_password(&device, &challenge, &username, &password, true)
                             .await?;
                         (start.transaction_id, start.expires_at, None)
                     } else {
@@ -1339,14 +1342,30 @@ mod tests {
         );
     }
     #[tokio::test]
+    async fn password_login_requires_explicit_native_consent_before_network_or_persistence() {
+        let mut o = owner();
+        for consent in [None, Some(json!(false)), Some(json!("true"))] {
+            let mut value = json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":"synthetic-password"});
+            if let Some(consent) = consent {
+                value["consentAccepted"] = consent;
+            }
+            let reply = o.request(value).await;
+            assert_eq!(reply["error"]["code"], "OWNED_NATIVE_CONSENT_REQUIRED");
+            assert!(!reply.to_string().contains("synthetic-password"));
+            assert!(o.client.is_none());
+            assert!(o.pending.is_none());
+            assert!(o.saved.is_none());
+        }
+    }
+    #[tokio::test]
     async fn password_login_rejects_malformed_secrets_before_network_or_persistence() {
         let mut o = owner();
         for value in [
-            json!({"version":1,"kind":"account.login.password","username":"test@example.test"}),
-            json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":""}),
-            json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":7}),
-            json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":"x".repeat(1025)}),
-            json!({"version":1,"kind":"account.login.password","username":"bad\naccount","password":"synthetic-password"}),
+            json!({"version":1,"kind":"account.login.password","consentAccepted":true,"username":"test@example.test"}),
+            json!({"version":1,"kind":"account.login.password","consentAccepted":true,"username":"test@example.test","password":""}),
+            json!({"version":1,"kind":"account.login.password","consentAccepted":true,"username":"test@example.test","password":7}),
+            json!({"version":1,"kind":"account.login.password","consentAccepted":true,"username":"test@example.test","password":"x".repeat(1025)}),
+            json!({"version":1,"kind":"account.login.password","consentAccepted":true,"username":"bad\naccount","password":"synthetic-password"}),
         ] {
             let reply = o.request(value).await;
             assert_eq!(reply["error"]["code"], "OWNED_CREDENTIALS_INVALID");
@@ -1355,7 +1374,7 @@ mod tests {
             assert!(o.pending.is_none());
             assert!(o.saved.is_none());
         }
-        let reply = o.request(json!({"version":1,"kind":"account.login.password","username":"test@example.test","password":"synthetic-password","issuer":"https://evil.test"})).await;
+        let reply = o.request(json!({"version":1,"kind":"account.login.password","consentAccepted":true,"username":"test@example.test","password":"synthetic-password","issuer":"https://evil.test"})).await;
         assert_eq!(reply["error"]["code"], "MOBILE_INTENT_INVALID");
     }
     #[test]

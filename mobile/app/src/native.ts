@@ -56,7 +56,7 @@ export type NotificationRegistration = z.infer<typeof notificationReply>;
 export type NativeIntent =
   | { version: 1; kind: 'account.status' | 'account.login.poll' | 'account.logout' }
   | { version: 1; kind: 'account.login.start' }
-  | { version: 1; kind: 'account.login.password'; username: string; password: string }
+  | { version: 1; kind: 'account.login.password'; username: string; password: string; consentAccepted: true }
   | { version: 1; kind: 'targets.list' }
   | { version: 1; kind: 'operations.pending' }
   | { version: 1; kind: 'notification.status' | 'notification.disable' }
@@ -100,7 +100,7 @@ function getRemoteBridge(): RemoteBridge {
 }
 
 /** No password is stored or logged; the native Rust owner returns only account state. */
-export async function loginWithPassword(username: string, password: string): Promise<Account | { kind: 'error'; code: string }> {
+export async function loginWithPassword(username: string, password: string, consentAccepted: true): Promise<Account | { kind: 'error'; code: string }> {
   if (Platform.OS === 'ios' && !isFixtureMode) {
     const preflight: unknown = JSON.parse(await getRemoteBridge().prepareLoginNetwork());
     const ready = z.object({ kind: z.literal('network-ready') }).strict().safeParse(preflight);
@@ -109,7 +109,7 @@ export async function loginWithPassword(username: string, password: string): Pro
       throw new Error(failure.success ? failure.data.code : 'ACCOUNT_REPLY_INVALID');
     }
   }
-  const reply = await requestNative({ version: 1, kind: 'account.login.password', username, password });
+  const reply = await requestNative({ version: 1, kind: 'account.login.password', username, password, consentAccepted });
   if (reply.kind !== 'account' && reply.kind !== 'error') throw new Error('ACCOUNT_REPLY_INVALID');
   return reply;
 }
@@ -173,7 +173,7 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
     if (!parsedFixture.success) throw new Error('QA_FIXTURE_REPLY_INVALID');
     return parsedFixture.data;
   }
-  const checkedIntent = intent.kind === 'account.login.password' ? z.object({ version: z.literal(1), kind: z.literal('account.login.password'), username: z.string().min(1).max(256), password: z.string().min(1).max(1024) }).strict().safeParse(intent)
+  const checkedIntent = intent.kind === 'account.login.password' ? z.object({ version: z.literal(1), kind: z.literal('account.login.password'), username: z.string().min(1).max(256), password: z.string().min(1).max(1024), consentAccepted: z.literal(true) }).strict().safeParse(intent)
     : intent.kind === 'draft.read' ? draftReadIntent.safeParse(intent)
     : intent.kind === 'draft.write' ? draftWriteIntent.safeParse(intent)
       : intent.kind.startsWith('attachment.') ? attachmentIntentSchema.safeParse(intent)
