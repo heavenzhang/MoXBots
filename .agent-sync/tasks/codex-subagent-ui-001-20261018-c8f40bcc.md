@@ -15,8 +15,10 @@ Implement approved in-chat subagent status, current-turn/history list and same-c
 - [x] Distinguish live, returned, failed, stopped and unknown facts; no receipt-as-success or fabricated model.
 - [x] Preserve historical access, pagination disclosure, per-Tab isolation, To Do and background shell logs.
 - [x] Inspector shows assignment/model/progress/report/tools and locates original tool without leaving chat.
-- [ ] Regression tests, typecheck, scoped lint, build, rendered interaction and independent review.
-- [ ] Commit, CI, merge main and verify remote containment.
+- [x] Regression tests, typecheck, scoped lint, build and independent source review.
+- [ ] Rendered interaction, responsive and visual acceptance.
+- [x] Commit and push reviewed source; draft PR https://github.com/heavenzhang/MoXBots/pull/146 attached.
+- [ ] CI, merge main and verify remote containment after rendered acceptance.
 - [ ] Queue to sole existing desktop release owner; installed native path remains pending until safely enabled.
 
 ## Completed
@@ -37,4 +39,4 @@ Native package/release handled through established sole publisher, no concurrent
 
 ## Next step
 
-Save reviewed implementation on remote branch/draft PR. Resume actual rendered and full Chat acceptance after local browser is enabled, then CI/main and sole publisher queue.
+Remote handoff gate passed with clean worktree; draft PR146 retains open UI gate. Main advanced independently after base; fetch/integrate latest main before ready/merge. Resume actual rendered and full Chat acceptance after local browser is enabled, then CI/main and sole publisher queue.
