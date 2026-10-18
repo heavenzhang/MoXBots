@@ -6618,7 +6618,7 @@ export default function TabProvider({
             connectionGeneration
         )
           return;
-        if (!resp.success || !resp.session) return;
+        if (!resp.success || !resp.session) throw new Error('History page could not be loaded');
 
         const snapshotRows = resp.session.messages.map(
           wireSessionMessageToMessage,
@@ -6682,6 +6682,7 @@ export default function TabProvider({
         hasMoreBeforeRef.current = nextHasMore;
       } catch (err) {
         console.warn(`[TabProvider ${tabId}] loadOlderMessages failed:`, err);
+        if (currentSessionIdRef.current === sid && liveRevisionFenceRef.current.restoreToken === restoreToken) options?.onError?.(err);
       } finally {
         if (transcriptPageRef.current === page)
           transcriptPageRef.current = null;

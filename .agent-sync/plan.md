@@ -441,3 +441,8 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## GOAL-PAUSE-001 — 2026-10-18
 
 运行Goal条新增暂停，与既有继续/取消并列，复用原Rust暂停/停止/持久化owner。局部UI由主Agent自验，DOM86项与浏览器10组通过；CI/main、正式包/真实任务分别追踪。任务记录 `.agent-sync/tasks/codex-goal-pause-001-20261018-3d82257d.md`，验收 `dev-docs/goal-pause-001-acceptance.md`。保留唯一桌面发布owner和下一未冻结版本边界，不重启日常App、不改既有冻结包。
+
+
+## SUBAGENT-UI-001 — 聊天内子 Agent 查看
+
+用户确认方案后实施：输入框上方持久入口、本轮/已加载历史、同会话右侧详情，复用transcript与现有状态投影；不新增执行owner或模型请求。记录 `.agent-sync/tasks/codex-subagent-ui-001-20261018-c8f40bcc.md`，验收 `dev-docs/subagent-ui/acceptance.md`。代码与52项回归/构建通过，独立代码复核完成；真实渲染因Work本地浏览器关闭尚待验，先保存草稿PR，不把构建替代UI验收。保持唯一桌面发布owner与下一未冻结候选边界，不换包或打断活动任务。

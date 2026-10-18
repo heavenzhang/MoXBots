@@ -59,6 +59,7 @@ export interface SystemNotice {
 }
 
 export interface LoadOlderMessagesOptions {
+    onError?: (error: unknown) => void;
     beforePrepend?: (visibleFreshCount: number) => void;
 }
 

@@ -2,6 +2,7 @@
 import type { AgentInput, BackgroundTaskStats, SubagentToolCall, ToolUseSimple, TaskStats } from '@/types/chat';
 
 import Markdown from '@/components/Markdown';
+import { resolveSubagentInput } from '@/components/agent-status/subagentViewModel';
 import { formatDuration } from '@/components/tools/toolBadgeConfig';
 import {
   getSubagentContainerDurationMs,
@@ -599,7 +600,7 @@ const TaskTraceList = memo(function TaskTraceList({ calls }: { calls: SubagentTo
 
 export default function TaskTool({ tool }: TaskToolProps) {
   const { t } = useTranslation('chat');
-  const input = tool.parsedInput as AgentInput;
+  const input = resolveSubagentInput(tool) as unknown as AgentInput;
   const isRunning = isSubagentContainerRunning(tool);
   const lifecycleStatus = getSubagentContainerLifecycleStatus(tool);
   const lifecycleDuration = getSubagentContainerDurationMs(tool);
@@ -706,7 +707,7 @@ export default function TaskTool({ tool }: TaskToolProps) {
       .join('\n\n');
   }, [parsedResult, tool.subagentLifecycle?.result]);
 
-  if (!input) {
+  if (Object.keys(input).length === 0 && !tool.result && !tool.subagentLifecycle && !tool.subagentCalls?.length) {
     return <div className="text-sm text-[var(--ink-muted)]">{t('shell.toolChrome.task.initializing')}</div>;
   }
 
@@ -776,11 +777,11 @@ export default function TaskTool({ tool }: TaskToolProps) {
       )}
 
       {/* 2. 探索 Query / Prompt (第二块) */}
-      {input.prompt && (
+      {(input.prompt || parsedResult?.prompt) && (
         <div className="rounded-lg bg-[var(--accent-cool)]/10 p-3">
           <CollapsibleContent maxLines={DEFAULT_MAX_LINES}>
             <div className="italic text-[var(--ink-secondary)] select-text">
-              &ldquo;{input.prompt}&rdquo;
+              &ldquo;{input.prompt || parsedResult?.prompt}&rdquo;
             </div>
           </CollapsibleContent>
         </div>
