@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   engine: {
+    getBackgroundTaskDetail: vi.fn(),
     getExecutionTurnId: vi.fn(() => 'turn-1'),
     getRuntimeIdentity: vi.fn(() => ({ kind: 'builtin', runtime: 'builtin', sessionId: 'sid' })),
     getLiveSessionState: vi.fn(() => ({ sessionState: 'idle', isBusy: false })),
@@ -52,6 +53,51 @@ describe('handleSessionReadRoute', () => {
     mocks.getSessionData.mockReturnValue(null);
     mocks.isHistoryVisibleSession.mockReturnValue(true);
     mocks.pendingSessionWatchCount.mockReturnValue(1);
+  });
+
+  it('validates background task requests before asking the current engine', async () => {
+    for (const query of ['', '?toolUseId=../secret', '?toolUseId=ok&toolUseId=other', '?toolUseId=' + 'x'.repeat(257)]) {
+      const url = new URL('http://local/api/session/background-task' + query);
+      const response = await handleSessionReadRoute(url.pathname, new Request(url), url);
+      expect(response?.status).toBe(400);
+      expect(response?.headers.get('Cache-Control')).toBe('no-store');
+      expect(await response?.json()).toEqual({ success: false, errorCode: 'INVALID_TOOL_USE_ID' });
+    }
+    const url = new URL('http://local/api/session/background-task?toolUseId=tool');
+    const methodResponse = await handleSessionReadRoute(url.pathname, new Request(url, { method: 'POST' }), url);
+    expect(methodResponse?.status).toBe(405);
+    expect(methodResponse?.headers.get('Cache-Control')).toBe('no-store');
+    expect(mocks.engine.getBackgroundTaskDetail).not.toHaveBeenCalled();
+  });
+
+  it('delegates background details and maps unavailable/unknown runtime results', async () => {
+    const url = new URL('http://local/api/session/background-task?toolUseId=call_123');
+    mocks.engine.getBackgroundTaskDetail.mockResolvedValue({ success: true, task: { output: 'real output', status: 'running' } });
+    const response = await handleSessionReadRoute(url.pathname, new Request(url), url);
+    expect(await response?.json()).toEqual({ success: true, task: { output: 'real output', status: 'running' } });
+    expect(response?.headers.get('Cache-Control')).toBe('no-store');
+    expect(mocks.engine.getBackgroundTaskDetail).toHaveBeenCalledWith('call_123');
+    mocks.engine.getBackgroundTaskDetail.mockResolvedValue({ success: false, errorCode: 'BACKGROUND_TASK_NOT_FOUND' });
+    const missing = await handleSessionReadRoute(url.pathname, new Request(url), url);
+    expect(missing?.status).toBe(200);
+    expect(missing?.headers.get('Cache-Control')).toBe('no-store');
+    mocks.engine.getBackgroundTaskDetail.mockRejectedValue(new Error('private path must not escape'));
+    const unavailable = await handleSessionReadRoute(url.pathname, new Request(url), url);
+    expect(unavailable?.status).toBe(503);
+    expect(unavailable?.headers.get('Cache-Control')).toBe('no-store');
+    expect(await unavailable?.json()).toEqual({ success: false, errorCode: 'BACKGROUND_TASK_UNAVAILABLE' });
+  });
+
+  it('returns an explicit unsupported result for runtimes without task output', async () => {
+    const original = mocks.engine.getBackgroundTaskDetail;
+    mocks.engine.getBackgroundTaskDetail = undefined as never;
+    try {
+      const url = new URL('http://local/api/session/background-task?toolUseId=tool');
+      const response = await handleSessionReadRoute(url.pathname, new Request(url), url);
+      expect(response?.status).toBe(200);
+      expect(await response?.json()).toEqual({ success: false, errorCode: 'BACKGROUND_TASK_UNSUPPORTED' });
+      expect(response?.headers.get('Cache-Control')).toBe('no-store');
+    } finally { mocks.engine.getBackgroundTaskDetail = original; }
   });
 
   it('reads live session state and latest result from the active engine', async () => {

@@ -378,3 +378,5 @@ Cumulative0.5.5–0.5.11 history is live at https://140.143.183.232/download/#re
 ## MOXBOTS-SESSION-AUDIT-20261018 — source/main reconciliation
 
 审计和原负责人跟进见`dev-docs/delivery/session-audit-20261018.md`；私有原件在项目指针`work/session-audit-20261018/`。组合模型的原会话是MoXBots自身SDK session5025b9bb，分支codex/team-mode-20261017共39文件未提交，尚在界面预览，不在0.5.11。与PR73已交付的主备切换分开。后台日志133已恢复正常CI/main流程，Host129转权威聚合137，mobile136和updater-resume仍进行；PR104虽OPEN但实际七文件已同main/v0.5.11，不能再次合并。原owner保持写权限和测试/发布边界；本轮只文档，无客户端/业务/服务写入。
+
+PR133跟进已闭环：实际远端mainad654f723a57568ee6190a86882a185cf4a49816包含8caf2053候选，原候选9项成功/条件iOS跳过，本聊天已亲核包含与tree；改为下一未冻结候选/原生验收队列。审计文档保留初查时间线和最终接续段。
