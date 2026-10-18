@@ -180,6 +180,29 @@ fn write_context(
     }
     result
 }
+/// The existing management principal is checked before any authenticated
+/// account bytes are persisted, including the browser reauthentication path.
+pub(crate) fn publish_authenticated(
+    owner: &Owner,
+    state: &mut crate::owned_state::State,
+    claimed: &[u8],
+    attempt: &str,
+    session: &OwnedSession,
+) -> Result<(), NetworkError> {
+    if session.network_id != owner.scope.network_id {
+        return Err(NetworkError::new("AUTH_SCOPE_MISMATCH"));
+    }
+    crate::management_admission::validate_existing_principal(owner, &session.principal_id)?;
+    state.publish_account(
+        attempt,
+        session.principal_id.clone(),
+        session.access_token.clone(),
+        session.expires_at,
+        jsonwebtoken::get_current_timestamp(),
+    )?;
+    owner.commit(Some(claimed), state)
+}
+
 impl Connection {
     pub fn write_policy_context(&self, root: &Path, path: &Path) -> Result<(), NetworkError> {
         let (state, raw) = self.owner.read()?;
@@ -294,10 +317,90 @@ impl Connection {
             public_ca,
         })
     }
+    pub(crate) async fn recover_pending_renewal(&self) -> Result<(), NetworkError> {
+        let (state, raw) = self.owner.read()?;
+        let Some(account) = state.account.as_ref() else {
+            return Ok(());
+        };
+        let Some(pending) = account.renewal.as_ref() else {
+            return Ok(());
+        };
+        self.instance
+            .ensure_same_trust(&self.client.public_instance().await?)?;
+        let session = match self
+            .client
+            .inspect_session(&self.owner.scope.device_id, &pending.token)
+            .await
+        {
+            Ok(session) => session,
+            Err(error) if error.code == "OWNED_SESSION_INVALID" => {
+                // An unsupported/not-yet-committed renewal retains the old
+                // credential only if the authority confirms it is still live.
+                let old = self
+                    .client
+                    .inspect_session(&self.owner.scope.device_id, &account.token)
+                    .await?;
+                if old.principal_id != account.principal
+                    || old.network_id != self.owner.scope.network_id
+                {
+                    return Err(NetworkError::new("AUTH_SCOPE_MISMATCH"));
+                }
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        };
+        if session.principal_id != account.principal
+            || session.network_id != self.owner.scope.network_id
+            || session.access_token != pending.token
+            || session.expires_at < account.expires_at
+        {
+            return Err(NetworkError::new("AUTH_SCOPE_MISMATCH"));
+        }
+        let owner = self.owner.clone();
+        let binding = account.binding.clone();
+        let candidate = Zeroizing::new(pending.token.clone());
+        let guard_candidate = Zeroizing::new(pending.token.clone());
+        let guard_binding = binding.clone();
+        let transient = NetworkAccountSession::Owned(Arc::new(OwnedAccount {
+            binding_id: binding.clone(),
+            connection_id: binding,
+            device_id: self.owner.scope.device_id.clone(),
+            session_bound: false,
+            descriptor: self.instance.clone(),
+            active: Arc::new(AtomicBool::new(true)),
+            session,
+            public_tls_ca: self.public_ca.clone(),
+            join_authorized: AtomicBool::new(false),
+            guard: Arc::new(move || owner.ensure_pending_renewal(&guard_binding, &guard_candidate)),
+        }));
+        // Existing-only recovery cannot register/rotate/rejoin a device whose
+        // key disappeared. Its PoP and signed handle must match the staged run.
+        let identity = crate::agent_network::identity::NetworkIdentity::initialize_existing(
+            transient,
+            self.owner.store.clone(),
+        )
+        .await?;
+        if identity.access.session_handle != pending.session_handle
+            || identity.scope.key_generation != pending.key_generation
+            || identity.device_key().public_fingerprint()? != pending.key_fingerprint
+        {
+            return Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"));
+        }
+        let NetworkAccountSession::Owned(recovered) = &identity.account else {
+            unreachable!()
+        };
+        self.owner.commit_renewal(
+            raw.as_deref()
+                .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?,
+            &candidate,
+            recovered.session.expires_at,
+        )
+    }
     pub async fn account(
         &self,
         join_authorized: bool,
     ) -> Result<NetworkAccountSession, NetworkError> {
+        self.recover_pending_renewal().await?;
         self.instance
             .ensure_same_trust(&self.client.public_instance().await?)?;
         let (s, _) = self.owner.read()?;
@@ -331,6 +434,88 @@ impl Connection {
             guard: Arc::new(move || owner.ensure_binding(&binding)),
         })))
     }
+    /// Renew only while connected using the admitted device identity. The
+    /// caller reconnects immediately after persistence to refresh immutable
+    /// account/access snapshots; no business operation is replayed.
+    pub async fn renew_session(
+        &self,
+        identity: &crate::agent_network::identity::NetworkIdentity,
+        transport: &crate::agent_network::transport::NetworkTransport,
+    ) -> Result<bool, NetworkError> {
+        identity.account.ensure_current()?;
+        let NetworkAccountSession::Owned(captured) = &identity.account else {
+            return Err(NetworkError::new("OWNED_REAUTH_REQUIRED"));
+        };
+        let (state, raw) = self.owner.read()?;
+        let account = state
+            .account
+            .as_ref()
+            .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?;
+        if account.binding != captured.binding_id
+            || account.principal != captured.session.principal_id
+            || account.token != captured.session.access_token
+            || self.owner.scope.device_id != identity.scope.device_id
+            || self.owner.scope.network_id != captured.session.network_id
+        {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
+        self.owner.ensure_binding(&account.binding)?;
+        if account.expires_at > captured.session.expires_at {
+            return Ok(true);
+        }
+        self.instance
+            .ensure_same_trust(&self.client.public_instance().await?)?;
+        self.owner.ensure_binding(&account.binding)?;
+        let original = raw
+            .as_deref()
+            .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?;
+        let staged = if account.renewal.is_none() {
+            let seed = Zeroizing::new(format!("{}{}", uuid::Uuid::new_v4(), uuid::Uuid::new_v4()));
+            self.owner.stage_renewal(
+                original,
+                crate::owned_state::PendingRenewal {
+                    token: URL_SAFE_NO_PAD.encode(Sha256::digest(seed.as_bytes())),
+                    session_handle: identity.access.session_handle.clone(),
+                    key_generation: identity.scope.key_generation,
+                    key_fingerprint: identity.device_key().public_fingerprint()?,
+                },
+            )?
+        } else {
+            Zeroizing::new(original.to_vec())
+        };
+        let staged_state: crate::owned_state::State = serde_json::from_slice(&staged)
+            .map_err(|_| NetworkError::new("OWNED_STATE_CORRUPT"))?;
+        let pending = staged_state
+            .account
+            .as_ref()
+            .and_then(|a| a.renewal.as_ref())
+            .ok_or_else(|| NetworkError::new("OWNED_STATE_CORRUPT"))?;
+        if pending.session_handle != identity.access.session_handle
+            || pending.key_generation != identity.scope.key_generation
+            || pending.key_fingerprint != identity.device_key().public_fingerprint()?
+        {
+            return Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"));
+        }
+        self.owner
+            .ensure_pending_renewal(&account.binding, &pending.token)?;
+        let renewed = transport
+            .renew_session(&identity.token, &pending.token)
+            .await?;
+        renewed.validate(
+            &account.principal,
+            &self.owner.scope.device_id,
+            &self.owner.scope.network_id,
+            &identity.access.session_handle,
+            account.expires_at,
+            jsonwebtoken::get_current_timestamp(),
+        )?;
+        self.owner
+            .commit_renewal(&staged, &pending.token, renewed.expires_at)?;
+        // The opaque credential rotated even if an early request did not
+        // increase expiry. Always retire the immutable captured account.
+        Ok(true)
+    }
+
     pub async fn start(&self) -> Result<serde_json::Value, NetworkError> {
         // Revocation of the previous local generation happens before any external request.
         self.cancel().await?;
@@ -409,14 +594,7 @@ impl Connection {
                     if session.network_id != self.instance.network_id {
                         return Err(NetworkError::new("AUTH_SCOPE_MISMATCH"));
                     }
-                    s.publish_account(
-                        &attempt,
-                        session.principal_id.clone(),
-                        session.access_token.clone(),
-                        session.expires_at,
-                        jsonwebtoken::get_current_timestamp(),
-                    )?;
-                    self.owner.commit(Some(&claimed), &s)?;
+                    publish_authenticated(&self.owner, &mut s, &claimed, &attempt, &session)?;
                     return Ok(());
                 }
             }
@@ -528,6 +706,179 @@ mod tests {
     use super::*;
     use std::os::unix::fs::{symlink, PermissionsExt};
     #[tokio::test]
+    async fn crash_before_post_recovers_old_live_account_and_preserves_candidate_on_unknown() {
+        use crate::agent_network::crypto;
+        use crate::owned_state::{Account, PendingRenewal};
+        for (candidate_status, old_live) in [(401u16, true), (503, true), (401, false)] {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+            let root = std::fs::canonicalize(dir.path()).unwrap();
+            let store = Arc::new(EncryptedIdentityStore::for_test(&root, &[91; 32]).unwrap());
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let origin = format!("https://{}", listener.local_addr().unwrap());
+            let ca_key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+            let mut ca_params = rcgen::CertificateParams::new(Vec::<String>::new()).unwrap();
+            ca_params.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+            ca_params.key_usages = vec![rcgen::KeyUsagePurpose::KeyCertSign];
+            let ca = ca_params.self_signed(&ca_key).unwrap();
+            let public_ca = ca.pem();
+            let issuer = rcgen::Issuer::new(ca_params, ca_key);
+            let key = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256).unwrap();
+            let mut leaf_params = rcgen::CertificateParams::new(vec!["127.0.0.1".into()]).unwrap();
+            leaf_params.extended_key_usages = vec![rcgen::ExtendedKeyUsagePurpose::ServerAuth];
+            let leaf = leaf_params.signed_by(&key, &issuer).unwrap();
+            let tls = rustls::ServerConfig::builder_with_provider(Arc::new(
+                rustls::crypto::ring::default_provider(),
+            ))
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![leaf.der().clone()],
+                rustls::pki_types::PrivatePkcs8KeyDer::from(key.serialize_der()).into(),
+            )
+            .unwrap();
+            let mut jwk = crypto::DevicePrivateKey::generate()
+                .unwrap()
+                .public_jwk()
+                .unwrap();
+            jwk["kid"] = serde_json::json!("fixture");
+            jwk["alg"] = serde_json::json!("ES256");
+            jwk["use"] = serde_json::json!("sig");
+            let instance = OwnedInstance {
+                version: 1,
+                profile: "owned-device-relay-v1".into(),
+                service_id: uuid::Uuid::new_v4().to_string(),
+                environment: "development".into(),
+                network_id: uuid::Uuid::new_v4().to_string(),
+                name: "Fixture".into(),
+                issuer: origin.clone(),
+                login_issuer: "https://login.invalid/dex".into(),
+                protocol: 1,
+                capabilities: vec!["tls13-mtls".into()],
+                root_certificate: crypto::tests::Fixture::new().ca.pem(),
+                jwks: serde_json::json!({"keys":[jwk]}),
+            };
+            let device = uuid::Uuid::new_v4().to_string();
+            let principal = uuid::Uuid::new_v4().to_string();
+            let old_token = URL_SAFE_NO_PAD.encode([92u8; 32]);
+            let candidate = URL_SAFE_NO_PAD.encode([93u8; 32]);
+            let now = jsonwebtoken::get_current_timestamp();
+            let pin = InstancePin {
+                version: 1,
+                device_id: device.clone(),
+                instance: instance.clone(),
+                public_ca: Some(public_ca),
+            };
+            store
+                .compare_exchange_state(
+                    &pin_namespace(&origin, &device),
+                    None,
+                    &serde_json::to_vec(&pin).unwrap(),
+                )
+                .unwrap();
+            let connection =
+                Connection::from_pinned(&origin, None, store.clone(), &device).unwrap();
+            let (mut state, raw) = connection.owner.read().unwrap();
+            let binding = uuid::Uuid::new_v4().to_string();
+            state.account = Some(Account {
+                binding: binding.clone(),
+                principal: principal.clone(),
+                token: old_token.clone(),
+                expires_at: now + 300,
+                renewal: Some(PendingRenewal {
+                    token: candidate.clone(),
+                    session_handle: uuid::Uuid::new_v4().to_string(),
+                    key_generation: 1,
+                    key_fingerprint: "b".repeat(64),
+                }),
+            });
+            connection
+                .owner
+                .commit(raw.as_deref().map(|v| v.as_slice()), &state)
+                .unwrap();
+            drop(connection); // candidate durable, POST never sent
+            let mut replies = vec![
+                (200u16, serde_json::to_value(&instance).unwrap(), None),
+                (
+                    candidate_status,
+                    serde_json::json!({"ok":false,"error":{"code":"UNAUTHORIZED","retryable":false},"requestId":"fixture"}),
+                    Some(candidate.clone()),
+                ),
+            ];
+            if candidate_status == 401 {
+                replies.push((if old_live {200} else {401}, if old_live {serde_json::json!({"principalId":principal,"networkId":instance.network_id,"deviceId":device,"expiresAt":now+300})} else {serde_json::json!({"ok":false,"error":{"code":"UNAUTHORIZED","retryable":false},"requestId":"fixture"})},Some(old_token.clone())));
+            }
+            let server = std::thread::spawn(move || {
+                let tls = Arc::new(tls);
+                for (status, body, token) in replies {
+                    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+                    let socket = loop {
+                        match listener.accept() {
+                            Ok((socket, _)) => break socket,
+                            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                                assert!(std::time::Instant::now() < deadline);
+                                std::thread::sleep(Duration::from_millis(5));
+                            }
+                            Err(_) => panic!("fixture listener"),
+                        }
+                    };
+                    socket.set_nonblocking(false).unwrap();
+                    socket
+                        .set_read_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    socket
+                        .set_write_timeout(Some(Duration::from_secs(5)))
+                        .unwrap();
+                    let mut stream = rustls::StreamOwned::new(
+                        rustls::ServerConnection::new(tls.clone()).unwrap(),
+                        socket,
+                    );
+                    let mut bytes = Vec::new();
+                    loop {
+                        let mut chunk = [0u8; 2048];
+                        let n = stream.read(&mut chunk).unwrap();
+                        assert!(n > 0 && bytes.len() + n <= 8192);
+                        bytes.extend_from_slice(&chunk[..n]);
+                        if bytes.windows(4).any(|p| p == b"\r\n\r\n") {
+                            break;
+                        }
+                    }
+                    let request = std::str::from_utf8(&bytes).unwrap();
+                    if let Some(token) = token {
+                        assert!(request.starts_with("GET /auth/session "));
+                        assert!(request.to_ascii_lowercase().contains(&format!(
+                            "authorization: bearer {}",
+                            token.to_ascii_lowercase()
+                        )));
+                    } else {
+                        assert!(request.starts_with("GET /api/agent-network/instance "));
+                    }
+                    let body = body.to_string();
+                    write!(stream,"HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+                    stream.flush().unwrap();
+                }
+            });
+            let restarted = Connection::from_pinned(&origin, None, store, &device).unwrap();
+            let result =
+                tokio::time::timeout(Duration::from_secs(10), restarted.recover_pending_renewal())
+                    .await
+                    .unwrap();
+            if candidate_status == 401 && old_live {
+                result.unwrap();
+                restarted.owner.ensure_binding(&binding).unwrap();
+            } else {
+                assert!(result.is_err());
+            }
+            server.join().unwrap();
+            let account = restarted.owner.read().unwrap().0.account.unwrap();
+            assert_eq!(account.token, old_token);
+            assert_eq!(account.expires_at, now + 300);
+            assert_eq!(account.renewal.as_ref().unwrap().token, candidate);
+        }
+    }
+    #[tokio::test]
     async fn pinned_restart_cancels_locally_before_unreachable_service_and_rejects_changed_trust() {
         use crate::agent_network::crypto;
         let dir = tempfile::tempdir().unwrap();
@@ -638,6 +989,36 @@ mod tests {
         for (path, bytes) in sealed_before {
             assert_eq!(std::fs::read(path).unwrap(), bytes);
         }
+        // Rotation updates only the account projection's true expiry. The
+        // binding/principal remain the existing finite-policy authority.
+        let (_, raw) = connection.owner.read().unwrap();
+        let candidate = URL_SAFE_NO_PAD.encode([82u8; 32]);
+        let staged = connection
+            .owner
+            .stage_renewal(
+                &raw.unwrap(),
+                crate::owned_state::PendingRenewal {
+                    token: candidate.clone(),
+                    session_handle: uuid::Uuid::new_v4().to_string(),
+                    key_generation: 1,
+                    key_fingerprint: "b".repeat(64),
+                },
+            )
+            .unwrap();
+        connection
+            .owner
+            .commit_renewal(&staged, &candidate, now + 3600)
+            .unwrap();
+        connection.write_policy_context(&root, &projection).unwrap();
+        let rotated: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&projection).unwrap()).unwrap();
+        assert_eq!(rotated["account_binding"], projected["account_binding"]);
+        assert_eq!(rotated["principal_id"], projected["principal_id"]);
+        assert_eq!(rotated["scope"], projected["scope"]);
+        assert_eq!(rotated["account_expires_at"], now + 3600);
+        assert!(!std::fs::read_to_string(&projection)
+            .unwrap()
+            .contains(&candidate));
         let previous = std::fs::read(&projection).unwrap();
         let (mut expired, raw) = connection.owner.read().unwrap();
         expired.account.as_mut().unwrap().expires_at = now;

@@ -61,11 +61,26 @@ impl Drop for Pending {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct PendingRenewal {
+    pub token: String,
+    pub session_handle: String,
+    pub key_generation: u64,
+    pub key_fingerprint: String,
+}
+impl Drop for PendingRenewal {
+    fn drop(&mut self) {
+        self.token.zeroize();
+    }
+}
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Account {
     pub binding: String,
     pub principal: String,
     pub token: String,
     pub expires_at: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub renewal: Option<PendingRenewal>,
 }
 impl Drop for Account {
     fn drop(&mut self) {
@@ -114,6 +129,21 @@ impl State {
                     .bytes()
                     .all(|b| b.is_ascii_alphanumeric() || b"-_".contains(&b))
                 || a.expires_at == 0
+                || a.renewal.as_ref().is_some_and(|r| {
+                    r.token.len() != 43
+                        || r.token == a.token
+                        || base64::Engine::decode(
+                            &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+                            &r.token,
+                        )
+                        .map(|b| b.len())
+                        .ok()
+                            != Some(32)
+                        || !uuid(&r.session_handle)
+                        || r.key_generation == 0
+                        || r.key_generation > 9_007_199_254_740_991
+                        || !valid_fingerprint(&r.key_fingerprint)
+                })
         }) {
             return Err(NetworkError::new("OWNED_STATE_CORRUPT"));
         }
@@ -174,6 +204,7 @@ impl State {
             principal,
             token,
             expires_at,
+            renewal: None,
         });
         self.pending = None;
         self.revision = uuid::Uuid::new_v4().to_string();
@@ -219,6 +250,73 @@ impl Owner {
         );
         self.store
             .compare_exchange_state(&self.scope.namespace()?, old, &bytes)?;
+        Ok(())
+    }
+    /// Durably stage the client-selected candidate before sending it. The
+    /// original plaintext is a CAS witness; it is never written unencrypted.
+    pub fn stage_renewal(
+        &self,
+        original: &[u8],
+        pending: PendingRenewal,
+    ) -> Result<Zeroizing<Vec<u8>>, NetworkError> {
+        let mut state: State = serde_json::from_slice(original)
+            .map_err(|_| NetworkError::new("OWNED_STATE_CORRUPT"))?;
+        state.validate(&self.scope, &self.trust_fingerprint)?;
+        let account = state
+            .account
+            .as_mut()
+            .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?;
+        if account.expires_at <= jsonwebtoken::get_current_timestamp() || account.renewal.is_some()
+        {
+            return Err(NetworkError::new("ACCOUNT_SESSION_EXPIRED"));
+        }
+        account.renewal = Some(pending);
+        self.commit(Some(original), &state)?;
+        Ok(Zeroizing::new(
+            serde_json::to_vec(&state).map_err(|_| NetworkError::new("OWNED_STATE_CORRUPT"))?,
+        ))
+    }
+    /// Adopt only a server-confirmed candidate. Recovery can outlive the old
+    /// local expiry, but must first authenticate the candidate and prove the
+    /// exact persisted device key and session handle. No expiry is guessed.
+    pub fn commit_renewal(
+        &self,
+        original: &[u8],
+        candidate: &str,
+        expires_at: u64,
+    ) -> Result<(), NetworkError> {
+        let mut state: State = serde_json::from_slice(original)
+            .map_err(|_| NetworkError::new("OWNED_STATE_CORRUPT"))?;
+        state.validate(&self.scope, &self.trust_fingerprint)?;
+        let account = state
+            .account
+            .as_mut()
+            .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?;
+        if account
+            .renewal
+            .as_ref()
+            .is_none_or(|r| r.token != candidate)
+            || expires_at < account.expires_at
+            || expires_at <= jsonwebtoken::get_current_timestamp()
+        {
+            return Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"));
+        }
+        account.token = candidate.into();
+        account.expires_at = expires_at;
+        account.renewal = None;
+        self.commit(Some(original), &state)
+    }
+    pub fn ensure_pending_renewal(
+        &self,
+        binding: &str,
+        candidate: &str,
+    ) -> Result<(), NetworkError> {
+        let (state, _) = self.read()?;
+        if state.account.as_ref().is_none_or(|a| {
+            a.binding != binding || a.renewal.as_ref().is_none_or(|r| r.token != candidate)
+        }) {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
         Ok(())
     }
     pub fn ensure_binding(&self, binding: &str) -> Result<(), NetworkError> {
@@ -407,6 +505,115 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(owner(&root, scope, &[32; 32]).read().is_err());
+    }
+    #[test]
+    fn staged_rotation_persists_and_cas_rejects_cancel_relogin_trust_and_two_renewers() {
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let scope = scope();
+        let owner = owner(&root, scope.clone(), &[49; 32]);
+        let (mut state, raw) = owner.read().unwrap();
+        let now = jsonwebtoken::get_current_timestamp();
+        state.account = Some(Account {
+            binding: uuid::Uuid::new_v4().to_string(),
+            principal: uuid::Uuid::new_v4().to_string(),
+            token: URL_SAFE_NO_PAD.encode([1u8; 32]),
+            expires_at: now + 60,
+            renewal: None,
+        });
+        owner
+            .commit(raw.as_deref().map(|r| r.as_slice()), &state)
+            .unwrap();
+        let (_, raw) = owner.read().unwrap();
+        let original = raw.unwrap();
+        let candidate = URL_SAFE_NO_PAD.encode([2u8; 32]);
+        let pending = || PendingRenewal {
+            token: candidate.clone(),
+            session_handle: uuid::Uuid::new_v4().to_string(),
+            key_generation: 1,
+            key_fingerprint: "b".repeat(64),
+        };
+        let staged = owner.stage_renewal(&original, pending()).unwrap();
+        assert!(owner.stage_renewal(&original, pending()).is_err()); // two renewers
+        let restarted = super::tests::owner(&root, scope.clone(), &[49; 32]);
+        let (crash_state, crash_raw) = restarted.read().unwrap();
+        assert_eq!(crash_raw.as_deref().unwrap().as_slice(), staged.as_slice());
+        assert_eq!(
+            crash_state
+                .account
+                .as_ref()
+                .unwrap()
+                .renewal
+                .as_ref()
+                .unwrap()
+                .token,
+            candidate
+        );
+        assert_eq!(
+            crash_state.account.as_ref().unwrap().token,
+            state.account.as_ref().unwrap().token
+        );
+        assert!(restarted
+            .commit_renewal(&staged, &URL_SAFE_NO_PAD.encode([3u8; 32]), now + 3600)
+            .is_err());
+        restarted
+            .commit_renewal(&staged, &candidate, now + 3600)
+            .unwrap();
+        let (renewed, _) = owner.read().unwrap();
+        let a = renewed.account.as_ref().unwrap();
+        let before = state.account.as_ref().unwrap();
+        assert_eq!(
+            (&a.binding, &a.principal),
+            (&before.binding, &before.principal)
+        );
+        assert_eq!(a.token, candidate);
+        assert_eq!(renewed.revision, state.revision);
+        assert_eq!(a.expires_at, now + 3600);
+        assert!(a.renewal.is_none());
+        assert!(owner
+            .commit_renewal(&staged, &candidate, now + 7200)
+            .is_err());
+        // Stage another attempt, then cancel or relogin before its ACK.
+        let (_, raw) = owner.read().unwrap();
+        let staged = owner
+            .stage_renewal(
+                &raw.unwrap(),
+                PendingRenewal {
+                    token: URL_SAFE_NO_PAD.encode([4u8; 32]),
+                    session_handle: uuid::Uuid::new_v4().to_string(),
+                    key_generation: 1,
+                    key_fingerprint: "b".repeat(64),
+                },
+            )
+            .unwrap();
+        let (mut cancelled, _) = owner.read().unwrap();
+        cancelled.clear();
+        owner.commit(Some(&staged), &cancelled).unwrap();
+        assert!(owner
+            .commit_renewal(&staged, &URL_SAFE_NO_PAD.encode([4u8; 32]), now + 7200)
+            .is_err());
+        let (_, raw) = owner.read().unwrap();
+        cancelled.account = Some(Account {
+            binding: uuid::Uuid::new_v4().to_string(),
+            principal: before.principal.clone(),
+            token: URL_SAFE_NO_PAD.encode([5u8; 32]),
+            expires_at: now + 60,
+            renewal: None,
+        });
+        owner
+            .commit(raw.as_deref().map(|r| r.as_slice()), &cancelled)
+            .unwrap();
+        assert!(owner
+            .commit_renewal(&staged, &URL_SAFE_NO_PAD.encode([4u8; 32]), now + 7200)
+            .is_err());
+        let mut changed_trust = super::tests::owner(&root, scope, &[49; 32]);
+        changed_trust.trust_fingerprint = "c".repeat(64);
+        assert!(changed_trust
+            .commit_renewal(&staged, &URL_SAFE_NO_PAD.encode([4u8; 32]), now + 7200)
+            .is_err());
     }
     #[test]
     fn persisted_account_guard_observes_cancel_expiry_and_new_login_binding() {

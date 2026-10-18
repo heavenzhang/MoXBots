@@ -184,9 +184,13 @@ async fn execute() -> Result<(), NetworkError> {
             }
             "run" => {
                 let _lock = status::run_lock(&root)?;
-                if let Some(file) = options.get("--owned-policy-context-file") {
-                    connection.write_policy_context(&root, &PathBuf::from(file))?;
-                }
+                let project_context = || {
+                    if let Some(file) = options.get("--owned-policy-context-file") {
+                        connection.write_policy_context(&root, &PathBuf::from(file))?;
+                    }
+                    Ok(())
+                };
+                owned_run_preflight(connection.recover_pending_renewal(), &project_context).await?;
                 let fields = [
                     "--bot-execution-policy",
                     "--bot-execution-socket",
@@ -233,6 +237,7 @@ async fn execute() -> Result<(), NetworkError> {
                     options.contains_key("--join"),
                     execution,
                     management.as_ref(),
+                    Some(&project_context),
                 )
                 .await?;
             }
@@ -396,5 +401,85 @@ mod renewal_options_tests {
         assert!(status::run_lock(&root).is_err());
         drop(lock);
         assert!(status::run_lock(&root).is_ok());
+    }
+}
+
+// The actual run path must recover its durable candidate before evaluating any
+// old-expiry projection guard. Recovery failure never writes a fresh context.
+async fn owned_run_preflight(
+    recover: impl std::future::Future<Output = Result<(), NetworkError>>,
+    project: impl FnOnce() -> Result<(), NetworkError>,
+) -> Result<(), NetworkError> {
+    recover.await?;
+    project()
+}
+
+#[cfg(test)]
+mod renewal_startup_tests {
+    use super::*;
+    #[tokio::test]
+    async fn actual_run_preflight_recovers_expired_local_snapshot_before_projection_guard() {
+        use crate::owned_state::{Account, Owner, PendingRenewal, Scope};
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+        use myagents_agent_network_crypto::EncryptedIdentityStore;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        let owner = Owner {
+            store: Arc::new(EncryptedIdentityStore::for_test(&root, &[71; 32]).unwrap()),
+            scope: Scope {
+                issuer: "https://isolated.invalid".into(),
+                service_id: uuid::Uuid::new_v4().to_string(),
+                environment: "development".into(),
+                network_id: uuid::Uuid::new_v4().to_string(),
+                device_id: uuid::Uuid::new_v4().to_string(),
+            },
+            trust_fingerprint: "a".repeat(64),
+        };
+        let (mut state, raw) = owner.read().unwrap();
+        let now = jsonwebtoken::get_current_timestamp();
+        let binding = uuid::Uuid::new_v4().to_string();
+        let candidate = URL_SAFE_NO_PAD.encode([72u8; 32]);
+        state.account = Some(Account {
+            binding: binding.clone(),
+            principal: uuid::Uuid::new_v4().to_string(),
+            token: URL_SAFE_NO_PAD.encode([70u8; 32]),
+            expires_at: now - 1,
+            renewal: Some(PendingRenewal {
+                token: candidate.clone(),
+                session_handle: uuid::Uuid::new_v4().to_string(),
+                key_generation: 1,
+                key_fingerprint: "b".repeat(64),
+            }),
+        });
+        owner
+            .commit(raw.as_deref().map(|v| v.as_slice()), &state)
+            .unwrap();
+        assert_eq!(
+            owner.ensure_binding(&binding).unwrap_err().code,
+            "ACCOUNT_SESSION_EXPIRED"
+        );
+        let (_, raw) = owner.read().unwrap();
+        // The recovery side represents a confirmed remote candidate/PoP. It
+        // must complete before the very same strict projection guard can pass.
+        owned_run_preflight(
+            async { owner.commit_renewal(&raw.unwrap(), &candidate, now + 3600) },
+            || owner.ensure_binding(&binding),
+        )
+        .await
+        .unwrap();
+        assert_eq!(owner.read().unwrap().0.account.unwrap().token, candidate);
+        let projected = std::sync::atomic::AtomicBool::new(false);
+        assert!(owned_run_preflight(
+            async { Err(NetworkError::new("OWNED_SESSION_INVALID")) },
+            || {
+                projected.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
+            }
+        )
+        .await
+        .is_err());
+        assert!(!projected.load(std::sync::atomic::Ordering::SeqCst));
     }
 }

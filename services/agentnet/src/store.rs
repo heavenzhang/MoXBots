@@ -10,6 +10,8 @@ use thiserror::Error;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+const MAX_SESSION_ROTATIONS: i64 = 65_536;
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AuthError {
     #[error("service authentication configuration is invalid")]
@@ -28,6 +30,10 @@ pub enum AuthError {
     LoginProof,
     #[error("session is invalid, expired, or revoked")]
     SessionRejected,
+    #[error("session renewal is rate limited")]
+    SessionRenewalLimited,
+    #[error("session rotation limit requires browser reauthentication")]
+    SessionRenewalExhausted,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -146,6 +152,15 @@ impl AuthStore {
             )
             .map_err(|_| AuthError::Storage)?;
         migrate_session_handles(&mut connection)?;
+        connection
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS session_revocation_tokens (
+            token_hash BLOB PRIMARY KEY, session_handle TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS session_revocation_expiry ON session_revocation_tokens(expires_at);
+        CREATE INDEX IF NOT EXISTS session_revocation_window ON session_revocation_tokens(session_handle,created_at);",
+            )
+            .map_err(|_| AuthError::Storage)?;
         validate_database_file(&database)?;
         Ok(Self {
             connection: Mutex::new(connection),
@@ -383,6 +398,113 @@ impl AuthStore {
         Ok(result)
     }
 
+    /// Extend only an already live session after device admission. The callback
+    /// runs under the same Auth -> Device lock order as ordinary HTTP dispatch;
+    /// it must not re-enter AuthStore. Revocation/rotation cannot pass the auth
+    /// transaction between the current-key check and the expiry update.
+    pub(crate) fn renew_session_handle<E: From<AuthError>>(
+        &self,
+        handle: &str,
+        candidate: &str,
+        authorize: impl FnOnce(&SessionProjection) -> Result<(), E>,
+    ) -> Result<SessionProjection, E> {
+        let handle = canonical_uuid(handle).ok_or_else(|| E::from(AuthError::SessionRejected))?;
+        if candidate.len() != 43
+            || URL_SAFE_NO_PAD.decode(candidate).map(|b| b.len()).ok() != Some(32)
+        {
+            return Err(AuthError::SessionRejected.into());
+        }
+        let candidate_hash = Sha256::digest(candidate.as_bytes()).to_vec();
+        let mut connection = self
+            .connection
+            .lock()
+            .map_err(|_| E::from(AuthError::Storage))?;
+        let tx = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| E::from(AuthError::Storage))?;
+        let now = unix_seconds().map_err(E::from)?;
+        let mut session = tx
+            .query_row(
+                "SELECT p.principal_id,p.network_id,s.device_id,s.expires_at,s.session_handle
+             FROM sessions s JOIN principals p ON p.principal_id=s.principal_id
+             WHERE s.session_handle=?1 AND s.revoked_at IS NULL AND s.expires_at>?2",
+                params![handle, now],
+                |row| {
+                    Ok(SessionProjection {
+                        account: AccountProjection {
+                            principal_id: row.get(0)?,
+                            network_id: row.get(1)?,
+                        },
+                        device_id: row.get(2)?,
+                        expires_at: row.get(3)?,
+                        session_handle: row.get(4)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|_| E::from(AuthError::Storage))?
+            .ok_or_else(|| E::from(AuthError::SessionRejected))?;
+        authorize(&session)?;
+        let now = unix_seconds().map_err(E::from)?;
+        if session.expires_at <= now {
+            return Err(AuthError::SessionRejected.into());
+        }
+        let previous_hash: Vec<u8> = tx
+            .query_row(
+                "SELECT token_hash FROM sessions WHERE session_handle=?1",
+                params![handle],
+                |row| row.get(0),
+            )
+            .map_err(|_| E::from(AuthError::Storage))?;
+        // The same persisted candidate is an idempotent retry. Retired hashes
+        // are inert tombstones preventing bearer resurrection. Logout aliases
+        // additionally expire at the original deadline; neither authenticates.
+        // A finite per-session rotation cap bounds durable tombstone growth.
+        if previous_hash != candidate_hash {
+            let revocation_expires_at = session.expires_at;
+            let retired: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM session_revocation_tokens WHERE token_hash=?1)",
+                    params![candidate_hash],
+                    |row| row.get(0),
+                )
+                .map_err(|_| E::from(AuthError::Storage))?;
+            if retired {
+                return Err(AuthError::SessionRejected.into());
+            }
+            let limited: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM session_revocation_tokens WHERE session_handle=?1 AND created_at>?2)",
+                params![handle,now - 15], |row| row.get(0)).map_err(|_| E::from(AuthError::Storage))?;
+            if limited {
+                return Err(AuthError::SessionRenewalLimited.into());
+            }
+            let rotations: i64 = tx
+                .query_row(
+                    "SELECT COUNT(*) FROM session_revocation_tokens WHERE session_handle=?1",
+                    params![handle],
+                    |row| row.get(0),
+                )
+                .map_err(|_| E::from(AuthError::Storage))?;
+            if rotations >= MAX_SESSION_ROTATIONS {
+                return Err(AuthError::SessionRenewalExhausted.into());
+            }
+            if session.expires_at - now <= self.session_ttl_seconds / 2 {
+                session.expires_at = session.expires_at.max(
+                    now.checked_add(self.session_ttl_seconds)
+                        .ok_or_else(|| E::from(AuthError::Storage))?,
+                );
+            }
+            tx.execute(
+                "INSERT INTO session_revocation_tokens(token_hash,session_handle,expires_at,created_at) VALUES(?1,?2,?3,?4)",
+                params![previous_hash, handle,revocation_expires_at,now],
+            )
+            .map_err(|_| E::from(AuthError::Storage))?;
+            tx.execute("UPDATE sessions SET token_hash=?2,expires_at=?3 WHERE session_handle=?1 AND revoked_at IS NULL",
+                params![handle,candidate_hash,session.expires_at]).map_err(|_| E::from(AuthError::Storage))?;
+        }
+        tx.commit().map_err(|_| E::from(AuthError::Storage))?;
+        Ok(session)
+    }
+
     /// Internal authorization lookup for already verified device credentials.
     /// An HTTP caller must never treat possession of this UUID as authentication.
     pub fn validate_session_handle(&self, handle: &str) -> Result<SessionProjection, AuthError> {
@@ -398,7 +520,9 @@ impl AuthStore {
         let connection = self.connection.lock().map_err(|_| AuthError::Storage)?;
         connection
             .execute(
-                "UPDATE sessions SET revoked_at=?2 WHERE token_hash=?1 AND revoked_at IS NULL",
+                "UPDATE sessions SET revoked_at=?2 WHERE revoked_at IS NULL AND
+                 (token_hash=?1 OR session_handle IN
+                    (SELECT session_handle FROM session_revocation_tokens WHERE token_hash=?1 AND expires_at>?2))",
                 params![digest, now],
             )
             .map_err(|_| AuthError::Storage)?;
@@ -407,13 +531,22 @@ impl AuthStore {
 
     #[cfg(test)]
     pub(crate) fn expire_session_for_test(&self, token: &str) -> Result<(), AuthError> {
+        self.set_session_expiry_for_test(token, 0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_session_expiry_for_test(
+        &self,
+        token: &str,
+        expiry: i64,
+    ) -> Result<(), AuthError> {
         let digest = Sha256::digest(token.as_bytes()).to_vec();
         self.connection
             .lock()
             .map_err(|_| AuthError::Storage)?
             .execute(
-                "UPDATE sessions SET expires_at=0 WHERE token_hash=?1",
-                params![digest],
+                "UPDATE sessions SET expires_at=?2 WHERE token_hash=?1",
+                params![digest, expiry],
             )
             .map_err(|_| AuthError::Storage)?;
         Ok(())
@@ -609,6 +742,227 @@ mod migration_tests {
             }
         }
         (state, config, store, handles, bearers)
+    }
+
+    #[test]
+    fn short_ttl_renewal_survives_repeated_requests_and_restarts() {
+        let (state, mut config, store, handles, bearers) = pair_fixture();
+        config.session_ttl = Duration::from_secs(60);
+        let original = store.validate_session(&bearers[0]).unwrap();
+        let mut current = bearers[0].clone();
+        for index in 0..3 {
+            let owner = AuthStore::open(state.path(), &config).unwrap();
+            let now = unix_seconds().unwrap();
+            // Advance the persisted throttle clock with the shortened expiry.
+            owner
+                .connection
+                .lock()
+                .unwrap()
+                .execute(
+                    "UPDATE session_revocation_tokens SET created_at=?1",
+                    params![now - 16],
+                )
+                .unwrap();
+            owner
+                .set_session_expiry_for_test(&current, now + 20)
+                .unwrap();
+            let candidate = URL_SAFE_NO_PAD.encode([50 + index; 32]);
+            let renewed = owner
+                .renew_session_handle::<AuthError>(&handles[0], &candidate, |_| Ok(()))
+                .unwrap();
+            assert!(renewed.expires_at >= now + 60);
+            assert_eq!(renewed.account, original.account);
+            assert_eq!(renewed.device_id, original.device_id);
+            assert_eq!(renewed.session_handle, original.session_handle);
+            assert_eq!(
+                owner
+                    .renew_session_handle::<AuthError>(&handles[0], &candidate, |_| Ok(()))
+                    .unwrap(),
+                renewed
+            );
+            assert!(owner.validate_session(&current).is_err());
+            current = candidate;
+            drop(owner);
+            assert_eq!(
+                AuthStore::open(state.path(), &config)
+                    .unwrap()
+                    .validate_session(&current)
+                    .unwrap(),
+                renewed
+            );
+        }
+        // Even a very old captured logout must revoke the same original handle.
+        store.revoke_session(&bearers[0]).unwrap();
+        assert!(store.validate_session(&current).is_err());
+    }
+
+    #[test]
+    fn session_rotation_tombstones_are_bounded_without_weakening_live_authentication() {
+        let (_state, _config, owner, handles, bearers) = pair_fixture();
+        let before = owner.validate_session(&bearers[0]).unwrap();
+        let now = unix_seconds().unwrap();
+        owner.connection.lock().unwrap().execute(
+            "WITH RECURSIVE sequence(n) AS (SELECT 1 UNION ALL SELECT n+1 FROM sequence WHERE n<?1)
+             INSERT INTO session_revocation_tokens(token_hash,session_handle,expires_at,created_at)
+             SELECT randomblob(32),?2,?3,?4 FROM sequence",
+            params![MAX_SESSION_ROTATIONS, handles[0], now-1, now-16]).unwrap();
+        assert_eq!(
+            owner
+                .renew_session_handle::<AuthError>(
+                    &handles[0],
+                    &URL_SAFE_NO_PAD.encode([63u8; 32]),
+                    |_| Ok(())
+                )
+                .unwrap_err(),
+            AuthError::SessionRenewalExhausted
+        );
+        assert_eq!(owner.validate_session(&bearers[0]).unwrap(), before);
+    }
+
+    #[test]
+    fn rotation_limits_requests_and_old_logout_authority_ends_at_original_expiry() {
+        let (_state, _config, owner, handles, bearers) = pair_fixture();
+        let candidate = URL_SAFE_NO_PAD.encode([61u8; 32]);
+        owner
+            .renew_session_handle::<AuthError>(&handles[0], &candidate, |_| Ok(()))
+            .unwrap();
+        assert_eq!(
+            owner
+                .renew_session_handle::<AuthError>(
+                    &handles[0],
+                    &URL_SAFE_NO_PAD.encode([62u8; 32]),
+                    |_| Ok(())
+                )
+                .unwrap_err(),
+            AuthError::SessionRenewalLimited
+        );
+        let now = unix_seconds().unwrap();
+        owner
+            .connection
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE session_revocation_tokens SET expires_at=?1 WHERE session_handle=?2",
+                params![now, handles[0]],
+            )
+            .unwrap();
+        owner.revoke_session(&bearers[0]).unwrap();
+        assert!(owner.validate_session(&candidate).is_ok());
+        // Expired logout authority is still a non-authenticating tombstone.
+        assert_eq!(
+            owner
+                .renew_session_handle::<AuthError>(&handles[0], &bearers[0], |_| Ok(()))
+                .unwrap_err(),
+            AuthError::SessionRejected
+        );
+        owner.revoke_session(&candidate).unwrap();
+        assert!(owner.validate_session(&candidate).is_err());
+    }
+
+    #[test]
+    fn renewal_serializes_logout_and_never_revives_expiry_or_replaces_identity() {
+        let (state, config, store, handles, bearers) = pair_fixture();
+        let other = AuthStore::open(state.path(), &config).unwrap();
+        let before = store.validate_session(&bearers[0]).unwrap();
+        store
+            .set_session_expiry_for_test(&bearers[0], unix_seconds().unwrap() + 60)
+            .unwrap();
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let worker = store.clone();
+        let handle = handles[0].clone();
+        let renewal = std::thread::spawn(move || {
+            worker.renew_session_handle::<AuthError>(
+                &handle,
+                &URL_SAFE_NO_PAD.encode([99u8; 32]),
+                |_| {
+                    entered_tx.send(()).unwrap();
+                    release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+                    Ok(())
+                },
+            )
+        });
+        entered_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (revoked_tx, revoked_rx) = std::sync::mpsc::channel();
+        let token = bearers[0].clone();
+        let revoke = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            revoked_tx.send(other.revoke_session(&token)).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(revoked_rx.recv_timeout(Duration::from_millis(100)).is_err());
+        release_tx.send(()).unwrap();
+        let renewed = renewal.join().unwrap().unwrap();
+        assert_eq!(renewed.account, before.account);
+        assert_eq!(renewed.device_id, before.device_id);
+        assert_eq!(renewed.session_handle, before.session_handle);
+        revoked_rx
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        revoke.join().unwrap();
+        assert_eq!(
+            store
+                .renew_session_handle::<AuthError>(
+                    &handles[0],
+                    &URL_SAFE_NO_PAD.encode([99u8; 32]),
+                    |_| Ok(())
+                )
+                .unwrap_err(),
+            AuthError::SessionRejected
+        );
+        store.expire_session_for_test(&bearers[1]).unwrap();
+        assert_eq!(
+            store
+                .renew_session_handle::<AuthError>(
+                    &handles[1],
+                    &URL_SAFE_NO_PAD.encode([98u8; 32]),
+                    |_| Ok(())
+                )
+                .unwrap_err(),
+            AuthError::SessionRejected
+        );
+        // Reopening the durable owner cannot undo logout or revive expiration.
+        let restarted = AuthStore::open(state.path(), &config).unwrap();
+        assert!(restarted.validate_session(&bearers[0]).is_err());
+        assert!(restarted.validate_session(&bearers[1]).is_err());
+    }
+
+    #[test]
+    fn renewal_rechecks_expiry_after_authorization_and_rejected_checks_never_extend() {
+        let (_state, _config, store, handles, bearers) = pair_fixture();
+        let now = unix_seconds().unwrap();
+        store
+            .set_session_expiry_for_test(&bearers[0], now + 1)
+            .unwrap();
+        assert_eq!(
+            store
+                .renew_session_handle::<AuthError>(
+                    &handles[0],
+                    &URL_SAFE_NO_PAD.encode([99u8; 32]),
+                    |_| {
+                        while unix_seconds().unwrap() <= now {
+                            std::thread::sleep(Duration::from_millis(10));
+                        }
+                        Ok(())
+                    }
+                )
+                .unwrap_err(),
+            AuthError::SessionRejected
+        );
+        let before = store.validate_session(&bearers[1]).unwrap();
+        assert_eq!(
+            store
+                .renew_session_handle::<AuthError>(
+                    &handles[1],
+                    &URL_SAFE_NO_PAD.encode([98u8; 32]),
+                    |_| Err(AuthError::SessionRejected)
+                )
+                .unwrap_err(),
+            AuthError::SessionRejected
+        );
+        assert_eq!(store.validate_session(&bearers[1]).unwrap(), before);
     }
 
     #[test]

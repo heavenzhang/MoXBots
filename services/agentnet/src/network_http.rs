@@ -152,6 +152,7 @@ impl NetworkService {
     pub fn router(&self) -> Router<()> {
         Router::new()
             .route("/api/agent-network/device/registration", post(dispatch))
+            .route("/v1/session/renew", post(dispatch))
             .route("/v1/me/network", get(dispatch))
             .route("/v1/devices", get(dispatch))
             .route("/v1/devices/{device}/agents", get(dispatch))
@@ -255,38 +256,74 @@ impl NetworkService {
         uri: &axum::http::Uri,
         body: &[u8],
     ) -> Result<Value, HttpError> {
+        if method == Method::POST && uri.path() == "/v1/session/renew" {
+            no_query(uri)?;
+            #[derive(Deserialize)]
+            #[serde(rename_all = "camelCase", deny_unknown_fields)]
+            struct Renewal {
+                session_token: String,
+            }
+            let input: Renewal = decode(body)?;
+            let candidate = Zeroizing::new(input.session_token);
+            if URL_SAFE_NO_PAD
+                .decode(candidate.as_bytes())
+                .map(|v| v.len())
+                .ok()
+                != Some(32)
+                || candidate.len() != 43
+            {
+                return Err(HttpError::bad());
+            }
+            let session =
+                self.auth
+                    .renew_session_handle(access.session_handle(), &candidate, |session| {
+                        self.current_device_context(access, session).map(|_| ())
+                    })?;
+            return Ok(json!({"principalId":session.account.principal_id,
+                "deviceId":session.device_id,"networkId":session.account.network_id,
+                "sessionHandle":session.session_handle,"expiresAt":session.expires_at}));
+        }
         self.auth
             .with_valid_session_handle(access.session_handle(), |session| {
-                if session.account.principal_id != access.principal_id()
-                    || session.account.network_id != self.network_id
-                    || access.issuer_network_id() != self.network_id
-                    || access.issuer_origin() != self.issuer
-                    || access.service_id() != self.service_id
-                    || access.environment() != self.environment
-                    || session.device_id != access.device_id()
-                    || session.session_handle != access.session_handle()
-                {
-                    return Err(HttpError::unauthorized());
-                }
-                let context = SessionContext {
-                    principal_id: session.account.principal_id,
-                    network_id: session.account.network_id,
-                    device_id: session.device_id,
-                    session_handle: session.session_handle,
-                    expires_at: session.expires_at.min(access.expires_at()),
-                };
-                let device = self
-                    .devices
-                    .read_state(&context, &context.device_id)
-                    .map_err(HttpError::device)?
-                    .ok_or_else(HttpError::unauthorized)?;
-                if device.key_generation != access.key_generation()
-                    || device.key_fingerprint != access.public_key_fingerprint()
-                {
-                    return Err(HttpError::unauthorized());
-                }
+                let (context, device) = self.current_device_context(access, &session)?;
                 self.operation(&context, &device, method, uri, body)
             })
+    }
+
+    fn current_device_context(
+        &self,
+        access: &ValidatedAccess,
+        session: &crate::store::SessionProjection,
+    ) -> Result<(SessionContext, DeviceRecord), HttpError> {
+        if session.account.principal_id != access.principal_id()
+            || session.account.network_id != self.network_id
+            || access.issuer_network_id() != self.network_id
+            || access.issuer_origin() != self.issuer
+            || access.service_id() != self.service_id
+            || access.environment() != self.environment
+            || session.device_id != access.device_id()
+            || session.session_handle != access.session_handle()
+        {
+            return Err(HttpError::unauthorized());
+        }
+        let context = SessionContext {
+            principal_id: session.account.principal_id.clone(),
+            network_id: session.account.network_id.clone(),
+            device_id: session.device_id.clone(),
+            session_handle: session.session_handle.clone(),
+            expires_at: session.expires_at.min(access.expires_at()),
+        };
+        let device = self
+            .devices
+            .read_state(&context, &context.device_id)
+            .map_err(HttpError::device)?
+            .ok_or_else(HttpError::unauthorized)?;
+        if device.key_generation != access.key_generation()
+            || device.key_fingerprint != access.public_key_fingerprint()
+        {
+            return Err(HttpError::unauthorized());
+        }
+        Ok((context, device))
     }
 
     fn operation(
@@ -677,6 +714,13 @@ impl From<AuthError> for HttpError {
     fn from(error: AuthError) -> Self {
         match error {
             AuthError::SessionRejected => Self::unauthorized(),
+            AuthError::SessionRenewalLimited => Self::fixed(
+                StatusCode::TOO_MANY_REQUESTS,
+                "SESSION_RENEWAL_RATE_LIMITED",
+            ),
+            AuthError::SessionRenewalExhausted => {
+                Self::fixed(StatusCode::FORBIDDEN, "SESSION_REAUTH_REQUIRED")
+            }
             _ => Self::unavailable(),
         }
     }
@@ -913,6 +957,13 @@ pub(crate) mod tests {
             uri: &str,
             body: &str,
         ) -> (StatusCode, Value, HeaderMap) {
+            let renewal_body =
+                serde_json::json!({"sessionToken":URL_SAFE_NO_PAD.encode([91u8;32])}).to_string();
+            let body = if uri.starts_with("/v1/session/renew") && body.is_empty() {
+                renewal_body.as_str()
+            } else {
+                body
+            };
             let proof = self.proof(device, method, uri, Some(&self.service.boot_nonce));
             self.send(&self.service, device, method, uri, body, &proof)
                 .await
@@ -1227,10 +1278,166 @@ pub(crate) mod tests {
         );
     }
     #[tokio::test]
+    async fn session_renewal_real_http_loss_retry_concurrency_and_rotated_key() {
+        let f = Fixture::new();
+        let a = f.device("socket-renew-owner");
+        let now = jsonwebtoken::get_current_timestamp() as i64;
+        f.auth
+            .set_session_expiry_for_test(&a.account_token, now + 60)
+            .unwrap();
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let router = f.service.router();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let client = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(5))
+            .build()
+            .unwrap();
+        let path = "/v1/session/renew";
+        let send = |proof: String| {
+            client
+                .post(format!("http://{address}{path}"))
+                .bearer_auth(a.access.as_str())
+                .json(&json!({"sessionToken":URL_SAFE_NO_PAD.encode([91u8;32])}))
+                .header("DPoP", proof)
+                .send()
+        };
+        let proof = f.proof(&a, "POST", path, Some(&f.service.boot_nonce));
+        let response = send(proof.clone()).await.unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        // Drop an unconsumed successful body: persistence must not depend on ACK.
+        drop(response);
+        let replay = send(proof).await.unwrap();
+        assert_eq!(replay.status(), reqwest::StatusCode::UNAUTHORIZED);
+        let first = f.proof(&a, "POST", path, Some(&f.service.boot_nonce));
+        let second = f.proof(&a, "POST", path, Some(&f.service.boot_nonce));
+        let (one, two) = tokio::join!(send(first), send(second));
+        let one: Value = one.unwrap().json().await.unwrap();
+        let two: Value = two.unwrap().json().await.unwrap();
+        assert_eq!(one, two);
+        let session = f
+            .auth
+            .validate_session(&URL_SAFE_NO_PAD.encode([91u8; 32]))
+            .unwrap();
+        assert!(f.auth.validate_session(&a.account_token).is_err());
+        let key_before = f
+            .service
+            .devices
+            .read_state(&a.context, &a.context.device_id)
+            .unwrap()
+            .unwrap();
+        let challenge = f
+            .service
+            .devices
+            .create_challenge(
+                &a.context,
+                myagents_agentnet_device_core::ChallengeOperation::Rotate,
+                1,
+                &key_before.key_fingerprint,
+            )
+            .unwrap();
+        let proof = a
+            .key
+            .sign_proof(&challenge.challenge_id, &challenge.nonce)
+            .unwrap();
+        f.service
+            .devices
+            .rotate_with_proof(
+                &a.context,
+                1,
+                &challenge.challenge_id,
+                &proof,
+                &DevicePrivateKey::generate().unwrap().csr().unwrap(),
+            )
+            .unwrap();
+        let response = send(f.proof(&a, "POST", path, Some(&f.service.boot_nonce)))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+        assert_eq!(
+            f.auth
+                .validate_session(&URL_SAFE_NO_PAD.encode([91u8; 32]))
+                .unwrap(),
+            session
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn session_renewal_is_live_device_scoped_idempotent_and_preserves_bindings() {
+        let f = Fixture::new();
+        let a = f.device("renew-owner");
+        let before = f.auth.validate_session(&a.account_token).unwrap();
+        let key = f
+            .service
+            .devices
+            .read_state(&a.context, &a.context.device_id)
+            .unwrap()
+            .unwrap();
+        let now = jsonwebtoken::get_current_timestamp() as i64;
+        f.auth
+            .set_session_expiry_for_test(&a.account_token, now + 60)
+            .unwrap();
+        let (status, first, _) = f.request(&a, "POST", "/v1/session/renew", "").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(first["data"].as_object().unwrap().len(), 5);
+        assert_eq!(first["data"]["principalId"], before.account.principal_id);
+        assert_eq!(first["data"]["deviceId"], before.device_id);
+        assert_eq!(first["data"]["networkId"], before.account.network_id);
+        assert_eq!(first["data"]["sessionHandle"], before.session_handle);
+        assert!(first["data"]["expiresAt"].as_i64().unwrap() >= now + 3600);
+        // Simulate response loss: same session with a fresh proof gets the
+        // exact same projection and never replaces the opaque account token.
+        let (status, repeated, _) = f.request(&a, "POST", "/v1/session/renew", "").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(repeated, first);
+        let after = f
+            .auth
+            .validate_session(&URL_SAFE_NO_PAD.encode([91u8; 32]))
+            .unwrap();
+        assert!(f.auth.validate_session(&a.account_token).is_err());
+        assert_eq!(after.session_handle, before.session_handle);
+        assert_eq!(
+            f.service
+                .devices
+                .read_state(&a.context, &a.context.device_id)
+                .unwrap()
+                .unwrap(),
+            key
+        );
+        for (path, body) in [
+            ("/v1/session/renew?principalId=foreign", ""),
+            ("/v1/session/renew", "{}"),
+            ("/v1/session/renew", "{\"expiresAt\":99999999999}"),
+        ] {
+            assert_eq!(
+                f.request(&a, "POST", path, body).await.0,
+                StatusCode::BAD_REQUEST
+            );
+        }
+        f.auth.revoke_session(&a.account_token).unwrap();
+        assert_eq!(
+            f.request(&a, "POST", "/v1/session/renew", "").await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        let expired = f.device("expired-renew-owner");
+        f.auth
+            .expire_session_for_test(&expired.account_token)
+            .unwrap();
+        assert_eq!(
+            f.request(&expired, "POST", "/v1/session/renew", "").await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
     async fn signed_access_is_still_bound_to_live_session_device_and_current_spki() {
         let f = Fixture::new();
         let mut a = f.device("owner");
-        let b = f.device("owner");
+        let b = f.device("foreign-renew-owner");
         f.register(&a).await;
         let original = Zeroizing::new(a.access.to_string());
         let sign = |handle: &str, csr: String| {
@@ -1272,7 +1479,32 @@ pub(crate) mod tests {
         let (status, _, headers) = f.request(&a, "GET", "/v1/me/network", "").await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);
         assert!(!headers.contains_key("dpop-nonce"));
+        assert_eq!(
+            f.request(&a, "POST", "/v1/session/renew", "").await.0,
+            StatusCode::UNAUTHORIZED
+        );
         a.access = wrong_spki;
+        let renewal_proof = wrong_key
+            .dpop(
+                "POST",
+                &url::Url::parse(&format!("{}/v1/session/renew", f.config.issuer)).unwrap(),
+                &a.access,
+                Some(&f.service.boot_nonce),
+            )
+            .unwrap();
+        assert_eq!(
+            f.send(
+                &f.service,
+                &a,
+                "POST",
+                "/v1/session/renew",
+                "",
+                &renewal_proof
+            )
+            .await
+            .0,
+            StatusCode::UNAUTHORIZED
+        );
         let proof = wrong_key
             .dpop(
                 "GET",

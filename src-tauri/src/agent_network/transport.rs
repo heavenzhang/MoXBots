@@ -1,5 +1,6 @@
 //! Fixed signed network origin, public TLS + device DPoP and App proxy.
-//! No user account credential ever enters this client.
+//! Existing account bearers never authenticate this client. Renewal sends only
+//! the encrypted owner's staged candidate under the admitted device proof.
 use super::crypto::{external_tls_config_with_ca, DevicePrivateKey};
 use super::NetworkError;
 use crate::network_diagnostics::{
@@ -105,7 +106,137 @@ pub(crate) struct NetworkTransport {
     key: Arc<DevicePrivateKey>,
     nonce: Mutex<Option<String>>,
 }
+/// Narrow owned-service extension; never a vendor metadata route or grant.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SessionRenewal {
+    pub principal_id: String,
+    pub device_id: String,
+    pub network_id: String,
+    pub session_handle: String,
+    pub expires_at: u64,
+}
+impl SessionRenewal {
+    pub(crate) fn validate(
+        &self,
+        principal: &str,
+        device: &str,
+        network: &str,
+        handle: &str,
+        previous_expiry: u64,
+        now: u64,
+    ) -> Result<(), NetworkError> {
+        if self.principal_id != principal
+            || self.device_id != device
+            || self.network_id != network
+            || self.session_handle != handle
+            || self.expires_at < previous_expiry
+            || self.expires_at <= now
+            || self.expires_at > now.saturating_add(31_536_000)
+        {
+            return Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"));
+        }
+        Ok(())
+    }
+}
+fn decode_session_renewal(bytes: &[u8]) -> Result<SessionRenewal, NetworkError> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Envelope {
+        ok: bool,
+        data: SessionRenewal,
+    }
+    let response: Envelope = serde_json::from_slice(bytes)
+        .map_err(|_| NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"))?;
+    if !response.ok {
+        return Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"));
+    }
+    Ok(response.data)
+}
+
+#[cfg(test)]
+mod session_renewal_tests {
+    use super::*;
+    #[test]
+    fn renewal_response_is_closed_and_cannot_change_scope_or_reduce_expiry() {
+        let body = br#"{"ok":true,"data":{"principalId":"p","deviceId":"d","networkId":"n","sessionHandle":"s","expiresAt":200}}"#;
+        let value = decode_session_renewal(body).unwrap();
+        value.validate("p", "d", "n", "s", 150, 100).unwrap();
+        for (principal, device, network, handle) in [
+            ("other", "d", "n", "s"),
+            ("p", "other", "n", "s"),
+            ("p", "d", "other", "s"),
+            ("p", "d", "n", "other"),
+        ] {
+            assert!(value
+                .validate(principal, device, network, handle, 150, 100)
+                .is_err());
+        }
+        assert!(value.validate("p", "d", "n", "s", 201, 100).is_err());
+        assert!(value.validate("p", "d", "n", "s", 150, 200).is_err());
+        for invalid in [
+            br#"{"ok":true,"data":{"principalId":"p","deviceId":"d","networkId":"n","sessionHandle":"s","expiresAt":200,"token":"unexpected"}}"#.as_slice(),
+            br#"{"ok":true,"data":{"principalId":"p","deviceId":"d","networkId":"n","sessionHandle":"s","expiresAt":200,"expiresAt":300}}"#.as_slice(),
+            br#"{"ok":true,"ok":true,"data":{"principalId":"p","deviceId":"d","networkId":"n","sessionHandle":"s","expiresAt":200}}"#.as_slice(),
+        ] { assert!(decode_session_renewal(invalid).is_err()); }
+    }
+}
+
 impl NetworkTransport {
+    pub(crate) async fn renew_session(
+        &self,
+        token: &str,
+        candidate: &str,
+    ) -> Result<SessionRenewal, NetworkError> {
+        const PATH: &str = "/v1/session/renew";
+        let method = reqwest::Method::POST;
+        let url = self
+            .origin
+            .join(PATH)
+            .map_err(|_| NetworkError::new("NETWORK_ENDPOINT_INVALID"))?;
+        let diagnostic = RequestDiagnostic::new("agent-network", &method, PATH);
+        let mut response = self
+            .authenticated(
+                self.client
+                    .post(url.clone())
+                    .json(&serde_json::json!({"sessionToken":candidate})),
+                &method,
+                &url,
+                token,
+                &diagnostic,
+            )
+            .await?;
+        let status = response.status();
+        let retry_after = super::reconnect::retry_after(&response);
+        let mut request_id = response_request_id(&response);
+        // Strict bounded decoding retains duplicate-field rejection. This path
+        // only retries the pre-dispatch nonce challenge; uncertain responses are
+        // retried by the owner with a fresh proof and the same session identity.
+        let mut bytes = Vec::new();
+        let mut allocation = self.memory.reserve(0)?;
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|_| NetworkError::new("NETWORK_TRANSPORT_FAILED"))?
+        {
+            let size = bytes
+                .len()
+                .checked_add(chunk.len())
+                .filter(|n| *n <= 4096)
+                .ok_or_else(|| NetworkError::new("OWNED_SESSION_RENEWAL_INVALID"))?;
+            allocation.resize(size.saturating_mul(2))?;
+            bytes.extend_from_slice(&chunk);
+        }
+        if status == reqwest::StatusCode::UNAUTHORIZED {
+            return Err(NetworkError::new("OWNED_SESSION_INVALID"));
+        }
+        if !status.is_success() {
+            return decode_response(status, &bytes, retry_after, &mut request_id)
+                .and_then(|_| Err(NetworkError::new("OWNED_SESSION_RENEWAL_INVALID")));
+        }
+        decode_session_renewal(&bytes)
+    }
+
     /// Owned-only device-scoped preservation proof, not vendor metadata or a write grant.
     pub(crate) async fn catalog_self_preservation(
         &self,
