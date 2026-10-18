@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import ctypes
 import hashlib
 import importlib.util
 import json
@@ -18,6 +19,7 @@ from pathlib import Path
 import platform
 import re
 import secrets
+import select
 import selectors
 import shutil
 import signal
@@ -25,10 +27,12 @@ import socket
 import sqlite3
 import ssl
 import stat
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+import threading
 import urllib.request
 from urllib.parse import urlsplit
 import uuid
@@ -52,7 +56,8 @@ SAFE_STATUS_ERRORS = SAFE_CLI_ERRORS | frozenset({"NETWORK_TRANSPORT_FAILED", "N
     "OWNED_INSTANCE_TRUST_CHANGED", "NETWORK_HELLO_TIMEOUT", "NETWORK_BACKPRESSURE", "OWNED_JOIN_REQUIRED",
     "OWNED_JOIN_UNCONFIRMED", "OWNED_PROFILE_REQUIRED", "NETWORK_UPGRADE_REJECTED",
     "NETWORK_METADATA_INVALID", "NETWORK_METADATA_SCOPE_MISMATCH", "NETWORK_PAGE_INVALID",
-    "DEVICE_NOT_REGISTERED", "CATALOG_CAPACITY"})
+    "DEVICE_NOT_REGISTERED", "CATALOG_CAPACITY", "HOST_MANAGEMENT_UNAVAILABLE",
+    "HOST_MANAGEMENT_IPC_PEER_REJECTED", "HOST_MANAGEMENT_REQUEST_TOO_LARGE"})
 
 PRODUCT = "dcf8d9a60976c160e2b2aca33313c668c071132c"
 RELEASE = "20261018032115-dcf8d9a60976"
@@ -183,6 +188,141 @@ def bounded_file_bytes(path, limit):
         return data, info
     finally:
         os.close(fd)
+
+
+def status_event_projection(expected, process_context=None):
+    """Status-only, <=2KiB, no subprocesses, raw values remain in memory."""
+    try:
+        raw, _ = bounded_file_bytes(STATUS, 2048)
+        if not raw:
+            return {"kind": "empty"}
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            return {"kind": "invalid-schema"}
+        state, code, updated = value.get("state"), value.get("errorCode"), value.get("updatedAt")
+        states = {"connecting", "initializing", "catalog", "hydrating", "ready", "signedOut", "expired", "unavailable", "stopped"}
+        projection = {"kind": "JSON-object", "state": state if isinstance(state, str) and state in states else "unknown-redacted",
+            "errorCode": code if isinstance(code, str) and code in SAFE_STATUS_ERRORS else (None if code is None else "unknown-redacted"),
+            "errorCodeIsNull": code is None, "readyIsTrue": value.get("ready") is True,
+            "schemaFieldsMatch": set(value) == {"state", "deviceId", "networkId", "ready", "errorCode", "updatedAt", "pid", "instanceId"},
+            "freshWithin30Seconds": type(updated) is int and -2 <= time.time() - updated <= 30,
+            "deviceMatchesProvisioned": expected is not None and value.get("deviceId") == expected}
+        if process_context is not None:
+            pid = value.get("pid")
+            projection["samePidAsPrevious"] = type(pid) is int and pid > 0 and pid == process_context.get("previousPid")
+            process_context["previousPid"] = pid if type(pid) is int and pid > 0 else None
+        return projection
+    except FileNotFoundError:
+        return {"kind": "missing"}
+    except json.JSONDecodeError:
+        return {"kind": "invalid-JSON"}
+    except Exception:
+        return {"kind": "unavailable"}
+
+
+class StatusEventWatcher:
+    """Independent Linux inotify observer; never a product readiness gate."""
+    MOVED_TO, CLOSE_WRITE, OVERFLOW, LOST = 0x80, 0x8, 0x4000, 0x8000 | 0x400 | 0x800
+
+    def __init__(self):
+        self.lock, self.stop_event = threading.Lock(), threading.Event()
+        self.history, self.first_error, self.flags = [], None, {}
+        self.fd, self.thread = -1, None
+        self.expected = None
+        self.process_context = {}  # raw PID stays only in controlled memory
+        self.started = time.monotonic()
+        self.last_projection = None
+
+    def start(self):
+        try:
+            need(sys.platform == "linux", "status-inotify-Linux-only")
+            try:
+                value = json.loads(bounded_file_bytes(IDENTITY_FILES[0], 65536)[0]).get("hostId")
+                if isinstance(value, str) and str(uuid.UUID(value)) == value:
+                    self.expected = value
+            except Exception:
+                pass
+            libc = ctypes.CDLL(None, use_errno=True)
+            libc.inotify_init1.argtypes, libc.inotify_init1.restype = [ctypes.c_int], ctypes.c_int
+            libc.inotify_add_watch.argtypes, libc.inotify_add_watch.restype = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32], ctypes.c_int
+            self.fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+            need(self.fd >= 0, "status-inotify-init")
+            self.watch_id = libc.inotify_add_watch(self.fd, os.fsencode(STATUS.parent), self.MOVED_TO | self.CLOSE_WRITE | 0x400 | 0x800)
+            need(self.watch_id >= 0, "status-inotify-arm")
+            self.flags["armed"] = True
+            self.sample()
+            self.thread = threading.Thread(target=self.watch, name="fixed-status-observer", daemon=True)
+            self.thread.start()
+        except Exception:
+            self.flags["setupUnavailable"] = True
+            if self.fd >= 0:
+                os.close(self.fd)
+                self.fd = -1
+        return self
+
+    def sample(self):
+        projection = status_event_projection(self.expected, self.process_context)
+        with self.lock:
+            if projection == self.last_projection:
+                return
+            previous_state = self.last_projection.get("state") if self.last_projection else None
+            self.last_projection = dict(projection)
+            entry = {"seconds": round(time.monotonic() - self.started, 3), "previousState": previous_state, **projection}
+            if self.first_error is None and (projection.get("errorCodeIsNull") is False
+                    or projection.get("state") in {"signedOut", "expired", "unavailable"}):
+                self.first_error = dict(entry)
+            if len(self.history) >= 128:
+                self.flags["historyTruncated"] = True
+                self.history.pop(0)
+            self.history.append(entry)
+
+    def events(self, data):
+        offset = 0
+        while offset < len(data):
+            if len(data) - offset < 16:
+                self.flags["malformedEvent"] = True
+                return
+            watch_id, mask, _, length = struct.unpack_from("iIII", data, offset)
+            offset += 16
+            if length > 256 or offset + length > len(data):
+                self.flags["malformedEvent"] = True
+                return
+            name = data[offset:offset + length].split(b"\0", 1)[0]
+            offset += length
+            if mask & self.OVERFLOW:
+                self.flags["eventOverflow"] = True
+            if mask & self.LOST:
+                self.flags["watchLost"] = True
+            if watch_id == self.watch_id and name == b"status.json" and mask & (self.MOVED_TO | self.CLOSE_WRITE):
+                self.sample()
+
+    def watch(self):
+        try:
+            deadline = self.started + 270
+            while not self.stop_event.is_set() and time.monotonic() < deadline:
+                if select.select([self.fd], [], [], 0.1)[0]:
+                    self.events(os.read(self.fd, 65536))
+            if time.monotonic() >= deadline:
+                self.flags["boundedDeadlineReached"] = True
+        except Exception:
+            self.flags["observationUnavailable"] = True
+
+    def snapshot(self):
+        with self.lock:
+            return {"enabled": True, "flags": dict(self.flags), "history": [dict(value) for value in self.history],
+                    "firstError": dict(self.first_error) if self.first_error else None}
+
+    def close(self):
+        self.stop_event.set()
+        if self.thread is not None:
+            self.thread.join(timeout=1)
+            self.flags["threadStopped"] = not self.thread.is_alive()
+        if self.fd >= 0:
+            os.close(self.fd)
+            self.fd = -1
+        if self.flags.get("armed"):
+            self.sample()  # final fixed-file read before outer resource cleanup
+        return self.snapshot()
 
 
 def runtime_readiness_observation():
@@ -861,20 +1001,42 @@ def cleanup_auth_units(*, wait_seconds=10):
 def install_with_browser(private, browser_home, email, password, action, *, diagnostics=None, save_diagnostics=None):
     # Deliberately the literal public curl | sudo bash command, with ordinary TLS.
     command = f"set -o pipefail; curl --fail --silent --show-error {ORIGIN}/host/install.sh | sudo bash -s -- --instance {ORIGIN}"
-    child = (_GUEST.popen_install() if _GUEST else subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, start_new_session=True))
+    diagnostics = diagnostics if diagnostics is not None else {}
+    status_watcher = None
+    if action == "authorize":
+        if _GUEST:
+            diagnostics["statusEventObservation"] = {"enabled": False, "reason": "guest-diagnostic-not-enabled"}
+        else:
+            try:
+                status_watcher = StatusEventWatcher().start()  # armed before M or synchronous Chromium can run
+            except Exception:
+                diagnostics["statusEventObservationUnavailable"] = True
+    try:
+        child = (_GUEST.popen_install() if _GUEST else subprocess.Popen(["bash", "-c", command], stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT, start_new_session=True))
+    except Exception:
+        if status_watcher:
+            try:
+                status_watcher.close()
+            except Exception:
+                diagnostics["statusEventObservationUnavailable"] = True
+        raise
     output = bytearray()
     seen = False
     interrupt_at = None
     interrupted = False
     cancellation_identity = None
-    diagnostics = diagnostics if diagnostics is not None else {}
     owner_signal = {}
     pipe_eof = False
     started = time.monotonic()
     last_observation = 0
     def observe():
         nonlocal last_observation
+        if status_watcher:
+            try:
+                diagnostics["statusEventObservation"] = status_watcher.snapshot()
+            except Exception:
+                diagnostics["statusEventObservationUnavailable"] = True
         records = installer_json_records(output)
         known, unknown = set(), False
         for value in records:
@@ -989,6 +1151,11 @@ def install_with_browser(private, browser_home, email, password, action, *, diag
         need(seen == (action == "authorize"), "browser-count-contract")
         return True
     finally:
+        if status_watcher:
+            try:
+                diagnostics["statusEventObservation"] = status_watcher.close()
+            except Exception:
+                diagnostics["statusEventObservationUnavailable"] = True
         try:
             observe()  # before cleanup so true failure phase/units survive as booleans
         except Exception:

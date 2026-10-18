@@ -426,10 +426,12 @@ while True: time.sleep(.1)
         try:
             with tempfile.TemporaryDirectory() as directory, patch.object(lab.subprocess, "Popen", return_value=child), \
                  patch.object(lab, "auth_unit_observation", return_value={}), \
+                 patch.object(lab.StatusEventWatcher, "start", side_effect=RuntimeError("SYNTHETIC_CAPABILITY")), \
                  patch.object(lab, "runtime_readiness_observation", side_effect=RuntimeError("SYNTHETIC_CAPABILITY")):
                 with self.assertRaisesRegex(lab.Rejected, "^public-command-failed$"):
                     lab.install_with_browser(Path(directory), Path(directory), "synthetic", "synthetic", "authorize", diagnostics=diagnostics)
             self.assertTrue(diagnostics["runtimeObservationUnavailable"])
+            self.assertTrue(diagnostics["statusEventObservationUnavailable"])
             self.assertEqual(diagnostics["installerFailureReasons"], ["join-or-readiness-incomplete"])
             self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
         finally:
@@ -437,6 +439,113 @@ while True: time.sleep(.1)
                 child.terminate()
                 child.wait(timeout=5)
             child.stdout.close()
+
+    def test_status_event_thread_preserves_brief_error_before_stopped_without_heavy_observers(self):
+        read_fd, write_fd = os.pipe()
+        os.set_blocking(read_fd, False)
+        watcher = lab.StatusEventWatcher()
+        watcher.fd, watcher.watch_id = read_fd, 42
+        watcher.flags["armed"] = True
+        expected = "123e4567-e89b-42d3-a456-426614174000"
+        watcher.expected = expected
+        def event(name=b"status.json", mask=lab.StatusEventWatcher.MOVED_TO):
+            raw = name + b"\0"
+            return lab.struct.pack("iIII", 42, mask, 0, len(raw)) + raw
+        with tempfile.TemporaryDirectory() as directory, patch.object(lab, "STATUS", Path(directory) / "status.json"), \
+             patch.object(lab, "run", side_effect=AssertionError("heavy-observer-forbidden")):
+            lab.STATUS.write_bytes(b"")
+            watcher.sample()
+            watcher.thread = lab.threading.Thread(target=watcher.watch, daemon=True)
+            watcher.thread.start()
+            try:
+                status = {"state": "unavailable", "errorCode": "NETWORK_UPGRADE_REJECTED", "ready": False,
+                          "deviceId": expected, "pid": 12345, "networkId": expected, "instanceId": expected,
+                          "updatedAt": int(lab.time.time()), "secret": "SYNTHETIC_CAPABILITY"}
+                lab.STATUS.write_text(json.dumps(status))
+                os.write(write_fd, event())
+                deadline = lab.time.monotonic() + 2
+                while watcher.snapshot()["firstError"] is None and lab.time.monotonic() < deadline:
+                    lab.time.sleep(.005)
+                self.assertEqual(watcher.snapshot()["firstError"]["errorCode"], "NETWORK_UPGRADE_REJECTED")
+                status.update({"state": "stopped", "errorCode": None})
+                lab.STATUS.write_text(json.dumps(status))
+                os.write(write_fd, event(mask=lab.StatusEventWatcher.CLOSE_WRITE))
+                deadline = lab.time.monotonic() + 2
+                while watcher.snapshot()["history"][-1].get("state") != "stopped" and lab.time.monotonic() < deadline:
+                    lab.time.sleep(.005)
+                watcher.events(event(b"SYNTHETIC_CAPABILITY"))
+                result = watcher.close()
+                self.assertTrue(result["flags"]["threadStopped"])
+                self.assertEqual(result["history"][-1]["state"], "stopped")
+                self.assertTrue(result["history"][-1]["samePidAsPrevious"])
+                self.assertEqual(result["history"][-1]["previousState"], "unavailable")
+                self.assertEqual(result["firstError"]["errorCode"], "NETWORK_UPGRADE_REJECTED")
+                serialized = json.dumps(result)
+                for secret in (expected, "SYNTHETIC_CAPABILITY", "12345"):
+                    self.assertNotIn(secret, serialized)
+            finally:
+                watcher.close()
+                os.close(write_fd)
+
+    def test_status_event_history_deduplicates_bounds_and_records_lost_or_overflow(self):
+        watcher = lab.StatusEventWatcher()
+        watcher.watch_id = 42
+        projection = {"kind": "JSON-object", "state": "unavailable", "errorCode": "unknown-redacted", "errorCodeIsNull": False}
+        with patch.object(lab, "status_event_projection", return_value=projection):
+            watcher.sample()
+            watcher.sample()
+            self.assertEqual(len(watcher.snapshot()["history"]), 1)
+            for count in range(140):
+                projection["state"] = "connecting" if count % 2 == 0 else "unavailable"
+                watcher.sample()
+        watcher.events(lab.struct.pack("iIII", -1, watcher.OVERFLOW, 0, 0))
+        watcher.events(lab.struct.pack("iIII", 42, watcher.LOST, 0, 0))
+        result = watcher.close()
+        self.assertEqual(len(result["history"]), 128)
+        self.assertTrue(all(result["flags"][key] for key in ("historyTruncated", "eventOverflow", "watchLost")))
+        self.assertEqual(result["firstError"]["state"], "unavailable")
+
+    def test_status_watch_setup_failure_closes_owned_fd_and_is_only_a_diagnostic(self):
+        class Function:
+            def __init__(self, result):
+                self.result = result
+            def __call__(self, *unused):
+                return self.result
+        libc = SimpleNamespace(inotify_init1=Function(91), inotify_add_watch=Function(-1))
+        with patch.object(lab.sys, "platform", "linux"), patch.object(lab.ctypes, "CDLL", return_value=libc), \
+             patch.object(lab.os, "close") as close:
+            watcher = lab.StatusEventWatcher().start()
+            result = watcher.close()
+        close.assert_called_once_with(91)
+        self.assertTrue(result["flags"]["setupUnavailable"])
+        self.assertEqual(result["history"], [])
+
+    def test_status_watch_arms_only_fixed_directory_before_starting_thread(self):
+        calls = []
+        class Function:
+            def __init__(self, result, name):
+                self.result, self.name = result, name
+            def __call__(self, *arguments):
+                calls.append((self.name, arguments))
+                return self.result
+        class Thread:
+            def __init__(self, **kwargs):
+                pass
+            def start(self):
+                calls.append(("thread-start", ()))
+            def join(self, timeout):
+                pass
+            def is_alive(self):
+                return False
+        libc = SimpleNamespace(inotify_init1=Function(91, "init"), inotify_add_watch=Function(42, "watch"))
+        with patch.object(lab.sys, "platform", "linux"), patch.object(lab.ctypes, "CDLL", return_value=libc), \
+             patch.object(lab.threading, "Thread", Thread), patch.object(lab, "status_event_projection", return_value={"kind": "empty"}), \
+             patch.object(lab.os, "close") as close:
+            result = lab.StatusEventWatcher().start().close()
+        self.assertEqual(calls, [("init", (os.O_NONBLOCK | os.O_CLOEXEC,)),
+            ("watch", (91, os.fsencode(lab.STATUS.parent), 0x80 | 0x8 | 0x400 | 0x800)), ("thread-start", ())])
+        close.assert_called_once_with(91)
+        self.assertTrue(result["flags"]["armed"] and result["flags"]["threadStopped"])
 
     def test_failure_exception_projection_has_only_fixed_class_names(self):
         errors = (json.JSONDecodeError("SYNTHETIC_CAPABILITY", "secret", 0),
