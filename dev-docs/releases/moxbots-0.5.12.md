@@ -8,7 +8,7 @@ The running0.5.9 installer gate can itself fail; a newfeed does not repair old c
 
 | Layer | Current result |
 | --- | --- |
-| Source141/138 | NormalCI/main pending; not frozen |
+| Source141/138 | 138 main8e60805e verified;141 normalCI/main pending; not frozen |
 | Version/main | Local0.5.12 metadata, sync-version3tests passed; normalCI/main pending |
 | Formal package, Reader, Apple/notary/updater signature | Not started |
 | Real native stop/install, busy/unknown, persistence | Not accepted |
@@ -19,3 +19,5 @@ Record final source/tag/artifact hashes, real test actor/environment and failure
 ## Candidate preparation / CI prerequisite
 
 Root repaired an existingToast timeout leak exposed by141 normalCI: notice timers are released on close/unmount without changing visual markup or duration. Red3/4 reproduced; focused lifecycle and send-path tests63/63 green; targetedlint passed. Version-sync3 tests and both Cargo locked/offline metadata checks passed. These are candidate source checks, not signed or native update acceptance. Goal pausePR142 is reported main311ecfd5 and will be verified during source synchronization.
+
+Current source combination includes acceptedGoal pause142 and updater138. Sharedplan append conflict was resolved preserving both owners. Root version/Toast preparation will follow normalCI/main before final stop-fix freeze; no package or native result is inferred.
