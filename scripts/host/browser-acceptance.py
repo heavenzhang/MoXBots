@@ -95,6 +95,41 @@ def host_status():
     return _GUEST.call("status") if _GUEST else json.loads(STATUS.read_bytes())
 
 
+def canceled_status_observation():
+    # M tmpfiles creates a zero-byte status before an account/daemon exists.
+    # This projection is only for the canceled, proven inactive daemon gate;
+    # live ready() continues to use strict host_status() JSON parsing.
+    if _GUEST:
+        return _GUEST.call("canceled-status-observation")
+    try:
+        with STATUS.open("rb") as stream:
+            raw = stream.read(65537)
+    except FileNotFoundError:
+        return {"kind": "missing", "ready": False}
+    need(len(raw) <= 65536, "canceled-status-size-bound")
+    if raw == b"":
+        return {"kind": "empty", "ready": False}
+    value = json.loads(raw)  # nonempty invalid JSON remains an error
+    need(isinstance(value, dict) and value.get("ready", False) is False
+         and value.get("state") != "ready", "canceled-install-not-Ready")
+    return {"kind": "json-non-ready", "ready": False}
+
+
+def canceled_connector_inactive():
+    result = host_run(["systemctl", "show", CONNECTOR, "--property=LoadState,ActiveState,MainPID"])
+    properties = dict(line.split("=", 1) for line in result.stdout.decode().splitlines())
+    need(properties == {"LoadState": "loaded", "ActiveState": "inactive", "MainPID": "0"},
+         "canceled-install-connector-inactive")
+    return True
+
+
+def safe_exception_class(error):
+    allowed = (Rejected, json.JSONDecodeError, sqlite3.OperationalError, sqlite3.DatabaseError,
+               FileNotFoundError, PermissionError, ValueError, TypeError, KeyError, OSError,
+               subprocess.TimeoutExpired)
+    return type(error).__name__ if type(error) in allowed else "unexpected-exception-type-redacted"
+
+
 def public_readability(paths):
     import pwd
     uid = os.environ.get("SUDO_UID", "")
@@ -930,13 +965,14 @@ def accept(args):
                 (web / "host/stable.json").write_bytes(original_index)
             canceled_identity = step("fresh-authorization-interrupt-uses-M-native-cancel", lambda:
                 install("cancel", private, browser_home, email, password))
-            canceled = db_snapshot(private)
-            need(canceled["sessions"] == [] and canceled["principals"] == 0 and canceled["rotations"] == 0
-                 and canceled["catalogs"] == 0 and hits(route_counts(private), "join") == 0
-                 and hits(route_counts(private), "cancel") >= 1, "native-cancel-no-account-session-or-join")
-            need(not host_status().get("ready", False), "canceled-install-not-Ready")
-            need(host_run(["systemctl", "is-active", "--quiet", CONNECTOR], check=False).returncode != 0,
-                 "canceled-install-connector-inactive")
+            canceled = step("canceled-install-read-AuthStore-snapshot", lambda: db_snapshot(private))
+            canceled_routes = step("canceled-install-read-closed-route-counters", lambda: route_counts(private))
+            step("native-cancel-no-account-session-or-join", lambda:
+                need(canceled["sessions"] == [] and canceled["principals"] == 0 and canceled["rotations"] == 0
+                     and canceled["catalogs"] == 0 and hits(canceled_routes, "join") == 0
+                     and hits(canceled_routes, "cancel") >= 1, "native-cancel-no-account-session-or-join"))
+            step("canceled-install-connector-inactive-with-zero-MainPID", canceled_connector_inactive)
+            summary["canceledStatusObservation"] = step("canceled-install-non-Ready-status-observation", canceled_status_observation)
             step("canceled-install-no-Ready-or-join-and-identity-preserved", lambda: True)
             step("same-command-resume-real-Chromium-OIDC-auto-join", lambda:
                 install("authorize", private, browser_home, email, password))
@@ -1028,6 +1064,7 @@ def accept(args):
             summary.pop("currentGate", None)
         except Exception as error:
             summary["failureGate"] = str(error) if isinstance(error, Rejected) else "unexpected-lab-error-redacted"
+            summary["failureExceptionClass"] = safe_exception_class(error)
             raise Rejected(summary["failureGate"]) from None
         finally:
             # Only resources owned by this guarded invocation; never enumerate/kill other processes.

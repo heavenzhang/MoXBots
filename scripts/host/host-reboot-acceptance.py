@@ -150,6 +150,8 @@ def guest_main():
                       "uptimeSeconds": float(Path("/proc/uptime").read_text().split()[0]), "uuid": marker["uuid"]}
         elif op == "status":
             result = json.loads(lab.STATUS.read_bytes())
+        elif op == "canceled-status-observation":
+            result = lab.canceled_status_observation()
         elif op == "identity-hashes":
             result = lab.installed_identity_hashes()
         elif op == "persistent-hashes":
@@ -191,6 +193,7 @@ def guest_main():
                 allowed += [["systemctl", "stop", unit],
                             ["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"]]
             allowed += [["systemctl", "restart", lab.CONNECTOR]]
+            allowed += [["systemctl", "show", lab.CONNECTOR, "--property=LoadState,ActiveState,MainPID"]]
             lab.need(command in allowed, "guest-command-outside-closed-owner-operations")
             completed = lab.run(command, timeout=45, check=False)
             result = {"returncode": completed.returncode, "stdout": base64.b64encode(completed.stdout).decode()}

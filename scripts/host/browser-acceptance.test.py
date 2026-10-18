@@ -315,6 +315,52 @@ while True: time.sleep(.1)
                 self.assertFalse(result["units"][lab.AUTH_UNITS[1]]["terminated"])
                 self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
 
+    def test_canceled_missing_or_zero_byte_status_is_non_ready_but_live_status_stays_strict(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(lab, "STATUS", Path(directory) / "status.json"):
+            self.assertEqual(lab.canceled_status_observation(), {"kind": "missing", "ready": False})
+            with self.assertRaises(FileNotFoundError):
+                lab.host_status()
+            lab.STATUS.write_bytes(b"")
+            self.assertEqual(lab.canceled_status_observation(), {"kind": "empty", "ready": False})
+            with self.assertRaises(json.JSONDecodeError):
+                lab.host_status()
+            with self.assertRaises(json.JSONDecodeError):
+                lab.ready(Path(directory))
+
+    def test_canceled_nonempty_status_rejects_bad_JSON_or_ready_and_projects_no_secret_fields(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(lab, "STATUS", Path(directory) / "status.json"):
+            for data in (b" ", b"SYNTHETIC_CAPABILITY"):
+                lab.STATUS.write_bytes(data)
+                with self.assertRaises(json.JSONDecodeError):
+                    lab.canceled_status_observation()
+            for value in ([], {"ready": True}, {"state": "ready", "ready": False}, {"ready": 1}):
+                lab.STATUS.write_text(json.dumps(value))
+                with self.assertRaisesRegex(lab.Rejected, "canceled-install-not-Ready"):
+                    lab.canceled_status_observation()
+            lab.STATUS.write_text(json.dumps({"ready": False, "state": "waiting", "secret": "SYNTHETIC_CAPABILITY"}))
+            self.assertEqual(lab.canceled_status_observation(), {"kind": "json-non-ready", "ready": False})
+
+    def test_canceled_daemon_requires_loaded_inactive_and_zero_MainPID(self):
+        for state, expected in ((b"LoadState=loaded\nActiveState=inactive\nMainPID=0\n", True),
+                (b"LoadState=loaded\nActiveState=active\nMainPID=0\n", False),
+                (b"LoadState=loaded\nActiveState=inactive\nMainPID=123\n", False),
+                (b"LoadState=not-found\nActiveState=inactive\nMainPID=0\n", False),
+                (b"LoadState=loaded\nActiveState=failed\nMainPID=0\n", False)):
+            with self.subTest(state=state), patch.object(lab, "host_run", return_value=subprocess.CompletedProcess([], 0, state, b"")):
+                if expected:
+                    self.assertTrue(lab.canceled_connector_inactive())
+                else:
+                    with self.assertRaisesRegex(lab.Rejected, "canceled-install-connector-inactive"):
+                        lab.canceled_connector_inactive()
+
+    def test_failure_exception_projection_has_only_fixed_class_names(self):
+        errors = (json.JSONDecodeError("SYNTHETIC_CAPABILITY", "secret", 0),
+                  lab.sqlite3.OperationalError("SYNTHETIC_CAPABILITY"), FileNotFoundError("SYNTHETIC_CAPABILITY"))
+        for error in errors:
+            self.assertEqual(lab.safe_exception_class(error), type(error).__name__)
+        Unknown = type("SYNTHETIC_CAPABILITY", (Exception,), {})
+        self.assertEqual(lab.safe_exception_class(Unknown()), "unexpected-exception-type-redacted")
+
     def test_existing_auth_transient_is_protected_before_installation(self):
         with patch.object(lab, "run", return_value=subprocess.CompletedProcess([], 0, b"loaded\n", b"")):
             with self.assertRaisesRegex(lab.Rejected, "existing-auth-transient-unit-is-protected"):
