@@ -154,6 +154,17 @@ class RebootGates(unittest.TestCase):
             self.assertEqual(reboot.guest_main(), 0)
             run.assert_called_once_with(command, timeout=45, check=False)
 
+    def test_guest_runtime_readiness_operation_returns_only_closed_projection(self):
+        payload = {"op": "runtime-readiness-observation", "nonce": "synthetic"}
+        stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+        stdout = io.StringIO()
+        projection = {"NodeDoctor": {"attempted": False}, "status": {"kind": "empty"}}
+        with patch.object(reboot, "lab_module", return_value=lab), patch.object(reboot, "guest_guard", return_value={}), \
+             patch.object(reboot.sys, "stdin", stdin), contextlib.redirect_stdout(stdout), \
+             patch.object(lab, "runtime_readiness_observation", return_value=projection):
+            self.assertEqual(reboot.guest_main(), 0)
+        self.assertEqual(json.loads(stdout.getvalue())["result"], projection)
+
 
 if __name__ == "__main__":
     unittest.main()

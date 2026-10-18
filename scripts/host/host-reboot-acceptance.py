@@ -152,6 +152,8 @@ def guest_main():
             result = json.loads(lab.STATUS.read_bytes())
         elif op == "canceled-status-observation":
             result = lab.canceled_status_observation()
+        elif op == "runtime-readiness-observation":
+            result = lab.runtime_readiness_observation()
         elif op == "identity-hashes":
             result = lab.installed_identity_hashes()
         elif op == "persistent-hashes":

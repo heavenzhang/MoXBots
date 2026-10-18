@@ -286,6 +286,7 @@ while True: time.sleep(.1)
             if child.poll() is None:
                 child.terminate()
                 child.wait(timeout=5)
+            child.stdout.close()
 
     def test_auth_cleanup_stops_only_three_owned_transients_and_verifies_PID_zero(self):
         commands = []
@@ -367,6 +368,69 @@ while True: time.sleep(.1)
                 lab.canceled_connector_inactive(observation, lambda: saved.append(dict(observation)))
         self.assertEqual(saved, [{"fieldsValid": False, "loadState": "loaded", "activeState": "unknown-redacted", "mainPidIsZero": False}])
         self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(observation))
+
+    def test_runtime_observation_projects_contracts_without_capabilities_IDs_or_PIDs(self):
+        expected = "123e4567-e89b-42d3-a456-426614174000"
+        status = {"state": "unavailable", "deviceId": expected, "networkId": expected, "pid": 23456,
+                  "updatedAt": int(lab.time.time()), "ready": False, "errorCode": "NETWORK_TRANSPORT_FAILED",
+                  "capability": "SYNTHETIC_CAPABILITY"}
+        def contents(path, limit):
+            value = status if path == lab.STATUS else {"hostId": expected}
+            return json.dumps(value).encode(), SimpleNamespace(st_mode=stat.S_IFREG | 0o640, st_uid=1234, st_gid=2345)
+        def lstat(path):
+            return SimpleNamespace(st_mode=(stat.S_IFDIR | 0o2750) if path == lab.STATUS.parent else (stat.S_IFSOCK | 0o660),
+                                   st_uid=1234, st_gid=2345, st_nlink=1)
+        commands = []
+        def command(argv, **kwargs):
+            commands.append((argv, kwargs))
+            if argv[-1] == "doctor":
+                data = json.dumps({"hostId": expected, "runtime": {"node": "24.20.0", "sdkBinaryPresent": True},
+                                   "activeSession": None, "stopping": False, "token": "SYNTHETIC_CAPABILITY"}).encode()
+            else:
+                pid = b"12345" if argv[2] == lab.NODE else b"23456"
+                data = b"LoadState=loaded\nActiveState=active\nSubState=running\nResult=success\nExecMainStatus=0\nMainPID=" + pid + b"\n"
+            return subprocess.CompletedProcess(argv, 0, data, b"SYNTHETIC_CAPABILITY")
+        with patch.object(lab, "bounded_file_bytes", side_effect=contents), patch.object(Path, "lstat", lstat), \
+             patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=1234, pw_gid=2345)), patch.object(lab, "run", side_effect=command):
+            result = lab.runtime_readiness_observation()
+            self.assertTrue(result["status"]["pidMatchesConnector"])
+            self.assertTrue(result["status"]["deviceMatchesProvisioned"])
+            self.assertEqual(result["status"]["errorCode"], "NETWORK_TRANSPORT_FAILED")
+            self.assertTrue(result["NodeDoctor"]["nodeVersionMatches"] and result["NodeDoctor"]["sdkBinaryPresent"])
+            self.assertTrue(result["managementSocket"]["contractMatches"])
+            status.update({"state": "SYNTHETIC_CAPABILITY", "errorCode": "SYNTHETIC_CAPABILITY"})
+            unknown = lab.runtime_readiness_observation()
+        for result in (result, unknown):
+            serialized = json.dumps(result)
+            for secret in (expected, "SYNTHETIC_CAPABILITY", "12345", "23456"):
+                self.assertNotIn(secret, serialized)
+        self.assertTrue(all(kwargs["timeout"] <= 2 for _, kwargs in commands))
+
+    def test_runtime_observation_does_not_attempt_doctor_without_Node_PID(self):
+        state = b"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\n"
+        with patch.object(lab, "run", return_value=subprocess.CompletedProcess([], 0, state, b"")) as run:
+            result = lab.runtime_readiness_observation()
+        self.assertFalse(result["NodeDoctor"]["attempted"])
+        self.assertEqual(run.call_count, 2)
+
+    def test_observation_failure_keeps_original_installer_failure_and_redacts_reason(self):
+        script = 'import sys; print("HOST_INSTALL_INCOMPLETE: join/readiness incomplete; identity and login preserved; rerun the same command"); print("SYNTHETIC_CAPABILITY"); sys.exit(1)'
+        child = subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+        diagnostics = {}
+        try:
+            with tempfile.TemporaryDirectory() as directory, patch.object(lab.subprocess, "Popen", return_value=child), \
+                 patch.object(lab, "auth_unit_observation", return_value={}), \
+                 patch.object(lab, "runtime_readiness_observation", side_effect=RuntimeError("SYNTHETIC_CAPABILITY")):
+                with self.assertRaisesRegex(lab.Rejected, "^public-command-failed$"):
+                    lab.install_with_browser(Path(directory), Path(directory), "synthetic", "synthetic", "authorize", diagnostics=diagnostics)
+            self.assertTrue(diagnostics["runtimeObservationUnavailable"])
+            self.assertEqual(diagnostics["installerFailureReasons"], ["join-or-readiness-incomplete"])
+            self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
+            child.stdout.close()
 
     def test_failure_exception_projection_has_only_fixed_class_names(self):
         errors = (json.JSONDecodeError("SYNTHETIC_CAPABILITY", "secret", 0),

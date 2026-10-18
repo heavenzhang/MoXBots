@@ -24,6 +24,7 @@ import signal
 import socket
 import sqlite3
 import ssl
+import stat
 import subprocess
 import sys
 import tempfile
@@ -39,6 +40,17 @@ SAFE_CLI_ERRORS = frozenset({"OWNED_REAUTH_REQUIRED", "SPACE_REAUTH_REQUIRED", "
     "AUTH_EXPIRED", "AUTH_SCOPE_MISMATCH", "AUTH_ATTEMPT_STALE", "AUTH_EXPIRY_INVALID", "OWNED_STATE_CORRUPT",
     "CLI_USAGE_INVALID", "NETWORK_PROXY_INVALID", "PUBLIC_TLS_CA_UNSAFE", "NETWORK_CONTROL_REJECTED",
     "HOST_MANAGEMENT_GRANT_MISSING", "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED"})
+SAFE_STATUS_ERRORS = SAFE_CLI_ERRORS | frozenset({"NETWORK_TRANSPORT_FAILED", "NETWORK_ENDPOINT_INVALID",
+    "NETWORK_CERTIFICATE_INVALID", "NETWORK_CONNECTION_CLOSED", "NETWORK_CONNECTION_TIMEOUT", "NETWORK_TOKEN_EXPIRED",
+    "NETWORK_CATALOG_CHANGED", "NETWORK_CATALOG_INVALID", "NETWORK_CATALOG_OWNER_CHANGED", "NETWORK_CATALOG_TOO_LARGE",
+    "NETWORK_CATALOG_UNAVAILABLE", "HOST_MANAGEMENT_BINDING_INVALID", "HOST_MANAGEMENT_REBIND_REQUIRED",
+    "HOST_MANAGEMENT_RESPONSE_INVALID", "HOST_MANAGEMENT_UNCONFIRMED", "OWNED_MEMBERSHIP_REQUIRED",
+    "ACCOUNT_BINDING_CHANGED", "SESSION_REAUTH_REQUIRED", "READY_PRECONDITION_FAILED", "NETWORK_RESPONSE_INVALID",
+    "NETWORK_REQUEST_INVALID", "NETWORK_PROOF_INVALID", "CONTROL_INVALID", "CONTROL_SCOPE_MISMATCH", "CONTROL_UNEXPECTED",
+    "CHANNEL_FRAME_INVALID", "CATALOG_INVALID", "CATALOG_NOT_CURRENT", "OWNED_SESSION_RENEWAL_INVALID", "STATUS_STALE",
+    "HOST_MANAGEMENT_GRANT_CORRUPT", "HOST_MANAGEMENT_UNEXPECTED_RESPONSE", "NETWORK_TRUST_CHANGED",
+    "OWNED_INSTANCE_TRUST_CHANGED", "NETWORK_HELLO_TIMEOUT", "NETWORK_BACKPRESSURE", "OWNED_JOIN_REQUIRED",
+    "OWNED_JOIN_UNCONFIRMED", "OWNED_PROFILE_REQUIRED"})
 
 PRODUCT = "dcf8d9a60976c160e2b2aca33313c668c071132c"
 RELEASE = "20261018032115-dcf8d9a60976"
@@ -145,6 +157,127 @@ def safe_exception_class(error):
                FileNotFoundError, PermissionError, ValueError, TypeError, KeyError, OSError,
                subprocess.TimeoutExpired)
     return type(error).__name__ if type(error) in allowed else "unexpected-exception-type-redacted"
+
+
+def installer_failure_reason(output):
+    # Exact frozen-M phrases only. Never retain the suffix or exception text.
+    phrases = {
+        b"HOST_INSTALL_INCOMPLETE: join/readiness incomplete; identity and login preserved; rerun the same command": "join-or-readiness-incomplete",
+        b"HOST_INSTALL_INCOMPLETE: Node Host IPC readiness check failed": "Node-IPC-contract-failed",
+        b"HOST_INSTALL_INCOMPLETE: existing connector needs operator attention; inspect network status and rerun after maintenance": "existing-connector-needs-attention",
+        b"HOST_INSTALL_INCOMPLETE: management binding renewal refused; same principal is required; no pins were changed": "management-binding-renewal-refused",
+        b"HOST_INSTALL_INCOMPLETE: browser authorization canceled, expired or incomplete; identity is preserved; rerun the same install command": "browser-authorization-incomplete",
+    }
+    return sorted(label for phrase, label in phrases.items() if phrase + b"\n" in output)
+
+
+def bounded_file_bytes(path, limit):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    try:
+        info = os.fstat(fd)
+        need(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and info.st_size <= limit, "observation-file-bound")
+        data = os.read(fd, limit + 1)
+        need(len(data) <= limit, "observation-file-bound")
+        return data, info
+    finally:
+        os.close(fd)
+
+
+def runtime_readiness_observation():
+    """Read-only closed projections; never a Ready gate, start or recovery."""
+    if _GUEST:
+        return _GUEST.call("runtime-readiness-observation")
+    observed, pids = {"units": {}}, {}
+    enums = {"LoadState": {"loaded", "not-found", "error", "masked", "bad-setting", "stub", "merged"},
+        "ActiveState": {"active", "inactive", "failed", "activating", "deactivating", "reloading", "maintenance", "refreshing"},
+        "SubState": {"running", "exited", "dead", "failed", "start", "start-pre", "start-post", "stop", "stop-sigterm", "auto-restart"},
+        "Result": {"success", "exit-code", "signal", "timeout", "start-limit-hit", "resources", "protocol", "core-dump", "oom-kill"}}
+    for label, unit in (("Node", NODE), ("connector", CONNECTOR)):
+        try:
+            raw = run(["systemctl", "show", unit, "--property=LoadState,ActiveState,SubState,Result,ExecMainStatus,MainPID"], timeout=2).stdout
+            rows = [line.partition("=") for line in raw.decode("ascii", errors="replace").splitlines()]
+            fields = {key: value for key, _, value in rows}
+            valid = (len(rows) == 6 and all(separator == "=" for _, separator, _ in rows)
+                     and set(fields) == set(enums) | {"ExecMainStatus", "MainPID"})
+            values = {key: fields.get(key) if fields.get(key) in allowed else "unknown-redacted" for key, allowed in enums.items()}
+            for key in ("ExecMainStatus", "MainPID"):
+                valid = valid and re.fullmatch(r"[0-9]{1,10}", fields.get(key, "")) is not None
+            pids[label] = int(fields["MainPID"]) if valid else 0
+            values.update({"fieldsValid": valid, "mainPidPositive": pids[label] > 0,
+                           "execMainStatus": int(fields["ExecMainStatus"]) if valid and int(fields["ExecMainStatus"]) <= 255 else None})
+            observed["units"][label] = values
+        except Exception:
+            observed["units"][label] = {"observationUnavailable": True}
+    expected = None
+    try:
+        identity = json.loads(bounded_file_bytes(IDENTITY_FILES[0], 65536)[0])
+        candidate = identity.get("hostId")
+        if isinstance(candidate, str) and str(uuid.UUID(candidate)) == candidate:
+            expected = candidate
+    except Exception:
+        pass
+    observed["provisionedIdentityReadable"] = expected is not None
+    network_account = None
+    try:
+        import pwd
+        network_account = pwd.getpwnam("moxbot-host-network-test")
+    except Exception:
+        pass
+    try:
+        raw, info = bounded_file_bytes(STATUS, 2048)
+        projection = {"kind": "empty" if not raw else "invalid-JSON", "mode640": stat.S_IMODE(info.st_mode) == 0o640,
+            "ownerMatchesNetwork": network_account is not None and info.st_uid == network_account.pw_uid,
+            "groupMatchesNetwork": network_account is not None and info.st_gid == network_account.pw_gid}
+        observed["status"] = projection
+        if raw:
+            value = json.loads(raw)
+            if isinstance(value, dict):
+                code = value.get("errorCode")
+                updated = value.get("updatedAt")
+                projection.update({"kind": "JSON-object",
+                    "schemaFieldsMatch": set(value) == {"state", "deviceId", "networkId", "ready", "errorCode", "updatedAt", "pid", "instanceId"},
+                    "state": value.get("state") if isinstance(value.get("state"), str) and value.get("state") in
+                    {"connecting", "initializing", "catalog", "hydrating", "ready", "signedOut", "expired", "unavailable", "stopped"} else "unknown-redacted",
+                    "readyIsTrue": value.get("ready") is True, "errorCodeIsNull": code is None,
+                    "errorCode": code if isinstance(code, str) and code in SAFE_STATUS_ERRORS else (None if code is None else "unknown-redacted"),
+                    "freshWithin30Seconds": type(updated) is int and -2 <= time.time() - updated <= 30,
+                    "deviceMatchesProvisioned": expected is not None and value.get("deviceId") == expected,
+                    "pidMatchesConnector": pids.get("connector", 0) > 0 and type(value.get("pid")) is int and value["pid"] == pids["connector"],
+                    "networkIdCanonical": isinstance(value.get("networkId"), str) and re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", value["networkId"]) is not None})
+    except FileNotFoundError:
+        observed["status"] = {"kind": "missing"}
+    except Exception:
+        if "status" not in observed:
+            observed["status"] = {"kind": "unavailable"}
+    try:
+        parent, sock = STATUS.parent.lstat(), (STATUS.parent / "management.sock").lstat()
+        observed["managementSocket"] = {"present": True, "contractMatches": network_account is not None
+            and stat.S_ISDIR(parent.st_mode) and parent.st_uid == network_account.pw_uid and parent.st_gid == network_account.pw_gid
+            and stat.S_IMODE(parent.st_mode) == 0o2750 and stat.S_ISSOCK(sock.st_mode) and sock.st_nlink == 1
+            and sock.st_uid == network_account.pw_uid and sock.st_gid == network_account.pw_gid and stat.S_IMODE(sock.st_mode) == 0o660}
+    except FileNotFoundError:
+        observed["managementSocket"] = {"present": False}
+    except Exception:
+        observed["managementSocket"] = {"observationUnavailable": True}
+    observed["NodeDropinsPresent"] = {name: (Path("/etc/systemd/system/moxbot-host-test.service.d") / name).is_file()
+                                      for name in ("owned-management.conf", "network-status.conf")}
+    doctor = {"attempted": pids.get("Node", 0) > 0}
+    observed["NodeDoctor"] = doctor
+    if doctor["attempted"]:
+        try:
+            completed = run(["/opt/moxbot-host-test/bin/moxbot-host", "doctor"], timeout=2, check=False)
+            doctor["exitZero"] = completed.returncode == 0
+            if completed.returncode == 0 and len(completed.stdout) <= 65536:
+                value = json.loads(completed.stdout)
+                need(isinstance(value, dict), "observation-doctor-object")
+                doctor.update({"JSONobject": True, "hostIdMatchesProvisioned": expected is not None and value.get("hostId") == expected,
+                    "nodeVersionMatches": isinstance(value.get("runtime"), dict) and value["runtime"].get("node") == "24.20.0",
+                    "sdkBinaryPresent": isinstance(value.get("runtime"), dict) and value["runtime"].get("sdkBinaryPresent") is True,
+                    "activeSessionAbsent": "activeSession" in value and value["activeSession"] is None,
+                    "stoppingFalse": value.get("stopping") is False})
+        except Exception:
+            doctor["observationUnavailable"] = True
+    return observed
 
 
 def public_readability(paths):
@@ -759,7 +892,8 @@ def install_with_browser(private, browser_home, email, password, action, *, diag
             "unknownCliErrorCodeObserved": unknown, "authPromptSeen": b"Open the short authorization URL below" in output,
             "readyMarkerSeen": b"MoXBots Host ready." in output,
             "interruptedMarkerSeen": b"Authorization interrupted." in output,
-            "installerFailureMarkerSeen": b"HOST_INSTALL_INCOMPLETE:" in output, **owner_signal})
+            "installerFailureMarkerSeen": b"HOST_INSTALL_INCOMPLETE:" in output,
+            "installerFailureReasons": installer_failure_reason(output), **owner_signal})
         try:
             diagnostics["authUnits"] = auth_unit_observation()
         except Exception:
@@ -767,7 +901,29 @@ def install_with_browser(private, browser_home, email, password, action, *, diag
         counts = route_counts(private)
         diagnostics["routes"] = {"startRequests": hits(counts, "start", False), "pollRequests": hits(counts, "poll", False),
             "completedPolls": completed_polls(counts), "cancelRequests": hits(counts, "cancel", False),
-            "cancelSuccesses": hits(counts, "cancel"), "joinSuccesses": hits(counts, "join")}
+            "cancelSuccesses": hits(counts, "cancel"), "joinSuccesses": hits(counts, "join"),
+            "callbackSuccesses": hits(counts, "callback"), "dexTokenSuccesses": hits(counts, "dex-token"),
+            "catalogRequests": hits(counts, "catalog", False), "catalogSuccesses": hits(counts, "catalog"),
+            "websocketRequests": hits(counts, "ws", False),
+            "websocketUpgrades": sum(n for (route, status, _, _), n in counts.items() if route == "ws" and status == 101)}
+        if action == "authorize":
+            try:
+                snapshot = runtime_readiness_observation()
+                snapshot["seconds"] = round(time.monotonic() - started, 3)
+                history = diagnostics.setdefault("runtimeReadinessObservations", [])
+                history.append(snapshot)
+                del history[:-32]
+            except Exception:
+                diagnostics["runtimeObservationUnavailable"] = True
+            if child.poll() is not None:
+                try:
+                    state = db_snapshot(private)
+                    diagnostics["AuthStoreProjection"] = {"sessionCount": len(state["sessions"]), "principalCount": state["principals"],
+                        "deviceCount": len(state["devices"]), "catalogCount": state["catalogs"], "catalogItemCount": state["items"],
+                        "joinedDeviceCount": sum(row[1] == 1 for row in state["devices"]),
+                        "readyDeviceCount": sum(row[3] == "ready" for row in state["devices"])}
+                except Exception:
+                    diagnostics["AuthStoreObservationUnavailable"] = True
         if save_diagnostics:
             save_diagnostics()
         last_observation = time.monotonic()
