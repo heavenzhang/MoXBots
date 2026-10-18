@@ -26,13 +26,25 @@
 
 ## 更新分发
 
-状态：正在受锁上传不可变制品，stable 尚为0.5.9，未宣称0.5.11可获取。只有外部完整正常TLS GET/stat/SHA、原始证据独审、原子promotion及公开路径复验通过后才关闭本节门禁。
+状态：**已发布并完成更新分发核验**。2026-10-18 12:43Z 原子启用0.5.11；公开门禁和独立发布后核验通过，12:45Z 同任务锁正常 finish。更新入口 `https://140.143.183.232/updates/stable/darwin-aarch64.json`，精确 manifest SHA256 `ee5d8b48a2a625cf29622440f11e9f05c01ecac59039e667ab63f2cd72117128`。
 
-更新地址：`https://140.143.183.232/updates/stable/darwin-aarch64.json`。旧0.5.9 stable精确 SHA256 `38c2443567b6ab4167797066ae56b6c751aed3e7bba9afe9cf3139909950c014`；旧归档 `9a23e0b1cd59135b079bcf58082cde85cce814f948f5d9e2e9d8c76ed7d2189c` / `343650367` bytes 保留作分发回退。恢复stable不等于已升级客户端自动降级。
+- 外部验收机单次完整正常 TLS GET：294768547 bytes、完整 SHA256 一致，HTTP200/TLS验证0/无跳转/curl退出0。保留17份原始证据并完成独审；下载后哈希计算两端的stat完全一致，不宣称stat覆盖整个传输周期。
+- 公开stable精确字节/版本及no-store、两个Range206并逐字节比较、Windows unsupported204、5条私有receipt/manifest/lock/history路径404通过。独立者另做一次1055字节正常TLS stable GET，并审阅实际9路响应原文。
+- 旧0.5.9 stable精确 SHA256 `38c2443567b6ab4167797066ae56b6c751aed3e7bba9afe9cf3139909950c014` 已保存到私有history；旧归档 `9a23e0b1cd59135b079bcf58082cde85cce814f948f5d9e2e9d8c76ed7d2189c` / `343650367` bytes 在stage/promotion/finish时完整校验并保留。仅恢复stable可停止后续推广，已升级客户端需更高版本修复，不能自动降级。
+- 客户端可检查并后台下载此更新，任务空闲后由用户确认重启。更新分发成功不等于已安装；本任务没有替换日常0.5.9安装，也未自动重启任何客户端。
+
+| 原始回执/独审       | SHA256                                                             |
+| ------------------- | ------------------------------------------------------------------ |
+| Root外部完整GET门禁 | `a7a82e7c6ce85b3c1e317b18e1b2c6c58da4264b44de1e96ee2b10cac1f8d40d` |
+| 17原件独立审阅      | `4cd24af7623478baf014b955f8a4c93457c915b57abbfb05b38e84b3e3f6e424` |
+| 原子promotion回执   | `772a6656c778f4a8d9854d0873e0b1a3dc9605c43b6951d3e0af1e32377d0c49` |
+| 公开9路门禁         | `9e1dcf2b74b409a907a6c0f0b74efa04e45dd11fd4828099a61a08b63fae8f55` |
+| 发布后独立核验      | `6abd226d35764fc44b3f237d3eadcf67cc0c4f8f9baf461187836e750d447b66` |
+| own-lock finish回执 | `1a27f37e3468f16c439b74a6dfd64d31749d218ddefcb572bbf4f4df5be131f6` |
 
 ## 验证及证据
 
-源码阶段登录兼容2项、renderer回跳16项、Rust登录8项、构建隔离9项通过；typecheck、lint、资源构建通过。正式 Tauri release 编译耗时9分41秒；该数值不含资源准备、签名、公证、真实验收、上传及CI。
+源码阶段登录兼容2项、renderer回跳16项、Rust登录8项、构建隔离9项通过；typecheck、lint、资源构建通过。正式 Tauri release 编译耗时9分41秒；上传及服务器完整验证51.53秒；外部完整下载2475.29067秒（41分15秒），平均119084 B/s。各阶段为实测，整体从准备到验收的总时长未单独计时，不能把编译时间当完整发行耗时。没有确认云实例的带宽配额。
 
 私有证据保留在项目指针 `work/release-0511-20261018/owner/`、`/private/tmp/moxbots-login-fix-0511-nativeqa-20261018/` 和正式包目录 `/private/tmp/moxbots-login-fix-0511-final/`。凭据、业务数据、配置原文及原始日志不进入 Git。独立 native/script review 与最终公网回执分别按精确文件哈希封存。
 
