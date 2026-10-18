@@ -9,7 +9,7 @@ The running0.5.9 installer gate can itself fail; a newfeed does not repair old c
 | Layer | Current result |
 | --- | --- |
 | Source141/138 | NormalCI/main pending; not frozen |
-| Version/main | Not yet changed |
+| Version/main | Local0.5.12 metadata, sync-version3tests passed; normalCI/main pending |
 | Formal package, Reader, Apple/notary/updater signature | Not started |
 | Real native stop/install, busy/unknown, persistence | Not accepted |
 | Public full download/promotion | Not started; existing0511 preserved |
