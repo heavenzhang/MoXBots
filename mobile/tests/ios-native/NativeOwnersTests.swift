@@ -53,7 +53,7 @@ final class NativeOwnersTests: XCTestCase {
     return try NativeAttachments(scope: scope, bundle: bundle)
   }
 
-  private func projection(_ connection: NativeConnection, _ intent: [String: Any]) throws -> [String: Any] {
+  private static func projection(_ connection: NativeConnection, _ intent: [String: Any]) throws -> [String: Any] {
     let bytes = try JSONSerialization.data(withJSONObject: intent)
     let value = try connection.request(String(decoding: bytes, as: UTF8.self))
     return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any])
@@ -98,14 +98,14 @@ final class NativeOwnersTests: XCTestCase {
   func testOriginalSwiftCAbiLoadsAndRejectsUnauthenticatedOperationsOffline() throws {
     let connection = try NativeConnection(origin: "https://" + UUID().uuidString.lowercased() + ".invalid", bundle: bundle)
     defer { connection.close() }
-    let account = try projection(connection, ["version": 1, "kind": "account.status"])
+    let account = try Self.projection(connection, ["version": 1, "kind": "account.status"])
     XCTAssertEqual(account["kind"] as? String, "account")
     XCTAssertEqual(account["state"] as? String, "signed-out")
     XCTAssertTrue(account["principalId"] is NSNull)
     for kind in ["notification.status", "notification.open"] {
       var intent: [String: Any] = ["version": 1, "kind": kind]
       if kind == "notification.open" { intent["eventId"] = UUID().uuidString.lowercased() }
-      let result = try projection(connection, intent)
+      let result = try Self.projection(connection, intent)
       XCTAssertEqual(result["kind"] as? String, "error")
       XCTAssertEqual(result["code"] as? String, "OWNED_LOGIN_REQUIRED")
     }
@@ -170,27 +170,38 @@ final class NativeOwnersTests: XCTestCase {
     XCTAssertEqual((try owner.list()["items"] as? [[String: Any]])?.count, 0)
   }
 
-  func testExplicitOriginalIosLoginStartsAndCancelsWithoutAuthenticating() throws {
+  func testExplicitOriginalIosLoginStartsAndCancelsWithoutAuthenticating() async throws {
     guard let origin = ProcessInfo.processInfo.environment["MOXBOTS_LIVE_LOGIN_ORIGIN"] else {
       throw XCTSkip("Explicit real-service opt-in is required")
     }
-    let connection = try NativeConnection(origin: origin, bundle: bundle)
-    defer {
-      // Always attempt the original pending-login cancellation before closing.
-      do { _ = try projection(connection, ["version": 1, "kind": "account.logout"]) }
-      catch { XCTFail("Original login cleanup failed") }
-      connection.close()
+    // The production Expo owner executes these blocking calls on its serial
+    // module queue. Keep TLS/Keychain work off the UI thread in this host too.
+    let storageBundle = bundle
+    try await withCheckedThrowingContinuation { (completion: CheckedContinuation<Void, Error>) in
+      DispatchQueue(label: "com.moxbots.native-validation.live-owner").async {
+        let result = Result<Void, Error> {
+          XCTAssertFalse(Thread.isMainThread)
+          let connection = try NativeConnection(origin: origin, bundle: storageBundle)
+          defer {
+            // Always attempt the original pending-login cancellation before closing.
+            do { _ = try Self.projection(connection, ["version": 1, "kind": "account.logout"]) }
+            catch { XCTFail("Original login cleanup failed") }
+            connection.close()
+          }
+          let result = try Self.projection(connection, ["version": 1, "kind": "account.login.start"])
+          // Never print or assert the complete secret-bearing projection.
+          XCTAssertEqual(result["kind"] as? String, "login", "code=" + (result["code"] as? String ?? "none"))
+          let authorization = URL(string: result["authorizationUrl"] as? String ?? "")
+          XCTAssertEqual(authorization?.scheme, "https")
+          XCTAssertGreaterThan((result["expiresAt"] as? NSNumber)?.doubleValue ?? 0,
+            Date().timeIntervalSince1970)
+          let cancelled = try Self.projection(connection, ["version": 1, "kind": "account.logout"])
+          XCTAssertEqual(cancelled["state"] as? String, "signed-out")
+          let final = try Self.projection(connection, ["version": 1, "kind": "account.status"])
+          XCTAssertEqual(final["state"] as? String, "signed-out")
+        }
+        completion.resume(with: result)
+      }
     }
-    let result = try projection(connection, ["version": 1, "kind": "account.login.start"])
-    // Never print or assert the complete secret-bearing projection.
-    XCTAssertEqual(result["kind"] as? String, "login", "code=" + (result["code"] as? String ?? "none"))
-    let authorization = URL(string: result["authorizationUrl"] as? String ?? "")
-    XCTAssertEqual(authorization?.scheme, "https")
-    XCTAssertGreaterThan((result["expiresAt"] as? NSNumber)?.doubleValue ?? 0,
-      Date().timeIntervalSince1970)
-    let cancelled = try projection(connection, ["version": 1, "kind": "account.logout"])
-    XCTAssertEqual(cancelled["state"] as? String, "signed-out")
-    let final = try projection(connection, ["version": 1, "kind": "account.status"])
-    XCTAssertEqual(final["state"] as? String, "signed-out")
   }
 }

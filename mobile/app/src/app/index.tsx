@@ -14,6 +14,7 @@ import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../atta
 import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactChatReturn, rememberArtifactChatReturn, resolveArtifactReturnTarget } from '../artifactNavigation';
 import { notificationOpens, notificationSnapshotMatches } from '../notificationPolicy';
 import { clearHandledNotification } from '../notifications';
+import { createLoginAttemptGate, loginNeedsPolling, loginPollNeedsStatus, logoutAndConfirm } from '../accountPolicy';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
@@ -41,6 +42,7 @@ const errorMessages: Record<string, string> = {
   MOBILE_SPEECH_BUSY: '语音服务正忙，请稍后重试；文字草稿已保留。',
   TARGET_UNAVAILABLE: '当前没有可用 Bot，请检查设备连接。',
   ACCOUNT_REPLY_INVALID: '无法读取登录状态，请稍后刷新。',
+  ACCOUNT_BROWSER_OPEN_FAILED: '无法打开登录浏览器。可以取消当前登录后重试。',
   SESSION_LIST_REPLY_INVALID: '无法读取会话列表，请稍后重试。',
   SESSION_SNAPSHOT_REPLY_INVALID: '无法读取这条会话，请返回后重试。',
   NATIVE_REPLY_INVALID: '设备返回了无法识别的内容，请稍后重试。',
@@ -101,6 +103,10 @@ function AppBody() {
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
   const [loginPollGate] = useState(() => createPollFlightGate());
+  const [loginAttemptGate] = useState(() => createLoginAttemptGate());
+  const loginPollRef = useRef<{ stop: () => void } | null>(null);
+  const [loginAction, setLoginAction] = useState<'start' | 'cancel' | null>(null);
+  const [cancelUnconfirmed, setCancelUnconfirmed] = useState(false);
   const [snapshotPollGate] = useState(() => createPollFlightGate());
   const [routeFocusGate] = useState(() => createRouteFocusGate());
   const routeActiveRef = useRef(false);
@@ -331,16 +337,20 @@ function AppBody() {
   const loadAccount = useCallback(async () => {
     const routeEpoch = routeFocusGate.capture();
     const routeIsCurrent = () => routeFocusGate.isCurrent(routeEpoch) && AppState.currentState === 'active';
-    if (!routeIsCurrent()) return;
+    if (!routeIsCurrent() || !loginAttemptGate.canRead()) return;
+    const loginEpoch = loginAttemptGate.capture();
     const artifactReturn = peekArtifactChatReturn();
     const notificationIntent = notificationOpens.peek();
     const refreshEpoch = ++accountRefreshEpochRef.current;
     accountRefreshInFlightRef.current = refreshEpoch;
-    const requestIsCurrent = () => refreshEpoch === accountRefreshEpochRef.current && routeIsCurrent();
+    const requestIsCurrent = () => refreshEpoch === accountRefreshEpochRef.current && routeIsCurrent()
+      && loginAttemptGate.isCurrent(loginEpoch) && loginAttemptGate.canRead();
     try {
     const reply = await requestNative({ version: 1, kind: 'account.status' });
     if (!requestIsCurrent()) return;
     if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
+    if (!loginAttemptGate.observe(loginEpoch, reply.state)) return;
+    setLoginStarted(loginNeedsPolling(reply.state));
     const previousAccount = accountRef.current;
     accountRef.current = reply;
     setAccount(reply);
@@ -462,7 +472,7 @@ function AppBody() {
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
-  }, [commitSnapshot, loadMobileCatalog, moveOwner, routeFocusGate]);
+  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, routeFocusGate]);
 
   useEffect(() => notificationOpens.subscribe(() => {
     if (routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE', 'error'); });
@@ -484,24 +494,52 @@ function AppBody() {
   }, [loadAccount, routeFocusGate, say]));
   useEffect(() => {
     if (loginStarted) {
+      const loginEpoch = loginAttemptGate.capture();
       const poll = createSingleFlightPoll(async (isCurrent) => {
         try {
           if (!isCurrent()) return;
+          const refreshEpoch = accountRefreshEpochRef.current;
           const reply = await requestNative({ version: 1, kind: 'account.login.poll' });
-          if (!isCurrent() || reply.kind !== 'account') return;
+          if (!isCurrent() || refreshEpoch !== accountRefreshEpochRef.current) return;
+          if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
+          if (!loginAttemptGate.observe(loginEpoch, reply.state)) return;
           const previousAccount = accountRef.current;
           if (reply.state !== 'signed-in' || (previousAccount && previousAccount.principalId !== reply.principalId)) draftPersistenceRef.current?.clear();
           accountRef.current = reply;
           setAccount(reply);
-          if (reply.state === 'signed-in') { setLoginStarted(false); void loadAccount(); }
+          setLoginStarted(loginNeedsPolling(reply.state));
+          if (reply.state !== 'authenticating') poll.stop();
+          if (reply.state === 'signed-in') void loadAccount().catch((error) => {
+            if (loginAttemptGate.isCurrent(loginEpoch)) say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error');
+          });
         } catch (error) {
-          if (isCurrent()) say(error instanceof Error ? error.message : 'ACCOUNT_LOGIN_POLL_FAILED', 'error');
+          if (isCurrent()) {
+            const code = error instanceof Error ? error.message : 'ACCOUNT_LOGIN_POLL_FAILED';
+            say(code, 'error');
+            if (loginPollNeedsStatus(code)) {
+              poll.stop();
+              setLoginStarted(false);
+              void loadAccount().catch((failure) => {
+                if (loginAttemptGate.isCurrent(loginEpoch)) say(failure instanceof Error ? failure.message : 'ACCOUNT_LOAD_FAILED', 'error');
+              });
+            }
+          }
         }
-      }, () => routeActiveRef.current && AppState.currentState === 'active', loginPollGate);
+      }, () => routeActiveRef.current && AppState.currentState === 'active'
+        && loginAttemptGate.isCurrent(loginEpoch) && loginAttemptGate.canRead()
+        && accountRefreshInFlightRef.current === null, loginPollGate);
+      loginPollRef.current = poll;
       const timer = setInterval(() => { void poll.tick(); }, 3000);
-      return () => { clearInterval(timer); poll.stop(); };
+      return () => {
+        clearInterval(timer); poll.stop();
+        if (loginPollRef.current === poll) loginPollRef.current = null;
+      };
     }
-  }, [loadAccount, loginPollGate, loginStarted, say]);
+  }, [loadAccount, loginAttemptGate, loginPollGate, loginStarted, say]);
+  useEffect(() => () => {
+    loginAttemptGate.invalidate();
+    loginPollRef.current?.stop();
+  }, [loginAttemptGate]);
   useEffect(() => {
     const listener = AppState.addEventListener('change', (state) => {
       if (state === 'active' && routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'); });
@@ -953,11 +991,60 @@ function AppBody() {
   };
 
   const startLogin = async () => {
-    const reply = await requestNative({ version: 1, kind: 'account.login.start' });
-    if (reply.kind !== 'login') throw new Error(reply.kind === 'error' ? reply.code : 'LOGIN_REPLY_INVALID');
-    await Linking.openURL(reply.authorizationUrl);
-    setLoginStarted(true);
-    setAccount((prior) => prior ? { ...prior, state: 'authenticating' } : { kind: 'account', state: 'authenticating', displayName: null, principalId: null });
+    const epoch = loginAttemptGate.beginStart();
+    if (epoch === null) return;
+    setNotice(null);
+    accountRefreshEpochRef.current += 1;
+    setLoginAction('start');
+    try {
+      const reply = await requestNative({ version: 1, kind: 'account.login.start' });
+      if (!loginAttemptGate.isCurrent(epoch)) return;
+      if (reply.kind !== 'login') throw new Error(reply.kind === 'error' ? reply.code : 'LOGIN_REPLY_INVALID');
+      loginAttemptGate.observe(epoch, 'authenticating');
+      const pendingAccount: Account = { kind: 'account', state: 'authenticating', displayName: null, principalId: null };
+      accountRef.current = pendingAccount;
+      setAccount(pendingAccount);
+      setLoginStarted(true);
+      setCancelUnconfirmed(false);
+      try { await Linking.openURL(reply.authorizationUrl); }
+      catch { throw new Error('ACCOUNT_BROWSER_OPEN_FAILED'); }
+    } finally {
+      if (loginAttemptGate.owns(epoch)) {
+        loginAttemptGate.finish(epoch);
+        setLoginAction(null);
+      }
+    }
+  };
+
+  const cancelLogin = async () => {
+    const epoch = loginAttemptGate.beginCancel();
+    if (epoch === null) return;
+    setNotice(null);
+    accountRefreshEpochRef.current += 1;
+    loginPollRef.current?.stop();
+    setLoginStarted(false);
+    setLoginAction('cancel');
+    setCancelUnconfirmed(true);
+    try {
+      const result = await logoutAndConfirm(async () => {
+        const reply = await requestNative({ version: 1, kind: 'account.logout' });
+        if (reply.kind !== 'account' && reply.kind !== 'error') throw new Error('ACCOUNT_REPLY_INVALID');
+        return reply;
+      }, () => {
+        if (!loginAttemptGate.confirmCancel(epoch)) return;
+        const signedOut: Account = { kind: 'account', state: 'signed-out', displayName: null, principalId: null };
+        accountRef.current = signedOut;
+        setAccount(signedOut);
+        setCancelUnconfirmed(false);
+        say('已取消登录，可以重新登录。');
+      });
+      if (result !== 'confirmed' && loginAttemptGate.owns(epoch)) say('取消尚未确认，请重试取消。', 'error');
+    } finally {
+      if (loginAttemptGate.owns(epoch)) {
+        loginAttemptGate.finish(epoch);
+        setLoginAction(null);
+      }
+    }
   };
 
   const startSpeech = async () => {
@@ -1065,15 +1152,22 @@ function AppBody() {
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
     {screen === 'login' && <View style={styles.loginPage}>
-      <Topbar right={{ label: '刷新', onPress: () => void run('account', loadAccount) }}/>
+      <Topbar right={loginAction !== null || cancelUnconfirmed ? undefined : { label: '刷新', onPress: () => void run('account', loadAccount) }}/>
       <View style={styles.loginCard}>
         <View style={styles.logoMark}><Text style={styles.logoMarkText}>M</Text></View>
         <Text style={styles.title}>连接你的 Agent</Text>
         <Text style={styles.subtitle}>通过已授权的设备打开同一会话。账号凭据由本机安全存储。</Text>
         {!!notice && <NoticeView notice={notice}/>}
-        {account?.state === 'authenticating' || loginStarted ? <View style={styles.pendingLogin}><ActivityIndicator color={C.green}/><Text style={styles.body}>等待浏览器完成授权…</Text><Text style={styles.caption}>授权后会自动检查登录状态。</Text></View> : <Pressable accessibilityRole="button" onPress={() => void run('login', startLogin)} style={styles.primaryButton}><Text style={styles.primaryText}>使用浏览器登录</Text></Pressable>}
+        {account?.state === 'authenticating' || loginStarted || cancelUnconfirmed ? <View style={styles.pendingLogin}>
+          {!cancelUnconfirmed && <ActivityIndicator color={C.green}/>}
+          <Text style={styles.body}>{cancelUnconfirmed ? '取消登录尚未确认' : '等待浏览器完成授权…'}</Text>
+          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '授权后会自动检查登录状态，也可以取消后重试。'}</Text>
+          <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login_cancel', cancelLogin)} style={styles.secondaryButton}>
+            <Text style={styles.secondaryText}>{loginAction === 'cancel' ? '正在取消…' : cancelUnconfirmed ? '重试取消登录' : '取消登录'}</Text>
+          </Pressable>
+        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login', startLogin)} style={styles.primaryButton}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在发起登录…' : '使用浏览器登录'}</Text></Pressable>}
         {loading && <ActivityIndicator style={{ marginTop: 16 }} color={C.green}/>}
-        <Text style={styles.caption}>登录状态不可用时，可以重试刷新。</Text>
+        {loginAction === null && !cancelUnconfirmed && <Text style={styles.caption}>登录状态不可用时，可以重试刷新。</Text>}
       </View>
     </View>}
 

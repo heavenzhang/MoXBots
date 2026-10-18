@@ -111,6 +111,133 @@
       "rustSourceUnchanged": true,
       "compiledInputsUnchanged": true,
       "resultsAccepted": true
+    },
+    "source126-offline": {
+      "source": {
+        "sourceScopeVersion": 2,
+        "sourceCommit": "1268347d12f534057417a4c214faf60c33e42c80",
+        "sourceDirty": false,
+        "sourceDigest": "1eb51595982690c995c50c51c26c1e59e0472b3e392964165e267ecb6cb12c6e"
+      },
+      "compiledInputHashes": {
+        "mobile/app/modules/moxbots-remote/ios/SecureRecords.swift": "2281a88e0b98b8c5a0321e93acccc2a6a3215b32076be725bbbe01e267e0d094",
+        "mobile/app/modules/moxbots-remote/ios/NativeConnection.swift": "8e859a5078a200d505c6f2c6274ef0c95c1003e37f71dd99e84c05b74cce8f96",
+        "mobile/app/modules/moxbots-remote/ios/NativeAttachments.swift": "abe8a7763f1a8c493ed9e2029e93d1c9cc122f19762391c4ab774462f45db479",
+        "mobile/tests/ios-native/Host.swift": "1450921dca7ab151df1d98655110c29853dd00fa42a8fd98830927b4afb73c10",
+        "mobile/tests/ios-native/NativeOwnersTests.swift": "8d6a20649c7759ac137279fe48824e9295c43650bbf7f5aa3c91496b12c963be",
+        "mobile/tests/ios-native/project.rb": "db8a153fc36f46771387d1be454bfd535ebfd9cea52b81a930fb487a98b28212",
+        "mobile/scripts/test-ios-native.mjs": "fe14907fe7a62ffba432c9f6fab87cc4a45a82d1860abbfeaeb6dba5e7e0f04b",
+        "mobile/scripts/native-source.mjs": "639b63eb3b646fb76dd6cada9060464be81c30e990dbf49bb7747edc3de9e4a2"
+      },
+      "summary": {
+        "devicesAndConfigurations": [
+          {
+            "device": {
+              "architecture": "arm64",
+              "deviceId": "8505F368-BEAD-401F-89BB-0924B67E40DA",
+              "deviceName": "MoXBots-Mobile-002-iPhone",
+              "modelName": "iPhone 16e",
+              "osBuildNumber": "24A434",
+              "osVersion": "27.0",
+              "platform": "iOS Simulator"
+            },
+            "expectedFailures": 0,
+            "failedTests": 0,
+            "passedTests": 3,
+            "skippedTests": 1,
+            "testPlanConfiguration": {
+              "configurationId": "1",
+              "configurationName": "Test Scheme Action"
+            }
+          }
+        ],
+        "environmentDescription": "NativeOwnersTests \u00b7 Built with macOS 26.6",
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "finishTime": 1792294588.983,
+        "passedTests": 3,
+        "result": "Passed",
+        "runtimeWarnings": [],
+        "skippedTests": 1,
+        "startTime": 1792294539.829,
+        "statistics": [],
+        "testFailures": [],
+        "title": "Test - NativeOwnersTests",
+        "topInsights": [],
+        "totalTestCount": 4
+      },
+      "runnerExit": 0,
+      "resultChecksPassed": true,
+      "archiveSha256": "5c546d671d6b31a5aba5e56300c5c8da8c8c3d4b0c6d0edb1076e9ef75e2d8a5",
+      "archivePath": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-1268347d/offline-native-tests.xcresult.tar.gz",
+      "postTestDiagnosticTimeoutSeconds": 0,
+      "boundary": "Source126 only; later cancel implementation and async test queue require renewed native acceptance."
+    },
+    "source126-live": {
+      "source": {
+        "sourceScopeVersion": 2,
+        "sourceCommit": "1268347d12f534057417a4c214faf60c33e42c80",
+        "sourceDirty": false,
+        "sourceDigest": "1eb51595982690c995c50c51c26c1e59e0472b3e392964165e267ecb6cb12c6e"
+      },
+      "compiledInputHashes": {
+        "mobile/app/modules/moxbots-remote/ios/SecureRecords.swift": "2281a88e0b98b8c5a0321e93acccc2a6a3215b32076be725bbbe01e267e0d094",
+        "mobile/app/modules/moxbots-remote/ios/NativeConnection.swift": "8e859a5078a200d505c6f2c6274ef0c95c1003e37f71dd99e84c05b74cce8f96",
+        "mobile/app/modules/moxbots-remote/ios/NativeAttachments.swift": "abe8a7763f1a8c493ed9e2029e93d1c9cc122f19762391c4ab774462f45db479",
+        "mobile/tests/ios-native/Host.swift": "1450921dca7ab151df1d98655110c29853dd00fa42a8fd98830927b4afb73c10",
+        "mobile/tests/ios-native/NativeOwnersTests.swift": "8d6a20649c7759ac137279fe48824e9295c43650bbf7f5aa3c91496b12c963be",
+        "mobile/tests/ios-native/project.rb": "db8a153fc36f46771387d1be454bfd535ebfd9cea52b81a930fb487a98b28212",
+        "mobile/scripts/test-ios-native.mjs": "fe14907fe7a62ffba432c9f6fab87cc4a45a82d1860abbfeaeb6dba5e7e0f04b",
+        "mobile/scripts/native-source.mjs": "639b63eb3b646fb76dd6cada9060464be81c30e990dbf49bb7747edc3de9e4a2"
+      },
+      "summary": {
+        "devicesAndConfigurations": [
+          {
+            "device": {
+              "architecture": "arm64",
+              "deviceId": "8505F368-BEAD-401F-89BB-0924B67E40DA",
+              "deviceName": "MoXBots-Mobile-002-iPhone",
+              "modelName": "iPhone 16e",
+              "osBuildNumber": "24A434",
+              "osVersion": "27.0",
+              "platform": "iOS Simulator"
+            },
+            "expectedFailures": 0,
+            "failedTests": 0,
+            "passedTests": 4,
+            "skippedTests": 0,
+            "testPlanConfiguration": {
+              "configurationId": "1",
+              "configurationName": "Test Scheme Action"
+            }
+          }
+        ],
+        "environmentDescription": "NativeOwnersTests \u00b7 Built with macOS 26.6",
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "finishTime": 1792295237.71,
+        "passedTests": 4,
+        "result": "Passed",
+        "runtimeWarnings": [
+          {
+            "issueType": "Runtime Warning",
+            "message": "This method should not be called on the main thread as it may lead to UI unresponsiveness."
+          }
+        ],
+        "skippedTests": 0,
+        "startTime": 1792294598.902,
+        "statistics": [],
+        "testFailures": [],
+        "title": "Test - NativeOwnersTests",
+        "topInsights": [],
+        "totalTestCount": 4
+      },
+      "runnerExit": 0,
+      "resultChecksPassed": true,
+      "archiveSha256": "595ede5ad30fd17e48edd95bcd3864d5abcd94a6eeb27018dd5acf1db7efa3c0",
+      "archivePath": "/Users/zhangshaohua/Documents/WPS Cloud/\u3010\u9879\u76ee\u3011\u76ee\u5f55/MoxBot/output/mobile-002/native-checkpoints/ios-native-runtime-1268347d/live-native-tests.xcresult.tar.gz",
+      "postTestDiagnosticTimeoutSeconds": 600,
+      "boundary": "Source126 only; later cancel implementation and async test queue require renewed native acceptance."
     }
   }
 }

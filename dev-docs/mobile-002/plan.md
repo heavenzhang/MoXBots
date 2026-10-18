@@ -1,6 +1,10 @@
 # MOXBOTS-MOBILE-002 execution plan
 
-## Current authoritative checkpoint — 2026-10-18
+## Latest active repair — 2026-10-18
+
+Source126 combined9normal CI jobs and fresh dual-platform native/package gates passed. Same-source signing-disabled control reproduces full-App Keychain failure; exact Xcode ad-hoc archive restores first-screen/refresh, without removing data. Actual Safari unauthenticated login reached; no SSO completion. That workflow exposed missing cancel UI and native loss of cancel proof on failure. Current app55policy/type/lint and native112pass/1ignored/strict Clippy pass; deterministic original-code503 regression retained. Fresh compiled native/app cancellation UI and final CI/main integration remain pending. Current126 packages are historical for this newer repair. Details: ios-native-runtime.md, simulator-signing-primary-evidence.json and active task record. Apple team retrieval and Firebase/physical-device/push/speech gates remain open.
+
+## Prior authoritative checkpoint — 2026-10-18
 
 Original mobile product source is delivered through PR113 on main3c95c51ed74b5da44093d74a9b3cf4a965a4e3ef. Its pre-merge and exact post-merge Test/Owned CI passed. Current original Android native start/cancel:2pass2.639s; offline33pass/1 opt-in skip7.651s; shared connection110pass/1ignored and strict Clippy pass. Clean02c2fe419 candidate APK673d4659 and unsigned simulator archive89606c9a are verified/installed, sharing native digesteea5df3be892ec02695c25289ebffb4f6e3f24256589695d860bf4444f423c6c. They are not signed phone/TestFlight or production acceptance.
 

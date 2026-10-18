@@ -7,7 +7,7 @@
 
 ## Objective
 
-Continue MOXBOTS-MOBILE-002 without shrinking its everyday-use objective: add missing actual iOS native SDK/Keychain/attachment acceptance while the Mac is locked. User-authorized original Host/session architecture and Git destination remain unchanged. No product executor, account, permissions or deployment changes. The integration also contains a test-only desktop Host lifecycle regression after combined CI failed; product Host source remains unchanged.
+Continue MOXBOTS-MOBILE-002 without shrinking its everyday-use objective: add actual iOS SDK/Keychain/attachment acceptance, repair simulator signing and complete visible login cancellation. User-authorized original Host/session architecture and Git destination remain unchanged. No product executor, account, permissions or deployment changes. The integration also contains a test-only desktop Host lifecycle regression after combined CI failed; product Host source remains unchanged.
 
 ## Acceptance criteria
 
@@ -68,3 +68,11 @@ User confirmed unlock and no existing Firebase project. CUA now accesses Xcode a
 - Original product and manually resigned executable omit __TEXT __entitlements/__ents_der, while the accepted Xcode-native test host contains both. This supports an Xcode simulator-entitlement hypothesis, not yet a confirmed fix.
 - Simulator builder now requests Xcode ad-hoc signing rather than disabling signing and verifies strict signature, ad-hoc/non-linker resource sealing and both simulator entitlement sections. It requires no Apple development identity or provisioning; it does not enable true device signing. Actual full build and same-data UI retest pending.
 - Maina823 merged-source DOM301files/2564cases passed with4workers (251.61s). Earlier normal-parallel Settings focus failure retained; isolated Settings2pass. Typecheck/focused lint pass. Both updated Android/iOS Release Rust libraries built; new native runtime/package acceptance pending.
+
+## Confirmed signing fault and cancellation repair
+
+- Source126 Test39094018994 succeeded:9normal jobs including Ubuntu systemd, optional iOS build skipped. Actual126 iOS3/1 and4/0 runner/hash gates pass;600s post-test diagnostic collection timeout retained. Packages are source-bound; newer inputs need fresh acceptance.
+- Same-source/JS/Info/data signing positive-negative-positive CUA control confirms secure-store failure with signing disabled and recovery after exact signed archive restore. No data removal. Safari original login form reached without credentials/full SSO. See new source-bound evidence and task-output screenshots.
+- One reused worker implemented only3app files: explicit cancellation/signed-out confirmation, failure quarantine/retry, synchronous action mutex, stale poll/read fencing and terminal handling. Primary reviewed and independently ran typecheck/lint/policy55pass. Native cancellation lost proof on failure; original deterministic TLS503 regression fails, repair112pass/1ignored plus Clippy; worker native review passed. It is HTTP503 over real TLS, not a tested TCP disconnection. No automatic retry/new authority/frozen dependency change.
+- Swift live test uses serial async queue/continuation, asserts off-main; independent review rejected sync before acceptance. Actual new compiled4cases still pending. No pending-SSO process-death persistence claim.
+- Next: commit/push repair, rebuild native/app, real UI cancellation/return and final CI/main receipt. Physical/SSO/Host/push/speech/internal trial gates stay open. Apple teams query failed; Firebase explicitly absent.

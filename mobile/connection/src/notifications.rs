@@ -660,6 +660,7 @@ mod tests {
                     let method = fields.next().ok_or("method")?.to_owned();
                     let path = fields.next().ok_or("path")?.to_owned();
                     if path != "/api/agent-network/instance"
+                        && path != "/auth/login/cancel"
                         && !headers.lines().any(|line| {
                             line.eq_ignore_ascii_case(&format!(
                                 "authorization: Bearer {}",
@@ -1088,6 +1089,61 @@ mod tests {
             "OWNED_SESSION_INVALID"
         );
         assert_eq!(server.seen.lock().unwrap().len(), 4);
+        server.finish().await;
+    }
+    #[tokio::test]
+    async fn failed_pending_login_cancel_retains_original_proof_until_explicit_retry_succeeds() {
+        let server = Server::start(vec![
+            Reply::json(
+                503,
+                json!({"error":{"code":"SYNTHETIC_CANCEL_UNAVAILABLE"}}),
+            ),
+            Reply::json(204, Value::Null),
+        ])
+        .await;
+        let memory = Box::<Memory>::default();
+        let mut o = owner(&server, Arc::new(callbacks(&memory)));
+        let instance = o.saved.take().unwrap().instance;
+        o.client = Some(OwnedClient::pinned(instance, Some(&server.ca)).unwrap());
+        let device = uuid::Uuid::new_v4().to_string();
+        let transaction = uuid::Uuid::new_v4().to_string();
+        let verifier = "v".repeat(43);
+        o.pending = Some(PendingLogin {
+            device: device.clone(),
+            transaction: transaction.clone(),
+            verifier: Zeroizing::new(verifier.clone()),
+            expires: jsonwebtoken::get_current_timestamp() + 300,
+        });
+        let first = o
+            .request(json!({"version":1,"kind":"account.logout"}))
+            .await;
+        assert_eq!(first["ok"], false);
+        assert!(o.pending.is_some());
+        assert_eq!(o.account_view()["state"], "authenticating");
+        let second = o
+            .request(json!({"version":1,"kind":"account.logout"}))
+            .await;
+        assert_eq!(second["ok"], true);
+        assert_eq!(second["value"]["state"], "signed-out");
+        assert!(o.pending.is_none());
+        // A settled logout is idempotent and performs no third HTTP request.
+        assert_eq!(
+            o.request(json!({"version":1,"kind":"account.logout"}))
+                .await["ok"],
+            true
+        );
+        {
+            let seen = server.seen.lock().unwrap();
+            assert_eq!(seen.len(), 2);
+            for request in seen.iter() {
+                assert_eq!(request.method, "DELETE");
+                assert_eq!(request.path, "/auth/login/cancel");
+                assert_eq!(
+                    request.body,
+                    json!({"deviceId":device,"transactionId":transaction,"pkceVerifier":verifier})
+                );
+            }
+        }
         server.finish().await;
     }
     #[tokio::test]
