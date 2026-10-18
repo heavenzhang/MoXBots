@@ -206,6 +206,8 @@ Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代�
 
 ## 5. Goal 与跨 Session 协作
 
+Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 lease 与 SessionStore 持久 intent，暂停/停止沿原控制 owner，详见 [模型持久恢复](model_recovery.md)。它不会重放原任务或建立第二套 Goal 调度。
+
 ### 5.1 Goal
 
 Goal 是 current Session 的独立 durable state，存储在 `session_goals.json`，不嵌入 Session metadata，也不复用 Task/Cron。`SessionGoalManager` 是唯一业务 owner，同一 Session 最多一个 unfinished Goal。

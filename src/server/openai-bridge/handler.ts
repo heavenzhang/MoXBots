@@ -406,6 +406,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
     return new Response(stream, { status: response.status, headers: {
       'content-type': response.headers.get('content-type') ?? 'application/json',
       'x-should-retry': 'false',
+      ...(response.headers.has('retry-after') ? { 'retry-after': response.headers.get('retry-after')! } : {}),
     } });
   } catch {
     cleanup();
@@ -469,7 +470,11 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       }), { ...upstream, contextRecovery: undefined }));
     }
     if (upstream.modelFailover) {
-      return upstream.modelFailover.run(request, upstream, target => handler(new Request(request.url, {
+      // Parsing above consumed request.body. Recovery hooks need an intact body
+      // to archive the exact inference before granting another call.
+      const inferenceRequest = new Request(request.url, { method: 'POST', headers: request.headers,
+        body: JSON.stringify(anthropicReq), signal: request.signal });
+      return upstream.modelFailover.run(inferenceRequest, upstream, target => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
       }), { ...target, modelFailover: undefined }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
@@ -856,7 +861,10 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
           ok: false,
           response: new Response(JSON.stringify(translated.body), {
             status: translated.status,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json',
+              ...(attempt.upstreamResp.headers.has('retry-after')
+                ? { 'retry-after': attempt.upstreamResp.headers.get('retry-after')! } : {}),
+            },
           }),
         };
       }
