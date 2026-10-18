@@ -467,7 +467,7 @@ while True: time.sleep(.1)
                                    "activeSession": None, "stopping": False, "token": "SYNTHETIC_CAPABILITY"}).encode()
             else:
                 pid = b"12345" if argv[2] == lab.NODE else b"23456"
-                data = b"LoadState=loaded\nActiveState=active\nSubState=running\nResult=success\nExecMainStatus=0\nMainPID=" + pid + b"\n"
+                data = b"LoadState=loaded\nActiveState=active\nSubState=running\nResult=success\nExecMainStatus=0\nMainPID=" + pid + b"\nRestart=on-failure\nNRestarts=0\n"
             return subprocess.CompletedProcess(argv, 0, data, b"SYNTHETIC_CAPABILITY")
         with patch.object(lab, "bounded_file_bytes", side_effect=contents), patch.object(Path, "lstat", lstat), \
              patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=1234, pw_gid=2345)), patch.object(lab, "run", side_effect=command):
@@ -626,9 +626,10 @@ while True: time.sleep(.1)
                       "status": {"kind": "missing"}, "NodeDoctor": {"attempted": False},
                       "startupContract": {"marker": {"phase": "committed"}, "identityMatchesMarker": True}}
         class Guest:
-            def call(self, op):
+            def call(self, op, **kwargs):
                 calls.append(op)
                 self_outer.assertEqual(op, "runtime-readiness-observation")
+                self_outer.assertEqual(kwargs, {"include_startup_errors": True})
                 return projection
         self_outer = self
         def bounded(operation, timeout):
@@ -708,8 +709,104 @@ while True: time.sleep(.1)
             self.assertEqual(observe.call_count, 1)
             self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(diagnostics))
 
+    def test_startup_journal_projection_accepts_only_complete_error_codes_without_secrets(self):
+        def record(value):
+            return json.dumps({"MESSAGE": json.dumps(value), "_CAPABILITY": "SYNTHETIC_CAPABILITY"}).encode()
+        raw = b"\n".join([record({"status": "error", "code": "OWNED_ACCOUNT_UNAVAILABLE", "token": "SYNTHETIC_CAPABILITY"}),
+            record({"status": "error", "code": "OWNED_ACCOUNT_UNAVAILABLE"}),
+            record({"status": "error", "code": "NETWORK_CREDENTIAL_KEY_MISSING"}),
+            record({"status": "error", "code": "SYNTHETIC_SECRET_UNKNOWN_CODE"}),
+            record({"status": "error", "code": {"token": "SYNTHETIC_CAPABILITY"}}),
+            record({"status": "success", "code": "SYNTHETIC_CAPABILITY"}),
+            json.dumps({"MESSAGE": 'prefix {"status":"error","code":"OWNED_ACCOUNT_UNAVAILABLE"}'}).encode(),
+            b"SYNTHETIC_CAPABILITY", b'{"MESSAGE":"broken SYNTHETIC_CAPABILITY'])
+        result = lab.project_startup_errors(raw)
+        self.assertEqual(result, {"codeCounts": {"NETWORK_CREDENTIAL_KEY_MISSING": 1, "OWNED_ACCOUNT_UNAVAILABLE": 2},
+                                  "unknownCodeObserved": True, "truncated": False})
+        self.assertNotIn("SYNTHETIC", json.dumps(result))
+        bounded = lab.project_startup_errors(b"\n".join([record({"status": "error", "code": "OWNER_LOCK_UNSAFE"})] * 31))
+        self.assertEqual(bounded["codeCounts"], {"OWNER_LOCK_UNSAFE": 30})
+        self.assertTrue(bounded["truncated"])
+
+    def test_journal_collector_uses_exact_current_boot_query_and_bounds_bytes(self):
+        for overflow in (False, True):
+            payload = json.dumps({"MESSAGE": json.dumps({"status": "error", "code": "OWNED_ACCOUNT_UNAVAILABLE"})}).encode() + b"\n"
+            script = "import sys;sys.stdout.buffer.write(bytes.fromhex(sys.argv[1]));sys.stdout.buffer.write(b'SYNTHETIC_CAPABILITY'*8000 if sys.argv[2]=='1' else b'')"
+            child = subprocess.Popen([sys.executable, "-c", script, payload.hex(), "1" if overflow else "0"],
+                                     stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+            try:
+                with patch.object(lab.subprocess, "Popen", return_value=child) as popen:
+                    result = lab.connector_startup_error_observation()
+                popen.assert_called_once_with(["journalctl", "--boot=0", "--unit=" + lab.CONNECTOR, "--lines=30", "--no-pager", "--quiet",
+                    "--output=json", "--output-fields=MESSAGE"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                self.assertEqual(result["codeCounts"], {"OWNED_ACCOUNT_UNAVAILABLE": 1})
+                self.assertEqual(result["truncated"], overflow)
+                self.assertNotIn("SYNTHETIC", json.dumps(result))
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    child.wait(timeout=5)
+                child.stdout.close()
+
+    def test_runtime_startup_errors_require_explicit_flag_failed_connector_and_empty_status(self):
+        for enabled, active, kind in ((False, "failed", "empty"), (True, "active", "empty"),
+                                      (True, "failed", "json"), (True, "failed", "empty"), (True, "failed", "missing")):
+            def command(argv, **kwargs):
+                state = active if argv[2] == lab.CONNECTOR else "failed"
+                data = (f"LoadState=loaded\nActiveState={state}\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\nRestart=on-failure\nNRestarts=3\n").encode()
+                return subprocess.CompletedProcess(argv, 0, data, b"")
+            def contents(path, bound):
+                if path == lab.STATUS:
+                    if kind == "missing":
+                        raise FileNotFoundError()
+                    return (b"" if kind == "empty" else b'{"state":"unavailable","ready":false}'), SimpleNamespace(st_mode=stat.S_IFREG | 0o640, st_uid=1234, st_gid=2345)
+                raise FileNotFoundError()
+            with patch.object(lab, "run", side_effect=command), patch.object(lab, "bounded_file_bytes", side_effect=contents), \
+                 patch("pwd.getpwnam", return_value=SimpleNamespace(pw_uid=1234, pw_gid=2345)), \
+                 patch.object(lab, "connector_startup_error_observation", return_value={"codeCounts": {}, "unknownCodeObserved": False}) as journal:
+                result = lab.runtime_readiness_observation(include_startup_errors=enabled)
+            expected = enabled and active == "failed" and kind in {"empty", "missing"}
+            self.assertEqual(journal.call_count, int(expected))
+            self.assertEqual(result["units"]["connector"]["Restart"], "on-failure")
+            self.assertEqual(result["units"]["connector"]["restartCount"], 3)
+            self.assertEqual("connectorStartupErrors" in result, expected)
+
+    def test_startup_journal_deadline_cleans_only_its_owned_reader(self):
+        child = subprocess.Popen([sys.executable, "-c", "import time;time.sleep(60)"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            with patch.object(lab.subprocess, "Popen", return_value=child), patch.object(lab.time, "monotonic", side_effect=[0, 3]):
+                with self.assertRaisesRegex(lab.Rejected, "^startup-journal-read-deadline$"):
+                    lab.connector_startup_error_observation()
+            self.assertIsNotNone(child.poll())
+        finally:
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=5)
+            child.stdout.close()
+
+    def test_runtime_restart_policy_and_count_remain_closed_when_values_are_unknown(self):
+        state = b"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\nRestart=SYNTHETIC_CAPABILITY\nNRestarts=9999999999\n"
+        with patch.object(lab, "run", return_value=subprocess.CompletedProcess([], 0, state, b"")):
+            result = lab.runtime_readiness_observation()
+        self.assertEqual(result["units"]["connector"]["Restart"], "unknown-redacted")
+        self.assertIsNone(result["units"]["connector"]["restartCount"])
+        self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
+
+    def test_runtime_startup_flag_defaults_false_and_rejects_non_bool_before_guest_RPC(self):
+        class Guest:
+            def call(self, op, **kwargs):
+                self_outer.assertEqual(op, "runtime-readiness-observation")
+                self_outer.assertIs(kwargs["include_startup_errors"], False)
+                return {}
+        self_outer = self
+        with patch.object(lab, "_GUEST", Guest()):
+            self.assertEqual(lab.runtime_readiness_observation(), {})
+            for value in (1, 0, "true", None, [], {}):
+                with self.assertRaisesRegex(lab.Rejected, "^runtime-startup-errors-flag$"):
+                    lab.runtime_readiness_observation(include_startup_errors=value)
+
     def test_runtime_observation_does_not_attempt_doctor_without_Node_PID(self):
-        state = b"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\n"
+        state = b"LoadState=loaded\nActiveState=failed\nSubState=failed\nResult=exit-code\nExecMainStatus=1\nMainPID=0\nRestart=on-failure\nNRestarts=3\n"
         with patch.object(lab, "run", return_value=subprocess.CompletedProcess([], 0, state, b"")) as run:
             result = lab.runtime_readiness_observation()
         self.assertFalse(result["NodeDoctor"]["attempted"])
