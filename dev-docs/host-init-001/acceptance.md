@@ -1,0 +1,32 @@
+# First-install Host registry acceptance
+
+Task: MOXBOTS-HOST-INIT-001. Source delivery and publication remain pending until the gates below close. The human requires complete acceptance before main integration, followed by handoff to the existing unified deployment chat. The daily Mac client is excluded.
+
+## Product behavior and ownership
+
+A genuinely fresh Host now creates its identity and authoritative empty `config.json` (`agents: []`) and `projects.json` through the original locked Node startup, before exposing local control, reverse management or catalog service. An immutable-identity-bound transaction records pending before identity publication; a checked atomic phase change consumes pending after both files are durable. Recovery accepts only that transaction's exact initial data and owned temporary/publication states. Complete existing registries remain untouched. Missing established files, partial/corrupt data, foreign links/temporaries and nonempty old workspace evidence fail closed.
+
+`src/host/registry-bootstrap.ts` owns this lifecycle within the existing Host startup; `admin-config` exposes the original intent → projects → config lock domains. There is no new registry, Agent, provider, model credential, execution grant or network authority. Existing unjournaled incomplete installations require operator diagnosis; missing files alone are never permission to recreate authority.
+
+## Evidence and limits
+
+| Gate | Actual result |
+| --- | --- |
+| Primary code review | Worker commit8d112633 normally integrated; original Node owner, file-lock domains, descriptor/path checks, no-clobber publication and pending consumption inspected. |
+| Primary actual process death | Five fresh synthetic private states killed via real SIGKILL immediately after pending/identity/projects/config/committed publication; new processes recovered the same selected HostID and committed real empty registry. All5 passed. Established identity loss rejected without a persistent change: sixth passed. Module SHA256b4a5ce871c2fda61e88209eafdf545e3585940479c7ad00f545c6ea621f2952d unchanged during probes. This is local filesystem/process evidence, not Ubuntu/systemd or power-loss certification. |
+| Primary focused integration | Initializer38/catalog7/controller5/managementIPC11: all61 passed. Includes actual Host main/private socket, existing mutation preservation and original strict catalog. |
+| Primary TypeScript | Full `tsc --noEmit` exited0 before the subsequent independent canonical diagnostic integration; final combined CI remains authoritative. |
+| Combined candidate tools | Producer6/browser37/reboot13 offline tests passed. Real KVM capability was separately reported by the deployment owner; capability alone does not establish guest boot/reboot. |
+| Additional local Session workers | First run parallel with typechecking: all3 timed out at the unchanged30s guard. Clean unmodified main118 isolated baseline:3/3 passed (37.81s). Combined-source isolated retry:2 passed, portable-provider case timed out after materialization; no timeout was extended and no assertion removed. Root cause remains unresolved. Supported Ubuntu CI must cover this existing suite before acceptance. |
+| Exact-source candidate | Pending; all Node/native/service components must name the same new source, with strict consumer and real artifact digests. Old dcf release is preserved. |
+| Actual Ubuntu24/x86_64/systemd | Fresh one-command → real Dex/Chromium → callback/poll → same intended scope → join → actual Ready/catalog/directory → repeat identity/config/Node PID preservation: pending. No fixture-seeded registry is allowed. |
+| Renewal and reboot | Actual isolated same-source renewal and true guest reboot/identity recovery pending. Production TTL and the existing101 Host are not altered to accelerate tests. |
+| Main and publication | Pending. Merge normally only after full required CI and supported-platform gates; verify remote containment. Current human-designated integration/publication owner01a12b99-7b38-78b1-831f-9c60257d386a verifies the exact accepted source/artifact identity before publication. Stable stays unavailable until that owner completes formal publication admission. |
+
+Private evidence is under the project pointer's `output/host-init-001/`: draft-owner-review.json (historical failed draft), crash-review-IoSKsg/summary.json, baseline118-session-worker.log, retry-session-worker-isolated.log and tool-combination-tests.json. They contain synthetic local state only; no production credentials or account transactions are committed here.
+
+The source primary performs no production upload, ingress edit, backend/101 restart, model call or daily Mac operation. Existing desktop/download/updater publication is outside this task's release lane.
+
+## Explicit ownership transfer
+
+On2026-10-18, the human explicitly selected this chat to take over integration and publication. Original owner01a13320 verified that human reply and released all integration/write/lease activity. The original worktree and dirty records remain preserved. Current delivery is tracked by `.agent-sync/tasks/codex-host-init-delivery-20261018-50e7aad8.md`. Main/publication are still pending, and historical failed Session tests remain open.

@@ -1,7 +1,7 @@
 import { fork, type ChildProcess } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, request } from 'node:http';
-import { chmod, lstat, mkdir, open, readFile, realpath, rename, unlink } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readFile, realpath, unlink } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +37,7 @@ import { HostMobileAssetStaging } from './mobile-asset-staging';
 import { HostNotificationSource, isOriginalSourceWorker, uniqueSourceAgent } from './mobile-notify-source';
 import { admitHeadlessMobileStart } from './headless-mobile-start';
 import { createHostMobileAgentCatalog } from './mobile-agent-catalog';
+import { initializeHostRegistry } from './registry-bootstrap';
 
 const stateDir = resolve(process.env.MYAGENTS_HOST_STATE_DIR ?? '/var/lib/myagents-host-test');
 const socket = process.env.MYAGENTS_HOST_SOCKET ?? '/run/myagents-host-test/control.sock';
@@ -50,17 +51,6 @@ type Active = { sourceAuthority?:LocalSourceAuthority; child: ChildProcess; gene
 async function jsonFile<T>(path: string, fallback: T): Promise<T> {
   try { return JSON.parse(await readFile(path, 'utf8')) as T; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return fallback; throw error; }
-}
-
-async function atomicJson(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  const file = await open(temporary, 'wx', 0o600);
-  try { await file.writeFile(JSON.stringify(value, null, 2)); await file.sync(); }
-  finally { await file.close(); }
-  try { await rename(temporary, path); } catch (error) { await unlink(temporary).catch(() => {}); throw error; }
-  const directory = await open(dirname(path), 'r');
-  try { await directory.sync(); } finally { await directory.close(); }
 }
 
 async function workspacePath(value: string): Promise<string> {
@@ -93,12 +83,9 @@ async function serve(): Promise<void> {
     if (!held) throw new Error('Start Host with flock --no-fork holding its state/host.lock');
   }
   process.umask(0o077);
+  const identity = await initializeHostRegistry(stateDir);
   await mkdir(workspaceRoot, { recursive: true, mode: 0o700 });
   await mkdir(join(workspaceRoot, 'default'), { recursive: true, mode: 0o700 });
-  const identityPath = join(stateDir, 'host-identity.json');
-  let identity = await jsonFile<{ hostId: string; schemaVersion: number } | null>(identityPath, null);
-  if (!identity) { identity = { hostId: randomUUID(), schemaVersion: 1 }; await atomicJson(identityPath, identity); }
-  if (identity.schemaVersion !== 1 || !uuidPattern.test(identity.hostId)) throw new Error('Unsupported Host identity');
   let active: Active | null = null;
   const cloudModelTokens = new Map<string,string>();
   const exitedBots = new Map<string,BotRunIdentity>();
