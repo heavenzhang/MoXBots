@@ -369,3 +369,14 @@ MOXBOTS-057-NETWORK-RELEASE-20261016 固定源码ee055458af8823a611503450424ecad
 0.5.11 source/tag固定 `15be9d6fda17c464afa54ee675d10f1d7fd4507f` / `v0.5.11`；签名、公证、自有更新签名、精确正式候选真实网页登录/冷启动和独立UI通过。2026-10-18 12:43Z更新stable原子切到0.5.11，SHA `ee5d8b48a2a625cf29622440f11e9f05c01ecac59039e667ab63f2cd72117128`。外部294768547B完整正常TLS GET/stat/hash、17原件独审、公开Range/private404/unsupported204和发布后独审通过，12:45Z正常finish释放本任务锁。禁止重跑stage/start/collect/promote/publiccheck或覆盖同版归档。
 
 实际交付记录与证据摘要：`dev-docs/releases/moxbots-0.5.11.md`、`.agent-sync/tasks/codex-release-0511-delivery-20261018-29f55182.md`。私有项目指针work/release-0511-20261018/owner保存完整原件和最终Git核验回执。当前文档PR/六项CI/正常main合入以实际Git refs为准，文档提交不改变冻结source。日常安装仍0.5.9未替换，未做本版本A-to-B升级安装；未新增Host管理/远程模型/Windows验收。后台下载允许，重启仍由用户空闲后确认，不自动停止任务。
+
+
+## MOXBOTS-RELEASE-NOTES-001 — accepted static website history (2026-10-18)
+
+Cumulative0.5.5–0.5.11 history is live at https://140.143.183.232/download/#release-history, linked from download intro. SourcePR135/1bf1a489, nine applicable CI successes plus conditional iOS skip, normal mainbaa1a637 and exact source containment verified; later metadata closeout uses final Gitref. Initial independent HTML path404 was selectively rolled back; final existing-route index+scopedCSS only, no Nginx or updater change. Original manual0.5.6 and updater0.5.11 stay separate. Actual normal-TLS browser byte hashes, desktop/320/390 navigation accepted by Root, with independent prepublication screenshot/source/script review and actor/cache boundaries. Separate postpublication independent review was unavailable due to account usage limit. Release record `dev-docs/releases/website-release-history.md`; private `work/release-notes-001-20261018/FINAL-DELIVERY.json`. No package/client/Host/account/Keychain operation. PR73/25f2ee8c main/backup switching is included in official0.5.11, but the newly discovered uncommitted team presets are a different feature; see MOXBOTS-SESSION-AUDIT-20261018 before mapping the user’s combination-model question. Actual supplier failover remains unaccepted. Pin/network next-unfrozen requests are private queue entries, not 0.5.11 installed changes.
+
+## MOXBOTS-SESSION-AUDIT-20261018 — source/main reconciliation
+
+审计和原负责人跟进见`dev-docs/delivery/session-audit-20261018.md`；私有原件在项目指针`work/session-audit-20261018/`。组合模型的原会话是MoXBots自身SDK session5025b9bb，分支codex/team-mode-20261017共39文件未提交，尚在界面预览，不在0.5.11。与PR73已交付的主备切换分开。后台日志133已恢复正常CI/main流程，Host129转权威聚合137，mobile136和updater-resume仍进行；PR104虽OPEN但实际七文件已同main/v0.5.11，不能再次合并。原owner保持写权限和测试/发布边界；本轮只文档，无客户端/业务/服务写入。
+
+PR133跟进已闭环：实际远端mainad654f723a57568ee6190a86882a185cf4a49816包含8caf2053候选，原候选9项成功/条件iOS跳过，本聊天已亲核包含与tree；改为下一未冻结候选/原生验收队列。审计文档保留初查时间线和最终接续段。
