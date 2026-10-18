@@ -15,14 +15,18 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
 }) {
   const { t } = useTranslation('settings');
   const hintId = useId();
+  const [providerFilter, setProviderFilter] = useState('');
+  const [keyOnly, setKeyOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const saving = useRef(false);
   const settings = value ?? { enabled: false };
-  const models = providers.filter(isModelFailoverProvider).flatMap(provider => provider.models.map(model => ({
+  const eligibleProviders = providers.filter(isModelFailoverProvider);
+  const models = eligibleProviders.flatMap(provider => provider.models.map(model => ({
     providerId: provider.id,
     modelId: model.model,
     label: `${provider.name} · ${model.model}`,
+    searchText: model.modelName,
     hasKey: Boolean(apiKeys[provider.id]?.trim()),
   })));
   const selectedKey = settings.backup ? modelKey(settings.backup) : '';
@@ -57,11 +61,25 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
     </div>
     <div className="mt-4 grid gap-2">
       <p className="text-sm font-medium text-[var(--ink-secondary)]">{t('modelFailover.backup')}</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <CustomSelect ariaLabel={t('modelFailover.providerFilter')} size="toolbar" className="min-w-0 flex-1"
+          value={providerFilter} onChange={setProviderFilter}
+          options={[{ value: '', label: t('modelFailover.allProviders') },
+            ...eligibleProviders.map(provider => ({ value: provider.id, label: provider.name }))]} />
+        <label className="flex items-center gap-2 text-sm text-[var(--ink-secondary)]">
+          <input type="checkbox" checked={keyOnly} onChange={event => setKeyOnly(event.target.checked)} />
+          {t('modelFailover.keyOnly')}
+        </label>
+      </div>
       <CustomSelect ariaLabel={t('modelFailover.backup')} size="md" disabled={busy} value={selectedKey}
+        search={{ placeholder: t('modelFailover.search'), emptyMessage: t('modelFailover.noMatches') }}
         options={[
           { value: '', label: t('modelFailover.none') },
           ...(settings.backup && !selected ? [{ value: modelKey(settings.backup), label: `${t('modelFailover.unavailable')} · ${settings.backup.modelId}` }] : []),
-          ...models.map(model => ({ value: modelKey(model), label: model.label })),
+          ...models.map(model => ({ value: modelKey(model), label: model.label, searchText: model.searchText,
+            hidden: (Boolean(providerFilter) && providerFilter !== model.providerId) || (keyOnly && !model.hasKey),
+            suffix: <span className="text-xs text-[var(--ink-muted)]">{t(model.hasKey ? 'modelFailover.keyConfigured' : 'modelFailover.keyMissing')}</span>,
+          })),
         ]}
         onChange={key => {
           const model = models.find(candidate => modelKey(candidate) === key);

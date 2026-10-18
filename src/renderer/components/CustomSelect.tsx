@@ -6,14 +6,18 @@
  */
 
 import { CheckIcon, ChevronDownIcon } from '@/components/icons';
-import { type ReactNode, useCallback, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { isImeComposingEvent } from '@/utils/imeKeyboard';
 import { Popover } from '@/components/ui/Popover';
 
 export interface SelectOption {
   value: string;
   label: string;
+  /** Hidden choices still resolve the persisted trigger label. */
+  hidden?: boolean;
+  searchText?: string;
   /** Optional structured label. `label` remains the accessible/plain-text source. */
   content?: ReactNode;
   icon?: ReactNode;
@@ -55,6 +59,7 @@ interface CustomSelectProps {
   };
   /** Accessible name when no external <label> is associated with the trigger. */
   ariaLabel?: string;
+  search?: { placeholder: string; emptyMessage: string };
 }
 
 export default function CustomSelect({
@@ -71,10 +76,17 @@ export default function CustomSelect({
   showSelectedSuffix = false,
   footerAction,
   ariaLabel,
+  search,
 }: CustomSelectProps) {
   const { t } = useTranslation('app');
   const resolvedPlaceholder = placeholder ?? t('common.selectPlaceholder');
   const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const menuId = useId();
+  const focusSearch = useCallback((element: HTMLInputElement | null) => { element?.focus(); }, []);
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const visibleOptions = options.filter(option => !option.hidden && (!search || terms.every(term =>
+    `${option.label} ${option.searchText ?? ''}`.toLocaleLowerCase().includes(term))));
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const selectedOption = options.find((o) => o.value === value);
@@ -83,14 +95,16 @@ export default function CustomSelect({
     (optionValue: string) => {
       onChange(optionValue);
       setIsOpen(false);
+      if (search) triggerRef.current?.focus();
     },
-    [onChange],
+    [onChange, search],
   );
 
   return (
     <div
       className={`relative ${className ?? ''}`}
       onKeyDown={(event) => {
+        if (isImeComposingEvent(event)) return;
         if (event.key === 'Escape' && isOpen) {
           event.stopPropagation();
           setIsOpen(false);
@@ -103,7 +117,9 @@ export default function CustomSelect({
         type="button"
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen && !disabled}
+        aria-controls={isOpen && !disabled ? menuId : undefined}
+        onClick={() => { setQuery(''); setIsOpen(!isOpen); }}
         className={`flex w-full items-center gap-2 rounded-lg border border-[var(--line)] bg-[var(--paper)] text-left transition-colors hover:border-[var(--ink-subtle)] disabled:cursor-not-allowed disabled:opacity-60 ${
           compact
             ? 'px-2 py-1 text-xs'
@@ -144,7 +160,7 @@ export default function CustomSelect({
       </button>
       <Popover
         open={isOpen && !disabled}
-        onClose={() => setIsOpen(false)}
+        onClose={() => { setIsOpen(false); if (search) triggerRef.current?.focus(); }}
         anchorRef={triggerRef}
         placement="bottom-start"
         matchAnchorWidth
@@ -164,69 +180,92 @@ export default function CustomSelect({
                     long option lists (e.g. 24-hour picker showed only
                     ~8 items, couldn't scroll). A nested div sidesteps the
                     conflict: outer clips, inner scrolls. */}
-        <div className="max-h-60 overflow-y-auto py-1">
-          {options.map((option) =>
-            option.isSeparator ? (
-              <div
-                key={option.value}
-                className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]/60"
-              >
-                {option.label}
-              </div>
-            ) : (
-              <button
-                key={option.value}
-                type="button"
-                onClick={() => handleSelect(option.value)}
-                // Item font size mirrors the trigger's: `size='md'`
-                // → `text-sm` (14px) so options read at parity with
-                // what the closed trigger shows. Default `size='sm'`
-                // keeps the legacy `text-xs` (12px) for dense forms.
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors ${
-                  size === 'md' || size === 'toolbar' ? 'text-sm' : 'text-xs'
-                } ${
-                  option.value === value
-                    ? 'text-[var(--accent-warm)]'
-                    : 'text-[var(--ink)] hover:bg-[var(--paper-inset)]'
-                }`}
-              >
-                {option.icon && <span className="shrink-0">{option.icon}</span>}
-                <span className="min-w-0">
-                  {option.content ?? (
-                    <span className="block truncate">{option.label}</span>
+        <div id={menuId} onKeyDown={event => {
+          if (isImeComposingEvent(event)) return;
+          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+          event.preventDefault();
+          const choices = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-select-option]')];
+          if (!choices.length) return;
+          const index = choices.indexOf(document.activeElement as HTMLButtonElement);
+          const next = index < 0 ? (event.key === 'ArrowDown' ? 0 : choices.length - 1)
+            : (index + (event.key === 'ArrowDown' ? 1 : -1) + choices.length) % choices.length;
+          choices[next]?.focus();
+        }}>
+          {search && <div className="border-b border-[var(--line)] p-2">
+            <input ref={focusSearch} type="search"
+              aria-label={search.placeholder} placeholder={search.placeholder} value={query}
+              onChange={event => setQuery(event.target.value)}
+              className="w-full min-w-0 rounded-md border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--accent)]" />
+          </div>}
+          <div className="max-h-60 overflow-y-auto py-1">
+            {search && !visibleOptions.some(option => !option.isSeparator) &&
+              <p role="status" className="px-3 py-3 text-sm text-[var(--ink-muted)]">{search.emptyMessage}</p>}
+            {visibleOptions.map((option, index) =>
+              option.isSeparator ? (
+                <div
+                  key={option.value}
+                  className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]/60"
+                >
+                  {option.label}
+                </div>
+              ) : (
+                <button
+                  key={option.value}
+                  type="button"
+                  data-select-option
+                  aria-label={option.label}
+                  aria-describedby={option.suffix ? `${menuId}-${index}-suffix` : undefined}
+                  onClick={() => handleSelect(option.value)}
+                  // Item font size mirrors the trigger's: `size='md'`
+                  // → `text-sm` (14px) so options read at parity with
+                  // what the closed trigger shows. Default `size='sm'`
+                  // keeps the legacy `text-xs` (12px) for dense forms.
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors ${
+                    size === 'md' || size === 'toolbar' ? 'text-sm' : 'text-xs'
+                  } ${
+                    option.value === value
+                      ? 'text-[var(--accent-warm)]'
+                      : 'text-[var(--ink)] hover:bg-[var(--paper-inset)]'
+                  }`}
+                >
+                  {option.icon && <span className="shrink-0">{option.icon}</span>}
+                  <span className="min-w-0">
+                    {option.content ?? (
+                      <span className="block truncate">{option.label}</span>
+                    )}
+                  </span>
+                  {option.value === value && (
+                    <CheckIcon data-selected-indicator className="h-3 w-3 shrink-0" />
                   )}
-                </span>
-                {option.value === value && (
-                  <CheckIcon data-selected-indicator className="h-3 w-3 shrink-0" />
-                )}
-                <span className="min-w-0 flex-1" />
-                {option.suffix && (
-                  <span className="shrink-0">{option.suffix}</span>
-                )}
-              </button>
-            ),
-          )}
+                  <span className="min-w-0 flex-1" />
+                  {option.suffix && (
+                    <span id={`${menuId}-${index}-suffix`} className="shrink-0">{option.suffix}</span>
+                  )}
+                </button>
+              ),
+            )}
 
-          {footerAction && (
-            <>
-              <div className="my-1 border-t border-[var(--line)]" />
-              <button
-                type="button"
-                onClick={() => {
-                  setIsOpen(false);
-                  footerAction.onClick();
-                }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)] ${
-                  size === 'md' || size === 'toolbar' ? 'text-sm' : 'text-xs'
-                }`}
-              >
-                {footerAction.icon && (
-                  <span className="shrink-0">{footerAction.icon}</span>
-                )}
-                <span>{footerAction.label}</span>
-              </button>
-            </>
-          )}
+            {footerAction && (
+              <>
+                <div className="my-1 border-t border-[var(--line)]" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    footerAction.onClick();
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)] ${
+                    size === 'md' || size === 'toolbar' ? 'text-sm' : 'text-xs'
+                  }`}
+                >
+                  {footerAction.icon && (
+                    <span className="shrink-0">{footerAction.icon}</span>
+                  )}
+                  <span>{footerAction.label}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </Popover>
     </div>

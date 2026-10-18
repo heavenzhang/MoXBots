@@ -2320,6 +2320,13 @@
     "unavailable": "Model unavailable"
   },
   "modelFailover": {
+    "providerFilter": "Filter by provider",
+    "allProviders": "All providers",
+    "keyOnly": "API key configured only",
+    "search": "Search model name or ID…",
+    "noMatches": "No matching models. Try another search or filter.",
+    "keyConfigured": "Key configured",
+    "keyMissing": "No API key",
     "title": "Backup model",
     "enable": "Enable automatic model failover",
     "description": "Keep the conversation’s selected model as primary. If it remains unavailable after retries, use one backup to continue the current turn when safe. The next turn starts with the primary model.",
