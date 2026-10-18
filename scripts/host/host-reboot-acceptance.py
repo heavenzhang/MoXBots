@@ -103,6 +103,7 @@ def empty_namespace(lab):
                 raise lab.Rejected("guest-existing-MoX-account-protected")
         lab.need(lab.run(["systemctl", "show", name + ".service", "--property=LoadState", "--value"], check=False).stdout.strip() == b"not-found",
                  "guest-existing-MoX-unit-protected")
+    lab.require_absent_auth_units()
     return True
 
 
@@ -186,6 +187,9 @@ def guest_main():
                 allowed += [["systemctl", "show", unit, "--property=MainPID", "--value"]]
                 allowed += [["systemctl", verb, "--quiet", unit] for verb in ("is-active", "is-enabled")]
                 allowed += [["systemctl", "stop", unit]]
+            for unit in lab.AUTH_UNITS:
+                allowed += [["systemctl", "stop", unit],
+                            ["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"]]
             allowed += [["systemctl", "restart", lab.CONNECTOR]]
             lab.need(command in allowed, "guest-command-outside-closed-owner-operations")
             completed = lab.run(command, timeout=45, check=False)

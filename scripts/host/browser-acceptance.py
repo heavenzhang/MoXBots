@@ -54,6 +54,7 @@ PINS = {
 }
 NODE = "moxbot-host-test.service"
 CONNECTOR = "moxbot-host-network-test.service"
+AUTH_UNITS = tuple("moxbot-host-network-test-auth-" + action + ".service" for action in ("start", "wait", "cancel"))
 STATUS = Path("/run/moxbot-host-network-test/status.json")
 IDENTITY_FILES = [
     Path("/var/lib/moxbot-host-test/host-identity.json"),
@@ -141,6 +142,7 @@ def guard(args):
     old = load_module("browser_systemd_guards", Path(__file__).with_name("systemd-acceptance.py"))
     old.guard(argparse.Namespace(source_root=args.product_source, source_commit=PRODUCT,
         host_artifact_dir=args.product_source, network_artifact_dir=args.product_source, output=args.output))
+    require_absent_auth_units()
     need(args.product_source.is_absolute() and args.output.is_absolute(), "absolute-paths-required")
     need(not args.output.exists(), "summary-output-must-be-new")
     cached = getattr(args, "cached_public_payload", None)
@@ -622,6 +624,53 @@ def auth_unit_observation():
     return observed
 
 
+def require_absent_auth_units():
+    for unit in AUTH_UNITS:
+        need(run(["systemctl", "show", unit, "--property=LoadState", "--value"], check=False, timeout=5).stdout.strip() == b"not-found",
+             "existing-auth-transient-unit-is-protected")
+    return True
+
+
+def cleanup_auth_units(*, wait_seconds=10):
+    """Final cleanup only; never proves or substitutes for native cancellation.
+
+    Initial host/guest guards proved these three fixed names absent. Stop every
+    owned transient and require actual terminal state/MainPID zero, even if the
+    installer pipe failed or its signal was never delivered. No API is called.
+    """
+    results = {}
+    for unit in AUTH_UNITS:
+        observed = {"terminated": False}
+        results[unit] = observed
+        try:
+            completed = host_run(["systemctl", "stop", unit], check=False, timeout=30)
+            observed["stopExitCode"] = completed.returncode
+        except Exception:
+            observed["stopInvocationFailed"] = True
+        until = time.monotonic() + wait_seconds
+        try:
+            while True:
+                response = host_run(["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"], check=False, timeout=5)
+                fields = {}
+                for line in response.stdout.decode(errors="replace").splitlines():
+                    key, separator, value = line.partition("=")
+                    need(separator and key in {"LoadState", "ActiveState", "MainPID"} and key not in fields,
+                         "auth-cleanup-closed-status-projection")
+                    fields[key] = value
+                observed["loadState"] = fields.get("LoadState") if fields.get("LoadState") in {"loaded", "not-found", "error", "masked"} else "other"
+                observed["activeState"] = fields.get("ActiveState") if fields.get("ActiveState") in {"active", "inactive", "failed", "activating", "deactivating", "reloading"} else "other"
+                observed["mainPidIsZero"] = fields.get("MainPID") == "0"
+                observed["terminated"] = (observed["mainPidIsZero"]
+                    and (observed["loadState"] == "not-found"
+                         or (observed["loadState"] == "loaded" and observed["activeState"] in {"inactive", "failed"})))
+                if observed["terminated"] or time.monotonic() >= until:
+                    break
+                time.sleep(0.2)
+        except Exception:
+            observed["statusVerificationFailed"] = True
+    return {"completed": all(value["terminated"] for value in results.values()), "units": results}
+
+
 def install_with_browser(private, browser_home, email, password, action, *, diagnostics=None, save_diagnostics=None):
     # Deliberately the literal public curl | sudo bash command, with ordinary TLS.
     command = f"set -o pipefail; curl --fail --silent --show-error {ORIGIN}/host/install.sh | sudo bash -s -- --instance {ORIGIN}"
@@ -991,6 +1040,11 @@ def accept(args):
                              "owned-unit-still-active-after-cleanup")
                     except Rejected:
                         cleanup_ok = False
+                # This runs only after success/failure of all original native
+                # cancel/session/join/identity gates, never before their checks.
+                auth_cleanup = cleanup_auth_units()
+                summary["authTransientCleanup"] = auth_cleanup
+                cleanup_ok = cleanup_ok and auth_cleanup["completed"]
             for process in reversed(processes):
                 if process.poll() is None:
                     process.terminate()

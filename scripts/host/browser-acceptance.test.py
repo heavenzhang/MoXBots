@@ -287,6 +287,39 @@ while True: time.sleep(.1)
                 child.terminate()
                 child.wait(timeout=5)
 
+    def test_auth_cleanup_stops_only_three_owned_transients_and_verifies_PID_zero(self):
+        commands = []
+        def host(command, **kwargs):
+            commands.append(command)
+            stdout = b"LoadState=loaded\nActiveState=inactive\nMainPID=0\n" if command[1] == "show" else b""
+            return subprocess.CompletedProcess(command, 0, stdout, b"")
+        with patch.object(lab, "host_run", side_effect=host):
+            result = lab.cleanup_auth_units(wait_seconds=0)
+        self.assertTrue(result["completed"])
+        self.assertEqual([command for command in commands if command[1] == "stop"],
+                         [["systemctl", "stop", unit] for unit in lab.AUTH_UNITS])
+        self.assertTrue(all(value["mainPidIsZero"] and value["terminated"] for value in result["units"].values()))
+
+    def test_failed_gate_cleanup_cannot_claim_complete_with_unterminated_auth_wait(self):
+        for unresolved in (b"LoadState=loaded\nActiveState=active\nMainPID=123\n",
+                           b"LoadState=loaded\nActiveState=active\nMainPID=0\n",
+                           b"LoadState=loaded\nActiveState=inactive\nMainPID=123\n",
+                           b"unexpected=SYNTHETIC_CAPABILITY\n"):
+            with self.subTest(state=unresolved):
+                def host(command, **kwargs):
+                    stdout = (unresolved if command[2] == lab.AUTH_UNITS[1] else b"LoadState=not-found\nActiveState=inactive\nMainPID=0\n") if command[1] == "show" else b""
+                    return subprocess.CompletedProcess(command, 0, stdout, b"")
+                with patch.object(lab, "host_run", side_effect=host):
+                    result = lab.cleanup_auth_units(wait_seconds=0)
+                self.assertFalse(result["completed"])
+                self.assertFalse(result["units"][lab.AUTH_UNITS[1]]["terminated"])
+                self.assertNotIn("SYNTHETIC_CAPABILITY", json.dumps(result))
+
+    def test_existing_auth_transient_is_protected_before_installation(self):
+        with patch.object(lab, "run", return_value=subprocess.CompletedProcess([], 0, b"loaded\n", b"")):
+            with self.assertRaisesRegex(lab.Rejected, "existing-auth-transient-unit-is-protected"):
+                lab.require_absent_auth_units()
+
 
 if __name__ == "__main__":
     unittest.main()

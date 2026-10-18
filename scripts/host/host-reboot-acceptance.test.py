@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -112,6 +113,22 @@ class RebootGates(unittest.TestCase):
         command.assert_not_called()
         self.assertNotIn("secret-value", stdout.getvalue() + stderr.getvalue())
         self.assertIn("guest-operation-rejected-redacted", stderr.getvalue())
+
+    def test_guest_allows_only_fixed_auth_transient_stop_and_show_for_final_cleanup(self):
+        unit = lab.AUTH_UNITS[1]
+        for command, allowed in ((["systemctl", "stop", unit], True),
+                (["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"], True),
+                (["systemctl", "restart", unit], False),
+                (["systemctl", "stop", "unrelated.service"], False)):
+            payload = {"op": "command", "nonce": "synthetic", "command": command}
+            stdin = SimpleNamespace(buffer=io.BytesIO(json.dumps(payload).encode()))
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with self.subTest(command=command), patch.object(reboot, "lab_module", return_value=lab), \
+                 patch.object(reboot, "guest_guard", return_value={}), patch.object(reboot.sys, "stdin", stdin), \
+                 patch.object(lab, "run", return_value=subprocess.CompletedProcess(command, 0, b"", b"")) as run, \
+                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(reboot.guest_main(), 0 if allowed else 1)
+                self.assertEqual(run.call_count, 1 if allowed else 0)
 
 
 if __name__ == "__main__":
