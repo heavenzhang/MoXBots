@@ -4,12 +4,13 @@ import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeFile, readFile, lstat, realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
-if(process.argv.slice(2).some(arg=>!['--assets','--ffi','--ffi-debug'].includes(arg)))throw Error('Only --assets, --ffi or --ffi-debug mode is supported');
+if(process.argv.slice(2).some(arg=>!['--assets','--ffi','--ffi-debug','--renewal'].includes(arg)))throw Error('Only --assets, --ffi, --ffi-debug or --renewal mode is supported');
 const assetsMode=process.argv.includes('--assets');
+const renewalMode=process.argv.includes('--renewal');
 const ffiDebug=process.argv.includes('--ffi-debug');
 const ffiMode=process.argv.includes('--ffi')||ffiDebug;
 if(ffiDebug&&process.argv.includes('--ffi'))throw Error('Choose one C ABI build profile');
-if(assetsMode&&ffiMode)throw Error('Choose one explicit mode');
+if([assetsMode,ffiMode,renewalMode].filter(Boolean).length>1)throw Error('Choose one explicit mode');
 const repo=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 if(Number(process.versions.node.split('.')[0])<24)throw Error('Original Host requires Node24');
 const sleep=ms=>new Promise(yes=>setTimeout(yes,ms));
@@ -20,6 +21,13 @@ async function fixtureCleanup(stderr){
   const parent=await realpath(homedir());
   if(!root.startsWith(join(parent,'.mxe-'))||dirname(root)!==parent)return;
   const meta=await lstat(root);if(!meta.isDirectory()||meta.isSymbolicLink()||meta.uid!==process.getuid?.()||(meta.mode&0o777)!==0o700||await realpath(root)!==root)throw Error('Fixture cleanup root identity mismatch');
+  // This verified private root contains only this synthetic fixture. Keep
+  // bounded route/status and connector diagnostics; never dump account state,
+  // keys, headers, SDK logs or the loopback supplier's request bodies.
+  for(const name of ['headless-status.json','headless.log','service.log']){
+    const diagnostic=await readFile(join(root,name),'utf8').catch(()=>'');
+    if(diagnostic)process.stderr.write(`fixture-failure-diagnostic ${name}\n${diagnostic.slice(-8000)}\n`);
+  }
   // Normal failure first asks the existing Node owner to stop/reap the Host/SDK.
   await writeFile(join(root,'stop'),'stop',{mode:0o600});await sleep(2500);
   const owned=[...stderr.matchAll(/^fixture-owned-process name=\S+ pid=(\d+) pgid=\d+ birth=(.+)$/gm)].map(m=>({pid:Number(m[1]),birth:m[2],group:true}));
@@ -52,5 +60,5 @@ async function build(manifest,name,target,release=false){
 const service=await build('services/agentnet/Cargo.toml','myagents_agentnet_service',process.env.MOXBOTS_FULL_SERVICE_TARGET);
 const host=await build('src-tauri/headless-network/Cargo.toml','myagents_host_network',process.env.MOXBOTS_FULL_HOST_TARGET);
 const mobile=await build('mobile/connection/Cargo.toml','mox_mobile_connection',process.env.MOXBOTS_FULL_MOBILE_TARGET,ffiMode&&!ffiDebug);
-const result=await run(mobile,['runtime::full_host_e2e_test::original_mobile_wss_host_chain','--ignored','--exact','--nocapture'],{...process.env,MOXBOTS_FULL_SERVICE_TEST_BIN:service,MOXBOTS_FULL_HOST_TEST_BIN:host,MOXBOTS_FULL_NODE:process.execPath,MOXBOTS_FULL_MODE:assetsMode?'assets':ffiMode?'ffi':'text'},process.env.MOXBOTS_FULL_TIMEOUT_CHECK==='1'?10_000:150_000);
+const result=await run(mobile,['runtime::full_host_e2e_test::original_mobile_wss_host_chain','--ignored','--exact','--nocapture'],{...process.env,MOXBOTS_FULL_SERVICE_TEST_BIN:service,MOXBOTS_FULL_HOST_TEST_BIN:host,MOXBOTS_FULL_NODE:process.execPath,MOXBOTS_FULL_MODE:assetsMode?'assets':ffiMode?'ffi':renewalMode?'renewal':'text'},process.env.MOXBOTS_FULL_TIMEOUT_CHECK==='1'?10_000:150_000);
 process.stdout.write(result);

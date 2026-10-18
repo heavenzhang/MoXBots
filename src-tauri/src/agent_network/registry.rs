@@ -279,6 +279,32 @@ impl NetworkRegistry {
         let result = actor.feedback_request(&scope, &request).await;
         self.community_finish(&scope, &issuer, &actor, result)
     }
+    /// Read publication metadata only from this connection's pinned issuer.
+    pub(crate) async fn host_installer(
+        &self,
+        connection_id: &str,
+        auth_generation: u64,
+    ) -> Result<super::host_installer::InstallerInfo, NetworkError> {
+        let capture = || -> Result<_, NetworkError> {
+            let actor = self.connection(connection_id)?;
+            let snapshot = actor.snapshot();
+            let record = self.owned_stored.lock().unwrap_or_else(|e| e.into_inner())
+                .iter().find(|record| record.id == connection_id && !record.removing)
+                .cloned().ok_or_else(|| NetworkError::new("HOST_INSTALLER_UNAVAILABLE"))?;
+            if snapshot.state != "ready" || snapshot.auth_generation != auth_generation
+                || snapshot.principal_id.as_deref() != Some(record.principal_id.as_str())
+                || snapshot.network_id.as_deref() != Some(record.network_id.as_str())
+            { return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED")); }
+            Ok((record, actor))
+        };
+        let (record, actor) = capture()?;
+        let result = super::host_installer::fetch(&record.descriptor.issuer).await;
+        let (current, current_actor) = capture()?;
+        if current != record || !Arc::ptr_eq(&actor, &current_actor) {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
+        result
+    }
     pub(crate) fn for_reference(
         &self,
         reference: &myagents_agent_network_protocol::AgentReference,

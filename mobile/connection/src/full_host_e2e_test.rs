@@ -308,6 +308,21 @@ enum FixtureOwner {
     Ffi(FfiOwner),
 }
 impl FixtureOwner {
+    async fn host_address(
+        &mut self,
+        host: &str,
+    ) -> Option<crate::agent_network::transport::DeviceAddress> {
+        let Self::Direct(owner) = self else {
+            panic!("short renewal acceptance uses the original native owner");
+        };
+        owner.connect().await.unwrap();
+        let connection = owner.connected.as_ref().unwrap();
+        connection
+            .transport
+            .device_address(&connection.identity.token, &connection.local, host)
+            .await
+            .ok()
+    }
     async fn request(&mut self, value: Value) -> Value {
         match self {
             Self::Direct(owner) => owner.request(value).await,
@@ -723,12 +738,12 @@ async fn original_mobile_wss_host_chain() {
         let key=rcgen::KeyPair::generate().unwrap();let cert=rcgen::CertificateParams::new(vec!["localhost".into()]).unwrap().self_signed(&key).unwrap();
         let tls=rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider())).with_safe_default_protocol_versions().unwrap().with_no_client_auth().with_single_cert(vec![cert.der().clone()],rustls::pki_types::PrivatePkcs8KeyDer::from(key.serialize_der()).into()).unwrap();
         let public=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let issuer=format!("https://localhost:{}",public.local_addr().unwrap().port());
-        fs::write(root.join("public-ca.pem"),cert.pem()).unwrap();fs::set_permissions(root.join("public-ca.pem"),fs::Permissions::from_mode(0o600)).unwrap();private(&root.join("config.json"),&json!({"issuer":issuer}));
+        fs::write(root.join("public-ca.pem"),cert.pem()).unwrap();fs::set_permissions(root.join("public-ca.pem"),fs::Permissions::from_mode(0o600)).unwrap();private(&root.join("config.json"),&json!({"issuer":issuer,"shortRenewal":std::env::var("MOXBOTS_FULL_MODE").as_deref()==Ok("renewal")}));
         let service=std::env::var("MOXBOTS_FULL_SERVICE_TEST_BIN").expect("build service test binary first");spawn(&mut children,&root,&service,&["server::mobile_full_e2e_fixture::original_relay_service_fixture","--ignored","--exact","--nocapture"],"service");
         let ready=wait_json(&root.join("service-ready.json")).await;let address=ready["address"].as_str().unwrap().to_owned();let acceptor=tokio_rustls::TlsAcceptor::from(Arc::new(tls));
         tasks.spawn(async move{let mut connections=tokio::task::JoinSet::new();loop{let (tcp,_)=public.accept().await.unwrap();let acceptor=acceptor.clone();let address=address.clone();connections.spawn(async move{if let Ok(mut tls)=acceptor.accept(tcp).await{if let Ok(mut service)=tokio::net::TcpStream::connect(address).await{let _=tokio::io::copy_bidirectional(&mut tls,&mut service).await;}}});}});
-        let mode=std::env::var("MOXBOTS_FULL_MODE").unwrap_or_else(|_|"text".into());assert!(["text","assets","ffi"].contains(&mode.as_str()));
-        let node=std::env::var("MOXBOTS_FULL_NODE").unwrap_or_else(|_|"node".into());let helper=repo.join("scripts/fixtures/mobile-full-e2e-host.ts");spawn(&mut children,&root,&node,&["--import","tsx",helper.to_str().unwrap(),root.to_str().unwrap(),if mode=="ffi" {"text"} else {&mode}],"node");
+        let mode=std::env::var("MOXBOTS_FULL_MODE").unwrap_or_else(|_|"text".into());assert!(["text","assets","ffi","renewal"].contains(&mode.as_str()));
+        let node=std::env::var("MOXBOTS_FULL_NODE").unwrap_or_else(|_|"node".into());let helper=repo.join("scripts/fixtures/mobile-full-e2e-host.ts");spawn(&mut children,&root,&node,&["--import","tsx",helper.to_str().unwrap(),root.to_str().unwrap(),if mode=="ffi"||mode=="renewal" {"text"} else {&mode}],"node");
         let host_ready=wait_json(&root.join("host-ready.json")).await;
         let host=std::env::var("MOXBOTS_FULL_HOST_TEST_BIN").expect("build headless test binary first");spawn(&mut children,&root,&host,&["agent_network::connector::mobile_full_e2e_fixture::original_headless_connector_fixture","--ignored","--exact","--nocapture"],"headless");
         let status=std::time::Instant::now();loop{let v=wait_json(&root.join("headless-status.json")).await;if v["ready"]==true{break;}assert!(status.elapsed()<Duration::from_secs(35),"headless not ready: {v}");tokio::time::sleep(Duration::from_millis(100)).await;}
@@ -744,6 +759,25 @@ async fn original_mobile_wss_host_chain() {
         let disabled=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-default-mobile-targets={disabled}");assert!(disabled["items"].as_array().unwrap().is_empty());
         assert!(std::env::var("MOXBOTS_FULL_KEEP_MOUNT_DISABLED").as_deref()!=Ok("1"),"ORIGINAL_HOST_MOUNT_DISABLED: real catalog present; explicit synthetic-user mount authorization intentionally withheld");
         owner.mount(host_device,true).await;
+        if mode == "renewal" {
+            let original_address = owner.host_address(host_device).await.expect("initial actual Host address");
+            let deadline = std::time::Instant::now();
+            loop {
+                let renewed = root.join("renewal-observed.json").is_file();
+                let status: Value = serde_json::from_slice(&fs::read(root.join("headless-status.json")).unwrap()).unwrap();
+                if renewed && status["ready"] == true {
+                    if let Some(address) = owner.host_address(host_device).await {
+                        if address.connection_epoch != original_address.connection_epoch {
+                            assert!(address.scope == original_address.scope, "renewal preserves principal/network/device/key generation");
+                            eprintln!("actual-renewal-new-ready-epoch={}", json!({"oldEpoch":original_address.connection_epoch,"newEpoch":address.connection_epoch,"renewStatus":200,"ready":true,"sameDeviceScope":true}));
+                            break;
+                        }
+                    }
+                }
+                assert!(deadline.elapsed() < Duration::from_secs(45), "actual renewal and new Ready epoch absent");
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        }
         let targets=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-mobile-targets={targets}");
         let target=targets["items"].as_array().unwrap().iter().find(|v|v["agentId"]=="original-host-agent").expect("original explicitly authorized Host Agent must be discovered through the actual directory");
         let operation_id=uuid::Uuid::new_v4().to_string();

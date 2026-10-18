@@ -144,6 +144,7 @@ jobs:
           python3 scripts/host/network-install.test.py
           python3 scripts/host/network-control-daemon.test.py
           python3 scripts/host/unified-install.test.py
+          python3 scripts/host/one-command.test.py
       - name: Verify actual notification source across Node, native publisher and service stores
         timeout-minutes: 15
         run: |
@@ -160,6 +161,7 @@ jobs:
           node scripts/verify-mobile-full-host-e2e.mjs
           node scripts/verify-mobile-full-host-e2e.mjs --assets
           node scripts/verify-mobile-full-host-e2e.mjs --ffi
+          node scripts/verify-mobile-full-host-e2e.mjs --renewal
       - name: Record Linux artifact provenance
         env:
           SOURCE_COMMIT: ${{ github.sha }}
@@ -270,6 +272,19 @@ jobs:
         run: npm run build:assets
         env:
           MYAGENTS_BUILD_PROFILE: moxbot
+  # Build independently so real-systemd feedback does not wait for broad UI
+  # tests. Those tests remain separate required gates for the same source.
+  host-package:
+    if: ${{ !inputs.mobile_ios_app }}
+    name: Linux Host package · paired provenance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - name: Cache integrity-pinned Host build resources
         uses: actions/cache@v4
         with:
@@ -328,6 +343,47 @@ jobs:
             output/host-ci/install-*.sh
             output/host-ci/source-commit.txt
           if-no-files-found: error
+
+  # Exercise actual systemd and packaged Node on a disposable hosted VM.
+  # Browser/OIDC admission remains a separate release gate; no account is used.
+  host-systemd:
+    name: Ubuntu Host installation · actual systemd
+    needs: [host-package, headless-network]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: headless-host-linux
+          path: ${{ runner.temp }}/moxbots-systemd-input/host
+      - uses: actions/download-artifact@v4
+        with:
+          name: headless-network-linux
+          path: ${{ runner.temp }}/moxbots-systemd-input/network
+      - name: Verify real package installation, no-op, locking and rollback
+        env:
+          SOURCE_COMMIT: ${{ github.sha }}
+          ACCEPTANCE_OUTPUT: ${{ runner.temp }}/moxbots-systemd-evidence
+          ACCEPTANCE_INPUT: ${{ runner.temp }}/moxbots-systemd-input
+        run: |
+          sudo --preserve-env=CI,GITHUB_ACTIONS,GITHUB_REPOSITORY,RUNNER_ENVIRONMENT,RUNNER_TEMP \
+            python3 scripts/host/systemd-acceptance.py \
+            --source-root "$GITHUB_WORKSPACE" --source-commit "$SOURCE_COMMIT" \
+            --host-artifact-dir "$ACCEPTANCE_INPUT/host" \
+            --network-artifact-dir "$ACCEPTANCE_INPUT/network" \
+            --output "$ACCEPTANCE_OUTPUT"
+      - name: Keep bounded non-secret acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: host-systemd-acceptance-linux
+          path: |
+            ${{ runner.temp }}/moxbots-systemd-evidence/summary.json
+            ${{ runner.temp }}/moxbots-systemd-evidence/*.log
+          if-no-files-found: warn
 
   # Rust gate: cargo test plus project redline Clippy rules. We only deny
   # disallowed_methods/macros here; ordinary Clippy warnings stay non-fatal

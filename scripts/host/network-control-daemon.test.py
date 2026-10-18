@@ -22,6 +22,42 @@ CONFIG = {"ownedInstance": "https://owned.example", "managementSocket": str(cont
 
 
 class DaemonTests(unittest.TestCase):
+    def test_identical_ipc_run_keeps_existing_node_pid_and_configuration(self):
+        calls = []
+        def run(args, **kwargs):
+            calls.append(tuple(args))
+            return types.SimpleNamespace(returncode=0)
+        with (mock.patch.object(control.subprocess, "run", side_effect=run),
+              mock.patch.object(control, "_wait_management_socket"),
+              mock.patch.object(control, "_host_dropin", return_value=(b"existing", False)),
+              mock.patch.object(control, "_host_status_dropin", return_value=False)):
+            self.assertEqual(control._activate_owned("run", CONFIG, DEVICE), 0)
+        self.assertNotIn(("systemctl", "restart", control.HOST_UNIT.name), calls)
+        self.assertNotIn(("systemctl", "daemon-reload"), calls)
+        self.assertEqual(calls[-1], ("systemctl", "start", control.DAEMON_UNIT))
+
+    def test_new_ipc_dropins_refuse_busy_node_without_restart_even_on_rollback(self):
+        calls = []
+        def run(args, **kwargs):
+            calls.append(tuple(args))
+            if args[:3] == ["systemctl", "is-active", "--quiet"]:
+                return types.SimpleNamespace(returncode=0 if args[-1] == control.HOST_UNIT.name else 3)
+            if args[-1] == "doctor":
+                return types.SimpleNamespace(returncode=0, stdout=json.dumps({"hostId": DEVICE,
+                    "stopping": False, "activeSession": {"sessionId": "active"}}).encode())
+            return types.SimpleNamespace(returncode=0)
+        with tempfile.TemporaryDirectory() as temp:
+            with (mock.patch.object(control.subprocess, "run", side_effect=run),
+                  mock.patch.object(control, "HOST_DROPIN_DIR", pathlib.Path(temp)),
+                  mock.patch.object(control, "_wait_management_socket"),
+                  mock.patch.object(control, "_host_dropin", return_value=(b"new", True)),
+                  mock.patch.object(control, "_host_status_dropin", return_value=True),
+                  mock.patch.object(control, "_remove_created_host_dropin"),
+                  self.assertRaisesRegex(ValueError, "busy")):
+                control._activate_owned("run", CONFIG, DEVICE)
+        self.assertFalse(any(args[:2] == ("systemctl", "restart") for args in calls))
+        self.assertIn(("systemctl", "stop", control.DAEMON_UNIT), calls)
+
     def test_status_dropin_is_additive_idempotent_and_rejects_changed_content(self):
         with tempfile.TemporaryDirectory(dir=SCRIPT.parent) as tmp:
             directory = pathlib.Path(tmp)
