@@ -1,24 +1,31 @@
-// PRD 0.2.17 — Agent Status Panel
-//
-// 展开态的 TODO 区：按当前 status 渲染 todo 列表。三态：pending / in_progress / completed。
-// 不交互——Todo 是 AI 的工作记忆，只展示不编辑（PRD §2.2 非目标）。
+// Read-only runtime projection. Completion disclosure is local presentation state.
+import { memo, useId, useState } from "react";
+import { useTranslation } from "react-i18next";
 
-import { memo } from 'react';
+import { ChevronDownIcon, ChevronRightIcon } from "@/components/icons";
 
-import { TodoCompletedIcon, TodoInProgressIcon, TodoPendingIcon } from './icons';
-import type { TodoItem } from './types';
-
-interface TodoSectionProps {
-  todos: TodoItem[];
-}
+import {
+  TodoCompletedIcon,
+  TodoInProgressIcon,
+  TodoPendingIcon,
+} from "./icons";
+import type { TodoItem } from "./types";
 
 function TodoRow({ todo }: { todo: TodoItem }) {
-  const isCompleted = todo.status === 'completed';
-  const isInProgress = todo.status === 'in_progress';
+  const { t } = useTranslation("app");
+  const isCompleted = todo.status === "completed";
+  const isInProgress = todo.status === "in_progress";
+  const status = isCompleted
+    ? "completed"
+    : isInProgress
+      ? "inProgress"
+      : "pending";
 
   return (
-    <div className="flex items-start gap-2 px-3 py-1.5">
-      <span className="mt-0.5">
+    <li
+      className={`flex items-start gap-2 rounded-md px-2 py-2 ${isInProgress ? "bg-[var(--accent)]/8" : ""}`}
+    >
+      <span className="mt-0.5 shrink-0" aria-hidden>
         {isCompleted ? (
           <TodoCompletedIcon />
         ) : isInProgress ? (
@@ -27,44 +34,79 @@ function TodoRow({ todo }: { todo: TodoItem }) {
           <TodoPendingIcon />
         )}
       </span>
+      <span className="sr-only">{t(`agentStatus.${status}`)}: </span>
       <span
-        className={
+        className={`min-w-0 flex-1 break-words text-sm leading-5 select-text [overflow-wrap:anywhere] ${
           isCompleted
-            ? 'flex-1 text-sm text-[var(--ink-muted)] line-through select-text'
+            ? "text-[var(--ink-secondary)]"
             : isInProgress
-              ? 'flex-1 text-sm font-medium text-[var(--ink)] select-text'
-              : 'flex-1 text-sm text-[var(--ink-secondary)] select-text'
-        }
+              ? "font-medium text-[var(--ink)]"
+              : "text-[var(--ink-secondary)]"
+        }`}
       >
-        {todo.content}
+        {isInProgress ? todo.activeForm || todo.content : todo.content}
       </span>
-    </div>
+    </li>
   );
 }
 
 const MemoTodoRow = memo(TodoRow);
 
-const TodoSection = memo(function TodoSection({ todos }: TodoSectionProps) {
+const TodoSection = memo(function TodoSection({
+  todos,
+}: {
+  todos: TodoItem[];
+}) {
+  const { t } = useTranslation("app");
+  const [showCompleted, setShowCompleted] = useState(false);
+  const completedId = useId();
   if (todos.length === 0) return null;
-  const completed = todos.filter(t => t.status === 'completed').length;
+  const active = todos.filter((todo) => todo.status === "in_progress");
+  const pending = todos.filter((todo) => todo.status === "pending");
+  const completed = todos.filter((todo) => todo.status === "completed");
 
   return (
-    <div className="border-b border-[var(--line-subtle)] py-1.5 last:border-b-0">
-      <div className="flex items-center justify-between px-3 pb-1 pt-0.5">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]">
-          Todo
-        </span>
-        <span className="text-xs tabular-nums text-[var(--ink-muted)]">
-          {completed}/{todos.length}
-        </span>
-      </div>
-      {/* 上限 ~200px overflow auto——通常 todos < 20，不引虚拟化 */}
-      <div className="max-h-[200px] overflow-y-auto">
-        {todos.map(todo => (
+    <section aria-label={t("agentStatus.todos")} className="px-2 py-2">
+      <ul className="m-0 list-none space-y-0.5 p-0">
+        {[...active, ...pending].map((todo) => (
           <MemoTodoRow key={todo.key} todo={todo} />
         ))}
-      </div>
-    </div>
+      </ul>
+      {completed.length > 0 && (
+        <div
+          className={
+            active.length + pending.length > 0
+              ? "mt-2 border-t border-[var(--line-subtle)] pt-1"
+              : ""
+          }
+        >
+          <button
+            type="button"
+            aria-expanded={showCompleted}
+            aria-controls={completedId}
+            onClick={() => setShowCompleted((value) => !value)}
+            className="flex min-h-8 w-full items-center gap-1.5 rounded-md px-2 text-left text-xs text-[var(--ink-secondary)] transition-colors hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-border)]"
+          >
+            {showCompleted ? (
+              <ChevronDownIcon aria-hidden className="size-3.5" />
+            ) : (
+              <ChevronRightIcon aria-hidden className="size-3.5" />
+            )}
+            {t("agentStatus.completedCount", { count: completed.length })}
+          </button>
+          <ul
+            id={completedId}
+            hidden={!showCompleted}
+            className="m-0 list-none space-y-0.5 p-0"
+          >
+            {showCompleted &&
+              completed.map((todo) => (
+                <MemoTodoRow key={todo.key} todo={todo} />
+              ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 });
 
