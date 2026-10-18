@@ -21,9 +21,16 @@ Deliver the exact signed/notarized 0.5.11 login patch through the existing macOS
 - [ ] Atomic stable promotion, public Range/hidden/unsupported verification, independent postpublication check and own-lock finish.
 - [ ] Normal PR/CI/main merge and remote containment verification.
 
-## Completed / Verification
+## Completed
 
 See `dev-docs/releases/moxbots-0.5.11.md` for package hashes, notarization, actual native paths and limits. Current daily on-disk application remains0.5.9; exact0.5.11 candidate ran from temp during human-authorized maintenance QA. No model/remote business execution or new credentials recorded in Git.
+
+## Verification
+
+- Project sync start and task-init passed against the explicit user-supplied repository and exact base.
+- Stage receipt proves full transferred hash/size and unchanged stable; external full GET remains pending.
+- New release/task and updated original task pass targeted Prettier; shared plan/handoff had baseline formatting differences, so no broad formatting rewrite.
+- `git diff --check` passed; no product source changes in this delivery branch.
 
 ## Blockers and unknowns
 
