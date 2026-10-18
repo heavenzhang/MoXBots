@@ -432,3 +432,7 @@ The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when No
 ## MOXBOTS-SESSION-AUDIT-20261018
 
 用户要求梳理未归档会话、跟进已改完未入主干的成果。43个root快照与实际工作树/PR/main交叉核对；组合模型原任务定位到MoXBots自身SDK会话5025b9bb，39文件未提交且仍预览；不可再与已交付PR73主备切换混为一谈。PR133、Host聚合137（吸收129）、mobile136、updater-resume分别由原owner继续；已消息跟进，不冒称完成。PR104七文件blob已与main/v0.5.11相同，避免重复合并。置顶132/网络134已main，下一未冻结候选另验。逐会话证据/下一步见`dev-docs/delivery/session-audit-20261018.md`；本轮不归档聊天、不启动发布、不操作客户端。
+
+## GOAL-PAUSE-001 — 2026-10-18
+
+运行Goal条新增暂停，与既有继续/取消并列，复用原Rust暂停/停止/持久化owner。局部UI由主Agent自验，DOM86项与浏览器10组通过；CI/main、正式包/真实任务分别追踪。任务记录 `.agent-sync/tasks/codex-goal-pause-001-20261018-3d82257d.md`，验收 `dev-docs/goal-pause-001-acceptance.md`。保留唯一桌面发布owner和下一未冻结版本边界，不重启日常App、不改既有冻结包。
