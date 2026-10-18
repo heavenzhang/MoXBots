@@ -1061,6 +1061,45 @@ def ready(private):
     return db
 
 
+def post_reboot_ready(private, diagnostics, save_diagnostics=None):
+    """Observe the original readiness gate; never repair or extend its wait."""
+    failures = {"connector-not-ready", "connector-stale-status", "connector-status-pid", "real-Node-doctor",
+                "real-AuthStore-membership-empty-catalog-ready", "guest-operation-failed-redacted",
+                "guest-operation-confirmed", "guest-host-command-rejected"}
+    diagnostics.update({"pollCount": 0, "gatePassed": False})
+    started = time.monotonic()
+
+    def poll():
+        diagnostics["pollCount"] = min(1024, diagnostics["pollCount"] + 1)
+        try:
+            return ready(private)
+        except Exception as error:
+            stage = str(error) if isinstance(error, Rejected) else None
+            diagnostics["lastPollFailure"] = {"stage": stage if stage in failures else "unknown-redacted",
+                                              "exceptionClass": safe_exception_class(error)}
+            raise  # preserve exactly the retry/exception policy in wait_for
+
+    try:
+        value = wait_for(poll, 90)
+        diagnostics["gatePassed"] = True
+        return value  # original DB object, including its unchanged admission checks
+    finally:
+        diagnostics["readinessSeconds"] = round(time.monotonic() - started, 3)
+        # One final existing closed RPC, before caller cleanup. Keeping it outside
+        # the wait avoids adding SSH/doctor work to every readiness poll.
+        try:
+            snapshot = runtime_readiness_observation()
+            need(isinstance(snapshot, dict), "post-reboot-diagnostic-object")
+            diagnostics["lastRuntimeObservation"] = snapshot
+        except Exception:
+            diagnostics["runtimeObservationUnavailable"] = True
+        if save_diagnostics:
+            try:
+                save_diagnostics()
+            except Exception:
+                diagnostics["diagnosticSaveFailed"] = True  # never replace the gate's original outcome
+
+
 def browser_flow(payload):
     environment_guard()
     need(set(payload) == {"url", "email", "password"}, "browser-input-contract")
@@ -1628,7 +1667,9 @@ def accept(args):
                 pre_boot_db = db_snapshot(private)
                 pre_boot_counts = route_counts(private)
                 reboot_evidence = step("true-KVM-guest-reboot-and-new-boot-id", _GUEST.reboot)
-                post_boot_db = step("original-Host-boot-autostart-Ready-and-Node-IPC", lambda: wait_for(lambda: ready(private), 90))
+                summary["postRebootReadinessDiagnostics"] = {}
+                post_boot_db = step("original-Host-boot-autostart-Ready-and-Node-IPC", lambda:
+                    post_reboot_ready(private, summary["postRebootReadinessDiagnostics"], save))
                 need(persistent_hashes() == pre_boot_hashes and post_boot_db["sessions"] == pre_boot_db["sessions"]
                      and post_boot_db["devices"][0][1:3] == pre_boot_db["devices"][0][1:3]
                      and post_boot_db["devices"][0][7:] == pre_boot_db["devices"][0][7:], "true-reboot-preserves-identity-config-ciphertext-session-membership")
