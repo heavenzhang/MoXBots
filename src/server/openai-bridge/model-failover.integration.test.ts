@@ -58,9 +58,10 @@ function request(messages: AnthropicRequest['messages'] = [{ role: 'user', conte
     body: JSON.stringify({ model: 'primary-model', max_tokens: 128, stream, messages,
       tools: [{ name: 'increment_counter', description: 'Increment once', input_schema: { type: 'object', properties: {} } }] }) });
 }
-function harness(primary: UpstreamConfig, backup: UpstreamConfig, state = { scope: 'root-turn-1' as string | undefined }) {
+function harness(primary: UpstreamConfig, backup: UpstreamConfig, state = { scope: 'root-turn-1' as string | undefined, active: true }) {
   const notices: string[] = [];
   const controller = new ModelFailoverController({ scope: () => state.scope,
+    isActive: () => state.active, retryDelaysMs: [0, 0, 0],
     resolveBackup: () => backup, onSwitch: selected => { notices.push(selected.providerId); } });
   const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...primary, modelFailover: controller }), logger: null });
   return { handler, controller, notices, state };
@@ -104,7 +105,7 @@ describe('model failover over real loopback HTTP', () => {
       const result = await (await h.handler(request(history))).json();
       expect(result.content).toContainEqual({ type: 'text', text: 'task finished' });
       expect(counter).toBe(1);
-      expect(primary.requests).toHaveLength(3);
+      expect(primary.requests).toHaveLength(5);
       expect(backup.requests).toHaveLength(1);
       const forwarded = JSON.stringify(backup.requests[0].body);
       expect(forwarded.split(userText)).toHaveLength(2);
@@ -126,7 +127,7 @@ describe('model failover over real loopback HTTP', () => {
     const response = await h.handler(request());
     expect(response.status).toBe(200);
     expect((await response.json()).content[0].text).toBe('task finished');
-    expect(primary.requests).toHaveLength(2);
+    expect(primary.requests).toHaveLength(4);
     expect(backup.requests[0].path).toBe('/v1/messages');
     expect(backup.requests[0].body.messages).toEqual([{ role: 'user', content: userText }]);
     expect(backup.requests[0].body.model).toBe('backup-model');
@@ -243,7 +244,7 @@ describe('model failover over real loopback HTTP', () => {
     expect(backup.requests).toHaveLength(0);
   });
 
-  it.each(['initial', 'retry'] as const)('does not deliver late successful %s primary output after scope revocation', async phase => {
+  it.each(['initial', 'retry'] as const)('does not deliver late successful %s primary output after Query revocation', async phase => {
     const arrived = deferred();
     const release = deferred();
     let calls = 0;
@@ -264,8 +265,9 @@ describe('model failover over real loopback HTTP', () => {
     const inFlight = h.handler(request());
     await arrived.promise;
     h.state.scope = undefined;
+    h.state.active = false;
     // A second late request cannot bypass the revoked scope to reach primary.
-    const stale = await h.handler(request([{ role: 'user', content: 'stale request after scope revocation' }]));
+    const stale = await h.handler(request([{ role: 'user', content: 'stale request after Query revocation' }]));
     expect(stale.status).toBe(499);
     await stale.text();
     release.resolve();
@@ -327,14 +329,14 @@ describe('model failover over real loopback HTTP', () => {
     const result = await h.handler(request());
     expect(result.status).toBe(503);
     expect(await result.text()).toContain('backup overloaded');
-    expect(primary.requests).toHaveLength(2);
-    expect(backup.requests).toHaveLength(1);
+    expect(primary.requests).toHaveLength(4);
+    expect(backup.requests).toHaveLength(4);
     // Even a native HTTP retry of the same inference must not repeat either upstream.
     const replay = await h.handler(request());
     expect(replay.status).toBe(409);
     expect(await replay.text()).toContain('automatic replay is blocked');
-    expect(primary.requests).toHaveLength(2);
-    expect(backup.requests).toHaveLength(1);
+    expect(primary.requests).toHaveLength(4);
+    expect(backup.requests).toHaveLength(4);
     expect(h.notices).toHaveLength(1);
   });
 
@@ -343,15 +345,15 @@ describe('model failover over real loopback HTTP', () => {
     const backup = await fixture((_req, res) => json(res, anthropicText()));
     const primaryConfig = { ...target(primary, 'anthropic'), apiKey: 'primary-only-key' };
     let backupConfig = { ...target(backup, 'anthropic'), apiKey: 'backup-key-generation-1' };
-    const controller = new ModelFailoverController({ scope: () => 'root-turn-credentials',
+    const controller = new ModelFailoverController({ scope: () => 'root-turn-credentials', retryDelaysMs: [0, 0, 0],
       resolveBackup: () => ({ ...backupConfig }), onSwitch: () => {} });
     const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...primaryConfig, modelFailover: controller }), logger: null });
     await (await handler(request())).text();
     backupConfig = { ...backupConfig, apiKey: 'backup-key-generation-2' };
     await (await handler(request([{ role: 'user', content: 'Next inference after credential rotation' }]))).text();
-    expect(primary.requests.map(row => row.authorization)).toEqual(['Bearer primary-only-key', 'Bearer primary-only-key']);
+    expect(primary.requests.map(row => row.authorization)).toEqual(Array(4).fill('Bearer primary-only-key'));
     expect(backup.requests.map(row => row.authorization)).toEqual(['Bearer backup-key-generation-1', 'Bearer backup-key-generation-2']);
-    expect(primary.requests).toHaveLength(2);
+    expect(primary.requests).toHaveLength(4);
   });
 
   it('rejects the same inference while its original request is still in flight', async () => {

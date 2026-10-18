@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicToolResultBlock } from './types/anthropic';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
+import { QueryRequestGuard } from './request-lifetime';
 
 export interface BridgeContextRecovery {
   run(request: Request, body: AnthropicRequest,
@@ -11,6 +12,7 @@ export interface BridgeContextRecovery {
 export interface ContextRecoveryOptions {
   scope: () => string | undefined;
   isActive: () => boolean;
+  requestIdentity?: () => string;
   canRecover?: () => boolean;
   backup: (body: AnthropicRequest, metadata: { digest: string; scope: string }) => Promise<string>;
   onRecovery?: (info: { digest: string; archive: string }) => void;
@@ -229,6 +231,9 @@ function cancelled(): Response {
 export class ContextRecoveryController implements BridgeContextRecovery {
   private state: State | undefined;
   private projectionActive = false;
+  private readonly requestGuard = new QueryRequestGuard();
+  private retiredScope: string | undefined;
+  private readonly requestRetryFences = new Set<object>();
   private completedLedger = new Map<string, Evidence>();
   private uncertainLedger = new Set<string>();
   private deniedLedger = new Set<string>();
@@ -243,9 +248,21 @@ export class ContextRecoveryController implements BridgeContextRecovery {
 
   // The Query still contains its original native history after a product turn ends.
   // Keep the projection and rescue ledger even after native compaction removes
-  // old pairs. Only request replay guards are turn-scoped. A deliberate new Query
+  // old pairs. Foreground recovery state ends here; Query request replay evidence survives.
+  // A deliberate new Query
   // starts unarmed unless its owner explicitly restores this same-Goal checkpoint.
-  endTurn(): void { this.state = undefined; }
+  endTurn(): void {
+    this.retiredScope = this.state?.scope ?? this.options.scope();
+    this.state = undefined;
+  }
+
+  /** Used only for pre-delivery inference retries, never tool execution. */
+  canRetryInference(): boolean {
+    const state = this.current();
+    return !this.requestGuard.isBlocked(state?.scope, !state || this.options.canRecover?.() === false)
+      && this.requestRetryFences.size === 0 && !this.ledgerBlocked && !this.state?.blocked && this.uncertainLedger.size === 0
+      && !this.state?.uncertain.size;
+  }
 
   /** Rehydrate one or more archived sources without reading files or becoming a storage owner. */
   restoreCheckpoint(body: AnthropicRequest, archive: string, sourceDigest: string): void {
@@ -305,8 +322,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return denied;
     }
     if (READ_ONLY_TOOLS.has(name) || !this.projectionActive) return undefined;
-    const state = this.current();
-    if (!state) return 'automatic_replay_blocked: Recovery turn is not current.';
+    const state = this.toolState();
+    if (!state) return 'automatic_replay_blocked: Recovery Query is no longer current.';
     const key = toolKey(name, input);
     state.uncertain.add(key);
     this.uncertainLedger.add(key);
@@ -336,7 +353,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
 
   private current(): State | undefined {
     const scope = this.options.scope();
-    if (!scope || !this.options.isActive()) return undefined;
+    if (!scope || scope === this.retiredScope || !this.options.isActive()) return undefined;
     if (this.state?.scope !== scope) this.state = {
       scope, attempted: this.projectionActive, recovered: this.projectionActive, blocked: this.ledgerBlocked,
       inFlight: new Set(), recovering: false, delivered: new Set(), completed: new Map(this.completedLedger),
@@ -345,12 +362,22 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     return this.state;
   }
 
+  private toolState(): State | undefined {
+    const state = this.current();
+    if (state) return state;
+    if (!this.options.isActive()) return undefined;
+    return { scope: '', attempted: this.projectionActive, recovered: this.projectionActive,
+      blocked: this.ledgerBlocked, inFlight: new Set(), recovering: false, delivered: new Set(),
+      completed: new Map(this.completedLedger), uncertain: new Set(this.uncertainLedger), denied: new Set(this.deniedLedger) };
+  }
+
   beforeTool(name: string, input: unknown): string | undefined {
     if (READ_ONLY_TOOLS.has(name)) return undefined;
-    const state = this.current();
+    const state = this.toolState();
     if (!state) return this.projectionActive || this.ledgerBlocked
       ? 'automatic_replay_blocked: Context recovery belongs to a retired or unbound turn; this action cannot run.' : undefined;
-    if (state.blocked || this.ledgerBlocked) return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
+    if (state.blocked || this.ledgerBlocked || this.requestGuard.isBlocked(this.current()?.scope,
+      !this.current() || this.options.canRecover?.() === false)) return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
     if (!state.attempted) return undefined;
     const key = toolKey(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
@@ -365,14 +392,16 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   recordToolResult(name: string, input: unknown, result: unknown, failed = false): void {
-    const state = this.current();
-    if (!state || READ_ONLY_TOOLS.has(name)) return;
+    if (READ_ONLY_TOOLS.has(name) || !this.options.isActive()) return;
+    // Background outcomes remain Query evidence after their parent foreground ends.
+    const state = this.toolState();
+    if (!state) return;
     const key = toolKey(name, input);
     if (failed) {
       if (!(state.denied.has(key) && state.completed.get(key)?.archive
         && canonical(result).includes('automatic_replay_blocked:'))) {
         state.uncertain.add(key);
-        if (this.projectionActive && !this.mergeLedger(new Map(), new Set([key]))) state.blocked = true;
+        if (!this.mergeLedger(new Map(), new Set([key]))) state.blocked = true;
       }
     }
     else {
@@ -386,12 +415,22 @@ export class ContextRecoveryController implements BridgeContextRecovery {
 
   async run(request: Request, body: AnthropicRequest,
     execute: (projected: AnthropicRequest) => Promise<Response>): Promise<Response> {
-    if (request.signal.aborted || !this.options.isActive()) return cancelled();
+    const requestIdentity = this.options.requestIdentity?.();
+    const queryLive = () => !request.signal.aborted && this.options.isActive()
+      && this.options.requestIdentity?.() === requestIdentity;
+    if (!queryLive()) return cancelled();
     if (this.ledgerBlocked) return required('Recovery ledger integrity or capacity requires explicit resolution.');
-    const state = this.current();
-    if (!state) return this.state || this.projectionActive ? cancelled() : execute(body);
-    const live = () => !request.signal.aborted && this.options.isActive()
-      && this.state === state && this.options.scope() === state.scope;
+    const currentState = this.current();
+    // Background requests use their original body and the Query-owned safety ledger.
+    // They never inherit a foreground projection or acquire a fresh recovery budget.
+    const recoveryOwner = currentState && this.options.canRecover?.() !== false ? currentState : undefined;
+    const state: State = recoveryOwner ?? {
+      scope: '', attempted: false, recovered: false, blocked: false, inFlight: new Set(),
+      recovering: false, delivered: new Set(), completed: new Map(this.completedLedger),
+      uncertain: new Set(this.uncertainLedger), denied: new Set(this.deniedLedger),
+    };
+    const recoveryLive = () => queryLive() && !!recoveryOwner && this.state === state && this.options.scope() === state.scope;
+    const live = queryLive;
     let fingerprint: string;
     let originalDigest: string;
     try {
@@ -399,17 +438,26 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       originalDigest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
     }
     catch { return required('Request history cannot be safely fingerprinted.'); }
+    const lease = this.requestGuard.begin(currentState?.scope, fingerprint, !currentState || this.options.canRecover?.() === false);
+    if (!lease) return required('This model request was already delivered, failed, or reached the Query safety limit. Automatic replay is blocked.');
     if (state.blocked || this.ledgerBlocked || state.recovering || state.inFlight.has(fingerprint) || state.delivered.has(fingerprint)
-      || (state.recovered && state.inFlight.size > 0)) {
+      || (state.recovered && this.requestGuard.inFlightCount > 1)) {
+      lease.finish();
       return required('This turn already has a delivered, concurrent or failed model request. Automatic replay is blocked.');
     }
     state.inFlight.add(fingerprint);
+    const retryAnalysis = analyze(body, state.denied, state.completed);
+    const retryFence = {};
+    if (!retryAnalysis || retryAnalysis.uncertain.size || state.uncertain.size) this.requestRetryFences.add(retryFence);
     const finish = () => {
       state.inFlight.delete(fingerprint);
       state.delivered.add(fingerprint);
+      lease.finish();
+      this.requestRetryFences.delete(retryFence);
     };
-    const stop = (message: string) => { state.blocked = true; return required(message); };
+    const stop = (message: string) => { state.blocked = true; lease.block(); return required(message); };
     const prepare = async (initial: boolean): Promise<AnthropicRequest | Response> => {
+      if (!recoveryLive()) return required('The foreground recovery owner ended. Existing requests were preserved.');
       const analysis = analyze(body, state.denied, state.completed);
       if (!analysis || analysis.uncertain.size || state.uncertain.size) {
         return stop('History contains unknown, unpaired or uncertain tool actions. Progress was preserved; automatic recovery stopped.');
@@ -417,8 +465,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       const before = Buffer.byteLength(canonical(body));
       let archive: string;
       try { archive = await this.options.backup(body, { digest: originalDigest, scope: state.scope }); }
-      catch { return live() ? stop('The original history could not be durably archived. Automatic recovery stopped.') : cancelled(); }
-      if (!live()) return cancelled();
+      catch { return recoveryLive() ? stop('The original history could not be durably archived. Automatic recovery stopped.') : cancelled(); }
+      if (!recoveryLive()) return cancelled();
       if (typeof archive !== 'string' || !archive.trim() || archive.length > 4096 || /[\r\n]/.test(archive)) {
         return stop('The original history archive reference is invalid. Automatic recovery stopped.');
       }
@@ -440,7 +488,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       state.recovered = true;
       this.projectionActive = true;
       try { await this.persist(); } catch { return stop('Recovery ledger could not be durably committed.'); }
-      if (!live()) return cancelled();
+      if (!recoveryLive()) return cancelled();
       if (initial) try { this.options.onRecovery?.({ digest: originalDigest, archive }); } catch { /* observability cannot replay inference */ }
       return projected;
     };
@@ -460,7 +508,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
           return new Response(text, { status: response.status, headers: response.headers });
         }
         if (state.attempted) return stop('Context recovery was exhausted. Progress and archived evidence were preserved.');
-        if (state.inFlight.size > 1 || this.options.canRecover?.() === false) {
+        if (!recoveryLive() || this.requestGuard.inFlightCount > 1 || this.options.canRecover?.() === false) {
           return required('Another native inference or background action is active. Context recovery was refused; existing work was preserved.');
         }
         state.recovering = true;
@@ -468,7 +516,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         state.attempted = true;
         const reduced = await prepare(true);
         if (reduced instanceof Response) return reduced;
-        if (!live()) return cancelled();
+        if (!recoveryLive()) return cancelled();
         response = await execute(reduced);
         if (!live()) { void response.body?.cancel().catch(() => undefined); return cancelled(); }
         if (!response.ok) {
@@ -489,30 +537,33 @@ export class ContextRecoveryController implements BridgeContextRecovery {
           try {
             if (!live()) {
               state.blocked = true;
+              lease.block();
               void reader.cancel().catch(() => undefined);
               finish();
               output.error(new Error('Model request superseded or cancelled'));
               return;
             }
             const next = await reader.read();
+            if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
-              if (isSse && !terminal) state.blocked = true;
+              if (isSse && !terminal) { state.blocked = true; lease.block(); }
               finish(); output.close(); return;
             }
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
               let type = event.event;
               try { const payload: unknown = JSON.parse(event.data); if (record(payload) && typeof payload.type === 'string') type = payload.type; } catch { /* event name remains authoritative */ }
               if (type === 'message_stop') terminal = true;
-              if (type === 'error') state.blocked = true;
+              if (type === 'error') { state.blocked = true; lease.block(); }
             }
             output.enqueue(next.value);
           } catch (error) {
-            if (!terminal) state.blocked = true;
+            if (!terminal) { state.blocked = true; lease.block(); }
+            void reader.cancel().catch(() => undefined);
             finish(); output.error(error);
           }
         },
         async cancel(reason) {
-          if (!terminal) state.blocked = true;
+          if (!terminal && isSse) { state.blocked = true; lease.block(); }
           finish();
           try { await reader.cancel(reason); } catch { /* transport already retired */ }
         },

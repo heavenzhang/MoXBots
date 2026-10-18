@@ -24,13 +24,13 @@ describe('Session API failover authority', () => {
   it('uses current backup credentials, keeps the root scope across steering, and restores primary next turn', async () => {
     let source = 'root';
     const switched = vi.fn();
-    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId: source }),
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: source }),
       isLive: () => true, onSwitch: switched });
     const keys: string[] = [];
     const execute = vi.fn(async (target) => { keys.push(target.apiKey); return new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }); });
     const upstream = { providerId: 'primary', baseUrl: primary.baseUrl!, apiKey: primary.apiKey!, model: 'a' };
     expect((await controller.run(request(), upstream, execute)).status).toBe(200);
-    expect(keys).toEqual(['fixture-main', 'fixture-main', 'fixture-backup']);
+    expect(keys).toEqual(['fixture-main', 'fixture-main', 'fixture-main', 'fixture-main', 'fixture-backup']);
     source = 'steering-input';
     fixture.envs.backup = { ...fixture.envs.backup as object, apiKey: 'rotated-fixture' };
     await controller.run(request(), upstream, execute);
@@ -39,7 +39,7 @@ describe('Session API failover authority', () => {
     controller.endTurn();
     source = 'next-root';
     await controller.run(request(), upstream, execute);
-    expect(keys.slice(-3)).toEqual(['fixture-main', 'fixture-main', 'rotated-fixture']);
+    expect(keys.slice(-5)).toEqual(['fixture-main', 'fixture-main', 'fixture-main', 'fixture-main', 'rotated-fixture']);
     expect(switched).toHaveBeenCalledTimes(2);
     expect(fixture.config).toEqual({ modelFailover: { enabled: true, backup: { providerId: 'backup', modelId: 'b' } } });
   });
@@ -52,11 +52,11 @@ describe('Session API failover authority', () => {
     if (reason === 'same-pair') settings.backup = { providerId: 'primary', modelId: 'a' };
     if (reason === 'history-family') fixture.envs.backup = { providerId: 'backup', baseUrl: 'https://api.anthropic.com', apiKey: 'other' };
     const switched = vi.fn();
-    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
       isLive: () => reason !== 'inactive', onSwitch: switched });
     const execute = vi.fn(async () => new Response('{}', { status: 503 }));
     expect((await controller.run(request(), { providerId: 'primary', baseUrl: primary.baseUrl! }, execute)).status).toBe(reason === 'inactive' ? 499 : 503);
-    expect(execute).toHaveBeenCalledTimes(reason === 'inactive' ? 0 : 1);
+    expect(execute).toHaveBeenCalledTimes(reason === 'inactive' ? 0 : 4);
     expect(switched).not.toHaveBeenCalled();
   });
   it('rejects managed or scoped credentials even when a matching API catalog entry exists', () => {
@@ -65,22 +65,22 @@ describe('Session API failover authority', () => {
   });
   it.each(['disable', 'delete', 'key-revoked', 'replace-backup'])('does not fall back to primary after a pinned backup loses eligibility: %s', async reason => {
     const switched = vi.fn();
-    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
       isLive: () => true, onSwitch: switched });
     const execute = vi.fn(async target => new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }));
     const upstream = { providerId: 'primary', baseUrl: primary.baseUrl! };
     await controller.run(request(), upstream, execute, 'first');
-    expect(execute).toHaveBeenCalledTimes(3);
+    expect(execute).toHaveBeenCalledTimes(5);
     if (reason === 'disable') fixture.config.modelFailover = { enabled: false };
     if (reason === 'delete') delete fixture.providers.backup;
     if (reason === 'key-revoked') delete fixture.envs.backup;
     if (reason === 'replace-backup') fixture.config.modelFailover = { enabled: true, backup: { providerId: 'primary', modelId: 'a' } };
-    expect((await controller.run(request(), upstream, execute, 'next-inference')).status).toBe(499);
-    expect(execute).toHaveBeenCalledTimes(3);
+    expect((await controller.run(request(), upstream, execute, 'next-inference')).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(5);
     expect(switched).toHaveBeenCalledTimes(1);
   });
   it('keeps the replay guard after settings are disabled mid-root', async () => {
-    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
       isLive: () => true, onSwitch: vi.fn() });
     const execute = vi.fn(async () => new Response('{}'));
     const upstream = { providerId: 'primary', baseUrl: primary.baseUrl! };
@@ -91,18 +91,18 @@ describe('Session API failover authority', () => {
   });
   it('does not start a new failover when background ownership becomes ambiguous', async () => {
     let canSwitch = true;
-    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
       isLive: () => true, canSwitch: () => canSwitch, onSwitch: vi.fn() });
     const execute = vi.fn(async () => { canSwitch = false; return new Response('{}', { status: 503 }); });
     const upstream = { providerId: 'primary', baseUrl: primary.baseUrl! };
     expect((await controller.run(request(), upstream, execute, 'first')).status).toBe(503);
     expect((await controller.run(request(), upstream, execute, 'first')).status).toBe(409);
-    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledTimes(4);
   });
   it.each([false, true])('does not deliver late backup output after root cancellation (already pinned=%s)', async pinned => {
     let alive = true;
     let cancelOnBackup = !pinned;
-    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
       isLive: () => alive, onSwitch: vi.fn() });
     const execute = vi.fn(async target => {
       if (target.providerId === 'primary') return new Response('{}', { status: 503 });
@@ -114,6 +114,6 @@ describe('Session API failover authority', () => {
     const response = await controller.run(request(), upstream, execute, 'next');
     expect(response.status).toBe(499);
     expect(await response.text()).not.toContain('unsafe tool');
-    expect(execute).toHaveBeenCalledTimes(pinned ? 4 : 3);
+    expect(execute).toHaveBeenCalledTimes(pinned ? 6 : 5);
   });
 });
