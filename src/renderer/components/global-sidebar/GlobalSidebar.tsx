@@ -2574,13 +2574,16 @@ function WorkspaceTree({
                   })}
                 </SortableContext>
               )}
-              <DragOverlay>
-                {dragLabel !== null && (
-                  <div className="max-w-64 truncate rounded-lg border border-[var(--line)] bg-[var(--paper-elevated)] px-4 py-2 text-sm text-[var(--ink)] shadow-lg">
-                    {dragLabel}
-                  </div>
-                )}
-              </DragOverlay>
+              {createPortal(
+                <DragOverlay>
+                  {dragLabel !== null && (
+                    <div className="max-w-64 truncate rounded-lg border border-[var(--line)] bg-[var(--paper-elevated)] px-4 py-2 text-sm text-[var(--ink)] shadow-lg">
+                      {dragLabel}
+                    </div>
+                  )}
+                </DragOverlay>,
+                document.body,
+              )}
             </DndContext>
 
             {sessionView !== 'archived' && archivedProjects.length > 0 && (
