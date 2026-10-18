@@ -659,6 +659,9 @@ mod tests {
                         Err(error) => panic!("{error}"),
                     }
                 };
+                // macOS accepted sockets inherit O_NONBLOCK from the listener;
+                // Linux does not. The fixture reads a complete HTTP request.
+                stream.set_nonblocking(false).unwrap();
                 stream
                     .set_read_timeout(Some(Duration::from_secs(1)))
                     .unwrap();

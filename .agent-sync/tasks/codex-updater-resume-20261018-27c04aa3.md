@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/updater-resume-20261018 -->
 <!-- git-project-sync-task:base=118cabbbc9a7c76c771e764e12ab0e8f77877a44 -->
-<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:status=ready-for-review -->
 
 # MOXBOTS-UPDATER-RESUME-20261018
 
@@ -12,14 +12,14 @@ Fix interrupted update downloads with persistent partial files, bounded retries 
 ## Acceptance criteria / To Do
 
 - [x] Verify repository, current main, isolated worktree and original failure evidence.
-- [ ] Stream partial bytes to disk, bind resume identity to the manifest, strictly validate HTTP ranges, preserve partial across retries/restart.
-- [ ] Retry transient failures with bounded backoff; surface readable terminal failure and retained bytes; allow manual retry.
-- [ ] Require exact package signature before ready/pending; corrupted/changed responses must fail closed.
-- [ ] Expose one Rust download snapshot/event; show percent, bytes, rate, retry state and persistent error in About.
-- [ ] Focused deterministic Rust loopback interruption/range/signature tests, renderer state/DOM tests, type/lint and web build.
-- [ ] Independent running UI review at desktop and narrow widths; root reviews integrated patch and critical paths.
+- [x] Stream partial bytes to disk, bind resume identity to the manifest, strictly validate HTTP ranges, preserve partial across retries/restart.
+- [x] Retry transient failures with bounded backoff; surface readable terminal failure and retained bytes; allow manual retry.
+- [x] Require exact package signature before ready/pending; corrupted/changed responses must fail closed.
+- [x] Expose one Rust download snapshot/event; show percent, bytes, rate, retry state and persistent error in About.
+- [x]11 isolated native product-module Rust tests,22 updater/confirmation DOM +15 Settings/Linux tests, TypeScript, changed-source ESLint and production Web build passed. Full CI remains separate.
+- [x] Root running UI review at desktop and narrow widths; 12 Chromium cases and screenshot inspection. Independent worker could not execute after usage limit; independence is not claimed.
 - [ ] Normal PR/CI/main delivery; verify remote main contains change.
-- [ ] Queue signed native release and real A-to-B/active-task protection checks with existing release owner; no interruption of active tasks.
+- [x] Queue signed native release and real A-to-B/active-task protection checks with existing release owner; no interruption of active tasks.
 
 ## Scope and interfaces
 
@@ -38,8 +38,14 @@ Original installed 0.5.9 discovered stable0.5.11; download reached76% then body-
 
 ## Verification and delivery state
 
-Code: in progress. Simulation/loopback: pending. Real server: read-only diagnostic pending. UI review: pending. Main: pending. Signed native production: not yet released or accepted; live app/tasks untouched. No credentials or private user records in this task.
+Code: implemented. Focused renderer:22 updater/confirmation +15 Settings/Linux tests passed. TypeScript, changed-source ESLint and production Web build passed. Root Chromium actual extracted About JSX:12 cases passed at1200×900/390×844, zero page errors; snapshots in dev-docs/updater-resume/qa/. Rust transport loopback:11 native macOS arm64 actual-module tests passed; latest full CI still pending; earlier CI compiled product but found test fixture length mismatch (34 bytes vs hardcoded32), corrected. Main authority is PR138; merge/remote containment must be verified. Signed native production: not released or accepted; live app/tasks untouched. No credentials or private user records in this task.
 
 ## Next step
 
 Integrate backend and UI against the snapshot contract, run deterministic failure/resume cases, then normal CI/main delivery. Real signed package and A-to-B acceptance require the existing serialized release lane and an idle-task gate; do not substitute local mock evidence for native production acceptance.
+
+## User-authorized release notification
+
+User explicitly selected “授权通知并安排发布” in this chat. Existing publisher `01a12bc2-907a-7702-b6dd-788225c5dfe4` was actually notified with PR138/stage source, verified frontend results and native/main gates; it acknowledged queueing for the next unfrozen release, awaiting final main/CI receipt. No stable switch or original-task interruption authorized by this notification. Already installed0.5.9 still needs reliable full bootstrap download and an idle/backup/install-confirmation gate before it gains resume support.
+
+Final local transport evidence: `dev-docs/updater-resume/transport-results.json`, real product module compiled via an isolated harness without launching Tauri. Accepted socket nonblocking inheritance on macOS was corrected in the test fixture, and the unchanged signed sample length is dynamically derived. Source, frontend and partial integrity accepted locally; main and signed native installation remain separate gates. No active user task was interrupted.

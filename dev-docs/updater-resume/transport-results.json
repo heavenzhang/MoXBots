@@ -1,0 +1,23 @@
+{
+  "scope": "macOS arm64 isolated native harness uses #[path] to compile the actual product updater_download.rs with existing Cargo dependencies; not full Tauri or signed A-to-B acceptance",
+  "status": "passed",
+  "tests": [
+    "updater_download::tests::oversized_and_malformed_headers_are_rejected",
+    "updater_download::tests::partial_symlinks_fail_closed_and_do_not_touch_target",
+    "updater_download::tests::exact_length_does_not_bypass_signature_or_create_pending",
+    "updater_download::tests::unknown_total_is_streamed_and_verified_without_fabricated_percentage",
+    "updater_download::tests::ignored_range_200_truncates_instead_of_appending",
+    "updater_download::tests::partial_survives_transport_failure_and_new_download_instance",
+    "updater_download::tests::dropped_stream_resumes_with_range_and_preserves_progress",
+    "updater_download::tests::range_416_only_accepts_exact_complete_file_then_verifies",
+    "updater_download::tests::stalled_body_times_out_with_bounded_retry_and_preserves_file",
+    "updater_download::tests::changed_identity_discards_old_bytes_and_hides_url_credentials",
+    "updater_download::tests::inconsistent_ranges_and_totals_restart_from_zero"
+  ],
+  "sourceSha256": "69e3592267b56ecb5eebcf73b414263be69e16f720324277670939d31c80dc5d",
+  "rawLog": "/private/tmp/moxbots-updater-transport-final.log",
+  "limitations": [
+    "Whole desktop native run was not launched",
+    "Existing product config, tasks, credentials and production untouched"
+  ]
+}
