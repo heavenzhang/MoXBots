@@ -15,7 +15,8 @@ API 来源与实际无费用 GET 结果见 [api-verification.md](api-verificatio
 
 - 原有/新增设置与模型管理 3 文件 28 项 DOM 回归通过；集成复验 5 文件 52 项通过，覆盖发现请求刷新、凭据更换与旧响应隔离。
 - API 7 文件 81 项通过，包含真实本地 SDK 与 Bridge/header 的回环。不同命令存在重叠，不相加冒充独立测试总数。
-- 定向 ESLint 通过；最终 TypeScript、构建、浏览器独审、CI/main 状态待更新。
+- 最终设置DOM12项、定向ESLint通过；独立Chromium15项实际页面验收通过，包括240项密钥状态描述关联、1440×900和800×700、390辅助检查。主Agent复核截图及实际diff，独立只读OpenRouter GET200/468复验通过。
+- 远端首轮TypeScript/lint/unit通过，完整构建和最终CI/main仍待核验。本机极高负载下，两个任务自己的重复本地typecheck/build已停止，改由远端精确候选CI验证；不影响其他任务。
 - 真实 OpenRouter 账号目录 GET 200（468）与同账号通用目录 GET 200（471）；Go 自有 UA 目录 GET 200（37），不携密钥。证据不包含原始密钥或账号 ID。
 
 ## 发布请求与未关闭门槛
@@ -28,6 +29,6 @@ API 来源与实际无费用 GET 结果见 [api-verification.md](api-verificatio
 
 ## 执行记录
 
-主 Agent 负责界面、集成、代码审查、验收与 main 交付；catalog_api 负责 API/协议与回归；ui_acceptance 独立验收合成页面。请求模型为 gpt-6.1-sol/high（API）、gpt-6-luna/medium（UI）；运行时未提供可确认的模型/effort用量与费用统计。两条独立工作流避免了共享产品文件并发编辑，主 Agent 审查实际 diff。一次搜索焦点测试发现 portal 延后挂载，已用稳定挂载 ref 修复并复验。
+主 Agent 负责界面、集成、代码审查、验收与 main 交付；catalog_api 负责 API/协议与回归；ui_acceptance 独立验收合成页面。请求模型为 gpt-6.1-sol/high（API）、gpt-6-luna/medium（UI）；运行时未提供可确认的模型/effort用量与费用统计。两条独立工作流避免了共享产品文件并发编辑，主 Agent 审查实际 diff。一次搜索焦点测试发现 portal 延后挂载，已用稳定挂载 ref 修复并复验；独审发现密钥suffix未被屏幕阅读器关联，补充aria-describedby并通过DOM及240项实际页面复验。UI脚本状态重置与selector错误在验收准备中修正，不作为产品缺陷。
 
 后续同类任务先核对产品 profile 与真实配置 owner，避免用上游 `.myagents` 配置推断 MoXBots `.moxbot` 凭据状态。

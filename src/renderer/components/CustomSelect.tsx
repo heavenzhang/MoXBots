@@ -200,7 +200,7 @@ export default function CustomSelect({
           <div className="max-h-60 overflow-y-auto py-1">
             {search && !visibleOptions.some(option => !option.isSeparator) &&
               <p role="status" className="px-3 py-3 text-sm text-[var(--ink-muted)]">{search.emptyMessage}</p>}
-            {visibleOptions.map((option) =>
+            {visibleOptions.map((option, index) =>
               option.isSeparator ? (
                 <div
                   key={option.value}
@@ -214,6 +214,7 @@ export default function CustomSelect({
                   type="button"
                   data-select-option
                   aria-label={option.label}
+                  aria-describedby={option.suffix ? `${menuId}-${index}-suffix` : undefined}
                   onClick={() => handleSelect(option.value)}
                   // Item font size mirrors the trigger's: `size='md'`
                   // → `text-sm` (14px) so options read at parity with
@@ -238,7 +239,7 @@ export default function CustomSelect({
                   )}
                   <span className="min-w-0 flex-1" />
                   {option.suffix && (
-                    <span className="shrink-0">{option.suffix}</span>
+                    <span id={`${menuId}-${index}-suffix`} className="shrink-0">{option.suffix}</span>
                   )}
                 </button>
               ),

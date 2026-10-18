@@ -70,6 +70,7 @@ describe('backup model settings', () => {
     expect(screen.queryByRole('button', { name: /Backup Provider · backup-model/ })).toBeNull();
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     const choice = screen.getByRole('button', { name: /Backup Provider · other-id/ });
+    expect(choice).toHaveAccessibleDescription('Key configured');
     expect(choice).toHaveFocus();
     fireEvent.click(choice);
     await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, backup: { providerId: provider.id, modelId: 'other-id' } } }));

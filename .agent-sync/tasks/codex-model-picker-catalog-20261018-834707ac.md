@@ -14,7 +14,8 @@
 
 - [x] 搜索、筛选、键盘选择、空结果、已选项保留、保存失败回归。
 - [x] 模型目录 API 官方来源核实、无费用 GET 与针对性回归。
-- [ ] TypeScript/lint、独立 UI 验收、CI、远端 main。
+- [x] 定向lint、独立UI15项、最终DOM12项；首轮远端TypeScript/lint/unit通过。
+- [ ] 最终候选完整CI与远端main。
 - [ ] 由已登记唯一发布 owner 发布及真实客户端验收（本聊天不并发换包）。
 
 ## Completed
@@ -23,7 +24,7 @@
 
 ## Verification
 
-详见 dev-docs/model-picker-catalog-20261018/delivery.md 与 api-verification.md。DOM 28项/组合52项、API81项通过（计数重叠不相加），定向lint与classification通过。真实无费用OpenRouter200：账号468/通用471；Go自有UA200：37。TypeScript/build与独立浏览器验收、远端CI/main进行中。
+详见 dev-docs/model-picker-catalog-20261018/delivery.md 与 api-verification.md。DOM 28项/组合52项、API81项通过（计数重叠不相加），定向lint与classification通过。真实无费用OpenRouter200：账号468/通用471；Go自有UA200：37。独立Chromium15项通过，最终DOM12项通过；主Agent独立GET200/468并审查实际diff与截图。首轮远端TypeScript/lint/unit通过；完整CI、构建与main待完成。
 
 ## Blockers and unknowns
 
@@ -31,4 +32,4 @@
 
 ## Next step
 
-完成针对性回归与实际浏览器 UI 验收，主 Agent 集成后提交 PR。
+PR116已建立，完成最终候选CI及主干交付；随后由唯一发布owner按任务记录接续桌面发行与真实验收。发送发布会话消息的用户授权已通过async提问申请，未获答复前不发送。
