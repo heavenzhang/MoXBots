@@ -42,6 +42,7 @@ export interface SettingsProps {
   updateDownloading?: boolean;
   updateInstalling?: boolean;
   updatePreparing?: boolean;
+  updateDownloadState?: import('../../../shared/updaterDownload').UpdaterDownloadState;
   onCheckForUpdate?: () => Promise<'up-to-date' | 'downloading' | 'error'>;
   onRestartAndUpdate?: () => void;
 }

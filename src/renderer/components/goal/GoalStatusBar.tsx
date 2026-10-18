@@ -1,6 +1,7 @@
 import {
   TargetIcon,
   PlayIcon,
+  PauseIcon,
   SlidersIcon,
   CloseIcon,
   ChevronDownIcon,
@@ -24,6 +25,7 @@ interface GoalRuntimeStatusBarProps {
   isExecuting?: boolean;
   executionNumber?: number;
   onEdit?: () => void;
+  onPause?: () => void;
   onResume?: () => void;
   onCancel?: () => void;
   onDismiss?: () => void;
@@ -81,6 +83,7 @@ function GoalRuntimeStatusBar({
   isExecuting = false,
   executionNumber,
   onEdit,
+  onPause,
   onResume,
   onCancel,
   onDismiss,
@@ -175,6 +178,17 @@ function GoalRuntimeStatusBar({
               <SlidersIcon aria-hidden className="size-4" />
             </button>
           </Tip>
+        )}
+        {goal.status === "active" && onPause && (
+          <button
+            type="button"
+            onClick={onPause}
+            className="compact-action gap-1 rounded-md px-2 text-sm font-medium text-[var(--ink-secondary)] transition-colors hover:bg-[var(--paper-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus-border)]"
+            aria-label={t("cron.statusBar.pauseGoalButton")}
+          >
+            <PauseIcon aria-hidden className="h-3.5 w-3.5" />
+            {t("cron.statusBar.pauseGoalButton")}
+          </button>
         )}
         {goal.status === "paused" && onResume && (
           <button

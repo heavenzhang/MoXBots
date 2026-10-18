@@ -134,6 +134,7 @@ export interface SimpleChatInputProps {
   onCronStop?: () => void;
   onCronDismissStopped?: () => void;
   onGoalEdit?: () => void;
+  onGoalPause?: () => void;
   onGoalResume?: () => void;
   onGoalCancel?: () => void;
   onGoalDismiss?: () => void;

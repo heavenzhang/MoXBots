@@ -195,6 +195,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   onCronStop,
   onCronDismissStopped,
   onGoalEdit,
+  onGoalPause,
   onGoalResume,
   onGoalCancel,
   onGoalDismiss,
@@ -1442,6 +1443,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
             isExecuting={goalIsExecuting}
             executionNumber={goalExecutionNumber}
             onEdit={onGoalEdit}
+            onPause={onGoalPause}
             onResume={onGoalResume}
             onCancel={onGoalCancel}
             onDismiss={onGoalDismiss}

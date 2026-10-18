@@ -47,6 +47,23 @@ describe('useSessionGoal creation surface', () => {
     api.resumeSessionGoal.mockResolvedValue({ ...createdGoal, status: 'active', revision: 2 });
   });
 
+  it('pauses and resumes the same goal without losing its progress', async () => {
+    const active = { ...createdGoal, status: 'active' as const, turnCount: 3, totalTokens: 1200 };
+    api.createSessionGoal.mockResolvedValue(active);
+    api.pauseSessionGoal.mockResolvedValue({ ...active, status: 'paused', revision: 2 });
+    api.resumeSessionGoal.mockResolvedValue({ ...active, revision: 3 });
+    const { result } = renderHook(() => useSessionGoal({ workspacePath: '/tmp/workspace', sessionId: 'session-1' }));
+    await act(async () => { await result.current.start({ taskKind: 'goal', prompt: 'finish release', endConditions: { aiCanExit: true }, notifyEnabled: true }); });
+    await act(async () => { await result.current.pause(); });
+    expect(api.pauseSessionGoal).toHaveBeenCalledWith(active.id);
+    expect(result.current.state.goal).toMatchObject({ id: active.id, status: 'paused', objective: active.objective, turnCount: 3, totalTokens: 1200 });
+    expect(api.markSessionGoalTerminal).not.toHaveBeenCalled();
+    await act(async () => { await result.current.resume(); });
+    expect(api.resumeSessionGoal).toHaveBeenCalledWith(active.id);
+    expect(result.current.state.goal).toMatchObject({ id: active.id, status: 'active', turnCount: 3, totalTokens: 1200 });
+    expect(api.createSessionGoal).toHaveBeenCalledTimes(1);
+  });
+
   it('creates only through an explicit Goal draft and keeps the returned projection', async () => {
     const { result } = renderHook(() => useSessionGoal({
       workspacePath: '/tmp/workspace',
