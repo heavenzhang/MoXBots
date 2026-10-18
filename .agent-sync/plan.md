@@ -457,3 +457,5 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 - **Record:** dev-docs/releases/moxbots-0.5.12.md and branch task record. Private evidence in project work/release-0512-20261018/owner/; secrets/bundles stay out of Git.
 
 0512 final before-freeze intake:144/642e passed normalCI39145233968; source chat unavailable, human explicitly transferred ordinary144 integration to unified publisher, who normally merged/fetched mainfe82002e and exactCI tree. Final union with141 is now inPR143 workspace pending joint regression/normalCI/main. Preserve141 stop function and144 Query guard ownership; fullAgentSession blob equality to08bc is superseded by accepted144 additions. No App/server action or source freeze yet.
+
+0512 concurrent-main sync includes885426ea1 sidebar overlay portal; reviewed two-file source and81 DOM pass, finalunionCI/native alignment stillopen. Preserve concurrent author work; do not rewrite885 or treat its in-progress standaloneCI as acceptedrelease.

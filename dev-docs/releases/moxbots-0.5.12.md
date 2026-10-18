@@ -9,6 +9,7 @@ Task: MOXBOTS-0512-UPDATE-RECOVERY-20261018. macOS arm64, existing own updater o
 - PR142 Goal pause: acceptedmain311ecfd5, same pause/resume/persistence owner.
 - PR145 explicit original-session continuation: acceptedmain2e1c5227 after normalCI39143100893. Restoring/opening alone never sends; preserve draft, reject stale/busy/duplicate intents, unsafe external/integrated continuation remains unavailable.
 - PR144 background499 and bounded inference retries: source642e2820 passed normalCI39145233968 (nine applicable successes, conditional iOS skip), normally merged mainfe82002ede98dd7e3f839fc45a36525efa2452cf. Remote source ancestry and exact CI/main tree848bc2c127ad1ebe97fecd2a3e4e2b1509d80e31 verified. Three retries follow the initial safe unexposed availability failure; preserve explicit Stop, Query/route revocation and delivered/uncertain tool replay fences.
+- Concurrent main885426ea1 sidebar drag-overlay portal fix: Root reviewed the two-file change and81 DOM checks passed; actual pointer alignment/native acceptance and final unionCI remain open.
 - Already-main pin132, network134 and background logs133; version0.5.12 metadata and Toast lifecycle cleanup. Uncommitted team mode and unfinished mobile/Host deployment do not become release claims.
 
 The human explicitly transferred ordinary144 merge/remote verification to this publisher after its original chat became unavailable. The final144/141 union merged without conflict. Its141 stop function and interrupt tests remain exact;144 request/retry product modules remain exact. Whole AgentSession equality to08bc is no longer expected because144 changes other functions.
@@ -18,7 +19,7 @@ The human explicitly transferred ordinary144 merge/remote verification to this p
 | Layer | Current result |
 | --- | --- |
 | Source/main |138/142/145/144 acceptedmain;141 and version/Toast are inPR143 pending final union normalCI/main |
-| Final union local |312 assertions across11 server/integration files pass;4 focused real builtin queue/fork cases pass,100 unselected are not counted; targetedESLint/whitespace pass |
+| Final union local |312 assertions across11 server/integration files pass;4 focused real builtin queue/fork cases pass,100 unselected are not counted;81 Sidebar DOM checks pass after885 integration; targetedESLint/whitespace pass |
 | Prior aggregate |168 server/105 DOM pass; actual About component browser review12 controlled cases by non-implementer Root; not nativeIPC/full Settings |
 | NormalCI |09eb aggregate completed9 successes/conditional iOS skip; final accepted144 union needs exact newhead complete normalCI |
 | Version metadata |sync-version3 tests and both Cargo locked/offline metadata checks pass |
@@ -36,7 +37,7 @@ Daily app was separately recovered manually to signed0.5.11; that is neither a s
 
 Prepare a concrete signed/AppleAccepted/stapled immutableB candidate and production-key-signed archive first. UpdaterQA disables SDK and ModelQA disables updater; their separate passes cannot prove Goal/Cron→stopped/durable acknowledgement→installation. A production-identity private baseline shares data and is a maintenance scenario, requiring explicit window, fresh authoritative idle/durable-state checks, consistent backup/rollback and actual current_exe/nonApplications install-target verification. HOME override is not isolation; do not copy daily credentials or create an unknown test Keychain.
 
-Required actual native cases: background download/resume/restart/retry and strict signature/Range; default busy/unknown preserves active work; explicit stop verifies termination/rollback/durable terminal before installation; Goal pause/persist/continue/cancel; restart→same-session explicit one-shot continuation with draft/no-auto-run/completed-hidden; valid background request after parent completion, safe retry and explicit-stop/partial no-replay boundaries. Identify controlled SDK supplier versus external real model evidence.
+Required actual native cases: background download/resume/restart/retry and strict signature/Range; default busy/unknown preserves active work; explicit stop verifies termination/rollback/durable terminal before installation; Goal pause/persist/continue/cancel; restart→same-session explicit one-shot continuation with draft/no-auto-run/completed-hidden; valid background request after parent completion, safe retry and explicit-stop/partial no-replay boundaries; sidebar drag preview follows the pointer at the supported window/zoom. Identify controlled SDK supplier versus external real model evidence.
 
 Only after all necessary real acceptance and review gates: immutable version-specific own-server stage, one complete normal-TLS external GET/original evidence review, atomic stable promotion, postpublication checks and owned-lock finish. No GitHub binaries, same-version overwrite, TLS bypass or expansion into Host/backend/Windows/website targets.
 

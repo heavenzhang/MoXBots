@@ -836,6 +836,37 @@ describe('GlobalSidebar rail flyout', () => {
     expect(ordered.map((session) => session.id)).toEqual(['pin-new', 'pin-old', 'recent', 'older']);
   });
 
+  it('portals the drag overlay out of the transformed workspace region', () => {
+    mocks.forcedRail = false;
+    mocks.projects.push({ id: 'project-1', name: 'Project one', path: '/work/project-one' });
+    mocks.taskData.sessions.push({
+      id: 'dragged-session',
+      agentDir: '/work/project-one',
+      title: 'Draggable session',
+      createdAt: '2026-07-20T00:00:00.000Z',
+      lastActiveAt: '2026-07-20T00:00:00.000Z',
+    });
+    window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+      version: 1,
+      preferredMode: 'expanded',
+      expandedWorkspaceKeys: ['/work/project-one'],
+      hasSeededDefaultExpansion: true,
+      showAutomationSessions: true,
+      sessionView: 'all',
+    }));
+    const { container } = renderSidebar();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '拖动 Draggable session' }), { key: ' ', code: 'Space' });
+
+    const overlay = Array.from(document.querySelectorAll<HTMLElement>('.shadow-lg'))
+      .find((element) => element.textContent === 'Draggable session');
+    expect(overlay).toBeDefined();
+    const overlayElement = overlay!;
+    expect(overlayElement.parentElement).toHaveStyle({ position: 'fixed' });
+    expect(overlayElement.parentElement?.parentElement).toBe(document.body);
+    expect(container.contains(overlayElement)).toBe(false);
+  });
+
   it('keeps pinned favorites first without leaking non-favorites into the favorites view', () => {
     mocks.projects.push({ id: 'project-1', name: 'Project one', path: '/work/project-one' });
     mocks.taskData.sessions.push(
