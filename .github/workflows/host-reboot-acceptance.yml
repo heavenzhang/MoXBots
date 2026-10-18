@@ -24,9 +24,9 @@ jobs:
   true-guest-reboot:
     runs-on: ubuntu-24.04
     timeout-minutes: 50
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/host-reboot-browsers
     steps:
+      - name: Set one shared browser path after the runner is allocated
+        run: printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$RUNNER_TEMP/host-reboot-browsers" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           path: harness

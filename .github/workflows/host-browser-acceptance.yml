@@ -29,9 +29,9 @@ jobs:
   disposable-browser:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/host-browser-browsers
     steps:
+      - name: Set one shared browser path after the runner is allocated
+        run: printf 'PLAYWRIGHT_BROWSERS_PATH=%s\n' "$RUNNER_TEMP/host-browser-browsers" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
         with:
           path: harness
