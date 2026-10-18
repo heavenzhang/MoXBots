@@ -1,35 +1,43 @@
-# MoXBots 0.5.12 — update recovery candidate (not published)
+# MoXBots0.5.12 — update recovery candidate (not published)
 
-Task: MOXBOTS-0512-UPDATE-RECOVERY-20261018. This is a preparation record; no frozen source, signed artifact or publication is implied.
+Task: MOXBOTS-0512-UPDATE-RECOVERY-20261018. macOS arm64, existing own updater only. Source is not frozen; no0512 formal artifact, native acceptance or public promotion exists yet. Preserve immutable0.5.11 and its rollback.
 
-Planned batch: accepted PR141 stop/admission settlement and PR138 interrupted-download recovery, plus already-main pin/network/background-log changes. All source/main/combined gates must pass before version freeze. User authorized the original source chat to arrange the next unfrozen release through the existing unified desktop publisher. Do not replace0.5.11 with different bytes.
+## Deliberately selected source
 
-The running0.5.9 installer gate can itself fail; a newfeed does not repair old code. Keep old-version recovery, new candidate native behavior and public distribution acceptance separate. The original source chat completed a separately authorized signed manual recovery of the daily app to0.5.11 and released its UI window. That is not a successful old-button A-to-B test. This publisher has no fresh native maintenance window and does not interfere.
+- PR138 interrupted-download recovery: acceptedmain8e60805e, durable partial bytes/strict Range identity/retry and visible progress/error. Download and ready never stop or install work.
+- PR141 stop/admission settlement: exact08bc5e9bb is aggregated by owner agreement intoPR143. After verified Query termination/rollback, publish missing stopped through the existing durable lifecycle and await terminal observer; preserve completed/error results and token/deadline guards.
+- PR142 Goal pause: acceptedmain311ecfd5, same pause/resume/persistence owner.
+- PR145 explicit original-session continuation: acceptedmain2e1c5227 after normalCI39143100893. Restoring/opening alone never sends; preserve draft, reject stale/busy/duplicate intents, unsafe external/integrated continuation remains unavailable.
+- PR144 background499 and bounded inference retries: source642e2820 passed normalCI39145233968 (nine applicable successes, conditional iOS skip), normally merged mainfe82002ede98dd7e3f839fc45a36525efa2452cf. Remote source ancestry and exact CI/main tree848bc2c127ad1ebe97fecd2a3e4e2b1509d80e31 verified. Three retries follow the initial safe unexposed availability failure; preserve explicit Stop, Query/route revocation and delivered/uncertain tool replay fences.
+- Already-main pin132, network134 and background logs133; version0.5.12 metadata and Toast lifecycle cleanup. Uncommitted team mode and unfinished mobile/Host deployment do not become release claims.
+
+The human explicitly transferred ordinary144 merge/remote verification to this publisher after its original chat became unavailable. The final144/141 union merged without conflict. Its141 stop function and interrupt tests remain exact;144 request/retry product modules remain exact. Whole AgentSession equality to08bc is no longer expected because144 changes other functions.
+
+## Verification and current gates
 
 | Layer | Current result |
 | --- | --- |
-| Source141/138 | 138 main8e60805e verified;141 exact08bc5e9bb being aggregated intoPR143 by explicit source-owner agreement; not frozen |
-| Version/main | Local0.5.12 metadata, sync-version3tests passed; normalCI/main pending |
-| Formal package, Reader, Apple/notary/updater signature | Not started |
-| Real native stop/install, busy/unknown, persistence | Not accepted |
-| Public full download/promotion | Not started; existing0511 preserved |
+| Source/main |138/142/145/144 acceptedmain;141 and version/Toast are inPR143 pending final union normalCI/main |
+| Final union local |312 assertions across11 server/integration files pass;4 focused real builtin queue/fork cases pass,100 unselected are not counted; targetedESLint/whitespace pass |
+| Prior aggregate |168 server/105 DOM pass; actual About component browser review12 controlled cases by non-implementer Root; not nativeIPC/full Settings |
+| NormalCI |09eb aggregate completed9 successes/conditional iOS skip; final accepted144 union needs exact newhead complete normalCI |
+| Version metadata |sync-version3 tests and both Cargo locked/offline metadata checks pass |
+| Formal package/sign/notary/Reader/updater signature |Not started for0512; immutable Reader preflight only |
+| Real native update/Goal/continuation/background behavior |Not accepted |
+| Public complete download/promotion |Not started; existing0511 preserved |
 
-Record final source/tag/artifact hashes, real test actor/environment and failures/rollback here after actual results. Detailed checklist and boundaries: `.agent-sync/tasks/codex-release-0512-20261018-a176f4c0.md`. Runtime/secret evidence remains in the private project pointer.
+Two earlier failures are retained privately. Toast teardown used an unowned timeout; item effect cleanup preserves markup/durations and both lifecycle suites. A legacy fork test used a1s wall-clock race; it now verifies real terminal completion while the original metadata-repair promise and stable storage barrier remain pending, pinned SDK model/route/CAS and unflushed writer, then releases/awaits cleanup. Framework120s unchanged. Its earlier full290 local run was289pass/1fail and is not relabeled green; corrected focused tests and final normalCI are separate evidence.
 
-## Candidate preparation / CI prerequisite
+An existing credential route subprocess once failed without stderr. Tests now preserve child diagnostics and require20 independent rounds of four concurrent commits with all routes retained, failing on the first unsuccessful round. Full Rust job117726585041 passed; original cause remains unidentified. Production credential logic, concurrency, per-round deadline and strict assertions are unchanged.
 
-Root repaired an existingToast timeout leak exposed by141 normalCI: notice timers are released on close/unmount without changing visual markup or duration. Red3/4 reproduced; focused lifecycle and send-path tests63/63 green; targetedlint passed. Version-sync3 tests and both Cargo locked/offline metadata checks passed. These are candidate source checks, not signed or native update acceptance. Goal pausePR142 is reported main311ecfd5 and will be verified during source synchronization.
+## Native and publication boundary
 
-Current source combination includes acceptedGoal pause142 and updater138. Sharedplan append conflict was resolved preserving both owners. Root version/Toast preparation will follow normalCI/main before final stop-fix freeze; no package or native result is inferred.
+Daily app was separately recovered manually to signed0.5.11; that is neither a successful old-button A-to-B nor0512 acceptance. This publisher has no fresh native window. Do not launch/quit/stop/replace the daily client or user tasks.
 
-Combined102 DOM regressions acrossToast/input/Goal/updater passed after absorbing source138/142. Complete normalCI for this preparation PR is still required; source141, formal package and native acceptance remain open.
+Prepare a concrete signed/AppleAccepted/stapled immutableB candidate and production-key-signed archive first. UpdaterQA disables SDK and ModelQA disables updater; their separate passes cannot prove Goal/Cron→stopped/durable acknowledgement→installation. A production-identity private baseline shares data and is a maintenance scenario, requiring explicit window, fresh authoritative idle/durable-state checks, consistent backup/rollback and actual current_exe/nonApplications install-target verification. HOME override is not isolation; do not copy daily credentials or create an unknown test Keychain.
 
-## Source141 aggregation agreement
+Required actual native cases: background download/resume/restart/retry and strict signature/Range; default busy/unknown preserves active work; explicit stop verifies termination/rollback/durable terminal before installation; Goal pause/persist/continue/cancel; restart→same-session explicit one-shot continuation with draft/no-auto-run/completed-hidden; valid background request after parent completion, safe retry and explicit-stop/partial no-replay boundaries. Identify controlled SDK supplier versus external real model evidence.
 
-The source owner approved merging exact08bc5e9bb58245e5f27ed507123e5c6aae58350b into releasePR143 and transferring only its normalCI/main integration to this publisher. Preserve its ancestry and exact AgentSession/integration-test blobs. Choose the release branch ToastItem effect cleanup and retain both Toast.test.tsx and Toast.lifecycle.test.tsx, including the retained-context late-callback case. The source owner will read-only verify the final main receipt. Its independent continuation featurePR145 was subsequently accepted through normalCI/main2e1c5227 before0512 freeze; Root reviewed and deliberately includes that latest-main change, with native restart/explicit-continuation tests still open.499PR144 is not accepted solely by a source report. All final gates remain open until recorded results.
+Only after all necessary real acceptance and review gates: immutable version-specific own-server stage, one complete normal-TLS external GET/original evidence review, atomic stable promotion, postpublication checks and owned-lock finish. No GitHub binaries, same-version overwrite, TLS bypass or expansion into Host/backend/Windows/website targets.
 
-Aggregate local regression:168 server/integration and105 DOM tests passed; targeted lint/whitespace passed. Source141 AgentSession/test blobs and both test suites preserved; no native/server publication implied.
-
-Before-freeze intake: acceptedmain2e1c5227 adds explicit original-session continuation after restart. No opening/restoring alone sends work, drafts stay intact, stale/busy/duplicate requests reject. Add those real native cases; do not claim the source-only checks prove native/model continuation. Existing credential helper CI failure remains recorded; only test diagnostics and20 fail-on-first-error contention rounds are added, production credential logic unchanged.
-
-A local full combination exposed the existing frozen-fork test1s wall-clock race (289pass/1fail). Preserve that failure. The test now proves actual turn completion while the original metadata-repair promise and append barrier remain unsettled, retains pinned model/route/CAS assertions, and releases/awaits its cleanup. Framework deadline and production behavior unchanged. Targeted33 passed; final strengthened overlapping case passed; complete newhead normalCI remains mandatory.
+Record final frozen source/tag, archive/manifest hashes, actors/environments, exact PR/main refs, download/rollback receipts and remaining limits here after actual outcomes. Detailed checklist: `.agent-sync/tasks/codex-release-0512-20261018-a176f4c0.md`; runtime/credential evidence stays in the private project pointer.

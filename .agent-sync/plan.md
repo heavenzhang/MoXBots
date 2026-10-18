@@ -1,3 +1,7 @@
+## MOXBOTS-REQUEST-499-20261018
+
+Fix normal background inference and streams incorrectly cancelled by parent turn completion; exact Query/route revocation and Stop remain authoritative. Availability failures get an original call plus three bounded, cancellable pre-delivery retries, independent of optional backup configuration. Never re-enqueue tasks or replay partial output/uncertain writes. Task `.agent-sync/tasks/codex-request-499-20261018-3f1bac55.md`; implementation/paired-loopback/native SDK verification and main delivery evidence `dev-docs/request-499-20261018-acceptance.md`. User explicitly authorized main integration and notifying the registered release owner for the next unfrozen repair. Daily client/task interruption excluded; queued/candidate/published/native-accepted states remain distinct.
+
 ## BG-TASK-LOG-001 — 2026-10-18
 
 用户要求修复后台任务行点击无响应，并直接查看状态/执行日志。既有Exact Query/run registry经SessionEngine提供只读受限64KiB日志；任务详情不依赖原工具卡片，终态/断网/记录释放保留已读日志，键盘与窄屏适配。范围及分项验收 `.agent-sync/tasks/codex-bg-task-log-001-20261018-3fcc9f5f.md`、`dev-docs/bg-task-log/acceptance.md`。source/模拟联调/CI/main/原生发行分别追踪；用户明确授权修复验收后发送给既定唯一桌面发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4安排下一未冻结版本。本聊天不重启日常App、不打断活动任务、不改既有冻结包/稳定更新源，无配置或业务数据迁移。
@@ -451,3 +455,5 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 - **Native ownership:** Source thread01a14f82 reported signed manual recovery to0511 and released its temporary UI control. Root has not acquired a new maintenance window; user activity remains protected. No false admission/Stopped or force-kill workaround.
 - **Intake:** Goal pause142 is acceptedmain; continuation145 passed its independent CI/main2e1c5227 before freeze and was deliberately reviewed/included through latest-main sync; actual native continuation still open; 499 request is now sourcePR144/e0f2495b, still unmerged, and is reserved only if acceptedmain before freeze, otherwise the next unfrozen batch. Do not freeze unfinished source or add an indefinite gate.
 - **Record:** dev-docs/releases/moxbots-0.5.12.md and branch task record. Private evidence in project work/release-0512-20261018/owner/; secrets/bundles stay out of Git.
+
+0512 final before-freeze intake:144/642e passed normalCI39145233968; source chat unavailable, human explicitly transferred ordinary144 integration to unified publisher, who normally merged/fetched mainfe82002e and exactCI tree. Final union with141 is now inPR143 workspace pending joint regression/normalCI/main. Preserve141 stop function and144 Query guard ownership; fullAgentSession blob equality to08bc is superseded by accepted144 additions. No App/server action or source freeze yet.
