@@ -1093,6 +1093,18 @@ def post_reboot_ready(private, diagnostics, save_diagnostics=None):
             diagnostics["lastRuntimeObservation"] = snapshot
         except Exception:
             diagnostics["runtimeObservationUnavailable"] = True
+        if (not diagnostics["gatePassed"] and diagnostics.get("lastPollFailure", {}).get("stage")
+                == "real-AuthStore-membership-empty-catalog-ready"):
+            try:
+                state = db_snapshot(private)  # existing local lab snapshot, no new guest operation
+                devices = state["devices"]
+                diagnostics["AuthStoreProjection"] = {"sessionCount": len(state["sessions"]), "principalCount": state["principals"],
+                    "deviceCount": len(devices), "catalogCount": state["catalogs"], "catalogItemCount": state["items"],
+                    "joinedDeviceCount": sum(row[1] == 1 for row in devices), "readyDeviceCount": sum(row[3] == "ready" for row in devices),
+                    "singleDeviceEpochsMatch": len(devices) == 1 and devices[0][4] == devices[0][5],
+                    "singleDeviceCatalogSequencePositive": len(devices) == 1 and devices[0][6] > 0}
+            except Exception:
+                diagnostics["AuthStoreObservationUnavailable"] = True
         if save_diagnostics:
             try:
                 save_diagnostics()
