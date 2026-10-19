@@ -1,0 +1,36 @@
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/release-0515-20261020 -->
+<!-- git-project-sync-task:base=70eb592fce70149575afc1f81fe101e9ec81c0cb -->
+<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:scaffold=false -->
+
+# MOXBOTS-0515-RELEASE-20261020
+
+## Objective
+
+Human requests0.5.15 after the current submitted desktop changes complete, and explicitly requires the ONLINE stable channel to advance to the latest verified release. Existing local-install authority remains. This supersedes unpublished014build2 promotion; collect its existing compiler and preserve the intermediate output, do not publish014first merely to mark a step complete. Repository https://github.com/heavenzhang/MoXBots.git; desktop/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 retained.
+
+## Acceptance criteria
+
+- [ ] Review/integrate current PR169 desktop repair union and submitted stream-resume exacte9ba90839f568f991299151083d94a0a626dbe2b; later changes excluded after freeze.
+- [ ] Focused semantic combination tests, exact-head shared CI and normal main merge/remote ancestry/tree identity.
+- [ ] One015formal native build at normal priority, fixedReader unchanged; signature/notary originalID/exactZIPlog/staple/Gatekeeper/TAR/updatersig. No extra privateA build.
+- [ ] Focused native changed paths and safe current-owner admission/rollback; no business task replay/forcekill or credential/config reset.
+- [ ] Publish immutable015artifact and exact stable manifest through existing owned lock, normalTLS external byte/hash check, atomic promotion and postcheck. Verify013→015 detection/download.
+- [ ] Install the same verified015App locally; actual runtime/build/path/hash and source/main/tag/artifact/distribution/daily records. Preserve013/011 and original014 rollback identities.
+
+## Completed
+
+Live stable last verified013, server014 release absent and release lock absent. Prior014local-only state explained to human. Source169union was reviewed and focused checks passed; integration CI exposed and root fixed exact process-fixture classification and raw logger macro issues, with failed originals retained. Existing014compile continues separately to preserve progress; no014sign/notary/publication authorized after this newer version request. New015branch started from verifiedremote main70eb592f; start/task-init gates passed before source edits. Stream-resume source and evidence intake read; combination review is in progress.
+
+## Verification
+
+Source-local checks and actual SDK synthetic suppliers are distinct from signed native, actual Provider and online publication. Reuse prior results only when their source/behavior is unchanged; new semantic intersections need focused tests. No package or publication success claimed yet.
+
+## Blockers and unknowns
+
+Combined015source and CI not yet complete. Current014source has a live normal compiler/cache; do not copy active cache or launch another build in it. Before local activation, fresh owner/backup admission is still required; original014data copy was not globally consistent and cannot be blindly restored. Original remote Air availability and real Provider break cause remain separate, unproved outcomes. Mobile layout/speech is an independent unit and is excluded from this desktop gate; human deferred speech.
+
+## Next step
+
+Normally merge exact reviewed169union into this branch, merge and review stream-resume intersections, set synchronized015version/build, then run affected checks and coordinate a single015integration PR/CI after169main reconciliation. Online promotion is a required delivery step, not an optional follow-up.
