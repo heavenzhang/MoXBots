@@ -666,9 +666,10 @@ describe('Query-owned background inference through both recovery controllers', (
     const response = await bounded(h.handler(request('original stream', { stream: true })));
     const reader = response.body!.getReader();
     expect(new TextDecoder().decode((await bounded(reader.read())).value)).toContain('delivered partial progress');
-    const failure = expect(bounded(reader.read())).rejects.toThrow();
+    const failure = bounded(reader.read());
     breakStream.resolve();
-    await failure;
+    expect(new TextDecoder().decode((await failure).value)).toContain('automatic_replay_blocked');
+    expect((await bounded(reader.read())).done).toBe(true);
     h.finishParent();
     for (const text of ['original stream', 'implicit continuation with modified native history']) {
       const replay = await h.handler(request(text, { stream: true }));

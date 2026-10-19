@@ -1,5 +1,7 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Stream as AnthropicStream } from '@anthropic-ai/sdk/core/streaming';
+import { Response as UpstreamResponse } from 'undici';
 import { createBridgeHandler } from './handler';
 import { ContextRecoveryController } from './context-recovery';
 import { ModelFailoverController, type InferenceRecoveryHooks } from './model-failover';
@@ -7,6 +9,8 @@ import type { UpstreamConfig } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
 import { SessionModelRecovery } from '../builtin-session/model-recovery';
 import type { ModelRecoveryState } from '../../shared/modelRecovery';
+import { classifyContextTurnFailure } from '../utils/context-budget';
+import type { AnthropicStreamEvent } from './types/anthropic';
 
 type RecordedRequest = { path: string; body: Record<string, unknown>; authorization?: string };
 type Fixture = { baseUrl: string; requests: RecordedRequest[] };
@@ -365,7 +369,8 @@ describe('model failover over real loopback HTTP', () => {
     const reader = response.body!.getReader();
     expect(new TextDecoder().decode((await reader.read()).value)).toContain('partial progress');
     finishStream.resolve();
-    await expect(reader.read()).rejects.toThrow();
+    expect(new TextDecoder().decode((await reader.read()).value)).toContain('automatic_replay_blocked');
+    expect((await reader.read()).done).toBe(true);
     const replay = await h.handler(request(undefined, undefined, true));
     expect(replay.status).toBe(409);
     await replay.text();
@@ -383,6 +388,107 @@ describe('model failover over real loopback HTTP', () => {
     expect(primary.requests).toHaveLength(2);
     expect(backup.requests).toHaveLength(0);
   });
+
+  it.each(['anthropic', 'anthropic_partial_frame', 'chat_completions', 'responses'] as const)(
+    'preserves durable waiting history and gives the native SDK a Goal safety error after %s truncation', async format => {
+      const primary = await fixture((_req, res) => {
+        if (primary.requests.length <= 4) return json(res, { error: { message: 'overloaded' } }, 503);
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        if (format === 'anthropic' || format === 'anthropic_partial_frame') {
+          res.end('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"partial"}}\n\n'
+            + (format === 'anthropic_partial_frame' ? 'event: content_block_delta\ndata: {"type":' : ''));
+        } else if (format === 'responses') {
+          res.end('data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"partial"}\n\n');
+        } else {
+          res.end('data: {"choices":[{"index":0,"delta":{"content":"partial"},"finish_reason":null}]}\n\n');
+        }
+      });
+      let stored: ModelRecoveryState | undefined;
+      let recoveryTime = Date.now();
+      const writes: ModelRecoveryState[] = [];
+      const recovery = new SessionModelRecovery({
+        read: () => stored,
+        write: async (next, expected, live) => {
+          if (!live() || stored !== expected) return false;
+          stored = next;
+          if (next) writes.push(next);
+          return true;
+        },
+        current: () => ({ sdkSessionId: 'same-native-history', routeIdentity: 'same-route', turnId: 'same-turn' }),
+        isLive: () => true, prepare: async () => {}, now: () => recoveryTime,
+      });
+      // Use the production recovery owner, compress only its wait duration.
+      const wait = recovery.wait.bind(recovery);
+      vi.spyOn(recovery, 'wait').mockImplementation(async (...args) => {
+        const delay = await wait(...args);
+        if (delay !== undefined) recoveryTime += delay;
+        return delay === undefined ? delay : 0;
+      });
+      const complete = vi.spyOn(recovery, 'complete');
+      const failover = new ModelFailoverController({ scope: () => 'same-root', resolveBackup: () => undefined,
+        onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery });
+      const native = format === 'anthropic' || format === 'anthropic_partial_frame';
+      const config = target(primary, native ? 'anthropic' : 'openai', native ? undefined : format as 'chat_completions' | 'responses');
+      const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: failover }), logger: null });
+      const history: AnthropicRequest['messages'] = [{ role: 'user', content: userText },
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'already-done', name: 'increment_counter', input: {} }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'already-done', content: '1' }] }];
+      const response = await handler(request(history, undefined, true));
+      let failure = '';
+      try {
+        for await (const event of AnthropicStream.fromSSEResponse<AnthropicStreamEvent>(response, new AbortController())) {
+          expect(event.type).not.toBe('message_stop');
+        }
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error);
+      }
+      expect(failure).toContain('automatic_replay_blocked');
+      expect(classifyContextTurnFailure({ errorText: failure })).toBe('automatic_replay_blocked');
+      expect(complete).not.toHaveBeenCalled();
+      expect(writes.map(row => row.status)).toEqual(['waiting', 'paused']);
+      expect(stored?.sdkSessionId).toBe('same-native-history');
+      expect(primary.requests).toHaveLength(5);
+      expect((await handler(request(history, undefined, true))).status).toBe(409);
+      expect(primary.requests).toHaveLength(5);
+    });
+
+  it.each(['chat_completions', 'responses'] as const)('Stop cancels a held non-stream %s body after headers', async format => {
+    const reading = deferred();
+    const disconnected = deferred();
+    const originalText = UpstreamResponse.prototype.text;
+    const spy = vi.spyOn(UpstreamResponse.prototype, 'text').mockImplementation(function (this: UpstreamResponse) {
+      if (this.headers.has('x-fixture-held')) reading.resolve();
+      return originalText.call(this);
+    });
+    try {
+      const primary = await fixture((_req, res) => {
+        res.writeHead(200, { 'content-type': 'application/json', 'x-fixture-held': 'true' });
+        res.write('{"id":"held');
+        res.once('close', disconnected.resolve);
+      });
+      const backup = await fixture((_req, res) => json(res, anthropicText()));
+      const h = harness(target(primary, 'openai', format), target(backup, 'anthropic'));
+      const abort = new AbortController();
+      const pending = h.handler(request(undefined, abort.signal));
+      await reading.promise;
+      abort.abort();
+      expect((await pending).status).toBe(499);
+      await disconnected.promise;
+      expect(primary.requests).toHaveLength(1);
+      expect(backup.requests).toHaveLength(0);
+    } finally { spy.mockRestore(); }
+  }, 3_000);
+
+  it.each([{ error: { message: 'upstream failed' } }, { choices: [] },
+    { choices: [{ message: { role: 'assistant', content: 'partial' }, finish_reason: null }] }])(
+    'does not translate a 200 incomplete Chat JSON payload into successful assistant output', async payload => {
+      const primary = await fixture((_req, res) => json(res, payload));
+      const handler = createBridgeHandler({ getUpstreamConfig: () => target(primary, 'openai', 'chat_completions'), logger: null });
+      const response = await handler(request());
+      expect(response.status).toBe(502);
+      expect(await response.text()).toContain('Invalid upstream');
+      expect(primary.requests).toHaveLength(1);
+    });
 
   it('publishes one switch for concurrent failures and pins subsequent inference to backup', async () => {
     const bothPrimariesArrived = deferred();

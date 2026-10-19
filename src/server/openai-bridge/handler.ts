@@ -909,15 +909,15 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort)
         : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort);
     } else {
-      // Non-stream branch: response body is read with a single await; the
-      // request.signal listener can be detached now (controller lives only
-      // through the body read, which translateXxxResponse owns).
-      if (request.signal) {
-        request.signal.removeEventListener('abort', onDownstreamAbort);
+      // Stop must still reach fetch while a successful response body is being
+      // read. Headers arriving is not completion of a non-stream inference.
+      try {
+        return await (isResponses
+          ? handleResponsesNonStreamResponse(upstreamResp, responseModel, log)
+          : handleNonStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache));
+      } finally {
+        request.signal?.removeEventListener('abort', onDownstreamAbort);
       }
-      return isResponses
-        ? handleResponsesNonStreamResponse(upstreamResp, responseModel, log)
-        : handleNonStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache);
     }
   };
 
@@ -949,6 +949,13 @@ async function handleNonStreamResponse(
   } catch {
     log('[bridge] Failed to parse upstream JSON response');
     return jsonError(502, 'api_error', 'Invalid upstream response');
+  }
+
+  const choice = openaiResp?.choices?.[0];
+  if (!choice?.message || choice.message.role !== 'assistant'
+    || !['stop', 'length', 'tool_calls', 'content_filter'].includes(choice.finish_reason ?? '')) {
+    log('[bridge] Upstream Chat Completions JSON had no valid completion');
+    return jsonError(502, 'api_error', 'Invalid upstream Chat Completions completion');
   }
 
   // Cache thought_signatures from tool calls (Gemini thinking models)
@@ -1001,7 +1008,7 @@ export function handleStreamResponse(
       try { downstreamSignal.removeEventListener('abort', onDownstreamAbort); } catch { /* ignore */ }
     }
     logStreamEnd('empty_body');
-    return new Response('', { status: 200, headers: streamHeaders() });
+    return jsonError(502, 'api_error', 'Empty upstream Chat Completions stream');
   }
 
   const detachDownstream = (): void => {
@@ -1017,6 +1024,11 @@ export function handleStreamResponse(
       const text = decoder.decode(chunk, { stream: true });
       const sseEvents = sseParser.feed(text);
       for (const sseEvent of sseEvents) {
+        if (sseEvent.event === 'ping') continue;
+        if (sseEvent.event === 'error') {
+          controller.error(new Error('Upstream Chat Completions stream reported an error'));
+          return;
+        }
         if (sseEvent.data === '[DONE]') {
           // Protocol terminator — forward as the finalize signal (see STREAM_DONE).
           controller.enqueue(STREAM_DONE);
@@ -1025,7 +1037,10 @@ export function handleStreamResponse(
         try {
           controller.enqueue(JSON.parse(sseEvent.data) as OpenAIStreamChunk);
         } catch {
-          // Skip malformed chunks
+          // Missing content/tool arguments cannot be repaired by a later valid
+          // terminal. Preserve the failure so recovery cannot clear its journal.
+          controller.error(new Error('Malformed upstream Chat Completions stream event'));
+          return;
         }
       }
     },
@@ -1086,7 +1101,7 @@ export function handleStreamResponse(
       }
     },
     flush(controller) {
-      // Emit closing events for incomplete streams (no-op if already finished).
+      // EOF succeeds only with a valid finish_reason; otherwise emit an error.
       const finalEvents = translator.finalize();
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
@@ -1263,10 +1278,12 @@ export function handleResponsesStreamResponse(
         // sends only `[DONE]` has not supplied a valid Responses terminal; true
         // turn liveness remains owned by the Session watchdog. See issue #277.
         if (sseEvent.data === '[DONE]') continue;
+        if (sseEvent.event === 'ping') continue;
         try {
           controller.enqueue(JSON.parse(sseEvent.data) as ResponsesStreamEvent);
         } catch {
-          /* skip malformed */
+          controller.error(new Error('Malformed upstream Responses stream event'));
+          return;
         }
       }
     },
