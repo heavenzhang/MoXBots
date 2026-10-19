@@ -39,6 +39,34 @@ Source-only hypothesis: cli execute calls owned::Connection::discover (including
 
 Actual closed startup code remains unknown until root rerun. Existing journal prohibition is overridden only for this fixed unit/current boot/last30 bounded readonly diagnostic, raw data stays memory-only and never in output/artifacts. Actual model/usage unknown, external models0.
 
+## Product repair extension: MOXBOTS-HOST-BOOT-RECOVERY-20261019
+
+Root explicitly extended this worker's scope after run39145714749 again failed the unchanged90s post-reboot gate. Only narrow Host/network startup/transport source, adjacent tests, direct locked dependencies and this task record may change. Root remains sole integrator/publisher/dispatcher; this worker may not SSH, inspect credentials, change production/Mac, push/merge or delegate. Earlier statements above denying product repair describe the completed observation phase, not this extension.
+
+### Root cause and design
+
+The observed code is OWNED_ACCOUNT_UNAVAILABLE (count4, no unknown code); Node, encrypted identity, registry and committed marker remained intact, connector exited1 with NRestarts5, status empty and management socket absent. The closed code does not reveal the actual errno or distinguish TCP from TLS. Source proves two unowned startup network gates: CLI run performs HTTPS discovery before its run lock/status/reconnect owner, and run_owned performs online account validation before entering run_context. The disposable guest restores its loopback reverse forward only after observing the changed kernel boot ID. That deterministic boot availability gap can exhaust systemd's rapid process restarts before forwarding returns. Real loopback tests reproduce the source failure and same-process recovery; they do not prove a new KVM run passed.
+
+CLI run now assembles only from the already encrypted trusted pin. The original connector reconnect attempt owns pending-candidate recovery, captured local account-binding fences, policy projection, initial online account/grant checks and listener creation. The listener still cannot bind before online trust/session validation and the durable management grant. The original5s initial backoff, jitter, one-shot join authority and90s acceptance gate are unchanged; no CLI retry owner, fixture delay or RestartSec workaround is added.
+
+Only positively typed availability failures can retry: deadline, explicitly recognized TCP causes, a private headless OS-DNS failure marker, or the locked hyper1.9.0 incomplete-message type during request/send. TLS errors take precedence and unknown protocol/transport/schema errors fail closed. Existing trust/credential/session/reauth/revocation/binding/grant/uncertain enrollment/rotation errors cannot be admitted by a server503. Existing pending-candidate recovery still inspects the exact original credential, signed handle and key proof; it never blindly resends a rotation or creates a replacement identity. The run-specific fence precedes recovery, including after a login changes while waiting. Relay-access expiry remains distinct from expired account authorization and can reconnect using the original live account.
+
+The shared owned HTTP and transport seams also improve Desktop retryable metadata classification; Desktop actor ownership/reconnect code is unchanged. Reqwest remains locked0.13.2. Direct hyper dependencies were authorized by root solely to downcast the already locked1.9.0 type; both lockfile diffs add the existing package to the respective root dependency lists with no package/version change. The headless DNS adapter retains OS lookup behavior and emits no hostname or raw OS error text.
+
+### To Do List and evidence
+
+- [x] Verify clean assigned worktree/branch/HEAD53c3ef0b858d520c4f8b53f8d00d4c91e8938bdb and exact canonical fetch/push URL; preserve the accepted observation files.
+- [x] Source repair and deterministic regression: actual run_owned refuses TCP, publishes unavailable/readyfalse, retains no management listener, waits original5s, then validates a real loopback TLS account and creates the listener in the same run. The test stops before device enrollment/business execution.
+- [x] Actual run_owned regressions: bad TLS CA and saved-session401 terminate before listener creation; replacing the local binding during offline backoff terminates rather than adopting it. Pure retry table also rejects security/unknown codes even with503.
+- [x] Typed DNS, confirmed timeout/TCP, invalid HTTP/unknown protocol, existing incomplete-response and secret-redaction tests. Existing signed pending-candidate/foreign handle/key/principal and concurrent-renewal tests remain in the full test run.
+- [x] cargo test --locked --manifest-path src-tauri/headless-network/Cargo.toml --lib --quiet:215 PASS,0 failed,2 existing explicit fixture ignores,8.66s;217 total.
+- [x] Desktop manifest metadata: cargo metadata --locked --offline --manifest-path src-tauri/Cargo.toml --no-deps --format-version1 PASS. This is lock/manifest validation, not a full Desktop build.
+- [x] cargo clippy --locked --manifest-path src-tauri/headless-network/Cargo.toml --all-targets: exit0, one pre-existing too_many_arguments warning on unchanged handle_management_events atconnector.rs902. The stricter -- -D warnings run fails only on that existing warning; no suppression or unrelated refactor added. git diff --check and bounded whole-diff review PASS. Local commit is the handoff; root report carries its resulting SHA.
+- [ ] Root: independent source review, normal integration, exact new source CI/candidate artifacts (P3), full standard/natural60s renewal/true-KVM-reboot acceptance. Old P2 artifacts cannot contain this repair.
+- [ ] Root: authorized production delivery and real-user acceptance, tracked separately from this offline worker.
+
+Model selection: parent requested Sol/high for repeated real lifecycle failure and security classification. Actual exposed model/token/cost telemetry is unavailable to this worker; no external-model calls or paid inference were made. Local tests use generated synthetic credentials under temporary private directories and loopback listeners; no real credentials were inspected. No production, remote host, ordinary Mac app, workflow or remote Git mutation was performed.
+
 ## Next step
 
-Root reviews the immutable independent branch head, then alone dispatches the same P2 KVM artifacts from this harness branch. Do not update/cancel nearly complete PR137 CI just for diagnostics; root later normally integrates the final diagnostic/product delta when the actual startup code establishes the failure branch.
+Root reviews this bounded source change and its local commit, integrates normally, then builds an exact new candidate and alone runs actual KVM acceptance. Real KVM success remains unverified; raw real journal/errno has not been obtained by this worker.
