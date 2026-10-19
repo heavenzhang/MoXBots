@@ -25,12 +25,16 @@ export const remoteScopeSchema = z
 const responseSchema = z
   .object({
     scope: remoteScopeSchema,
-    result: z
-      .object({
+    result: z.discriminatedUnion("kind", [
+      z.object({
         kind: z.literal("remote-session"),
         data: remoteSessionResultSchema,
-      })
-      .strict(),
+      }).strict(),
+      z.object({
+        kind: z.literal("error"),
+        code: z.string().regex(/^[A-Z0-9_]{1,128}$/),
+      }).strict(),
+    ]),
   })
   .strict();
 export function remoteAccountMatches(locator: HostLocator): boolean {
@@ -105,10 +109,7 @@ export async function remoteSessionRequest(
     throw invalid();
   const parsed = responseSchema.safeParse(raw);
   if (!parsed.success) throw invalid();
-  const {
-    scope,
-    result: { data },
-  } = parsed.data;
+  const { scope, result } = parsed.data;
   if (
     scope.principalId !== locator.principalId ||
     scope.networkId !== locator.networkId ||
@@ -116,6 +117,16 @@ export async function remoteSessionRequest(
     (targetScope && !sameOwnedHostScope(scope, targetScope))
   )
     throw invalid();
+  // The encrypted management owner can fail before producing a Session
+  // projection. Preserve that diagnostic only after validating its scope.
+  // A failed write still requires receipt reconciliation, never replay.
+  if (result.kind === "error")
+    throw {
+      code: isRemoteMutation(request)
+        ? "REMOTE_SESSION_UNCONFIRMED"
+        : result.code,
+    };
+  const { data } = result;
   if (data.kind === "error") throw { code: data.code };
   if (data.agentId !== request.agentId) throw invalid();
   const expected =
