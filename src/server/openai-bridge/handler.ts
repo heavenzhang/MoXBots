@@ -466,20 +466,24 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
     }
 
     if (upstream.contextRecovery) {
-      return upstream.contextRecovery.run(request, anthropicReq, projected => handler(new Request(request.url, {
+      const response = await upstream.contextRecovery.run(request, anthropicReq, projected => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(projected), signal: request.signal,
       }), { ...upstream, contextRecovery: undefined }));
+      if (!response.ok && !resolvedUpstream) log(`[bridge] Inference rejected HTTP ${response.status} (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model})`);
+      return response;
     }
     if (upstream.modelFailover) {
       // Parsing above consumed request.body. Recovery hooks need an intact body
       // to archive the exact inference before granting another call.
       const inferenceRequest = new Request(request.url, { method: 'POST', headers: request.headers,
         body: JSON.stringify(anthropicReq), signal: request.signal });
-      return upstream.modelFailover.run(inferenceRequest, upstream, target => handler(new Request(request.url, {
+      const response = await upstream.modelFailover.run(inferenceRequest, upstream, target => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
       }), { ...target, modelFailover: undefined }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
+      if (!response.ok && !resolvedUpstream) log(`[bridge] Inference rejected HTTP ${response.status} (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model})`);
+      return response;
     }
     // Resolve only at the forwarding layer, after recovery wrappers have
     // delegated here. A short fail-fast timer is useful only while bounded

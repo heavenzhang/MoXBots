@@ -654,8 +654,8 @@ describe('model failover over real loopback HTTP', () => {
     expect(backup.requests).toHaveLength(4);
     // Even a native HTTP retry of the same inference must not repeat either upstream.
     const replay = await h.handler(request());
-    expect(replay.status).toBe(409);
-    expect(await replay.text()).toContain('automatic replay is blocked');
+    expect(replay.status).toBe(503);
+    expect(await replay.text()).toContain('backup overloaded');
     expect(primary.requests).toHaveLength(4);
     expect(backup.requests).toHaveLength(4);
     expect(h.notices).toHaveLength(1);

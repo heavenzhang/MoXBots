@@ -81,8 +81,9 @@ export class ModelFailoverController implements BridgeModelFailover {
     if (scope && scope !== this.state?.scope) this.state = { scope };
     const state = scope ? this.state : undefined;
     const ambiguous = !scope || this.options.canSwitch?.() === false;
-    const lease = this.guard.begin(scope, requestKey ?? `unfingerprinted-${++this.sequence}`, ambiguous);
-    if (!lease) return replayBlocked();
+    const fingerprint = requestKey ?? `unfingerprinted-${++this.sequence}`;
+    const lease = this.guard.begin(scope, fingerprint, ambiguous);
+    if (!lease) return this.guard.rejectedResponse(scope, fingerprint, ambiguous) ?? replayBlocked();
     // Only root-owned recovery may change provider. Ordinary primary inference and
     // its bounded pre-delivery retries remain valid across a parent turn boundary.
     // A request admitted with ambiguous ownership cannot acquire a foreground root
@@ -224,7 +225,7 @@ export class ModelFailoverController implements BridgeModelFailover {
       if (!response.ok) {
         if (hasDurableRecovery) await blockRecovery('Model inference stopped before successful delivery');
         if (durableStopped) { cancelResponse(response); return replayBlocked(); }
-        return response;
+        return await lease.reject(response);
       }
       if (!response.body) {
         if (hasDurableRecovery) {
@@ -338,14 +339,16 @@ function replayBlocked(): Response {
   return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error',
     code: 'automatic_replay_blocked',
     message: 'automatic_replay_blocked: This model request was already delivered, failed, or reached the Query safety limit. Progress is preserved; automatic replay is blocked.' } }),
-  { status: 409, headers: { 'content-type': 'application/json', 'x-should-retry': 'false' } });
+  { status: 409, headers: { 'content-type': 'application/json', 'x-should-retry': 'false',
+    'x-moxbots-recovery': 'blocked' } });
 }
 
 function unavailableBackup(): Response {
   return new Response(JSON.stringify({ type: 'error', error: { type: 'api_error',
     code: 'automatic_replay_blocked',
     message: 'automatic_replay_blocked: The selected backup model is no longer authorized or available. Progress is preserved; automatic replay is blocked.' } }),
-  { status: 409, headers: { 'content-type': 'application/json', 'x-should-retry': 'false' } });
+  { status: 409, headers: { 'content-type': 'application/json', 'x-should-retry': 'false',
+    'x-moxbots-recovery': 'blocked' } });
 }
 
 function cancelled(): Response {
