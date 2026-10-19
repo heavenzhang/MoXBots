@@ -8,7 +8,8 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.moxbots.mobileinternal"
+      "bundleIdentifier": "com.moxbots.mobileinternal",
+      "buildNumber": "2"
     },
     "android": {
       "package": "com.moxbots.mobileinternal",

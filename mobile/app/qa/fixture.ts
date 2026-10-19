@@ -1,3 +1,4 @@
+import { messagePresentationFixture } from './messagePresentationFixture';
 import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, PendingOperation, QaScenario, SessionRequest, Snapshot, Target } from '../src/native';
 
 export type { QaScenario } from '../src/native';
@@ -237,7 +238,7 @@ function makeSnapshot(sessionId: string, agentId: string, state: Snapshot['state
     messages: [
       { id: 'qa-message-1', role: 'assistant', timestamp: new Date(Date.now() - 8 * 60_000).toISOString(), content: '你好，我可以帮你整理产品方案。你想先讨论哪一部分？', truncated: false, tools: [] },
       { id: 'qa-message-2', role: 'user', timestamp: new Date(Date.now() - 6 * 60_000).toISOString(), content: '梳理移动端的会话体验，优先解决主界面布局。', truncated: false, tools: [] },
-      { id: 'qa-message-3', role: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), content: '建议把会话内容作为主视图：顶部保留标题、Bot 和成果入口；输入区保持单行，需要附件或语音时再展开辅助操作。', truncated: false, tools: [] },
+      { id: 'qa-message-3', role: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), content: scenario === 'rich-text' ? messagePresentationFixture : '建议把会话内容作为主视图：顶部保留标题、Bot 和成果入口；输入区保持单行，需要附件或语音时再展开辅助操作。', truncated: false, tools: [] },
     ],
     interactions: includeApproval ? [{
       requestId: 'qa-approval-1', generation, turnId: turnId ?? 'qa-turn-1', interaction: 'permission',
