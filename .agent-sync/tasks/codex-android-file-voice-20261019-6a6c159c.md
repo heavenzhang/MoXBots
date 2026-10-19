@@ -20,7 +20,7 @@ MOXBOTS-ANDROID-FILE-VOICE-20261019. Validate the real Android system file/image
 
 ## Verification / states
 
-Code: diagnosis. Simulated prior evidence is historical. Real login/restore/logout accepted separately at69f/currentmain671; 32 native tests passed but do not prove file/voice. Actual file picker/Host/ASR open. Production service929 and original101 remain accepted and excluded from unnecessary changes. iPhone and push-provider configuration are outside this request.
+Code: repairs implemented; candidate rebuild and real reacceptance pending. Simulated prior evidence is historical. Real login/restore/logout accepted separately at69f/currentmain671; 32 native tests passed but do not prove file/voice. Actual file picker/Host/ASR open. Production service929 and original101 remain accepted and excluded from unnecessary changes. iPhone and push-provider configuration are outside this request.
 
 ## Dependencies and next step
 
@@ -33,3 +33,11 @@ Private test mount controller initially used an account bearer against /v1 and w
 Controlled UTF8 Chinese-name text168000B and PNG16736B, plus empty and20MiB+1 negative files, are on dedicated AVD; full source hashes recorded privately. Next: scoped temporary mount CAS, real system picker/cancel/negative sizes, native encrypted upload and exact Host bytes/SHA, then speech actual permission/negative recovery. Chinese on-device model remains absent; prior system download error11 is unresolved, so no claim of successful Chinese ASR. Physical Android availability asked asynchronously; iPhone remains deferred.
 
 Private evidence: project pointer output/android-file-voice-20261019. No secrets, raw DBs or binaries in Git. One worker prepared private controller safety tests13/13, then maps original Rust owner reuse; Root alone operates devices/production and accepts results. No external model calls; built-in local worker selection follows applicable ai-yaoren-local, actual usage/cost unknown.
+
+## Reproduced failures and current repair checkpoint
+
+Actual system picker cancellation produced an erroneous failure notice. Chinese-name UTF8 text was imported, but immediate upload failed MOBILE_ATTACHMENT_UPLOAD_FOREGROUND_REQUIRED before any Host asset write; passive foreground refresh then replaced opaque target IDs and discarded the attachment draft. Original APK Host asset store remained empty, so no successful upload is claimed.
+
+Repairs: cancellation is quiet; an owner-bound five-second wait observes Android focus/app state without weakening the native foreground guard; only freshly validated directory rows may reuse inert device/Agent ID aliases after suspend; same-view metadata refresh preserves draft/attachment ownership. Picker single-flight cleanup is independent of the old view, addressing the independent review finding. Explicit navigation, scope change, logout/error/timeout and fresh permission loss still invalidate authority. Root added a suspended-alias asset rejection and duplicate-alias priority regression.
+
+Current local checks: app typecheck/lint and61 policy tests pass; native connection129 passed/1 explicitly ignored. Separate reviewer found picker busy cleanup defect and Root repaired it before candidate build. Latest main5bce4ad8 fetched; changed background continuation runtime is outside this deployment lane, mobile/shared source closure unchanged. Candidate must be built from the current combined committed tree, not copied from old native bytes.

@@ -9,7 +9,7 @@ import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, Pending
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate } from '../draftPersistence';
 import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
-import { SerialUploadQueue } from '../uploadQueue';
+import { SerialUploadQueue, waitForUploadForeground } from '../uploadQueue';
 import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../attachmentUploadTracker';
 import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactChatReturn, rememberArtifactChatReturn, resolveArtifactReturnTarget } from '../artifactNavigation';
 import { notificationOpens, notificationSnapshotMatches } from '../notificationPolicy';
@@ -66,7 +66,8 @@ const errorMessages: Record<string, string> = {
   MOBILE_CAPABILITY_REQUIRED: '设备能力尚未确认，请刷新后重试。',
   MOBILE_UPLOAD_CANCELLED: '上传已取消。请移除这个附件并重新选择后再发送。',
   MOBILE_ATTACHMENT_LIMIT: '一次最多添加 8 个附件。',
-  MOBILE_ATTACHMENT_TOO_LARGE: '附件超过单个文件大小限制。',
+  MOBILE_ATTACHMENT_UPLOAD_FOREGROUND_REQUIRED: '请回到应用前台后继续上传，已选择的附件会保留。',
+  MOBILE_ATTACHMENT_TOO_LARGE: '附件过大：文件不能超过 20 MiB，图片不能超过 10 MiB。请重新选择。',
   MOBILE_ATTACHMENT_IMAGE_INVALID: '所选图片无法读取或尺寸过大。',
   MOBILE_ATTACHMENT_EMPTY: '所选文件为空，无法上传。',
   MOBILE_ATTACHMENT_UPLOAD_ACTIVE: '附件仍在上传，请先暂停或等待完成。',
@@ -111,6 +112,14 @@ function AppBody() {
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
   const [attachmentPicking, setAttachmentPicking] = useState(false);
+  const attachmentPickingRef = useRef(false);
+  const windowFocusedRef = useRef(Platform.OS !== 'android');
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const focused = AppState.addEventListener('focus', () => { windowFocusedRef.current = true; });
+    const blurred = AppState.addEventListener('blur', () => { windowFocusedRef.current = false; });
+    return () => { focused.remove(); blurred.remove(); };
+  }, []);
   const [receiptStates, setReceiptStates] = useState<Record<string, ReceiptStatus>>({});
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
@@ -353,6 +362,13 @@ function AppBody() {
   const loadAccount = useCallback(async (expectedOwner: ViewOwner | null = null) => {
     let refreshOwner = expectedOwner;
     const moveLoadedOwner = (nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
+      const current = ownerRef.current;
+      // A passive metadata refresh must not invalidate a picker, speech capture
+      // or upload belonging to the same view. Explicit navigation still moves.
+      const unchanged = current.screen === nextScreen && current.sessionId === sessionId
+        && current.targetId === (nextTarget?.targetId ?? null) && current.agentId === (nextTarget?.agentId ?? null)
+        && (targetRef.current?.identityKey ?? null) === (nextTarget?.identityKey ?? null);
+      if (unchanged) { targetRef.current = nextTarget; setTarget(nextTarget); return current; }
       const next = moveOwner(nextScreen, nextTarget, sessionId);
       if (refreshOwner) refreshOwner = next;
       return next;
@@ -894,16 +910,21 @@ function AppBody() {
   };
 
   const pickAttachment = async (source: 'file' | 'image') => {
+    if (attachmentPickingRef.current) return;
     if (blocksMutation) { say('请先查询待确认操作状态，再添加附件。', 'neutral'); return; }
     const selected = targetRef.current;
     const owner = ownerRef.current;
     const scopeKey = attachmentScopeKey(selected, owner.sessionId);
     if (!selected || !scopeKey || mobileMode !== 'supported' || !selected.online) { say(mobileMode === 'legacy' ? '此设备仅支持纯文本消息。' : '设备当前不可用，无法添加附件。', 'error'); return; }
+    attachmentPickingRef.current = true;
     setAttachmentPicking(true);
     const batchEpoch = attachmentBatchEpochRef.current;
     try {
       const reply = await requestNative({ version: 1, kind: 'attachment.pick', source });
-      if (reply.kind === 'error') throw new Error(reply.code);
+      if (reply.kind === 'error') {
+        if (reply.code === 'MOBILE_ATTACHMENT_CANCELLED') return;
+        throw new Error(reply.code);
+      }
       if (reply.kind !== 'attachment') throw new Error('MOBILE_ATTACHMENT_REPLY_INVALID');
       if (batchEpoch !== attachmentBatchEpochRef.current || !viewStillOwned(owner, ownerRef.current) || attachmentScopeRef.current !== scopeKey) {
         await requestNative({ version: 1, kind: 'attachment.remove', localId: reply.localId });
@@ -913,11 +934,31 @@ function AppBody() {
       if (next.length > 8) { await requestNative({ version: 1, kind: 'attachment.remove', localId: reply.localId }); throw new Error('MOBILE_ATTACHMENT_LIMIT'); }
       updateAttachments(() => next);
       setComposerMenuOpen(false);
+      const current = () => batchEpoch === attachmentBatchEpochRef.current && viewStillOwned(owner, ownerRef.current)
+        && attachmentScopeRef.current === scopeKey;
+      const foreground = await waitForUploadForeground(
+        () => AppState.currentState === 'active' && (Platform.OS !== 'android' || windowFocusedRef.current),
+        current,
+        (check) => {
+          const changed = AppState.addEventListener('change', check);
+          const focused = Platform.OS === 'android' ? AppState.addEventListener('focus', () => { windowFocusedRef.current = true; check(); }) : null;
+          const blurred = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { windowFocusedRef.current = false; check(); }) : null;
+          return () => { changed.remove(); focused?.remove(); blurred?.remove(); };
+        },
+      );
+      if (!current()) return;
+      if (!foreground) {
+        setAttachmentItem(reply.localId, (item) => ({ ...item, errorCode: 'MOBILE_ATTACHMENT_UPLOAD_FOREGROUND_REQUIRED' }));
+        throw new Error('MOBILE_ATTACHMENT_UPLOAD_FOREGROUND_REQUIRED');
+      }
       queueAttachmentUpload(reply, owner, selected, scopeKey);
     } catch (error) {
       if (viewStillOwned(owner, ownerRef.current)) say(error instanceof Error ? error.message : 'MOBILE_ATTACHMENT_PICK_FAILED', 'error');
     } finally {
-      if (viewStillOwned(owner, ownerRef.current)) setAttachmentPicking(false);
+      // Picker ownership is global to the native activity. A changed view
+      // rejects its result above, but must still release this single flight.
+      attachmentPickingRef.current = false;
+      setAttachmentPicking(false);
     }
   };
 
