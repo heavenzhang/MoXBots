@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: 58d5247d7692acb816f211e1af7ef1891871bd6a
+          ref: 7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca
           path: product-P
           persist-credentials: false
       - name: Require an actual usable nested KVM VM; never fall back to TCG
@@ -86,8 +86,8 @@ jobs:
       - uses: actions/download-artifact@v4
         if: ${{ !inputs.capability_only }}
         with:
-          artifact-ids: '12141537459'
-          run-id: '39140386138'
+          artifact-ids: '12172099959'
+          run-id: '39223945533'
           github-token: ${{ github.token }}
           repository: heavenzhang/MoXBots
           path: ${{ runner.temp }}/host-reboot-service-P

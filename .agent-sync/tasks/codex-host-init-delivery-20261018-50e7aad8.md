@@ -34,7 +34,7 @@ Candidate, supported-platform actual gates, combined CI, main and formal publica
 
 ## Next step
 
-Current frozen product is P2 `58d5247d7692acb816f211e1af7ef1891871bd6a`, producer39140386138/R20261018152704-58d5247d7692. Real standard39141103331 and natural lab renewal39141765786 passed; true KVM39142568416 is pending. Old P23/M are failed history. Full f0 CI39141026610 and duplicate manual39141095371 both passed9 applicable jobs. Latest main8e60805e is integrated; finish current combined CI, real reboot and remote main before public append/TLS verification/promotion. Never relabel old artifacts or change existing101/Mac for this installer lane.
+Current frozen product is P4 `7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca`, producer39223945533/R20261019083714-7e4bbdfaa693. Exact ZIP and strict consumer verification passed locally. Run same-P4 standard, lab natural renewal and true KVM reboot with the newly pinned harness; then required final CI, current-main integration and remote containment. Only after all gates may the owner append immutable public bytes, verify full normal-TLS transport and promote the stable pair. P2/P3 failed history is retained below; no daily Mac or existing101 binary change belongs to this installer lane.
 
 ## First exact-source candidate attempt
 
@@ -72,3 +72,13 @@ Full c6 CI39143964717 passed8 applicable jobs but one transient PermissionPrompt
 - [ ] New P3 producer and exact same-source standard/renewal/KVM; final combinedCI/main/public delivery.
 
 P3 product source80b119f34dae90709b0a7ea5284232f1b9497f0b is frozen; new checks cannot reuseP2 recovery acceptance. Next: push this reviewed branch, dispatch one producer and actual supported acceptance; no public promotion until all gates.
+
+## P4 complete local artifact verification — 2026-10-19
+
+- [x] Mobile shared diagnostic projection now declares its already locked hyper1.12 dependency. All330 package name/version/source/checksum entries are unchanged;122 mobile tests and actual iOS device/simulator builds passed.
+- [x] One exact-source P4 producer39223945533 succeeded. Candidate artifact12172139712 full ZIP171580390B/SHA4fab3b4c4d32df0980b68d7b6a6da66c14073aaaa5b13ceaf8a4df140259bbf1, three expected ZIP entries and CRC passed.
+- [x] Frozen original consumer c60f0eaeee71da5666d7ce6d5917c9f8da79c6bc1e0c17b5d0453e401d2e0c86 accepted complete bundle, nested Host, all modes/size/SHA/source and Linuxx86ELF; both gzip streams read through EOF/CRC. Install/bootstrap/stable reproduce producer bytes.
+- [x] Browser/reboot harness pins exact P4 source, candidate and separately pinned same-source lab service. Offline51/14 passed; OWNED_ACCOUNT_UNAVAILABLE is admitted only to the closed non-secret status diagnostic vocabulary, with no Ready/timing/identity gate weakened.
+- [ ] Same-P4 real standard, natural lab renewal, true KVM reboot and final combinedCI/main/publication.
+
+Private artifact/evidence path: project output/host-publication-20261018/candidate-P4-39223945533/local-full-verification.json. This is candidate transport, not public normal-TLS acceptance. Production cloud929 release and existing101 natural24h observation are separate lanes.
