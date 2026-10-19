@@ -20,14 +20,14 @@ Keep the original mobile Rust/Swift/C ABI/React Native owners, cloud identity, H
 - [x] Strict paired native projection discloses unavailable directory state separately from pagination; preserve a compact session-centered UI.
 - [x] Successful logout/account changes clear old-account transient errors, including late asynchronous results; real logout/login errors remain visible.
 - [x] Meaningful Rust/runtime and app regressions, type/lint and primary diff review pass. Shipping-profile C ABI and native UI remain separate below.
-- [ ] Rebuild matching native/JS inputs, repeat controlled real native QA login/list/restart/logout and verify the original Host/device boundary.
+- [x] Matching4e50 native/JS original-cloud QA login/list/restart/logout and second restart pass with original Host boundary preserved. UI-only22737f5e Done/drag retest passes without submitting another login; same native inputs. Physical/final-main candidate remains separate.
 - [ ] Commit/push, exact-head CI, normal remote-main integration and remote ancestry verification.
 - [ ] Physical iPhone and Android daily-use/attachments/voice/push acceptance remain tracked by the full original goal, not closed by this repair.
 
 ## Completed
 
 - Bounded source repair and primary review complete. Rust123/1ignored, App57, TypeScript/Expo lint and changed-file rustfmt pass. Original Direct Host/Session integration passes15.86s with one real joined offline fixture peer. Actual synthetic IAB verifies partial availability, removal of stale online targets on a genuine failure and same-process logout error cleanup. Details and known-red debug C ABI probe: dev-docs/mobile-002/catalog-20261019.md. Release C ABI and native milestones are recorded below; final main and physical acceptance remain open.
-- Source4e50be4b Release native App passed actual controlled original-cloud login, legitimate empty Bot directory with5 unavailable peers, process-restart Keychain recovery and same-process clean logout. No browser, Bot enablement, model invocation or original Host change. Cloud owner's fresh before/after read-only receipts preserve original101 and show only one added QA device. Native password Done/drag usability improvement is a later UI-only change; type/lint pass, actual keyboard retest pending without submitting a new login.
+- Source4e50be4b Release native App passed actual controlled original-cloud login, legitimate empty Bot directory with5 unavailable peers, process-restart Keychain recovery, same-process clean logout and signed-out persistence after a second restart. No browser, Bot enablement, model invocation or original Host change. Primary independently compared cloud owner's three read-only receipts: devices6→7→7, test session revoked, original101 authority/key/Ready/catalog and12 host witnesses/PIDs unchanged. Cloud owner independently reviewed code and actual PNG/full AX. Later UI-only22737f5e Done/drag/Go state retest passed with no login submission/new identity; type/lint pass, input bytes verified, fictional fields cleared by restart, keyboard capture restored off.
 - APNs scope preparation was separately delivered by PR155, mainaaed91342619e67bb45a9639ef9e6ae373b73da4 after all applicable PR checks passed. That is source delivery, not provider activation or physical push acceptance.
 
 ## Verification
@@ -46,4 +46,4 @@ Physical iPhone is unavailable to devicectl and the human has not supplied a new
 
 ## Next step
 
-Primary Release C ABI passed21.36s with the same512KiB caller and original login/Host/Session flow; owned process cleanup independently checked. Finish second process-restart logout proof and UI-only Done/drag native retest, without creating another test identity. PR157 contains reviewed source; exact-head CI running. Incorporate current remote main deliberately after the cloud owner's serialized PR137 window; do not overwrite preserved8e902d6a or4e50be4b candidates or bypass CI.
+PR157 contains reviewed implementation and native acceptance. Complete exact-head CI, incorporate current remote main deliberately after the cloud owner's serialized PR137 window, review any changed shared native inputs and normally integrate/verify remote ancestry. Then prepare the matching final phone candidate with the existing valid profile; actual iPhone installation/login waits for its unavailable connection. Preserve8e902d6a and4e50be4b candidates, original Host and accepted cloud identity boundary; do not bypass CI or manufacture enabled Bot acceptance.
