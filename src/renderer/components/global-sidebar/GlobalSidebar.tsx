@@ -146,6 +146,7 @@ import {
   GLOBAL_SIDEBAR_MIN_WIDTH,
   loadGlobalSidebarPreference,
   pruneRemovedWorkspaceKeys,
+  reconcileSidebarProjectOrder,
   resolveGlobalSidebarMode,
   saveGlobalSidebarPreference,
   seedDefaultWorkspaceExpansion,
@@ -604,8 +605,13 @@ export default memo(function GlobalSidebar({
   }, [t]);
 
   const sortedProjects = useMemo(
-    () => sortLauncherProjects(selectUsableAgentWorkspaceRecords(projects, []).projects.filter(isProjectVisibleToUser)),
-    [projects],
+    () => orderSidebarItems(
+      sortLauncherProjects(selectUsableAgentWorkspaceRecords(projects, []).projects.filter(isProjectVisibleToUser)),
+      (project) => project.id,
+      preference.projectOrder,
+      { pinnedAt: (project) => project.pinnedAt },
+    ),
+    [projects, preference.projectOrder],
   );
   const activeProjects = useMemo(
     () => sortedProjects.filter(isProjectActiveForUser),
@@ -628,16 +634,17 @@ export default memo(function GlobalSidebar({
   const taskCenterData = useGlobalSidebarTaskCenterData(expandedWorkspacePaths, searchOpen);
 
   useEffect(() => {
-    if (projectsLoading) return;
+    if (projectsLoading || projectsError) return;
     updatePreference((current) => {
+      const ordered = reconcileSidebarProjectOrder(current, sortedProjects.map((project) => project.id));
       const seeded = seedDefaultWorkspaceExpansion(
-        current,
+        ordered,
         config.defaultWorkspacePath,
         activeProjects.map((project) => project.path),
       );
       return pruneRemovedWorkspaceKeys(seeded, sortedProjects.map((project) => project.path));
     });
-  }, [activeProjects, sortedProjects, config.defaultWorkspacePath, projectsLoading, updatePreference]);
+  }, [activeProjects, sortedProjects, config.defaultWorkspacePath, projectsLoading, projectsError, updatePreference]);
 
   const effectiveMode = resolveGlobalSidebarMode(preference.preferredMode, forceRail);
   const expanded = effectiveMode === 'expanded';

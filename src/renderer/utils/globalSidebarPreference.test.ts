@@ -11,6 +11,7 @@ import {
   loadGlobalSidebarPreference,
   parseGlobalSidebarPreference,
   pruneRemovedWorkspaceKeys,
+  reconcileSidebarProjectOrder,
   resolveGlobalSidebarMode,
   seedDefaultWorkspaceExpansion,
 } from './globalSidebarPreference';
@@ -148,5 +149,21 @@ describe('globalSidebarPreference', () => {
     expect(resolveGlobalSidebarMode(preference.preferredMode, false)).toBe(
       'expanded',
     );
+  });
+});
+
+describe('fixed sidebar project order', () => {
+  it('migrates legacy preferences and sanitizes malformed saved IDs', () => {
+    expect(parseGlobalSidebarPreference({ ...DEFAULT_GLOBAL_SIDEBAR_PREFERENCE, projectOrder: undefined })?.projectOrder).toEqual([]);
+    expect(parseGlobalSidebarPreference({ ...DEFAULT_GLOBAL_SIDEBAR_PREFERENCE, projectOrder: ['b', 1, 'b', '', 'a'] })?.projectOrder).toEqual(['b', 'a']);
+  });
+
+  it('preserves positions, appends new IDs and prunes deleted projects without mutating input', () => {
+    const first = reconcileSidebarProjectOrder(DEFAULT_GLOBAL_SIDEBAR_PREFERENCE, ['b', 'a']);
+    expect(first.projectOrder).toEqual(['b', 'a']);
+    expect(reconcileSidebarProjectOrder(first, ['a', 'b'])).toBe(first);
+    expect(reconcileSidebarProjectOrder(first, ['c', 'a', 'b']).projectOrder).toEqual(['b', 'a', 'c']);
+    expect(reconcileSidebarProjectOrder(first, ['a']).projectOrder).toEqual(['a']);
+    expect(first.projectOrder).toEqual(['b', 'a']);
   });
 });
