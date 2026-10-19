@@ -538,6 +538,7 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 
 
 
-## MOXBOTS-STREAM-502-20261020-01 — SSE终态与502诊断
 
-两层恢复包装在合法JSON message_stop交付后结束读取，防止尾帧把已完成响应变成断流；Anthropic直通记录脱敏底层错误码/阶段/路由/状态。Stop、Query/route和不完整输出防重放不放宽。验收 `dev-docs/stream-502-20261020/acceptance.md`，任务 `.agent-sync/tasks/codex-stream-502-20261020-198d415c.md`。用户本轮明确要求本地验证后提交交统一CI与部署会话；唯一负责人沿用 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，统一候选、CI汇总、main集成、版本与桌面构建/发布。开发分支只做本地自查/提交/推送，不另开共享CI；现有test.yml的PR/main/dev触发须纳入owner协调。现有分支策略及SemVer沿用，版本由owner分配；目标后续未冻结macOS修复批次，不动已发布0.5.14制品。当前本地验证通过，CI/main/发布/真实Provider与安装验收待统一会话。
+## GOAL-STALL-001 — Goal watchdog 结算与可见恢复原因
+
+沿原 builtin/Goal lifecycle 修复 timeout abort 丢失 observer/authority 的问题；可见输入 turn_conflict 显式反馈，暂停原因显示在原状态栏。任务 `.agent-sync/tasks/codex-goal-stall-20261020-3d1bab4d.md`，验收 `dev-docs/goal-stall/acceptance.md`。代码、合成回归、实际组件与签名原生/真实模型分开；唯一 CI/桌面发布会话仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，依赖PR168的遗留进程治理后做当前真实任务恢复。

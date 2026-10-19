@@ -129,7 +129,7 @@ export function getGoalStatusPresentation(
             count: Math.max(1, goal.turnCount),
           })
         : goal.status === "paused"
-          ? t("cron.statusBar.goalPausedDetail")
+          ? goal.terminalReason?.trim() || t("cron.statusBar.goalPausedDetail")
           : isExecuting
             ? t("cron.statusBar.roundExecuting", { count: round })
             : t("cron.statusBar.roundRunning", {

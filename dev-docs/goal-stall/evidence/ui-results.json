@@ -1,0 +1,22 @@
+{
+  "synthetic": true,
+  "independentReview": false,
+  "results": [
+    {
+      "width": 1280,
+      "reasonVisible": true,
+      "resume": 1,
+      "cancel": 1,
+      "overflow": false,
+      "errors": []
+    },
+    {
+      "width": 390,
+      "reasonVisible": true,
+      "resume": 1,
+      "cancel": 1,
+      "overflow": false,
+      "errors": []
+    }
+  ]
+}
