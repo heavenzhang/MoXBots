@@ -63,3 +63,12 @@ Evidence locations and closed summary hashes are recorded in dev-docs/host-init-
 P2 true KVM39142568416 and closed diagnostic39143984499 both booted a new kernel but failed the unchanged90s postboot Ready gate. Node/identity/registry are healthy; connector exits1 before status/socket. No exact startup root cause is claimed yet. A strictly scoped known-code/restart metadata probe is being prepared in the dedicated harness branch; no product/state repair or production action is used to pass the test.
 
 Full c6 CI39143964717 passed8 applicable jobs but one transient PermissionPrompt copied-label DOM case failed (2604 pass/1fail). Test-only controlled clock repair retains exact payload/permission assertions; root targeted11 pass and independent review accepted it. Current repair commit needs new full CI after integration. Local full candidate archive/consumer/ZIP and nested CRC now pass; public transport remains untested for P2.
+
+## P3 startup recovery continuation — 2026-10-19
+
+- [x] Current maina6e9f9c9 normally integrated; plan conflict resolved by preserving both task sections.
+- [x] Primary reviewed startup-owner repair, actual merged217/2ignore tests, requiredclippy and diagnostic51/14.
+- [x] Root8f fullCI39145487973 nine applicable jobs passed; all threeP2 real reboot failures retained.
+- [ ] New P3 producer and exact same-source standard/renewal/KVM; final combinedCI/main/public delivery.
+
+P3 product source80b119f34dae90709b0a7ea5284232f1b9497f0b is frozen; new checks cannot reuseP2 recovery acceptance. Next: push this reviewed branch, dispatch one producer and actual supported acceptance; no public promotion until all gates.

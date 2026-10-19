@@ -2,6 +2,14 @@
 
 Task: MOXBOTS-HOST-INIT-001. Source delivery and publication remain pending until the gates below close. The human requires complete acceptance before main integration, followed by handoff to the existing unified deployment chat. The daily Mac client is excluded.
 
+## Current release gate — 2026-10-19
+
+P2 is **not publishable**: real KVM runs39142568416,39143984499 and39145714749 failed the original90s post-reboot Ready gate. The last run captured only closed `OWNED_ACCOUNT_UNAVAILABLE` startup errors (4), connector exit1/NRestarts5, healthy Node and intact identity/registry. This is not proof of the exact production errno. Full root8f133dda CI39145487973 passed9 applicable jobs.
+
+Root normally integrated current maina6e9f9c9, retained every concurrent plan section, and reviewed the original-owner startup fix. `run` now restores the encrypted pinned connection locally; the original connector/backoff owns pending-renewal recovery, online account validation and first management authorization before listening. A captured account-binding fence prevents adopting a later login. Typed DNS/TCP/header-EOF availability can retry; TLS/trust/credential/revocation/grant/binding/unknown errors remain terminal. No new retry owner, timeout increase, registry seeding, installer workaround or production101 change is part of this Host repair.
+
+Next exact product candidate **P3** is frozen at `80b119f34dae90709b0a7ea5284232f1b9497f0b`; later receipt-only commits do not change these bytes. Root independently ran the merged headless suite: **217 passed,2 existing explicit ignored**, and exact required clippy flags passed; browser51/reboot14 tooling tests passed. Additional all-source rustfmt check still reports inherited unformatted modules; no broad reformat or assertion suppression was made. A new producer, full combined CI, actual fresh browser/renewal/trueKVM gates, strict local/full-public verification, normal main delivery and stable CAS are still required. No P3 artifact/publication or successful real reboot is claimed yet. Separate native-password cloud maintenance has its own authority and records; daily Mac remains excluded.
+
 ## Product behavior and ownership
 
 A genuinely fresh Host now creates its identity and authoritative empty `config.json` (`agents: []`) and `projects.json` through the original locked Node startup, before exposing local control, reverse management or catalog service. An immutable-identity-bound transaction records pending before identity publication; a checked atomic phase change consumes pending after both files are durable. Recovery accepts only that transaction's exact initial data and owned temporary/publication states. Complete existing registries remain untouched. Missing established files, partial/corrupt data, foreign links/temporaries and nonempty old workspace evidence fail closed.
