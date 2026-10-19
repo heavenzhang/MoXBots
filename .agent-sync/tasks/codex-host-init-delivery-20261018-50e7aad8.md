@@ -90,3 +90,9 @@ Private artifact/evidence path: project output/host-publication-20261018/candida
 - [x] TrueKVM39226946194:28 gates, usable KVM/noTCG, actual new kernel bootID with sameVMUUID, original identity/key/config/ciphertext and zero new auth/join, fresh Ready in4.35s; both units0 restarts; cleanup completed.
 
 Root read all closed gate results, source/service/candidate pins and postboot readiness diagnostics. Exact summary hashes and harness source are committed in dev-docs/host-init-001/P4-acceptance.json. Final CI/main/public-transport/promote receipt is kept in PR137/private execution-status; no public or101 upgrade is claimed by these lab results. Next: normally integrate current main, required CI and remote containment, then existing append/fullGET/CAS publication procedure.
+
+## Final integration continuation and original101 natural-cycle evidence
+
+Mainaaed9134 is normally integrated, retaining the optional APNs environment change without putting it into frozen P4 Host bytes or redeploying cloud929. FinalCI39228923139 exposed an unchanged speech test helper that never consumes stdin and exits on a200ms timer; a purepipe experiment reproduces the resulting EPIPE mechanism with a delayed parent. Its exact CI failing write is not proven. A bounded test-only framed handshake fixture is under review; no production speech logic/assertion/timeout or Host artifact is weakened.
+
+The separately authorized17:35 production read-only observation passed original101's real24h renewal: same session/created/device, rotation0→1 and next expiry2026-10-20 17:11:17CST;12 identity/key/config/unit witnesses and existing Node/connector PID preserved, fresh Ready/aligned catalog. Evidence auth-renewal-natural-20261019.json. One-time101-host automation deleted; other automations and dailyMac untouched. This is the original installed connector plus cloud929, not P4 deployment on101.
