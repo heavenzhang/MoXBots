@@ -2,7 +2,9 @@ import { createServer, type Server, type ServerResponse } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBridgeHandler } from './handler';
 import { ContextRecoveryController } from './context-recovery';
-import type { BridgeModelFailover } from './model-failover';
+import { ModelFailoverController, type BridgeModelFailover } from './model-failover';
+import { SessionModelRecovery } from '../builtin-session/model-recovery';
+import { classifyContextTurnFailure } from '../utils/context-budget';
 import type { AnthropicRequest } from './types/anthropic';
 
 const servers: Server[] = [];
@@ -62,6 +64,40 @@ afterEach(async () => {
 });
 
 describe('context recovery over the existing bridge handler', () => {
+  it.each([401, 409, 429, 503].flatMap(status => [false, true].map(declined => ({ status, declined }))))('preserves HTTP $status through both guards (durable owner declined=$declined)', async ({ status, declined }) => {
+    const upstream = await fixture((_body, res) => json(res, { error: { type: 'api_error', message: 'fixture upstream rejection' } }, status));
+    const diagnostics: string[] = [];
+    const context = new ContextRecoveryController({ scope: () => 'same-root', isActive: () => true,
+      backup: async () => '/private/archive/unused.json' });
+    const failover = new ModelFailoverController({ scope: () => 'same-root', isActive: () => true,
+      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0],
+      recovery: declined ? new SessionModelRecovery({ read: () => undefined, current: () => undefined,
+        isLive: () => true, prepare: async () => {}, write: async () => true }) : undefined });
+    const handler = createBridgeHandler({ logger: line => { diagnostics.push(line); }, getUpstreamConfig: () => ({ providerId: 'fixture-provider',
+      apiProtocol: 'anthropic', baseUrl: upstream.baseUrl, apiKey: 'fixture', model: 'fixture-model',
+      contextRecovery: context, modelFailover: failover }) });
+    const body: AnthropicRequest = { model: 'fixture-model', max_tokens: 128,
+      messages: [{ role: 'user', content: 'Read the task status.' }] };
+    const first = await handler(request(body));
+    expect(first.status).toBe(status);
+    const originalError = await first.text();
+    const attempts = upstream.requests.length;
+    for (let repeat = 0; repeat < 3; repeat++) {
+      const repeated = await handler(request(body));
+      expect(repeated.status).toBe(status);
+      const rejection = await repeated.json();
+      expect(rejection.error.message).toContain(originalError);
+      expect(rejection.error.code).toBe('automatic_replay_blocked');
+      expect(classifyContextTurnFailure({ apiErrorStatus: status, errorText: rejection.error.message }))
+        .toBe('automatic_replay_blocked');
+      expect(repeated.headers.get('x-should-retry')).toBe('false');
+    }
+    expect(upstream.requests).toHaveLength(attempts);
+    expect(attempts).toBe(status === 401 || status === 409 ? 1 : 4);
+    expect(diagnostics.filter(line => line.includes(`Inference rejected HTTP ${status}`))).toHaveLength(4);
+    expect(diagnostics.join(' ')).not.toContain('fixture upstream rejection');
+  });
+
   it('continues the native compact inference path through outer recovery and inner failover, with archived pairs intact', async () => {
     const order: string[] = [];
     const upstream = await fixture((body, res) => {

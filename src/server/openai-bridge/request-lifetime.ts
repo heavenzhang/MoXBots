@@ -1,6 +1,12 @@
+import { readBoundedErrorBody } from './read-error-body';
+
+type RejectedResponse = { status: number; body: string; headers: Record<string, string> };
+const MAX_REJECTION_BYTES = 1_048_576;
+
 /** Query-owned admission evidence. Foreground completion never revokes an admitted request. */
 export class QueryRequestGuard {
-  private readonly requests = new Map<string, { fingerprint: string; scope?: string; inFlight: boolean }>();
+  private readonly requests = new Map<string, { fingerprint: string; scope?: string; inFlight: boolean; rejection?: RejectedResponse }>();
+  private rejectionBytes = 0;
   private readonly blocked = new Set<string | undefined>();
   private exhausted = false;
 
@@ -12,8 +18,24 @@ export class QueryRequestGuard {
     return [...this.requests.values()].filter(row => row.inFlight).length;
   }
 
+  /** Return known rejection evidence only; this never grants another upstream call. */
+  rejectedResponse(scope: string | undefined, fingerprint: string): Response | undefined {
+    const row = this.requests.get(JSON.stringify([scope, fingerprint]));
+    if (row?.inFlight || !row?.rejection) return undefined;
+    // Closed scopes may read their exact terminal evidence; begin still denies
+    // every new dispatch. Keep the original HTTP failure visible with its
+    // safety terminal for Goal/Session owners. Returning a bare transient 503
+    // here could let an outer scheduler redispatch the task after this Query's
+    // inference budget was exhausted, despite never granting a new lease here.
+    return Response.json({ type: 'error', error: { type: 'api_error', code: 'automatic_replay_blocked',
+      message: `automatic_replay_blocked: Duplicate inference was not sent. Original HTTP ${row.rejection.status} rejection: ${row.rejection.body}` } },
+      { status: row.rejection.status, headers: { ...row.rejection.headers, 'content-type': 'application/json',
+        'x-moxbots-recovery': 'blocked' } });
+  }
+
   begin(scope: string | undefined, fingerprint: string, ambiguous: boolean): {
     finish(): void;
+    reject(response: Response): Promise<Response>;
     block(): void;
     isBlocked(): boolean;
   } | undefined {
@@ -25,10 +47,33 @@ export class QueryRequestGuard {
     // Never evict safety evidence while a native Query can still replay it. The owner
     // releases this bounded registry with the Query, rather than silently reopening requests.
     if (this.requests.size >= 4096) { this.exhausted = true; return undefined; }
-    const row = { fingerprint, scope, inFlight: true };
+    const row: { fingerprint: string; scope?: string; inFlight: boolean; rejection?: RejectedResponse } = { fingerprint, scope, inFlight: true };
     this.requests.set(key, row);
     return {
       finish: () => { row.inFlight = false; },
+      reject: async response => {
+        // A delivered/partial stream or unknown body is never replayable.
+        // Retain complete HTTP terminal evidence, including a closed owner's error.
+        // Keep the admission row even when this separate, bounded diagnostic budget fills.
+        if (response.ok || response.status === 499
+          || (response.status === 409 && response.headers.get('x-moxbots-recovery') === 'blocked')) return response;
+        const body = await readBoundedErrorBody(response.body);
+        const headers = Object.fromEntries(response.headers);
+        // fetch decompression and body reconstruction invalidate wire lengths.
+        delete headers['content-length'];
+        delete headers['content-encoding'];
+        headers['x-should-retry'] = 'false';
+        if (body === undefined) return new Response(JSON.stringify({ type: 'error', error: {
+          type: 'api_error', message: 'Upstream error response was incomplete; automatic recovery stopped.' } }),
+          { status: response.status, headers: { 'content-type': 'application/json', 'x-should-retry': 'false',
+            'x-moxbots-recovery': 'blocked' } });
+        const size = Buffer.byteLength(body) + Buffer.byteLength(JSON.stringify(headers));
+        if (!row.rejection && this.rejectionBytes + size <= MAX_REJECTION_BYTES) {
+          row.rejection = { status: response.status, body, headers };
+          this.rejectionBytes += size;
+        }
+        return new Response(body, { status: response.status, headers });
+      },
       block: () => { this.blocked.add(scope); },
       isBlocked: () => this.blocked.has(scope),
     };

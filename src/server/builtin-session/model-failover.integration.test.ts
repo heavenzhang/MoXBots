@@ -96,7 +96,9 @@ describe('Session API failover authority', () => {
     const execute = vi.fn(async () => { canSwitch = false; return new Response('{}', { status: 503 }); });
     const upstream = { providerId: 'primary', baseUrl: primary.baseUrl! };
     expect((await controller.run(request(), upstream, execute, 'first')).status).toBe(503);
-    expect((await controller.run(request(), upstream, execute, 'first')).status).toBe(409);
+    const repeated = await controller.run(request(), upstream, execute, 'first');
+    expect(repeated.status).toBe(503);
+    expect(await repeated.json()).toMatchObject({ error: { code: 'automatic_replay_blocked' } });
     expect(execute).toHaveBeenCalledTimes(4);
   });
   it.each([false, true])('does not deliver late backup output after root cancellation (already pinned=%s)', async pinned => {

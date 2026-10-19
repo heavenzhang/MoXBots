@@ -500,8 +500,8 @@ describe('Query-owned background inference through both recovery controllers', (
     expect(backup.requests).toHaveLength(1);
     expect(h.switches).toEqual(['backup']);
     const duplicate = await h.handler(request('new background inference after foreground fallback'));
-    expect(duplicate.status).toBe(409);
-    await duplicate.text();
+    expect(duplicate.status).toBe(503);
+    expect(await duplicate.text()).toContain('temporary primary failure');
     expect(primary.requests).toHaveLength(8);
   });
 
