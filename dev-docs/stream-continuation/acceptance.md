@@ -1,0 +1,31 @@
+# Stream continuation acceptance
+
+Task: MOXBOTS-STREAM-RESUME-20261020-01. Repository: https://github.com/heavenzhang/MoXBots.git. Development branch: `codex/stream-resume-20261020`; original base `18e13ce8dbad20e61af3f84173ad87d84bf090a6`.
+
+## Behavior and ownership
+
+Ordinary builtin API Sessions and Goal retain their original Product/native turn and output/FIFO authority after a trusted partial stream failure. The application waits under the existing durable recovery window, then sends one hidden native continuation reminder. It never replays the original HTTP inference, original task or tool call. The original inference fingerprints stay fenced. Successful canonical tool-name/input pairs cannot repeat with new native IDs after recovery; unknown outcomes pause for reconciliation. Normal explicit repeated tools before a fault retain their ordinary behavior.
+
+Stop revokes the timer/capability immediately and persists the existing stop fence. Expired windows, disk failure, lost owner, background competition, uncertain tool results and failed completion CAS cannot produce a false success or an automatic new task. The original recovery budget survives intermediate successful model/tool steps. No new Goal scheduler, persistence writer, retry queue or deployment owner is introduced.
+
+The existing collapsed quality reference shows actual server-owned interruption/continuation/protected-action counts and waiting/resuming/completed/stopped/blocked status. Evidence survives the production transcript codec and private SessionStore flush/read. Old messages without evidence do not invent counts or success. There is no content score or distributed exactly-once claim.
+
+## Local evidence, 2026-10-20
+
+- Node `24.20.0` bundled runtime; installed native SDK `0.3.296`. TypeScript `tsc --noEmit` and ESLint for changed/new TypeScript files passed.
+- The combined relevant Vitest run passed **27 files / 654 tests**. Coverage includes bridge rejection and partial SSE boundaries, stream continuation, persistent model recovery and Stop fencing, actual SessionStore integration, original Product/Goal output ownership, transcript codec, Goal/continuation admission, and the quality reference component. The ordinary/Goal wiring fixture uses a synthetic SDK protocol with real production registry, bridge controllers, recovery, transcript lifecycle, and SessionStore flush/read; it is not a native scheduler acceptance claim.
+- Native SDK loopback command: `node --import tsx/esm scripts/verify-stream-continuation-loopback.ts`, also `--goal` and `--stop`. All three passed using isolated HOME, private fixture journals, synthetic local supplier and an actual MCP counter; no paid provider calls or live user data. Ordinary and fixed synthetic Goal owner each retained one native Session/root, counter=1, denied one repeated completed action under a new tool ID, supplied exactly original input plus continuation reminder, made four supplier calls, and emitted one final original-turn terminal. The failed original SDK retry was fenced before supplier admission. Stop during durable waiting made only two supplier calls and never submitted a continuation.
+- The fixture records the real 15-second policy delay and absolute 30-minute budget while compressing the test clock; this does not measure real network/backoff duration. Native SDK delivered the partial deltas but did not carry the unfinished assistant text in continuation wire history. Product UI presentation keeps those already received deltas independently.
+- Actual Playwright browser interactions exercised the production ExecutionQuality component at 1280×800 and 390×844: collapsed default, keyboard expansion, waiting-to-completed update, stopped status, Chinese/English narrow view and legacy messages. No page errors or horizontal overflow. A separate dev fixture renders the component with synthetic evidence; this is not full installed-client acceptance. Preview: `dev-docs/stream-continuation/preview.html` and `preview.tsx`.
+
+Local raw receipts are outside Git under the project pointer `work/MOXBOTS-STREAM-RESUME-20261020-01/`; screenshots/receipt under `ui/`. Test logs are copied there before handoff. Raw user logs and credentials are not committed.
+
+## Review, integration and release gates
+
+The accountable primary reviewed the full change and the quality worker's rendered UI; an independent architecture worker reviewed the integration, Stop/storage/deadline races and normal prearm admission. The work used two bounded native workers (recovery review/test and quality report); no external models or live provider calls. Token/cost usage is not measured.
+
+Local/source and synthetic-native acceptance are completed. Exact-head shared CI, latest-main integration, remote-main containment, signed installed-client/provider and real-user acceptance must each have a separate receipt. Source integration is through a normal reviewed merge without force push. This document does not assert CI, main delivery, publication or production success before those receipts exist.
+
+Desktop CI/build/version/publication owner: **`01a12bc2-907a-7702-b6dd-788225c5dfe4`**, `MoxBots桌面端统一打包负责人`. Only that owner coordinates shared CI and selects a frozen exact main SHA, version/build, immutable tag/artifact digest and rollback target. This development task must not independently trigger shared CI, formal builds, deployment, client restart or version reassignment. Enter the next unfrozen batch after source/CI admission; if another candidate is frozen, defer.
+
+Release acceptance still required: real provider interruption classification; ordinary and actual Rust Goal continuation in the signed client; one visible original user input with retained partial presentation and accumulated usage/quality evidence; refresh persistence; a completed controlled side effect remaining once; unknown outcome reconciliation; Stop during waiting/late persistence and no later/cold resume. No runtime configuration or business schema migration. New optional stream evidence and checkpoint kind use existing private persistence. Rollback is coordinated by the publisher to the recorded predecessor artifact, preserving user data and honoring persisted stop fences.

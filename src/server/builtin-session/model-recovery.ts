@@ -11,6 +11,7 @@ export interface InferenceRecoveryFailure {
   attempt: number;
   retryAfterMs?: number;
   usingBackup: boolean;
+  kind?: 'stream';
 }
 
 export interface SessionModelRecoveryOptions {
@@ -29,11 +30,12 @@ export interface SessionModelRecoveryOptions {
   isLive: () => boolean;
   prepare: (request: Request) => Promise<void>;
   onState?: (state: ModelRecoveryState | null) => void;
+  onInterrupted?: () => void;
   now?: () => number;
 }
 
 function sameCheckpoint(left: ModelRecoveryState, right: ModelRecoveryState): boolean {
-  return left.id === right.id
+  return left.kind === right.kind && left.id === right.id
     && left.status === right.status
     && left.sdkSessionId === right.sdkSessionId
     && left.routeIdentity === right.routeIdentity
@@ -239,6 +241,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     const attempt = (existing?.attempt ?? 0) + 1;
     const candidate: ModelRecoveryState = {
       version: 1,
+      ...(failure.kind === 'stream' || existing?.kind === 'stream' ? { kind: 'stream' as const } : {}),
       id: existing?.id ?? crypto.randomUUID(),
       status: 'waiting',
       sdkSessionId: current.sdkSessionId,
@@ -320,6 +323,49 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     return Math.max(0, candidate.nextRetryAt - this.now());
   }
 
+  /** A trusted bridge partial receipt arms the same durable chain before SDK termination. */
+  async interrupted(request: Request): Promise<boolean> {
+    const allowed = await this.wait(request, { status: 502, attempt: 1, usingBackup: false, kind: 'stream' }) !== undefined;
+    if (allowed) this.options.onInterrupted?.();
+    return allowed;
+  }
+
+  /** Only a marker-verified same-history continuation may retire the old HTTP binding. */
+  releaseStreamBinding(): boolean {
+    const state = this.localState;
+    if (!state || state.kind !== 'stream' || state.status !== 'waiting'
+      || !this.options.isLive() || !this.matchesCurrent(state, false)
+      || this.now() >= state.deadlineAt || this.now() < state.nextRetryAt) return false;
+    try {
+      const stored = this.options.read();
+      if (!stored || !validModelRecovery(stored) || !sameCheckpoint(state, stored)) return false;
+    } catch { return false; }
+    this.boundRequest = undefined;
+    this.boundEpoch = undefined;
+    return true;
+  }
+
+  /** An inference terminal is not a task terminal: retain the stream chain until its original turn ends. */
+  async finishStreamTurn(): Promise<boolean> {
+    const state = this.localState;
+    if (!state || state.kind !== 'stream') return true;
+    if (state.status !== 'waiting' || !this.options.isLive() || !this.matchesCurrent(state, false)) return false;
+    const epoch = this.epoch;
+    const live = () => this.epoch === epoch && this.options.isLive()
+      && this.matchesCurrent(state, false) && this.localState === state;
+    try {
+      const stored = this.options.read();
+      if (!stored || !sameCheckpoint(state, stored)) return false;
+      if (!await this.options.write(undefined, state, live) || !live()) return false;
+      this.localState = undefined;
+      this.boundRequest = undefined;
+      this.boundEpoch = undefined;
+      this.persistedExpected = undefined;
+      this.notify(null);
+      return true;
+    } catch { return false; }
+  }
+
   async complete(request: Request): Promise<void> {
     if (this.completing) {
       await this.completing;
@@ -348,6 +394,14 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       && this.localState?.id === state.id
       && this.matchesCurrent(state, false);
     if (!live()) return;
+    // Stream continuation owns a whole Product turn. Keep its original budget
+    // through successful intermediate inference/tool cycles; Stop still sees it.
+    if (state.kind === 'stream') {
+      this.boundRequest = undefined;
+      this.boundEpoch = undefined;
+      this.requestRecoveryIds.delete(request);
+      return;
+    }
     try {
       const stored = this.options.read() as unknown;
       if (!validModelRecovery(stored) || stored.status !== 'waiting' || !sameCheckpoint(stored, state)) return;

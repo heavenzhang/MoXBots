@@ -20,6 +20,8 @@ export interface InferenceRecoveryHooks {
   wait(request: Request, failure: { status: number; attempt: number; retryAfterMs?: number; usingBackup: boolean }): Promise<number | undefined>;
   complete(request: Request): Promise<void>;
   blocked?(request: Request, reason: string): Promise<void>;
+  /** Ask the original turn owner to continue from native history, never replay this request. */
+  interrupted?(request: Request): Promise<boolean>;
 }
 
 type Root = { scope: string; backup?: boolean; retired?: boolean };
@@ -103,6 +105,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     let hasDurableRecovery = false;
     let durableStopped = false;
     let recoverySettled = false;
+    let interruptionAttempted = false;
     const blockRecovery = async (reason: string) => {
       lease.block();
       if (recoverySettled) return;
@@ -114,6 +117,21 @@ export class ModelFailoverController implements BridgeModelFailover {
       if (recoverySettled || !recovery || !rootLive() || !live()) return;
       await recovery.complete(request);
       recoverySettled = true;
+    };
+    const interruptRecovery = async (reason: string, isConsumerCancelled: () => boolean) => {
+      if (!interruptionAttempted && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
+        interruptionAttempted = true;
+        try {
+          if (await recovery?.interrupted?.(request) && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
+            // The old lease remains sealed. The original owner alone may
+            // admit a different native continuation under its durable chain.
+            recoverySettled = true;
+            lease.block();
+            return;
+          }
+        } catch { /* failed continuation admission retains the existing pause */ }
+      }
+      await blockRecovery(reason);
     };
     const validateRecoveryResume = async () => {
       const allowed = recovery?.validateResume ? await recovery.validateResume(request) : true;
@@ -258,7 +276,7 @@ export class ModelFailoverController implements BridgeModelFailover {
             if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
-                await blockRecovery('Model stream ended without message_stop');
+                await interruptRecovery('Model stream ended without message_stop', () => consumerCancelled);
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
               } else await completeRecovery();
@@ -271,7 +289,8 @@ export class ModelFailoverController implements BridgeModelFailover {
               catch { throw new Error('Malformed model stream event'); }
               if (type === 'message_stop') terminal = true;
               if (type === 'error') {
-                await blockRecovery('Model stream delivered an error event');
+                if (!terminal) await interruptRecovery('Model stream delivered an error event', () => consumerCancelled);
+                else await blockRecovery('Model stream delivered an error after its terminal');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
                 void reader.cancel().catch(() => undefined);
@@ -288,7 +307,11 @@ export class ModelFailoverController implements BridgeModelFailover {
             if (terminal) { terminalQueued = true; await completeRecovery(); }
           } catch (error) {
             if (!terminalQueued || (recovery && !recoverySettled)) {
-              try { await blockRecovery(queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled'); } catch { /* fail closed */ }
+              try {
+                const reason = queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled';
+                if (!terminal) await interruptRecovery(reason, () => consumerCancelled);
+                else await blockRecovery(reason);
+              } catch { /* fail closed */ }
             }
             void reader.cancel().catch(() => undefined);
             finish();

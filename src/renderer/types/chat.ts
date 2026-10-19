@@ -1,4 +1,5 @@
 import type { ExecutionTiming } from '../../shared/executionTiming';
+import type { StreamRecoveryEvidence } from '../../shared/streamRecovery';
 import type { AsyncQuestionSet, AsyncQuestionReply } from '../../shared/asyncUserQuestions';
 // Import tool input types from Claude Agent SDK for end-to-end type safety
 import type {
@@ -210,6 +211,8 @@ export interface MessageUsage {
 }
 
 export interface Message {
+  /** Authoritative turn recovery observations supplied by the server. */
+  streamRecovery?: StreamRecoveryEvidence;
   messageKind?: 'diagnostic';
   /** Local send presentation only; never written into the product transcript. */
   deliveryStatus?: 'sending' | 'failed';

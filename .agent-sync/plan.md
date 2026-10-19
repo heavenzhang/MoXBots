@@ -1,3 +1,9 @@
+## MOXBOTS-STREAM-RESUME-20261020-01 — 原 turn 断流续跑
+
+普通 builtin API 会话及 Goal 沿原 Query/SessionModelRecovery、ContextRecovery 台账、Product/FIFO 与 Goal claim 自动接续；原 HTTP 与完成工具不重放，Stop 撤销后不恢复，质量参考持久记录恢复事实。代码与本地/合成 SDK 验收已完成，任务 `.agent-sync/tasks/codex-stream-resume-20261020-f5ea3680.md`，证据 `dev-docs/stream-continuation/acceptance.md`。精确 head 共享 CI、正常 main 合入/远端核验、签名客户端/真实 Provider 和用户验收分别追踪。
+
+涉及部署单元 **desktop builtin client**：`src/server/agent-session.ts`、builtin-session/openai-bridge 与相应 renderer/shared 持久化 UI，仓库 heavenzhang/MoXBots、任务分支正常合 main。沿用唯一 CI/部署会话 **01a12bc2-907a-7702-b6dd-788225c5dfe4 / MoxBots桌面端统一打包负责人**；依据为用户最新部署单元规则及本任务明确交该统一发布会话安排发布。版本/构建号和下一未冻结候选由该 owner 分配，开发会话不启动共享 CI、正式构建、发布或客户端重启。当前开发成果待精确 SHA 交接，预登记已发送；不自动纳入已冻结批次。不涉及独立云服务/Host 部署。
+
 ## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
 
 沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。

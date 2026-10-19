@@ -189,6 +189,7 @@ export async function updateBuiltinModelRecovery(
         const matches = isLive() && history === sdkSessionId
             && current.modelRecovery?.id === expected?.id
             && current.modelRecovery?.status === expected?.status
+            && current.modelRecovery?.kind === expected?.kind
             && current.modelRecovery?.sdkSessionId === expected?.sdkSessionId
             && current.modelRecovery?.routeIdentity === expected?.routeIdentity
             && current.modelRecovery?.goalId === expected?.goalId
