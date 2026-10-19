@@ -1,0 +1,27 @@
+# Native password cloud release — 2026-10-19
+
+Task **MOXBOTS-NATIVE-PASSWORD-CLOUD-20261019**. Source is already delivered to main by PR136; this receipt separately records production delivery and its actual limits. Root chat01a12b99-7b38-78b1-831f-9c60257d386a is the human-designated sole cloud/101 publisher after explicit handoff. Native consent replacement for the original sole confidential client was directly approved in human message01a14fd2-aca4-7e70-81c2-652eeaa679a3. Phone source/device ownership remains chat01a1488b-c673-79f1-abd5-018938f2ee92. Neither this release nor its checks operate the daily Mac client.
+
+## Exact release and changes
+
+Pinned main929b984e7334cb9b01100e0df421158043da6bf7; exact-main Test39185508608 and Owned39185508693 succeeded, including the real isolated Dexv2.46.0 TLS/password/nonce/PKCE lifecycle. The verified service is27754480 bytes/SHA256f82ff9d6166b69d5a875ba54ecd7f0bcf4dfc19342dc837a5df001f6e797f7a8, running from `/opt/moxbots-native-password-929b984e7334/myagents-agentnet-service`, PID2519833 at publication.
+
+Only existing service `native_password_login:true`, existing Dex `oauth2.passwordConnector:"local"`, and the existing service unit's executable path changed. `skipApprovalScreen:false`, original issuer/client/secret/callback, the two original bcrypt accounts and user IDs, principal/network mapping, identity keys and86400s session TTL remain. The original auth unit bytes and on-failure policy were restored before startup. There are no additional static/dynamic clients, MFA policy, external connectors or gRPC endpoint in the reviewed scope; no new account, alias, listener, Nginx/TLS edit or model authorization was introduced.
+
+## Maintenance and rollback evidence
+
+Fresh idle/identity/config/runtime checks, all four original nonblocking maintenance locks and absent updater lease admitted the short window. Only101's original connector was gracefully paused under its installation lock; its original installation was resumed in finally with identity/config/ciphertext/unit/pointer checks. NodePID3502751 remained, connectorPID14604 resumed Ready without login or join.
+
+Two earlier attempts were rejected safely. First, private umask made the new immutable directory untraversable to the service user; the execution check rejected it before stopping cloud services. Its exact bytes were reused after reviewed0755 correction. Second, the installed Dex's controlled SIGTERM returned2 with the exact fixed diagnostic `run groups: received signal terminated`; the initial exit0-only gate refused it. Owned program/unit/config rollback succeeded; no DB/auth snapshot was restored and101 recovered. The final transaction temporarily disabled only the existing auth unit's autorestart through a manifest-owned CAS. It accepted exit2 only with exact own PID/unit/boot/post-signal evidence, took a consistent private integrity-checked backup, restored the original auth unit bytes, waited for Dex discovery before service start and verified the running binary. Unknown exits remain rejected; no force kill or escalation was used.
+
+Final private backup: `moxbots-native-password-backup-20261019T082127Z`. Runtime/config/state backups and credential-bearing artifacts stay private. Rollback restores only this transaction's owned program/unit/config bytes; never replay an old AuthStore, token rotation, revocation, Dex DB or identity-key snapshot. NginxPID12063, protected Nginx/Host distribution configuration, updater pointer and identity-key witnesses remained equal.
+
+## Actual acceptance
+
+- [x] Controlled original QA account: explicit native request → original Ready transaction → wrongPKCE rejection → correct poll → original principal/network and productionTTL → one-time consumption → session validation → test-session revoke.
+- [x] Original isolated Chromium browser account login → visible original Chinese “确认登录” approval → callback → original poll/principal/network → test-session revoke. Initial probe selectors missed the custom Chinese label; requests were cancelled, the actual page was inspected, and the corrected original-label probe passed. No product change masked those probe failures.
+- [x] Production101 original device/key/config and original session handle/createdAt/expiry/principal/device preserved; rotation count still0 before its natural window. Same connectorPID14604 recovered an exact owned TCP interruption in5.60s and returned Ready; no firewall, route/interface, Node restart, new join or model execution.
+- [ ] Physical-phone admin login, session listing and phone persistence: phone owner awaits device/tunnel availability. API QA and browser results do not establish this gate.
+- [ ] Natural production renewal: original expiry2026-10-19 17:26:17CST; the authorized17:35 read-only follow-up retains the original baseline and records this intervening service version. Isolated short-expiry tests are not a real24h observation.
+
+No `mobile_notifications`/APNs configuration exists in the reviewed service config; no notification credential was searched/generated and no notification provider was enabled. Linux installer PR137 remains independently gated by new fullCI and trueKVM reboot acceptance; this cloud release is not installer publication. Non-secret summary and hashes: `dev-docs/native-password-cloud-20261019-evidence.json`.
