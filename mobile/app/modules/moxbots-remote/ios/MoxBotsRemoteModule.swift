@@ -17,6 +17,7 @@ public final class MoxBotsRemoteModule: Module {
   private var artifactDownloads: NativeArtifactScheduler? // owner queue only
   private var artifactScope: String?
   private var attachmentPicker: NativeAttachmentPicker? // main-thread owned
+  private let accountLogin = NativeAccountLogin() // main-thread presentation only
   private lazy var speech = NativeSpeech { [weak self] event in
     self?.sendEvent("speechChanged", event.projection)
   }
@@ -49,6 +50,15 @@ public final class MoxBotsRemoteModule: Module {
         // restarts a paused upload, download, recording or Session operation.
       }
     }
+    AsyncFunction("prepareLoginNetwork") { [weak self] (promise: Promise) in
+      guard let self else { promise.resolve(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
+      DispatchQueue.main.async {
+        self.accountLogin.prepare(
+          origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232",
+          completion: { promise.resolve($0) }
+        )
+      }
+    }
     AsyncFunction("request") { [weak self] (input: String, promise: Promise) in
       guard let self else { promise.resolve(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
       if let bytes = input.data(using: .utf8), bytes.count <= 64 * 1024,
@@ -74,7 +84,13 @@ public final class MoxBotsRemoteModule: Module {
         do {
           let intent = (try? JSONSerialization.jsonObject(with: Data(input.utf8))) as? [String: Any]
           let kind = intent?["kind"] as? String
-          if ["account.login.start", "account.login.poll", "account.logout", "connection.suspend"].contains(kind ?? "") {
+          if kind == "account.login.password" {
+            self.lifecycleLock.lock()
+            let mayDispatch = !self.destroyed && self.appForeground
+            self.lifecycleLock.unlock()
+            guard mayDispatch else { promise.resolve(Self.failure("ACCOUNT_LOGIN_PAUSED")); return }
+          }
+          if ["account.login.start", "account.login.password", "account.login.poll", "account.logout", "connection.suspend"].contains(kind ?? "") {
             self.bumpArtifactPresentationFence()
             self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
             self.artifactDownloads?.pause()
@@ -124,7 +140,7 @@ public final class MoxBotsRemoteModule: Module {
       self.lifecycleLock.lock(); self.destroyed = true; self.lifecycleLock.unlock()
       if let observer = self.backgroundObserver { NotificationCenter.default.removeObserver(observer) }
       if let observer = self.foregroundObserver { NotificationCenter.default.removeObserver(observer) }
-      DispatchQueue.main.async { self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
+      DispatchQueue.main.async { self.accountLogin.close(); self.speech.cancel(); self.attachmentPicker?.cancel(); self.attachmentPicker = nil }
       self.queue.async {
         self.ownerActive = false
         self.uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_PAUSED")
