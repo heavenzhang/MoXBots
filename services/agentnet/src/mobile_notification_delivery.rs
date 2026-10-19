@@ -54,6 +54,18 @@ pub struct ApnsConfig {
     pub key_id: String,
     pub topic: String,
     pub private_key_file: PathBuf,
+    /// Must match the key's Apple environment scope. Omission preserves legacy keys.
+    #[serde(default)]
+    pub environment: ApnsEnvironment,
+}
+
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApnsEnvironment {
+    Sandbox,
+    Production,
+    #[default]
+    Both,
 }
 
 #[derive(Clone, Deserialize)]
@@ -143,8 +155,14 @@ impl ProviderClient {
                 origin: origin.to_owned(),
                 cached_bearer: cached_bearer.clone(),
             };
-            sandbox = Some(provider(APNS_SANDBOX_ORIGIN));
-            production = Some(provider(APNS_PRODUCTION_ORIGIN));
+            (sandbox, production) = match apns.environment {
+                ApnsEnvironment::Sandbox => (Some(provider(APNS_SANDBOX_ORIGIN)), None),
+                ApnsEnvironment::Production => (None, Some(provider(APNS_PRODUCTION_ORIGIN))),
+                ApnsEnvironment::Both => (
+                    Some(provider(APNS_SANDBOX_ORIGIN)),
+                    Some(provider(APNS_PRODUCTION_ORIGIN)),
+                ),
+            };
         }
         let fcm = if let Some(config) = &config.fcm {
             validate_fcm_config(config)?;
@@ -173,7 +191,7 @@ impl ProviderClient {
         } else {
             None
         };
-        if config.enabled && sandbox.is_none() && fcm.is_none() {
+        if config.enabled && sandbox.is_none() && production.is_none() && fcm.is_none() {
             return Err(AuthError::Configuration);
         }
         Ok(Self {
@@ -1093,6 +1111,127 @@ mod tests {
             key_pem: Zeroizing::new(test_ec_key()),
             origin: APNS_SANDBOX_ORIGIN.into(),
             cached_bearer: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    #[tokio::test]
+    async fn apns_environment_limits_actual_endpoint_registration() {
+        use tower::ServiceExt;
+
+        let keys = tempfile::tempdir().unwrap();
+        let key_path = keys.path().join("synthetic-apns.p8");
+        fs::write(&key_path, test_ec_key()).unwrap();
+        fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
+        for (environment, expected) in [
+            (None, vec![Provider::ApnsSandbox, Provider::ApnsProduction]),
+            (
+                Some("both"),
+                vec![Provider::ApnsSandbox, Provider::ApnsProduction],
+            ),
+            (Some("sandbox"), vec![Provider::ApnsSandbox]),
+            (Some("production"), vec![Provider::ApnsProduction]),
+        ] {
+            let mut value = json!({"enabled":true,"apns":{
+                "team_id":"TESTTEAM123","key_id":"TESTKEY123",
+                "topic":"com.example.test","private_key_file":key_path
+            }});
+            if let Some(environment) = environment {
+                value["apns"]["environment"] = json!(environment);
+            }
+            let config: MobileNotificationConfig = serde_json::from_value(value).unwrap();
+            let scope = scope_with_pending(Provider::Fcm, "existing-synthetic-token", 2);
+            let runtime = MobileNotificationRuntime::open(
+                scope.auth.clone(),
+                scope.devices.clone(),
+                scope.store.clone(),
+                NETWORK,
+                &config,
+            )
+            .unwrap();
+            assert_eq!(runtime.providers.supported_providers(), expected);
+            let principal = scope
+                .auth
+                .validate_session(&scope.bearer)
+                .unwrap()
+                .account
+                .principal_id;
+            for (provider, installation) in [
+                (
+                    Provider::ApnsSandbox,
+                    "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+                ),
+                (
+                    Provider::ApnsProduction,
+                    "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+                ),
+            ] {
+                let before = scope
+                    .store
+                    .endpoint_candidates(&principal, NETWORK)
+                    .unwrap()
+                    .len();
+                let response = runtime
+                    .router()
+                    .oneshot(
+                        Request::post("/api/mobile-notify/v1/endpoints")
+                            .header("authorization", format!("Bearer {}", scope.bearer.as_str()))
+                            .header("content-type", "application/json")
+                            .body(axum::body::Body::from(
+                                json!({
+                                    "version":1,"provider":provider,"installationId":installation,
+                                    "token":"ab".repeat(32)
+                                })
+                                .to_string(),
+                            ))
+                            .unwrap(),
+                    )
+                    .await
+                    .unwrap();
+                let allowed = expected.contains(&provider);
+                assert_eq!(
+                    response.status(),
+                    if allowed {
+                        StatusCode::CREATED
+                    } else {
+                        StatusCode::SERVICE_UNAVAILABLE
+                    }
+                );
+                let body: Value = serde_json::from_slice(
+                    &to_bytes(response.into_body(), 16 * 1024).await.unwrap(),
+                )
+                .unwrap();
+                if allowed {
+                    assert!(body["endpointId"].as_str().is_some());
+                } else {
+                    assert_eq!(body["error"]["code"], "MOBILE_NOTIFY_PROVIDER_UNAVAILABLE");
+                }
+                assert_eq!(
+                    scope
+                        .store
+                        .endpoint_candidates(&principal, NETWORK)
+                        .unwrap()
+                        .len(),
+                    before + usize::from(allowed)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn apns_environment_rejects_unknown_or_mistyped_scope() {
+        for environment in [
+            json!("staging"),
+            json!("Sandbox"),
+            json!(""),
+            json!(null),
+            json!(false),
+            json!([]),
+        ] {
+            let config = json!({"enabled":true,"apns":{
+                "team_id":"TESTTEAM123","key_id":"TESTKEY123","topic":"com.example.test",
+                "private_key_file":"/unused/synthetic-apns.p8","environment":environment
+            }});
+            assert!(serde_json::from_value::<MobileNotificationConfig>(config).is_err());
         }
     }
 
