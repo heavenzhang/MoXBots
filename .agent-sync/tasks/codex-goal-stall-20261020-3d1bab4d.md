@@ -1,4 +1,11 @@
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/goal-stall-20261020 -->
+<!-- git-project-sync-task:base=18e13ce8dbad20e61af3f84173ad87d84bf090a6 -->
+<!-- git-project-sync-task:status=ready-for-review -->
+
 # GOAL-STALL-001 — Goal 超时结算与停止原因反馈
+
+## Objective
 
 - 目标：避免 Goal 在 watchdog 中止后丢失终态结算，显示未执行/恢复原因。
 - 范围：原 builtin watchdog、原 terminal observer、GoalStatusBar；不新建调度或状态 owner。
@@ -6,7 +13,13 @@
 - 初始基线：18e13ce8dbad20e61af3f84173ad87d84bf090a6；集成前同步最新 main。
 - 唯一 CI/桌面发布负责人：01a12bc2-907a-7702-b6dd-788225c5dfe4；版本由其统一分配，本任务不递增。
 
-## To Do List
+## Acceptance criteria
+
+超时后原Goal可以解释恢复原因，旧轮次唯一结算，已确认输出保留，未获完成证据的动作不盲重放；源码/本地/真实原生/main/发布分别验收。
+
+## Completed
+
+To Do List
 
 - [x] 核实截图对应真实会话、日志、durable Goal 和日常安装版本 0.5.14。
 - [x] 修复 Goal 超时先结算后 abort；不插入脱离 Goal owner 的自动续接输入。
@@ -18,7 +31,7 @@
 - [ ] 统一 CI 后合入 main，并核实远端 main 包含成果。
 - [ ] 统一 CI 与发布接收、签名候选、实际原生 Goal/Provider 恢复验收。
 
-## 依赖与证据
+## Verification
 
 - PR168 的 parent containment 修复处理另一条旧桌面退出后 Sidecar 遗留问题；本任务不终止现有进程。
 - 验收：dev-docs/goal-stall/acceptance.md；合成组件复验：同目录 preview.html、preview.tsx、check.mjs。
@@ -26,3 +39,15 @@
 - 下一步：推送精确任务 SHA，交唯一负责人组织项目 CI/合入及下一未冻结版本；真实任务恢复需先核查遗留进程及原 Goal authority。
 - 授权边界：本任务未改 live Goal、未发送原任务消息、未安装/重启/终止日常进程；没有把当前卡住任务记为已恢复。
 - 执行记录：当前 Agent 实现与自验，0 子 Agent，0 外部模型；小范围单链路修复不值得重复上下文，未切换主模型，实际费用未知。
+
+## Blockers and unknowns
+
+统一CI、main合入、原生真实恢复和发布仍待唯一负责人；SDK无事件的上游具体原因未知。用户已明确授权向该负责人发送本次交接。
+
+## Deployment request
+
+Required：macOS arm64下一未冻结桌面版本；原生验收要核对超时Goal暂停原因、继续/取消、防重复执行以及PR168遗留进程治理。无配置迁移，无额外权限；沿既有不可变制品回滚。source已推送，CI/main/发布/当前卡住任务恢复均不得提前标记完成。Owner：01a12bc2-907a-7702-b6dd-788225c5dfe4。
+
+## Next step
+
+唯一负责人从远端任务分支核实精确SHA和依赖，统一组织CI/合入及原生发布验收。
