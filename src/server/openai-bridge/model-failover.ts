@@ -3,6 +3,7 @@ import type { UpstreamConfig } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
+import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 
 export interface BridgeModelFailover {
@@ -236,6 +237,7 @@ export class ModelFailoverController implements BridgeModelFailover {
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') === true;
       const parser = new SSEParser();
       const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
       let terminal = false;
       let terminalQueued = false;
       let consumerCancelled = false;
@@ -246,18 +248,31 @@ export class ModelFailoverController implements BridgeModelFailover {
             const next = await reader.read();
             if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
-              if (isSse && !terminalQueued) await blockRecovery('Model stream ended without message_stop');
-              else await completeRecovery();
+              if (isSse && !terminalQueued) {
+                await blockRecovery('Model stream ended without message_stop');
+                if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
+                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+              } else await completeRecovery();
               finish(); output.close(); return;
             }
+            let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
               let type = event.event;
-              try { const payload = JSON.parse(event.data); if (typeof payload?.type === 'string') type = payload.type; } catch { /* use SSE event name */ }
+              try { const payload = JSON.parse(event.data); if (typeof payload?.type === 'string') type = payload.type; }
+              catch { throw new Error('Malformed model stream event'); }
               if (type === 'message_stop') terminal = true;
-              if (type === 'error') await blockRecovery('Model stream delivered an error event');
+              if (type === 'error') {
+                await blockRecovery('Model stream delivered an error event');
+                if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
+                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+                void reader.cancel().catch(() => undefined);
+                finish(); output.close(); return;
+              }
+              frames += formatSSEFrame(event);
             }
             if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
-            output.enqueue(next.value);
+            if (!isSse) output.enqueue(next.value);
+            else if (frames) output.enqueue(encoder.encode(frames));
             // Protocol termination counts as delivered only after the terminal
             // bytes enter the downstream queue. Durable cleanup may then await
             // IO without erasing a checkpoint for an unobserved message_stop.
@@ -267,7 +282,13 @@ export class ModelFailoverController implements BridgeModelFailover {
               try { await blockRecovery(queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled'); } catch { /* fail closed */ }
             }
             void reader.cancel().catch(() => undefined);
-            finish(); output.error(error);
+            finish();
+            if (isSse && !terminalQueued && !consumerCancelled && queryLive()) {
+              // A socket error would lose its message across HTTP. Deliver a
+              // protocol error so the native SDK/Goal owner can pause safely.
+              output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+              output.close();
+            } else output.error(error);
           }
         },
         async cancel(reason) {

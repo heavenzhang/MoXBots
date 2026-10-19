@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicToolResultBlock } from './types/anthropic';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
+import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard } from './request-lifetime';
 
 export interface BridgeContextRecovery {
@@ -561,7 +562,9 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') === true;
       const parser = new SSEParser();
       const decoder = new TextDecoder();
+      const encoder = new TextEncoder();
       let terminal = false;
+      let consumerCancelled = false;
       const stream = new ReadableStream<Uint8Array>({
         async pull(output) {
           try {
@@ -574,25 +577,42 @@ export class ContextRecoveryController implements BridgeContextRecovery {
               return;
             }
             const next = await reader.read();
-            if (!live()) throw new Error('Model request superseded or cancelled');
+            if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
-              if (isSse && !terminal) { state.blocked = true; lease.block(); }
+              if (isSse && !terminal) {
+                state.blocked = true; lease.block();
+                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+              }
               finish(); output.close(); return;
             }
+            let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
               let type = event.event;
-              try { const payload: unknown = JSON.parse(event.data); if (record(payload) && typeof payload.type === 'string') type = payload.type; } catch { /* event name remains authoritative */ }
+              try { const payload: unknown = JSON.parse(event.data); if (record(payload) && typeof payload.type === 'string') type = payload.type; }
+              catch { throw new Error('Malformed model stream event'); }
               if (type === 'message_stop') terminal = true;
-              if (type === 'error') { state.blocked = true; lease.block(); }
+              if (type === 'error') {
+                state.blocked = true; lease.block();
+                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+                void reader.cancel().catch(() => undefined);
+                finish(); output.close(); return;
+              }
+              frames += formatSSEFrame(event);
             }
-            output.enqueue(next.value);
+            if (!isSse) output.enqueue(next.value);
+            else if (frames) output.enqueue(encoder.encode(frames));
           } catch (error) {
             if (!terminal) { state.blocked = true; lease.block(); }
             void reader.cancel().catch(() => undefined);
-            finish(); output.error(error);
+            finish();
+            if (isSse && !terminal && !consumerCancelled && queryLive()) {
+              output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+              output.close();
+            } else output.error(error);
           }
         },
         async cancel(reason) {
+          consumerCancelled = true;
           if (!terminal && isSse) { state.blocked = true; lease.block(); }
           finish();
           try { await reader.cancel(reason); } catch { /* transport already retired */ }

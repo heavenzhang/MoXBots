@@ -448,7 +448,11 @@ describe('bounded inference context recovery', () => {
     output.enqueue(new TextEncoder().encode('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}\n\n'));
     expect(new TextDecoder().decode((await reader.read()).value)).toContain('partial');
     output.error(new Error('socket failed'));
-    await expect(reader.read()).rejects.toThrow('socket failed');
+    const failure = new TextDecoder().decode((await reader.read()).value);
+    expect(failure).toContain('event: error');
+    expect(failure).toContain('automatic_replay_blocked');
+    expect(failure).not.toContain('socket failed');
+    expect((await reader.read()).done).toBe(true);
     const changed = history(); changed.messages.push({ role: 'user', content: 'SDK automatic rescue' });
     expect((await h.controller.run(req(), changed, execute)).status).toBe(409);
     expect(execute).toHaveBeenCalledTimes(1);

@@ -268,6 +268,29 @@ describe('durable inference waiting on the original Query lease', () => {
 });
 
 describe('durable recovery response completion', () => {
+  it.each(['abort', 'consumer-cancel'] as const)('keeps %s authoritative during a held stream failure checkpoint', async mode => {
+    const entered = deferred<void>();
+    const release = deferred<void>();
+    const recovery = { ...hooks(), blocked: vi.fn(async () => { entered.resolve(); await release.promise; }) };
+    const abort = new AbortController();
+    const response = await makeController(recovery).run(request(abort.signal), primary,
+      async () => sse(['error']), 'stop-during-stream-failure');
+    const reader = response.body!.getReader();
+    const reading = reader.read();
+    // Attach before releasing the barrier so cancellation cannot become an
+    // unhandled rejection while durable storage is deliberately held.
+    const result = reading.then(value => ({ value }), error => ({ error: String(error) }));
+    await entered.promise;
+    if (mode === 'abort') abort.abort();
+    else await reader.cancel();
+    release.resolve();
+    const observed = await result;
+    if (mode === 'abort') {
+      expect(observed).toEqual({ error: expect.stringContaining('superseded or cancelled') });
+    } else expect(observed).toEqual({ value: { done: true, value: undefined } });
+    expect(recovery.complete).not.toHaveBeenCalled();
+  });
+
   it.each(['cancel', 'abort'] as const)('queues message_stop before deferred checkpoint cleanup during %s', async mode => {
     const entered = deferred<void>();
     const commit = deferred<void>();
