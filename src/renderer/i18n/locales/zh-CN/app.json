@@ -1474,6 +1474,7 @@
       "close": "关闭"
     },
     "ownedLogin": {
+      "stopped": "登录检测已停止",
       "accountMismatchStopped": "浏览器授权的账号与当前网络绑定不一致。自动检测已停止；请取消本次授权，再使用原网络账号重新登录。",
       "signInAgain": "重新登录",
       "mode": "账号登录",

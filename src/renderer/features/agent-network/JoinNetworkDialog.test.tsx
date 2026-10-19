@@ -76,3 +76,22 @@ async function manualLoginCheck() {
   await waitFor(() => expect(button).toBeEnabled());
   return button;
 }
+
+it("stops waiting after identity mismatch, keeps manual checking disabled and permits cancellation", async () => {
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  render(<JoinNetworkDialog accountOnly initialUrl="https://cloud.test" onConfirm={vi.fn()}
+    onOwnedStart={async () => attempt} onOwnedOpen={async () => {}}
+    onOwnedPoll={async () => { throw { code: "OWNED_ACCOUNT_MISMATCH" }; }}
+    onOwnedCancel={cancel} onCancel={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "打开浏览器" })).toBeEnabled());
+  fireEvent(window, new Event("focus"));
+  expect(await screen.findByText("登录检测已停止")).toBeVisible();
+  expect(screen.queryByText("等待浏览器登录")).not.toBeInTheDocument();
+  expect(screen.queryByText("正在自动检测登录结果…")).not.toBeInTheDocument();
+  expect(screen.getByRole("alert")).toHaveTextContent("浏览器授权的账号与当前网络绑定不一致");
+  fireEvent.click(screen.getByText("高级连接选项"));
+  expect(screen.getByRole("button", { name: "检查登录状态" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "取消登录" }));
+  await waitFor(() => expect(cancel).toHaveBeenCalledExactlyOnceWith("attempt-ui"));
+});

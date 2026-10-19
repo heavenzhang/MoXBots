@@ -267,7 +267,7 @@ export function JoinNetworkDialog({
               {attempt && (
                 <div className="mt-4 rounded-lg border border-[var(--line)] p-3">
                   <p className="text-sm font-medium">
-                    {t("agentNetwork.ownedLogin.waiting")}
+                    {t(login.stopped ? "agentNetwork.ownedLogin.stopped" : "agentNetwork.ownedLogin.waiting")}
                   </p>
                   {!login.expired && !login.stopped && (
                     <p
@@ -278,13 +278,13 @@ export function JoinNetworkDialog({
                       {t("agentNetwork.ownedLogin.autoChecking")}
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-[var(--ink-muted)]">
+                  {!login.stopped && <p className="mt-2 text-xs text-[var(--ink-muted)]">
                     {t("agentNetwork.ownedLogin.expires", {
                       time: new Date(
                         attempt.expiresAt * 1000,
                       ).toLocaleTimeString(),
                     })}
-                  </p>
+                  </p>}
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -296,7 +296,6 @@ export function JoinNetworkDialog({
                     >
                       {t("agentNetwork.ownedLogin.openBrowser")}
                     </button>
-
                   </div>
                   {login.expired && (
                     <button

@@ -1475,6 +1475,7 @@
       "close": "Close"
     },
     "ownedLogin": {
+      "stopped": "Login checking stopped",
       "accountMismatchStopped": "The browser account does not match this saved network. Automatic checks have stopped. Cancel this authorization and sign in with the original network account.",
       "signInAgain": "Sign in again",
       "mode": "Account sign-in",
