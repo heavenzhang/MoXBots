@@ -55,6 +55,7 @@ let agent: typeof import('../agent-session');
 let store: typeof import('../SessionStore');
 let releaseWrite: (() => void) | undefined;
 let notificationReceipts = false;
+let rejectAnchorAfterAdmission = false;
 
 function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?: string; resume?: string; resumeSessionAt?: string } }) {
   const prompt = args.prompt[Symbol.asyncIterator]();
@@ -76,6 +77,9 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
       if (args.options.resumeSessionAt === state.rejectedResumeAt) {
         if (rejectedResume) return { done: true, value: undefined };
         rejectedResume = true;
+        // The native transport can consume stdin (and Product can commit its
+        // turn) before the resume loader rejects the inferred history anchor.
+        if (rejectAnchorAfterAdmission) await (prefetchedInput ?? pullInput());
         return { done: false, value: {
           type: 'result', subtype: 'error_during_execution', is_error: true,
           result: `No message found with message.uuid of: ${state.rejectedResumeAt}`,
@@ -247,6 +251,7 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
 }
 
 beforeEach(async () => {
+  rejectAnchorAfterAdmission = false;
   notificationReceipts = false;
   state.home = await mkdtemp(join(tmpdir(), 'myagents-builtin-v2-'));
   state.events.length = 0;
@@ -1366,6 +1371,67 @@ it.each([
   expect(agent.getMessages().filter(message => message.role === 'user' && message.content === 'continue once')).toHaveLength(1);
   expect(state.events.some(([name]) => name === 'chat:message-error')).toBe(false);
   expect(store.getSessionMetadata(id)?.sdkResumeSessionAt).toBeUndefined();
+});
+
+it.each(['complete', 'stop'] as const)('preserves admitted continuation ownership after native anchor rejection (%s)', async outcome => {
+  const platform = await import('../utils/platform');
+  vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
+  vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
+  vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
+  const workspace = join(state.home, 'continuation-workspace');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  const snapshot = await store.loadSessionTranscript(meta.id);
+  expect(await store.appendSessionMessages(meta.id, snapshot.cursor, [
+    { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't', sdkUuid: 'native-user' },
+    { id: 'original-assistant', role: 'assistant', content: 'Interrupted work', timestamp: 't', sdkUuid: 'native-tail' },
+  ])).toMatchObject({ ok: true });
+  state.sdkRead.mockResolvedValue([{ type: 'user', uuid: 'native-user' }, { type: 'assistant', uuid: 'native-tail' }]);
+  state.rejectedResumeAt = 'native-tail';
+  state.independentInputPump = true;
+  rejectAnchorAfterAdmission = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+  const active = store.getActiveSessionTranscript(meta.id)!;
+  active.writer.observe({ kind: 'turn-update', turn: {
+    id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'interrupted',
+  } });
+  await active.writer.flush();
+  let releaseReplacement!: () => void;
+  const replacementGate = new Promise<void>(resolve => { releaseReplacement = resolve; });
+  releaseWrite = releaseReplacement;
+  let replacementBlocked = false;
+  if (outcome === 'stop') {
+    state.beforeTurn.mockImplementation(async () => {
+      if (state.sdkInputs.length === 1) {
+        replacementBlocked = true;
+        await replacementGate;
+      }
+    });
+  }
+  const engine = (await import('../session-engine/selector')).getSessionEngine();
+  const request = { text: 'Explicit continuation', continueFromTurnId: 'old-turn', sessionId: meta.id,
+    workspacePath: workspace, scenario: { type: 'desktop' as const } };
+  expect(await engine.sendDesktopMessage(request)).toMatchObject({ success: true });
+
+  if (outcome === 'stop') {
+    await vi.waitFor(() => expect(replacementBlocked).toBe(true));
+    const stopping = agent.interruptCurrentResponse();
+    releaseReplacement();
+    await expect(stopping).resolves.toBe(true);
+    await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(agent.getLastBuiltinAssistantText()).toBe('');
+    return;
+  }
+  await vi.waitFor(() => expect(agent.getLastBuiltinAssistantText()).toContain('answer 1'));
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  expect(state.query.mock.calls.map(([args]) => args.options.resumeSessionAt)).toEqual(['native-tail', undefined]);
+  // The first transport consumed stdin but did no model/tool work. Only the
+  // bare-resume transport produced an answer, and Product retains one root.
+  expect(state.sdkInputs).toHaveLength(2);
+  expect(agent.getMessages().filter(message => message.role === 'user' && message.content === request.text)).toHaveLength(1);
+  expect(state.events.some(([name]) => name === 'queue:cancelled' || name === 'chat:message-error')).toBe(false);
+  expect(await engine.sendDesktopMessage(request)).toMatchObject({ success: false, code: 'SESSION_CONTINUATION_STALE' });
 });
 
 it('pre-warm retries a rejected inferred anchor against the native head', async () => {
