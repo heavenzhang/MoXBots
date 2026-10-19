@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createLoginAttemptGate, dismissToExistingRoot, loginNeedsPolling, loginPollNeedsStatus, logoutAndConfirm, returnFromAccountRoute } from '../src/accountPolicy.ts';
+import { accountIdentityChanged, createLoginAttemptGate, currentAccountLoadError, dismissToExistingRoot, loginNeedsPolling, loginPollNeedsStatus, logoutAndConfirm, returnFromAccountRoute } from '../src/accountPolicy.ts';
 import { createPollFlightGate, createSingleFlightPoll } from '../src/operationPolicy.ts';
 
 test('logout waits for signed-out confirmation before dismissing to the existing session owner', async () => {
@@ -28,6 +28,36 @@ test('native logout errors do not trigger navigation', async () => {
   let returned = false;
   await assert.rejects(() => logoutAndConfirm(async () => ({ kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' }), () => { returned = true; }), /MOBILE_REMOTE_UNAVAILABLE/);
   assert.equal(returned, false);
+});
+
+test('confirmed sign-out clears account-owned stale catalog notice and target authority', () => {
+  const signedIn = { kind: 'account' as const, state: 'signed-in' as const, displayName: null, principalId: 'principal-a' };
+  const signedOut = { kind: 'account' as const, state: 'signed-out' as const, displayName: null, principalId: null };
+  let notice: string | null = 'CATALOG_STALE';
+  let targets = ['old-account-target'];
+  if (accountIdentityChanged(signedIn, signedOut)) { notice = null; targets = []; }
+  assert.equal(notice, null);
+  assert.deepEqual(targets, []);
+  assert.equal(accountIdentityChanged(signedIn, { ...signedIn, principalId: 'principal-b' }), true);
+  assert.equal(accountIdentityChanged(signedIn, signedIn), false);
+});
+
+test('superseded account refresh rejection is dropped while current native failures remain visible', async () => {
+  const gate = createLoginAttemptGate();
+  const refreshEpoch = gate.capture();
+  let rejectOld!: (error: unknown) => void;
+  const oldNativeRequest = new Promise<never>((_, reject) => { rejectOld = reject; });
+  const oldResult = oldNativeRequest.catch((error) => currentAccountLoadError(error, () => gate.isCurrent(refreshEpoch)));
+  const cancel = gate.beginCancel()!;
+  gate.confirmCancel(cancel);
+  const staleFailure = new Error('late CATALOG_STALE transport exception');
+  rejectOld(staleFailure);
+  assert.equal(await oldResult, null, 'a late bridge rejection after account invalidation cannot restore the old notice');
+
+  const nativeErrorReply = { kind: 'error' as const, code: 'MOBILE_AUTHORIZATION_REQUIRED' };
+  const current = nativeErrorReply.kind === 'error' ? new Error(nativeErrorReply.code) : null;
+  assert.equal(currentAccountLoadError(current, () => true)?.error, current, 'a current native kind:error converted to an exception remains observable');
+  assert.equal(currentAccountLoadError(new Error('transport'), () => false), null);
 });
 
 test('an account deep link returns to the app root when the router has no in-app back entry', () => {

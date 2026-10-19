@@ -15,18 +15,18 @@ Keep the original mobile Rust/Swift/C ABI/React Native owners, cloud identity, H
 
 - [x] Confirm user-supplied Git URL, latest clean main0f9a031a3, isolated branch and observe/start/task-init gates.
 - [x] Reproduce actual native login/restart/logout and isolate subsequent directory failure; verify only this QA device/session changed.
-- [ ] Mixed Ready and offline/syncing devices display validated available Bots; unavailable peers cannot make the whole directory fail.
-- [ ] Target-specific stale races remain unavailable; auth, permission, schema and transport failures remain genuine failures. Preserve scope/epoch/selection authority checks.
-- [ ] Strict paired native projection discloses unavailable directory state separately from pagination; preserve a compact session-centered UI.
-- [ ] Successful logout/account changes clear old-account transient errors, including late asynchronous results; real logout/login errors remain visible.
-- [ ] Meaningful Rust/runtime and app regressions, type/lint and primary diff review pass.
+- [x] Mixed Ready and offline/syncing devices display validated available Bots; unavailable peers cannot make the whole directory fail.
+- [x] Target-specific stale races remain unavailable; auth, permission, schema and transport failures remain genuine failures. Preserve scope/epoch/selection authority checks.
+- [x] Strict paired native projection discloses unavailable directory state separately from pagination; preserve a compact session-centered UI.
+- [x] Successful logout/account changes clear old-account transient errors, including late asynchronous results; real logout/login errors remain visible.
+- [x] Meaningful Rust/runtime and app regressions, type/lint and primary diff review pass. Shipping-profile C ABI and native UI remain separate below.
 - [ ] Rebuild matching native/JS inputs, repeat controlled real native QA login/list/restart/logout and verify the original Host/device boundary.
 - [ ] Commit/push, exact-head CI, normal remote-main integration and remote ancestry verification.
 - [ ] Physical iPhone and Android daily-use/attachments/voice/push acceptance remain tracked by the full original goal, not closed by this repair.
 
 ## Completed
 
-- The base source has been inspected and a real native failure reproduced. Product repair is in progress; no implementation or final acceptance is claimed.
+- Bounded source repair and primary review complete. Rust123/1ignored, App57, TypeScript/Expo lint and changed-file rustfmt pass. Original Direct Host/Session integration passes15.86s with one real joined offline fixture peer. Actual synthetic IAB verifies partial availability, removal of stale online targets on a genuine failure and same-process logout error cleanup. Details and known-red debug C ABI probe: dev-docs/mobile-002/catalog-20261019.md. Shipping-profile C ABI/native acceptance, main and physical acceptance remain open.
 - APNs scope preparation was separately delivered by PR155, mainaaed91342619e67bb45a9639ef9e6ae373b73da4 after all applicable PR checks passed. That is source delivery, not provider activation or physical push acceptance.
 
 ## Verification
@@ -35,7 +35,7 @@ Dedicated simulator source8e902d6a matches the installed physical-phone candidat
 
 Cloud owner's private read-only before/after receipts prove only one test device added, no removals, the test session revoked after logout, and original101 authority/key/membership/Ready/catalog alignment unchanged. The inactive QA device record is retained; no SQL cleanup. Private runtime evidence is outside Git under the WPS project output/mobile-002/native-checkpoints/simulator-live-login-8e902d6a/ and the publisher's simulator-live-login-8e902d6a-* receipts. Credentials were read only in memory; no password/token in these project records.
 
-Source diagnosis: metadata-core agent_rows requires target presence=ready and matching connected/catalog epoch. It does not use catalog wall-clock age in this check. Mobile list_targets queries every same-account joined peer and propagates any Agents error. The observed roster has four historical joined offline peers plus the valid Ready Host; their expected stale result can abort the usable list. Do not restart the Host or weaken server rules to hide the client error.
+Source diagnosis: metadata-core agent_rows requires target presence=ready and matching connected/catalog epoch. It does not use catalog wall-clock age in this check. Mobile list_targets queries every same-account joined peer and propagates any Agents error. The observed roster has four historical joined offline peers plus the valid Ready Host; their expected stale result can abort the usable list. The current controlled-QA Host has one disabled Bot and no enabled target; a legal empty directory must remain empty. Enabled-target preservation must be verified by the isolated original-protocol fixture; do not enable a production Bot for a screenshot. Do not restart the Host or weaken server rules to hide the client error.
 
 Requested worker model gpt-6-luna/medium; exact runtime model/usage/cost unknown. One bounded mobile implementation worker; primary retains UI/runtime and integration acceptance. No external models.
 
@@ -45,4 +45,4 @@ Physical iPhone is unavailable to devicectl and the human has not supplied a new
 
 ## Next step
 
-Finish bounded mobile source repair and focused regressions, then primary review and exact native rebuild/UI retest. Incorporate the current remote main deliberately before final integration; do not overwrite the preserved8e902d6a candidate or bypass CI.
+Primary Release C ABI passed21.36s with the same512KiB caller and original login/Host/Session flow; owned process cleanup independently checked. Commit reviewed source, rebuild matching native/JS and repeat controlled real-cloud native UI. Incorporate current remote main deliberately after the cloud owner's serialized PR137 window; do not overwrite preserved8e902d6a candidates or bypass CI.

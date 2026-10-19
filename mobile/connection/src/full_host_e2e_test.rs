@@ -391,6 +391,50 @@ impl Drop for Children {
         }
     }
 }
+
+/// Use the fixture's original login and enrollment APIs to create one extra
+/// joined device, then close its actual relay socket so its directory row is
+/// offline while the primary test owner still sees a Ready Host.
+async fn create_joined_offline_peer(root: &Path, issuer: &str, ca: &str) -> String {
+    let state = root.join("offline-peer-state");
+    fs::create_dir(&state).unwrap();
+    fs::set_permissions(&state, fs::Permissions::from_mode(0o700)).unwrap();
+    let mut kek = [0u8; 32];
+    fs::File::open("/dev/urandom")
+        .unwrap()
+        .read_exact(&mut kek)
+        .unwrap();
+    let store = Arc::new(Store(
+        EncryptedIdentityStore::for_test(&state, &kek).unwrap(),
+    ));
+    let mut peer = MobileConnection::new(
+        NativeConfig {
+            issuer: issuer.into(),
+            public_tls_ca: Some(ca.into()),
+        },
+        store,
+    )
+    .unwrap();
+    ok(peer
+        .request(json!({"version":1,"kind":"account.login.start"}))
+        .await);
+    let account = ok(peer
+        .request(json!({"version":1,"kind":"account.login.poll"}))
+        .await);
+    assert_eq!(account["state"], "signed-in");
+    peer.connect()
+        .await
+        .expect("second same-account fixture device joins through original admission");
+    let mut connected = peer.connected.take().expect("fixture peer connection");
+    let device_id = connected.local.device_id.clone();
+    connected
+        .socket
+        .close(None)
+        .await
+        .expect("close fixture peer relay socket");
+    device_id
+}
+
 fn spawn(children: &mut Children, root: &Path, program: &str, args: &[&str], name: &str) {
     let log = fs::OpenOptions::new()
         .create_new(true)
@@ -752,13 +796,31 @@ async fn original_mobile_wss_host_chain() {
             tokio::time::sleep(Duration::from_secs(60)).await;
         }
         let state=root.join("mobile-state");fs::create_dir(&state).unwrap();fs::set_permissions(&state,fs::Permissions::from_mode(0o700)).unwrap();let mut kek=[0u8;32];fs::File::open("/dev/urandom").unwrap().read_exact(&mut kek).unwrap();
-        let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let config=NativeConfig{issuer,public_tls_ca:Some(cert.pem())};let mut owner=if mode=="ffi" {FixtureOwner::Ffi(FfiOwner::new(config,store).await)} else {FixtureOwner::Direct(Box::new(MobileConnection::new(config,store).unwrap()))};
+        let store=Arc::new(Store(EncryptedIdentityStore::for_test(&state,&kek).unwrap()));let config=NativeConfig{issuer:issuer.clone(),public_tls_ca:Some(cert.pem())};let mut owner=if mode=="ffi" {FixtureOwner::Ffi(FfiOwner::new(config,store).await)} else {FixtureOwner::Direct(Box::new(MobileConnection::new(config,store).unwrap()))};
         ok(owner.request(json!({"version":1,"kind":"account.login.start"})).await);let account=ok(owner.request(json!({"version":1,"kind":"account.login.poll"})).await);assert_eq!(account["state"],"signed-in");
         let host_device=host_ready["deviceId"].as_str().unwrap();
         owner.mount(host_device,false).await;
         let disabled=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-default-mobile-targets={disabled}");assert!(disabled["items"].as_array().unwrap().is_empty());
         assert!(std::env::var("MOXBOTS_FULL_KEEP_MOUNT_DISABLED").as_deref()!=Ok("1"),"ORIGINAL_HOST_MOUNT_DISABLED: real catalog present; explicit synthetic-user mount authorization intentionally withheld");
         owner.mount(host_device,true).await;
+        // Keep the second device's admission/connect future out of this
+        // already deep orchestration future. It uses the same runtime and
+        // original mobile owner implementation, but the setup-only future
+        // (and its temporary connection state) no longer remains in the
+        // primary test-main poll frame.
+        let offline_root = root.clone();
+        let offline_issuer = issuer.clone();
+        let offline_ca = cert.pem();
+        let handle = tokio::runtime::Handle::current();
+        let offline_device_id = tokio::task::spawn_blocking(move || {
+            handle.block_on(create_joined_offline_peer(
+                &offline_root,
+                &offline_issuer,
+                &offline_ca,
+            ))
+        })
+        .await
+        .unwrap();
         if mode == "renewal" {
             let original_address = owner.host_address(host_device).await.expect("initial actual Host address");
             let deadline = std::time::Instant::now();
@@ -778,7 +840,9 @@ async fn original_mobile_wss_host_chain() {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
         }
-        let targets=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-mobile-targets={targets}");
+        let deadline=std::time::Instant::now();let targets=loop{let snapshot=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);if snapshot["unavailableDeviceCount"]==1{break snapshot;}assert!(deadline.elapsed()<Duration::from_secs(12),"actual joined peer did not settle offline: {snapshot}");tokio::time::sleep(Duration::from_millis(100)).await;};
+        eprintln!("actual-mobile-targets-with-joined-offline-peer={}",json!({"targets":targets,"offlineDeviceId":offline_device_id}));
+        assert_eq!(targets["hasMore"],false,"directory unavailability is separate from pagination");
         let target=targets["items"].as_array().unwrap().iter().find(|v|v["agentId"]=="original-host-agent").expect("original explicitly authorized Host Agent must be discovered through the actual directory");
         let operation_id=uuid::Uuid::new_v4().to_string();
         let start_intent=json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.start","version":1,"agentId":"original-host-agent","operationId":operation_id,"text":"Original E2EE WSS first turn.","assetIds":[]}});

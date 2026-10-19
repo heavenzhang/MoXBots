@@ -14,7 +14,7 @@ import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../atta
 import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactChatReturn, rememberArtifactChatReturn, resolveArtifactReturnTarget } from '../artifactNavigation';
 import { notificationOpens, notificationSnapshotMatches } from '../notificationPolicy';
 import { clearHandledNotification } from '../notifications';
-import { createLoginAttemptGate, loginNeedsPolling, loginPollNeedsStatus, logoutAndConfirm } from '../accountPolicy';
+import { accountIdentityChanged, createLoginAttemptGate, currentAccountLoadError, loginNeedsPolling, loginPollNeedsStatus, logoutAndConfirm } from '../accountPolicy';
 import moxbotsMark from '../../assets/moxbots-mark.png';
 
 const C = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', paper: '#FFFFFF', canvas: '#F7F8F6', green: '#26734D', greenWash: '#E9F3EC', red: '#A13E38', amber: '#8B6A29' };
@@ -89,6 +89,7 @@ function AppBody() {
   const [account, setAccount] = useState<Account | null>(null);
   const [ownerEpoch, setOwnerEpoch] = useState(0);
   const [targets, setTargets] = useState<Target[]>([]);
+  const [unavailableDeviceCount, setUnavailableDeviceCount] = useState(0);
   const [target, setTarget] = useState<Target | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -370,13 +371,25 @@ function AppBody() {
     accountRef.current = reply;
     setAccount(reply);
     if (reply.state !== 'signed-in') {
+      if (accountIdentityChanged(previousAccount, reply)) setNotice(null);
       clearArtifactChatReturn(artifactReturn);
       draftPersistenceRef.current?.clear();
       moveOwner('login', null, null);
+      setTargets([]);
+      setUnavailableDeviceCount(0);
       setSessions([]);
+      setPending([]);
       return;
     }
-    if (previousAccount && previousAccount.principalId !== reply.principalId) draftPersistenceRef.current?.clear();
+    if (accountIdentityChanged(previousAccount, reply)) {
+      draftPersistenceRef.current?.clear();
+      setNotice(null);
+      setTargets([]);
+      setUnavailableDeviceCount(0);
+      setSessions([]);
+      setPending([]);
+      moveOwner('sessions', null, null);
+    }
     // A directory failure is a connection issue after a confirmed sign-in;
     // keep the user on the session page where they can refresh or get help.
     if (ownerRef.current.screen === 'login') moveOwner('sessions', null, null);
@@ -394,10 +407,28 @@ function AppBody() {
       }
     }
     if (!requestIsCurrent()) return;
-    const result = await requestNative({ version: 1, kind: 'targets.list' });
+    const invalidateCurrentDirectory = () => {
+      setTargets([]);
+      setUnavailableDeviceCount(0);
+      setSessions([]);
+      const currentOwner = ownerRef.current;
+      if (currentOwner.targetId) moveOwner(currentOwner.screen, null, null);
+    };
+    let result: Awaited<ReturnType<typeof requestNative>>;
+    try {
+      result = await requestNative({ version: 1, kind: 'targets.list' });
+    } catch (error) {
+      if (!requestIsCurrent()) return;
+      invalidateCurrentDirectory();
+      throw error;
+    }
     if (!requestIsCurrent()) return;
-    if (result.kind !== 'targets') throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
+    if (result.kind !== 'targets') {
+      invalidateCurrentDirectory();
+      throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
+    }
     setTargets(result.items);
+    setUnavailableDeviceCount(result.unavailableDeviceCount);
     if (notificationTarget && notificationIntent && notificationOpens.isCurrent(notificationIntent)) {
       const currentTarget = result.items.find((item) => item.identityKey === notificationTarget.identityKey && item.agentId === notificationTarget.agentId && item.online);
       if (currentTarget) {
@@ -484,6 +515,9 @@ function AppBody() {
     if (!requestIsCurrent()) return;
     const journal = await requestNative({ version: 1, kind: 'operations.pending' });
     if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+    } catch (error) {
+      const currentError = currentAccountLoadError(error, requestIsCurrent);
+      if (currentError !== null) throw currentError.error;
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
@@ -1175,7 +1209,7 @@ function AppBody() {
         {!!notice && <NoticeView notice={notice}/>}
         {!loginStarted && !cancelUnconfirmed && account?.state !== 'authenticating' && <View style={styles.loginFields}>
           <Text style={styles.fieldLabel}>账号</Text>
-          <TextInput accessibilityLabel="账号" placeholder="输入账号邮箱" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
+          <TextInput accessibilityLabel="账号" placeholder="输入账号" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
           <Text style={styles.fieldLabel}>密码</Text>
           <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { if (username.trim() && password && loginConsent && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
           <Pressable accessibilityRole="checkbox" accessibilityLabel="允许 MoXBots 使用我的账号标识、名称和邮箱来关联设备与会话" accessibilityState={{ checked: loginConsent, disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => setLoginConsent((value) => !value)} style={styles.consentRow}><View style={[styles.consentBox, loginConsent && styles.consentBoxChecked]}>{loginConsent && <Check size={14} color="#fff"/>}</View><Text style={styles.consentLabel}>允许 MoXBots 使用我的账号标识、名称和邮箱，关联设备与会话。</Text></Pressable>
@@ -1200,8 +1234,9 @@ function AppBody() {
         <Text style={styles.sectionEyebrow}>BOT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
         {targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: target?.identityKey === item.identityKey }} onPress={() => { if (targetRef.current?.identityKey !== item.identityKey) { moveOwner('sessions', item, null); setSessions([]); void loadMobileCatalog(item); } void run('sessions', () => loadSessions(item)); }} style={[styles.targetChip, target?.identityKey === item.identityKey && styles.targetChipActive]}><View style={[styles.dot, !item.online && styles.dotOff]}/><Text style={[styles.targetChipText, target?.identityKey === item.identityKey && styles.targetChipTextActive]} numberOfLines={1}>{item.name}</Text></Pressable>)}
-          {targets.length === 0 && <Text style={styles.caption}>尚未发现可用 Bot</Text>}
+        {targets.length === 0 && <Text style={styles.caption}>尚未发现可用 Bot</Text>}
         </ScrollView>
+        {unavailableDeviceCount > 0 && <Text accessibilityLiveRegion="polite" style={styles.caption}>另有 {unavailableDeviceCount} 台设备目录暂不可用</Text>}
       </View>
       <View style={styles.listHead}><View><Text style={styles.title}>会话</Text><Text style={styles.subtitle}>{target ? `${target.deviceName} · ${target.online ? '在线' : '离线'}` : '选择一个 Bot'}</Text></View><Pressable accessibilityRole="button" accessibilityHint={!target ? '请先连接一个 Bot' : undefined} accessibilityState={{ disabled: !target }} disabled={!target} onPress={() => { moveOwner('chat', targetRef.current, null); setNotice(null); }} style={[styles.newButton, !target && { opacity: 0.45 }]}><Text style={styles.newButtonText}>＋ 新会话</Text></Pressable></View>
       {notice && <NoticeView notice={notice} action={retryNotificationAction} onDismiss={dismissNotification}/>}

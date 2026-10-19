@@ -49,6 +49,16 @@ export function loginPollNeedsStatus(code: string): boolean {
   return code === 'OWNED_LOGIN_EXPIRED' || code === 'OWNED_LOGIN_REQUIRED';
 }
 
+/** Preserve current account-load failures while dropping exceptions from a superseded refresh. */
+export function currentAccountLoadError(error: unknown, isCurrent: () => boolean): { error: unknown } | null {
+  return isCurrent() ? { error } : null;
+}
+
+export function accountIdentityChanged(previous: Account | null, next: Account): boolean {
+  return previous?.state === 'signed-in'
+    && (next.state !== 'signed-in' || previous.principalId !== next.principalId);
+}
+
 /** Continue the UI logout path only after the native owner confirms signed-out. */
 export async function logoutAndConfirm(
   requestLogout: () => Promise<LogoutReply>,
