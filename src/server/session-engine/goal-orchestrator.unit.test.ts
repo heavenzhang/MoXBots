@@ -343,6 +343,94 @@ describe('Goal orchestrator', () => {
     expect(runInjectedTurn).toHaveBeenCalledOnce();
   });
 
+  it('keeps blocking after a terminal root turn for an unacknowledged migration or export shell', async () => {
+    const client = clientWithGoal();
+    const prepareScheduledTurn = vi.fn(async () => ({ success: true }));
+    const runInjectedTurn = vi.fn(async () => ({ success: true }));
+    for (const description of ['Run pending database migration', 'Write payroll export file']) {
+      const task = { taskId: `toolu_${description}`, runId: 'run-1', taskType: 'local_bash', description };
+      const getLiveSessionState = vi.fn(() => ({
+        sessionState: 'idle',
+        isBusy: false,
+        hasBackgroundWork: true,
+        backgroundWorkBlocksContinuation: true,
+        backgroundWork: {
+          active: [task],
+          blocking: [task],
+          acknowledgeableShells: [task],
+          acknowledged: [],
+          blocksContinuation: true,
+        },
+      }));
+      expect(await createGoalOrchestrator(client).runScheduledTurn(
+        { prepareScheduledTurn, runInjectedTurn, getLiveSessionState },
+        { goal: goal(), queueId: `blocked-${description}`, expectedControlRevision: 3, turnNumber: 3 },
+      )).toMatchObject({ success: false, code: 'goal_work_pending' });
+    }
+    expect(prepareScheduledTurn).not.toHaveBeenCalled();
+    expect(runInjectedTurn).not.toHaveBeenCalled();
+    expect(client).not.toHaveBeenCalled();
+  });
+
+  it('continues a terminal root turn whose top-level shell was explicitly acknowledged', async () => {
+    const client = clientWithGoal();
+    scheduledMocks.metadata = { origin: { kind: 'desktop', surface: 'unknown' }, source: '' };
+    const prepareScheduledTurn = vi.fn(async () => ({ success: true }));
+    const runInjectedTurn = vi.fn(async (request: InjectedTurnRequest) => {
+      expect(await request.beforeDispatch?.()).toMatchObject({ accepted: true });
+      await request.onTerminal?.({
+        status: 'complete',
+        text: 'progress',
+        assistantMessagePresent: true,
+      });
+      return { success: true, enqueued: true, assistantMessagePresent: true, text: 'progress' };
+    });
+    const acknowledgedShell = {
+      taskId: 'toolu_bdrk_shell', runId: 'run-1', taskType: 'local_bash', description: 'serve on 8093',
+    };
+    const getLiveSessionState = vi.fn(() => ({
+      sessionState: 'idle',
+      isBusy: false,
+      hasBackgroundWork: true,
+      backgroundWorkBlocksContinuation: false,
+      backgroundWork: {
+        active: [acknowledgedShell],
+        blocking: [],
+        acknowledgeableShells: [acknowledgedShell],
+        acknowledged: [acknowledgedShell],
+        blocksContinuation: false,
+      },
+    }));
+
+    const result = await createGoalOrchestrator(client).runScheduledTurn(
+      { prepareScheduledTurn, runInjectedTurn, getLiveSessionState },
+      { goal: goal(), queueId: 'detached-shell', expectedControlRevision: 3, turnNumber: 3 },
+    );
+
+    expect(result).toMatchObject({ success: true });
+    expect(prepareScheduledTurn).toHaveBeenCalledOnce();
+    expect(runInjectedTurn).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['classified blocking work', { hasBackgroundWork: false, backgroundWorkBlocksContinuation: true }],
+    ['waiting for user', { hasBackgroundWork: false, backgroundWorkBlocksContinuation: false, waitingForUser: true }],
+  ] as const)('still defers continuation for %s', async (_label, state) => {
+    const client = clientWithGoal();
+    const prepareScheduledTurn = vi.fn(async () => ({ success: true }));
+    const runInjectedTurn = vi.fn(async () => ({ success: true }));
+
+    const result = await createGoalOrchestrator(client).runScheduledTurn({
+      prepareScheduledTurn,
+      runInjectedTurn,
+      getLiveSessionState: () => ({ sessionState: 'idle', isBusy: false, ...state }),
+    }, { goal: goal(), queueId: 'classified-blocker', expectedControlRevision: 3, turnNumber: 3 });
+
+    expect(result).toMatchObject({ success: false, code: 'goal_work_pending' });
+    expect(prepareScheduledTurn).not.toHaveBeenCalled();
+    expect(runInjectedTurn).not.toHaveBeenCalled();
+  });
+
   it.each(['preparation', 'promotion', 'claim', 'commit'] as const)('rechecks background work at %s and releases only authority it acquired', async (stage) => {
     const client = clientWithGoal();
     let hasBackgroundWork = false;

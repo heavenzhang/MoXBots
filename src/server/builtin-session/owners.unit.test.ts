@@ -15,6 +15,8 @@ import {
   incrementPreWarmFailCount,
   isAbortRequested,
   isCurrentQueryAuthority,
+  acknowledgeQueryBackgroundWork,
+  getQueryBackgroundContinuationSnapshot,
   getQueryMcpMutation,
   getQueryMcpPrewarmOwner,
   getSessionMutationBarrier,
@@ -29,6 +31,7 @@ import {
   settleQueryMcpPrewarmOwner,
   readQueryMcpStatuses,
   recordQueryBackgroundTask,
+  readQueryBackgroundTaskDetail,
   registerSessionAbortCleanup,
   setSessionProcessing,
   setSessionTerminationPromise,
@@ -145,10 +148,25 @@ describe('builtin-session owners', () => {
     resetTranscriptForTest();
   });
 
-  it('uses exact Query level activity for Goal waits, excluding ambient and foreground edge records', () => {
+  it('rejects a delayed confirmation of the previous run instead of acknowledging its replacement', async () => {
+    const query = { close: vi.fn() } as never;
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    recordQueryBackgroundTask(query, 'bash', { toolUseId: 'tool', runId: 'run-1', agentType: 'local_bash' });
+    replaceQueryBackgroundActivity(query, [{ task_id: 'bash', run_id: 'run-1', task_type: 'local_bash', description: '' }]);
+    const observed = await readQueryBackgroundTaskDetail(authority, 'tool');
+    if (!observed.success || !observed.task.continuation) throw new Error('Expected an exact confirmation identity');
+    const identity = observed.task.continuation.identity;
+    replaceQueryBackgroundActivity(query, [{ task_id: 'bash', run_id: 'run-2', task_type: 'local_bash', description: '' }]);
+    expect(acknowledgeQueryBackgroundWork([identity], true)).toEqual({
+      acknowledged: [], rejected: [{ taskId: 'bash', reason: 'changed' }],
+    });
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(true);
+  });
+
+  it('uses exact Query level activity for Goal waits, excluding ambient and foreground edge records', async () => {
     const query = { close: vi.fn() } as never;
     const next = { close: vi.fn() } as never;
-    setQuerySession(query);
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'p', expectedSdkSessionId: 's' });
     recordQueryBackgroundTask(query, 'foreground-agent', {});
     expect(hasQueryBackgroundWork()).toBe(false);
     replaceQueryBackgroundActivity(query, [{ task_id: 'watcher', task_type: 'monitor', description: '', ambient: true }]);
@@ -159,9 +177,34 @@ describe('builtin-session owners', () => {
     // No terminal edge is required to clear a replace-level observation.
     replaceQueryBackgroundActivity(query, []);
     expect(hasQueryBackgroundWork()).toBe(false);
-    replaceQueryBackgroundActivity(query, [{ task_id: 'bash', task_type: 'local_bash', description: '' }]);
+    replaceQueryBackgroundActivity(query, [{ task_id: 'bash', run_id: 'run-1', task_type: 'local_bash', description: 'npm run migrate' }]);
     expect(hasQueryBackgroundWork()).toBe(true);
+    // A top-level shell blocks until the user acknowledges this exact run.
+    expect(getQueryBackgroundContinuationSnapshot()).toMatchObject({
+      blocksContinuation: true,
+      acknowledgeableShells: [{ taskId: 'bash', runId: 'run-1', taskType: 'local_bash' }],
+      acknowledged: [],
+    });
+    recordQueryBackgroundTask(query, 'bash', { toolUseId: 'tool', runId: 'run-1' });
+    const detail = await readQueryBackgroundTaskDetail(authority, 'tool');
+    if (!detail.success || !detail.task.continuation) throw new Error('Missing identity');
+    const identity = detail.task.continuation.identity;
+    expect(acknowledgeQueryBackgroundWork([identity], true)).toEqual({ acknowledged: [identity], rejected: [] });
+    expect(getQueryBackgroundContinuationSnapshot()).toMatchObject({
+      blocksContinuation: false,
+      acknowledged: [{ taskId: 'bash', runId: 'run-1' }],
+    });
+    // A new run of the same task id does not inherit the acknowledgement.
+    replaceQueryBackgroundActivity(query, [{ task_id: 'bash', run_id: 'run-2', task_type: 'local_bash', description: '' }]);
+    expect(getQueryBackgroundContinuationSnapshot()).toMatchObject({ blocksContinuation: true, acknowledged: [] });
+    // Child shells and unknown work cannot be acknowledged.
+    replaceQueryBackgroundActivity(query, [{
+      task_id: 'child-bash', run_id: 'run-1', task_type: 'local_bash', description: '', parent_task_id: 'agent',
+    }]);
+    expect(acknowledgeQueryBackgroundWork([{ ...identity, taskId: 'child-bash' }], true)).toEqual({ acknowledged: [], rejected: [{ taskId: 'child-bash', reason: 'not_acknowledgeable' }] });
+    expect(getQueryBackgroundContinuationSnapshot()).toMatchObject({ blocksContinuation: true });
     setQuerySession(next);
+    expect(getQueryBackgroundContinuationSnapshot()).toMatchObject({ blocksContinuation: false, acknowledged: [] });
     expect(hasQueryBackgroundWork()).toBe(false);
     replaceQueryBackgroundActivity(query, [{ task_id: 'late', task_type: 'local_agent', description: '' }]);
     expect(hasQueryBackgroundWork()).toBe(false);
@@ -170,6 +213,66 @@ describe('builtin-session owners', () => {
     expect(hasQueryBackgroundWork()).toBe(true);
     setQuerySession(null);
     expect(hasQueryBackgroundWork()).toBe(false);
+  });
+
+  it('revokes only the observed run and expires allowance when level membership ends', async () => {
+    const query = { close: vi.fn() } as never;
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'p', expectedSdkSessionId: 's' });
+    recordQueryBackgroundTask(query, 'bash', { toolUseId: 'tool', runId: 'r' });
+    const tasks = [{ task_id: 'bash', run_id: 'r', task_type: 'local_bash', description: '' }];
+    replaceQueryBackgroundActivity(query, tasks);
+    const detail = await readQueryBackgroundTaskDetail(authority, 'tool');
+    if (!detail.success || !detail.task.continuation) throw new Error('Missing identity');
+    const identity = detail.task.continuation.identity;
+    acknowledgeQueryBackgroundWork([identity], true);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(false);
+    expect((await readQueryBackgroundTaskDetail(authority, 'tool'))).toMatchObject({ task: { continuation: { acknowledged: true } } });
+    acknowledgeQueryBackgroundWork([identity], false);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(true);
+    acknowledgeQueryBackgroundWork([identity], true);
+    replaceQueryBackgroundActivity(query, []);
+    replaceQueryBackgroundActivity(query, tasks);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(true);
+  });
+
+  it('rejects revoked authority and an old Query token even when a new process counter would repeat', async () => {
+    const prepare = () => {
+      const query = { close: vi.fn() } as never;
+      const authority = setQuerySessionWithAuthority(query, { productSessionId: 'p', expectedSdkSessionId: 's' });
+      recordQueryBackgroundTask(query, 'bash', { toolUseId: 'tool', runId: 'r' });
+      replaceQueryBackgroundActivity(query, [{ task_id: 'bash', run_id: 'r', task_type: 'local_bash', description: '' }]);
+      return authority;
+    };
+    const authority = prepare();
+    const detail = await readQueryBackgroundTaskDetail(authority, 'tool');
+    if (!detail.success || !detail.task.continuation) throw new Error('Missing identity');
+    const old = detail.task.continuation.identity;
+    acknowledgeQueryBackgroundWork([old], true);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(false);
+    requestAbort();
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(true);
+    expect(acknowledgeQueryBackgroundWork([old], true).rejected).toEqual([{ taskId: 'bash', reason: 'stale_query' }]);
+    resetLifecycleForTest();
+    const next = prepare();
+    expect(acknowledgeQueryBackgroundWork([old], true).rejected).toEqual([{ taskId: 'bash', reason: 'stale_query' }]);
+    const fresh = await readQueryBackgroundTaskDetail(next, 'tool');
+    expect(fresh).toMatchObject({ task: { continuation: { acknowledged: false } } });
+    if (fresh.success) expect(fresh.task.continuation?.identity.queryId).not.toBe(old.queryId);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(true);
+  });
+
+  it('rotates confirmation identity when the same Query object receives a replacement authority', async () => {
+    const query = { close: vi.fn() } as never;
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'p', expectedSdkSessionId: 's' });
+    recordQueryBackgroundTask(query, 'bash', { toolUseId: 'tool', runId: 'r' });
+    replaceQueryBackgroundActivity(query, [{ task_id: 'bash', run_id: 'r', task_type: 'shell', description: '' }]);
+    const detail = await readQueryBackgroundTaskDetail(authority, 'tool');
+    if (!detail.success || !detail.task.continuation) throw new Error('Missing identity');
+    const old = detail.task.continuation.identity;
+    acknowledgeQueryBackgroundWork([old], true);
+    setQuerySessionWithAuthority(query, { productSessionId: 'p', expectedSdkSessionId: 's' });
+    expect(acknowledgeQueryBackgroundWork([old], true).rejected).toEqual([{ taskId: 'bash', reason: 'stale_query' }]);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(true);
   });
 
   it('keeps updater activity fenced when the SDK level arrives before task edges', () => {

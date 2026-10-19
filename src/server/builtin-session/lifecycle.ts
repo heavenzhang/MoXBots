@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import type { BackgroundTaskDetailResult, BackgroundTaskDetail } from '../../shared/types/background-task';
 import { readRegisteredTaskOutput } from './background-task-output';
 import type { Query, SDKBackgroundTasksChangedMessage } from '@anthropic-ai/claude-agent-sdk';
@@ -8,6 +9,16 @@ import {
   MCP_PREWARM_GRACE_MS,
   type McpPrewarmOutcome,
 } from '../session-core/mcp-prewarm-policy';
+import {
+  backgroundTaskRunKey,
+  evaluateBackgroundContinuation,
+  isAcknowledgeableBackgroundTask,
+  type BackgroundContinuationSnapshot,
+  type BackgroundTaskObservation,
+  type BackgroundWorkAcknowledgement,
+  type BackgroundWorkAcknowledgementRequest,
+  type BackgroundWorkAcknowledgementResult,
+} from '../session-engine/background-continuation-policy';
 import type { BuiltinLifecycleSnapshot, MessageQueueItem } from './types';
 
 const PRE_WARM_MAX_RETRIES = 3;
@@ -24,6 +35,7 @@ let queryAuthorityRecord: {
   revoke: () => void;
 } | null = null;
 let queryGeneration = 0;
+let queryInstanceId: string | null = null;
 let queryMcpRevision = 0;
 let queryMcpPrewarmOwner: {
   query: Query;
@@ -86,7 +98,11 @@ export function hasBuiltinActivityForUpdate(): boolean {
 
 // Activity is a replace-level SDK fact; task edge records also contain foreground
 // and ambient tasks and remain independently owned for presentation/cleanup.
-let queryHasBackgroundWork = false;
+// Keep the full snapshot so continuation admission can classify current work.
+// Keep acknowledgements separately: they are user decisions about exact runs,
+// not SDK facts, and must never leak to a replacement Query.
+let queryBackgroundTasksLevel: BackgroundTaskObservation[] = [];
+let queryBackgroundAcknowledgements: BackgroundWorkAcknowledgement[] = [];
 let isProcessing = false;
 let abortRequested = false;
 let sessionTerminationPromise: Promise<void> | null = null;
@@ -117,8 +133,10 @@ function replaceQuerySession(session: Query | null): void {
     });
   }
   querySession = session;
-  queryHasBackgroundWork = false;
+  queryBackgroundTasksLevel = [];
+  queryBackgroundAcknowledgements = [];
   queryGeneration += 1;
+  queryInstanceId = session ? randomUUID() : null;
   console.log(`[builtin-input] phase=query-replaced generation=${queryGeneration} previousQuery=${previousQuery !== null} query=${session !== null}`);
   queryMcpPrewarmOwner = null;
   if (previousQuery) {
@@ -222,6 +240,8 @@ export function setQuerySessionWithAuthority(
   queryAuthorityRecord?.revoke();
   queryAuthorityRecord = null;
   replaceQuerySession(session);
+  queryInstanceId = randomUUID();
+  queryBackgroundAcknowledgements = [];
   let revoked = false;
   const authority = Object.freeze({
     query: session,
@@ -349,9 +369,20 @@ export async function readQueryBackgroundTaskDetail(
   }
   return { success: true, task: {
     taskId, toolUseId, runId: info.runId, description: task.info.description,
+    ...getBackgroundContinuationCapability(taskId, info.runId),
     taskType: task.info.agentType, status: task.active ? 'running' : task.status ?? 'unknown',
     startedAt: task.info.startedAt, finishedAt: task.finishedAt, command: task.info.command,
     summary: task.summary, ...output, updatedAt: Date.now(),
+  } };
+}
+
+function getBackgroundContinuationCapability(taskId: string, runId: string | undefined):
+  Pick<BackgroundTaskDetail, 'continuation'> {
+  const current = queryBackgroundTasksLevel.find(task => task.taskId === taskId && task.runId === runId);
+  if (!queryInstanceId || !runId || !current || !isAcknowledgeableBackgroundTask(current)) return {};
+  return { continuation: {
+    identity: { taskId, runId, queryId: queryInstanceId },
+    acknowledged: queryBackgroundAcknowledgements.some(ack => backgroundTaskRunKey(ack) === backgroundTaskRunKey(current)),
   } };
 }
 
@@ -375,11 +406,74 @@ export function replaceQueryBackgroundActivity(
   tasks: SDKBackgroundTasksChangedMessage['tasks'],
 ): void {
   if (querySession !== query) return;
-  queryHasBackgroundWork = tasks.some(task => task.ambient !== true);
+  queryBackgroundTasksLevel = tasks.map(task => ({
+    taskId: task.task_id,
+    ...(task.run_id ? { runId: task.run_id } : {}),
+    taskType: task.task_type,
+    ...(task.description ? { description: task.description } : {}),
+    ...(task.parent_task_id ? { parentTaskId: task.parent_task_id } : {}),
+    ...(task.ambient === true ? { ambient: true } : {}),
+  }));
+  // An acknowledgement names one exact run. Drop it as soon as that run leaves
+  // the level signal so a later reuse of the task id cannot inherit it.
+  const liveKeys = new Set(
+    queryBackgroundTasksLevel.filter(isAcknowledgeableBackgroundTask).map(backgroundTaskRunKey),
+  );
+  queryBackgroundAcknowledgements = queryBackgroundAcknowledgements.filter(
+    acknowledgement => liveKeys.has(backgroundTaskRunKey(acknowledgement)),
+  );
 }
 
 export function hasQueryBackgroundWork(): boolean {
-  return querySession !== null && queryHasBackgroundWork;
+  return querySession !== null
+    && queryBackgroundTasksLevel.some(task => task.ambient !== true);
+}
+
+/**
+ * Record an explicit user acknowledgement for exact top-level shell runs.
+ * Unknown, ambient, child or non-shell tasks are rejected. Acknowledging does
+ * not stop or cancel anything; it only lets continuation run beside that task.
+ */
+export function acknowledgeQueryBackgroundWork(
+  requested: readonly BackgroundWorkAcknowledgementRequest[],
+  allow: boolean,
+): BackgroundWorkAcknowledgementResult {
+  const acknowledged: BackgroundWorkAcknowledgementRequest[] = [];
+  const rejected: BackgroundWorkAcknowledgementResult['rejected'] = [];
+  const known = new Set(queryBackgroundAcknowledgements.map(backgroundTaskRunKey));
+  // Compare and commit synchronously on the original Query lifecycle owner.
+  // Never resolve a bare task id to a different run at POST time.
+  for (const identity of requested) {
+    const { taskId, runId, queryId } = identity;
+    const task = queryBackgroundTasksLevel.find(candidate => candidate.taskId === taskId);
+    const reason = !isCurrentQueryAuthority(getCurrentQueryAuthority()) || !queryInstanceId || queryId !== queryInstanceId ? 'stale_query'
+      : !runId || typeof runId !== 'string' ? 'unknown_identity'
+        : !task ? 'missing'
+          : task.runId !== runId ? 'changed'
+            : !isAcknowledgeableBackgroundTask(task) ? 'not_acknowledgeable' : undefined;
+    if (reason || !task) {
+      rejected.push({ taskId, reason: reason ?? 'missing' });
+      continue;
+    }
+    const key = backgroundTaskRunKey(task);
+    if (allow && !known.has(key)) {
+      queryBackgroundAcknowledgements.push({ taskId, runId });
+      known.add(key);
+    } else if (!allow) {
+      queryBackgroundAcknowledgements = queryBackgroundAcknowledgements.filter(ack => backgroundTaskRunKey(ack) !== key);
+      known.delete(key);
+    }
+    acknowledged.push({ ...identity });
+  }
+  return { acknowledged, rejected };
+}
+
+/** Continuation-facing view of the current Query's replace-level task set. */
+export function getQueryBackgroundContinuationSnapshot(): BackgroundContinuationSnapshot {
+  return evaluateBackgroundContinuation(
+    querySession ? queryBackgroundTasksLevel : [],
+    isCurrentQueryAuthority(getCurrentQueryAuthority()) ? queryBackgroundAcknowledgements : [],
+  );
 }
 
 export function completeQueryBackgroundTask(
@@ -848,11 +942,13 @@ export function resetLifecycleForTest(): void {
   queryAuthorityRecord?.revoke();
   queryAuthorityRecord = null;
   queryGeneration = 0;
+  queryInstanceId = null;
   queryMcpRevision = 0;
   queryMcpPrewarmOwner = null;
   queryMcpMutationOwner = null;
   queryBackgroundTasks.clear();
-  queryHasBackgroundWork = false;
+  queryBackgroundTasksLevel = [];
+  queryBackgroundAcknowledgements = [];
   isProcessing = false;
   abortRequested = false;
   sessionTerminationPromise = null;

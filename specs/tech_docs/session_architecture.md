@@ -220,6 +220,10 @@ turn 在 adapter 的真实 promotion boundary claim，以 `goalId + queueId + si
 
 continuation 在准备前后检查 Session 的 busy/background activity，在真实 promotion 的 claim 前后复核后台活跃性；builtin 在最后一次 materialization await 后再执行同步 commit guard，拒绝时先结算 durable claim 再发布拒绝。有工作未结束时返回未 dispatch 的 `goal_work_pending`，Rust 复用 one-shot scheduler 以 5 秒间隔检查，不调用模型、不计 turn/token/failure；每次检查仍经过 Goal 状态和结束条件裁决。初始用户 turn 不受此自动续跑策略限制。此事实只覆盖 Runtime 可观测的工作，不从“等待中”的文本推断外部任务。
 
+后台长驻任务的接续决策由原 builtin lifecycle 维护，不按描述或“无父 Shell”推断安全。所有非 ambient 的 SDK replace-level 活跃任务默认阻挡；仅已知 run_id 的顶层 local_bash/shell 可由用户在任务详情显式允许并行。详情 reader 经过原 Query authority 和异步输出读取后的身份复核，才投影 taskId/runId/不透明 Query 实例 token；确认与撤销通过 Tab-scoped API 和 SessionEngine，在原 lifecycle 同步比较再提交，不能把旧 taskId 自动解析为当前新 run。未知 run、子任务、非 Shell、旧 Query/已撤销 authority 的请求拒绝；任务离开当前 level、Query/authority 替换时确认失效。撤销仅重新阻挡之后的接续，不停止已开始的回合或后台命令。
+
+`backgroundWorkBlocksContinuation` 是 Node 向 continuation admission、Goal orchestrator 与 Rust cheap precheck 提供的分类结果；字段缺失时保留旧 runtime 的保守门禁。允许一个精确 Shell 不豁免 live root、用户交互、队列、promotion/claim/commit 检查，也不改变 updater、模型恢复或后台任务实际运行状态。没有确认能力的历史详情仍只读。
+
 Goal 的详细产品行为和 Task/Goal provider routing 见 [`task_center.md`](task_center.md) 与 [`task_provider_routing.md`](task_provider_routing.md)。
 
 ### 5.2 Session Inbox 与事件

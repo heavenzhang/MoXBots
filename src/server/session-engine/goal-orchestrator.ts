@@ -539,10 +539,17 @@ export function createGoalOrchestrator(client: ManagementClient = managementApi)
       code?: InjectedTurnResult['code'] | 'goal_work_pending';
     }> {
       return withScheduledTurnDispatchLock(async () => {
-        const workPending = (): boolean => {
+        // An explicitly acknowledged exact shell run may outlive the terminal root;
+        // every other non-ambient task, user interaction or live root still
+        // keeps the Goal deferred. Runtimes without a classified snapshot
+        // (backgroundWorkBlocksContinuation absent) keep the conservative gate.
+        const hasBlockingBackgroundWork = (): boolean => {
           const state = engine.getLiveSessionState();
-          return state.isBusy || state.hasBackgroundWork === true;
+          return state.waitingForUser === true
+            || (state.backgroundWorkBlocksContinuation ?? state.hasBackgroundWork === true);
         };
+        const workPending = (): boolean =>
+          engine.getLiveSessionState().isBusy || hasBlockingBackgroundWork();
         const deferredResult = {
           success: false, enqueued: false, code: 'goal_work_pending' as const,
           status: 409, sessionId: request.goal.sessionId,
@@ -588,7 +595,7 @@ export function createGoalOrchestrator(client: ManagementClient = managementApi)
           queueId: request.queueId,
           kind: 'continuation',
           channelDeliveryExpected,
-          hasBackgroundWork: () => engine.getLiveSessionState().hasBackgroundWork === true,
+          hasBackgroundWork: hasBlockingBackgroundWork,
         });
         try {
           const result = await engine.runInjectedTurn({

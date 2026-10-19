@@ -1935,7 +1935,14 @@
     "duration": "已运行 {{elapsed}}",
     "taskId": "任务 ID",
     "readOnly": "查看日志不会启动或重试任务。",
-    "retained": "任务运行记录已释放，显示最后成功读取的日志。"
+    "retained": "任务运行记录已释放，显示最后成功读取的日志。",
+    "allowContinuation": "允许与此运行并行接续",
+    "acknowledging": "正在应用…",
+    "revokeContinuation": "恢复阻挡后续接续",
+    "allowContinuationHint": "仅在确认此命令可与后续工作安全并行时允许；只作用于本次运行，不会停止或重启任务。",
+    "continuationAllowedHint": "后续回合可与此任务并行。撤销后重新阻挡接续，不会停止已经开始的回合。",
+    "continuationRejected": "任务运行或会话已变化，请刷新后重新确认。",
+    "continuationFailed": "未能确认操作结果，请刷新查看当前状态。"
   },
   "subagentView": {
     "title": "子 Agent",

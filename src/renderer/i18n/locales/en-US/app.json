@@ -1936,7 +1936,15 @@
     "duration": "Running for {{elapsed}}",
     "taskId": "Task ID",
     "readOnly": "Viewing logs does not start or retry the task.",
-    "retained": "The runtime task record has been released. Showing the last successfully read log."
+    "retained": "The runtime task record has been released. Showing the last successfully read log.",
+    "allowContinuation": "Allow continuation beside this run",
+    "acknowledging": "Applying…",
+    "continuationAllowed": "Continuation allowed",
+    "allowContinuationHint": "Allow only after checking this command can safely run beside later work. Applies to this run only; nothing is stopped or restarted.",
+    "continuationAllowedHint": "Future turns may run beside this exact task. Revoking restores the continuation block; it does not stop a turn that has already started.",
+    "continuationRejected": "This run or session changed. Refresh the task before confirming again.",
+    "continuationFailed": "The decision could not be confirmed. Refresh to check its current state.",
+    "revokeContinuation": "Block future continuation again"
   },
   "subagentView": {
     "title": "Subagents",

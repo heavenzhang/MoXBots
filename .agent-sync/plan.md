@@ -1,3 +1,7 @@
+## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
+
+沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
+
 ## MOXBOTS-READ-LOOP-20261019 — 2026-10-19
 
 builtin 执行会话"反复读同一内容、反复表态开始修改、始终不产生编辑"的有界进展检查。根因按观察证据判定为模型行为不收敛并被自动压缩放大（同轮94工具、0编辑、同一文件24次读取、精确命令重复0），未发现工具重放或bridge截断，不虚构历史重放类修复。实现只在单轮内容证据成立时（阶段表态/用户执行意图、同文件重叠区间重读、连续只读、0编辑、非只读研究、非等待用户）经`PostToolUse`注入可忽略提示；不停止、不切换模型、不重放工具、不写业务数据，不按固定超时或工具次数判死锁。任务 `.agent-sync/tasks/codex-read-loop-20261019-b7c02346.md`，验收 `dev-docs/read-loop/acceptance.md`，结果与脱敏证据见观察目录`/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-execution-observation/`。定向13项、原builtin 153项、tsc与ESLint通过；真实模型收敛、构建/安装/原生验收未做。与并发`MOXBOTS-RUNTIME-REPAIR-20261019`在`src/server/agent-session.ts`有文件交集但改动区间不重叠，交接文件`read-loop-handoff.txt`；不向其他会话发送消息、不改薪资业务/会话/配置。
