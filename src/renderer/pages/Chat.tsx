@@ -85,6 +85,8 @@ import SimpleChatInput, {
 } from '@/components/SimpleChatInput';
 import type { SlashCommand as InputSlashCommand } from '@/components/SlashCommandMenu';
 import AgentStatusPanel from '@/components/agent-status/AgentStatusPanel';
+import SubagentActivityPanel from '@/components/agent-status/SubagentActivityPanel';
+import SubagentInspector from '@/components/agent-status/SubagentInspector';
 import ContextUsageIndicator from '@/components/ContextUsageIndicator';
 import ChatBootOverlay from '@/components/ChatBootOverlay';
 import { useChatStartupOverlay } from '@/hooks/useChatStartupOverlay';
@@ -5691,6 +5693,10 @@ export default function Chat({
   // 稳定，SimpleChatInput 的 React.memo 不再被打穿，输入框在 AI 流式输出时不会
   // 每 token 重渲染。AgentStatusPanel 内部仍随 commit 重渲染，其 DOM 仅在
   // 派生 todos/subagents 变化时才改，成本由 React 协调器吸收。
+  const [selectedSubagent, setSelectedSubagent] = useState<{ sessionId: string | null; toolId: string } | null>(null);
+  const selectedSubagentId = selectedSubagent?.sessionId === sessionId ? selectedSubagent.toolId : null;
+  const openSubagent = useCallback((toolId: string) => setSelectedSubagent({ sessionId, toolId }), [sessionId]);
+  const closeSubagent = useCallback(() => setSelectedSubagent(null), []);
   const supportsAgentStatusPanel =
     currentRuntime === 'builtin' ||
     currentRuntime === 'codex' ||
@@ -5698,12 +5704,12 @@ export default function Chat({
   const agentStatusSlot = useMemo(
     () =>
       !supportsAgentStatusPanel ? undefined : (
-        <AgentStatusPanel
-          containerRef={chatContentRef}
-          onJumpToTool={handleJumpToTool}
-        />
+        <>
+          <AgentStatusPanel containerRef={chatContentRef} onJumpToTool={handleJumpToTool} hideAgentDelegations />
+          <SubagentActivityPanel key={sessionId ?? "pending"} onSelect={openSubagent} />
+        </>
       ),
-    [supportsAgentStatusPanel, handleJumpToTool],
+    [supportsAgentStatusPanel, handleJumpToTool, openSubagent, sessionId],
   );
 
   // PRD 0.2.32 — context 用量指示器 slot。自取数（内部 useTabState 订阅 contextUsage），
@@ -7046,10 +7052,16 @@ export default function Chat({
         </div>
 
         {/* Workspace panel — single instance, container style switches between side panel and overlay */}
+        {isActive && selectedSubagentId && shouldUseWorkspaceOverlay && (
+          <OverlayBackdrop onClose={closeSubagent} className="!absolute z-[55] !bg-black/10 !backdrop-blur-none">{null}</OverlayBackdrop>
+        )}
+        {isActive && selectedSubagentId && (
+          <SubagentInspector key={`${sessionId}:${selectedSubagentId}`} toolId={selectedSubagentId} overlay={shouldUseWorkspaceOverlay} onClose={closeSubagent} onJumpToTool={handleJumpToTool} />
+        )}
         {workspacePanelMounted && (
           <>
             {/* Click-away layer for overlay mode */}
-            {showWorkspace && shouldUseWorkspaceOverlay && (
+            {showWorkspace && shouldUseWorkspaceOverlay && !selectedSubagentId && (
               <OverlayBackdrop
                 onClose={handleCollapseWorkspace}
                 className="!absolute z-40 !block !bg-transparent !backdrop-blur-none"
@@ -7066,8 +7078,9 @@ export default function Chat({
                     ? 'relative z-10 flex w-[var(--chat-workspace-panel-width)] shrink-0 flex-col'
                     : 'pointer-events-none absolute bottom-0 right-0 top-0 z-20 flex w-[var(--chat-workspace-panel-width)] flex-col'
               }
-              aria-hidden={!showWorkspace}
-              inert={!showWorkspace}
+              aria-hidden={!showWorkspace || Boolean(selectedSubagentId)}
+              inert={!showWorkspace || Boolean(selectedSubagentId)}
+              style={selectedSubagentId ? { display: "none" } : undefined}
               data-chat-workspace-panel
               data-chat-workspace-panel-motion={
                 workspacePanelMotion ?? undefined

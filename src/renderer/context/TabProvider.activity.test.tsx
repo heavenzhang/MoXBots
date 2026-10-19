@@ -1056,6 +1056,32 @@ describe('TabProvider session activity ownership', () => {
     expect(readStreamingContent()).toBeNull();
   });
 
+  it('reports older-page failures to the requesting viewer and keeps history available for retry', async () => {
+    const sessionId = 'session-history-error';
+    let tab!: ReturnType<typeof useTabState>;
+    function PagingProbe() {
+      const value = useTabState();
+      useEffect(() => { tab = value; }, [value]);
+      return <Probe />;
+    }
+    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
+      if (url.includes('&before=')) throw new Error('offline');
+      return new Response(JSON.stringify({ success: true, session: {
+        id: sessionId, transcriptFormat: 2, runtime: 'builtin', title: 'History', agentDir: '/tmp/workspace',
+        messages: [{ id: 'u2', role: 'user', content: 'latest', timestamp: new Date(0).toISOString() }],
+        snapshotRevision: 10, hasMoreBefore: true, liveSessionState: 'idle',
+      } }));
+    });
+    render(<TabProvider tabId="history-error" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><PagingProbe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    const onError = vi.fn();
+    await act(async () => { await tab.loadOlderMessages({ onError }); });
+    expect(onError).toHaveBeenCalledOnce();
+    expect(tab.hasMoreBefore).toBe(true);
+    await act(async () => { await tab.loadOlderMessages({ onError }); });
+    expect(onError).toHaveBeenCalledTimes(2);
+  });
+
   it.each(['root', 'nested'])('preserves %s final input when its reference resolves before an older page', async kind => {
     const sessionId = 'session-v2-ref-page';
     let tab!: ReturnType<typeof useTabState>;

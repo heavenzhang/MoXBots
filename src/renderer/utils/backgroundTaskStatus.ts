@@ -264,11 +264,14 @@ function enforceTerminalCap(sessionId?: string | null): void {
 /**
  * Read current status by toolUseId (the key TaskTool components have).
  * Falls back to direct taskId lookup for backward compatibility.
+ * A transcript receipt can supply its run ID to reject a stale cached execution.
  */
-export function getBackgroundTaskStatus(key: string, sessionId?: string | null): string | undefined {
+export function getBackgroundTaskStatus(key: string, sessionId?: string | null, expectedRunId?: string): string | undefined {
     // Try as toolUseId first (new path), then as taskId (old path / direct)
     const taskId = toolUseIdToTaskId.get(toolKey(sessionId, key)) ?? key;
-    return statuses.get(taskKey(sessionId, taskId));
+    const scopedKey = taskKey(sessionId, taskId);
+    if (expectedRunId && compareBackgroundTaskRuns(runIds.get(scopedKey), expectedRunId) < 0) return undefined;
+    return statuses.get(scopedKey);
 }
 
 export interface BackgroundTaskNotificationRecord {

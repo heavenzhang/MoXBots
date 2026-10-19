@@ -467,3 +467,7 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## SESSION-CACHE-002 — 2026-10-19
 
 已缓存Chat保留挂载、草稿、阅读位置；冷历史经既有Global SessionStore reader先显示最后80条，后台原owner与REST/SSE恢复独占执行authority。连接失败保留Chat并在原Tab重试，不自动续接。PR #147；合同 `specs/tech_docs/session_architecture.md`，验收 `dev-docs/session-cache/acceptance.md`，接续 `.agent-sync/tasks/codex-session-cache-002-20261019-9b06b88b.md`。合并后236定向DOM/41unit、类型/lint、实际App合成传输和独立复核通过；main/CI以PR状态和Git回执为准。下一未冻结桌面候选queued给既定唯一发布owner；未安装或重启日常App、未向其它聊天发送消息。原生真实路径与源码/模拟UI分开验收。
+
+## SUBAGENT-UI-001 — 聊天内子 Agent 查看
+
+用户确认方案后实施：输入框上方持久入口、本轮/已加载历史、同会话右侧详情，复用transcript与现有状态投影；不新增执行owner或模型请求。记录 `.agent-sync/tasks/codex-subagent-ui-001-20261018-c8f40bcc.md`，验收 `dev-docs/subagent-ui/acceptance.md`。代码与52项回归/构建通过，独立代码复核完成；真实渲染因Work本地浏览器关闭尚待验，先保存草稿PR，不把构建替代UI验收。保持唯一桌面发布owner与下一未冻结候选边界，不换包或打断活动任务。
