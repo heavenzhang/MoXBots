@@ -35,7 +35,7 @@
 
 ## Verification and evidence
 
-相关本地Vitest 27文件654项通过，之后新增旧fingerprint跨namespace防重和正常故障前主动重复工具回归，context单测52项通过；最终组合结果以dev-docs/stream-continuation/acceptance.md为准。TypeScript/ESLint通过；生产SessionStore磁盘读写与codec/Goal原turn集成8项通过。真实SDK0.3.296+私有合成provider三模式普通/固定Goal/Stop通过，counter=1，完成操作新ID重复拒绝，Stop零续跑。实际Playwright两尺寸/中英文/键盘/状态更新/旧消息通过，无页面error/横向溢出；主Agent已看图复核。细节、命令及边界见dev-docs/stream-continuation/acceptance.md，UI原始证据在项目指针work/MOXBOTS-STREAM-RESUME-20261020-01/ui。本机隔离fixture不替代真实Provider/实际Rust Goal/签名客户端/生产验收。原409证据位于项目指针work/MOXBOTS-409-20261019-01，不提交用户日志。
+已正常合并当前main70eb592fce70149575afc1f81fe101e9ec81c0cb，只解决plan追加冲突、保留双方记录；组合本地Vitest 29文件664项通过，含旧fingerprint跨namespace防重和故障前主动重复工具，以及新合入main的历史加载回归。组合TypeScript/ESLint通过；分类与agent docs通过，依赖检查0error/18既有warning。生产SessionStore磁盘读写与codec/Goal原turn集成8项通过。真实SDK0.3.296+私有合成provider三模式普通/固定Goal/Stop通过，counter=1，完成操作新ID重复拒绝，Stop零续跑。实际Playwright两尺寸/中英文/键盘/状态更新/旧消息通过，无页面error/横向溢出；主Agent已看图复核。细节、命令及边界见dev-docs/stream-continuation/acceptance.md，UI原始证据在项目指针work/MOXBOTS-STREAM-RESUME-20261020-01/ui。本机隔离fixture不替代真实Provider/实际Rust Goal/签名客户端/生产验收。原409证据位于项目指针work/MOXBOTS-409-20261019-01，不提交用户日志。
 
 ## Deployment request
 
