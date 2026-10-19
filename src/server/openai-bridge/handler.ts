@@ -411,14 +411,15 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
   } catch {
     cleanup();
     return jsonError(request.signal.aborted ? 499 : timedOut ? 408 : 502,
-      'api_error', request.signal.aborted ? 'Request cancelled' : timedOut ? 'Upstream request timed out' : 'Upstream connection error');
+      'api_error', request.signal.aborted ? 'Request cancelled' : timedOut ? 'Upstream request timed out' : 'Upstream connection error',
+      timedOut && !request.signal.aborted ? 'upstream_headers_timeout' : undefined);
   }
 }
 
 /** Create a bridge handler that translates Anthropic → OpenAI → Anthropic */
 export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
   const log = config.logger === null ? () => {} : (config.logger ?? console.log);
-  const upstreamHeadersTimeoutMs = config.upstreamHeadersTimeoutMs ?? DEFAULT_TIMEOUT;
+  const defaultHeadersTimeoutMs = config.upstreamHeadersTimeoutMs ?? DEFAULT_TIMEOUT;
   const translateReasoning = config.translateReasoning ?? true;
   const imageSaver: ToolImageSaver | undefined = config.workspacePath
     ? createToolImageSaver(config.workspacePath)
@@ -480,13 +481,20 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
     }
+    // Resolve only at the forwarding layer, after recovery wrappers have
+    // delegated here. A short fail-fast timer is useful only while bounded
+    // retry/backup recovery is actually authorized for this request.
+    const routeTimeout = resolveHeadersTimeout(upstream.headersTimeoutMs, defaultHeadersTimeoutMs);
+    if (typeof upstream.headersTimeoutMs === 'function' && !routeTimeout.explicit) {
+      log(`[bridge] Fast recovery unavailable; headers timeout ${routeTimeout.timeoutMs}ms for provider ${upstream.providerId}`);
+    }
     if (upstream.continuationInstruction) {
       anthropicReq = { ...anthropicReq, system: typeof anthropicReq.system === 'string'
         ? `${anthropicReq.system}\n\n${upstream.continuationInstruction}`
         : [...(anthropicReq.system ?? []), { type: 'text', text: upstream.continuationInstruction }] };
     }
     if (upstream.apiProtocol === 'anthropic') {
-      return forwardAnthropicRequest(request, anthropicReq, upstream, upstream.headersTimeoutMs ?? upstreamHeadersTimeoutMs);
+      return forwardAnthropicRequest(request, anthropicReq, upstream, routeTimeout.timeoutMs);
     }
 
     let effectiveApiKey = upstream.apiKey || apiKey;
@@ -659,9 +667,9 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       const headersTimer = setTimeout(
         () => {
           didHeadersTimeout = true;
-          controller.abort(new Error(`Upstream headers timeout after ${upstream.headersTimeoutMs ?? upstreamHeadersTimeoutMs}ms`));
+          controller.abort(new Error(`Upstream headers timeout after ${routeTimeout.timeoutMs}ms`));
         },
-        upstream.headersTimeoutMs ?? upstreamHeadersTimeoutMs,
+        routeTimeout.timeoutMs,
       );
 
       const onDownstreamAbort = (): void => {
@@ -720,7 +728,11 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         const causeMsg = causeRaw instanceof Error ? causeRaw.message : (causeRaw ? String(causeRaw) : '');
         const baseMsg = err instanceof Error ? err.message : String(err);
         const errMsg = causeMsg ? `${baseMsg} (cause: ${causeMsg})` : baseMsg;
-        log(`[bridge] Upstream ${isTimeout ? 'timeout' : 'error'}: ${errMsg}`);
+        // Keep timeout diagnosis independent from localized upstream errors:
+        // route, provider, model and the exact bound are all local facts.
+        log(`[bridge] Upstream ${isTimeout ? 'timeout' : 'error'}: ${errMsg}`
+          + ` (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model},`
+          + ` headersTimeoutMs=${routeTimeout.timeoutMs}, fastRecovery=${routeTimeout.explicit ? 'armed' : 'off'})`);
         // Record for verify-timeout diagnostics (see getLastBridgeError docstring).
         // Only the connect-layer catch path — HTTP error responses (!upstreamResp.ok)
         // are already surfaced through the SDK's assistant.error path to verify.
@@ -731,6 +743,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
             isTimeout ? 408 : 502,
             'api_error',
             isTimeout ? 'Upstream request timed out' : `Upstream connection error: ${errMsg}`,
+            isTimeout ? 'upstream_headers_timeout' : undefined,
           ),
         };
       }
@@ -750,7 +763,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         const status = attempt.upstreamResp.status;
         let errBody: string;
         try {
-          const bounded = upstream.headersTimeoutMs
+          const bounded = routeTimeout.explicit
             ? await readBoundedErrorBody(attempt.upstreamResp.body)
             : await attempt.upstreamResp.text();
           if (bounded === undefined) {
@@ -1351,11 +1364,22 @@ export function handleResponsesStreamResponse(
   });
 }
 
-function jsonError(status: number, type: string, message: string): Response {
+function jsonError(status: number, type: string, message: string, code?: string): Response {
   return new Response(
-    JSON.stringify({ type: 'error', error: { type, message } }),
+    JSON.stringify({ type: 'error', error: { type, message, ...(code ? { code } : {}) } }),
     { status, headers: { 'Content-Type': 'application/json' } },
   );
+}
+
+/** A getter is re-evaluated per request; invalid values keep the server bound. */
+function resolveHeadersTimeout(
+  configured: UpstreamConfig['headersTimeoutMs'],
+  fallback: number,
+): { timeoutMs: number; explicit: boolean } {
+  const resolved = typeof configured === 'function' ? configured() : configured;
+  if (resolved === undefined) return { timeoutMs: fallback, explicit: false };
+  if (!Number.isFinite(resolved) || resolved <= 0) return { timeoutMs: fallback, explicit: false };
+  return { timeoutMs: resolved, explicit: true };
 }
 
 /** Extract and cache thought_signatures from tool calls (non-stream response).

@@ -1783,13 +1783,20 @@ async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<Up
         request?.signal,
       )
     : undefined;
+  const modelFailover = activeSessionModelFailover;
   return {
     providerId: activeProviderEnv?.providerId ?? SUBSCRIPTION_PROVIDER_ID,
     apiProtocol: activeProviderEnv?.apiProtocol ?? 'anthropic',
     authType: activeProviderEnv?.authType,
-    modelFailover: activeSessionModelFailover,
+    modelFailover,
     contextRecovery: activeSessionContextRecovery,
-    headersTimeoutMs: activeSessionModelFailover ? 30_000 : undefined,
+    // Arm the fast failover timer only while a retry or backup switch is
+    // actually authorized. When recovery is fenced (e.g. an uncertain tool
+    // outcome), use the generic five-minute bound instead of failing a healthy
+    // slow header wait at 30s with no possible recovery.
+    headersTimeoutMs: modelFailover
+      ? () => modelFailover.fastRecoveryAuthorized() ? 30_000 : undefined
+      : undefined,
     baseUrl: activeProviderEnv?.baseUrl ?? '',
     apiKey: managedCredential?.accessToken ?? activeProviderEnv?.apiKey ?? '',
     credentialVersion: managedCredential?.credentialVersion,

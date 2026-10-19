@@ -47,6 +47,18 @@ export class ModelFailoverController implements BridgeModelFailover {
     recovery?: InferenceRecoveryHooks;
   }) {}
 
+  /**
+   * True when a pre-header failure could still be retried or switched right
+   * now. Callers arm a short headers timeout only while this holds; otherwise
+   * the short timer would turn normal upstream latency into an unrecoverable
+   * error even though automatic recovery is fenced off.
+   */
+  fastRecoveryAuthorized(): boolean {
+    const scope = this.options.scope();
+    return !!scope && scope !== this.retiredScope && this.options.isActive?.() !== false
+      && this.options.canRetry?.() !== false;
+  }
+
   endTurn(): void {
     const scope = this.state?.scope ?? this.options.scope();
     this.retiredScope = scope;

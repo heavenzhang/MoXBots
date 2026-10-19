@@ -114,6 +114,26 @@ describe('bounded Query request retries', () => {
     expect(await current.text()).toContain('new model');
   });
 
+  it('reports fast recovery availability before arming a short headers timeout', () => {
+    let scope: string | undefined = 'foreground';
+    let active = true;
+    let safe = true;
+    const controller = new ModelFailoverController({ scope: () => scope, isActive: () => active,
+      canRetry: () => safe, resolveBackup: () => backup, onSwitch: vi.fn() });
+    expect(controller.fastRecoveryAuthorized()).toBe(true);
+    safe = false;
+    expect(controller.fastRecoveryAuthorized()).toBe(false);
+    safe = true;
+    active = false;
+    expect(controller.fastRecoveryAuthorized()).toBe(false);
+    active = true;
+    scope = undefined;
+    expect(controller.fastRecoveryAuthorized()).toBe(false);
+    scope = 'foreground';
+    controller.endTurn();
+    expect(controller.fastRecoveryAuthorized()).toBe(false);
+  });
+
   it('does not retry or switch after the tool owner reports an uncertain outcome', async () => {
     let safe = true;
     const switched = vi.fn();

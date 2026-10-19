@@ -1,6 +1,7 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBridgeHandler } from './handler';
+import { ContextRecoveryController } from './context-recovery';
 import { ModelFailoverController, type InferenceRecoveryHooks } from './model-failover';
 import type { UpstreamConfig } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
@@ -73,6 +74,20 @@ function deferred() {
   const promise = new Promise<void>(done => { resolve = done; });
   return { promise, resolve };
 }
+function sessionRecoveryPair(backup: UpstreamConfig | undefined) {
+  const context = new ContextRecoveryController({
+    scope: () => 'slow-header-root', isActive: () => true, canRecover: () => true,
+    backup: async () => 'archive://fixture',
+  });
+  const notices: string[] = [];
+  const failover = new ModelFailoverController({
+    scope: () => 'slow-header-root', isActive: () => true, canSwitch: () => true,
+    canRetry: () => context.canRetryInference(),
+    resolveBackup: () => backup, onSwitch: selected => { notices.push(selected.providerId); },
+    retryDelaysMs: [0, 0, 0],
+  });
+  return { context, failover, notices };
+}
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map(async server => {
@@ -106,6 +121,80 @@ describe('model failover over real loopback HTTP', () => {
     committed.resolve();
     expect((await (await pending).json()).content[0].text).toBe('cooldown respected');
     expect(primary.requests).toHaveLength(2);
+  });
+
+  it('switches to backup after slow primary headers while fast recovery is authorized', async () => {
+    const primary = await fixture((_req, res) => {
+      setTimeout(() => json(res, anthropicText('primary answered')), 200);
+    });
+    const backupFixture = await fixture((_req, res) => json(res, anthropicText('backup answered')));
+    const backup = { ...target(backupFixture, 'anthropic'), providerId: 'backup-fixture' };
+    const { context, failover, notices } = sessionRecoveryPair(backup);
+    const config = target(primary, 'anthropic');
+    const handler = createBridgeHandler({
+      getUpstreamConfig: () => ({ ...config, contextRecovery: context, modelFailover: failover,
+        headersTimeoutMs: () => failover.fastRecoveryAuthorized() ? 50 : undefined }),
+      upstreamHeadersTimeoutMs: 3_000,
+      logger: null,
+    });
+
+    const response = await handler(request());
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).content[0].text).toBe('backup answered');
+    expect(primary.requests).toHaveLength(4);
+    expect(backupFixture.requests).toHaveLength(1);
+    expect(notices).toEqual(['backup-fixture']);
+  });
+
+  it('keeps the generic header bound when uncertain tool history fences fast recovery', async () => {
+    const primary = await fixture((_req, res) => {
+      setTimeout(() => json(res, anthropicText('primary answered slowly')), 200);
+    });
+    const backupFixture = await fixture((_req, res) => json(res, anthropicText('backup must not run')));
+    const { context, failover } = sessionRecoveryPair({ ...target(backupFixture, 'anthropic'), providerId: 'backup-fixture' });
+    const config = target(primary, 'anthropic');
+    const handler = createBridgeHandler({
+      getUpstreamConfig: () => ({ ...config, contextRecovery: context, modelFailover: failover,
+        headersTimeoutMs: () => failover.fastRecoveryAuthorized() ? 50 : undefined }),
+      upstreamHeadersTimeoutMs: 3_000,
+      logger: null,
+    });
+    const history: AnthropicRequest['messages'] = [
+      { role: 'user', content: userText },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'uncertain-write', name: 'increment_counter', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'uncertain-write', content: 'write failed', is_error: true }] },
+    ];
+
+    const response = await handler(request(history));
+
+    expect(context.canRetryInference()).toBe(false);
+    expect(response.status).toBe(200);
+    expect((await response.json()).content[0].text).toBe('primary answered slowly');
+    // No replay of the fenced inference, and no premature local 408.
+    expect(primary.requests).toHaveLength(1);
+    expect(backupFixture.requests).toHaveLength(0);
+  });
+
+  it('returns a bounded classified 408 when the backup also times out', async () => {
+    const primary = await fixture((_req, res) => json(res, { error: { message: 'overloaded' } }, 503));
+    const backupFixture = await fixture(() => { /* never send response headers */ });
+    const backup = { ...target(backupFixture, 'anthropic'), providerId: 'backup-fixture', headersTimeoutMs: 50 };
+    const { context, failover } = sessionRecoveryPair(backup);
+    const config = target(primary, 'anthropic');
+    const handler = createBridgeHandler({
+      getUpstreamConfig: () => ({ ...config, contextRecovery: context, modelFailover: failover }),
+      logger: null,
+    });
+
+    const response = await handler(request());
+
+    expect(response.status).toBe(408);
+    expect(await response.json()).toMatchObject({
+      error: { type: 'api_error', code: 'upstream_headers_timeout' },
+    });
+    expect(primary.requests).toHaveLength(4);
+    expect(backupFixture.requests).toHaveLength(4);
   });
 
   it('gives the actual Session recovery owner a cloneable complete inference request after handler parsing', async () => {

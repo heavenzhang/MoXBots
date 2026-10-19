@@ -36,7 +36,12 @@ export interface UpstreamConfig {
   /** Missing retains the existing OpenAI translator. */
   apiProtocol?: 'anthropic' | 'openai';
   authType?: 'auth_token' | 'api_key' | 'both' | 'auth_token_clear_api_key';
-  headersTimeoutMs?: number;
+  /**
+   * Header wait for this route. A getter is evaluated per request so a short
+   * fail-fast timeout is only armed while bounded retry/backup recovery is
+   * actually authorized. `undefined` keeps the server default.
+   */
+  headersTimeoutMs?: number | (() => number | undefined);
   /** Only interactive Session bridges opt in, never utility/probe bridges. */
   modelFailover?: import('../model-failover').BridgeModelFailover;
   /** Exact Query owner; context recovery wraps failover and only retries inference. */
