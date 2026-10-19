@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicToolResultBlock } from './types/anthropic';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
+import { modelStreamEventType } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard } from './request-lifetime';
 
@@ -567,6 +568,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       const decoder = new TextDecoder();
       const encoder = new TextEncoder();
       let terminal = false;
+      let terminalQueued = false;
       let consumerCancelled = false;
       const stream = new ReadableStream<Uint8Array>({
         async pull(output) {
@@ -582,7 +584,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
             const next = await reader.read();
             if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
-              if (isSse && !terminal) {
+              if (isSse && !terminalQueued) {
                 state.blocked = true; lease.block();
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
               }
@@ -590,10 +592,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
             }
             let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              let type = event.event;
-              try { const payload: unknown = JSON.parse(event.data); if (record(payload) && typeof payload.type === 'string') type = payload.type; }
-              catch { throw new Error('Malformed model stream event'); }
-              if (type === 'message_stop') terminal = true;
+              const type = modelStreamEventType(event);
+              if (!type) continue;
               if (type === 'error') {
                 state.blocked = true; lease.block();
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
@@ -601,14 +601,24 @@ export class ContextRecoveryController implements BridgeContextRecovery {
                 finish(); output.close(); return;
               }
               frames += formatSSEFrame(event);
+              // The protocol terminal ends this inference. Never parse provider trailers or
+              // wait for socket EOF; either can turn a completed response into a fake failure.
+              if (type === 'message_stop') { terminal = true; break; }
             }
+            if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
             if (!isSse) output.enqueue(next.value);
             else if (frames) output.enqueue(encoder.encode(frames));
+            if (terminal) {
+              terminalQueued = true;
+              void reader.cancel().catch(() => undefined);
+              finish();
+              output.close();
+            }
           } catch (error) {
-            if (!terminal) { state.blocked = true; lease.block(); }
+            if (!terminalQueued) { state.blocked = true; lease.block(); }
             void reader.cancel().catch(() => undefined);
             finish();
-            if (isSse && !terminal && !consumerCancelled && queryLive()) {
+            if (isSse && !terminalQueued && !consumerCancelled && queryLive()) {
               output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
               output.close();
             } else output.error(error);
@@ -616,7 +626,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         },
         async cancel(reason) {
           consumerCancelled = true;
-          if (!terminal && isSse) { state.blocked = true; lease.block(); }
+          if (!terminalQueued && isSse) { state.blocked = true; lease.block(); }
           finish();
           try { await reader.cancel(reason); } catch { /* transport already retired */ }
         },

@@ -27,6 +27,10 @@ const CHILD_PROCESS_ALLOWLIST = new Set([
   // Exercises bounded shutdown against isolated children that ignore shutdown
   // and SIGTERM; only the exact child handle is signalled.
   'src/server/host-bot-child-stop.integration.test.ts',
+  // Exercises desktop parent-loss containment with fixed local Node snippets
+  // and a private scratch directory. Only the fixture's exact process group is
+  // signalled; no App, SDK, credentials or external network is used.
+  'src/server/utils/sidecar-parent.integration.test.ts',
   // On Windows, runs process.execPath only to enumerate the sealed child's env
   // names. This catches OS-level case folding without secrets or network I/O.
   'src/server/integrated-runtimes/dsh/child-environment.unit.test.ts',

@@ -12700,9 +12700,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         // for the file write to complete before the sidecar tears down
         // (cron sidecars in particular shut down ~1s after abort).
         const watchdogSessionId = sessionId;
+        const goalOwned = getCurrentTurnSourceItem()?.turnOwner?.kind === 'goal';
         const autoResumePlan = planWatchdogAutoResume({
           turnHadSubstantiveActivity: turnState.turnHadSubstantiveActivity,
           alreadyAutoResumed: autoResumeInjectedSessions.has(watchdogSessionId),
+          goalOwned,
         });
         if (autoResumePlan.scheduleAutoResume) {
           scheduledWatchdogAutoResumeSessions.add(watchdogSessionId);
@@ -12720,16 +12722,25 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           } catch (e) {
             console.error('[agent] Watchdog: failed to persist pendingContinueAfterAbort:', e);
           }
+        } else if (goalOwned) {
+          console.log('[agent] Watchdog: Goal recovery remains with the durable Goal owner');
         } else if (autoResumeInjectedSessions.has(watchdogSessionId)) {
           console.log(`[agent] Watchdog: auto-resume already injected for session ${watchdogSessionId} - skipping pendingContinueAfterAbort`);
         } else {
           console.log(`[agent] Watchdog: turn had no substantive SDK activity — skipping pendingContinueAfterAbort`);
         }
 
-        broadcast('chat:agent-error', {
-          message: `响应超时（10 分钟无活动${toolInfo}），已自动终止。请重试。`
-        });
-        broadcast('chat:message-error', '响应超时');
+        // Settle through the turn owner before abort clears its callback/source.
+        // With no terminal SDK evidence, a Goal must preserve uncertain actions
+        // for explicit recovery rather than replaying them in an unowned turn.
+        const timeoutMessage = goalOwned
+          ? `响应超时（10 分钟无活动${toolInfo}），目标需恢复，进度已保留。请核对执行结果后继续。`
+          : `响应超时（10 分钟无活动${toolInfo}），已自动终止。请重试。`;
+        const terminal = goalOwned && isTurnInFlight()
+          ? handleMessageError(`automatic_replay_blocked: ${timeoutMessage}`, timeoutMessage)
+          : null;
+        broadcast('chat:agent-error', { message: timeoutMessage });
+        broadcast('chat:message-error', withSessionCompletionTerminal(timeoutMessage, terminal));
         abortPersistentSession();
         if (autoResumePlan.scheduleAutoResume) {
           scheduleWatchdogAutoResumeAfterAbort(watchdogSessionId, {
@@ -14389,6 +14400,11 @@ async function rejectPromotedMessageBeforeDispatch(
   item.resolve();
   if (!item.deferVisibleAdmission) {
     broadcast('queue:cancelled', { queueId: item.id });
+    if (result.code === 'turn_conflict') {
+      broadcast('chat:agent-error', {
+        message: `本次消息未执行：Goal 上一轮仍占用会话。${result.error ?? '请等待上一轮结算后再继续。'}`,
+      });
+    }
   }
   console.warn(`[goal] pre-dispatch gate rejected builtin queue item ${item.id}: ${result.error ?? result.code ?? 'stale admission'}`);
   settleCancelledInputActivity();
@@ -14876,6 +14892,12 @@ async function* messageGenerator(
     // caller deadline/cancel must report and stop that exact active owner
     // rather than claiming the turn was never enqueued.
     clearPromotedItem(item.id);
+    // Admission guards own the transition into a turn, not that accepted
+    // turn's later Query recovery. A zero-turn inferred-anchor rejection can
+    // re-deliver this exact source after Product has persisted its new root;
+    // rerunning the old continuation guard would reject our own committed
+    // state as stale. Unadmitted items keep their guards and cancellation.
+    item.beforeDispatch = undefined;
     isStreamingMessage = true;
     traceBuiltinInputProgress('admission-commit', inputTrace);
     if (lifecycleState.preWarming) {

@@ -23,7 +23,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         Arc,
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio_tungstenite::tungstenite::Message;
 
@@ -646,8 +646,11 @@ async fn execute_inner(
             .device_address(&identity.token, local, &request.device_id)
             .await?;
         matches_target(request, &address.scope)?;
-        if deferred.is_some() && pairs.has_peer_channel(&address.scope) {
-            return Err(NetworkError::new("HOST_MANAGEMENT_TARGET_BUSY"));
+        if deferred.is_some() {
+            if let Some(reason) = pairs.peer_channel_busy_reason(&address.scope) {
+                pairs.record_management_busy(reason, Instant::now());
+                return Err(NetworkError::new("HOST_MANAGEMENT_TARGET_BUSY"));
+            }
         }
         let mut request_controls = HashSet::new();
         let mut verifier = identity.verifier.clone();
@@ -1642,7 +1645,7 @@ mod handoff_tests {
         let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
         pairs.reserve("pending-agent-offer").unwrap();
         assert!(
-            pairs.has_peer_channel(&local),
+            pairs.peer_channel_busy_reason(&local).is_some(),
             "pending Agent verification must block management before Open"
         );
         let mut tls_frames = Vec::new();

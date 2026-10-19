@@ -1,0 +1,18 @@
+{
+  "passed": true,
+  "checks": [
+    "single collapsed desktop row (42px), all summaries and pause",
+    "Enter opens Todos, completed disclosure works, Escape restores trigger focus",
+    "detail sections mutually exclusive; original subagent callback called once",
+    "pause and resume external, one callback each",
+    "overflow menu edit and cancel preserve original one-shot callbacks",
+    "settled totals and full long objective remain reachable",
+    "768px: single row, summary scrolling, pause visible, Todo/agent reachable, no page overflow, session reset",
+    "390px: single row, summary scrolling, pause visible, Todo/agent reachable, no page overflow, session reset",
+    "320px: single row, summary scrolling, pause visible, Todo/agent reachable, no page overflow, session reset",
+    "dark theme uses semantic surfaces and state colors",
+    "empty status disappears; composer remains editable"
+  ],
+  "errors": [],
+  "boundary": "Actual React component with synthetic Tab state; not native or real Goal execution."
+}

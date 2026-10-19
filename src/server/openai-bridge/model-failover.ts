@@ -3,6 +3,7 @@ import type { UpstreamConfig } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
+import { modelStreamEventType } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 
@@ -266,10 +267,8 @@ export class ModelFailoverController implements BridgeModelFailover {
             }
             let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              let type = event.event;
-              try { const payload = JSON.parse(event.data); if (typeof payload?.type === 'string') type = payload.type; }
-              catch { throw new Error('Malformed model stream event'); }
-              if (type === 'message_stop') terminal = true;
+              const type = modelStreamEventType(event);
+              if (!type) continue;
               if (type === 'error') {
                 await blockRecovery('Model stream delivered an error event');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
@@ -278,6 +277,9 @@ export class ModelFailoverController implements BridgeModelFailover {
                 finish(); output.close(); return;
               }
               frames += formatSSEFrame(event);
+              // The protocol terminal ends this inference. Never parse provider trailers or
+              // wait for socket EOF; either can turn a completed response into a fake failure.
+              if (type === 'message_stop') { terminal = true; break; }
             }
             if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
             if (!isSse) output.enqueue(next.value);
@@ -285,7 +287,13 @@ export class ModelFailoverController implements BridgeModelFailover {
             // Protocol termination counts as delivered only after the terminal
             // bytes enter the downstream queue. Durable cleanup may then await
             // IO without erasing a checkpoint for an unobserved message_stop.
-            if (terminal) { terminalQueued = true; await completeRecovery(); }
+            if (terminal) {
+              terminalQueued = true;
+              await completeRecovery();
+              void reader.cancel().catch(() => undefined);
+              finish();
+              if (!consumerCancelled) output.close();
+            }
           } catch (error) {
             if (!terminalQueued || (recovery && !recoverySettled)) {
               try { await blockRecovery(queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled'); } catch { /* fail closed */ }

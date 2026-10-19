@@ -669,3 +669,32 @@ it("keeps fetched list tail as labelled cache across ordinary polling and clears
     await screen.findByRole("button", { name: "remoteSession.moreSessions" }),
   ).toBeInTheDocument();
 });
+
+it('shows tool results through shared disclosure as canonical text without local file actions', async () => {
+  const base = mocks.request.getMockImplementation()!;
+  mocks.request.mockImplementation(async (...args) => {
+    const response = await base(...args);
+    if (args[2].kind !== 'get') return response;
+    return { ...response, data: { ...snapshot, interactions: [], messages: [{
+      ...snapshot.messages[0], content: '', tools: [
+        { id:'read', name:'Read', status:'complete', summary:'first line\nsecond line' },
+        { id:'error', name:'Bash', status:'error', summary:'failed command' },
+        { id:'running', name:'Grep', status:'running', summary:'' },
+      ],
+    }] } };
+  });
+  render(<RemoteSession tab={{ ...tab, sessionId:'s', targetScope:scope }} isActive binding={binding} />);
+  const read = await screen.findByRole('button', { name:'Read remoteSession.toolStates.complete' });
+  expect(read.getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByText('first line', {exact:false})).toBeNull();
+  fireEvent.click(read);
+  expect(read.getAttribute('aria-expanded')).toBe('true');
+  expect(screen.getByText('first line', {exact:false}).textContent).toBe('first line\nsecond line');
+  expect(screen.queryByText('filePath', {exact:false})).toBeNull();
+  expect(screen.queryByRole('link')).toBeNull();
+  fireEvent.click(read);
+  expect(screen.queryByText('first line', {exact:false})).toBeNull();
+  expect(screen.getByRole('button', {name:'Grep remoteSession.toolStates.running'}).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('button', {name:'Bash remoteSession.toolStates.error'})).toBeTruthy();
+  expect(mocks.request.mock.calls.every(call=>['capabilities','get'].includes(call[2].kind))).toBe(true);
+});

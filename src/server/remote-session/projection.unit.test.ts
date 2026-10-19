@@ -19,3 +19,26 @@ it('does not mistake plain JSON for tool frames or leak hidden thinking and tool
   expect(message).toMatchObject({content:'reply',tools:[{name:'Bash'}]});
   expect(JSON.stringify(message)).not.toMatch(/private reasoning|secret|private"/);
 });
+it('unwraps long Read results before the wire cap and marks omitted text',()=>{
+  const content='line one\n'+ 'long-file-line\n'.repeat(400);
+  const message=projectRemoteMessage({id:'m',role:'assistant',timestamp:'',content:JSON.stringify([{type:'tool_use',id:'t',name:'Read',tool:{status:'complete',result:JSON.stringify({type:'text',file:{filePath:'/remote/report.md',content}})}}])});
+  const summary=message!.tools[0].summary;
+  expect(summary).toHaveLength(2000);
+  expect(message!.truncated).toBe(true);
+  expect(summary).toBe(content.slice(0,1998)+'\n…');
+  expect(summary).not.toContain('filePath');
+});
+it('projects stderr and error status without sending raw parameters',()=>{
+  const message=projectRemoteMessage({id:'m',role:'assistant',timestamp:'',content:JSON.stringify([{type:'tool_use',id:'t',name:'Bash',input:{command:'private command'},tool:{status:'error',result:JSON.stringify({stdout:'hello',stderr:'failed'})}}])});
+  expect(message!.tools[0]).toMatchObject({status:'error',summary:'hello\n\n[stderr]\nfailed'});
+  expect(JSON.stringify(message)).not.toContain('private command');
+});
+it('preserves running and empty outputs without invented execution details',()=>{
+  const message=projectRemoteMessage({id:'m',role:'assistant',timestamp:'',content:JSON.stringify([{type:'tool_use',id:'r',name:'Read',tool:{status:'running'}},{type:'tool_use',id:'e',name:'Read',tool:{status:'complete',result:''}}])});
+  expect(message!.tools).toMatchObject([{status:'running',summary:''},{status:'complete',summary:''}]);
+});
+it('unwraps once so JSON file contents remain verbatim',()=>{
+  const content=JSON.stringify({content:'JSON document field',stdout:'JSON document stdout'});
+  const message=projectRemoteMessage({id:'m',role:'assistant',timestamp:'',content:JSON.stringify([{type:'tool_use',id:'t',name:'Read',tool:{status:'complete',result:JSON.stringify({type:'text',file:{content}})}}])});
+  expect(message!.tools[0].summary).toBe(content);
+});

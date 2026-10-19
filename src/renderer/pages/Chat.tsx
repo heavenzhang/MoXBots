@@ -84,8 +84,6 @@ import SimpleChatInput, {
   type SimpleChatInputHandle,
 } from '@/components/SimpleChatInput';
 import type { SlashCommand as InputSlashCommand } from '@/components/SlashCommandMenu';
-import AgentStatusPanel from '@/components/agent-status/AgentStatusPanel';
-import SubagentActivityPanel from '@/components/agent-status/SubagentActivityPanel';
 import SubagentInspector from '@/components/agent-status/SubagentInspector';
 import ContextUsageIndicator from '@/components/ContextUsageIndicator';
 import ChatBootOverlay from '@/components/ChatBootOverlay';
@@ -5686,13 +5684,6 @@ export default function Chat({
     [scrollToTool],
   );
 
-  // PRD 0.2.17 / v0.2.19 — AgentStatusPanel 通过 slot 注入 SimpleChatInput，
-  // 与 QueuedMessagesPanel 同居一个 flex 行（避免两者撞 z-20 / 同 Y 重叠）。
-  // P3: slot 不再依赖高频的 messages —— AgentStatusPanel 自己从 TabContext
-  // 订阅 messages（见该组件）。这样本 slot 的 useMemo 在流式期间 identity 保持
-  // 稳定，SimpleChatInput 的 React.memo 不再被打穿，输入框在 AI 流式输出时不会
-  // 每 token 重渲染。AgentStatusPanel 内部仍随 commit 重渲染，其 DOM 仅在
-  // 派生 todos/subagents 变化时才改，成本由 React 协调器吸收。
   const [selectedSubagent, setSelectedSubagent] = useState<{ sessionId: string | null; toolId: string } | null>(null);
   const selectedSubagentId = selectedSubagent?.sessionId === sessionId ? selectedSubagent.toolId : null;
   const openSubagent = useCallback((toolId: string) => setSelectedSubagent({ sessionId, toolId }), [sessionId]);
@@ -5701,20 +5692,18 @@ export default function Chat({
     currentRuntime === 'builtin' ||
     currentRuntime === 'codex' ||
     currentRuntime === 'dsh';
-  const agentStatusSlot = useMemo(
-    () =>
-      !supportsAgentStatusPanel ? undefined : (
-        <>
-          <AgentStatusPanel containerRef={chatContentRef} onJumpToTool={handleJumpToTool} hideAgentDelegations />
-          <SubagentActivityPanel key={sessionId ?? "pending"} onSelect={openSubagent} />
-        </>
-      ),
-    [supportsAgentStatusPanel, handleJumpToTool, openSubagent, sessionId],
+  const agentActivity = useMemo(
+    () => !supportsAgentStatusPanel ? undefined : ({
+      containerRef: chatContentRef,
+      onJumpToTool: handleJumpToTool,
+      onSelectSubagent: openSubagent,
+    }),
+    [supportsAgentStatusPanel, handleJumpToTool, openSubagent],
   );
 
   // PRD 0.2.32 — context 用量指示器 slot。自取数（内部 useTabState 订阅 contextUsage），
   // 数据不经 SimpleChatInput props；useMemo 让 slot identity 在流式期间稳定，不打穿
-  // SimpleChatInput 的 React.memo（与 agentStatusSlot 同款）。
+  // SimpleChatInput 的 React.memo（与 agentActivity 同款）。
   const contextIndicatorSlot = useMemo(
     // key on sessionId → remount on session switch resets local open/timer state
     // (review #W3). sessionId is stable during streaming, so the memo still holds.
@@ -6875,16 +6864,7 @@ export default function Chat({
               onElaborate={handleElaborateSelection}
             />
 
-            {/* Floating input with integrated cron task components.
-              PRD 0.2.17 — AgentStatusPanel (Todo + SubAgent 聚合) 现在作为 slot
-              传给 SimpleChatInput，与 QueuedMessagesPanel 同居一个 flex 行，避
-              免两者用各自的 absolute 定位在输入框上方同 Y 抢同一片右上角导致
-              z-20 paint-order 冲突（v0.2.19 修复：发消息时 queue panel 把 Todo
-              覆盖掉）。Lazy mount 仍由 AgentStatusPanel 内部判定（未触发
-              TodoWrite / Task 工具时返回 null）。外部 Runtime 下 slot 直接传
-              undefined，避免它们若未来 emit 出 `tool.name === 'Task'` 的归一化
-              事件意外触发面板（PRD D15）。onJumpToTool 由 Chat 实现是因为
-              具体滚动由 ChatScrollController 统一处理。 */}
+            {/* Composer owns the unified execution summary and queued messages. */}
                   {questionTarget && (
                     <AsyncQuestionComposerTarget
                       title={questionTarget.title}
@@ -7045,7 +7025,7 @@ export default function Chat({
               onCancelQueued={handleCancelQueued}
               onEditQueued={handleEditQueued}
               onForceExecuteQueued={handleForceExecuteQueued}
-              agentStatusSlot={agentStatusSlot}
+              agentActivity={agentActivity}
               onOverlayHeightChange={handleInputOverlayHeightChange}
             />
           </div>

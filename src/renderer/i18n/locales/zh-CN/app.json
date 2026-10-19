@@ -1870,6 +1870,8 @@
     "unconfirmed": "操作接纳尚未确认。保留原操作编号并查询凭据，不会自动重发。凭据不存在不代表操作没有执行。",
     "checkReceipt": "查询原操作凭据",
     "busy": "远端正在执行其他会话，请稍后继续。",
+    "channelBusy": "设备间已有连接通道或通道正在建立，暂时无法打开远程会话。此状态不代表远端任务正在运行，可稍后刷新。",
+    "requestBusy": "此网络的上一个远程管理请求尚未完成，请稍后刷新。",
     "unsupported": "此设备或 Runtime 暂不支持远程会话。",
     "failed": "无法读取远程会话，请检查连接后刷新。",
     "incompleteInteraction": "远端请求详情不完整，暂时不能批准。可以拒绝。",
@@ -1945,6 +1947,15 @@
     "continuationAllowedHint": "后续回合可与此任务并行。撤销后重新阻挡接续，不会停止已经开始的回合。",
     "continuationRejected": "任务运行或会话已变化，请刷新后重新确认。",
     "continuationFailed": "未能确认操作结果，请刷新查看当前状态。"
+  },
+  "executionStatus": {
+    "summary": "执行状态",
+    "goal": "目标详情",
+    "todos": "待办详情",
+    "agents": "协作详情",
+    "running": "运行中 {{count}}",
+    "returned": "已回传 {{count}}",
+    "failed": "异常 {{count}}"
   },
   "subagentView": {
     "title": "子 Agent",
