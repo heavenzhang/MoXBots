@@ -71,3 +71,15 @@ Model selection: parent requested Sol/high for repeated real lifecycle failure a
 ## Next step
 
 Root reviews this bounded source change and its local commit, integrates normally, then builds an exact new candidate and alone runs actual KVM acceptance. Real KVM success remains unverified; raw real journal/errno has not been obtained by this worker.
+
+## MOBILEDEPENDENCYFIX-20261019
+
+Assigned clean root delivery worktree at89d6f84bbbdf9ff02834220a960f9a5f2a2b4bb7 after combinedCI39222022483 reported E0433 for hyper in the shared diagnostic module. Exclusive write scope: mobile/connection/Cargo.toml, necessary lockfiles and this worker-owned task record; no product logic/root plan/workflow or production changes. Root remains sole publisher/integrator/dispatcher and owns the already running P3 producer39222309954.
+
+Tracked plus hidden source scanning identifies exactly three diagnostic consumers: src-tauri/src/lib.rs (Desktop), src-tauri/headless-network/src/lib.rs and mobile/connection/src/lib.rs. Desktop/headless already declare direct hyper; the independent mobile connection crate omitted it. Add the identical hyper major1/default-featuresfalse declaration to mobile connection and its root dependency list in the one independent lockfile. Contrary to the initial parent description, this mobile lock already contains hyper1.12.0, while Desktop/headless lock1.9.0; retain each existing resolution rather than downgrade/upgrade any package. All330 mobile lock package name/version/source/checksum tuples remain identical. Only two dependency lines change; shared Rust source and runtime policy remain byte-for-byte unchanged.
+
+- [x] Verify assigned root HEAD/branch/clean state and canonical fetch/push URL; old observation worktree is preserved.
+- [x] Apply two-line dependency fix and validate lock package/version/source/checksum invariance.
+- [x] cargo test --manifest-path mobile/connection/Cargo.toml --locked --quiet:122PASS/0fail/1existingignore,11.05s; doctests0PASS. cargo clippy --manifest-path mobile/connection/Cargo.toml --locked --all-targets -- -D clippy::disallowed_methods -D clippy::disallowed_macros:exit0,1m58s. Shared diagnostic typed hyper calls compile in the independent mobile crate.
+- [x] node mobile/scripts/check-ios-native.mjs exit0: actual iphoneos/iphonesimulator Swift typecheck and locked Rust aarch64-apple-ios (2m53s) / aarch64-apple-ios-sim (38.76s) checks PASS. Existing NativeSpeech.swift195 unused-binding and encrypted_store.rs429/462 unsupported-platform-branch warnings remain; their sources were not changed. Full Expo linking/signing/runtime acceptance is separate and was not invoked.
+- [x] git diff --check PASS; local commit for root review contains only the two dependency lines and this task extension. Remote integration/CI/P3 equivalence or P4 freeze remains root-owned; no true KVM or production claim is made here.
