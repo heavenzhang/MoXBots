@@ -1,0 +1,7 @@
+node_modules/
+dist/
+test-results/
+playwright-report/
+playwright-results/
+/evidence/execution-trace-independent-20261020/
+*.tsbuildinfo
