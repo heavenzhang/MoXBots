@@ -101,6 +101,57 @@ describe('SimpleChatInput send paths', () => {
     workspaceMocks.service.listSlashCommands.mockResolvedValue([]);
   });
 
+  it.each([true, false])('keeps Stop available during durable recovery wait (loading=%s)', async (isLoading) => {
+    await i18n.changeLanguage('zh-CN');
+    const onStop = vi.fn();
+    const onSend = renderInput({
+      runtime: 'builtin',
+      isLoading,
+      systemStatus: `model_recovery:${Date.now() + 45_000}:1`,
+      value: 'preserved recovery draft',
+      onStop,
+      providerAvailable: true,
+    });
+
+    const stop = screen.getByRole('button', { name: '停止重试' });
+    expect(stop).toBeEnabled();
+    fireEvent.click(stop);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox')).toHaveValue('preserved recovery draft');
+  });
+
+  it('keeps the existing SDK retry Stop on the original owner', async () => {
+    await i18n.changeLanguage('zh-CN');
+    const onStop = vi.fn();
+    renderInput({ isLoading: false, systemStatus: 'api_retry:1:3', onStop });
+    const stop = screen.getByRole('button', { name: '停止重试' });
+    expect(stop).toBeEnabled();
+    fireEvent.click(stop);
+    expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps compaction uninterruptible while recovery waits remain stoppable', async () => {
+    await i18n.changeLanguage('zh-CN');
+    const onStop = vi.fn();
+    renderInput({ isLoading: true, systemStatus: 'compacting', onStop });
+    const busy = screen.getByRole('button', { name: '正在执行系统任务，请稍等' });
+    expect(busy).toBeDisabled();
+    fireEvent.click(busy);
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
+  it.each([true, false])('does not dispatch another Stop while recovery is already stopping (loading=%s)', async (isLoading) => {
+    await i18n.changeLanguage('zh-CN');
+    const onStop = vi.fn();
+    renderInput({ isLoading, sessionState: 'stopping',
+      systemStatus: `model_recovery:${Date.now() + 45_000}:2`, onStop });
+    const stopping = screen.getByRole('button', { name: '正在停止...' });
+    expect(stopping).toBeDisabled();
+    fireEvent.click(stopping);
+    expect(onStop).not.toHaveBeenCalled();
+  });
+
   it('defers mention search and keeps expansion during IME composition', async () => {
     await i18n.changeLanguage('zh-CN');
     workspaceMocks.service.searchFilesPage.mockResolvedValue({items:Array.from({length:8},(_,i)=>({name:`file${i}`,path:`file${i}`,type:'file'})),complete:true,hasMore:false,scanLimitReached:false,nextCursor:null});
