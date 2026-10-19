@@ -325,6 +325,8 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   const isCurrentProviderAvailable = providerAvailable ?? (provider ? isProviderAvailable(provider, apiKeys, providerVerifyStatus) : false);
   // External runtimes (Claude Code / Codex) authenticate via their own CLI — no MyAgents provider required.
   const canSendMessage = !sendBlocked && (isExternalRuntime || isCurrentProviderAvailable);
+  const isInterruptibleRetry = systemStatus?.startsWith('api_retry:') === true
+    || systemStatus?.startsWith('model_recovery:') === true;
   const canSendMessageRef = useRef(canSendMessage);
   canSendMessageRef.current = canSendMessage;
   const availableProviderIdSet = useMemo(
@@ -2363,18 +2365,11 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 )}
               </Popover>
 
-              {/* Button states:
-                  - genuinely-uninterruptible system task (compacting…) → disabled Send
-                  - stop in progress → disabled spinner
-                  - AI responding OR api_retry backoff → Stop (interruptible — abort
-                    wakes the SDK from its retry sleep cleanly; user shouldn't be
-                    forced to wait through up to 10 exponentially-spaced retries)
-                  - idle → Send
-                  api_retry is split out of the systemStatus branch deliberately:
-                  the original "any systemStatus → not interruptible" lumped retry
-                  in with compacting, but unlike compacting, retry has no in-flight
-                  SDK state to corrupt. */}
-              {systemStatus && !systemStatus.startsWith('api_retry:') ? (
+              {/* SDK retry and durable model-recovery waits are both abortable
+                  through the existing Session/Goal Stop owner. Keep Stop visible
+                  even when a restored wait has not yet set isLoading. Compaction
+                  and other genuinely uninterruptible system tasks stay disabled. */}
+              {systemStatus && !isInterruptibleRetry ? (
                 // System task running (e.g., compacting) - not interruptible
                 <button
                   type="button"
@@ -2384,7 +2379,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 >
                   <SendIcon className="h-4 w-4" />
                 </button>
-              ) : isLoading && sessionState === 'stopping' ? (
+              ) : sessionState === 'stopping' ? (
                 // Stop in progress - waiting for confirmation
                 <button
                   type="button"
@@ -2394,8 +2389,8 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 >
                   <LoaderIcon className="h-4 w-4 animate-spin" />
                 </button>
-              ) : isLoading || systemStatus?.startsWith('api_retry:') ? (
-                // AI responding OR api_retry backoff - both can be stopped.
+              ) : isLoading || isInterruptibleRetry ? (
+                // AI responding or either retry-wait status can be stopped.
                 // The `||` is double-coverage: in normal flow isLoading stays
                 // true throughout the retry loop (no message-complete fires
                 // until the turn ends), but if some future state machine path
@@ -2405,7 +2400,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   type="button"
                   onClick={onStop}
                   className="rounded-lg bg-[var(--error)] p-2 text-[var(--on-error)] transition-colors hover:brightness-110"
-                  title={systemStatus?.startsWith('api_retry:') ? t('input.stopRetry') : t('input.stop')}
+                  title={isInterruptibleRetry ? t('input.stopRetry') : t('input.stop')}
                 >
                   <StopIcon className="h-4 w-4" />
                 </button>
