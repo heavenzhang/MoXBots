@@ -42,3 +42,12 @@ export function receiptProtocol(operation: Pick<PendingOperation, 'protocol' | '
     ? { kind: 'mobile', targetId: operation.targetId, request: { version: 1, kind: 'mobile.receipt', agentId: operation.agentId, operationId: operation.operationId } }
     : { kind: 'session', targetId: operation.targetId, request: { kind: 'receipt', agentId: operation.agentId, operationId: operation.operationId } };
 }
+
+/** Native speech failures concern this phone, never the remote Host connection. */
+export function speechFailureMessage(code: string): string | null {
+  if (!code.startsWith('MOBILE_SPEECH_')) return null;
+  if (code === 'MOBILE_SPEECH_RECOGNITION_FAILED' || code.startsWith('MOBILE_SPEECH_RECOGNITION_FAILED_')) return '本机语音识别失败，可以重新录制；文字草稿已保留。';
+  if (code === 'MOBILE_SPEECH_AUDIO_INPUT_UNAVAILABLE') return '当前没有可用的麦克风输入，请检查设备后重试；文字草稿已保留。';
+  if (code === 'MOBILE_SPEECH_SERVICE_UNAVAILABLE') return '本机语音服务暂不可用，请稍后重试；文字草稿已保留。';
+  return '本机语音输入暂时不可用，可以重新录制或继续使用键盘；文字草稿已保留。';
+}

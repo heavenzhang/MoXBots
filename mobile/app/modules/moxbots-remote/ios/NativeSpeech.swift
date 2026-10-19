@@ -80,9 +80,11 @@ final class NativeSpeech {
     guard generation == token, current.state == "transcribing" else { return }
     captureTimer?.cancel()
     captureTimer = nil
-    request.endAudio()
+    // Quiesce the producer before marking its request at EOF. A tap must not
+    // append another hardware buffer after endAudio.
     engine.stop()
     removeInputTap(from: engine)
+    request.endAudio()
     let timeout = DispatchWorkItem { [weak self] in
       guard let self, self.generation == token, self.current.state == "transcribing" else { return }
       self.finishStop(.failure(Failure("MOBILE_SPEECH_TIMEOUT")), final: false)
@@ -174,13 +176,8 @@ final class NativeSpeech {
       self.recognizer = recognizer
       self.engine = engine
       self.request = request
-      input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-        request.append(buffer)
-      }
-      tapInstalled = true
-      engine.prepare()
-      try engine.start()
-
+      let diagnostics = SpeechCaptureDiagnostics()
+      // Establish the consumer before starting the microphone producer.
       self.task = recognizer.recognitionTask(with: request) { [weak self] result, error in
         DispatchQueue.main.async {
           guard let self, self.generation == token, self.current.state != "idle" else { return }
@@ -193,11 +190,23 @@ final class NativeSpeech {
             }
           }
           if let error, self.current.state != "idle" {
-            self.finishStop(.failure(Failure("MOBILE_SPEECH_RECOGNITION_FAILED")), final: false,
-              code: "MOBILE_SPEECH_RECOGNITION_FAILED")
+            let code = diagnostics.failureCode(error)
+            self.finishStop(.failure(Failure(code)), final: false, code: code)
           }
         }
       }
+      input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        let signal = buffer.floatChannelData.map { channels in
+          UnsafeBufferPointer(start: channels[0], count: Int(buffer.frameLength))
+            .contains { $0.isFinite && abs($0) > 0.00001 }
+        }
+        diagnostics.observe(frames: buffer.frameLength, signal: signal)
+        request.append(buffer)
+      }
+      tapInstalled = true
+      engine.prepare()
+      try engine.start()
+
       emit(state: "recording", text: "", final: false)
       guard generation == token, current.state == "recording" else { return }
       isStarting = false

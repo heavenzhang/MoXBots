@@ -1,3 +1,4 @@
+import { speechFailureMessage } from '../src/mobilePolicy.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { blocksMutationForScope, permitsLegacyTextFallback, provisionalMutation, receiptProtocol, reconcileFailedMutation, sendProtocol } from '../src/mobilePolicy.ts';
@@ -186,4 +187,18 @@ test('pending receipt lookup preserves the operation protocol and never construc
   assert.deepEqual(mobile, { kind: 'mobile', targetId: 'target-1', request: { version: 1, kind: 'mobile.receipt', agentId: 'agent-1', operationId: 'op-2' } });
   assert.equal('text' in mobile.request, false);
   assert.equal('operationId' in mobile.request, true);
+});
+
+test('iOS recognition/audio errors and new speech error codes remain local and preserve draft guidance', () => {
+  for (const code of ['MOBILE_SPEECH_RECOGNITION_FAILED', 'MOBILE_SPEECH_RECOGNITION_FAILED_AF_1101_F0', 'MOBILE_SPEECH_AUDIO_INPUT_UNAVAILABLE', 'MOBILE_SPEECH_SERVICE_UNAVAILABLE', 'MOBILE_SPEECH_FUTURE_PLATFORM_ERROR']) {
+    const message = speechFailureMessage(code);
+    assert.ok(message?.includes('本机') || message?.includes('麦克风'));
+    assert.ok(message?.includes('文字草稿已保留'));
+    assert.equal(message?.includes('远程'), false);
+  }
+});
+
+test('speech fallback does not relabel remote receipt and account failures', () => {
+  assert.equal(speechFailureMessage('TARGET_RECEIPT_INVALID'), null);
+  assert.equal(speechFailureMessage('ACCOUNT_NETWORK_UNAVAILABLE'), null);
 });

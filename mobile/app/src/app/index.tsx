@@ -1,3 +1,4 @@
+import { speechFailureMessage } from '../mobilePolicy';
 import { StatusBar } from 'expo-status-bar';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -167,7 +168,7 @@ function AppBody() {
   const attachmentScopeRef = useRef<string | null>(null);
   const mobileUnknownAttachmentsRef = useRef(new Map<string, { ownerKey: string; localIds: string[]; targetId: string; identityKey: string; agentId: string; principalId: string | null; sessionId: string | null }>());
   const say = useCallback((text: string, tone: NonNullable<Notice>['tone'] = 'neutral') => {
-    if (/^[A-Z][A-Z0-9_]{2,127}$/.test(text)) setNotice({ text: errorMessages[text] ?? '远程操作暂时不可用，请检查连接后重试。', tone, code: text });
+    if (/^[A-Z][A-Z0-9_]{2,127}$/.test(text)) setNotice({ text: errorMessages[text] ?? speechFailureMessage(text) ?? '远程操作暂时不可用，请检查连接后重试。', tone, code: text });
     else setNotice({ text, tone });
   }, []);
   useEffect(() => {
@@ -293,7 +294,7 @@ function AppBody() {
       speechActiveRef.current = false;
       speechStateRef.current = 'idle';
       setSpeech((prior) => ({ ...prior, state: 'idle' }));
-      setNotice({ text: errorMessages[reply.code] ?? '本地语音识别暂时不可用，文字草稿已保留。', tone: 'error', code: reply.code });
+      setNotice({ text: errorMessages[reply.code] ?? speechFailureMessage(reply.code) ?? '本地语音识别暂时不可用，文字草稿已保留。', tone: 'error', code: reply.code });
       return;
     }
     if (reply.final || reply.state === 'idle') { speechActiveRef.current = false; speechStateRef.current = 'idle'; }

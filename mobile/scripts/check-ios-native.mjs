@@ -21,6 +21,7 @@ const targets = [
 // Fail at normal SDK/permission checks before downloading targets. Do not accept
 // licenses or switch the user's selected Xcode as part of a build check.
 for (const target of targets) target.sdkPath = run('xcrun', ['--sdk', target.sdk, '--show-sdk-path'], true);
+run(process.execPath, [path.join(repo, 'mobile/scripts/test-ios-speech-diagnostics.mjs')]);
 const temp = mkdtempSync(path.join(tmpdir(), 'moxbots-ios-preflight-'));
 try {
   const moduleDir = path.join(temp, 'MoxConnectionCore');
