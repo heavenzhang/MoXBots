@@ -406,18 +406,20 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
     return new Response(stream, { status: response.status, headers: {
       'content-type': response.headers.get('content-type') ?? 'application/json',
       'x-should-retry': 'false',
+      ...(response.headers.has('retry-after') ? { 'retry-after': response.headers.get('retry-after')! } : {}),
     } });
   } catch {
     cleanup();
     return jsonError(request.signal.aborted ? 499 : timedOut ? 408 : 502,
-      'api_error', request.signal.aborted ? 'Request cancelled' : timedOut ? 'Upstream request timed out' : 'Upstream connection error');
+      'api_error', request.signal.aborted ? 'Request cancelled' : timedOut ? 'Upstream request timed out' : 'Upstream connection error',
+      timedOut && !request.signal.aborted ? 'upstream_headers_timeout' : undefined);
   }
 }
 
 /** Create a bridge handler that translates Anthropic → OpenAI → Anthropic */
 export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
   const log = config.logger === null ? () => {} : (config.logger ?? console.log);
-  const upstreamHeadersTimeoutMs = config.upstreamHeadersTimeoutMs ?? DEFAULT_TIMEOUT;
+  const defaultHeadersTimeoutMs = config.upstreamHeadersTimeoutMs ?? DEFAULT_TIMEOUT;
   const translateReasoning = config.translateReasoning ?? true;
   const imageSaver: ToolImageSaver | undefined = config.workspacePath
     ? createToolImageSaver(config.workspacePath)
@@ -469,11 +471,22 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       }), { ...upstream, contextRecovery: undefined }));
     }
     if (upstream.modelFailover) {
-      return upstream.modelFailover.run(request, upstream, target => handler(new Request(request.url, {
+      // Parsing above consumed request.body. Recovery hooks need an intact body
+      // to archive the exact inference before granting another call.
+      const inferenceRequest = new Request(request.url, { method: 'POST', headers: request.headers,
+        body: JSON.stringify(anthropicReq), signal: request.signal });
+      return upstream.modelFailover.run(inferenceRequest, upstream, target => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
       }), { ...target, modelFailover: undefined }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
+    }
+    // Resolve only at the forwarding layer, after recovery wrappers have
+    // delegated here. A short fail-fast timer is useful only while bounded
+    // retry/backup recovery is actually authorized for this request.
+    const routeTimeout = resolveHeadersTimeout(upstream.headersTimeoutMs, defaultHeadersTimeoutMs);
+    if (typeof upstream.headersTimeoutMs === 'function' && !routeTimeout.explicit) {
+      log(`[bridge] Fast recovery unavailable; headers timeout ${routeTimeout.timeoutMs}ms for provider ${upstream.providerId}`);
     }
     if (upstream.continuationInstruction) {
       anthropicReq = { ...anthropicReq, system: typeof anthropicReq.system === 'string'
@@ -481,7 +494,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         : [...(anthropicReq.system ?? []), { type: 'text', text: upstream.continuationInstruction }] };
     }
     if (upstream.apiProtocol === 'anthropic') {
-      return forwardAnthropicRequest(request, anthropicReq, upstream, upstream.headersTimeoutMs ?? upstreamHeadersTimeoutMs);
+      return forwardAnthropicRequest(request, anthropicReq, upstream, routeTimeout.timeoutMs);
     }
 
     let effectiveApiKey = upstream.apiKey || apiKey;
@@ -654,9 +667,9 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       const headersTimer = setTimeout(
         () => {
           didHeadersTimeout = true;
-          controller.abort(new Error(`Upstream headers timeout after ${upstream.headersTimeoutMs ?? upstreamHeadersTimeoutMs}ms`));
+          controller.abort(new Error(`Upstream headers timeout after ${routeTimeout.timeoutMs}ms`));
         },
-        upstream.headersTimeoutMs ?? upstreamHeadersTimeoutMs,
+        routeTimeout.timeoutMs,
       );
 
       const onDownstreamAbort = (): void => {
@@ -715,7 +728,11 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         const causeMsg = causeRaw instanceof Error ? causeRaw.message : (causeRaw ? String(causeRaw) : '');
         const baseMsg = err instanceof Error ? err.message : String(err);
         const errMsg = causeMsg ? `${baseMsg} (cause: ${causeMsg})` : baseMsg;
-        log(`[bridge] Upstream ${isTimeout ? 'timeout' : 'error'}: ${errMsg}`);
+        // Keep timeout diagnosis independent from localized upstream errors:
+        // route, provider, model and the exact bound are all local facts.
+        log(`[bridge] Upstream ${isTimeout ? 'timeout' : 'error'}: ${errMsg}`
+          + ` (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model},`
+          + ` headersTimeoutMs=${routeTimeout.timeoutMs}, fastRecovery=${routeTimeout.explicit ? 'armed' : 'off'})`);
         // Record for verify-timeout diagnostics (see getLastBridgeError docstring).
         // Only the connect-layer catch path — HTTP error responses (!upstreamResp.ok)
         // are already surfaced through the SDK's assistant.error path to verify.
@@ -726,6 +743,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
             isTimeout ? 408 : 502,
             'api_error',
             isTimeout ? 'Upstream request timed out' : `Upstream connection error: ${errMsg}`,
+            isTimeout ? 'upstream_headers_timeout' : undefined,
           ),
         };
       }
@@ -745,7 +763,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         const status = attempt.upstreamResp.status;
         let errBody: string;
         try {
-          const bounded = upstream.headersTimeoutMs
+          const bounded = routeTimeout.explicit
             ? await readBoundedErrorBody(attempt.upstreamResp.body)
             : await attempt.upstreamResp.text();
           if (bounded === undefined) {
@@ -856,7 +874,10 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
           ok: false,
           response: new Response(JSON.stringify(translated.body), {
             status: translated.status,
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json',
+              ...(attempt.upstreamResp.headers.has('retry-after')
+                ? { 'retry-after': attempt.upstreamResp.headers.get('retry-after')! } : {}),
+            },
           }),
         };
       }
@@ -888,15 +909,15 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort)
         : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort);
     } else {
-      // Non-stream branch: response body is read with a single await; the
-      // request.signal listener can be detached now (controller lives only
-      // through the body read, which translateXxxResponse owns).
-      if (request.signal) {
-        request.signal.removeEventListener('abort', onDownstreamAbort);
+      // Stop must still reach fetch while a successful response body is being
+      // read. Headers arriving is not completion of a non-stream inference.
+      try {
+        return await (isResponses
+          ? handleResponsesNonStreamResponse(upstreamResp, responseModel, log)
+          : handleNonStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache));
+      } finally {
+        request.signal?.removeEventListener('abort', onDownstreamAbort);
       }
-      return isResponses
-        ? handleResponsesNonStreamResponse(upstreamResp, responseModel, log)
-        : handleNonStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache);
     }
   };
 
@@ -928,6 +949,13 @@ async function handleNonStreamResponse(
   } catch {
     log('[bridge] Failed to parse upstream JSON response');
     return jsonError(502, 'api_error', 'Invalid upstream response');
+  }
+
+  const choice = openaiResp?.choices?.[0];
+  if (!choice?.message || choice.message.role !== 'assistant'
+    || !['stop', 'length', 'tool_calls', 'content_filter'].includes(choice.finish_reason ?? '')) {
+    log('[bridge] Upstream Chat Completions JSON had no valid completion');
+    return jsonError(502, 'api_error', 'Invalid upstream Chat Completions completion');
   }
 
   // Cache thought_signatures from tool calls (Gemini thinking models)
@@ -980,7 +1008,7 @@ export function handleStreamResponse(
       try { downstreamSignal.removeEventListener('abort', onDownstreamAbort); } catch { /* ignore */ }
     }
     logStreamEnd('empty_body');
-    return new Response('', { status: 200, headers: streamHeaders() });
+    return jsonError(502, 'api_error', 'Empty upstream Chat Completions stream');
   }
 
   const detachDownstream = (): void => {
@@ -996,6 +1024,11 @@ export function handleStreamResponse(
       const text = decoder.decode(chunk, { stream: true });
       const sseEvents = sseParser.feed(text);
       for (const sseEvent of sseEvents) {
+        if (sseEvent.event === 'ping') continue;
+        if (sseEvent.event === 'error') {
+          controller.error(new Error('Upstream Chat Completions stream reported an error'));
+          return;
+        }
         if (sseEvent.data === '[DONE]') {
           // Protocol terminator — forward as the finalize signal (see STREAM_DONE).
           controller.enqueue(STREAM_DONE);
@@ -1004,7 +1037,10 @@ export function handleStreamResponse(
         try {
           controller.enqueue(JSON.parse(sseEvent.data) as OpenAIStreamChunk);
         } catch {
-          // Skip malformed chunks
+          // Missing content/tool arguments cannot be repaired by a later valid
+          // terminal. Preserve the failure so recovery cannot clear its journal.
+          controller.error(new Error('Malformed upstream Chat Completions stream event'));
+          return;
         }
       }
     },
@@ -1065,7 +1101,7 @@ export function handleStreamResponse(
       }
     },
     flush(controller) {
-      // Emit closing events for incomplete streams (no-op if already finished).
+      // EOF succeeds only with a valid finish_reason; otherwise emit an error.
       const finalEvents = translator.finalize();
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
@@ -1242,10 +1278,12 @@ export function handleResponsesStreamResponse(
         // sends only `[DONE]` has not supplied a valid Responses terminal; true
         // turn liveness remains owned by the Session watchdog. See issue #277.
         if (sseEvent.data === '[DONE]') continue;
+        if (sseEvent.event === 'ping') continue;
         try {
           controller.enqueue(JSON.parse(sseEvent.data) as ResponsesStreamEvent);
         } catch {
-          /* skip malformed */
+          controller.error(new Error('Malformed upstream Responses stream event'));
+          return;
         }
       }
     },
@@ -1343,11 +1381,22 @@ export function handleResponsesStreamResponse(
   });
 }
 
-function jsonError(status: number, type: string, message: string): Response {
+function jsonError(status: number, type: string, message: string, code?: string): Response {
   return new Response(
-    JSON.stringify({ type: 'error', error: { type, message } }),
+    JSON.stringify({ type: 'error', error: { type, message, ...(code ? { code } : {}) } }),
     { status, headers: { 'Content-Type': 'application/json' } },
   );
+}
+
+/** A getter is re-evaluated per request; invalid values keep the server bound. */
+function resolveHeadersTimeout(
+  configured: UpstreamConfig['headersTimeoutMs'],
+  fallback: number,
+): { timeoutMs: number; explicit: boolean } {
+  const resolved = typeof configured === 'function' ? configured() : configured;
+  if (resolved === undefined) return { timeoutMs: fallback, explicit: false };
+  if (!Number.isFinite(resolved) || resolved <= 0) return { timeoutMs: fallback, explicit: false };
+  return { timeoutMs: resolved, explicit: true };
 }
 
 /** Extract and cache thought_signatures from tool calls (non-stream response).

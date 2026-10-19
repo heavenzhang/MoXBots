@@ -1,6 +1,6 @@
 ## Current Host installer delivery state (2026-10-18)
 
-Root01a12b99 remains the human-authorized sole integration/static-publication owner. P2 source58d5247d/R20261018152704-58d5247d7692 has actual same-source standard browser/Ready and natural lab expiry renewal PASS; f0 full CI9 applicable jobs PASS. True KVM39142568416 and current-main combined CI remain pending. Main/public TLS append/promotion are not yet delivered. Older M/P1 entries below are history and must not be promoted. This Host correction does not redeploy cloud/101 or operate the daily Mac. Separate phone-native login coordination stays production-off behind its own explicit consent/provider/CI/main gates. Detailed current state: dev-docs/host-init-001/acceptance.md and root takeover task.
+Root01a12b99 remains the human-authorized sole integration/static-publication owner. P2 source58d5247d/R20261018152704-58d5247d7692 passed actual same-source standard browser/Ready and natural lab renewal; root8f133dda full CI9 applicable jobs passed. Three real KVM runs failed original post-reboot Ready, with latest39145714749 recording OWNED_ACCOUNT_UNAVAILABLE before the connector management socket. A startup recovery repair is under independent root review; a new exact-source candidate and real KVM acceptance are required. Main/public TLS append/promotion remain undelivered; older M/P1/P2 must not be promoted. This Host lane does not redeploy cloud/101 or operate the daily Mac. Separate human-authorized native-password cloud release929b984e has exact-main CI/real-Dex lab acceptance; production enablement and physical-phone acceptance remain separate gates. Detailed state: dev-docs/host-init-001/acceptance.md and root takeover task.
 
 ## MOXBOTS-HOST-INIT-001 — fresh-install repair, 2026-10-18
 
@@ -12,6 +12,17 @@ The human requested a fix for first-install registry initialization, full accept
 - [ ] Pass required CI, integrate current main normally and verify remote containment before formal publication handoff.
 
 The staged old dcf immutable release is preserved and stable remains unavailable. It is not a successful fresh-install release. New repair candidates use a new source/release identity; pre-merge acceptance stays isolated. No backend/101 redeployment or daily Mac operation is included.
+## MOXBOTS-READ-LOOP-20261019 — 2026-10-19
+
+builtin 执行会话"反复读同一内容、反复表态开始修改、始终不产生编辑"的有界进展检查。根因按观察证据判定为模型行为不收敛并被自动压缩放大（同轮94工具、0编辑、同一文件24次读取、精确命令重复0），未发现工具重放或bridge截断，不虚构历史重放类修复。实现只在单轮内容证据成立时（阶段表态/用户执行意图、同文件重叠区间重读、连续只读、0编辑、非只读研究、非等待用户）经`PostToolUse`注入可忽略提示；不停止、不切换模型、不重放工具、不写业务数据，不按固定超时或工具次数判死锁。任务 `.agent-sync/tasks/codex-read-loop-20261019-b7c02346.md`，验收 `dev-docs/read-loop/acceptance.md`，结果与脱敏证据见观察目录`/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-execution-observation/`。定向13项、原builtin 153项、tsc与ESLint通过；真实模型收敛、构建/安装/原生验收未做。与并发`MOXBOTS-RUNTIME-REPAIR-20261019`在`src/server/agent-session.ts`有文件交集但改动区间不重叠，交接文件`read-loop-handoff.txt`；不向其他会话发送消息、不改薪资业务/会话/配置。
+
+## MOXBOTS-MODEL-RECOVERY-001 — 2026-10-19
+
+普通 builtin API Session 与 Goal 的模型故障进入持久等待，沿原native history/动作ledger安全续接；暂停/停止撤销代次并写持久fence，避免重启复活或重复已完成操作。主Agent统一集成，原Rust Goal/Query/SessionStore owner保持。代码、受控真实SDK、UI、CI/main、签名候选及真实Provider验收分开追踪：`.agent-sync/tasks/codex-model-recovery-001-20261019-868cb89a.md`、`dev-docs/model-recovery/acceptance.md`。用户已明确授权测试后正常合main并交唯一publisher `01a12bc2-907a-7702-b6dd-788225c5dfe4`安排下一未冻结桌面版本；不操作日常App或另建发行。无新依赖/配置迁移/公网入口。恢复范围及回退边界见`specs/tech_docs/model_recovery.md`。
+
+## MOXBOTS-REQUEST-499-20261018
+
+Fix normal background inference and streams incorrectly cancelled by parent turn completion; exact Query/route revocation and Stop remain authoritative. Availability failures get an original call plus three bounded, cancellable pre-delivery retries, independent of optional backup configuration. Never re-enqueue tasks or replay partial output/uncertain writes. Task `.agent-sync/tasks/codex-request-499-20261018-3f1bac55.md`; implementation/paired-loopback/native SDK verification and main delivery evidence `dev-docs/request-499-20261018-acceptance.md`. User explicitly authorized main integration and notifying the registered release owner for the next unfrozen repair. Daily client/task interruption excluded; queued/candidate/published/native-accepted states remain distinct.
 
 ## BG-TASK-LOG-001 — 2026-10-18
 
@@ -38,6 +49,10 @@ The staged old dcf immutable release is preserved and stable remains unavailable
 ## MOXBOTS-HOST-ONBOARD-001 — 2026-10-18
 
 用户启动Ubuntu24.04/x86_64一条命令安装、浏览器授权自动入网与有效会话自动续期；代码/测试/main由01a13320-dbf9-7c03-b7f3-37e30d15de48负责，发行交既定统一部署聊天01a12bc2-907a-7702-b6dd-788225c5dfe4。任务 `.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`。新public installer必须验证正式元数据可用后才展示命令，复用原身份/加密存储/撤销owner；没有新模型授权或生产操作。对日常Mac不安装、不更新、不重启。source/CI/main与正式bundle/服务发布/真实生产按门禁分开，发布请求仅排队不改变当前冻结发行。
+
+## SIDEBAR-ORDER-20261019 — 固定项目顺序
+
+用户要求点击任务不改变项目位置。侧栏持久保存项目 fallback 顺序，已有拖拽/置顶规则继续优先，新项目追加；Launcher 最近使用独立保留。102项定向测试、全量TypeScript、ESLint、1440/900px四组实际renderer交互已通过，CI/main/原生发行分开追踪。任务 `.agent-sync/tasks/codex-sidebar-order-20261019-66662e4b.md`，证据 `dev-docs/sidebar-order/acceptance.md`。本聊天不并发覆盖已有发行owner或用户日常App。
 
 ## MOXBOTS-PIN-001 — 2026-10-18
 
@@ -456,3 +471,40 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## GOAL-PAUSE-001 — 2026-10-18
 
 运行Goal条新增暂停，与既有继续/取消并列，复用原Rust暂停/停止/持久化owner。局部UI由主Agent自验，DOM86项与浏览器10组通过；CI/main、正式包/真实任务分别追踪。任务记录 `.agent-sync/tasks/codex-goal-pause-001-20261018-3d82257d.md`，验收 `dev-docs/goal-pause-001-acceptance.md`。保留唯一桌面发布owner和下一未冻结版本边界，不重启日常App、不改既有冻结包。
+
+## Deployment coordination — MOXBOTS-0512-UPDATE-RECOVERY-20261018
+
+- **Deployment chat:** 01a12bc2-907a-7702-b6dd-788225c5dfe4, existing unified desktop updater owner.
+- **Designation:** User source01a14f82 authorized next-unfrozen release; human later explicitly transferred ordinary144 main integration to this publisher. Source150 conveyed its human-authorized next-unfrozen release handoff. Existing desktop signing scope retained.
+- **Targets/runbook:** macOS arm64 own updater on existing140 only; final candidate-owned reviewed scripts. Preserve immutable0511. No backend/Host/mobile/Windows/website changes or daily interruption authority inferred.
+- **Current release:** Preparing0.5.12, not frozen/built/published. Accepted138/142/145/144 main plus sidebar885 and accepted149 main51db53b0/150 main4dcb3d7c deliberately included before freeze. Exact141/08bc aggregated into143 by source agreement. BothToast suites,141 stop function/interrupt regression and144 Query guard modules preserved. Current combined source requires normalCI/main and actual remote containment before freeze.
+- **Native ownership:** Daily0511 may be active; Root has no fresh maintenance window. Prepare concrete signed/notarized/stapled candidate first, then request only the missing window. No launch/quit/stop/replace or force/counter-reset workaround.
+- **Acceptance:** Actual updater resume/stop/durable install, Goal pause/continue/cancel, original-session explicit continuation, background request/retry/Stop, sidebar pointer/zoom, error-banner resend/reopen without rewind, and recorded Task status. Controlled/local/SDK/native/external-model evidence stay separate.
+- **Record:** dev-docs/releases/moxbots-0.5.12.md and current branch task; private evidence work/release-0512-20261018/owner/. Uncommitted team mode and unfinished mobile/Host remain outside release claims.
+
+## SESSION-CACHE-002 — 2026-10-19
+
+已缓存Chat保留挂载、草稿、阅读位置；冷历史经既有Global SessionStore reader先显示最后80条，后台原owner与REST/SSE恢复独占执行authority。连接失败保留Chat并在原Tab重试，不自动续接。PR #147；合同 `specs/tech_docs/session_architecture.md`，验收 `dev-docs/session-cache/acceptance.md`，接续 `.agent-sync/tasks/codex-session-cache-002-20261019-9b06b88b.md`。合并后236定向DOM/41unit、类型/lint、实际App合成传输和独立复核通过；main/CI以PR状态和Git回执为准。下一未冻结桌面候选queued给既定唯一发布owner；未安装或重启日常App、未向其它聊天发送消息。原生真实路径与源码/模拟UI分开验收。
+
+## SUBAGENT-UI-001 — 聊天内子 Agent 查看
+
+用户确认方案后实施：输入框上方持久入口、本轮/已加载历史、同会话右侧详情，复用transcript与现有状态投影；不新增执行owner或模型请求。记录 `.agent-sync/tasks/codex-subagent-ui-001-20261018-c8f40bcc.md`，验收 `dev-docs/subagent-ui/acceptance.md`。代码与52项回归/构建通过，独立代码复核完成；真实渲染因Work本地浏览器关闭尚待验，先保存草稿PR，不把构建替代UI验收。保持唯一桌面发布owner与下一未冻结候选边界，不换包或打断活动任务。
+## Deployment coordination — MOXBOTS-0513-STABILITY-RELEASE-20261019
+
+- **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, sole desktop integration/updater publisher.
+- **Designation:** Human directly requested0.5.13 incorporating prior desktop changes, superseding unpublished0512. Safe-idle backup/native/release/finalApplications installation is already authorized. Source151 also conveyed human authorization for real-model ordinarySession/Goal recovery/pause/Stop acceptance before publication.
+- **Source/status:** Base main23efc877 includes143/all0512+151; exact146/147/148 integrated in the0513 task branch, version synchronized.414 related tests, type/lint/Web and actual synthetic IAB component/fullApp review passed; exactheadCI/main, new signature/notary/archive and native/real Provider/distribution/daily gates remain open. Old0512 source/candidates stay sealed and will not be published or relabelled.
+- **Targets/runbook:** Existing macOSarm64 updater140 only; preserve0511immutable rollback. No Host/backend/mobile/Windows/website rollout. Active/due/unknown business blocks maintenance; normalquit only after fresh authoritativeidle/durable/full-window schedule and consistent backup. No counter/token hacks, forcekill, userChrome or system dialogs.
+- **Record:** `dev-docs/releases/moxbots-0.5.13.md`, current task record and private `work/release-0513-20261019/owner/`. Source/artifact/native/real Provider/distribution/daily/finalmain remain distinct; this newer record supersedes historical0512 preparation and pending-window instructions.
+
+## MOXBOTS-RUNTIME-REPAIR-20261019 — Goal busy 日志与上游 408 恢复
+
+用户在诊断授权后明确要求"发现执行中需要修复的问题直接开新会话修复"。隔离 worktree 分支 `codex/runtime-repair-20261019`，基于 main `556b1633d`，提交 `32f6fd5e4`、`eb75e1430`，已 fast-forward 推送 main 并经 `git ls-remote` 核实。修复：busy 期 Goal 探测在 dispatch 前预检并聚合为 deferral 状态日志（不再逐次 raw/parsed INFO + perf error），真实失败分类/5s 唤醒/失败记账不变；bridge 30s headers timeout 改为按请求 getter，仅在 `fastRecoveryAuthorized()` 时武装，恢复被 fence 时回退 300s 通用边界，超时带 `upstream_headers_timeout` code。Node 93 项定向、tsc、ESLint、Rust 32+7 项通过。未创建 PR/未跑 CI；未安装、未重启日常客户端、未做真实 Provider/原生验收，安装须等待原薪资任务安全结束。验收 `dev-docs/runtime-repair-20261019/acceptance.md`，任务记录 `.agent-sync/tasks/codex-runtime-repair-20261019-2c377900.md`。
+
+## MOXBOTS-MODEL-RECOVERY-001 — 日志驱动稳定性增强 2026-10-19
+
+用户新增授权当前聊天持续只读跟进后台稳定性日志、发现可复现缺陷直接修复并增强偶发模型中断后的安全完成。本轮基于main90e1，复用原bridge_recovery做只读审阅，修复Chat/Responses缺失完成证据、半SSE帧错误分类及非流式Stop传播；21文件378项与隔离真实SDK/MCP counter=1通过。任务`.agent-sync/tasks/codex-model-recovery-hardening-20261019-cb711978.md`，验收`dev-docs/model-recovery/hardening-20261019.md`。正常PR/精确CI/main与唯一publisher新pin/签名/真实Provider/原生发布分别追踪，不混入冻结2ff、不停止活动任务或扩大权限。当前聊天heartbeat增量诊断并对照实际安装版本及最新源码，避免反复修复旧客户端同一日志；无新异常保持安静。
+
+## CONVERGENCE-SCOPE — 2026-10-19
+
+修复 read-loop 收敛检查的只读意图范围缺陷：整轮"不要修改代码"保持豁免，但"不要修改生产数据/凭据/配置/其他模块"等对象受限禁令不再压制执行意图。仅改 `progress-convergence.ts` 与其单测，原 13 项测试保留；独立复核后补充只读属性、限定语泛化对象、引号对象、具名禁令与裸"不修改"边界，48/48 通过，`builtin-session` 188/188、typecheck/ESLint 通过。未改 409/408、薪资源码或并发任务占用的 `agent-session.ts`。记录 `.agent-sync/tasks/codex-convergence-scope-20261019-e3f04522.md`，验收 `dev-docs/convergence-scope/acceptance.md`。真实模型联调与客户端安装未验证。

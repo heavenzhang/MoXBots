@@ -39,7 +39,7 @@ class MoxBotsRemoteModule : Module() {
     AsyncFunction("request") { input: String, promise: Promise ->
       val intent = try { if (input.toByteArray(Charsets.UTF_8).size <= 64 * 1024) JSONObject(input) else null } catch (_: Exception) { null }
       val kind = intent?.optString("kind")
-      if (kind in setOf("account.login.start", "account.login.poll", "account.logout", "connection.suspend")) {
+      if (kind in setOf("account.login.start", "account.login.password", "account.login.poll", "account.logout", "connection.suspend")) {
         synchronized(speechStartLock) {
           speechOwnerFence.incrementAndGet()
           main.post { speechPermission.cancel(); speech?.cancel() }
@@ -62,7 +62,10 @@ class MoxBotsRemoteModule : Module() {
         try {
           val parsed = intent
           val parsedKind = parsed?.optString("kind")
-          if (parsedKind in setOf("account.login.start", "account.login.poll", "account.logout", "connection.suspend")) {
+          if (parsedKind == "account.login.password" && !appForeground) {
+            promise.resolve(failure("ACCOUNT_LOGIN_PAUSED")); return@enqueue
+          }
+          if (parsedKind in setOf("account.login.start", "account.login.password", "account.login.poll", "account.logout", "connection.suspend")) {
             artifactPresentationFence.incrementAndGet()
             uploads?.pause("MOBILE_ATTACHMENT_UPLOAD_SCOPE_CHANGED")
             artifactDownloads?.pause()

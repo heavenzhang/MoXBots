@@ -25,6 +25,8 @@ export interface GlobalSidebarPreferenceV1 {
   preferredMode: GlobalSidebarPreferredMode;
   expandedWidth: number;
   expandedWorkspaceKeys: string[];
+  /** Stable fallback order; explicit drag orders and pin priority still apply. */
+  projectOrder: string[];
   hasSeededDefaultExpansion: boolean;
   showAutomationSessions: boolean;
   sessionView: 'all' | 'favorites' | 'archived';
@@ -36,6 +38,7 @@ export const DEFAULT_GLOBAL_SIDEBAR_PREFERENCE: GlobalSidebarPreferenceV1 = {
   preferredMode: 'expanded',
   expandedWidth: GLOBAL_SIDEBAR_DEFAULT_WIDTH,
   expandedWorkspaceKeys: [],
+  projectOrder: [],
   hasSeededDefaultExpansion: false,
   showAutomationSessions: false,
   sessionView: 'all',
@@ -69,6 +72,9 @@ export function parseGlobalSidebarPreference(
     preferredMode: value.preferredMode,
     expandedWidth: clampGlobalSidebarWidth(value.expandedWidth),
     expandedWorkspaceKeys: normalizeWorkspaceKeys(value.expandedWorkspaceKeys),
+    projectOrder: Array.isArray(value.projectOrder)
+      ? [...new Set(value.projectOrder.filter((id): id is string => typeof id === 'string' && id.trim().length > 0))]
+      : [],
     hasSeededDefaultExpansion: value.hasSeededDefaultExpansion,
     showAutomationSessions:
       typeof value.showAutomationSessions === 'boolean'
@@ -174,4 +180,22 @@ export function resolveGlobalSidebarMode(
   forceRail: boolean,
 ): GlobalSidebarPreferredMode {
   return forceRail ? 'rail' : preferredMode;
+}
+
+/** Capture the first visible order, retain existing positions, append new projects. */
+export function reconcileSidebarProjectOrder(
+  preference: GlobalSidebarPreferenceV1,
+  projectIds: readonly string[],
+): GlobalSidebarPreferenceV1 {
+  const validIds = new Set(projectIds);
+  const retained = preference.projectOrder.filter((id) => validIds.has(id));
+  const seen = new Set(retained);
+  const projectOrder = [...retained, ...projectIds.filter((id) => {
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  })];
+  if (projectOrder.length === preference.projectOrder.length
+    && projectOrder.every((id, index) => id === preference.projectOrder[index])) return preference;
+  return { ...preference, projectOrder };
 }

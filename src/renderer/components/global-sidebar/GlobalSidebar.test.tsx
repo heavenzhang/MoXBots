@@ -253,6 +253,59 @@ describe('GlobalSidebar rail flyout', () => {
     vi.unstubAllGlobals();
   });
 
+  it('continues only the selected unfinished Session and prevents repeat clicks during navigation', async () => {
+    mocks.forcedRail = false;
+    const project = { id: 'project-1', name: 'Project one', path: '/work/project-one' };
+    const session = { id: 'interrupted', agentDir: project.path, title: 'Unfinished work',
+      createdAt: '2026-09-02T00:00:00Z', lastActiveAt: '2026-09-02T12:00:00Z',
+      continuation: { turnId: 'turn-1', rootUserMessageId: 'user-1', status: 'interrupted' } };
+    mocks.projects.push(project);
+    mocks.taskData.sessions.push(session);
+    window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+      version: 1, preferredMode: 'expanded', expandedWorkspaceKeys: [project.path],
+      hasSeededDefaultExpansion: true, showAutomationSessions: true, sessionView: 'all',
+    }));
+    let resolve!: (value: boolean) => void;
+    const onContinueSession = vi.fn(() => new Promise<boolean>(done => { resolve = done; }));
+    const onOpenSession = vi.fn(async () => true);
+    renderSidebar({ onContinueSession, onOpenSession });
+    const button = screen.getByRole('button', { name: '继续未完成任务' });
+    expect(button.closest('button')?.parentElement?.closest('button')).toBeNull();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onContinueSession).toHaveBeenCalledExactlyOnceWith(session, project);
+    expect(onOpenSession).not.toHaveBeenCalled();
+    expect(button).toBeDisabled();
+    await act(async () => resolve(false));
+    expect(button).toBeEnabled();
+  });
+
+  it.each(['complete', 'protected', 'generating', 'maintenance', 'archived', 'external'] as const)(
+    'does not offer continuation for a %s Session', async kind => {
+      mocks.forcedRail = false;
+      const project = { id: 'project-1', name: 'Project one', path: '/work/project-one' };
+      const session = { id: 'session-1', agentDir: project.path, title: 'History',
+        createdAt: '2026-09-02T00:00:00Z', lastActiveAt: '2026-09-02T12:00:00Z',
+        ...(kind === 'complete' ? {} : { continuation: { turnId: 'turn-1', rootUserMessageId: 'user-1', status: 'stopped' } }),
+        ...(kind === 'maintenance' ? { systemMaintenanceKind: 'memory_auto_update' } : {}),
+        ...(kind === 'archived' ? { archived: true } : {}),
+        ...(kind === 'external' ? { runtime: 'codex' } : {}),
+      };
+      mocks.projects.push(project);
+      mocks.taskData.sessions.push(session);
+      window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+        version: 1, preferredMode: 'expanded', expandedWorkspaceKeys: [project.path],
+        hasSeededDefaultExpansion: true, showAutomationSessions: true, sessionView: 'all',
+      }));
+      if (kind === 'protected') mocks.taskData.deleteProtectedSessionIds.add(session.id);
+      renderSidebar({ onContinueSession: vi.fn(async () => true), ...(kind === 'generating' ? {
+        tabs: [launcherTab, { id: 'busy', view: 'chat', sessionId: session.id, agentDir: project.path,
+          title: session.title, sidecarConfigDisposition: 'adopt', isGenerating: true }],
+      } : {}) });
+      expect(screen.queryByRole('button', { name: '继续未完成任务' })).not.toBeInTheDocument();
+    },
+  );
+
   it('opens a project board separately from workspace expansion and new chat', async () => {
     mocks.projects.push({id:'project-1',name:'Project one',path:'/work/project-one'});
     const onOpenProjectBoard = vi.fn();
@@ -292,6 +345,27 @@ describe('GlobalSidebar rail flyout', () => {
     expect(within(row as HTMLElement).getAllByRole('button')).toHaveLength(1);
     expect(within(row as HTMLElement).getByRole('button', { name: String(i18n.t('app:notificationCenter.bell')) })).toBeInTheDocument();
     expect(document.querySelector('[data-global-account-trigger]')).toBeNull();
+  });
+
+  it('keeps project positions after activity updates and remounts, appending new projects', () => {
+    mocks.forcedRail = false;
+    mocks.projects = [
+      { id: 'a', name: 'Alpha', path: '/a', lastOpened: '2026-10-18T00:00:00Z' },
+      { id: 'b', name: 'Beta', path: '/b', lastOpened: '2026-10-17T00:00:00Z' },
+    ];
+    const names = () => Array.from(document.querySelectorAll('[data-global-sidebar-workspace-row]'))
+      .map((row) => row.textContent?.includes('Alpha') ? 'a' : row.textContent?.includes('Beta') ? 'b' : 'c');
+    const view = renderSidebar();
+    expect(names()).toEqual(['a', 'b']);
+    mocks.projects = [mocks.projects[0], { ...mocks.projects[1], lastOpened: '2026-10-19T00:00:00Z' }];
+    view.rerender(sidebar());
+    expect(names()).toEqual(['a', 'b']);
+    view.unmount();
+    const remount = renderSidebar();
+    expect(names()).toEqual(['a', 'b']);
+    mocks.projects = [{ id: 'c', name: 'Gamma', path: '/c', lastOpened: '2026-10-20T00:00:00Z' }, ...mocks.projects];
+    remount.rerender(sidebar());
+    expect(names()).toEqual(['a', 'b', 'c']);
   });
 
   it('renders healthy workspaces alongside invalid persisted Project rows without modifying them', () => {
@@ -781,6 +855,37 @@ describe('GlobalSidebar rail flyout', () => {
     ]);
 
     expect(ordered.map((session) => session.id)).toEqual(['pin-new', 'pin-old', 'recent', 'older']);
+  });
+
+  it('portals the drag overlay out of the transformed workspace region', () => {
+    mocks.forcedRail = false;
+    mocks.projects.push({ id: 'project-1', name: 'Project one', path: '/work/project-one' });
+    mocks.taskData.sessions.push({
+      id: 'dragged-session',
+      agentDir: '/work/project-one',
+      title: 'Draggable session',
+      createdAt: '2026-07-20T00:00:00.000Z',
+      lastActiveAt: '2026-07-20T00:00:00.000Z',
+    });
+    window.localStorage.setItem(GLOBAL_SIDEBAR_PREFERENCE_KEY, JSON.stringify({
+      version: 1,
+      preferredMode: 'expanded',
+      expandedWorkspaceKeys: ['/work/project-one'],
+      hasSeededDefaultExpansion: true,
+      showAutomationSessions: true,
+      sessionView: 'all',
+    }));
+    const { container } = renderSidebar();
+
+    fireEvent.keyDown(screen.getByRole('button', { name: '拖动 Draggable session' }), { key: ' ', code: 'Space' });
+
+    const overlay = Array.from(document.querySelectorAll<HTMLElement>('.shadow-lg'))
+      .find((element) => element.textContent === 'Draggable session');
+    expect(overlay).toBeDefined();
+    const overlayElement = overlay!;
+    expect(overlayElement.parentElement).toHaveStyle({ position: 'fixed' });
+    expect(overlayElement.parentElement?.parentElement).toBe(document.body);
+    expect(container.contains(overlayElement)).toBe(false);
   });
 
   it('keeps pinned favorites first without leaking non-favorites into the favorites view', () => {

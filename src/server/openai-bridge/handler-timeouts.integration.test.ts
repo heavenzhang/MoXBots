@@ -52,6 +52,71 @@ describe('OpenAI bridge timeout ownership', () => {
     });
   });
 
+  it('evaluates a per-route headers timeout getter and falls back to the default bound', async () => {
+    server = createServer((req) => {
+      req.resume();
+    });
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('failed to bind test upstream');
+
+    const handler = createBridgeHandler({
+      getUpstreamConfig: () => ({
+        providerId: 'dynamic-timeout-fixture',
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        apiKey: 'test-key',
+        // Recovery is fenced for this request, so the fast timer is not armed.
+        headersTimeoutMs: () => undefined,
+      }),
+      upstreamHeadersTimeoutMs: 25,
+      logger: null,
+    });
+    const response = await handler(new Request('http://127.0.0.1/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(requestBody),
+    }));
+
+    expect(response.status).toBe(408);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { message: 'Upstream request timed out', code: 'upstream_headers_timeout' },
+    });
+  });
+
+  it('does not apply the headers-only timer to a response body', async () => {
+    server = createServer((req, res) => {
+      req.resume();
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write('event: message_start\ndata: {"type":"message_start"}\n\n');
+      setTimeout(() => {
+        res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+        res.end();
+      }, 120);
+    });
+    await new Promise<void>((resolve) => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('failed to bind test upstream');
+
+    const handler = createBridgeHandler({
+      getUpstreamConfig: () => ({
+        providerId: 'streaming-fixture',
+        baseUrl: `http://127.0.0.1:${address.port}`,
+        apiKey: 'test-key',
+        apiProtocol: 'anthropic',
+      }),
+      upstreamHeadersTimeoutMs: 25,
+      logger: null,
+    });
+    const response = await handler(new Request('http://127.0.0.1/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...requestBody, stream: true }),
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('message_stop');
+  });
+
   it('stops the headers timer before reading a non-2xx response body', async () => {
     server = createServer((req, res) => {
       req.resume();

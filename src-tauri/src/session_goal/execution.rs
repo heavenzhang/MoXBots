@@ -1,17 +1,76 @@
+use std::time::Duration;
+
 use tauri::{AppHandle, Manager};
 
+use super::busy_log;
 use super::{get_session_goal_manager, GoalContinuationRequest, GoalStatus};
 use crate::sidecar::{
-    ensure_goal_sidecar_owner, execute_goal_turn, release_session_sidecar, GoalExecutePayload,
+    ensure_goal_sidecar_owner, execute_goal_turn, get_session_sidecar_port,
+    is_goal_work_pending_response, release_session_sidecar, GoalExecutePayload,
     GoalExecuteResponse, ManagedSidecarManager, SidecarOwner,
 };
 use crate::{ulog_info, ulog_warn};
+
+/// Match the Node Goal orchestrator's `workPending` predicate exactly. An old
+/// Sidecar that omits `hasBackgroundWork` keeps its previous behavior.
+fn session_state_is_busy(body: &serde_json::Value) -> bool {
+    body.get("isBusy").and_then(serde_json::Value::as_bool) == Some(true)
+        || body
+            .get("hasBackgroundWork")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+}
+
+/// Read backpressure from an already-running Sidecar before paying for owner
+/// attachment and a full dispatch. Node remains the authority: any failure or
+/// unexpected payload falls through to the normal ensure-and-dispatch path.
+async fn peek_busy_deferred(
+    manager: &ManagedSidecarManager,
+    session_id: &str,
+) -> Option<GoalExecuteResponse> {
+    let port = get_session_sidecar_port(manager, session_id)
+        .ok()
+        .flatten()?;
+    let client = crate::local_http::builder()
+        .timeout(Duration::from_secs(2))
+        .build()
+        .ok()?;
+    let response = client
+        .get(format!("http://127.0.0.1:{port}/api/session-state"))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = response.json().await.ok()?;
+    session_state_is_busy(&body).then(|| GoalExecuteResponse {
+        success: false,
+        turn_dispatched: false,
+        termination_unconfirmed: false,
+        error: Some("Session work is still running".to_string()),
+        code: Some("goal_work_pending".to_string()),
+        status: Some(409),
+        ai_requested_exit: None,
+        exit_reason: None,
+        output_text: None,
+        goal_channel_delivery_expected: false,
+        session_id: Some(session_id.to_string()),
+    })
+}
 
 pub(super) async fn execute(
     handle: &AppHandle,
     request: &GoalContinuationRequest,
 ) -> Result<GoalExecuteResponse, String> {
     let goal = &request.goal;
+    let sidecars = handle
+        .try_state::<ManagedSidecarManager>()
+        .ok_or_else(|| "SidecarManager state not available".to_string())?;
+    if let Some(deferred) = peek_busy_deferred(sidecars.inner(), &goal.session_id).await {
+        busy_log::note_deferred(&goal.id, &goal.session_id);
+        return Ok(deferred);
+    }
     let _wake_lock = crate::wake_lock::WakeLock::acquire(&format!("Goal {}", goal.id))
         .map_err(|error| {
             ulog_warn!(
@@ -22,9 +81,6 @@ pub(super) async fn execute(
             error
         })
         .ok();
-    let sidecars = handle
-        .try_state::<ManagedSidecarManager>()
-        .ok_or_else(|| "SidecarManager state not available".to_string())?;
     let port = ensure_goal_sidecar_owner(
         handle,
         sidecars.inner(),
@@ -71,18 +127,54 @@ pub(super) async fn execute(
         queue_id: request.queue_id.clone(),
         expected_control_revision: request.expected_control_revision,
     };
-    ulog_info!(
-        "[Goal] Dispatching continuation {} turn {} for Session {}",
-        goal.id,
-        request.turn_number,
-        goal.session_id
-    );
-    execute_goal_turn(
+    busy_log::note_resumed(&goal.id);
+    let response = execute_goal_turn(
         handle,
         sidecars.inner(),
         &goal.workspace_path,
         port,
         payload,
     )
-    .await
+    .await;
+    if response.as_ref().is_ok_and(is_goal_work_pending_response) {
+        // The precheck can race a turn that becomes busy between the read and
+        // dispatch. Keep the same quiet classification for that response.
+        busy_log::note_deferred(&goal.id, &goal.session_id);
+    } else if response.is_ok() {
+        ulog_info!(
+            "[Goal] Continuation {} turn {} accepted by Sidecar for Session {}",
+            goal.id,
+            request.turn_number,
+            goal.session_id
+        );
+    }
+    response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_state_precheck_matches_the_orchestrator_busy_predicate() {
+        assert!(!session_state_is_busy(&serde_json::json!({})));
+        assert!(!session_state_is_busy(&serde_json::json!({
+            "isBusy": false,
+            "hasBackgroundWork": false
+        })));
+        assert!(session_state_is_busy(&serde_json::json!({
+            "isBusy": true,
+            "hasBackgroundWork": false
+        })));
+        assert!(session_state_is_busy(&serde_json::json!({
+            "isBusy": false,
+            "hasBackgroundWork": true
+        })));
+        // Old Sidecars omit the additive field; malformed values must not
+        // invent backpressure.
+        assert!(!session_state_is_busy(&serde_json::json!({
+            "isBusy": "true",
+            "hasBackgroundWork": 1
+        })));
+    }
 }

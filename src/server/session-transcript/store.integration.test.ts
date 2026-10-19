@@ -61,6 +61,26 @@ describe('SessionStore V2 ownership and compatibility', () => {
     expect((await store.getSessionData(metadata.id))?.messages[0].content).toBe('saved before restart');
   });
 
+  it('publishes unfinished turn metadata across cold restart and clears it after a successful continuation', async () => {
+    const { metadata, active } = await create();
+    active.writer.observe({ kind: 'message-create', message: { id: 'u1', role: 'user', content: 'work', timestamp: 't' } });
+    active.writer.observe({ kind: 'turn-update', turn: { id: 'turn1', rootUserMessageId: 'u1', startedAt: 't', status: 'running' } });
+    await store.flushSessionTranscriptsForUpdate();
+    expect(store.getSessionMetadata(metadata.id)?.continuation?.turnId).toBe('turn1');
+    await active.revoke();
+    vi.resetModules(); store = await import('../SessionStore');
+    // Only the cold execution owner may retire the old running generation.
+    await store.activateSessionTranscript(metadata.id);
+    const recovered = await store.getSessionData(metadata.id);
+    expect(recovered?.continuation).toEqual({ turnId: 'turn1', rootUserMessageId: 'u1', status: 'interrupted' });
+    const cold = store.getActiveSessionTranscript(metadata.id)!;
+    cold.writer.observe({ kind: 'message-create', message: { id: 'u2', role: 'user', content: 'continue', timestamp: 't' } });
+    cold.writer.observe({ kind: 'turn-update', turn: { id: 'turn2', rootUserMessageId: 'u2', startedAt: 't', status: 'complete' } });
+    await store.flushSessionTranscriptsForUpdate();
+    expect(store.getSessionMetadata(metadata.id)?.continuation).toBeUndefined();
+    expect(JSON.parse(await readFile(join(testState.home, '.myagents', 'sessions.json'), 'utf8'))[0].continuation).toBeUndefined();
+  });
+
   it('does not approve a restart when the live transcript cannot flush', async () => {
     const { active } = await create();
     const flush = vi.spyOn(active.writer, 'flush').mockResolvedValueOnce(false);

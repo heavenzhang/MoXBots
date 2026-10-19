@@ -4,6 +4,7 @@
 //! Task, a CronTask projection, or a Task Center record. The module owns the
 //! durable concurrency protocol used by desktop, IM, and Agent Channel turns.
 
+mod busy_log;
 pub mod commands;
 mod execution;
 mod init;

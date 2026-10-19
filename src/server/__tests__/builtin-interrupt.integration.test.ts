@@ -33,7 +33,7 @@ import { cancelImRequest, cancelQueueItem, forceExecuteQueueItem, getAgentState,
 import { broadcast } from '../sse';
 import { getQuerySession, resetLifecycleForTest, setQuerySession, waitForMessage, setSessionTerminationPromise, lifecycleState, setUpdateRestartFrozen } from '../builtin-session/lifecycle';
 import { beginPromotedItem, getInFlightQueueId, getMessageQueue, getPendingMidTurnQueue, getTurnAdmissionTicket, getTurnBoundaryQueue, isPromotedItemCanceled, pushMessage, pushPendingMidTurn, pushTurnBoundary, resetQueueForTest, setInFlightQueueItem, setTurnAdmissionTicket } from '../builtin-session/queue';
-import { resetTurnForTest } from '../builtin-session/turn';
+import { resetTurnForTest, setCurrentTurnSourceItem, recordCurrentTurnCompletionTerminal, waitForCurrentTurnTerminalObserver } from '../builtin-session/turn';
 import { resetTranscriptForTest } from '../builtin-session/transcript';
 import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 import type { MessageQueueItem } from '../builtin-session/types';
@@ -81,6 +81,69 @@ describe('builtin interrupt facade terminal ownership', () => {
     expect(lifecycleState.preWarmTimer).toBeNull();
   });
 
+  it('settles the injected Goal terminal observer after Query abort so update admission can drain', async () => {
+    setUpdateRestartFrozen(true);
+    const terminated = deferred<void>();
+    const terminal = vi.fn(async () => undefined);
+    const query = { interrupt: vi.fn(async () => undefined), close: vi.fn() };
+    setCurrentTurnSourceItem(localInput('goal-turn', { onTerminal: terminal }));
+    captured.deps!.setStreamingMessage(true);
+    setQuerySession(query as unknown as Query);
+    setSessionTerminationPromise(terminated.promise);
+    const stopping = stopBuiltinSessionForUpdate();
+    expect(terminal).not.toHaveBeenCalled();
+    // Real Query finally clears its flags without receiving an SDK result.
+    setQuerySession(null);
+    lifecycleState.processing = false;
+    captured.deps!.setStreamingMessage(false);
+    terminated.resolve();
+    await stopping;
+    await waitForCurrentTurnTerminalObserver();
+    expect(terminal).toHaveBeenCalledOnce();
+    expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
+    await stopBuiltinSessionForUpdate();
+    await waitForCurrentTurnTerminalObserver();
+    expect(terminal).toHaveBeenCalledOnce();
+  });
+
+  it('bounds an unavailable terminal acknowledgement without cancelling its durable settlement', async () => {
+    const acknowledgement = deferred<void>();
+    const terminal = vi.fn(() => acknowledgement.promise);
+    setCurrentTurnSourceItem(localInput('goal-ack', { onTerminal: terminal }));
+    const stopping = stopBuiltinSessionForUpdate();
+    const rejection = expect(stopping).rejects.toThrow('UPDATE_ACTIVITY_UNKNOWN');
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejection;
+    expect(terminal).toHaveBeenCalledOnce();
+    acknowledgement.resolve();
+    await waitForCurrentTurnTerminalObserver();
+    await stopBuiltinSessionForUpdate();
+    expect(terminal).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a released update while its terminal acknowledgement settles without idling a newer owner', async () => {
+    let current = true;
+    const acknowledgement = deferred<void>();
+    const terminal = vi.fn(() => acknowledgement.promise);
+    setCurrentTurnSourceItem(localInput('old-ack', { onTerminal: terminal }));
+    const stopping = stopBuiltinSessionForUpdate(() => { if (!current) throw new Error('UPDATE_ACTIVITY_UNKNOWN'); });
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    current = false;
+    captured.deps!.setSessionState('running');
+    acknowledgement.resolve();
+    await expect(stopping).rejects.toThrow('UPDATE_ACTIVITY_UNKNOWN');
+    expect(getAgentState().sessionState).toBe('running');
+  });
+
+  it.each(['complete', 'error'] as const)('preserves a previously recorded %s terminal during update', async status => {
+    const terminal = vi.fn(async () => undefined);
+    setCurrentTurnSourceItem(localInput('finished-turn', { onTerminal: terminal }));
+    recordCurrentTurnCompletionTerminal({ sessionId: 'test', workspacePath: '/test', status });
+    await stopBuiltinSessionForUpdate();
+    expect(terminal).not.toHaveBeenCalled();
+    expect(vi.mocked(broadcast).mock.calls.some(([event]) => event === 'chat:message-stopped')).toBe(false);
+  });
+
   it('does not clear a newer Query when an old restart is released while stopping', async () => {
     let current = true;
     const terminated = deferred<void>();
@@ -103,11 +166,14 @@ describe('builtin interrupt facade terminal ownership', () => {
     const query = { interrupt: vi.fn(async () => undefined), close: vi.fn() };
     setQuerySession(query as unknown as Query);
     setSessionTerminationPromise(new Promise(() => undefined));
+    const terminal = vi.fn();
+    setCurrentTurnSourceItem(localInput('unconfirmed', { onTerminal: terminal }));
     const stopping = stopBuiltinSessionForUpdate();
     const rejection = expect(stopping).rejects.toThrow('UPDATE_ACTIVITY_UNKNOWN');
     await vi.advanceTimersByTimeAsync(10_000);
     await rejection;
     expect(getQuerySession()).toBe(query);
+    expect(terminal).not.toHaveBeenCalled();
   });
 
   it('clears an idle warm-up timer without launching any model', async () => {

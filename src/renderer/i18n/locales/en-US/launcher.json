@@ -34,6 +34,7 @@
     "remove": "Remove"
   },
   "rightRail": {
+    "continueUnfinished": "Continue unfinished task",
     "workspaceTitle": "Agent Workspaces",
     "logsTitle": "View Rust logs",
     "loading": "Loading...",

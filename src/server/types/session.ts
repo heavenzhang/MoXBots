@@ -47,6 +47,10 @@ export interface SessionStats {
  * Session metadata stored in sessions.json
  */
 export interface SessionMetadata {
+  /** Durable inference wait; never an instruction to replay the original input. */
+  modelRecovery?: import('../../shared/modelRecovery').ModelRecoveryState;
+    /** Derived by the transcript owner; never an execution/auto-resume command. */
+    continuation?: import('../../shared/sessionContinuation').SessionContinuation;
   id: string;
   /** Set only by the creation owner. Absence is the existing V1 contract. */
   transcriptFormat?: 2;

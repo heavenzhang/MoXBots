@@ -10,7 +10,7 @@ import {
   XCircleIcon,
   StopCircleIcon,
 } from "@/components/icons";
-import { memo, useCallback, useEffect, useId, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import type { Message } from "@/types/chat";
@@ -19,7 +19,8 @@ import { useTabStateOptional } from "@/context/TabContext";
 
 import { SubagentRunningIcon } from "./icons";
 import SubagentSection from "./SubagentSection";
-import BackgroundTaskDialog from "./BackgroundTaskDialog";
+import BackgroundTaskDialog, { findTaskTool } from "./BackgroundTaskDialog";
+import { isSubagentContainerTool } from "@/components/tools/subagentActivity";
 import type { SubagentStatus } from './types';
 import TodoSection from "./TodoSection";
 import { useAgentStatusState } from "./useAgentStatusState";
@@ -32,6 +33,7 @@ const FADE_OUT_DELAY_MS = 1500;
 interface AgentStatusPanelProps {
   /** Chat 内容区的 ref，限定 querySelector 作用域（防多 Tab 同 Session DOM 冲突） */
   containerRef: React.RefObject<HTMLElement | null>;
+  hideAgentDelegations?: boolean;
   /** Chat 提供：ChatScrollController message jump + 二阶段 highlight。SubagentRow 透传调用。 */
   onJumpToTool: (toolId: string) => void;
 }
@@ -43,6 +45,7 @@ const EMPTY_MESSAGES: Message[] = [];
 const AgentStatusPanel = memo(function AgentStatusPanel({
   containerRef,
   onJumpToTool,
+  hideAgentDelegations = false,
 }: AgentStatusPanelProps) {
   // P3: self-subscribe to messages instead of receiving them as a prop. This
   // removes the [messages] dependency from Chat's `agentStatusSlot` useMemo, so
@@ -76,12 +79,27 @@ const AgentStatusPanel = memo(function AgentStatusPanel({
     tail?.role === "assistant"
       ? tail.id
       : null);
-  const state = useAgentStatusState(
+  const derivedState = useAgentStatusState(
     messages,
     tab?.agentPlanTodos ?? null,
     tab?.sessionId ?? null,
     lifecycleMessageId,
   );
+  const state = useMemo(() => {
+    if (!hideAgentDelegations) return derivedState;
+    const subagents = derivedState.subagents.filter(agent => {
+      const tool = findTaskTool(messages, agent.id);
+      return tool ? !isSubagentContainerTool(tool.name) : agent.agentType === 'local_bash';
+    });
+    const running = subagents.filter(agent => agent.status === 'running');
+    return { ...derivedState, subagents, summary: { ...derivedState.summary,
+      subagentRunning: running.length, subagentTotal: subagents.length,
+      subagentTerminalStatus: subagents.some(agent => agent.status === 'failed') ? 'failed' as const
+        : subagents.some(agent => agent.status === 'interrupted') ? 'interrupted' as const
+        : subagents.length && !running.length ? 'completed' as const : null,
+      longestSubagentStartedAt: running.length ? Math.min(...running.map(agent => agent.startedAt)) : null,
+    } };
+  }, [derivedState, hideAgentDelegations, messages]);
   // hasContent：todos 全部 completed 时视为「已结束」→ 进入 fade-out
   // （对齐 PRD §8.1 #6 验收：「5/5 ☑ 后 1.5s 整段淡出」）
   const todosActive =

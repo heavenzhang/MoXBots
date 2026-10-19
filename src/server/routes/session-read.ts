@@ -1,6 +1,6 @@
 import { deriveSessionLabel } from '../inbox/derive-label';
 import { getSessionEngine } from '../session-engine';
-import { getSessionData, getSessionMetadata, isHistoryVisibleSession } from '../SessionStore';
+import { getSessionData, getSessionMetadata, getBuiltinModelRecovery, isHistoryVisibleSession } from '../SessionStore';
 import { pendingSessionWatchCount, registerPendingSessionWatch, removeNetworkSessionWatch, manageLocalSessionWatches } from '../inbox/watch-registry';
 import { parseNetworkReturnReference } from '../../shared/agentNetworkReturn';
 import { hasValidInternalCliCredential } from '../external-cli-admission';
@@ -327,7 +327,8 @@ async function handleSessionDetails(sessionId: string, url: URL): Promise<Respon
     : null;
 
   const sessionWithPreview = {
-    ...toClientSessionMetadata(session as SessionMetadata),
+    ...toClientSessionMetadata({ ...session,
+      modelRecovery: session.modelRecovery ? getBuiltinModelRecovery(session.id) : undefined } as SessionMetadata),
     liveStreamingMessage,
     snapshotRevision: overlay.snapshotRevision ?? 0,
     liveSessionState: overlay.liveSessionState,
@@ -374,6 +375,9 @@ export async function handleSessionReadRoute(
       sessionId: engine.getRuntimeIdentity().sessionId,
       sessionState: liveState.sessionState,
       isBusy: liveState.isBusy,
+      // Additive field for the desktop scheduler's cheap backpressure
+      // precheck. The Goal orchestrator remains the admission authority.
+      hasBackgroundWork: liveState.hasBackgroundWork === true,
       completionTerminal: engine.getSessionCompletionTerminal(),
     });
   }

@@ -8,6 +8,8 @@ import * as composerUpdateCheckpoint from '@/utils/composerUpdateCheckpoint';
 import { CODEX_SUBSCRIPTION_PROVIDER_ID } from '../shared/config-types';
 import { CUSTOM_EVENTS } from '../shared/constants';
 import type { SessionMetadata } from '@/api/sessionClient';
+import type { CapturedTabIdentity } from '@/tab-workspace/workspaceState';
+import type { ChatTab } from '@/features/chat/tabContract';
 import { ensureSelfAwarenessWorkspace } from '@/config/configService';
 import { SessionDeletionContext } from '@/context/SessionDeletionContext';
 import { useTabStateOptional } from '@/context/TabContext';
@@ -164,6 +166,7 @@ const mocks = vi.hoisted(() => {
     tabProviderProps: [] as Array<Record<string, unknown>>,
     launcherProps: [] as Array<Record<string, unknown>>,
     sidebarProps: [] as Array<Record<string, unknown>>,
+    workspaceController: null as unknown,
     currentPageHeaderProps: [] as Array<Record<string, unknown>>,
     settingsProps: [] as Array<Record<string, unknown>>,
     spaceProps: [] as Array<Record<string, unknown>>,
@@ -259,6 +262,7 @@ vi.mock('@/api/cronTaskClient', () => ({
 }));
 
 vi.mock('@/api/sessionClient', () => ({
+  getSessionHistoryPreview: vi.fn(async () => null),
   createSession: mocks.createSession,
   deleteSession: mocks.deleteSession,
   getSessions: vi.fn(async () => []),
@@ -315,6 +319,19 @@ vi.mock('@/components/CurrentPageHeader', () => ({
     </div>;
   },
 }));
+
+// Observe the real controller so navigation races use actual identity/CAS semantics.
+vi.mock('@/tab-workspace/useTabWorkspaceController', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/tab-workspace/useTabWorkspaceController')>();
+  return {
+    ...actual,
+    useTabWorkspaceController: (options: Parameters<typeof actual.useTabWorkspaceController>[0]) => {
+      const result = actual.useTabWorkspaceController(options);
+      mocks.workspaceController = result.controller;
+      return result;
+    },
+  };
+});
 
 vi.mock('@/components/global-sidebar/GlobalSidebar', () => ({
   default: function MockGlobalSidebar(props: Record<string, unknown>) {
@@ -690,6 +707,7 @@ describe('App helper launch', () => {
         entryIntent?: 'open_workspace' | 'workspace_init',
       ) => Promise<boolean>;
       onOpenSession: (session: { id: string; agentDir: string; title: string }, project: typeof mocks.project) => Promise<boolean>;
+      onContinueSession: (session: SessionMetadata, project: typeof mocks.project) => Promise<boolean>;
       onRenameSession: (sessionId: string, newTitle: string) => Promise<SessionMetadata | null>;
     };
   }
@@ -1248,6 +1266,20 @@ describe('App helper launch', () => {
       session.id,
       sessionTab!.id,
     );
+  });
+
+  it('keeps the cached Chat Tab when a background owner reconcile fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const session = { id: 'cached-reconcile-failure', agentDir: mocks.project.path, title: 'Cached reading', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-20T00:00:00.000Z' };
+    render(<App />);
+    await act(async () => { await latestSidebarProps().onOpenSession(session, mocks.project); });
+    const cached = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id)!;
+    mocks.ensureSessionSidecar.mockRejectedValueOnce(new Error('temporary disconnect'));
+    await act(async () => { await latestSidebarProps().onOpenSession(session, mocks.project); });
+    expect(latestTabWorkspace().tabs.find(tab => tab.id === cached.id)).toMatchObject({ view: 'chat', sessionId: session.id });
+    expect(activePageTitle()).toBe('Cached reading');
+    expect(mocks.chatProps.at(-1)?.startupError).toBe('temporary disconnect');
+    errorSpy.mockRestore();
   });
 
   it('opens developer Chat history through the same new-or-jump path as the sidebar', async () => {
@@ -1989,11 +2021,11 @@ describe('App helper launch', () => {
         view?: string;
         sidecarConfigDisposition?: string;
       }>;
-      expect(tabs.some((tab) => tab.id === 'restore-fails')).toBe(false);
+      expect(tabs.find((tab) => tab.id === 'restore-fails')).toMatchObject({ view: 'chat', sidecarConfigDisposition: 'pending' });
       expect(tabs.some((tab) => tab.id === 'restore-succeeds')).toBe(true);
       expect(tabs.find((tab) => tab.id === 'restore-succeeds')?.sidecarConfigDisposition).toBe('adopt');
       expect(tabs.some((tab) => tab.view === 'settings')).toBe(true);
-      expect(tabs.find((tab) => tab.id === latest?.activeTabId)?.view).toBe('settings');
+      expect(latest?.activeTabId).toBe('restore-fails');
     });
     expect(mocks.releaseTabSession).toHaveBeenCalledWith(failedSessionId, 'restore-fails');
     expect(mocks.reconcileSessionTabActivation).toHaveBeenCalledWith(
@@ -2001,6 +2033,75 @@ describe('App helper launch', () => {
       'restore-succeeds',
     );
     errorSpy.mockRestore();
+  });
+
+  it('hands continuation to the existing Session tab without creating or replaying initial input', async () => {
+    const session: SessionMetadata = {
+      id: 'continue-existing-session', agentDir: mocks.project.path, title: 'Unfinished task',
+      createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-20T00:00:00.000Z',
+      continuation: { turnId: 'interrupted-turn', rootUserMessageId: 'root-user', status: 'interrupted' },
+    };
+    render(<App />);
+    await act(async () => { await latestSidebarProps().onOpenSession(session, mocks.project); });
+    const original = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id)!;
+    mocks.createSession.mockClear();
+    await act(async () => { expect(await latestSidebarProps().onContinueSession(session, mocks.project)).toBe(true); });
+    const tabs = latestTabWorkspace().tabs.filter(tab => tab.sessionId === session.id);
+    expect(tabs).toHaveLength(1);
+    expect(tabs[0].id).toBe(original.id);
+    const intent = mocks.chatProps.at(-1)!.pendingContinuation as { requestId: string; turnId: string };
+    expect(intent).toEqual({ requestId: expect.any(String), turnId: 'interrupted-turn' });
+    expect(mocks.chatProps.at(-1)!.initialMessage).toBeUndefined();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    await act(async () => { expect(await latestSidebarProps().onContinueSession(session, mocks.project)).toBe(false); });
+    const consumeFirst = mocks.chatProps.at(-1)!.onContinuationConsumed as () => void;
+    await act(async () => { consumeFirst(); });
+    expect(mocks.chatProps.at(-1)!.pendingContinuation).toBeUndefined();
+    await act(async () => { expect(await latestSidebarProps().onContinueSession(session, mocks.project)).toBe(true); });
+    const nextIntent = mocks.chatProps.at(-1)!.pendingContinuation;
+    await act(async () => { consumeFirst(); });
+    expect(mocks.chatProps.at(-1)!.pendingContinuation).toBe(nextIntent);
+  });
+
+  it('does not transfer a late continuation click to a replacement tab for the same Session', async () => {
+    const session: SessionMetadata = {
+      id: 'continue-owner-replaced', agentDir: mocks.project.path, title: 'Interrupted task',
+      createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-20T00:00:00.000Z',
+      continuation: { turnId: 'interrupted-turn', rootUserMessageId: 'root-user', status: 'stopped' },
+    };
+    render(<App />);
+    await act(async () => { await latestSidebarProps().onOpenSession(session, mocks.project); });
+    const original = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id)!;
+    const controller = mocks.workspaceController as {
+      capture: (id: string) => CapturedTabIdentity | null;
+      removeMany: (plans: Array<{ captured: CapturedTabIdentity }>, fallback: () => { id: string; view: 'launcher'; title: string }) => number;
+      append: (tab: ChatTab, options: { mount: 'immediate' }) => unknown;
+    };
+    let resolveReconcile!: (value: boolean) => void;
+    const materialization = new Promise<boolean>(resolve => { resolveReconcile = resolve; });
+    mocks.reconcileSessionTabActivation.mockReturnValueOnce(materialization);
+    let continuing!: Promise<boolean>;
+    act(() => { continuing = latestSidebarProps().onContinueSession(session, mocks.project); });
+    await waitFor(() => expect(mocks.reconcileSessionTabActivation).toHaveBeenLastCalledWith(session.id, original.id));
+    // Retire the original owner after its materialization commits, but before
+    // the opening promise hands control back to the continuation caller.
+    const replaced = materialization.then(() => new Promise<void>(resolve => queueMicrotask(() => {
+      controller.removeMany([{ captured: controller.capture(original.id)! }], () => ({
+        id: 'replacement-launcher', view: 'launcher', title: 'New Tab',
+      }));
+      controller.append({ id: 'replacement-session-tab', view: 'chat', title: session.title,
+        sessionId: session.id, agentDir: session.agentDir, sidecarConfigDisposition: 'adopt' }, { mount: 'immediate' });
+      resolve();
+    })));
+    await act(async () => {
+      resolveReconcile(true);
+      await replaced;
+      expect(await continuing).toBe(false);
+    });
+    const replacement = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id);
+    expect(replacement?.id).toBe('replacement-session-tab');
+    expect(replacement).not.toHaveProperty('pendingContinuation');
+    expect(mocks.chatProps.at(-1)!.pendingContinuation).toBeUndefined();
   });
 
   it('does not yank focus back when a slow sidebar Session finishes after the user switches tabs', async () => {
@@ -2079,7 +2180,7 @@ describe('App helper launch', () => {
     expect(mocks.cancelBackgroundCompletion).not.toHaveBeenCalled();
   });
 
-  it('restores the previous active tab when an optimistic sidebar Session open fails', async () => {
+  it('keeps a failed uncached history open on its reading surface and retries in the same Tab', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     let rejectEnsure!: (error: Error) => void;
     mocks.ensureSessionSidecar.mockReturnValueOnce(new Promise((_, reject) => {
@@ -2107,8 +2208,15 @@ describe('App helper launch', () => {
     });
 
     expect(opened).toBe(false);
-    expect(activePageTitle()).toBe('New Tab');
-    expect(latestTabWorkspace().tabs).toHaveLength(1);
+    expect(activePageTitle()).toBe('Failed sidebar history');
+    expect(latestTabWorkspace().tabs).toHaveLength(2);
+    const failedTab = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id)!;
+    const failed = [...mocks.chatProps].reverse().find(props => props.startupError)!;
+    expect(failed.startupError).toBe('ensure failed');
+    await act(async () => { await (failed.onRetryStartup as () => Promise<void>)(); });
+    expect(latestTabWorkspace().tabs.find(tab => tab.id === failedTab.id)?.sessionId).toBe(session.id);
+    expect(mocks.ensureSessionSidecar).toHaveBeenLastCalledWith(session.id, mocks.project.path, 'tab', failedTab.id);
+    expect(mocks.chatProps.at(-1)?.startupError).toBeNull();
     errorSpy.mockRestore();
   });
 

@@ -71,4 +71,6 @@ export interface ChatTab extends TabBase<'chat'> {
   discussionId?: string;
   sidecarConfigDisposition: SidecarConfigDisposition;
   pendingFilePreview?: FilePreviewIntent;
+  /** One-shot user intent; never persisted or replayed after restart. */
+  pendingContinuation?: { requestId: string; turnId: string };
 }

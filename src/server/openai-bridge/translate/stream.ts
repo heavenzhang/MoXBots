@@ -41,6 +41,13 @@ export class StreamTranslator {
 
   /** Feed an OpenAI stream chunk, returns Anthropic SSE events to emit */
   feed(chunk: OpenAIStreamChunk): AnthropicStreamEvent[] {
+    if (this.hasFinished) return [];
+    // Provider payloads are untrusted despite the compile-time wire type. An
+    // error envelope must invalidate even an earlier finish_reason, rather than
+    // being mistaken for a harmless trailing usage chunk.
+    if (!chunk || typeof chunk !== 'object' || 'error' in chunk || !Array.isArray(chunk.choices)) {
+      return this.fail('Invalid or failed upstream Chat Completions stream event');
+    }
     const events: AnthropicStreamEvent[] = [];
 
     // Emit message_start on first chunk
@@ -61,6 +68,9 @@ export class StreamTranslator {
     }
 
     const delta = choice.delta;
+    if (!delta || typeof delta !== 'object' || Array.isArray(delta)) {
+      return this.fail('Invalid upstream Chat Completions stream delta');
+    }
 
     // Handle reasoning_content (thinking)
     if (this.translateReasoning && delta.reasoning_content) {
@@ -114,7 +124,10 @@ export class StreamTranslator {
     // So we close the active block + record the stop_reason now, but defer the
     // terminal events to finalize() (emitted on stream end / flush), by which
     // point `this.usage` has accumulated the trailing usage chunk. See issue #277.
-    if (choice.finish_reason) {
+    if (choice.finish_reason != null) {
+      if (!['stop', 'length', 'tool_calls', 'content_filter'].includes(choice.finish_reason)) {
+        return this.fail('Invalid upstream Chat Completions stream finish reason');
+      }
       this.closeActiveBlock(events);
       this.stopReason = translateStopReason(choice.finish_reason);
     }
@@ -163,11 +176,14 @@ export class StreamTranslator {
    * stream flush / transport end (fallback for streams that close without one).
    * This is the SOLE emitter of terminal events: feed() defers them here so the
    * full usage (including the trailing usage-only chunk) is reported. Carries the
-   * stop_reason captured from finish_reason (defaults to 'end_turn' for streams
-   * that ended without one). No-op if already finalized or never started.
+   * stop_reason captured from a valid finish_reason. Neither EOF nor [DONE]
+   * supplies missing completion evidence. No-op if already finalized.
    */
   finalize(): AnthropicStreamEvent[] {
-    if (this.hasFinished || !this.hasEmittedStart) return [];
+    if (this.hasFinished) return [];
+    if (!this.stopReason) {
+      return this.fail('Upstream Chat Completions stream ended without a valid finish_reason');
+    }
 
     const events: AnthropicStreamEvent[] = [];
     this.closeActiveBlock(events);
@@ -175,10 +191,19 @@ export class StreamTranslator {
 
     events.push({
       type: 'message_delta',
-      delta: { stop_reason: this.stopReason ?? 'end_turn', stop_sequence: null },
+      delta: { stop_reason: this.stopReason, stop_sequence: null },
       usage: toAnthropicUsage(this.usage),
     });
     events.push({ type: 'message_stop' });
+    return events;
+  }
+
+  private fail(message: string): AnthropicStreamEvent[] {
+    const events: AnthropicStreamEvent[] = [];
+    this.closeActiveBlock(events);
+    this.hasFinished = true;
+    // Keep untrusted upstream bodies out of diagnostics and the SDK transcript.
+    events.push({ type: 'error', error: { type: 'api_error', message } });
     return events;
   }
 

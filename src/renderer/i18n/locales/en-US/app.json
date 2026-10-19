@@ -118,6 +118,7 @@
     "teamUnavailable": "Team Space has been disabled by the developer"
   },
   "appChrome": {
+    "sessionConnectionLost": "Connection lost. Retry to reconnect.",
     "updateVerifyFailed": "Could not verify the update because of a network issue. Try again later.",
     "updateExpiredRedownloading": "The downloaded update expired. Downloading the latest version...",
     "updateInstallBlocked": "Background services are still exiting. The update is saved; try again shortly or after restarting Windows.",
@@ -1936,5 +1937,57 @@
     "taskId": "Task ID",
     "readOnly": "Viewing logs does not start or retry the task.",
     "retained": "The runtime task record has been released. Showing the last successfully read log."
+  },
+  "subagentView": {
+    "title": "Subagents",
+    "details": "Subagent details",
+    "scope": "Scope",
+    "summary": "{{running}} running · {{returned}} returned · {{failed}} exceptions",
+    "current": "Current turn",
+    "history": "Entire chat",
+    "list": "Subagent assignments",
+    "currentEmpty": "No subagents in this turn. Open Entire chat to view earlier work.",
+    "partialHistory": "Counts cover loaded messages. Earlier history is available.",
+    "loadMore": "Load earlier messages",
+    "loading": "Loading…",
+    "loadFailed": "Could not load messages. Try again.",
+    "modelUnknown": "Model not recorded",
+    "nested": "Nested subagent",
+    "notRecorded": "Not recorded",
+    "unavailable": "This subagent record is unavailable.",
+    "close": "Close subagent details",
+    "mainAgent": "main agent",
+    "assignedBy": "Assigned by {{parent}}",
+    "report": "Returned report",
+    "awaitingReport": "The subagent is running. No confirmed report has returned yet.",
+    "noReport": "No confirmed final report is retained here. Check the assignment, progress, and tool records.",
+    "mainReview": "Main agent review",
+    "reviewBoundary": "A returned report does not mean it was accepted or passed validation. Check the main chat for follow-up review, fixes, and verification.",
+    "assignment": "Assignment and constraints",
+    "requestedModel": "Requested model",
+    "runtimeModel": "Runtime model",
+    "inherit": "Not explicitly selected",
+    "started": "Started",
+    "finished": "Finished",
+    "latest": "Latest public progress",
+    "lastActivity": "Last activity",
+    "noActivity": "No public execution content is available.",
+    "progressBoundary": "Shows tool activity and public output. No update does not mean failure. Model reasoning is excluded.",
+    "toolCount": "{{count}} tool records",
+    "hasOutput": "Output available",
+    "locate": "Locate the assignment in chat",
+    "tabs": {
+      "result": "Result",
+      "task": "Task",
+      "progress": "Progress",
+      "tools": "Tools"
+    },
+    "status": {
+      "running": "Running",
+      "completed": "Returned",
+      "failed": "Failed",
+      "interrupted": "Stopped",
+      "unknown": "Unconfirmed"
+    }
   }
 }

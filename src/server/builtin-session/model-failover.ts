@@ -3,7 +3,7 @@ import { isModelFailoverProvider } from '../../shared/modelFailover';
 import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
 import type { ProviderEnv } from '../provider-types';
 import { findEffectiveProvider, loadConfig, materializeProviderRouteEnv } from '../utils/admin-config';
-import { ModelFailoverController } from '../openai-bridge/model-failover';
+import { ModelFailoverController, type InferenceRecoveryHooks } from '../openai-bridge/model-failover';
 import type { UpstreamConfig } from '../openai-bridge/types/bridge';
 
 export function sessionApiFailoverEligible(env?: ProviderEnv): boolean {
@@ -18,9 +18,12 @@ export function createSessionModelFailover(options: {
   isLive: () => boolean;
   canSwitch?: () => boolean;
   onSwitch: (target: UpstreamConfig, status: number) => void;
+  canRetry?: () => boolean;
+  retryDelaysMs?: readonly [number, number, number];
+  recovery?: InferenceRecoveryHooks;
 }): ModelFailoverController {
   type Ref = NonNullable<ModelFailoverSettings['backup']>;
-  let root: { scope: string; primaryIdentity: string; backup: Ref } | undefined;
+  let root: { scope: string; primaryIdentity: string; backup?: Ref } | undefined;
   const identity = () => {
     const { env, model } = options.current();
     return JSON.stringify([env?.providerId, env?.baseUrl, model]);
@@ -55,16 +58,20 @@ export function createSessionModelFailover(options: {
       // Recovery eligibility can disappear; an established root's replay guard
       // must survive that change. Never re-pin a different backup mid-turn.
       if (root) return root.primaryIdentity === identity() ? root.scope : undefined;
-      if (options.canSwitch?.() === false) return undefined;
       const current = options.current();
       const ref = (loadConfig().modelFailover as ModelFailoverSettings | undefined)?.backup;
-      if (!current.turnId || typeof ref?.providerId !== 'string' || typeof ref.modelId !== 'string' || !resolveBackup(ref)) return undefined;
-      root = { scope: JSON.stringify([current.turnId, identity()]), primaryIdentity: identity(), backup: { ...ref } };
+      if (!current.turnId) return undefined;
+      const backup = typeof ref?.providerId === 'string' && typeof ref.modelId === 'string' && resolveBackup(ref) ? { ...ref } : undefined;
+      root = { scope: JSON.stringify([current.turnId, identity()]), primaryIdentity: identity(), backup };
       return root.scope;
     },
-    resolveBackup: () => root ? resolveBackup(root.backup) : undefined,
+    resolveBackup: () => root?.backup ? resolveBackup(root.backup) : undefined,
     canSwitch: options.canSwitch,
+    canRetry: options.canRetry,
+    retryDelaysMs: options.retryDelaysMs,
+    recovery: options.recovery,
     isActive: options.isLive,
+    requestIdentity: identity,
     onSwitch: options.onSwitch,
     onTurnEnd: () => { root = undefined; },
   });

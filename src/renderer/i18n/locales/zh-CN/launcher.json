@@ -34,6 +34,7 @@
     "remove": "移除"
   },
   "rightRail": {
+    "continueUnfinished": "继续未完成任务",
     "workspaceTitle": "Agent 工作区",
     "logsTitle": "查看 Rust 日志",
     "loading": "加载中...",

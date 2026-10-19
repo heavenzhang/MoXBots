@@ -1,10 +1,13 @@
+import { isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
+import { SessionContinuationBanner, type ContinuationRequest } from '@/components/SessionContinuationBanner';
+import { matchesSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAction';
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
+import { projectErrorMessageResend } from './errorMessageResend';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
 import type { Message } from "@/types/chat";
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
-import { desktopContextOf } from "../../shared/agentMentions";
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import {
   AsyncQuestionContext,
@@ -82,6 +85,8 @@ import SimpleChatInput, {
 } from '@/components/SimpleChatInput';
 import type { SlashCommand as InputSlashCommand } from '@/components/SlashCommandMenu';
 import AgentStatusPanel from '@/components/agent-status/AgentStatusPanel';
+import SubagentActivityPanel from '@/components/agent-status/SubagentActivityPanel';
+import SubagentInspector from '@/components/agent-status/SubagentInspector';
 import ContextUsageIndicator from '@/components/ContextUsageIndicator';
 import ChatBootOverlay from '@/components/ChatBootOverlay';
 import { useChatStartupOverlay } from '@/hooks/useChatStartupOverlay';
@@ -631,6 +636,8 @@ interface ChatProps {
   onOpenSessionInNewTab?: (sessionId: string, title: string) => void;
   /** Initial message from Launcher for auto-send on workspace open */
   initialMessage?: InitialMessage;
+  pendingContinuation?: ContinuationRequest;
+  onContinuationConsumed?: () => void;
   discussionId?: string;
   startupError?: string | null;
   onRetryStartup?: () => Promise<void | undefined>;
@@ -678,6 +685,8 @@ export default function Chat({
   onOpenSession,
   onOpenSessionInNewTab,
   initialMessage,
+  pendingContinuation,
+  onContinuationConsumed,
   discussionId,
   startupError,
   onRetryStartup,
@@ -707,6 +716,7 @@ export default function Chat({
     isLoading,
     getQueryElapsedSeconds,
     isSessionLoading,
+    hasSessionHistory,
     sessionRestoreError,
     sessionState,
     sessionRuntime,
@@ -1543,6 +1553,7 @@ export default function Chat({
     onStartupItemsRendered,
   } = useChatStartupOverlay({
     hasInitialMessage: hadInitialMessage.current,
+    hasSessionHistory,
     initialClientRequestId: initialMessage?.clientRequestId,
     startupError,
     isConnected,
@@ -4716,6 +4727,7 @@ export default function Chat({
       context?: import('../../shared/agentMentions').QueryMentionContext,
       explicitReply?: AsyncQuestionReply,
       retryFailedMessageId?: string,
+      continueFromTurnId?: string,
     ): Promise<boolean | void> => {
       if (!retryFailedMessageId) {
         const uncertain = messagesRef.current.find(message => message.role === 'user' && message.deliveryUnconfirmed && typeof message.content === 'string' && message.content === text.trim());
@@ -4870,6 +4882,8 @@ export default function Chat({
           context?.agentMentions,
           context?.primaryContext,
           retryFailedMessageId,
+          undefined,
+          continueFromTurnId,
         );
         if (admitted && reply)
           setQuestionDraft((current) =>
@@ -4922,6 +4936,30 @@ export default function Chat({
   // Ref-stabilize handleSendMessage for handleRetry (avoids frequent re-creation)
   const handleSendMessageRef = useRef(handleSendMessage);
   handleSendMessageRef.current = handleSendMessage;
+
+  const continuationHistory = useMemo(() => [...historyMessages, ...messages], [historyMessages, messages]);
+  const continuation = currentRuntime === 'builtin' && matchesSessionContinuation(sessionMeta?.continuation, continuationHistory)
+    ? sessionMeta.continuation : undefined;
+  const continuationReady = isConnected && !isSessionLoading
+    && sidecarConfigDisposition !== 'pending' && goalRestoreReady;
+  const continuationBlocked = isLoading || sessionState !== 'idle'
+    || sessionGoalState.isExecuting || sessionGoalState.goal?.status === 'active'
+    || !!activeCurrentSessionCronTask || !!pendingPermission || !!pendingAskUserQuestion
+    || !!pendingExitPlanMode || !!pendingEnterPlanMode
+    || !!goalDraftConfig || (cronState.isEnabled && !cronState.task)
+    || queuedMessages.length > 0 || !!sessionRestoreError || !!questionTarget;
+  const handleContinueUnfinished = useCallback(async (expectedTurnId: string): Promise<boolean> => {
+    if (isComposerUpdateCheckpointLocked() || !continuationReady || continuationBlocked || !sessionId
+      || sessionIdRef.current !== sessionId
+      || !matchesSessionContinuation(sessionMeta?.continuation, continuationHistory, expectedTurnId)) return false;
+    if (sessionGoalState.goal?.status === 'paused') return !!(await resumeGoal());
+    // This is a new explicit instruction in the original Session. It does not
+    // rewind/resend the original prompt or clear the user's composer draft.
+    return (await handleSendMessageRef.current(SESSION_CONTINUATION_PROMPT, undefined, undefined, undefined, undefined, undefined, expectedTurnId)) === true;
+  }, [continuationReady, continuationBlocked, sessionId, sessionMeta?.continuation, continuationHistory, sessionGoalState.goal?.status, resumeGoal]);
+  const handleContinuationUnavailable = useCallback(() => {
+    toastRef.current.warning(t('shell.continuation.unavailable'));
+  }, [t]);
 
   const questionActions = useMemo<AsyncQuestionActions>(() => ({
     answered: [...historyMessages, ...messages].flatMap(message => message.role === 'user' && message.asyncQuestionReply ? [message.asyncQuestionReply] : []),
@@ -5655,6 +5693,10 @@ export default function Chat({
   // 稳定，SimpleChatInput 的 React.memo 不再被打穿，输入框在 AI 流式输出时不会
   // 每 token 重渲染。AgentStatusPanel 内部仍随 commit 重渲染，其 DOM 仅在
   // 派生 todos/subagents 变化时才改，成本由 React 协调器吸收。
+  const [selectedSubagent, setSelectedSubagent] = useState<{ sessionId: string | null; toolId: string } | null>(null);
+  const selectedSubagentId = selectedSubagent?.sessionId === sessionId ? selectedSubagent.toolId : null;
+  const openSubagent = useCallback((toolId: string) => setSelectedSubagent({ sessionId, toolId }), [sessionId]);
+  const closeSubagent = useCallback(() => setSelectedSubagent(null), []);
   const supportsAgentStatusPanel =
     currentRuntime === 'builtin' ||
     currentRuntime === 'codex' ||
@@ -5662,12 +5704,12 @@ export default function Chat({
   const agentStatusSlot = useMemo(
     () =>
       !supportsAgentStatusPanel ? undefined : (
-        <AgentStatusPanel
-          containerRef={chatContentRef}
-          onJumpToTool={handleJumpToTool}
-        />
+        <>
+          <AgentStatusPanel containerRef={chatContentRef} onJumpToTool={handleJumpToTool} hideAgentDelegations />
+          <SubagentActivityPanel key={sessionId ?? "pending"} onSelect={openSubagent} />
+        </>
       ),
-    [supportsAgentStatusPanel, handleJumpToTool],
+    [supportsAgentStatusPanel, handleJumpToTool, openSubagent, sessionId],
   );
 
   // PRD 0.2.32 — context 用量指示器 slot。自取数（内部 useTabState 订阅 contextUsage），
@@ -6032,19 +6074,23 @@ export default function Chat({
     [performRetryFromUserMessage],
   );
 
-  // Banner-level retry: find the last real user message in the session and rewind+resend it.
-  // Used by the agentError banner's 「重新发送」 button (issue #183).
+  // Error-banner resend preserves history and files. Explicit answer regeneration
+  // above still uses the backend's atomic rewind + replay operation.
   const [unconfirmedRetry, setUnconfirmedRetry] = useState<Message | null>(null);
   const resendFailedMessage = useCallback(async (userMsg: Message) => {
-    if (!messagesRef.current.some(message => message.id === userMsg.id)) return;
-    // A lost response can be repaired by replay while the confirmation is open.
-    // Recheck the current projection before issuing another request.
-    if (userMsg.metadata?.clientRequestId && messagesRef.current.some(message =>
-      message.role === 'user' && message.deliveryStatus === undefined &&
-      message.metadata?.clientRequestId === userMsg.metadata?.clientRequestId)) return;
-    const text = typeof userMsg.content === 'string' ? userMsg.content : '';
-    const admitted = await handleSendMessageRef.current(text, restoreMessageImages(userMsg.attachments), undefined, { agentMentions: userMsg.desktopQuery?.agentMentions, primaryContext: desktopContextOf(userMsg.desktopQuery?.primaryContext), requiredSystemSkill: userMsg.desktopQuery?.requiredSystemSkill }, undefined, userMsg.id);
-    if (admitted === true && chatInputRef.current?.getCurrentValue().trim() === text) chatInputRef.current.setValue('');
+    if (conversationOperationPendingRef.current) return;
+    const resend = projectErrorMessageResend(userMsg, messagesRef.current);
+    if (!resend) return;
+    conversationOperationPendingRef.current = true;
+    const resendSessionId = sessionIdRef.current;
+    try {
+      const admitted = await handleSendMessageRef.current(resend.text, resend.images, undefined,
+        resend.context, resend.asyncQuestionReply, resend.retryFailedMessageId);
+      if (sessionIdRef.current !== resendSessionId) return;
+      if (admitted === true && chatInputRef.current?.getCurrentValue().trim() === resend.text) chatInputRef.current.setValue('');
+    } finally {
+      conversationOperationPendingRef.current = false;
+    }
   }, []);
   const handleRetryLastUserMessage = useCallback(() => {
     const msgs = messagesRef.current;
@@ -6071,9 +6117,8 @@ export default function Chat({
       else resendFailedMessage(userMsg);
       return;
     }
-    setAgentError(null);
-    performRetryFromUserMessage(userMsg);
-  }, [agentErrorUserMessageId, performRetryFromUserMessage, setAgentError, resendFailedMessage]);
+    void resendFailedMessage(userMsg);
+  }, [agentErrorUserMessageId, resendFailedMessage]);
 
   // Fork = create a new independent session branch at a specific assistant message
   const handleFork = useCallback((assistantMessageId: string) => {
@@ -6528,19 +6573,38 @@ export default function Chat({
             {/* Unified boot overlay — same component App renders as the lazy-Chat
               Suspense fallback, so the chunk-load → mount handoff is seamless: ONE
               continuous "AI 启动中" state from the Launcher→Chat flip through the
-              sidecar boot. Persisted history keeps the same shell until its REST
-              projection commits, so cold SSE replay is never a visible phase. */}
+              sidecar boot. Persisted history reveals from the display-only disk
+              preview; live restoration keeps its action fence without covering
+              readable rows. Cold SSE replay never owns the first history frame. */}
             <ChatBootOverlay
-              show={showStartupOverlay || isSessionLoading}
-              error={sessionRestoreError}
+              show={!hasSessionHistory && (showStartupOverlay || isSessionLoading)}
+              loadingText={sessionId && !isPendingSessionId(sessionId) && !hadInitialMessage.current ? t('shell.boot.loadingHistory') : undefined}
+              error={startupError || sessionRestoreError}
               onRetry={
-                sessionRestoreError && sessionId
+                (startupError || sessionRestoreError) && sessionId
                   ? () => {
-                      void retryCurrentSessionRestore();
+                      void (async () => {
+                        await onRetryStartup?.();
+                        await retryCurrentSessionRestore();
+                      })();
                     }
                   : undefined
               }
             />
+
+            {hasSessionHistory && (isSessionLoading || !isConnected || startupError) && (
+              <div role="status" className="z-10 flex shrink-0 items-center justify-center gap-2 border-b border-[var(--line)] bg-[var(--paper-elevated)] px-4 py-2 text-xs text-[var(--ink-muted)]">
+                <span>{t(startupError || sessionRestoreError ? 'shell.boot.connectionFailed' : 'shell.boot.reconnecting')}</span>
+                {(startupError || sessionRestoreError) && (
+                  <button type="button" className="shrink-0 underline underline-offset-2" onClick={() => {
+                    void (async () => {
+                      await onRetryStartup?.();
+                      await retryCurrentSessionRestore();
+                    })();
+                  }}>{t('shell.boot.retry')}</button>
+                )}
+              </div>
+            )}
 
             {/* SDK 0.2.91+ terminal_reason banner. For error-severity reasons that
               already surface via agentError (image_error / model_error), suppress
@@ -6562,6 +6626,18 @@ export default function Chat({
             <RuntimeDiagnosticsBanner
               diagnostics={runtimeDiagnostics}
               onDiagnose={handleDiagnoseRuntimeDiagnostics}
+            />
+
+            <SessionContinuationBanner
+              key={sessionId ?? 'pending'}
+              sessionId={sessionId ?? ''}
+              turnId={continuation?.turnId}
+              ready={continuationReady}
+              blocked={continuationBlocked}
+              request={pendingContinuation}
+              onConsumed={onContinuationConsumed}
+              onContinue={handleContinueUnfinished}
+              onUnavailable={handleContinuationUnavailable}
             />
 
             {discussionId && <TaskDiscussionRecovery discussionId={discussionId} messages={historyMessages} active={!showStartupOverlay || !!agentError || !!startupError} onRetryStartup={startupError ? onRetryStartup : undefined} onRestore={input => {
@@ -6595,7 +6671,8 @@ export default function Chat({
                   }
                 }
                 const resumeBoundaryRejected = agentError === NATIVE_RESUME_BOUNDARY_MESSAGE;
-                const canRetry = !!lastUserMsg && !isLoading && !resumeBoundaryRejected;
+                const canRetry = !!lastUserMsg && !isLoading && !resumeBoundaryRejected
+                  && projectErrorMessageResend(lastUserMsg, msgs) !== null;
                 return (
                   <div className="relative z-10 flex-shrink-0 border-b border-[var(--line)] bg-[var(--paper-inset)] px-4 py-2 text-xs text-[var(--ink)]">
                     <div className="mx-auto flex max-w-3xl items-start gap-2">
@@ -6821,7 +6898,7 @@ export default function Chat({
               onSend={handleSendMessage}
               onStop={handleStop}
               active={isActive}
-              sendBlocked={isSessionLoading}
+              sendBlocked={isSessionLoading || Boolean(startupError)}
               nextPromptSuggestion={nextPromptSuggestion}
               isLoading={
                 isLoading ||
@@ -6975,10 +7052,16 @@ export default function Chat({
         </div>
 
         {/* Workspace panel — single instance, container style switches between side panel and overlay */}
+        {isActive && selectedSubagentId && shouldUseWorkspaceOverlay && (
+          <OverlayBackdrop onClose={closeSubagent} className="!absolute z-[55] !bg-black/10 !backdrop-blur-none">{null}</OverlayBackdrop>
+        )}
+        {isActive && selectedSubagentId && (
+          <SubagentInspector key={`${sessionId}:${selectedSubagentId}`} toolId={selectedSubagentId} overlay={shouldUseWorkspaceOverlay} onClose={closeSubagent} onJumpToTool={handleJumpToTool} />
+        )}
         {workspacePanelMounted && (
           <>
             {/* Click-away layer for overlay mode */}
-            {showWorkspace && shouldUseWorkspaceOverlay && (
+            {showWorkspace && shouldUseWorkspaceOverlay && !selectedSubagentId && (
               <OverlayBackdrop
                 onClose={handleCollapseWorkspace}
                 className="!absolute z-40 !block !bg-transparent !backdrop-blur-none"
@@ -6995,8 +7078,9 @@ export default function Chat({
                     ? 'relative z-10 flex w-[var(--chat-workspace-panel-width)] shrink-0 flex-col'
                     : 'pointer-events-none absolute bottom-0 right-0 top-0 z-20 flex w-[var(--chat-workspace-panel-width)] flex-col'
               }
-              aria-hidden={!showWorkspace}
-              inert={!showWorkspace}
+              aria-hidden={!showWorkspace || Boolean(selectedSubagentId)}
+              inert={!showWorkspace || Boolean(selectedSubagentId)}
+              style={selectedSubagentId ? { display: "none" } : undefined}
               data-chat-workspace-panel
               data-chat-workspace-panel-motion={
                 workspacePanelMotion ?? undefined

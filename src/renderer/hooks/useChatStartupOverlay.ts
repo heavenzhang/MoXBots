@@ -10,6 +10,7 @@ export function useChatStartupOverlay({
   agentError,
   startupError,
   hasPendingInteraction,
+  hasSessionHistory = false,
 }: {
   hasInitialMessage: boolean;
   initialClientRequestId?: string;
@@ -18,6 +19,7 @@ export function useChatStartupOverlay({
   agentError: string | null;
   startupError?: string | null;
   hasPendingInteraction: boolean;
+  hasSessionHistory?: boolean;
 }) {
   const [showStartupOverlay, setShowStartupOverlay] = useState(true);
   // Reuse the send/adoption identity. Old fork history and optimistic rows must
@@ -37,7 +39,7 @@ export function useChatStartupOverlay({
   // Errors/human decisions must be reachable even without a query row; empty
   // entries have no launch request to wait for.
   if (showStartupOverlay && (agentError || startupError || hasPendingInteraction ||
-    (!hasInitialMessage && isConnected && !isSessionLoading))) {
+    (!hasInitialMessage && (hasSessionHistory || (isConnected && !isSessionLoading))))) {
     setShowStartupOverlay(false);
   }
 

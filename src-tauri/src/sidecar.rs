@@ -59,6 +59,7 @@ pub use cron_execute::{
     ensure_goal_sidecar_owner, execute_cron_task, execute_goal_turn, CronExecutePayload,
     CronExecuteResponse, GoalExecutePayload, GoalExecuteResponse,
 };
+pub(crate) use cron_execute::is_goal_work_pending_response;
 use health::{check_sidecar_http_health, wait_for_health, wait_for_readiness};
 pub use instances::{
     forward_terminal_events_to_renderer, get_tab_server_url, get_tab_sidecar_status,

@@ -313,6 +313,30 @@ describe('MessageList footer status positioning', () => {
     expect(screen.getByTestId('permission-choice')).toBeDisabled();
   });
 
+  it('renders model recovery in the existing status row and refreshes its countdown', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-19T00:00:00.000Z'));
+    const view = renderList({
+      isLoading: true,
+      systemStatus: `model_recovery:${Date.now() + 2_000}:3`,
+    });
+    expect(document.querySelectorAll('[data-chat-status-row]')).toHaveLength(1);
+    expect(screen.getByText(/等待模型恢复，2秒后重试（第3次）/)).toBeInTheDocument();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_000); });
+    expect(screen.getByText(/等待模型恢复，1秒后重试（第3次）/)).toBeInTheDocument();
+
+    view.rerender(<MessageList {...createBaseProps({ isLoading: true, systemStatus: null })} />);
+    expect(screen.queryByText(/等待模型恢复/)).not.toBeInTheDocument();
+  });
+
+  it('keeps legacy API retry wording and shows a bounded paused reason', () => {
+    const legacy = renderList({ isLoading: true, systemStatus: 'api_retry:2:3' });
+    expect(screen.getByText(/API 请求重试中（第 2\/3 次）/)).toBeInTheDocument();
+    legacy.rerender(<MessageList {...createBaseProps({ isLoading: true, systemStatus: 'model_recovery_paused' })} />);
+    expect(screen.getByText(/自动恢复已暂停，进度已保留/)).toBeInTheDocument();
+    expect(screen.queryByText(/model_recovery_paused/)).not.toBeInTheDocument();
+  });
+
   it('projects interaction waiting as a static status instead of a reasoning timer', () => {
     renderList({
       isLoading: true,

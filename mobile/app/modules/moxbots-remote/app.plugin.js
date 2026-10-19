@@ -1,7 +1,27 @@
-const { withAndroidManifest, withInfoPlist, withProjectBuildGradle, withGradleProperties } = require('expo/config-plugins');
+const { withAndroidManifest, withInfoPlist, withProjectBuildGradle, withGradleProperties, withDangerousMod, IOSConfig } = require('expo/config-plugins');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
 /** Permissions belong to the installed internal app, requested only on a mic tap. */
 module.exports = function withMoxBotsRemote(config) {
+  config = withDangerousMod(config, ['ios', async (entry) => {
+    // The bare Expo template has a generic launch image even without the splash
+    // runtime package. Keep that generated launch screen on the desktop brand.
+    const sourceRoot = IOSConfig.Paths.getSourceRoot(entry.modRequest.projectRoot);
+    const images = path.join(sourceRoot, 'Images.xcassets', 'SplashScreenLogo.imageset');
+    await fs.mkdir(images, { recursive: true });
+    await fs.copyFile(path.join(entry.modRequest.projectRoot, 'assets', 'moxbots-mark.png'), path.join(images, 'moxbots-mark.png'));
+    await fs.writeFile(path.join(images, 'Contents.json'), JSON.stringify({ images: [{ filename: 'moxbots-mark.png', idiom: 'universal' }], info: { version: 1, author: 'xcode' } }, null, 2));
+    const storyboardPath = path.join(sourceRoot, 'SplashScreen.storyboard');
+    let storyboard = await fs.readFile(storyboardPath, 'utf8');
+    if (!storyboard.includes('id="EXPO-SplashScreen"')) throw new Error('Expected Expo launch image before applying MoXBots branding');
+    storyboard = storyboard.replace(/image="SplashScreen"/g, 'image="SplashScreenLogo"');
+    if (!storyboard.includes('id="MOXBOTS-SplashWidth"')) {
+      storyboard = storyboard.replace('<constraints>', '<constraints>\n                            <constraint firstItem="EXPO-SplashScreen" firstAttribute="width" constant="120" id="MOXBOTS-SplashWidth"/>\n                            <constraint firstItem="EXPO-SplashScreen" firstAttribute="height" constant="120" id="MOXBOTS-SplashHeight"/>');
+    }
+    await fs.writeFile(storyboardPath, storyboard);
+    return entry;
+  }]);
   config = withGradleProperties(config, (entry) => {
     // The internal Rust/JNI artifact and dedicated test AVD are arm64. Do not
     // advertise installable ABIs for which the app has no native controller.

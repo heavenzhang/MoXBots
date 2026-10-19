@@ -154,7 +154,10 @@ describe('context recovery over the existing bridge handler', () => {
     const reader = response.body!.getReader();
     expect(new TextDecoder().decode((await reader.read()).value)).toContain('partial');
     finish();
-    await expect(reader.read()).rejects.toThrow();
+    const failure = new TextDecoder().decode((await reader.read()).value);
+    expect(failure).toContain('event: error');
+    expect(failure).toContain('automatic_replay_blocked');
+    expect((await reader.read()).done).toBe(true);
     const replay = history(); replay.messages.push({ role: 'user', content: 'SDK rescue after interrupted output' });
     const blocked = await handler(request(replay));
     expect(blocked.status).toBe(409);

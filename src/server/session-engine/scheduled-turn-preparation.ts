@@ -36,24 +36,25 @@ export function createScheduledDispatchGuard(input: {
     const prior = await input.preceding();
     if (!prior.accepted) return prior;
     if (canceled) {
-      return { accepted: false, code: 'system_skill_dispatch_canceled', error: 'System skill dispatch was canceled' };
+      return { accepted: false, code: 'system_skill_dispatch_canceled', error: 'System skill dispatch was canceled', rollbackBeforeReject: Promise.resolve(input.preceding.cancel?.()) };
     }
     try {
       await input.requireNativeSystemSkill?.(requiredSystemSkill);
       return canceled
-        ? { accepted: false, code: 'system_skill_dispatch_canceled', error: 'System skill dispatch was canceled' }
-        : { accepted: true };
+        ? { accepted: false, code: 'system_skill_dispatch_canceled', error: 'System skill dispatch was canceled', rollbackBeforeReject: Promise.resolve(input.preceding.cancel?.()) }
+        : prior;
     } catch (error) {
       return {
         accepted: false,
         code: 'required_system_skill_unavailable',
         error: error instanceof Error ? error.message : String(error),
+        rollbackBeforeReject: Promise.resolve(input.preceding.cancel?.()),
       };
     }
   };
   guard.cancel = () => {
     canceled = true;
-    input.preceding.cancel?.();
+    return input.preceding.cancel?.();
   };
   return guard;
 }

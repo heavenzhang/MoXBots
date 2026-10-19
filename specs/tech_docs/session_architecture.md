@@ -194,6 +194,8 @@ Builtin Rewind 以保留前缀末条 native 内容的精确 chain UUID 为边界
 
 新 Fork 统一先实体化 native history，builtin 同时映射 SDK UUID；完整执行配置复用 `snapshotForForkedSession`，不手工挑字段。Fork 不继承 source 的 Agent origin、Goal、置顶或 Tag。旧 lazy fork 通过记录的 binding/source 解析真实 native 来源，允许尚未启动的旧分支继续 fork；新请求不再生成 lazy fork 或通过设置切回旧路径。prepared 发布、附件复制和清理见 [V2 transcript](session_transcript_v2.md#生命周期与显式操作)。
 
+错误横幅的「重新发送」与重新生成回答不同：前者通过既有普通 desktop send/admission 再发送原始可见输入，保留 canonical history、已执行工具和文件，不调用 `/chat/retry`，也不建立新的 `sdkResumeSessionAt`。本地未接纳的失败气泡仍仅替换临时投影；传输不确定时先确认，并在确认后复核原请求是否已经接纳。Goal/Task 的系统包装由当前 preparation 重新生成，不将旧包装作为用户正文重发；纯自动 Goal continuation 不作为用户请求重发。失效 native boundary 仍明确拒绝，不能借重发清空边界、恢复已丢弃的历史。
+
 Retry 经 `POST /chat/retry` 进入 adapter，`/chat/external-retry` 仅保留同一语义的路由别名。Builtin 使用现有串行 mutation scope：内部重发可以重入，外部接纳等待该 scope 结束。External 的 mutation lease 覆盖重发接纳；期间新入队的消息保留，自身 replay 排到队首后才释放 dispatch。V1 复用既有删除事件、V2 由 writer 发布删除操作，先同步移除旧消息再接收 replay。不支持精确 native history 操作的 Runtime 返回明确能力错误，不以只截断产品记录代替。Codex 的边界选择见 [Runtime 文档](multi_agent_runtime.md#53-codex)。
 
 Retry 的 `model` / `reasoningEffort` 是与普通发送一致的可选发送意图：UI 传当前选项，adapter 在同一 mutation scope 内将其带入重新入队。不能只传消息 ID 后依赖预热进程默认模型，也不能把 Runtime 展示用的 reported model 反写成配置 authority。未传选项的旧调用仍采用既有后端默认语义。
@@ -203,6 +205,8 @@ Retry 的 `model` / `reasoningEffort` 是与普通发送一致的可选发送意
 Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代表 turn 已结束；前端等待执行事件，缺失时读取 `/api/session-state`，并丢弃已被更新执行事件、恢复或连接代际取代的读结果。Reset 成功返回前由 adapter 通过既有 publisher 发布新 identity 的 desktop 元数据和当前执行配置快照，并等待 writer 的 `flushForMutation` 确认磁盘可见；保证尚未发送首条消息也能绑定 Task/Goal、重启后仍能恢复模型配置。前端只有在后端确认新 identity 后才采用新空会话；拒绝时保留历史，丢响应时回读真实 binding。App 打开新 Tab 失败须与「可在当前空会话 reset」区分，不能用失败触发破坏性的 fallback。
 
 ## 5. Goal 与跨 Session 协作
+
+Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 lease 与 SessionStore 持久 intent，暂停/停止沿原控制 owner，详见 [模型持久恢复](model_recovery.md)。它不会重放原任务或建立第二套 Goal 调度。
 
 ### 5.1 Goal
 
@@ -273,6 +277,10 @@ V2 的 live projection 与异步 writer 同属 SessionStore。约 100 ms 的持�
 Rust 按 `(sidecar key, generation)` 把控制请求和 SSE 代理到当前进程。每次实际 replacement 都产生新 generation；旧 generation 的 response、terminal、activity 和 notification claim 必须丢弃。
 
 已恢复历史 Tab 以 REST 读取历史和当前状态，再按 revision 接收 SSE 增量，并拒绝 cold-history replay 覆盖该 baseline。尚未采用 REST baseline 的 SSE-native 新生会话，可在重连时采用有序 cold-history snapshot 修复遗漏的正文与创建事件；详见 [V2 transcript](./session_transcript_v2.md)。不能把断线期间缺失的 SSE 当成历史不存在。
+
+历史首屏与执行恢复分离：TabProvider 在首次进入持久 Session 时，通过 Global 的既有 `/sessions/:id?limit=80` 读取 SessionStore 展示预览，不等待目标 Sidecar/SSE。预览只投影消息，不采纳进程局部 revision、idle、队列或待审批，不解除操作门禁。目标 Sidecar 的原 REST snapshot 与 SSE fence 仍独占实时恢复；迟到预览不能覆盖 ready/live-recovery、新生会话、已切换身份或已卸载 Tab。
+
+已挂载缓存页切换保留同一 Chat/TabProvider、历史、草稿和阅读位置，不重读历史；后台 exact-owner ensure/reconcile 继续由 Rust 裁决。连接失败或确认目标进程已移除时，App 保留 Chat 并投影连接错误，普通会话可在原 Tab 重试；错误在 owner 恢复成功前不清除。预览可读和执行可用是两个状态：前者解除全屏历史遮罩，后者仍由 `isSessionLoading`/connectionError 门禁控制发送、审批等操作。失败提示与恢复状态采用非遮挡 notice。
 
 SSE transport 断开不代表用户取消，也不拥有 abort 权限。turn 继续执行并持久化；只有显式 Stop、Session lifecycle 命令、Runtime terminal 或 Sidecar termination 能改变执行状态。
 

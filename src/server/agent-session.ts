@@ -7,9 +7,12 @@ import { selectBuiltinRewindBoundary } from './session-core/builtin-rewind-bound
 import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
 import { ContextRecoveryController } from './openai-bridge/context-recovery';
-import { archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger } from './SessionStore';
+import { SessionModelRecovery } from './builtin-session/model-recovery';
+import { MODEL_RECOVERY_WINDOW_MS, validModelRecovery } from '../shared/modelRecovery';
+import type { ModelFailoverSettings } from '../shared/modelFailover';
+import { archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger, updateBuiltinModelRecovery, getBuiltinModelRecovery } from './SessionStore';
 import { configureBuiltinTranscriptBinding } from './builtin-session/transcript';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { OPENCODE_GO_PROVIDER_ID } from '../shared/opencode-go';
 import { assertQueryModelRoutesCompatible } from '../shared/provider-model-routing';
 import type { Provider } from '../shared/config-types';
@@ -452,6 +455,7 @@ import {
   turnState,
   waitForCurrentTurnTerminalObserver,
 } from './builtin-session/turn';
+import { progressConvergence } from './builtin-session/progress-convergence';
 import {
   withSessionCompletionTerminal,
   type SessionCompletionTerminal,
@@ -1688,6 +1692,74 @@ export { getSidecarPort, setSidecarPort } from './session-core/sidecar-port';
 let activeSessionBridgeToken: string | null = null;
 let activeSessionModelFailover: ReturnType<typeof createSessionModelFailover> | undefined;
 let activeSessionContextRecovery: ContextRecoveryController | undefined;
+let activeSessionModelRecovery: SessionModelRecovery | undefined;
+
+function currentModelRecoveryRoute(): string {
+  const backup = loadAdminConfig().modelFailover as ModelFailoverSettings | undefined;
+  return createHash('sha256').update(JSON.stringify([configState.currentProviderEnv?.providerId,
+    configState.currentProviderEnv?.baseUrl, configState.currentModel,
+    configState.currentProviderEnv?.apiProtocol, configState.currentProviderEnv?.upstreamFormat,
+    backup?.enabled, backup?.backup])).digest('hex');
+}
+
+const restoringModelRecoveryIds = new Set<string>();
+
+/** Cold restoration adds only a continuation reminder, never the original user/tool input. */
+async function restorePersistedModelRecovery(): Promise<boolean> {
+  const metadata = getCurrentProductSessionMetadata();
+  const recovery = metadata ? getBuiltinModelRecovery(metadata.id) : undefined;
+  if (!metadata || !recovery || recovery.status !== 'waiting' || recovery.goalId
+    || isExternalRuntime(getCurrentRuntimeType()) || isIsolatedQaBuild()) return false;
+  const productSessionId = sessionId;
+  const nativeHistoryId = resolveBuiltinSdkSessionId(metadata);
+  const pause = async (reason: string) => {
+    await updateBuiltinModelRecovery(productSessionId, nativeHistoryId ?? productSessionId,
+      { ...recovery, status: 'paused', reason }, recovery, () => true, () => true);
+  };
+  try {
+    if (!validModelRecovery(recovery) || !sessionRegistered || metadata.pendingConversationMutation
+      || metadata.sdkResumeSessionAt || nativeHistoryId !== recovery.sdkSessionId
+      || recovery.routeIdentity !== currentModelRecoveryRoute() || Date.now() >= recovery.deadlineAt) {
+      await pause('Recovery needs a verified native history, route and unexpired checkpoint');
+      return false;
+    }
+    const ledger = loadBuiltinContextLedger(productSessionId, nativeHistoryId) as {
+      uncertain?: unknown[]; blocked?: boolean;
+    } | undefined;
+    if (!ledger || ledger.blocked || !Array.isArray(ledger.uncertain) || ledger.uncertain.length) {
+      await pause('An earlier action requires read-only reconciliation');
+      return false;
+    }
+    if (restoringModelRecoveryIds.has(recovery.id) || isTurnInFlight() || getTurnAdmissionTicket()) return true;
+    restoringModelRecoveryIds.add(recovery.id);
+    const live = () => sessionId === productSessionId && !lifecycleState.abortRequested
+      && getSessionMetadata(productSessionId)?.modelRecovery?.id === recovery.id
+      && getSessionMetadata(productSessionId)?.modelRecovery?.status === 'waiting'
+      && currentModelRecoveryRoute() === recovery.routeIdentity;
+    const validate = () => ({ accepted: live(), code: 'automatic_replay_blocked',
+      error: live() ? undefined : 'automatic_replay_blocked: The recovery was stopped or superseded.' });
+    const guard = Object.assign(async () => ({ ...validate(), validateAtCommit: validate }), {
+      cancel: () => pause('Recovery continuation was stopped before dispatch'),
+    });
+    const accepted = await enqueueUserMessage(
+      '<system-reminder>The model service was temporarily unavailable. Continue the existing unfinished task from its native conversation and completed tool results. Do not repeat confirmed writes, sends, submissions or deployments. Verify uncertain outcomes read-only; stop if they cannot be verified.</system-reminder>',
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: { user: 'none', assistant: 'none' }, queueResponseModeOverride: 'turn',
+        beforeUserPersistence: guard, beforeDispatch: guard },
+    );
+    if (accepted.error) {
+      await pause('Recovery continuation could not be safely admitted');
+      return false;
+    }
+    broadcast('chat:api-retry', { recovery });
+    return true;
+  } catch {
+    await pause('The persistent recovery checkpoint could not be verified');
+    return false;
+  } finally {
+    restoringModelRecoveryIds.delete(recovery.id);
+  }
+}
 
 /**
  * Build the upstream config that the bridge handler will see for the
@@ -1711,13 +1783,20 @@ async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<Up
         request?.signal,
       )
     : undefined;
+  const modelFailover = activeSessionModelFailover;
   return {
     providerId: activeProviderEnv?.providerId ?? SUBSCRIPTION_PROVIDER_ID,
     apiProtocol: activeProviderEnv?.apiProtocol ?? 'anthropic',
     authType: activeProviderEnv?.authType,
-    modelFailover: activeSessionModelFailover,
+    modelFailover,
     contextRecovery: activeSessionContextRecovery,
-    headersTimeoutMs: activeSessionModelFailover ? 30_000 : undefined,
+    // Arm the fast failover timer only while a retry or backup switch is
+    // actually authorized. When recovery is fenced (e.g. an uncertain tool
+    // outcome), use the generic five-minute bound instead of failing a healthy
+    // slow header wait at 30s with no possible recovery.
+    headersTimeoutMs: modelFailover
+      ? () => modelFailover.fastRecoveryAuthorized() ? 30_000 : undefined
+      : undefined,
     baseUrl: activeProviderEnv?.baseUrl ?? '',
     apiKey: managedCredential?.accessToken ?? activeProviderEnv?.apiKey ?? '',
     credentialVersion: managedCredential?.credentialVersion,
@@ -1782,8 +1861,8 @@ async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<Up
  * subprocess that will see a (possibly different) URL.
  */
 function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): void {
-  const failoverEnabled = (loadAdminConfig().modelFailover as { enabled?: boolean } | undefined)?.enabled === true
-    && sessionApiFailoverEligible(configState.currentProviderEnv);
+  // Safe pre-delivery primary retries do not depend on configuring a backup.
+  const failoverEnabled = sessionApiFailoverEligible(configState.currentProviderEnv);
   const contextRecoveryEnabled = contextRecoveryApiRoute(configState.currentProviderEnv);
   if (configState.currentProviderEnv?.apiProtocol !== 'openai'
     && !failoverEnabled && !contextRecoveryEnabled) {
@@ -1795,6 +1874,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       activeSessionBridgeToken = null;
       activeSessionModelFailover = undefined;
       activeSessionContextRecovery = undefined;
+      activeSessionModelRecovery = undefined;
     }
     return;
   }
@@ -1807,17 +1887,17 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
     activeSessionBridgeToken = null;
     activeSessionModelFailover = undefined;
     activeSessionContextRecovery = undefined;
+    activeSessionModelRecovery = undefined;
   }
   if (!activeSessionBridgeToken) {
     activeSessionBridgeToken = randomUUID();
     const token = activeSessionBridgeToken;
-    if (contextRecoveryEnabled) {
-      const productSessionId = sessionId;
-      const routeIdentity = () => JSON.stringify([configState.currentProviderEnv?.providerId,
-        configState.currentProviderEnv?.baseUrl, configState.currentModel]);
-      const route = routeIdentity();
-      const isCurrent = () => activeSessionBridgeToken === token && sessionId === productSessionId
-        && route === routeIdentity() && !lifecycleState.abortRequested;
+    const productSessionId = sessionId;
+    const routeIdentity = () => JSON.stringify([configState.currentProviderEnv?.providerId,
+      configState.currentProviderEnv?.baseUrl, configState.currentModel]);
+    const isCurrent = () => activeSessionBridgeToken === token && sessionId === productSessionId
+      && !lifecycleState.abortRequested && activeSessionModelRecovery?.readState()?.status !== 'paused';
+    if (contextRecoveryEnabled || failoverEnabled) {
       const nativeHistoryId = getCurrentProductSessionMetadata()?.sdkSessionId ?? productSessionId;
       let initialLedger: unknown;
       try { initialLedger = loadBuiltinContextLedger(productSessionId, nativeHistoryId); }
@@ -1827,6 +1907,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         persistLedger: ledger => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent),
         scope: () => getCurrentTurnSourceItem()?.id,
         isActive: isCurrent,
+        requestIdentity: routeIdentity,
         canRecover: () => !hasBuiltinBackgroundWork(),
         backup: (body, metadata) => archiveBuiltinContextRequest(productSessionId, body, metadata, isCurrent),
         onRecovery: () => {
@@ -1836,9 +1917,39 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       }); } catch (error) { activeSessionBridgeToken = null; throw error; }
     }
     if (failoverEnabled) {
+      const metadata = getCurrentProductSessionMetadata();
+      const nativeHistoryId = (metadata && resolveBuiltinSdkSessionId(metadata)) ?? productSessionId;
+      const exactHistory = () => {
+        const current = getSessionMetadata(productSessionId);
+        return sessionId === productSessionId && !!current
+          && (resolveBuiltinSdkSessionId(current) ?? productSessionId) === nativeHistoryId;
+      };
+      activeSessionModelRecovery = new SessionModelRecovery({
+        read: () => getBuiltinModelRecovery(productSessionId),
+        current: () => {
+          const source = getCurrentTurnSourceItem();
+          if (!source || source.turnOwner?.kind === 'task' || !exactHistory()) return undefined;
+          return { sdkSessionId: nativeHistoryId, routeIdentity: currentModelRecoveryRoute(), turnId: source.id,
+            goalId: source.turnOwner?.kind === 'goal' ? source.turnOwner.id : undefined };
+        },
+        isLive: () => isCurrent() && !builtinInterrupt.isInterrupting(),
+        prepare: async request => {
+          if (!activeSessionContextRecovery) throw new Error('Action protection unavailable');
+          await activeSessionContextRecovery.protectInference(await request.json());
+        },
+        write: (next, expected, live) => updateBuiltinModelRecovery(
+          productSessionId, nativeHistoryId, next, expected, live, isCurrent),
+        onState: recovery => {
+          if (sessionId !== productSessionId) return;
+          broadcast('chat:api-retry', recovery ? { recovery } : null);
+        },
+      });
       activeSessionModelFailover = createSessionModelFailover({
-        isLive: () => activeSessionBridgeToken === token && !lifecycleState.abortRequested
-          && (sessionState === 'running' || sessionState === 'starting'),
+        recovery: activeSessionModelRecovery,
+        isLive: isCurrent,
+        canRetry: () => !builtinInterrupt.isInterrupting()
+          && activeSessionModelRecovery?.readState()?.status !== 'paused'
+          && activeSessionContextRecovery?.canRetryInference() !== false,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => ({ env: configState.currentProviderEnv, model: configState.currentModel ?? '',
           turnId: getCurrentTurnSourceItem()?.id }),
@@ -1874,6 +1985,7 @@ function unregisterActiveSessionBridge(): void {
   activeSessionBridgeToken = null;
   activeSessionModelFailover = undefined;
   activeSessionContextRecovery = undefined;
+  activeSessionModelRecovery = undefined;
 }
 
 /** Returns true if the active session has a registered OpenAI bridge token. */
@@ -2306,6 +2418,10 @@ function maybeSurfaceInFlightAtAssistantTurnStart(reason: string): void {
 let managedQueryController: AbortController | undefined;
 
 function abortPersistentSession(options: { notifyPendingRequests?: boolean } = {}): void {
+  if (activeSessionModelRecovery) {
+    registerSessionAbortCleanup(activeSessionModelRecovery.pause('Execution stopped; progress is preserved')
+      .then(durable => { if (!durable) console.error('[agent] Model recovery stop could not be durably committed'); }));
+  }
   const abortedTurnId = getBuiltinCurrentTurnQueueId() ?? undefined;
   const notifyPendingRequests = options.notifyPendingRequests ?? true;
   clearTransientProviderRetryTimer('abort');
@@ -6552,6 +6668,17 @@ export function buildClaudeSessionEnv(
       // The bridge owns the bounded retry budget. Native retries must not
       // silently start another chain after partial output or exhaustion.
       env.CLAUDE_CODE_MAX_RETRIES = '0';
+      if (activeSessionModelRecovery) {
+        // Only the owned loopback bridge may hold a request across durable
+        // backoff. Its upstream header timeout and the Session watchdog retain
+        // normal execution limits; independent native timers must not revoke
+        // this same lease or initiate their own replay before our deadline.
+        env.API_TIMEOUT_MS = String(MODEL_RECOVERY_WINDOW_MS + 5 * 60_000);
+        env.CLAUDE_ENABLE_BYTE_WATCHDOG = '0';
+        env.CLAUDE_ENABLE_STREAM_WATCHDOG = '0';
+        env.API_FORCE_IDLE_TIMEOUT = '0';
+        env.CLAUDE_CODE_RETRY_WATCHDOG = '0';
+      }
     }
     // CRITICAL: Strip proxy env vars from subprocess environment.
     // The Claude Code CLI's MA6() unconditionally sets fetchOptions.proxy for the Anthropic
@@ -8395,7 +8522,8 @@ export async function initializeAgent(
   if (!lifecycleState.preWarmDisabled) {
     try {
       const mcpAuthority = getMcpAuthorityForScenario(currentScenario.type);
-      const shouldSelfResolveMcp = mcpAuthority === 'self-resolve' && hasInitialPrompt;
+      const restoringModel = initMeta?.modelRecovery?.status === 'waiting' && !initMeta.modelRecovery.goalId;
+      const shouldSelfResolveMcp = (mcpAuthority === 'self-resolve' && hasInitialPrompt) || restoringModel;
       // v0.1.69: pass session metadata so the sidecar prefers session snapshot
       // (`meta.model`, `meta.providerId/EnvJson`, `meta.mcpEnabledServers`) over the
       // agent's current values. For IM sessions (which deliberately don't snapshot
@@ -8492,6 +8620,8 @@ export async function initializeAgent(
       undefined,
       { channelDelivery: SESSION_BOUND_CHANNEL_DELIVERY },
     );
+  } else if (await restorePersistedModelRecovery()) {
+    // The restored Query's inference gate honors the original persisted wait.
   } else {
     // Pre-warm subprocess + MCP so first message is fast.
     // Only start immediately if MCP is already resolved (IM Bot sessions that
@@ -8575,6 +8705,9 @@ export async function switchToSession(targetSessionId: string): Promise<boolean>
 
   // Settle the old writer before clearing state needed by the retained binding.
   await setCurrentSessionId(targetSessionId);
+  // The progress ledger is process-wide; a session switch must not inherit the
+  // previous session's read/edit evidence or declared stage.
+  progressConvergence.reset();
 
   // Reset message/queue/streaming state (shared with initializeAgent, resetSession)
   clearMessageState();
@@ -8676,6 +8809,7 @@ export async function switchToSession(targetSessionId: string): Promise<boolean>
 
   console.log(`[agent] switchToSession: ready, agentDir=${agentDir}, sessionRegistered=${sessionRegistered}`);
 
+  if (await restorePersistedModelRecovery()) return true;
   // Pre-warm with resumed session so subprocess + MCP are ready before user types
   schedulePreWarm();
   return true;
@@ -9088,6 +9222,12 @@ export async function enqueueUserMessage(
   }
   const channelDelivery = options.channelDelivery;
 
+  const pausedRecovery = getBuiltinModelRecovery(sessionId);
+  const recoveryToResume = !isTurnInFlight() && pausedRecovery?.status === 'paused'
+    && (options.fromDesktopChatSend || (options.turnOwner?.kind === 'goal' && pausedRecovery.goalId === options.turnOwner.id))
+    ? pausedRecovery : undefined;
+  const recoveryAdmissionSessionId = sessionId;
+
   try {
     const globalSkillInventory = createGlobalSkillInventorySnapshot();
     const desiredCapabilities = resolveEffectiveProjectCapabilities(agentDir, { globalSkillInventory });
@@ -9141,7 +9281,7 @@ export async function enqueueUserMessage(
       })
     : undefined;
   const effectiveQueueSource = metadata?.source ?? currentScenario.type;
-  const queueResponseMode = options?.queueResponseModeOverride ?? resolveChatQueueResponseMode(
+  const queueResponseMode = recoveryToResume ? 'turn' : options?.queueResponseModeOverride ?? resolveChatQueueResponseMode(
     loadAdminConfig().chatQueueResponseMode,
     options?.fromDesktopChatSend,
   );
@@ -9195,6 +9335,7 @@ export async function enqueueUserMessage(
       pushTurnBoundary(reservedTurnBoundaryItem);
     } else {
       setTurnAdmissionTicket(admissionTicket);
+      if (recoveryToResume) setSessionState('starting');
     }
   }
 
@@ -9212,6 +9353,17 @@ export async function enqueueUserMessage(
   await resolvePendingBuiltinConversationMutationForActiveSession();
   if (admissionTicket?.canceled) {
     return { queued: false, error: 'Queue item was cancelled before dispatch' };
+  }
+  if (recoveryToResume) {
+    const cleared = await updateSessionMetadata(recoveryAdmissionSessionId, { modelRecovery: undefined }, current =>
+      sessionId === recoveryAdmissionSessionId && !admissionTicket?.canceled && !lifecycleState.abortRequested
+      && current.modelRecovery?.id === recoveryToResume.id && getBuiltinModelRecovery(current.id)?.status === 'paused'
+      && current.modelRecovery.turnId === recoveryToResume.turnId
+      && current.modelRecovery.attempt === recoveryToResume.attempt);
+    if (!cleared || admissionTicket?.canceled || sessionId !== recoveryAdmissionSessionId || lifecycleState.abortRequested) {
+      return { queued: false, error: 'Recovery resume was stopped or superseded before dispatch' };
+    }
+    activeSessionModelRecovery?.resetForNewTurn();
   }
   if (!hasInitialPrompt && !canLazyMaterializeForThisMessage() && !getCurrentProductSessionMetadata()) {
     throw new Error(`[agent] refusing first message for unindexed existing session ${sessionId}; session metadata disappeared before first user turn`);
@@ -9342,11 +9494,9 @@ export async function enqueueUserMessage(
   );
   const nextModel = model ?? configState.currentModel;
   const modelChanged = !isSessionBusy && model !== undefined && model !== configState.currentModel;
-  // Apply a global opt-in change only at this existing idle configuration
-  // boundary. A pre-warmed Anthropic Query has its endpoint baked into env.
+  // API inference recovery is Query-owned even when no backup is selected.
   const failoverBridgeChanged = !isSessionBusy && !hasBuiltinBackgroundWork()
-    && ((loadAdminConfig().modelFailover as { enabled?: boolean } | undefined)?.enabled === true
-      && sessionApiFailoverEligible(effectiveProviderEnv)) !== !!activeSessionModelFailover;
+    && sessionApiFailoverEligible(effectiveProviderEnv) !== !!activeSessionModelFailover;
   const crossesProviderHistoryBoundary = !isSessionBusy
     && (providerChanged || modelChanged)
     && !canResumeAcrossBuiltinProviderHistory({
@@ -10174,6 +10324,11 @@ function settleCancelledInputActivity(): boolean {
  * work and delayed warm-up. Stop-button semantics only own the current turn. */
 export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = () => undefined): Promise<void> {
   assertCurrent();
+  const interruptedTurn = isTurnInFlight() ? getCurrentTurnSourceItem() : null;
+  // The updater must receive durable Stop evidence before it may exit the
+  // process. pause() revokes immediately and coalesces the abort path's call.
+  const recoveryStop = activeSessionModelRecovery?.pause('Application update stopped model recovery')
+    ?? Promise.resolve(true);
   if (lifecycleState.preWarmTimer) {
     clearTimeout(lifecycleState.preWarmTimer);
     setPreWarmTimer(null);
@@ -10203,6 +10358,31 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
   if (lifecycleState.query || lifecycleState.processing || lifecycleState.preWarming) {
     throw new Error('UPDATE_ACTIVITY_UNKNOWN');
   }
+  if (!(await recoveryStop)) throw new Error('UPDATE_ACTIVITY_UNKNOWN: MODEL_RECOVERY_STOP_NOT_DURABLE');
+  assertCurrent();
+  // Query abort can exit without an SDK result. Its finally clears streaming
+  // flags but does not publish a turn terminal, leaving Goal/Cron execute-sync
+  // (and its update admission) waiting until its full execution deadline.
+  // Only settle after termination/rollback proof, and never rewrite an existing
+  // complete/error terminal. Admission remains frozen during this settlement.
+  const source = getCurrentTurnSourceItem();
+  if (source && (source === interruptedTurn || source.onTerminal)
+    && getLastSessionCompletionTerminal()?.turnId !== source.id) {
+    const terminal = handleMessageStopped();
+    broadcast('chat:message-stopped', withSessionCompletionTerminal(null, terminal));
+  }
+  // Domain acknowledgement can retry while management is unavailable. Keep
+  // the updater bounded without cancelling that owner's durable settlement.
+  let observerTimer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      waitForCurrentTurnTerminalObserver(),
+      new Promise<never>((_, reject) => {
+        observerTimer = setTimeout(() => reject(new Error('UPDATE_ACTIVITY_UNKNOWN')), 10_000);
+      }),
+    ]);
+  } finally { if (observerTimer) clearTimeout(observerTimer); }
+  assertCurrent();
   isStreamingMessage = false;
   setSessionState('idle');
   if (transcriptState.messages.length > 0) await persistMessagesToStorage();
@@ -10210,6 +10390,19 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
 }
 
 export async function interruptCurrentResponse(reason: CancelReason = 'user'): Promise<boolean> {
+  // pause() revokes locally synchronously. Send the existing exact interrupt
+  // immediately as well; slow storage must not delay cancellation of the SDK.
+  const persistence = activeSessionModelRecovery?.pause('Execution paused or stopped; progress is preserved')
+    ?? Promise.resolve(true);
+  const [durable, interrupted] = await Promise.all([persistence, interruptResponseWithoutRecovery(reason)]);
+  if (!durable) {
+    abortPersistentSession();
+    throw new Error('MODEL_RECOVERY_STOP_NOT_DURABLE: Execution was interrupted, but the recovery stop could not be saved. Repair local storage before reopening this task.');
+  }
+  return interrupted;
+}
+
+async function interruptResponseWithoutRecovery(reason: CancelReason): Promise<boolean> {
   traceBuiltinInputProgress('stop-requested');
   if (transientProviderRetryTimer) {
     clearTransientProviderRetryTimer(`interrupt:${reason}`);
@@ -12066,6 +12259,18 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             async (input: HookInput, _toolUseId: string | undefined, options: { signal: AbortSignal }): Promise<HookJSONOutput> => {
               const postInput = input as PostToolUseHookInput;
               await queryContextRecovery?.commitToolResult(postInput.tool_name, postInput.tool_input, postInput.tool_response);
+              // Bounded progress check: only content-level, per-turn evidence can
+              // produce a hint (declared edit stage + overlapping re-reads + no
+              // edit/write). It never stops, switches, or replays anything.
+              const convergenceHint = progressConvergence.observeTool(
+                postInput.tool_name,
+                postInput.tool_input,
+                { agentId: postInput.agent_id, turnText: getCurrentTurnSourceItem()?.messageText },
+              );
+              if (convergenceHint) {
+                const snapshot = progressConvergence.snapshot();
+                console.log(`[convergence] progress hint emitted ops=${snapshot.toolOps} reads=${snapshot.readOps} edits=${snapshot.editOps} readStreak=${snapshot.consecutiveReads} overlaps=${snapshot.overlappingRereads} maxFileOverlaps=${snapshot.maxFileOverlaps} declarations=${snapshot.declarations} hints=${snapshot.hints}`);
+              }
               // Propagate SDK's turn-level AbortSignal so resize aborts when the turn does.
               // Without this, a Jimp/sharp stall here blocks the SDK main loop's stdio drain.
               const resized = await resizeToolImageContent(postInput.tool_response, options?.signal);
@@ -12075,6 +12280,15 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   hookSpecificOutput: {
                     hookEventName: 'PostToolUse' as const,
                     updatedMCPToolOutput: resized,
+                    ...(convergenceHint ? { additionalContext: convergenceHint } : {}),
+                  },
+                };
+              }
+              if (convergenceHint) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PostToolUse' as const,
+                    additionalContext: convergenceHint,
                   },
                 };
               }
@@ -12432,7 +12646,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       // the post-answer budget is fresh, and skip the kill. evaluateTick already
       // advanced lastTickAt this tick, so the wait ending produces no spurious
       // suspension credit. (High-2, cross-review.)
-      if (hasPendingInteractiveRequest()) {
+      if (hasPendingInteractiveRequest() || activeSessionModelRecovery?.isWaiting()) {
         watchdog.markActivity();
         return;
       }

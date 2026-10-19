@@ -306,6 +306,105 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
+  it.each([true, false])('owns recovery transport and requires durable update Stop acknowledgement (%s)', async durable => {
+    vi.stubEnv('HOME', state.home);
+    try {
+      agent.setSidecarPort(15432);
+      const workspace = join(state.home, 'workspace');
+      await mkdir(workspace);
+      const providers = join(state.home, '.myagents', 'providers');
+      await mkdir(providers, { recursive: true });
+      await writeFile(join(providers, 'recovery-fixture.json'), JSON.stringify({
+        id: 'recovery-fixture', name: 'fixture', type: 'api',
+        models: [{ model: 'fixture-model' }],
+      }));
+      await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+      const provider = { providerId: 'recovery-fixture', baseUrl: 'http://127.0.0.1:1',
+        apiKey: 'synthetic-not-a-secret' };
+      expect((await import('../builtin-session/model-failover')).sessionApiFailoverEligible(provider)).toBe(true);
+      await agent.setSessionProviderEnv(provider);
+      await agent.setSessionModel('fixture-model');
+      await agent.enqueueUserMessage('Synthetic recovery transport', undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY });
+      await vi.waitFor(() => expect(state.query).toHaveBeenCalled());
+      const env = (state.query.mock.calls.at(-1)![0].options as Options).env;
+      const transportKeys = ['API_TIMEOUT_MS', 'CLAUDE_CODE_MAX_RETRIES', 'CLAUDE_ENABLE_BYTE_WATCHDOG',
+        'CLAUDE_ENABLE_STREAM_WATCHDOG', 'API_FORCE_IDLE_TIMEOUT', 'CLAUDE_CODE_RETRY_WATCHDOG'];
+      expect(Object.fromEntries(transportKeys.map(key => [key, env?.[key]])))
+        .toEqual({ API_TIMEOUT_MS: '2100000', CLAUDE_CODE_MAX_RETRIES: '0',
+        CLAUDE_ENABLE_BYTE_WATCHDOG: '0', CLAUDE_ENABLE_STREAM_WATCHDOG: '0', API_FORCE_IDLE_TIMEOUT: '0',
+        CLAUDE_CODE_RETRY_WATCHDOG: '0' });
+      const utilityProvider = { ...provider, apiProtocol: 'openai' as const };
+      const oneShot = agent.startOneShotBridge(utilityProvider, 'fixture-model', 'Recovery isolation fixture');
+      try {
+        const utilityEnv = agent.buildClaudeSessionEnv(utilityProvider, 'fixture-model', { bridgeToken: oneShot.token });
+        expect(utilityEnv.API_TIMEOUT_MS).not.toBe('2100000');
+        expect(utilityEnv.API_FORCE_IDLE_TIMEOUT).not.toBe('0');
+      } finally { oneShot.release(); }
+      let releaseStop!: (value: boolean) => void;
+      const acknowledgement = new Promise<boolean>(resolve => { releaseStop = resolve; });
+      const recovery = await import('../builtin-session/model-recovery');
+      const pause = vi.spyOn(recovery.SessionModelRecovery.prototype, 'pause').mockReturnValue(acknowledgement);
+      const stopping = agent.stopBuiltinSessionForUpdate().then(() => 'stopped', error => String(error));
+      try {
+        await vi.waitFor(() => expect(pause).toHaveBeenCalled());
+        // Storage acknowledgement must not delay the local cancellation.
+        const lifecycle = await import('../builtin-session/lifecycle');
+        expect(lifecycle.lifecycleState.abortRequested).toBe(true);
+      } finally { releaseStop(durable); }
+      expect(await stopping).toBe(durable ? 'stopped' : 'Error: UPDATE_ACTIVITY_UNKNOWN: MODEL_RECOVERY_STOP_NOT_DURABLE');
+    } finally { agent.setSidecarPort(0); vi.unstubAllEnvs(); }
+  });
+
+  it('keeps Stop effective while an explicit recovery resume waits for metadata CAS', async () => {
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const id = randomUUID();
+    await store.saveSessionMetadata({ id, agentDir: workspace, title: 'paused recovery',
+      createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin', sdkSessionId: id,
+      modelRecovery: { version: 1, id: randomUUID(), status: 'paused', sdkSessionId: id,
+        routeIdentity: 'route', turnId: 'old-turn', attempt: 1, startedAt: 1, nextRetryAt: 1, deadlineAt: 100_000, lastStatus: 503 } });
+    await agent.initializeAgent(workspace, null, id, { preWarmDisabled: true });
+    const original = store.updateSessionMetadata;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    let blocked = false;
+    vi.spyOn(store, 'updateSessionMetadata').mockImplementation(async (...args) => {
+      if ('modelRecovery' in args[1] && args[1].modelRecovery === undefined) {
+        blocked = true;
+        await gate;
+      }
+      return original(...args);
+    });
+    const resumed = agent.enqueueUserMessage('Continue the existing task', undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+      { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(blocked).toBe(true));
+    expect(await agent.interruptCurrentResponse()).toBe(true);
+    release();
+    expect((await resumed).error).toContain('stopped or superseded');
+    expect(state.query).not.toHaveBeenCalled();
+    expect(store.getSessionMetadata(id)?.modelRecovery?.status).toBe('paused');
+  });
+
+  it('pauses a cold recovery with missing native history instead of replaying the original task', async () => {
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const id = randomUUID();
+    const now = Date.now();
+    await store.saveSessionMetadata({ id, agentDir: workspace, title: 'unverified recovery',
+      createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin', sdkSessionId: id,
+      modelRecovery: { version: 1, id: randomUUID(), status: 'waiting', sdkSessionId: id,
+        routeIdentity: 'unverified-route', turnId: 'old-turn', attempt: 1,
+        startedAt: now, nextRetryAt: now + 15_000, deadlineAt: now + 1_800_000, lastStatus: 503 } });
+    await agent.initializeAgent(workspace, null, id, { preWarmDisabled: true });
+    expect(state.query).not.toHaveBeenCalled();
+    expect(store.getBuiltinModelRecovery(id)?.status).toBe('paused');
+    expect(agent.getMessages()).toHaveLength(0);
+  });
+
   it('normalizes a question before UI delivery and returns the actual answer through builtin canUseTool', async () => {
     const workspace = join(state.home, 'workspace');
     await mkdir(workspace);
@@ -655,29 +754,49 @@ describe('builtin V2 execution independent of product storage', () => {
       configSnapshotAt: new Date().toISOString(),
     });
     const active = store.getActiveSessionTranscript(metadata.id)!;
-    vi.spyOn(active.file, 'append').mockImplementation(() => new Promise<void>(resolve => { releaseWrite = resolve; }));
+    let appendReleased = false;
+    const appendBarrier = new Promise<void>(resolve => {
+      releaseWrite = () => { appendReleased = true; resolve(); };
+    });
+    vi.spyOn(active.file, 'append').mockReturnValue(appendBarrier);
     expect(await active.writer.flush(20)).toBe(false);
     const config = await import('../utils/admin-config');
     expect(config.resolveWorkspaceConfig(workspace, metadata, { includeMcp: false }).providerRoute)
       .toMatchObject({ providerId: 'anthropic-sub', model: 'claude-sonnet-4-6' });
-    const repair = vi.spyOn(store, 'updateSessionMetadata');
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    const originalRepair = store.updateSessionMetadata;
+    let pendingRepair: ReturnType<typeof originalRepair> | undefined;
+    let repairSettled = false;
+    const repair = vi.spyOn(store, 'updateSessionMetadata').mockImplementation((...args) => {
+      const result = originalRepair(...args);
+      if (args[0] === metadata.id && args[1].providerRoute) {
+        pendingRepair = result;
+        void result.then(() => { repairSettled = true; }, () => { repairSettled = true; });
+      }
+      return result;
+    });
+    // Prove dependency independence while storage stays blocked. A one-second
+    // wall-clock race also measured unrelated startup scheduling under load;
+    // the unchanged integration-test deadline still bounds a real deadlock.
     try {
-      const completed = (async () => {
-        await agent.initializeAgent(workspace, null, metadata.id);
-        let finish!: (outcome: TurnTerminalOutcome) => void;
-        const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
-        const admission = await agent.enqueueUserMessage('continue fork', [], undefined, undefined, undefined, undefined,
-          undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
-        expect(admission.error).toBeUndefined();
-        return terminal;
-      })();
-      await expect(Promise.race([completed, new Promise<never>((_, reject) => {
-        timeout = setTimeout(() => reject(new Error('AI waited for optional product route repair')), 1_000);
-      })])).resolves.toMatchObject({ status: 'complete' });
+      await agent.initializeAgent(workspace, null, metadata.id);
+      let finish!: (outcome: TurnTerminalOutcome) => void;
+      const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+      const admission = await agent.enqueueUserMessage('continue fork', [], undefined, undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+      expect(admission.error).toBeUndefined();
+      await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+      expect(appendReleased).toBe(false);
+      expect(pendingRepair).toBeDefined();
+      expect(repairSettled).toBe(false);
+      expect(state.query).toHaveBeenCalledWith(expect.objectContaining({
+        options: expect.objectContaining({ model: 'claude-sonnet-4-6' }),
+      }));
       expect(repair).toHaveBeenCalledWith(metadata.id, expect.objectContaining({ providerRoute: expect.any(Object) }), expect.any(Function));
       expect(await active.writer.flush(20)).toBe(false);
-    } finally { clearTimeout(timeout); }
+    } finally {
+      releaseWrite?.();
+      await pendingRepair;
+    }
   });
 
   it('preserves acknowledged queue order and exact materialized fork/rewind boundaries', async () => {
@@ -2228,6 +2347,51 @@ it('rechecks background work after awaited materialization, before SDK yield', a
   expect(state.sdkInputs).toHaveLength(0);
   expect(rollback).toHaveBeenCalledOnce();
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
+});
+
+it.each(['success', 'late-completion', 'double-click'])('checks explicit continuation at the actual builtin commit boundary (%s)', async mode => {
+  const platform = await import('../utils/platform');
+  vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
+  vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
+  vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
+  const workspace = join(state.home, 'continuation-workspace');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const active = store.getActiveSessionTranscript(meta.id)!;
+  active.writer.observe({ kind: 'message-create', message: { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't' } });
+  active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'interrupted' } });
+  await active.writer.flush();
+  if (mode === 'late-completion') {
+    const claim = store.claimPreparedSessionForTurnAdmission;
+    vi.spyOn(store, 'claimPreparedSessionForTurnAdmission').mockImplementation(async (...args) => {
+      const result = await claim(...args);
+      active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'complete' } });
+      return result;
+    });
+  }
+  const engine = (await import('../session-engine/selector')).getSessionEngine();
+  const send = () => engine.sendDesktopMessage({ text: 'Explicit continuation',
+    continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
+    scenario: { type: 'desktop' } });
+  const results = await Promise.all(mode === 'double-click' ? [send(), send()] : [send()]);
+  const result = results.find(receipt => receipt.success) ?? results[0];
+  if (mode === 'late-completion') {
+    expect(result).toMatchObject({ success: false, code: 'SESSION_CONTINUATION_STALE' });
+    expect(state.sdkInputs).toHaveLength(0);
+    expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task']);
+  } else {
+    expect(result.success).toBe(true);
+    expect(results.filter(receipt => receipt.success)).toHaveLength(1);
+    await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(1));
+    expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task', 'Explicit continuation']);
+    const repeated = await engine.sendDesktopMessage({ text: 'Explicit continuation',
+      continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
+      scenario: { type: 'desktop' } });
+    expect(repeated).toMatchObject({ success: false, code: 'SESSION_CONTINUATION_STALE' });
+    expect(state.sdkInputs).toHaveLength(1);
+  }
 });
 
 it('acknowledges Stop of promoted local input without yielding it to the SDK (#648)', async () => {

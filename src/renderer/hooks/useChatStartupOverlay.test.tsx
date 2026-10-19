@@ -61,6 +61,16 @@ describe('Chat startup handoff', () => {
     expect(result.current.showStartupOverlay).toBe(false);
   });
 
+  it('reveals display history without waiting for execution readiness and stays revealed on reconnect', () => {
+    const { result, rerender } = renderHook(useChatStartupOverlay, { initialProps: {
+      ...base, hasInitialMessage: false, hasSessionHistory: false, isSessionLoading: true,
+    } });
+    rerender({ ...base, hasInitialMessage: false, hasSessionHistory: true, isSessionLoading: true });
+    expect(result.current.showStartupOverlay).toBe(false);
+    rerender({ ...base, hasInitialMessage: false, hasSessionHistory: true, isSessionLoading: true, isConnected: false });
+    expect(result.current.showStartupOverlay).toBe(false);
+  });
+
   it.each(['error', 'interaction'] as const)('reveals a pending %s without requiring a query row', reason => {
     const { result, rerender } = renderHook(useChatStartupOverlay, { initialProps: base });
     rerender({ ...base, agentError: reason === 'error' ? 'send failed' : null,
