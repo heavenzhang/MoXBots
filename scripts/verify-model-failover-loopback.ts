@@ -31,6 +31,18 @@ let switches = 0;
 let restoredResult = false;
 let nativeSessionId: string | undefined;
 const results: unknown[] = [];
+function nativeTerminalText(rows: readonly unknown[]): string {
+  return rows.flatMap(value => {
+    if (!value || typeof value !== 'object') return [];
+    const row = value as { result?: unknown; errors?: unknown };
+    return [typeof row.result === 'string' ? row.result : '',
+      ...(Array.isArray(row.errors) ? row.errors.filter((error): error is string => typeof error === 'string') : [])];
+  }).filter(Boolean).join('\n');
+}
+// Duration, UUID and port digits are not upstream HTTP status evidence.
+assert.equal(nativeTerminalText([{ duration_ms: 409, session_id: 'fixture-409',
+  result: 'API Error: 503 fixture outage' }]), 'API Error: 503 fixture outage');
+assert.equal(nativeTerminalText([{ errors: ['API Error: 409 blocked'] }]), 'API Error: 409 blocked');
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 function message(res: ServerResponse, useTool: boolean) {
   const content = useTool ? { type: 'tool_use', id: 'count-once', name: 'mcp__counter__increment', input: {} }
@@ -155,11 +167,11 @@ try {
   assert.equal(switches, streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
   if (stopDuringRetry) { assert(interruptRequested); assert(interruptCompleted); assert.equal(interruptFailures.length, 0); }
   else if (upstreamRejection) {
-    const terminal = JSON.stringify(results);
+    const terminal = nativeTerminalText(results);
     assert.equal(rejectedResponses, 2, 'native SDK must actually repeat the rejected inference');
     assert(terminal.includes('automatic_replay_blocked'), 'native terminal must retain Goal safety pause semantics');
-    assert(terminal.includes('503'), 'native terminal must retain original HTTP 503');
-    assert(!terminal.includes('409'), 'native terminal must not replace rejection with HTTP 409');
+    assert(/\b(?:API Error:|HTTP)\s*503\b/.test(terminal), 'native terminal must retain original HTTP 503');
+    assert(!/\b(?:API Error:|HTTP)\s*409\b/.test(terminal), 'native terminal must not replace rejection with HTTP 409');
   }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }

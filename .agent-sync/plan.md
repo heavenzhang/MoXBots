@@ -542,3 +542,12 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 ## GOAL-STALL-001 — Goal watchdog 结算与可见恢复原因
 
 沿原 builtin/Goal lifecycle 修复 timeout abort 丢失 observer/authority 的问题；可见输入 turn_conflict 显式反馈，暂停原因显示在原状态栏。任务 `.agent-sync/tasks/codex-goal-stall-20261020-3d1bab4d.md`，验收 `dev-docs/goal-stall/acceptance.md`。代码、合成回归、实际组件与签名原生/真实模型分开；唯一 CI/桌面发布会话仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，依赖PR168的遗留进程治理后做当前真实任务恢复。
+
+
+## Deployment unit coordination —0.5.14 build2 (2026-10-20)
+
+Latest direct human AGENTS scopes unique CI/release ownership per deployable unit, retaining task branches and existing component versions. Desktop/updater macOSarm64 owner01a12bc2-907a-7702-b6dd-788225c5dfe4 owns this batch, under explicit human current-changes→0.5.14 online-update request. Internal mobile layout was also explicitly handed to this coordinator, but remains a separate0.1.0/internal build and physical-phone window; no mobile installation in this desktop batch. Existing owned-cloud deployment remains with01a12b99-7b38-78b1-831f-9c60257d386a and its prior target authority; no Host/cloud/Windows or website-design rollout is inferred. Cross-unit Test/Owned checks for this source union are coordinated once by desktop owner; workflow per-ref concurrency is not a global deployment lock.
+
+Desktop source batch:163/login and165/history already main;164/statusbar,166/watcher,168/final4f47eda6,REMOTE-UI d00f5ee3,STREAM502 ebf0ea95,GOAL-STALL8169f3b8 explicitly selected for integration CI. Do not conflate synthetic/native/actual Provider/remote business acceptance. Old local014 artifact is retained; new0.5.14/build2 uses CFBundleVersion514.2 and a distinct immutable tag/artifact. Final main exact SHA, CI and source containment must pass before one signed build. Promotion reuses verified bytes; later commits never silently enter a frozen candidate. Online stable currently013, retained with immutable011 rollback.
+
+Release record `dev-docs/releases/moxbots-0.5.14-build2.md`; task record `.agent-sync/tasks/codex-release-0514-build2-20261020-24823a0a.md`. Private release evidence lives outside Git. Current phase:integration checks passed; latest-main sync/final exact CI/main/native/signature/distribution gates pending. Only owned serial publication controls can admit target changes.
