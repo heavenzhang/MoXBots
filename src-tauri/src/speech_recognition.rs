@@ -7550,16 +7550,95 @@ mod tests {
     fn write_buffered_live_worker(path: &Path, responses: &[WorkerResponse]) {
         use std::os::unix::fs::PermissionsExt;
 
-        let mut wire = Vec::new();
-        for response in responses {
-            write_control_frame(&mut wire, response).unwrap();
-        }
-        let octal = wire
-            .iter()
-            .map(|byte| format!("\\{:03o}", byte))
-            .collect::<String>();
+        // Only this cfg(unix) test fixture requires /usr/bin/python3 and its
+        // standard library; the production Worker is unchanged.
+        // Responses must follow consumed commands, not an arbitrary exit timer:
+        // pre-emitting Ack/Completed can close stdin before a descheduled owner
+        // writes PCM, Flush or Finalize (or deadlock a small stdin pipe).
+        assert!(
+            Path::new("/usr/bin/python3").is_file(),
+            "Unix live-worker test fixture requires /usr/bin/python3"
+        );
+        let responses_json = serde_json::to_string(responses).unwrap();
         let script = format!(
-            "#!/bin/sh\n/bin/sleep 0.05\n/usr/bin/printf '{octal}'\n/bin/sleep 0.2\nexit 0\n"
+            r#"#!/usr/bin/python3
+import fcntl
+import json
+import struct
+import sys
+
+responses = json.loads({responses_json:?})
+assert [r['type'] for r in responses] == [
+    'ready', 'input_ack', 'heartbeat', 'transcript_segment', 'heartbeat', 'completed']
+identity = responses[0]['identity']
+version = responses[0]['protocolVersion']
+assert all(r['identity'] == identity and r['protocolVersion'] == version for r in responses)
+# Linux-only pressure is local to this child pipe, requires no privilege, and
+# ensures the fixture really consumes the 32KB PCM instead of trusting an Ack.
+if hasattr(fcntl, 'F_SETPIPE_SZ'):
+    fcntl.fcntl(0, fcntl.F_SETPIPE_SZ, 4096)
+
+def read_exact(size):
+    data = bytearray()
+    while len(data) < size:
+        part = sys.stdin.buffer.read(size - len(data))
+        if not part:
+            raise EOFError('fixture command truncated')
+        data.extend(part)
+    return bytes(data)
+
+def read_frame():
+    size = struct.unpack('>I', read_exact(4))[0]
+    assert 0 < size <= 262145
+    return read_exact(size)
+
+def command(kind):
+    payload = read_frame()
+    assert payload[0] == 1
+    value = json.loads(payload[1:])
+    assert value['type'] == kind and value['identity'] == identity
+    assert value['protocolVersion'] == version
+    return value
+
+def emit(index):
+    payload = b'\x01' + json.dumps(responses[index], separators=(',', ':')).encode()
+    sys.stdout.buffer.write(struct.pack('>I', len(payload)) + payload)
+    sys.stdout.buffer.flush()
+
+start = command('start')
+assert start['workloadKind'] == 'record_live_asr' and start['input']['type'] == 'live_pcm'
+assert len(start['input']['streams']) == 1
+stream = start['input']['streams'][0]
+emit(0)
+
+pcm = read_frame()
+assert len(pcm) >= 52 and pcm[0] == 2
+protocol, generation, track, sequence, first, count, channels, quality, record_first, record_end = struct.unpack(
+    '>IQBQQIBBQQ', pcm[1:52])
+assert protocol == version and generation == identity['workerGeneration']
+assert channels == stream['channels'] and channels > 0 and count % channels == 0
+assert len(pcm) == 52 + count * 2
+track_name = {{1: 'microphone', 2: 'system'}}[track]
+assert track_name == stream['track'] and first == stream['firstSample']
+assert sequence == stream['firstSequence']
+end = first + count // channels
+ack = responses[1]
+assert (ack['track'], ack['sequence'], ack['endSample']) == (track_name, sequence, end)
+emit(1)
+emit(2)
+
+command('flush')
+emit(3)
+emit(4)
+
+finish = command('finalize')
+assert len(finish['streams']) == 1
+final_stream = finish['streams'][0]
+assert (final_stream['track'], final_stream['lastSequence'], final_stream['finalSample']) == (
+    track_name, sequence, end)
+assert responses[5]['metrics']['sourceSamples'] == count // channels
+emit(5)
+"#
         );
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, script).unwrap();

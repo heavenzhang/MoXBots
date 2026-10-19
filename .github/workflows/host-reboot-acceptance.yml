@@ -1,14 +1,26 @@
-name: Host true KVM guest reboot acceptance (pinned M)
+name: Host true KVM guest reboot acceptance (pinned P)
 
 on:
   workflow_dispatch:
     inputs:
+      capability_only:
+        description: Probe actual KVM_CREATE_VM only; skip dependencies, payload GET and installation
+        type: boolean
+        default: false
       cached_public_run:
         description: Optional reviewed same-repository public payload cache run ID; pair with artifact ID
         type: string
         default: ''
       cached_public_artifact_id:
         description: Optional reviewed exact public payload cache artifact ID; empty means full public GET
+        type: string
+        default: ''
+      candidate_run:
+        description: Reviewed same-repository isolated candidate run; pair with artifact ID, excludes public cache
+        type: string
+        default: ''
+      candidate_artifact_id:
+        description: Exact candidate artifact; integrity pins remain in reviewed harness source
         type: string
         default: ''
 
@@ -33,25 +45,28 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: dcf8d9a60976c160e2b2aca33313c668c071132c
-          path: product-M
+          ref: 7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca
+          path: product-P
           persist-credentials: false
       - name: Require an actual usable nested KVM VM; never fall back to TCG
         run: |
-          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --output "$RUNNER_TEMP/host-reboot-summary" --probe-only
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,RUNNER_TEMP python3 harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-P" --output "$RUNNER_TEMP/host-reboot-summary" --probe-only
       - name: Validate optional reviewed public cache IDs
+        if: ${{ !inputs.capability_only }}
         env:
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
           CACHED_PUBLIC_ARTIFACT_ID: ${{ inputs.cached_public_artifact_id }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
         run: |
           python3 - <<'PY'
           import os, re
-          values = [os.environ[name] for name in ('CACHED_PUBLIC_RUN', 'CACHED_PUBLIC_ARTIFACT_ID')]
-          if bool(values[0]) != bool(values[1]) or any(value and not re.fullmatch(r'[1-9][0-9]{0,19}', value) for value in values):
-              raise SystemExit('Cache run and artifact IDs must be paired positive integers')
+          pairs = [(os.environ[a], os.environ[b]) for a, b in [('CACHED_PUBLIC_RUN', 'CACHED_PUBLIC_ARTIFACT_ID'), ('CANDIDATE_RUN', 'CANDIDATE_ARTIFACT_ID')]]
+          if sum(bool(pair[0]) for pair in pairs) > 1 or any(bool(a) != bool(b) or any(v and not re.fullmatch(r'[1-9][0-9]{0,19}', v) for v in (a,b)) for a,b in pairs):
+              raise SystemExit('Select exactly one paired candidate or public-cache transport, or fresh public GET')
           PY
       - uses: actions/download-artifact@v4
-        if: inputs.cached_public_run != '' && inputs.cached_public_artifact_id != ''
+        if: ${{ !inputs.capability_only && inputs.cached_public_run != '' && inputs.cached_public_artifact_id != '' }}
         with:
           artifact-ids: ${{ inputs.cached_public_artifact_id }}
           run-id: ${{ inputs.cached_public_run }}
@@ -60,14 +75,25 @@ jobs:
           path: ${{ runner.temp }}/host-public-cache-input
           merge-multiple: true
       - uses: actions/download-artifact@v4
+        if: ${{ !inputs.capability_only && inputs.candidate_run != '' && inputs.candidate_artifact_id != '' }}
         with:
-          artifact-ids: '12123324723'
-          run-id: '39093243842'
+          artifact-ids: ${{ inputs.candidate_artifact_id }}
+          run-id: ${{ inputs.candidate_run }}
           github-token: ${{ github.token }}
           repository: heavenzhang/MoXBots
-          path: ${{ runner.temp }}/host-reboot-service-M
+          path: ${{ runner.temp }}/host-candidate-input
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        if: ${{ !inputs.capability_only }}
+        with:
+          artifact-ids: '12172099959'
+          run-id: '39223945533'
+          github-token: ${{ github.token }}
+          repository: heavenzhang/MoXBots
+          path: ${{ runner.temp }}/host-reboot-service-P
           merge-multiple: true
       - name: Prepare disposable guest and outer real browser lab
+        if: ${{ !inputs.capability_only }}
         run: |
           ! systemctl is-active --quiet nginx.service
           ! pgrep -x nginx
@@ -78,15 +104,20 @@ jobs:
           "$RUNNER_TEMP/host-reboot-venv/bin/pip" install 'playwright==1.58.0'
           "$RUNNER_TEMP/host-reboot-venv/bin/python" -m playwright install --with-deps chromium
       - name: Fresh real browser install and true guest reboot with original identity
+        if: ${{ !inputs.capability_only }}
         env:
           CACHED_PUBLIC_RUN: ${{ inputs.cached_public_run }}
           CACHED_PUBLIC_ARTIFACT_ID: ${{ inputs.cached_public_artifact_id }}
+          CANDIDATE_RUN: ${{ inputs.candidate_run }}
+          CANDIDATE_ARTIFACT_ID: ${{ inputs.candidate_artifact_id }}
         run: |
           public_args=()
-          if [[ -n "$CACHED_PUBLIC_RUN" ]]; then
+          if [[ -n "$CANDIDATE_RUN" ]]; then
+            public_args=(--candidate-payload "$RUNNER_TEMP/host-candidate-input" --candidate-run "$CANDIDATE_RUN" --candidate-artifact-id "$CANDIDATE_ARTIFACT_ID")
+          elif [[ -n "$CACHED_PUBLIC_RUN" ]]; then
             public_args=(--cached-public-payload "$RUNNER_TEMP/host-public-cache-input" --cached-public-run "$CACHED_PUBLIC_RUN" --cached-public-artifact-id "$CACHED_PUBLIC_ARTIFACT_ID")
           fi
-          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-reboot-venv/bin/python" harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-M" --service-artifact "$RUNNER_TEMP/host-reboot-service-M" --output "$RUNNER_TEMP/host-reboot-summary" "${public_args[@]}"
+          sudo --preserve-env=CI,GITHUB_ACTIONS,RUNNER_ENVIRONMENT,GITHUB_REPOSITORY,GITHUB_RUN_ID,RUNNER_TEMP,PLAYWRIGHT_BROWSERS_PATH "$RUNNER_TEMP/host-reboot-venv/bin/python" harness/scripts/host/host-reboot-acceptance.py --product-source "$GITHUB_WORKSPACE/product-P" --service-artifact "$RUNNER_TEMP/host-reboot-service-P" --output "$RUNNER_TEMP/host-reboot-summary" "${public_args[@]}"
       - name: Upload only explicit non-secret reboot or KVM blocker summary
         if: always()
         uses: actions/upload-artifact@v4

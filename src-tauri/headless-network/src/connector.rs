@@ -1222,30 +1222,16 @@ pub(crate) async fn run_owned(
     management: Option<&crate::management_ipc::ManagementIpcConfig>,
     projection: PolicyProjection<'_>,
 ) -> Result<(), NetworkError> {
-    // Pin this run to the encrypted local account generation before creating
-    // the reverse listener. A later login must start a new operator run.
-    let management_binding = if management.is_some() {
-        let account = connection.account(false).await?;
-        Some(crate::management_admission::authorize(
-            &connection.owner,
-            &account,
-        )?)
-    } else {
-        None
-    };
-    let ipc = management
-        .map(crate::management_ipc::ManagementIpc::bind)
-        .transpose()?;
     run_context(
         owner,
         Some(connection),
         path,
         join_authorized,
         RunFeatures {
-            management_ipc: ipc.as_ref(),
-            management_binding: management_binding.as_ref(),
+            management_config: management,
             execution,
             projection,
+            ..Default::default()
         },
     )
     .await
@@ -1261,6 +1247,7 @@ fn management_hello() -> ClientMessage {
 struct RunFeatures<'a> {
     management_ipc: Option<&'a crate::management_ipc::ManagementIpc>,
     management_binding: Option<&'a crate::management_admission::ManagementBinding>,
+    management_config: Option<&'a crate::management_ipc::ManagementIpcConfig>,
     execution: Option<Arc<BotExecution>>,
     projection: PolicyProjection<'a>,
 }
@@ -1274,22 +1261,90 @@ async fn run_context(
     let RunFeatures {
         management_ipc,
         management_binding,
+        management_config,
         execution,
         projection,
     } = features;
-    if management_ipc.is_some() != management_binding.is_some() {
+    if management_ipc.is_some() != management_binding.is_some()
+        || management_config.is_some() && (owned.is_none() || management_ipc.is_some())
+    {
         return Err(NetworkError::new("HOST_MANAGEMENT_BINDING_INVALID"));
     }
-    let management = management_ipc
-        .zip(management_binding)
-        .map(|(ipc, binding)| ManagementRuntime { ipc, binding });
+    // Capture the encrypted generation without requiring network availability
+    // or rejecting an expired snapshot with a recoverable durable candidate.
+    // No later login may be silently adopted while this run waits for DNS/TCP.
+    let captured_binding = owned
+        .map(|connection| {
+            connection
+                .owner
+                .read()?
+                .0
+                .account
+                .map(|account| account.binding.clone())
+                .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))
+        })
+        .transpose()?;
+    let mut management_resources = None;
     let join_authorized = AtomicBool::new(join_authorized);
     let mut admission_failed = false;
     let mut backoff = ReconnectBackoff::default();
     let mut renewal = SessionRenewalSchedule::default();
     loop {
         publish(&owner, path, "connecting", None, false, None)?;
-        let result = tokio::select! {r=connect(&owner,path,&mut backoff,owned,&join_authorized,&mut admission_failed,ConnectionFeatures {management,execution:&execution,renewal:&mut renewal,projection})=>r,_=crate::shutdown()=>{publish(&owner,path,"stopped",None,false,None)?;return Ok(());}};
+        let attempt = async {
+            if let Some(connection) = owned {
+                crate::cli::owned_run_preflight(
+                    connection.recover_run_renewal(captured_binding.as_deref().unwrap()),
+                    || {
+                        connection
+                            .owner
+                            .ensure_binding(captured_binding.as_deref().unwrap())?;
+                        if let Some(project) = projection {
+                            project()?;
+                        }
+                        Ok(())
+                    },
+                )
+                .await?;
+                if management_resources.is_none() {
+                    if let Some(config) = management_config {
+                        let account = connection.account(false).await?;
+                        require_captured_binding(
+                            account.binding_id(),
+                            captured_binding.as_deref().unwrap(),
+                        )?;
+                        let binding =
+                            crate::management_admission::authorize(&connection.owner, &account)?;
+                        let ipc = crate::management_ipc::ManagementIpc::bind(config)?;
+                        management_resources = Some((ipc, binding));
+                    }
+                }
+            }
+            let management = management_resources
+                .as_ref()
+                .map(|(ipc, binding)| ManagementRuntime { ipc, binding })
+                .or_else(|| {
+                    management_ipc
+                        .zip(management_binding)
+                        .map(|(ipc, binding)| ManagementRuntime { ipc, binding })
+                });
+            connect(
+                &owner,
+                path,
+                &mut backoff,
+                owned,
+                &join_authorized,
+                &mut admission_failed,
+                ConnectionFeatures {
+                    management,
+                    execution: &execution,
+                    renewal: &mut renewal,
+                    projection,
+                },
+            )
+            .await
+        };
+        let result = tokio::select! {r=attempt=>r,_=crate::shutdown()=>{publish(&owner,path,"stopped",None,false,None)?;return Ok(());}};
         let error = result.unwrap_err();
         if ["OWNED_SESSION_RENEWED", "NETWORK_ACCESS_RECONNECT"].contains(&error.code.as_str()) {
             continue;
@@ -1313,7 +1368,7 @@ async fn run_context(
             "unavailable"
         };
         publish(&owner, path, state, None, false, Some(&error.code))?;
-        if management_ipc.is_some()
+        if (management_config.is_some() || management_ipc.is_some())
             && [
                 "OWNED_REAUTH_REQUIRED",
                 "OWNED_SESSION_INVALID",
@@ -1340,6 +1395,12 @@ async fn run_context(
         if admission_failed {
             return Err(error);
         }
+        // Startup is part of this same reconnect owner. Only read-only,
+        // positively classified availability failures can wait for recovery;
+        // malformed TLS/trust, credentials and unknown failures fail closed.
+        if owned.is_some() && !owned_reconnect_allowed(&error) {
+            return Err(error);
+        }
         let id = uuid::Uuid::new_v4();
         let delay = backoff.next(
             u16::from_le_bytes([id.as_bytes()[0], id.as_bytes()[1]]),
@@ -1348,8 +1409,57 @@ async fn run_context(
         tokio::select! {_=tokio::time::sleep(delay)=>{},_=crate::shutdown()=>{publish(&owner,path,"stopped",None,false,None)?;return Ok(());}}
     }
 }
+fn owned_reconnect_allowed(error: &NetworkError) -> bool {
+    match error.code.as_str() {
+        // Relay access expiry refreshes the original still-live account; it is
+        // distinct from ACCOUNT_SESSION_EXPIRED / browser reauthentication.
+        "NETWORK_CONNECTION_CLOSED"
+        | "NETWORK_CONNECTION_TIMEOUT"
+        | "NETWORK_HELLO_TIMEOUT"
+        | "NETWORK_TOKEN_EXPIRED" => true,
+        "OWNED_ACCOUNT_UNAVAILABLE"
+        | "NETWORK_ACCOUNT_UNAVAILABLE"
+        | "NETWORK_HTTP_FAILED"
+        | "NETWORK_TRANSPORT_FAILED"
+        | "NETWORK_UPGRADE_REJECTED"
+        | "RATE_LIMITED"
+        | "SERVICE_UNAVAILABLE" => error.retryable,
+        _ => false,
+    }
+}
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn owned_retry_table_never_admits_security_or_unknown_errors_from_server_5xx() {
+        for code in [
+            "OWNED_REAUTH_REQUIRED",
+            "OWNED_SESSION_INVALID",
+            "ACCOUNT_AUTH_REVOKED",
+            "ACCOUNT_BINDING_CHANGED",
+            "ACCOUNT_SESSION_EXPIRED",
+            "NETWORK_TRUST_CHANGED",
+            "OWNED_INSTANCE_TRUST_CHANGED",
+            "HOST_MANAGEMENT_REBIND_REQUIRED",
+            "HOST_MANAGEMENT_GRANT_MISSING",
+            "HOST_MANAGEMENT_GRANT_CORRUPT",
+            "OWNED_SESSION_RENEWAL_INVALID",
+            "DEVICE_ROTATION_UNCONFIRMED",
+            "UNKNOWN_FAILURE",
+        ] {
+            assert!(
+                !owned_reconnect_allowed(&NetworkError::cloud(code, 503)),
+                "{code}"
+            );
+        }
+        for code in [
+            "OWNED_ACCOUNT_UNAVAILABLE",
+            "NETWORK_TRANSPORT_FAILED",
+            "NETWORK_HTTP_FAILED",
+        ] {
+            assert!(owned_reconnect_allowed(&NetworkError::cloud(code, 503)));
+            assert!(!owned_reconnect_allowed(&NetworkError::new(code)));
+        }
+    }
     #[tokio::test(flavor = "current_thread")]
     async fn source_progresses_while_connection_waits_for_its_ipc_lock() {
         let lock = tokio::sync::Mutex::new(());

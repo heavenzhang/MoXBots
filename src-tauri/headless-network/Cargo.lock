@@ -1606,6 +1606,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "futures-util",
+ "hyper",
  "jsonwebtoken",
  "libc",
  "moxbots-asset-store",

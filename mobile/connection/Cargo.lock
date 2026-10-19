@@ -1316,6 +1316,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "futures-util",
+ "hyper",
  "jni",
  "jsonwebtoken",
  "libc",

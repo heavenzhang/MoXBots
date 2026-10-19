@@ -147,7 +147,10 @@ async fn execute() -> Result<(), NetworkError> {
                 None
             };
         let ca = options.get("--public-tls-ca-file").map(PathBuf::from);
-        let connection = if matches!(command.as_str(), "owned-auth-cancel" | "owned-auth-logout") {
+        let connection = if matches!(
+            command.as_str(),
+            "owned-auth-cancel" | "owned-auth-logout" | "run"
+        ) {
             owned::Connection::from_pinned(origin, ca.as_deref(), store.clone(), &device)?
         } else {
             owned::Connection::discover(origin, ca.as_deref(), store.clone(), &device).await?
@@ -191,7 +194,6 @@ async fn execute() -> Result<(), NetworkError> {
                     }
                     Ok(())
                 };
-                owned_run_preflight(connection.recover_pending_renewal(), &project_context).await?;
                 let fields = [
                     "--bot-execution-policy",
                     "--bot-execution-socket",
@@ -407,7 +409,7 @@ mod renewal_options_tests {
 
 // The actual run path must recover its durable candidate before evaluating any
 // old-expiry projection guard. Recovery failure never writes a fresh context.
-async fn owned_run_preflight(
+pub(crate) async fn owned_run_preflight(
     recover: impl std::future::Future<Output = Result<(), NetworkError>>,
     project: impl FnOnce() -> Result<(), NetworkError>,
 ) -> Result<(), NetworkError> {

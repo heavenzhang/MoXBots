@@ -417,7 +417,9 @@ if getent passwd "$USER_NAME" >/dev/null; then
   }
 else
   ((STATE_PREEXISTED == 0)) || { echo 'Host state exists without its dedicated account; refusing to adopt or chown it' >&2; exit 1; }
-  useradd --system --user-group --home-dir "$STATE/home" --create-home --shell /usr/sbin/nologin "$USER_NAME"
+  # Dedicated nologin state must start empty, independent of the machine's
+  # useradd skeleton. Existing accounts/homes are validated above, never reset.
+  useradd --system --user-group --home-dir "$STATE/home" --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
   install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$STATE" "$STATE/home"
 fi
 install -d -o root -g root -m 0755 "$PREFIX/releases"

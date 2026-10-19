@@ -8,6 +8,329 @@ use serde_json::{json, Value};
 use std::os::unix::fs::PermissionsExt;
 use std::sync::{atomic::Ordering, Mutex};
 
+struct StartupFixture {
+    _state: tempfile::TempDir,
+    _ipc: tempfile::TempDir,
+    connection: Connection,
+    instance: OwnedInstance,
+    principal: String,
+    expiry: u64,
+    management: crate::management_ipc::ManagementIpcConfig,
+    status: std::path::PathBuf,
+}
+fn startup_fixture(origin: &str, public_ca: Option<String>) -> StartupFixture {
+    let state_dir = tempfile::tempdir().unwrap();
+    std::fs::set_permissions(state_dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    let root = state_dir.path().canonicalize().unwrap();
+    let signer = ServiceKeys::generate_initial(root.join("fixture-signing-keys.json")).unwrap();
+    let instance = OwnedInstance {
+        version: 1,
+        profile: "owned-device-relay-v1".into(),
+        service_id: uuid::Uuid::new_v4().to_string(),
+        environment: "development".into(),
+        network_id: uuid::Uuid::new_v4().to_string(),
+        name: "Startup fixture".into(),
+        issuer: origin.into(),
+        login_issuer: "https://login.invalid/dex".into(),
+        protocol: 1,
+        capabilities: vec!["tls13-mtls".into()],
+        root_certificate: signer.root_certificate_pem().into(),
+        jwks: signer.jwks(),
+    };
+    let store = Arc::new(EncryptedIdentityStore::for_test(&root, &[121; 32]).unwrap());
+    let device = uuid::Uuid::new_v4().to_string();
+    let pin = InstancePin {
+        version: 1,
+        device_id: device.clone(),
+        instance: instance.clone(),
+        public_ca,
+    };
+    store
+        .compare_exchange_state(
+            &pin_namespace(origin, &device),
+            None,
+            &serde_json::to_vec(&pin).unwrap(),
+        )
+        .unwrap();
+    // This is the same offline constructor used by CLI run. No discovery GET.
+    let connection = Connection::from_pinned(origin, None, store, &device).unwrap();
+    let principal = uuid::Uuid::new_v4().to_string();
+    let expiry = jsonwebtoken::get_current_timestamp() + 3600;
+    let (mut state, raw) = connection.owner.read().unwrap();
+    state.account = Some(Account {
+        binding: uuid::Uuid::new_v4().to_string(),
+        principal: principal.clone(),
+        token: URL_SAFE_NO_PAD.encode([122; 32]),
+        expires_at: expiry,
+        renewal: None,
+    });
+    connection
+        .owner
+        .commit(raw.as_deref().map(|v| v.as_slice()), &state)
+        .unwrap();
+    // Production parent checks stay enabled; HOME is already required by the
+    // existing private IPC tests, unlike shared /tmp ancestors.
+    let ipc = tempfile::Builder::new()
+        .prefix("st-")
+        .tempdir_in(std::env::var_os("HOME").unwrap())
+        .unwrap();
+    let ipc_root = ipc.path().canonicalize().unwrap();
+    std::fs::set_permissions(&ipc_root, std::fs::Permissions::from_mode(0o750)).unwrap();
+    let management = crate::management_ipc::ManagementIpcConfig {
+        socket: ipc_root.join("m.sock"),
+        asset_root: root.join("assets"),
+        host_uid: unsafe { libc::geteuid() } + 1,
+        management_gid: unsafe { libc::getegid() },
+    };
+    let status = root.join("status.json");
+    std::fs::write(&status, b"").unwrap();
+    std::fs::set_permissions(&status, std::fs::Permissions::from_mode(0o640)).unwrap();
+    StartupFixture {
+        _state: state_dir,
+        _ipc: ipc,
+        connection,
+        instance,
+        principal,
+        expiry,
+        management,
+        status,
+    }
+}
+fn startup_owner(fixture: &StartupFixture) -> Arc<crate::state::Owner> {
+    Arc::new(crate::state::Owner {
+        store: fixture.connection.owner.store.clone(),
+        device_id: fixture.connection.owner.scope.device_id.clone(),
+    })
+}
+struct StartupAuthority {
+    instance: OwnedInstance,
+    principal: String,
+    device: String,
+    expiry: u64,
+    unauthorized: bool,
+}
+impl Responder for StartupAuthority {
+    fn response(&self, request: &[u8]) -> (u16, Value) {
+        if request.starts_with(b"GET /api/agent-network/instance ") {
+            return (200, serde_json::to_value(&self.instance).unwrap());
+        }
+        assert!(
+            request.starts_with(b"GET /auth/session "),
+            "startup must not write a remote mutation"
+        );
+        if self.unauthorized {
+            return (401, json!({"error":{"code":"UNAUTHORIZED"}}));
+        }
+        (
+            200,
+            json!({"principalId":self.principal, "networkId":self.instance.network_id,
+            "deviceId":self.device, "expiresAt":self.expiry}),
+        )
+    }
+}
+
+#[tokio::test]
+async fn startup_refused_connection_recovers_in_same_connector_after_original_backoff() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let origin = format!("https://{port}");
+    let (tls, ca) = tls_config();
+    let fixture = startup_fixture(&origin, Some(ca));
+    let stop = Arc::new(AtomicBool::new(false));
+    let mut server = None;
+    let projected = std::sync::atomic::AtomicUsize::new(0);
+    let project = || {
+        let count = projected.fetch_add(1, Ordering::SeqCst);
+        if count >= 2 {
+            assert!(
+                fixture.management.socket.exists(),
+                "listener follows online authorization"
+            );
+            return Err(NetworkError::new("STARTUP_TEST_COMPLETE"));
+        }
+        assert!(
+            !fixture.management.socket.exists(),
+            "no listener before online authorization"
+        );
+        Ok(())
+    };
+    let run = crate::connector::run_owned(
+        startup_owner(&fixture),
+        &fixture.connection,
+        Some(&fixture.status),
+        false,
+        None,
+        Some(&fixture.management),
+        Some(&project),
+    );
+    tokio::pin!(run);
+    let monitor = async {
+        loop {
+            let value: Value = serde_json::from_slice(&std::fs::read(&fixture.status).unwrap())
+                .unwrap_or(Value::Null);
+            if value["errorCode"] == "OWNED_ACCOUNT_UNAVAILABLE" {
+                assert_eq!(value["state"], "unavailable");
+                assert_eq!(value["ready"], false);
+                assert!(!fixture.management.socket.exists());
+                let listener = std::net::TcpListener::bind(port).unwrap();
+                listener.set_nonblocking(true).unwrap();
+                server = Some(serve(
+                    listener,
+                    tls.clone(),
+                    StartupAuthority {
+                        instance: fixture.instance.clone(),
+                        principal: fixture.principal.clone(),
+                        device: fixture.connection.owner.scope.device_id.clone(),
+                        expiry: fixture.expiry,
+                        unauthorized: false,
+                    },
+                    stop.clone(),
+                ));
+                std::future::pending::<()>().await;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    let started = std::time::Instant::now();
+    let result = tokio::time::timeout(Duration::from_secs(12), async {
+        tokio::select! { result = &mut run => result, _ = monitor => unreachable!() }
+    })
+    .await
+    .unwrap();
+    stop.store(true, Ordering::Release);
+    server.unwrap().join().unwrap();
+    assert_eq!(result.unwrap_err().code, "STARTUP_TEST_COMPLETE");
+    assert!(
+        started.elapsed() >= Duration::from_secs(5),
+        "existing connector backoff is unchanged"
+    );
+    assert_eq!(projected.load(Ordering::SeqCst), 3);
+}
+
+#[tokio::test]
+async fn startup_saved_session_rejected_is_terminal_before_listener() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let origin = format!("https://{}", listener.local_addr().unwrap());
+    let (tls, ca) = tls_config();
+    let fixture = startup_fixture(&origin, Some(ca));
+    let stop = Arc::new(AtomicBool::new(false));
+    let server = serve(
+        listener,
+        tls,
+        StartupAuthority {
+            instance: fixture.instance.clone(),
+            principal: fixture.principal.clone(),
+            device: fixture.connection.owner.scope.device_id.clone(),
+            expiry: fixture.expiry,
+            unauthorized: true,
+        },
+        stop.clone(),
+    );
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        crate::connector::run_owned(
+            startup_owner(&fixture),
+            &fixture.connection,
+            Some(&fixture.status),
+            false,
+            None,
+            Some(&fixture.management),
+            None,
+        ),
+    )
+    .await
+    .unwrap();
+    stop.store(true, Ordering::Release);
+    server.join().unwrap();
+    assert_eq!(result.unwrap_err().code, "OWNED_SESSION_INVALID");
+    assert!(!fixture.management.socket.exists());
+}
+
+#[tokio::test]
+async fn startup_untrusted_tls_is_terminal_before_listener() {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let origin = format!("https://{}", listener.local_addr().unwrap());
+    let (tls, _ca) = tls_config();
+    let fixture = startup_fixture(&origin, None);
+    let server = std::thread::spawn(move || {
+        let (socket, _) = listener.accept().unwrap();
+        socket
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let mut stream = rustls::StreamOwned::new(
+            rustls::ServerConnection::new(Arc::new(tls)).unwrap(),
+            socket,
+        );
+        assert!(stream.read(&mut [0; 1]).is_err());
+    });
+    let result = tokio::time::timeout(
+        Duration::from_secs(3),
+        crate::connector::run_owned(
+            startup_owner(&fixture),
+            &fixture.connection,
+            Some(&fixture.status),
+            false,
+            None,
+            Some(&fixture.management),
+            None,
+        ),
+    )
+    .await
+    .unwrap();
+    server.join().unwrap();
+    let error = result.unwrap_err();
+    assert_eq!(error.code, "OWNED_ACCOUNT_UNAVAILABLE");
+    assert!(!error.retryable);
+    assert!(!fixture.management.socket.exists());
+}
+
+#[tokio::test]
+async fn startup_wait_never_adopts_replaced_local_binding() {
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let fixture = startup_fixture(&format!("https://{port}"), None);
+    let run = crate::connector::run_owned(
+        startup_owner(&fixture),
+        &fixture.connection,
+        Some(&fixture.status),
+        false,
+        None,
+        Some(&fixture.management),
+        None,
+    );
+    tokio::pin!(run);
+    let change = async {
+        loop {
+            let value: Value = serde_json::from_slice(&std::fs::read(&fixture.status).unwrap())
+                .unwrap_or(Value::Null);
+            if value["errorCode"] == "OWNED_ACCOUNT_UNAVAILABLE" {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        let (mut state, raw) = fixture.connection.owner.read().unwrap();
+        state.account.as_mut().unwrap().binding = uuid::Uuid::new_v4().to_string();
+        fixture
+            .connection
+            .owner
+            .commit(raw.as_deref().map(|v| v.as_slice()), &state)
+            .unwrap();
+        std::future::pending::<()>().await;
+    };
+    let result = tokio::time::timeout(Duration::from_secs(8), async {
+        tokio::select! { result = &mut run => result, _ = change => unreachable!() }
+    })
+    .await
+    .unwrap();
+    assert_eq!(result.unwrap_err().code, "ACCOUNT_BINDING_CHANGED");
+    assert!(!fixture.management.socket.exists());
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Case {
     Committed,

@@ -658,11 +658,9 @@ fn body_failure(
 }
 fn request_failure(error: &reqwest::Error) -> NetworkError {
     let code = network_error_code(error, "NETWORK_TRANSPORT_FAILED");
-    if code == "NETWORK_CONNECTION_TIMEOUT" {
-        NetworkError::cloud(code, 504)
-    } else {
-        NetworkError::new(code)
-    }
+    let mut failure = NetworkError::new(code);
+    failure.retryable = crate::network_diagnostics::recoverable_transport(error);
+    failure
 }
 
 async fn read_response_body(

@@ -1,0 +1,22 @@
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/speech-live-fixture-20261019 -->
+<!-- git-project-sync-task:base=df6f58882965ffec6b6a45aff2dbd954e4e9a32e -->
+<!-- git-project-sync-task:status=in-progress -->
+
+# SPEECH-LIVE-FIXTURE-20261019
+
+Canonical https://github.com/heavenzhang/MoXBots.git. Root assigned a test-only correction after CI39228923139/job117982410624 reported1748pass/1fail/8ignore: live_worker_streams_committed_pcm_and_publishes_stable_revision observed SPEECH_WORKER_PROTOCOL_ERROR,true instead of Finished. Worktree originally clean atdff91301c; that branch/history is preserved. New independent branch starts at exact rootdf6f58882965ffec6b6a45aff2dbd954e4e9a32e. Only write_buffered_live_worker in the existing cfg(test)/cfg(unix) module and this record may change. Root alone reviews/cherry-picks/pushes/dispatches; no production or ordinary Mac app/device access.
+
+The old helper never read stdin: sleep50ms, emit all six Ready/Ack/Heartbeat/Transcript/Heartbeat/Completed frames, sleep200ms, exit0. The production owner must still write Start,32056bytes PCM,Flush andFinalize. A parent descheduled across the independent exit can get EPIPE on a valid pending write, mapped to the exact reported error. This is a reproducible fixture lifetime/protocol defect, not proof of the particular failing CI write. The CI log lacks phase/errno evidence. Unchanged speech source and earlier passes do not disprove this latent defect; response-parse/identity/revision failures remain alternate code paths until actual reproduction identifies the branch.
+
+The replacement uses only Python3 standard-library framing inside this Unix test helper. It consumes/validates Start before Ready, reads the complete52-byte PCM header and sample payload and checks scope/sequence/track/channels/end before InputAck, consumes actual Flush before transcript/checkpoint, and checks actual Finalize stream endpoint before Completed. It reuses the six existing Rust-serialized response templates. There is no timer-based process exit or timeout change. On Linux, this child shrinks only its own stdin pipe to4096bytes, requiring real PCM consumption; no system limit changes. The existing workflow already executes python3 fixtures; this helper explicitly asserts the required /usr/bin/python3 path and works under the existing cleared child environment. Local /usr/bin/python3 3.9.6 passed the pipe replay; the new helper's actual Ubuntu suite remains root-owned. This introduces no product dependency or Python production path.
+
+- [x] Pure offline pipe mechanism: old timed writer exits normally after Ready; resuming owner then writes32056bytes PCM and deterministically receives EPIPE. Not the original cargo test.
+- [x] Actual generated replacement-script pipe replay:3iterations; each holds the owner300ms before PCM, before Flush and before Finalize, then obtains all six expected responses and exit0. This intentionally models descheduling; no delay is added to the fixture or production path. Local macOS has no F_SETPIPE_SZ, so4096-byte Linux pipe behavior remains for actual Ubuntu CI, not claimed locally.
+- [x] Standalone std-only rustc compilation of the exact format! raw string and Python syntax parse PASS. No full/native cargo invocation, speech App, audio device, credentials or production operation.
+- [x] Byte comparison to exactdf6 proves every production function and all original test assertions outside this one helper are unchanged; git diff --check PASS. Finished, exact stable revision/segment text/identity assertions remain intact.
+- [ ] Root independent review/cherry-pick and actual Ubuntu Rust suite. A same-head CI rerun may pass while this latent test-fixture race remains; rerun status is root-owned and not inferred here.
+
+External model calls0; model/token/cost telemetry unavailable. No push/merge/SSH/CI dispatch. Next: root reviews this isolated local commit, integrates through the normal path, and verifies the actual Ubuntu suite without rebuilding or claiming new P4 runtime behavior from a test-only change.
+
+Primary integration checkpoint: root personally reviewed all helper changes against the real52-byte PCM/control framing and original test boundary, then normally cherry-picked the local commit. Only the helper is inside the existing cfg(test)/cfg(unix) module; original assertions and production code remain. Final actual Ubuntu suite and whole requiredCI are recorded by PR137; no local pipe mechanism is relabeled as that CI pass.

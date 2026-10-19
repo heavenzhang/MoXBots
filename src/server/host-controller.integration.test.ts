@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { build } from 'esbuild';
 import { request } from 'node:http';
-import { mkdtemp, mkdir, readFile, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, realpath, rename, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -130,7 +130,9 @@ it('uses registration-before-supervisor ordering for Bot runtime and Host snapsh
 });
 
 it('persists Host identity and config CAS over a private Unix socket without model calls', async () => {
-  scratch = await mkdtemp(join(tmpdir(), 'mah-host-'));
+  scratch = await realpath(await mkdtemp(join(tmpdir(), 'mah-host-')));
+  const state = join(scratch, 'state');
+  await mkdir(join(state, 'home'), { recursive: true, mode: 0o700 });
   const socket = join(scratch, 'control.sock');
   const entry = join(scratch, 'host-main.mjs');
   await build({ entryPoints: [resolve('src/host/main.ts')], outfile: entry, bundle: true, platform: 'node', format: 'esm', logLevel: 'silent',
@@ -148,9 +150,9 @@ it('persists Host identity and config CAS over a private Unix socket without mod
   const start = async () => {
     const linux = process.platform === 'linux';
     child = spawn(linux ? '/usr/bin/flock' : process.execPath,
-      linux ? ['--no-fork', '-n', join(scratch!, 'host.lock'), process.execPath, entry, '--serve'] : [entry, '--serve'],
-      { env: { PATH: process.env.PATH, HOME: join(scratch!, 'home'),
-        MYAGENTS_HOST_STATE_DIR: scratch, MYAGENTS_HOST_SOCKET: socket }, stdio: ['ignore', 'pipe', 'pipe'] });
+      linux ? ['--no-fork', '-n', join(state, 'host.lock'), process.execPath, entry, '--serve'] : [entry, '--serve'],
+      { env: { PATH: process.env.PATH, HOME: join(state, 'home'),
+        MYAGENTS_HOST_STATE_DIR: state, MYAGENTS_HOST_SOCKET: socket }, stdio: ['ignore', 'pipe', 'pipe'] });
     await new Promise<void>((resolveReady, reject) => {
       let output = '';
       const timer = setTimeout(() => reject(new Error(`Host startup timeout: ${output.slice(-2000)}`)), 10000);
@@ -173,14 +175,14 @@ it('persists Host identity and config CAS over a private Unix socket without mod
   const updates = await Promise.all([call('/host/configure', config), call('/host/configure', config)]);
   expect(updates.filter(value => value.ok)).toHaveLength(1);
   expect(updates.filter(value => !value.ok)[0].error).toContain('conflict');
-  const stored = JSON.parse(await readFile(join(scratch, 'home', '.myagents', 'config.json'), 'utf8'));
+  const stored = JSON.parse(await readFile(join(state, 'home', '.myagents', 'config.json'), 'utf8'));
   expect(stored.hostSettings.revision).toBe(1);
   expect(stored.providerApiKeys).toEqual({ 'moonshot-coding': 'systemd-credential:kimi' });
   expect((await call('/host/configure', { ...config, expectedRevision: 1, apiKey: 'must-not-save' })).ok).toBe(false);
   expect((await call('/host/configure', { ...config, expectedRevision: 1, workspace: tmpdir() })).ok).toBe(false);
   const outside = join(scratch, 'outside'); await mkdir(outside);
-  await symlink(outside, join(scratch, 'workspaces', 'escape'));
-  expect((await call('/host/configure', { ...config, expectedRevision: 1, workspace: join(scratch, 'workspaces', 'escape') })).ok).toBe(false);
+  await symlink(outside, join(state, 'workspaces', 'escape'));
+  expect((await call('/host/configure', { ...config, expectedRevision: 1, workspace: join(state, 'workspaces', 'escape') })).ok).toBe(false);
   expect((await call('/host/arbitrary-shell', { command: 'echo unsafe' })).ok).toBe(false);
   expect((await call('/session/list')).data).toEqual([]);
   const conflictId = randomUUID();
@@ -194,7 +196,7 @@ it('persists Host identity and config CAS over a private Unix socket without mod
   expect((await call('/host/configure', { ...tracked, expectedRevision: 2 })).ok).toBe(false);
   expect((await call('/host/configure', { ...tracked, mutationId: 'not-a-uuid' })).ok).toBe(false);
   expect((await call('/host/receipt', { mutationId: tracked.mutationId, apiKey: 'must-not-save' })).ok).toBe(false);
-  const persistedPath = join(scratch, 'home', '.myagents', 'config.json');
+  const persistedPath = join(state, 'home', '.myagents', 'config.json');
   const trackedConfig = JSON.parse(await readFile(persistedPath, 'utf8'));
   expect(trackedConfig.hostSettings.revision).toBe(2);
   expect(trackedConfig.hostConfigReceipts.entries).toHaveLength(2);
@@ -202,7 +204,7 @@ it('persists Host identity and config CAS over a private Unix socket without mod
   expect(JSON.stringify(trackedConfig.hostConfigReceipts)).not.toContain('must-not-save');
   expect((await stat(persistedPath)).mode & 0o777).toBe(0o600);
   // Replaying a committed ID does not re-resolve a now-missing workspace.
-  await rm(join(scratch, 'workspaces', 'default'), { recursive: true });
+  await rm(join(state, 'workspaces', 'default'), { recursive: true });
   expect(await call('/host/configure', { ...tracked, mutationId: tracked.mutationId.toUpperCase() })).toEqual(duplicate[0]);
   await stopChild();
   await start();
