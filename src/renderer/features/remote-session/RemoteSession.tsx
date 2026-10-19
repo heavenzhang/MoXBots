@@ -416,11 +416,15 @@ function RemoteSessionContent({
     ...older.filter((m) => !snapshot?.messages.some((n) => n.id === m.id)),
     ...(snapshot?.messages ?? []),
   ];
-  const errorKey = error?.includes("BUSY")
-    ? "busy"
-    : error?.includes("UNSUPPORTED") || error?.includes("METHOD")
-      ? "unsupported"
-      : "failed";
+  const errorKey = error === "HOST_MANAGEMENT_TARGET_BUSY"
+    ? "channelBusy"
+    : error === "HOST_MANAGEMENT_BUSY"
+      ? "requestBusy"
+      : error?.includes("BUSY")
+        ? "busy"
+        : error?.includes("UNSUPPORTED") || error?.includes("METHOD")
+          ? "unsupported"
+          : "failed";
   const open = (sessionId?: string, title = tab.agentName) => {
     if (scopeRef.current)
       binding.onOpen({
