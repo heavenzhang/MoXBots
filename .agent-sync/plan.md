@@ -471,3 +471,10 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## SUBAGENT-UI-001 — 聊天内子 Agent 查看
 
 用户确认方案后实施：输入框上方持久入口、本轮/已加载历史、同会话右侧详情，复用transcript与现有状态投影；不新增执行owner或模型请求。记录 `.agent-sync/tasks/codex-subagent-ui-001-20261018-c8f40bcc.md`，验收 `dev-docs/subagent-ui/acceptance.md`。代码与52项回归/构建通过，独立代码复核完成；真实渲染因Work本地浏览器关闭尚待验，先保存草稿PR，不把构建替代UI验收。保持唯一桌面发布owner与下一未冻结候选边界，不换包或打断活动任务。
+## Deployment coordination — MOXBOTS-0513-STABILITY-RELEASE-20261019
+
+- **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, sole desktop integration/updater publisher.
+- **Designation:** Human directly requested0.5.13 incorporating prior desktop changes, superseding unpublished0512. Safe-idle backup/native/release/finalApplications installation is already authorized. Source151 also conveyed human authorization for real-model ordinarySession/Goal recovery/pause/Stop acceptance before publication.
+- **Source/status:** Base main23efc877 includes143/all0512+151; exact146/147/148 integrated in the0513 task branch, version synchronized.414 related tests, type/lint/Web and actual synthetic IAB component/fullApp review passed; exactheadCI/main, new signature/notary/archive and native/real Provider/distribution/daily gates remain open. Old0512 source/candidates stay sealed and will not be published or relabelled.
+- **Targets/runbook:** Existing macOSarm64 updater140 only; preserve0511immutable rollback. No Host/backend/mobile/Windows/website rollout. Active/due/unknown business blocks maintenance; normalquit only after fresh authoritativeidle/durable/full-window schedule and consistent backup. No counter/token hacks, forcekill, userChrome or system dialogs.
+- **Record:** `dev-docs/releases/moxbots-0.5.13.md`, current task record and private `work/release-0513-20261019/owner/`. Source/artifact/native/real Provider/distribution/daily/finalmain remain distinct; this newer record supersedes historical0512 preparation and pending-window instructions.
