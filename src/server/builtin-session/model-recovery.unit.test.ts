@@ -545,4 +545,97 @@ describe('SessionModelRecovery', () => {
     await expect(restored.wait(request(), failure(2))).resolves.toBeUndefined();
     expect(h.read()).toMatchObject({ status: 'paused', reason: 'manual pause' });
   });
+
+  it.each([undefined, 'goal-1'])('retains a stream chain across inference completion and 503 until original-turn completion (%s)', async goalId => {
+    const h = harness();
+    h.setCurrent({ sdkSessionId: 'native-1', routeIdentity: 'route-1', turnId: 'turn-1', goalId });
+    const recovery = h.create();
+    const first = request();
+    await expect(recovery.interrupted(first)).resolves.toBe(true);
+    const original = h.read()!;
+    expect(original).toMatchObject({ kind: 'stream', attempt: 1, turnId: 'turn-1' });
+    expect(original.goalId).toBe(goalId);
+    h.setNow(original.nextRetryAt);
+    expect(recovery.releaseStreamBinding()).toBe(true);
+    const continued = request();
+    await expect(recovery.admit(continued)).resolves.toEqual({ delayMs: 0 });
+    await recovery.complete(continued);
+    expect(h.read()).toMatchObject({ id: original.id, kind: 'stream', attempt: 1,
+      startedAt: original.startedAt, deadlineAt: original.deadlineAt, turnId: 'turn-1' });
+
+    const next = request();
+    await recovery.admit(next);
+    await expect(recovery.wait(next, failure())).resolves.toBe(30_000);
+    expect(h.read()).toMatchObject({ id: original.id, kind: 'stream', attempt: 2,
+      startedAt: original.startedAt, deadlineAt: original.deadlineAt, lastStatus: 503 });
+    h.setNow(h.read()!.nextRetryAt);
+    await expect(recovery.interrupted(next)).resolves.toBe(true);
+    expect(h.read()).toMatchObject({ id: original.id, kind: 'stream', attempt: 3,
+      startedAt: original.startedAt, deadlineAt: original.deadlineAt, lastStatus: 502 });
+    await recovery.complete(next);
+    expect(h.read()).toBeDefined();
+    await expect(recovery.finishStreamTurn()).resolves.toBe(true);
+    expect(h.read()).toBeUndefined();
+  });
+
+  it('releases only an eligible waiting stream binding with exact durable ownership', async () => {
+    const h = harness(); const recovery = h.create(); const req = request();
+    expect(recovery.releaseStreamBinding()).toBe(false);
+    await recovery.interrupted(req);
+    const original = h.read()!;
+    expect(recovery.releaseStreamBinding()).toBe(false); // backoff not yet due
+    h.setNow(original.nextRetryAt);
+    h.setState({ ...original, attempt: original.attempt + 1 });
+    expect(recovery.releaseStreamBinding()).toBe(false);
+    h.setState(original); h.setLive(false);
+    expect(recovery.releaseStreamBinding()).toBe(false);
+    h.setLive(true);
+    h.setCurrent({ sdkSessionId: 'native-1', routeIdentity: 'route-1', turnId: 'new-root', goalId: 'goal-1' });
+    expect(recovery.releaseStreamBinding()).toBe(false);
+    h.setCurrent({ sdkSessionId: 'native-1', routeIdentity: 'route-1', turnId: 'turn-1', goalId: 'goal-1' });
+    h.setNow(original.deadlineAt);
+    expect(recovery.releaseStreamBinding()).toBe(false);
+    h.setNow(original.nextRetryAt);
+    expect(recovery.releaseStreamBinding()).toBe(true);
+    await recovery.pause('user stopped');
+    expect(recovery.releaseStreamBinding()).toBe(false);
+  });
+
+  it('does not release an ordinary inference-retry binding as a stream continuation', async () => {
+    const h = harness(); const recovery = h.create();
+    await recovery.wait(request(), failure()); h.setNow(h.read()!.nextRetryAt);
+    expect(recovery.releaseStreamBinding()).toBe(false);
+  });
+
+  it('does not resume a stopped stream checkpoint after reopening', async () => {
+    const h = harness(); const recovery = h.create();
+    await recovery.interrupted(request()); await recovery.pause('user stopped stream');
+    const reopened = h.create();
+    await expect(reopened.admit(request())).rejects.toThrow('user stopped stream');
+    await expect(reopened.interrupted(request())).resolves.toBe(false);
+    expect(reopened.releaseStreamBinding()).toBe(false);
+    await expect(reopened.finishStreamTurn()).resolves.toBe(false);
+    expect(h.read()).toMatchObject({ kind: 'stream', status: 'paused', reason: 'user stopped stream' });
+  });
+
+  it('Stop wins a held finishStreamTurn durable-clear CAS race', async () => {
+    const h = harness(); const recovery = h.create();
+    await recovery.interrupted(request());
+    let release!: () => void;
+    h.write.mockImplementationOnce(async (next, expected, isLive) => new Promise<boolean>(resolve => {
+      release = () => {
+        const committed = isLive() && h.read() === expected;
+        if (committed) h.setState(next);
+        resolve(committed);
+      };
+    }));
+    const finishing = recovery.finishStreamTurn();
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    await expect(recovery.pause('stop before task terminal persisted')).resolves.toBe(true);
+    release();
+    await expect(finishing).resolves.toBe(false);
+    expect(h.read()).toMatchObject({ kind: 'stream', status: 'paused', reason: 'stop before task terminal persisted' });
+    await expect(recovery.finishStreamTurn()).resolves.toBe(false);
+    expect(recovery.releaseStreamBinding()).toBe(false);
+  });
 });

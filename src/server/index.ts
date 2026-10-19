@@ -536,6 +536,9 @@ process.on('unhandledRejection', (reason) => {
 let gracefulShutdownHook: (() => Promise<void>) | null = null;
 let gracefulShutdownPromise: Promise<void> | null = null;
 let processShutdownStarted = false;
+const desktopParentPid = process.env.MYAGENTS_SIDECAR_PARENT_PID;
+const desktopOwnedUnixSidecar = process.platform !== 'win32'
+  && Boolean(desktopParentPid) && process.argv.includes('--moxbot-sidecar');
 
 async function shutdownOwnedResources(): Promise<void> {
   if (!gracefulShutdownPromise) {
@@ -561,7 +564,7 @@ async function shutdownOwnedResources(): Promise<void> {
   await gracefulShutdownPromise;
 }
 
-async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT'): Promise<void> {
+async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT' | 'parent-exit'): Promise<void> {
   if (processShutdownStarted) return;
   processShutdownStarted = true;
   if (!stdioBroken) {
@@ -581,6 +584,13 @@ async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT'): Promise<void> {
         /* ignore */
       }
     }
+  }
+  if (desktopOwnedUnixSidecar) {
+    // Always finish this contained group before the desktop Sidecar exits.
+    // Parent loss can race an earlier SIGTERM drain, even between monitor
+    // ticks; it must not depend on which signal started this shutdown.
+    // Product/browser drain above is bounded to five seconds.
+    signalOrphanedSidecarGroup('SIGKILL');
   }
   process.exit(0); // Trigger SDK's process.on('exit') handler → terminate CLI subprocess
 }
@@ -12391,7 +12401,19 @@ description: >
   });
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+// Only desktop-owned launches carry this identity. Standalone Host/CLI/dev
+// servers retain their existing lifetime; Windows is contained by Rust's Job.
+import {
+  retireOrphanedSidecar, signalOrphanedSidecarGroup, watchSidecarParent,
+} from './utils/sidecar-parent';
+if (desktopOwnedUnixSidecar && desktopParentPid) {
+  watchSidecarParent(desktopParentPid, () => {
+    retireOrphanedSidecar(() => { void shutdownProcess('parent-exit'); });
+  });
+}
+if (!processShutdownStarted) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

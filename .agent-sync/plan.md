@@ -1,3 +1,9 @@
+## MOXBOTS-STREAM-RESUME-20261020-01 — 原 turn 断流续跑
+
+普通 builtin API 会话及 Goal 沿原 Query/SessionModelRecovery、ContextRecovery 台账、Product/FIFO 与 Goal claim 自动接续；原 HTTP 与完成工具不重放，Stop 撤销后不恢复，质量参考持久记录恢复事实。代码与本地/合成 SDK 验收已完成，任务 `.agent-sync/tasks/codex-stream-resume-20261020-f5ea3680.md`，证据 `dev-docs/stream-continuation/acceptance.md`。精确 head 共享 CI、正常 main 合入/远端核验、签名客户端/真实 Provider 和用户验收分别追踪。
+
+涉及部署单元 **desktop builtin client**：`src/server/agent-session.ts`、builtin-session/openai-bridge 与相应 renderer/shared 持久化 UI，仓库 heavenzhang/MoXBots、任务分支正常合 main。沿用唯一 CI/部署会话 **01a12bc2-907a-7702-b6dd-788225c5dfe4 / MoxBots桌面端统一打包负责人**；依据为用户最新部署单元规则及本任务明确交该统一发布会话安排发布。版本/构建号和下一未冻结候选由该 owner 分配，开发会话不启动共享 CI、正式构建、发布或客户端重启。当前开发成果待精确 SHA 交接，预登记已发送；不自动纳入已冻结批次。不涉及独立云服务/Host 部署。
+
 ## MOXBOTS-MOBILE-001 — 执行轨迹原型交付
 
 按用户“改完了就提交到远端”的要求，把独立移动 Web 原型纳入 `dev-docs/prototypes/moxbots-mobile-001/`，包含左侧执行步骤、状态与 CSS piano-roll；本地合成数据，不改变 `mobile/app/`。任务记录 `.agent-sync/tasks/codex-mobile-001-execution-trace-20261019-e6514cfc.md`，验收与运行说明在原型目录 `acceptance.md`、`README.md`。构建、独立审阅、Git/CI/main 与原生/生产阶段分开追踪，未授权或执行部署。
@@ -540,6 +546,33 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
 
-## MOXBOT-CHATLOAD-20261019 — 长会话首屏读取
 
-Global展示预览固定20条，V1异步文件尾读；V2仍canonical fold，analytics改metadata读，不复制Runtime overlay。正式恢复/较早分页保留80条，避免Todo状态丢失。166项定向、类型/lint/Web构建和实际renderer合成传输通过，独立审查完成。验收 `dev-docs/chatload/acceptance.md`，任务 `.agent-sync/tasks/codex-chatload-20261019-4cb3c3b7.md`。main/CI按PR与远端回执；下一未冻结桌面版本待既定唯一publisher集成，未换包、未重启或通知其它聊天，原生真实路径仍待验。
+
+
+## GOAL-STALL-001 — Goal watchdog 结算与可见恢复原因
+
+沿原 builtin/Goal lifecycle 修复 timeout abort 丢失 observer/authority 的问题；可见输入 turn_conflict 显式反馈，暂停原因显示在原状态栏。任务 `.agent-sync/tasks/codex-goal-stall-20261020-3d1bab4d.md`，验收 `dev-docs/goal-stall/acceptance.md`。代码、合成回归、实际组件与签名原生/真实模型分开；唯一 CI/桌面发布会话仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，依赖PR168的遗留进程治理后做当前真实任务恢复。
+
+
+## Deployment unit coordination —0.5.14 build2 (2026-10-20)
+
+Latest direct human AGENTS scopes unique CI/release ownership per deployable unit, retaining task branches and existing component versions. Desktop/updater macOSarm64 owner01a12bc2-907a-7702-b6dd-788225c5dfe4 owns this batch, under explicit human current-changes→0.5.14 online-update request. Internal mobile layout was also explicitly handed to this coordinator, but remains a separate0.1.0/internal build and physical-phone window; no mobile installation in this desktop batch. Existing owned-cloud deployment remains with01a12b99-7b38-78b1-831f-9c60257d386a and its prior target authority; no Host/cloud/Windows or website-design rollout is inferred. Cross-unit Test/Owned checks for this source union are coordinated once by desktop owner; workflow per-ref concurrency is not a global deployment lock.
+
+Desktop source batch:163/login and165/history already main;164/statusbar,166/watcher,168/final4f47eda6,REMOTE-UI d00f5ee3,STREAM502 ebf0ea95,GOAL-STALL8169f3b8 and REMOTE-SESSION-1020-BUSY285659c7 explicitly selected before integration CI/freeze. Do not conflate synthetic/native/actual Provider/remote business acceptance. Old local014 artifact is retained; new0.5.14/build2 uses CFBundleVersion514.2 and a distinct immutable tag/artifact. Final main exact SHA, CI and source containment must pass before one signed build. Promotion reuses verified bytes; later commits never silently enter a frozen candidate. Online stable currently013, retained with immutable011 rollback.
+
+Release record `dev-docs/releases/moxbots-0.5.14-build2.md`; task record `.agent-sync/tasks/codex-release-0514-build2-20261020-24823a0a.md`. Private release evidence lives outside Git. Current phase:integration checks passed; latest-main sync/final exact CI/main/native/signature/distribution gates pending. Only owned serial publication controls can admit target changes.
+## REMOTE-SESSION-1020-BUSY — scoped channel contention
+
+Latest human instructions designate existing desktop publisher01a12bc2-907a-7702-b6dd-788225c5dfe4 as sole desktop-unit CI/deployment coordinator for this lane. Repository https://github.com/heavenzhang/MoXBots.git, existing main/task-branch strategy retained; owner allocates next unified version and frozen main candidate, macOSarm64 target, existing signed0514 rollback/release history preserved. This developer owns local checks/commits/handoff only, with no shared CI dispatch/rerun/cancel or build/install. Native Pairs/controller source is reused by the headless connector; it retains the same wire/API, supports independent rollback and has no Host/cloud deployment request in this desktop intake. Cross-unit integration checks are coordinated once by the desktop CI owner; any headless publication stays with that deployment unit’s existing owner. Cloud target remains under its existing separate owner.
+
+Task `.agent-sync/tasks/codex-remote-channel-busy-1020-f881d00e.md` fixes cross-device pending-offer busy and distinguishes channel conflict from execution status. Same-peer profile isolation and unknown admission evidence remain. Source/local/sharedCI/installed/real-read states are separate; latest human original window still fails HOST_MANAGEMENT_TARGET_BUSY, so remote acceptance remains open. Login PR163 is in base main8e4c25928 but is not in installed0514. No new protocol mode or automatic channel close is included.
+
+Mobile queue steering: human explicitly deferred speech ba578a5e; core layout/Bot-switch current source c24c37f8 (runtime unchanged from1d67241b) retains67policy checks and current iOS Hermes export. Separate internal mobile batch, no desktop delay or speech success claim.
+
+## Deployment unit coordination — MOXBOTS-0515-RELEASE-20261020
+
+Latest direct human request advances the desktop/macOSarm64/updater batch to0.5.15after current improvements complete and requires ONLINE stable to latest plus localinstallation. Same existing owner01a12bc2-907a-7702-b6dd-788225c5dfe4. Retain original014local and013/011online immutable rollback; unpublished014build2is superseded, its already-running compiler collected without another stage/sign/notary/publication. Its inactive cache/unsigned validatedresources may be cloned once into a new015build target; normalpriority/jobs4, fixedReaderunchanged.
+
+Selectedsource: reviewedPR169desktopunion/a2dd plus STREAM-RESUME e9ba90839, integratednormally with typed-terminal/continuation safety retained. Current combined404tests/tsc/classification/scopedlint/version and actualSDK synthetic ordinary/Goal/Stop pass. ExistingPR169owned branch is fast-forwarded to this015union and retitled to avoid an extra integrationPR/mainCIround; final exact automaticCI/main/source/tree proof still required. Sourcefreezes after selected completeinputs; later changes defer. No new CI/deploymentowner.
+
+Release record dev-docs/releases/moxbots-0.5.15.md; branch codex/release-0515-20261020 and task .agent-sync/tasks/codex-release-0515-20261020-dd8c4bbe.md. Currentphase preparing; version015/build515.1/tagv0.5.15planned, artifact notyet built. Signature/notary/native/productiongates remainopen. ONLINEpublication through existing140lock/immutableupload/normalTLSfullGET/hash/atomicpromote/postcheck is required, not an optionalpostscript. Client013mustdetectanddownload015. Mobile/cloud/Host/Windowsunits keep their existing owners and componentversions; no publication there inferred.

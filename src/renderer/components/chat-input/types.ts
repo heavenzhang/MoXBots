@@ -160,7 +160,7 @@ export interface SimpleChatInputProps {
   onCancelQueued?: (queueId: string) => Promise<boolean>;
   onEditQueued?: (queueId: string) => Promise<boolean>;
   onForceExecuteQueued?: (queueId: string) => Promise<boolean>;
-  agentStatusSlot?: React.ReactNode;
+  agentActivity?: import("../agent-status/ExecutionStatusBar").AgentActivityControls;
   onOverlayHeightChange?: (height: number) => void;
 }
 

@@ -48,6 +48,7 @@ import {
 import QueuedMessagesPanel from '../QueuedMessageBubble';
 import CronTaskStatusBar from '../cron/CronTaskStatusBar';
 import GoalStatusBar from '../goal/GoalStatusBar';
+import ExecutionStatusBar from '../agent-status/ExecutionStatusBar';
 import { useUndoStack } from '@/hooks/useUndoStack';
 import { mcpServerState, type McpEffectiveServerState } from '../../../shared/mcpEffectiveState';
 import { hasUserEditableMcpSettings, MANAGED_BROWSER_MCP_ID } from '../../../shared/browserTools';
@@ -219,7 +220,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   onCancelQueued,
   onEditQueued,
   onForceExecuteQueued,
-  agentStatusSlot,
+  agentActivity,
   onOverlayHeightChange,
   workspacePath = null,
   sessionId = null,
@@ -1360,7 +1361,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   const visibleStoppedCronTask = !isLauncherMode
     ? stoppedCronTask
     : null;
-  const hasStatusBar = showDraftGoalBar || showDraftCronBar || !!visibleGoal || !!activeCronTask || !!visibleStoppedCronTask;
+  const hasStatusBar = showDraftGoalBar || showDraftCronBar || !!activeCronTask || !!visibleStoppedCronTask;
 
   return (
     <>
@@ -1379,28 +1380,9 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
         />
       )}
 
-      {/* Floating panel row above the input — hosts AgentStatusPanel (Todo
-          badge) on the left and QueuedMessagesPanel on the right. They used
-          to render independently with overlapping z-20 / similar Y, which
-          let the queue paint over the Todo badge. Now they're siblings in
-          one flex row: the Todo card carries `[&:not(:only-child)]:mr-auto`
-          so it self-pushes left when queue is present, and stays right
-          (justify-end) when alone. `items-end` bottom-aligns the two cards
-          (a single-row Todo bar sits slightly higher than the queue card —
-          natural heights kept so an expanded AgentStatusPanel doesn't
-          stretch the queue card into a mostly-empty tall panel). On narrow
-          composers the row wraps, keeping both cards and their controls reachable. `empty:hidden`
-          collapses the row + mb-2 gap when both children render null (no
-          agent activity + no queue).
-          The row sits OUTSIDE the input container (sibling, not child) so
-          its `pointer-events-none` lets empty space fall all the way through
-          to chatContentRef where the message list lives — otherwise the
-          ancestor `pointer-events-auto` input container would catch the
-          click and block message selection (Codex review). Cards themselves
-          override with `pointer-events-auto`. */}
+      {/* Queued messages retain their independent edit/cancel controls. */}
       {!isLauncherMode && (
         <div className="pointer-events-none mb-2 flex w-full max-w-3xl flex-wrap items-end justify-end gap-2 empty:hidden">
-          {agentStatusSlot}
           {queuedMessages.length > 0 && (
             <QueuedMessagesPanel
               key={sessionId ?? 'pending'}
@@ -1418,6 +1400,18 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
         ? 'relative w-full'
         : 'pointer-events-auto relative w-full max-w-3xl'
       }>
+        {!isLauncherMode && <ExecutionStatusBar
+          key={sessionId ?? 'pending'}
+          activity={agentActivity}
+          goal={visibleGoal}
+          isExecuting={goalIsExecuting}
+          executionNumber={goalExecutionNumber}
+          onEdit={onGoalEdit}
+          onPause={onGoalPause}
+          onResume={onGoalResume}
+          onCancel={onGoalCancel}
+          onDismiss={onGoalDismiss}
+        />}
         {/* Cron task status bar — shown when cron mode is enabled but the task
          *  hasn't started yet. PRD 0.2.7 D1: launcher SHOULD show this so the
          *  user sees their staged cron config; the actual cron creation happens
@@ -1437,18 +1431,6 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
             mode="draft"
             onSettings={() => goalDraftActive ? onGoalDraftSettings?.() : onCronSettings?.()}
             onCancel={() => goalDraftActive ? onGoalDraftCancel?.() : onCronCancel?.()}
-          />
-        )}
-        {visibleGoal && (
-          <GoalStatusBar
-            goal={visibleGoal}
-            isExecuting={goalIsExecuting}
-            executionNumber={goalExecutionNumber}
-            onEdit={onGoalEdit}
-            onPause={onGoalPause}
-            onResume={onGoalResume}
-            onCancel={onGoalCancel}
-            onDismiss={onGoalDismiss}
           />
         )}
         {activeCronTask && (

@@ -3,6 +3,7 @@ import type { UpstreamConfig } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
+import { modelStreamEventType } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 
@@ -20,6 +21,8 @@ export interface InferenceRecoveryHooks {
   wait(request: Request, failure: { status: number; attempt: number; retryAfterMs?: number; usingBackup: boolean }): Promise<number | undefined>;
   complete(request: Request): Promise<void>;
   blocked?(request: Request, reason: string): Promise<void>;
+  /** Ask the original turn owner to continue from native history, never replay this request. */
+  interrupted?(request: Request): Promise<boolean>;
 }
 
 type Root = { scope: string; backup?: boolean; retired?: boolean };
@@ -103,6 +106,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     let hasDurableRecovery = false;
     let durableStopped = false;
     let recoverySettled = false;
+    let interruptionAttempted = false;
     const blockRecovery = async (reason: string) => {
       lease.block();
       if (recoverySettled) return;
@@ -114,6 +118,21 @@ export class ModelFailoverController implements BridgeModelFailover {
       if (recoverySettled || !recovery || !rootLive() || !live()) return;
       await recovery.complete(request);
       recoverySettled = true;
+    };
+    const interruptRecovery = async (reason: string, isConsumerCancelled: () => boolean) => {
+      if (!interruptionAttempted && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
+        interruptionAttempted = true;
+        try {
+          if (await recovery?.interrupted?.(request) && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
+            // The old lease remains sealed. The original owner alone may
+            // admit a different native continuation under its durable chain.
+            recoverySettled = true;
+            lease.block();
+            return;
+          }
+        } catch { /* failed continuation admission retains the existing pause */ }
+      }
+      await blockRecovery(reason);
     };
     const validateRecoveryResume = async () => {
       const allowed = recovery?.validateResume ? await recovery.validateResume(request) : true;
@@ -258,7 +277,7 @@ export class ModelFailoverController implements BridgeModelFailover {
             if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
-                await blockRecovery('Model stream ended without message_stop');
+                await interruptRecovery('Model stream ended without message_stop', () => consumerCancelled);
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
               } else await completeRecovery();
@@ -266,18 +285,20 @@ export class ModelFailoverController implements BridgeModelFailover {
             }
             let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              let type = event.event;
-              try { const payload = JSON.parse(event.data); if (typeof payload?.type === 'string') type = payload.type; }
-              catch { throw new Error('Malformed model stream event'); }
-              if (type === 'message_stop') terminal = true;
+              const type = modelStreamEventType(event);
+              if (!type) continue;
               if (type === 'error') {
-                await blockRecovery('Model stream delivered an error event');
+                if (!terminal) await interruptRecovery('Model stream delivered an error event', () => consumerCancelled);
+                else await blockRecovery('Model stream delivered an error after its terminal');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
                 void reader.cancel().catch(() => undefined);
                 finish(); output.close(); return;
               }
               frames += formatSSEFrame(event);
+              // The protocol terminal ends this inference. Never parse provider trailers or
+              // wait for socket EOF; either can turn a completed response into a fake failure.
+              if (type === 'message_stop') { terminal = true; break; }
             }
             if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
             if (!isSse) output.enqueue(next.value);
@@ -285,10 +306,20 @@ export class ModelFailoverController implements BridgeModelFailover {
             // Protocol termination counts as delivered only after the terminal
             // bytes enter the downstream queue. Durable cleanup may then await
             // IO without erasing a checkpoint for an unobserved message_stop.
-            if (terminal) { terminalQueued = true; await completeRecovery(); }
+            if (terminal) {
+              terminalQueued = true;
+              await completeRecovery();
+              void reader.cancel().catch(() => undefined);
+              finish();
+              if (!consumerCancelled) output.close();
+            }
           } catch (error) {
             if (!terminalQueued || (recovery && !recoverySettled)) {
-              try { await blockRecovery(queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled'); } catch { /* fail closed */ }
+              try {
+                const reason = queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled';
+                if (!terminal) await interruptRecovery(reason, () => consumerCancelled);
+                else await blockRecovery(reason);
+              } catch { /* fail closed */ }
             }
             void reader.cancel().catch(() => undefined);
             finish();

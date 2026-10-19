@@ -76,6 +76,15 @@ previous request finishes. This is not token streaming. A page contains at most
 30 messages and the Session result body is at most 48 KiB, leaving envelope room
 under the existing 64 KiB transport limit. Oversized or unreadable projections
 fail explicitly. Native thinking and raw tool inputs are not message projections.
+Tool summaries reuse the shared local SDK text parser **before** applying the
+2,000-character wire limit. Omitted tool output sets the message truncation
+notice and ends with an ellipsis. The controller treats summaries as canonical
+plain text and never decodes them again (a JSON file may itself contain fields
+such as `content` or `stdout`). Tool rows use the shared disclosure and bounded
+result container without local workspace/file actions. This projection fix
+requires an updated target; an older target may still send clipped JSON. No raw
+tool input, protocol extension, runtime or approval authority is added.
+
 Remote Markdown disables local files, attachment/image loads and active preview
 actions. Latest history lists replace their baseline; explicitly loaded older
 list pages are marked cached and are cleared by manual refresh.

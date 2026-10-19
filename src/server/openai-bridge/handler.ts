@@ -22,6 +22,7 @@ import { StreamTranslator } from './translate/stream';
 import { ResponsesStreamTranslator } from './translate/stream-responses';
 import { translateError } from './translate/errors';
 import { SSEParser } from './utils/sse-parser';
+import { transportDiagnostic } from './transport-diagnostics';
 import { formatSSE } from './utils/sse-writer';
 import { buildPromptCacheKey, hashForLog, promptCacheTarget } from './prompt-cache';
 import {
@@ -360,9 +361,12 @@ export interface BridgeHandler {
 
 /** Same token boundary as OpenAI translation; SDK transcript stays native. */
 async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
-  upstream: UpstreamConfig, timeoutMs: number): Promise<Response> {
+  upstream: UpstreamConfig, timeoutMs: number, log: (message: string) => void): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
+  let bytesDelivered = 0;
+  let consumerCancelled = false;
+  let route: 'direct' | 'proxy' | 'unresolved' = 'unresolved';
   const abort = () => controller.abort();
   if (request.signal.aborted) abort();
   else request.signal.addEventListener('abort', abort, { once: true });
@@ -379,6 +383,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       headers['x-api-key'] = upstream.apiKey ?? '';
     }
     const proxy = getProxyForProviderUrl(upstream.providerId, url);
+    route = proxy ? 'proxy' : 'direct';
     const response = await fetch(url, {
       method: 'POST', headers,
       body: JSON.stringify({ ...body, model: upstream.model ?? body.model }),
@@ -386,19 +391,23 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       ...(proxy ? { dispatcher: getDispatcherForProxy(proxy) } : {}),
     });
     clearTimeout(timer);
+    const diagnostic = (phase: 'response_headers' | 'response_body', error?: unknown) => log(transportDiagnostic(upstream,
+      { phase, route, error, status: response.status, response, cancelled: request.signal.aborted, timedOut, bytesDelivered }));
+    if (!response.ok) diagnostic('response_headers');
     const reader = response.body?.getReader();
     const stream = reader ? new ReadableStream<Uint8Array>({
       async pull(output) {
         try {
           const next = await reader.read();
           if (next.done) { cleanup(); output.close(); }
-          else output.enqueue(next.value);
-        } catch (error) { cleanup(); output.error(error); }
+          else { output.enqueue(next.value); bytesDelivered += next.value.byteLength; }
+        } catch (error) { if (!consumerCancelled) diagnostic('response_body', error); cleanup(); output.error(error); }
       },
       async cancel() {
+        consumerCancelled = true;
         cleanup();
+        controller.abort();
         try { await reader.cancel(); } catch { /* already aborted by the downstream request */ }
-        finally { controller.abort(); }
       },
     }) : null;
     if (!reader) cleanup();
@@ -408,7 +417,9 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       'x-should-retry': 'false',
       ...(response.headers.has('retry-after') ? { 'retry-after': response.headers.get('retry-after')! } : {}),
     } });
-  } catch {
+  } catch (error) {
+    log(transportDiagnostic(upstream, { phase: 'response_headers', route, error, cancelled: request.signal.aborted,
+      timedOut, bytesDelivered, mappedStatus: request.signal.aborted ? 499 : timedOut ? 408 : 502 }));
     cleanup();
     return jsonError(request.signal.aborted ? 499 : timedOut ? 408 : 502,
       'api_error', request.signal.aborted ? 'Request cancelled' : timedOut ? 'Upstream request timed out' : 'Upstream connection error',
@@ -498,7 +509,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         : [...(anthropicReq.system ?? []), { type: 'text', text: upstream.continuationInstruction }] };
     }
     if (upstream.apiProtocol === 'anthropic') {
-      return forwardAnthropicRequest(request, anthropicReq, upstream, routeTimeout.timeoutMs);
+      return forwardAnthropicRequest(request, anthropicReq, upstream, routeTimeout.timeoutMs, log);
     }
 
     let effectiveApiKey = upstream.apiKey || apiKey;

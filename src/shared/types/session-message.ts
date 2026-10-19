@@ -61,6 +61,7 @@ export interface MessageSourceMetadata {
  * Simplified message format for storage
  */
 export interface SessionMessage {
+    streamRecovery?: import('../streamRecovery').StreamRecoveryEvidence;
   desktopQuery?: import("../agentMentions").DesktopQueryDraft;
     asyncQuestionReply?: AsyncQuestionReply;
     id: string;

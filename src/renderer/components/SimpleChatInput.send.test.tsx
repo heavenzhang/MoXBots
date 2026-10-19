@@ -875,6 +875,7 @@ describe('SimpleChatInput send paths', () => {
   it('shows Goal and scheduled Task state independently', async () => {
     await i18n.changeLanguage('en-US');
     const onGoalPause = vi.fn();
+    const onGoalCancel = vi.fn();
     renderInput({
       cronTask: {
         status: 'running',
@@ -903,13 +904,20 @@ describe('SimpleChatInput send paths', () => {
       },
       onCronStop: vi.fn(),
       onGoalPause,
-      onGoalCancel: vi.fn(),
+      onGoalCancel,
     });
 
     expect(screen.getByText('Goal Mode running')).toBeInTheDocument();
     expect(screen.getByText('Round 1')).toBeInTheDocument();
+    const goalSummary = screen.getByRole('button', { name: /Goal Mode running/ });
+    expect(goalSummary).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Ship the architecture closure')).not.toBeInTheDocument();
+    fireEvent.click(goalSummary);
     expect(screen.getByText('Ship the architecture closure')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel goal' })).toBeInTheDocument();
+    expect(screen.queryByText('Cancel goal')).not.toBeInTheDocument();
+    fireEvent.click(within(goalSummary.closest('[data-execution-status]') as HTMLElement).getByTitle('More actions'));
+    fireEvent.click(screen.getByText('Cancel goal'));
+    expect(onGoalCancel).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: 'Pause' }));
     expect(onGoalPause).toHaveBeenCalledTimes(1);
     expect(screen.getByText('Scheduled task running')).toBeInTheDocument();

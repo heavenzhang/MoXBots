@@ -8,6 +8,7 @@
   "terminalStatus": null,
   "attachments": null,
   "usage": null,
+  "streamRecovery": null,
   "toolCount": null,
   "durationMs": null,
   "metadata": null,

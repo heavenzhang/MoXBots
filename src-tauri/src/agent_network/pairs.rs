@@ -124,6 +124,9 @@ struct Entry {
     management_ready_announced: bool,
 }
 struct PendingOffer {
+    // A routing hint from a scope-validated relay Offer, not a verified identity.
+    // Certificate/binding validation still owns installation and admission.
+    peer_candidate: Option<DeviceScope>,
     management_role: Option<PeerRole>,
     accepted: bool,
     bytes: Vec<u8>,
@@ -196,6 +199,8 @@ pub(crate) struct Pairs {
     credits: HashMap<String, Credits>,
     retired_management: VecDeque<RetiredManagementChannel>,
     failures: Vec<(String, NetworkError)>,
+    management_busy_log: Option<(Instant, u64)>,
+    management_busy_diagnostic: Option<(&'static str, u64)>,
 }
 impl Pairs {
     pub(crate) fn new(memory: super::memory::MemoryBudget) -> Self {
@@ -254,6 +259,7 @@ impl Pairs {
         self.pending.insert(
             id.into(),
             PendingOffer {
+                peer_candidate: None,
                 management_role: if self.owned_flexible {
                     None
                 } else {
@@ -264,6 +270,29 @@ impl Pairs {
                 created_at: Instant::now(),
             },
         );
+        Ok(())
+    }
+    pub(crate) fn reserve_offered(
+        &mut self,
+        offer: &Offer,
+        local: &DeviceScope,
+        epoch: &str,
+    ) -> Result<(), NetworkError> {
+        offer.validate_scope(local, epoch)?;
+        let peer = if offer.initiator == *local {
+            &offer.responder
+        } else {
+            &offer.initiator
+        };
+        self.reserve(&offer.channel_id)?;
+        self.pending
+            .get_mut(&offer.channel_id)
+            .expect("reserved")
+            .peer_candidate = Some(peer.clone());
+        if let Err(error) = self.account_buffers() {
+            self.remove(&offer.channel_id);
+            return Err(error);
+        }
         Ok(())
     }
     /// Business role comes from the request source, never canonical TLS ordering.
@@ -529,15 +558,56 @@ impl Pairs {
             .get(id)
             .is_some_and(|entry| entry.channel.is_management())
     }
-    pub(crate) fn has_peer_channel(&self, peer: &DeviceScope) -> bool {
-        // Pending offers include certificate verification work whose peer has
-        // not been installed yet. Conservatively serialize management with
-        // those openings; this request's retirement reservation is separate.
-        !self.pending.is_empty()
-            || self
-                .channels
-                .values()
-                .any(|entry| entry.channel.peer() == peer)
+    pub(crate) fn peer_channel_busy_reason(&self, peer: &DeviceScope) -> Option<&'static str> {
+        // Unattributed reservations remain fail-closed. A validated Offer for
+        // another exact peer must not block this device while its certificate
+        // is being verified. This does not authorize reuse or profile changes.
+        if self
+            .pending
+            .values()
+            .any(|entry| entry.peer_candidate.is_none())
+        {
+            Some("unattributed_handshake")
+        } else if self
+            .pending
+            .values()
+            .any(|entry| entry.peer_candidate.as_ref() == Some(peer))
+        {
+            Some("same_peer_handshake")
+        } else if self
+            .channels
+            .values()
+            .any(|entry| entry.channel.peer() == peer)
+        {
+            Some("same_peer_channel")
+        } else {
+            None
+        }
+    }
+    // Polling can encounter the same conflict repeatedly. Keep diagnostics
+    // connection-scoped, bounded and free of peer identifiers or payloads.
+    fn management_busy_log_count(&mut self, now: Instant) -> Option<u64> {
+        if let Some((last, count)) = &mut self.management_busy_log {
+            *count = count.saturating_add(1);
+            if now.duration_since(*last) < Duration::from_secs(30) {
+                return None;
+            }
+            let total = *count;
+            *last = now;
+            *count = 0;
+            Some(total)
+        } else {
+            self.management_busy_log = Some((now, 0));
+            Some(1)
+        }
+    }
+    pub(crate) fn record_management_busy(&mut self, reason: &'static str, now: Instant) {
+        if let Some(count) = self.management_busy_log_count(now) {
+            self.management_busy_diagnostic = Some((reason, count));
+        }
+    }
+    pub(crate) fn take_management_busy_diagnostic(&mut self) -> Option<(&'static str, u64)> {
+        self.management_busy_diagnostic.take()
     }
     pub(crate) fn feed_mixed(
         &mut self,
@@ -1112,7 +1182,17 @@ impl Pairs {
             + self
                 .pending
                 .values()
-                .map(|entry| entry.bytes.len())
+                .map(|entry| {
+                    entry.bytes.len()
+                        + entry.peer_candidate.as_ref().map_or(0, |peer| {
+                            std::mem::size_of::<DeviceScope>()
+                                + peer.service_id.capacity()
+                                + peer.environment.capacity()
+                                + peer.network_id.capacity()
+                                + peer.principal_id.capacity()
+                                + peer.device_id.capacity()
+                        })
+                })
                 .sum::<usize>()
             + self
                 .retired_management
@@ -1181,6 +1261,132 @@ pub(crate) mod tests {
             key_generation: 1,
         };
         (scope(3), scope(4))
+    }
+
+    fn pending_offer(local: &DeviceScope, peer: &DeviceScope) -> Offer {
+        Offer {
+            channel_id: uuid::Uuid::new_v4().to_string(),
+            initiator: local.clone(),
+            responder: peer.clone(),
+            initiator_epoch: "local-epoch".into(),
+            responder_epoch: "peer-epoch".into(),
+            initiator_binding: None,
+            responder_binding: None,
+        }
+    }
+
+    #[test]
+    fn offered_peer_handshake_blocks_only_its_complete_scope() {
+        let (local, peer) = management_scopes();
+        let offer = pending_offer(&local, &peer);
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        pairs
+            .reserve_offered(&offer, &local, "local-epoch")
+            .unwrap();
+        assert_eq!(
+            pairs.peer_channel_busy_reason(&peer),
+            Some("same_peer_handshake")
+        );
+        for field in 0..6 {
+            let mut other = peer.clone();
+            match field {
+                0 => other.device_id = uuid::Uuid::new_v4().to_string(),
+                1 => other.network_id = uuid::Uuid::new_v4().to_string(),
+                2 => other.principal_id = "another-account".into(),
+                3 => other.service_id = uuid::Uuid::new_v4().to_string(),
+                4 => other.environment = "another-environment".into(),
+                _ => other.key_generation += 1,
+            }
+            assert_eq!(pairs.peer_channel_busy_reason(&other), None);
+        }
+        assert!(pairs.buffered_bytes() > 0);
+        pairs.remove(&offer.channel_id);
+        assert_eq!(pairs.buffered_bytes(), 0);
+        assert_eq!(pairs.peer_channel_busy_reason(&peer), None);
+    }
+
+    #[test]
+    fn responder_offer_keeps_pending_peer_until_verification_and_unknown_stays_closed() {
+        let (first, local) = management_scopes();
+        let offer = pending_offer(&first, &local);
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        pairs.reserve_offered(&offer, &local, "peer-epoch").unwrap();
+        assert_eq!(
+            pairs.peer_channel_busy_reason(&first),
+            Some("same_peer_handshake")
+        );
+        assert_eq!(pairs.peer_channel_busy_reason(&local), None);
+        pairs.reserve("unattributed").unwrap();
+        assert_eq!(
+            pairs.peer_channel_busy_reason(&local),
+            Some("unattributed_handshake")
+        );
+        pairs.remove("unattributed");
+        assert_eq!(pairs.peer_channel_busy_reason(&local), None);
+        assert!(pairs.pending.contains_key(&offer.channel_id));
+    }
+
+    #[test]
+    fn invalid_offer_scope_cannot_create_an_attributed_pending_reservation() {
+        let (local, peer) = management_scopes();
+        let mut pairs = Pairs::new_owned(super::super::memory::MemoryBudget::default());
+        let mut offer = pending_offer(&local, &peer);
+        assert!(pairs
+            .reserve_offered(&offer, &local, "wrong-epoch")
+            .is_err());
+        offer.responder.principal_id = "another-account".into();
+        assert!(pairs
+            .reserve_offered(&offer, &local, "local-epoch")
+            .is_err());
+        assert!(pairs.pending.is_empty());
+        assert_eq!(pairs.buffered_bytes(), 0);
+    }
+
+    #[test]
+    fn peer_attribution_capacity_failure_releases_only_new_reservation() {
+        let (local, peer) = management_scopes();
+        let memory = super::super::memory::MemoryBudget::default();
+        let mut pairs = Pairs::new_owned(memory.clone());
+        pairs.reserve("existing").unwrap();
+        let held = memory.reserve(budget("connectorBytes") - 1).unwrap();
+        let offer = pending_offer(&local, &peer);
+        assert!(pairs
+            .reserve_offered(&offer, &local, "local-epoch")
+            .is_err());
+        assert!(!pairs.pending.contains_key(&offer.channel_id));
+        assert!(pairs.pending.contains_key("existing"));
+        drop(held);
+        pairs
+            .reserve_offered(&offer, &local, "local-epoch")
+            .unwrap();
+    }
+
+    #[test]
+    fn existing_management_channel_stays_busy_and_diagnostic_polling_is_bounded() {
+        let (mut controller, _other, _local, peer, id) = installed_management_pair();
+        assert_eq!(
+            controller.peer_channel_busy_reason(&peer),
+            Some("same_peer_channel")
+        );
+        assert!(controller.has_channel(&id));
+        let now = Instant::now();
+        controller.record_management_busy("same_peer_channel", now);
+        assert_eq!(
+            controller.take_management_busy_diagnostic(),
+            Some(("same_peer_channel", 1))
+        );
+        assert_eq!(controller.take_management_busy_diagnostic(), None);
+        for _ in 0..100 {
+            controller.record_management_busy("same_peer_channel", now + Duration::from_secs(1));
+            assert_eq!(controller.take_management_busy_diagnostic(), None);
+        }
+        controller.record_management_busy("same_peer_handshake", now + Duration::from_secs(30));
+        assert_eq!(
+            controller.take_management_busy_diagnostic(),
+            Some(("same_peer_handshake", 101))
+        );
+        assert_eq!(controller.take_management_busy_diagnostic(), None);
+        assert!(controller.has_channel(&id));
     }
 
     fn verified_management_offers(
@@ -2322,7 +2528,7 @@ pub(crate) mod tests {
                 break;
             }
         }
-        assert!(a.has_peer_channel(&second));
+        assert!(a.peer_channel_busy_reason(&second).is_some());
         assert_eq!(
             a.ready_for(&second, "00000000-0000-0000-0000-000000000008"),
             Some(id.as_str())
@@ -2373,11 +2579,11 @@ pub(crate) mod tests {
             .reserve_management_retirement(&id, &scope, &local)
             .unwrap();
         assert!(
-            !pairs.has_peer_channel(&peer),
+            pairs.peer_channel_busy_reason(&peer).is_none(),
             "this request's own retirement reservation is not an opening"
         );
         pairs.reserve("uninstalled-agent-offer").unwrap();
-        assert!(pairs.has_peer_channel(&peer));
+        assert!(pairs.peer_channel_busy_reason(&peer).is_some());
         pairs.remove("uninstalled-agent-offer");
         pairs.retire_management(&id, true);
         let offer = ServerMessage::ChannelOffer {
@@ -2410,7 +2616,7 @@ pub(crate) mod tests {
                 .unwrap(),
             Some(RetiredManagementOffer::AlreadyClosed)
         );
-        assert!(!pairs.has_peer_channel(&local));
+        assert!(pairs.peer_channel_busy_reason(&local).is_none());
         let mut wrong = scope.clone();
         wrong.connection_epoch = uuid::Uuid::new_v4().to_string();
         assert_eq!(

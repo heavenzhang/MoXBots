@@ -11,6 +11,127 @@ const retryDelaysMs = [0, 0, 0] as const;
 
 afterEach(() => vi.useRealTimers());
 
+describe('owner-admitted partial stream continuation', () => {
+  function fixture(interruptedResult: boolean | Error = true) {
+    const owner = { active: true, safe: true, scope: 'root:0' };
+    const recovery = {
+      wait: vi.fn(async () => undefined), complete: vi.fn(async () => {}), blocked: vi.fn(async () => {}),
+      interrupted: vi.fn(async () => {
+        if (interruptedResult instanceof Error) throw interruptedResult;
+        return interruptedResult;
+      }),
+    };
+    const controller = new ModelFailoverController({ scope: () => owner.scope, isActive: () => owner.active,
+      canRetry: () => owner.safe, canSwitch: () => owner.safe, resolveBackup: () => undefined,
+      onSwitch: vi.fn(), retryDelaysMs, recovery });
+    return { owner, recovery, controller };
+  }
+  it.each(['EOF', 'error event', 'malformed', 'read failure'])('offers %s exactly once, without replay or pausing its accepted checkpoint', async failure => {
+    const h = fixture();
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const upstream = new ReadableStream<Uint8Array>({ start(value) { source = value; } });
+    const execute = vi.fn(async () => new Response(upstream, { headers: { 'content-type': 'text/event-stream' } }));
+    const response = await h.controller.run(request(), primary, execute, 'failed-input');
+    const output = response.text();
+    source.enqueue(new TextEncoder().encode('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"partial"}}\n\n'));
+    if (failure === 'read failure') source.error(new Error('socket closed'));
+    else {
+      if (failure === 'error event') source.enqueue(new TextEncoder().encode('event: error\ndata: {"type":"error"}\n\n'));
+      if (failure === 'malformed') source.enqueue(new TextEncoder().encode('data: invalid-json\n\n'));
+      source.close();
+    }
+    expect(await output).toContain('automatic_replay_blocked');
+    expect(h.recovery.interrupted).toHaveBeenCalledTimes(1);
+    expect(h.recovery.blocked).not.toHaveBeenCalled();
+    expect(h.recovery.complete).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect((await h.controller.run(request(), primary, execute, 'different-input')).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+  it.each([false, new Error('cannot persist')])('pauses safely when the owner declines or throws (%s)', async answer => {
+    const h = fixture(answer);
+    const response = await h.controller.run(request(), primary, async () => new Response('', {
+      headers: { 'content-type': 'text/event-stream' },
+    }), 'failed-input');
+    expect(await response.text()).toContain('automatic_replay_blocked');
+    expect(h.recovery.interrupted).toHaveBeenCalledTimes(1);
+    expect(h.recovery.blocked).toHaveBeenCalledTimes(1);
+  });
+  it.each(['consumer cancel', 'Stop', 'unsafe tools'])('never offers continuation after %s', async reason => {
+    const h = fixture();
+    const abort = new AbortController();
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const upstream = new ReadableStream<Uint8Array>({ start(value) { source = value; } });
+    const response = await h.controller.run(request(abort.signal), primary, async () => new Response(upstream, {
+      headers: { 'content-type': 'text/event-stream' },
+    }), 'failed-input');
+    if (reason === 'consumer cancel') await response.body!.cancel();
+    else {
+      const result = response.text().catch(() => 'cancelled');
+      if (reason === 'Stop') abort.abort();
+      else h.owner.safe = false;
+      source.close();
+      await result;
+    }
+    expect(h.recovery.interrupted).not.toHaveBeenCalled();
+  });
+  it('does not classify an error after a recognized terminal as interrupted inference', async () => {
+    const h = fixture();
+    const response = await h.controller.run(request(), primary, async () => new Response(
+      'event: message_stop\ndata: {"type":"message_stop"}\n\nevent: error\ndata: {"type":"error"}\n\n',
+      { headers: { 'content-type': 'text/event-stream' } },
+    ), 'post-terminal-error');
+    await response.text();
+    expect(h.recovery.interrupted).not.toHaveBeenCalled();
+  });
+  it('does not accept a late continuation grant after Stop revokes its exact request', async () => {
+    const h = fixture();
+    const abort = new AbortController();
+    let grant!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    h.recovery.interrupted.mockImplementation(async () => {
+      entered();
+      await new Promise<void>(resolve => { grant = resolve; });
+      return true;
+    });
+    const response = await h.controller.run(request(abort.signal), primary, async () => new Response('', {
+      headers: { 'content-type': 'text/event-stream' },
+    }), 'stopped-during-grant');
+    const result = response.text().catch(() => 'cancelled');
+    await started;
+    abort.abort();
+    grant();
+    expect(await result).toBe('cancelled');
+    expect(h.recovery.interrupted).toHaveBeenCalledTimes(1);
+    expect(h.recovery.complete).not.toHaveBeenCalled();
+  });
+  it('lets consumer cancellation pause a checkpoint while its continuation grant is awaiting storage', async () => {
+    const h = fixture();
+    let grant!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    h.recovery.interrupted.mockImplementation(async () => {
+      entered();
+      await new Promise<void>(resolve => { grant = resolve; });
+      return true;
+    });
+    const response = await h.controller.run(request(), primary, async () => new Response('', {
+      headers: { 'content-type': 'text/event-stream' },
+    }), 'cancelled-during-grant');
+    const reader = response.body!.getReader();
+    const reading = reader.read();
+    await started;
+    const cancellation = reader.cancel();
+    grant();
+    await cancellation;
+    expect((await reading).done).toBe(true);
+    expect(h.recovery.interrupted).toHaveBeenCalledTimes(1);
+    expect(h.recovery.blocked).toHaveBeenCalledTimes(1);
+    expect(h.recovery.complete).not.toHaveBeenCalled();
+  });
+});
+
 describe('bounded Query request retries', () => {
   it.each([408, 429, 500, 502, 503, 504, 529])('retries HTTP %s three times without requiring a backup or foreground root', async status => {
     const controller = new ModelFailoverController({ scope: () => undefined, resolveBackup: () => undefined,
