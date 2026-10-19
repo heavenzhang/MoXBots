@@ -5,6 +5,7 @@ const calls = vi.hoisted(() => ({
   select: vi.fn(),
   join: vi.fn(),
   ownedStart: vi.fn(),
+  existingStart: vi.fn(),
   ownedOpen: vi.fn(),
   ownedPoll: vi.fn(),
   ownedCancel: vi.fn(),
@@ -18,6 +19,7 @@ vi.mock("@/api/agentNetwork", async (original) => ({
   selectNetworkConnection: calls.select,
   joinNetworkConnection: calls.join,
   startOwnedNetworkLogin: calls.ownedStart,
+  startOwnedNetworkReauthentication: calls.existingStart,
   openOwnedNetworkAuthorization: calls.ownedOpen,
   pollOwnedNetworkLogin: calls.ownedPoll,
   cancelOwnedNetworkLogin: calls.ownedCancel,
@@ -57,6 +59,9 @@ beforeEach(() => {
     attemptId: "attempt-1",
     authorizationUrl: "https://login.example.test/authorize?state=opaque",
     expiresAt: 1_900_000_000,
+  });
+  calls.existingStart.mockResolvedValue({
+    attemptId: "attempt-1", authorizationUrl: "https://login.example.test/authorize?state=opaque", expiresAt: 1_900_000_000,
   });
   calls.ownedOpen.mockResolvedValue(undefined);
   calls.ownedPoll.mockResolvedValue({ status: "pending" });
@@ -180,7 +185,7 @@ it("uses browser account sign-in by default and polls without exposing a token",
   expect(screen.getByText(/authorize\?state=opaque/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "打开浏览器" }));
   await waitFor(() => expect(calls.ownedOpen).toHaveBeenCalledWith("attempt-1"));
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(calls.ownedPoll).toHaveBeenCalledWith("attempt-1"));
   expect(calls.accept).toHaveBeenCalledWith(registry);
   expect(screen.queryByLabelText("设备 key")).not.toBeInTheDocument();
@@ -209,7 +214,7 @@ it("continues a restored identity with the same logical attempt and cancels that
   fireEvent.change(screen.getByLabelText("服务 URL"), { target: { value: "https://hub.example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   expect(await screen.findByText(/已找到此账号原有的设备身份/)).toBeInTheDocument();
   expect(screen.getByText(/restore\?state=second/)).toBeInTheDocument();
   expect(calls.accept).not.toHaveBeenCalled();
@@ -220,21 +225,46 @@ it("continues a restored identity with the same logical attempt and cancels that
   expect(calls.remove).not.toHaveBeenCalled();
 });
 
-it("selects the authenticated account rather than the first account with the same service URL", async () => {
+it("restores the pinned account even when another account shares the same service URL", async () => {
   const before: NetworkRegistry = { ...registry, selected: "self-a", connections: registry.connections.map((c) => c.official ? c : {
     ...c, url: "https://shared.example.test", ownedAccount: { state: "signInRequired", principalId: c.id, expiresAt: null },
   }) };
   const after = { ...before, selected: "self-b" };
   calls.ownedPoll.mockResolvedValue({ status: "authenticated", registry: after });
-  calls.select.mockResolvedValue(after);
+  calls.select.mockResolvedValue({ ...after, selected: "self-a" });
   render(<NetworkSelector registry={before} />);
   fireEvent.click(screen.getByRole("button", { name: "重新登录" }));
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
-  await waitFor(() => expect(calls.select).toHaveBeenCalledWith("self-b"));
-  expect(calls.select).not.toHaveBeenCalledWith("self-a");
-  expect(calls.accept).toHaveBeenCalledWith(after);
+  expect(calls.existingStart).toHaveBeenCalledWith("self-a", before.revision);
+  expect(calls.ownedStart).not.toHaveBeenCalled();
+  fireEvent.click(await manualLoginCheck());
+  await waitFor(() => expect(calls.select).toHaveBeenCalledWith("self-a"));
+  expect(calls.select).not.toHaveBeenCalledWith("self-b");
+  expect(calls.accept).toHaveBeenCalledWith(expect.objectContaining({ selected: "self-a" }));
+});
+
+it("fences a completed login selection as soon as cancel begins", async () => {
+  const owned: NetworkRegistry = { ...registry, selected: "self-a", connections: registry.connections.map((c) => c.id === "self-a" ? {
+    ...c, url: "https://shared.example.test", ownedAccount: { state: "signInRequired", principalId: c.id, expiresAt: null },
+  } : c) };
+  let finishSelect!: (value: NetworkRegistry) => void;
+  let finishCancel!: () => void;
+  calls.select.mockImplementation(() => new Promise<NetworkRegistry>((resolve) => { finishSelect = resolve; }));
+  calls.ownedCancel.mockImplementation(() => new Promise<void>((resolve) => { finishCancel = resolve; }));
+  calls.ownedPoll.mockResolvedValue({ status: "authenticated", registry: owned });
+  render(<NetworkSelector registry={owned} />);
+  fireEvent.click(screen.getByRole("button", { name: "重新登录" }));
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  await screen.findByText("等待浏览器登录");
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(calls.select).toHaveBeenCalledWith("self-a"));
+  fireEvent.click(screen.getByRole("button", { name: "取消登录" }));
+  await waitFor(() => expect(calls.ownedCancel).toHaveBeenCalledWith("attempt-1"));
+  await act(async () => finishSelect(owned));
+  expect(calls.accept).not.toHaveBeenCalled();
+  await act(async () => finishCancel());
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
 
 it("offers account-only re-login for an owned signInRequired connection and selects it after authentication", async () => {
@@ -259,7 +289,7 @@ it("offers account-only re-login for an owned signInRequired connection and sele
   expect(screen.queryByLabelText("设备 key")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(calls.select).toHaveBeenCalledWith("self-a"));
   expect(calls.accept).toHaveBeenCalledWith(expect.objectContaining({ selected: "self-a" }));
 });
@@ -279,7 +309,7 @@ it("does not select or accept a late re-login result after the dialog is unmount
   fireEvent.click(await screen.findByRole("menuitem", { name: "登录 MoXBots" }));
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(calls.ownedPoll).toHaveBeenCalledWith("attempt-1"));
   view.unmount();
   expect(calls.ownedCancel).toHaveBeenCalledWith("attempt-1");
@@ -304,7 +334,7 @@ it("cancels and fences a pending instance login when its account generation chan
   fireEvent.click(await screen.findByRole("menuitem", { name: "登录 MoXBots" }));
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(calls.ownedPoll).toHaveBeenCalledWith("attempt-1"));
 
   const changed = {
@@ -320,7 +350,7 @@ it("cancels and fences a pending instance login when its account generation chan
   fireEvent.click(await screen.findByRole("menuitem", { name: "登录 MoXBots" }));
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  expect(calls.ownedStart).toHaveBeenCalledTimes(2);
+  expect(calls.existingStart).toHaveBeenCalledTimes(2);
 
   await act(async () => resolvePoll({ status: "authenticated", registry: owned }));
   expect(calls.accept).not.toHaveBeenCalled();
@@ -684,7 +714,7 @@ it("automatically completes a generic join after browser login without clicking 
   fireEvent.click(await screen.findByRole("menuitem", { name: "加入自部署网络" }));
   fireEvent.change(screen.getByLabelText("服务 URL"), { target: { value: "https://hub.example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "检查登录状态" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "打开浏览器" })).toBeEnabled());
   fireEvent(window, new Event("focus"));
   await waitFor(() => expect(calls.accept).toHaveBeenCalledWith(registry));
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -698,7 +728,7 @@ it("fences a generic join's late automatic poll after explicit cancellation", as
   fireEvent.click(await screen.findByRole("menuitem", { name: "加入自部署网络" }));
   fireEvent.change(screen.getByLabelText("服务 URL"), { target: { value: "https://hub.example.test" } });
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
-  await waitFor(() => expect(screen.getByRole("button", { name: "检查登录状态" })).toBeEnabled());
+  await waitFor(() => expect(screen.getByRole("button", { name: "打开浏览器" })).toBeEnabled());
   fireEvent(window, new Event("focus"));
   await waitFor(() => expect(calls.ownedPoll).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole("button", { name: "取消登录" }));
@@ -706,3 +736,11 @@ it("fences a generic join's late automatic poll after explicit cancellation", as
   await act(async () => { resolvePoll({ status: "authenticated", registry }); });
   expect(calls.accept).not.toHaveBeenCalled();
 });
+
+async function manualLoginCheck() {
+  const button = screen.getByRole("button", { name: "检查登录状态" });
+  if (!button.closest("details")?.open)
+    fireEvent.click(screen.getByText("高级连接选项"));
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
+}

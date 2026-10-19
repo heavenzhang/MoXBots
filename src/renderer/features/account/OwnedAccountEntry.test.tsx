@@ -241,7 +241,7 @@ it("uses the configured product issuer even when another owned instance is selec
   );
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() =>
     expect(mocks.start).toHaveBeenCalledWith(
       "https://login.example.test",
@@ -448,7 +448,7 @@ it("cancels a pending login when the same issuer account generation changes", as
   accountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(mocks.poll).toHaveBeenCalledWith("attempt-a"));
 
   const next = makeRegistry({
@@ -519,7 +519,7 @@ it("does not accept a late authenticated poll after the account entry unmounts",
   accountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(screen.getByRole("button", { name: "检查登录状态" }));
+  fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(mocks.poll).toHaveBeenCalledWith("attempt-a"));
   view.unmount();
   expect(mocks.cancel).toHaveBeenCalledWith("attempt-a");
@@ -702,3 +702,11 @@ it.each([true, false])('opens community from the personal menu without starting 
   expect(mocks.external).not.toHaveBeenCalled();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
+
+async function manualLoginCheck() {
+  const button = screen.getByRole("button", { name: "检查登录状态" });
+  if (!button.closest("details")?.open)
+    fireEvent.click(screen.getByText("高级连接选项"));
+  await waitFor(() => expect(button).toBeEnabled());
+  return button;
+}

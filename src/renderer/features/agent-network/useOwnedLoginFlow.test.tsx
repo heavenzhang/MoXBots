@@ -356,3 +356,21 @@ it("keeps one browser launch and one polling loop under StrictMode lifecycle rep
   expect(actions.onOwnedPoll).toHaveBeenCalledOnce();
   expect(actions.onCancel).toHaveBeenCalledOnce();
 });
+
+it("retains an account mismatch and stops automatic and manual polling until cancellation", async () => {
+  const poll = vi.fn().mockRejectedValue(Object.assign(new Error("wrong account"), { code: "OWNED_ACCOUNT_MISMATCH" }));
+  const { result, actions } = setup({ onOwnedPoll: poll });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await tick();
+  expect(result.current.error).toContain("账号与当前网络绑定不一致");
+  expect(result.current.notice).toBeNull();
+  expect(result.current.stopped).toBe(true);
+  expect(result.current.checking).toBe(false);
+  await act(async () => { vi.advanceTimersByTime(60_000); await result.current.check(); });
+  expect(poll).toHaveBeenCalledOnce();
+  expect(result.current.error).toContain("账号与当前网络绑定不一致");
+  expect(actions.onCancel).not.toHaveBeenCalled();
+  await act(async () => { await result.current.cancel(); });
+  expect(actions.onOwnedCancel).toHaveBeenCalledExactlyOnceWith("attempt-1");
+  expect(actions.onCancel).toHaveBeenCalledOnce();
+});
