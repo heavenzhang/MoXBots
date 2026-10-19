@@ -14,6 +14,21 @@ vi.mock("@/components/Markdown", () => ({ default: ({ children }: { children: st
 import RemoteSession from "./RemoteSession";
 const scope = { serviceId: "s", environment: "e", principalId: "p", networkId: "n", deviceId: "d", keyGeneration: 2 };
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); });
+it.each([
+  ["HOST_MANAGEMENT_TARGET_BUSY", "remoteSession.channelBusy"],
+  ["HOST_MANAGEMENT_BUSY", "remoteSession.requestBusy"],
+  ["REMOTE_SESSION_BUSY", "remoteSession.busy"],
+])("distinguishes transport contention %s from remote execution", async (code, copy) => {
+  mocks.invoke.mockRejectedValue({ code });
+  render(<RemoteSession isActive tab={{
+    id: "remote-busy-test", view: "remote-session", title: "Test Agent",
+    locator: { connectionId: "owned:test", principalId: "p", networkId: "n", deviceId: "d", authGeneration: 4 },
+    agentId: "agent", agentName: "Test Agent", deviceName: "Test Host", sessionId: null, targetScope: null,
+  }} binding={{ onOpen: vi.fn(), onBound: vi.fn() }} />);
+  await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(copy));
+  expect(screen.getByRole("alert")).toHaveTextContent(code);
+  expect(mocks.invoke.mock.calls.every(([, {request}]) => request.params.remoteSession.kind === "capabilities")).toBe(true);
+});
 it("shows the real management failure and refreshes through the actual API into history", async () => {
   mocks.invoke.mockResolvedValue({ scope, result: { kind: "error", code: "TARGET_OWNER_UNAVAILABLE" } });
   render(<RemoteSession isActive tab={{
