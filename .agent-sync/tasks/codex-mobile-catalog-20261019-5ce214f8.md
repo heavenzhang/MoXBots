@@ -26,7 +26,8 @@ Keep the original mobile Rust/Swift/C ABI/React Native owners, cloud identity, H
 
 ## Completed
 
-- Bounded source repair and primary review complete. Rust123/1ignored, App57, TypeScript/Expo lint and changed-file rustfmt pass. Original Direct Host/Session integration passes15.86s with one real joined offline fixture peer. Actual synthetic IAB verifies partial availability, removal of stale online targets on a genuine failure and same-process logout error cleanup. Details and known-red debug C ABI probe: dev-docs/mobile-002/catalog-20261019.md. Shipping-profile C ABI/native acceptance, main and physical acceptance remain open.
+- Bounded source repair and primary review complete. Rust123/1ignored, App57, TypeScript/Expo lint and changed-file rustfmt pass. Original Direct Host/Session integration passes15.86s with one real joined offline fixture peer. Actual synthetic IAB verifies partial availability, removal of stale online targets on a genuine failure and same-process logout error cleanup. Details and known-red debug C ABI probe: dev-docs/mobile-002/catalog-20261019.md. Release C ABI and native milestones are recorded below; final main and physical acceptance remain open.
+- Source4e50be4b Release native App passed actual controlled original-cloud login, legitimate empty Bot directory with5 unavailable peers, process-restart Keychain recovery and same-process clean logout. No browser, Bot enablement, model invocation or original Host change. Cloud owner's fresh before/after read-only receipts preserve original101 and show only one added QA device. Native password Done/drag usability improvement is a later UI-only change; type/lint pass, actual keyboard retest pending without submitting a new login.
 - APNs scope preparation was separately delivered by PR155, mainaaed91342619e67bb45a9639ef9e6ae373b73da4 after all applicable PR checks passed. That is source delivery, not provider activation or physical push acceptance.
 
 ## Verification
@@ -45,4 +46,4 @@ Physical iPhone is unavailable to devicectl and the human has not supplied a new
 
 ## Next step
 
-Primary Release C ABI passed21.36s with the same512KiB caller and original login/Host/Session flow; owned process cleanup independently checked. Commit reviewed source, rebuild matching native/JS and repeat controlled real-cloud native UI. Incorporate current remote main deliberately after the cloud owner's serialized PR137 window; do not overwrite preserved8e902d6a candidates or bypass CI.
+Primary Release C ABI passed21.36s with the same512KiB caller and original login/Host/Session flow; owned process cleanup independently checked. Finish second process-restart logout proof and UI-only Done/drag native retest, without creating another test identity. PR157 contains reviewed source; exact-head CI running. Incorporate current remote main deliberately after the cloud owner's serialized PR137 window; do not overwrite preserved8e902d6a or4e50be4b candidates or bypass CI.

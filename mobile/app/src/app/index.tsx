@@ -2,7 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Crypto from 'expo-crypto';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
-import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, ChevronRight, Check, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, loginWithPassword, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
@@ -1202,7 +1202,7 @@ function AppBody() {
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
     {screen === 'login' && <View style={styles.loginPage}>
       <Topbar right={loginAction !== null || cancelUnconfirmed ? undefined : { label: '刷新', onPress: () => void run('account', loadAccount) }}/>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginScroll}><View style={styles.loginCard}>
+      <ScrollView style={styles.fill} keyboardDismissMode="on-drag" keyboardShouldPersistTaps="handled" contentContainerStyle={styles.loginScroll}><View style={styles.loginCard}>
         <Image source={moxbotsMark} accessibilityLabel="MoXBots" style={styles.logoMark} resizeMode="contain"/>
         <Text style={styles.title}>连接你的 Agent</Text>
         <Text style={styles.subtitle}>登录后，随时继续电脑上的会话。</Text>
@@ -1211,7 +1211,7 @@ function AppBody() {
           <Text style={styles.fieldLabel}>账号</Text>
           <TextInput accessibilityLabel="账号" placeholder="输入账号" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
           <Text style={styles.fieldLabel}>密码</Text>
-          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { if (username.trim() && password && loginConsent && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
+          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType={loginConsent ? 'go' : 'done'} editable={loginAction === null} onSubmitEditing={() => { Keyboard.dismiss(); if (username.trim() && password && loginConsent && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
           <Pressable accessibilityRole="checkbox" accessibilityLabel="允许 MoXBots 使用我的账号标识、名称和邮箱来关联设备与会话" accessibilityState={{ checked: loginConsent, disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => setLoginConsent((value) => !value)} style={styles.consentRow}><View style={[styles.consentBox, loginConsent && styles.consentBoxChecked]}>{loginConsent && <Check size={14} color="#fff"/>}</View><Text style={styles.consentLabel}>允许 MoXBots 使用我的账号标识、名称和邮箱，关联设备与会话。</Text></Pressable>
         </View>}
 
