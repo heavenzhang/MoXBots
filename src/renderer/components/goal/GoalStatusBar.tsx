@@ -19,7 +19,7 @@ interface GoalDraftStatusBarProps {
   onCancel?: () => void;
 }
 
-interface GoalRuntimeStatusBarProps {
+export interface GoalRuntimeStatusBarProps {
   mode?: "runtime";
   goal: SessionGoal;
   isExecuting?: boolean;
@@ -78,17 +78,13 @@ function GoalDraftStatusBar({ onSettings, onCancel }: GoalDraftStatusBarProps) {
   );
 }
 
-function GoalRuntimeStatusBar({
-  goal,
-  isExecuting = false,
-  executionNumber,
-  onEdit,
-  onPause,
-  onResume,
-  onCancel,
-  onDismiss,
-}: GoalRuntimeStatusBarProps) {
-  const { t } = useTranslation("task");
+/** Shared read-only Goal labels; controls remain with the original owner. */
+export function getGoalStatusPresentation(
+  goal: SessionGoal,
+  isExecuting: boolean,
+  executionNumber: number | undefined,
+  t: import("i18next").TFunction<"task">,
+) {
   const terminal =
     goal.status === "complete" ||
     goal.status === "blocked" ||
@@ -139,6 +135,22 @@ function GoalRuntimeStatusBar({
             : t("cron.statusBar.roundRunning", {
                 count: Math.max(1, goal.turnCount),
               });
+
+  return { terminal, color, title, detail };
+}
+
+function GoalRuntimeStatusBar({
+  goal,
+  isExecuting = false,
+  executionNumber,
+  onEdit,
+  onPause,
+  onResume,
+  onCancel,
+  onDismiss,
+}: GoalRuntimeStatusBarProps) {
+  const { t } = useTranslation("task");
+  const { terminal, color, title, detail } = getGoalStatusPresentation(goal, isExecuting, executionNumber, t);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-t-lg border border-b-0 border-[var(--line)] bg-[var(--paper-elevated)] px-3 py-2">

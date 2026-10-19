@@ -1948,6 +1948,15 @@
     "continuationFailed": "The decision could not be confirmed. Refresh to check its current state.",
     "revokeContinuation": "Block future continuation again"
   },
+  "executionStatus": {
+    "summary": "Execution status",
+    "goal": "Goal details",
+    "todos": "Todo details",
+    "agents": "Agent details",
+    "running": "Running {{count}}",
+    "returned": "Returned {{count}}",
+    "failed": "Issues {{count}}"
+  },
   "subagentView": {
     "title": "Subagents",
     "details": "Subagent details",
