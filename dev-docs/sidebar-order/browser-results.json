@@ -1,0 +1,42 @@
+{
+  "scope": "actual GlobalSidebar renderer, synthetic project/session authority; no native backend",
+  "results": [
+    {
+      "width": 1440,
+      "manual": false,
+      "clicks": 3,
+      "activityUpdate": "passed",
+      "reload": "passed",
+      "newProjectAppend": "passed",
+      "appendReload": "passed"
+    },
+    {
+      "width": 1440,
+      "manual": true,
+      "clicks": 3,
+      "activityUpdate": "passed",
+      "reload": "passed",
+      "newProjectAppend": "passed",
+      "appendReload": "passed"
+    },
+    {
+      "width": 900,
+      "manual": false,
+      "clicks": 3,
+      "activityUpdate": "passed",
+      "reload": "passed",
+      "newProjectAppend": "passed",
+      "appendReload": "passed"
+    },
+    {
+      "width": 900,
+      "manual": true,
+      "clicks": 3,
+      "activityUpdate": "passed",
+      "reload": "passed",
+      "newProjectAppend": "passed",
+      "appendReload": "passed"
+    }
+  ],
+  "errors": []
+}

@@ -32,6 +32,10 @@ Fix normal background inference and streams incorrectly cancelled by parent turn
 
 用户启动Ubuntu24.04/x86_64一条命令安装、浏览器授权自动入网与有效会话自动续期；代码/测试/main由01a13320-dbf9-7c03-b7f3-37e30d15de48负责，发行交既定统一部署聊天01a12bc2-907a-7702-b6dd-788225c5dfe4。任务 `.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`。新public installer必须验证正式元数据可用后才展示命令，复用原身份/加密存储/撤销owner；没有新模型授权或生产操作。对日常Mac不安装、不更新、不重启。source/CI/main与正式bundle/服务发布/真实生产按门禁分开，发布请求仅排队不改变当前冻结发行。
 
+## SIDEBAR-ORDER-20261019 — 固定项目顺序
+
+用户要求点击任务不改变项目位置。侧栏持久保存项目 fallback 顺序，已有拖拽/置顶规则继续优先，新项目追加；Launcher 最近使用独立保留。102项定向测试、全量TypeScript、ESLint、1440/900px四组实际renderer交互已通过，CI/main/原生发行分开追踪。任务 `.agent-sync/tasks/codex-sidebar-order-20261019-66662e4b.md`，证据 `dev-docs/sidebar-order/acceptance.md`。本聊天不并发覆盖已有发行owner或用户日常App。
+
 ## MOXBOTS-PIN-001 — 2026-10-18
 
 用户反馈侧栏点击置顶后位置不变。现有organization投影优先应用pinnedAt，统一工作区/根列表/自定义分区/拖拽源，保留手工顺序用于取消置顶恢复。92项定向回归、类型/lint、默认Web构建及MoXBots实际Chromium两尺寸4组通过；CI/main以PR132为准。任务`.agent-sync/tasks/codex-pin-order-001-20261018.md`，验收和发布请求`dev-docs/pin-order/acceptance.md`。下一未冻结桌面发布由既定唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4串行执行；用户已明确授权合入后通知既定发布会话并安排下一未冻结版本及不打断任务的原生验收；本聊天不并发安装/重启日常App或回写冻结包。
@@ -459,3 +463,18 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 - **Native ownership:** Daily0511 may be active; Root has no fresh maintenance window. Prepare concrete signed/notarized/stapled candidate first, then request only the missing window. No launch/quit/stop/replace or force/counter-reset workaround.
 - **Acceptance:** Actual updater resume/stop/durable install, Goal pause/continue/cancel, original-session explicit continuation, background request/retry/Stop, sidebar pointer/zoom, error-banner resend/reopen without rewind, and recorded Task status. Controlled/local/SDK/native/external-model evidence stay separate.
 - **Record:** dev-docs/releases/moxbots-0.5.12.md and current branch task; private evidence work/release-0512-20261018/owner/. Uncommitted team mode and unfinished mobile/Host remain outside release claims.
+
+## SESSION-CACHE-002 — 2026-10-19
+
+已缓存Chat保留挂载、草稿、阅读位置；冷历史经既有Global SessionStore reader先显示最后80条，后台原owner与REST/SSE恢复独占执行authority。连接失败保留Chat并在原Tab重试，不自动续接。PR #147；合同 `specs/tech_docs/session_architecture.md`，验收 `dev-docs/session-cache/acceptance.md`，接续 `.agent-sync/tasks/codex-session-cache-002-20261019-9b06b88b.md`。合并后236定向DOM/41unit、类型/lint、实际App合成传输和独立复核通过；main/CI以PR状态和Git回执为准。下一未冻结桌面候选queued给既定唯一发布owner；未安装或重启日常App、未向其它聊天发送消息。原生真实路径与源码/模拟UI分开验收。
+
+## SUBAGENT-UI-001 — 聊天内子 Agent 查看
+
+用户确认方案后实施：输入框上方持久入口、本轮/已加载历史、同会话右侧详情，复用transcript与现有状态投影；不新增执行owner或模型请求。记录 `.agent-sync/tasks/codex-subagent-ui-001-20261018-c8f40bcc.md`，验收 `dev-docs/subagent-ui/acceptance.md`。代码与52项回归/构建通过，独立代码复核完成；真实渲染因Work本地浏览器关闭尚待验，先保存草稿PR，不把构建替代UI验收。保持唯一桌面发布owner与下一未冻结候选边界，不换包或打断活动任务。
+## Deployment coordination — MOXBOTS-0513-STABILITY-RELEASE-20261019
+
+- **Deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, sole desktop integration/updater publisher.
+- **Designation:** Human directly requested0.5.13 incorporating prior desktop changes, superseding unpublished0512. Safe-idle backup/native/release/finalApplications installation is already authorized. Source151 also conveyed human authorization for real-model ordinarySession/Goal recovery/pause/Stop acceptance before publication.
+- **Source/status:** Base main23efc877 includes143/all0512+151; exact146/147/148 integrated in the0513 task branch, version synchronized.414 related tests, type/lint/Web and actual synthetic IAB component/fullApp review passed; exactheadCI/main, new signature/notary/archive and native/real Provider/distribution/daily gates remain open. Old0512 source/candidates stay sealed and will not be published or relabelled.
+- **Targets/runbook:** Existing macOSarm64 updater140 only; preserve0511immutable rollback. No Host/backend/mobile/Windows/website rollout. Active/due/unknown business blocks maintenance; normalquit only after fresh authoritativeidle/durable/full-window schedule and consistent backup. No counter/token hacks, forcekill, userChrome or system dialogs.
+- **Record:** `dev-docs/releases/moxbots-0.5.13.md`, current task record and private `work/release-0513-20261019/owner/`. Source/artifact/native/real Provider/distribution/daily/finalmain remain distinct; this newer record supersedes historical0512 preparation and pending-window instructions.

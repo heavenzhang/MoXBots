@@ -1403,9 +1403,9 @@ export default function App() {
       // session:sidecar-terminal — emitted by Rust ONLY when a Session
       // Sidecar is removed with no remaining owners (so the health monitor
       // will not auto-restart it). This is the single source of truth for
-      // "the underlying session is gone for good"; reset any Tab whose
-      // sessionId matches so the next `planSessionOpen` doesn't jump-to-tab
-      // into a Tab whose sidecar has been dead for hours. The crash-with-
+      // "the underlying execution connection is gone". Keep persisted Chat
+      // Tabs readable and mark their connection failed; open/retry reconciles
+      // the exact owner without discarding the cached page. The crash-with-
       // owners path stays handled by `session-sidecar:restarted` in
       // TabProvider — this listener deliberately doesn't fire for that case.
       //
@@ -1466,26 +1466,16 @@ export default function App() {
               continue;
             if (!mountedRef.current) return;
 
-            // Commit in the same synchronous boundary as the stable revision
-            // check so a later opening observes the terminal projection.
-            flushSync(() => {
-              const plans = tabWorkspaceController
-                .getSnapshot()
-                .tabs.filter(
-                  (tab): tab is ChatTab =>
-                    tab.view === 'chat' && tab.sessionId === sessionId,
-                )
-                .map((tab) => ({
-                  captured: tabWorkspaceController.capture(tab.id)!,
-                  replacement: resetTabToLauncher(tab),
-                  mount: 'immediate' as const,
-                }));
-              const replaced = tabWorkspaceController.replaceMany(plans);
-              if (replaced > 0) {
-                console.log(
-                  `[App] Tab.sessionId reset for terminated session ${sessionId}`,
-                );
+            // Losing an execution process does not discard a persisted Chat's
+            // reading surface. Keep identity/draft/scroll; opening it or Retry
+            // reacquires the exact owner through the normal ensure path.
+            setTabErrors(current => {
+              const next = { ...current };
+              for (const tab of tabWorkspaceController.getSnapshot().tabs) {
+                if (tab.view === 'chat' && tab.sessionId === sessionId)
+                  next[tab.id] = t('appChrome.sessionConnectionLost');
               }
+              return next;
             });
             return;
           }
@@ -1555,27 +1545,14 @@ export default function App() {
             );
             if (stableGoneIds.length === 0) return;
 
-            flushSync(() => {
-              const stableGone = new Set(stableGoneIds);
-              const plans = tabWorkspaceController
-                .getSnapshot()
-                .tabs.filter(
-                  (tab): tab is ChatTab =>
-                    tab.view === 'chat' &&
-                    !!tab.sessionId &&
-                    stableGone.has(tab.sessionId),
-                )
-                .map((tab) => ({
-                  captured: tabWorkspaceController.capture(tab.id)!,
-                  replacement: resetTabToLauncher(tab),
-                  mount: 'immediate' as const,
-                }));
-              const replaced = tabWorkspaceController.replaceMany(plans);
-              if (replaced > 0) {
-                console.log(
-                  `[App] Reconcile cleared ${replaced} stale binding(s)`,
-                );
+            setTabErrors(current => {
+              const next = { ...current };
+              const gone = new Set(stableGoneIds);
+              for (const tab of tabWorkspaceController.getSnapshot().tabs) {
+                if (tab.view === 'chat' && tab.sessionId && gone.has(tab.sessionId))
+                  next[tab.id] = t('appChrome.sessionConnectionLost');
               }
+              return next;
             });
             return;
           }
@@ -1605,7 +1582,7 @@ export default function App() {
       // Rust owns application cleanup on RunEvent::ExitRequested. WebView
       // destruction is window-scoped and must never stop application resources.
     };
-  }, [startGlobalSidecarSilent, tabWorkspaceController]);
+  }, [startGlobalSidecarSilent, tabWorkspaceController, t]);
 
   // Update tab isGenerating state (called from TabProvider via callback)
   const updateTabGenerating = useCallback(
@@ -2646,8 +2623,8 @@ export default function App() {
    *
    * Both single-session navigation and bulk startup restore enter this exact
    * path after their UI planner has committed the target Tab. The ensure result
-   * is the only authority for push/adopt; callers only decide how to roll back
-   * their own UI projection when this returns false.
+   * is the only authority for push/adopt. Failed connections keep the mounted
+   * history surface and expose a retry; they never discard reading state.
    */
   const materializeExistingSessionTab = useCallback(
     async (
@@ -2655,7 +2632,6 @@ export default function App() {
       sessionId: string,
       agentDir: string,
     ): Promise<boolean> => {
-      setTabErrors(current => ({ ...current, [tabId]: null }));
       setLoadingTabs((current) => ({ ...current, [tabId]: true }));
       try {
         const result = await reconcileExistingSessionTabOwner(
@@ -2676,6 +2652,7 @@ export default function App() {
               }
             : tab,
         );
+        setTabErrors(current => ({ ...current, [tabId]: null }));
         return true;
       } catch (error) {
         console.error(
@@ -2722,8 +2699,6 @@ export default function App() {
         // step below resolves push|adopt from result.isNew (no stomp on a join).
         sidecarConfigDisposition: 'pending',
       };
-      const previousActiveTabId =
-        tabWorkspaceController.getSnapshot().activeTabId;
       // Existing-session opens are visually optimistic: mount and activate the
       // pending Tab immediately, then let Chat's existing boot surface cover
       // Sidecar startup. flushSync is load-bearing here: besides guaranteeing
@@ -2740,17 +2715,9 @@ export default function App() {
         sessionId,
         sessionAgentDir,
       );
-      if (!materialized) {
-        const captured = tabWorkspaceController.capture(newTab.id);
-        if (captured) {
-          tabWorkspaceController.removeMany(
-            [{ captured }],
-            createNewTab,
-            previousActiveTabId,
-          );
-        }
-        return false;
-      }
+      // Keep persisted history readable even if the execution owner cannot
+      // reconnect. Retrying uses this exact Tab rather than creating another.
+      if (!materialized) return false;
       return true;
     },
     [materializeExistingSessionTab, t, tabWorkspaceController],
@@ -2805,32 +2772,9 @@ export default function App() {
             sessionId,
             sessionAgentDir,
           );
-          if (!materialized) {
-            // The opening claim suppresses predecessor terminal events while
-            // revive is in flight, so this path owns rollback for the existing
-            // Tab just as the optimistic new/restore paths own theirs.
-            flushSync(() => {
-              const captured = tabWorkspaceController.capture(targetTabId);
-              const target = tabWorkspaceController
-                .getSnapshot()
-                .tabs.find(
-                  (tab) =>
-                    tab.id === targetTabId &&
-                    tab.view === 'chat' &&
-                    tab.sessionId === sessionId,
-                );
-              if (captured && target?.view === 'chat') {
-                tabWorkspaceController.replaceMany([
-                  {
-                    captured,
-                    replacement: resetTabToLauncher(target),
-                    mount: 'immediate',
-                  },
-                ]);
-              }
-            });
-            return false;
-          }
+          // A connection failure does not discard the mounted reading surface,
+          // draft or scroll position. The same Tab exposes startup retry.
+          if (!materialized) return false;
           console.log(
             `[App] handleOpenTargetSession: Session ${sessionId} owned by tab ${targetTabId}`,
           );
@@ -3003,7 +2947,7 @@ export default function App() {
       return;
     }
 
-    const { addedTabs, previousActiveTabId } = committedRestore;
+    const { addedTabs } = committedRestore;
     const addedTabIds = new Set(addedTabs.map((tab) => tab.id));
     const addedTargets = validated.filter(({ tab }) => addedTabIds.has(tab.id));
     validated.forEach(({ tab, releaseTransition }) => {
@@ -3020,7 +2964,7 @@ export default function App() {
       (target): target is Extract<ValidatedRestoreTarget, { kind: 'chat' }> =>
         target.kind === 'chat',
     );
-    const results = await Promise.allSettled(
+    await Promise.allSettled(
       addedChatTargets.map(async ({ tab, releaseTransition }) => {
         try {
           if (tab.discussionId && isPendingSessionId(tab.sessionId)) {
@@ -3039,27 +2983,8 @@ export default function App() {
         }
       }),
     );
-    const failedTabIds = new Set<string>();
-    results.forEach((result, index) => {
-      if ((result.status === 'rejected' || !result.value) && !addedChatTargets[index].tab.discussionId) {
-        failedTabIds.add(addedChatTargets[index].tab.id);
-      }
-    });
-    if (failedTabIds.size === 0) return;
-
-    flushSync(() => {
-      const removals = [...failedTabIds]
-        .map((tabId) => tabWorkspaceController.capture(tabId))
-        .filter((captured): captured is NonNullable<typeof captured> =>
-          Boolean(captured),
-        )
-        .map((captured) => ({ captured }));
-      tabWorkspaceController.removeMany(
-        removals,
-        createNewTab,
-        previousActiveTabId,
-      );
-    });
+    // Failed execution recovery leaves the restored Chat and its disk history
+    // available. Each failed target exposes a retry on the same Tab.
   }, [materializeExistingSessionTab, t, tabWorkspaceController]);
 
   /** Chat-local adapter: all history selections use the canonical new/jump/revive path. */
@@ -4910,18 +4835,19 @@ export default function App() {
   );
   const retryDiscussionStartup = useCallback(async (tabId: string) => {
     const tab = tabWorkspaceController.getSnapshot().tabs.find(item => item.id === tabId);
-    if (tab?.view !== 'chat' || !tab.discussionId || !tab.sessionId) return;
-    const birthHint = tab.initialMessage;
-    clearInitialMessage(tabId);
+    if (tab?.view !== 'chat' || !tab.sessionId) return;
     if (!isPendingSessionId(tab.sessionId)) {
-      setTabErrors(current => ({ ...current, [tabId]: null }));
-      await materializeExistingSessionTab(tabId, tab.sessionId, tab.agentDir);
+      if (tab.discussionId) clearInitialMessage(tabId);
+      await handleOpenTargetSession(tab.sessionId, tab.agentDir, tab.title);
       return;
     }
+    if (!tab.discussionId) return;
+    const birthHint = tab.initialMessage;
+    clearInitialMessage(tabId);
     const workspace = configProjectsRef.current.find(project => project.path === tab.agentDir && isProjectVisibleToUser(project));
     if (!workspace || tabWorkspaceController.getSnapshot().activeTabId !== tabId) return;
     await handleLaunchProject(workspace, undefined, { surface: 'task_center', entryIntent: 'thought_alignment' }, birthHint);
-  }, [clearInitialMessage, handleLaunchProject, materializeExistingSessionTab, tabWorkspaceController]);
+  }, [clearInitialMessage, handleLaunchProject, handleOpenTargetSession, tabWorkspaceController]);
   const chatBinding = useMemo<BuiltinTabBindings['chat']>(
     () => ({
       registerFileEditSubmitter,

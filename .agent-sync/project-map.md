@@ -85,3 +85,8 @@ User chose https://140.143.183.232/ directly. Preserve the current static design
 ## MOXBOTS-MOBILE-002 — 内部移动客户端
 
 `mobile/app/` 是 React Native/Expo 原生客户端及明确标记的网页 QA 夹具；`mobile/core/` 与 `mobile/connection/` 复用原账号、设备与加密通道，`mobile/crypto/` 通过模块引用原共享 crypto 源码，仅补原生安全存储适配。冻结桌面凭据读取器源码/制品哈希不得为手机端修改。`mobile/asset-store/` 为私有有界字节所有者，沿现有 Host SessionEngine/会话与回执管理；不新建执行器。任务范围/证据/独立验收门见 `dev-docs/mobile-002/plan.md`；Android 构建/制品验签见同目录 `android-build.md`。`mobile/tests/ios-native/` 与 `mobile/scripts/test-ios-native.mjs` 是独立模拟器原生验收入口，实跑证据见 `dev-docs/mobile-002/ios-native-runtime.md`。源码交付与构建、模拟器原生、真实账号/Host、物理语音、推送和正式内部签名分发分开追踪；远端refs/PR是源码交付权威，不因APK、模拟器或夹具通过视为上线。
+
+
+## 聊天内子 Agent 查看
+
+`src/renderer/components/agent-status/subagentViewModel.ts` 与 `useSubagentViews.ts` 只读投影原Tab transcript、lifecycle和带runId校验的后台状态；`SubagentActivityPanel`/`SubagentInspector`由Chat挂载，不创建新执行器。验收与合成实际组件预览见`dev-docs/subagent-ui/acceptance.md`。TaskTool历史输入恢复复用既有完整JSON解析路径；分页报错由原TabProvider经可选onError回传。

@@ -59,6 +59,7 @@ export interface SystemNotice {
 }
 
 export interface LoadOlderMessagesOptions {
+    onError?: (error: unknown) => void;
     beforePrepend?: (visibleFreshCount: number) => void;
 }
 
@@ -87,14 +88,16 @@ export interface TabState {
     /** Live active-query time, excluding unresolved human interaction waits. */
     getQueryElapsedSeconds: () => number;
     /**
-     * True while a persisted Session is covered by its authoritative restore
-     * shell. It starts before REST/SSE effects run and intentionally remains
-     * true after failure until that target is recovered or abandoned.
+     * Execution actions remain blocked until the target Session's live restore
+     * succeeds. Display-only history can be readable independently; failures
+     * preserve the reading surface until recovery or explicit navigation.
      */
     isSessionLoading: boolean;
+    /** Display-only history is readable; execution still requires live restoration. */
+    hasSessionHistory?: boolean;
     /** Target-scoped persisted-restore failure; never reused for turn errors. */
     sessionRestoreError: string | null;
-    /** Initial restore blocks first reveal; live recovery preserves the trusted projection. */
+    /** Live restore mode; both modes can retain a readable history projection. */
     sessionRestoreMode: 'initial' | 'live-recovery';
     sessionState: SessionState;
     sessionRuntime: string | null;  // Runtime that created this session (null = builtin)

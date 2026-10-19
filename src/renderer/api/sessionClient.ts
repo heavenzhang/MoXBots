@@ -308,6 +308,25 @@ export async function getSessionDetails(sessionId: string): Promise<SessionData 
     }
 }
 
+/** Display-only disk history through the existing Global SessionStore reader.
+ * Never use this projection as the target Sidecar's live revision/status baseline. */
+export async function getSessionHistoryPreview(sessionId: string, signal: AbortSignal): Promise<{
+    id: string;
+    messages: SessionMessage[];
+} | null> {
+    const response = await apiFetch(`/sessions/${encodeURIComponent(sessionId)}?limit=80`, { signal });
+    if (!response.ok) return null;
+    const result = await response.json() as { success: boolean; session?: {
+        id: string;
+        messages: SessionMessage[];
+    } };
+    // Deliberately project only display fields, even if the Global response
+    // contains idle status, queued requests or a process-local revision.
+    return result.success && result.session?.id === sessionId
+        ? { id: result.session.id, messages: result.session.messages }
+        : null;
+}
+
 /**
  * Delete a session
  */

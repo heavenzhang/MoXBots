@@ -92,6 +92,7 @@ const ChatTabRenderer = memo(function ChatTabRenderer({
       sessionId={tab.sessionId}
       sessionTitle={tab.title}
       sidecarConfigDisposition={tab.sidecarConfigDisposition}
+      connectionError={binding.startupError?.(tab.id)}
       isActive={isActive}
       onGeneratingChange={(isGenerating) => binding.onUpdateGenerating(tab.id, isGenerating)}
       onTitleChange={(title) => binding.onUpdateTitle(tab.id, title)}
