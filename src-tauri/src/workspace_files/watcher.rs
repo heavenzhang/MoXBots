@@ -44,9 +44,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use notify_debouncer_full::{
-    new_debouncer,
-    notify::{RecommendedWatcher, RecursiveMode},
-    DebounceEventResult, Debouncer, RecommendedCache,
+    new_debouncer_opt,
+    notify::{Config, RecommendedWatcher, RecursiveMode},
+    DebounceEventResult, Debouncer, NoCache,
 };
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -87,7 +87,20 @@ struct WatcherEntry {
     refs: usize,
     /// Holding the debouncer alive keeps the watch active. Dropping it stops
     /// the OS-level watch.
-    _debouncer: Debouncer<RecommendedWatcher, RecommendedCache>,
+    _debouncer: Debouncer<RecommendedWatcher, NoCache>,
+}
+
+/// DirectoryPanel only needs invalidation, not paired OS rename identities.
+/// The default macOS/Windows FileIdMap eagerly walks every watched descendant
+/// (including symlink targets) and retains an inode entry for each. Large build
+/// trees can therefore consume gigabytes before watch_start even returns.
+/// App-owned exact moves already use emit_committed_moves; external changes are
+/// reconciled by re-reading the directory, so no file identity cache is needed.
+fn new_workspace_debouncer(
+    timeout: Duration,
+    tx: std::sync::mpsc::Sender<DebounceEventResult>,
+) -> Result<Debouncer<RecommendedWatcher, NoCache>, notify_debouncer_full::notify::Error> {
+    new_debouncer_opt(timeout, None, tx, NoCache::new(), Config::default())
 }
 
 /// Compute the stable event-key suffix for a workspace path. Uses std's
@@ -165,7 +178,7 @@ pub async fn cmd_workspace_watch_start(
     // Spin up a new debouncer. Channel sends DebounceEventResult; spawn a
     // dedicated thread to drain it so the Tauri runtime stays responsive.
     let (tx, rx) = std::sync::mpsc::channel::<DebounceEventResult>();
-    let mut debouncer = new_debouncer(DEBOUNCE_WINDOW, None, tx)
+    let mut debouncer = new_workspace_debouncer(DEBOUNCE_WINDOW, tx)
         .map_err(|e| format!("create debouncer failed: {}", e))?;
     debouncer
         .watch(&workspace_root, RecursiveMode::Recursive)
@@ -275,6 +288,58 @@ pub async fn cmd_workspace_watch_stop(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Exercise the production debouncer, without a Tauri window or user data.
+    /// NoCache must still deliver nested creates, external renames, atomic
+    /// saves and deletes: DirectoryPanel re-reads authority for all of them.
+    #[test]
+    fn cacheless_watcher_keeps_nested_external_changes_visible() {
+        use std::path::Path;
+        use std::sync::mpsc::{channel, Receiver};
+        use std::time::Instant;
+
+        fn expect_change(rx: &Receiver<DebounceEventResult>, path: &Path) {
+            let deadline = Instant::now() + Duration::from_secs(20);
+            loop {
+                let batch = rx
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .expect("workspace change must arrive before timeout")
+                    .expect("native watcher must not report an error");
+                if batch
+                    .iter()
+                    .flat_map(|event| &event.paths)
+                    .any(|event_path| event_path.ends_with(path))
+                {
+                    return;
+                }
+            }
+        }
+
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let nested = root.join("nested");
+        std::fs::create_dir(&nested).unwrap();
+        let (tx, rx) = channel();
+        let mut watcher = new_workspace_debouncer(Duration::from_millis(100), tx).unwrap();
+        watcher.watch(&root, RecursiveMode::Recursive).unwrap();
+
+        let original = nested.join("draft.md");
+        std::fs::write(&original, "first").unwrap();
+        expect_change(&rx, Path::new("nested/draft.md"));
+
+        let renamed = nested.join("renamed.md");
+        std::fs::rename(&original, &renamed).unwrap();
+        expect_change(&rx, Path::new("nested/renamed.md"));
+
+        let stage = nested.join("atomic.tmp");
+        std::fs::write(&stage, "replacement").unwrap();
+        std::fs::rename(&stage, &renamed).unwrap();
+        expect_change(&rx, Path::new("nested/renamed.md"));
+        assert_eq!(std::fs::read_to_string(&renamed).unwrap(), "replacement");
+
+        std::fs::remove_file(&renamed).unwrap();
+        expect_change(&rx, Path::new("nested/renamed.md"));
+    }
 
     #[test]
     fn event_key_is_deterministic() {
