@@ -15,7 +15,7 @@ native loader 可以在 generator 已提交新 root、向 stdin yield 后才零�
 - [x] continuation admission / rewind anchor / parent 相关44项 unit。
 - [x] TypeScript、改动 ESLint、server bundle。
 - [x] 完整相关 integration 140/140（原父退出单项后升级为2项三层树回归，最终142项）；builtin/turn queue unit 199/199；Rust 整 crate 编译后启动参数测试4/4。
-- [ ] 主干交付及精确main CI。
+- [ ] 主干交付及唯一 CI/部署会话组织的精确候选 CI。
 - [ ] 签名客户端安装、实际会话恢复和生产业务验收。
 
 原始私有诊断与本机验证日志放在交付工作区 output/no-response-20261020；Git 不保存用户 transcript/凭据/业务结果。此处只记录合成夹具行为。版本、签名、候选制品和安装由既定唯一 publisher 负责。仅开发预检查制品不用于正式发布。

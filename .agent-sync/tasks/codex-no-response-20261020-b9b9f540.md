@@ -18,7 +18,8 @@
 - [x] 恢复准备期间 Stop 仍能阻止再次进入 SDK。
 - [x] Unix 真实三层进程组夹具验证桌面父进程被 SIGKILL 后 Sidecar/native/tool 退出，含忽略 SIGTERM 的工具。
 - [x] 相关完整回归、Rust 生产启动参数验证及类型/lint/build。
-- [ ] 提交、PR 预检查、合入 main、远端主干包含核验与精确 main 集成 CI。
+- [x] 提交、推送远端任务分支及 Git handoff gate；PR168 已创建。
+- [ ] 唯一 CI/部署会话统一组织共享 CI，按既有流程合入 main 并核验远端包含。
 - [ ] 唯一发布会话接收、主干精确 SHA 候选、正式客户端安装及原会话真实路径验收。
 
 ## Completed
@@ -36,8 +37,8 @@ Rust 两条 Sidecar 启动路径经原 builder 注入桌面 PID；Unix Node 对�
 
 ## Deployment request
 
-Required: desktop client. Integration/release branch: main, exact verified SHA only. Deployment owner: 01a12bc2-907a-7702-b6dd-788225c5dfe4. Version is assigned solely by that owner; preserve existing version/tag/artifact identities. No migrations, dependency changes or permission expansion. Candidate uses exact main CI and the same digest-verified artifact through acceptance/promotion; no feature-branch deployment.
+Required: desktop client. Canonical branch: main, task branches/worktrees retained under existing policy. Sole shared CI and deployment owner: 01a12bc2-907a-7702-b6dd-788225c5dfe4. Version is assigned solely by that owner; preserve existing version/tag/artifact identities. No migrations, dependency changes or permission expansion. Candidate branch/SHA is selected under existing branch policy by that owner; CI results must match that exact SHA and acceptance/promotion must use the same digest-verified artifact. Developer does not manually dispatch shared CI.
 
 ## Next step
 
-完成完整相关回归和 Rust 检查，审阅提交，推送任务分支做预检查，再正常合入 main 并交唯一 publisher。
+向既有 CI/部署会话提交 PR168、精确任务分支 SHA、389项本地验证和独立复审证据，统一协调已有排队自动检查；按其协调结果完成正常主干合入和远端包含核验，不独立触发 CI/部署。
