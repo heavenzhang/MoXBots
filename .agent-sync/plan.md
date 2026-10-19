@@ -486,3 +486,7 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## MOXBOTS-RUNTIME-REPAIR-20261019 — Goal busy 日志与上游 408 恢复
 
 用户在诊断授权后明确要求"发现执行中需要修复的问题直接开新会话修复"。隔离 worktree 分支 `codex/runtime-repair-20261019`，基于 main `556b1633d`，提交 `32f6fd5e4`、`eb75e1430`，已 fast-forward 推送 main 并经 `git ls-remote` 核实。修复：busy 期 Goal 探测在 dispatch 前预检并聚合为 deferral 状态日志（不再逐次 raw/parsed INFO + perf error），真实失败分类/5s 唤醒/失败记账不变；bridge 30s headers timeout 改为按请求 getter，仅在 `fastRecoveryAuthorized()` 时武装，恢复被 fence 时回退 300s 通用边界，超时带 `upstream_headers_timeout` code。Node 93 项定向、tsc、ESLint、Rust 32+7 项通过。未创建 PR/未跑 CI；未安装、未重启日常客户端、未做真实 Provider/原生验收，安装须等待原薪资任务安全结束。验收 `dev-docs/runtime-repair-20261019/acceptance.md`，任务记录 `.agent-sync/tasks/codex-runtime-repair-20261019-2c377900.md`。
+
+## CONVERGENCE-SCOPE — 2026-10-19
+
+修复 read-loop 收敛检查的只读意图范围缺陷：整轮"不要修改代码"保持豁免，但"不要修改生产数据/凭据/配置/其他模块"等对象受限禁令不再压制执行意图。仅改 `progress-convergence.ts` 与其单测，原 13 项测试保留并新增 17 项，30/30 通过；typecheck/ESLint 通过。未改 409/408、薪资源码或并发任务占用的 `agent-session.ts`。记录 `.agent-sync/tasks/codex-convergence-scope-20261019-e3f04522.md`，验收 `dev-docs/convergence-scope/acceptance.md`。真实模型联调与客户端安装未验证。

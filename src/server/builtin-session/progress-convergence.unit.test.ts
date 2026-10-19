@@ -222,3 +222,108 @@ describe('progress convergence check', () => {
     expect(classifyTool('mcp__browser__navigate', { url: 'https://example.com' })).toBe('other');
   });
 });
+
+describe('scoped prohibitions keep execution convergence active', () => {
+  function runDeclaredStage(turnText: string) {
+    const tracker = new ProgressConvergenceTracker();
+    tracker.reset(turnText);
+    tracker.observeAssistantText('开始修改代码。');
+    const hints = readOverlapping(tracker, 4, '/fixture/service.ts');
+    return { tracker, hints };
+  }
+
+  it('keeps execution when protection only covers production data (reported regression)', () => {
+    const { tracker, hints } = runDeclaredStage('修复薪资导入代码，不要修改生产数据。');
+
+    expect(hints[3]).toContain('客户端进展检查');
+    expect(tracker.snapshot()).toMatchObject({
+      readOnlyTurn: false,
+      executionIntent: true,
+      hints: 1,
+    });
+  });
+
+  it('keeps execution for the English object-scoped equivalent', () => {
+    const { tracker, hints } = runDeclaredStage('Implement the parser fix, do not modify production data.');
+
+    expect(hints[3]).toContain('客户端进展检查');
+    expect(tracker.snapshot()).toMatchObject({
+      readOnlyTurn: false,
+      executionIntent: true,
+      hints: 1,
+    });
+  });
+
+  it.each([
+    ['credentials and account config', '修复登录逻辑，不要改动凭据和账号配置。'],
+    ['another module', '修复订单导出，不要修改其他模块的文件。'],
+    ['database schema and credentials', 'Fix the importer, but do not change the database schema or credentials.'],
+    ['files outside the target directory', 'Fix the parser; do not modify files outside src/parser.'],
+  ])('keeps execution with a scoped constraint on %s', (_label, turnText) => {
+    const { tracker, hints } = runDeclaredStage(turnText);
+
+    expect(hints[3]).toContain('客户端进展检查');
+    expect(tracker.snapshot()).toMatchObject({ readOnlyTurn: false, executionIntent: true });
+  });
+
+  it('allows editing one module while another is protected', () => {
+    const { tracker, hints } = runDeclaredStage('不修改订单模块，只修改支付模块。');
+    expect(hints[3]).toContain('客户端进展检查');
+    expect(tracker.snapshot()).toMatchObject({ readOnlyTurn: false, executionIntent: true });
+  });
+
+  it('ignores prohibitions that only exist inside quoted text or code blocks', () => {
+    const cases = [
+      '修复提示文案："请勿修改生产数据" 的显示问题。',
+      '实现 "do not modify" 错误提示的本地化。',
+      'Refactor the guard that rejects `do not modify` comments.',
+      '修复文档示例：\n```\n// do not modify this file\n```\n示例要能通过 lint。',
+    ];
+    for (const turnText of cases) {
+      const { tracker, hints } = runDeclaredStage(turnText);
+      expect(hints[3], turnText).toContain('客户端进展检查');
+      expect(tracker.snapshot().readOnlyTurn, turnText).toBe(false);
+    }
+  });
+
+  it('treats a read-only file attribute as an environment fact, not the task type', () => {
+    const { tracker, hints } = runDeclaredStage('这个配置文件是只读的，请修复写入逻辑。');
+    expect(hints[3]).toContain('客户端进展检查');
+    expect(tracker.snapshot().readOnlyTurn).toBe(false);
+  });
+});
+
+describe('whole-turn read-only intent stays exempt', () => {
+  function runDeclaredStage(turnText: string) {
+    const tracker = new ProgressConvergenceTracker();
+    tracker.reset(turnText);
+    tracker.observeAssistantText('开始修改代码。');
+    const hints = readOverlapping(tracker, 12, '/fixture/service.ts');
+    return { tracker, hints };
+  }
+
+  it.each([
+    ['unscoped code prohibition', '只读分析代码，不要修改源码。'],
+    ['analysis plus plan only', '不要修改代码，只给方案。'],
+    ['generic any-file prohibition', '请不要修改任何文件，只做评审。'],
+    ['analysis-only request with a data constraint', '仅分析，不修改生产数据。'],
+    ['English code prohibition', 'Do not modify code; only investigate the root cause.'],
+    ['English plan-only request', 'Just analyze the module and give me a plan; do not modify the code.'],
+    ['deferred edit with a fix request in the text', '先不要修改代码，把修复方案发给我。'],
+  ])('never nudges for %s', (_label, turnText) => {
+    const { tracker, hints } = runDeclaredStage(turnText);
+
+    expect(hints.every(hint => hint === null)).toBe(true);
+    expect(tracker.snapshot()).toMatchObject({ readOnlyTurn: true, hints: 0, executionIntent: false });
+  });
+
+  it('does not let an assistant stage declaration escape the user read-only scope', () => {
+    const tracker = new ProgressConvergenceTracker();
+    tracker.reset('只读分析这个模块，不要修改代码。');
+    tracker.observeAssistantText('开始修改代码。');
+    const hints = readOverlapping(tracker, 12, '/repo/src/service/ImportService.java');
+
+    expect(hints.every(hint => hint === null)).toBe(true);
+    expect(tracker.snapshot()).toMatchObject({ readOnlyTurn: true, declarations: 1, hints: 0 });
+  });
+});

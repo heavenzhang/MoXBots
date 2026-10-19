@@ -25,6 +25,13 @@
  * replays a tool, or writes anything. The nudge explicitly tells the model to
  * ignore it when the task is read-only.
  *
+ * Read-only intent is taken from the turn's directive, not from a raw keyword
+ * hit. An unscoped prohibition ("不要修改代码", "do not modify code") exempts the
+ * whole turn, but an object-scoped constraint ("不要修改生产数据", "do not modify
+ * other modules") only limits side effects and must not hide an explicitly
+ * requested implementation. Quoted strings and fenced code are material under
+ * discussion, not instructions for this turn.
+ *
  * This module is a leaf on purpose: it imports nothing from the runtime, so it
  * can be unit-tested with pure inputs and wired from any runtime owner.
  */
@@ -133,8 +140,143 @@ const WRITE_COMMAND_RE = new RegExp([
   '\\b(?:scp|rsync)\\b',
 ].join('|'));
 
-const HARD_READ_ONLY_RE =
-  /只读|不要(?:修改|改动|改|动)(?:代码|源码)?|禁止(?:修改|改动)|不得(?:修改|改动)|(?:不要|别)(?:改|动)(?:代码|源码)|read[- ]?only|do not (?:modify|change|edit|write)|without (?:modifying|changing|editing)|make no (?:code )?changes|no code changes/i;
+/**
+ * Quoted spans and fenced/inline code are content the user is pointing at ("fix
+ * the prompt that says do not modify"), not directives for this turn, so they
+ * are removed before intent detection. ASCII single quotes are deliberately
+ * not stripped: an apostrophe in "don't" would otherwise swallow a directive.
+ */
+const QUOTED_OR_CODE_SPAN_RE =
+  /```[\s\S]*?```|`[^`\n]*`|“[^”\n]{0,400}”|「[^」\n]{0,400}」|『[^』\n]{0,400}』|"[^"\n]{0,400}"/g;
+
+/**
+ * "Don't modify it" forms. The verb is followed by the object that decides
+ * whether the prohibition covers the whole turn or one target.
+ */
+const ZH_PROHIBITION_SOURCE = [
+  '(?:请?勿|不要|禁止|不得)\\s*(?:再|去|直接|随意|擅自|手动)?\\s*(?:修改|改动|改造|改进|改善|改变|编辑|变更|动手|改|动)',
+  // 别 is only a directive after a boundary or an intensifier; otherwise it is
+  // part of an ordinary word such as 区别/类别.
+  '(?:^|[，。；：、！？,.;:!?\\s]|千万|可)\\s*别\\s*(?:再|去|直接|随意|擅自|手动)?\\s*(?:修改|改动|改造|改进|改善|改变|编辑|变更|动手|改|动)',
+].join('|');
+const EN_PROHIBITION_SOURCE = [
+  '\\b(?:do\\s+not|don\'t|never|must\\s+not|should\\s+not)\\s+(?:modify|change|edit|write|touch|alter)\\b',
+  '\\bwithout\\s+(?:modifying|changing|editing|writing|touching|altering)\\b',
+  '\\bmake\\s+no\\s+(?:code\\s+)?changes?\\b',
+  '\\bno\\s+code\\s+changes?\\b',
+].join('|');
+const PROHIBITION_SOURCE = `${ZH_PROHIBITION_SOURCE}|${EN_PROHIBITION_SOURCE}`;
+
+/** Where the object of a prohibition ends and the next clause begins. */
+const CLAUSE_BOUNDARY_RE =
+  /[，。；：、！？,.;:!?\n]|\b(?:and|but|then|while|instead)\b|(?:但是|但|然后|随后|同时|并且|并|而是)/i;
+
+/**
+ * Objects that make a prohibition cover the whole turn: the code itself, files
+ * in general, the implementation. A qualified object (production data,
+ * credentials, config, another module) is scoped instead.
+ */
+const ZH_GENERIC_OBJECT_RE =
+  /^(?:该|此|本|这(?:个|些)?|那(?:个|些)?|任何|所有|全部|现有|当前|整个|项目(?:里|中)?的?|仓库(?:里|中)?的?)?\s*(?:的)?\s*(?:代码|源码|源代码|代码库|代码文件|文件|文件内容|实现|逻辑)/;
+const EN_GENERIC_OBJECT_RE =
+  /^(?:any\s+|all\s+|the\s+|this\s+|that\s+|these\s+|those\s+|existing\s+|current\s+)*(?:code|source\s+code|files?|file\s+content|implementation|logic|project|repo(?:sitory)?|anything)\b/i;
+
+/** Explicitly partial scopes: "other modules", "files outside src", "except X". */
+const SCOPED_OBJECT_RE =
+  /(?:其他|其它|别的|另外|之外|以外|除了|而不是)|\b(?:other|others|else|except|excluding|outside|instead|rather\s+than)\b/i;
+
+/** "不要动手改代码" — the object is another edit verb, so nothing is scoped. */
+const ZH_EDIT_VERB_OBJECT_RE =
+  /^(?:去|再|直接|开始|动手)?\s*(?:修改|改动|编辑|变更|改|写|实现|修复|重构|动)/;
+
+/** "只给方案" / "仅提供分析" — deliver analysis, not code. */
+const ANALYSIS_ONLY_RE =
+  /(?:只|仅)(?:需要|需|要|想)?\s*(?:给出|提供|输出|说明|整理|写|做|做一份|给)?\s*(?:一份|一个|个)?\s*(?:方案|计划|建议|报告|评审|意见|分析|诊断)/;
+
+const READ_ONLY_MARKER_SOURCE = '只读|read[- ]?only';
+
+type ObjectSegment = { text: string; consumed: number };
+
+const CLAUSE_PUNCTUATION_RE = /[，。；：、！？,.;:!?\n]/;
+
+/** Text of the prohibition's object, plus the raw length it occupies. */
+function objectSegment(tail: string): ObjectSegment {
+  const leading = /^\s*/.exec(tail)?.[0].length ?? 0;
+  const window = tail.slice(leading, leading + 120);
+  let boundary = window.search(CLAUSE_BOUNDARY_RE);
+  // A conjunction at the start of the object belongs to the object phrase
+  // ("并发控制", "同时运行的配置", "while-loop behavior"), not to a new clause.
+  if (boundary === 0 && !CLAUSE_PUNCTUATION_RE.test(window[0])) {
+    const next = window.slice(1).search(CLAUSE_BOUNDARY_RE);
+    boundary = next < 0 ? -1 : next + 1;
+  }
+  const consumed = leading + (boundary < 0 ? window.length : boundary);
+  return {
+    text: window.slice(0, boundary < 0 ? window.length : boundary)
+      .replace(/^[\s"'“”‘’「」『』]+/, '')
+      .trim(),
+    consumed,
+  };
+}
+
+function stripQuotedAndCode(text: string): string {
+  return text.replace(QUOTED_OR_CODE_SPAN_RE, ' ');
+}
+
+/**
+ * "只读" that describes an object's attribute ("这个文件是只读的", "设为只读")
+ * is an environment fact, not the task type. A bare "只读分析" or "read-only
+ * research" is the task type.
+ */
+function hasWholeTurnReadOnlyMarker(text: string): boolean {
+  const re = new RegExp(READ_ONLY_MARKER_SOURCE, 'gi');
+  for (const match of text.matchAll(re)) {
+    const index = match.index ?? 0;
+    const end = index + match[0].length;
+    const before = text.slice(Math.max(0, index - 6), index);
+    const after = text.slice(end, end + 10);
+    if (
+      /(?:设为|设成|设置为|变成|成为|改为|是|为)\s*$/.test(before)
+      || /^\s*(?:的|文件|目录|属性|权限|挂载|磁盘|卷)/.test(after)
+    ) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** True when at least one prohibition has no object or only a generic code one. */
+function hasWholeTurnProhibition(text: string): boolean {
+  const re = new RegExp(PROHIBITION_SOURCE, 'gi');
+  for (const match of text.matchAll(re)) {
+    const object = objectSegment(text.slice((match.index ?? 0) + match[0].length)).text;
+    if (!object) return true; // "不要修改。" — nothing scoped
+    if (SCOPED_OBJECT_RE.test(object)) continue; // "不要修改其他模块"
+    if (ZH_EDIT_VERB_OBJECT_RE.test(object)) return true; // "不要动手改代码"
+    if (ZH_GENERIC_OBJECT_RE.test(object) || EN_GENERIC_OBJECT_RE.test(object)) return true;
+  }
+  return false;
+}
+
+/**
+ * Remove prohibition clauses before looking for execution/research intent, so
+ * "只分析，不要修改生产数据" is not read as an execution request merely because
+ * the prohibition contains 修改.
+ */
+function stripProhibitionClauses(text: string): string {
+  const re = new RegExp(PROHIBITION_SOURCE, 'gi');
+  let cursor = 0;
+  let result = '';
+  for (const match of text.matchAll(re)) {
+    const start = match.index ?? 0;
+    const verbEnd = start + match[0].length;
+    const object = objectSegment(text.slice(verbEnd));
+    result += text.slice(cursor, start) + ' ';
+    cursor = verbEnd + object.consumed;
+  }
+  return result + text.slice(cursor);
+}
 
 const RESEARCH_ONLY_RE =
   /分析|诊断|排查|审查|审阅|研究|调研|根因|review|audit|investigat|diagnos|analyz|root cause|explain/i;
@@ -427,9 +569,17 @@ export class ProgressConvergenceTracker {
   private applyTurnText(turnText: string | undefined): void {
     if (turnText === undefined || turnText === this.turnTextSeen) return;
     this.turnTextSeen = turnText;
-    const hardReadOnly = HARD_READ_ONLY_RE.test(turnText);
-    const execution = EXECUTION_INTENT_RE.test(turnText);
-    const researchOnly = RESEARCH_ONLY_RE.test(turnText) && !execution;
+    // The enqueued turn text is the caller's whole message (external/inbox and
+    // task turns can wrap their own instructions), so classify only explicit
+    // directives: quoted/code content is discussion material, and prohibitions
+    // are judged by their object.
+    const directive = stripQuotedAndCode(turnText);
+    const hardReadOnly = hasWholeTurnReadOnlyMarker(directive)
+      || ANALYSIS_ONLY_RE.test(directive)
+      || hasWholeTurnProhibition(directive);
+    const taskText = stripProhibitionClauses(directive);
+    const execution = EXECUTION_INTENT_RE.test(taskText);
+    const researchOnly = RESEARCH_ONLY_RE.test(taskText) && !execution;
     this.readOnlyTurn = hardReadOnly || researchOnly;
     this.executionIntent = execution && !this.readOnlyTurn;
     if (this.executionIntent && this.declarationSeq === 0) {
