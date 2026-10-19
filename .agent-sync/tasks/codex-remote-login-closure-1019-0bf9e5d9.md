@@ -35,7 +35,7 @@ Independent reviewer `/root/login_review` (requested gpt-6-luna/medium, read-onl
 - Focused API/hook/dialog/account/selector tests:108/108 passed (5 files); additional stopped-state dialog regression3/3 passed, including automatic completion, same-URL different-account pinning, stopped mismatch, cancellation and delayed selection.
 - Full TypeScript `tsc --noEmit`: passed.
 - Scoped ESLint: passed (existing baseline-browser-mapping advisory only).
-- Rust native registry/command compilation, hanging TLS discovery regression and service callback regression: required CI pending. TLS test uses an isolated loopback handshake; no certificate bypass, real credential or server registration.
+- Initial final-head Rust CI39277442297 compiled and ran native tests, then rejected the new test's raw `tokio::spawn` via the project Clippy runtime rule. The test now uses `tauri::async_runtime::spawn` (abort/join API verified in the installed Tauri source); no production behavior or lint suppression changed. Exact repaired-head CI and service callback regression pending. TLS test uses an isolated loopback handshake; no certificate bypass, real credential or server registration.
 - Independent IAB actual-component review passed pending/mismatch/advanced/cancel/success. Stopped state no longer says waiting or shows a live expiry. Temporary real-component UI harness on127.0.0.1:5198 uses synthetic callbacks only. Screenshots are private local artifacts under `/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-login-evidence`; this cannot establish a production login result.
 - Cancellation of the one diagnostic native attempt returned `transport_outcome_unknown`; no mutation was repeated. It does not establish successful cleanup.
 

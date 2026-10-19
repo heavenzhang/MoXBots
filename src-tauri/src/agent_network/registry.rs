@@ -1988,7 +1988,7 @@ mod tests {
         record.descriptor.issuer = format!("https://{}", listener.local_addr().unwrap());
         owner.owned_stored.lock().unwrap().push(record);
         let task_owner = owner.clone();
-        let login = tokio::spawn(async move { task_owner.owned_start_existing("saved", 0).await });
+        let login = tauri::async_runtime::spawn(async move { task_owner.owned_start_existing("saved", 0).await });
         // Hold discovery at its TLS handshake, without weakening HTTPS trust
         // or creating credentials. An unrelated mutation must still run.
         let (mut socket, _) =
