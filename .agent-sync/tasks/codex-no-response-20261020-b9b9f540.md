@@ -25,11 +25,11 @@
 ## Completed
 
 准入提交时释放已消费的 beforeDispatch guard，避免已接纳输入在零模型轮次的 native 恢复中再次使用原 continuation guard。未接纳项仍执行完整 guard/cancel/commit 校验。
-Rust 两条 Sidecar 启动路径经原 builder 注入桌面 PID；Unix Node 对实际 OS 父子关系作只读观察，父进程消失时向 Rust 原精确进程组发 SIGTERM，经既有有界 shutdown 排空后同组 SIGKILL 升级，清理忽略 TERM 的工具。Windows 保留原 kill-on-close Job；Host/CLI/dev 无桌面标记或启动 identity 时不启用。没有扫描/杀死现有用户进程或新建进程/状态 owner。
+Rust 两条 Sidecar 启动路径经原 builder 注入桌面 PID；Unix Node 对实际 OS 父子关系作只读观察，父进程消失时向 Rust 原精确进程组发 SIGTERM，所有该桌面 Unix shutdown 经既有有界排空后均同组 SIGKILL 升级，清理忽略 TERM 的工具。Windows 保留原 kill-on-close Job；Host/CLI/dev 无桌面标记或启动 identity 时不启用。没有扫描/杀死现有用户进程或新建进程/状态 owner。
 
 ## Verification
 
-复现先红后绿；新增恢复成功/Stop 两项及真实父进程死亡一项通过。44 项定向 unit 通过；完整相关集成142项、builtin/turn queue unit199项、Rust4项、类型/lint/server bundle均通过；结果见 dev-docs/no-response/acceptance.md。主 Agent 实施/验收；增加一个只读 reviewer（请求 gpt-6.1-sol/medium）复核跨进程边界，发现 TERM 升级及 drain 期间 parent-loss 单调升级缺口后均已修复、真实进程复验并通过最终复审。无外部模型，精确成本未暴露。真实用户薪资任务未重发、未停止、未代为发布。
+复现先红后绿；新增恢复成功/Stop 两项及真实父进程死亡一项通过。43 项定向 unit 通过；完整相关集成143项、builtin/turn queue unit199项、Rust4项、类型/lint/server bundle均通过；结果见 dev-docs/no-response/acceptance.md。主 Agent 实施/验收；增加一个只读 reviewer（请求 gpt-6.1-sol/medium）复核跨进程边界，发现 TERM 升级、已有drain和轮询间隙的父进程失效缺口后均已修复、真实进程复验并通过最终复审。无外部模型，精确成本未暴露。真实用户薪资任务未重发、未停止、未代为发布。
 
 ## Blockers and unknowns
 
@@ -41,4 +41,4 @@ Required: desktop client. Canonical branch: main, task branches/worktrees retain
 
 ## Next step
 
-向既有 CI/部署会话提交 PR168、精确任务分支 SHA、389项本地验证和独立复审证据，统一协调已有排队自动检查；按其协调结果完成正常主干合入和远端包含核验，不独立触发 CI/部署。
+向既有 CI/部署会话提交 PR168、精确任务分支 SHA、389项本地验证（242 unit +143 integration +4 Rust）和独立复审证据，统一协调已有排队自动检查；按其协调结果完成正常主干合入和远端包含核验，不独立触发 CI/部署。

@@ -2,18 +2,6 @@
  * when its owner dies without running Drop; retire the orphan through the
  * existing shutdown path instead of letting it keep executing beside a new app.
  * Windows uses the existing kill-on-close Job Object for this boundary. */
-export type ProcessShutdownState = { started: boolean; parentExited: boolean };
-export type ProcessShutdownSignal = 'SIGTERM' | 'SIGINT' | 'parent-exit';
-
-/** Index owns this state. A later parent loss must upgrade an already-running
- * graceful drain before its caller observes that shutdown has begun. */
-export function requestProcessShutdown(state: ProcessShutdownState, signal: ProcessShutdownSignal): boolean {
-  if (signal === 'parent-exit') state.parentExited = true;
-  if (state.started) return false;
-  state.started = true;
-  return true;
-}
-
 export function watchSidecarParent(
   expectedParent: string,
   onParentExit: () => void,
@@ -56,8 +44,9 @@ export function retireOrphanedSidecar(onShutdown: () => void): void {
 }
 
 /** The desktop Sidecar remains the group leader until its bounded drain ends.
- * SIGKILL at that point mirrors Rust's escalation, including tools that ignore
- * SIGTERM. Do not use this for a standalone server or a PID discovered by scan. */
+ * SIGKILL at every desktop shutdown mirrors Rust's escalation, including tools
+ * that ignore SIGTERM or parent loss faster than a monitor tick. Do not use
+ * this for a standalone server or a PID discovered by scan. */
 export function signalOrphanedSidecarGroup(signal: 'SIGTERM' | 'SIGKILL'): void {
   try {
     process.kill(-process.pid, signal);

@@ -535,7 +535,10 @@ process.on('unhandledRejection', (reason) => {
 
 let gracefulShutdownHook: (() => Promise<void>) | null = null;
 let gracefulShutdownPromise: Promise<void> | null = null;
-const processShutdownState: ProcessShutdownState = { started: false, parentExited: false };
+let processShutdownStarted = false;
+const desktopParentPid = process.env.MYAGENTS_SIDECAR_PARENT_PID;
+const desktopOwnedUnixSidecar = process.platform !== 'win32'
+  && Boolean(desktopParentPid) && process.argv.includes('--moxbot-sidecar');
 
 async function shutdownOwnedResources(): Promise<void> {
   if (!gracefulShutdownPromise) {
@@ -561,8 +564,9 @@ async function shutdownOwnedResources(): Promise<void> {
   await gracefulShutdownPromise;
 }
 
-async function shutdownProcess(signal: ProcessShutdownSignal): Promise<void> {
-  if (!requestProcessShutdown(processShutdownState, signal)) return;
+async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT' | 'parent-exit'): Promise<void> {
+  if (processShutdownStarted) return;
+  processShutdownStarted = true;
   if (!stdioBroken) {
     try {
       console.log(`[process] ${signal} received, shutting down...`);
@@ -581,10 +585,11 @@ async function shutdownProcess(signal: ProcessShutdownSignal): Promise<void> {
       }
     }
   }
-  if (processShutdownState.parentExited) {
-    // Rust's group owner is gone and cannot perform its usual escalation.
-    // Finish the same exact Unix group before exiting, even if a tool ignored
-    // SIGTERM. Product/browser drain above is bounded to five seconds.
+  if (desktopOwnedUnixSidecar) {
+    // Always finish this contained group before the desktop Sidecar exits.
+    // Parent loss can race an earlier SIGTERM drain, even between monitor
+    // ticks; it must not depend on which signal started this shutdown.
+    // Product/browser drain above is bounded to five seconds.
     signalOrphanedSidecarGroup('SIGKILL');
   }
   process.exit(0); // Trigger SDK's process.on('exit') handler → terminate CLI subprocess
@@ -12399,16 +12404,14 @@ description: >
 // Only desktop-owned launches carry this identity. Standalone Host/CLI/dev
 // servers retain their existing lifetime; Windows is contained by Rust's Job.
 import {
-  requestProcessShutdown, retireOrphanedSidecar, signalOrphanedSidecarGroup, watchSidecarParent,
-  type ProcessShutdownSignal, type ProcessShutdownState,
+  retireOrphanedSidecar, signalOrphanedSidecarGroup, watchSidecarParent,
 } from './utils/sidecar-parent';
-const desktopParentPid = process.env.MYAGENTS_SIDECAR_PARENT_PID;
-if (process.platform !== 'win32' && desktopParentPid && process.argv.includes('--moxbot-sidecar')) {
+if (desktopOwnedUnixSidecar && desktopParentPid) {
   watchSidecarParent(desktopParentPid, () => {
     retireOrphanedSidecar(() => { void shutdownProcess('parent-exit'); });
   });
 }
-if (!processShutdownState.started) {
+if (!processShutdownStarted) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);

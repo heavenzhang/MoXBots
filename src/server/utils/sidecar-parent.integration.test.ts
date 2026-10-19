@@ -5,8 +5,8 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { expect, it, vi } from 'vitest';
 
-it.skipIf(process.platform === 'win32').each([[false, false], [true, false], [true, true]])(
-  'retires the orphaned Unix process group (ignores TERM: %s, draining first: %s)', async (ignoreTerm, drainingFirst) => {
+it.skipIf(process.platform === 'win32').each([[false, false, false], [true, false, false], [true, true, false], [true, true, true]])(
+  'retires the orphaned Unix group (ignores TERM: %s, draining first: %s, fast drain: %s)', async (ignoreTerm, drainingFirst, fastDrain) => {
   const scratch = await mkdtemp(join(tmpdir(), 'sidecar-parent-'));
   const receipt = join(scratch, 'retired.json');
   const ready = join(scratch, 'ready.json');
@@ -28,26 +28,28 @@ it.skipIf(process.platform === 'win32').each([[false, false], [true, false], [tr
     setInterval(() => {}, 1000);
   `;
   const workerScript = `
-    import { requestProcessShutdown, retireOrphanedSidecar, signalOrphanedSidecarGroup, watchSidecarParent } from ${JSON.stringify(moduleUrl)};
+    import { retireOrphanedSidecar, signalOrphanedSidecarGroup, watchSidecarParent } from ${JSON.stringify(moduleUrl)};
     import { spawn } from 'node:child_process';
     import { writeFileSync } from 'node:fs';
     const parent = process.ppid;
     const hold = setInterval(() => {}, 1000);
     spawn(process.execPath, ['--input-type=module', '-e', ${JSON.stringify(nativeScript)}], { stdio: 'ignore' });
-    const shutdown = { started: false, parentExited: false };
+    let shuttingDown = false;
     function beginShutdown(reason) {
-      if (!requestProcessShutdown(shutdown, reason)) return;
+      if (shuttingDown) return;
+      shuttingDown = true;
       writeFileSync(${JSON.stringify(drainStarted)}, 'draining');
       setTimeout(() => {
+        writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({ parent, current: process.ppid }));
         clearInterval(hold);
-        if (shutdown.parentExited) signalOrphanedSidecarGroup('SIGKILL');
-        process.exit(0);
-      }, ${drainingFirst ? 1_600 : 200});
+        // All desktop shutdowns finish their exact group, even if parent loss
+        // happened and this drain finished before the next monitor tick.
+        signalOrphanedSidecarGroup('SIGKILL');
+      }, ${fastDrain ? 400 : drainingFirst ? 1_600 : 200});
     }
     process.on('SIGTERM', () => { beginShutdown('SIGTERM'); });
     watchSidecarParent(String(parent), () => {
       retireOrphanedSidecar(() => {
-        writeFileSync(${JSON.stringify(receipt)}, JSON.stringify({ parent, current: process.ppid }));
         beginShutdown('parent-exit');
       });
     });
