@@ -22,6 +22,8 @@ Later feature submissions defer after the candidate is frozen. Mobile native lay
 
 ## Integration-specific work
 
+- First combined CI39290837993 failed at test classification: final Sidecar real-process fixture was not registered in the existing subprocess allowlist. Root reviewed every spawned fixed Node snippet and exact-group cleanup, then added only this file with a no-App/no-SDK/no-network explanation. Classification now passes locally; original CI raw log retained. Product source is unchanged by this repair.
+
 - Existing full-DOM SimpleChatInput test failed because it expected Goal objective/cancel always visible. Updated it to exercise the new collapsed disclosure and menu, preserving separate scheduled Task state and exact pause/cancel callbacks. The failure is retained in private evidence.
 - SDK loopback HTTP evidence now checks result/error text, not serialized UUID/duration digits;503 remains required and409 still rejected as HTTP/API error. Inline409-metadata and actual409-error examples guard this harness boundary. No product replay rule weakened.
 - New bundle build number distinguishes this artifact from the previously installed local014; app/Cargo/DocWorker release versions remain synchronized.
