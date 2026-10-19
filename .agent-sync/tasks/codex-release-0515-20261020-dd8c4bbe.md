@@ -12,7 +12,7 @@ Human requests0.5.15 after the current submitted desktop changes complete, and e
 
 ## Acceptance criteria
 
-- [ ] Review/integrate current PR169 desktop repair union and submitted stream-resume exacte9ba90839f568f991299151083d94a0a626dbe2b; later changes excluded after freeze.
+- [x] Review/integrate current PR169 desktop repair union and submitted stream-resume exacte9ba90839f568f991299151083d94a0a626dbe2b; later changes excluded after freeze.
 - [ ] Focused semantic combination tests, exact-head shared CI and normal main merge/remote ancestry/tree identity.
 - [ ] One015formal native build at normal priority, fixedReader unchanged; signature/notary originalID/exactZIPlog/staple/Gatekeeper/TAR/updatersig. No extra privateA build.
 - [ ] Focused native changed paths and safe current-owner admission/rollback; no business task replay/forcekill or credential/config reset.
@@ -20,6 +20,10 @@ Human requests0.5.15 after the current submitted desktop changes complete, and e
 - [ ] Install the same verified015App locally; actual runtime/build/path/hash and source/main/tag/artifact/distribution/daily records. Preserve013/011 and original014 rollback identities.
 
 ## Completed
+
+Reviewed and normally merged the exact169/a2dd source union and stream-resume e9ba90839. The only product conflict was ContextRecovery stream termination: retained typed message_stop, terminalQueued downstream-delivery evidence and trailer cancellation, combined with preterminal live continuation arming and Stop reset. No request lease or completed-action fence was erased. Combined14files404tests, wholeTypeScript/classification, scopedESLint and3version tests passed. Actual SDK0.3.296 with synthetic loopback+realMCP ordinary/fixedGoal/Stop all passed:counter1; ordinary/Goal duplicate-denied1 and original input+onecontinuation, singleterminal; Stop2suppliercalls/no continuation. Real signedApp/Provider/RustGoal remain separate. Root inspected unmodified production quality component wide/narrow synthetic images as non-implementer.
+
+For speed and a single coordinated PR CI, reuse existingPR169: fast-forward its owned integration branch to the015union, retitle/body for the final015scope; keep the dedicated015branch and task record as the durable handoff. No extraPR/main merge round for superseded014. Only latest015promotes online.
 
 Live stable last verified013, server014 release absent and release lock absent. Prior014local-only state explained to human. Source169union was reviewed and focused checks passed; integration CI exposed and root fixed exact process-fixture classification and raw logger macro issues, with failed originals retained. Existing014compile continues separately to preserve progress; no014sign/notary/publication authorized after this newer version request. New015branch started from verifiedremote main70eb592f; start/task-init gates passed before source edits. Stream-resume source and evidence intake read; combination review is in progress.
 
@@ -33,4 +37,4 @@ Combined015source and CI not yet complete. Current014source has a live normal co
 
 ## Next step
 
-Normally merge exact reviewed169union into this branch, merge and review stream-resume intersections, set synchronized015version/build, then run affected checks and coordinate a single015integration PR/CI after169main reconciliation. Online promotion is a required delivery step, not an optional follow-up.
+Push synchronized015source and task branch, fast-forward owned PR169 branch and update its final015description, then adopt one automatic exact-head CI; no manual duplicate dispatch. Sourcefreeze/native/signing/publication follow normalgreenmain proof. Online promotion is a required delivery step, not an optional follow-up.
