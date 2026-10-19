@@ -90,3 +90,7 @@ User chose https://140.143.183.232/ directly. Preserve the current static design
 ## 聊天内子 Agent 查看
 
 `src/renderer/components/agent-status/subagentViewModel.ts` 与 `useSubagentViews.ts` 只读投影原Tab transcript、lifecycle和带runId校验的后台状态；`SubagentActivityPanel`/`SubagentInspector`由Chat挂载，不创建新执行器。验收与合成实际组件预览见`dev-docs/subagent-ui/acceptance.md`。TaskTool历史输入恢复复用既有完整JSON解析路径；分页报错由原TabProvider经可选onError回传。
+
+## 统一执行状态栏
+
+`src/renderer/components/agent-status/ExecutionStatusBar.tsx` 由 SimpleChatInput 挂载，复用既有待办/子 Agent 投影和 Goal 控制回调；唯一详情区与外置暂停。规范 `specs/tech_docs/goal_todo_interaction.md`，验证 `dev-docs/unified-statusbar/acceptance.md`，不新增执行/持久化 owner。

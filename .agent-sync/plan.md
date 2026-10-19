@@ -535,3 +535,7 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 ## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
 
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
+
+## MOXBOT-STATUSBAR-20261019
+
+待办、子 Agent、目标执行整合为默认收起单行摘要，唯一详情区、外置暂停/继续，沿用原 transcript 与 Goal owner。接续 `.agent-sync/tasks/codex-unified-statusbar-20261019-3603d5c8.md`，验收 `dev-docs/unified-statusbar/acceptance.md`；代码/合成组件/CI/main 与下一未冻结桌面发行、原生验收分开跟踪。既定唯一桌面发布 owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 不变，不重启日常客户端或改冻结制品。

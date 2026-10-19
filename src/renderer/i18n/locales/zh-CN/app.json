@@ -1944,6 +1944,15 @@
     "continuationRejected": "任务运行或会话已变化，请刷新后重新确认。",
     "continuationFailed": "未能确认操作结果，请刷新查看当前状态。"
   },
+  "executionStatus": {
+    "summary": "执行状态",
+    "goal": "目标详情",
+    "todos": "待办详情",
+    "agents": "协作详情",
+    "running": "运行中 {{count}}",
+    "returned": "已回传 {{count}}",
+    "failed": "异常 {{count}}"
+  },
   "subagentView": {
     "title": "子 Agent",
     "details": "子 Agent 详情",
