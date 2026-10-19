@@ -12,6 +12,8 @@
 - 合成fixture不连接真实任务，不调用模型或业务API。它不证明签名原生、真实Session/Rust代理授权、真实Provider或薪资生产验收。
 - Rust pure precheck回归随源码提交，完整cargo/Clippy由正常CI执行；本地不创建资源占位、不跳过校验。正式候选需唯一桌面publisher正常构建与验收。
 
+全量CI发现并保留3个失败：纯policy放置在SessionEngine目录导致builtin owner反向依赖；adapter mock漏新facade getter。已将纯策略和原样单测移到中性src/server目录，补齐mock为真实lifecycle API，未放宽断言。4文件188项相关回归、Node24 typecheck/scopedlint/Server构建通过；只读复审未发现可行动问题。最终远端精确head全量CI仍须复核。
+
 ## 接续与发布边界
 
 任务分支记录见 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。PR #158：https://github.com/heavenzhang/MoXBots/pull/158。公开PR/CI和远端refs是源码交付权威；未合main时不算主干交付。源码和单测不是运行生效，当前日常包与其它冻结候选不修改。本任务不建立第二条签名/发行流程，不重启/覆盖客户端，不停止或取消现有会话。

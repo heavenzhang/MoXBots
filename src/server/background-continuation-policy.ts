@@ -1,4 +1,4 @@
-import type { BackgroundTaskContinuationIdentity } from '../../shared/types/background-task';
+import type { BackgroundTaskContinuationIdentity } from '../shared/types/background-task';
 
 /**
  * Continuation policy for runtime background work that outlives its root turn.

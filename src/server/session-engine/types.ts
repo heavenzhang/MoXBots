@@ -18,7 +18,7 @@ import type { SessionSource, TurnAnalyticsSource } from '../types/session';
 import type { SessionMessage, SessionMetadata } from '../types/session';
 import type { ImagePayload } from '../runtimes/types';
 import type { InboxTurnMeta } from '../inbox/types';
-import type { BackgroundContinuationSnapshot, BackgroundWorkAcknowledgementRequest, BackgroundWorkAcknowledgementResult } from './background-continuation-policy';
+import type { BackgroundContinuationSnapshot, BackgroundWorkAcknowledgementRequest, BackgroundWorkAcknowledgementResult } from '../background-continuation-policy';
 import type { ProviderRoute } from '../../shared/providerRoute';
 import type { RuntimeBackedProviderIdentity } from '../../shared/providerExecution';
 import type { OfficialToolId } from '../../shared/official-tools';

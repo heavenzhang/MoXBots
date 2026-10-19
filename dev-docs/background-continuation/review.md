@@ -5,3 +5,5 @@
 主Agent保留整体验收责任。reviewer未执行测试或操作App；实际组件合成交互由主Agent在Codex IAB中测试，不称独立UI或原生验收。真实Provider、原生真实Session、候选/安装及薪资生产均未验证。
 
 执行配置：当前Codex主Agent串行实施；一个只读reviewer，工具请求gpt-6-luna/medium，未独立验证实际服务端模型或计费用量。未新增AIRouter或MoXBots模型调用、未修改其Provider/权限。独立拆分用于安全/界面状态审阅，未增加并发writer。
+
+CI后续修订另经同一reviewer只读复审：policy及测试原样迁到中性src/server，导入方向修正；mock委托真实lifecycle API，原断言未放宽。无可行动问题；未执行测试或App。

@@ -18,7 +18,7 @@ import {
   type BackgroundWorkAcknowledgement,
   type BackgroundWorkAcknowledgementRequest,
   type BackgroundWorkAcknowledgementResult,
-} from '../session-engine/background-continuation-policy';
+} from '../background-continuation-policy';
 import type { BuiltinLifecycleSnapshot, MessageQueueItem } from './types';
 
 const PRE_WARM_MAX_RETRIES = 3;

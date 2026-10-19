@@ -44,6 +44,8 @@
 
 Node24合并main2c2efd06后8文件295项unit/DOM/模拟SDK集成通过；typecheck、定向ESLint、源码空白检查及MoXBots Web/Server构建通过。真实组件IAB合成确认/撤销/拒绝桌面交互通过；只读独立源码/UI状态审阅未发现可行动问题，但未操作App或运行测试。最终日志在本机观察目录，状态见dev-docs/background-continuation/acceptance.md与review.md。正常跨平台CI、原生真实Session和运行生效仍待验收。
 
+全量CI曾发现3个分层/mock回归，已保留失败证据并修复：纯策略移至src/server中性层，mock补真实owner接口，4文件188测试/typecheck/scopedlint/Server构建通过，追加只读复审无可行动问题。精确新head全量CI待完成。
+
 ## Blockers and unknowns
 
 正常PR/CI/远端main尚未交付；未准备本补丁的签名候选，未安装或做真实Provider/原生验收。已有唯一publisher的冻结候选不能修改。本任务限制不向其它既有线程发消息、不重启客户端；必要协调在独立准备完成后再明确请求。HRM生产仍由原业务/CI owner负责。
