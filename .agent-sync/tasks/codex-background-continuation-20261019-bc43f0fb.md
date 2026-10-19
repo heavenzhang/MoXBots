@@ -1,4 +1,15 @@
-# MOXBOTS-BACKGROUND-CONTINUATION-20261019
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/background-continuation-20261019 -->
+<!-- git-project-sync-task:base=a6e9f9c9b43603b647090827f4851ea4366f8766 -->
+<!-- git-project-sync-task:status=in-progress -->
+
+# Task: MOXBOTS-BACKGROUND-CONTINUATION-20261019
+
+## Objective
+
+补齐安全后台接续：默认阻挡，原 Query owner 对用户刚观察的精确 task/run/Query 实例确认和撤销；不重放未知结果、不猜测后台命令安全性，不接管薪资或桌面发行 owner。
+
+## Acceptance criteria
 
 目标：长期后台 Shell 不再无提示地阻断接续；所有非 ambient 默认阻挡，仅用户针对已观察的精确运行显式允许并行。禁止按命令或描述猜安全。保留 Query/SessionEngine/Goal 原 owner、等待用户/队列/未知结果/取消门禁。
 
@@ -22,3 +33,21 @@
 下一步：沿现有后台详情reader投影精确Query实例token+run身份；确认/撤销在lifecycle同步比较后提交；route只校验并交facade，UI按身份fence处理晚回执；先加回归再实现。
 
 阶段成果：精确身份确认/撤销及Query authority失效已落地；Node24定向229项 + 后续owners35项通过，typecheck/ESLint通过。原17文件修改完整保留并整合；当前主Agent串行负责源码，原客户端会话保留idle且不再发送接续。
+
+## Completed
+
+- 已整合原修复修改并补齐运行身份、Query替换、撤销、UI晚回执保护；代码提交在当前任务分支。
+- 同步当前main4aacea71，保留较新的native Stop修复；仅共享计划顶端冲突，双方记录均保留。
+- 保留原客户端会话与未提交修改快照，接续后不再发送重复prompt，无并发writer或运行应用操作。
+
+## Verification
+
+Node24定向7文件229项unit/DOM/模拟SDK集成通过；追加authority撤销/同Query重新授权后owners35项通过；typecheck、定向ESLint和源码空白检查通过。真实组件IAB合成确认/撤销/拒绝桌面交互通过。合并后的完整回归与MoxBots Web/server构建在执行；最终日志在本机观察目录，验收状态见dev-docs/background-continuation/acceptance.md。
+
+## Blockers and unknowns
+
+正常PR/CI/远端main尚未交付；未准备本补丁的签名候选，未安装或做真实Provider/原生验收。已有唯一publisher的冻结候选不能修改。本任务限制不向其它既有线程发消息、不重启客户端；必要协调在独立准备完成后再明确请求。HRM生产仍由原业务/CI owner负责。
+
+## Next step
+
+完成合并结果回归/构建，正常PR与精确head CI/main；核实远端包含成果。随后准备可审阅的唯一publisher接纳请求，保持候选/安装和薪资验收的独立门禁。

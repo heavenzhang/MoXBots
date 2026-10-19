@@ -1,6 +1,6 @@
 ## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
 
-沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
+沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
 
 ## Deployment coordination — MOXBOTS-NATIVE-PASSWORD-CLOUD-20261019
 

@@ -14,7 +14,7 @@
 
 ## 接续与发布边界
 
-任务分支记录见 `.agent-sync/tasks/codex-background-continuation-20261019.md`。公开PR/CI和远端refs是源码交付权威；未合main时不算主干交付。源码和单测不是运行生效，当前日常包与其它冻结候选不修改。本任务不建立第二条签名/发行流程，不重启/覆盖客户端，不停止或取消现有会话。
+任务分支记录见 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。公开PR/CI和远端refs是源码交付权威；未合main时不算主干交付。源码和单测不是运行生效，当前日常包与其它冻结候选不修改。本任务不建立第二条签名/发行流程，不重启/覆盖客户端，不停止或取消现有会话。
 
 ## 合成预览
 
