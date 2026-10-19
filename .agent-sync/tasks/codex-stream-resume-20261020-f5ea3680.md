@@ -40,3 +40,15 @@
 ## Deployment request
 
 Required，源码/本地验收完成后提交给上述唯一owner。无授权推断扩大到Host/backend/其它项目；保留原活动会话、用户文件/凭据、冻结候选与回滚制品。UI只展示已记录恢复事实，不为内容质量或业务验收打分。
+
+## Acceptance criteria
+
+上方To Do List为逐项完成标准。普通会话与Goal共用原turn接续；旧HTTP/完成动作不重放；Stop优先并持久；质量证据落盘可读；本地与共享CI通过后正常合main并核实远端包含；原生发布/实际用户路径由唯一publisher独立验收。本地源码与合成联调均已验收，最终完成不以工作分支代替主干。
+
+## Blockers and unknowns
+
+尚待唯一owner协调精确head共享CI/PR与主干集成。未发布/重启客户端，真实Provider最初断流位置尚无证据可细分为供应商、适配器或网络；实际Rust Goal、签名客户端和用户业务路径仍待发布验收。语义不同的业务写入需要业务幂等/只读核对，不能宣称分布式exactly-once。
+
+## Next step
+
+推送并核验远端分支同head后，向01a12bc2-907a-7702-b6dd-788225c5dfe4发送最终精确SHA、证据与CI请求。由该owner协调唯一共享CI；通过后正常合当前main、核实远端包含，再接收下一未冻结发布批次与原生验收结果。开发会话继续处理被CI/合并暴露的本任务问题，不越权发布。
