@@ -27,6 +27,9 @@ import {
   type PendingRemoteOperation,
   type KnownRemoteOperation,
 } from "./drafts";
+import { CollapsibleTool } from "@/components/tools/CollapsibleTool";
+import { ExpandableContainer } from "@/components/tools/utils";
+import { getToolBadgeConfig } from "@/components/tools/toolBadgeConfig";
 import type { RemoteSessionBinding, RemoteSessionTab } from "./tabContract";
 
 const buttonShape =
@@ -458,21 +461,14 @@ function RemoteSessionContent({
         !list?.items.some((latest) => latest.sessionId === item.sessionId),
     ) ?? [];
   return (
-    <div className="flex h-full min-w-0 flex-col bg-[var(--paper)] text-[var(--ink)]">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--line-subtle)] px-6 py-4">
-        <div className="min-w-0 flex-1">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--line-subtle)] px-4 py-3 sm:px-6">
+        <div className="min-w-0 basis-full sm:basis-0 flex-1">
           <h1 className="truncate text-lg font-semibold">
             {snapshot?.title || tab.agentName}
           </h1>
-          <p className="truncate text-xs text-[var(--ink-muted)]">
+          <p className="truncate text-xs text-[var(--ink-muted)]" title={`${locator.deviceId} / ${tab.agentId}${tab.sessionId ? ` / ${tab.sessionId}` : ""}`}>
             {t("remoteSession.remote")} · {tab.deviceName} · {tab.agentName}
-          </p>
-          <p
-            className="truncate font-mono text-xs text-[var(--ink-subtle)]"
-            title={`${locator.deviceId} / ${tab.agentId}`}
-          >
-            {locator.deviceId} / {tab.agentId}
-            {tab.sessionId ? ` / ${tab.sessionId}` : ""}
           </p>
         </div>
         <span role="status" className="text-xs text-[var(--ink-muted)]">
@@ -522,8 +518,8 @@ function RemoteSessionContent({
             </button>
           )}
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-        <div className="mx-auto max-w-3xl space-y-6">
+      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6">
+        <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3">
           {error && (
             <p
               className="rounded-lg bg-[var(--error-bg)] p-3 text-sm text-[var(--error)]"
@@ -611,8 +607,8 @@ function RemoteSessionContent({
               key={message.id}
               className={
                 message.role === "user"
-                  ? "ml-auto max-w-[90%] rounded-xl bg-[var(--message-user-bg)] px-4 py-3"
-                  : ""
+                  ? "ml-auto min-w-0 max-w-[90%] [overflow-wrap:anywhere] rounded-xl bg-[var(--message-user-bg)] px-4 py-3"
+                  : "min-w-0 [overflow-wrap:anywhere]"
               }
             >
               <Markdown
@@ -629,17 +625,7 @@ function RemoteSessionContent({
                 </p>
               )}
               {message.tools.map((tool) => (
-                <details
-                  key={tool.id}
-                  className="mt-3 rounded-lg bg-[var(--paper-inset)] p-3 text-sm"
-                >
-                  <summary>
-                    {tool.name} · {t(`remoteSession.toolStates.${tool.status}`)}
-                  </summary>
-                  <p className="mt-2 whitespace-pre-wrap text-xs text-[var(--ink-secondary)]">
-                    {tool.summary}
-                  </p>
-                </details>
+                <RemoteTool key={tool.id} tool={tool} />
               ))}
             </article>
           ))}
@@ -671,7 +657,7 @@ function RemoteSessionContent({
         </div>
       </div>
       <form
-        className="shrink-0 px-6 pb-4 pt-2"
+        className="min-w-0 shrink-0 px-4 pb-4 pt-2 sm:px-6"
         onSubmit={(event) => {
           event.preventDefault();
           const text = draft.trim();
@@ -694,7 +680,7 @@ function RemoteSessionContent({
             );
         }}
       >
-        <div className="mx-auto max-w-3xl rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-3">
+        <div className="mx-auto w-full min-w-0 max-w-3xl rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-3">
           <label className="sr-only" htmlFor={`remote-composer-${tab.id}`}>
             {t("remoteSession.message")}
           </label>
@@ -702,9 +688,10 @@ function RemoteSessionContent({
             id={`remote-composer-${tab.id}`}
             value={draft}
             rows={3}
+            wrap="soft"
             maxLength={8000}
             disabled={disabled}
-            className="max-h-48 min-h-20 w-full resize-y bg-transparent text-base text-[var(--ink)] outline-none placeholder:text-[var(--ink-subtle)]"
+            className="block max-h-48 min-h-20 w-full min-w-0 max-w-full resize-y overflow-x-hidden whitespace-pre-wrap [overflow-wrap:anywhere] bg-transparent text-base text-[var(--ink)] outline-none placeholder:text-[var(--ink-subtle)]"
             placeholder={t("remoteSession.placeholder")}
             onChange={(event) => {
               setDraft(event.target.value);
@@ -718,15 +705,15 @@ function RemoteSessionContent({
               }
             }}
           />
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs text-[var(--ink-muted)]">
+          <div className="flex min-w-0 items-end justify-between gap-3">
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-xs text-[var(--ink-muted)]">
               {t("remoteSession.snapshotHint")}
               {snapshot?.runtime ? ` · ${snapshot.runtime}` : ""}
               {snapshot?.model ? ` · ${snapshot.model}` : ""}
             </span>
             <button
               type="submit"
-              className={primary}
+              className={`${primary} shrink-0`}
               disabled={disabled || !draft.trim()}
             >
               <SendIcon className="mr-1 inline h-4 w-4" />
@@ -738,6 +725,32 @@ function RemoteSessionContent({
           {t("remoteSession.closeHint")}
         </p>
       </form>
+    </div>
+  );
+}
+
+/** Remote results remain text-only: never resolve target paths in the local workspace. */
+function RemoteTool({ tool }: { tool: RemoteMessage["tools"][number] }) {
+  const { t } = useTranslation("app");
+  const config = getToolBadgeConfig(tool.name);
+  return (
+    <div className="min-w-0 py-1">
+      <CollapsibleTool
+        collapsedContent={
+          <span className="flex min-w-0 items-center gap-2 text-sm">
+            <span className="size-4 shrink-0" aria-hidden="true">{config.icon}</span>
+            <span className="min-w-0 truncate">{tool.name}</span>{" "}
+            <span className={`shrink-0 text-xs ${tool.status === "error" ? "text-[var(--error)]" : tool.status === "running" ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
+              {t(`remoteSession.toolStates.${tool.status}`)}
+            </span>
+          </span>
+        }
+        expandedContent={tool.summary.trim() ? (
+          <ExpandableContainer>
+            <pre className="whitespace-pre-wrap font-mono text-sm [overflow-wrap:anywhere] select-text text-[var(--ink-secondary)]">{tool.summary}</pre>
+          </ExpandableContainer>
+        ) : null}
+      />
     </div>
   );
 }
@@ -758,7 +771,7 @@ function InteractionCard({
   );
   return (
     <section
-      className="rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-4"
+      className="min-w-0 [overflow-wrap:anywhere] rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-4"
       aria-label={t(`remoteSession.interactions.${interaction.interaction}`)}
     >
       <h2 className="text-sm font-semibold">

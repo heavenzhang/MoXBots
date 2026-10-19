@@ -539,10 +539,22 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 
 
 
-## Deployment coordination — MOXBOTS-NO-RESPONSE-20261020
+## REMOTE-UI-20261020 — remote session presentation parity
 
-- **Repository / branch policy:** https://github.com/heavenzhang/MoXBots.git; established canonical branch `main`, task branches/worktrees remain permitted. Development owns local checks and mainline delivery under the existing review/CI rules; the sole CI/deployment chat selects the candidate branch according to this policy and pins its exact SHA. No new single-branch requirement is introduced.
-- **Sole CI and deployment chat:** `01a12bc2-907a-7702-b6dd-788225c5dfe4`, existing desktop publisher reused per latest human AGENTS rules (2026-10-20): development submits branch/SHA/evidence, this chat organizes shared CI/results, candidate selection, versioning, build, deployment/verification/rollback and existing automatic CI. Other chats do not manually dispatch/restart shared CI or deploy. No alternate coordinator is created.
-- **Version policy / target:** Existing MoXBots desktop semver and immutable tags, with candidate identifiers assigned by publisher. This task does not increment 0.5.14 or reuse an old artifact/version identity. Target: existing macOS desktop distribution; no Host/backend/mobile/cloud changes.
-- **Batch/status:** This fix awaits unified CI coordination and main delivery, then the next explicitly selected batch. Existing PR automatic jobs are queued and must be reconciled by that owner; this developer has not manually dispatched shared CI. Dependencies: single original business execution owner, fresh safe-idle maintenance admission, backup and rollback. In-flight frozen batches must exclude later commits unless owner explicitly starts a new candidate. Test/promotion use one digest-verified immutable artifact.
-- **Scope/evidence:** Admission guard retires after active-turn commit; inferred-anchor recovery keeps the accepted input. Unix parent lifetime follows existing Sidecar shutdown. Task `.agent-sync/tasks/codex-no-response-20261020-b9b9f540.md`; acceptance `dev-docs/no-response/acceptance.md`. Source, isolated regression, candidate, installation and original-session business acceptance remain separate; no salary task replay or termination was performed here.
+Canonical repository https://github.com/heavenzhang/MoXBots.git, existing main
+integration flow. Branch codex/remote-ui-20261020; task record
+`.agent-sync/tasks/codex-remote-ui-20261020-8504c973.md`. Decode SDK tool wrappers
+before bounded target projection, render canonical plain text once, compact
+shared disclosure and contained composer/header. Existing execution, receipts,
+permissions and wire schema remain unchanged. Controller and target both need
+the next accepted update; older target may still return clipped JSON.
+
+Per the user's updated 2026-10-20 instructions, existing sole desktop publisher
+`01a12bc2-907a-7702-b6dd-788225c5dfe4` also coordinates project CI and release
+intake. Development chats perform local self-checks and hand over exact SHAs;
+no additional project CI or release build is dispatched here. Existing main
+branch flow and automated CI remain subject to that owner's coordination.
+Owner allocates the next unfrozen semantic version; no version/tag changes in
+this task. macOS desktop controller/target acceptance and safe-idle activation
+remain separate from source and synthetic browser checks. No Host/cloud/mobile
+rollout, daily client restart or candidate publication in this development lane.
