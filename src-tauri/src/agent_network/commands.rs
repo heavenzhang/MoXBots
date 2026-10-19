@@ -341,6 +341,16 @@ pub(crate) async fn cmd_agent_network_owned_start(
     result
 }
 #[tauri::command]
+pub(crate) async fn cmd_agent_network_owned_start_existing(
+    state: tauri::State<'_, super::actor::ManagedAgentNetwork>,
+    connection_id: String,
+    expected_registry_revision: u64,
+) -> Result<super::owned_account_desktop::StartedLogin, NetworkError> {
+    state
+        .owned_start_existing(&connection_id, expected_registry_revision)
+        .await
+}
+#[tauri::command]
 pub(crate) async fn cmd_agent_network_owned_open_authorization(
     state: tauri::State<'_, super::actor::ManagedAgentNetwork>,
     attempt_id: String,

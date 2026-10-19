@@ -1,6 +1,6 @@
 import { deriveSessionLabel } from '../inbox/derive-label';
 import { getSessionEngine } from '../session-engine';
-import { getSessionData, getSessionMetadata, getBuiltinModelRecovery, isHistoryVisibleSession } from '../SessionStore';
+import { getSessionData, getSessionDisplayHistory, getSessionMetadata, getBuiltinModelRecovery, isHistoryVisibleSession } from '../SessionStore';
 import { pendingSessionWatchCount, registerPendingSessionWatch, removeNetworkSessionWatch, manageLocalSessionWatches } from '../inbox/watch-registry';
 import { parseNetworkReturnReference } from '../../shared/agentNetworkReturn';
 import { hasValidInternalCliCredential } from '../external-cli-admission';
@@ -282,6 +282,20 @@ async function handleSessionWatchUnsubscribe(request: Request): Promise<Response
 }
 
 async function handleSessionDetails(sessionId: string, url: URL): Promise<Response> {
+  if (url.searchParams.get('view') === 'history' || url.searchParams.get('view') === 'metadata') {
+    const metadata = getSessionMetadata(sessionId);
+    if (!metadata || !isHistoryVisibleSession(metadata)) {
+      return jsonResponse({ success: false, error: 'Session not found.' }, 404);
+    }
+    if (url.searchParams.get('view') === 'metadata') {
+      return jsonResponse({ success: true, session: toClientSessionMetadata(metadata) });
+    }
+    // No Runtime snapshot/clone, revision or interactive state in a disk preview.
+    const messages = await getSessionDisplayHistory(sessionId, 20);
+    return jsonResponse({ success: true, session: {
+      id: sessionId, messages: shrinkSessionMessagesForClient(messages),
+    } });
+  }
   const engine = getSessionEngine();
   const session = (await getSessionData(sessionId));
   const overlay = engine.getLiveSessionOverlay(sessionId);

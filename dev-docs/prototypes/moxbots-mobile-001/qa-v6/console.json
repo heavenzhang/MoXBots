@@ -1,0 +1,14 @@
+[
+  {
+    "level": "error",
+    "message": "The final argument passed to %s changed size between renders. The order and size of this array must remain constant.\n\nPrevious: %s\nIncoming: %s useEffect [list] [list, messages]",
+    "timestamp": "2026-10-17T17:05:14.005Z",
+    "url": "http://127.0.0.1:4387/@vite/client"
+  },
+  {
+    "level": "error",
+    "message": "The final argument passed to %s changed size between renders. The order and size of this array must remain constant.\n\nPrevious: %s\nIncoming: %s useEffect [[object Object], meeting, chat] [[object Object], meeting, chat, files]",
+    "timestamp": "2026-10-17T17:06:05.385Z",
+    "url": "http://127.0.0.1:4387/@vite/client"
+  }
+]

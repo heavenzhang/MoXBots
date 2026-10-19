@@ -1,0 +1,222 @@
+{
+  "config": {
+    "argv": [
+      "/opt/homebrew/Cellar/node/25.9.0_1/bin/node",
+      "/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-mobile-001-execution-trace/dev-docs/prototypes/moxbots-mobile-001/node_modules/.bin/playwright",
+      "test",
+      "tests/execution-trace.spec.ts",
+      "--workers=1",
+      "--output=evidence/execution-trace-independent-20261020-final/playwright-results",
+      "--reporter=json"
+    ],
+    "configFile": "/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-mobile-001-execution-trace/dev-docs/prototypes/moxbots-mobile-001/playwright.config.ts",
+    "rootDir": "/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-mobile-001-execution-trace/dev-docs/prototypes/moxbots-mobile-001/tests",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-mobile-001-execution-trace/dev-docs/prototypes/moxbots-mobile-001/evidence/execution-trace-independent-20261020-final/playwright-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-mobile-001-execution-trace/dev-docs/prototypes/moxbots-mobile-001/tests",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.spec.ts"
+        ],
+        "timeout": 20000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": {
+      "command": "npm run dev -- --port 4174",
+      "url": "http://127.0.0.1:4174/tests/runtime-fixture.html",
+      "reuseExistingServer": true
+    }
+  },
+  "suites": [
+    {
+      "title": "execution-trace.spec.ts",
+      "file": "execution-trace.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "iphone: pending label, compact width and running steps (no-preference)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 20000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1465,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T16:16:25.121Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b73d6f3e2bde379c4504-6ee6403cd9941af0a5ec",
+          "file": "execution-trace.spec.ts",
+          "line": 43,
+          "column": 5
+        },
+        {
+          "title": "iphone: pending label, compact width and running steps (reduce)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 20000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1177,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T16:16:29.748Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b73d6f3e2bde379c4504-b9f40964084aa1b57d90",
+          "file": "execution-trace.spec.ts",
+          "line": 43,
+          "column": 5
+        },
+        {
+          "title": "pixel-10: pending label, compact width and running steps (no-preference)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 20000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2317,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T16:16:30.946Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b73d6f3e2bde379c4504-2118f31a6483b00a308a",
+          "file": "execution-trace.spec.ts",
+          "line": 43,
+          "column": 5
+        },
+        {
+          "title": "pixel-10: pending label, compact width and running steps (reduce)",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 20000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "",
+              "projectName": "",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1596,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-19T16:16:33.271Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "b73d6f3e2bde379c4504-7227cb7a4fb77119571b",
+          "file": "execution-trace.spec.ts",
+          "line": 43,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-19T16:16:24.718Z",
+    "duration": 10245.884,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

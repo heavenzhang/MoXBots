@@ -1982,6 +1982,9 @@ mod tests {
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("window.location.replace(\"moxbot://login/complete\")"));
         assert!(text.contains("href=\"moxbot://login/complete\""));
+        assert!(text.contains("网页授权已完成"));
+        assert!(text.contains("客户端将校验账号并保存登录结果"));
+        assert!(!text.contains("<h1>登录成功</h1>"));
         assert!(!text.contains(&state) && !text.contains(&started.transaction_id));
         let failure = browser_return_response("/desktop", false);
         assert_eq!(failure.status(), StatusCode::BAD_REQUEST);

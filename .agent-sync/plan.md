@@ -4,6 +4,10 @@
 
 涉及部署单元 **desktop builtin client**：`src/server/agent-session.ts`、builtin-session/openai-bridge 与相应 renderer/shared 持久化 UI，仓库 heavenzhang/MoXBots、任务分支正常合 main。沿用唯一 CI/部署会话 **01a12bc2-907a-7702-b6dd-788225c5dfe4 / MoxBots桌面端统一打包负责人**；依据为用户最新部署单元规则及本任务明确交该统一发布会话安排发布。版本/构建号和下一未冻结候选由该 owner 分配，开发会话不启动共享 CI、正式构建、发布或客户端重启。当前开发成果待精确 SHA 交接，预登记已发送；不自动纳入已冻结批次。不涉及独立云服务/Host 部署。
 
+## MOXBOTS-MOBILE-001 — 执行轨迹原型交付
+
+按用户“改完了就提交到远端”的要求，把独立移动 Web 原型纳入 `dev-docs/prototypes/moxbots-mobile-001/`，包含左侧执行步骤、状态与 CSS piano-roll；本地合成数据，不改变 `mobile/app/`。任务记录 `.agent-sync/tasks/codex-mobile-001-execution-trace-20261019-e6514cfc.md`，验收与运行说明在原型目录 `acceptance.md`、`README.md`。构建、独立审阅、Git/CI/main 与原生/生产阶段分开追踪，未授权或执行部署。
+
 ## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
 
 沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
@@ -541,3 +545,7 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 ## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
 
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
+
+## MOXBOT-CHATLOAD-20261019 — 长会话首屏读取
+
+Global展示预览固定20条，V1异步文件尾读；V2仍canonical fold，analytics改metadata读，不复制Runtime overlay。正式恢复/较早分页保留80条，避免Todo状态丢失。166项定向、类型/lint/Web构建和实际renderer合成传输通过，独立审查完成。验收 `dev-docs/chatload/acceptance.md`，任务 `.agent-sync/tasks/codex-chatload-20261019-4cb3c3b7.md`。main/CI按PR与远端回执；下一未冻结桌面版本待既定唯一publisher集成，未换包、未重启或通知其它聊天，原生真实路径仍待验。

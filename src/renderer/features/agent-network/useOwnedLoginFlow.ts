@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { OwnedLoginAttempt } from "@/api/agentNetwork";
+import { networkErrorKey, type OwnedLoginAttempt } from "@/api/agentNetwork";
 import { listenWithCleanup } from "@/utils/tauriListen";
 import { isTauriEnvironment } from "@/utils/browserMock";
 
@@ -54,7 +54,7 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
   const failureText = (failure: unknown) =>
     failure instanceof Error
       ? failure.message
-      : latest.current.t("agentNetwork.errors.failed");
+      : latest.current.t(`agentNetwork.errors.${networkErrorKey(failure)}`);
   const expired = () =>
     !current.current || current.current.expiresAt * 1000 <= Date.now();
   const markExpired = () => {
@@ -153,6 +153,19 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
       } else setNotice(latest.current.t("agentNetwork.ownedLogin.pending"));
     } catch (failure) {
       if (isCurrent(generation)) {
+        if (failure && typeof failure === "object" && "code" in failure && failure.code === "OWNED_ACCOUNT_MISMATCH") {
+          // The grant was consumed and rejected by the native identity owner.
+          // Re-polling cannot repair it and would hide this cause behind a
+          // subsequent consumed-attempt error. Keep the attempt for cancellation.
+          clearTimers();
+          cancelled.current = true;
+          flight.current = false;
+          setPolling(false);
+          setPhase("stopped");
+          setNotice(null);
+          setError(latest.current.t("agentNetwork.ownedLogin.accountMismatchStopped"));
+          return;
+        }
         failures.current += 1;
         setError(
           latest.current.t("agentNetwork.ownedLogin.checkFailed", {

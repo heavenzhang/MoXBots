@@ -9,6 +9,7 @@ import {
   selectNetworkConnection,
   joinNetworkConnection,
   startOwnedNetworkLogin,
+  startOwnedNetworkReauthentication,
   openOwnedNetworkAuthorization,
   pollOwnedNetworkLogin,
   cancelOwnedNetworkLogin,
@@ -50,6 +51,7 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
       url: string;
       principalId: string;
       authGeneration: number;
+      registryRevision: number;
     } | null>(null),
     [remove, setRemove] = useState(false),
     [busy, setBusy] = useState(false),
@@ -132,6 +134,9 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
     : current?.name;
   const error = (failure: unknown) =>
     t(`agentNetwork.errors.${networkErrorKey(failure)}`);
+  const loginFailure = (failure: unknown) => Object.assign(new Error(error(failure)), {
+    code: failure && typeof failure === "object" && "code" in failure ? failure.code : undefined,
+  });
   const closeRestore = useCallback(() => {
     setRestoreOpen(false);
     setRestoreTargetId(null);
@@ -299,6 +304,10 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
       !selectedOwnedLoginUrl
     )
       return;
+    if (typeof registry.revision !== "number") {
+      toast?.error(t("agentNetwork.errors.failed"));
+      return;
+    }
     setOpen(false);
     ownedLoginGeneration.current += 1;
     completedOwnedLoginAttempt.current = false;
@@ -308,6 +317,7 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
       url: selectedOwnedLoginUrl,
       principalId: selectedConnection.ownedAccount?.principalId ?? "",
       authGeneration: selectedConnection.snapshot.authGeneration,
+      registryRevision: registry.revision,
     });
   }
   async function select(id: string) {
@@ -552,7 +562,7 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
               }
               return "pending";
             } catch (failure) {
-              throw Error(error(failure));
+              throw loginFailure(failure);
             }
           }}
           onOwnedCancel={async (attemptId) => {
@@ -579,10 +589,12 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
             setOwnedLoginTarget(null);
           }}
           onConfirm={async () => { throw Error(t("agentNetwork.errors.failed")); }}
-          onOwnedStart={async (issuer, ca) => {
+          onOwnedStart={async () => {
             const generation = ownedLoginGeneration.current;
             try {
-              const attempt = await startOwnedNetworkLogin(issuer, ca);
+              const attempt = await startOwnedNetworkReauthentication(
+                ownedLoginTarget.connectionId, ownedLoginTarget.registryRevision,
+              );
               if (generation !== ownedLoginGeneration.current || !ownedLoginTargetIsCurrent) {
                 await cancelOwnedNetworkLogin(attempt.attemptId).catch(() => {});
                 throw Error(t("agentNetwork.errors.failed"));
@@ -598,8 +610,9 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
             catch (failure) { throw Error(error(failure)); }
           }}
           onOwnedCancel={async (attemptId) => {
+            // Fence publication immediately, including while selection is in flight.
+            ownedLoginGeneration.current += 1;
             if (pendingOwnedLoginAttempt.current === attemptId) {
-              ownedLoginGeneration.current += 1;
               pendingOwnedLoginAttempt.current = null;
             }
             try { await cancelOwnedNetworkLogin(attemptId); }
@@ -615,19 +628,17 @@ function NetworkSwitcher({ registry }: { registry: NetworkRegistry }) {
               if (result.status === "reauthorize") return result.authorization;
               if (result.status !== "authenticated") return "pending";
               const next = result.registry;
+              const matching = next.connections.find((connection) =>
+                connection.id === ownedLoginTarget.connectionId && !connection.official && !connection.removing && connection.url === ownedLoginTarget.url
+                && connection.ownedAccount?.principalId === ownedLoginTarget.principalId,
+              );
+              if (!matching) throw { code: "OWNED_ACCOUNT_MISMATCH" };
               pendingOwnedLoginAttempt.current = null;
               completedOwnedLoginAttempt.current = true;
-              const matching = next.connections.find((connection) =>
-                connection.id === next.selected && !connection.official && !connection.removing && connection.url === ownedLoginTarget.url,
-              );
-              if (matching) {
-                const selected = await selectNetworkConnection(matching.id);
-                if (generation === ownedLoginGeneration.current) acceptNetworkRegistry(selected);
-              } else if (generation === ownedLoginGeneration.current) {
-                acceptNetworkRegistry(next);
-              }
+              const selected = await selectNetworkConnection(matching.id);
+              if (generation === ownedLoginGeneration.current) acceptNetworkRegistry(selected);
               return "authenticated";
-            } catch (failure) { throw Error(error(failure)); }
+            } catch (failure) { throw loginFailure(failure); }
           }}
         />
       )}
