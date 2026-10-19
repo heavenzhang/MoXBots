@@ -210,6 +210,8 @@ Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 
 
 ### 5.1 Goal
 
+Builtin watchdog 对 Goal turn 必须先通过原 terminal observer 结算再 abort；缺少完成证据时用既有 automatic_replay_blocked 保留进度并进入恢复暂停，不能另插无 Goal owner 的 Session 续接。前端暂停状态显示 durable 原因，被 turn_conflict 拒绝的可见输入必须明确反馈未执行。
+
 Goal 是 current Session 的独立 durable state，存储在 `session_goals.json`，不嵌入 Session metadata，也不复用 Task/Cron。`SessionGoalManager` 是唯一业务 owner，同一 Session 最多一个 unfinished Goal。
 
 Goal 只拥有 objective、状态、end conditions、permission policy、当前 turn fence、统计与 delivery outbox；Runtime/model/provider/MCP 仍由 Session 拥有。Goal turn 通过现有 SessionEngine queue 执行，不建立第二套 queue 或 outcome cache。

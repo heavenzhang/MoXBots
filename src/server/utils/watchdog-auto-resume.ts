@@ -4,6 +4,8 @@ export const WATCHDOG_RESUME_REMINDER =
 export interface WatchdogAutoResumePlanInput {
   turnHadSubstantiveActivity: boolean;
   alreadyAutoResumed: boolean;
+  /** Goal settlement owns continuation; never inject an unowned Session turn. */
+  goalOwned?: boolean;
 }
 
 export interface WatchdogAutoResumePlan {
@@ -21,7 +23,7 @@ export interface WatchdogAutoResumePlan {
  * The per-process cap prevents reminder -> watchdog -> reminder loops.
  */
 export function planWatchdogAutoResume(input: WatchdogAutoResumePlanInput): WatchdogAutoResumePlan {
-  if (!input.turnHadSubstantiveActivity || input.alreadyAutoResumed) {
+  if (input.goalOwned || !input.turnHadSubstantiveActivity || input.alreadyAutoResumed) {
     return {
       persistPendingContinue: false,
       scheduleAutoResume: false,

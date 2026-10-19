@@ -535,3 +535,8 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 ## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
 
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
+
+
+## GOAL-STALL-001 — Goal watchdog 结算与可见恢复原因
+
+沿原 builtin/Goal lifecycle 修复 timeout abort 丢失 observer/authority 的问题；可见输入 turn_conflict 显式反馈，暂停原因显示在原状态栏。任务 `.agent-sync/tasks/codex-goal-stall-20261020.md`，验收 `dev-docs/goal-stall/acceptance.md`。代码、合成回归、实际组件与签名原生/真实模型分开；唯一 CI/桌面发布会话仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，依赖PR168的遗留进程治理后做当前真实任务恢复。

@@ -306,6 +306,54 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
+  it('settles a watchdog-aborted Goal exactly once and preserves progress without unowned replay', async () => {
+    const workspace = join(state.home, 'watchdog-goal');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    state.beforeResult.mockImplementation(() => gate);
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    const { InactivityWatchdog } = await import('../utils/inactivity-watchdog');
+    vi.spyOn(InactivityWatchdog.prototype, 'evaluateTick').mockReturnValue({ fire: true, suspendedMs: 0 });
+    const terminal = vi.fn();
+    await agent.enqueueUserMessage('finish existing Goal', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, {
+        channelDelivery: NO_CHANNEL_DELIVERY, turnOwner: { kind: 'goal', id: 'goal-fixture' }, onTerminal: terminal,
+      });
+    await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+    const tick = intervals.mock.calls.find(call => call[1] === 30_000)?.[0] as (() => Promise<void>) | undefined;
+    expect(tick).toBeTypeOf('function');
+    await tick!();
+    await tick!();
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    expect(terminal.mock.calls[0][0]).toMatchObject({ status: 'error', code: 'automatic_replay_blocked' });
+    expect(state.events).toContainEqual(['chat:agent-error', expect.objectContaining({ message: expect.stringContaining('进度已保留') })]);
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).not.toBe(true);
+    release();
+    await vi.waitFor(() => expect(agent.isSessionActive()).toBe(false));
+    expect(terminal).toHaveBeenCalledOnce();
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(agent.getMessages().some(message => JSON.stringify(message).includes('answer 1'))).toBe(true);
+  });
+
+  it('surfaces a Goal turn conflict without dispatching the rejected user input', async () => {
+    const workspace = join(state.home, 'goal-conflict');
+    await mkdir(workspace);
+    await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+    const terminal = vi.fn();
+    await agent.enqueueUserMessage('continue', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, {
+        channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: terminal,
+        beforeDispatch: async () => ({ accepted: false, code: 'turn_conflict', error: 'Another Goal turn currently owns this Session' }),
+      });
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    expect(state.sdkInputs).toHaveLength(0);
+    expect(state.events).toContainEqual(['chat:agent-error', expect.objectContaining({ message: expect.stringContaining('本次消息未执行') })]);
+  });
+
   it.each([true, false])('owns recovery transport and requires durable update Stop acknowledgement (%s)', async durable => {
     vi.stubEnv('HOME', state.home);
     try {
