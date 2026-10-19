@@ -1,6 +1,6 @@
-## Current Host installer delivery state (2026-10-18)
+## Host installer delivery checkpoint (2026-10-19)
 
-Root01a12b99 remains the human-authorized sole integration/static-publication owner. P2 source58d5247d/R20261018152704-58d5247d7692 passed actual same-source standard browser/Ready and natural lab renewal; root8f133dda full CI9 applicable jobs passed. Three real KVM runs failed original post-reboot Ready, with latest39145714749 recording OWNED_ACCOUNT_UNAVAILABLE before the connector management socket. A startup recovery repair is under independent root review; a new exact-source candidate and real KVM acceptance are required. Main/public TLS append/promotion remain undelivered; older M/P1/P2 must not be promoted. This Host lane does not redeploy cloud/101 or operate the daily Mac. Separate human-authorized native-password cloud release929b984e has exact-main CI/real-Dex lab acceptance; production enablement and physical-phone acceptance remain separate gates. Detailed state: dev-docs/host-init-001/acceptance.md and root takeover task.
+Root01a12b99 is the human-authorized sole integration/static-publication owner after original01a13320 handed back. P4 source7e4bbdfa/R20261019083714-7e4bbdfaa693 built in39223945533 and passed full local ZIP/strict nested consumer/CRC. Same-artifact actual standard39225566407, natural lab renewal39226095343 and trueKVM39226946194 passed; new boot ID and original identity/ciphertext retained, Ready recovered in4.35s. P2's three real boot failures and P3's mobile-dependency failure remain history, never promoted. Final current-main CI/containment and anonymous public fullGET/promotion remain separate delivery receipts in PR137 and private execution-status.json; no cloud/101 binary upgrade or dailyMac operation belongs to this installer lane. Separate cloud929 production login/API/browser/101 recovery is accepted; physical phone and production24h natural observation are separate gates. Exact closed hashes: dev-docs/host-init-001/P4-acceptance.json.
 
 ## MOXBOTS-HOST-INIT-001 — fresh-install repair, 2026-10-18
 
@@ -8,7 +8,7 @@ The human requested a fix for first-install registry initialization, full accept
 
 - [x] Original actual Ubuntu/Dex/browser failure identified: `config.json` and `projects.json` absent through exit, `catalog → NETWORK_CATALOG_INVALID → stopped`; real authentication/join/WebSocket succeeded. Existing strict catalog regression: primary 7/7 passed.
 - [x] Implement original Host startup-owned first creation and bounded interrupted-initialization recovery, retaining the original configuration lock domains and strict established-authority checks.
-- [ ] Independently review and verify first start/repeat/crash/concurrent/partial/corrupt/lost authority, plus real fresh browser/join/Ready, renewal and reboot with new exact-source candidate artifacts.
+- [x] Independently review and verify first start/repeat/crash/concurrent/partial/corrupt/lost authority, plus real fresh browser/join/Ready, renewal and reboot with exact P4 artifacts.
 - [ ] Pass required CI, integrate current main normally and verify remote containment before formal publication handoff.
 
 The staged old dcf immutable release is preserved and stable remains unavailable. It is not a successful fresh-install release. New repair candidates use a new source/release identity; pre-merge acceptance stays isolated. No backend/101 redeployment or daily Mac operation is included.

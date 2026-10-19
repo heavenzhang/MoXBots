@@ -1,5 +1,9 @@
 # Codex Handoff
 
+## Current Host takeover checkpoint — 2026-10-19
+
+Human transferred source integration and publication to01a12b99-7b38-78b1-831f-9c60257d386a; original01a13320 explicitly handed back and its dirty worktree is preserved. Current branchcodex/host-init-delivery-20261018/PR137. P4 frozen source7e4bbdfa/R20261019083714-7e4bbdfaa693 passed complete local artifact verification and same-source standard39225566407, natural lab renewal39226095343 and trueKVM39226946194; same identity/ciphertext, actual new bootID and Ready4.35s. P4-acceptance.json closes exact evidence hashes. Follow root task and private output/host-publication-20261018/execution-status.json for final current-main CI, remote containment and append/fullGET/CAS delivery. No dailyMac/101 binary change in this lane. The original owner paragraphs below are historical. Separate cloud929 native login production is accepted; physicalphone/natural24h observation remain separately tracked.
+
 ## MOXBOTS-HOST-INIT-001（2026-10-18，当前首次安装修复）
 
 用户明确要求修复全新 Host 初始化，完整验收后合 main，再交统一部署聊天；不动日常 Mac。独立任务分支 `codex/host-init-001-20261018`，base main798f3a9c，记录 `.agent-sync/tasks/codex-host-init-001-20261018-089ddeb0.md`。本聊天01a13320为唯一源码/集成 owner，复用01a12b99协调的单一 `codex/host-registry-bootstrap-20261018` 实现 worker；01a12b99继续独立实际 Linux/browser 验收及后续 `/host` 发布，双方不双写。本任务不修改 backend/101 或日常 Mac。

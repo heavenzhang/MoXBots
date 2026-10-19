@@ -16,7 +16,7 @@ The human explicitly transferred integration and publication to01a12b99-7b38-78b
 - [x] Start from current mainbaa1a637, independent branch; explicit owner transfer and handback.
 - [x] Integrate reviewed product8d112633 and tools2580 through source combinationdf1; preserve the original source history.
 - [x] Exact clean-source candidate with matching Node/connector/service provenance and real artifact digests.
-- [ ] Fresh Ubuntu24/browser/auto-join/Ready/catalog/repeat, natural lab expiry renewal and true KVM reboot accepted.
+- [x] Fresh Ubuntu24/browser/auto-join/Ready/catalog/repeat, natural lab expiry renewal and true KVM reboot accepted for P4.
 - [ ] Required combined CI and proportionate regressions; remote main contains accepted source and runtime tree.
 - [ ] Fresh production admission, backup/CAS/ownership rollback, immutable bytes, full anonymous normal-TLS validation and final stable pointer acceptance.
 
@@ -82,3 +82,11 @@ P3 product source80b119f34dae90709b0a7ea5284232f1b9497f0b is frozen; new checks 
 - [ ] Same-P4 real standard, natural lab renewal, true KVM reboot and final combinedCI/main/publication.
 
 Private artifact/evidence path: project output/host-publication-20261018/candidate-P4-39223945533/local-full-verification.json. This is candidate transport, not public normal-TLS acceptance. Production cloud929 release and existing101 natural24h observation are separate lanes.
+
+## P4 actual isolated acceptance closure — 2026-10-19
+
+- [x] Standard39225566407:23 gates, real Ubuntu/systemd/Chromium/Dex/PKCE/auth cancellation/resume/join/Ready/catalog/repeat/restart; cleanup completed.
+- [x] Natural lab renewal39226095343:25 gates,60s session naturally rotated, original identity/session binding retained and Ready/Node IPC after original expiry+3s; one browser login, no extra join; cleanup completed. This does not prove production24h renewal.
+- [x] TrueKVM39226946194:28 gates, usable KVM/noTCG, actual new kernel bootID with sameVMUUID, original identity/key/config/ciphertext and zero new auth/join, fresh Ready in4.35s; both units0 restarts; cleanup completed.
+
+Root read all closed gate results, source/service/candidate pins and postboot readiness diagnostics. Exact summary hashes and harness source are committed in dev-docs/host-init-001/P4-acceptance.json. Final CI/main/public-transport/promote receipt is kept in PR137/private execution-status; no public or101 upgrade is claimed by these lab results. Next: normally integrate current main, required CI and remote containment, then existing append/fullGET/CAS publication procedure.

@@ -8,7 +8,15 @@ The current human separately designated this chat
 `01a12b99-7b38-78b1-831f-9c60257d386a` for cloud/101 publication after handoff.
 The original message was personally read, not inferred from a peer's summary.
 
-## Current correction: P2, not yet public
+## Accepted P4 product and publication procedure (2026-10-19 checkpoint)
+
+Source7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca/R20261019083714-7e4bbdfaa693 supersedes P2/P3. Producer39223945533 and complete local artifact/strict nested consumer/CRC passed. Same-artifact standard39225566407, natural lab renewal39226095343 and trueKVM39226946194 passed, including new kernel bootID and same original identity/ciphertext/Ready. Closed hashes and limits: host-init-001/P4-acceptance.json. Existing101 binary and dailyMac remain excluded; the same-source service artifact is lab-only, not a cloud929 replacement.
+
+P4 bootstrap24272B/SHA3b3ec7775261318feaf396a50c6be9bb082996dbf2b6d6cfb4ddc217fbf62164; bundle171555269B/SHA427a2076dffecf9e4a12700cfdf283e6aae81bb3d6660bfa0f8cfb9c7f8c54b4; install24313B/SHA c317033d7bf4ae77160e2a528ae83e88d4f3edd4a59f771af2b98fba10a6853b; exact producer stable643B/SHA33f1b5f16b50ac7c87f85d24572e0985264264057ec5c30d1cc6c47801e1a270.
+
+After current-main integration, final required CI and remote source/runtime containment, use the reviewed separate v2 append/promote/ownedrollback helper with these P4 pins. Re-read latest pointer/config/lease/locks/runtime/inventories, back up the unavailable pair, append only P4's two immutable files and release locks. Perform actual anonymous normal-TLS full GET of both public immutable files, exact size/SHA/strict consumer and both gzip EOF/CRC; candidate ZIP transport does not satisfy this. Only then bind all three isolated receipts plus full public GET and main/CI into final acceptance, re-admit all four original locks and CAS only current to publications/available-20261019083714-7e4bbdfaa693. Recheck public install/stable and unrelated inventories/PIDs. No Nginx/config/service restart, updater switch, auth DB rollback, old immutable overwrite or dailyMac operation. Final publication receipt belongs to PR137 and private execution-status.json, not this pre-publication checkpoint. The old P2 instructions below are historical and must not supply current pins.
+
+## Historical P2 preparation (never promoted; three actual reboot gates failed)
 
 The human transferred source integration and static publication to this root chat. Historical M below is immutable but failed genuine first-install registry initialization; **never enable M**. The repaired frozen product is `58d5247d7692acb816f211e1af7ef1891871bd6a`, release `20261018152704-58d5247d7692`. Original dirty source records remain preserved.
 
