@@ -26,3 +26,8 @@ Private evidence is under the project pointer `output/mobile-chat-layout-2026102
 ## Release coordination
 
 Integration/release branch: main. Latest human direction designates01a12bc2-907a-7702-b6dd-788225c5dfe4 as sole project CI/release coordinator; implementation/phone evidence remain with01a12b99-7b38-78b1-831f-9c60257d386a. Current internal app0.1.0/build1 is preserved; next build identity is allocated by the coordinator. Freeze the exact integrated SHA, coordinate relevant CI, record immutable tag/archive digest and install the same verified artifact. Existing desktop/cloud publication lanes retain their owners and versions.
+
+
+## 2026-10-20 priority update
+
+The human explicitly deferred unresolved speech so that it cannot block normal conversation delivery. The separate speech branch ba578a5ea stays out of this batch. Physical voice recognition remains failed/unaccepted; do not claim it is fixed. Proceed with independent review/current-main+layout CI, a newly frozen internal phone candidate and real session/history/layout/draft acceptance. No new recording or repeated dictation is needed now. Real file-to-Host acceptance remains its own gate, not implicitly passed. Original101/current login/daily Mac constraints remain. The CI/release owner was notified of this exact priority change.

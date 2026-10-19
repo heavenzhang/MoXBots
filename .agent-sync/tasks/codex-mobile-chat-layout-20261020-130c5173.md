@@ -32,7 +32,7 @@ Implementation and local verification are complete; central CI/main/release and 
 - [x] Type/lint, 67 behavior tests, four browser widths320/390/428/768, no pageerror/global overflow, local code/table scroll, image no-prefetch and stable reading offset; screenshots reviewed by root. iOS production Hermes export passes.
 - [ ] Review source diff and exact-current-main integration; normal protected main delivery/remote containment.
 - [ ] Freeze integrated main, signed internal build2, same artifact install and actual iPhone review.
-- [ ] Continue real file/voice acceptance using controlled data; no model execution.
+- [ ] Continue core conversation/history/layout acceptance and controlled file paths; no model execution. Speech is explicitly deferred by the human and is not a gate for this batch.
 
 ## Verification
 
@@ -47,3 +47,9 @@ No production cloud, original101, desktop updater or public mobile store release
 ## Next step
 
 Send exact remote task SHA, this record and local evidence to the human-designated unified CI/release owner01a12bc2-907a-7702-b6dd-788225c5dfe4. Owner coordinates existing automatic runs, remaining CI/review/main integration, version/build freeze and internal phone publication. No independent CI rerun or artifact publication by the implementation chat. Continue read-only phone diagnosis without changing current human login or daily Mac.
+
+## Human priority change — 2026-10-20
+
+Exact human direction: “如果语音功能现在修不好，先做别的，别影响整体会话功能的实现。然后这个问题回头再修”. Defer speech repair ba578a5ea37cc6c0e685ab4f7617de22e2686264 to a later mobile batch; do not wait for speech accuracy or combine its native changes into the current conversation candidate. Preserve both failed physical readings and pending task MOXBOTS-IOS-SPEECH-FAILURE-20261020. Current priorities: session open/history loading, readable Markdown/code/table/images, stable history reading, target isolation, retained drafts and existing send/receipt authority. Speech remains unaccepted; no repeated dictation or recording now.
+
+CI/version/build/install coordination remains with human-selected01a12bc2. Latest per-deployment-unit policy permits independent units and does not reassign their owners; earlier “project-wide” wording above describes the earlier decision, not authority over unrelated units. This chat continues source/read-only phone evidence without shared CI or installation.
