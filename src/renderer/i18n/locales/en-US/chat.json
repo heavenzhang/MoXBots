@@ -1467,7 +1467,30 @@
       "model": "Model",
       "content": "Content quality",
       "notAssessed": "Not assessed",
-      "scope": "Returned checks describe execution results. Content quality and business acceptance require separate confirmation."
+      "scope": "Returned checks describe execution results. Content quality and business acceptance require separate confirmation.",
+      "recovered": "Recovered after interruption",
+      "recovery": "Interruptions and continuations",
+      "recoveryCounts": "{{interruptions}} interruptions · {{continuations}} continuations",
+      "recoveryStatus": "Observed status",
+      "recoveryStatuses": {
+        "waiting": "Waiting to continue",
+        "resuming": "Continuing",
+        "completed": "Completed",
+        "stopped": "Stopped",
+        "blocked": "Blocked, needs confirmation"
+      },
+      "protectedActions": "Protected completed actions",
+      "protectedActionCount": "{{count}} actions",
+      "observedElapsed": "Observed span",
+      "recoveryReason": "Latest reason",
+      "recoveryReasons": {
+        "stream_interrupted": "Model response stream interrupted",
+        "uncertain_action": "Action outcome uncertain; confirmation needed to continue",
+        "stopped": "Execution stopped",
+        "budget_exhausted": "Continuation budget exhausted",
+        "storage_failed": "Recovery record could not be saved"
+      },
+      "recoveryScope": "Shows server-recorded recovery observations and protected actions only. It does not guarantee exactly-once business execution. The observed span is not model latency."
     }
   }
 }

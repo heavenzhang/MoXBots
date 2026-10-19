@@ -1467,7 +1467,30 @@
       "model": "模型",
       "content": "内容质量",
       "notAssessed": "未评估",
-      "scope": "检查返回仅反映当前执行结果；内容质量与业务验收需另行确认。"
+      "scope": "检查返回仅反映当前执行结果；内容质量与业务验收需另行确认。",
+      "recovered": "已从中断恢复",
+      "recovery": "中断与续接",
+      "recoveryCounts": "{{interruptions}} 次中断 · {{continuations}} 次续接",
+      "recoveryStatus": "观测状态",
+      "recoveryStatuses": {
+        "waiting": "等待续接",
+        "resuming": "续接中",
+        "completed": "已完成",
+        "stopped": "已停止",
+        "blocked": "受阻，待确认"
+      },
+      "protectedActions": "已保护的完成动作",
+      "protectedActionCount": "{{count}} 项",
+      "observedElapsed": "已观测跨度",
+      "recoveryReason": "最近原因",
+      "recoveryReasons": {
+        "stream_interrupted": "模型响应流中断",
+        "uncertain_action": "动作结果不确定，需确认后继续",
+        "stopped": "执行已停止",
+        "budget_exhausted": "续接预算已耗尽",
+        "storage_failed": "恢复记录保存失败"
+      },
+      "recoveryScope": "仅展示服务端已记录的恢复过程及受保护动作，不保证业务动作仅执行一次；观测跨度不等于模型耗时。"
     }
   }
 }

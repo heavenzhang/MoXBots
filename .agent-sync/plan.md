@@ -1,3 +1,9 @@
+## MOXBOTS-STREAM-RESUME-20261020-01 — 原 turn 断流续跑
+
+普通 builtin API 会话及 Goal 沿原 Query/SessionModelRecovery、ContextRecovery 台账、Product/FIFO 与 Goal claim 自动接续；原 HTTP 与完成工具不重放，Stop 撤销后不恢复，质量参考持久记录恢复事实。代码与本地/合成 SDK 验收已完成，任务 `.agent-sync/tasks/codex-stream-resume-20261020-f5ea3680.md`，证据 `dev-docs/stream-continuation/acceptance.md`。精确 head 共享 CI、正常 main 合入/远端核验、签名客户端/真实 Provider 和用户验收分别追踪。
+
+涉及部署单元 **desktop builtin client**：`src/server/agent-session.ts`、builtin-session/openai-bridge 与相应 renderer/shared 持久化 UI，仓库 heavenzhang/MoXBots、任务分支正常合 main。沿用唯一 CI/部署会话 **01a12bc2-907a-7702-b6dd-788225c5dfe4 / MoxBots桌面端统一打包负责人**；依据为用户最新部署单元规则及本任务明确交该统一发布会话安排发布。版本/构建号和下一未冻结候选由该 owner 分配，开发会话不启动共享 CI、正式构建、发布或客户端重启。当前开发成果待精确 SHA 交接，预登记已发送；不自动纳入已冻结批次。不涉及独立云服务/Host 部署。
+
 ## MOXBOTS-MOBILE-001 — 执行轨迹原型交付
 
 按用户“改完了就提交到远端”的要求，把独立移动 Web 原型纳入 `dev-docs/prototypes/moxbots-mobile-001/`，包含左侧执行步骤、状态与 CSS piano-roll；本地合成数据，不改变 `mobile/app/`。任务记录 `.agent-sync/tasks/codex-mobile-001-execution-trace-20261019-e6514cfc.md`，验收与运行说明在原型目录 `acceptance.md`、`README.md`。构建、独立审阅、Git/CI/main 与原生/生产阶段分开追踪，未授权或执行部署。

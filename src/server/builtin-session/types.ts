@@ -84,6 +84,7 @@ export type MessageWireAttachment = {
 };
 
 export type MessageWire = {
+  streamRecovery?: import('../../shared/streamRecovery').StreamRecoveryEvidence;
   desktopQuery?: import("../../shared/agentMentions").DesktopQueryDraft;
   id: string;
   role: 'user' | 'assistant';
@@ -167,6 +168,8 @@ export type MessageQueueItem = {
   /** Infrastructure admission must stay invisible until its final guard commits. */
   deferVisibleAdmission?: boolean;
   settleDispatchAcceptance?: (result: { accepted: boolean; error?: string }) => void;
+  /** Internal reminder only; never passes user/Goal admission or replaces the root. */
+  streamContinuation?: { rootId: string; recoveryId: string; marker: string };
   transientProviderRetry?: {
     rootQueueId: string;
     attempt: number;
