@@ -27,6 +27,7 @@ const artifactAction = z.object({ kind: z.literal('artifact-action'), action: z.
 
 export type Account = { kind: 'account'; state: 'signed-out' | 'authenticating' | 'signed-in' | 'expired'; displayName: string | null; principalId: string | null };
 export type Target = { targetId: string; identityKey: string; agentId: string; name: string; deviceName: string; online: boolean; runtime: string | null };
+export type TargetDirectory = { kind: 'targets'; items: Target[]; hasMore: boolean; unavailableDeviceCount: number };
 export type DraftReply = { kind: 'draft'; identityKey: string; agentId: string; sessionId: string | null; text: string; revision: number; lastWriteId: string | null };
 export type NativeAttachment = z.infer<typeof attachment>;
 export type NativeAttachmentUpload = z.infer<typeof attachmentUpload>;
@@ -92,7 +93,8 @@ const notificationIntentSchema = z.discriminatedUnion('kind', [
   z.object({ version: z.literal(1), kind: z.enum(['notification.register', 'notification.refresh']), provider: notificationProvider, token: z.string().min(1).max(4096) }).strict(),
   z.object({ version: z.literal(1), kind: z.literal('notification.open'), eventId: z.string().uuid().regex(/^[0-9a-f-]+$/) }).strict(),
 ]);
-const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean() }).strict(), pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, artifactListReply, artifactDownload, artifactAction, notificationReply, notificationOpenReply, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
+const targetsListReply = z.object({ kind: z.literal('targets'), items: z.array(targetSchema).max(100), hasMore: z.boolean(), unavailableDeviceCount: z.number().int().min(0).max(100) }).strict();
+const nativeReply = z.union([accountSchema, z.object({ kind: z.literal('login'), authorizationUrl: z.string().url(), expiresAt: z.number() }).strict(), targetsListReply, pendingSchema, draftReply, attachment, attachments, attachmentRemoved, attachmentUpload, artifactListReply, artifactDownload, artifactAction, notificationReply, notificationOpenReply, sessionResult, speechReply, z.object({ kind: z.literal('error'), code: z.string().regex(/^[A-Z0-9_]+$/).max(128) }).strict()]);
 
 type RemoteBridge = { prepareLoginNetwork(): Promise<string>; request(intentJSON: string): Promise<string>; addListener(event: 'speechChanged', listener: (payload: SpeechReply) => void): { remove(): void }; addListener(event: 'attachmentUploadChanged', listener: (payload: NativeAttachmentUpload) => void): { remove(): void }; addListener(event: 'artifactDownloadChanged', listener: (payload: ArtifactDownload) => void): { remove(): void } };
 function getRemoteBridge(): RemoteBridge {
@@ -190,7 +192,7 @@ export const isFixtureMode = __DEV__ && Platform.OS === 'web' && process.env.EXP
 
 export type QaScenario = 'conversation' | 'multi-bot' | 'no-bots' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
 export const qaScenarioOptions: readonly { id: QaScenario; label: string }[] = [
-  { id: 'conversation', label: '会话' }, { id: 'multi-bot', label: '多 Bot / 离线' },
+  { id: 'conversation', label: '会话' }, { id: 'multi-bot', label: 'Bot + 部分设备不可用' },
   { id: 'no-bots', label: '尚无可用 Bot' },
   { id: 'offline', label: '全部离线' }, { id: 'approval', label: '审批 / 拒绝' },
   { id: 'stale-approval', label: '过期审批' }, { id: 'unknown-receipt', label: '回执未知' },

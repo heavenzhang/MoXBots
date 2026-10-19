@@ -3,7 +3,6 @@ import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, Pendi
 export type { QaScenario } from '../src/native';
 
 const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-identity-main', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
-const offlineTarget: Target = { targetId: 'qa-offline-target', identityKey: 'qa-identity-offline', agentId: 'qa-offline-agent', name: '离线 Bot', deviceName: '离线演示设备', online: false, runtime: null };
 const account: Account = { kind: 'account', state: 'signed-in', displayName: '演示账号', principalId: 'qa-principal' };
 let fixtureAccount: Account = account;
 let notificationsEnabled = false;
@@ -42,8 +41,8 @@ export function fixtureReply(intent: NativeIntent): unknown {
   }
   if (intent.kind === 'targets.list') {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
-    if (scenario === 'no-bots') return { kind: 'targets', items: [], hasMore: false };
-    return { kind: 'targets', items: scenario === 'multi-bot' ? [target, offlineTarget] : scenario === 'offline' ? [offlineTarget] : [target], hasMore: false };
+    if (scenario === 'no-bots') return { kind: 'targets', items: [], hasMore: false, unavailableDeviceCount: 0 };
+    return { kind: 'targets', items: scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
   }
   if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [
     { protocol: 'session', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' },
@@ -80,7 +79,7 @@ function emitArtifactDownload(value: ArtifactDownload): void {
   for (const listener of artifactListeners) listener(value);
 }
 function fixtureArtifactReply(intent: Extract<NativeIntent, { kind: `artifact.${string}` }>): unknown {
-  const approved = [target, offlineTarget].find((item) => item.targetId === intent.targetId);
+  const approved = [target].find((item) => item.targetId === intent.targetId);
   if (!approved) return { kind: 'error', code: 'MOBILE_TARGET_INVALID' };
   if (intent.kind === 'artifact.list') {
     const secondPage = intent.before === 'qa-artifact-page-2';
@@ -158,7 +157,7 @@ function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${str
     return { kind: 'attachment-removed', localId: intent.localId };
   }
   const picked = fixtureAttachments.get(intent.localId);
-  const approved = [target, offlineTarget].find((entry) => entry.targetId === intent.targetId);
+  const approved = [target].find((entry) => entry.targetId === intent.targetId);
   if (!picked || !approved) return { kind: 'error', code: 'MOBILE_ATTACHMENT_NOT_FOUND' };
   const prior = fixtureUploads.get(intent.localId);
   if (intent.kind === 'attachment.upload.status') return prior ? { kind: 'attachment-upload', localId: intent.localId, ...prior } : { kind: 'error', code: 'MOBILE_UPLOAD_NOT_FOUND' };
@@ -184,7 +183,7 @@ function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${str
 function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'mobile' }>['request']): unknown {
   if (scenario === 'mobile-error') return { version: 1, kind: 'mobile.error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
   if (scenario === 'mobile-unsupported') return { version: 1, kind: 'mobile.error', code: 'MOBILE_PROFILE_MISMATCH' };
-  const approved = [target, offlineTarget].find((entry) => entry.targetId === targetId);
+  const approved = [target].find((entry) => entry.targetId === targetId);
   if (!approved) return { version: 1, kind: 'mobile.error', code: 'TARGET_UNAVAILABLE' };
   if (request.kind === 'mobile.capabilities') return { version: 1, kind: 'mobile.capabilities', agentId: request.agentId, attachments: true, modelSelection: true, nextSuggestions: true, maxAssets: 8 };
   if (request.kind === 'mobile.models') return { version: 1, kind: 'mobile.models', agentId: request.agentId, items: [{ id: 'qa-model-fast', label: '演示模型 · 快速' }, { id: 'qa-model-reasoning', label: '演示模型 · 深度' }] };
@@ -216,7 +215,7 @@ function getFixtureDrafts(): Map<string, FixtureDraft> {
   return fixtureDrafts;
 }
 function fixtureDraftReply(intent: Extract<NativeIntent, { kind: 'draft.read' | 'draft.write' }>): unknown {
-  const approvedTarget = [target, offlineTarget].find((entry) => entry.targetId === intent.targetId);
+  const approvedTarget = [target].find((entry) => entry.targetId === intent.targetId);
   if (!approvedTarget) return { kind: 'error', code: 'TARGET_UNAVAILABLE' };
   if (scenario === 'draft-error') return { kind: 'error', code: 'MOBILE_DRAFT_STORE_UNAVAILABLE' };
   const key = JSON.stringify([approvedTarget.identityKey, intent.sessionId]);

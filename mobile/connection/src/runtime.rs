@@ -664,82 +664,134 @@ impl MobileConnection {
             .await?;
         let previous_targets = std::mem::take(&mut self.targets);
         let mut items = Vec::new();
-        let mut has_more = devices["complete"] != true;
-        for device in devices["items"]
-            .as_array()
-            .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?
-        {
-            if device["principalId"] != c.local.principal_id
-                || device["networkId"] != c.local.network_id
-                || device["deviceId"] == c.local.device_id
-                || device["joined"] != true
-            {
-                continue;
-            }
+        let (rows, unavailable_device_count, mut has_more) = fetch_ready_agent_rows(
+            &devices,
+            &c.local.principal_id,
+            &c.local.network_id,
+            &c.local.device_id,
+            devices["complete"] != true,
+            |device_id| async move {
+                c.transport
+                    .json(
+                        NetworkRoute::Agents {
+                            device_id: &device_id,
+                            cursor: None,
+                            limit: 100,
+                        },
+                        &c.identity.token,
+                        None,
+                    )
+                    .await
+            },
+        )
+        .await?;
+        for (device, agent) in rows {
             let device_id = device["deviceId"]
                 .as_str()
                 .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?;
-            let agents = c
-                .transport
-                .json(
-                    NetworkRoute::Agents {
-                        device_id,
-                        cursor: None,
-                        limit: 100,
-                    },
-                    &c.identity.token,
-                    None,
-                )
-                .await?;
-            has_more |= agents["complete"] != true;
-            for agent in agents["items"]
-                .as_array()
-                .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?
-            {
-                if agent["principalId"] != c.local.principal_id
-                    || agent["networkId"] != c.local.network_id
-                    || agent["deviceId"] != device_id
-                {
-                    return Err(err("NETWORK_METADATA_SCOPE_MISMATCH"));
-                }
-                if agent["enabled"] != true {
-                    continue;
-                }
-                let id = agent["localAgentId"]
-                    .as_str()
-                    .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?;
-                if items.len() >= 100 {
-                    has_more = true;
-                    break;
-                }
-                let opaque = catalog_target_id(&previous_targets, device_id, id);
-                self.targets.insert(
-                    opaque.clone(),
-                    Target {
-                        device: device_id.into(),
-                        agent: id.into(),
-                    },
-                );
-                let identity_key = drafts::identity(
-                    self.saved
-                        .as_ref()
-                        .ok_or_else(|| err("OWNED_LOGIN_REQUIRED"))?,
-                    &Target {
-                        device: device_id.into(),
-                        agent: id.into(),
-                    },
-                )?;
-                items.push(json!({"identityKey":identity_key,"targetId":opaque,"agentId":id,"name":agent["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"deviceName":device["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"online":device["connectionState"]=="ready","runtime":Value::Null}));
-            }
+            let id = agent["localAgentId"]
+                .as_str()
+                .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?;
             if items.len() >= 100 {
                 has_more = true;
+                break;
+            }
+            let opaque = catalog_target_id(&previous_targets, device_id, id);
+            self.targets.insert(
+                opaque.clone(),
+                Target {
+                    device: device_id.into(),
+                    agent: id.into(),
+                },
+            );
+            let identity_key = drafts::identity(
+                self.saved
+                    .as_ref()
+                    .ok_or_else(|| err("OWNED_LOGIN_REQUIRED"))?,
+                &Target {
+                    device: device_id.into(),
+                    agent: id.into(),
+                },
+            )?;
+            items.push(json!({"identityKey":identity_key,"targetId":opaque,"agentId":id,"name":agent["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"deviceName":device["name"].as_str().unwrap_or("").chars().take(256).collect::<String>(),"online":true,"runtime":Value::Null}));
+            if items.len() >= 100 {
                 break;
             }
         }
         c.identity.account.ensure_current()?;
         self.target_account = Some(c.identity.account.clone());
-        Ok(json!({"kind":"targets","items":items,"hasMore":has_more}))
+        Ok(
+            json!({"kind":"targets","items":items,"hasMore":has_more,"unavailableDeviceCount":unavailable_device_count}),
+        )
     }
+}
+
+async fn fetch_ready_agent_rows<F, Fut>(
+    devices: &Value,
+    principal_id: &str,
+    network_id: &str,
+    local_device_id: &str,
+    mut has_more: bool,
+    mut fetch_agents: F,
+) -> Result<(Vec<(Value, Value)>, usize, bool), NetworkError>
+where
+    F: FnMut(String) -> Fut,
+    Fut: std::future::Future<Output = Result<Value, NetworkError>>,
+{
+    let mut rows = Vec::new();
+    let mut unavailable = 0usize;
+    for device in devices["items"]
+        .as_array()
+        .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?
+    {
+        if device["principalId"] != principal_id
+            || device["networkId"] != network_id
+            || device["deviceId"] == local_device_id
+            || device["joined"] != true
+        {
+            continue;
+        }
+        let device_id = device["deviceId"]
+            .as_str()
+            .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?;
+        match device["connectionState"].as_str() {
+            Some("ready") => {}
+            Some("offline" | "syncing") => {
+                unavailable = (unavailable + 1).min(100);
+                continue;
+            }
+            _ => return Err(err("NETWORK_RESPONSE_INVALID")),
+        }
+        let agents = match fetch_agents(device_id.to_owned()).await {
+            Ok(agents) => agents,
+            Err(error) if error.code == "CATALOG_STALE" => {
+                unavailable = (unavailable + 1).min(100);
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
+        has_more |= agents["complete"] != true;
+        for agent in agents["items"]
+            .as_array()
+            .ok_or_else(|| err("NETWORK_RESPONSE_INVALID"))?
+        {
+            if agent["principalId"] != principal_id
+                || agent["networkId"] != network_id
+                || agent["deviceId"] != device_id
+            {
+                return Err(err("NETWORK_METADATA_SCOPE_MISMATCH"));
+            }
+            if agent["enabled"] != true {
+                continue;
+            }
+            if rows.len() >= 100 {
+                has_more = true;
+                break;
+            }
+            rows.push((device.clone(), agent.clone()));
+        }
+    }
+    Ok((rows, unavailable, has_more))
 }
 
 fn catalog_target_id(previous: &HashMap<String, Target>, device: &str, agent: &str) -> String {
@@ -1227,6 +1279,98 @@ mod tests {
             catalog_target_id(&previous, "host-one", "agent"),
             "approved-opaque"
         );
+    }
+    #[tokio::test]
+    async fn target_directory_keeps_ready_peers_and_counts_unavailable_separately_from_pagination()
+    {
+        let principal = "principal";
+        let network = "network";
+        let devices = json!({"complete":true,"items":[
+            {"principalId":"principal","networkId":"network","deviceId":"local","joined":true,"connectionState":"ready"},
+            {"principalId":"principal","networkId":"network","deviceId":"offline","joined":true,"connectionState":"offline"},
+            {"principalId":"principal","networkId":"network","deviceId":"syncing","joined":true,"connectionState":"syncing"},
+            {"principalId":"principal","networkId":"network","deviceId":"ready","joined":true,"connectionState":"ready"},
+            {"principalId":"principal","networkId":"network","deviceId":"racing","joined":true,"connectionState":"ready"}
+        ]});
+        let (rows, unavailable, has_more) = fetch_ready_agent_rows(&devices, principal, network, "local", false, |device| async move {
+            match device.as_str() {
+                "ready" => Ok(json!({"complete":true,"items":[{"principalId":"principal","networkId":"network","deviceId":"ready","localAgentId":"bot","enabled":true}]})),
+                "racing" => Err(NetworkError::cloud("CATALOG_STALE", 409)),
+                _ => panic!("offline and syncing peers must not receive an Agents request"),
+            }
+        }).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0["deviceId"], "ready");
+        assert_eq!(unavailable, 3);
+        assert!(!has_more, "unavailable peers are independent of pagination");
+
+        let empty = json!({"complete":true,"items":[
+            {"principalId":"principal","networkId":"network","deviceId":"offline","joined":true,"connectionState":"offline"}
+        ]});
+        let (rows, unavailable, has_more) =
+            fetch_ready_agent_rows(&empty, principal, network, "local", false, |_| async {
+                panic!("all-unavailable set must make no Agents calls")
+            })
+            .await
+            .unwrap();
+        assert!(rows.is_empty());
+        assert_eq!(unavailable, 1);
+        assert!(!has_more);
+    }
+    #[tokio::test]
+    async fn target_directory_does_not_hide_authorization_or_malformed_failures() {
+        let principal = "principal";
+        let network = "network";
+        let devices = json!({"complete":true,"items":[{"principalId":"principal","networkId":"network","deviceId":"ready","joined":true,"connectionState":"ready"}]});
+        let error =
+            fetch_ready_agent_rows(&devices, principal, network, "local", false, |_| async {
+                Err(NetworkError::cloud("NETWORK_AUTHORIZATION_REQUIRED", 403))
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "NETWORK_AUTHORIZATION_REQUIRED");
+        let malformed = json!({"complete":true,"items":[{"principalId":"principal","networkId":"network","deviceId":"mystery","joined":true,"connectionState":"unknown"}]});
+        let error =
+            fetch_ready_agent_rows(&malformed, principal, network, "local", false, |_| async {
+                panic!("unknown state must not be treated as offline")
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "NETWORK_RESPONSE_INVALID");
+    }
+    #[tokio::test]
+    async fn target_directory_exact_cap_and_disabled_only_catalog_keep_truthful_pagination() {
+        let principal = "principal";
+        let network = "network";
+        let devices = json!({"complete":true,"items":[{"principalId":"principal","networkId":"network","deviceId":"ready","joined":true,"connectionState":"ready"}]});
+        for (count, expected_more) in [(100, false), (101, true)] {
+            let agents = json!({"complete":true,"items":(0..count).map(|i| json!({"principalId":"principal","networkId":"network","deviceId":"ready","localAgentId":format!("bot-{i}"),"enabled":true})).collect::<Vec<_>>()});
+            let (rows, unavailable, has_more) =
+                fetch_ready_agent_rows(&devices, principal, network, "local", false, |_| {
+                    let agents = agents.clone();
+                    async move { Ok(agents) }
+                })
+                .await
+                .unwrap();
+            assert_eq!(rows.len(), 100);
+            assert_eq!(unavailable, 0);
+            assert_eq!(has_more, expected_more, "exactly {count} catalog rows");
+        }
+
+        let disabled = json!({"complete":true,"items":[{"principalId":"principal","networkId":"network","deviceId":"ready","localAgentId":"disabled","enabled":false}]});
+        let (rows, unavailable, has_more) =
+            fetch_ready_agent_rows(&devices, principal, network, "local", false, |_| {
+                let disabled = disabled.clone();
+                async move { Ok(disabled) }
+            })
+            .await
+            .unwrap();
+        assert!(
+            rows.is_empty(),
+            "disabled-only Ready Host is a valid empty Bot directory"
+        );
+        assert_eq!(unavailable, 0);
+        assert!(!has_more);
     }
     #[test]
     fn pending_projection_exposes_only_scoped_receipt_identifiers() {
