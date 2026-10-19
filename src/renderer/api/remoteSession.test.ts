@@ -177,3 +177,39 @@ it("rejects official, offline, signed out and invalid locator before dispatch", 
   ).rejects.toMatchObject({ code: "REMOTE_SESSION_ACCOUNT_CHANGED" });
   expect(mocks.invoke).not.toHaveBeenCalled();
 });
+
+it("preserves scoped management errors instead of hiding the target failure", async () => {
+  mocks.invoke.mockResolvedValue({
+    scope,
+    result: { kind: "error", code: "TARGET_OWNER_UNAVAILABLE" },
+  });
+  await expect(remoteSessionRequest(locator, null,
+    { kind: "capabilities", agentId: "agent" }, signal(),
+  )).rejects.toMatchObject({ code: "TARGET_OWNER_UNAVAILABLE" });
+  expect(mocks.invoke).toHaveBeenCalledTimes(1);
+});
+
+it("does not trust management errors with a wrong scope or malformed envelope", async () => {
+  for (const response of [
+    { scope: { ...scope, deviceId: "other" }, result: { kind: "error", code: "TARGET_OWNER_UNAVAILABLE" } },
+    { scope: { ...scope, keyGeneration: 3 }, result: { kind: "error", code: "TARGET_OWNER_UNAVAILABLE" } },
+    { scope, result: { kind: "error", code: "unsafe error text" } },
+    { scope, result: { kind: "error", code: "TARGET_OWNER_UNAVAILABLE", extra: true } },
+  ]) {
+    mocks.invoke.mockResolvedValue(response);
+    await expect(remoteSessionRequest(locator, scope,
+      { kind: "capabilities", agentId: "agent" }, signal(),
+    )).rejects.toMatchObject({ code: "REMOTE_SESSION_RESPONSE_INVALID" });
+  }
+});
+
+it("keeps a write unconfirmed on management errors without replaying it", async () => {
+  mocks.invoke.mockResolvedValue({
+    scope,
+    result: { kind: "error", code: "TARGET_OWNER_UNAVAILABLE" },
+  });
+  await expect(remoteSessionRequest(locator, scope,
+    { kind: "start", agentId: "agent", operationId, text: "task" }, signal(),
+  )).rejects.toMatchObject({ code: "REMOTE_SESSION_UNCONFIRMED" });
+  expect(mocks.invoke).toHaveBeenCalledTimes(1);
+});

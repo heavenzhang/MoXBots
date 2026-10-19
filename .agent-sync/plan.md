@@ -523,3 +523,7 @@ PR157 corrects the reproduced CATALOG_STALE failure caused by querying historica
 ## MOXBOTS-MOBILE-APNS-001 — internal push environment scope (2026-10-19)
 
 Continue MOXBOTS-MOBILE-002 with explicit sandbox/production/both selection in the existing optional APNs provider. Registration must match the actual key environment; omitted scope preserves legacy behavior. Existing endpoint authority, fixed HTTPS origins, generic payload and source proof remain. Root owns code/CI/main; actual publication stays with cloud owner01a12b99-7b38-78b1-831f-9c60257d386a after credentials/configuration and existing release gates resolve. No new key/project, production enablement or phone acceptance is implied. Task `.agent-sync/tasks/codex-mobile-apns-scope-20261019-988baa72.md`; existing runbook `services/agentnet/MOBILE-NOTIFICATIONS.md`.
+
+## REMOTE-SESSION-1019 — remote history read diagnosis
+
+Native 0.5.11 reproduction found pair conflict and invalid-response failures while both devices appeared online. A bounded renderer repair preserves validated management owner errors; 18 unit and 15 DOM tests passed. The original timeout, target version and dual-device recovery remain open. Task: `.agent-sync/tasks/codex-remote-session-1019-c5d4dad7.md`; evidence: `dev-docs/remote-session/timeout-1019.md`. No daily App replacement or cloud deployment by this task.
