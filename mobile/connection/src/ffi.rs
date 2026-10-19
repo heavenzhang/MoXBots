@@ -141,6 +141,14 @@ enum ClosedIntent {
     AccountStatus { version: u8 },
     #[serde(rename = "account.login.start")]
     LoginStart { version: u8 },
+    #[serde(rename = "account.login.password")]
+    LoginPassword {
+        version: u8,
+        username: String,
+        #[serde(deserialize_with = "transient_password")]
+        password: Zeroizing<String>,
+        consent_accepted: bool,
+    },
     #[serde(rename = "account.login.poll")]
     LoginPoll { version: u8 },
     #[serde(rename = "account.logout")]
@@ -220,6 +228,11 @@ enum NotificationProvider {
     Sandbox,
     #[serde(rename = "apns-production")]
     Production,
+}
+fn transient_password<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Zeroizing<String>, D::Error> {
+    <String as serde::Deserialize>::deserialize(d).map(Zeroizing::new)
 }
 fn notification_token<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let value = <String as serde::Deserialize>::deserialize(d)?;
@@ -465,6 +478,75 @@ pub(crate) mod tests {
             write,
             remove,
         }
+    }
+    #[test]
+    fn raw_password_intent_is_closed_including_duplicate_secret_and_consent() {
+        let valid = serde_json::json!({"version":1,"kind":"account.login.password","username":"test@example.invalid","password":"synthetic-password","consentAccepted":true});
+        let original = valid.to_string();
+        assert!(parse_intent(original.as_bytes()).is_ok());
+        for suffix in [
+            r#","password":"duplicate"}"#,
+            r#","consentAccepted":true}"#,
+            r#","issuer":"https://injected.invalid"}"#,
+            r#","version":1}"#,
+        ] {
+            let raw = format!("{}{}", &original[..original.len() - 1], suffix);
+            assert!(parse_intent(raw.as_bytes()).is_err());
+        }
+        for field in ["password", "consentAccepted"] {
+            let mut missing = valid.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(parse_intent(&serde_json::to_vec(&missing).unwrap()).is_err());
+        }
+    }
+    #[test]
+    fn password_login_passes_real_cabi_into_original_owner_and_frees_buffers() {
+        let memory = Memory::default();
+        let config = br#"{"issuer":"https://test.example.invalid","publicTlsCa":null}"#;
+        let mut error = MoxConnectionBuffer {
+            data: std::ptr::null_mut(),
+            len: 0,
+            status: 0,
+        };
+        let handle = unsafe {
+            mox_connection_new(
+                config.as_ptr(),
+                config.len(),
+                callbacks(&memory),
+                &mut error,
+            )
+        };
+        assert!(!handle.is_null());
+        unsafe {
+            mox_connection_buffer_free(error);
+        }
+        struct Handle(*mut MoxConnection);
+        impl Drop for Handle {
+            fn drop(&mut self) {
+                unsafe {
+                    mox_connection_free(self.0);
+                }
+            }
+        }
+        let handle = Handle(handle);
+        for (password, consent, expected) in [
+            ("", true, "OWNED_CREDENTIALS_INVALID"),
+            ("synthetic-password", false, "OWNED_NATIVE_CONSENT_REQUIRED"),
+        ] {
+            let input = serde_json::to_vec(&serde_json::json!({"version":1,"kind":"account.login.password","username":"test@example.invalid","password":password,"consentAccepted":consent})).unwrap();
+            let response = unsafe { mox_connection_request(handle.0, input.as_ptr(), input.len()) };
+            let value: serde_json::Value = unsafe {
+                serde_json::from_slice(std::slice::from_raw_parts(response.data, response.len))
+                    .unwrap()
+            };
+            unsafe {
+                mox_connection_buffer_free(response);
+            }
+            assert_eq!(value["error"]["code"], expected);
+            assert!(!value.to_string().contains("synthetic-password"));
+        }
+        assert_eq!(memory.writes.load(Ordering::SeqCst), 0);
+        assert!(memory.records.lock().unwrap().is_empty());
     }
     #[test]
     fn raw_notification_intents_are_closed_and_installation_id_stays_native() {

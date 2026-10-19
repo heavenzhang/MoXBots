@@ -49,6 +49,8 @@ jobs:
             sudo apt-get install --no-install-recommends -y apache2-utils
           fi
           python3 -m unittest discover -s services/agentnet/deploy -p 'test_*.py'
+      - name: Validate native password with isolated real Dex v2.46.0
+        run: bash services/agentnet/scripts/test-native-password-dex.sh
       - name: Validate bounded device identity signer
         run: |
           cargo test --locked --manifest-path services/agentnet/identity-core/Cargo.toml

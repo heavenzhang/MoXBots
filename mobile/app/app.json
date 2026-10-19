@@ -15,9 +15,8 @@
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false
@@ -27,8 +26,19 @@
     },
     "plugins": [
       "expo-router",
-      ["expo-notifications", { "defaultChannel": "remote-sessions", "enableBackgroundRemoteNotifications": false }],
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "remote-sessions",
+          "enableBackgroundRemoteNotifications": false
+        }
+      ],
       "./modules/moxbots-remote/app.plugin"
-    ]
+    ],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F7F8F6"
+    }
   }
 }

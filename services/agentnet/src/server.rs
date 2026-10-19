@@ -44,6 +44,9 @@ use url::Url;
 use uuid::Uuid;
 use zeroize::Zeroizing;
 
+#[path = "native_password.rs"]
+mod native_password;
+
 const MAX_HTTP_BODY: usize = 8 * 1024;
 const MAX_PROVIDER_BODY: usize = 256 * 1024;
 const MAX_TRANSACTIONS: usize = 1024;
@@ -81,6 +84,9 @@ pub struct ServiceFileConfig {
     pub model_center: Option<crate::model_center_authority::ModelCenterConfig>,
     #[serde(default)]
     pub mobile_notifications: Option<crate::mobile_notification_delivery::MobileNotificationConfig>,
+    /// Existing Dex local-password accounts only; opt-in, never inferred.
+    #[serde(default)]
+    pub native_password_login: bool,
 }
 fn default_session_ttl() -> u64 {
     86_400
@@ -122,6 +128,7 @@ struct App {
     store: Arc<AuthStore>,
     flow: Flow,
     verification: Verification,
+    password_login: native_password::PasswordLogin,
 }
 struct Verification {
     metadata: CoreProviderMetadata,
@@ -455,9 +462,11 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
             ttl: Duration::from_secs(300),
         },
         verification,
+        password_login: native_password::PasswordLogin::new(config.native_password_login),
     });
     let router = Router::new()
         .route("/auth/login/start", post(start))
+        .route("/auth/login/password", post(native_password::login))
         .route("/auth/callback", get(callback))
         .route("/auth/login/poll", post(poll))
         .route("/auth/login/cancel", delete(cancel))
@@ -1286,6 +1295,9 @@ enum ApiError {
     Provider,
     LoginFailed,
     Internal,
+    CredentialsInvalid,
+    PasswordUnavailable,
+    PasswordRateLimited,
 }
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
@@ -1296,6 +1308,15 @@ impl IntoResponse for ApiError {
             Self::Provider => (StatusCode::BAD_GATEWAY, "identity_provider_error"),
             Self::LoginFailed => (StatusCode::UNAUTHORIZED, "login_failed"),
             Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "internal_error"),
+            Self::CredentialsInvalid => (StatusCode::UNAUTHORIZED, "OWNED_CREDENTIALS_INVALID"),
+            Self::PasswordUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "OWNED_PASSWORD_LOGIN_UNAVAILABLE",
+            ),
+            Self::PasswordRateLimited => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "OWNED_PASSWORD_LOGIN_RATE_LIMITED",
+            ),
         };
         (
             status,
@@ -1314,7 +1335,7 @@ mod tests {
     use sha2::Digest;
     use tower::ServiceExt;
 
-    fn test_app() -> (Arc<App>, tempfile::TempDir) {
+    pub(super) fn test_app() -> (Arc<App>, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         #[cfg(unix)]
         {
@@ -1366,6 +1387,7 @@ mod tests {
                 ttl: Duration::from_secs(300),
             },
             verification,
+            password_login: native_password::PasswordLogin::new(false),
         });
         (app, dir)
     }
@@ -1677,6 +1699,7 @@ mod tests {
             model_center: None,
             mobile_notifications: None,
             execution: false,
+            native_password_login: false,
         };
         assert!(validate_config(&good).is_ok());
         good.mobile_notifications = Some(
@@ -1708,6 +1731,7 @@ mod tests {
         });
         let config: ServiceFileConfig = serde_json::from_value(value).unwrap();
         assert!(!config.relay);
+        assert!(!config.native_password_login);
         assert!(config.mobile_notifications.is_none());
     }
 
@@ -2149,12 +2173,12 @@ mod tests {
     const TEST_DEVICE: &str = "22222222-2222-4222-8222-222222222222";
     const TEST_VERIFIER: &str =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
-    struct Signing {
+    pub(super) struct Signing {
         key: rsa::RsaPrivateKey,
-        jwks: CoreJsonWebKeySet,
+        pub(super) jwks: CoreJsonWebKeySet,
         kid: &'static str,
     }
-    fn signing(rotated: bool) -> &'static Signing {
+    pub(super) fn signing(rotated: bool) -> &'static Signing {
         static OLD: std::sync::OnceLock<Signing> = std::sync::OnceLock::new();
         static NEW: std::sync::OnceLock<Signing> = std::sync::OnceLock::new();
         let cell = if rotated { &NEW } else { &OLD };
@@ -2166,7 +2190,7 @@ mod tests {
             Signing { key,jwks,kid }
         })
     }
-    fn signed_response(
+    pub(super) fn signed_response(
         signer: &Signing,
         nonce: &str,
         issuer: &str,
