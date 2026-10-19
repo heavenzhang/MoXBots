@@ -538,4 +538,4 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 
 ## MOXBOT-CHATLOAD-20261019 — 长会话首屏读取
 
-Global展示预览固定20条，V1异步文件尾读；V2仍canonical fold，analytics改metadata读，不复制Runtime overlay。正式恢复/较早分页保留80条，避免Todo状态丢失。166项定向、类型/lint/Web构建和实际renderer合成传输通过，独立审查完成。验收 `dev-docs/chatload/acceptance.md`，任务 `.agent-sync/tasks/codex-chatload-20261019.md`。main/CI按PR与远端回执；下一未冻结桌面版本待既定唯一publisher集成，未换包、未重启或通知其它聊天，原生真实路径仍待验。
+Global展示预览固定20条，V1异步文件尾读；V2仍canonical fold，analytics改metadata读，不复制Runtime overlay。正式恢复/较早分页保留80条，避免Todo状态丢失。166项定向、类型/lint/Web构建和实际renderer合成传输通过，独立审查完成。验收 `dev-docs/chatload/acceptance.md`，任务 `.agent-sync/tasks/codex-chatload-20261019-4cb3c3b7.md`。main/CI按PR与远端回执；下一未冻结桌面版本待既定唯一publisher集成，未换包、未重启或通知其它聊天，原生真实路径仍待验。
