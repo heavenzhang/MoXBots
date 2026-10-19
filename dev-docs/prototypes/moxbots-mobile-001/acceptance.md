@@ -1,6 +1,6 @@
 # MOXBOTS-MOBILE-001 — 左侧执行轨迹原型交付
 
-状态：源码快照、构建和独立代码审阅已完成；远端提交、CI、main 包含证明以 PR 与远端 refs 的后续记录为准。原生与生产阶段未执行。
+状态：源码快照、构建、独立代码审阅与 Chrome 定向验收已完成，源提交 `596d74ca5` 已推送。PR [#167](https://github.com/heavenzhang/MoXBots/pull/167) 承接 CI 与 main 集成；最终包含证明以该 PR 与远端 refs 为准。原生与生产阶段未执行。
 
 ## 目标与范围
 
@@ -32,8 +32,10 @@
 - 根仓库 ESLint 对整个快照：通过（0 warning）。
 - 主 Agent 前轮浏览器走查：iPhone 393×852、Pixel 10 427×952，运行、待授权、停止、键盘展开和 reduced-motion；这是合成原型。
 - 前轮既有 runtime Playwright 回归使用系统 Chrome：7/8，BottomSheet 遮罩点击被 `<html>` 拦截超时。尚无前后基线对照证明其根因，不能宣称全部通过或断言与本轮无关。
-- 独立代码审阅：确认上述两项缺陷并修复；独立浏览器补验由 reviewer 在本快照另行执行，结果以 `evidence/` 记录为准。
-- Git/PR/CI/main：待本轮提交后核实，不能用本地构建代替 CI。
+- 独立代码审阅：确认上述两项缺陷并修复。
+- 独立系统 Chrome 155 定向补验：4/4 通过，两个设备 × 普通/reduced-motion，运行与待授权的折叠/展开均通过；轨迹 338px、图标 20px、摘要 226px，无溢出或输入栏遮挡。新增 `tests/execution-trace.spec.ts`。结果见 [独立记录](evidence/execution-trace-independent-20261020-final/review.md) 与同目录结构化结果/截图。仅豁免 Chrome 自动请求的可选 favicon 404，原始错误保留，其他页面错误仍失败。
+- 仓库完整 `npm run lint`、`npm run verify:agent-docs` 与 `npm run test:classification`：通过。
+- Git/PR：源提交 `596d74ca5` 已推送，PR #167 已创建；CI/main 仍以实际 PR 状态为准，不能用本地构建代替 CI。
 - 原生编译、原生安装、真实 Provider/Host、真实账号和生产发布：未执行。
 
 ## Git 与接续

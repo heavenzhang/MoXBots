@@ -1,0 +1,145 @@
+{
+  "scope": "独立审阅；本地合成 Web 原型；无 native app/真实服务/真机验收",
+  "browser": "System Google Chrome 155.0.8059.84 (isolated headless Playwright context)",
+  "server": "http://127.0.0.1:4174",
+  "stats": {
+    "startTime": "2026-10-19T16:16:24.718Z",
+    "duration": 10245.884,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  },
+  "result": "4/4 passed; 两项原缺陷已修复；本次定向范围无阻断发现",
+  "sourceHashes": {
+    "src/ExecutionTrace.tsx": "97c21a73d70f98d04e026876486d3dc615c33da8ea994d6bc21afb32f9dc1fd5",
+    "src/prototype.css": "ad8d9e9c4d57ba1245aa6936443fcf0f2550a79bc9ed6306f156f865b0d5225d",
+    "tests/execution-trace.spec.ts": "386a3f8522f3874667e76d9bd5f3931a94aa95e9000307301095c205c3de0452"
+  },
+  "metrics": [
+    {
+      "file": "iphone-no-preference-metrics.json",
+      "device": "iphone",
+      "motion": "no-preference",
+      "screen": {
+        "width": 393,
+        "height": 852
+      },
+      "messageViewportHeight": 640,
+      "traceWidth": 338,
+      "markerWidth": 20,
+      "summaryWidth": 226,
+      "runningStepStates": [
+        "done",
+        "done",
+        "running",
+        "pending"
+      ],
+      "animationNames": [
+        "piano-key"
+      ],
+      "pendingAccessibleName": "查看执行步骤：等待确认后继续",
+      "consoleErrors": [
+        "http://127.0.0.1:4174/favicon.ico: Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ]
+    },
+    {
+      "file": "iphone-reduce-metrics.json",
+      "device": "iphone",
+      "motion": "reduce",
+      "screen": {
+        "width": 393,
+        "height": 852
+      },
+      "messageViewportHeight": 640,
+      "traceWidth": 338,
+      "markerWidth": 20,
+      "summaryWidth": 226,
+      "runningStepStates": [
+        "done",
+        "done",
+        "running",
+        "pending"
+      ],
+      "animationNames": [
+        "none"
+      ],
+      "pendingAccessibleName": "查看执行步骤：等待确认后继续",
+      "consoleErrors": []
+    },
+    {
+      "file": "pixel-10-no-preference-metrics.json",
+      "device": "pixel-10",
+      "motion": "no-preference",
+      "screen": {
+        "width": 427,
+        "height": 952
+      },
+      "messageViewportHeight": 726,
+      "traceWidth": 338,
+      "markerWidth": 20,
+      "summaryWidth": 226,
+      "runningStepStates": [
+        "done",
+        "done",
+        "running",
+        "pending"
+      ],
+      "animationNames": [
+        "piano-key"
+      ],
+      "pendingAccessibleName": "查看执行步骤：等待确认后继续",
+      "consoleErrors": []
+    },
+    {
+      "file": "pixel-10-reduce-metrics.json",
+      "device": "pixel-10",
+      "motion": "reduce",
+      "screen": {
+        "width": 427,
+        "height": 952
+      },
+      "messageViewportHeight": 726,
+      "traceWidth": 338,
+      "markerWidth": 20,
+      "summaryWidth": 226,
+      "runningStepStates": [
+        "done",
+        "done",
+        "running",
+        "pending"
+      ],
+      "animationNames": [
+        "none"
+      ],
+      "pendingAccessibleName": "查看执行步骤：等待确认后继续",
+      "consoleErrors": []
+    }
+  ],
+  "nonBlocking": [
+    "Chrome 自动请求的可选 /favicon.ico 返回 404；原始控制台记录保留，定向断言仅豁免此项。"
+  ],
+  "history": "首次及 attempt-2 的 4 组轨迹断言均通过，但零控制台错误断言因 favicon 404 失败；证据保留在相邻 execution-trace-independent-20261020/。",
+  "screenshots": [
+    "iphone-no-preference-pending-collapsed.png",
+    "iphone-no-preference-pending-expanded.png",
+    "iphone-no-preference-running-collapsed.png",
+    "iphone-no-preference-running-expanded.png",
+    "iphone-reduce-pending-collapsed.png",
+    "iphone-reduce-pending-expanded.png",
+    "iphone-reduce-running-collapsed.png",
+    "iphone-reduce-running-expanded.png",
+    "pixel-10-no-preference-pending-collapsed.png",
+    "pixel-10-no-preference-pending-expanded.png",
+    "pixel-10-no-preference-running-collapsed.png",
+    "pixel-10-no-preference-running-expanded.png",
+    "pixel-10-reduce-pending-collapsed.png",
+    "pixel-10-reduce-pending-expanded.png",
+    "pixel-10-reduce-running-collapsed.png",
+    "pixel-10-reduce-running-expanded.png"
+  ],
+  "verificationLimits": [
+    "仅本次新增定向4测试，未重跑既有完整 runtime suite",
+    "未执行 native app、真实 Provider/Host/账号、真机、CI、commit 或生产发布"
+  ]
+}

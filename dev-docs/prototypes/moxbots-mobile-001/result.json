@@ -12,13 +12,14 @@
     "repositoryLint": "passed",
     "agentDocs": "passed",
     "testClassification": "passed",
+    "independentBrowserTrace": {"passed": 4, "total": 4, "browser": "Chrome 155", "scope": "iPhone/Pixel normal/reduced motion, pending/running"},
     "priorRuntimeBrowserSuite": {"passed": 7, "total": 8, "openFailure": "BottomSheet overlay click intercepted by html"}
   },
   "delivery": {
-    "stateAtRecord": "prepared-for-commit",
-    "head": null,
-    "pr": null,
-    "ci": "not-yet-run",
+    "stateAtRecord": "source-pushed-independent-browser-passed",
+    "head": "596d74ca5",
+    "pr": "https://github.com/heavenzhang/MoXBots/pull/167",
+    "ci": "pending-pr-checks",
     "main": null,
     "authority": "Git remote refs and PR define delivery after this record is committed"
   },

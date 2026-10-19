@@ -44,4 +44,4 @@
 
 ## Next step
 
-完成快照构建和 `git diff --check`，显式 stage 任务记录、验收记录和 `dev-docs/prototypes/moxbots-mobile-001/`，提交并推送分支；随后按项目授权合入 `main`，核实 `git ls-remote` 和 CI 状态。
+源实现已推送，PR https://github.com/heavenzhang/MoXBots/pull/167 已创建。独立 Chrome 定向补验 4/4 通过，双设备/双动效各覆盖运行和待授权折叠/展开；精选证据随跟进提交保存。仓库完整 lint、文档和测试分类通过。下一步核实 PR 全部适用 CI，正常合入 main，并以远端 refs 验证包含；原生/生产不属于此次交付。

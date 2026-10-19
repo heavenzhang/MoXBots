@@ -1,0 +1,536 @@
+{
+  "device": "iphone",
+  "motion": "no-preference",
+  "browser": "155.0.8059.84",
+  "scope": "local-synthetic-web-only",
+  "running-collapsed": {
+    "screen": {
+      "x": 353.5,
+      "y": 174,
+      "width": 393,
+      "height": 852,
+      "right": 746.5,
+      "bottom": 1026,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "viewport": {
+      "x": 353.5,
+      "y": 291,
+      "width": 393,
+      "height": 640,
+      "right": 746.5,
+      "bottom": 931,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "composer": {
+      "x": 353.5,
+      "y": 931,
+      "width": 393,
+      "height": 61,
+      "right": 746.5,
+      "bottom": 992,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "trace": {
+      "x": 373.5,
+      "y": 564.875,
+      "width": 338,
+      "height": 46,
+      "right": 711.5,
+      "bottom": 610.875,
+      "clientWidth": 336,
+      "scrollWidth": 336
+    },
+    "toggle": {
+      "x": 385.5,
+      "y": 566.875,
+      "width": 326,
+      "height": 44,
+      "right": 711.5,
+      "bottom": 610.875,
+      "clientWidth": 326,
+      "scrollWidth": 326
+    },
+    "marker": {
+      "x": 390.5,
+      "y": 578.875,
+      "width": 20,
+      "height": 20,
+      "right": 410.5,
+      "bottom": 598.875,
+      "clientWidth": 20,
+      "scrollWidth": 20,
+      "flex": "0 0 auto"
+    },
+    "summary": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 32,
+      "right": 644.5,
+      "bottom": 604.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "flex": "1 1 0%"
+    },
+    "title": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 17,
+      "right": 644.5,
+      "bottom": 589.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "text": "正在处理你的要求"
+    },
+    "status": {
+      "x": 652.5,
+      "y": 580.875,
+      "width": 30,
+      "height": 16,
+      "right": 682.5,
+      "bottom": 596.875,
+      "clientWidth": 30,
+      "scrollWidth": 30,
+      "flex": "0 0 auto"
+    },
+    "state": "running",
+    "accessibleName": "查看执行步骤：正在处理你的要求",
+    "reducedMotion": false,
+    "steps": []
+  },
+  "running-expanded": {
+    "screen": {
+      "x": 353.5,
+      "y": 174,
+      "width": 393,
+      "height": 852,
+      "right": 746.5,
+      "bottom": 1026,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "viewport": {
+      "x": 353.5,
+      "y": 291,
+      "width": 393,
+      "height": 640,
+      "right": 746.5,
+      "bottom": 931,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "composer": {
+      "x": 353.5,
+      "y": 931,
+      "width": 393,
+      "height": 61,
+      "right": 746.5,
+      "bottom": 992,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "trace": {
+      "x": 373.5,
+      "y": 564.875,
+      "width": 338,
+      "height": 263,
+      "right": 711.5,
+      "bottom": 827.875,
+      "clientWidth": 336,
+      "scrollWidth": 336
+    },
+    "toggle": {
+      "x": 385.5,
+      "y": 566.875,
+      "width": 326,
+      "height": 44,
+      "right": 711.5,
+      "bottom": 610.875,
+      "clientWidth": 326,
+      "scrollWidth": 326
+    },
+    "marker": {
+      "x": 390.5,
+      "y": 578.875,
+      "width": 20,
+      "height": 20,
+      "right": 410.5,
+      "bottom": 598.875,
+      "clientWidth": 20,
+      "scrollWidth": 20,
+      "flex": "0 0 auto"
+    },
+    "summary": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 32,
+      "right": 644.5,
+      "bottom": 604.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "flex": "1 1 0%"
+    },
+    "title": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 17,
+      "right": 644.5,
+      "bottom": 589.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "text": "正在处理你的要求"
+    },
+    "status": {
+      "x": 652.5,
+      "y": 580.875,
+      "width": 30,
+      "height": 16,
+      "right": 682.5,
+      "bottom": 596.875,
+      "clientWidth": 30,
+      "scrollWidth": 30,
+      "flex": "0 0 auto"
+    },
+    "state": "running",
+    "accessibleName": "收起执行步骤：正在处理你的要求",
+    "reducedMotion": false,
+    "steps": [
+      {
+        "x": 385.5,
+        "y": 612.875,
+        "width": 326,
+        "height": 53,
+        "right": 711.5,
+        "bottom": 665.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "done",
+        "current": null,
+        "title": "接收要求",
+        "animationNames": []
+      },
+      {
+        "x": 385.5,
+        "y": 665.875,
+        "width": 326,
+        "height": 54,
+        "right": 711.5,
+        "bottom": 719.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "done",
+        "current": null,
+        "title": "整理工作上下文",
+        "animationNames": []
+      },
+      {
+        "x": 385.5,
+        "y": 719.875,
+        "width": 326,
+        "height": 54,
+        "right": 711.5,
+        "bottom": 773.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "running",
+        "current": "step",
+        "title": "处理当前要求",
+        "animationNames": [
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key",
+          "piano-key"
+        ]
+      },
+      {
+        "x": 385.5,
+        "y": 773.875,
+        "width": 326,
+        "height": 54,
+        "right": 711.5,
+        "bottom": 827.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "pending",
+        "current": null,
+        "title": "交付结果",
+        "animationNames": []
+      }
+    ]
+  },
+  "pending-collapsed": {
+    "screen": {
+      "x": 353.5,
+      "y": 174,
+      "width": 393,
+      "height": 852,
+      "right": 746.5,
+      "bottom": 1026,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "viewport": {
+      "x": 353.5,
+      "y": 291,
+      "width": 393,
+      "height": 640,
+      "right": 746.5,
+      "bottom": 931,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "composer": {
+      "x": 353.5,
+      "y": 931,
+      "width": 393,
+      "height": 61,
+      "right": 746.5,
+      "bottom": 992,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "trace": {
+      "x": 373.5,
+      "y": 564.875,
+      "width": 338,
+      "height": 46,
+      "right": 711.5,
+      "bottom": 610.875,
+      "clientWidth": 336,
+      "scrollWidth": 336
+    },
+    "toggle": {
+      "x": 385.5,
+      "y": 566.875,
+      "width": 326,
+      "height": 44,
+      "right": 711.5,
+      "bottom": 610.875,
+      "clientWidth": 326,
+      "scrollWidth": 326
+    },
+    "marker": {
+      "x": 390.5,
+      "y": 578.875,
+      "width": 20,
+      "height": 20,
+      "right": 410.5,
+      "bottom": 598.875,
+      "clientWidth": 20,
+      "scrollWidth": 20,
+      "flex": "0 0 auto"
+    },
+    "summary": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 32,
+      "right": 644.5,
+      "bottom": 604.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "flex": "1 1 0%"
+    },
+    "title": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 17,
+      "right": 644.5,
+      "bottom": 589.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "text": "等待确认后继续"
+    },
+    "status": {
+      "x": 652.5,
+      "y": 580.875,
+      "width": 30,
+      "height": 16,
+      "right": 682.5,
+      "bottom": 596.875,
+      "clientWidth": 30,
+      "scrollWidth": 30,
+      "flex": "0 0 auto"
+    },
+    "state": "pending",
+    "accessibleName": "查看执行步骤：等待确认后继续",
+    "reducedMotion": false,
+    "steps": []
+  },
+  "pending-expanded": {
+    "screen": {
+      "x": 353.5,
+      "y": 174,
+      "width": 393,
+      "height": 852,
+      "right": 746.5,
+      "bottom": 1026,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "viewport": {
+      "x": 353.5,
+      "y": 291,
+      "width": 393,
+      "height": 640,
+      "right": 746.5,
+      "bottom": 931,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "composer": {
+      "x": 353.5,
+      "y": 931,
+      "width": 393,
+      "height": 61,
+      "right": 746.5,
+      "bottom": 992,
+      "clientWidth": 393,
+      "scrollWidth": 393
+    },
+    "trace": {
+      "x": 373.5,
+      "y": 564.875,
+      "width": 338,
+      "height": 263,
+      "right": 711.5,
+      "bottom": 827.875,
+      "clientWidth": 336,
+      "scrollWidth": 336
+    },
+    "toggle": {
+      "x": 385.5,
+      "y": 566.875,
+      "width": 326,
+      "height": 44,
+      "right": 711.5,
+      "bottom": 610.875,
+      "clientWidth": 326,
+      "scrollWidth": 326
+    },
+    "marker": {
+      "x": 390.5,
+      "y": 578.875,
+      "width": 20,
+      "height": 20,
+      "right": 410.5,
+      "bottom": 598.875,
+      "clientWidth": 20,
+      "scrollWidth": 20,
+      "flex": "0 0 auto"
+    },
+    "summary": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 32,
+      "right": 644.5,
+      "bottom": 604.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "flex": "1 1 0%"
+    },
+    "title": {
+      "x": 418.5,
+      "y": 572.875,
+      "width": 226,
+      "height": 17,
+      "right": 644.5,
+      "bottom": 589.875,
+      "clientWidth": 226,
+      "scrollWidth": 226,
+      "text": "等待确认后继续"
+    },
+    "status": {
+      "x": 652.5,
+      "y": 580.875,
+      "width": 30,
+      "height": 16,
+      "right": 682.5,
+      "bottom": 596.875,
+      "clientWidth": 30,
+      "scrollWidth": 30,
+      "flex": "0 0 auto"
+    },
+    "state": "pending",
+    "accessibleName": "收起执行步骤：等待确认后继续",
+    "reducedMotion": false,
+    "steps": [
+      {
+        "x": 385.5,
+        "y": 612.875,
+        "width": 326,
+        "height": 53,
+        "right": 711.5,
+        "bottom": 665.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "done",
+        "current": null,
+        "title": "接收要求",
+        "animationNames": []
+      },
+      {
+        "x": 385.5,
+        "y": 665.875,
+        "width": 326,
+        "height": 54,
+        "right": 711.5,
+        "bottom": 719.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "done",
+        "current": null,
+        "title": "整理工作上下文",
+        "animationNames": []
+      },
+      {
+        "x": 385.5,
+        "y": 719.875,
+        "width": 326,
+        "height": 54,
+        "right": 711.5,
+        "bottom": 773.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "pending",
+        "current": null,
+        "title": "等待你确认操作",
+        "animationNames": []
+      },
+      {
+        "x": 385.5,
+        "y": 773.875,
+        "width": 326,
+        "height": 54,
+        "right": 711.5,
+        "bottom": 827.875,
+        "clientWidth": 326,
+        "scrollWidth": 326,
+        "state": "pending",
+        "current": null,
+        "title": "交付结果",
+        "animationNames": []
+      }
+    ]
+  },
+  "consoleErrors": [
+    "http://127.0.0.1:4174/favicon.ico: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}
