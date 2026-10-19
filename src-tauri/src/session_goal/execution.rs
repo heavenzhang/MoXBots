@@ -12,13 +12,18 @@ use crate::sidecar::{
 use crate::{ulog_info, ulog_warn};
 
 /// Match the Node Goal orchestrator's `workPending` predicate exactly. An old
-/// Sidecar that omits `hasBackgroundWork` keeps its previous behavior.
+/// Sidecar that omits the classified fields keeps its previous behavior.
 fn session_state_is_busy(body: &serde_json::Value) -> bool {
+    let classified = body
+        .get("backgroundWorkBlocksContinuation")
+        .and_then(serde_json::Value::as_bool);
     body.get("isBusy").and_then(serde_json::Value::as_bool) == Some(true)
-        || body
-            .get("hasBackgroundWork")
-            .and_then(serde_json::Value::as_bool)
-            == Some(true)
+        || body.get("waitingForUser").and_then(serde_json::Value::as_bool) == Some(true)
+        || classified.unwrap_or_else(|| {
+            body.get("hasBackgroundWork")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true)
+        })
 }
 
 /// Read backpressure from an already-running Sidecar before paying for owner
@@ -170,11 +175,30 @@ mod tests {
             "isBusy": false,
             "hasBackgroundWork": true
         })));
-        // Old Sidecars omit the additive field; malformed values must not
+        // The classified field wins only after the Node owner has accepted an
+        // explicit acknowledgement of the exact shell run.
+        assert!(!session_state_is_busy(&serde_json::json!({
+            "isBusy": false,
+            "hasBackgroundWork": true,
+            "backgroundWorkBlocksContinuation": false
+        })));
+        assert!(session_state_is_busy(&serde_json::json!({
+            "isBusy": false,
+            "hasBackgroundWork": false,
+            "backgroundWorkBlocksContinuation": true
+        })));
+        assert!(session_state_is_busy(&serde_json::json!({
+            "isBusy": false,
+            "waitingForUser": true,
+            "backgroundWorkBlocksContinuation": false
+        })));
+        // Old Sidecars omit the additive fields; malformed values must not
         // invent backpressure.
         assert!(!session_state_is_busy(&serde_json::json!({
             "isBusy": "true",
-            "hasBackgroundWork": 1
+            "hasBackgroundWork": 1,
+            "waitingForUser": "true",
+            "backgroundWorkBlocksContinuation": "false"
         })));
     }
 }

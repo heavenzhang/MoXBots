@@ -41,6 +41,39 @@ describe('canonical continuation admission', () => {
     expect(prepareContinuationAdmission(engine, request)).toMatchObject({ accepted: false, result: { success: false, status: 409, code: 'SESSION_CONTINUATION_BUSY' } });
   });
 
+  it('allows an acknowledged shell but still rejects classified work and a user wait', () => {
+    const shell = fixture();
+    Object.assign(shell.live, {
+      hasBackgroundWork: true,
+      backgroundWorkActive: true,
+      backgroundWorkBlocksContinuation: false,
+    });
+    expect(() => admitted(shell.engine, shell.request)).not.toThrow();
+
+    const blocking = fixture();
+    Object.assign(blocking.live, {
+      hasBackgroundWork: false,
+      backgroundWorkBlocksContinuation: true,
+    });
+    expect(prepareContinuationAdmission(blocking.engine, blocking.request)).toMatchObject({
+      accepted: false, result: { success: false, status: 409, code: 'SESSION_CONTINUATION_BUSY' },
+    });
+
+    const waiting = fixture();
+    waiting.live.waitingForUser = true;
+    expect(prepareContinuationAdmission(waiting.engine, waiting.request)).toMatchObject({
+      accepted: false, result: { code: 'SESSION_CONTINUATION_BUSY' },
+    });
+  });
+
+  it('keeps the conservative gate for a runtime without a classified snapshot', () => {
+    const { engine, request, live } = fixture();
+    Object.assign(live, { backgroundWorkActive: true });
+    expect(prepareContinuationAdmission(engine, request)).toMatchObject({
+      accepted: false, result: { code: 'SESSION_CONTINUATION_BUSY' },
+    });
+  });
+
   it.each(['complete', 'error', 'running'] as const)('rejects a canonical %s turn despite stale displayed metadata', status => {
     const { engine, request, projection } = fixture();
     projection.turns.get('turn1')!.status = status;

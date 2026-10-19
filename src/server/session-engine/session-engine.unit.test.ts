@@ -364,6 +364,8 @@ const mocks = vi.hoisted(() => {
 vi.mock('../agent-session', async () => ({
   hasBuiltinBackgroundWork: (await import('../builtin-session/lifecycle')).hasQueryBackgroundTasks,
   hasBuiltinNonAmbientBackgroundWork: (await import('../builtin-session/lifecycle')).hasQueryBackgroundWork,
+  getBuiltinBackgroundContinuationSnapshot: (await import('../builtin-session/lifecycle')).getQueryBackgroundContinuationSnapshot,
+  acknowledgeBuiltinBackgroundWork: (await import('../builtin-session/lifecycle')).acknowledgeQueryBackgroundWork,
   hasBuiltinActivityForUpdate: (await import('../builtin-session/lifecycle')).hasBuiltinActivityForUpdate,
   setUpdateRestartFrozen: (await import('../builtin-session/lifecycle')).setUpdateRestartFrozen,
   stopBuiltinSessionForUpdate: vi.fn(async () => undefined),

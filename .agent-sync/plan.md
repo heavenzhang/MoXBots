@@ -1,3 +1,7 @@
+## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
+
+沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
+
 ## Deployment coordination — MOXBOTS-NATIVE-PASSWORD-CLOUD-20261019
 
 - **Deployment chat:**01a12b99-7b38-78b1-831f-9c60257d386a, existing140 owned service/auth only; original101 connector temporarily paused/resumed with identity/config unchanged. Existing human cloud/101 takeover and source-owner explicit handoff remain authoritative; native consent replacement was directly approved in human01a14fd2-aca4-7e70-81c2-652eeaa679a3. Phone source01a1488b owns phone-only acceptance; no parallel production writes.

@@ -7,7 +7,7 @@ import { useCloseLayer } from '@/hooks/useCloseLayer';
 import { isImeComposingEvent } from '@/utils/imeKeyboard';
 import { BACKGROUND_TASK_STATUS_EVENT, getBackgroundTaskStatus, isTerminalStatus } from '@/utils/backgroundTaskStatus';
 import type { Message, ToolUseSimple } from '@/types/chat';
-import type { BackgroundTaskDetail } from '../../../shared/types/background-task';
+import type { BackgroundTaskContinuationIdentity, BackgroundTaskDetail } from '../../../shared/types/background-task';
 import type { SubagentStatus } from './types';
 import { useElapsedSeconds } from './useElapsedSeconds';
 
@@ -34,13 +34,26 @@ export default function BackgroundTaskDialog({
   const { t, i18n } = useTranslation('app');
   const tab = useTabStateOptional();
   const apiGetRef = useRef(tab?.apiGet);
-  useLayoutEffect(() => { apiGetRef.current = tab?.apiGet; }, [tab?.apiGet]);
-  const [detail, setDetail] = useState<BackgroundTaskDetail | null>(null);
+  const apiPostRef = useRef(tab?.apiPost);
+  useLayoutEffect(() => {
+    apiGetRef.current = tab?.apiGet;
+    apiPostRef.current = tab?.apiPost;
+  }, [tab?.apiGet, tab?.apiPost]);
+  const sessionScope = JSON.stringify([sessionId, subagent.id]);
+  const [detailSnapshot, setDetail] = useState<{ scope: string; task: BackgroundTaskDetail } | null>(null);
+  const detail = detailSnapshot?.scope === sessionScope ? detailSnapshot.task : null;
   const [error, setError] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
   const [loading, setLoading] = useState(subagent.mode === 'background');
   const [refresh, setRefresh] = useState(0);
   const [terminalStatus, setTerminalStatus] = useState<BackgroundTaskDetail['status'] | null>(null);
+  const [acknowledgement, setAcknowledgement] = useState<{ key: string; phase: 'sending' | 'rejected' | 'failed' } | null>(null);
+  const identity = detail?.continuation?.identity;
+  const identityKey = JSON.stringify([sessionScope, identity]);
+  const identityKeyRef = useRef(identityKey);
+  useLayoutEffect(() => { identityKeyRef.current = identityKey; }, [identityKey]);
+  const acknowledgementPhase = acknowledgement?.key === identityKey ? acknowledgement.phase : 'idle';
+  const continuationAllowed = detail?.continuation?.acknowledged === true;
   const dialogRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -98,7 +111,7 @@ export default function BackgroundTaskDialog({
           }
           throw new Error('Task read failed');
         }
-        setDetail(response.task);
+        setDetail({ scope: sessionScope, task: response.task });
         setError(false);
         setUnavailable(false);
         if (response.task.status === 'running') timer = setTimeout(() => { void load(); }, 2000);
@@ -110,7 +123,7 @@ export default function BackgroundTaskDialog({
     };
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [sessionId, subagent.id, subagent.mode, refresh]);
+  }, [sessionId, subagent.id, subagent.mode, refresh, sessionScope]);
 
   const command = detail?.command ?? (tool?.parsedInput && 'command' in tool.parsedInput && typeof tool.parsedInput.command === 'string' ? tool.parsedInput.command : undefined);
   const transcript = subagent.mode === 'sync'
@@ -119,6 +132,39 @@ export default function BackgroundTaskDialog({
   const output = detail?.output ?? transcript;
   const outputState = detail?.outputState ?? (unavailable ? 'unavailable' : 'empty');
   const buttonClass = 'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] hover:bg-[var(--paper-inset)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50';
+  // Only the runtime detail owner can offer a confirmation capability. Never
+  // infer eligibility or identity from a cached Agent row/description.
+  const isRunningShell = status === 'running' && !error && !unavailable
+    && subagent.mode === 'background' && identity !== undefined;
+  const acknowledgeContinuation = async () => {
+    const post = apiPostRef.current;
+    if (!post || !identity || acknowledgementPhase === 'sending') return;
+    const key = identityKey;
+    const observed = { ...identity };
+    const allow = !continuationAllowed;
+    setAcknowledgement({ key, phase: 'sending' });
+    try {
+      const result = await post<{
+        allow: boolean;
+        acknowledged: BackgroundTaskContinuationIdentity[];
+        rejected: { taskId: string; reason: string }[];
+      }>('/api/session/background-work/acknowledge', { tasks: [observed], allow });
+      if (identityKeyRef.current !== key) return;
+      const applied = result.allow === allow && result.acknowledged.some(task =>
+        task.taskId === observed.taskId && task.runId === observed.runId && task.queryId === observed.queryId);
+      if (!applied || result.rejected.some(task => task.taskId === observed.taskId)) {
+        setAcknowledgement({ key, phase: 'rejected' });
+        return;
+      }
+      setDetail(previous => previous?.scope === sessionScope
+        && JSON.stringify(previous.task.continuation?.identity) === JSON.stringify(observed)
+        ? { ...previous, task: { ...previous.task, continuation: { identity: observed, acknowledged: allow } } }
+        : previous);
+      setAcknowledgement(null);
+    } catch {
+      if (identityKeyRef.current === key) setAcknowledgement({ key, phase: 'failed' });
+    }
+  };
 
   return (
     <OverlayBackdrop onClose={onClose} className="z-[240] p-3 sm:p-6" portal>
@@ -169,7 +215,38 @@ export default function BackgroundTaskDialog({
           {!tool && <p className="mt-4 text-xs text-[var(--ink-muted)]">{t('backgroundTask.noMessage')}</p>}
         </div>
         <footer className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--line-subtle)] p-3">
-          <p className="text-xs text-[var(--ink-muted)]">{t('backgroundTask.readOnly')}</p>
+          <div className="min-w-0">
+            <p className="text-xs text-[var(--ink-muted)]">{t('backgroundTask.readOnly')}</p>
+            {isRunningShell && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={buttonClass}
+                  disabled={acknowledgementPhase === 'sending'}
+                  onClick={() => { void acknowledgeContinuation(); }}
+                >
+                  {t(acknowledgementPhase === 'sending'
+                    ? 'backgroundTask.acknowledging'
+                    : continuationAllowed
+                      ? 'backgroundTask.revokeContinuation'
+                      : 'backgroundTask.allowContinuation')}
+                </button>
+                {!continuationAllowed && acknowledgementPhase === 'idle' && (
+                  <span className="text-xs text-[var(--ink-muted)]">{t('backgroundTask.allowContinuationHint')}</span>
+                )}
+                {continuationAllowed && (
+                  <span className="text-xs text-[var(--ink-muted)]">{t('backgroundTask.continuationAllowedHint')}</span>
+                )}
+                {(acknowledgementPhase === 'rejected' || acknowledgementPhase === 'failed') && (
+                  <span role="alert" className="text-xs text-[var(--error)]">
+                    {t(acknowledgementPhase === 'rejected'
+                      ? 'backgroundTask.continuationRejected'
+                      : 'backgroundTask.continuationFailed')}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
           {tool && <button type="button" className={buttonClass} onClick={() => { onClose(); onJumpToTool(subagent.id); }}>{t('backgroundTask.locate')}<ChevronRightIcon className="size-3.5" /></button>}
         </footer>
       </section>

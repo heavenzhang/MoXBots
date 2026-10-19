@@ -13,6 +13,7 @@ import type { SessionMessage, SessionMetadata } from '../types/session';
 import { projectSessionActivity } from '../session-engine/observation';
 import { watchStreamManager } from '../inbox/watch-stream';
 import type { WatchSubscriber } from '../../shared/session-watch-protocol';
+import type { BackgroundTaskContinuationIdentity } from '../../shared/types/background-task';
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -368,6 +369,48 @@ export async function handleSessionReadRoute(
     }
   }
 
+  if (pathname === '/api/session/background-work/acknowledge') {
+    const respond = (body: unknown, status = 200): Response => {
+      const response = jsonResponse(body, status);
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    };
+    if (request.method !== 'POST') return respond({ success: false, errorCode: 'METHOD_NOT_ALLOWED' }, 405);
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return respond({ success: false, errorCode: 'INVALID_BODY' }, 400);
+    }
+    const input = body as { tasks?: unknown; allow?: unknown } | null;
+    const tasks = input?.tasks;
+    if (!Array.isArray(tasks) || tasks.length < 1 || tasks.length > 32
+      || typeof input?.allow !== 'boolean'
+      || tasks.some(task => !task || typeof task !== 'object'
+        || typeof task.taskId !== 'string' || !/^[a-zA-Z0-9_-]{1,256}$/.test(task.taskId)
+        || typeof task.runId !== 'string' || task.runId.length < 1 || task.runId.length > 1024 || task.runId.includes('\0')
+        || typeof task.queryId !== 'string' || task.queryId.length < 1 || task.queryId.length > 128)) {
+      return respond({ success: false, errorCode: 'INVALID_TASK_IDENTITIES' }, 400);
+    }
+    const engine = getSessionEngine();
+    if (!engine.acknowledgeBackgroundWork) {
+      return respond({ success: false, errorCode: 'BACKGROUND_WORK_UNSUPPORTED' }, 409);
+    }
+    const allow = input.allow;
+    const identities: BackgroundTaskContinuationIdentity[] = tasks.map(task => ({
+      taskId: task.taskId, runId: task.runId, queryId: task.queryId,
+    }));
+    const result = engine.acknowledgeBackgroundWork(identities, allow);
+    return respond({
+      success: true,
+      allow,
+      acknowledged: result.acknowledged,
+      rejected: result.rejected,
+      backgroundWorkBlocksContinuation:
+        engine.getLiveSessionState().backgroundWorkBlocksContinuation === true,
+    });
+  }
+
   if (pathname === '/api/session-state' && request.method === 'GET') {
     const engine = getSessionEngine();
     const liveState = engine.getLiveSessionState();
@@ -375,9 +418,25 @@ export async function handleSessionReadRoute(
       sessionId: engine.getRuntimeIdentity().sessionId,
       sessionState: liveState.sessionState,
       isBusy: liveState.isBusy,
-      // Additive field for the desktop scheduler's cheap backpressure
+      waitingForUser: liveState.waitingForUser === true,
+      // Additive fields for the desktop scheduler's cheap backpressure
       // precheck. The Goal orchestrator remains the admission authority.
       hasBackgroundWork: liveState.hasBackgroundWork === true,
+      ...(liveState.backgroundWorkBlocksContinuation === undefined ? {} : {
+        backgroundWorkBlocksContinuation: liveState.backgroundWorkBlocksContinuation,
+      }),
+      ...(liveState.backgroundWork ? {
+        backgroundWork: {
+          active: liveState.backgroundWork.active.length,
+          blocking: liveState.backgroundWork.blocking.length,
+          acknowledgeableShells: liveState.backgroundWork.acknowledgeableShells.map(task => ({
+            taskId: task.taskId,
+            ...(task.runId ? { runId: task.runId } : {}),
+            ...(task.description ? { description: task.description } : {}),
+          })),
+          acknowledged: liveState.backgroundWork.acknowledged.map(task => task.taskId),
+        },
+      } : {}),
       completionTerminal: engine.getSessionCompletionTerminal(),
     });
   }

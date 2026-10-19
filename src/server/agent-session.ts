@@ -313,6 +313,8 @@ import {
   readQueryBackgroundTaskDetail,
   recordQueryBackgroundTaskOutput,
   hasQueryBackgroundWork,
+  getQueryBackgroundContinuationSnapshot,
+  acknowledgeQueryBackgroundWork,
   replaceQueryBackgroundActivity,
   readQueryMcpStatuses,
   awaitSessionTermination as awaitBuiltinSessionTermination,
@@ -10262,6 +10264,18 @@ function isSessionIdle(): boolean {
 
 export function hasBuiltinNonAmbientBackgroundWork(): boolean {
   return hasQueryBackgroundWork();
+}
+
+/** Replace-level task set, classified for continuation admission. */
+export function getBuiltinBackgroundContinuationSnapshot() {
+  return getQueryBackgroundContinuationSnapshot();
+}
+
+/** Explicit user acknowledgement of exact top-level shell runs. */
+export function acknowledgeBuiltinBackgroundWork(
+  tasks: Parameters<typeof acknowledgeQueryBackgroundWork>[0], allow: boolean,
+) {
+  return acknowledgeQueryBackgroundWork(tasks, allow);
 }
 
 export async function waitForSessionIdle(

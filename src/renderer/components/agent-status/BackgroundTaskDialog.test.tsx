@@ -10,9 +10,9 @@ import AgentStatusPanel from './AgentStatusPanel';
 import BackgroundTaskDialog from './BackgroundTaskDialog';
 import type { SubagentStatus } from './types';
 
-const harness = vi.hoisted(() => ({ apiGet: vi.fn(), sessionId: 's1', messages: [] as Message[] }));
+const harness = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn(), sessionId: 's1', messages: [] as Message[] }));
 vi.mock('@/context/TabContext', () => ({
-  useTabStateOptional: () => ({ sessionId: harness.sessionId, apiGet: harness.apiGet, messages: harness.messages, sessionState: 'running' }),
+  useTabStateOptional: () => ({ sessionId: harness.sessionId, apiGet: harness.apiGet, apiPost: harness.apiPost, messages: harness.messages, sessionState: 'running' }),
 }));
 const agent: SubagentStatus = { id: 'tool-shell', agentType: 'local_bash', description: '建立独立端口的测试验收隧道', mode: 'background', startedAt: 1000, status: 'running', inputTokens: 0, outputTokens: 0, toolCount: 0 };
 function task(patch: Partial<BackgroundTaskDetail> = {}): BackgroundTaskDetail {
@@ -28,10 +28,65 @@ describe('background task details', () => {
     vi.useFakeTimers();
     harness.sessionId = 's1'; harness.messages = [];
     harness.apiGet.mockReset().mockResolvedValue({ success: true, task: task() });
+    harness.apiPost.mockReset();
     clearAllBackgroundTaskStatuses();
     await i18n.changeLanguage('zh-CN');
   });
   afterEach(() => { cleanup(); clearAllBackgroundTaskStatuses(); vi.clearAllTimers(); vi.useRealTimers(); });
+
+  const identity = { taskId: 'b123', runId: 'run-1', queryId: 'query-1' };
+  const controllableTask = () => task({ runId: identity.runId, continuation: { identity, acknowledged: false } });
+
+  it('does not infer confirmation authority from a shell row without a current runtime identity', async () => {
+    render(dialog()); await settle();
+    expect(screen.queryByRole('button', { name: '允许与此运行并行接续' })).toBeNull();
+    expect(harness.apiPost).not.toHaveBeenCalled();
+  });
+
+  it('confirms and revokes only the observed run through the current Tab API', async () => {
+    harness.apiGet.mockResolvedValue({ success: true, task: controllableTask() });
+    harness.apiPost.mockImplementation((_url, body) => Promise.resolve({ allow: body.allow, acknowledged: body.tasks, rejected: [] }));
+    render(dialog()); await settle();
+    fireEvent.click(screen.getByRole('button', { name: '允许与此运行并行接续' })); await settle();
+    expect(harness.apiPost).toHaveBeenLastCalledWith('/api/session/background-work/acknowledge', { tasks: [identity], allow: true });
+    fireEvent.click(screen.getByRole('button', { name: '恢复阻挡后续接续' })); await settle();
+    expect(harness.apiPost).toHaveBeenLastCalledWith('/api/session/background-work/acknowledge', { tasks: [identity], allow: false });
+    expect(screen.getByRole('button', { name: '允许与此运行并行接续' })).toBeTruthy();
+  });
+
+  it('shows owner rejection without treating it as confirmation', async () => {
+    harness.apiGet.mockResolvedValue({ success: true, task: controllableTask() });
+    harness.apiPost.mockResolvedValue({ allow: true, acknowledged: [], rejected: [{ taskId: 'b123', reason: 'changed' }] });
+    render(dialog()); await settle();
+    fireEvent.click(screen.getByRole('button', { name: '允许与此运行并行接续' })); await settle();
+    expect(screen.getByRole('alert').textContent).toContain('任务运行或会话已变化');
+    expect(screen.queryByRole('button', { name: '恢复阻挡后续接续' })).toBeNull();
+  });
+
+  it('ignores a late confirmation receipt after the visible run changes', async () => {
+    let respond!: (value: unknown) => void;
+    harness.apiGet.mockResolvedValue({ success: true, task: controllableTask() });
+    harness.apiPost.mockImplementation(() => new Promise(resolve => { respond = resolve; }));
+    render(dialog()); await settle();
+    fireEvent.click(screen.getByRole('button', { name: '允许与此运行并行接续' })); await settle();
+    expect(screen.getByRole('button', { name: '正在应用…' }).hasAttribute('disabled')).toBe(true);
+    const next = { ...identity, runId: 'run-2' };
+    harness.apiGet.mockResolvedValue({ success: true, task: task({ runId: 'run-2', continuation: { identity: next, acknowledged: false } }) });
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    await act(async () => { respond({ allow: true, acknowledged: [identity], rejected: [] }); });
+    expect(screen.getByRole('button', { name: '允许与此运行并行接续' }).hasAttribute('disabled')).toBe(false);
+    expect(screen.queryByRole('button', { name: '恢复阻挡后续接续' })).toBeNull();
+  });
+
+  it('removes the old confirmation capability while a different Session is loading', async () => {
+    harness.apiGet.mockResolvedValueOnce({ success: true, task: controllableTask() });
+    const view = render(dialog()); await settle();
+    expect(screen.getByRole('button', { name: '允许与此运行并行接续' })).toBeTruthy();
+    harness.apiGet.mockImplementation(() => new Promise(() => {}));
+    harness.sessionId = 's2'; view.rerender(dialog(vi.fn(), 's2')); await settle();
+    expect(screen.queryByRole('button', { name: '允许与此运行并行接续' })).toBeNull();
+    expect(harness.apiPost).not.toHaveBeenCalled();
+  });
 
   it('opens from a real background row with no tool message and stays open after completion/fade', async () => {
     registerBackgroundTask('b123', agent.id, { description: agent.description, taskType: 'local_bash' }, 's1');

@@ -74,6 +74,8 @@ import {
   switchToSession,
   waitForSessionIdle,
   hasBuiltinNonAmbientBackgroundWork,
+  getBuiltinBackgroundContinuationSnapshot,
+  acknowledgeBuiltinBackgroundWork,
 } from '../agent-session';
 import type { MessageWire, PermissionMode } from '../agent-session';
 import type { ProviderEnv } from '../provider-types';
@@ -281,9 +283,11 @@ export function createBuiltinSessionEngine(): SessionEngine {
 
     publishTranscriptSaveStatus(status) { publishBuiltinTranscriptSaveStatus(status); },
     getBackgroundTaskDetail(toolUseId) { return getBuiltinBackgroundTaskDetail(toolUseId); },
+    acknowledgeBackgroundWork(tasks, allow) { return acknowledgeBuiltinBackgroundWork(tasks, allow); },
     getWorkProgressSnapshot() { return getBuiltinWorkProgressSnapshot(); },
     getLiveSessionState() {
       const executionStartedAt = getBuiltinExecutionStartedAt();
+      const backgroundWork = getBuiltinBackgroundContinuationSnapshot();
       return {
         ...(executionStartedAt ? { executionStartedAt } : {}),
         ...(hasBuiltinBackgroundWork() ? { backgroundWorkActive: true } : {}),
@@ -291,6 +295,8 @@ export function createBuiltinSessionEngine(): SessionEngine {
         isBusy: isSessionBusy(),
         waitingForUser: isBuiltinWaitingForUser(),
         hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
+        backgroundWorkBlocksContinuation: backgroundWork.blocksContinuation,
+        backgroundWork,
       };
     },
 
