@@ -1,0 +1,29 @@
+{
+  "task": "MOXBOTS-MOBILE-001-EXECUTION-TRACE",
+  "repository": "https://github.com/heavenzhang/MoXBots.git",
+  "branch": "codex/mobile-001-execution-trace-20261019",
+  "base": "18e13ce8dbad20e61af3f84173ad87d84bf090a6",
+  "scope": "synthetic-mobile-web-prototype",
+  "source": "dev-docs/prototypes/moxbots-mobile-001",
+  "verification": {
+    "runtimeProtectedFiles": {"passed": 28, "total": 28},
+    "build": "passed",
+    "workerTests": {"passed": 4, "total": 4},
+    "repositoryLint": "passed",
+    "agentDocs": "passed",
+    "testClassification": "passed",
+    "priorRuntimeBrowserSuite": {"passed": 7, "total": 8, "openFailure": "BottomSheet overlay click intercepted by html"}
+  },
+  "delivery": {
+    "stateAtRecord": "prepared-for-commit",
+    "head": null,
+    "pr": null,
+    "ci": "not-yet-run",
+    "main": null,
+    "authority": "Git remote refs and PR define delivery after this record is committed"
+  },
+  "nativeInstalledVersion": null,
+  "productionPublished": false,
+  "notVerified": ["Codex pixel parity", "native app", "real account", "real Provider", "real Host", "production"],
+  "evidence": ["acceptance.md", "qa-v6/verification.md"]
+}

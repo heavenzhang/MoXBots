@@ -1,3 +1,7 @@
+## MOXBOTS-MOBILE-001 — 执行轨迹原型交付
+
+按用户“改完了就提交到远端”的要求，把独立移动 Web 原型纳入 `dev-docs/prototypes/moxbots-mobile-001/`，包含左侧执行步骤、状态与 CSS piano-roll；本地合成数据，不改变 `mobile/app/`。任务记录 `.agent-sync/tasks/codex-mobile-001-execution-trace-20261019-e6514cfc.md`，验收与运行说明在原型目录 `acceptance.md`、`README.md`。构建、独立审阅、Git/CI/main 与原生/生产阶段分开追踪，未授权或执行部署。
+
 ## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
 
 沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
