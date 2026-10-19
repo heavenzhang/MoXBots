@@ -18,6 +18,7 @@ import type { SessionSource, TurnAnalyticsSource } from '../types/session';
 import type { SessionMessage, SessionMetadata } from '../types/session';
 import type { ImagePayload } from '../runtimes/types';
 import type { InboxTurnMeta } from '../inbox/types';
+import type { BackgroundContinuationSnapshot, BackgroundWorkAcknowledgementRequest, BackgroundWorkAcknowledgementResult } from '../background-continuation-policy';
 import type { ProviderRoute } from '../../shared/providerRoute';
 import type { RuntimeBackedProviderIdentity } from '../../shared/providerExecution';
 import type { OfficialToolId } from '../../shared/official-tools';
@@ -276,6 +277,14 @@ export type SessionEngineLiveState = {
   executionStartedAt?: string;
   /** Runtime-owned non-ambient work that can outlive the root turn. */
   hasBackgroundWork?: boolean;
+  /**
+   * True when runtime background work still must keep continuation deferred.
+   * Detached top-level shells may outlive the root turn without blocking it.
+   * Absent when the runtime cannot classify its background work.
+   */
+  backgroundWorkBlocksContinuation?: boolean;
+  /** Replace-level background task set, for admission and observability. */
+  backgroundWork?: BackgroundContinuationSnapshot;
 };
 
 export type SessionEngineLatestResult = {
@@ -430,6 +439,11 @@ export interface SessionEngine {
   getWorkProgressSnapshot?(): import("../../shared/sessionWorkProgress").SessionWorkProgress;
   getLatestAssistantResult(): Promise<SessionEngineLatestResult>;
   getBackgroundTaskDetail?(toolUseId: string): Promise<import('../../shared/types/background-task').BackgroundTaskDetailResult>;
+  /**
+   * Record an explicit user acknowledgement for exact running top-level shell
+   * tasks so continuation may run beside them. Unsupported runtimes omit it.
+   */
+  acknowledgeBackgroundWork?(tasks: readonly BackgroundWorkAcknowledgementRequest[], allow: boolean): BackgroundWorkAcknowledgementResult;
   getStreamReplaySnapshot(): SessionEngineStreamReplaySnapshot;
   getSessionConfigSnapshot(): SessionEngineConfigSnapshot;
   inspectRuntime?(runtime: RuntimeType): Promise<import('../../shared/types/runtime').RuntimeInspection | null>;

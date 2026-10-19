@@ -35,12 +35,17 @@ export function prepareContinuationAdmission(engine: SessionEngine, request: Des
       return reject('SESSION_CONTINUATION_STALE');
     }
     const live = engine.getLiveSessionState();
+    // Only explicitly acknowledged exact shell runs may outlive the stopped
+    // turn without blocking continuation; all other non-ambient work blocks.
+    // Runtimes without a classified snapshot keep the conservative gate.
+    const backgroundBlocksContinuation = live.backgroundWorkBlocksContinuation
+      ?? (live.backgroundWorkActive || live.hasBackgroundWork);
     // Builtin enqueue itself projects starting/running before promotion, while
     // the guarded user input remains invisible. At dispatch, the unchanged
     // canonical stopped turn proves this is still preparation, not a new turn.
     if ((entry && (engine.isBusy() || live.sessionState !== 'idle'))
       || (!entry && !['idle', 'starting', 'running'].includes(live.sessionState))
-      || live.waitingForUser || live.backgroundWorkActive || live.hasBackgroundWork
+      || live.waitingForUser || backgroundBlocksContinuation
       || engine.getQueueStatus().some(item => item.id !== request.queueId)
       || engine.getStreamReplaySnapshot().pendingInteractiveRequests.length > 0) {
       return reject('SESSION_CONTINUATION_BUSY');

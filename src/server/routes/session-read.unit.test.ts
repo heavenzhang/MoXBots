@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SessionEngineLiveState } from '../session-engine/types';
 
 const mocks = vi.hoisted(() => ({
   engine: {
     getBackgroundTaskDetail: vi.fn(),
+    acknowledgeBackgroundWork: vi.fn(),
     getExecutionTurnId: vi.fn(() => 'turn-1'),
     getRuntimeIdentity: vi.fn(() => ({ kind: 'builtin', runtime: 'builtin', sessionId: 'sid' })),
-    getLiveSessionState: vi.fn(() => ({ sessionState: 'idle', isBusy: false, hasBackgroundWork: false })),
+    getLiveSessionState: vi.fn<() => Partial<SessionEngineLiveState>>(() => ({ sessionState: 'idle', isBusy: false, hasBackgroundWork: false })),
     getSessionCompletionTerminal: vi.fn<() => Record<string, unknown> | null>(() => null),
     getLatestAssistantResult: vi.fn(() => ({ sessionId: 'sid', latestResult: 'latest answer' })),
     getLiveSessionOverlay: vi.fn<() => Record<string, unknown>>(() => ({ isActive: false })),
@@ -124,6 +126,7 @@ describe('handleSessionReadRoute', () => {
       sessionId: 'sid',
       sessionState: 'idle',
       isBusy: true,
+      waitingForUser: false,
       hasBackgroundWork: true,
       completionTerminal: {
         sessionId: 'sid',
@@ -137,6 +140,74 @@ describe('handleSessionReadRoute', () => {
       sessionId: 'sid',
       latestResult: 'latest answer',
     });
+  });
+
+  it('reports classified background work so the scheduler can resume past an acknowledged shell', async () => {
+    const shell = { taskId: 'shell', runId: 'run-1', taskType: 'local_bash', description: 'serve on 8093' };
+    mocks.engine.getLiveSessionState.mockReturnValue({
+      sessionState: 'idle',
+      isBusy: false,
+      hasBackgroundWork: true,
+      backgroundWorkBlocksContinuation: false,
+      backgroundWork: {
+        active: [shell],
+        blocking: [],
+        acknowledgeableShells: [shell],
+        acknowledged: [shell],
+        blocksContinuation: false,
+      },
+    });
+
+    const response = await handleSessionReadRoute(
+      '/api/session-state',
+      new Request('http://local/api/session-state'),
+      new URL('http://local/api/session-state'),
+    );
+
+    expect(await readJson(response as Response)).toMatchObject({
+      sessionState: 'idle',
+      isBusy: false,
+      waitingForUser: false,
+      hasBackgroundWork: true,
+      backgroundWorkBlocksContinuation: false,
+      backgroundWork: {
+        active: 1,
+        blocking: 0,
+        acknowledgeableShells: [{ taskId: 'shell', runId: 'run-1', description: 'serve on 8093' }],
+        acknowledged: ['shell'],
+      },
+    });
+  });
+
+  it('passes exact observed identities and revoke decisions to the owner', async () => {
+    const identity = { taskId: 'shell', runId: 'run-1', queryId: 'query-incarnation' };
+    const url = new URL('http://local/api/session/background-work/acknowledge');
+    mocks.engine.acknowledgeBackgroundWork.mockReturnValue({ acknowledged: [identity], rejected: [] });
+    for (const allow of [true, false]) {
+      const response = await handleSessionReadRoute(url.pathname, new Request(url, {
+        method: 'POST', body: JSON.stringify({ tasks: [identity], allow }),
+      }), url);
+      expect(await response?.json()).toMatchObject({ success: true, allow, acknowledged: [identity], rejected: [] });
+      expect(response?.headers.get('Cache-Control')).toBe('no-store');
+      expect(mocks.engine.acknowledgeBackgroundWork).toHaveBeenLastCalledWith([identity], allow);
+    }
+  });
+
+  it.each([
+    { taskIds: ['shell'] },
+    { tasks: [] , allow: true },
+    { tasks: [{ taskId: 'shell', runId: 'r' }], allow: true },
+    { tasks: [{ taskId: 'shell', runId: '', queryId: 'q' }], allow: true },
+    { tasks: [{ taskId: '../secret', runId: 'r', queryId: 'q' }], allow: true },
+    { tasks: [{ taskId: 'shell', runId: 'r', queryId: 'q' }] },
+  ])('rejects missing or malformed observed identities without acknowledging current work (%j)', async body => {
+    const url = new URL('http://local/api/session/background-work/acknowledge');
+    const response = await handleSessionReadRoute(url.pathname, new Request(url, {
+      method: 'POST', body: JSON.stringify(body),
+    }), url);
+    expect(response?.status).toBe(400);
+    expect(await response?.json()).toEqual({ success: false, errorCode: 'INVALID_TASK_IDENTITIES' });
+    expect(mocks.engine.acknowledgeBackgroundWork).not.toHaveBeenCalled();
   });
 
   it('registers a pending watch only when the target matches active engine identity', async () => {
