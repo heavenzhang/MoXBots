@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
     getLiveSessionOverlay: vi.fn<() => Record<string, unknown>>(() => ({ isActive: false })),
   },
   getSessionData: vi.fn(),
+  getSessionDisplayHistory: vi.fn(),
+  getSessionMetadata: vi.fn(() => ({ id: 'sid', title: 'Target' })),
   isHistoryVisibleSession: vi.fn(() => true),
   pendingSessionWatchCount: vi.fn(() => 1),
   registerPendingSessionWatch: vi.fn(watch => watch),
@@ -24,7 +26,8 @@ vi.mock('../session-engine', () => ({
 
 vi.mock('../SessionStore', () => ({
   getSessionData: mocks.getSessionData,
-  getSessionMetadata: vi.fn(() => ({ id: 'sid', title: 'Target' })),
+  getSessionDisplayHistory: mocks.getSessionDisplayHistory,
+  getSessionMetadata: mocks.getSessionMetadata,
   isHistoryVisibleSession: mocks.isHistoryVisibleSession,
 }));
 
@@ -55,6 +58,30 @@ describe('handleSessionReadRoute', () => {
     mocks.getSessionData.mockReturnValue(null);
     mocks.isHistoryVisibleSession.mockReturnValue(true);
     mocks.pendingSessionWatchCount.mockReturnValue(1);
+  });
+
+  it('reads a bounded display tail without loading or cloning the execution snapshot', async () => {
+    mocks.getSessionDisplayHistory.mockResolvedValue([{ id: 'last', role: 'assistant', content: 'full prose' }]);
+    const url = new URL('http://local/sessions/sid?view=history');
+    const response = await handleSessionReadRoute(url.pathname, new Request(url), url);
+    expect(await response?.json()).toEqual({ success: true, session: {
+      id: 'sid', messages: [{ id: 'last', role: 'assistant', content: 'full prose' }],
+    } });
+    expect(mocks.getSessionDisplayHistory).toHaveBeenCalledWith('sid', 20);
+    expect(mocks.getSessionData).not.toHaveBeenCalled();
+    expect(mocks.engine.getLiveSessionOverlay).not.toHaveBeenCalled();
+  });
+
+  it('does not read any transcript for metadata analytics and hides inaccessible history', async () => {
+    const url = new URL('http://local/sessions/sid?view=metadata');
+    const response = await handleSessionReadRoute(url.pathname, new Request(url), url);
+    expect((await response!.json()).session).toMatchObject({ id: 'sid', title: 'Target' });
+    expect(mocks.getSessionData).not.toHaveBeenCalled();
+    expect(mocks.getSessionDisplayHistory).not.toHaveBeenCalled();
+    mocks.isHistoryVisibleSession.mockReturnValue(false);
+    const hidden = new URL('http://local/sessions/sid?view=history');
+    expect((await handleSessionReadRoute(hidden.pathname, new Request(hidden), hidden))?.status).toBe(404);
+    expect(mocks.getSessionDisplayHistory).not.toHaveBeenCalled();
   });
 
   it('validates background task requests before asking the current engine', async () => {

@@ -1,0 +1,72 @@
+{
+  "cold": {
+    "readableBeforeConnection": true,
+    "openStreams": 1
+  },
+  "warm": {
+    "aId": "tab-1792425106035-2453yh",
+    "historyReadsBefore": 2,
+    "historyReadsAfter": 2,
+    "streamsBefore": 1,
+    "streamsAfterB": 2,
+    "scrollBefore": 10196,
+    "scrollAfter": 10196,
+    "draftPreserved": true
+  },
+  "responsive": {
+    "width": 800,
+    "overflow": false
+  },
+  "reads": [
+    {
+      "id": "cache-proof-a",
+      "live": false,
+      "limit": null,
+      "view": "metadata",
+      "at": 1792425106056
+    },
+    {
+      "id": "cache-proof-a",
+      "live": false,
+      "limit": null,
+      "view": "history",
+      "at": 1792425106057
+    },
+    {
+      "id": "cache-proof-a",
+      "live": true,
+      "limit": "80",
+      "view": null,
+      "at": 1792425108710
+    },
+    {
+      "id": "cache-proof-b",
+      "live": false,
+      "limit": null,
+      "view": "metadata",
+      "at": 1792425109521
+    },
+    {
+      "id": "cache-proof-b",
+      "live": false,
+      "limit": null,
+      "view": "history",
+      "at": 1792425109563
+    },
+    {
+      "id": "cache-proof-b",
+      "live": true,
+      "limit": "80",
+      "view": null,
+      "at": 1792425109741
+    },
+    {
+      "id": "cache-proof-a",
+      "live": false,
+      "limit": null,
+      "view": "metadata",
+      "at": 1792425109857
+    }
+  ],
+  "errors": []
+}
