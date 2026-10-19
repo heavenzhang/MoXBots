@@ -18,3 +18,5 @@ The replacement uses only Python3 standard-library framing inside this Unix test
 - [ ] Root independent review/cherry-pick and actual Ubuntu Rust suite. A same-head CI rerun may pass while this latent test-fixture race remains; rerun status is root-owned and not inferred here.
 
 External model calls0; model/token/cost telemetry unavailable. No push/merge/SSH/CI dispatch. Next: root reviews this isolated local commit, integrates through the normal path, and verifies the actual Ubuntu suite without rebuilding or claiming new P4 runtime behavior from a test-only change.
+
+Primary integration checkpoint: root personally reviewed all helper changes against the real52-byte PCM/control framing and original test boundary, then normally cherry-picked the local commit. Only the helper is inside the existing cfg(test)/cfg(unix) module; original assertions and production code remain. Final actual Ubuntu suite and whole requiredCI are recorded by PR137; no local pipe mechanism is relabeled as that CI pass.

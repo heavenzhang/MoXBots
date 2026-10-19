@@ -30,11 +30,11 @@ Historical exact-M run39130296587 failed missing registries/NETWORK_CATALOG_INVA
 
 ## Blockers and unknowns
 
-Candidate, supported-platform actual gates, combined CI, main and formal publication remain pending. No daily Mac/native UI claim. Production natural24h renewal is separately scheduled19Oct17:35 read-only.
+Candidate, supported-platform actual gates, combined CI, main and formal publication remain pending. No daily Mac/native UI claim. Production natural24h renewal was separately observed and accepted19Oct17:35 read-only; see auth-renewal-natural-20261019.json.
 
 ## Next step
 
-Current frozen product is P4 `7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca`, producer39223945533/R20261019083714-7e4bbdfaa693. Exact ZIP and strict consumer verification passed locally. Run same-P4 standard, lab natural renewal and true KVM reboot with the newly pinned harness; then required final CI, current-main integration and remote containment. Only after all gates may the owner append immutable public bytes, verify full normal-TLS transport and promote the stable pair. P2/P3 failed history is retained below; no daily Mac or existing101 binary change belongs to this installer lane.
+P4 frozen7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca and producer39223945533/R20261019083714-7e4bbdfaa693 passed full local verification plus same-artifact standard/renewal/trueKVM. Latest mainaaed9134 is integrated; its optional APNs change is not a Host binary/cloud929 deployment. FinalCI39228923139 exposed a timed speech test fixture that never consumed stdin; root independently reviewed its bounded protocol-correct test-only replacement, retaining production logic/timeouts and strict assertions. Push the combined checkpoint, pass required actual Ubuntu/all-platform CI and verify current remote main containment, then use the reviewed append/full anonymousGET/consumer/CRC/CAS publication. Do not rebuild frozen P4 for test-only changes or relabel failed candidates; original101 natural24h observation is already accepted separately.
 
 ## First exact-source candidate attempt
 
@@ -96,3 +96,7 @@ Root read all closed gate results, source/service/candidate pins and postboot re
 Mainaaed9134 is normally integrated, retaining the optional APNs environment change without putting it into frozen P4 Host bytes or redeploying cloud929. FinalCI39228923139 exposed an unchanged speech test helper that never consumes stdin and exits on a200ms timer; a purepipe experiment reproduces the resulting EPIPE mechanism with a delayed parent. Its exact CI failing write is not proven. A bounded test-only framed handshake fixture is under review; no production speech logic/assertion/timeout or Host artifact is weakened.
 
 The separately authorized17:35 production read-only observation passed original101's real24h renewal: same session/created/device, rotation0→1 and next expiry2026-10-20 17:11:17CST;12 identity/key/config/unit witnesses and existing Node/connector PID preserved, fresh Ready/aligned catalog. Evidence auth-renewal-natural-20261019.json. One-time101-host automation deleted; other automations and dailyMac untouched. This is the original installed connector plus cloud929, not P4 deployment on101.
+
+## Deterministic CI fixture correction
+
+Primary independently reviewed localda785156: only the single cfg(test)/cfg(unix) speech helper changes. It consumes actual Start/wholePCM before Ack and actual Flush/Finalize before transcript/Completed, retaining every production function, timeout and original Finished/stable-revision assertion. Linux's child-only4KB pipe makes actual consumption necessary. The purepipe mechanism reproduces old EPIPE and the actual generated new fixture passes three owner-descheduling replays; this does not identify the exact original CI failing write. No full local cargo, microphone/App/device, credentials or production operation was used. The new combined actual Ubuntu suite/all project CI remains mandatory before main/publication. Host Node/headless/shared network/installer runtime remains frozen; this cfg(test) helper is not a new P4 binary.
