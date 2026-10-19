@@ -46,9 +46,11 @@ Node24合并main2c2efd06后8文件295项unit/DOM/模拟SDK集成通过；typeche
 
 全量CI曾发现3个分层/mock回归，已保留失败证据并修复：纯策略移至src/server中性层，mock补真实owner接口，4文件188测试/typecheck/scopedlint/Server构建通过，追加只读复审无可行动问题。精确新head全量CI待完成。
 
+并发main6711028c（PR157移动目录修复，9成功/1条件skip）已审阅并正常合并，无桌面源码重叠或冲突；188项组合回归通过。新组合精确head CI和远端main仍须核实。用户已明确允许向唯一桌面publisher发送接纳请求并协调安装/验收；待CI/main通过后投递一次，仍不混改冻结候选。
+
 ## Blockers and unknowns
 
-正常PR/CI/远端main尚未交付；未准备本补丁的签名候选，未安装或做真实Provider/原生验收。已有唯一publisher的冻结候选不能修改。本任务限制不向其它既有线程发消息、不重启客户端；必要协调在独立准备完成后再明确请求。HRM生产仍由原业务/CI owner负责。
+正常PR/CI/远端main尚未交付；未准备本补丁的签名候选，未安装或做真实Provider/原生验收。已有唯一publisher的冻结候选不能修改。用户已明确允许对唯一桌面publisher进行接纳/候选/安装验收协调；其它既有线程禁令及不打断活动任务限制保留。HRM生产仍由原业务/CI owner负责。
 
 ## Next step
 

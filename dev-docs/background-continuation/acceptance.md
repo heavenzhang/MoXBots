@@ -14,6 +14,8 @@
 
 全量CI发现并保留3个失败：纯policy放置在SessionEngine目录导致builtin owner反向依赖；adapter mock漏新facade getter。已将纯策略和原样单测移到中性src/server目录，补齐mock为真实lifecycle API，未放宽断言。4文件188项相关回归、Node24 typecheck/scopedlint/Server构建通过；只读复审未发现可行动问题。最终远端精确head全量CI仍须复核。
 
+并发主干同步：PR157移动端catalog修复以9项CI成功、1条件skip合入main6711028c；主Agent审阅其10文件，改动在mobile目录及记录，不与桌面runtime源码重叠。已正常合并且保留双方计划，4文件188项组合回归通过；新组合精确head正常CI/main仍待验收。
+
 ## 接续与发布边界
 
 任务分支记录见 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。PR #158：https://github.com/heavenzhang/MoXBots/pull/158。公开PR/CI和远端refs是源码交付权威；未合main时不算主干交付。源码和单测不是运行生效，当前日常包与其它冻结候选不修改。本任务不建立第二条签名/发行流程，不重启/覆盖客户端，不停止或取消现有会话。
