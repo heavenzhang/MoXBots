@@ -16,6 +16,8 @@
 
 并发主干同步：PR157移动端catalog修复以9项CI成功、1条件skip合入main6711028c；主Agent审阅其10文件，改动在mobile目录及记录，不与桌面runtime源码重叠。已正常合并且保留双方计划，4文件188项组合回归通过；新组合精确head正常CI/main仍待验收。
 
+组合head580e的CI单元6451通过，但已有PermissionPrompt复制反馈DOM用例偶发未观察到copied。原d3全CI通过；失败日志保留。仅测试修订：详情Promise在act中结算，复制Promise改显式控制，保留完整命令/权限断言，并验证未完成无成功反馈、成功反馈及1999/2000ms边界。26项关联DOM和定向ESLint通过，只读复审无弱化问题；具体CI调度根因未确认，不修改权限或复制产品逻辑。新精确head正常CI仍待完成。
+
 ## 接续与发布边界
 
 任务分支记录见 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。PR #158：https://github.com/heavenzhang/MoXBots/pull/158。公开PR/CI和远端refs是源码交付权威；未合main时不算主干交付。源码和单测不是运行生效，当前日常包与其它冻结候选不修改。本任务不建立第二条签名/发行流程，不重启/覆盖客户端，不停止或取消现有会话。

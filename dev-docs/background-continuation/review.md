@@ -7,3 +7,5 @@
 执行配置：当前Codex主Agent串行实施；一个只读reviewer，工具请求gpt-6-luna/medium，未独立验证实际服务端模型或计费用量。未新增AIRouter或MoXBots模型调用、未修改其Provider/权限。独立拆分用于安全/界面状态审阅，未增加并发writer。
 
 CI后续修订另经同一reviewer只读复审：policy及测试原样迁到中性src/server，导入方向修正；mock委托真实lifecycle API，原断言未放宽。无可行动问题；未执行测试或App。
+
+组合CI后已有PermissionPrompt异步复制用例修订经同一reviewer只读复审：完整命令及权限断言保留，Promise/计时器行为验证加强，无可行动问题。挂载副作用时序竞态是合理解释，不能单凭源码确认特定CI调度根因；不修改产品逻辑。
