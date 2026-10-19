@@ -141,7 +141,9 @@ describe('durable inference waiting on the original Query lease', () => {
   it('does not replenish fast retries after rejoining an existing durable wait', async () => {
     const recovery = { ...hooks(async () => undefined), admit: vi.fn(async () => ({ delayMs: 0 })) };
     const execute = vi.fn(async () => transient());
-    expect((await makeController(recovery).run(request(), primary, execute, 'restored-budget')).status).toBe(409);
+    const response = await makeController(recovery).run(request(), primary, execute, 'restored-budget');
+    expect(response.status).toBe(503);
+    expect((await response.json()).error.code).toBe('automatic_replay_blocked');
     expect(execute).toHaveBeenCalledTimes(1);
     expect(recovery.wait.mock.calls[0][1].attempt).toBe(1);
   });
@@ -197,7 +199,7 @@ describe('durable inference waiting on the original Query lease', () => {
     });
     const execute = vi.fn(async () => transient());
     const response = await makeController(recovery).run(request(), primary, execute, 'failed-commit');
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(mode === 'undefined' ? 503 : 409);
     expect((await response.json()).error.code).toBe('automatic_replay_blocked');
     expect(execute).toHaveBeenCalledTimes(4);
     expect(recovery.blocked).toHaveBeenCalledTimes(mode === 'undefined' ? 0 : 1);

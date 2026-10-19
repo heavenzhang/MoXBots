@@ -83,7 +83,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     const ambiguous = !scope || this.options.canSwitch?.() === false;
     const fingerprint = requestKey ?? `unfingerprinted-${++this.sequence}`;
     const lease = this.guard.begin(scope, fingerprint, ambiguous);
-    if (!lease) return this.guard.rejectedResponse(scope, fingerprint, ambiguous) ?? replayBlocked();
+    if (!lease) return this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked();
     // Only root-owned recovery may change provider. Ordinary primary inference and
     // its bounded pre-delivery retries remain valid across a parent turn boundary.
     // A request admitted with ambiguous ownership cannot acquire a foreground root
@@ -224,7 +224,15 @@ export class ModelFailoverController implements BridgeModelFailover {
       if (!live()) { cancelResponse(response); return cancelled(); }
       if (!response.ok) {
         if (hasDurableRecovery) await blockRecovery('Model inference stopped before successful delivery');
-        if (durableStopped) { cancelResponse(response); return replayBlocked(); }
+        if (durableStopped) {
+          // A declined/exhausted durable owner must pause safely, but its known
+          // upstream cause must survive both this terminal and SDK repetition.
+          await lease.reject(response);
+          if (!queryLive()) return cancelled();
+          lease.block();
+          finish();
+          return this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked();
+        }
         return await lease.reject(response);
       }
       if (!response.body) {

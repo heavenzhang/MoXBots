@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { query, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { createBridgeHandler } from '../src/server/openai-bridge/handler';
+import { SessionModelRecovery } from '../src/server/builtin-session/model-recovery';
 import { ContextRecoveryController } from '../src/server/openai-bridge/context-recovery';
 import { ModelFailoverController } from '../src/server/openai-bridge/model-failover';
 
-const upstreamRejection = process.argv.includes('--upstream-rejection');
+const declinedRecovery = process.argv.includes('--declined-recovery');
+const upstreamRejection = declinedRecovery || process.argv.includes('--upstream-rejection');
 const streamFailure = process.argv.includes('--stream-failure');
 const stopDuringRetry = process.argv.includes('--stop-during-retry');
 let interruptSdk: (() => Promise<unknown>) | undefined;
@@ -83,7 +85,9 @@ const failover = new ModelFailoverController({ scope: () => 'native-root',
   // Product Stop marks its existing interrupt owner before awaiting SDK transport cancellation.
   canRetry: () => !stopFence,
   resolveBackup: () => upstreamRejection ? undefined : ({ providerId: 'backup', baseUrl: `${base}/backup`, apiProtocol: 'anthropic', model: 'backup-fixture', apiKey: 'fixture-backup' }),
-  onSwitch: () => { switches++; } });
+  onSwitch: () => { switches++; },
+  recovery: declinedRecovery ? new SessionModelRecovery({ read: () => undefined, current: () => undefined,
+    isLive: () => true, prepare: async () => {}, write: async () => true }) : undefined });
 const contextRecovery = upstreamRejection ? new ContextRecoveryController({ scope: () => 'fixture-root',
   isActive: () => true, backup: async () => join(scratch, 'unused-archive.json') }) : undefined;
 const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'primary',
@@ -157,7 +161,7 @@ try {
   }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

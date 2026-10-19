@@ -162,17 +162,18 @@ describe('Query request safety evidence', () => {
     const guard = new QueryRequestGuard();
     const lease = guard.begin('root', 'rejected', false)!;
     await lease.reject(Response.json({ error: { message: 'invalid API key' } }, { status: 401 }));
-    expect(guard.rejectedResponse('root', 'rejected', false)).toBeUndefined();
+    expect(guard.rejectedResponse('root', 'rejected')).toBeUndefined();
     lease.finish();
     expect(guard.begin('root', 'rejected', false)).toBeUndefined();
-    const saved = guard.rejectedResponse('root', 'rejected', false)!;
+    const saved = guard.rejectedResponse('root', 'rejected')!;
     expect(saved.status).toBe(401);
     expect(saved.headers.get('x-should-retry')).toBe('false');
     expect(await saved.text()).toContain('invalid API key');
-    expect(guard.rejectedResponse(undefined, 'rejected', true)).toBeUndefined();
-    expect(guard.rejectedResponse('other-root', 'rejected', false)).toBeUndefined();
+    expect(guard.rejectedResponse(undefined, 'rejected')).toBeUndefined();
+    expect(guard.rejectedResponse('other-root', 'rejected')).toBeUndefined();
     lease.block();
-    expect(guard.rejectedResponse('root', 'rejected', false)).toBeUndefined();
+    expect(guard.rejectedResponse('root', 'rejected')?.status).toBe(401);
+    expect(guard.begin('root', 'rejected', false)).toBeUndefined();
   });
 
   it('bounds rejection snapshots without evicting admission evidence or retaining unsafe responses', async () => {
@@ -181,19 +182,20 @@ describe('Query request safety evidence', () => {
       const lease = guard.begin('root', `unsafe-${status}`, false)!;
       await lease.reject(new Response('evidence', { status }));
       lease.finish();
-      expect(guard.rejectedResponse('root', `unsafe-${status}`, false)).toBeUndefined();
+      expect(guard.rejectedResponse('root', `unsafe-${status}`)).toBeUndefined();
     }
     const partial = guard.begin('root', 'partial', false)!;
     await partial.reject(new Response('incomplete', { status: 503, headers: { 'x-moxbots-recovery': 'blocked' } }));
     partial.finish();
-    expect(guard.rejectedResponse('root', 'partial', false)).toBeUndefined();
+    expect(guard.rejectedResponse('root', 'partial')?.status).toBe(503);
+    expect(guard.begin('root', 'partial', false)).toBeUndefined();
     for (let index = 0; index < 70; index++) {
       const lease = guard.begin('root', `failure-${index}`, false)!;
       await lease.reject(new Response('x'.repeat(16_384), { status: 503 }));
       lease.finish();
     }
-    expect(guard.rejectedResponse('root', 'failure-0', false)?.status).toBe(503);
-    expect(guard.rejectedResponse('root', 'failure-69', false)).toBeUndefined();
+    expect(guard.rejectedResponse('root', 'failure-0')?.status).toBe(503);
+    expect(guard.rejectedResponse('root', 'failure-69')).toBeUndefined();
     expect(guard.begin('root', 'failure-69', false)).toBeUndefined();
   });
 

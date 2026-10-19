@@ -19,11 +19,11 @@ export class QueryRequestGuard {
   }
 
   /** Return known rejection evidence only; this never grants another upstream call. */
-  rejectedResponse(scope: string | undefined, fingerprint: string, ambiguous: boolean): Response | undefined {
-    if (this.isBlocked(scope, ambiguous)) return undefined;
+  rejectedResponse(scope: string | undefined, fingerprint: string): Response | undefined {
     const row = this.requests.get(JSON.stringify([scope, fingerprint]));
     if (row?.inFlight || !row?.rejection) return undefined;
-    // Keep the original HTTP failure visible while preserving the previous
+    // Closed scopes may read their exact terminal evidence; begin still denies
+    // every new dispatch. Keep the original HTTP failure visible with its
     // safety terminal for Goal/Session owners. Returning a bare transient 503
     // here could let an outer scheduler redispatch the task after this Query's
     // inference budget was exhausted, despite never granting a new lease here.
@@ -52,11 +52,11 @@ export class QueryRequestGuard {
     return {
       finish: () => { row.inFlight = false; },
       reject: async response => {
-        // A delivered/partial stream, local safety error or unknown body is never
-        // replayable. Retain only complete HTTP rejection evidence. Keep the
-        // admission row even when this separate, bounded diagnostic budget fills.
+        // A delivered/partial stream or unknown body is never replayable.
+        // Retain complete HTTP terminal evidence, including a closed owner's error.
+        // Keep the admission row even when this separate, bounded diagnostic budget fills.
         if (response.ok || response.status === 499
-          || response.headers.get('x-moxbots-recovery') === 'blocked') return response;
+          || (response.status === 409 && response.headers.get('x-moxbots-recovery') === 'blocked')) return response;
         const body = await readBoundedErrorBody(response.body);
         const headers = Object.fromEntries(response.headers);
         // fetch decompression and body reconstruction invalidate wire lengths.

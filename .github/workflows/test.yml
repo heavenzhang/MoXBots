@@ -270,6 +270,7 @@ jobs:
           node --import tsx/esm scripts/verify-model-failover-loopback.ts --stream-failure
           node --import tsx/esm scripts/verify-model-failover-loopback.ts --stop-during-retry
           node --import tsx/esm scripts/verify-model-failover-loopback.ts --upstream-rejection
+          node --import tsx/esm scripts/verify-model-failover-loopback.ts --declined-recovery
       - name: Verify durable model waiting and same-history safe continuation with native SDK
         run: node --import tsx/esm scripts/verify-model-recovery-loopback.ts
       # Typecheck does not exercise esbuild/Vite bundling, raw imports, or

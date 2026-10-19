@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createBridgeHandler } from './handler';
 import { ContextRecoveryController } from './context-recovery';
 import { ModelFailoverController, type BridgeModelFailover } from './model-failover';
+import { SessionModelRecovery } from '../builtin-session/model-recovery';
 import { classifyContextTurnFailure } from '../utils/context-budget';
 import type { AnthropicRequest } from './types/anthropic';
 
@@ -63,13 +64,15 @@ afterEach(async () => {
 });
 
 describe('context recovery over the existing bridge handler', () => {
-  it.each([401, 409, 429, 503])('preserves HTTP %s when the native SDK repeats a rejected inference through both guards', async status => {
+  it.each([401, 409, 429, 503].flatMap(status => [false, true].map(declined => ({ status, declined }))))('preserves HTTP $status through both guards (durable owner declined=$declined)', async ({ status, declined }) => {
     const upstream = await fixture((_body, res) => json(res, { error: { type: 'api_error', message: 'fixture upstream rejection' } }, status));
     const diagnostics: string[] = [];
     const context = new ContextRecoveryController({ scope: () => 'same-root', isActive: () => true,
       backup: async () => '/private/archive/unused.json' });
     const failover = new ModelFailoverController({ scope: () => 'same-root', isActive: () => true,
-      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0],
+      recovery: declined ? new SessionModelRecovery({ read: () => undefined, current: () => undefined,
+        isLive: () => true, prepare: async () => {}, write: async () => true }) : undefined });
     const handler = createBridgeHandler({ logger: line => { diagnostics.push(line); }, getUpstreamConfig: () => ({ providerId: 'fixture-provider',
       apiProtocol: 'anthropic', baseUrl: upstream.baseUrl, apiKey: 'fixture', model: 'fixture-model',
       contextRecovery: context, modelFailover: failover }) });

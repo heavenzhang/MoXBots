@@ -470,7 +470,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     catch { return required('Request history cannot be safely fingerprinted.'); }
     const ambiguous = !currentState || this.options.canRecover?.() === false;
     const lease = this.requestGuard.begin(currentState?.scope, fingerprint, ambiguous);
-    if (!lease) return this.requestGuard.rejectedResponse(currentState?.scope, fingerprint, ambiguous)
+    if (!lease) return this.requestGuard.rejectedResponse(currentState?.scope, fingerprint)
       ?? required('This model request was already delivered, failed, or reached the Query safety limit. Automatic replay is blocked.');
     if (state.blocked || this.ledgerBlocked || state.recovering || state.inFlight.has(fingerprint) || state.delivered.has(fingerprint)
       || (state.recovered && this.requestGuard.inFlightCount > 1)) {

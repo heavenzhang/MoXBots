@@ -714,8 +714,8 @@ describe('model failover over real loopback HTTP', () => {
       expect(backup.requests).toHaveLength(0);
       expect(h.notices).toHaveLength(0);
       const replay = await h.handler(request());
-      expect(replay.status).toBe(409);
-      await replay.text();
+      expect(replay.status).toBe(503);
+      expect(await replay.json()).toMatchObject({ error: { code: 'automatic_replay_blocked' } });
       expect(primary.requests).toHaveLength(1);
     }, 5_000);
 
