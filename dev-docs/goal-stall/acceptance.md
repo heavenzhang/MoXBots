@@ -9,7 +9,7 @@
 ## 验证
 
 - 原始 main 版本复现两项失败：watchdog terminal observer 调用0次；turn_conflict 没有可见 agent-error。
-- 修复后 unit/DOM/integration 198/198，包含 watchdog、turn-lifecycle、Goal orchestrator、完整 builtin transcript。新增行为覆盖唯一结算、迟到 result、防止重放、保留已有输出、被拒绝输入不送SDK。
+- 同步 main 8e4c25928cb48b4a7417ea74c27512e566694655 后再次完整复验，unit/DOM/integration 198/198，包含 watchdog、turn-lifecycle、Goal orchestrator、完整 builtin transcript。新增行为覆盖唯一结算、迟到 result、防止重放、保留已有输出、被拒绝输入不送SDK。
 - TypeScript 与改动文件 ESLint 通过；diff whitespace 通过。
 - 实际 Chromium 渲染原 GoalStatusBar：1280和390宽度均显示恢复原因、继续与取消回调各1、无横向溢出或pageerror。主 Agent 自验；没有独立审阅、原生客户端或真实 Provider 验收。
 - UI证据：evidence/ui-results.json、paused-1280.png、paused-390.png。
