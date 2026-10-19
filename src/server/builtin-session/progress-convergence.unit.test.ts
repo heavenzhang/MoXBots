@@ -291,6 +291,44 @@ describe('scoped prohibitions keep execution convergence active', () => {
     expect(hints[3]).toContain('客户端进展检查');
     expect(tracker.snapshot().readOnlyTurn).toBe(false);
   });
+
+  it.each([
+    ['English read-only replica attribute', 'Fix the query router so read-only replicas receive traffic.'],
+    ['English read-only flag attribute', 'Fix the read-only flag handling in the editor.'],
+    ['Chinese read-only replica attribute', '修复只读副本同步延迟的问题。'],
+    ['read-only directory as an environment fact', '该目录只读，请修复写入逻辑。'],
+    ['converting a directory to read-only', '把 uploads 目录改成只读，再修复上传逻辑。'],
+  ])('does not treat %s as a read-only turn', (_label, turnText) => {
+    const { tracker, hints } = runDeclaredStage(turnText);
+    expect(hints[3], turnText).toContain('客户端进展检查');
+    expect(tracker.snapshot().readOnlyTurn, turnText).toBe(false);
+  });
+
+  it.each([
+    ['a production path qualifier', 'do not modify any files in production/.'],
+    ['a code-path qualifier', 'do not modify the code path that writes to production.'],
+    ['an environment qualifier', "don't change anything in production."],
+    ['a Chinese containment qualifier', '不要修改代码里的生产环境配置。'],
+  ])('treats a generic object narrowed by %s as scoped', (_label, turnText) => {
+    const { tracker, hints } = runDeclaredStage(turnText);
+    expect(hints[3], turnText).toContain('客户端进展检查');
+    expect(tracker.snapshot().readOnlyTurn, turnText).toBe(false);
+  });
+
+  it.each([
+    ['English quoted object', 'Fix the importer; do not modify "production data".'],
+    ['Chinese quoted object', '修复导入器，不要修改「生产数据」。'],
+  ])('keeps a quoted prohibition object scoped (%s)', (_label, turnText) => {
+    const { tracker, hints } = runDeclaredStage(turnText);
+    expect(hints[3], turnText).toContain('客户端进展检查');
+    expect(tracker.snapshot()).toMatchObject({ readOnlyTurn: false, executionIntent: true });
+  });
+
+  it('keeps 不得不修改 ("have to modify") as an execution request', () => {
+    const { tracker, hints } = runDeclaredStage('不得不修改代码。');
+    expect(hints[3]).toContain('客户端进展检查');
+    expect(tracker.snapshot()).toMatchObject({ readOnlyTurn: false, executionIntent: true });
+  });
 });
 
 describe('whole-turn read-only intent stays exempt', () => {
@@ -310,6 +348,12 @@ describe('whole-turn read-only intent stays exempt', () => {
     ['English code prohibition', 'Do not modify code; only investigate the root cause.'],
     ['English plan-only request', 'Just analyze the module and give me a plan; do not modify the code.'],
     ['deferred edit with a fix request in the text', '先不要修改代码，把修复方案发给我。'],
+    ['named central target', '不得修改接口。'],
+    ['English codebase', 'Do not modify the codebase.'],
+    ['named business-logic target', '不要修改业务逻辑。'],
+    ['pronoun object', '不要修改它。'],
+    ['clause-initial bare prohibition only', '不修改订单模块，先看看支付模块的日志。'],
+    ['relative clause without a data-flow role', 'Do not modify the code that we discussed.'],
   ])('never nudges for %s', (_label, turnText) => {
     const { tracker, hints } = runDeclaredStage(turnText);
 

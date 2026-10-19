@@ -155,6 +155,10 @@ const QUOTED_OR_CODE_SPAN_RE =
  */
 const ZH_PROHIBITION_SOURCE = [
   '(?:请?勿|不要|禁止|不得)\\s*(?:再|去|直接|随意|擅自|手动)?\\s*(?:修改|改动|改造|改进|改善|改变|编辑|变更|动手|改|动)',
+  // Bare "不修改" is directive only at a clause start ("不修改订单模块，只修改
+  // 支付模块"). The same words mid-clause are often descriptive ("重复读取但不
+  // 改代码的问题"), so they do not form a prohibition there.
+  '(?:^|[，。；：、！？,.;:!?\\s]|暂时|暂|先)\\s*不\\s*(?:再|去|直接|随意|擅自|手动)?\\s*(?:修改|改动|改造|改进|改善|改变|编辑|变更|动手|改|动)',
   // 别 is only a directive after a boundary or an intensifier; otherwise it is
   // part of an ordinary word such as 区别/类别.
   '(?:^|[，。；：、！？,.;:!?\\s]|千万|可)\\s*别\\s*(?:再|去|直接|随意|擅自|手动)?\\s*(?:修改|改动|改造|改进|改善|改变|编辑|变更|动手|改|动)',
@@ -179,11 +183,25 @@ const CLAUSE_BOUNDARY_RE =
 const ZH_GENERIC_OBJECT_RE =
   /^(?:该|此|本|这(?:个|些)?|那(?:个|些)?|任何|所有|全部|现有|当前|整个|项目(?:里|中)?的?|仓库(?:里|中)?的?)?\s*(?:的)?\s*(?:代码|源码|源代码|代码库|代码文件|文件|文件内容|实现|逻辑)/;
 const EN_GENERIC_OBJECT_RE =
-  /^(?:any\s+|all\s+|the\s+|this\s+|that\s+|these\s+|those\s+|existing\s+|current\s+)*(?:code|source\s+code|files?|file\s+content|implementation|logic|project|repo(?:sitory)?|anything)\b/i;
+  /^(?:any\s+|all\s+|the\s+|this\s+|that\s+|these\s+|those\s+|existing\s+|current\s+)*(?:code|code\s*base|source\s+code|files?|file\s+content|implementation|logic|project|repo(?:sitory)?|anything)\b/i;
 
 /** Explicitly partial scopes: "other modules", "files outside src", "except X". */
 const SCOPED_OBJECT_RE =
   /(?:其他|其它|别的|另外|之外|以外|除了|而不是)|\b(?:other|others|else|except|excluding|outside|instead|rather\s+than)\b/i;
+
+/**
+ * A generic head with a qualifier is still a scoped target: "any files in
+ * production/" and "the code path that writes to production" do not forbid
+ * editing the project, only the named area. "代码里的生产环境配置" likewise.
+ */
+const SCOPED_QUALIFIER_RE = new RegExp([
+  '(?:里|中|内)的|之(?:中|内|外)',
+  '\\b(?:in|inside|under|within|outside|except|other\\s+than|containing)\\b',
+  // A relative clause only narrows the object when it names a data-flow role:
+  // "the code path that writes to production". "The code that we discussed"
+  // is still the whole code target.
+  '\\b(?:that|which)\\s+(?:\\w+\\s+){0,3}(?:writes?|reads?|uses?|touches?|handles?|serves?|feeds?|imports?|exports?|targets?|references?|accesses?|modifies?|affects?)\\b',
+].join('|'), 'i');
 
 /** "不要动手改代码" — the object is another edit verb, so nothing is scoped. */
 const ZH_EDIT_VERB_OBJECT_RE =
@@ -219,25 +237,64 @@ function objectSegment(tail: string): ObjectSegment {
   };
 }
 
+/**
+ * Keep a placeholder rather than deleting the span: in `do not modify
+ * "production data"` the quoted text is the object, and an empty object would
+ * turn a scoped constraint into a whole-turn prohibition.
+ */
 function stripQuotedAndCode(text: string): string {
-  return text.replace(QUOTED_OR_CODE_SPAN_RE, ' ');
+  return text.replace(QUOTED_OR_CODE_SPAN_RE, ' quoted ');
 }
 
 /**
- * "只读" that describes an object's attribute ("这个文件是只读的", "设为只读")
- * is an environment fact, not the task type. A bare "只读分析" or "read-only
- * research" is the task type.
+ * "只读" that describes an object's attribute ("这个文件是只读的", "设为只读",
+ * "只读副本", "read-only replicas") is an environment fact, not the task type.
+ * A bare "只读分析" or "read-only research" is the task type.
  */
+const READ_ONLY_ATTRIBUTE_OBJECT_SOURCE = [
+  '文件|目录|属性|权限|挂载|磁盘|卷|副本|实例|节点|数据库|表|字段|列',
+  '连接|会话|事务|账号|用户|标志|开关|端口|配置|模式|镜像|快照|视图|接口',
+  '缓存|日志|访问|角色|集群|桶|存储',
+].join('|');
+const READ_ONLY_ATTRIBUTE_OBJECT_RE = new RegExp(
+  `^\\s*(?:的\\s*)?(?:${READ_ONLY_ATTRIBUTE_OBJECT_SOURCE})`,
+);
+// "设为只读" and "标记为只读" are attribute conversions regardless of subject;
+// a bare "是/为只读" is only an attribute when the subject is an object
+// ("这个配置文件是只读的"), not when it is the task itself ("任务是只读的").
+const READ_ONLY_ATTRIBUTE_BEFORE_RE = new RegExp([
+  '(?:设为|设成|设置为|设置成|改成|调成|调整成|变成|成为|改为)\\s*$',
+  `(?:${READ_ONLY_ATTRIBUTE_OBJECT_SOURCE})\\s*(?:是|为)?\\s*$`,
+].join('|'));
+
+const EN_READ_ONLY_ATTRIBUTE_OBJECT_SOURCE = [
+  'files?|director(?:y|ies)|mounts?|disks?|volumes?|replicas?|instances?|nodes?',
+  'databases?|tables?|fields?|columns?|connections?|sessions?|transactions?',
+  'accounts?|users?|flags?|switches?|ports?|config(?:uration)?|modes?',
+  'images?|snapshots?|views?|interfaces?|caches?|logs?|access|roles?',
+  'clusters?|buckets?|storage|permissions?|attributes?|properties|endpoints?',
+].join('|');
+const EN_READ_ONLY_ATTRIBUTE_OBJECT_RE = new RegExp(
+  `^\\s*(?:${EN_READ_ONLY_ATTRIBUTE_OBJECT_SOURCE})\\b`,
+  'i',
+);
+const EN_READ_ONLY_ATTRIBUTE_BEFORE_RE = new RegExp([
+  `(?:${EN_READ_ONLY_ATTRIBUTE_OBJECT_SOURCE})\\s+(?:is|are)\\s*$`,
+  '(?:set\\s+to|marked\\s+as|made|becomes?|turned)\\s*$',
+].join('|'), 'i');
+
 function hasWholeTurnReadOnlyMarker(text: string): boolean {
   const re = new RegExp(READ_ONLY_MARKER_SOURCE, 'gi');
   for (const match of text.matchAll(re)) {
     const index = match.index ?? 0;
     const end = index + match[0].length;
-    const before = text.slice(Math.max(0, index - 6), index);
-    const after = text.slice(end, end + 10);
+    const before = text.slice(Math.max(0, index - 32), index);
+    const after = text.slice(end, end + 32);
     if (
-      /(?:设为|设成|设置为|变成|成为|改为|是|为)\s*$/.test(before)
-      || /^\s*(?:的|文件|目录|属性|权限|挂载|磁盘|卷)/.test(after)
+      READ_ONLY_ATTRIBUTE_BEFORE_RE.test(before)
+      || EN_READ_ONLY_ATTRIBUTE_BEFORE_RE.test(before)
+      || READ_ONLY_ATTRIBUTE_OBJECT_RE.test(after)
+      || EN_READ_ONLY_ATTRIBUTE_OBJECT_RE.test(after)
     ) {
       continue;
     }
@@ -246,15 +303,21 @@ function hasWholeTurnReadOnlyMarker(text: string): boolean {
   return false;
 }
 
-/** True when at least one prohibition has no object or only a generic code one. */
-function hasWholeTurnProhibition(text: string): boolean {
+/**
+ * True when a prohibition covers the whole turn. A named object is scoped only
+ * when the turn separately authorizes an edit; on its own ("不得修改接口。",
+ * "不要修改它。") a prohibition with no execution request is still read-only.
+ */
+function hasWholeTurnProhibition(text: string, executionAuthorized: boolean): boolean {
   const re = new RegExp(PROHIBITION_SOURCE, 'gi');
   for (const match of text.matchAll(re)) {
     const object = objectSegment(text.slice((match.index ?? 0) + match[0].length)).text;
     if (!object) return true; // "不要修改。" — nothing scoped
     if (SCOPED_OBJECT_RE.test(object)) continue; // "不要修改其他模块"
+    if (SCOPED_QUALIFIER_RE.test(object)) continue; // "任何文件 in production/"
     if (ZH_EDIT_VERB_OBJECT_RE.test(object)) return true; // "不要动手改代码"
     if (ZH_GENERIC_OBJECT_RE.test(object) || EN_GENERIC_OBJECT_RE.test(object)) return true;
+    if (!executionAuthorized) return true; // "不得修改接口。" — no other edit requested
   }
   return false;
 }
@@ -574,11 +637,13 @@ export class ProgressConvergenceTracker {
     // directives: quoted/code content is discussion material, and prohibitions
     // are judged by their object.
     const directive = stripQuotedAndCode(turnText);
-    const hardReadOnly = hasWholeTurnReadOnlyMarker(directive)
-      || ANALYSIS_ONLY_RE.test(directive)
-      || hasWholeTurnProhibition(directive);
+    // Execution is computed first: a named prohibition object is scoped only
+    // when the rest of the turn actually authorizes an edit.
     const taskText = stripProhibitionClauses(directive);
     const execution = EXECUTION_INTENT_RE.test(taskText);
+    const hardReadOnly = hasWholeTurnReadOnlyMarker(directive)
+      || ANALYSIS_ONLY_RE.test(directive)
+      || hasWholeTurnProhibition(directive, execution);
     const researchOnly = RESEARCH_ONLY_RE.test(taskText) && !execution;
     this.readOnlyTurn = hardReadOnly || researchOnly;
     this.executionIntent = execution && !this.readOnlyTurn;

@@ -17,9 +17,22 @@
 - [x] 整轮只读（不修改代码、只读分析、仅给方案、任何文件禁令）保持豁免。
 - [x] 引号/行内代码/围栏代码中的否定句不作为任务类型。
 - [x] 助手阶段表态不能突破用户只读范围。
-- [x] 原 13 项单测保留，新增回归覆盖缺陷复现与反例；30/30 通过。
-- [x] `tsc --noEmit`、改动文件 ESLint 通过。
+- [x] 原 13 项单测保留，新增回归覆盖缺陷复现与反例；复核补充后 48/48 通过。
+- [x] `tsc --noEmit`、改动文件 ESLint 通过；`builtin-session` 9 个文件 188/188 通过。
 - [x] 仅改 `progress-convergence.ts` 与其单测，未触碰并发任务文件。
+
+## Independent review follow-up
+
+首轮合入后复核确认 6 项边界问题，并已追加修复：
+
+1. `read-only replicas/flag`、`只读副本`、`该目录只读`、`改成只读` 被误当任务类型。
+2. 带限定语的泛化对象（`any files in production/`、`the code path that writes to production`、`代码里的生产环境配置`）被误判整轮只读。
+3. 引号对象被删空，`do not modify "production data"` 退化为整轮只读。
+4. `改成只读` 未在属性转换列表。
+5. 具名禁令（`不得修改接口`、`Do not modify the codebase`、`不要修改业务逻辑`、`不要修改它`）回归为可提示。
+6. 模块例外用例未真正走到裸 `不修改` 解析。
+
+复核另确认无 `/g` 正则状态污染、无灾难性回溯、无偏移计算错误；`agent-session.ts`、409/408 未触碰。
 
 ## Scope / non-goals
 
