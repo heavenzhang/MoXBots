@@ -25,6 +25,57 @@ pub(crate) fn network_error_code(error: &reqwest::Error, fallback: &'static str)
     }
 }
 
+/// Typed marker supplied by the headless OS resolver. It carries no hostname
+/// or OS error text and keeps DNS distinct from an unknown/TLS connect failure.
+#[derive(Debug)]
+pub(crate) struct DnsUnavailable;
+impl std::fmt::Display for DnsUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DNS unavailable")
+    }
+}
+impl std::error::Error for DnsUnavailable {}
+
+/// A connect error alone is insufficient: reqwest also uses it for TLS errors.
+/// Inspect typed causes only; never log or match raw error/URL strings.
+pub(crate) fn recoverable_transport(error: &reqwest::Error) -> bool {
+    use std::error::Error;
+    let mut cause: Option<&(dyn Error + 'static)> = Some(error);
+    let mut availability = error.is_timeout();
+    while let Some(current) = cause {
+        if current.is::<rustls::Error>() {
+            return false;
+        }
+        if current.is::<DnsUnavailable>() {
+            availability = true;
+        }
+        if error.is_request()
+            && current
+                .downcast_ref::<hyper::Error>()
+                .is_some_and(hyper::Error::is_incomplete_message)
+        {
+            // A connection closed before HTTP response headers. Body/schema
+            // errors remain outside this transport-only recovery decision.
+            availability = true;
+        }
+        if let Some(io) = current.downcast_ref::<std::io::Error>() {
+            availability |= matches!(
+                io.kind(),
+                std::io::ErrorKind::ConnectionRefused
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+                    | std::io::ErrorKind::NotConnected
+                    | std::io::ErrorKind::TimedOut
+                    | std::io::ErrorKind::NetworkDown
+                    | std::io::ErrorKind::NetworkUnreachable
+                    | std::io::ErrorKind::HostUnreachable
+            );
+        }
+        cause = current.source();
+    }
+    availability
+}
+
 pub(crate) fn safe_request_id(value: Option<&str>) -> Option<&str> {
     value.filter(|value| {
         !value.is_empty()
@@ -222,6 +273,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(!error.is_timeout());
+        assert!(recoverable_transport(&error));
         assert_eq!(
             network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
             "OWNED_ACCOUNT_UNAVAILABLE"
@@ -242,5 +294,48 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(error_category(&error), "request");
+        assert!(!recoverable_transport(&error));
+    }
+
+    #[tokio::test]
+    async fn typed_dns_failure_is_recoverable_without_matching_os_text() {
+        struct Unavailable;
+        impl reqwest::dns::Resolve for Unavailable {
+            fn resolve(&self, _: reqwest::dns::Name) -> reqwest::dns::Resolving {
+                Box::pin(async {
+                    Err(Box::new(DnsUnavailable) as Box<dyn std::error::Error + Send + Sync>)
+                })
+            }
+        }
+        #[allow(clippy::disallowed_methods)]
+        let error = reqwest::Client::builder()
+            .no_proxy()
+            .dns_resolver(std::sync::Arc::new(Unavailable))
+            .build()
+            .unwrap()
+            .get("https://fixture.invalid/")
+            .send()
+            .await
+            .unwrap_err();
+        assert!(error.is_connect());
+        assert!(recoverable_transport(&error));
+    }
+
+    #[tokio::test]
+    async fn unknown_http_protocol_failure_is_not_transport_recovery() {
+        use tokio::io::AsyncWriteExt;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = async {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            socket.write_all(b"INVALID PROTOCOL\r\n\r\n").await.unwrap();
+        };
+        let request = crate::local_http::builder()
+            .build()
+            .unwrap()
+            .get(format!("http://{address}/fixture"))
+            .send();
+        let (_, result) = tokio::join!(server, request);
+        assert!(!recoverable_transport(&result.unwrap_err()));
     }
 }

@@ -320,6 +320,21 @@ impl Connection {
     pub(crate) async fn recover_pending_renewal(&self) -> Result<(), NetworkError> {
         self.recover_pending_for(None).await.map(|_| ())
     }
+    pub(crate) async fn recover_run_renewal(&self, binding: &str) -> Result<(), NetworkError> {
+        let (state, _) = self.owner.read()?;
+        let account = state
+            .account
+            .as_ref()
+            .ok_or_else(|| NetworkError::new("OWNED_REAUTH_REQUIRED"))?;
+        if account.binding != binding {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
+        // Fence before recovery as well as after it. A replacement login's
+        // pending candidate must not be inspected/adopted by the waiting run.
+        self.recover_pending_for(Some((binding, &account.token)))
+            .await
+            .map(|_| ())
+    }
     pub(crate) async fn recover_expired_snapshot(
         &self,
         captured: &NetworkAccountSession,

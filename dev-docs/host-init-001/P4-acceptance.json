@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "checkpoint": "P4-product-and-isolated-acceptance-before-final-main-publication",
+  "sourceCommit": "7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca",
+  "releaseId": "20261019083714-7e4bbdfaa693",
+  "producerRunId": 39223945533,
+  "candidateArtifactId": 12172139712,
+  "candidateZipBytes": 171580390,
+  "candidateZipSha256": "4fab3b4c4d32df0980b68d7b6a6da66c14073aaaa5b13ceaf8a4df140259bbf1",
+  "localFullConsumerPassed": true,
+  "localConsumerSha256": "c60f0eaeee71da5666d7ce6d5917c9f8da79c6bc1e0c17b5d0453e401d2e0c86",
+  "gates": {
+    "standardBrowser": {
+      "passed": true,
+      "runId": 39225566407,
+      "harnessCommit": "b5bb22351dfa7198b9e2e8d59e17fb90d5b563bb",
+      "summarySha256": "6e491cf681b7876e9364e951fd45e696882f8b836c2e1f13254566cb5749a68b",
+      "gateCount": 23,
+      "cleanupCompleted": true,
+      "candidateArtifactId": "12172139712"
+    },
+    "naturalRenewal": {
+      "passed": true,
+      "runId": 39226095343,
+      "harnessCommit": "b5bb22351dfa7198b9e2e8d59e17fb90d5b563bb",
+      "summarySha256": "e516a28107c8a0bc330be13b20181617cb57236acdc3efae9c3a81a4b4dbc4dc",
+      "gateCount": 25,
+      "cleanupCompleted": true,
+      "candidateArtifactId": "12172139712"
+    },
+    "trueVmReboot": {
+      "passed": true,
+      "runId": 39226946194,
+      "harnessCommit": "b5bb22351dfa7198b9e2e8d59e17fb90d5b563bb",
+      "summarySha256": "dc667d1b3cdeae81ad52b60e6c9c3c1d489bbb5d86af4e447649ed439312e539",
+      "gateCount": 28,
+      "cleanupCompleted": true,
+      "candidateArtifactId": "12172139712",
+      "newBootIdObserved": true,
+      "readyAfterProbeSeconds": 4.35
+    }
+  },
+  "publicTransportAcceptedAtThisCheckpoint": false,
+  "production24HourRenewalProvenByTheseLabRuns": false,
+  "dailyMacOperated": false,
+  "modelOrBusinessTaskInvoked": false,
+  "formalDeliveryReceipt": "https://github.com/heavenzhang/MoXBots/pull/137"
+}

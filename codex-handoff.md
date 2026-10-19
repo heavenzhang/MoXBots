@@ -1,5 +1,15 @@
 # Codex Handoff
 
+## Current Host takeover checkpoint — 2026-10-19
+
+Human transferred source integration and publication to01a12b99-7b38-78b1-831f-9c60257d386a; original01a13320 explicitly handed back and its dirty worktree is preserved. Current branchcodex/host-init-delivery-20261018/PR137. P4 frozen source7e4bbdfa/R20261019083714-7e4bbdfaa693 passed complete local artifact verification and same-source standard39225566407, natural lab renewal39226095343 and trueKVM39226946194; same identity/ciphertext, actual new bootID and Ready4.35s. P4-acceptance.json closes exact evidence hashes. Follow root task and private output/host-publication-20261018/execution-status.json for final current-main CI, remote containment and append/fullGET/CAS delivery. No dailyMac/101 binary change in this lane. The original owner paragraphs below are historical. Separate cloud929 native login production is accepted; physicalphone/natural24h observation remain separately tracked.
+
+## MOXBOTS-HOST-INIT-001（2026-10-18，当前首次安装修复）
+
+用户明确要求修复全新 Host 初始化，完整验收后合 main，再交统一部署聊天；不动日常 Mac。独立任务分支 `codex/host-init-001-20261018`，base main798f3a9c，记录 `.agent-sync/tasks/codex-host-init-001-20261018-089ddeb0.md`。本聊天01a13320为唯一源码/集成 owner，复用01a12b99协调的单一 `codex/host-registry-bootstrap-20261018` 实现 worker；01a12b99继续独立实际 Linux/browser 验收及后续 `/host` 发布，双方不双写。本任务不修改 backend/101 或日常 Mac。
+
+旧dcf源码已合主干且云/101恢复成功，但真实全新Ubuntu/Dex浏览器流程发现缺少config/projects权威文件，随后NETWORK_CATALOG_INVALID；旧M不能视为新装验收成功。其不可变制品保留、公开stable unavailable。修复须在真实首次创建证据下初始化并支持有界中断恢复，已有完整数据保全，部分/损坏/已建立后丢失必须拒绝自动重置。新源码/制品走独立fresh/repeat/renew/reboot与CI门禁，完整通过前不合修复main或正式开放入口。主Agent已独立复跑原目录7项回归通过；这不是修复验收。
+
 ## MOXBOTS-HOST-ONBOARD-001（2026-10-18，当前源码任务）
 
 权威仓库https://github.com/heavenzhang/MoXBots.git，任务分支codex/host-onboard-001-20261018、PR119。Ubuntu24.04/x86_64一键安装、浏览器授权后自动入网与原设备有效会话令牌轮换已实现；installer100/UI26/Host191/service166（5既有ignored）及严格Clippy通过；真实设备PoP的完整恢复proof发现并修复SPKI格式错误，已获非实现者复审。代码冻结8cdeac561；最终联合CI/main回执以PR119检查/合并及发布交接为准。具体当前事实以任务`.agent-sync/tasks/codex-host-onboard-001-20261018-b8d67c5d.md`和`dev-docs/host-onboard-001/acceptance.md`为准，勿将下方历史2026-10-14状态当本次版本。

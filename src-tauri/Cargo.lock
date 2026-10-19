@@ -4594,6 +4594,7 @@ dependencies = [
  "futures-util",
  "fuzzy-matcher",
  "get-selected-text",
+ "hyper",
  "image",
  "jsonwebtoken",
  "junction",

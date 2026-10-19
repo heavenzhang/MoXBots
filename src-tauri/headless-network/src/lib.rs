@@ -27,10 +27,28 @@ mod local_http;
 mod network_diagnostics;
 mod status;
 pub(crate) mod proxy_config {
+    struct OsResolver;
+    impl reqwest::dns::Resolve for OsResolver {
+        fn resolve(&self, name: reqwest::dns::Name) -> reqwest::dns::Resolving {
+            let host = name.as_str().to_owned();
+            Box::pin(async move {
+                let addresses =
+                    tokio::net::lookup_host((host.as_str(), 0))
+                        .await
+                        .map_err(|_| {
+                            Box::new(crate::network_diagnostics::DnsUnavailable)
+                                as Box<dyn std::error::Error + Send + Sync>
+                        })?;
+                Ok(Box::new(addresses.collect::<Vec<_>>().into_iter()) as reqwest::dns::Addrs)
+            })
+        }
+    }
     pub fn build_client_with_proxy(
         builder: reqwest::ClientBuilder,
     ) -> Result<reqwest::Client, reqwest::Error> {
-        builder.build()
+        builder
+            .dns_resolver(std::sync::Arc::new(OsResolver))
+            .build()
     }
 }
 // The original diagnostic helper has already redacted every dynamic component.
