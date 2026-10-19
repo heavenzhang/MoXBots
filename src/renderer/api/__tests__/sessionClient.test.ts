@@ -157,7 +157,7 @@ describe('display-only Session history preview', () => {
         await expect(getSessionHistoryPreview('history/read', signal)).resolves.toEqual({
             id: 'history/read', messages: [{ id: 'row', role: 'assistant', content: 'Persisted text' }],
         });
-        expect(mocks.apiFetch).toHaveBeenLastCalledWith('/sessions/history%2Fread?limit=80', { signal });
+        expect(mocks.apiFetch).toHaveBeenLastCalledWith('/sessions/history%2Fread?view=history', { signal });
     });
 
     it('rejects a mismatched Session response rather than showing another chat', async () => {

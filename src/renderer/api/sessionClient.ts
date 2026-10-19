@@ -314,7 +314,7 @@ export async function getSessionHistoryPreview(sessionId: string, signal: AbortS
     id: string;
     messages: SessionMessage[];
 } | null> {
-    const response = await apiFetch(`/sessions/${encodeURIComponent(sessionId)}?limit=80`, { signal });
+    const response = await apiFetch(`/sessions/${encodeURIComponent(sessionId)}?view=history`, { signal });
     if (!response.ok) return null;
     const result = await response.json() as { success: boolean; session?: {
         id: string;

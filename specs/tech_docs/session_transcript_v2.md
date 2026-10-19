@@ -24,6 +24,8 @@ Rust 在 metadata 尚未发布的窗口，沿 active 或 recovering SessionSidec
 - 工具 JSON 输入以 `inputJson` + `inputComplete` 表达，旧 wire 的 `input` 在读取时派生。结果/输入大字符串分块入日志；媒体字节仍走既有附件管线。
 - 列表 stats 从 canonical message 的角色与 usage 标量派生，预览沿用最后可见用户 query 的既有语义；不序列化 assistant 工具正文计算统计。Turn 的 root user、状态、usage 与 message 分开，同一 turn 多个展示段不重复计费。native success/Stop/error 输出读当前 projection，不读旧磁盘结果。
 
+Global `/sessions/:id?view=history` 是纯展示读取，仅返回 id 和最新 20 条消息，不读取 Runtime overlay，也不携带 revision、队列或交互授权。V1 JSONL 从文件尾部异步读取，旧 JSON 保留只读兼容；V2 复用 canonical fold 后截取末尾，不倒读操作日志、不激活 writer、不迁移文件。`view=metadata` 仅供打开历史的 runtime 统计归因，不读取正文。Tab 的正式 REST/SSE 恢复仍保留原 80 条及原执行 authority，较早历史分页也维持 80 条；预览不能替代 To Do 等依赖已加载消息的正式投影。
+
 每行 batch 包含连续 revision、唯一 batch ID、操作及原始 batch JSON 字节的 SHA-256。替换文件使用 header 中的 generation 与完整 baseline 结束标记。Node codec 和 Rust `session_transcript.rs` 共享 `src/shared/fixtures/session-transcript-v2.json`。冷读只 fold 有效连续前缀，不跳过损坏中间行；未完成 baseline 不可当成会话历史。
 
 Node 冷读先校验原始 batch 字节与操作 schema，再仅在该 batch 的内存副本中合并同目标、offset 连续的相邻 `text-append`（单条至多 32 Ki UTF-16 code units），最后按原有原子 batch 语义 fold。旧文件不改写，跨 batch、跨其他操作、不同目标或 offset 断点不合并；损坏 batch 仍整体回滚。Rust reader 保持原 wire 契约，可读取 revision 跨越多次观察而仅含一条合并 append 的新 batch。

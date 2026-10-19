@@ -1,0 +1,25 @@
+{
+  "scope": "synthetic warm-filesystem V1 read+parse; excludes transport/renderer/provider",
+  "bytes": 76247978,
+  "rows": 1024,
+  "baseline": {
+    "page": 80,
+    "ms": [
+      2442.7039160000004,
+      2456.3907500000005,
+      2289.3797909999994
+    ],
+    "medianMs": 2442.7039160000004
+  },
+  "tail": {
+    "page": 20,
+    "ms": [
+      350.9671250000001,
+      47.71608399999968,
+      38.164084
+    ],
+    "medianMs": 47.71608399999968
+  },
+  "ratio": 51.192464075635726,
+  "equalNewest20": true
+}
