@@ -468,8 +468,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       originalDigest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
     }
     catch { return required('Request history cannot be safely fingerprinted.'); }
-    const lease = this.requestGuard.begin(currentState?.scope, fingerprint, !currentState || this.options.canRecover?.() === false);
-    if (!lease) return required('This model request was already delivered, failed, or reached the Query safety limit. Automatic replay is blocked.');
+    const ambiguous = !currentState || this.options.canRecover?.() === false;
+    const lease = this.requestGuard.begin(currentState?.scope, fingerprint, ambiguous);
+    if (!lease) return this.requestGuard.rejectedResponse(currentState?.scope, fingerprint)
+      ?? required('This model request was already delivered, failed, or reached the Query safety limit. Automatic replay is blocked.');
     if (state.blocked || this.ledgerBlocked || state.recovering || state.inFlight.has(fingerprint) || state.delivered.has(fingerprint)
       || (state.recovered && this.requestGuard.inFlightCount > 1)) {
       lease.finish();
@@ -536,7 +538,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         if (!live()) return cancelled();
         if (text === undefined) return stop('The upstream error body was incomplete. Automatic recovery stopped.');
         if (!explicitlyOverflowed(text)) {
-          return new Response(text, { status: response.status, headers: response.headers });
+          return await lease.reject(new Response(text, { status: response.status, headers: response.headers }));
         }
         if (state.attempted) return stop('Context recovery was exhausted. Progress and archived evidence were preserved.');
         if (!recoveryLive() || this.requestGuard.inFlightCount > 1 || this.options.canRecover?.() === false) {
@@ -555,7 +557,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
           return stop('The single inference retry after context recovery failed. Progress and archived evidence were preserved.');
         }
       }
-      if (!response.ok || !response.body) return response;
+      if (!response.ok) return await lease.reject(response);
+      if (!response.body) return response;
       // Hold request admission until the consumer finishes. A partial stream seals the whole
       // turn, including changed fingerprints, so native SDK stream rescue cannot replay tools.
       const reader = response.body.getReader();

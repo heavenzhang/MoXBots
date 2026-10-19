@@ -86,6 +86,7 @@ pub struct MobileConnection {
     connected: Option<Connected>,
     peer: Option<peer::PeerConnection>,
     targets: HashMap<String, Target>,
+    suspended_target_aliases: HashMap<String, Target>,
     target_account: Option<NetworkAccountSession>,
 }
 fn err(code: &'static str) -> NetworkError {
@@ -112,6 +113,7 @@ impl MobileConnection {
             connected: None,
             peer: None,
             targets: HashMap::new(),
+            suspended_target_aliases: HashMap::new(),
             target_account: None,
         })
     }
@@ -119,10 +121,16 @@ impl MobileConnection {
     pub async fn request(&mut self, intent: Value) -> Value {
         match tokio::time::timeout(Duration::from_secs(90), self.request_inner(intent)).await {
             Ok(Ok(v)) => json!({"ok":true,"value":v}),
-            Ok(Err(e)) => json!({"ok":false,"error":{"kind":"error","code":e.code}}),
+            Ok(Err(e)) => {
+                if e.code != "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE" {
+                    self.suspended_target_aliases.clear();
+                }
+                json!({"ok":false,"error":{"kind":"error","code":e.code}})
+            }
             Err(_) => {
                 self.connected = None;
                 self.peer = None;
+                self.clear_targets();
                 json!({"ok":false,"error":{"kind":"error","code":"MOBILE_OPERATION_TIMEOUT"}})
             }
         }
@@ -414,7 +422,10 @@ impl MobileConnection {
             "connection.suspend" => {
                 self.connected = None;
                 self.peer = None;
+                let suspended_aliases =
+                    take_target_aliases(&mut self.targets, &mut self.suspended_target_aliases);
                 self.clear_targets();
+                self.suspended_target_aliases = suspended_aliases;
                 Ok(json!({"kind":"connection","state":"suspended"}))
             }
             "session" => self.session(&intent).await,
@@ -453,6 +464,7 @@ impl MobileConnection {
     }
     fn clear_targets(&mut self) {
         self.targets.clear();
+        self.suspended_target_aliases.clear();
         self.target_account = None;
     }
     /// Current native registry only. Never restore/login/connect/renew here:
@@ -662,7 +674,6 @@ impl MobileConnection {
                 None,
             )
             .await?;
-        let previous_targets = std::mem::take(&mut self.targets);
         let mut items = Vec::new();
         let (rows, unavailable_device_count, mut has_more) = fetch_ready_agent_rows(
             &devices,
@@ -685,6 +696,11 @@ impl MobileConnection {
             },
         )
         .await?;
+        // A suspend keeps only opaque-ID continuity hints. They are consumed
+        // only after the fresh network/device/agent directory has passed the
+        // same validation as ordinary target discovery.
+        let previous_targets =
+            take_target_aliases(&mut self.targets, &mut self.suspended_target_aliases);
         for (device, agent) in rows {
             let device_id = device["deviceId"]
                 .as_str()
@@ -800,6 +816,18 @@ fn catalog_target_id(previous: &HashMap<String, Target>, device: &str, agent: &s
         .find(|(_, target)| target.device == device && target.agent == agent)
         .map(|(id, _)| id.clone())
         .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+}
+
+fn take_target_aliases(
+    targets: &mut HashMap<String, Target>,
+    suspended_aliases: &mut HashMap<String, Target>,
+) -> HashMap<String, Target> {
+    let mut previous = std::mem::take(suspended_aliases);
+    previous.retain(|_, alias| !targets.values().any(|approved| approved == alias));
+    // Currently approved target IDs win if the same runtime identity appears
+    // in both sources; aliases are presentation continuity only.
+    previous.extend(std::mem::take(targets));
+    previous
 }
 fn approval_matches(
     snapshot: &Value,
@@ -1278,6 +1306,132 @@ mod tests {
         assert_ne!(
             catalog_target_id(&previous, "host-one", "agent"),
             "approved-opaque"
+        );
+    }
+
+    #[tokio::test]
+    async fn suspend_preserves_only_target_id_aliases_until_verified_catalog_rebuild() {
+        let mut o = snapshot_owner();
+        let approved = o.targets.get("approved").unwrap().clone();
+        let mut other_agent = approved.clone();
+        other_agent.agent = "different-agent".into();
+        o.targets.insert("other-agent-id".into(), other_agent);
+        let mut other_device = approved.clone();
+        other_device.device = "different-device".into();
+        o.targets.insert("other-device-id".into(), other_device);
+
+        let reply = o
+            .request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        assert_eq!(reply["value"]["state"], "suspended");
+        assert!(o.targets.is_empty());
+        assert!(o.target_account.is_none());
+        assert_eq!(o.suspended_target_aliases.len(), 3);
+        o.request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        assert_eq!(o.suspended_target_aliases.len(), 3);
+        assert_eq!(
+            o.request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
+        );
+
+        // list_targets invokes this transfer only after the newly fetched
+        // directory has passed fetch_ready_agent_rows scope/readiness checks.
+        let previous = take_target_aliases(&mut o.targets, &mut o.suspended_target_aliases);
+        assert!(o.suspended_target_aliases.is_empty());
+        assert_eq!(
+            catalog_target_id(&previous, &approved.device, &approved.agent),
+            "approved"
+        );
+        assert_ne!(
+            catalog_target_id(&previous, "different-device", &approved.agent),
+            "approved"
+        );
+        assert_ne!(
+            catalog_target_id(&previous, &approved.device, "different-agent"),
+            "approved"
+        );
+    }
+
+    #[tokio::test]
+    async fn suspended_aliases_cannot_authorize_an_asset_request() {
+        let mut owner = snapshot_owner();
+        owner
+            .request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        let result = owner
+            .request(json!({"version":1,"kind":"assets","targetId":"approved",
+            "request":{"kind":"capabilities","version":1,"agentId":"agent"}}))
+            .await;
+        assert_eq!(result["error"]["code"], "MOBILE_TARGET_INVALID");
+        assert!(owner.peer.is_none());
+        assert!(owner.connected.is_none());
+        assert!(owner.suspended_target_aliases.is_empty());
+    }
+
+    #[test]
+    fn approved_alias_wins_over_a_suspended_id_for_the_same_target() {
+        let target = Target {
+            device: "device".into(),
+            agent: "agent".into(),
+        };
+        let mut approved = HashMap::from([("fresh-id".into(), target.clone())]);
+        let mut suspended = HashMap::from([("old-id".into(), target)]);
+        let aliases = take_target_aliases(&mut approved, &mut suspended);
+        assert_eq!(aliases.len(), 1);
+        assert_eq!(catalog_target_id(&aliases, "device", "agent"), "fresh-id");
+        assert!(approved.is_empty());
+        assert!(suspended.is_empty());
+    }
+
+    #[tokio::test]
+    async fn clearing_or_logging_out_discards_aliases_without_granting_target_authority() {
+        let mut cleared = snapshot_owner();
+        cleared
+            .request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        assert!(!cleared.suspended_target_aliases.is_empty());
+        cleared.clear_targets();
+        assert!(cleared.suspended_target_aliases.is_empty());
+        assert_eq!(
+            cleared
+                .request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
+        );
+
+        let mut failed = snapshot_owner();
+        failed
+            .request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        assert!(!failed.suspended_target_aliases.is_empty());
+        let error = failed
+            .request(json!({"version":1,"kind":"not-a-supported-intent"}))
+            .await;
+        assert_eq!(error["ok"], false);
+        assert!(failed.suspended_target_aliases.is_empty());
+
+        let mut logged_out = snapshot_owner();
+        logged_out
+            .request(json!({"version":1,"kind":"connection.suspend"}))
+            .await;
+        assert!(!logged_out.suspended_target_aliases.is_empty());
+        // Keep this fixture independent of the network logout/revocation path;
+        // the assertion below covers local alias cleanup on logout.
+        logged_out.saved = None;
+        assert_eq!(
+            logged_out
+                .request(json!({"version":1,"kind":"account.logout"}))
+                .await["ok"],
+            true
+        );
+        assert!(logged_out.suspended_target_aliases.is_empty());
+        assert_eq!(
+            logged_out
+                .request(json!({"version":1,"kind":"targets.snapshot"}))
+                .await["error"]["code"],
+            "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE"
         );
     }
     #[tokio::test]

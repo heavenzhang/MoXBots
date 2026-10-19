@@ -952,7 +952,7 @@ describe('builtin V2 execution independent of product storage', () => {
     const frames = [
       { type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'agent', task_type: 'local_agent', description: '' }] },
       { type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'watch', task_type: 'monitor', description: '', ambient: true }] },
-      { type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'bash', task_type: 'local_bash', description: '' }] },
+      { type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'bash', run_id: 'run-1', task_type: 'local_bash', description: '' }] },
       { type: 'system', subtype: 'background_tasks_changed', tasks: [] },
     ];
     state.protocolFrames = frames;
@@ -967,6 +967,15 @@ describe('builtin V2 execution independent of product storage', () => {
         // the SDK level before any task edge is received.
         expect(agent.hasBuiltinBackgroundWork()).toBe(expected);
         expect(engine.getLiveSessionState().backgroundWorkActive === true).toBe(expected);
+        const live = engine.getLiveSessionState();
+        // Every unacknowledged task blocks continuation, including a top-level
+        // shell; only the shell may be acknowledged explicitly.
+        expect(live.backgroundWorkBlocksContinuation).toBe(index === 0 || index === 2);
+        expect(live.backgroundWork?.acknowledgeableShells.map(task => task.taskId))
+          .toEqual(index === 2 ? ['bash'] : []);
+        expect(live.backgroundWork?.active.map(task => task.taskId)).toEqual(
+          index === 0 ? ['agent'] : index === 2 ? ['bash'] : [],
+        );
       }
     });
     const workspace = join(state.home, 'workspace');

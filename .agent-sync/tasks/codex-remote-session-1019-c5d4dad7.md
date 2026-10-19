@@ -26,7 +26,7 @@ Restore the reported remote Agent history read and preserve actionable errors. T
 
 ## Blockers and unknowns
 
-Need the MacBook Air version and target-side owner/transport evidence. An asynchronous user question is pending. The remote .local name did not resolve; no SSH was established. Keep the original timeout acceptance open; do not replace/restart the daily client or operate cloud production concurrently with the sole release owner. Complete local gates, deliver the narrow diagnostic repair to main, and resume exact remote reproduction once target evidence is available.
+User confirmed Air0.5.11 and says the error is the same. Exact entry (reverse remote versus local owned Session) and target-side logs remain pending; no target owner fault is established. This Mac is now0.5.13, updated outside this task. The remote .local name did not resolve; no SSH was established. Keep the original timeout acceptance open; do not replace/restart the daily client or operate cloud production concurrently with the sole release owner. Complete local gates, deliver the narrow diagnostic repair to main, and resume exact remote reproduction once target evidence is available.
 
 ## Execution
 
@@ -39,3 +39,7 @@ Current primary agent only; zero subagents and zero external model calls. The fa
 ## Next step
 
 Pass exact-head CI, merge without bypassing required checks and verify remote main containment. Obtain target Air version/logs and reproduce the original history read on a release-owner accepted client.
+
+## Integration checkpoint
+
+Original feature-head CI39241671656 passed9 checks with1 conditional skip. Main1f8148b0 merged locally; the only conflict was simultaneous append to plan.md and both records were preserved. Re-run focused API/DOM/type/lint on the merged source; final CI and remote-main containment remain separate gates.

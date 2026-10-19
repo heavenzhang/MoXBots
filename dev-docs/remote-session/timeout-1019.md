@@ -20,3 +20,7 @@ The renderer now accepts the closed management error shape, validates the comple
 The daily installed application was not replaced or restarted; local and remote active work was preserved. MacBook Air's installed version and target-side transport/owner logs remain unavailable. Its `.local` name did not resolve from the investigating Mac, so no SSH access was established. The user was asked for its version and local Session availability. No target upgrade, production cloud change or connection reset was attempted.
 
 This repairs loss of diagnostic information. It does not establish that the original timeout or pair conflict is fixed. The existing sole release owner must incorporate the change in a new unfrozen candidate and verify both real desktops, then open and refresh the original Agent history. Do not report remote-session recovery before that gate passes.
+
+## Subsequent observations
+
+The user confirmed Air0.5.11 and later described its error as the same one. Whether this is the reverse remote entry or an actual locally owned Session remains pending; do not treat the earlier answer as proof of a target Sidecar fault. This investigating Mac is now installed0.5.13 (changed outside this task). Original feature CI39241671656 completed with9 successes and1 conditional skip. Main subsequently advanced; integration preserves both appended planning records and will run focused merged-source checks.

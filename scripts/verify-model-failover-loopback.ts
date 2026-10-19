@@ -6,8 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { query, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { createBridgeHandler } from '../src/server/openai-bridge/handler';
+import { SessionModelRecovery } from '../src/server/builtin-session/model-recovery';
+import { ContextRecoveryController } from '../src/server/openai-bridge/context-recovery';
 import { ModelFailoverController } from '../src/server/openai-bridge/model-failover';
 
+const declinedRecovery = process.argv.includes('--declined-recovery');
+const upstreamRejection = declinedRecovery || process.argv.includes('--upstream-rejection');
 const streamFailure = process.argv.includes('--stream-failure');
 const stopDuringRetry = process.argv.includes('--stop-during-retry');
 let interruptSdk: (() => Promise<unknown>) | undefined;
@@ -18,6 +22,7 @@ let interruptTask: Promise<void> | undefined;
 let interruptCompleted = false;
 const interruptFailures: string[] = [];
 const scratch = await mkdtemp(join(tmpdir(), 'moxbots-failover-native-'));
+let rejectedResponses = 0;
 let counter = 0;
 let primaryCalls = 0;
 let backupCalls = 0;
@@ -79,10 +84,14 @@ const base = `http://127.0.0.1:${upstreamAddress.port}`;
 const failover = new ModelFailoverController({ scope: () => 'native-root',
   // Product Stop marks its existing interrupt owner before awaiting SDK transport cancellation.
   canRetry: () => !stopFence,
-  resolveBackup: () => ({ providerId: 'backup', baseUrl: `${base}/backup`, apiProtocol: 'anthropic', model: 'backup-fixture', apiKey: 'fixture-backup' }),
-  onSwitch: () => { switches++; } });
+  resolveBackup: () => upstreamRejection ? undefined : ({ providerId: 'backup', baseUrl: `${base}/backup`, apiProtocol: 'anthropic', model: 'backup-fixture', apiKey: 'fixture-backup' }),
+  onSwitch: () => { switches++; },
+  recovery: declinedRecovery ? new SessionModelRecovery({ read: () => undefined, current: () => undefined,
+    isLive: () => true, prepare: async () => {}, write: async () => true }) : undefined });
+const contextRecovery = upstreamRejection ? new ContextRecoveryController({ scope: () => 'fixture-root',
+  isActive: () => true, backup: async () => join(scratch, 'unused-archive.json') }) : undefined;
 const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'primary',
-  baseUrl: `${base}/primary`, apiProtocol: 'anthropic', model: 'primary-fixture', apiKey: 'fixture-main', modelFailover: failover }) });
+  baseUrl: `${base}/primary`, apiProtocol: 'anthropic', model: 'primary-fixture', apiKey: 'fixture-main', modelFailover: failover, contextRecovery }) });
 const gateway = createServer(async (req, res) => {
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
@@ -92,7 +101,14 @@ const gateway = createServer(async (req, res) => {
     for await (const chunk of req) chunks.push(chunk);
     const response = await handler(new Request(`http://127.0.0.1${req.url}`, { method: 'POST',
       headers: { 'content-type': 'application/json' }, body: Buffer.concat(chunks), signal: controller.signal }));
-    res.writeHead(response.status, Object.fromEntries(response.headers));
+    const headers = Object.fromEntries(response.headers);
+    if (upstreamRejection && !response.ok) {
+      rejectedResponses++;
+      // Force one native SDK repeat to exercise both admission guards, as in
+      // stream rescue/older transports that do not honor the initial hint.
+      if (rejectedResponses === 1) delete headers['x-should-retry'];
+    }
+    res.writeHead(response.status, headers);
     if (response.body) for await (const chunk of response.body) res.write(chunk);
     res.end();
   } catch { if (!res.headersSent) res.writeHead(500); res.end(); }
@@ -118,7 +134,7 @@ try {
     env: { PATH: process.env.PATH, HOME: scratch, USERPROFILE: scratch,
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${gatewayAddress.port}/bridge/fixture`,
       ANTHROPIC_API_KEY: 'fixture-key', ANTHROPIC_AUTH_TOKEN: '', CLAUDE_CODE_OAUTH_TOKEN: '',
-      CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_MAX_RETRIES: upstreamRejection ? '1' : '0', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
       HTTP_PROXY: '', HTTPS_PROXY: '', ALL_PROXY: '', http_proxy: '', https_proxy: '', all_proxy: '',
     },
@@ -130,15 +146,22 @@ try {
       if (event.type === 'system' && event.subtype === 'init') nativeSessionId = event.session_id;
       if (event.type === 'result') results.push(event);
     }
-  } catch (error) { nativeFailed = true; if (!streamFailure && !stopDuringRetry) throw error; } finally { if (stopDuringRetry && interruptTask) await interruptTask; run.close(); }
+  } catch (error) { nativeFailed = true; if (!streamFailure && !stopDuringRetry && !upstreamRejection) throw error; } finally { if (stopDuringRetry && interruptTask) await interruptTask; run.close(); }
   assert.equal(counter, 1);
   assert.equal(primaryCalls, streamFailure || stopDuringRetry ? 2 : 5); // first tool, then initial availability failure plus three retries
-  assert.equal(backupCalls, streamFailure || stopDuringRetry ? 0 : 1);
-  assert.equal(switches, streamFailure || stopDuringRetry ? 0 : 1);
+  assert.equal(backupCalls, streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
+  assert.equal(switches, streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
   if (stopDuringRetry) { assert(interruptRequested); assert(interruptCompleted); assert.equal(interruptFailures.length, 0); }
+  else if (upstreamRejection) {
+    const terminal = JSON.stringify(results);
+    assert.equal(rejectedResponses, 2, 'native SDK must actually repeat the rejected inference');
+    assert(terminal.includes('automatic_replay_blocked'), 'native terminal must retain Goal safety pause semantics');
+    assert(terminal.includes('503'), 'native terminal must retain original HTTP 503');
+    assert(!terminal.includes('409'), 'native terminal must not replace rejection with HTTP 409');
+  }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

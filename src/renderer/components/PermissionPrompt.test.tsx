@@ -79,19 +79,27 @@ describe('compact command approval authority', () => {
     }} onDecision={vi.fn()} />);
     expect(screen.getByText('shell.permissionPrompt.alwaysAllow').closest('button')).toBeDisabled();
     expect(container).not.toHaveTextContent('do not use fallback');
-    settle({ ...review, operation: { ...review.operation, command } });
+    // Flush the asynchronously loaded command and its mount effects before
+    // interacting; DOM presence alone does not imply passive effects settled.
+    await act(async () => { settle({ ...review, operation: { ...review.operation, command } }); });
     await screen.findByText('shell.permissionPrompt.command');
     expect(container.querySelector('[data-permission-command]')?.textContent).toBe(command);
     expect(screen.getByText('shell.permissionPrompt.alwaysAllow').closest('button')).toBeEnabled();
     // The feedback intentionally expires. Control its clock while asserting
     // async copy so runner scheduling cannot consume the observation window.
+    let completeCopy!: () => void;
+    vi.mocked(copyPlainText).mockReturnValueOnce(new Promise<void>(resolve => { completeCopy = resolve; }));
     vi.useFakeTimers();
     try {
-      await act(async () => {
-        fireEvent.click(screen.getByRole('button', { name: 'app:markdown.copy' }));
-      });
-      expect(screen.getByText('app:markdown.copied')).toBeInTheDocument();
+      act(() => { fireEvent.click(screen.getByRole('button', { name: 'app:markdown.copy' })); });
       expect(copyPlainText).toHaveBeenCalledExactlyOnceWith(command);
+      expect(screen.getByRole('status')).toHaveTextContent('app:markdown.copy');
+      await act(async () => { completeCopy(); });
+      expect(screen.getByText('app:markdown.copied')).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(1_999); });
+      expect(screen.getByText('app:markdown.copied')).toBeInTheDocument();
+      act(() => { vi.advanceTimersByTime(1); });
+      expect(screen.getByRole('status')).toHaveTextContent('app:markdown.copy');
     } finally {
       unmount(); // clear the component's timer while its clock is still installed
       vi.useRealTimers();

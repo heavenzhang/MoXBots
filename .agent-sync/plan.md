@@ -1,3 +1,7 @@
+## MOXBOTS-BACKGROUND-CONTINUATION-20261019 — 后台接续确认
+
+沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019-bc43f0fb.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
+
 ## Deployment coordination — MOXBOTS-NATIVE-PASSWORD-CLOUD-20261019
 
 - **Deployment chat:**01a12b99-7b38-78b1-831f-9c60257d386a, existing140 owned service/auth only; original101 connector temporarily paused/resumed with identity/config unchanged. Existing human cloud/101 takeover and source-owner explicit handoff remain authoritative; native consent replacement was directly approved in human01a14fd2-aca4-7e70-81c2-652eeaa679a3. Phone source01a1488b owns phone-only acceptance; no parallel production writes.
@@ -527,3 +531,7 @@ Continue MOXBOTS-MOBILE-002 with explicit sandbox/production/both selection in t
 ## REMOTE-SESSION-1019 — remote history read diagnosis
 
 Native 0.5.11 reproduction found pair conflict and invalid-response failures while both devices appeared online. A bounded renderer repair preserves validated management owner errors; 18 unit and 15 DOM tests passed. The original timeout, target version and dual-device recovery remain open. Task: `.agent-sync/tasks/codex-remote-session-1019-c5d4dad7.md`; evidence: `dev-docs/remote-session/timeout-1019.md`. No daily App replacement or cloud deployment by this task.
+
+## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
+
+Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
