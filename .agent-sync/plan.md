@@ -463,3 +463,7 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 - **Native ownership:** Daily0511 may be active; Root has no fresh maintenance window. Prepare concrete signed/notarized/stapled candidate first, then request only the missing window. No launch/quit/stop/replace or force/counter-reset workaround.
 - **Acceptance:** Actual updater resume/stop/durable install, Goal pause/continue/cancel, original-session explicit continuation, background request/retry/Stop, sidebar pointer/zoom, error-banner resend/reopen without rewind, and recorded Task status. Controlled/local/SDK/native/external-model evidence stay separate.
 - **Record:** dev-docs/releases/moxbots-0.5.12.md and current branch task; private evidence work/release-0512-20261018/owner/. Uncommitted team mode and unfinished mobile/Host remain outside release claims.
+
+## SESSION-CACHE-002 — 2026-10-19
+
+已缓存Chat保留挂载、草稿、阅读位置；冷历史经既有Global SessionStore reader先显示最后80条，后台原owner与REST/SSE恢复独占执行authority。连接失败保留Chat并在原Tab重试，不自动续接。PR #147；合同 `specs/tech_docs/session_architecture.md`，验收 `dev-docs/session-cache/acceptance.md`，接续 `.agent-sync/tasks/codex-session-cache-002-20261019-9b06b88b.md`。合并后236定向DOM/41unit、类型/lint、实际App合成传输和独立复核通过；main/CI以PR状态和Git回执为准。下一未冻结桌面候选queued给既定唯一发布owner；未安装或重启日常App、未向其它聊天发送消息。原生真实路径与源码/模拟UI分开验收。

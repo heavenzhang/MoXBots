@@ -24,7 +24,7 @@ vi.mock('@tauri-apps/api/core', () => ({
     invoke: mocks.invoke,
 }));
 
-import { deleteSession, getSessions } from '../sessionClient';
+import { deleteSession, getSessions, getSessionHistoryPreview } from '../sessionClient';
 
 const okResponse = () => new Response(JSON.stringify({ success: true }), { status: 200 });
 
@@ -143,5 +143,25 @@ describe('getSessions', () => {
 
         expect(mocks.invoke).not.toHaveBeenCalled();
         expect(mocks.apiGetJson).toHaveBeenCalledWith('/sessions');
+    });
+});
+
+
+describe('display-only Session history preview', () => {
+    it('reads the bounded Global projection without adopting live runtime fields', async () => {
+        const signal = new AbortController().signal;
+        mocks.apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, session: {
+            id: 'history/read', messages: [{ id: 'row', role: 'assistant', content: 'Persisted text' }],
+            snapshotRevision: 900, liveSessionState: 'idle', pendingInteractiveRequests: [{ type: 'permission' }],
+        } }), { status: 200 }));
+        await expect(getSessionHistoryPreview('history/read', signal)).resolves.toEqual({
+            id: 'history/read', messages: [{ id: 'row', role: 'assistant', content: 'Persisted text' }],
+        });
+        expect(mocks.apiFetch).toHaveBeenLastCalledWith('/sessions/history%2Fread?limit=80', { signal });
+    });
+
+    it('rejects a mismatched Session response rather than showing another chat', async () => {
+        mocks.apiFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: true, session: { id: 'wrong-session', messages: [] } }), { status: 200 }));
+        await expect(getSessionHistoryPreview('wanted', new AbortController().signal)).resolves.toBeNull();
     });
 });

@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next';
 
 /**
  * Unified "AI 启动中" boot overlay — the frosted-glass loading state shown from the
- * instant a chat is entered (Launcher→Chat) until the session is ready.
+ * instant a new chat is entered (Launcher→Chat) until its launch handoff.
+ * Persisted chats release the shell as soon as display history is available;
+ * connection recovery uses a small notice without covering the conversation.
  *
  * Rendered in TWO phases so the whole entry is ONE continuous loading state:
  *   1. App's Suspense fallback while the lazy Chat chunk resolves (before mount) —
@@ -11,18 +13,20 @@ import { useTranslation } from 'react-i18next';
  *   2. Chat's in-page overlay during the sidecar cold boot (after mount), driven by
  *      the `show` prop.
  *
- * The shell stays mounted so a persisted restore can re-arm it without a remount
- * gap. Dismiss is animated; appearance is instant (no enter transition),
+ * The shell stays mounted across transitions without remounting Chat.
+ * Dismiss is animated; appearance is instant (no enter transition),
  * which prevents the old content from flashing before the shell becomes opaque.
  */
 export default function ChatBootOverlay({
     show = true,
     error = null,
     onRetry,
+    loadingText,
 }: {
     show?: boolean;
     error?: string | null;
     onRetry?: () => void;
+    loadingText?: string;
 }) {
     const { t } = useTranslation('chat');
     const hasError = show && Boolean(error);
@@ -38,7 +42,7 @@ export default function ChatBootOverlay({
                     ? <AlertIcon className="h-6 w-6 text-[var(--error)]" />
                     : <LoaderIcon className={`h-6 w-6 text-[var(--ink-muted)] ${show ? 'animate-spin' : ''}`} />}
                 <p className="text-sm text-[var(--ink-muted)]">
-                    {hasError ? t('shell.boot.restoreFailed') : t('shell.boot.loading')}
+                    {hasError ? t('shell.boot.restoreFailed') : loadingText ?? t('shell.boot.loading')}
                 </p>
                 {hasError && <p className="text-xs text-[var(--ink-faint)]">{error}</p>}
                 {hasError && onRetry && (

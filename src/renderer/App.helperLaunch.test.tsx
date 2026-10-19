@@ -262,6 +262,7 @@ vi.mock('@/api/cronTaskClient', () => ({
 }));
 
 vi.mock('@/api/sessionClient', () => ({
+  getSessionHistoryPreview: vi.fn(async () => null),
   createSession: mocks.createSession,
   deleteSession: mocks.deleteSession,
   getSessions: vi.fn(async () => []),
@@ -1267,6 +1268,20 @@ describe('App helper launch', () => {
     );
   });
 
+  it('keeps the cached Chat Tab when a background owner reconcile fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const session = { id: 'cached-reconcile-failure', agentDir: mocks.project.path, title: 'Cached reading', createdAt: '2026-07-20T00:00:00.000Z', lastActiveAt: '2026-07-20T00:00:00.000Z' };
+    render(<App />);
+    await act(async () => { await latestSidebarProps().onOpenSession(session, mocks.project); });
+    const cached = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id)!;
+    mocks.ensureSessionSidecar.mockRejectedValueOnce(new Error('temporary disconnect'));
+    await act(async () => { await latestSidebarProps().onOpenSession(session, mocks.project); });
+    expect(latestTabWorkspace().tabs.find(tab => tab.id === cached.id)).toMatchObject({ view: 'chat', sessionId: session.id });
+    expect(activePageTitle()).toBe('Cached reading');
+    expect(mocks.chatProps.at(-1)?.startupError).toBe('temporary disconnect');
+    errorSpy.mockRestore();
+  });
+
   it('opens developer Chat history through the same new-or-jump path as the sidebar', async () => {
     render(<App />);
     const sourceSession = {
@@ -2006,11 +2021,11 @@ describe('App helper launch', () => {
         view?: string;
         sidecarConfigDisposition?: string;
       }>;
-      expect(tabs.some((tab) => tab.id === 'restore-fails')).toBe(false);
+      expect(tabs.find((tab) => tab.id === 'restore-fails')).toMatchObject({ view: 'chat', sidecarConfigDisposition: 'pending' });
       expect(tabs.some((tab) => tab.id === 'restore-succeeds')).toBe(true);
       expect(tabs.find((tab) => tab.id === 'restore-succeeds')?.sidecarConfigDisposition).toBe('adopt');
       expect(tabs.some((tab) => tab.view === 'settings')).toBe(true);
-      expect(tabs.find((tab) => tab.id === latest?.activeTabId)?.view).toBe('settings');
+      expect(latest?.activeTabId).toBe('restore-fails');
     });
     expect(mocks.releaseTabSession).toHaveBeenCalledWith(failedSessionId, 'restore-fails');
     expect(mocks.reconcileSessionTabActivation).toHaveBeenCalledWith(
@@ -2165,7 +2180,7 @@ describe('App helper launch', () => {
     expect(mocks.cancelBackgroundCompletion).not.toHaveBeenCalled();
   });
 
-  it('restores the previous active tab when an optimistic sidebar Session open fails', async () => {
+  it('keeps a failed uncached history open on its reading surface and retries in the same Tab', async () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     let rejectEnsure!: (error: Error) => void;
     mocks.ensureSessionSidecar.mockReturnValueOnce(new Promise((_, reject) => {
@@ -2193,8 +2208,15 @@ describe('App helper launch', () => {
     });
 
     expect(opened).toBe(false);
-    expect(activePageTitle()).toBe('New Tab');
-    expect(latestTabWorkspace().tabs).toHaveLength(1);
+    expect(activePageTitle()).toBe('Failed sidebar history');
+    expect(latestTabWorkspace().tabs).toHaveLength(2);
+    const failedTab = latestTabWorkspace().tabs.find(tab => tab.sessionId === session.id)!;
+    const failed = [...mocks.chatProps].reverse().find(props => props.startupError)!;
+    expect(failed.startupError).toBe('ensure failed');
+    await act(async () => { await (failed.onRetryStartup as () => Promise<void>)(); });
+    expect(latestTabWorkspace().tabs.find(tab => tab.id === failedTab.id)?.sessionId).toBe(session.id);
+    expect(mocks.ensureSessionSidecar).toHaveBeenLastCalledWith(session.id, mocks.project.path, 'tab', failedTab.id);
+    expect(mocks.chatProps.at(-1)?.startupError).toBeNull();
     errorSpy.mockRestore();
   });
 

@@ -118,6 +118,7 @@
     "teamUnavailable": "Team Space has been disabled by the developer"
   },
   "appChrome": {
+    "sessionConnectionLost": "Connection lost. Retry to reconnect.",
     "updateVerifyFailed": "Could not verify the update because of a network issue. Try again later.",
     "updateExpiredRedownloading": "The downloaded update expired. Downloading the latest version...",
     "updateInstallBlocked": "Background services are still exiting. The update is saved; try again shortly or after restarting Windows.",
