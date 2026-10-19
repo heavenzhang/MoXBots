@@ -16,7 +16,7 @@
 - [x] 隔离复现 native 先消费输入后零轮次拒绝推导锚点：旧版重试被判 stale，无回答。
 - [x] 修复后单一可见输入、一次模型回答；双击/失效状态与显式回溯保护保持。
 - [x] 恢复准备期间 Stop 仍能阻止再次进入 SDK。
-- [x] Unix 真实子进程夹具验证桌面父进程被 SIGKILL 后子进程通过正常回调退出。
+- [x] Unix 真实三层进程组夹具验证桌面父进程被 SIGKILL 后 Sidecar/native/tool 退出，含忽略 SIGTERM 的工具。
 - [x] 相关完整回归、Rust 生产启动参数验证及类型/lint/build。
 - [ ] 提交、PR 预检查、合入 main、远端主干包含核验与精确 main 集成 CI。
 - [ ] 唯一发布会话接收、主干精确 SHA 候选、正式客户端安装及原会话真实路径验收。
@@ -24,11 +24,11 @@
 ## Completed
 
 准入提交时释放已消费的 beforeDispatch guard，避免已接纳输入在零模型轮次的 native 恢复中再次使用原 continuation guard。未接纳项仍执行完整 guard/cancel/commit 校验。
-Rust 两条 Sidecar 启动路径经原 builder 注入桌面 PID；Unix Node 对实际 OS 父子关系作只读观察，父进程消失时走既有 shutdown/SDK exit 清理。Windows 保留原 kill-on-close Job；Host/CLI/dev 无桌面标记或启动 identity 时不启用。没有扫描/杀死现有用户进程或新建进程/状态 owner。
+Rust 两条 Sidecar 启动路径经原 builder 注入桌面 PID；Unix Node 对实际 OS 父子关系作只读观察，父进程消失时向 Rust 原精确进程组发 SIGTERM，经既有有界 shutdown 排空后同组 SIGKILL 升级，清理忽略 TERM 的工具。Windows 保留原 kill-on-close Job；Host/CLI/dev 无桌面标记或启动 identity 时不启用。没有扫描/杀死现有用户进程或新建进程/状态 owner。
 
 ## Verification
 
-复现先红后绿；新增恢复成功/Stop 两项及真实父进程死亡一项通过。43 项定向 unit 通过；完整相关集成140项、builtin/turn queue unit199项、Rust4项、类型/lint/server bundle均通过；结果见 dev-docs/no-response/acceptance.md。仅当前主 Agent 实施/自验，未使用子 Agent 或外部模型，精确成本未暴露。真实用户薪资任务未重发、未停止、未代为发布。
+复现先红后绿；新增恢复成功/Stop 两项及真实父进程死亡一项通过。44 项定向 unit 通过；完整相关集成142项、builtin/turn queue unit199项、Rust4项、类型/lint/server bundle均通过；结果见 dev-docs/no-response/acceptance.md。主 Agent 实施/验收；增加一个只读 reviewer（请求 gpt-6.1-sol/medium）复核跨进程边界，发现 TERM 升级及 drain 期间 parent-loss 单调升级缺口后均已修复、真实进程复验并通过最终复审。无外部模型，精确成本未暴露。真实用户薪资任务未重发、未停止、未代为发布。
 
 ## Blockers and unknowns
 

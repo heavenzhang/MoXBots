@@ -39,7 +39,7 @@ Session 不是单一对象，而是同一产品会话在不同生命周期阶段
 
 `runtimeBinding` 是已有 Session 的执行权威，Agent/Channel 的 `runtimePreference` 只影响未来 Session。新 birth 写合法 binding 与 legacy `runtime/runtimeSource` 投影；启动迁移在 index lock 内补齐合法 legacy 行，未知组合保留证据并标记 `runtimeBindingCompatibility`，只允许读历史。Fork/snapshot 复制 binding 或 compatibility，不能用 fallback 拼接身份。
 
-Unix 桌面 Sidecar 由原 Rust 启动 builder 注入 `MYAGENTS_SIDECAR_PARENT_PID`，仅带桌面 Sidecar marker 的进程观察 OS `ppid`。父子关系失效时沿既有有界 shutdown / SDK exit 清理，避免桌面未执行进程树 Drop 后遗留旧会话执行器。Windows 沿用 kill-on-close Job；无桌面 launch identity 的 Host、CLI 和开发服务不受该观察器管理。它是父进程退出兜底，不是新的 Session lock，也不通过端口/PID扫描接管其他进程。
+Unix 桌面 Sidecar 由原 Rust 启动 builder 注入 `MYAGENTS_SIDECAR_PARENT_PID`，仅带桌面 Sidecar marker 的进程观察 OS `ppid`。父子关系失效时先向原 `spawn_tree` 的精确 Unix 进程组发 SIGTERM，沿既有有界 shutdown 排空后、Sidecar 退出前对同组 SIGKILL 升级，避免忽略 TERM 的工具在桌面未执行进程树 Drop 后继续运行。该边界和原 Rust PGID 一致，不扩展为全机扫描或自行脱离组的工具追踪。Windows 沿用 kill-on-close Job；无桌面 launch identity 的 Host、CLI 和开发服务不受该观察器管理。它是父进程退出兜底，不是新的 Session lock，也不通过端口/PID扫描接管其他进程。
 
 ### 2.1 新建、恢复与 SDK probe
 

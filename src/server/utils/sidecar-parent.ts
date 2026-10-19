@@ -2,6 +2,18 @@
  * when its owner dies without running Drop; retire the orphan through the
  * existing shutdown path instead of letting it keep executing beside a new app.
  * Windows uses the existing kill-on-close Job Object for this boundary. */
+export type ProcessShutdownState = { started: boolean; parentExited: boolean };
+export type ProcessShutdownSignal = 'SIGTERM' | 'SIGINT' | 'parent-exit';
+
+/** Index owns this state. A later parent loss must upgrade an already-running
+ * graceful drain before its caller observes that shutdown has begun. */
+export function requestProcessShutdown(state: ProcessShutdownState, signal: ProcessShutdownSignal): boolean {
+  if (signal === 'parent-exit') state.parentExited = true;
+  if (state.started) return false;
+  state.started = true;
+  return true;
+}
+
 export function watchSidecarParent(
   expectedParent: string,
   onParentExit: () => void,
@@ -32,4 +44,27 @@ export function watchSidecarParent(
     timer.unref();
   }
   return stop;
+}
+
+/** Desktop Unix Sidecars are process-group leaders created by Rust spawn_tree.
+ * If Rust died before Drop, retain that same exact group boundary here. Start
+ * the normal shutdown first so our SIGTERM handler is idempotent and Product
+ * can drain, while native/tool descendants receive their own termination. */
+export function retireOrphanedSidecar(onShutdown: () => void): void {
+  onShutdown();
+  signalOrphanedSidecarGroup('SIGTERM');
+}
+
+/** The desktop Sidecar remains the group leader until its bounded drain ends.
+ * SIGKILL at that point mirrors Rust's escalation, including tools that ignore
+ * SIGTERM. Do not use this for a standalone server or a PID discovered by scan. */
+export function signalOrphanedSidecarGroup(signal: 'SIGTERM' | 'SIGKILL'): void {
+  try {
+    process.kill(-process.pid, signal);
+  } catch (error) {
+    // An already-retired/absent group still completes normal local shutdown.
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+      console.warn('[process] orphaned Sidecar group termination failed:', error);
+    }
+  }
 }

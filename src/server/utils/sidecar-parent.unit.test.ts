@@ -1,9 +1,19 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { watchSidecarParent } from './sidecar-parent';
+import { requestProcessShutdown, watchSidecarParent } from './sidecar-parent';
 
 afterEach(() => { vi.useRealTimers(); });
 
 describe('desktop Sidecar parent lifetime', () => {
+  it('upgrades an in-progress graceful drain when its parent is subsequently lost', () => {
+    const state = { started: false, parentExited: false };
+    expect(requestProcessShutdown(state, 'SIGTERM')).toBe(true);
+    expect(state.parentExited).toBe(false);
+    expect(requestProcessShutdown(state, 'parent-exit')).toBe(false);
+    expect(state.parentExited).toBe(true);
+    expect(requestProcessShutdown(state, 'SIGINT')).toBe(false);
+    expect(state.parentExited).toBe(true);
+  });
+
   it('keeps a live parent and retires only once when the OS reparents it', () => {
     vi.useFakeTimers();
     let parent = 42;

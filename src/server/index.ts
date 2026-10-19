@@ -535,7 +535,7 @@ process.on('unhandledRejection', (reason) => {
 
 let gracefulShutdownHook: (() => Promise<void>) | null = null;
 let gracefulShutdownPromise: Promise<void> | null = null;
-let processShutdownStarted = false;
+const processShutdownState: ProcessShutdownState = { started: false, parentExited: false };
 
 async function shutdownOwnedResources(): Promise<void> {
   if (!gracefulShutdownPromise) {
@@ -561,9 +561,8 @@ async function shutdownOwnedResources(): Promise<void> {
   await gracefulShutdownPromise;
 }
 
-async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT' | 'parent-exit'): Promise<void> {
-  if (processShutdownStarted) return;
-  processShutdownStarted = true;
+async function shutdownProcess(signal: ProcessShutdownSignal): Promise<void> {
+  if (!requestProcessShutdown(processShutdownState, signal)) return;
   if (!stdioBroken) {
     try {
       console.log(`[process] ${signal} received, shutting down...`);
@@ -581,6 +580,12 @@ async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT' | 'parent-exit'): Pr
         /* ignore */
       }
     }
+  }
+  if (processShutdownState.parentExited) {
+    // Rust's group owner is gone and cannot perform its usual escalation.
+    // Finish the same exact Unix group before exiting, even if a tool ignored
+    // SIGTERM. Product/browser drain above is bounded to five seconds.
+    signalOrphanedSidecarGroup('SIGKILL');
   }
   process.exit(0); // Trigger SDK's process.on('exit') handler → terminate CLI subprocess
 }
@@ -12393,12 +12398,17 @@ description: >
 
 // Only desktop-owned launches carry this identity. Standalone Host/CLI/dev
 // servers retain their existing lifetime; Windows is contained by Rust's Job.
-import { watchSidecarParent } from './utils/sidecar-parent';
+import {
+  requestProcessShutdown, retireOrphanedSidecar, signalOrphanedSidecarGroup, watchSidecarParent,
+  type ProcessShutdownSignal, type ProcessShutdownState,
+} from './utils/sidecar-parent';
 const desktopParentPid = process.env.MYAGENTS_SIDECAR_PARENT_PID;
 if (process.platform !== 'win32' && desktopParentPid && process.argv.includes('--moxbot-sidecar')) {
-  watchSidecarParent(desktopParentPid, () => { void shutdownProcess('parent-exit'); });
+  watchSidecarParent(desktopParentPid, () => {
+    retireOrphanedSidecar(() => { void shutdownProcess('parent-exit'); });
+  });
 }
-if (!processShutdownStarted) {
+if (!processShutdownState.started) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exit(1);
