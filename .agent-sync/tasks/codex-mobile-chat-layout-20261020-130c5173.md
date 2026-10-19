@@ -36,7 +36,7 @@ Implementation and local verification are complete; central CI/main/release and 
 
 ## Verification
 
-Local npm typecheck/lint and67 policy tests pass. Four widths320/390/428/768 browser tests pass after final image-card repair. Root reviewed synthetic screenshots. iOS Hermes export precheck passed before final image error-collapse/key change; final main package still required.
+Local npm typecheck/lint and67 policy tests pass. Four widths320/390/428/768 browser tests pass after final image-card repair. Root reviewed synthetic screenshots. Additional physical reproduction confirmed a prior Bot receipt error remained after switching to a different Bot. Explicit target selection now clears that old view notice; a two-Bot synthetic browser regression passes. The underlying receipt rejection remains separate. iOS Hermes export precheck passed before final image error-collapse/key change; final main package still required.
 
 ## Blockers and unknowns
 Private evidence: project pointer output/mobile-chat-layout-20261020; build1 evidence output/iphone-acceptance-20261019. Do not commit business screenshots/session text or credentials.

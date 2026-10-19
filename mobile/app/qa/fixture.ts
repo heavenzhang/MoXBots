@@ -4,6 +4,7 @@ import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, Pendi
 export type { QaScenario } from '../src/native';
 
 const target: Target = { targetId: 'qa-target-internal-only', identityKey: 'qa-identity-main', agentId: 'qa-agent', name: '演示 Bot', deviceName: '本地演示设备', online: true, runtime: null };
+const secondTarget: Target = { ...target, targetId: 'qa-target-second', identityKey: 'qa-identity-second', agentId: 'qa-agent-second', name: '第二个演示 Bot' };
 const account: Account = { kind: 'account', state: 'signed-in', displayName: '演示账号', principalId: 'qa-principal' };
 let fixtureAccount: Account = account;
 let notificationsEnabled = false;
@@ -43,7 +44,7 @@ export function fixtureReply(intent: NativeIntent): unknown {
   if (intent.kind === 'targets.list') {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
     if (scenario === 'no-bots') return { kind: 'targets', items: [], hasMore: false, unavailableDeviceCount: 0 };
-    return { kind: 'targets', items: scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
+    return { kind: 'targets', items: scenario === 'target-error' ? [target, secondTarget] : scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
   }
   if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [
     { protocol: 'session', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' },
@@ -53,7 +54,10 @@ export function fixtureReply(intent: NativeIntent): unknown {
   if (intent.kind === 'attachment.pick' || intent.kind === 'attachment.list' || intent.kind === 'attachment.remove' || intent.kind === 'attachment.upload' || intent.kind === 'attachment.upload.status' || intent.kind === 'attachment.upload.pause' || intent.kind === 'attachment.upload.cancel') return attachmentReply(intent);
   if (intent.kind === 'draft.read' || intent.kind === 'draft.write') return fixtureDraftReply(intent);
   if (intent.kind === 'artifact.list' || intent.kind === 'artifact.download' || intent.kind === 'artifact.status' || intent.kind === 'artifact.pause' || intent.kind === 'artifact.remove' || intent.kind === 'artifact.preview' || intent.kind === 'artifact.share') return fixtureArtifactReply(intent);
-  if (intent.kind === 'session' && intent.request) return sessionReply(intent.request);
+  if (intent.kind === 'session' && intent.request) {
+    if (scenario === 'target-error' && intent.request.agentId === target.agentId && intent.request.kind === 'get') return { kind: 'error', code: 'TARGET_RECEIPT_INVALID' };
+    return sessionReply(intent.request);
+  }
   return { kind: 'error', code: 'QA_FIXTURE_OPERATION_UNSUPPORTED' };
 }
 
@@ -184,7 +188,7 @@ function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${str
 function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'mobile' }>['request']): unknown {
   if (scenario === 'mobile-error') return { version: 1, kind: 'mobile.error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
   if (scenario === 'mobile-unsupported') return { version: 1, kind: 'mobile.error', code: 'MOBILE_PROFILE_MISMATCH' };
-  const approved = [target].find((entry) => entry.targetId === targetId);
+  const approved = [target, ...(scenario === 'target-error' ? [secondTarget] : [])].find((entry) => entry.targetId === targetId);
   if (!approved) return { version: 1, kind: 'mobile.error', code: 'TARGET_UNAVAILABLE' };
   if (request.kind === 'mobile.capabilities') return { version: 1, kind: 'mobile.capabilities', agentId: request.agentId, attachments: true, modelSelection: true, nextSuggestions: true, maxAssets: 8 };
   if (request.kind === 'mobile.models') return { version: 1, kind: 'mobile.models', agentId: request.agentId, items: [{ id: 'qa-model-fast', label: '演示模型 · 快速' }, { id: 'qa-model-reasoning', label: '演示模型 · 深度' }] };

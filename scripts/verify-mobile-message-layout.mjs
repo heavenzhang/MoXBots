@@ -65,6 +65,25 @@ try {
     results.push({ width, noPageError: true, noDocumentOverflow: true, codeAndTableLocalScroll: true, noAutomaticImageRequest: true, readingPositionBefore: before, readingPositionAfter: after, returnToBottom: true });
     await context.close();
   }
+  {
+    const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    const page = await context.newPage();
+    await page.goto(origin, { waitUntil: 'networkidle' });
+    await page.getByRole('button', { name: '选择 QA 演示场景' }).click();
+    await page.getByRole('button', { name: '切换 Bot 错误隔离', exact: true }).click();
+    await page.getByRole('button', { name: /打开会话/ }).first().click();
+    const oldError = page.getByText('远程操作暂时不可用，请检查连接后重试。', { exact: true });
+    await oldError.waitFor();
+    await page.getByRole('button', { name: '返回会话列表', exact: true }).click();
+    await oldError.waitFor();
+    await page.getByRole('button', { name: '第二个演示 Bot，在线', exact: true }).click();
+    await page.waitForTimeout(300);
+    assert.equal(await oldError.count(), 0, 'a failed target notice must not contaminate a newly selected healthy Bot');
+    await page.getByRole('button', { name: /打开会话/ }).first().waitFor();
+    await page.screenshot({ path: path.join(output, 'target-notice-isolated.png') });
+    results.push({ test: 'target-error-notice-isolation', passed: true });
+    await context.close();
+  }
   await fs.writeFile(path.join(output, 'browser-results.json'), JSON.stringify({ at: new Date().toISOString(), syntheticOnly: true, results }, null, 2));
   console.log(JSON.stringify(results));
 } finally { await browser.close(); }
