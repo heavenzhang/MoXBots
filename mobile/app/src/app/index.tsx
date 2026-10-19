@@ -123,6 +123,7 @@ function AppBody() {
   const [receiptStates, setReceiptStates] = useState<Record<string, ReceiptStatus>>({});
   const [qaMenuOpen, setQaMenuOpen] = useState(false);
   const [speech, setSpeech] = useState<SpeechReply>({ kind: 'speech', state: 'idle', text: '', final: false });
+  const interruptedSpeechOwnerRef = useRef<ViewOwner | null>(null);
   const [loginPollGate] = useState(() => createPollFlightGate());
   const [loginAttemptGate] = useState(() => createLoginAttemptGate());
   const loginPollRef = useRef<{ stop: () => void } | null>(null);
@@ -1146,6 +1147,7 @@ function AppBody() {
 
   const startSpeech = async () => {
     if (speechActiveRef.current) return;
+    interruptedSpeechOwnerRef.current = null;
     setNotice(null);
     setSpeechPanelOpen(true);
     setSpeech({ kind: 'speech', state: 'idle', text: '', final: false });
@@ -1205,10 +1207,19 @@ function AppBody() {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'background' && speechActiveRef.current) void cancelSpeech(true);
+      if (state === 'background' && speechActiveRef.current) {
+        interruptedSpeechOwnerRef.current = speechOwnerEpochRef.current === ownerRef.current.epoch ? ownerRef.current : null;
+        void cancelSpeech(true);
+      } else if (state === 'active') {
+        const interrupted = interruptedSpeechOwnerRef.current;
+        interruptedSpeechOwnerRef.current = null;
+        if (interrupted && routeActiveRef.current && viewStillOwned(interrupted, ownerRef.current)) {
+          say('语音操作已中断，请再次点按语音开始。文字草稿已保留。');
+        }
+      }
     });
     return () => subscription.remove();
-  }, [cancelSpeech]);
+  }, [cancelSpeech, say]);
 
   useEffect(() => {
     if (screen !== 'chat' && speechActiveRef.current) void cancelSpeech(true);
