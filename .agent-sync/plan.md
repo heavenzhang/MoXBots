@@ -2,6 +2,12 @@
 
 沿原 SessionEngine/builtin lifecycle 提供精确task/run/Query实例确认与撤销。原客户端修复会话因反复断流终止，当前主Agent接续同一工作分支完成；不重复新建或唤醒并发writer。所有非ambient默认阻挡，原Goal/用户等待/队列与commit门禁保持。验收 `dev-docs/background-continuation/acceptance.md`，任务 `.agent-sync/tasks/codex-background-continuation-20261019.md`。主干/CI、签名候选、安装/真实模型与薪资业务生产分别追踪；唯一桌面publisher和原薪资/CI owner不变，不修改冻结制品或重启客户端。
 
+## Deployment coordination — MOXBOTS-NATIVE-PASSWORD-CLOUD-20261019
+
+- **Deployment chat:**01a12b99-7b38-78b1-831f-9c60257d386a, existing140 owned service/auth only; original101 connector temporarily paused/resumed with identity/config unchanged. Existing human cloud/101 takeover and source-owner explicit handoff remain authoritative; native consent replacement was directly approved in human01a14fd2-aca4-7e70-81c2-652eeaa679a3. Phone source01a1488b owns phone-only acceptance; no parallel production writes.
+- **Pinned/current release:** main929b984e7334cb9b01100e0df421158043da6bf7 exactCI39185508608/39185508693, service27754480B/SHAf82ff9d6166b69d5a875ba54ecd7f0bcf4dfc19342dc837a5df001f6e797f7a8. Applied2026-10-19 16:21CST, QA password/originalPKCE/session/revoke, original browser consent/callback and samePID101 disconnect recovery accepted. Original101 session handle/expiry/authority retained; physical phone and natural production rotation remain unobserved.
+- **Runbook/rollback:**dev-docs/native-password-cloud-20261019.md. Four nonblocking locks, fresh idle/pins, private consistent backup, manifest-owned config/unit CAS and exact process checks; no DB/token/key rollback. Original web consent remains false skipApprovalScreen. No dailyMac, installer/updater/website/Nginx/TLS/model/notification rollout;17:35 followup must record intervening service929 while keeping original session baseline.
+
 ## MOXBOTS-READ-LOOP-20261019 — 2026-10-19
 
 builtin 执行会话"反复读同一内容、反复表态开始修改、始终不产生编辑"的有界进展检查。根因按观察证据判定为模型行为不收敛并被自动压缩放大（同轮94工具、0编辑、同一文件24次读取、精确命令重复0），未发现工具重放或bridge截断，不虚构历史重放类修复。实现只在单轮内容证据成立时（阶段表态/用户执行意图、同文件重叠区间重读、连续只读、0编辑、非只读研究、非等待用户）经`PostToolUse`注入可忽略提示；不停止、不切换模型、不重放工具、不写业务数据，不按固定超时或工具次数判死锁。任务 `.agent-sync/tasks/codex-read-loop-20261019-b7c02346.md`，验收 `dev-docs/read-loop/acceptance.md`，结果与脱敏证据见观察目录`/Users/zhangshaohua/Documents/Codex/2026-10-19/moxbots-execution-observation/`。定向13项、原builtin 153项、tsc与ESLint通过；真实模型收敛、构建/安装/原生验收未做。与并发`MOXBOTS-RUNTIME-REPAIR-20261019`在`src/server/agent-session.ts`有文件交集但改动区间不重叠，交接文件`read-loop-handoff.txt`；不向其他会话发送消息、不改薪资业务/会话/配置。
@@ -498,3 +504,8 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## CONVERGENCE-SCOPE — 2026-10-19
 
 修复 read-loop 收敛检查的只读意图范围缺陷：整轮"不要修改代码"保持豁免，但"不要修改生产数据/凭据/配置/其他模块"等对象受限禁令不再压制执行意图。仅改 `progress-convergence.ts` 与其单测，原 13 项测试保留；独立复核后补充只读属性、限定语泛化对象、引号对象、具名禁令与裸"不修改"边界，48/48 通过，`builtin-session` 188/188、typecheck/ESLint 通过。未改 409/408、薪资源码或并发任务占用的 `agent-session.ts`。记录 `.agent-sync/tasks/codex-convergence-scope-20261019-e3f04522.md`，验收 `dev-docs/convergence-scope/acceptance.md`。真实模型联调与客户端安装未验证。
+
+
+## MOXBOTS-MOBILE-APNS-001 — internal push environment scope (2026-10-19)
+
+Continue MOXBOTS-MOBILE-002 with explicit sandbox/production/both selection in the existing optional APNs provider. Registration must match the actual key environment; omitted scope preserves legacy behavior. Existing endpoint authority, fixed HTTPS origins, generic payload and source proof remain. Root owns code/CI/main; actual publication stays with cloud owner01a12b99-7b38-78b1-831f-9c60257d386a after credentials/configuration and existing release gates resolve. No new key/project, production enablement or phone acceptance is implied. Task `.agent-sync/tasks/codex-mobile-apns-scope-20261019-988baa72.md`; existing runbook `services/agentnet/MOBILE-NOTIFICATIONS.md`.
