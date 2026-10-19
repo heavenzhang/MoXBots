@@ -14876,6 +14876,12 @@ async function* messageGenerator(
     // caller deadline/cancel must report and stop that exact active owner
     // rather than claiming the turn was never enqueued.
     clearPromotedItem(item.id);
+    // Admission guards own the transition into a turn, not that accepted
+    // turn's later Query recovery. A zero-turn inferred-anchor rejection can
+    // re-deliver this exact source after Product has persisted its new root;
+    // rerunning the old continuation guard would reject our own committed
+    // state as stale. Unadmitted items keep their guards and cancellation.
+    item.beforeDispatch = undefined;
     isStreamingMessage = true;
     traceBuiltinInputProgress('admission-commit', inputTrace);
     if (lifecycleState.preWarming) {

@@ -39,6 +39,8 @@ Session 不是单一对象，而是同一产品会话在不同生命周期阶段
 
 `runtimeBinding` 是已有 Session 的执行权威，Agent/Channel 的 `runtimePreference` 只影响未来 Session。新 birth 写合法 binding 与 legacy `runtime/runtimeSource` 投影；启动迁移在 index lock 内补齐合法 legacy 行，未知组合保留证据并标记 `runtimeBindingCompatibility`，只允许读历史。Fork/snapshot 复制 binding 或 compatibility，不能用 fallback 拼接身份。
 
+Unix 桌面 Sidecar 由原 Rust 启动 builder 注入 `MYAGENTS_SIDECAR_PARENT_PID`，仅带桌面 Sidecar marker 的进程观察 OS `ppid`。父子关系失效时沿既有有界 shutdown / SDK exit 清理，避免桌面未执行进程树 Drop 后遗留旧会话执行器。Windows 沿用 kill-on-close Job；无桌面 launch identity 的 Host、CLI 和开发服务不受该观察器管理。它是父进程退出兜底，不是新的 Session lock，也不通过端口/PID扫描接管其他进程。
+
 ### 2.1 新建、恢复与 SDK probe
 
 builtin 启动先解析持久化的 SDK candidate，再确认对应 SDK transcript 是否存在：
@@ -169,6 +171,8 @@ SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动
 后台 task 的稳定 `task_id` 不等于一次执行。SDK `run_id` 在恢复同一 task 时变化，按字符串顺序比较运行先后；缺失值只兼容旧事件，不能覆盖已知新 run。`builtin-session/lifecycle.ts` 在 exact Query 的既有 registry 内同时裁决 start/terminal 的 run、活跃状态与双 terminal channel 的富信息补齐；已完成记录留到 Query finalization，不能让旧 run 的迟到 start/terminal 复活任务、释放新 run 或阻止新 run 完成。Renderer SSE 和通知记录携带可选 `runId`，新 run 重置旧 terminal 投影；历史 hydration 不覆盖已知更晚 run，同一 run 的摘要补齐 upsert 原通知，不同 run 使用不同通知 ID。旧历史缺字段时仍可读取，不改写磁盘历史。
 
 MCP pre-warm 是 soft readiness observation，不是 AI turn 的 admission authority。未 connected、读取失败或观察超时不能拒绝业务 turn；真正的 MCP surface replacement 则是 Query-generation correctness fence，必须在 turn boundary 串行应用。
+
+准入 guard 只拥有新 turn 提交前的校验；同步转交到 active turn 后从 source item 释放。native 零模型轮次拒绝推导的 reload anchor 时，既有恢复路径重新递交同一已接纳输入，不能重新使用针对旧 interrupted turn 的 continuation guard，否则它会将自己的已提交新 root 判为 stale。尚未提交的输入、Stop/cancel、显式 Rewind/Fork 边界仍走原校验。
 
 ### 4.3 external Runtime
 

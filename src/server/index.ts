@@ -561,7 +561,7 @@ async function shutdownOwnedResources(): Promise<void> {
   await gracefulShutdownPromise;
 }
 
-async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT'): Promise<void> {
+async function shutdownProcess(signal: 'SIGTERM' | 'SIGINT' | 'parent-exit'): Promise<void> {
   if (processShutdownStarted) return;
   processShutdownStarted = true;
   if (!stdioBroken) {
@@ -12391,7 +12391,16 @@ description: >
   });
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : error);
-  process.exit(1);
-});
+// Only desktop-owned launches carry this identity. Standalone Host/CLI/dev
+// servers retain their existing lifetime; Windows is contained by Rust's Job.
+import { watchSidecarParent } from './utils/sidecar-parent';
+const desktopParentPid = process.env.MYAGENTS_SIDECAR_PARENT_PID;
+if (process.platform !== 'win32' && desktopParentPid && process.argv.includes('--moxbot-sidecar')) {
+  watchSidecarParent(desktopParentPid, () => { void shutdownProcess('parent-exit'); });
+}
+if (!processShutdownStarted) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

@@ -331,6 +331,10 @@ fn append_sidecar_entrypoint_args(
         }
     }
     cmd.env("MYAGENTS_APP_VERSION", env!("CARGO_PKG_VERSION"));
+    // Unix children otherwise survive an ungraceful desktop exit. Bind both
+    // launch paths to this exact parent; Node retires through its normal exit
+    // handler (including SDK children) if the OS reparents it.
+    cmd.env("MYAGENTS_SIDECAR_PARENT_PID", std::process::id().to_string());
     cmd.env(
         "MYAGENTS_APP_BUILD_MODE",
         if cfg!(debug_assertions) {
@@ -435,6 +439,11 @@ mod sidecar_process_role_tests {
                 Some(&Some(std::ffi::OsStr::new(env!("CARGO_PKG_VERSION")))),
             );
             assert!(environment.contains_key(std::ffi::OsStr::new("MYAGENTS_APP_BUILD_MODE")));
+            let parent_pid = std::process::id().to_string();
+            assert_eq!(
+                environment.get(std::ffi::OsStr::new("MYAGENTS_SIDECAR_PARENT_PID")),
+                Some(&Some(std::ffi::OsStr::new(&parent_pid))),
+            );
         }
         let session_args: Vec<_> = session
             .get_args()
