@@ -375,6 +375,9 @@ export async function handleSessionReadRoute(
       sessionId: engine.getRuntimeIdentity().sessionId,
       sessionState: liveState.sessionState,
       isBusy: liveState.isBusy,
+      // Additive field for the desktop scheduler's cheap backpressure
+      // precheck. The Goal orchestrator remains the admission authority.
+      hasBackgroundWork: liveState.hasBackgroundWork === true,
       completionTerminal: engine.getSessionCompletionTerminal(),
     });
   }

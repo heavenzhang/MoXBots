@@ -110,6 +110,18 @@ pub struct BackgroundTurnResponse {
 pub type CronExecuteResponse = BackgroundTurnResponse;
 pub type GoalExecuteResponse = BackgroundTurnResponse;
 
+/// A Goal probe can be refused before any runtime turn is admitted because the
+/// Session is still busy. That is normal backpressure: no model call happened,
+/// nothing was dispatched, and termination is confirmed. Keep this
+/// classification independent from error text so logging and failure
+/// accounting agree.
+pub(crate) fn is_goal_work_pending_response(response: &BackgroundTurnResponse) -> bool {
+    !response.success
+        && !response.turn_dispatched
+        && !response.termination_unconfirmed
+        && response.code.as_deref() == Some("goal_work_pending")
+}
+
 fn unconfirmed_transport_response(session_id: &str, error: String) -> BackgroundTurnResponse {
     BackgroundTurnResponse {
         success: false,
@@ -378,14 +390,8 @@ async fn execute_background_turn<R: Runtime, P: serde::Serialize>(
         }
     };
 
-    ulog_info!(
-        "[sidecar] Background turn {} response: status={}, body={}",
-        execution_id,
-        status,
-        body.chars().take(500).collect::<String>()
-    );
-
-    // Parse response
+    // Parse response first so normal Goal backpressure can be logged as a
+    // single state change instead of a raw response/parsed pair every probe.
     let mut result: BackgroundTurnResponse = match serde_json::from_str(&body) {
         Ok(result) => result,
         Err(error) => {
@@ -410,22 +416,38 @@ async fn execute_background_turn<R: Runtime, P: serde::Serialize>(
         result.status = Some(status.as_u16());
     }
 
-    ulog_info!(
-        "[sidecar] Background turn {} parsed response: success={}, error={:?}, ai_requested_exit={:?}",
-        execution_id,
-        result.success,
-        result.error,
-        result.ai_requested_exit
-    );
+    let deferred = trace_operation == "goal_execute" && is_goal_work_pending_response(&result);
+    if !deferred {
+        ulog_info!(
+            "[sidecar] Background turn {} response: status={}, body={}",
+            execution_id,
+            status,
+            body.chars().take(500).collect::<String>()
+        );
+        ulog_info!(
+            "[sidecar] Background turn {} parsed response: success={}, error={:?}, ai_requested_exit={:?}",
+            execution_id,
+            result.success,
+            result.error,
+            result.ai_requested_exit
+        );
+    }
     emit_perf_trace(
         PerfTrace::new(PerfTraceName::BackgroundJob, trace_operation)
             .duration_ms(elapsed_ms(cron_started))
             .session_id(Some(&session_id))
             .runtime(Some(&execution_runtime))
-            .status(if result.success { "ok" } else { "error" })
+            .status(if deferred {
+                "deferred"
+            } else if result.success {
+                "ok"
+            } else {
+                "error"
+            })
             .detail("executionId", &execution_id)
             .detail("statusCode", status.as_u16())
             .detail("isNewSidecar", sidecar_is_new)
+            .detail("deferred", deferred)
             .detail("aiRequestedExit", result.ai_requested_exit.unwrap_or(false)),
     );
 
@@ -506,6 +528,32 @@ mod tests {
             response.error.as_deref(),
             Some("response connection closed")
         );
+    }
+
+    #[test]
+    fn goal_work_pending_requires_confirmed_undispatched_termination() {
+        let mut response = BackgroundTurnResponse {
+            success: false,
+            turn_dispatched: false,
+            termination_unconfirmed: false,
+            error: Some("Session work is still running".to_string()),
+            code: Some("goal_work_pending".to_string()),
+            status: Some(409),
+            ai_requested_exit: None,
+            exit_reason: None,
+            output_text: None,
+            goal_channel_delivery_expected: false,
+            session_id: Some("session-1".to_string()),
+        };
+        assert!(is_goal_work_pending_response(&response));
+        response.turn_dispatched = true;
+        assert!(!is_goal_work_pending_response(&response));
+        response.turn_dispatched = false;
+        response.termination_unconfirmed = true;
+        assert!(!is_goal_work_pending_response(&response));
+        response.termination_unconfirmed = false;
+        response.code = Some("real_failure".to_string());
+        assert!(!is_goal_work_pending_response(&response));
     }
 
     #[test]

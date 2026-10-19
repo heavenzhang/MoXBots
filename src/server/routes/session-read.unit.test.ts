@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
     getBackgroundTaskDetail: vi.fn(),
     getExecutionTurnId: vi.fn(() => 'turn-1'),
     getRuntimeIdentity: vi.fn(() => ({ kind: 'builtin', runtime: 'builtin', sessionId: 'sid' })),
-    getLiveSessionState: vi.fn(() => ({ sessionState: 'idle', isBusy: false })),
+    getLiveSessionState: vi.fn(() => ({ sessionState: 'idle', isBusy: false, hasBackgroundWork: false })),
     getSessionCompletionTerminal: vi.fn<() => Record<string, unknown> | null>(() => null),
     getLatestAssistantResult: vi.fn(() => ({ sessionId: 'sid', latestResult: 'latest answer' })),
     getLiveSessionOverlay: vi.fn<() => Record<string, unknown>>(() => ({ isActive: false })),
@@ -46,7 +46,7 @@ describe('handleSessionReadRoute', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.engine.getRuntimeIdentity.mockReturnValue({ kind: 'builtin', runtime: 'builtin', sessionId: 'sid' });
-    mocks.engine.getLiveSessionState.mockReturnValue({ sessionState: 'idle', isBusy: false });
+    mocks.engine.getLiveSessionState.mockReturnValue({ sessionState: 'idle', isBusy: false, hasBackgroundWork: false });
     mocks.engine.getSessionCompletionTerminal.mockReturnValue(null);
     mocks.engine.getLatestAssistantResult.mockReturnValue({ sessionId: 'sid', latestResult: 'latest answer' });
     mocks.engine.getLiveSessionOverlay.mockReturnValue({ isActive: false });
@@ -101,7 +101,7 @@ describe('handleSessionReadRoute', () => {
   });
 
   it('reads live session state and latest result from the active engine', async () => {
-    mocks.engine.getLiveSessionState.mockReturnValue({ sessionState: 'idle', isBusy: true });
+    mocks.engine.getLiveSessionState.mockReturnValue({ sessionState: 'idle', isBusy: true, hasBackgroundWork: true });
     mocks.engine.getSessionCompletionTerminal.mockReturnValue({
       sessionId: 'sid',
       workspacePath: '/tmp/workspace',
@@ -124,6 +124,7 @@ describe('handleSessionReadRoute', () => {
       sessionId: 'sid',
       sessionState: 'idle',
       isBusy: true,
+      hasBackgroundWork: true,
       completionTerminal: {
         sessionId: 'sid',
         workspacePath: '/tmp/workspace',
@@ -139,7 +140,7 @@ describe('handleSessionReadRoute', () => {
   });
 
   it('registers a pending watch only when the target matches active engine identity', async () => {
-    mocks.engine.getLiveSessionState.mockReturnValue({ sessionState: 'running', isBusy: true });
+    mocks.engine.getLiveSessionState.mockReturnValue({ sessionState: 'running', isBusy: true, hasBackgroundWork: false });
 
     const response = await handleSessionReadRoute(
       '/api/session-watch/register',

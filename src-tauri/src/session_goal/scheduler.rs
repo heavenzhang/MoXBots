@@ -362,10 +362,7 @@ mod tests {
 }
 
 fn continuation_work_pending(response: &crate::sidecar::GoalExecuteResponse) -> bool {
-    !response.success
-        && !response.turn_dispatched
-        && !response.termination_unconfirmed
-        && response.code.as_deref() == Some("goal_work_pending")
+    crate::sidecar::is_goal_work_pending_response(response)
 }
 
 #[cfg(test)]
