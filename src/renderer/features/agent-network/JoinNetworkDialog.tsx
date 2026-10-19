@@ -251,6 +251,16 @@ export function JoinNetworkDialog({
                     <p className="mt-1 break-all text-xs text-[var(--ink-muted)]">
                       {attempt.authorizationUrl}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => void login.check()}
+                      disabled={
+                        busy || login.checking || login.expired || login.stopped
+                      }
+                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+                    >
+                      {t("agentNetwork.ownedLogin.check")}
+                    </button>
                   </div>
                 )}
               </details>
@@ -275,7 +285,7 @@ export function JoinNetworkDialog({
                       ).toLocaleTimeString(),
                     })}
                   </p>
-                  <div className="mt-3 grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void login.reopen()}
@@ -286,16 +296,7 @@ export function JoinNetworkDialog({
                     >
                       {t("agentNetwork.ownedLogin.openBrowser")}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => void login.check()}
-                      disabled={
-                        busy || login.checking || login.expired || login.stopped
-                      }
-                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      {t("agentNetwork.ownedLogin.check")}
-                    </button>
+
                   </div>
                   {login.expired && (
                     <button
