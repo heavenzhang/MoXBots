@@ -11,7 +11,9 @@ Continue the original MOXBOTS-MOBILE-002 internal-trial goal. The installed iPho
 
 Reuse the existing optional provider, endpoint Store, source proof, AuthStore/DeviceStore, outbox and fixed Apple HTTPS origins. No new identity, execution owner, route or provider relay. Source scope: mobile_notification_delivery.rs and the existing notification runbook only, plus this task record/shared plan. No app/native-library inputs change; no phone reinstall is required for this source-only preparation.
 
-## To Do List and completion criteria
+## Acceptance criteria
+
+To Do List: source, local checks, CI/main, production and physical acceptance are tracked separately.
 
 - [x] Verify the user-confirmed Git URL, canonical main and clean isolated worktree; preserve all existing builds and identities.
 - [x] Add strict sandbox/production/both scope, retaining legacy omitted-field behavior.
@@ -21,13 +23,17 @@ Reuse the existing optional provider, endpoint Store, source proof, AuthStore/De
 - [ ] Commit/push, green CI and normal remote-main integration; verify remote ancestry.
 - [ ] Real APNs credential acceptance, service publication, physical device delivery, background/tap/cold-start and approval recovery remain unaccepted.
 
+## Completed
+
+- Implemented the closed environment selector, original runtime/router registration regression and existing runbook update. Local validation and independent review are recorded below; no production changes.
+
 ## Verification
 
 Final-source full service regression: 198 passed, 0 failed, 8 ignored, four test threads, 329.76s. Both new environment tests pass inside that full run; strict all-target Clippy and crate fmt pass. Logs remain outside Git at /tmp/moxbots-mobile-apns-scope-{service-tests,clippy,fmt}.log. Ignored manual fixtures/real-Dex opt-in are not counted as acceptance; the existing CI explicitly runs its real Dex step.
 
 The provider tests use newly generated synthetic keys in private temporary files, the original service/Auth/Device/endpoint owners and real Axum registration requests; they do not send to Apple or capture audio. Root reviewed the final diff and independently verified results. Reused one bounded read-only unit (requested gpt-6-luna/medium; actual model/usage/cost unknown) found no blocking scope/startup/HTTP-admission/documentation issue. It did not run tests. No external model calls. Ordinary exact-head CI and main delivery remain required.
 
-## Dependencies and real-state boundaries
+## Blockers and unknowns
 
 The original password service source929b984e is already published by the sole cloud owner, with controlled existing-QA password/PKCE/principal/network/revocation acceptance. The actual iPhone's admin login/persistence/session list remains pending user input/device availability. This patch is not part of that running source. Notifications are currently unconfigured in production; no APNs key path has been verified, and the user confirmed no existing Firebase project. Do not infer that no key exists anywhere, create keys/projects, or enable providers from a sample configuration.
 
