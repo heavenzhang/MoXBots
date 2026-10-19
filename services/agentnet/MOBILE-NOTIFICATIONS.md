@@ -12,7 +12,8 @@ plus at least one provider configuration:
     "apns": {
       "team_id": "TEAM_ID",
       "key_id": "KEY_ID",
-      "topic": "com.example.moxbots",
+      "topic": "com.moxbots.mobileinternal",
+      "environment": "sandbox",
       "private_key_file": "/absolute/path/AuthKey.p8"
     },
     "fcm": {
@@ -26,11 +27,36 @@ plus at least one provider configuration:
 Provider credential files must be owned by the service user, regular
 non-symlink files with mode `0600`, and at most 64 KiB. APNs environments are
 selected by the endpoint's fixed provider enum (`apns-sandbox` or
-`apns-production`); FCM uses the project ID from config. The clients use fixed
+`apns-production`) and restricted by `apns.environment`. Choose `sandbox` for a
+development push entitlement or `production` for a production entitlement, and
+match the actual key's environment and topic. Registration for the other
+environment is refused before creating an endpoint. Omitting `environment`
+preserves the legacy `both` behavior; use `both` only with an existing key that
+supports both environments. Unknown or mistyped scope values are configuration
+errors. FCM uses the project ID from config. The clients use fixed
 HTTPS origins, disable redirects, set connect/request deadlines, cap provider
 responses, and do not retry inside the HTTP client. The outbox owns bounded
 retry and lease behavior. FCM service-account access tokens are short-lived and
 held in process memory only.
+
+Apple now supports choosing an environment and Topic Specific key scope in
+[Certificates, Identifiers & Profiles](https://developer.apple.com/help/account/keys/create-a-private-key/).
+For the internal iPhone build, prefer a sandbox key limited to the actual
+`com.moxbots.mobileinternal` topic. Reuse an already authorized matching key when
+available. Creating a key, downloading its one-time `.p8`, configuring the existing
+service, and enabling real delivery are separate operations from this example:
+the designated cloud publisher owns the existing maintenance/backup/rollback
+window. Never commit the key, Team/Key account material, endpoint token, or
+service-account file. Store the private key only in the agreed private credential
+location and provide the service-user-owned file by path.
+
+The current implementation does not infer a key's scope from its PEM bytes.
+The operator must verify the scope in the Apple account; a passing synthetic
+registration test does not prove that Apple accepts the real key or delivers to
+the phone. Actual background delivery, notification-tap/cold-start recovery and
+fresh approval checks remain acceptance gates. Android also needs a configured
+FCM project and compatible Google Play services; see the
+[official Android client prerequisites](https://firebase.google.com/docs/cloud-messaging/android/get-started).
 
 When enabled with at least one configured provider, the mobile routes accept
 registration, endpoint revocation, redemption, and device-attested source hints.

@@ -500,3 +500,8 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## CONVERGENCE-SCOPE — 2026-10-19
 
 修复 read-loop 收敛检查的只读意图范围缺陷：整轮"不要修改代码"保持豁免，但"不要修改生产数据/凭据/配置/其他模块"等对象受限禁令不再压制执行意图。仅改 `progress-convergence.ts` 与其单测，原 13 项测试保留；独立复核后补充只读属性、限定语泛化对象、引号对象、具名禁令与裸"不修改"边界，48/48 通过，`builtin-session` 188/188、typecheck/ESLint 通过。未改 409/408、薪资源码或并发任务占用的 `agent-session.ts`。记录 `.agent-sync/tasks/codex-convergence-scope-20261019-e3f04522.md`，验收 `dev-docs/convergence-scope/acceptance.md`。真实模型联调与客户端安装未验证。
+
+
+## MOXBOTS-MOBILE-APNS-001 — internal push environment scope (2026-10-19)
+
+Continue MOXBOTS-MOBILE-002 with explicit sandbox/production/both selection in the existing optional APNs provider. Registration must match the actual key environment; omitted scope preserves legacy behavior. Existing endpoint authority, fixed HTTPS origins, generic payload and source proof remain. Root owns code/CI/main; actual publication stays with cloud owner01a12b99-7b38-78b1-831f-9c60257d386a after credentials/configuration and existing release gates resolve. No new key/project, production enablement or phone acceptance is implied. Task `.agent-sync/tasks/codex-mobile-apns-scope-20261019-988baa72.md`; existing runbook `services/agentnet/MOBILE-NOTIFICATIONS.md`.
