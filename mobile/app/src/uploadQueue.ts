@@ -30,23 +30,22 @@ export function waitForUploadForeground(
   return new Promise((resolve) => {
     let done = false;
     let unsubscribe = () => {};
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = (ready: boolean) => {
       if (done) return;
       done = true;
       unsubscribe();
-      if (timer !== undefined) clearTimeout(timer);
+      clearTimeout(timer);
       resolve(ready);
     };
     const check = () => {
       if (!isCurrent()) finish(false);
       else if (isReady()) finish(true);
     };
+    const timer = setTimeout(() => finish(false), timeoutMs);
     try { unsubscribe = subscribe(check); }
     catch { finish(false); return; }
     // A subscription may report its state synchronously.
     if (done) { unsubscribe(); return; }
-    timer = setTimeout(() => finish(false), timeoutMs);
     check();
   });
 }
