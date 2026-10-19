@@ -1,0 +1,22 @@
+{
+  ".chat-header": {
+    "height": 115,
+    "top": 0
+  },
+  ".chat-scroll": {
+    "height": 640,
+    "top": 117
+  },
+  ".chat-scroll .mobile-scroll": {
+    "height": 640,
+    "top": 0
+  },
+  ".composer-wrap": {
+    "height": 61,
+    "top": 757
+  },
+  "screen": {
+    "height": 852,
+    "width": 393
+  }
+}
