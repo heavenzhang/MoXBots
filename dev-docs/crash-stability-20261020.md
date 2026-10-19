@@ -14,7 +14,8 @@ Workspace watchers explicitly use NoCache. Their existing contract is coarse inv
 
 - [x] Extracted the exact production constructor and its new regression from the changed source and compiled them against locally cached actual notify-debouncer-full 0.6.0 / tempfile dependencies with pinned Rust 1.92.0. Actual macOS nested create, external rename, atomic replacement and delete pass (0.47 s).
 - [x] Controlled fixture comparison: 20,000 workspace files plus a symlink to 20,000 external files. Default FileIdMap registration: 398.713 ms, maximum RSS 27,492,352 bytes, peak footprint 22,249,904 bytes. NoCache: 1.757 ms, maximum RSS 7,487,488 bytes, peak footprint 2,212,248 bytes. These are separate-process synthetic measurements, not installed-client savings. Fixture now lives outside the WPS workspace.
-- [ ] Whole-crate watcher tests, exact-head CI, main integration and remote ancestry verification.
+- [x] Whole-crate native macOS watcher tests: 6 passed, 0 failed. Xcode compatibility archives were exposed with LIBRARY_PATH and the existing CI runner policy uses DYLD_FALLBACK_LIBRARY_PATH=/usr/lib/swift. The initial link/loader failures are retained; no product linking configuration changed. Added this focused suite to the existing macOS CI job; Linux broad Rust and Windows workspace IO already execute it.
+- [ ] Exact-head CI, main integration and remote ancestry verification.
 - [ ] Signed desktop publication and large real-workspace acceptance. Only the existing desktop publisher owns this step; do not replace or restart a running client from this task.
 
 Machine-local raw evidence: WPS MoxBot `work/crash-20261020/evidence/` (native sample, window receipt, system termination lines, read-only state receipts, compiler/test output and resource measurements). No private session content or credentials are committed.

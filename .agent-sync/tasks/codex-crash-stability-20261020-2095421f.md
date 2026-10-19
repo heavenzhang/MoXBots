@@ -14,7 +14,8 @@
 - [x] 核实真实安装版本、主进程路径、退出时间及系统退出状态。
 - [x] NoCache替代工作区递归inode缓存，保留粗粒度刷新和应用内精确move。
 - [x] 原生嵌套create、rename、atomic replace、delete回归；隔离资源对照。
-- [ ] 全crate定向测试、CI与最新main合并后复核。
+- [x] 全crate macOS watcher定向测试6通过；现有macOS CI追加相同定向suite。
+- [ ] CI与最新main合并后复核。
 - [ ] 远端main包含修复。
 - [ ] 唯一桌面publisher生成签名包并在安全窗口安装；实际工作区与会话验收。
 
@@ -28,7 +29,8 @@
 - `rustfmt --edition 2021 --check src-tauri/src/workspace_files/watcher.rs` 与 `git diff --check` 通过。
 - 源码抽取的实际constructor+新回归以Rust1.92.0链接实际notify0.6缓存依赖，macOS真实文件事件通过。
 - 隔离40,000文件夹具，NoCache注册1.757ms/最大RSS7,487,488字节；默认398.713ms/27,492,352字节。不是生产节省测量。
-- whole-crate首次编译到链接，缺Xcode Swift compatibility库搜索路径；正在使用本机SDK正确LIBRARY_PATH重试。没有改产品链接配置。
+- Whole-crate使用Xcode LIBRARY_PATH与现有CI runner DYLD_FALLBACK_LIBRARY_PATH后，macOS watcher 6/6通过；初始链接/loader失败证据保留，没有改产品链接配置。
+- PR166已创建；远端任务分支精确SHA回读与project-sync handoff通过，CI尚排队。
 - 原客户端PID26622持续运行；原生窗口、public read-only两项Session state可访问。当前二进制不含修复。
 
 ## Blockers and unknowns
