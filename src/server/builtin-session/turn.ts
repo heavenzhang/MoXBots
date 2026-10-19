@@ -12,6 +12,7 @@ import type {
 } from '../../shared/sessionCompletion';
 import type { TurnIdentity, TurnTerminalOutcome } from '../session-core/turn-queue';
 import type { AssistantChannelDelivery } from '../session-core/channel-delivery';
+import { progressConvergence } from './progress-convergence';
 
 type ImEmitter = (type: ImEventType, data?: unknown) => void;
 
@@ -224,6 +225,7 @@ export function resetTurnUsage(): void {
   currentTurnTextBlocks.length = 0;
   currentTurnSourceItem = null;
   lastSessionCompletionTerminal = null;
+  progressConvergence.reset();
 }
 
 export function getCurrentTurnUsage(): BuiltinTurnUsage {
@@ -419,6 +421,9 @@ export function consumePendingInboxInput(queueId: string, joinsCurrentTurn: bool
 
 export function appendCurrentTurnTextBlock(chunk: string): void {
   currentTurnTextBlocks.push(chunk);
+  // Visible assistant text carries the model's own stage transitions. Feed it
+  // to the per-turn progress check; tool observations are fed from PostToolUse.
+  progressConvergence.observeAssistantText(chunk);
 }
 
 export function getCurrentTurnText(): string {
@@ -581,6 +586,11 @@ export function getCurrentTurnSourceItem(): MessageQueueItem | null {
 }
 
 export function setCurrentTurnSourceItem(item: MessageQueueItem | null): void {
+  // A fresh source item is the client's turn boundary. Reset the progress
+  // ledger here (not only at enqueue) so queued turns cannot inherit the
+  // previous turn's read/edit evidence. Mid-turn joins never reach this setter
+  // with a new item: they preserve the original source owner.
+  progressConvergence.reset(item?.messageText);
   currentTurnSourceItem = item;
 }
 
@@ -679,4 +689,5 @@ export function resetTurnForTest(): void {
   currentTurnSourceItem = null;
   lastSessionCompletionTerminal = null;
   terminalObserverBarrier = Promise.resolve();
+  progressConvergence.reset();
 }

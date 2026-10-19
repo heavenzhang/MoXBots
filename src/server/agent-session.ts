@@ -455,6 +455,7 @@ import {
   turnState,
   waitForCurrentTurnTerminalObserver,
 } from './builtin-session/turn';
+import { progressConvergence } from './builtin-session/progress-convergence';
 import {
   withSessionCompletionTerminal,
   type SessionCompletionTerminal,
@@ -8697,6 +8698,9 @@ export async function switchToSession(targetSessionId: string): Promise<boolean>
 
   // Settle the old writer before clearing state needed by the retained binding.
   await setCurrentSessionId(targetSessionId);
+  // The progress ledger is process-wide; a session switch must not inherit the
+  // previous session's read/edit evidence or declared stage.
+  progressConvergence.reset();
 
   // Reset message/queue/streaming state (shared with initializeAgent, resetSession)
   clearMessageState();
@@ -12248,6 +12252,18 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             async (input: HookInput, _toolUseId: string | undefined, options: { signal: AbortSignal }): Promise<HookJSONOutput> => {
               const postInput = input as PostToolUseHookInput;
               await queryContextRecovery?.commitToolResult(postInput.tool_name, postInput.tool_input, postInput.tool_response);
+              // Bounded progress check: only content-level, per-turn evidence can
+              // produce a hint (declared edit stage + overlapping re-reads + no
+              // edit/write). It never stops, switches, or replays anything.
+              const convergenceHint = progressConvergence.observeTool(
+                postInput.tool_name,
+                postInput.tool_input,
+                { agentId: postInput.agent_id, turnText: getCurrentTurnSourceItem()?.messageText },
+              );
+              if (convergenceHint) {
+                const snapshot = progressConvergence.snapshot();
+                console.log(`[convergence] progress hint emitted ops=${snapshot.toolOps} reads=${snapshot.readOps} edits=${snapshot.editOps} readStreak=${snapshot.consecutiveReads} overlaps=${snapshot.overlappingRereads} maxFileOverlaps=${snapshot.maxFileOverlaps} declarations=${snapshot.declarations} hints=${snapshot.hints}`);
+              }
               // Propagate SDK's turn-level AbortSignal so resize aborts when the turn does.
               // Without this, a Jimp/sharp stall here blocks the SDK main loop's stdio drain.
               const resized = await resizeToolImageContent(postInput.tool_response, options?.signal);
@@ -12257,6 +12273,15 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   hookSpecificOutput: {
                     hookEventName: 'PostToolUse' as const,
                     updatedMCPToolOutput: resized,
+                    ...(convergenceHint ? { additionalContext: convergenceHint } : {}),
+                  },
+                };
+              }
+              if (convergenceHint) {
+                return {
+                  hookSpecificOutput: {
+                    hookEventName: 'PostToolUse' as const,
+                    additionalContext: convergenceHint,
                   },
                 };
               }
