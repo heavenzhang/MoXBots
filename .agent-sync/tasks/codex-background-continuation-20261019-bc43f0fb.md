@@ -30,19 +30,19 @@
 
 当前依赖：原补修会话公开idle，无并发writer；本机运行0.5.13-rc.1不含本补丁确认入口；唯一桌面publisher另有4aacea71候选在构建，不能混改冻结包。完整观察证据留观察目录，不提交日志、凭据或业务数据。
 
-下一步：沿现有后台详情reader投影精确Query实例token+run身份；确认/撤销在lifecycle同步比较后提交；route只校验并交facade，UI按身份fence处理晚回执；先加回归再实现。
+当前下一步：PR #158精确head正常CI、合入main及远端核实；源码实现与本地验证已完成，候选/原生/安装及业务仍分开验收。
 
-阶段成果：精确身份确认/撤销及Query authority失效已落地；Node24定向229项 + 后续owners35项通过，typecheck/ESLint通过。原17文件修改完整保留并整合；当前主Agent串行负责源码，原客户端会话保留idle且不再发送接续。
+阶段成果：精确身份确认/撤销及Query authority失效已落地；Node24合并main2c2efd06后8文件295项通过，typecheck/ESLint通过。原17文件修改完整保留并整合；当前主Agent串行负责源码，原客户端会话保留idle且不再发送接续。
 
 ## Completed
 
 - 已整合原修复修改并补齐运行身份、Query替换、撤销、UI晚回执保护；代码提交在当前任务分支。
-- 同步当前main4aacea71，保留较新的native Stop修复；仅共享计划顶端冲突，双方记录均保留。
+- 已同步main2c2efd06，保留native Stop修复与Host聚合；此前共享计划冲突已保留双方记录。PR #158已创建。
 - 保留原客户端会话与未提交修改快照，接续后不再发送重复prompt，无并发writer或运行应用操作。
 
 ## Verification
 
-Node24定向7文件229项unit/DOM/模拟SDK集成通过；追加authority撤销/同Query重新授权后owners35项通过；typecheck、定向ESLint和源码空白检查通过。真实组件IAB合成确认/撤销/拒绝桌面交互通过。合并后的完整回归与MoxBots Web/server构建在执行；最终日志在本机观察目录，验收状态见dev-docs/background-continuation/acceptance.md。
+Node24合并main2c2efd06后8文件295项unit/DOM/模拟SDK集成通过；typecheck、定向ESLint、源码空白检查及MoXBots Web/Server构建通过。真实组件IAB合成确认/撤销/拒绝桌面交互通过；只读独立源码/UI状态审阅未发现可行动问题，但未操作App或运行测试。最终日志在本机观察目录，状态见dev-docs/background-continuation/acceptance.md与review.md。正常跨平台CI、原生真实Session和运行生效仍待验收。
 
 ## Blockers and unknowns
 
