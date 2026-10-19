@@ -538,6 +538,8 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 
 
 
-## MOXBOT-STATUSBAR-20261019
+## MOXBOTS-CRASH-20261020 — Workspace watcher resource stability
 
-待办、子 Agent、目标执行整合为默认收起单行摘要，唯一详情区、外置暂停/继续，沿用原 transcript 与 Goal owner。接续 `.agent-sync/tasks/codex-unified-statusbar-20261019-3603d5c8.md`，验收 `dev-docs/unified-statusbar/acceptance.md`；代码/合成组件/CI/main 与下一未冻结桌面发行、原生验收分开跟踪。既定唯一桌面发布 owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 不变，不重启日常客户端或改冻结制品。
+本桌面批次沿用仓库 `https://github.com/heavenzhang/MoXBots.git` 与唯一集成/发布分支 `main`；唯一发布会话 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，目标为既有 macOS 桌面安装。版本沿用 MAJOR.MINOR.PATCH / -rc.N，由该会话统一分配，当前已装0.5.14不是本修复制品。PR仅预检查；正式集成使用现有push-main工作流的精确SHA，发布前核实main包含本任务并冻结候选。当前状态：修复分支已推送，PR166预检查排队；未合入、未打包本修复、未安装。用户已明确授权向既有发布会话交接，该会话已接收；本开发会话不触发部署、不分配版本或覆盖已发布制品。
+
+Recent observed main-process exits have status0 during the existing native installation; attribution remains bounded. A separate live 0.5.14 resource defect was sampled: default macOS FileIdMap recursively scans/caches large workspace trees and follows symlink targets despite the consumer needing only coarse invalidation. NoCache fix plus actual nested create/rename/atomic-replace/delete regression and focused whole-crate macOS tests pass. Source/CI/main and signed-client resource acceptance remain separate; existing sole desktop publisher retains installation ownership. Task `.agent-sync/tasks/codex-crash-stability-20261020-2095421f.md`; acceptance `dev-docs/crash-stability-20261020.md`.
