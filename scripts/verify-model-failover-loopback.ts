@@ -20,6 +20,7 @@ let interruptTask: Promise<void> | undefined;
 let interruptCompleted = false;
 const interruptFailures: string[] = [];
 const scratch = await mkdtemp(join(tmpdir(), 'moxbots-failover-native-'));
+let rejectedResponses = 0;
 let counter = 0;
 let primaryCalls = 0;
 let backupCalls = 0;
@@ -96,7 +97,14 @@ const gateway = createServer(async (req, res) => {
     for await (const chunk of req) chunks.push(chunk);
     const response = await handler(new Request(`http://127.0.0.1${req.url}`, { method: 'POST',
       headers: { 'content-type': 'application/json' }, body: Buffer.concat(chunks), signal: controller.signal }));
-    res.writeHead(response.status, Object.fromEntries(response.headers));
+    const headers = Object.fromEntries(response.headers);
+    if (upstreamRejection && !response.ok) {
+      rejectedResponses++;
+      // Force one native SDK repeat to exercise both admission guards, as in
+      // stream rescue/older transports that do not honor the initial hint.
+      if (rejectedResponses === 1) delete headers['x-should-retry'];
+    }
+    res.writeHead(response.status, headers);
     if (response.body) for await (const chunk of response.body) res.write(chunk);
     res.end();
   } catch { if (!res.headersSent) res.writeHead(500); res.end(); }
@@ -122,7 +130,7 @@ try {
     env: { PATH: process.env.PATH, HOME: scratch, USERPROFILE: scratch,
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${gatewayAddress.port}/bridge/fixture`,
       ANTHROPIC_API_KEY: 'fixture-key', ANTHROPIC_AUTH_TOKEN: '', CLAUDE_CODE_OAUTH_TOKEN: '',
-      CLAUDE_CODE_MAX_RETRIES: '0', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+      CLAUDE_CODE_MAX_RETRIES: upstreamRejection ? '1' : '0', CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
       CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
       HTTP_PROXY: '', HTTPS_PROXY: '', ALL_PROXY: '', http_proxy: '', https_proxy: '', all_proxy: '',
     },
@@ -142,12 +150,14 @@ try {
   if (stopDuringRetry) { assert(interruptRequested); assert(interruptCompleted); assert.equal(interruptFailures.length, 0); }
   else if (upstreamRejection) {
     const terminal = JSON.stringify(results);
+    assert.equal(rejectedResponses, 2, 'native SDK must actually repeat the rejected inference');
+    assert(terminal.includes('automatic_replay_blocked'), 'native terminal must retain Goal safety pause semantics');
     assert(terminal.includes('503'), 'native terminal must retain original HTTP 503');
     assert(!terminal.includes('409'), 'native terminal must not replace rejection with HTTP 409');
   }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

@@ -23,7 +23,14 @@ export class QueryRequestGuard {
     if (this.isBlocked(scope, ambiguous)) return undefined;
     const row = this.requests.get(JSON.stringify([scope, fingerprint]));
     if (row?.inFlight || !row?.rejection) return undefined;
-    return new Response(row.rejection.body, { status: row.rejection.status, headers: row.rejection.headers });
+    // Keep the original HTTP failure visible while preserving the previous
+    // safety terminal for Goal/Session owners. Returning a bare transient 503
+    // here could let an outer scheduler redispatch the task after this Query's
+    // inference budget was exhausted, despite never granting a new lease here.
+    return Response.json({ type: 'error', error: { type: 'api_error', code: 'automatic_replay_blocked',
+      message: `automatic_replay_blocked: Duplicate inference was not sent. Original HTTP ${row.rejection.status} rejection: ${row.rejection.body}` } },
+      { status: row.rejection.status, headers: { ...row.rejection.headers, 'content-type': 'application/json',
+        'x-moxbots-recovery': 'blocked' } });
   }
 
   begin(scope: string | undefined, fingerprint: string, ambiguous: boolean): {

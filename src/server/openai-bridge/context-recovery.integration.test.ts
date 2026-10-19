@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createBridgeHandler } from './handler';
 import { ContextRecoveryController } from './context-recovery';
 import { ModelFailoverController, type BridgeModelFailover } from './model-failover';
+import { classifyContextTurnFailure } from '../utils/context-budget';
 import type { AnthropicRequest } from './types/anthropic';
 
 const servers: Server[] = [];
@@ -81,7 +82,11 @@ describe('context recovery over the existing bridge handler', () => {
     for (let repeat = 0; repeat < 3; repeat++) {
       const repeated = await handler(request(body));
       expect(repeated.status).toBe(status);
-      expect(await repeated.text()).toBe(originalError);
+      const rejection = await repeated.json();
+      expect(rejection.error.message).toContain(originalError);
+      expect(rejection.error.code).toBe('automatic_replay_blocked');
+      expect(classifyContextTurnFailure({ apiErrorStatus: status, errorText: rejection.error.message }))
+        .toBe('automatic_replay_blocked');
       expect(repeated.headers.get('x-should-retry')).toBe('false');
     }
     expect(upstream.requests).toHaveLength(attempts);
