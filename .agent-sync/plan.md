@@ -527,3 +527,8 @@ PR157 corrects the reproduced CATALOG_STALE failure caused by querying historica
 ## MOXBOTS-MOBILE-APNS-001 — internal push environment scope (2026-10-19)
 
 Continue MOXBOTS-MOBILE-002 with explicit sandbox/production/both selection in the existing optional APNs provider. Registration must match the actual key environment; omitted scope preserves legacy behavior. Existing endpoint authority, fixed HTTPS origins, generic payload and source proof remain. Root owns code/CI/main; actual publication stays with cloud owner01a12b99-7b38-78b1-831f-9c60257d386a after credentials/configuration and existing release gates resolve. No new key/project, production enablement or phone acceptance is implied. Task `.agent-sync/tasks/codex-mobile-apns-scope-20261019-988baa72.md`; existing runbook `services/agentnet/MOBILE-NOTIFICATIONS.md`.
+
+
+## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
+
+Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
