@@ -1748,7 +1748,7 @@ async fn connect(
                         None => Err(super::management_controller::lost(command.request.mutation(),false)),
                     };
                     if let Some((reason,blocked))=pairs.take_management_busy_diagnostic() {
-                        log::warn!("[agent-network] stage=management-preopen method={:?} last_reason={} blocked_total={} code=HOST_MANAGEMENT_TARGET_BUSY",command.request.method,reason,blocked);
+                        ulog_warn!("[agent-network] stage=management-preopen method={:?} last_reason={} blocked_total={} code=HOST_MANAGEMENT_TARGET_BUSY",command.request.method,reason,blocked);
                     }
                     if let Some(channel_id)=deferred_messages.retire_cancelled(&mut pairs) {
                         if let Ok(control_id)=deferred_messages.cleanup_control(&scope,&channel_id) {

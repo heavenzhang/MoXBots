@@ -22,6 +22,8 @@ Later feature submissions defer after the candidate is frozen. Mobile native lay
 
 ## Integration-specific work
 
+- Second combined CI39291650201 passed the previously failing headless renewal, but full-app Clippy correctly rejected new BUSY actor `log::warn!`. Replaced only that call with the already-imported product `ulog_warn!`; bounded static diagnostic fields and rate limit remain unchanged. Original failed job retained. No formal compile had started; the new exact candidate must pass its own automatic CI before promotion.
+
 - First combined CI39290837993 failed at test classification: final Sidecar real-process fixture was not registered in the existing subprocess allowlist. Root reviewed every spawned fixed Node snippet and exact-group cleanup, then added only this file with a no-App/no-SDK/no-network explanation. Classification now passes locally; original CI raw log retained. Product source is unchanged by this repair.
 
 - Existing full-DOM SimpleChatInput test failed because it expected Goal objective/cancel always visible. Updated it to exercise the new collapsed disclosure and menu, preserving separate scheduled Task state and exact pause/cancel callbacks. The failure is retained in private evidence.
