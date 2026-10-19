@@ -539,4 +539,4 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 
 ## GOAL-STALL-001 — Goal watchdog 结算与可见恢复原因
 
-沿原 builtin/Goal lifecycle 修复 timeout abort 丢失 observer/authority 的问题；可见输入 turn_conflict 显式反馈，暂停原因显示在原状态栏。任务 `.agent-sync/tasks/codex-goal-stall-20261020.md`，验收 `dev-docs/goal-stall/acceptance.md`。代码、合成回归、实际组件与签名原生/真实模型分开；唯一 CI/桌面发布会话仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，依赖PR168的遗留进程治理后做当前真实任务恢复。
+沿原 builtin/Goal lifecycle 修复 timeout abort 丢失 observer/authority 的问题；可见输入 turn_conflict 显式反馈，暂停原因显示在原状态栏。任务 `.agent-sync/tasks/codex-goal-stall-20261020-3d1bab4d.md`，验收 `dev-docs/goal-stall/acceptance.md`。代码、合成回归、实际组件与签名原生/真实模型分开；唯一 CI/桌面发布会话仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，依赖PR168的遗留进程治理后做当前真实任务恢复。
