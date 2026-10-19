@@ -10,6 +10,7 @@ import { SessionModelRecovery } from '../src/server/builtin-session/model-recove
 import { ContextRecoveryController } from '../src/server/openai-bridge/context-recovery';
 import { ModelFailoverController } from '../src/server/openai-bridge/model-failover';
 
+const terminalTrailer = process.argv.includes('--terminal-trailer');
 const declinedRecovery = process.argv.includes('--declined-recovery');
 const upstreamRejection = declinedRecovery || process.argv.includes('--upstream-rejection');
 const streamFailure = process.argv.includes('--stream-failure');
@@ -42,7 +43,8 @@ function message(res: ServerResponse, useTool: boolean) {
       : frame('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Resumed from count=1. Task complete.' } }))
     + frame('content_block_stop', { type: 'content_block_stop', index: 0 })
     + frame('message_delta', { type: 'message_delta', delta: { stop_reason: useTool ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 20 } })
-    + frame('message_stop', { type: 'message_stop' }));
+    + frame('message_stop', { type: 'message_stop' })
+    + (terminalTrailer ? 'data: [DONE]\n\n' : ''));
 }
 const upstream = createServer(async (req, res) => {
   const chunks = [];
@@ -161,7 +163,7 @@ try {
   }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, terminalTrailer, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

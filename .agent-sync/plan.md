@@ -538,23 +538,6 @@ Actual Android system file/image selection, complete encrypted Host upload with 
 
 
 
+## MOXBOTS-STREAM-502-20261020-01 — SSE终态与502诊断
 
-## REMOTE-UI-20261020 — remote session presentation parity
-
-Canonical repository https://github.com/heavenzhang/MoXBots.git, existing main
-integration flow. Branch codex/remote-ui-20261020; task record
-`.agent-sync/tasks/codex-remote-ui-20261020-8504c973.md`. Decode SDK tool wrappers
-before bounded target projection, render canonical plain text once, compact
-shared disclosure and contained composer/header. Existing execution, receipts,
-permissions and wire schema remain unchanged. Controller and target both need
-the next accepted update; older target may still return clipped JSON.
-
-Per the user's updated 2026-10-20 instructions, existing sole desktop publisher
-`01a12bc2-907a-7702-b6dd-788225c5dfe4` also coordinates project CI and release
-intake. Development chats perform local self-checks and hand over exact SHAs;
-no additional project CI or release build is dispatched here. Existing main
-branch flow and automated CI remain subject to that owner's coordination.
-Owner allocates the next unfrozen semantic version; no version/tag changes in
-this task. macOS desktop controller/target acceptance and safe-idle activation
-remain separate from source and synthetic browser checks. No Host/cloud/mobile
-rollout, daily client restart or candidate publication in this development lane.
+两层恢复包装在合法JSON message_stop交付后结束读取，防止尾帧把已完成响应变成断流；Anthropic直通记录脱敏底层错误码/阶段/路由/状态。Stop、Query/route和不完整输出防重放不放宽。验收 `dev-docs/stream-502-20261020/acceptance.md`，任务 `.agent-sync/tasks/codex-stream-502-20261020-198d415c.md`。用户本轮明确要求本地验证后提交交统一CI与部署会话；唯一负责人沿用 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，统一候选、CI汇总、main集成、版本与桌面构建/发布。开发分支只做本地自查/提交/推送，不另开共享CI；现有test.yml的PR/main/dev触发须纳入owner协调。现有分支策略及SemVer沿用，版本由owner分配；目标后续未冻结macOS修复批次，不动已发布0.5.14制品。当前本地验证通过，CI/main/发布/真实Provider与安装验收待统一会话。
