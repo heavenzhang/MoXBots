@@ -8,6 +8,39 @@ The current human separately designated this chat
 `01a12b99-7b38-78b1-831f-9c60257d386a` for cloud/101 publication after handoff.
 The original message was personally read, not inferred from a peer's summary.
 
+## Accepted P4 product and publication procedure (2026-10-19 checkpoint)
+
+Source7e4bbdfaa693b3f309c7a879b32d1b386b3b52ca/R20261019083714-7e4bbdfaa693 supersedes P2/P3. Producer39223945533 and complete local artifact/strict nested consumer/CRC passed. Same-artifact standard39225566407, natural lab renewal39226095343 and trueKVM39226946194 passed, including new kernel bootID and same original identity/ciphertext/Ready. Closed hashes and limits: host-init-001/P4-acceptance.json. Existing101 binary and dailyMac remain excluded; the same-source service artifact is lab-only, not a cloud929 replacement.
+
+P4 bootstrap24272B/SHA3b3ec7775261318feaf396a50c6be9bb082996dbf2b6d6cfb4ddc217fbf62164; bundle171555269B/SHA427a2076dffecf9e4a12700cfdf283e6aae81bb3d6660bfa0f8cfb9c7f8c54b4; install24313B/SHA c317033d7bf4ae77160e2a528ae83e88d4f3edd4a59f771af2b98fba10a6853b; exact producer stable643B/SHA33f1b5f16b50ac7c87f85d24572e0985264264057ec5c30d1cc6c47801e1a270.
+
+After current-main integration, final required CI and remote source/runtime containment, use the reviewed separate v2 append/promote/ownedrollback helper with these P4 pins. Re-read latest pointer/config/lease/locks/runtime/inventories, back up the unavailable pair, append only P4's two immutable files and release locks. Perform actual anonymous normal-TLS full GET of both public immutable files, exact size/SHA/strict consumer and both gzip EOF/CRC; candidate ZIP transport does not satisfy this. Only then bind all three isolated receipts plus full public GET and main/CI into final acceptance, re-admit all four original locks and CAS only current to publications/available-20261019083714-7e4bbdfaa693. Recheck public install/stable and unrelated inventories/PIDs. No Nginx/config/service restart, updater switch, auth DB rollback, old immutable overwrite or dailyMac operation. Final publication receipt belongs to PR137 and private execution-status.json, not this pre-publication checkpoint. The old P2 instructions below are historical and must not supply current pins.
+
+## Historical P2 preparation (never promoted; three actual reboot gates failed)
+
+The human transferred source integration and static publication to this root chat. Historical M below is immutable but failed genuine first-install registry initialization; **never enable M**. The repaired frozen product is `58d5247d7692acb816f211e1af7ef1891871bd6a`, release `20261018152704-58d5247d7692`. Original dirty source records remain preserved.
+
+| Exact P2 file | Bytes | SHA256 |
+| --- | ---: | --- |
+| bootstrap.py | 24272 | 522ee5f0d7a100c3a808bdd3a0745b31bc430138d2628d7a935d715ab74c3e5a |
+| bundle.tar.gz | 171496242 | 3181bf17a51f1c5bd5cfe646af3ff3bddc4c0ae711e4f4120a795a60ad7c152c |
+| install.sh | 24313 | c317033d7bf4ae77160e2a528ae83e88d4f3edd4a59f771af2b98fba10a6853b |
+| stable.json | 643 | 697204f6c467b5f66c4555588ad9b65122f7bef01d90cabc3e60bd2b4a211002 |
+
+Producer39140386138 built P2 from its actual source. Standard39141103331 and natural lab renewal39141765786 passed on the exact same payload/service; original expiry+3s, identity, repeat and restart are verified. True KVM39142568416, final current-main CI/containment and public transport/promotion remain separate gates. Detailed receipts and limits: `host-init-001/acceptance.md`.
+
+For this correction the existing generic immutable route already admits the new release ID. **No Nginx edit/reload, cloud/Dex/101 restart, account change or updater switch is needed.** Use the separately reviewed fixed-scope append/promote helper, never the frozen historical M publisher:
+
+1. Finish same-P2 standard, renewal and true KVM gates; synchronize main normally, pass combined CI, merge with matching head and verify remote source containment. Do not rebuild or relabel P2 after unrelated main integration.
+2. Verify the exact candidate Actions ZIP size/digest, three-file whitelist, member hashes/CRC, P2 strict complete consumer and both gzip trailers. Reproduce exact producer launcher/index bytes. Keep all inputs private until append admission.
+3. Re-read actual pointer/config, maintenance ownership/lease, live website/updater inventories and protected runtime PIDs. Acquire the same four nonblocking locks only for the short write. Back up the exact unavailable pair and metadata. Append only the new immutable two-file release, retaining old M and the unavailable pointer. An exposed immutable path is retained even on later failure.
+4. Release locks; perform a new anonymous normal-TLS full GET of the exact P2 bootstrap/bundle, strict size/SHA/consumer and nested CRC checks. Candidate-artifact transfers do not count as this public test. The final acceptance receipt binds these GET hashes plus the three actual acceptance summaries and accepted main/CI.
+5. Re-admit the short maintenance window, validate all exact source/receipt/payload pins and preserved protected state, stage the exact producer pair, then CAS only `current` from the reviewed unavailable pointer to `publications/available-20261018152704-58d5247d7692`. Recheck public install/index bytes, routes and inventories/runtime. Rollback only the exact still-owned pair/pointer; retain immutable bytes and never restore AuthStore or another publisher's changes.
+
+Live read-only admission at2026-10-18T15:57Z still showed unavailable-M pointer, no updater release lease/new P2 public path, and original cloud2216644/Dex1380988/Nginx12063 PIDs. This is a preparation snapshot, not final write admission. Website/download/updater and daily Mac remain outside this lane.
+
+## Historical M staging record (retained, do not promote)
+
 ## Scope and state
 
 The existing cloud backend and101 release is accepted and closed by PR126;
@@ -26,11 +59,11 @@ not silence. Before each short write, canonical ownership plus fresh actual
 config/process/lock/lease admission must exclude conflicting writers. A real
 occupancy blocks the window; an unrelated signing task is not evidence of one.
 
-## Frozen bytes and trust
+### Historical frozen M bytes and trust
 
-Use the existing candidate, without regenerating its gzip or release ID:
+These historical M bytes remain unchanged for audit; they are not the repaired candidate and must not be promoted:
 
-| Item | Accepted identity |
+| Item | Historical artifact identity |
 | --- | --- |
 | Product source | `dcf8d9a60976c160e2b2aca33313c668c071132c` (clean actual main) |
 | Release | `20261018032115-dcf8d9a60976` |
@@ -47,7 +80,7 @@ Launcher and bootstrap match the original M producer byte-for-byte. Trust is
 normal verified same-origin HTTPS plus SHA256 integrity; **no publisher signature**
 is provided or claimed. Desktop updater keys are not used.
 
-## Staged publication procedure
+### Historical M staging procedure (do not rerun for P2)
 
 1. Re-read canonical ownership, actual Nginx serving layout, shared publisher
    window, current source/hash, website/updater pointers, service PIDs and locks.
@@ -100,7 +133,7 @@ Private candidate and receipts reside under the project pointer's
 `output/host-onboard-001/public-candidate-dcf` and
 `output/host-publication-20261018`; no runtime files or secrets are committed here.
 
-## Immutable staging receipt and remaining gates
+### Historical M staging receipt and then-pending gates
 
 PR127 merged as main `f6ddc0b41625c08d7aee6ae1ff1ae688608e5649` after nine applicable CI checks. The four original nonblocking locks admitted one short staging transaction on2026-10-18T10:53Z. Existing ingress exact-byte CAS, explicit public755/644 admission, nginx-user readability, `nginx -t` and graceful reload passed. Cloud/Dex/Nginx master PIDs and website/updater inventories stayed unchanged; no backend or101 change occurred. Private backup and owner-checked rollback readiness are retained. The exact immutable release is present and stable is the exact closed `schemaVersion:1,status:unavailable` index; staging is not installation acceptance or stable enablement.
 

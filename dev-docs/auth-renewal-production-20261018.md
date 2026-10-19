@@ -2,6 +2,12 @@
 
 The human transferred the existing140 owned service and101 MoX paired Node/connector publication to chat01a12b99-7b38-78b1-831f-9c60257d386a on2026-10-18, requiring explicit original publisher handoff before any writes. This is a scoped transfer, not authority over desktop, Windows, website, public installer pointers, updater or shared ingress. Daily Mac remains untouched.
 
+## Production natural-cycle closure — 2026-10-19 17:35CST
+
+The original24h baseline is now actually accepted, after the original17:26:17 expiry. A read-only observation at17:35:14 found the same fixed session handle/principal/device/createdAt, one natural rotation (0→1), no revocation and expiry extended to2026-10-20 17:11:17CST. All12 original identity/key/configuration/unit witnesses remained equal. NodePID3502751 and connectorPID14604 and their restart counters remained unchanged since the separately recorded cloud929 maintenance; status was Ready10s fresh, and the cloud original device retained key generation/fingerprint/membership revision with matching catalog/connection epoch. No proactive renewal, login/join, token export/decryption, restart, disconnect, database/config write, model or dailyMac operation was used for this observation.
+
+This observes the original installed101 connector with intervening cloud source929b984e/SHAf82ff9d6, not a new P4 installer deployment. The17:35 one-time automation101-host was deleted after successful observation; all other automations remain outside this action. Closed non-secret evidence and complete private receipt digest: auth-renewal-natural-20261019.json. Native dailyMac/physical-phone UI and the separate phone Bot-list repair are not proven by this protocol observation. The older pending statements below describe their original receipt dates.
+
 ## Checkable delivery
 
 - [x] Login PR118 and renewal PR119 normally merged into remote main; final release source dcf8d9a60976c160e2b2aca33313c668c071132c.

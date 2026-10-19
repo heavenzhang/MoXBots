@@ -228,12 +228,10 @@ async fn raw_request_with_profile(
         bearer.set_sensitive(true);
         request = request.header(header::AUTHORIZATION, bearer);
     }
-    let mut response = diagnostic.send(request).await.map_err(|error| {
-        NetworkError::cloud(
-            crate::network_diagnostics::network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
-            503,
-        )
-    })?;
+    let mut response = diagnostic
+        .send(request)
+        .await
+        .map_err(|error| owned_request_failure(&error))?;
     let status = response.status();
     // Older servers have no native-password route. This closed failure never
     // authorizes a session and must not silently open a browser instead.
@@ -274,12 +272,11 @@ async fn raw_request_with_profile(
         return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
     }
     let mut bytes = Zeroizing::new(Vec::new());
-    while let Some(chunk) = response.chunk().await.map_err(|error| {
-        NetworkError::cloud(
-            crate::network_diagnostics::network_error_code(&error, "OWNED_ACCOUNT_UNAVAILABLE"),
-            503,
-        )
-    })? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|error| owned_request_failure(&error))?
+    {
         if bytes.len().saturating_add(chunk.len()) > response_limit {
             return Err(NetworkError::new("OWNED_RESPONSE_TOO_LARGE"));
         }
@@ -305,6 +302,14 @@ async fn raw_request_with_profile(
         ));
     }
     Ok((status, value))
+}
+fn owned_request_failure(error: &reqwest::Error) -> NetworkError {
+    let mut failure = NetworkError::new(crate::network_diagnostics::network_error_code(
+        error,
+        "OWNED_ACCOUNT_UNAVAILABLE",
+    ));
+    failure.retryable = crate::network_diagnostics::recoverable_transport(error);
+    failure
 }
 impl OwnedClient {
     pub(crate) fn pinned(

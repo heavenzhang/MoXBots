@@ -103,6 +103,7 @@ def empty_namespace(lab):
                 raise lab.Rejected("guest-existing-MoX-account-protected")
         lab.need(lab.run(["systemctl", "show", name + ".service", "--property=LoadState", "--value"], check=False).stdout.strip() == b"not-found",
                  "guest-existing-MoX-unit-protected")
+    lab.require_absent_auth_units()
     return True
 
 
@@ -149,6 +150,12 @@ def guest_main():
                       "uptimeSeconds": float(Path("/proc/uptime").read_text().split()[0]), "uuid": marker["uuid"]}
         elif op == "status":
             result = json.loads(lab.STATUS.read_bytes())
+        elif op == "canceled-status-observation":
+            result = lab.canceled_status_observation()
+        elif op == "runtime-readiness-observation":
+            include_errors = payload.get("include_startup_errors", False)
+            lab.need(type(include_errors) is bool, "guest-runtime-startup-errors-flag")
+            result = lab.runtime_readiness_observation(include_startup_errors=include_errors)
         elif op == "identity-hashes":
             result = lab.installed_identity_hashes()
         elif op == "persistent-hashes":
@@ -156,6 +163,8 @@ def guest_main():
             result = lab.persistent_hashes(payload["include_accounts"])
         elif op == "listeners":
             result = sorted(lab.tcp_listeners())
+        elif op == "auth-unit-observation":
+            result = lab.auth_unit_observation()
         elif op == "trust-ca":
             value = payload.get("certificate", "")
             lab.need(isinstance(value, str) and len(value) < 65536 and value.startswith("-----BEGIN CERTIFICATE-----"), "guest-CA-format")
@@ -169,8 +178,11 @@ def guest_main():
             record = json.loads(private_file(INSTALL_PROCESS))
             lab.need(record["nonce"] == marker["nonce"] and process_birth(record["pid"]) == record["birth"]
                      and os.getpgid(record["pid"]) == record["pid"], "guest-owned-process-birth-check")
-            os.killpg(record["pid"], signal.SIGINT if op == "interrupt-install" else signal.SIGTERM)
-            result = True
+            if op == "interrupt-install":
+                result = lab.interrupt_installer_owner(record["pid"])
+            else:
+                os.killpg(record["pid"], signal.SIGTERM)
+                result = True
         elif op == "reboot":
             lab.run(["systemctl", "--no-block", "reboot"])
             result = True
@@ -181,7 +193,11 @@ def guest_main():
                 allowed += [["systemctl", "show", unit, "--property=MainPID", "--value"]]
                 allowed += [["systemctl", verb, "--quiet", unit] for verb in ("is-active", "is-enabled")]
                 allowed += [["systemctl", "stop", unit]]
+            for unit in lab.AUTH_UNITS:
+                allowed += [["systemctl", "stop", unit],
+                            ["systemctl", "show", unit, "--property=LoadState,ActiveState,MainPID"]]
             allowed += [["systemctl", "restart", lab.CONNECTOR]]
+            allowed += [["systemctl", "show", lab.CONNECTOR, "--property=LoadState,ActiveState,MainPID"]]
             lab.need(command in allowed, "guest-command-outside-closed-owner-operations")
             completed = lab.run(command, timeout=45, check=False)
             result = {"returncode": completed.returncode, "stdout": base64.b64encode(completed.stdout).decode()}
@@ -332,7 +348,9 @@ def coordinator(args):
     lab = lab_module()
     lab.guard(argparse.Namespace(product_source=args.product_source, output=args.output,
         cached_public_payload=args.cached_public_payload, cached_public_run=args.cached_public_run,
-        cached_public_artifact_id=args.cached_public_artifact_id))
+        cached_public_artifact_id=args.cached_public_artifact_id,
+        candidate_payload=args.candidate_payload, candidate_run=args.candidate_run,
+        candidate_artifact_id=args.candidate_artifact_id))
     try:
         probe = kvm_probe(lab)
     except lab.Rejected as error:
@@ -410,6 +428,9 @@ def coordinator(args):
             if args.cached_public_payload:
                 command += ["--cached-public-payload", str(args.cached_public_payload), "--cached-public-run", args.cached_public_run,
                             "--cached-public-artifact-id", args.cached_public_artifact_id]
+            if args.candidate_payload:
+                command += ["--candidate-payload", str(args.candidate_payload), "--candidate-run", args.candidate_run,
+                            "--candidate-artifact-id", args.candidate_artifact_id]
             # Browser driver already prints only fixed gates. Keep even that raw pipe
             # in memory here and forward only the fixed pass/fail marker alphabet.
             result = lab.run(command, timeout=2400, check=False)
@@ -459,6 +480,9 @@ def main():
     parser.add_argument("--cached-public-payload", type=Path)
     parser.add_argument("--cached-public-run", default="")
     parser.add_argument("--cached-public-artifact-id", default="")
+    parser.add_argument("--candidate-payload", type=Path)
+    parser.add_argument("--candidate-run", default="")
+    parser.add_argument("--candidate-artifact-id", default="")
     args = parser.parse_args()
     try:
         coordinator(args)
