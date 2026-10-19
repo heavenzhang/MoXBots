@@ -537,18 +537,53 @@ impl NetworkRegistry {
         connection_id: &str,
         expected_revision: u64,
     ) -> Result<StartedLogin, NetworkError> {
-        let _mutation = self.mutation.lock().await;
-        self.check_restore_boundary(expected_revision, &AtomicBool::new(false))?;
-        let candidates = self
-            .owned_stored
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .clone();
+        let candidates = {
+            let _mutation = self.mutation.lock().await;
+            self.check_restore_boundary(expected_revision, &AtomicBool::new(false))?;
+            self.owned_stored
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        };
         let record = candidates
             .iter()
             .find(|record| record.id == connection_id && !record.removing && record.join_authorized)
             .cloned()
             .ok_or_else(|| NetworkError::new("NETWORK_CONNECTION_NOT_FOUND"))?;
+        self.check_existing_login_actor(connection_id)?;
+        let device = crate::device_identity::current_device_identity()
+            .map_err(|_| NetworkError::new("DEVICE_ID_UNAVAILABLE"))?;
+        // Discovery and PKCE startup may wait on a remote service. Never hold
+        // the registry mutation lock while performing that network I/O.
+        let started = self
+            .owned_login
+            .start_existing(&device.device_id, record.clone(), candidates)
+            .await?;
+        let boundary = {
+            let _mutation = self.mutation.lock().await;
+            self.check_restore_boundary(expected_revision, &AtomicBool::new(false))
+                .and_then(|_| {
+                    if !self
+                        .owned_stored
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .iter()
+                        .any(|current| current == &record)
+                    {
+                        return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+                    }
+                    self.check_existing_login_actor(connection_id)
+                })
+        };
+        if let Err(error) = boundary {
+            // Retire only the attempt we just created; cleanup also runs outside
+            // the mutation lock and cannot publish a changed registration.
+            let _ = self.owned_login.cancel(&started.attempt_id).await;
+            return Err(error);
+        }
+        Ok(started)
+    }
+    fn check_existing_login_actor(&self, connection_id: &str) -> Result<(), NetworkError> {
         if self
             .connections
             .lock()
@@ -558,11 +593,7 @@ impl NetworkRegistry {
         {
             return Err(NetworkError::new("NETWORK_CONNECTION_ACTIVE"));
         }
-        let device = crate::device_identity::current_device_identity()
-            .map_err(|_| NetworkError::new("DEVICE_ID_UNAVAILABLE"))?;
-        self.owned_login
-            .start_existing(&device.device_id, record, candidates)
-            .await
+        Ok(())
     }
     pub(crate) async fn cli_attempts(&self) -> Vec<Value> {
         self.owned_login.existing_attempts().await
@@ -1945,6 +1976,43 @@ mod tests {
         assert_eq!(owner.owned_start_existing("saved", 1).await.err().unwrap().code, "REVISION_CONFLICT");
         assert_eq!(owner.owned_start_existing("saved", 0).await.err().unwrap().code, "NETWORK_CONNECTION_NOT_FOUND");
         assert_eq!(owner.view().revision, 0);
+    }
+
+    #[tokio::test]
+    async fn existing_login_discovery_does_not_block_registry_mutations() {
+        use tokio::io::AsyncReadExt;
+        let owner = NetworkRegistry::new();
+        owner.selfhost_enabled.store(true, Ordering::Release);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut record = cli_test_record();
+        record.descriptor.issuer = format!("https://{}", listener.local_addr().unwrap());
+        owner.owned_stored.lock().unwrap().push(record);
+        let task_owner = owner.clone();
+        let login = tauri::async_runtime::spawn(async move { task_owner.owned_start_existing("saved", 0).await });
+        // Hold discovery at its TLS handshake, without weakening HTTPS trust
+        // or creating credentials. An unrelated mutation must still run.
+        let (mut socket, _) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), listener.accept())
+                .await
+                .unwrap()
+                .unwrap();
+        let mut request = [0; 4096];
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(5), socket.read(&mut request))
+                .await
+                .unwrap()
+                .unwrap()
+                > 0
+        );
+        let mutation =
+            tokio::time::timeout(std::time::Duration::from_secs(1), owner.mutation.lock())
+                .await
+                .expect("discovery must not hold the mutation lock");
+        owner.revision.fetch_add(1, Ordering::AcqRel);
+        drop(mutation);
+        login.abort();
+        let _ = login.await;
+        assert_eq!(owner.view().revision, 1);
     }
 
     #[test]
