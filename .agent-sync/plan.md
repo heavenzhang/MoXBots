@@ -535,3 +535,24 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 ## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
 
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
+
+
+## REMOTE-UI-20261020 — remote session presentation parity
+
+Canonical repository https://github.com/heavenzhang/MoXBots.git, existing main
+integration flow. Branch codex/remote-ui-20261020; task record
+`.agent-sync/tasks/codex-remote-ui-20261020-8504c973.md`. Decode SDK tool wrappers
+before bounded target projection, render canonical plain text once, compact
+shared disclosure and contained composer/header. Existing execution, receipts,
+permissions and wire schema remain unchanged. Controller and target both need
+the next accepted update; older target may still return clipped JSON.
+
+Per the user's updated 2026-10-20 instructions, existing sole desktop publisher
+`01a12bc2-907a-7702-b6dd-788225c5dfe4` also coordinates project CI and release
+intake. Development chats perform local self-checks and hand over exact SHAs;
+no additional project CI or release build is dispatched here. Existing main
+branch flow and automated CI remain subject to that owner's coordination.
+Owner allocates the next unfrozen semantic version; no version/tag changes in
+this task. macOS desktop controller/target acceptance and safe-idle activation
+remain separate from source and synthetic browser checks. No Host/cloud/mobile
+rollout, daily client restart or candidate publication in this development lane.

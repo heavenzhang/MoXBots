@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { unwrapSdkResult } from '../../shared/sdkResultText';
 import { getSessionData, getSessionMetadata, isHistoryVisibleSession } from '../SessionStore';
 import { getSessionEngine } from '../session-engine';
 import { projectSessionActivity } from '../session-engine/observation';
@@ -39,20 +40,25 @@ export function projectRemoteInteractions(items: SessionEnginePendingInteractive
 export function projectRemoteMessage(message: SessionMessage): RemoteMessage | null {
   const projected=projectSessionTextMessage(message);
   const tools:RemoteMessage['tools']=[];
+  let toolTruncated=false;
   if(message.role==='assistant'&&message.content.trim().startsWith('[')&&message.content.includes('"type"')) {
     const blocks:unknown=JSON.parse(message.content);
     if(Array.isArray(blocks))for(const value of blocks){
       const block=record(value);
       if(block.type==='tool_use'&&typeof block.id==='string'){
         const tool=record(block.tool);
-        tools.push({id:block.id,name:clipped(block.name||tool.name||'工具调用',160),status:tool.isError===true?'error':tool.status==='running'?'running':'complete',summary:clipped(tool.result||block.result||'工具执行记录；详细原始参数保留在远端。',2000)});
+        // Decode before clipping: a clipped JSON envelope cannot be unwrapped by
+        // the controller. Keep the strict wire bounds and raw inputs on target.
+        const result=unwrapSdkResult(display(tool.result ?? block.result ?? ''));
+        toolTruncated ||= result.length>2000;
+        tools.push({id:block.id,name:clipped(block.name||tool.name||'工具调用',160),status:tool.isError===true||tool.status==='error'?'error':tool.status==='running'?'running':'complete',summary:result.length>2000?`${result.slice(0,1998)}\n…`:result});
       }
     }
   }
   if(!projected&&!tools.length)return null;
   const content=projected?.content||'';
   if(message.role!=='user'&&message.role!=='assistant')return null;
-  return {id:message.id,role:message.role,timestamp:message.timestamp,content:content.slice(0,16000),truncated:content.length>16000||tools.length>10,tools:tools.slice(0,10)};
+  return {id:message.id,role:message.role,timestamp:message.timestamp,content:content.slice(0,16000),truncated:content.length>16000||tools.length>10||toolTruncated,tools:tools.slice(0,10)};
 }
 
 /** One whole snapshot is projected from the original Session owner. UI applies
