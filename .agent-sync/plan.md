@@ -535,3 +535,7 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 ## MOXBOTS-ANDROID-FILE-VOICE-20261019 — real picker and isolated Host acceptance
 
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
+
+## MOXBOTS-STREAM-502-20261020-01 — SSE终态与502诊断
+
+两层恢复包装在合法JSON message_stop交付后结束读取，防止尾帧把已完成响应变成断流；Anthropic直通记录脱敏底层错误码/阶段/路由/状态。Stop、Query/route和不完整输出防重放不放宽。验收 `dev-docs/stream-502-20261020/acceptance.md`，任务 `.agent-sync/tasks/codex-stream-502-20261020-198d415c.md`。用户本轮明确要求本地验证后提交交统一CI与部署会话；唯一负责人沿用 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，统一候选、CI汇总、main集成、版本与桌面构建/发布。开发分支只做本地自查/提交/推送，不另开共享CI；现有test.yml的PR/main/dev触发须纳入owner协调。现有分支策略及SemVer沿用，版本由owner分配；目标后续未冻结macOS修复批次，不动已发布0.5.14制品。当前本地验证通过，CI/main/发布/真实Provider与安装验收待统一会话。
