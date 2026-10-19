@@ -350,9 +350,16 @@ function AppBody() {
     }
   }, [say]);
 
-  const loadAccount = useCallback(async () => {
+  const loadAccount = useCallback(async (expectedOwner: ViewOwner | null = null) => {
+    let refreshOwner = expectedOwner;
+    const moveLoadedOwner = (nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
+      const next = moveOwner(nextScreen, nextTarget, sessionId);
+      if (refreshOwner) refreshOwner = next;
+      return next;
+    };
     const routeEpoch = routeFocusGate.capture();
-    const routeIsCurrent = () => routeFocusGate.isCurrent(routeEpoch) && AppState.currentState === 'active';
+    const routeIsCurrent = () => routeFocusGate.isCurrent(routeEpoch) && AppState.currentState === 'active'
+      && (!refreshOwner || viewStillOwned(refreshOwner, ownerRef.current));
     if (!routeIsCurrent() || !loginAttemptGate.canRead()) return;
     const loginEpoch = loginAttemptGate.capture();
     const artifactReturn = peekArtifactChatReturn();
@@ -374,7 +381,7 @@ function AppBody() {
       if (accountIdentityChanged(previousAccount, reply)) setNotice(null);
       clearArtifactChatReturn(artifactReturn);
       draftPersistenceRef.current?.clear();
-      moveOwner('login', null, null);
+      moveLoadedOwner('login', null, null);
       setTargets([]);
       setUnavailableDeviceCount(0);
       setSessions([]);
@@ -388,11 +395,11 @@ function AppBody() {
       setUnavailableDeviceCount(0);
       setSessions([]);
       setPending([]);
-      moveOwner('sessions', null, null);
+      moveLoadedOwner('sessions', null, null);
     }
     // A directory failure is a connection issue after a confirmed sign-in;
     // keep the user on the session page where they can refresh or get help.
-    if (ownerRef.current.screen === 'login') moveOwner('sessions', null, null);
+    if (ownerRef.current.screen === 'login') moveLoadedOwner('sessions', null, null);
     let notificationTarget: { targetId: string; identityKey: string; agentId: string; sessionId: string } | null = null;
     let notificationFailure: string | null = null;
     if (notificationIntent && notificationOpens.isCurrent(notificationIntent)) {
@@ -412,7 +419,7 @@ function AppBody() {
       setUnavailableDeviceCount(0);
       setSessions([]);
       const currentOwner = ownerRef.current;
-      if (currentOwner.targetId) moveOwner(currentOwner.screen, null, null);
+      if (currentOwner.targetId) moveLoadedOwner(currentOwner.screen, null, null);
     };
     let result: Awaited<ReturnType<typeof requestNative>>;
     try {
@@ -440,7 +447,7 @@ function AppBody() {
           if (!requestIsCurrent() || !notificationOpens.isCurrent(notificationIntent)) return;
           if (journal.kind !== 'operations') throw new Error(journal.kind === 'error' ? journal.code : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE');
           clearArtifactChatReturn(artifactReturn);
-          moveOwner('chat', currentTarget, freshSnapshot.sessionId);
+          moveLoadedOwner('chat', currentTarget, freshSnapshot.sessionId);
           commitSnapshot(freshSnapshot);
           setPending(journal.items.filter((item) => item.status !== 'prepared'));
           setNotice(null);
@@ -463,7 +470,7 @@ function AppBody() {
           if (!requestIsCurrent()) return;
           if (returnedSnapshot.kind === 'snapshot' && artifactReturnSnapshotMatches(artifactReturn, returnedSnapshot)) {
             clearArtifactChatReturn(artifactReturn);
-            const restoredOwner = moveOwner('chat', returnTarget, artifactReturn.sessionId);
+            const restoredOwner = moveLoadedOwner('chat', returnTarget, artifactReturn.sessionId);
             if (!requestIsCurrent() || !viewStillOwned(restoredOwner, ownerRef.current)) return;
             commitSnapshot(returnedSnapshot);
             setNotice(notificationFailure ? notificationOpenNotice(notificationFailure) : null);
@@ -491,7 +498,7 @@ function AppBody() {
     if (previousOwner.screen === 'chat' && !sameLogicalTarget) {
       setNotice({ text: '当前 Bot 已不可用，请从列表重新打开会话。', tone: 'error' });
     }
-    const refreshedOwner = moveOwner(nextScreen === 'chat' && !sameLogicalTarget ? 'sessions' : nextScreen, selectedTarget, nextSessionId);
+    const refreshedOwner = moveLoadedOwner(nextScreen === 'chat' && !sameLogicalTarget ? 'sessions' : nextScreen, selectedTarget, nextSessionId);
     if (!requestIsCurrent()) return;
     void loadMobileCatalog(selectedTarget);
     if (selectedTarget?.online && refreshedOwner.screen === 'sessions') {
@@ -1229,7 +1236,7 @@ function AppBody() {
     </View>}
 
     {screen === 'sessions' && <View style={styles.fill}>
-      <Topbar right={{ label: '刷新', onPress: () => void run('sessions', loadSessions) }} avatar={{ label: '账号与设置', onPress: () => router.push('/account') }}/>
+      <Topbar right={{ label: '刷新', onPress: () => void loadAccount(ownerRef.current).catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error')) }} avatar={{ label: '账号与设置', onPress: () => router.push('/account') }}/>
       <View style={styles.targetsBar}>
         <Text style={styles.sectionEyebrow}>BOT</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
