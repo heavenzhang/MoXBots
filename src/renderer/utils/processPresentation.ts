@@ -20,6 +20,8 @@ export function processInput(tool: ToolUseSimple): Record<string, unknown> {
 }
 
 export function getProcessOutcome(block: ContentBlock, live: boolean): ProcessOutcome {
+  const observed = block.tool?.presentation;
+  if (observed?.kind === 'text') return observed.status === 'error' ? 'failed' : observed.status === 'running' ? 'running' : 'succeeded';
   const tool = block.tool;
   // A continuable child owns later activations even when its original parent
   // tool retained stopped/failed flags during history finalization.

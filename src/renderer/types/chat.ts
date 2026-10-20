@@ -111,6 +111,8 @@ export interface BackgroundTaskStats {
 }
 
 export interface ToolUseSimple extends ToolUse {
+  /** Canonical bounded text from an observation transport, never a local tool protocol. */
+  presentation?: { kind: 'text'; status: 'running' | 'complete' | 'error' };
   executionTiming?: ExecutionTiming;
   // Raw input as it streams in - no parsing, just accumulate the raw string
   inputJson?: string;
@@ -211,6 +213,8 @@ export interface MessageUsage {
 }
 
 export interface Message {
+  /** Render-only bounded-history notice; not agent-authored content. */
+  presentationNotice?: string;
   /** Authoritative turn recovery observations supplied by the server. */
   streamRecovery?: StreamRecoveryEvidence;
   messageKind?: 'diagnostic';
@@ -226,6 +230,8 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string | ContentBlock[];
   timestamp: Date;
+  /** Observation transports may have no usable timestamp; do not invent a date. */
+  timestampKnown?: boolean;
   sdkUuid?: string;  // SDK 分配的 UUID，用于 resumeSessionAt / rewindFiles
   runtimeTurnAnchor?: {
     turnId: string;

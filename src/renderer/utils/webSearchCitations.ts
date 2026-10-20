@@ -38,7 +38,7 @@ export function createWebSearchCitationIndex() {
       if (message.role !== 'assistant' || typeof message.content === 'string') continue;
       for (const block of message.content) {
         const tool = block.tool;
-        if (!tool || tool.isError || !['WebSearch', 'web_search'].includes(tool.name)) continue;
+        if (!tool || tool.presentation?.kind === 'text' || tool.isError || !['WebSearch', 'web_search'].includes(tool.name)) continue;
         let sources = toolSources.get(tool);
         if (!sources) { sources = parseSources(tool.result); toolSources.set(tool, sources); }
         if (!sources.length) continue;

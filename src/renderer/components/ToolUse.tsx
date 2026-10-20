@@ -1,3 +1,4 @@
+import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 import type React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ToolUseSimple } from '@/types/chat';
@@ -55,6 +56,7 @@ function usesPlainResult(tool: ToolUseSimple): boolean {
  * to render the collapsed row. Rich cards retain their own result projection. */
 export function hasToolResultContent(tool: ToolUseSimple): boolean {
   if (!tool.result?.trim()) return false;
+  if (tool.presentation?.kind === 'text') return true;
   return usesPlainResult(tool) && tool.result.length <= JSON_DISPLAY_LIMIT
     ? Boolean(unwrapSdkResult(tool.result).trim()) : true;
 }
@@ -82,6 +84,11 @@ interface ToolUseProps {
 
 export default function ToolUse({ tool: rawTool, resultOnly = false }: ToolUseProps) {
   const { t } = useTranslation('chat');
+  // A remote summary is already decoded and has no local input or attachment authority.
+  const remoteContent = useRemoteConversationContent();
+  if (remoteContent || rawTool.presentation?.kind === 'text') {
+    return <ExpandableResult content={rawTool.result ?? ''} canonicalText />;
+  }
   // Bash and file-patch tools own specialized, bounded projections. Generic
   // pre-clamping would corrupt their structured completion wrappers before the
   // authoritative parser can separate streams or applied file changes.
