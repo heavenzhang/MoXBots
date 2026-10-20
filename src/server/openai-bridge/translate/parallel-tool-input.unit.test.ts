@@ -3,7 +3,7 @@ import { StreamTranslator } from './stream';
 import { ResponsesStreamTranslator } from './stream-responses';
 import type { AnthropicStreamEvent } from '../types/anthropic';
 import type { OpenAIStreamChunk } from '../types/openai';
-import type { ResponsesStreamEvent } from '../types/openai-responses';
+import type { ResponsesOutputItem, ResponsesStreamEvent } from '../types/openai-responses';
 
 const chatChunk = (delta: Record<string, unknown>, finish_reason: string | null = null) => ({
   id: 'fixture', object: 'chat.completion.chunk', created: 0, model: 'fixture',
@@ -73,6 +73,17 @@ describe('parallel tool input block ownership', () => {
     expect(events.some(event => event.type === 'error')).toBe(true);
   });
 
+  it('rejects new Chat deltas after finish_reason instead of dispatching late tools', () => {
+    const t = new StreamTranslator('fixture');
+    t.feed(chatChunk({ tool_calls: [{ index: 0, id: 'call-a', type: 'function', function: { name: 'first', arguments: '{}' } }] }) as OpenAIStreamChunk);
+    t.feed(chatChunk({}, 'tool_calls') as OpenAIStreamChunk);
+    const lateEvents = t.feed(chatChunk({ tool_calls: [{ index: 1, id: 'call-b', type: 'function', function: { name: 'late', arguments: '{}' } }] }) as OpenAIStreamChunk);
+    const events = [...lateEvents, ...t.finalize()];
+    expect(events.some(event => event.type === 'content_block_start' && event.content_block.type === 'tool_use')).toBe(false);
+    expect(events.some(event => event.type === 'message_stop')).toBe(false);
+    expect(events.some(event => event.type === 'error')).toBe(true);
+  });
+
   it('rejects duplicate Chat tool IDs across provider indices before emitting any tool block', () => {
     const t = new StreamTranslator('fixture');
     t.feed(chatChunk({ tool_calls: [
@@ -102,7 +113,13 @@ describe('parallel tool input block ownership', () => {
     feed({ type: 'response.output_item.added', output_index: 12, item: { type: 'function_call', id: 'item-c', call_id: 'call-c', name: 'empty', arguments: '', status: 'in_progress' } });
     feed({ type: 'response.function_call_arguments.done', output_index: 12, arguments: '' });
     feed({ type: 'response.reasoning_summary_text.delta', output_index: 13, delta: 'reasoning' });
-    feed({ type: 'response.completed', response: { id: 'r', object: 'response', model: 'fixture', status: 'completed', output: [], usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } });
+    const terminalOutput: ResponsesOutputItem[] = Array.from({ length: 13 }, (_, index) => ({
+      type: 'message' as const, id: `message-${index}`, role: 'assistant' as const, status: 'completed', content: [],
+    }));
+    terminalOutput[4] = { type: 'function_call', id: 'item-a', call_id: 'call-a', name: 'alpha', arguments: '{"a":1}', status: 'completed' };
+    terminalOutput[9] = { type: 'function_call', id: 'item-b', call_id: 'call-b', name: 'beta', arguments: '{"b":2}', status: 'completed' };
+    terminalOutput[12] = { type: 'function_call', id: 'item-c', call_id: 'call-c', name: 'empty', arguments: '', status: 'completed' };
+    feed({ type: 'response.completed', response: { id: 'r', object: 'response', model: 'fixture', status: 'completed', output: terminalOutput, usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } } });
     const blocks = toolBlocks(events);
     expect([...blocks.values()].map(({ id, name, json, stops }) => ({ id, name, input: JSON.parse(json || '{}'), stops }))).toEqual([
       { id: 'call-a', name: 'alpha', input: { a: 1 }, stops: 1 },
@@ -143,6 +160,37 @@ describe('parallel tool input block ownership', () => {
         { type: 'function_call', id: 'item-call-a', call_id: 'call-a', name: 'first', arguments: '{}', status: 'completed' },
         { type: 'function_call', id: 'item-call-b', call_id: 'call-b', name: 'second', arguments: '{}', status: 'completed' },
       ],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    } });
+    expect(events.some(event => event.type === 'content_block_start' && event.content_block.type === 'tool_use')).toBe(false);
+    expect(events.some(event => event.type === 'message_stop')).toBe(false);
+    expect(events.some(event => event.type === 'error')).toBe(true);
+  });
+
+  it.each([
+    ['missing', []],
+    ['replaced', [{ type: 'message', id: 'replacement', role: 'assistant', status: 'completed', content: [] }]],
+    ['identity drift', [{ type: 'function_call', id: 'other-item', call_id: 'other-call', name: 'danger', arguments: '{}', status: 'completed' }]],
+    ['argument drift', [{ type: 'function_call', id: 'item', call_id: 'call', name: 'danger', arguments: '{"x":1}', status: 'completed' }]],
+    ['incomplete item', [{ type: 'function_call', id: 'item', call_id: 'call', name: 'danger', arguments: '{}', status: 'incomplete' }]],
+  ])('rejects a streamed Responses call when completed output has %s', (_caseName, output) => {
+    const t = new ResponsesStreamTranslator('fixture');
+    t.feed({ type: 'response.output_item.added', output_index: 0, item: { type: 'function_call', id: 'item', call_id: 'call', name: 'danger', arguments: '', status: 'in_progress' } });
+    t.feed({ type: 'response.function_call_arguments.done', output_index: 0, arguments: '{}' });
+    const events = t.feed({ type: 'response.completed', response: {
+      id: 'r', object: 'response', model: 'fixture', status: 'completed', output,
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    } } as unknown as ResponsesStreamEvent);
+    expect(events.some(event => event.type === 'content_block_start' && event.content_block.type === 'tool_use')).toBe(false);
+    expect(events.some(event => event.type === 'message_stop')).toBe(false);
+    expect(events.some(event => event.type === 'error')).toBe(true);
+  });
+
+  it('rejects response.failed when its body claims completed with an otherwise valid tool', () => {
+    const t = new ResponsesStreamTranslator('fixture');
+    const events = t.feed({ type: 'response.failed', response: {
+      id: 'r', object: 'response', model: 'fixture', status: 'completed',
+      output: [{ type: 'function_call', id: 'item', call_id: 'call', name: 'danger', arguments: '{}', status: 'completed' }],
       usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
     } });
     expect(events.some(event => event.type === 'content_block_start' && event.content_block.type === 'tool_use')).toBe(false);

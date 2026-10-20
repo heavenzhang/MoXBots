@@ -13,10 +13,12 @@ import {
 } from './usage';
 
 interface FunctionCallBuffer {
+  itemId: string;
   callId: string;
   name: string;
   args: string;
   argsFinal: boolean;
+  invalidStatus: boolean;
 }
 
 type DeferredSegment = { type: 'tool'; outputIndex: number }
@@ -89,7 +91,7 @@ export class ResponsesStreamTranslator {
       case 'response.completed':
       case 'response.failed':
       case 'response.incomplete':
-        this.handleTerminal(event.response, events);
+        this.handleTerminal(event.response, events, event.type);
         break;
       case 'error':
         this.finishError(event.message, events);
@@ -130,7 +132,7 @@ export class ResponsesStreamTranslator {
   private addFunctionCall(outputIndex: number, item: ResponsesOutputFunctionCall, events: AnthropicStreamEvent[]): void {
     this.ensureToolSegment(outputIndex, events);
     const buffer = this.functionCallBuffers.get(outputIndex)!;
-    this.mergeIdentity(buffer, item.call_id, item.name);
+    this.mergeIdentity(buffer, item);
   }
 
   private ensureToolSegment(outputIndex: number, events: AnthropicStreamEvent[]): FunctionCallBuffer {
@@ -141,7 +143,7 @@ export class ResponsesStreamTranslator {
       this.hasActiveReasoning = false;
       this.deferAfterToolCall = true;
     }
-    buffer = { callId: '', name: '', args: '', argsFinal: false };
+    buffer = { itemId: '', callId: '', name: '', args: '', argsFinal: false, invalidStatus: false };
     this.functionCallBuffers.set(outputIndex, buffer);
     this.deferredSegments.push({ type: 'tool', outputIndex });
     return buffer;
@@ -164,7 +166,8 @@ export class ResponsesStreamTranslator {
   }
 
   private mergeCompleteArguments(buffer: FunctionCallBuffer, args: string): void {
-    if (buffer.args === '\0' || (buffer.args && buffer.args !== args)) {
+    if (buffer.args === '\0' || (buffer.argsFinal && buffer.args !== args)
+      || (!buffer.argsFinal && buffer.args && !args.startsWith(buffer.args))) {
       buffer.args = '\0';
       return;
     }
@@ -174,25 +177,48 @@ export class ResponsesStreamTranslator {
 
   private materializeFunctionCall(outputIndex: number, item: ResponsesOutputFunctionCall, events: AnthropicStreamEvent[] = []): void {
     const buffer = this.ensureToolSegment(outputIndex, events);
-    this.mergeIdentity(buffer, item.call_id, item.name);
+    this.mergeIdentity(buffer, item);
+    if (item.status && item.status !== 'completed') buffer.invalidStatus = true;
     this.mergeCompleteArguments(buffer, item.arguments);
   }
 
-  private mergeIdentity(buffer: FunctionCallBuffer, callId: string, name: string): void {
-    if (callId) {
-      if (buffer.callId && buffer.callId !== callId) buffer.callId = '\0';
-      else buffer.callId = callId;
+  private mergeIdentity(buffer: FunctionCallBuffer, item: ResponsesOutputFunctionCall): void {
+    if (item.id) {
+      if (buffer.itemId && buffer.itemId !== item.id) buffer.itemId = '\0';
+      else buffer.itemId = item.id;
     }
-    if (name) {
-      if (buffer.name && buffer.name !== name) buffer.name = '\0';
-      else buffer.name = name;
+    if (item.call_id) {
+      if (buffer.callId && buffer.callId !== item.call_id) buffer.callId = '\0';
+      else buffer.callId = item.call_id;
+    }
+    if (item.name) {
+      if (buffer.name && buffer.name !== item.name) buffer.name = '\0';
+      else buffer.name = item.name;
     }
   }
 
-  private mergeTerminalOutput(response: ResponsesResponse, events: AnthropicStreamEvent[]): void {
-    (Array.isArray(response.output) ? response.output : []).forEach((item, outputIndex) => {
-      if (item.type === 'function_call') this.materializeFunctionCall(outputIndex, item, events);
+  private mergeTerminalOutput(response: ResponsesResponse, events: AnthropicStreamEvent[]): string | null {
+    if (!Array.isArray(response.output)) {
+      return this.functionCallBuffers.size > 0 ? 'Completed Responses response omitted its final output' : null;
+    }
+    for (const [outputIndex, observed] of this.functionCallBuffers) {
+      const item = response.output[outputIndex];
+      if (!item || item.type !== 'function_call') return 'Completed Responses output does not contain the observed function call at its original index';
+      if ((observed.itemId && observed.itemId !== item.id)
+        || (observed.callId && observed.callId !== item.call_id)
+        || (observed.name && observed.name !== item.name)
+        || (observed.argsFinal && observed.args !== item.arguments)) {
+        return 'Completed Responses output conflicts with the observed function call';
+      }
+      if (item.status && item.status !== 'completed') return 'Completed Responses output contains an unfinished function call';
+      this.materializeFunctionCall(outputIndex, item, events);
+    }
+    response.output.forEach((item, outputIndex) => {
+      if (item.type === 'function_call' && !this.functionCallBuffers.has(outputIndex)) {
+        this.materializeFunctionCall(outputIndex, item, events);
+      }
     });
+    return null;
   }
 
   private validateDeferredTools(): string | null {
@@ -202,6 +228,7 @@ export class ResponsesStreamTranslator {
       const previousOwner = callIdOwners.get(buffer.callId);
       if (previousOwner !== undefined && previousOwner !== outputIndex) return 'Duplicate Responses function call identity';
       callIdOwners.set(buffer.callId, outputIndex);
+      if (buffer.itemId === '\0' || buffer.invalidStatus) return 'Conflicting or unfinished Responses function call metadata';
       if (!buffer.argsFinal) return 'Responses function call arguments were not finalized';
       if (buffer.args === '\0') return 'Conflicting Responses function call arguments';
       const raw = buffer.args.trim() || '{}';
@@ -237,12 +264,28 @@ export class ResponsesStreamTranslator {
     this.deferredSegments = [];
   }
 
-  private handleTerminal(response: ResponsesResponse, events: AnthropicStreamEvent[]): void {
+  private handleTerminal(
+    response: ResponsesResponse,
+    events: AnthropicStreamEvent[],
+    eventType: 'response.completed' | 'response.failed' | 'response.incomplete',
+  ): void {
+    if ((eventType === 'response.completed' && response.status !== 'completed')
+      || (eventType === 'response.failed' && response.status !== 'failed')
+      || (eventType === 'response.incomplete' && response.status !== 'incomplete')) {
+      this.finishError('Responses terminal event conflicts with its response status', events);
+      return;
+    }
     if (response.status === 'failed') {
       this.finishError(response.error?.message || 'Upstream Responses request failed', events);
       return;
     }
-    if (response.status === 'completed') this.mergeTerminalOutput(response, events);
+    if (response.status === 'completed') {
+      const terminalOutputError = this.mergeTerminalOutput(response, events);
+      if (terminalOutputError) {
+        this.finishError(terminalOutputError, events);
+        return;
+      }
+    }
     if (this.functionCallBuffers.size > 0) {
       if (response.status !== 'completed') {
         this.finishError('Responses function call ended without a completed response', events);

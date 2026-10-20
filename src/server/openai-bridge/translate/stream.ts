@@ -71,6 +71,7 @@ export class StreamTranslator {
       // Usage-only chunk (final chunk with no choices)
       return events;
     }
+    if (this.stopReason) return this.fail('Received Chat Completions content after finish_reason');
 
     const delta = choice.delta;
     if (!delta || typeof delta !== 'object' || Array.isArray(delta)) {

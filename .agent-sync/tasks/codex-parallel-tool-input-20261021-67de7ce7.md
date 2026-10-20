@@ -24,6 +24,8 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 - Chat Completions now buffers tool-related segments and emits complete sequential blocks only from finalization after a valid `tool_calls` finish reason.
 - Responses now reconciles arguments and identity from delta/done/output-item/terminal metadata, emits each block once only after completed terminal validation, and rejects unfinished/conflicting inputs.
 - Both translators reject duplicate nonempty call IDs across provider indices before emitting any tool blocks. Responses also rejects terminal output that would remap an already observed call ID to a different index.
+- Responses now requires every streamed call to match a final completed-output function item at its original index, with consistent observed item/call IDs, name, and finalized arguments; explicit unfinished item status or terminal-event/body status mismatch fails closed. Omitted optional item status remains accepted when the completed response output and arguments are authoritative.
+- Chat Completions rejects nonempty choice content after `finish_reason`; usage-only trailing chunks with empty choices remain accepted.
 
 ## Verification
 
@@ -33,11 +35,15 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 - Lint: `node node_modules/eslint/bin/eslint.js src/server/openai-bridge/translate/stream.ts src/server/openai-bridge/translate/stream-responses.ts src/server/openai-bridge/translate/parallel-tool-input.unit.test.ts --max-warnings=0` — passed.
 - `git diff --check` — passed.
 - Duplicate-identity red/green: with the new ID-uniqueness guards temporarily removed, both targeted cases failed because they emitted tool blocks; with the guards restored, the expanded 4-file suite passed 65 tests.
+- Terminal-authority red/green: before the latest repair, the new missing/replaced/incomplete Responses output, `response.failed` with completed body, and post-finish Chat tool cases failed (5 failures); after repair, the expanded 4-file suite passed 72 tests.
+- TypeScript: `node node_modules/typescript/bin/tsc --noEmit --pretty false` — passed after terminal-authority changes.
+- ESLint and `git diff --check` — passed after terminal-authority changes.
 
 ## Blockers and unknowns
 
-- No shared CI or formal SDK consumer probe was run in this implementation worktree. Root is running the existing Anthropic SDK synthetic consumer probe against this branch; this is a separate validation state from the translator unit tests.
+- No shared CI or formal SDK consumer probe was run in this implementation worktree. Root has run the SDK probe on the prior pushed commit; the newest terminal-authority commit still needs its independent SDK recheck.
+- Root has raised a possible translated-body idle-progress interaction because arguments remain buffered until terminal; additional control comparison and an interface recommendation are pending. Do not raise timeouts, synthesize text, or count keepalives as provider progress.
 
 ## Next step
 
-- Obtain root's SDK consumer result and hand the exact pushed SHA to the designated publisher for candidate coordination. No shared CI or release action is in this branch scope.
+- Push this terminal-authority commit, obtain root's SDK and idle-progress review, then hand the exact reviewed SHA to the designated publisher for candidate coordination. No shared CI or release action is in this branch scope.
