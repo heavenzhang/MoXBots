@@ -88,14 +88,41 @@ export function processPhaseResult(phase: ProcessPhase, t: Translate): string {
     const active = phase.entries.findLast(entry => entry.outcome === 'running')!;
     return processResultLabel(active, t);
   }
-  const paths = new Set(completed.flatMap(processFilePaths));
-  if (phase.kind === 'change' && paths.size && completed.length === phase.entries.length) return t('process.result.files', { count: paths.size });
+  const paths = [...new Set(completed.flatMap(processFilePaths))];
+  if (phase.kind === 'change' && paths.length && completed.length === phase.entries.length) {
+    return compactMilestones(paths.map(path => t('process.result.file', { target: baseName(path) })), t);
+  }
   if (phase.entries.some(entry => entry.outcome === 'failed')) return t('process.result.needsAttention');
   if (phase.entries.some(entry => entry.outcome === 'stopped')) return t('process.result.stopped');
   if (phase.entries.some(entry => entry.outcome === 'unknown')) return t('process.result.unknown');
   // Multiple outputs have no implied combined count or last-call diff total.
-  if (phase.entries.length > 1) return t('process.result.returned', { count: completed.length });
+  // Retain a couple of concrete targets/results as navigation cues, never a
+  // synthesized success statement. Generic labels add no useful milestone.
+  if (phase.entries.length > 1) {
+    const labels = completed
+      .map(entry => processResultLabel(entry, t))
+      .filter(label => !isGenericResult(label, phase.kind, t));
+    const milestones = compactMilestones(labels, t);
+    if (milestones) return milestones;
+    return t('process.result.returned', { count: completed.length });
+  }
   return processResultLabel(phase.entries[0], t);
+}
+
+function compactMilestones(labels: string[], t: Translate): string {
+  const milestones = labels.map(label => label.trim()).filter(Boolean);
+  if (!milestones.length) return '';
+  const shown = milestones.slice(0, 2).map(label => label.length > 64 ? `${label.slice(0, 63)}…` : label);
+  if (milestones.length > shown.length) {
+    shown.push(t('process.result.moreMilestones', { count: milestones.length - shown.length }));
+  }
+  return shown.join(' · ').slice(0, 180);
+}
+
+function isGenericResult(label: string, kind: ProcessPhase['kind'], t: Translate): boolean {
+  return label === t(`process.result.${kind}`)
+    || label === t('process.result.think')
+    || label === t('process.result.returned', { count: 1 });
 }
 
 export function executionEvidence(blocks: ContentBlock[], live = false) {

@@ -1,0 +1,24 @@
+{
+  "checks": [
+    {
+      "width": 390,
+      "geometry": {
+        "text": "3 个文件",
+        "width": 103.5
+      }
+    },
+    {
+      "width": 768,
+      "geometry": {
+        "text": "本轮编辑 3 个文件",
+        "width": 292.5
+      }
+    }
+  ],
+  "hashes": {
+    "src/renderer/components/TurnFileEditSummary.tsx": "853dbed1a82ed94c72c385c22b5cc3d09c129f3082b67ce25e940c1d6e4d51be",
+    "src/renderer/i18n/locales/zh-CN/app.json": "611a4666590ef8339ac636ad38881040d5c1d9279dfa01791bea824535432df4",
+    "src/renderer/i18n/locales/en-US/app.json": "1ab044d297de98ad124acc28331f27b18828f13b0b2efe3b720ddefdc5063332"
+  },
+  "errors": []
+}

@@ -580,3 +580,8 @@ Release record dev-docs/releases/moxbots-0.5.15.md; branch codex/release-0515-20
 ## MOXBOTS-0515 build515.2 native-startup repair
 
 Same desktop/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 and explicit015ONLINE+local delivery. First signed015build515.1 passed sourceCI/main/Apple but failed actual native startup (duplicate React Hook dispatcher), so it is sealed/unpublished; online013 and installed014 unchanged. Branchcodex/release-0515-renderer-20261020 fixes React/react-dom singleton resolution and adds real production-built linked-dependency Hook regression. Newbundle515.2 avoids same-build artifact reuse. Laterunselectedsource remains deferred. ExactCI/main/newartifact/native/stable015/local gates still required; no independent component deployment.
+
+
+## MOXBOTS-CHAT-INFO-20261020-01 — 对话信息第一批
+
+用户要求具体当前动作、关键节点进展、明确等待原因、直接成果入口且不占对话空间。仅renderer，复用原30pxFooter、transcript过程分组、文件操作/预览；窄容器一个文件与短清单入口，宽容器最多两个。最终146项定向回归、类型/scopedlint、实际三尺寸/明暗/中英文/键盘/文件预览、独立17组与窄标签复验通过。原有随机文案suppression移除后同时修复MessageList render refs/已提交可见快照读取，隐藏冻结与timer回归保持。证据dev-docs/chat-info/acceptance.md，任务.agent-sync/tasks/codex-chat-info-20261020-a322def5.md。代码/main/共享CI以远端交付回执为准；真实provider/native/production未验。桌面/updater仍唯一publisher01a12bc2-907a-7702-b6dd-788225c5dfe4统一接收下一适当未冻结批次，无新版本分配、不改已冻结候选，其他部署单元不受影响。
