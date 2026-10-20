@@ -1,14 +1,41 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  isWatchdogProgressEvent,
   planWatchdogAutoResume,
   shouldAdoptPendingContinueIntoScheduledAutoResume,
   shouldConsumePendingContinueAfterAbort,
   shouldDeferPendingContinueToScheduledAutoResume,
   shouldPrependWatchdogAutoResume,
+  shouldRenewWatchdogAutoResume,
 } from './watchdog-auto-resume';
 
 describe('watchdog auto-resume policy', () => {
+  it('distinguishes compacting/requesting status liveness from actual progress', () => {
+    expect(isWatchdogProgressEvent({ type: 'system', subtype: 'status' })).toBe(false);
+    expect(isWatchdogProgressEvent({ type: 'system', subtype: 'init' })).toBe(false);
+    expect(isWatchdogProgressEvent({ type: 'system', subtype: 'compact_boundary' })).toBe(true);
+    expect(isWatchdogProgressEvent({ type: 'system', subtype: 'tool_progress' })).toBe(true);
+    expect(isWatchdogProgressEvent({ type: 'stream_event' })).toBe(true);
+    expect(isWatchdogProgressEvent({ type: 'assistant' })).toBe(true);
+  });
+  it('renews only new business admission, retaining retry and maintenance caps', () => {
+    const input = { facts: { inputText: 'new business' }, ownedTurn: false, retry: false };
+    expect(shouldRenewWatchdogAutoResume(input)).toBe(true);
+    expect(shouldRenewWatchdogAutoResume({ ...input, ownedTurn: true })).toBe(false);
+    expect(shouldRenewWatchdogAutoResume({ ...input, retry: true })).toBe(false);
+    for (const inputText of [
+      '<system-reminder>continue after watchdog</system-reminder>',
+      '<system-reminder><MEMORY_UPDATE>update</MEMORY_UPDATE></system-reminder>',
+      '<system-reminder><HEARTBEAT>check</HEARTBEAT></system-reminder>',
+    ]) expect(shouldRenewWatchdogAutoResume({ ...input, facts: { inputText } })).toBe(false);
+    expect(shouldRenewWatchdogAutoResume({ ...input, facts: {
+      inputText: 'memory update', origin: { kind: 'automation', surface: 'memory_update' },
+    } })).toBe(false);
+    expect(shouldRenewWatchdogAutoResume({ ...input, facts: {
+      inputText: '<system-reminder>context</system-reminder>new business',
+    } })).toBe(true);
+  });
   it('leaves Goal recovery with its durable owner even after substantive output', () => {
     expect(planWatchdogAutoResume({
       turnHadSubstantiveActivity: true,
