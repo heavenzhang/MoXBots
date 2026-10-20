@@ -1937,7 +1937,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       catch (error) { activeSessionBridgeToken = null; throw error; }
       try { activeSessionContextRecovery = new ContextRecoveryController({
         initialLedger,
-        persistLedger: ledger => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent),
+        recoveryOwner: { sessionId: productSessionId, sdkSessionId: nativeHistoryId },
+        persistLedger: (ledger, stillCurrent) => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent, stillCurrent),
         scope: currentBridgeInferenceScope,
         protectStreaming: () => failoverEnabled && !!getCurrentTurnSourceItem()
           && getCurrentTurnSourceItem()?.turnOwner?.kind !== 'task' && !hasBuiltinBackgroundWork(),
@@ -12355,7 +12356,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput): Promise<HookJSONOutput> => {
               const pre = input as PreToolUseHookInput;
-              const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input);
+              const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input, pre.tool_use_id);
               if (duplicate) return {
                 hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
                   permissionDecision: 'deny' as const, permissionDecisionReason: duplicate },
@@ -12559,6 +12560,10 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         expectedSdkSessionId: effectiveSdkSessionId,
       });
       inputTrace.generation = getQueryGeneration();
+      queryContextRecovery?.bindNoDispatchOwner({ sessionId: queryProductSessionId, sdkSessionId: effectiveSdkSessionId,
+        queryGeneration: inputTrace.generation,
+        isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
+          && !lifecycleState.abortRequested && sessionId === queryProductSessionId });
       configState.currentCapabilitySnapshot = launchCapabilitySnapshot;
     } catch (queryError: unknown) {
       // Defensive fallback: metadata lost but SDK disk data exists → switch to resume
@@ -12582,6 +12587,10 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           expectedSdkSessionId: effectiveSdkSessionId,
         });
         inputTrace.generation = getQueryGeneration();
+        queryContextRecovery?.bindNoDispatchOwner({ sessionId: queryProductSessionId, sdkSessionId: effectiveSdkSessionId,
+          queryGeneration: inputTrace.generation,
+          isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
+            && !lifecycleState.abortRequested && sessionId === queryProductSessionId });
         configState.currentCapabilitySnapshot = launchCapabilitySnapshot;
       } else {
         throw queryError;
@@ -12895,6 +12904,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
 
     if (!activeQuery) throw new Error('SDK query session was not initialized');
     let warnedRevokedQueryEvent = false;
+    const querySdkToolUses = new Map<string, { name: string; input: unknown; scope: string | undefined }>();
     for await (const sdkMessage of activeQuery) {
       if (!isCurrentQueryAuthority(activeQueryAuthority)) {
         if (!warnedRevokedQueryEvent) {
@@ -13466,6 +13476,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             // Anthropic-format events to prevent SDK transcript pollution (see #68). The bridge
             // handler caches thought_signatures separately and re-injects on outgoing requests.
             const contentBlock = streamEvent.content_block as { id: string; name: string; input?: Record<string, unknown> };
+            if ((contentBlock.name === 'TaskGet' || contentBlock.name === 'Bash')
+              && (querySdkToolUses.has(contentBlock.id) || querySdkToolUses.size < 2048)) {
+              querySdkToolUses.set(contentBlock.id, { name: contentBlock.name, input: contentBlock.input ?? {},
+                scope: queryContextRecovery?.snapshotNoDispatchScope() });
+            }
             const toolPayload = {
               id: contentBlock.id,
               name: contentBlock.name,
@@ -13754,6 +13769,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               const toolResultBlock = block as {
                 tool_use_id: string;
                 content: string | unknown;
+                is_error?: boolean;
               };
 
               // #293 — split image-bearing blocks out of the raw content BEFORE any
@@ -13764,6 +13780,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               // SDK priority-now receipts leave the original call running;
               // only its later actual result may settle loading/in-flight state.
               if (isDetachedSdkToolResult(toolUseResultData)) continue;
+              if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
+              const pairedCall = querySdkToolUses.get(toolResultBlock.tool_use_id);
+              if (toolResultBlock.is_error === true && pairedCall) {
+                await queryContextRecovery?.commitNoDispatchValidationFailure(
+                  pairedCall.name, pairedCall.input, toolResultBlock.tool_use_id, pairedCall.scope ?? '',
+                );
+              }
+              querySdkToolUses.delete(toolResultBlock.tool_use_id);
               // Register the raw SDK receipt before structured rendering drops its Output path.
               const backgroundTaskId = toolUseResultData && typeof toolUseResultData === 'object'
                 ? (toolUseResultData as { backgroundTaskId?: unknown }).backgroundTaskId : undefined;
@@ -13840,6 +13864,17 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           broadcast('chat:message-sdk-uuid', { messageId: boundMessageId, sdkUuid: sdkMessage.uuid });
         }
         const assistantMessage = sdkMessage.message;
+        for (const block of assistantMessage.content) {
+          if (block.type === 'tool_use' && typeof block.id === 'string') {
+            // Only refresh a call already observed in this Query's live
+            // partial stream. Resumed historical transcript pairs cannot mint
+            // new no-dispatch authority.
+            const observed = querySdkToolUses.get(block.id);
+            if (observed && observed.name === block.name) {
+              querySdkToolUses.set(block.id, { ...observed, input: block.input });
+            }
+          }
+        }
         let belongsToCurrentProductTurn = true;
         if (productPresentation && sdkMessage.parent_tool_use_id) {
           const parent = productPresentation.content.tool(sdkMessage.parent_tool_use_id);

@@ -43,6 +43,85 @@ function deferred<T>() {
 }
 
 describe('bounded inference context recovery', () => {
+  it('persists exact SDK-bound no-dispatch proof only for schema-invalid calls never admitted by PreToolUse', async () => {
+    const persisted: unknown[] = [];
+    const owner = { sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true };
+    const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' },
+      backup: async () => '/archive/request.json', persistLedger: async value => { persisted.push(value); } });
+    controller.bindNoDispatchOwner(owner);
+
+    expect(await controller.commitNoDispatchValidationFailure('TaskGet', {}, 'tool-taskget-invalid', 'session-1:turn-4')).toBe(true);
+    expect(controller.canRetryInference()).toBe(true);
+    const ledger = persisted.at(-1) as { noDispatch: Array<[string, Record<string, unknown>]> };
+    expect(ledger.noDispatch[0][1]).toMatchObject({ sessionId: 'session-1', sdkSessionId: 'sdk-1',
+      queryGeneration: 7, scope: 'session-1:turn-4', toolUseId: 'tool-taskget-invalid', reason: 'missing-taskId' });
+    expect(ledger.noDispatch[0][1]).not.toHaveProperty('isCurrent');
+    for (const id of ['tool-bash-invalid-1', 'tool-bash-invalid-2', 'tool-bash-invalid-3', 'tool-bash-invalid-4']) {
+      expect(await controller.commitNoDispatchValidationFailure('Bash', {}, id, 'session-1:turn-4')).toBe(true);
+    }
+    expect((persisted.at(-1) as { noDispatch: unknown[] }).noDispatch).toHaveLength(5);
+
+    controller.bindNoDispatchOwner(owner);
+    await controller.authorizeTool('Bash', { command: 'fixture' }, 'tool-bash-admitted');
+    expect(await controller.commitNoDispatchValidationFailure('Bash', {}, 'tool-bash-admitted', 'session-1:turn-4')).toBe(false);
+    await controller.commitToolResult('Bash', { command: 'fixture' }, 'transport failed after dispatch', true);
+    expect(controller.canRetryInference()).toBe(false);
+    expect(await controller.commitNoDispatchValidationFailure('Bash', { command: 'fixture' }, 'tool-bash-other', 'session-1:turn-4')).toBe(false);
+  });
+
+  it('keeps no-dispatch proofs scoped to the paired native tool id when analyzing restored history', async () => {
+    const persisted: unknown[] = [];
+    const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' },
+      backup: async () => '/archive/request.json', persistLedger: async value => { persisted.push(value); } });
+    controller.bindNoDispatchOwner({ sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true });
+    await controller.commitNoDispatchValidationFailure('TaskGet', {}, 'tool-taskget-invalid', 'session-1:turn-4');
+    const body = history();
+    body.messages = [
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-taskget-invalid', name: 'TaskGet', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-taskget-invalid', is_error: true, content: 'ignored diagnostic' }] },
+    ];
+    for (const id of ['tool-bash-invalid-1', 'tool-bash-invalid-2', 'tool-bash-invalid-3', 'tool-bash-invalid-4']) {
+      await controller.commitNoDispatchValidationFailure('Bash', {}, id, 'session-1:turn-4');
+      body.messages.push(
+        { role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input: {} }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, is_error: true, content: 'untrusted display text' }] },
+      );
+    }
+    const raw = persisted.at(-1) as unknown;
+    const digest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
+    const restored = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      backup: async () => '/archive/request.json', recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' }, initialLedger: raw });
+    expect(() => restored.restoreCheckpoint(body, '/archive/request.json', digest)).not.toThrow();
+    expect(restored.canRetryInference()).toBe(true);
+    expect(() => new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      backup: async () => '/archive/request.json', recoveryOwner: { sessionId: 'other-session', sdkSessionId: 'sdk-1' },
+      initialLedger: raw })).toThrow('No-dispatch evidence owner mismatch');
+
+    const wrongId = structuredClone(body);
+    (wrongId.messages[0] as { role: 'assistant'; content: Array<{ type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> }).content[0].id = 'different-id';
+    (wrongId.messages[1] as { role: 'user'; content: Array<{ type: 'tool_result'; tool_use_id: string; is_error: boolean; content: string }> }).content[0].tool_use_id = 'different-id';
+    const mismatched = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      backup: async () => '/archive/request.json', recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' }, initialLedger: raw });
+    mismatched.restoreCheckpoint(wrongId, '/archive/request.json', createHash('sha256').update(JSON.stringify(wrongId)).digest('hex'));
+    expect(mismatched.canRetryInference()).toBe(false);
+  });
+
+  it('rejects no-dispatch persistence after the Query owner is revoked', async () => {
+    let current = true;
+    const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' },
+      backup: async () => '/archive/request.json', persistLedger: async (_value, stillCurrent) => {
+        current = false;
+        if (!stillCurrent?.()) throw new Error('owner changed');
+      } });
+    controller.bindNoDispatchOwner({ sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7,
+      isCurrent: () => current });
+    expect(await controller.commitNoDispatchValidationFailure('TaskGet', {}, 'tool-invalid', 'session-1:turn-4')).toBe(false);
+    expect(controller.canRetryInference()).toBe(false);
+  });
+
   function protectedStreamFixture() {
     const owner = { scope: 'root:0', active: true, safe: true };
     const backup = vi.fn(async () => '/private/stream-request.json');
