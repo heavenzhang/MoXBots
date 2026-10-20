@@ -53,6 +53,38 @@ type State = {
 };
 type Analysis = { completed: Map<string, Evidence>; uncertain: Set<string> };
 
+/** Tracks only tool calls observed in the current Query's live SDK stream. */
+export class LiveQueryToolUseTracker {
+  private readonly calls = new Map<string, { name: 'TaskGet' | 'Bash'; input: unknown; scope: string | undefined }>();
+
+  observeStreamEvent(event: unknown, scope: string | undefined): void {
+    if (!record(event) || event.type !== 'content_block_start' || !record(event.content_block)) return;
+    const block = event.content_block;
+    if (block.type !== 'tool_use' || typeof block.id !== 'string' || !block.id
+      || (block.name !== 'TaskGet' && block.name !== 'Bash')) return;
+    if (this.calls.size < MAX_LEDGER_ENTRIES || this.calls.has(block.id)) {
+      this.calls.set(block.id, { name: block.name, input: block.input ?? {}, scope });
+    }
+  }
+
+  materializeAssistantMessage(message: unknown): void {
+    if (!record(message) || !Array.isArray(message.content)) return;
+    for (const block of message.content) {
+      if (!record(block) || block.type !== 'tool_use' || typeof block.id !== 'string') continue;
+      const observed = this.calls.get(block.id);
+      if (observed && observed.name === block.name) this.calls.set(block.id, { ...observed, input: block.input });
+    }
+  }
+
+  takeErrorResult(block: unknown): { toolUseId: string; name: 'TaskGet' | 'Bash'; input: unknown; scope: string | undefined } | undefined {
+    if (!record(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') return undefined;
+    const observed = this.calls.get(block.tool_use_id);
+    this.calls.delete(block.tool_use_id);
+    if (!observed || block.is_error !== true) return undefined;
+    return { toolUseId: block.tool_use_id, ...observed };
+  }
+}
+
 const READ_ONLY_TOOLS = new Set(['Read', 'Grep', 'Glob']);
 const TAIL_MESSAGES = 2;
 const EXCERPT_CHARACTERS = 384;
@@ -520,14 +552,13 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const key = toolKey(name, input);
     const proofKey = noDispatchKey(key, toolUseId);
     if (!this.noDispatchLedger.has(proofKey)
-      && this.noDispatchLedger.size + this.completedLedger.size + this.uncertainLedger.size >= MAX_LEDGER_ENTRIES) return false;
+      && this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES) return false;
     const evidence: NoDispatchEvidence = { sessionId: owner.sessionId, sdkSessionId: owner.sdkSessionId,
       queryGeneration: owner.queryGeneration, scope, toolUseId, toolName: name as 'TaskGet' | 'Bash', actionHash: key, reason };
     const prior = this.noDispatchLedger.get(proofKey);
     this.noDispatchLedger.set(proofKey, evidence);
-    const previousUncertain = this.uncertainLedger.has(key);
-    this.uncertainLedger.delete(key);
-    this.state?.uncertain.delete(key);
+    // A new proof settles only this newly observed malformed call. It cannot
+    // erase an older/admitted unknown outcome sharing the same action hash.
     this.actionProtectionActive = true;
     try {
       await this.persist(() => owner.isCurrent() && this.noDispatchOwner === owner
@@ -535,20 +566,23 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return true;
     } catch {
       if (prior) this.noDispatchLedger.set(proofKey, prior); else this.noDispatchLedger.delete(proofKey);
-      if (previousUncertain) {
-        this.uncertainLedger.add(key);
-        this.state?.uncertain.add(key);
-      }
       return false;
     }
   }
 
   private mergeLedger(completed: ReadonlyMap<string, Evidence>, uncertain: ReadonlySet<string>): boolean {
-    const keys = new Set([...this.completedLedger.keys(), ...this.uncertainLedger, ...completed.keys(), ...uncertain]);
-    if (keys.size > MAX_LEDGER_ENTRIES) { this.ledgerBlocked = true; return false; }
+    const completedKeys = new Set([...this.completedLedger.keys(), ...completed.keys()]);
+    const uncertainKeys = new Set([...this.uncertainLedger, ...uncertain]);
+    if (completedKeys.size + uncertainKeys.size + this.noDispatchLedger.size > MAX_LEDGER_ENTRIES) {
+      this.ledgerBlocked = true; return false;
+    }
     for (const [key, value] of completed) this.completedLedger.set(key, value);
     for (const key of uncertain) this.uncertainLedger.add(key);
     return true;
+  }
+
+  private ledgerEntryCount(): number {
+    return this.completedLedger.size + this.uncertainLedger.size + this.noDispatchLedger.size;
   }
 
   private current(): State | undefined {
@@ -582,7 +616,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const key = toolKey(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
     const evidence = state.completed.get(key);
-    if (!evidence) return this.completedLedger.size + this.uncertainLedger.size >= MAX_LEDGER_ENTRIES
+    if (!evidence) return this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES
       ? 'automatic_replay_blocked: Recovery ledger capacity is exhausted; another business action cannot be safely recorded.' : undefined;
     state.denied.add(key);
     this.deniedLedger.add(key);

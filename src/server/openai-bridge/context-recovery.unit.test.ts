@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import { ContextRecoveryController } from './context-recovery';
+import { ContextRecoveryController, LiveQueryToolUseTracker } from './context-recovery';
 import type { AnthropicRequest } from './types/anthropic';
 
 function history(): AnthropicRequest {
@@ -43,6 +43,74 @@ function deferred<T>() {
 }
 
 describe('bounded inference context recovery', () => {
+  it('binds SDK no-dispatch evidence through live stream materialization and paired tool_result only', async () => {
+    const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' },
+      backup: async () => '/archive/request.json', persistLedger: async () => {} });
+    controller.bindNoDispatchOwner({ sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true });
+    const tracker = new LiveQueryToolUseTracker();
+    const scope = controller.snapshotNoDispatchScope();
+    tracker.observeStreamEvent({ type: 'content_block_start', content_block: {
+      type: 'tool_use', id: 'live-invalid', name: 'TaskGet', input: {},
+    } }, scope);
+    tracker.materializeAssistantMessage({ content: [{ type: 'tool_use', id: 'live-invalid', name: 'TaskGet', input: {} }] });
+    const paired = tracker.takeErrorResult({ type: 'tool_result', tool_use_id: 'live-invalid', is_error: true });
+    expect(paired).toMatchObject({ toolUseId: 'live-invalid', name: 'TaskGet', input: {}, scope });
+    expect(await controller.commitNoDispatchValidationFailure(paired!.name, paired!.input,
+      paired!.toolUseId, paired!.scope ?? '')).toBe(true);
+
+    // A PreToolUse observation for the same ID proves the call was admitted;
+    // the SDK error cannot relabel an execution failure as schema no-dispatch.
+    const admitted = new LiveQueryToolUseTracker();
+    admitted.observeStreamEvent({ type: 'content_block_start', content_block: {
+      type: 'tool_use', id: 'admitted-invalid', name: 'TaskGet', input: {},
+    } }, scope);
+    await controller.authorizeTool('TaskGet', {}, 'admitted-invalid');
+    const admittedPair = admitted.takeErrorResult({ type: 'tool_result', tool_use_id: 'admitted-invalid', is_error: true });
+    expect(admittedPair).toBeDefined();
+    expect(await controller.commitNoDispatchValidationFailure(admittedPair!.name, admittedPair!.input,
+      admittedPair!.toolUseId, admittedPair!.scope ?? '')).toBe(false);
+
+    // A restored/historical assistant block without a live stream observation
+    // cannot create a current-Query proof, even when an error result follows.
+    const historical = new LiveQueryToolUseTracker();
+    historical.materializeAssistantMessage({ content: [{ type: 'tool_use', id: 'old-id', name: 'Bash', input: {} }] });
+    expect(historical.takeErrorResult({ type: 'tool_result', tool_use_id: 'old-id', is_error: true })).toBeUndefined();
+    expect(historical.takeErrorResult({ type: 'tool_result', tool_use_id: 'live-invalid', is_error: true })).toBeUndefined();
+  });
+
+  it('does not let a new no-dispatch proof erase a prior uncertain result with the same action hash', async () => {
+    const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' },
+      backup: async () => '/archive/request.json', persistLedger: async () => {} });
+    controller.bindNoDispatchOwner({ sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true });
+    await controller.commitToolResult('TaskGet', {}, 'prior admitted failure with unknown outcome', true);
+    expect(await controller.commitNoDispatchValidationFailure('TaskGet', {}, 'new-invalid-id', 'session-1:turn-4')).toBe(true);
+    expect(controller.canRetryInference()).toBe(false);
+  });
+
+  it('counts persisted no-dispatch proofs against the same 2048-entry ledger cap', async () => {
+    const sha = (value: unknown) => createHash('sha256').update(JSON.stringify(value, (_key, item) => {
+      if (item && typeof item === 'object' && !Array.isArray(item)) return Object.fromEntries(Object.entries(item).sort(([a], [b]) => a.localeCompare(b)));
+      return item;
+    })).digest('hex');
+    const actionHash = sha({ name: 'TaskGet', input: {} });
+    const noDispatch = Array.from({ length: 2048 }, (_, index) => {
+      const toolUseId = `invalid-${index}`;
+      const key = sha({ kind: 'no-dispatch', actionHash, toolUseId });
+      return [key, { sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7,
+        scope: 'session-1:turn-4', toolUseId, toolName: 'TaskGet', actionHash, reason: 'missing-taskId' }];
+    });
+    const ledger = { version: 1, completed: [], uncertain: [], denied: [], blocked: false, noDispatch };
+    let persisted: unknown;
+    const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
+      recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' }, initialLedger: ledger,
+      backup: async () => '/archive/request.json', persistLedger: async value => { persisted = value; } });
+    await expect(controller.commitToolResult('mutating_tool', { id: 'new' }, 'success'))
+      .rejects.toThrow('Recovery ledger could not be committed');
+    expect(persisted).toBeUndefined();
+  });
+
   it('persists exact SDK-bound no-dispatch proof only for schema-invalid calls never admitted by PreToolUse', async () => {
     const persisted: unknown[] = [];
     const owner = { sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true };

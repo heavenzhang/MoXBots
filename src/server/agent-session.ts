@@ -6,7 +6,7 @@ import { buildTurnProviderAnalytics } from './session-core/turn-analytics';
 import { selectBuiltinRewindBoundary } from './session-core/builtin-rewind-boundary';
 import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
-import { ContextRecoveryController } from './openai-bridge/context-recovery';
+import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
 import { SessionModelRecovery } from './builtin-session/model-recovery';
 import { SameTurnStreamContinuation } from './builtin-session/stream-continuation';
 import type { StreamRecoveryEvidence } from '../shared/streamRecovery';
@@ -12904,7 +12904,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
 
     if (!activeQuery) throw new Error('SDK query session was not initialized');
     let warnedRevokedQueryEvent = false;
-    const querySdkToolUses = new Map<string, { name: string; input: unknown; scope: string | undefined }>();
+    const querySdkToolUses = new LiveQueryToolUseTracker();
     for await (const sdkMessage of activeQuery) {
       if (!isCurrentQueryAuthority(activeQueryAuthority)) {
         if (!warnedRevokedQueryEvent) {
@@ -13476,11 +13476,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             // Anthropic-format events to prevent SDK transcript pollution (see #68). The bridge
             // handler caches thought_signatures separately and re-injects on outgoing requests.
             const contentBlock = streamEvent.content_block as { id: string; name: string; input?: Record<string, unknown> };
-            if ((contentBlock.name === 'TaskGet' || contentBlock.name === 'Bash')
-              && (querySdkToolUses.has(contentBlock.id) || querySdkToolUses.size < 2048)) {
-              querySdkToolUses.set(contentBlock.id, { name: contentBlock.name, input: contentBlock.input ?? {},
-                scope: queryContextRecovery?.snapshotNoDispatchScope() });
-            }
+            querySdkToolUses.observeStreamEvent(streamEvent,
+              queryContextRecovery?.snapshotNoDispatchScope());
             const toolPayload = {
               id: contentBlock.id,
               name: contentBlock.name,
@@ -13781,13 +13778,12 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               // only its later actual result may settle loading/in-flight state.
               if (isDetachedSdkToolResult(toolUseResultData)) continue;
               if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
-              const pairedCall = querySdkToolUses.get(toolResultBlock.tool_use_id);
-              if (toolResultBlock.is_error === true && pairedCall) {
+              const pairedCall = querySdkToolUses.takeErrorResult(block);
+              if (pairedCall) {
                 await queryContextRecovery?.commitNoDispatchValidationFailure(
-                  pairedCall.name, pairedCall.input, toolResultBlock.tool_use_id, pairedCall.scope ?? '',
+                  pairedCall.name, pairedCall.input, pairedCall.toolUseId, pairedCall.scope ?? '',
                 );
               }
-              querySdkToolUses.delete(toolResultBlock.tool_use_id);
               // Register the raw SDK receipt before structured rendering drops its Output path.
               const backgroundTaskId = toolUseResultData && typeof toolUseResultData === 'object'
                 ? (toolUseResultData as { backgroundTaskId?: unknown }).backgroundTaskId : undefined;
@@ -13864,17 +13860,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           broadcast('chat:message-sdk-uuid', { messageId: boundMessageId, sdkUuid: sdkMessage.uuid });
         }
         const assistantMessage = sdkMessage.message;
-        for (const block of assistantMessage.content) {
-          if (block.type === 'tool_use' && typeof block.id === 'string') {
-            // Only refresh a call already observed in this Query's live
-            // partial stream. Resumed historical transcript pairs cannot mint
-            // new no-dispatch authority.
-            const observed = querySdkToolUses.get(block.id);
-            if (observed && observed.name === block.name) {
-              querySdkToolUses.set(block.id, { ...observed, input: block.input });
-            }
-          }
-        }
+        // Only materialize calls already observed in this Query's live partial
+        // stream; resumed historical transcript pairs cannot mint authority.
+        querySdkToolUses.materializeAssistantMessage(assistantMessage);
         let belongsToCurrentProductTurn = true;
         if (productPresentation && sdkMessage.parent_tool_use_id) {
           const parent = productPresentation.content.tool(sdkMessage.parent_tool_use_id);
