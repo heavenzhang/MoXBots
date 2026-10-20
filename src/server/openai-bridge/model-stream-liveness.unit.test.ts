@@ -3,7 +3,8 @@ import { ModelFailoverController } from './model-failover';
 import { ModelBodyReader } from './model-body-reader';
 
 const encoder = new TextEncoder();
-const frame = (type: string) => encoder.encode(`event: ${type}\ndata: {"type":"${type}"}\n\n`);
+const frame = (type: string, fields: Record<string, unknown> = {}) => encoder.encode(`event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`);
+const textFrame = () => frame('content_block_delta', { index: 0, delta: { type: 'text_delta', text: 'actual model text' } });
 
 afterEach(() => vi.useRealTimers());
 
@@ -77,7 +78,7 @@ describe('owned inference body liveness', () => {
     vi.useFakeTimers();
     const f = fixture({ scope: () => 'original-turn', resolveBackup: () => undefined, onSwitch: vi.fn(), canRetry: () => false });
     const response = await f.run();
-    f.source.enqueue(frame('content_block_start'));
+    f.source.enqueue(frame('content_block_start', { index: 0, content_block: { type: 'tool_use', id: 'tool-fixture', name: 'Write', input: {} } }));
     const text = response.text();
     await vi.advanceTimersByTimeAsync(130);
     expect(await text).toContain('automatic_replay_blocked');
@@ -95,7 +96,7 @@ describe('owned inference body liveness', () => {
     const text = (await f.run()).text();
     for (let i = 0; i < 4; i++) {
       await vi.advanceTimersByTimeAsync(80);
-      f.source.enqueue(frame('content_block_delta'));
+      f.source.enqueue(textFrame());
       await vi.advanceTimersByTimeAsync(0);
     }
     f.source.enqueue(frame('message_stop'));
@@ -110,7 +111,7 @@ describe('owned inference body liveness', () => {
     vi.useFakeTimers();
     const f = fixture();
     const response = await f.run();
-    f.source.enqueue(frame('content_block_delta'));
+    f.source.enqueue(textFrame());
     await vi.advanceTimersByTimeAsync(0);
     await vi.advanceTimersByTimeAsync(300);
     expect(f.cancel).not.toHaveBeenCalled();
@@ -176,5 +177,49 @@ describe('owned inference body liveness', () => {
     await rejected;
     expect(cancel).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each([
+    ['empty text', 'content_block_delta', { index: 0, delta: { type: 'text_delta', text: '' } }],
+    ['empty thinking', 'content_block_delta', { index: 0, delta: { type: 'thinking_delta', thinking: '' } }],
+    ['empty tool arguments', 'content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: '' } }],
+    ['usage metadata', 'message_delta', { delta: { stop_reason: null }, usage: { output_tokens: 0 } }],
+    ['empty block boundary', 'content_block_start', { index: 0, content_block: { type: 'text', text: '' } }],
+  ] as const)('does not renew the idle deadline for repeated %s', async (_label, type, fields) => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const consuming = (await f.run()).text();
+    try {
+      for (let i = 0; i < 4; i++) {
+        f.source.enqueue(frame(type, fields));
+        await vi.advanceTimersByTimeAsync(25);
+      }
+      await vi.advanceTimersByTimeAsync(30);
+      expect(f.cancel).toHaveBeenCalledOnce();
+      expect(f.recovery.interrupted).toHaveBeenCalledOnce();
+      expect(await consuming).toContain('automatic_replay_blocked');
+      expect(f.execute).toHaveBeenCalledOnce();
+    } finally {
+      try { f.source.close(); } catch { /* timer already cancelled it */ }
+      await consuming.catch(() => undefined);
+    }
+  });
+
+  it.each([
+    ['thinking_delta', { thinking: 'meaningful reasoning' }],
+    ['input_json_delta', { partial_json: '{"path":' }],
+  ] as const)('preserves progress from nonempty %s across the idle limit', async (type, delta) => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const text = (await f.run()).text();
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(80);
+      f.source.enqueue(frame('content_block_delta', { index: 0, delta: { type, ...delta } }));
+      await vi.advanceTimersByTimeAsync(0);
+    }
+    f.source.enqueue(frame('message_stop'));
+    expect(await text).toContain('message_stop');
+    expect(f.recovery.complete).toHaveBeenCalledOnce();
+    expect(f.recovery.interrupted).not.toHaveBeenCalled();
   });
 });

@@ -153,7 +153,10 @@ describe('OpenAI bridge timeout ownership', () => {
     });
   });
 
-  it.each(['chat_completions', 'responses'] as const)('releases a real %s connection that returns headers and pings but no model output', async upstreamFormat => {
+  it.each([
+    ['chat_completions', 'ping'], ['responses', 'ping'],
+    ['responses', 'empty text'], ['anthropic', 'empty text'],
+  ] as const)('releases a real %s connection with %s but no model progress', async (upstreamFormat, heartbeatKind) => {
     let connections = 0;
     let closed!: () => void;
     const connectionClosed = new Promise<void>(resolve => { closed = resolve; });
@@ -162,7 +165,11 @@ describe('OpenAI bridge timeout ownership', () => {
       req.resume();
       res.writeHead(200, { 'content-type': 'text/event-stream' });
       res.flushHeaders();
-      const heartbeat = setInterval(() => res.write('event: ping\ndata: {}\n\n'), 20);
+      const heartbeatFrame = heartbeatKind === 'ping' ? 'event: ping\ndata: {}\n\n'
+        : upstreamFormat === 'anthropic'
+          ? `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '' } })}\n\n`
+          : `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: '' })}\n\n`;
+      const heartbeat = setInterval(() => res.write(heartbeatFrame), 20);
       res.on('close', () => { clearInterval(heartbeat); closed(); });
     });
     await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
@@ -178,7 +185,8 @@ describe('OpenAI bridge timeout ownership', () => {
     });
     const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({
       providerId: 'held-body-fixture', baseUrl: `http://127.0.0.1:${address.port}`,
-      apiKey: 'fixture-only', upstreamFormat, modelFailover,
+      apiKey: 'fixture-only', apiProtocol: upstreamFormat === 'anthropic' ? 'anthropic' : 'openai',
+      upstreamFormat: upstreamFormat === 'anthropic' ? undefined : upstreamFormat, modelFailover,
     }) });
     const response = await handler(new Request('http://127.0.0.1/v1/messages', {
       method: 'POST', headers: { 'content-type': 'application/json' },

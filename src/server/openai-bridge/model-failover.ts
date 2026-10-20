@@ -3,7 +3,7 @@ import type { UpstreamConfig } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
-import { modelStreamEventType } from './utils/model-stream-event';
+import { parseModelStreamEvent, hasModelStreamProgress } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
@@ -289,12 +289,10 @@ export class ModelFailoverController implements BridgeModelFailover {
             }
             let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              const type = modelStreamEventType(event);
-              if (!type) continue;
-              if (type === 'content_block_start' || type === 'content_block_delta'
-                || type === 'content_block_stop' || type === 'message_delta' || type === 'message_stop') {
-                bodyReader.markProgress();
-              }
+              const payload = parseModelStreamEvent(event);
+              if (!payload) continue;
+              const { type } = payload;
+              if (hasModelStreamProgress(payload)) bodyReader.markProgress();
               if (type === 'error') {
                 if (!terminal) await interruptRecovery('Model stream delivered an error event', () => consumerCancelled);
                 else await blockRecovery('Model stream delivered an error after its terminal');
