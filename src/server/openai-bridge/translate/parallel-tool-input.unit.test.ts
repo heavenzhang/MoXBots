@@ -73,6 +73,19 @@ describe('parallel tool input block ownership', () => {
     expect(events.some(event => event.type === 'error')).toBe(true);
   });
 
+  it('rejects duplicate Chat tool IDs across provider indices before emitting any tool block', () => {
+    const t = new StreamTranslator('fixture');
+    t.feed(chatChunk({ tool_calls: [
+      { index: 0, id: 'same-call', type: 'function', function: { name: 'first', arguments: '{}' } },
+      { index: 1, id: 'same-call', type: 'function', function: { name: 'second', arguments: '{}' } },
+    ] }) as OpenAIStreamChunk);
+    t.feed(chatChunk({}, 'tool_calls') as OpenAIStreamChunk);
+    const events = t.finalize();
+    expect(events.some(event => event.type === 'content_block_start' && event.content_block.type === 'tool_use')).toBe(false);
+    expect(events.some(event => event.type === 'message_stop')).toBe(false);
+    expect(events.some(event => event.type === 'error')).toBe(true);
+  });
+
   it('serializes Responses calls once, using done/item metadata and preserving empty input', () => {
     const t = new ResponsesStreamTranslator('fixture');
     const events: AnthropicStreamEvent[] = [];
@@ -114,6 +127,27 @@ describe('parallel tool input block ownership', () => {
       { id: 'call-late', name: 'lookup', input: { q: 'ok' }, stops: 1 },
     ]);
     expect(events.some(event => event.type === 'message_stop')).toBe(true);
+  });
+
+  it('rejects a terminal output index that duplicates a previously observed Responses call ID', () => {
+    const t = new ResponsesStreamTranslator('fixture');
+    const addAndComplete = (outputIndex: number, callId: string, name: string) => {
+      t.feed({ type: 'response.output_item.added', output_index: outputIndex, item: { type: 'function_call', id: `item-${callId}`, call_id: callId, name, arguments: '', status: 'in_progress' } });
+      t.feed({ type: 'response.function_call_arguments.done', output_index: outputIndex, arguments: '{}' });
+    };
+    addAndComplete(0, 'call-a', 'first');
+    addAndComplete(3, 'call-b', 'second');
+    const events = t.feed({ type: 'response.completed', response: {
+      id: 'r', object: 'response', model: 'fixture', status: 'completed',
+      output: [
+        { type: 'function_call', id: 'item-call-a', call_id: 'call-a', name: 'first', arguments: '{}', status: 'completed' },
+        { type: 'function_call', id: 'item-call-b', call_id: 'call-b', name: 'second', arguments: '{}', status: 'completed' },
+      ],
+      usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+    } });
+    expect(events.some(event => event.type === 'content_block_start' && event.content_block.type === 'tool_use')).toBe(false);
+    expect(events.some(event => event.type === 'message_stop')).toBe(false);
+    expect(events.some(event => event.type === 'error')).toBe(true);
   });
 
   it.each(['incomplete', 'failed', 'EOF'])('does not emit buffered Responses tools on %s', mode => {

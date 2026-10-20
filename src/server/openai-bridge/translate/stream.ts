@@ -172,8 +172,14 @@ export class StreamTranslator {
 
   private validateAndEmitDeferredToolSegments(events: AnthropicStreamEvent[]): string | null {
     const parsedInputs = new Map<number, string>();
+    const callIdOwners = new Map<string, number>();
     for (const [toolIndex, buffer] of this.toolCallBuffers) {
       if (buffer.id === '\0' || !buffer.name.trim()) return 'Invalid or incomplete upstream tool identity';
+      if (buffer.id) {
+        const previousOwner = callIdOwners.get(buffer.id);
+        if (previousOwner !== undefined && previousOwner !== toolIndex) return 'Duplicate upstream tool call identity';
+        callIdOwners.set(buffer.id, toolIndex);
+      }
       const raw = buffer.args.trim() || '{}';
       try {
         const value: unknown = JSON.parse(raw);

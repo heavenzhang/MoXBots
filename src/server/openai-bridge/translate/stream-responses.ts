@@ -196,8 +196,12 @@ export class ResponsesStreamTranslator {
   }
 
   private validateDeferredTools(): string | null {
-    for (const buffer of this.functionCallBuffers.values()) {
+    const callIdOwners = new Map<string, number>();
+    for (const [outputIndex, buffer] of this.functionCallBuffers) {
       if (!buffer.callId || buffer.callId === '\0' || !buffer.name.trim() || buffer.name === '\0') return 'Invalid or incomplete Responses function call identity';
+      const previousOwner = callIdOwners.get(buffer.callId);
+      if (previousOwner !== undefined && previousOwner !== outputIndex) return 'Duplicate Responses function call identity';
+      callIdOwners.set(buffer.callId, outputIndex);
       if (!buffer.argsFinal) return 'Responses function call arguments were not finalized';
       if (buffer.args === '\0') return 'Conflicting Responses function call arguments';
       const raw = buffer.args.trim() || '{}';

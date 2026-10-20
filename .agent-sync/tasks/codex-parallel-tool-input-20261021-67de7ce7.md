@@ -23,6 +23,7 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 - Added regression coverage for four interleaved Chat calls, sparse indices, late IDs, mixed text/thinking, legal empty arguments, Responses done/item/terminal metadata, repeated done, invalid input and failure/EOF guards.
 - Chat Completions now buffers tool-related segments and emits complete sequential blocks only from finalization after a valid `tool_calls` finish reason.
 - Responses now reconciles arguments and identity from delta/done/output-item/terminal metadata, emits each block once only after completed terminal validation, and rejects unfinished/conflicting inputs.
+- Both translators reject duplicate nonempty call IDs across provider indices before emitting any tool blocks. Responses also rejects terminal output that would remap an already observed call ID to a different index.
 
 ## Verification
 
@@ -31,6 +32,7 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 - TypeScript: `node node_modules/typescript/bin/tsc --noEmit --pretty false` — passed.
 - Lint: `node node_modules/eslint/bin/eslint.js src/server/openai-bridge/translate/stream.ts src/server/openai-bridge/translate/stream-responses.ts src/server/openai-bridge/translate/parallel-tool-input.unit.test.ts --max-warnings=0` — passed.
 - `git diff --check` — passed.
+- Duplicate-identity red/green: with the new ID-uniqueness guards temporarily removed, both targeted cases failed because they emitted tool blocks; with the guards restored, the expanded 4-file suite passed 65 tests.
 
 ## Blockers and unknowns
 
@@ -38,4 +40,4 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 
 ## Next step
 
-- Obtain root's SDK consumer result, inspect the final diff, then commit and push only this branch and hand the exact SHA to the designated publisher for candidate coordination.
+- Obtain root's SDK consumer result and hand the exact pushed SHA to the designated publisher for candidate coordination. No shared CI or release action is in this branch scope.
