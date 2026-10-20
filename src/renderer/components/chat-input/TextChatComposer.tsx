@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode, type RefObject } from "react";
 import { useChatComposerKeydown } from "@/hooks/useChatComposerKeydown";
 import {
   ComposerSurface,
@@ -19,6 +19,7 @@ export function TextChatComposer({
   placeholder,
   sendLabel,
   status,
+  inputRef,
 }: {
   id: string;
   value: string;
@@ -29,8 +30,10 @@ export function TextChatComposer({
   placeholder: string;
   sendLabel: string;
   status?: ReactNode;
+  inputRef?: RefObject<HTMLTextAreaElement | null>;
 }) {
-  const ref = useRef<HTMLTextAreaElement>(null);
+  const internalRef = useRef<HTMLTextAreaElement>(null);
+  const ref = inputRef ?? internalRef;
   const composing = useRef(false);
   const [resizeBump, setResizeBump] = useState(0);
   const handlers = useChatComposerKeydown(() => {

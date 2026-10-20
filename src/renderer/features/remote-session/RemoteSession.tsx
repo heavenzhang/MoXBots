@@ -29,6 +29,8 @@ import {
   type KnownRemoteOperation,
 } from "./drafts";
 import type { RemoteSessionBinding, RemoteSessionTab } from "./tabContract";
+import { useUpdateEditorAdmission } from "@/hooks/useUpdateEditorAdmission";
+import { isComposerUpdateCheckpointLocked } from "@/utils/composerUpdateCheckpoint";
 
 const buttonShape =
   "rounded-lg px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -118,6 +120,14 @@ function RemoteSessionContent({
   pendingRef.current = pending;
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const editorRoot = useRef<HTMLDivElement>(null);
+  const editorInput = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  useUpdateEditorAdmission(
+    "remote-session", editorRoot, editorInput,
+    () => composing.current || !!readRemoteDraft(tab) || !!readRemoteOperation(tab),
+    "远程会话仍有未完成的输入或请求，请完成输入并检查回执后再更新；当前内容已保留。",
+  );
   const [error, setError] = useState<string | null>(null);
   const mutationError = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -306,7 +316,7 @@ function RemoteSessionContent({
     };
   }, [isActive, online, tab.agentId, tab.sessionId, refresh]);
   async function mutate(operation: RemoteMutationRequest) {
-    if (busyRef.current || pendingRef.current || !online || !capable) return;
+    if (isComposerUpdateCheckpointLocked() || busyRef.current || pendingRef.current || !online || !capable) return;
     const tracked: KnownRemoteOperation = {
       kind: operation.kind,
       operationId: operation.operationId,
@@ -447,6 +457,7 @@ function RemoteSessionContent({
             ? "unsupported"
             : "failed";
   const open = (sessionId?: string, title = tab.agentName) => {
+    if (isComposerUpdateCheckpointLocked()) return;
     if (scopeRef.current)
       binding.onOpen({
         title,
@@ -483,7 +494,10 @@ function RemoteSessionContent({
         !list?.items.some((latest) => latest.sessionId === item.sessionId),
     ) ?? [];
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
+    <div ref={editorRoot}
+      onCompositionStartCapture={() => { composing.current = true; }}
+      onCompositionEndCapture={() => { composing.current = false; }}
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--line-subtle)] px-4 py-3 sm:px-6">
         <div className="min-w-0 basis-full sm:basis-0 flex-1">
           <h1 className="truncate text-lg font-semibold">
@@ -670,6 +684,7 @@ function RemoteSessionContent({
       <div className="min-w-0 shrink-0 px-3 pb-4 pt-2">
         <div className="mx-auto w-full max-w-3xl">
           <TextChatComposer
+            inputRef={editorInput}
             id={`remote-composer-${tab.id}`}
             value={draft}
             disabled={disabled}
@@ -677,6 +692,7 @@ function RemoteSessionContent({
             placeholder={t("remoteSession.placeholder")}
             sendLabel={t("remoteSession.send")}
             onChange={(value) => {
+              if (isComposerUpdateCheckpointLocked()) return;
               setDraft(value);
               writeRemoteDraft(tab, value);
             }}
@@ -722,11 +738,29 @@ function InteractionCard({
 }) {
   const { t } = useTranslation("app");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const answersRef = useRef(answers);
+  const editorRoot = useRef<HTMLElement>(null);
+  const editorInput = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  useUpdateEditorAdmission(
+    "remote-question", editorRoot, editorInput,
+    () => composing.current || Object.values(answersRef.current).some(value => value.length > 0),
+    "远程会话中有尚未提交的回答，请提交或清除回答后再更新；回答已保留。",
+  );
+  const changeAnswers = (update: (previous: Record<string, string>) => Record<string, string>) => {
+    if (isComposerUpdateCheckpointLocked()) return;
+    const next = update(answersRef.current);
+    answersRef.current = next;
+    setAnswers(next);
+  };
   const complete = interaction.questions.every(
     (q) => !!answers[q.answerKey]?.trim(),
   );
   return (
     <section
+      ref={editorRoot}
+      onCompositionStart={() => { composing.current = true; }}
+      onCompositionEnd={() => { composing.current = false; }}
       className="min-w-0 [overflow-wrap:anywhere] rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-4"
       aria-label={t(`remoteSession.interactions.${interaction.interaction}`)}
     >
@@ -767,7 +801,7 @@ function InteractionCard({
                         : answers[q.answerKey] === option
                     }
                     onChange={(event) =>
-                      setAnswers((previous) => {
+                      changeAnswers((previous) => {
                         const values = (previous[q.answerKey] ?? "")
                           .split("\n")
                           .filter(Boolean);
@@ -793,7 +827,7 @@ function InteractionCard({
                 className="mt-2 w-full rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] p-2 text-sm outline-[var(--focus-border)]"
                 value={answers[q.answerKey] ?? ""}
                 onChange={(event) =>
-                  setAnswers((previous) => ({
+                  changeAnswers((previous) => ({
                     ...previous,
                     [q.answerKey]: event.target.value,
                   }))

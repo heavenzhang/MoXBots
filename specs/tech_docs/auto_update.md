@@ -65,7 +65,7 @@ Rust 在读取版本、校验 pending bytes 与 pinned signature 成功后，取
 
 省略或传入 false 的调用维持非中断契约：Task Running 行不是执行证据，仅瞬时 execution、打开的 PTY、录音/处理队列以及 Node 活动 owner 会返回 `UPDATE_BUSY`；代次或读取失败返回 unknown，原工作不被主动停止。Renderer busy 状态不是安全裁决源。
 
-独立 Host daemon 与远端执行拥有自己的生命周期，桌面更新不主动停止它们；尚未接入草稿持久交接的 remote-session Tab 仍需保留原安全限制。成功安装后保持 admission 关闭直到受管重启；失败先释放 Node 冻结并恢复文档/语音服务准入，再开放 lifecycle gate；已中断的 turn 不重跑，空闲的定时/Detector loop 保留以继续未来调度；真正被中断的 Running Task 通过已有用户 Stop 状态转换显示为 Stopped，待用户检查后继续，不伪装为仍在调度。文档/语音更新专用停止必须确认真实进程树退出；失败保留精确 worker 句柄供重试，不把普通退出的 best-effort 结果当作安装证明。
+独立 Host daemon 与远端执行拥有自己的生命周期，桌面更新不主动停止它们。remote-session Tab 本身不阻止更新：检查、持久化及最终安装前复核其原草稿 Map 和 operation ledger（包括尚未挂载的页面）；有未发送文字、未确认或未知请求时明确提示对应会话与处理办法。已挂载的远程编辑器及提问表单通过原 composer registry 检查 IME 和未提交回答，进入更新时同步冻结，失败时释放；所有远程写操作入口同时读取原 checkpoint lock，保存期间不能发送、批准或停止任务。远程草稿/回答尚不支持跨重启持久交接，不能静默丢弃或自动发送。纯远端运行状态不等于本机忙，远端等待审批且无本地未提交编辑时同样可以更新。成功安装后保持 admission 关闭直到受管重启；失败先释放 Node 冻结并恢复文档/语音服务准入，再开放 lifecycle gate；已中断的 turn 不重跑，空闲的定时/Detector loop 保留以继续未来调度；真正被中断的 Running Task 通过已有用户 Stop 状态转换显示为 Stopped，待用户检查后继续，不伪装为仍在调度。文档/语音更新专用停止必须确认真实进程树退出；失败保留精确 worker 句柄供重试，不把普通退出的 best-effort 结果当作安装证明。
 
 ### 任务设置草稿的更新交接
 
