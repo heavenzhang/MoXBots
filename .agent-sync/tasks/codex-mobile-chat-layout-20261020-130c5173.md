@@ -9,8 +9,8 @@
 - Canonical integration/release branch: main. Task branch: codex/mobile-chat-layout-20261020.
 - Base: 18e13ce8dbad20e61af3f84173ad87d84bf090a6.
 - Human scope: fix actual iPhone conversation rendering and other reproduced mobile bugs; retain current account/data and original101 identity/config. Daily Mac is excluded.
-- Latest human decision: "由桌面统一打包负责人统筹". Sole project CI/release coordinator is 01a12bc2-907a-7702-b6dd-788225c5dfe4. This chat01a12b99-7b38-78b1-831f-9c60257d386a owns development and phone evidence, and does not independently start shared CI/build/install. Earlier phone handoff remains historical; the latest centralized direction controls further publication.
-- Version: current internal0.1.0/build1 remains installed. The earlier build2 suggestion is withdrawn from source pending allocation by the unified owner. Freeze exact source SHA and new immutable build/archive identity before any future installation. Preserve original build1 archive.
+- Latest human decision (2026-10-21, verified original reply in chat01a1488b): “是，手机端交给 Bots手机端开发2”. This chat01a12b99-7b38-78b1-831f-9c60257d386a is now sole mobile CI/build/version/sign/install/acceptance owner; desktop stays01a12bc2. Shared plan records explicit transfer and activity audit; this supersedes the earlier centralized assignment for mobile only.
+- Version: current internal0.1.0/build1 remains installed. Receiving owner allocates0.1.0/build2 for this core batch, with immutable tag/artifact and final integrated-main SHA required before installation. Preserve signed build1 archive and current account/data; no uninstall or identity reset.
 
 ## Objective
 
