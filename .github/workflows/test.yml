@@ -463,8 +463,14 @@ jobs:
   windows-rust:
     if: ${{ !inputs.mobile_ios_app }}
     name: Windows cargo check · workspace IO
-    runs-on: windows-latest
+    # Explicit compatible pool: latest repeatedly failed to acquire a runner.
+    runs-on: windows-2022
     steps:
+      - name: Confirm Windows x64 validation environment
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_ARCH -ne 'X64') { throw "Expected x64 runner, got $env:RUNNER_ARCH" }
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -574,8 +580,19 @@ jobs:
   macos-cliproxy:
     if: ${{ !inputs.mobile_ios_app }}
     name: macOS CLIProxy lifecycle
-    runs-on: macos-26
+    # Keep ARM and all lifecycle checks; macos-26 repeatedly had no capacity.
+    # macos-15 defaults to Xcode16.4, below apple-metal's SDK floor, so select26.3.
+    runs-on: macos-15
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
+      - name: Confirm Apple ARM and compatible SDK environment
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version)" = 26.2
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = 26.2
+          test "$(xcrun --sdk iphonesimulator --show-sdk-version)" = 26.2
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
