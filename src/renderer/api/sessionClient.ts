@@ -233,6 +233,8 @@ export async function createSession(
         origin?: SessionOrigin;
         prepareForFirstUserMessage?: boolean;
         materializationSourceSessionId?: string;
+        /** 'manual' pins a hand-picked model; absent lets auto routing run. */
+        modelMode?: ModelMode;
     },
     owner?: { type: 'tab' | 'companion'; id: string; pendingSessionId?: string },
 ): Promise<SessionMetadata> {
@@ -251,6 +253,7 @@ export async function createSession(
             ...(opts?.origin !== undefined ? { origin: opts.origin } : {}),
             ...(opts?.prepareForFirstUserMessage ? { prepareForFirstUserMessage: true } : {}),
             ...(opts?.materializationSourceSessionId !== undefined ? { materializationSourceSessionId: opts.materializationSourceSessionId } : {}),
+            ...(opts?.modelMode ? { modelMode: opts.modelMode } : {}),
             // PRD 0.2.34 §14 D14：桌面渠道创建时由服务端原子地种「最宽松权限 per
             // runtime」（getMaxPermissionForRuntime），避免创建后再 PATCH 的吞错窗口。
             ...(opts?.seedMaxPermission ? { seedMaxPermission: true } : {}),
@@ -374,6 +377,8 @@ export async function updateSession(
         providerRoute?: ProviderRoute | null;
         providerExecutionIdentity?: RuntimeBackedProviderIdentity | null;
         providerEnvJson?: string | null;
+        /** 'auto' lets each new turn pick its tier; 'manual' pins the chosen model. */
+        modelMode?: ModelMode | null;
         origin?: SessionOrigin | null;
     },
     owner?: { type: 'tab' | 'companion'; id: string },

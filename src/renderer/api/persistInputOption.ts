@@ -172,6 +172,8 @@ export interface SessionSnapshotPatch {
    *  the env live from `providerId`. Same-provider builtin model edits must not
    *  clear it because owned sessions treat frozen env as part of exact identity. */
   providerEnvJson?: string | null;
+  /** Auto routing: a concrete builtin pick pins the Session ('manual'). */
+  modelMode?: 'auto' | 'manual' | null;
 }
 
 function routeFromBuiltinSelection(selection: BuiltinModelSelection): ProviderRoute {
@@ -398,6 +400,7 @@ function buildSnapshotPatch(params: PersistInputOptionParams): SessionSnapshotPa
     patch.providerExecutionIdentity = null;
     patch.model = fields.builtinSelection.model;
     patch.providerEnvJson = null;
+    patch.modelMode = 'manual';
   } else if (fields.providerId !== undefined) {
     patch.providerId = fields.providerId;
     patch.providerRoute = null;

@@ -3994,6 +3994,8 @@ async function main() {
           origin?: unknown;
           prepareForFirstUserMessage?: boolean;
           materializationSourceSessionId?: string;
+          /** 'manual' when the birth carries a model the user picked by hand. */
+          modelMode?: 'auto' | 'manual';
         };
         let payload: CreateSessionPayload;
         try {
@@ -4219,6 +4221,7 @@ async function main() {
           baseSnapshot.enabledPluginIds = payload.enabledPluginIds;
         if (payload.enabledOfficialToolIds !== undefined)
           baseSnapshot.enabledOfficialToolIds = payload.enabledOfficialToolIds;
+        if (payload.modelMode === 'manual') baseSnapshot.modelMode = 'manual';
         if (payload.prepareForFirstUserMessage === true) {
           if (baseSnapshot.origin?.kind !== 'desktop') {
             return jsonResponse(

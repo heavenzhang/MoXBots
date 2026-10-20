@@ -2335,6 +2335,35 @@
     "timingHint": "Controls messages between agents and completion reports. Realtime delivers after the current model or tool step. The chat queue setting above controls user input.",
     "unavailable": "Model unavailable"
   },
+  "autoRouting": {
+    "title": "Auto model selection",
+    "description": "A small classifier reads each new message, then a model and reasoning effort are picked from the matching tier. Sessions where you picked a model by hand are left alone.",
+    "enable": "Enable auto model selection",
+    "tiers": {
+      "fast": "Fast",
+      "balanced": "Balanced",
+      "strong": "Strong"
+    },
+    "tierHints": {
+      "fast": "Greetings, lookups, small edits",
+      "balanced": "Ordinary features, explaining code, writing docs",
+      "strong": "Design, debugging, multi-file changes, long analysis"
+    },
+    "tierEmpty": "No models in this tier",
+    "empty": "No models are available yet. Set up a model provider below.",
+    "loadFailed": "Could not load tiers. Try again later.",
+    "moveUp": "Move {{model}} up",
+    "moveFaster": "Move {{model}} to a faster tier",
+    "moveStronger": "Move {{model}} to a stronger tier",
+    "classifier": "Classifier model",
+    "classifierAuto": "Classifier: {{model}} (auto)",
+    "classifierUser": "Classifier: {{model}}",
+    "classifierNone": "Classifier: no model available",
+    "classifierAutoOption": "Pick automatically",
+    "privacy": "The classifier receives this message and a short excerpt of the previous turn, through the same model provider as the conversation.",
+    "saving": "Saving…",
+    "saveFailed": "Could not save. Try again."
+  },
   "modelFailover": {
     "providerFilter": "Filter by provider",
     "allProviders": "All providers",

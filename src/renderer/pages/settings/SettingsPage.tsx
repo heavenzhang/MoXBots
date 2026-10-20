@@ -3,6 +3,7 @@ import WorkspaceSelector, { resolveDefaultWorkspaceProject } from '@/components/
 import AgentFunctionSettings from './sections/AgentFunctionSettings';
 import { DshCollaborationSettings } from './DshCollaborationSettings';
 import { ModelFailoverSettings } from './ModelFailoverSettings';
+import { AutoRoutingSettings, type AutoRouteTiersView } from './AutoRoutingSettings';
 import { getPlatformHiddenProviderIds, isLinuxDesktop } from '@/utils/desktopPlatform';
 import { isImeComposingEvent } from '@/utils/imeKeyboard';
 import {
@@ -1239,6 +1240,20 @@ export default function Settings({
   const officialEnabledIds = useMemo(
     () => normalizeOfficialToolIds(config.enabledOfficialToolIds ?? []),
     [config.enabledOfficialToolIds],
+  );
+
+  const loadAutoRouteTiers = useCallback(async (): Promise<AutoRouteTiersView> => {
+    const result = await apiPostJson<{ success: boolean; data?: AutoRouteTiersView }>(
+      '/api/admin/route/tiers', {},
+    );
+    if (!result.success || !result.data?.tiers) {
+      throw new Error('Invalid auto-route tiers response');
+    }
+    return result.data;
+  }, []);
+  const providerNamesById = useMemo(
+    () => Object.fromEntries(providers.map((provider) => [provider.id, provider.name])),
+    [providers],
   );
 
   const loadVisionModelCandidates = useCallback(async () => {
@@ -5056,6 +5071,15 @@ export default function Settings({
             <p className="mb-6 text-sm text-[var(--ink-muted)]">
               {tSettings('providers.description')}
             </p>
+
+            <div className="mb-6">
+              <AutoRoutingSettings
+                value={config.autoRouting}
+                updateConfig={updateConfig}
+                loadTiers={loadAutoRouteTiers}
+                providerNames={providerNamesById}
+              />
+            </div>
 
             <div className="mb-6">
               <ModelFailoverSettings

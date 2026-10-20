@@ -370,6 +370,8 @@ export type SessionEngineSnapshotMaterializePatch = {
   providerRoute?: ProviderRoute | null;
   providerExecutionIdentity?: RuntimeBackedProviderIdentity | null;
   providerEnvJson?: string | null;
+  /** Auto routing mode; absent keeps the Session's current mode. */
+  modelMode?: 'auto' | 'manual' | null;
 };
 
 export type SessionEngineMaterializePendingResult = {

@@ -74,6 +74,10 @@ export interface SimpleChatInputProps {
   onProviderChange?: (providerId: string, targetModel?: string) => void;
   selectedModel?: string;
   onBuiltinModelSelect?: (selection: { providerId: string; model: string }) => void;
+  /** Auto routing: 'auto' lets each new turn pick its model. Absent hides the 「自动」 row. */
+  modelMode?: 'auto' | 'manual';
+  /** Switch this Session back to auto routing. Absent hides the 「自动」 row. */
+  onAutoModelSelect?: () => void;
   onModelChange?: (modelId: string) => void;
   reasoningEffort?: string;
   onReasoningEffortChange?: (effort: string) => void;

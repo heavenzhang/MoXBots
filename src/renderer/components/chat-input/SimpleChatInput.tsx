@@ -150,6 +150,8 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   onProviderChange,
   selectedModel,
   onBuiltinModelSelect,
+  modelMode,
+  onAutoModelSelect,
   onModelChange,
   reasoningEffort = 'default',
   onReasoningEffortChange,
@@ -518,6 +520,11 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     : (currentModelId
       ? (provider ? getModelDisplayName(provider, currentModelId) : currentModelId)
       : t('input.selectModel'));
+  const autoRowVisible = !isExternalRuntime && Boolean(onAutoModelSelect);
+  const autoSelected = autoRowVisible && modelMode !== 'manual';
+  const modelButtonLabel = autoSelected
+    ? t('input.autoModelLabel', { model: currentModelName })
+    : currentModelName;
 
   const [showFileSearch, setShowFileSearch] = useState(false);
   const [fileSearchQuery, setFileSearchQuery] = useState('');
@@ -2068,7 +2075,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 }`}
                 title={configControlLockTitle ?? t('input.switchModel')}
               >
-                <span className="max-w-[140px] truncate">{currentModelName}</span>
+                <span className="max-w-[180px] truncate">{modelButtonLabel}</span>
                 <ChevronUpIcon className="h-3 w-3 shrink-0" />
               </button>
               {/* The model list scrolls independently; the effort flyout uses
@@ -2137,7 +2144,32 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                       </button>
                     );
                   }
-                  return availableProviders.map((p, idx) => (
+                  const autoRow = autoRowVisible ? (
+                    <div key="auto">
+                      <button
+                        ref={autoSelected ? selectedModelRowRef : undefined}
+                        data-selected-model-row={autoSelected ? '' : undefined}
+                        data-auto-model-row
+                        type="button"
+                        aria-pressed={autoSelected}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!autoSelected) onAutoModelSelect?.();
+                          setShowModelMenu(false);
+                        }}
+                        className={`flex w-full flex-col items-start rounded-md px-3 py-1.5 text-left text-sm transition-colors ${
+                          autoSelected
+                            ? 'bg-[var(--accent)]/10 font-medium text-[var(--accent)]'
+                            : 'text-[var(--ink)] hover:bg-[var(--hover-bg)]'
+                        }`}
+                      >
+                        <span className="truncate">{t('input.autoModel')}</span>
+                        <span className="text-xs font-normal text-[var(--ink-muted)]">{t('input.autoModelHint')}</span>
+                      </button>
+                      <div className="mx-2 my-1 border-t border-[var(--line)]" />
+                    </div>
+                  ) : null;
+                  return [autoRow, ...availableProviders.map((p, idx) => (
                     <div key={p.id}>
                       {idx > 0 && <div className="mx-2 my-1 border-t border-[var(--line)]" />}
                       <div className="group/provider relative flex items-center gap-1 px-3 pb-0.5 pt-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--ink-muted)]/60">
@@ -2149,7 +2181,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                         )}
                       </div>
                       {p.models.map(model => {
-                        const isSelected = provider?.id === p.id && currentModelId === model.model;
+                        const isSelected = !autoSelected && provider?.id === p.id && currentModelId === model.model;
                         return (
                           <button
                             ref={isSelected ? selectedModelRowRef : undefined}
@@ -2179,7 +2211,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                         );
                       })}
                     </div>
-                  ));
+                  ))];
                 })()}
                 </div>
                 <ModelSelectionScrollSync
@@ -2187,7 +2219,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   selectedRowRef={selectedModelRowRef}
                   selectionKey={isExternalRuntime
                     ? `${runtime ?? 'external'}:${selectedModel ?? 'default'}`
-                    : `${provider?.id ?? 'none'}:${currentModelId ?? 'none'}`}
+                    : autoSelected ? 'auto' : `${provider?.id ?? 'none'}:${currentModelId ?? 'none'}`}
                   modelSource={isExternalRuntime ? runtimeModels : providers}
                 />
 

@@ -209,6 +209,11 @@ import {
 } from '../../shared/official-tools';
 import { isSupportedLocale } from '../../shared/i18n';
 import { workspacePathsEqual } from '../../shared/workspacePath';
+import {
+  isAutoRoutingEnabled,
+  normalizeModelMode,
+  parseAutoRoutingSettings,
+} from '../../shared/autoRoute';
 import type { MainWindowPresentation } from '@/utils/mainWindowPresentation';
 import {
   coerceReasoningEffortForRuntime,
@@ -4432,6 +4437,23 @@ export default function Chat({
     [handleProviderChange],
   );
 
+  // Auto routing is on by default; a hand-picked model pins the Session
+  // ('manual', written by persistInputOptionChange). Choosing 「自动」 again
+  // only flips the mode: the next new turn picks its own model server-side.
+  const autoRoutingEnabled = isAutoRoutingEnabled(
+    parseAutoRoutingSettings(config.autoRouting),
+  );
+  const sessionModelMode = normalizeModelMode(sessionMeta?.modelMode);
+  const handleAutoModelSelect = useCallback(async () => {
+    if (guardCronConfigMutation()) return;
+    try {
+      await patchSnapshot({ modelMode: 'auto' });
+    } catch (error) {
+      console.error('[chat] Failed to switch to auto model routing:', error);
+      toastRef.current.error(t('input.autoModelSaveFailed'));
+    }
+  }, [guardCronConfigMutation, patchSnapshot, t]);
+
   // Handle model change with analytics tracking.
   // Dual-write per PRD v0.1.69 §4.3 rule 2 "写 Session + 向上写 Agent": owned sessions
   // snapshot the new model locally so this session persists the choice; project + agent
@@ -5258,6 +5280,8 @@ export default function Chat({
         const session = await createSession(agentDir, birth.runtime, {
           ...birth.opts,
           origin: DESKTOP_SESSION_FORK_ORIGIN,
+          // The user picked this model by hand, so the new Session stays on it.
+          modelMode: 'manual',
         });
         const opened = await onForkSession(session.id, agentDir, sessionTitle);
         if (!opened) {
@@ -6921,6 +6945,14 @@ export default function Chat({
                 inputUsesExternalRuntimeControls
                   ? undefined
                   : handleBuiltinModelSelect
+              }
+              modelMode={sessionModelMode}
+              onAutoModelSelect={
+                inputUsesExternalRuntimeControls ||
+                !autoRoutingEnabled ||
+                isRuntimeBackedProvider(effectiveModelProvider)
+                  ? undefined
+                  : handleAutoModelSelect
               }
               onModelChange={
                 inputUsesExternalRuntimeControls
