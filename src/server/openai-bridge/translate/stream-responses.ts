@@ -165,9 +165,13 @@ export class ResponsesStreamTranslator {
     }
     if (!Number.isSafeInteger(outputIndex) || outputIndex < 0 || typeof delta !== 'string') return;
     buffer.args += delta;
-    const duplicateIdentity = buffer.callId && [...this.functionCallBuffers.entries()].some(([index, other]) =>
-      index !== outputIndex && other.callId === buffer.callId);
-    if (delta.length > 0 && buffer.args !== '\0' && !buffer.invalidStatus && !duplicateIdentity) this.onModelProgress?.();
+    const duplicateIdentity = [...this.functionCallBuffers.entries()].some(([index, other]) =>
+      index !== outputIndex && Boolean((buffer.callId && other.callId === buffer.callId)
+        || (buffer.itemId && other.itemId === buffer.itemId)));
+    const identityConflicted = buffer.itemId === '\0' || buffer.callId === '\0' || buffer.name === '\0';
+    if (delta.length > 0 && buffer.args !== '\0' && !buffer.invalidStatus && !identityConflicted && !duplicateIdentity) {
+      this.onModelProgress?.();
+    }
   }
 
   private setCompleteArguments(outputIndex: number, args: string, events: AnthropicStreamEvent[]): void {

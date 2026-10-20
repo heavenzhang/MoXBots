@@ -176,13 +176,13 @@ describe('owned inference body liveness', () => {
 
   it('ignores late progress from a retired upstream attempt', async () => {
     vi.useFakeTimers();
-    const callbacks: Array<() => void> = [];
+    const callbacks: Array<() => boolean> = [];
     let cancelCount = 0;
     const pendingBody = new ReadableStream<Uint8Array>({ cancel() { cancelCount++; } });
     let attempt = 0;
     const interrupted = vi.fn(async () => true);
-    const execute = vi.fn(async (_target: UpstreamConfig, onProgress?: () => void) => {
-      callbacks.push(onProgress ?? (() => {}));
+    const execute = vi.fn(async (_target: UpstreamConfig, onProgress?: () => boolean) => {
+      callbacks.push(onProgress ?? (() => false));
       attempt++;
       return attempt === 1
         ? Response.json({ error: { message: 'temporarily overloaded' } }, { status: 503 })
@@ -196,7 +196,7 @@ describe('owned inference body liveness', () => {
     expect(execute).toHaveBeenCalledTimes(2);
     const consuming = response.text();
     await vi.advanceTimersByTimeAsync(50);
-    callbacks[0]?.(); // The first request failed before headers; this callback is no longer authoritative.
+    expect(callbacks[0]?.()).toBe(false); // The first request failed before headers; it cannot renew either budget.
     await vi.advanceTimersByTimeAsync(80);
     expect(cancelCount).toBe(1);
     expect(interrupted).toHaveBeenCalledOnce();

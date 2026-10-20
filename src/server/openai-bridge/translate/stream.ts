@@ -177,7 +177,9 @@ export class StreamTranslator {
     if (typeof tc.function?.name === 'string' && tc.function.name.length > 0) buffer.name += tc.function.name;
     if (typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0) {
       buffer.args += tc.function.arguments;
-      if (buffer.id !== '\0') this.onModelProgress?.();
+      const duplicateIdentity = buffer.id && [...this.toolCallBuffers.entries()].some(([index, other]) =>
+        index !== idx && other.id === buffer.id);
+      if (buffer.id !== '\0' && !duplicateIdentity) this.onModelProgress?.();
     }
   }
 

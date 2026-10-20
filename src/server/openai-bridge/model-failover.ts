@@ -10,7 +10,7 @@ import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader'
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => void) => Promise<Response>, requestKey?: string): Promise<Response>;
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean) => Promise<Response>, requestKey?: string): Promise<Response>;
 }
 
 /** The Session owner commits its checkpoint before authorizing another inference. */
@@ -77,7 +77,7 @@ export class ModelFailoverController implements BridgeModelFailover {
   }
 
   async run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => void) => Promise<Response>, requestKey?: string): Promise<Response> {
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean) => Promise<Response>, requestKey?: string): Promise<Response> {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive?.() !== false
       && this.options.requestIdentity?.() === requestIdentity;
@@ -105,9 +105,10 @@ export class ModelFailoverController implements BridgeModelFailover {
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
       const attempt = ++activeAttempt;
-      const onModelProgress = () => {
-        if (attempt !== activeAttempt || !live()) return;
+      const onModelProgress = (): boolean => {
+        if (attempt !== activeAttempt || !live()) return false;
         progressBodyReader?.markProgress();
+        return true;
       };
       return execute(target, onModelProgress);
     };

@@ -67,6 +67,37 @@ describe('parallel tool input block ownership', () => {
     conflictingResponses.feed({ type: 'response.function_call_arguments.done', output_index: 0, arguments: '{"b":1}' } as ResponsesStreamEvent);
     conflictingResponses.feed({ type: 'response.function_call_arguments.delta', output_index: 0, delta: 'late' } as ResponsesStreamEvent);
     expect(conflictResponseProgress).toBe(1);
+
+  });
+
+  it('does not credit Chat argument deltas after a duplicate call ID appears at another index', () => {
+    let progress = 0;
+    const translator = new StreamTranslator('fixture', true, undefined, () => progress++);
+    translator.feed(chatChunk({ tool_calls: [{ index: 0, id: 'same', function: { name: 'first', arguments: '{' } }] }) as OpenAIStreamChunk);
+    translator.feed(chatChunk({ tool_calls: [{ index: 1, id: 'same', function: { name: 'second', arguments: '{' } }] }) as OpenAIStreamChunk);
+    expect(progress).toBe(1);
+  });
+
+  it.each(['id', 'call_id', 'name'] as const)('does not credit Responses arguments after a %s conflict', field => {
+    let progress = 0;
+    const translator = new ResponsesStreamTranslator('fixture', undefined, () => progress++);
+    translator.feed({ type: 'response.output_item.added', output_index: 0,
+      item: { type: 'function_call', id: 'item', call_id: 'call', name: 'lookup', arguments: '', status: 'in_progress' } });
+    translator.feed({ type: 'response.output_item.added', output_index: 0,
+      item: { type: 'function_call', id: field === 'id' ? 'other-item' : 'item', call_id: field === 'call_id' ? 'other-call' : 'call',
+        name: field === 'name' ? 'other-name' : 'lookup', arguments: '', status: 'in_progress' } });
+    translator.feed({ type: 'response.function_call_arguments.delta', output_index: 0, delta: '{' });
+    expect(progress).toBe(0);
+  });
+
+  it('continues to credit Responses argument deltas when identity arrives late without conflict', () => {
+    let progress = 0;
+    const translator = new ResponsesStreamTranslator('fixture', undefined, () => progress++);
+    translator.feed({ type: 'response.function_call_arguments.delta', output_index: 0, delta: '{' });
+    translator.feed({ type: 'response.output_item.added', output_index: 0,
+      item: { type: 'function_call', id: 'item', call_id: 'call', name: 'lookup', arguments: '{', status: 'in_progress' } });
+    translator.feed({ type: 'response.function_call_arguments.delta', output_index: 0, delta: '}' });
+    expect(progress).toBe(2);
   });
 
   it('serializes four interleaved Chat calls with sparse indices and late id into complete blocks', () => {
