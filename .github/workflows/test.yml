@@ -574,9 +574,17 @@ jobs:
   macos-cliproxy:
     if: ${{ !inputs.mobile_ios_app }}
     name: macOS CLIProxy lifecycle
-    runs-on: macos-26
+    runs-on: macos-15
+    # Same arm64 architecture and Xcode 26 SDK; try the alternate macOS 15 pool.
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Verify arm64 host and Xcode 26 SDK
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" -ge 26
       - uses: actions/setup-node@v4
         with:
           node-version: 24

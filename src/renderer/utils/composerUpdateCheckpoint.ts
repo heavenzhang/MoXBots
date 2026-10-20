@@ -12,6 +12,7 @@ import { agentMentionSnapshotSchema, desktopPrimaryContextSchema, type QueryMent
 import { isPendingSessionId } from '@/../shared/constants';
 import { assertKnownProductSystemSkillRequirement } from '@/../shared/systemSkills';
 import { composerWorkflowDraftSchema, type ComposerWorkflowDraft } from './composerWorkflowDraft';
+import { readRemoteDraft, readRemoteOperation } from '@/features/remote-session/drafts';
 
 export interface ComposerScope {
   tabId: string;
@@ -62,11 +63,19 @@ const FILE = 'update-composer-drafts.json';
 
 export function isComposerUpdateCheckpointLocked(): boolean { return locked; }
 
-/** Remote sessions have a separate draft/RPC owner. Until its formal update
- * attestation exists, presence cannot be treated as idle or restorable. */
-export function assertUpdateTabsSafe(tabs: readonly Pick<Tab, 'view'>[]): void {
-  if (tabs.some(tab => tab.view === 'remote-session'))
-    throw new Error('远程会话尚未接入安全更新检查，当前无法安装更新；请保留会话并稍后更新。');
+/** Remote execution belongs to its Host and survives a desktop restart. Only
+ * local unsaved input and uncertain RPC admission can block this handoff.
+ * Read the existing owners even for deferred/unmounted tabs; mounted editors
+ * also attest IME/question state through the regular composer registry. */
+export function assertUpdateTabsSafe(tabs: readonly Tab[]): void {
+  for (const tab of tabs) {
+    if (tab.view !== 'remote-session') continue;
+    const name = tab.title || tab.agentName;
+    if (readRemoteDraft(tab))
+      throw new Error(`远程会话「${name}」中有未发送的草稿，请发送或自行保存并清空后再更新；草稿已保留。`);
+    if (readRemoteOperation(tab))
+      throw new Error(`远程会话「${name}」中有尚未确认的请求，请在该会话中检查回执后再更新；不要重复发送。`);
+  }
 }
 
 function enqueue<T>(operation: () => Promise<T>): Promise<T> {

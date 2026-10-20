@@ -38,6 +38,9 @@ vi.mock("@/api/remoteSession", () => ({
 vi.mock("@/components/Markdown", () => ({
   default: ({ children }: { children: string }) => <p>{children}</p>,
 }));
+vi.mock("react-virtuoso", () => import("../../../test/ConversationVirtuoso"));
+vi.mock("@/config/useConfigData", () => ({useConfigData: () => ({config: {}})}));
+vi.mock("@/context/ImagePreviewContext", () => ({useImagePreview: () => ({openPreview: vi.fn()})}));
 import RemoteSession from "./RemoteSession";
 import { clearRemoteDrafts } from "./drafts";
 import type { RemoteSessionTab } from "./tabContract";
@@ -393,14 +396,15 @@ it("preserves previously loaded older messages while replacing the latest page b
             revision,
             interactions: [],
             messages: [
+              ...snapshot.messages,
               {
                 ...snapshot.messages[0],
                 id: "older",
                 content: "Earlier result",
               },
             ],
-            hasMoreBefore: false,
-            nextBefore: null,
+            hasMoreBefore: request.before !== "repeat",
+            nextBefore: request.before === "repeat" ? null : "repeat",
           }
         : {
             ...snapshot,
@@ -428,6 +432,11 @@ it("preserves previously loaded older messages while replacing the latest page b
   await screen.findByText("Remote result");
   fireEvent.click(screen.getByRole("button", { name: "remoteSession.older" }));
   await screen.findByText("Earlier result");
+  // A repeated/overlapping cursor page adds no duplicate rows or phantom prepend.
+  fireEvent.click(screen.getByRole("button", { name: "remoteSession.older" }));
+  await waitFor(() => expect(screen.queryByRole("button", {name:"remoteSession.older"})).toBeNull());
+  expect(screen.getAllByText("Earlier result")).toHaveLength(1);
+  expect(screen.getAllByText("Remote result")).toHaveLength(1);
   revision = "2";
   fireEvent.click(
     screen.getByRole("button", { name: "remoteSession.refresh" }),
@@ -684,17 +693,18 @@ it('shows tool results through shared disclosure as canonical text without local
     }] } };
   });
   render(<RemoteSession tab={{ ...tab, sessionId:'s', targetScope:scope }} isActive binding={binding} />);
-  const read = await screen.findByRole('button', { name:'Read remoteSession.toolStates.complete' });
+  await waitFor(() => expect(document.querySelectorAll('[data-process-row]')).toHaveLength(3));
+  const read = document.querySelector('[data-message-id="message"] button[aria-expanded]') as HTMLButtonElement;
   expect(read.getAttribute('aria-expanded')).toBe('false');
-  expect(screen.queryByText('first line', {exact:false})).toBeNull();
+  expect(document.querySelector('pre')).toBeNull();
   fireEvent.click(read);
   expect(read.getAttribute('aria-expanded')).toBe('true');
-  expect(screen.getByText('first line', {exact:false}).textContent).toBe('first line\nsecond line');
+  expect(document.querySelector('pre')?.textContent).toBe('first line\nsecond line');
   expect(screen.queryByText('filePath', {exact:false})).toBeNull();
   expect(screen.queryByRole('link')).toBeNull();
   fireEvent.click(read);
-  expect(screen.queryByText('first line', {exact:false})).toBeNull();
-  expect(screen.getByRole('button', {name:'Grep remoteSession.toolStates.running'}).hasAttribute('disabled')).toBe(true);
-  expect(screen.getByRole('button', {name:'Bash remoteSession.toolStates.error'})).toBeTruthy();
+  expect(document.querySelector('pre')).toBeNull();
+  expect(document.querySelectorAll('[data-process-row="running"]')).toHaveLength(1);
+  expect(document.querySelectorAll('[data-process-row="failed"]')).toHaveLength(1);
   expect(mocks.request.mock.calls.every(call=>['capabilities','get'].includes(call[2].kind))).toBe(true);
 });

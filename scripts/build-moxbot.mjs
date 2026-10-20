@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareMoxbotBundles } from './prepare-moxbot-bundles.mjs';
+import { prepareCuseBundle } from './prepare-cuse-bundle.mjs';
 import {
   addMoxbotReaderBuildOptions,
   prepareMoxbotCredentialReader,
@@ -29,6 +30,9 @@ try {
   if (process.platform === 'darwin') {
     const targetArch = resolveMacTargetArch(userArgs);
     const targetTriple = resolveMacTargetTriple(userArgs);
+    // The product resource overlay snapshots bundled-skills below. Prepare the
+    // verified platform payload first, as the standard macOS build does.
+    await prepareCuseBundle({ target: targetTriple });
     readerLock = readMoxbotCredentialReaderRelease({ release: readerRelease, repositoryRoot: root });
     reader = prepareMoxbotCredentialReader({
       targetArch, repositoryRoot: root, release: readerRelease, lock: readerLock,

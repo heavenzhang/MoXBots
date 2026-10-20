@@ -7,6 +7,14 @@ import { prepareMoxbotBundles, transformMoxbotResource } from './prepare-moxbot-
 
 const repo = new URL('../', import.meta.url);
 
+test('MoXBots Mac entry prepares Cuse before snapshotting product skills or invoking Tauri', () => {
+  const entry = readFileSync(new URL('scripts/build-moxbot.mjs', repo), 'utf8');
+  const preparation = entry.indexOf('await prepareCuseBundle({ target: targetTriple })');
+  assert.ok(preparation >= 0, 'required Cuse input must be prepared for the explicit Rust target');
+  assert.ok(preparation < entry.indexOf('await prepareMoxbotBundles('));
+  assert.ok(preparation < entry.indexOf('const result = spawnSync('));
+});
+
 test('transforms home references, command aliases and only the owned open route', () => {
   const source = Buffer.from('~/.myagents/config.json ~/.myagents/ ~/.myagents-other myagents task list myagents --help myagents <group> --help myagents://open/v1/spaces myagents://legacy/attachment');
   const output = transformMoxbotResource('bundled-agents/myagents_helper/CLAUDE.md', source).toString();

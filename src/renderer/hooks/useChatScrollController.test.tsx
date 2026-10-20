@@ -302,6 +302,67 @@ describe('useChatScrollController', () => {
     expect(controls.scrollBy).toHaveBeenCalledWith({ top: 50, behavior: 'auto' });
   });
 
+  it.each(['user-scroll', 'disclosure', 'session-switch', 'deleted-row'] as const)(
+    'holds a prepend anchor through later measurements, then releases it on %s', (end) => {
+      const scroller = document.createElement('div');
+      const row = document.createElement('div');
+      row.setAttribute('data-chat-search-scope', '');
+      row.setAttribute('data-message-id', 'm1');
+      scroller.appendChild(row);
+      setRect(scroller, { top: 10, bottom: 410 });
+      setRect(row, { top: 30, bottom: 100 });
+      controls.scrollerRef.current = scroller;
+      controls.followEnabledRef.current = false;
+      const { result, rerender } = renderHook(
+        ({ sessionId, messages }) => useChatScrollController({ messages, isActive: true, sessionId }),
+        { initialProps: { sessionId:'s1', messages:[msg('m1')] } },
+      );
+      act(() => result.current.onViewportAdmissionChanged(true, 0));
+      const anchor = result.current.captureAnchor('prepend')!;
+      setRect(row, { top: 80, bottom: 150 });
+      act(() => result.current.preserveAnchorAfterPrepend(anchor));
+      expect(controls.scrollBy).toHaveBeenLastCalledWith({ top:50, behavior:'auto' });
+      setRect(row, { top: 60, bottom: 130 });
+      act(() => result.current.onItemsRendered());
+      expect(controls.scrollBy).toHaveBeenLastCalledWith({ top:30, behavior:'auto' });
+      if (end === 'user-scroll') act(() => controls.onUserScrollIntent?.());
+      if (end === 'disclosure') act(() => result.current.onRowLayoutChanged('m1', 'process-row-expand'));
+      if (end === 'session-switch') rerender({sessionId:'s2', messages:[msg('m1')]});
+      if (end === 'deleted-row') {
+        rerender({sessionId:'s1', messages:[]});
+        act(() => result.current.onItemsRendered());
+        rerender({sessionId:'s1', messages:[msg('m1')]});
+      }
+      controls.scrollBy.mockClear();
+      setRect(row, { top: 90, bottom: 160 });
+      act(() => result.current.onItemsRendered());
+      expect(controls.scrollBy).not.toHaveBeenCalled();
+    },
+  );
+
+  it('mounts an evicted prepend anchor once and corrects subsequent measurements', () => {
+    const scroller = document.createElement('div');
+    const row = document.createElement('div');
+    row.setAttribute('data-chat-search-scope', '');
+    row.setAttribute('data-message-id', 'm1');
+    scroller.appendChild(row);
+    setRect(scroller, { top:10, bottom:410 });
+    setRect(row, { top:30, bottom:100 });
+    controls.scrollerRef.current = scroller;
+    controls.followEnabledRef.current = false;
+    const { result } = renderHook(() => useChatScrollController({ messages:[msg('m1')], isActive:true }));
+    act(() => result.current.onViewportAdmissionChanged(true, 0));
+    const anchor = result.current.captureAnchor('prepend')!;
+    row.remove();
+    act(() => result.current.preserveAnchorAfterPrepend(anchor));
+    act(() => result.current.onItemsRendered());
+    expect(controls.scrollToIndex).toHaveBeenCalledTimes(1);
+    scroller.appendChild(row);
+    setRect(row, { top:80, bottom:150 });
+    act(() => result.current.onItemsRendered());
+    expect(controls.scrollBy).toHaveBeenLastCalledWith({ top:50, behavior:'auto' });
+  });
+
   it.each([true, 'force'] as const)(
     'restores %s follow intent once after a suspended viewport becomes renderable',
     (followMode) => {

@@ -59,6 +59,10 @@ function formatElapsedTime(totalSeconds: number, t: TFunction<'chat'>): string {
 }
 
 interface MessageListProps {
+  /** Transport-owned history/status and interaction slots, with no local Session authority. */
+  headerContent?: React.ReactNode;
+  footerContent?: React.ReactNode;
+  composerPlacement?: 'overlay' | 'flow';
   messages: readonly MessageType[];
   streamingMessage: MessageType | null;
   isLoading: boolean;
@@ -142,6 +146,7 @@ interface MessageActionContext {
   rewindableUserMessageIds: ReadonlySet<string>;
   onRewind?: (messageId: string) => void;
   onFork?: (assistantMessageId: string) => void;
+  hasRetry: boolean;
 }
 
 const STREAMING_MESSAGE_COUNT = 20;
@@ -329,6 +334,8 @@ function hasExitPlanModeTool(message: MessageType): boolean {
 // Must NOT be recreated on every render (inline arrow in `components` causes Virtuoso
 // to remount the footer, resetting StatusTimer and forcing extra remeasurement).
 type FooterProps = {
+  footerContent?: React.ReactNode;
+  composerPlacement?: 'overlay' | 'flow';
   pendingPermission?: PermissionRequest | null;
   onPermissionDecision?: (
     requestId: string,
@@ -351,10 +358,13 @@ type FooterProps = {
 };
 
 interface MessageListContext extends MessageActionContext {
+  headerContent?: React.ReactNode;
   footer: FooterProps;
 }
 
 const VirtuosoFooter = memo(function VirtuosoFooter({
+  footerContent,
+  composerPlacement,
   pendingPermission,
   onPermissionDecision,
   pendingAskUserQuestion,
@@ -369,7 +379,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
   onDismissSystemNotice,
   bottomSpacerPx,
 }: FooterProps) {
-  const spacerHeight = resolveChatBottomSpacerPx(bottomSpacerPx);
+  const spacerHeight = composerPlacement === 'flow' ? 16 : resolveChatBottomSpacerPx(bottomSpacerPx);
   return (
     <div className="mx-auto max-w-3xl px-3">
       {pendingPermission && onPermissionDecision && (
@@ -408,6 +418,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
           onDismiss={onDismissSystemNotice}
         />
       )}
+      {footerContent}
       {/* Footer spacer follows the measured floating input stack. The extra
           clearance in resolveChatBottomSpacerPx keeps both the status row and
           streaming tail comfortably above the composer without moving either
@@ -426,7 +437,10 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
 function MessageListFooter({ context }: { context?: MessageListContext }) {
   return context ? <VirtuosoFooter {...context.footer} /> : null;
 }
-const VIRTUOSO_COMPONENTS = { Footer: MessageListFooter };
+function MessageListHeader({ context }: { context?: MessageListContext }) {
+  return context?.headerContent ? <div className="mx-auto max-w-3xl px-3">{context.headerContent}</div> : null;
+}
+const VIRTUOSO_COMPONENTS = { Header: MessageListHeader, Footer: MessageListFooter };
 
 // ── No custom Scroller/List components ──
 // Tested: custom Scroller (py-3 padding) and List (mx-auto max-w-3xl) break Virtuoso's
@@ -434,6 +448,9 @@ const VIRTUOSO_COMPONENTS = { Footer: MessageListFooter };
 // causing phantom repeated content. Styling is applied inside itemContent instead.
 
 const MessageList = memo(function MessageList({
+  headerContent,
+  footerContent,
+  composerPlacement = 'overlay',
   messages,
   streamingMessage,
   isLoading,
@@ -742,8 +759,9 @@ const MessageList = memo(function MessageList({
         rewindableUserMessageIds ?? EMPTY_MESSAGE_ID_SET,
       onRewind,
       onFork,
+      hasRetry: Boolean(onRetry),
     }),
-    [conversationOperations, onFork, onRewind, rewindableUserMessageIds, citationSources],
+    [conversationOperations, onFork, onRewind, onRetry, rewindableUserMessageIds, citationSources],
   );
 
   // ── Stable itemContent — volatile row actions arrive through Virtuoso context ──
@@ -786,7 +804,7 @@ const MessageList = memo(function MessageList({
                 citationSources={actionContext.citationSources.get(citationScope(message))}
                 isLoading={isStreamingMsg && isLoadingRef.current}
                 onRewind={canRewind ? actionContext.onRewind : undefined}
-                onRetry={handleRetry}
+                onRetry={actionContext.hasRetry ? handleRetry : undefined}
                 onFork={canFork ? actionContext.onFork : undefined}
                 exitPlanModeSlot={
                   message.id === exitPlanModeAnchorIdRef.current
@@ -798,6 +816,7 @@ const MessageList = memo(function MessageList({
                     ?.likelyUserCollapsed === true
                 }
               />
+              {message.presentationNotice && <p className="px-3 text-xs text-[var(--ink-muted)]">{message.presentationNotice}</p>}
             </ChatRowLayoutProvider>
           </div>
         );
@@ -814,7 +833,10 @@ const MessageList = memo(function MessageList({
   const listContext = useMemo<MessageListContext>(
     () => ({
       ...messageActionContext,
+      headerContent,
       footer: {
+        footerContent,
+        composerPlacement,
         pendingPermission,
         onPermissionDecision,
         pendingAskUserQuestion,
@@ -832,6 +854,9 @@ const MessageList = memo(function MessageList({
     }),
     [
       messageActionContext,
+      headerContent,
+      footerContent,
+      composerPlacement,
       pendingPermission,
       onPermissionDecision,
       pendingAskUserQuestion,

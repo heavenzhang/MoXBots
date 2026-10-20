@@ -450,7 +450,9 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
     // 2. Parse Anthropic request body
     let anthropicReq: AnthropicRequest;
     try {
-      anthropicReq = await request.json() as AnthropicRequest;
+      // The session registry also reads the body to authorize recovery/action history.
+      // Parse a clone so that resolver keeps its original, unread request.
+      anthropicReq = await request.clone().json() as AnthropicRequest;
     } catch {
       return jsonError(400, 'invalid_request_error', 'Invalid JSON in request body');
     }

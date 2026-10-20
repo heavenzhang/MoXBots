@@ -84,7 +84,7 @@ import {
   getSessionPlansDirectorySetting,
   readLatestPlanMarkdownWithRetry,
 } from './utils/plan-files';
-import { WATCHDOG_RESUME_REMINDER, planWatchdogAutoResume, shouldAdoptPendingContinueIntoScheduledAutoResume, shouldConsumePendingContinueAfterAbort, shouldDeferPendingContinueToScheduledAutoResume, shouldPrependWatchdogAutoResume } from './utils/watchdog-auto-resume';
+import { WATCHDOG_RESUME_REMINDER, isWatchdogProgressEvent, planWatchdogAutoResume, shouldAdoptPendingContinueIntoScheduledAutoResume, shouldConsumePendingContinueAfterAbort, shouldDeferPendingContinueToScheduledAutoResume, shouldPrependWatchdogAutoResume, shouldRenewWatchdogAutoResume } from './utils/watchdog-auto-resume';
 import { processImage, resizeToolImageContent, classifyImageError } from './utils/imageResize';
 import { writeBase64FilesToAgentDir } from './utils/workspace-files';
 import { ensureGitignorePattern } from './utils/gitignore';
@@ -163,7 +163,7 @@ import {
   type SystemSkillAdmissionRequirement,
 } from '../shared/systemSkills';
 import type { OfficialToolId } from '../shared/official-tools';
-import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, loadSessionTranscript } from './SessionStore';
+import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, getActiveSessionTranscript, loadSessionTranscript } from './SessionStore';
 import { TranscriptPresentation } from './session-transcript/presentation';
 import { projectTranscriptToolInput, type TranscriptObject } from '../shared/sessionTranscript';
 import { firePostTurnTitleHook } from './turn-hooks';
@@ -2689,9 +2689,11 @@ const consumingPendingContinueSessions = new Set<string>();
 // manual transcriptState.messages that arrive during abort teardown must queue behind the
 // scheduled auto-resume reminder instead of stealing the flag.
 const scheduledWatchdogAutoResumeSessions = new Set<string>();
+// Revokes the existing scheduled task across awaited teardown/persistence.
+let watchdogAutoResumeEpoch = 0;
 
-// Cap auto-Continue at exactly ONE injection per sessionId per sidecar
-// process lifetime. Without this cap, the chain
+// Cap auto-Continue at ONE injection until another business input is admitted.
+// Without this cap, the chain
 //   watchdog abort → consume + inject reminder → reminder turn produces 1 byte
 //   then itself watchdog-aborts → flag re-set → user's next message consumes
 //   again → reminder again → ...
@@ -2705,11 +2707,11 @@ const scheduledWatchdogAutoResumeSessions = new Set<string>();
 // post-session-switch-verification). If the reminder rejects (queue full)
 // or a switchToSession races, neither the disk flag nor this Set is updated.
 // If clearing the disk flag fails after accept, this Set still blocks duplicate
-// reminder injection for the rest of this sidecar process.
+// reminder injection until a new business input is admitted.
 //
-// New sidecar process = new Set = one fresh auto-Continue allowed (e.g.,
-// user opens an aborted-cron session hours later in chat). That's
-// intentional, matching the spec.
+// Only the generator's final accepted business-input yield renews the cap.
+// Enqueue, canceled/rejected inputs, maintenance, and recovery reminders do
+// not renew it. A prior recovery must not disable unrelated future work.
 const autoResumeInjectedSessions = new Set<string>();
 
 function resetTurnUsage(): void {
@@ -8159,6 +8161,8 @@ export function getAndClearLastAgentError(): string | null {
  * Used by both resetSession() and initializeAgent()
  */
 function clearMessageState(): void {
+  watchdogAutoResumeEpoch++;
+  scheduledWatchdogAutoResumeSessions.clear();
   clearMessages();
   resetTranscriptPersistenceForSession(sessionId);
   // Pattern 3 §D.3 — drop parsePartialJson throttle cursors so a recycled
@@ -9020,6 +9024,7 @@ export type EnqueueResult = {
 
 async function enqueueWatchdogResumeReminderAtQueueFront(
   sessionIdSnapshot: string,
+  epoch: number,
 ): Promise<EnqueueResult> {
   const trimmed = WATCHDOG_RESUME_REMINDER;
   resetTurnUsage();
@@ -9044,9 +9049,9 @@ async function enqueueWatchdogResumeReminderAtQueueFront(
   // original session's pendingContinueAfterAbort flag for retry — same rationale
   // as the post-await sessionId guard the caller already applies to the
   // recursive enqueue path.
-  if (sessionId !== sessionIdSnapshot) {
-    console.error(`[agent] Watchdog auto-resume reminder raced session switch ${sessionIdSnapshot} -> ${sessionId}; aborting reminder injection, flag preserved for retry`);
-    return { queued: false, error: 'session switched during watchdog reminder persist' };
+  if (sessionId !== sessionIdSnapshot || epoch !== watchdogAutoResumeEpoch) {
+    console.error(`[agent] Watchdog auto-resume reminder canceled or session switched ${sessionIdSnapshot} -> ${sessionId}; aborting reminder injection`);
+    return { queued: false, error: 'watchdog reminder authority changed during persist' };
   }
 
   clearChannelDeliveryState();
@@ -9066,6 +9071,7 @@ async function enqueueWatchdogResumeReminderAtQueueFront(
   unshiftMessage(queueItem);
   setSessionState((lifecycleState.systemInitInfo || lifecycleState.sdkControlReady) ? 'running' : 'starting');
   setTimeout(() => {
+    if (epoch !== watchdogAutoResumeEpoch || sessionId !== sessionIdSnapshot) return;
     startStreamingSession().catch((error) => {
       console.error('[agent] failed to start watchdog auto-resume session', error);
     });
@@ -9083,6 +9089,7 @@ async function consumePendingContinueAfterAbort(
   trigger: 'next-enqueue' | 'watchdog-auto',
   allowMissingPendingFlag = false,
 ): Promise<boolean> {
+  const epoch = watchdogAutoResumeEpoch;
   const meta = sessionIdSnapshot === sessionId ? getCurrentProductSessionMetadata() : getSessionMetadata(sessionIdSnapshot);
   const hasPendingContinue = Boolean(meta?.pendingContinueAfterAbort || allowMissingPendingFlag);
   const alreadyConsuming = consumingPendingContinueSessions.has(sessionIdSnapshot);
@@ -9121,12 +9128,19 @@ async function consumePendingContinueAfterAbort(
 
   consumingPendingContinueSessions.add(sessionIdSnapshot); // sync test-and-set
   try {
+    const validateReminderAuthority = (): DispatchGuardResult =>
+      epoch === watchdogAutoResumeEpoch && sessionId === sessionIdSnapshot
+        ? { accepted: true }
+        : { accepted: false, code: 'dispatch_canceled', error: 'Watchdog reminder was stopped or replaced' };
+    const reminderGuard = async (): Promise<DispatchGuardResult> => ({
+      ...validateReminderAuthority(), validateAtCommit: validateReminderAuthority,
+    });
     console.log(`[agent] ${trigger}: consuming pendingContinueAfterAbort for session ${sessionIdSnapshot}, injecting reminder turn`);
     const reminderResult = shouldPrependWatchdogAutoResume({
       sessionActive: isSessionActive(),
       sessionTerminating: lifecycleState.abortRequested,
     })
-      ? await enqueueWatchdogResumeReminderAtQueueFront(sessionIdSnapshot)
+      ? await enqueueWatchdogResumeReminderAtQueueFront(sessionIdSnapshot, epoch)
       : await enqueueUserMessage(
           WATCHDOG_RESUME_REMINDER,
           undefined,        // images
@@ -9139,15 +9153,16 @@ async function consumePendingContinueAfterAbort(
           undefined,        // inboxMeta - synthetic, no inbox pushback
           undefined,        // analyticsSource - keep current attribution
           undefined,        // analyticsOrigin - keep current attribution
-          { channelDelivery: SESSION_BOUND_CHANNEL_DELIVERY },
+          { channelDelivery: SESSION_BOUND_CHANNEL_DELIVERY,
+            beforeUserPersistence: reminderGuard, beforeDispatch: reminderGuard },
         );
 
-    if (sessionId !== sessionIdSnapshot) {
+    if (sessionId !== sessionIdSnapshot || epoch !== watchdogAutoResumeEpoch) {
       // switchToSession raced between our call and the recursive enqueue's
       // session-mutation barrier wait — reminder went to the new session. Preserve the
       // original session's flag for retry; do NOT clear it or mark the
       // per-process cap.
-      console.error(`[agent] Reminder enqueue raced session switch ${sessionIdSnapshot} -> ${sessionId}; flag for ${sessionIdSnapshot} preserved for retry`);
+      console.error(`[agent] Reminder enqueue authority changed for session ${sessionIdSnapshot}`);
       return false;
     }
 
@@ -9181,15 +9196,17 @@ async function consumePendingContinueAfterAbort(
 
 function scheduleWatchdogAutoResumeAfterAbort(
   sessionIdSnapshot: string,
-  opts: { allowMissingPendingFlag?: boolean } = {},
+  opts: { allowMissingPendingFlag?: boolean; epoch?: number } = {},
 ): void {
+  const epoch = opts.epoch ?? watchdogAutoResumeEpoch;
+  if (epoch !== watchdogAutoResumeEpoch) return;
   scheduledWatchdogAutoResumeSessions.add(sessionIdSnapshot);
   console.log(`[agent] Watchdog: scheduling auto-resume for session ${sessionIdSnapshot} after abort`);
   void (async () => {
     try {
       await awaitSessionTermination(10_000, 'watchdogAutoResume');
-      if (sessionId !== sessionIdSnapshot) {
-        console.warn(`[agent] Watchdog auto-resume skipped: session switched ${sessionIdSnapshot} -> ${sessionId}`);
+      if (sessionId !== sessionIdSnapshot || epoch !== watchdogAutoResumeEpoch) {
+        console.warn(`[agent] Watchdog auto-resume skipped: canceled or session switched ${sessionIdSnapshot} -> ${sessionId}`);
         return;
       }
 
@@ -9214,7 +9231,7 @@ function scheduleWatchdogAutoResumeAfterAbort(
     } catch (e) {
       console.error('[agent] Watchdog auto-resume failed:', e);
     } finally {
-      scheduledWatchdogAutoResumeSessions.delete(sessionIdSnapshot);
+      if (epoch === watchdogAutoResumeEpoch) scheduledWatchdogAutoResumeSessions.delete(sessionIdSnapshot);
     }
   })();
 }
@@ -10414,6 +10431,7 @@ function settleCancelledInputActivity(): boolean {
  * work and delayed warm-up. Stop-button semantics only own the current turn. */
 export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = () => undefined): Promise<void> {
   assertCurrent();
+  const watchdogStop = stopPendingWatchdogAutoResume();
   const interruptedTurn = isTurnInFlight() ? getCurrentTurnSourceItem() : null;
   // The updater must receive durable Stop evidence before it may exit the
   // process. pause() revokes immediately and coalesces the abort path's call.
@@ -10448,7 +10466,9 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
   if (lifecycleState.query || lifecycleState.processing || lifecycleState.preWarming) {
     throw new Error('UPDATE_ACTIVITY_UNKNOWN');
   }
-  if (!(await recoveryStop)) throw new Error('UPDATE_ACTIVITY_UNKNOWN: MODEL_RECOVERY_STOP_NOT_DURABLE');
+  if (!(await recoveryStop) || !(await watchdogStop.durable)) {
+    throw new Error('UPDATE_ACTIVITY_UNKNOWN: MODEL_RECOVERY_STOP_NOT_DURABLE');
+  }
   assertCurrent();
   // Query abort can exit without an SDK result. Its finally clears streaming
   // flags but does not publish a turn terminal, leaving Goal/Cron execute-sync
@@ -10479,18 +10499,51 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
   assertCurrent();
 }
 
+function stopPendingWatchdogAutoResume(): { pending: boolean; durable: Promise<boolean> } {
+  const stoppedSessionId = sessionId;
+  const metadata = getCurrentProductSessionMetadata();
+  const transcript = getActiveSessionTranscript(stoppedSessionId);
+  const pendingWatchdog = scheduledWatchdogAutoResumeSessions.has(stoppedSessionId)
+    || metadata?.pendingContinueAfterAbort === true;
+  // A failed prior flush already changed the overlay to false. That is not
+  // evidence that the disk flag was cleared, including on a repeated Stop.
+  const uncommittedClear = metadata?.pendingContinueAfterAbort === false && transcript
+    && transcript.writer.status.liveRevision > transcript.writer.status.durableRevision;
+  watchdogAutoResumeEpoch++;
+  scheduledWatchdogAutoResumeSessions.delete(stoppedSessionId);
+  const durable = pendingWatchdog || uncommittedClear
+    ? updateSessionMetadata(stoppedSessionId, { pendingContinueAfterAbort: false })
+      .then(async updated => {
+        if (!updated || updated.pendingContinueAfterAbort) return false;
+        const active = getActiveSessionTranscript(stoppedSessionId);
+        if (transcript && active !== transcript) return false;
+        if (!active) return true;
+        // Active metadata edits only patch the overlay and request a commit.
+        // Stop must await the original writer's bounded durable barrier, which
+        // includes index publication, before acknowledging safe process exit.
+        return await active.writer.flush()
+          && getActiveSessionTranscript(stoppedSessionId) === active
+          && active.metadata.pendingContinueAfterAbort !== true;
+      }).catch(() => false)
+    : Promise.resolve(true);
+  return { pending: pendingWatchdog, durable };
+}
+
 export async function interruptCurrentResponse(reason: CancelReason = 'user'): Promise<boolean> {
+  const watchdogStop = stopPendingWatchdogAutoResume();
   // pause() revokes locally synchronously. Send the existing exact interrupt
   // immediately as well; slow storage must not delay cancellation of the SDK.
   activeSessionStreamContinuation?.stop('stopped');
   const persistence = activeSessionModelRecovery?.pause('Execution paused or stopped; progress is preserved')
     ?? Promise.resolve(true);
-  const [durable, interrupted] = await Promise.all([persistence, interruptResponseWithoutRecovery(reason)]);
-  if (!durable) {
+  const [durable, interrupted, watchdogDurable] = await Promise.all([
+    persistence, interruptResponseWithoutRecovery(reason), watchdogStop.durable,
+  ]);
+  if (!durable || !watchdogDurable) {
     abortPersistentSession();
     throw new Error('MODEL_RECOVERY_STOP_NOT_DURABLE: Execution was interrupted, but the recovery stop could not be saved. Repair local storage before reopening this task.');
   }
-  return interrupted;
+  return interrupted || watchdogStop.pending;
 }
 
 async function interruptResponseWithoutRecovery(reason: CancelReason): Promise<boolean> {
@@ -12722,10 +12775,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
     const WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes — unified for API and MCP tools
     // Suspension-aware: only counts time the process was actually running, so
     // macOS sleep / App Nap doesn't get mistaken for a hung turn. See
-    // utils/inactivity-watchdog.ts. markActivity() is called per SDK event
+    // utils/inactivity-watchdog.ts. markActivity() is called for SDK progress
     // below; the gate (`!isStreamingMessage`) means evaluateTick only runs
     // during an active turn — the credited tick-gap on the first post-idle tick
-    // naturally absorbs inter-turn idle.
+    // naturally absorbs inter-turn idle. Init/status heartbeats do not grant
+    // progress or an automatic recovery budget.
     const watchdog = new InactivityWatchdog({ timeoutMs: WATCHDOG_TIMEOUT_MS, intervalMs: API_WATCHDOG_INTERVAL_MS });
     watchdogFired = false;
     apiWatchdogId = setInterval(async () => {
@@ -12782,6 +12836,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         // for the file write to complete before the sidecar tears down
         // (cron sidecars in particular shut down ~1s after abort).
         const watchdogSessionId = sessionId;
+        const watchdogResumeEpoch = watchdogAutoResumeEpoch;
         const goalOwned = getCurrentTurnSourceItem()?.turnOwner?.kind === 'goal';
         const autoResumePlan = planWatchdogAutoResume({
           turnHadSubstantiveActivity: turnState.turnHadSubstantiveActivity,
@@ -12812,6 +12867,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           console.log(`[agent] Watchdog: turn had no substantive SDK activity — skipping pendingContinueAfterAbort`);
         }
 
+        // Stop/reset may win while the pending flag is being written. Its
+        // cancellation owns the terminal; the stale watchdog cannot abort a
+        // successor or recreate its reminder after that durable clear.
+        if (watchdogResumeEpoch !== watchdogAutoResumeEpoch) return;
+
         // Settle through the turn owner before abort clears its callback/source.
         // With no terminal SDK evidence, a Goal must preserve uncertain actions
         // for explicit recovery rather than replaying them in an unowned turn.
@@ -12827,6 +12887,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         if (autoResumePlan.scheduleAutoResume) {
           scheduleWatchdogAutoResumeAfterAbort(watchdogSessionId, {
             allowMissingPendingFlag: !pendingContinuePersisted,
+            epoch: watchdogResumeEpoch,
           });
         }
       }
@@ -12843,23 +12904,16 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         continue;
       }
       messageCount++;
-      watchdog.markActivity();
       // These acknowledge coalesced native notifications, not a product turn.
       // Route before provider settlement, queue/usage mutation or rewind cleanup.
       if (sdkMessage.type === 'result' && isCoalescedTaskNotificationReceipt(sdkMessage)) continue;
       if (sdkMessage.type === 'conversation_reset') builtinTurnLifecycle.resetSdkQueryUsage();
-      // Flip turn-scoped substantive-activity flag on first non-init frame.
-      // `system/init` is the boilerplate startup frame and must not count
-      // as "this turn produced output" for the watchdog auto-resume decision.
-      // Everything else (assistant / user / tool_result / stream_event /
-      // result / rate_limit_event / system non-init) is real activity.
-      if (!turnState.turnHadSubstantiveActivity) {
-        const isBoilerplateInit =
-          sdkMessage.type === 'system' &&
-          (sdkMessage as { subtype?: string }).subtype === 'init';
-        if (!isBoilerplateInit) {
-          setSubstantiveActivity(true);
-        }
+      // Runtime status heartbeats (e.g. compacting every 30s) must not keep a
+      // hung inference alive indefinitely or authorize an empty-turn retry.
+      // They still flow through the existing status UI below.
+      if (isWatchdogProgressEvent(sdkMessage)) {
+        watchdog.markActivity();
+        if (!turnState.turnHadSubstantiveActivity) setSubstantiveActivity(true);
       }
       // stream_event is high-frequency (per token delta) — skip logging entirely.
       // `system subtype=thinking_tokens` frames are the same order of magnitude
@@ -15135,6 +15189,14 @@ async function* messageGenerator(
       item.resolve();
       traceBuiltinInputProgress('input-retired', inputTrace);
       return;
+    }
+
+    if (!getCurrentProductSessionMetadata()?.pendingContinueAfterAbort && shouldRenewWatchdogAutoResume({
+      facts: activityFacts,
+      ownedTurn: item.turnOwner !== undefined,
+      retry: Boolean(item.transientProviderRetry || item.streamContinuation),
+    })) {
+      autoResumeInjectedSessions.delete(sessionId);
     }
 
     // Pattern B+G: every logical SDK yield gets one output-owner FIFO slot.

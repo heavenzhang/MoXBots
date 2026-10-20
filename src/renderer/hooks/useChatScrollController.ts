@@ -36,6 +36,7 @@ export interface ChatScrollController {
   scrollToTool: (toolId: string, hostMessageId?: string) => void;
   captureAnchor: (label: string) => ScrollAnchorSnapshot | null;
   restoreAnchorAfterNextCommit: (anchor: ScrollAnchorSnapshot, options?: RestoreAnchorOptions) => void;
+  preserveAnchorAfterPrepend: (anchor: ScrollAnchorSnapshot) => void;
   onRowLayoutChanged: (messageId: string, reason: RowLayoutChangeReason) => void;
 }
 
@@ -60,7 +61,7 @@ interface PendingAnchorRestore {
   anchor: ScrollAnchorSnapshot;
   options?: RestoreAnchorOptions;
   pending: boolean;
-  source: 'layout' | 'continuity';
+  source: 'layout' | 'continuity' | 'prepend';
   mountRequested: boolean;
   presentationGeneration: number;
 }
@@ -186,7 +187,7 @@ export function useChatScrollController({
       : null;
     const continuityId = continuity?.id ?? pending?.id ?? null;
     continuitySnapshotRef.current = null;
-    if (pending) pendingAnchorRef.current = null;
+    if (pending || pendingAnchorRef.current?.source === 'prepend') pendingAnchorRef.current = null;
     if (continuityId !== null) {
       setRecoveryFenceId(current => current === continuityId ? null : current);
     }
@@ -244,7 +245,7 @@ export function useChatScrollController({
   }, [followEnabledRef, isCurrentViewportAdmitted, readAnchor]);
 
   const completePendingAnchor = useCallback((restoreIntent: PendingAnchorRestore) => {
-    if (pendingAnchorRef.current === restoreIntent) {
+    if (pendingAnchorRef.current === restoreIntent && restoreIntent.source !== 'prepend') {
       pendingAnchorRef.current = null;
     }
     if (restoreIntent.source === 'continuity') {
@@ -274,6 +275,7 @@ export function useChatScrollController({
           label: anchor.label,
         });
       }
+      pendingAnchorRef.current = null;
       completePendingAnchor(restoreIntent);
       return;
     }
@@ -335,6 +337,23 @@ export function useChatScrollController({
       options,
       pending: true,
       source: 'layout',
+      mountRequested: false,
+      presentationGeneration: presentationGenerationRef.current,
+    };
+    setAnchorRestoreTick(tick => tick + 1);
+  }, [isCurrentViewportAdmitted]);
+
+  // A prepend's estimated rows may be measured over several list commits. Keep
+  // one exact reading anchor through those measurements until a newer user intent.
+  const preserveAnchorAfterPrepend = useCallback((anchor: ScrollAnchorSnapshot) => {
+    if (!isCurrentViewportAdmitted()) return;
+    if (pendingAnchorRef.current?.source === 'continuity') return;
+    pendingAnchorRef.current = {
+      id: ++continuitySequenceRef.current,
+      anchor,
+      options: { behavior: 'auto' },
+      pending: true,
+      source: 'prepend',
       mountRequested: false,
       presentationGeneration: presentationGenerationRef.current,
     };
@@ -454,7 +473,7 @@ export function useChatScrollController({
 
   const onItemsRendered = useCallback(() => {
     const pending = pendingAnchorRef.current;
-    if (!pending || pending.source !== 'continuity' || !pending.mountRequested) return;
+    if (!pending || (pending.source !== 'prepend' && (pending.source !== 'continuity' || !pending.mountRequested))) return;
     if (
       !isCurrentViewportAdmitted()
       || pending.presentationGeneration !== presentationGenerationRef.current
@@ -502,6 +521,7 @@ export function useChatScrollController({
 
   const onRowLayoutChanged = useCallback((messageId: string, reason: RowLayoutChangeReason) => {
     if (!isActiveRef.current || !isCurrentViewportAdmitted()) return;
+    if (pendingAnchorRef.current?.source === 'prepend') pendingAnchorRef.current = null;
     // A click-driven disclosure must grow or shrink from the clicked row in normal
     // document flow. Restoring the first fully visible *message* is the wrong owner:
     // when the clicked row belongs to a message whose top is already above the
@@ -561,6 +581,7 @@ export function useChatScrollController({
     scrollToTool,
     captureAnchor,
     restoreAnchorAfterNextCommit,
+    preserveAnchorAfterPrepend,
     onRowLayoutChanged,
   };
 }

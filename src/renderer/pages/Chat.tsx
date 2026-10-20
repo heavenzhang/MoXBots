@@ -4143,7 +4143,7 @@ export default function Chat({
     scrollToMessage,
     scrollToTool,
     captureAnchor,
-    restoreAnchorAfterNextCommit,
+    preserveAnchorAfterPrepend,
     onRowLayoutChanged,
   } = chatScrollController;
   const handleInputOverlayHeightChange = useCallback((height: number) => {
@@ -4170,11 +4170,11 @@ export default function Chat({
       beforePrepend: () => {
         const anchor = captureAnchor('prepend-older');
         if (anchor) {
-          restoreAnchorAfterNextCommit(anchor, { behavior: 'auto' });
+          preserveAnchorAfterPrepend(anchor);
         }
       },
     });
-  }, [captureAnchor, loadOlderMessages, restoreAnchorAfterNextCommit]);
+  }, [captureAnchor, loadOlderMessages, preserveAnchorAfterPrepend]);
   const chatSearchSetQueryRef = useRef(chatSearch.setQuery);
   chatSearchSetQueryRef.current = chatSearch.setQuery;
   const closeChatSearch = useCallback(() => {

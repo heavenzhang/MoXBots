@@ -1,3 +1,4 @@
+import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 import { AGENT_MENTIONS_TAG } from "../../shared/agentMentions";
 import AsyncQuestionCard from '@/components/AsyncQuestionCard';
 import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -99,7 +100,7 @@ function areMessagesEqual(prev: MessageProps, next: MessageProps): boolean {
   // across the shared busy/idle operation gate.
   if (Boolean(prev.onRewind) !== Boolean(next.onRewind)) return false;
   if (Boolean(prev.onFork) !== Boolean(next.onFork)) return false;
-  // onRetry is always present and stable, so its identity remains intentionally ignored.
+  if (Boolean(prev.onRetry) !== Boolean(next.onRetry)) return false;
 
   // Message updates are immutable. Comparing the complete row identity covers
   // attachments and other visible metadata while unchanged history stays cheap.
@@ -157,6 +158,7 @@ function AssistantActions({ message, onRetry, onFork, citationSources, className
   const { t } = useTranslation('app');
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const remoteContent = useRemoteConversationContent();
   const exportingRef = useRef(false);
   const toast = useToastOptional();
 
@@ -202,14 +204,14 @@ function AssistantActions({ message, onRetry, onFork, citationSources, className
           {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
         </button>
       </Tip>
-      <Tip label={t('message.actions.exportMarkdown')}>
+      {!remoteContent && <Tip label={t('message.actions.exportMarkdown')}>
         <button type="button"
           aria-label={t('message.actions.exportMarkdown')}
           onClick={handleExport}
           className="compact-action text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)]">
           <DownloadIcon className="size-3.5" />
         </button>
-      </Tip>
+      </Tip>}
       {onRetry && (
         <Tip label={t('message.actions.retry')}>
           <button type="button"
@@ -230,7 +232,7 @@ function AssistantActions({ message, onRetry, onFork, citationSources, className
           </button>
         </Tip>
       )}
-      <TurnFileEditSummary content={message.content} />
+      {!remoteContent && <TurnFileEditSummary content={message.content} />}
       {turnMetaLabel && (
         <span
           className="ml-2 min-w-0 flex-1 truncate text-xs text-[var(--ink-muted)]/60 opacity-0 transition-opacity duration-150 group-hover/actions:opacity-100 group-focus-within/actions:opacity-100"
@@ -294,6 +296,7 @@ function renderWidgetSegments(text: string, isLoading: boolean, unclosedNotice: 
  * History messages won't re-render when streaming message updates.
  */
 const Message = memo(function Message({ message, citationSources, isLoading = false, onRewind, onRetry, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
+  const remoteContent = useRemoteConversationContent();
   const { t } = useTranslation('app');
   const { openPreview } = useImagePreview();
   const toast = useToastOptional();
@@ -368,7 +371,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
       .replace(/<\/?myagents-space-issue>/g, '')
       .trim();
     const attachmentItems =
-      message.attachments?.map((attachment) => ({
+      (remoteContent ? [] : message.attachments)?.map((attachment) => ({
         id: attachment.id,
         name: attachment.name,
         size: attachment.size,
@@ -475,9 +478,9 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
             )}
             {/* Actions occupy the reserved left gutter, not a blank line below
                 every bubble. Keyboard focus and touch keep them reachable. */}
-            <div title={formatTimestamp(message.timestamp)} data-user-message-actions
+            <div title={message.timestampKnown === false ? undefined : formatTimestamp(message.timestamp)} data-user-message-actions
                  className="pointer-events-none absolute inset-y-0 right-full flex items-start gap-1 pr-1 pt-1 opacity-0 transition-opacity duration-150 group-hover/user-actions:pointer-events-auto group-hover/user-actions:opacity-100 group-focus-within/user-actions:pointer-events-auto group-focus-within/user-actions:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-              <span className="sr-only">{formatTimestamp(message.timestamp)}</span>
+              {message.timestampKnown !== false && <span className="sr-only">{formatTimestamp(message.timestamp)}</span>}
               {onRewind && !message.deliveryStatus && (
                 <span data-rewind-btn>
                   <Tip label={t('message.actions.rewind')}>
@@ -517,7 +520,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
 
   // Assistant message
   if (typeof message.content === 'string') {
-    const hasWidgets = hasWidgetTags(message.content);
+    const hasWidgets = !remoteContent && hasWidgetTags(message.content);
     return (
       <div className="flex justify-start w-full px-4 py-2 select-none" data-role="assistant">
         <div className="w-full max-w-none">
@@ -536,7 +539,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
               <Markdown citationSources={citationSources} streaming={isLoading && !!message.streamingTextActive}>{message.content}</Markdown>
             </div>
           )}
-          <ExecutionQuality message={message} live={isLoading} />
+          {!remoteContent && <ExecutionQuality message={message} live={isLoading} />}
           {!isLoading && <AssistantActions citationSources={citationSources} message={message} onRetry={onRetry} onFork={onFork} />}
         </div>
       </div>
@@ -590,7 +593,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
             {groupedBlocks.map((item, index) => {
               // Single text block — may contain <widget> tags for inline rendering
               if (!Array.isArray(item)) {
-                if (item.type === 'text' && item.asyncQuestions) {
+                if (!remoteContent && item.type === 'text' && item.asyncQuestions) {
                   return <div key={index} className="w-full px-1">
                     {item.text && <Markdown citationSources={citationSources}>{item.text}</Markdown>}
                     <AsyncQuestionCard questions={item.asyncQuestions} />
@@ -598,7 +601,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
                 }
                 if (item.type === 'text' && item.text) {
                   // Check for <widget> tags in the text
-                  if (hasWidgetTags(item.text)) {
+                  if (!remoteContent && hasWidgetTags(item.text)) {
                     return (
                       <div key={index} className="w-full space-y-3">
                         {renderWidgetSegments(item.text, isLoading, t('message.widgetUnclosed'), citationSources)}
@@ -652,18 +655,18 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
                     isLatestActiveSection={isLatestActiveSection}
                     isStreaming={isAssistantStreaming}
                   />
-                  {groupAttachments.length > 0 && (
+                  {!remoteContent && groupAttachments.length > 0 && (
                     <div className="px-1">
                       <ToolAttachmentGallery attachments={groupAttachments} />
                     </div>
                   )}
-                  {index === exitPlanModeGroupIndex && exitPlanModeSlot}
+                  {!remoteContent && index === exitPlanModeGroupIndex && exitPlanModeSlot}
                 </Fragment>
               );
             })}
           </div>
         </article>
-        <ExecutionQuality message={message} live={isLoading} />
+        {!remoteContent && <ExecutionQuality message={message} live={isLoading} />}
         {!isLoading && <AssistantActions citationSources={citationSources} className="px-4" message={message} onRetry={onRetry} onFork={onFork} />}
       </div>
     </div>

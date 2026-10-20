@@ -302,12 +302,25 @@ describe('production original-turn stream continuation with synthetic SDK protoc
   it('Stop during durable backoff revokes its timer and persists stopped evidence without another input', async () => {
     state.delay = 150;
     await initialize();
+    // Wait for the real durable recovery owner to arm its timer. Polling the
+    // checkpoint with a 150ms wall-clock window can observe it only after a
+    // busy CI event loop has already admitted the next input.
+    const continuation = (await import('../builtin-session/stream-continuation')).SameTurnStreamContinuation;
+    const schedule = continuation.prototype.schedule;
+    let reached!: () => void;
+    const armed = new Promise<void>(resolve => { reached = resolve; });
+    vi.spyOn(continuation.prototype, 'schedule').mockImplementation(function (this: import('../builtin-session/stream-continuation').SameTurnStreamContinuation) {
+      const scheduled = schedule.call(this);
+      if (scheduled) reached();
+      return scheduled;
+    });
     const terminal = vi.fn<(outcome: TurnTerminalOutcome) => void>();
     await agent.enqueueUserMessage('Original bounded task', undefined, undefined, undefined,
       undefined, undefined, undefined, undefined, undefined, undefined, undefined,
       { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: true, onTerminal: terminal });
     const sessionId = agent.getSessionId()!;
-    await vi.waitFor(() => expect(store.getBuiltinModelRecovery(sessionId)?.kind).toBe('stream'));
+    await armed;
+    expect(store.getBuiltinModelRecovery(sessionId)?.kind).toBe('stream');
     await agent.interruptCurrentResponse();
     await vi.waitFor(() => expect(terminal).toHaveBeenCalledTimes(1));
     await new Promise(resolve => setTimeout(resolve, 200));

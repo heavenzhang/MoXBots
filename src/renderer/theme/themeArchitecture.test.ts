@@ -299,7 +299,7 @@ describe('Theme architecture guardrails', () => {
     expect(unvalidatedAccentHoverViolations).toEqual([]);
 
     for (const primaryAction of [
-      'src/renderer/components/chat-input/SimpleChatInput.tsx',
+      'src/renderer/components/chat-input/ComposerSurface.tsx',
       'src/renderer/components/task-center/ThoughtInput.tsx',
       'src/renderer/components/task-center/editors/PanelChrome.tsx',
     ]) {
@@ -307,6 +307,14 @@ describe('Theme architecture guardrails', () => {
       expect(contents).toContain('bg-[var(--button-primary-bg)]');
       expect(contents).toContain('text-[var(--button-primary-text)]');
       expect(contents).toContain('hover:bg-[var(--button-primary-bg-hover)]');
+    }
+    // The shared send surface owns the palette; both conversation composers
+    // must consume it rather than defining a second primary action palette.
+    for (const composer of [
+      'src/renderer/components/chat-input/SimpleChatInput.tsx',
+      'src/renderer/components/chat-input/TextChatComposer.tsx',
+    ]) {
+      expect(source(composer)).toContain('<ComposerSendButton');
     }
 
     const statusNames = ['success', 'error', 'warning', 'info'] as const;

@@ -67,6 +67,24 @@ describe('same original-turn stream continuation', () => {
       startedAt: 10_000, updatedAt: 25_100, status: 'completed', reason: 'stream_interrupted' });
   });
 
+  it('re-arms an early timer until the durable retry time, with no duplicate input', () => {
+    const h = harness();
+    h.continuation.interrupted();
+    expect(h.continuation.schedule()).toBe(true);
+    // Timer elapsed time and the durable wall clock can differ by a tick.
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(24_999);
+    try {
+      vi.advanceTimersByTime(15_000);
+      expect(h.enqueue).not.toHaveBeenCalled();
+      clock.mockReturnValue(25_000);
+      vi.advanceTimersByTime(1);
+      expect(h.enqueue).toHaveBeenCalledOnce();
+      expect(h.continuation.acceptsInput(h.permit())).toBe(true);
+      vi.advanceTimersByTime(100);
+      expect(h.enqueue).toHaveBeenCalledOnce();
+    } finally { clock.mockRestore(); }
+  });
+
   it('never advances old SDK requests or a marker in system/history/assistant content', () => {
     const h = harness();
     h.continuation.interrupted(); h.continuation.schedule(); vi.advanceTimersByTime(15_000);

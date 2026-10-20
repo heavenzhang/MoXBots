@@ -11,6 +11,9 @@ vi.mock("@/features/agent-network/store", () => ({
   useAgentNetworkRegistry: () => ({ connections: [{ id: "owned:test", snapshot: mocks.snapshot }] }),
 }));
 vi.mock("@/components/Markdown", () => ({ default: ({ children }: { children: string }) => <p>{children}</p> }));
+vi.mock("react-virtuoso", () => import("../../../test/ConversationVirtuoso"));
+vi.mock("@/config/useConfigData", () => ({useConfigData: () => ({config: {}})}));
+vi.mock("@/context/ImagePreviewContext", () => ({useImagePreview: () => ({openPreview: vi.fn()})}));
 import RemoteSession from "./RemoteSession";
 const scope = { serviceId: "s", environment: "e", principalId: "p", networkId: "n", deviceId: "d", keyGeneration: 2 };
 afterEach(() => { cleanup(); localStorage.clear(); vi.clearAllMocks(); });

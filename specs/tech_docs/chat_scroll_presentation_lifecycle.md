@@ -103,6 +103,12 @@ MessageList 将 `followOutput` 固定为 `false`，因为 react-virtuoso 4.18.3 
 
 `scrollToIndex(LAST/end)` 使用缓存的行高，因此仅把命令提前到layout effect不能保证采用当前正文高度；WebKit可能将过渡位置绘制出来。行为验证必须包括真实虚拟列表与WebKit画面，不能把rAF中间读数直接等同于已绘制抖动。AssistantActions在回合结束的同次commit出现，避免loading移除后再延迟350ms插入操作栏。
 
+### 历史分页的测量期锚点
+
+普通 Chat 和 RemoteConversation 共用 `preserveAnchorAfterPrepend()`。数据 owner 在确认确有 fresh 行后、prepend 的同一提交前捕获当前可见消息及相对 offset；`firstItemIndex` 仍表示真实 prepend 数量，控制器只维护同一精确阅读锚点。Virtuoso 对新行的估算会在后续多个 `itemsRendered` 中替换为实际行高，不能把一次 React commit 当成测量完成。
+
+该锚点随测量事件校正；未挂载时只请求一次定位并等待实际挂载。用户滚动、搜索/工具定位、回到底部、展开/折叠、Session 切换或锚点删除立即释放；presentation suspension 清除它并由已有 continuity transaction 接续。无固定 timer、额外 DOM scroller 或按帧重试。空页和全重复页只推进游标，不注册新的分页锚点。远端 Session/generation 参与模型 identity，轮询复用未变化行的不可变对象。
+
 ## 7. 新会话启动遮罩与 query 衔接
 
 `ChatBootOverlay` 只展示居中的启动状态；deferred / Suspense fallback 与 mounted Chat 使用相同外壳，保留原有 300 ms 退场动画，不在遮罩中复制用户气泡。
