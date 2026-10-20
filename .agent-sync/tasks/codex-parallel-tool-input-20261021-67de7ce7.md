@@ -29,6 +29,7 @@ Initial scope was limited to the two stream translators and synthetic regression
 - Added a private in-process per-attempt progress callback from the translators through the bridge handler. It reports only nonempty accepted text, reasoning, and tool-argument deltas; metadata, empty deltas, terminal events, conflicting IDs, and post-done arguments do not renew activity.
 - The model failover callback is fenced by the exact active request lease and attempt generation. It renews the pending `ModelBodyReader` interval watchdog as well as its remaining idle budget, so safe translator buffering does not cause a false idle timeout. Stale failed-attempt callbacks cannot renew a later attempt.
 - The owning Session Query subscribes to its exact active bridge token's in-process progress context only during the watchdog lifecycle. It checks token identity, current Query authority and Stop state, calls `watchdog.markActivity()` only, and unsubscribes in `finally`; token retirement clears listeners. It does not mark substantive work or grant recovery authority.
+- Query authority is snapshotted at bridge resolver entry, before managed credential resolution or continuation checks can await, so a late resolver cannot adopt a newer Query's authority.
 
 ## Verification
 

@@ -1792,6 +1792,9 @@ async function restorePersistedModelRecovery(): Promise<boolean> {
  */
 async function resolveActiveSessionUpstreamConfig(request?: Request,
   progressContext?: BridgeProgressContext): Promise<UpstreamBridgeConfig> {
+  // Pin Query ownership before credential resolution or continuation checks
+  // await; a late resolver must not attribute an older request to a newer Query.
+  const queryAuthority = getCurrentQueryAuthority();
   // configState.currentProviderEnv may be undefined (subscription / Anthropic-direct)
   // when the session bridge is registered; that's a registration error
   // upstream of us. Defensive: empty-string baseUrl + no model → bridge
@@ -1817,7 +1820,6 @@ async function resolveActiveSessionUpstreamConfig(request?: Request,
     }
   }
   const modelFailover = activeSessionModelFailover;
-  const queryAuthority = getCurrentQueryAuthority();
   const isModelMessage = request && /\/messages\/?$/.test(new URL(request.url).pathname);
   return {
     providerId: activeProviderEnv?.providerId ?? SUBSCRIPTION_PROVIDER_ID,
