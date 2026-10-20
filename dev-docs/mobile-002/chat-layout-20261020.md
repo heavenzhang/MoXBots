@@ -59,3 +59,7 @@ The complete MOBILE-002 backlog is retained separately: login/consent/recovery, 
 ### Concurrent source work boundary
 
 This task owns mobile/app/src/app/index.tsx, MessageContent.tsx, ToolResult.tsx, messagePresentation.ts, transcriptHistory.ts and its adjacent QA/tests until this checkpoint is delivered. Independent visual/prototype work can prepare isolated pure presentation components/themes without editing these files or current device/runtime; integration requires a reviewed exact SHA and behavioral regression. No new implementation, persistence or release owner is created.
+
+### Current physical delivery state — 2026-10-21
+
+Earlier build1/owner-waiting descriptions above are historical. The direct human mobile-unit transfer, signed in-place build2 and qualified real-device results are recorded in [iPhone core acceptance](iphone-core-acceptance-20261021.md). Root01a12b99 now owns this mobile CI/release unit. Original business-target recovery remains open; the daily Mac was not used as a workaround.

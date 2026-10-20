@@ -10,18 +10,18 @@ Accepted feature combination2b976bd288ea07e8ae118fe21c122a7aa22271c2 contains co
 
 ## To Do and completion gates
 
-- [x] Independent source/UI acceptance:77 policy tests, typecheck/lint, synthetic history5/layout5/navigation6 groups, QA-disabled iOS Hermes export. Swift device/simulator and Rust iOS preflight passed for the unchanged native closure.
+- [x] Independent source/UI acceptance:78 policy tests, typecheck/lint, synthetic history5/layout5/navigation6 groups, QA-disabled iOS Hermes export. Swift device/simulator and Rust iOS preflight passed for the unchanged native closure.
 - [x] Verify direct human transfer and no active mobile PR/run/build/install before sole-owner intake; retain desktop activities and original account.
 - [ ] Required CI on exact PR candidate; synchronize latest main, normal merge, remote main inclusion/tree proof. Source/local/CI are separate evidence.
-- [ ] Isolated exact-candidate offline iOS internal test build with fresh matching native framework; retain native source/library digests, JS digest and QA-disabled config. Existing developer account/certificate/profile only.
-- [ ] Strict signature, platform/architecture, bundle/version/build/profile/entitlements and device coverage review; immutable archive size/SHA and original signed build1 rollback retained.
-- [ ] Same verified artifact upgrade to original authorized iPhone without uninstall/data reset; confirm installed0.1.0/build2 and preserve account. If locked, request unlock only, no repeated builds.
+- [x] Isolated exact-candidate offline iOS internal test build with fresh matching native framework; retain native source/library digests, JS digest and QA-disabled config. Existing developer account/certificate/profile only.
+- [x] Strict signature, platform/architecture, bundle/version/build/profile/entitlements and device coverage review; immutable archive size/SHA and original signed build1 rollback retained.
+- [x] Same verified artifact upgrade to original authorized iPhone without uninstall/data reset; confirm installed0.1.0/build2 and preserve account. If locked, request unlock only, no repeated builds.
 - [ ] Real original session opening/history/retry; TARGET_RECEIPT_INVALID remains failed/open if reproduced, no relaxed protocol validation or excluded daily Mac workaround.
 - [ ] Real long history pages/order/no duplicates/read-position/poll/return-bottom; actual native Chinese Markdown, code, tables, images, read-only tool output and local scrolling with primary screenshot review.
 - [ ] Correct full Bot/session binding, scoped draft, target-switch notices, composer overlay/keyboard/focus and artifact/info return. No business message or approval merely for a visual test.
 - [ ] Record source/CI/tag/artifact/installation and per-path results; repair and re-test actual failures before claiming the core batch accepted.
 
-Private evidence is under the project pointer output/mobile-chat-layout-20261020 and output/iphone-acceptance-20261019; business screenshots, profiles and secrets remain outside Git. Native preflight alone is not a new signed app. Installed baseline is0.1.0/build1/source18e13ce8; no new phone candidate has yet been accepted.
+Private evidence is under the project pointer output/mobile-chat-layout-20261020 and output/iphone-acceptance-20261019; business screenshots, profiles and secrets remain outside Git. Native preflight alone is not a new signed app. Actual signed/installed internal build2/sourceabc822ce and the qualified controlled phone results are now recorded in [the physical acceptance receipt](iphone-core-acceptance-20261021.md). Main/formal release and the unavailable original business target remain open.
 
 ## Remaining parent work
 
@@ -46,3 +46,7 @@ Official pool/toolchain references: [GitHub runner labels](https://docs.github.c
 ## Internal acceptance parallel to hosted CI
 
 The user authorized installing on the development iPhone to find and repair real bugs. Waiting for unrelated hosted pools before this test deployment was an unnecessarily serial execution choice, not a direct human restriction on candidate testing. Build2 may therefore be signed/installed as an explicitly unaccepted internal candidate from exactabc822cebb403ef438fff63558d529e33f3f95f3 (includes current main4206). Retain its real source stamp and old build1 rollback; no data reset, new Apple key or business test write. Main/CI/formal acceptance remain open. CI-only/document changes do not silently change compiled input identity; prove native/mobile input equality to the eventual main before promoting these same bytes, or allocate build3 if product inputs change. This does not waive any required main/CI/physical gate.
+
+## Actual controlled physical acceptance
+
+See [iPhone core acceptance](iphone-core-acceptance-20261021.md) for actual native login, three history pages/anchors, Markdown/code/table/image/tool presentation, scoped unsent drafts and foreground return, temporary Host source provenance and complete grant/session/unit cleanup. This supersedes earlier preparation-only status; it does not close original business-target or full MOBILE-002 gates.
