@@ -670,3 +670,12 @@ Verifiedhuman recovery incident request routes exactlocal55aa5781e/8a65040e thro
 
 ### Mobile concurrent main integration
 PR173 advanced main to a487b5d353780fef4b624b42dd01d7d0ad4958d3 during mobile final CI. Same sole mobile owner integrates latest main, preserves desktop records and ARM environment check alongside the explicit Intel-only supplement. No mobile/native/root dependency product input changed; installed internal build2 retained. New combined-head ordinary CI/main/immutable-tag proof remain required; old dac ARM success and its separate Intel run are historical, not the new tree result. No daily Mac/101 action or deferred002 scope expansion.
+
+## MOXBOTS-GOAL-CONFIG-RESTORE-20261021 — next unfrozen desktop intake
+
+Fix warm builtin Goal continuation to adopt the owning Session's current saved provider/model/reasoning at the original admission boundary. Preserve Goal/native identity, permission, compatibility, background work and Stop/claim fences; no provider auto-selection or old input replay. Task record `.agent-sync/tasks/codex-goal-config-restore-20261021-366d1666.md` distinguishes local regression evidence from actual native acceptance. Base is fetched remote main4206eb2ef; separately verify compatibility with frozen515.7/source915ff89a without editing that checkout. Existing sole desktop/updater CI/build/version/install/publish owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; this lane delivers local commits only for its next batch.515.7signing/install is independent and unchanged. Reconcile commits5a928679/b759372e are separate intake, not part of this task diff.
+
+
+## Desktop stability0.5.16 — 2026-10-21
+
+Same sole owner01a12bc2-907a-7702-b6dd-788225c5dfe4, semantic0.5.16/build516.1 after immutable015online/local completed. Combined settlement backoff/native memory blocking isolation/tool-admission evidence/warmGoal config restore; source and independent365Node/31Rust/type/lintPASS, native and original-business acceptance remainopen. Task `.agent-sync/tasks/codex-post0515-stability-20261021-8526d64d.md`. Existing5158tag/artifact are unchanged; no historical unknown clearing/forced exit. NewexactCI/main/artifact/native and safe local replacement/onlinepromotion are separately required. Mobile/Host/cloud/Windows/website not deployed. NativeUI remains coordinator01a159a6-owned; lockedMac/uncertaindispatch checkpoint must be resolved through normal owner before app replacement.

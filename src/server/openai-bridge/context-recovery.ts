@@ -23,7 +23,8 @@ export interface ContextRecoveryOptions {
   /** Explicitly selected same-Goal recovery source, loaded by the existing persistence owner. */
   initialCheckpoint?: ContextRecoveryCheckpoint;
   initialLedger?: unknown;
-  persistLedger?: (ledger: unknown) => Promise<void>;
+  recoveryOwner?: { sessionId: string; sdkSessionId: string };
+  persistLedger?: (ledger: unknown, stillCurrent?: () => boolean) => Promise<void>;
 }
 
 export interface ContextRecoveryCheckpoint {
@@ -33,6 +34,10 @@ export interface ContextRecoveryCheckpoint {
 }
 
 type Evidence = { result: unknown; digest?: string; archive?: string };
+type NoDispatchEvidence = {
+  sessionId: string; sdkSessionId: string; queryGeneration: number; scope: string;
+  toolUseId: string; toolName: 'TaskGet' | 'Bash'; actionHash: string; reason: 'missing-taskId' | 'missing-command';
+};
 type State = {
   scope: string;
   attempted: boolean;
@@ -47,6 +52,40 @@ type State = {
   denied: Set<string>;
 };
 type Analysis = { completed: Map<string, Evidence>; uncertain: Set<string> };
+
+/** Tracks only tool calls observed in the current Query's live SDK stream. */
+export class LiveQueryToolUseTracker {
+  private readonly calls = new Map<string, { name: 'TaskGet' | 'Bash'; input: unknown; scope: string | undefined; materialized: boolean }>();
+
+  observeStreamEvent(event: unknown, scope: string | undefined): void {
+    if (!record(event) || event.type !== 'content_block_start' || !record(event.content_block)) return;
+    const block = event.content_block;
+    if (block.type !== 'tool_use' || typeof block.id !== 'string' || !block.id
+      || (block.name !== 'TaskGet' && block.name !== 'Bash')) return;
+    if (this.calls.size < MAX_LEDGER_ENTRIES || this.calls.has(block.id)) {
+      this.calls.set(block.id, { name: block.name, input: block.input ?? {}, scope, materialized: false });
+    }
+  }
+
+  materializeAssistantMessage(message: unknown): void {
+    if (!record(message) || !Array.isArray(message.content)) return;
+    for (const block of message.content) {
+      if (!record(block) || block.type !== 'tool_use' || typeof block.id !== 'string') continue;
+      const observed = this.calls.get(block.id);
+      if (observed && observed.name === block.name && Object.hasOwn(block, 'input')) {
+        this.calls.set(block.id, { ...observed, input: block.input, materialized: true });
+      }
+    }
+  }
+
+  takeErrorResult(block: unknown): { toolUseId: string; name: 'TaskGet' | 'Bash'; input: unknown; scope: string | undefined } | undefined {
+    if (!record(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') return undefined;
+    const observed = this.calls.get(block.tool_use_id);
+    this.calls.delete(block.tool_use_id);
+    if (!observed || !observed.materialized || block.is_error !== true) return undefined;
+    return { toolUseId: block.tool_use_id, ...observed };
+  }
+}
 
 const READ_ONLY_TOOLS = new Set(['Read', 'Grep', 'Glob']);
 const TAIL_MESSAGES = 2;
@@ -73,6 +112,17 @@ function toolKey(name: string, input: unknown): string {
   return digest({ name, input });
 }
 
+function noDispatchKey(actionHash: string, toolUseId: string): string {
+  return digest({ kind: 'no-dispatch', actionHash, toolUseId });
+}
+
+function noDispatchSchemaReason(name: string, input: unknown): NoDispatchEvidence['reason'] | undefined {
+  if (!record(input)) return undefined;
+  if (name === 'TaskGet' && typeof input.taskId !== 'string') return 'missing-taskId';
+  if (name === 'Bash' && typeof input.command !== 'string') return 'missing-command';
+  return undefined;
+}
+
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -84,7 +134,8 @@ function validateImage(block: Record<string, unknown>): boolean {
 }
 
 /** Validate the whole history before omitting anything, including untouched tail blocks. */
-function analyze(body: AnthropicRequest, denied: ReadonlySet<string>, proof: ReadonlyMap<string, Evidence>): Analysis | undefined {
+function analyze(body: AnthropicRequest, denied: ReadonlySet<string>, proof: ReadonlyMap<string, Evidence>,
+  noDispatch: ReadonlyMap<string, NoDispatchEvidence>): Analysis | undefined {
   if (!Array.isArray(body.messages)) return undefined;
   const uses = new Map<string, { name: string; input: unknown; matched: boolean }>();
   const completed = new Map<string, Evidence>();
@@ -139,6 +190,9 @@ function analyze(body: AnthropicRequest, denied: ReadonlySet<string>, proof: Rea
           if (!READ_ONLY_TOOLS.has(use.name)) {
             const key = toolKey(use.name, use.input);
             if (block.is_error) {
+              const noDispatchProof = noDispatch.get(noDispatchKey(key, block.tool_use_id));
+              if (noDispatchProof && noDispatchProof.actionHash === key && noDispatchProof.toolUseId === block.tool_use_id
+                && noDispatchProof.toolName === use.name && noDispatchSchemaReason(use.name, use.input) === noDispatchProof.reason) break;
               // A denial emitted by our own tool owner did not perform another action.
               // Accept only a key actually denied by this controller with archived prior
               // success; arbitrary tool errors mentioning the marker stay uncertain.
@@ -241,6 +295,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private retiredScope: string | undefined;
   private readonly requestRetryFences = new Set<object>();
   private completedLedger = new Map<string, Evidence>();
+  private noDispatchLedger = new Map<string, NoDispatchEvidence>();
+  private readonly observedToolUseIds = new Set<string>();
+  private noDispatchProofsDisabled = false;
+  private noDispatchOwner: { sessionId: string; sdkSessionId: string; queryGeneration: number; isCurrent: () => boolean } | undefined;
   private uncertainLedger = new Set<string>();
   private deniedLedger = new Set<string>();
   private ledgerBlocked = false;
@@ -279,7 +337,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     if (this.state?.inFlight.size) throw new Error('context_recovery_required: Cannot restore during active inference.');
     this.projectionActive = true;
     this.actionProtectionActive = true;
-    const analysis = analyze(body, this.deniedLedger, this.completedLedger);
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger);
     if (!analysis || typeof archive !== 'string' || !archive.trim() || archive.length > 4096 || /[\r\n]/.test(archive)
       || createHash('sha256').update(JSON.stringify(body)).digest('hex') !== sourceDigest) {
       this.ledgerBlocked = true;
@@ -299,7 +357,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       || this.ledgerBlocked || state.blocked || this.requestGuard.isBlocked(state.scope)) {
       throw new Error('context_recovery_required: The inference has no exclusive recovery authority.');
     }
-    const analysis = analyze(body, this.deniedLedger, this.completedLedger);
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger);
     const safeHistory = !!analysis && analysis.uncertain.size === 0 && state.uncertain.size === 0;
     if (prearm && (!safeHistory || !this.canRetryInference())
       && (!this.actionProtectionActive || this.streamArmedOnly)) {
@@ -341,7 +399,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       || this.ledgerBlocked || this.uncertainLedger.size !== 0 || state.uncertain.size !== 0) {
       throw new Error('automatic_replay_blocked: The failed stream has no safe continuation authority.');
     }
-    const analysis = analyze(body, this.deniedLedger, this.completedLedger);
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger);
     if (!analysis || analysis.uncertain.size !== 0) {
       throw new Error('automatic_replay_blocked: Native continuation contains unknown or uncertain tool outcomes.');
     }
@@ -368,17 +426,43 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       || !Array.isArray(value.uncertain) || !Array.isArray(value.denied)
       || typeof value.blocked !== 'boolean') throw new Error('context_recovery_required: Invalid recovery ledger');
     const validKey = (key: unknown): key is string => typeof key === 'string' && /^[a-f0-9]{64}$/.test(key);
-    if (value.completed.length + value.uncertain.length > MAX_LEDGER_ENTRIES
+    if (value.completed.length + value.uncertain.length + (Array.isArray(value.noDispatch) ? value.noDispatch.length : 0) > MAX_LEDGER_ENTRIES
       || value.denied.length > MAX_LEDGER_ENTRIES
       || !value.uncertain.every(validKey) || !value.denied.every(validKey)
       || !value.completed.every(item => Array.isArray(item) && item.length === 2 && validKey(item[0]) && record(item[1]))) {
       throw new Error('context_recovery_required: Corrupt recovery ledger');
+    }
+    if (value.noDispatch !== undefined && (!Array.isArray(value.noDispatch) || !value.noDispatch.every(item =>
+      Array.isArray(item) && item.length === 2 && validKey(item[0]) && record(item[1])
+      && typeof item[1].actionHash === 'string' && validKey(item[1].actionHash)
+      && typeof item[1].sessionId === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(item[1].sessionId)
+      && typeof item[1].sdkSessionId === 'string' && /^[a-zA-Z0-9-]{1,100}$/.test(item[1].sdkSessionId)
+      && Number.isSafeInteger(item[1].queryGeneration) && (item[1].queryGeneration as number) >= 0
+      && typeof item[1].scope === 'string' && item[1].scope.length > 0 && item[1].scope.length <= 512
+      && typeof item[1].toolUseId === 'string' && item[1].toolUseId.length > 0 && item[1].toolUseId.length <= 512
+      && item[0] === noDispatchKey(item[1].actionHash, item[1].toolUseId)
+      && (item[1].toolName === 'TaskGet' || item[1].toolName === 'Bash')
+      && ((item[1].toolName === 'TaskGet' && item[1].reason === 'missing-taskId')
+        || (item[1].toolName === 'Bash' && item[1].reason === 'missing-command'))))) {
+      throw new Error('context_recovery_required: Corrupt no-dispatch evidence');
+    }
+    if (Array.isArray(value.noDispatch)
+      && new Set(value.noDispatch.map((item: unknown) => Array.isArray(item) ? item[0] : undefined)).size !== value.noDispatch.length) {
+      throw new Error('context_recovery_required: Duplicate no-dispatch evidence');
+    }
+    if (Array.isArray(value.noDispatch) && value.noDispatch.length > 0) {
+      const expected = this.options.recoveryOwner;
+      if (!expected || value.noDispatch.some((item: unknown) => !Array.isArray(item) || !record(item[1])
+        || item[1].sessionId !== expected.sessionId || item[1].sdkSessionId !== expected.sdkSessionId)) {
+        throw new Error('context_recovery_required: No-dispatch evidence owner mismatch');
+      }
     }
     if (value.projectionActive !== undefined && typeof value.projectionActive !== 'boolean') {
       throw new Error('context_recovery_required: Invalid recovery projection marker');
     }
     this.projectionActive = value.projectionActive !== false;
     this.completedLedger = new Map(value.completed as [string, Evidence][]);
+    this.noDispatchLedger = new Map((value.noDispatch ?? []) as [string, NoDispatchEvidence][]);
     this.uncertainLedger = new Set(value.uncertain as string[]);
     this.deniedLedger = new Set(value.denied as string[]);
     if (value.streamArmedOnly !== undefined && typeof value.streamArmedOnly !== 'boolean') throw new Error('context_recovery_required: Invalid stream protection marker');
@@ -386,13 +470,15 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.ledgerBlocked = value.blocked;
   }
 
-  private async persist(): Promise<void> {
+  private async persist(stillCurrent?: () => boolean): Promise<void> {
     if (!this.actionProtectionActive || !this.options.persistLedger) return;
     const commit = this.persistenceTail.then(async () => {
       if (this.ledgerBlocked) throw new Error('Recovery ledger is blocked');
+      if (stillCurrent && !stillCurrent()) throw new Error('Recovery owner changed before evidence commit');
       await this.options.persistLedger!({ version: 1, completed: [...this.completedLedger],
         uncertain: [...this.uncertainLedger], denied: [...this.deniedLedger], blocked: this.ledgerBlocked,
-        projectionActive: this.projectionActive, streamArmedOnly: this.streamArmedOnly });
+        projectionActive: this.projectionActive, streamArmedOnly: this.streamArmedOnly,
+        noDispatch: [...this.noDispatchLedger] }, stillCurrent);
     });
     this.persistenceTail = commit.catch(() => { this.ledgerBlocked = true; });
     try { await commit; }
@@ -402,8 +488,28 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     }
   }
 
+  /** Bind SDK-native no-dispatch evidence to one live Query and durable Session owner. */
+  bindNoDispatchOwner(owner: { sessionId: string; sdkSessionId: string; queryGeneration: number; isCurrent: () => boolean }): void {
+    if (!this.options.persistLedger || !owner.sessionId || !owner.sdkSessionId
+      || !Number.isSafeInteger(owner.queryGeneration) || owner.queryGeneration < 0 || !owner.isCurrent()
+      || this.options.recoveryOwner?.sessionId !== owner.sessionId || this.options.recoveryOwner?.sdkSessionId !== owner.sdkSessionId) {
+      throw new Error('context_recovery_required: Invalid no-dispatch owner');
+    }
+    this.noDispatchOwner = owner;
+    this.observedToolUseIds.clear();
+    this.noDispatchProofsDisabled = false;
+  }
+
+  snapshotNoDispatchScope(): string | undefined {
+    return this.options.scope();
+  }
+
   /** Reserve before invoking a mutating tool: a crash leaves an uncertain action, never a replay. */
-  async authorizeTool(name: string, input: unknown): Promise<string | undefined> {
+  async authorizeTool(name: string, input: unknown, toolUseId?: string): Promise<string | undefined> {
+    if (toolUseId) {
+      if (this.observedToolUseIds.size >= MAX_LEDGER_ENTRIES) this.noDispatchProofsDisabled = true;
+      else this.observedToolUseIds.add(toolUseId);
+    }
     const denied = this.beforeTool(name, input);
     if (denied) {
       try { await this.persist(); } catch { /* execution is already denied */ }
@@ -431,12 +537,54 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     await this.persist();
   }
 
+  /**
+   * Clear uncertainty only for a schema failure the SDK produced before its
+   * PreToolUse owner hook. Caller supplies the paired native tool-use ID, not
+   * an error-message claim; actual admitted tool IDs always remain uncertain.
+   */
+  async commitNoDispatchValidationFailure(name: string, input: unknown, toolUseId: string, sourceScope: string): Promise<boolean> {
+    const owner = this.noDispatchOwner;
+    if (!owner || this.noDispatchProofsDisabled || !toolUseId || this.observedToolUseIds.has(toolUseId)
+      || !this.options.isActive() || !owner.isCurrent()) return false;
+    if (!record(input)) return false;
+    const reason = noDispatchSchemaReason(name, input);
+    if (!reason) return false;
+    const scope = this.options.scope();
+    if (!scope || !sourceScope || sourceScope !== scope) return false;
+    const key = toolKey(name, input);
+    const proofKey = noDispatchKey(key, toolUseId);
+    if (!this.noDispatchLedger.has(proofKey)
+      && this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES) return false;
+    const evidence: NoDispatchEvidence = { sessionId: owner.sessionId, sdkSessionId: owner.sdkSessionId,
+      queryGeneration: owner.queryGeneration, scope, toolUseId, toolName: name as 'TaskGet' | 'Bash', actionHash: key, reason };
+    const prior = this.noDispatchLedger.get(proofKey);
+    this.noDispatchLedger.set(proofKey, evidence);
+    // A new proof settles only this newly observed malformed call. It cannot
+    // erase an older/admitted unknown outcome sharing the same action hash.
+    this.actionProtectionActive = true;
+    try {
+      await this.persist(() => owner.isCurrent() && this.noDispatchOwner === owner
+        && this.options.isActive() && this.options.scope() === scope);
+      return true;
+    } catch {
+      if (prior) this.noDispatchLedger.set(proofKey, prior); else this.noDispatchLedger.delete(proofKey);
+      return false;
+    }
+  }
+
   private mergeLedger(completed: ReadonlyMap<string, Evidence>, uncertain: ReadonlySet<string>): boolean {
-    const keys = new Set([...this.completedLedger.keys(), ...this.uncertainLedger, ...completed.keys(), ...uncertain]);
-    if (keys.size > MAX_LEDGER_ENTRIES) { this.ledgerBlocked = true; return false; }
+    const completedKeys = new Set([...this.completedLedger.keys(), ...completed.keys()]);
+    const uncertainKeys = new Set([...this.uncertainLedger, ...uncertain]);
+    if (completedKeys.size + uncertainKeys.size + this.noDispatchLedger.size > MAX_LEDGER_ENTRIES) {
+      this.ledgerBlocked = true; return false;
+    }
     for (const [key, value] of completed) this.completedLedger.set(key, value);
     for (const key of uncertain) this.uncertainLedger.add(key);
     return true;
+  }
+
+  private ledgerEntryCount(): number {
+    return this.completedLedger.size + this.uncertainLedger.size + this.noDispatchLedger.size;
   }
 
   private current(): State | undefined {
@@ -470,7 +618,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const key = toolKey(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
     const evidence = state.completed.get(key);
-    if (!evidence) return this.completedLedger.size + this.uncertainLedger.size >= MAX_LEDGER_ENTRIES
+    if (!evidence) return this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES
       ? 'automatic_replay_blocked: Recovery ledger capacity is exhausted; another business action cannot be safely recorded.' : undefined;
     state.denied.add(key);
     this.deniedLedger.add(key);
@@ -539,7 +687,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return required('This turn already has a delivered, concurrent or failed model request. Automatic replay is blocked.');
     }
     state.inFlight.add(fingerprint);
-    const retryAnalysis = analyze(body, state.denied, state.completed);
+    const retryAnalysis = analyze(body, state.denied, state.completed, this.noDispatchLedger);
     const retryFence = {};
     if (!retryAnalysis || retryAnalysis.uncertain.size || state.uncertain.size) this.requestRetryFences.add(retryFence);
     const finish = () => {
@@ -551,7 +699,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const stop = (message: string) => { state.blocked = true; state.streamInterrupted = false; lease.block(); return required(message); };
     const prepare = async (initial: boolean): Promise<AnthropicRequest | Response> => {
       if (!recoveryLive()) return required('The foreground recovery owner ended. Existing requests were preserved.');
-      const analysis = analyze(body, state.denied, state.completed);
+      const analysis = analyze(body, state.denied, state.completed, this.noDispatchLedger);
       if (!analysis || analysis.uncertain.size || state.uncertain.size) {
         return stop('History contains unknown, unpaired or uncertain tool actions. Progress was preserved; automatic recovery stopped.');
       }

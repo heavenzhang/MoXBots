@@ -46,5 +46,6 @@ it('backs up the exact request privately and commits a restart-safe identity-sco
 it('refuses cancelled archives and stale-owner ledger writes', async () => {
   await expect(store.archiveBuiltinContextRequest(id, {}, { digest: 'a'.repeat(64), scope: 'turn' }, () => false)).rejects.toThrow('changed');
   await expect(store.saveBuiltinContextLedger(id, id, {}, () => false)).rejects.toThrow('changed');
+  await expect(store.saveBuiltinContextLedger(id, id, {}, () => true, () => false)).rejects.toThrow('changed');
   expect(store.loadBuiltinContextLedger(id, id)).toBeUndefined();
 });

@@ -71,10 +71,24 @@ type GoalTurnLifecycle = {
   readonly deferred: boolean;
 };
 
-const GOAL_SETTLEMENT_RETRY_MS = 100;
-
-function waitForGoalSettlementRetry(): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, GOAL_SETTLEMENT_RETRY_MS));
+/** Keep the original durable claim until acknowledgement without flooding an unavailable owner. */
+function createGoalManagementRetry() {
+  let delayMs = 100;
+  let lastReportedAt: number | undefined;
+  return {
+    report(warn: () => void): void {
+      const now = Date.now();
+      if (lastReportedAt === undefined || now - lastReportedAt >= 30_000) {
+        lastReportedAt = now;
+        warn();
+      }
+    },
+    async wait(): Promise<void> {
+      const waitMs = delayMs;
+      delayMs = Math.min(delayMs * 2, 10_000);
+      await new Promise<void>(resolve => setTimeout(resolve, waitMs));
+    },
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -255,6 +269,7 @@ function createGoalTurnLifecycle(
     body: Record<string, unknown>,
     settled: 'aborted' | 'finalized',
   ): Promise<'aborted' | 'finalized'> => {
+    const retry = createGoalManagementRetry();
     for (;;) {
       try {
         const response = await client(path, 'POST', body);
@@ -262,13 +277,13 @@ function createGoalTurnLifecycle(
           claimed = false;
           return settled;
         }
-        console.warn(
+        retry.report(() => console.warn(
           `[goal] ${settled} settlement for ${input.queueId} was rejected: ${String(response.error ?? response.code ?? 'unknown error')}`,
-        );
+        ));
       } catch (error) {
-        console.warn(`[goal] ${settled} settlement for ${input.queueId} is unavailable:`, error);
+        retry.report(() => console.warn(`[goal] ${settled} settlement for ${input.queueId} is unavailable:`, error));
       }
-      await waitForGoalSettlementRetry();
+      await retry.wait();
     }
   };
 
@@ -329,7 +344,8 @@ function createGoalTurnLifecycle(
           };
         }
         console.warn(`[goal] claim for ${input.queueId} is unavailable:`, error);
-        await waitForGoalSettlementRetry();
+        // Admission retains its existing prompt-cancellation latency.
+        await new Promise<void>(resolve => setTimeout(resolve, 100));
       } finally {
         claimRequest = null;
       }

@@ -1769,7 +1769,7 @@ describe('session-engine selector and adapters', () => {
 
     const result = await runInjectedTurn({
       prompt: 'continue goal',
-      sessionId: 'sid',
+      sessionId: 'builtin-session',
       workspacePath: '/workspace',
       scenario: { type: 'desktop' },
       permissionMode: 'fullAgency',
@@ -2028,7 +2028,7 @@ describe('session-engine selector and adapters', () => {
   it('forces every synchronous injected turn onto a turn boundary', async () => {
     const result = await runInjectedTurn({
       prompt: 'continue goal',
-      sessionId: 'sid',
+      sessionId: 'builtin-session',
       workspacePath: '/workspace',
       scenario: { type: 'desktop' },
       permissionMode: 'fullAgency',
@@ -2044,7 +2044,16 @@ describe('session-engine selector and adapters', () => {
       turnOwner: { kind: 'goal', id: 'goal-1' },
       onTerminal: expect.any(Function),
       queueResponseModeOverride: 'turn',
+      restoreGoalSessionConfig: true,
     });
+  });
+
+  it('rejects a Goal whose Session binding changes while scenario preparation awaits', async () => {
+    mocks.getSessionId.mockReturnValueOnce('builtin-session').mockReturnValueOnce('another-session');
+    expect(await runInjectedTurn({ prompt: 'continue goal', sessionId: 'builtin-session', workspacePath: '/workspace',
+      scenario: desktopScenario, timeoutMs: 1000, turnOwner: { kind: 'goal', id: 'goal-1' } }))
+      .toMatchObject({ success: false, enqueued: false, status: 409 });
+    expect(mocks.enqueueUserMessage).not.toHaveBeenCalled();
   });
 
   it('restores Goal MCP from the session snapshot only when the active set is uninitialized', async () => {

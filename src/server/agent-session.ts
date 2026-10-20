@@ -6,7 +6,7 @@ import { buildTurnProviderAnalytics } from './session-core/turn-analytics';
 import { selectBuiltinRewindBoundary } from './session-core/builtin-rewind-boundary';
 import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
-import { ContextRecoveryController } from './openai-bridge/context-recovery';
+import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
 import { SessionModelRecovery } from './builtin-session/model-recovery';
 import { SameTurnStreamContinuation } from './builtin-session/stream-continuation';
 import type { StreamRecoveryEvidence } from '../shared/streamRecovery';
@@ -182,7 +182,7 @@ import {
   type SessionMaterializationScenario,
 } from './utils/session-materialization';
 import { isManagedCodexProviderReady } from './utils/managed-codex-readiness';
-import { canonicalizeManagedProviderEnv, findEffectiveProvider, findProjectAgentByWorkspacePath, getDefaultEnabledOfficialToolIdsForWorkspace, getEffectiveMcpServers, getEffectiveOfficialToolIdsForSession, isCliToolRegistryEnabled, loadConfig as loadAdminConfig, resolveWorkspaceConfig } from './utils/admin-config';
+import { canonicalizeManagedProviderEnv, findEffectiveProvider, findProjectAgentByWorkspacePath, getDefaultEnabledOfficialToolIdsForWorkspace, getEffectiveMcpServers, getEffectiveOfficialToolIdsForSession, isCliToolRegistryEnabled, loadConfig as loadAdminConfig, resolveSubscriptionAuthKind, resolveWorkspaceConfig } from './utils/admin-config';
 import type { AgentConfig } from '../shared/types/agent';
 import {
   invalidateMcpEffectiveSnapshot,
@@ -461,6 +461,7 @@ import {
   waitForCurrentTurnTerminalObserver,
 } from './builtin-session/turn';
 import { progressConvergence } from './builtin-session/progress-convergence';
+import { runtimeTypeForBinding } from '../shared/integrated-runtimes/identity';
 import {
   withSessionCompletionTerminal,
   type SessionCompletionTerminal,
@@ -1937,7 +1938,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       catch (error) { activeSessionBridgeToken = null; throw error; }
       try { activeSessionContextRecovery = new ContextRecoveryController({
         initialLedger,
-        persistLedger: ledger => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent),
+        recoveryOwner: { sessionId: productSessionId, sdkSessionId: nativeHistoryId },
+        persistLedger: (ledger, stillCurrent) => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent, stillCurrent),
         scope: currentBridgeInferenceScope,
         protectStreaming: () => failoverEnabled && !!getCurrentTurnSourceItem()
           && getCurrentTurnSourceItem()?.turnOwner?.kind !== 'task' && !hasBuiltinBackgroundWork(),
@@ -2492,7 +2494,7 @@ function maybeSurfaceInFlightAtAssistantTurnStart(reason: string): void {
 /** 中止持久 session：唤醒所有被阻塞的 Promise */
 let managedQueryController: AbortController | undefined;
 
-function abortPersistentSession(options: { notifyPendingRequests?: boolean } = {}): void {
+function abortPersistentSession(options: { notifyPendingRequests?: boolean; preserveAdmissionQueueId?: string } = {}): void {
   if (activeSessionModelRecovery) {
     activeSessionStreamContinuation?.stop('stopped');
     registerSessionAbortCleanup(activeSessionModelRecovery.pause('Execution stopped; progress is preserved')
@@ -2511,7 +2513,9 @@ function abortPersistentSession(options: { notifyPendingRequests?: boolean } = {
   // requeue them (could duplicate a message the SDK already consumed but
   // never replayed before abort). Terminate the UI honestly.
   dropInFlightQueueItem('session aborted before SDK consumption confirmation', 'failed');
-  if (shouldClearAdmissionTicketOnAbort({
+  // Replacing an idle Query for a Goal's saved config does not cancel the new
+  // turn. Keep its original ticket addressable by Stop throughout termination.
+  if (getTurnAdmissionTicket()?.queueId !== options.preserveAdmissionQueueId && shouldClearAdmissionTicketOnAbort({
     ticketQueueId: getTurnAdmissionTicket()?.queueId,
     committingQueueId: getCommittingTurnAdmissionQueueId(),
   })) {
@@ -9294,6 +9298,8 @@ export async function enqueueUserMessage(
     turnOwner?: TurnOwner;
     onTerminal?: TurnTerminalObserver;
     allowLazySessionMaterialization?: boolean;
+    /** Goal continuation inherits its owning Session at the next admission, never a Task template. */
+    restoreGoalSessionConfig?: boolean;
     sessionBirthOrigin?: SessionOrigin;
     queueResponseModeOverride?: 'realtime' | 'turn';
     inputSource?: 'inbox';
@@ -9316,6 +9322,38 @@ export async function enqueueUserMessage(
     return { queued: false, error: 'Missing explicit channel delivery ownership' };
   }
   const channelDelivery = options.channelDelivery;
+  const restoreGoalConfig = options.restoreGoalSessionConfig === true && options.turnOwner?.kind === 'goal';
+  const configSessionId = sessionId;
+  // Only execution settings participate. Usage, recency and recovery bookkeeping
+  // can change while an idle Query retires without invalidating the user's edit.
+  const configObservation = () => {
+    const meta = getSessionMetadata(configSessionId);
+    return meta ? JSON.stringify([meta.id, meta.configSnapshotAt, meta.runtimeBinding, meta.runtime,
+      meta.runtimeSource, meta.providerExecutionIdentity, meta.providerRoute, meta.providerId,
+      meta.providerEnvJson, meta.model, meta.reasoningEffort]) : null;
+  };
+  let observedGoalConfig: string | null = null;
+  const goalConfigIsCurrent = () => sessionId === configSessionId && observedGoalConfig !== null
+    && configObservation() === observedGoalConfig;
+  if (restoreGoalConfig) {
+    const previousGuard = options.beforeDispatch;
+    const configChanged = (): DispatchGuardResult => ({ accepted: false,
+      error: 'Goal Session configuration changed during admission; resume again',
+      rollbackBeforeReject: Promise.resolve(previousGuard?.cancel?.()) });
+    const guard: import('./session-core/turn-queue').DispatchGuard = async () => {
+      if (!goalConfigIsCurrent()) return { accepted: false, error: 'Goal Session configuration changed before dispatch; resume again' };
+      const decision = await previousGuard?.() ?? { accepted: true };
+      if (!decision.accepted) return decision;
+      if (!goalConfigIsCurrent()) return configChanged();
+      return { ...decision, validateAtCommit: () => {
+        if (!goalConfigIsCurrent()) return configChanged();
+        const committed = decision.validateAtCommit?.() ?? { accepted: true };
+        return !committed.accepted || goalConfigIsCurrent() ? committed : configChanged();
+      } };
+    };
+    guard.cancel = () => previousGuard?.cancel?.();
+    options = { ...options, beforeDispatch: guard };
+  }
 
   const pausedRecovery = getBuiltinModelRecovery(sessionId);
   const recoveryToResume = !isTurnInFlight() && pausedRecovery?.status === 'paused'
@@ -9449,9 +9487,45 @@ export async function enqueueUserMessage(
   if (admissionTicket?.canceled) {
     return { queued: false, error: 'Queue item was cancelled before dispatch' };
   }
+  if (restoreGoalConfig) {
+    if (isTurnInFlight() || lifecycleState.abortRequested || builtinInterrupt.isInterrupting()
+      || providerRetryPending || hasQueuedOrInFlightWork(queueId) || queueState.promotedItemInFlight || sessionId !== configSessionId || admissionTicket?.canceled) {
+      return { queued: false, error: 'Goal Session is busy or its admission was stopped' };
+    }
+    const meta = getSessionMetadata(configSessionId);
+    if (!meta || (meta.runtimeBinding ? runtimeTypeForBinding(meta.runtimeBinding) : meta.runtime ?? 'builtin') !== 'builtin') {
+      return { queued: false, error: 'Goal Session execution environment changed; reopen the original Session' };
+    }
+    const resolved = resolveWorkspaceConfig(agentDir, meta, { includeMcp: false });
+    if (admissionTicket?.canceled || sessionId !== configSessionId) {
+      return { queued: false, error: 'Goal Session admission was stopped' };
+    }
+    if ((resolved.providerRoute && !isConcreteProviderRoute(resolved.providerRoute))
+      || (!resolved.providerEnv && (resolved.providerRoute?.kind === 'provider'
+        || (resolved.providerRoute?.kind === 'subscription'
+          ? resolveSubscriptionAuthKind(resolved.providerRoute.providerId) !== 'sdk-native'
+          : Boolean(meta.providerId))))) {
+      return { queued: false, error: 'Goal Session provider/model is unavailable; select an available model in this Session' };
+    }
+    if ((sessionRegistered || lifecycleState.query || transcriptState.messages.length > 0)
+      && !canResumeAcrossBuiltinProviderHistory({ currentProviderEnv: configState.currentProviderEnv,
+        currentModel: configState.currentModel, nextProviderEnv: resolved.providerEnv, nextModel: resolved.model })) {
+      return { queued: false, error: 'Incompatible provider requires a new Session' };
+    }
+    if (hasBuiltinBackgroundWork() && (!configProviderEnvEqual(configState.currentProviderEnv, resolved.providerEnv)
+      || configState.currentModel !== resolved.model
+      || configState.currentReasoningEffort !== normalizeReasoningEffort(resolved.reasoningEffort))) {
+      return { queued: false, error: 'Goal Session configuration cannot replace a Query with background work; wait for it to finish' };
+    }
+    observedGoalConfig = configObservation();
+    model = resolved.model;
+    providerEnv = resolved.providerEnv ?? 'subscription';
+    reasoningEffort = resolved.reasoningEffort ?? 'default';
+  }
   if (recoveryToResume) {
     const cleared = await updateSessionMetadata(recoveryAdmissionSessionId, { modelRecovery: undefined }, current =>
       sessionId === recoveryAdmissionSessionId && !admissionTicket?.canceled && !lifecycleState.abortRequested
+      && (!restoreGoalConfig || goalConfigIsCurrent())
       && current.modelRecovery?.id === recoveryToResume.id && getBuiltinModelRecovery(current.id)?.status === 'paused'
       && current.modelRecovery.turnId === recoveryToResume.turnId
       && current.modelRecovery.attempt === recoveryToResume.attempt);
@@ -9504,7 +9578,7 @@ export async function enqueueUserMessage(
   // continue flag: doing so recursively persisted/broadcast an unfenced
   // reminder before the injected turn's MCP preflight. Leave the flag for the
   // next ordinary user enqueue, which is the owner the watchdog intended.
-  if (!options?.beforeUserPersistence) {
+  if (!options?.beforeUserPersistence && !restoreGoalConfig) {
     await consumePendingContinueAfterAbort(
       sessionIdSnapshot,
       permissionMode,
@@ -9541,6 +9615,9 @@ export async function enqueueUserMessage(
     || providerRetryPending
     || hasQueuedOrInFlightWork(queueId)
     || queueState.promotedItemInFlight;
+  if (restoreGoalConfig && (isSessionBusy || !goalConfigIsCurrent() || admissionTicket?.canceled)) {
+    return { queued: false, error: 'Goal Session configuration changed or admission was stopped' };
+  }
   emitPerfTrace({
     trace: 'turn',
     phase: 'enqueue',
@@ -9587,7 +9664,12 @@ export async function enqueueUserMessage(
       ? configState.currentProviderEnv !== undefined
       : providerEnv !== undefined && !configProviderEnvEqual(configState.currentProviderEnv, effectiveProviderEnv)
   );
-  const nextModel = model ?? configState.currentModel;
+  // A Goal model/effort edit also replaces the idle Query. Applying a setter
+  // that logs a rejected SDK control request must never dispatch with the old
+  // model after reporting the saved selection as current.
+  const goalConfigRestart = restoreGoalConfig && (model !== configState.currentModel
+    || normalizeReasoningEffort(reasoningEffort) !== configState.currentReasoningEffort);
+  const nextModel = restoreGoalConfig ? model : model ?? configState.currentModel;
   const modelChanged = !isSessionBusy && model !== undefined && model !== configState.currentModel;
   // API inference recovery is Query-owned even when no backup is selected.
   const failoverBridgeChanged = !isSessionBusy && !hasBuiltinBackgroundWork()
@@ -9601,7 +9683,11 @@ export async function enqueueUserMessage(
       nextModel,
     });
 
-  if ((providerChanged || crossesProviderHistoryBoundary || failoverBridgeChanged) && lifecycleState.query) {
+  if (goalConfigRestart) {
+    configSetModel(model);
+    configSetReasoningEffort(normalizeReasoningEffort(reasoningEffort));
+  }
+  if ((providerChanged || crossesProviderHistoryBoundary || failoverBridgeChanged || goalConfigRestart) && lifecycleState.query) {
     const fromLabel = configState.currentProviderEnv?.baseUrl ?? 'anthropic';
     const toLabel = effectiveProviderEnv?.baseUrl ?? 'anthropic';
     if (isDebugMode) console.log(`[agent] provider/history changed from ${fromLabel} to ${toLabel}, restarting session`);
@@ -9613,7 +9699,7 @@ export async function enqueueUserMessage(
       ensureActiveSessionBridgeRegistered();
     }
     // Terminate current session - it will restart automatically when processing the message
-    abortPersistentSession();
+    abortPersistentSession({ preserveAdmissionQueueId: restoreGoalConfig ? queueId : undefined });
     // Wait for the current session to fully terminate before proceeding
     // This prevents race conditions where old session continues processing
     await awaitSessionTermination(10_000, 'enqueueUserMessage/providerChange');
@@ -12355,7 +12441,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput): Promise<HookJSONOutput> => {
               const pre = input as PreToolUseHookInput;
-              const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input);
+              const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input, pre.tool_use_id);
               if (duplicate) return {
                 hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
                   permissionDecision: 'deny' as const, permissionDecisionReason: duplicate },
@@ -12559,6 +12645,10 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         expectedSdkSessionId: effectiveSdkSessionId,
       });
       inputTrace.generation = getQueryGeneration();
+      queryContextRecovery?.bindNoDispatchOwner({ sessionId: queryProductSessionId, sdkSessionId: effectiveSdkSessionId,
+        queryGeneration: inputTrace.generation,
+        isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
+          && !lifecycleState.abortRequested && sessionId === queryProductSessionId });
       configState.currentCapabilitySnapshot = launchCapabilitySnapshot;
     } catch (queryError: unknown) {
       // Defensive fallback: metadata lost but SDK disk data exists → switch to resume
@@ -12582,6 +12672,10 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           expectedSdkSessionId: effectiveSdkSessionId,
         });
         inputTrace.generation = getQueryGeneration();
+        queryContextRecovery?.bindNoDispatchOwner({ sessionId: queryProductSessionId, sdkSessionId: effectiveSdkSessionId,
+          queryGeneration: inputTrace.generation,
+          isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
+            && !lifecycleState.abortRequested && sessionId === queryProductSessionId });
         configState.currentCapabilitySnapshot = launchCapabilitySnapshot;
       } else {
         throw queryError;
@@ -12895,6 +12989,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
 
     if (!activeQuery) throw new Error('SDK query session was not initialized');
     let warnedRevokedQueryEvent = false;
+    const querySdkToolUses = new LiveQueryToolUseTracker();
     for await (const sdkMessage of activeQuery) {
       if (!isCurrentQueryAuthority(activeQueryAuthority)) {
         if (!warnedRevokedQueryEvent) {
@@ -13466,6 +13561,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             // Anthropic-format events to prevent SDK transcript pollution (see #68). The bridge
             // handler caches thought_signatures separately and re-injects on outgoing requests.
             const contentBlock = streamEvent.content_block as { id: string; name: string; input?: Record<string, unknown> };
+            querySdkToolUses.observeStreamEvent(streamEvent,
+              queryContextRecovery?.snapshotNoDispatchScope());
             const toolPayload = {
               id: contentBlock.id,
               name: contentBlock.name,
@@ -13754,6 +13851,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               const toolResultBlock = block as {
                 tool_use_id: string;
                 content: string | unknown;
+                is_error?: boolean;
               };
 
               // #293 — split image-bearing blocks out of the raw content BEFORE any
@@ -13764,6 +13862,13 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               // SDK priority-now receipts leave the original call running;
               // only its later actual result may settle loading/in-flight state.
               if (isDetachedSdkToolResult(toolUseResultData)) continue;
+              if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
+              const pairedCall = querySdkToolUses.takeErrorResult(block);
+              if (pairedCall) {
+                await queryContextRecovery?.commitNoDispatchValidationFailure(
+                  pairedCall.name, pairedCall.input, pairedCall.toolUseId, pairedCall.scope ?? '',
+                );
+              }
               // Register the raw SDK receipt before structured rendering drops its Output path.
               const backgroundTaskId = toolUseResultData && typeof toolUseResultData === 'object'
                 ? (toolUseResultData as { backgroundTaskId?: unknown }).backgroundTaskId : undefined;
@@ -13840,6 +13945,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           broadcast('chat:message-sdk-uuid', { messageId: boundMessageId, sdkUuid: sdkMessage.uuid });
         }
         const assistantMessage = sdkMessage.message;
+        // Only materialize calls already observed in this Query's live partial
+        // stream; resumed historical transcript pairs cannot mint authority.
+        querySdkToolUses.materializeAssistantMessage(assistantMessage);
         let belongsToCurrentProductTurn = true;
         if (productPresentation && sdkMessage.parent_tool_use_id) {
           const parent = productPresentation.content.tool(sdkMessage.parent_tool_use_id);

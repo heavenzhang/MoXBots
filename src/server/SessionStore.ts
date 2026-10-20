@@ -137,13 +137,14 @@ export function loadBuiltinContextLedger(sessionId: string, sdkSessionId: string
 }
 
 export async function saveBuiltinContextLedger(sessionId: string, sdkSessionId: string,
-    ledger: unknown, isCurrent: () => boolean): Promise<void> {
+    ledger: unknown, isCurrent: () => boolean, additionalGuard?: () => boolean): Promise<void> {
     const path = builtinRecoveryPath(sessionId, sdkSessionId);
-    if (!isCurrent()) throw new Error('context_recovery_required: Recovery owner changed');
+    const live = () => isCurrent() && (additionalGuard?.() ?? true);
+    if (!live()) throw new Error('context_recovery_required: Recovery owner changed');
     ensureStorageDir();
     await withSessionsLock(async () => {
         const owner = getSessionMetadata(sessionId);
-        if (!isCurrent() || !owner || (resolveBuiltinSdkSessionId(owner) ?? owner.id) !== sdkSessionId) {
+        if (!live() || !owner || (resolveBuiltinSdkSessionId(owner) ?? owner.id) !== sdkSessionId) {
             throw new Error('context_recovery_required: Recovery owner changed');
         }
         const data = JSON.stringify({ version: 1, sessionId, sdkSessionId, ledger,
@@ -164,7 +165,7 @@ export async function saveBuiltinContextLedger(sessionId: string, sdkSessionId: 
         try {
             const file = await asyncFs.open(temporary, 'wx', 0o600);
             try { await file.writeFile(data); await file.sync(); } finally { await file.close(); }
-            if (!isCurrent()) throw new Error('Recovery cancelled before ledger commit');
+            if (!live()) throw new Error('Recovery cancelled before ledger commit');
             await asyncFs.rename(temporary, path);
             await syncTranscriptDirectory(dir);
         } finally { await asyncFs.unlink(temporary).catch(() => undefined); }
