@@ -1,3 +1,4 @@
+import { mobileTheme } from './mobileTheme';
 import Constants from 'expo-constants';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -7,7 +8,7 @@ import { ArrowLeft, Bell, ChevronRight, CircleHelp, HardDrive, Info, LockKeyhole
 import { Account, NativeAttachment, isFixtureMode, requestNative } from './native';
 import { dismissToExistingRoot, logoutAndConfirm, returnFromAccountRoute } from './accountPolicy';
 
-const color = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', canvas: '#F7F8F6', green: '#26734D', wash: '#E9F3ED', red: '#A7433B' };
+const color = { ...mobileTheme, green: mobileTheme.primary };
 const accountStateLabel: Record<Account['state'], string> = { 'signed-in': '已登录', 'signed-out': '未登录', authenticating: '等待浏览器授权', expired: '登录已过期' };
 const knownErrors: Record<string, string> = {
   MOBILE_AUTHORIZATION_REQUIRED: '账号授权已失效，请返回会话页重新登录。',

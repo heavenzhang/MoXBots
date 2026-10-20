@@ -4,6 +4,7 @@
   "type": "module",
   "main": "expo-router/entry",
   "dependencies": {
+    "entities": "4.5.0",
     "expo": "~58.0.14",
     "expo-application": "~58.1.2",
     "expo-constants": "~58.0.12",
@@ -14,6 +15,7 @@
     "expo-router": "~58.0.23",
     "expo-status-bar": "~58.0.3",
     "lucide-react-native": "^1.58.0",
+    "marked": "16.4.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.0",

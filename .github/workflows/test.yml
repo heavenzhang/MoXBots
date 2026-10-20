@@ -10,13 +10,20 @@ on:
         description: Build only the ad-hoc signed offline iOS simulator app
         type: boolean
         default: false
+      macos_lifecycle_runner:
+        description: ARM full run or Intel macOS-only supplement; Intel is not ARM coverage
+        type: choice
+        default: macos-15
+        options:
+          - macos-15
+          - macos-15-intel
   pull_request:
   push:
     branches: [main, "dev/**"]
 
 # Cancel superseded runs on the same ref to save CI minutes.
 concurrency:
-  group: test-${{ github.workflow }}-${{ github.ref }}-${{ inputs.mobile_ios_app || false }}
+  group: test-${{ github.workflow }}-${{ github.ref }}-${{ inputs.mobile_ios_app || false }}-${{ inputs.macos_lifecycle_runner || 'macos-15' }}
   cancel-in-progress: true
 
 jobs:
@@ -62,7 +69,7 @@ jobs:
           if-no-files-found: error
 
   mobile-portable:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: mobile SDK · app policy
     runs-on: ubuntu-24.04
     steps:
@@ -105,7 +112,7 @@ jobs:
           cargo clippy --manifest-path services/agentnet/mobile-notify-core/Cargo.toml --locked --all-targets -- -D warnings
 
   headless-network:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: headless AgentNet connector · no desktop
     runs-on: ubuntu-24.04
     steps:
@@ -187,7 +194,7 @@ jobs:
   # The headless identity store must build without Tauri/GTK or a desktop
   # credential service. Actual systemd projection is a separate server gate.
   headless-identity:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: headless identity store · no desktop
     # Match the first authorized Linux acceptance server's glibc baseline.
     runs-on: ubuntu-24.04
@@ -235,7 +242,7 @@ jobs:
   # loopback-only network via setup-integration.ts. Real Provider / SDK smoke
   # lives in `credentialed` and is intentionally excluded from public CI.
   js:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: typecheck · lint · tests · build smoke
     runs-on: ubuntu-latest
     steps:
@@ -286,7 +293,7 @@ jobs:
   # Build independently so real-systemd feedback does not wait for broad UI
   # tests. Those tests remain separate required gates for the same source.
   host-package:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: Linux Host package · paired provenance
     runs-on: ubuntu-24.04
     steps:
@@ -400,7 +407,7 @@ jobs:
   # disallowed_methods/macros here; ordinary Clippy warnings stay non-fatal
   # until they are cleaned up in a dedicated phase.
   rust:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: cargo test · clippy redlines
     runs-on: ubuntu-latest
     steps:
@@ -461,10 +468,16 @@ jobs:
   # type-check or execute `cfg(windows)`. Run workspace IO tests natively:
   # compile-only checks cannot detect invalid OS rename parameters (#641).
   windows-rust:
-    if: ${{ !inputs.mobile_ios_app }}
+    if: ${{ !inputs.mobile_ios_app && inputs.macos_lifecycle_runner != 'macos-15-intel' }}
     name: Windows cargo check · workspace IO
-    runs-on: windows-latest
+    # Explicit compatible pool: latest repeatedly failed to acquire a runner.
+    runs-on: windows-2022
     steps:
+      - name: Confirm Windows x64 validation environment
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_ARCH -ne 'X64') { throw "Expected x64 runner, got $env:RUNNER_ARCH" }
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, OSArchitecture
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -574,13 +587,27 @@ jobs:
   macos-cliproxy:
     if: ${{ !inputs.mobile_ios_app }}
     name: macOS CLIProxy lifecycle
-    runs-on: macos-15
-    # Same arm64 architecture and Xcode 26 SDK; try the alternate macOS 15 pool.
+    # Keep ARM and all lifecycle checks; macos-26 repeatedly had no capacity.
+    # macos-15 defaults to Xcode16.4, below apple-metal's SDK floor, so select26.3.
+    runs-on: ${{ inputs.macos_lifecycle_runner == 'macos-15-intel' && 'macos-15-intel' || 'macos-15' }}
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+      MACOS_LIFECYCLE_RUNNER: ${{ inputs.macos_lifecycle_runner || 'macos-15' }}
+      MACOS_EXPECTED_ARCH: ${{ inputs.macos_lifecycle_runner == 'macos-15-intel' && 'x86_64' || 'arm64' }}
+      MACOS_EXPECTED_RUST_HOST: ${{ inputs.macos_lifecycle_runner == 'macos-15-intel' && 'x86_64-apple-darwin' || 'aarch64-apple-darwin' }}
     steps:
+      - name: Confirm selected Apple architecture and compatible SDK environment
+        run: |
+          case "$MACOS_LIFECYCLE_RUNNER" in macos-15|macos-15-intel) ;; *) exit 1 ;; esac
+          uname -m
+          test "$(uname -m)" = "$MACOS_EXPECTED_ARCH"
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version)" = 26.2
+          test "$(xcrun --sdk iphoneos --show-sdk-version)" = 26.2
+          test "$(xcrun --sdk iphonesimulator --show-sdk-version)" = 26.2
       - uses: actions/checkout@v4
       - name: Verify arm64 host and Xcode 26 SDK
+        if: env.MACOS_EXPECTED_ARCH == 'arm64'
         run: |
           test "$(uname -m)" = arm64
           xcodebuild -version
@@ -589,6 +616,17 @@ jobs:
         with:
           node-version: 24
       - uses: dtolnay/rust-toolchain@1.92.0
+      - name: Confirm selected Rust host architecture
+        run: |
+          rustc -vV
+          test "$(rustc -vV | sed -n 's/^host: //p')" = "$MACOS_EXPECTED_RUST_HOST"
+      - name: Record actual lifecycle validation environment
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs'), cp = require('node:child_process');
+          const read = (name, args) => cp.execFileSync(name, args, { encoding: 'utf8' }).trim();
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, ['## macOS lifecycle environment', `Runner: ${process.env.MACOS_LIFECYCLE_RUNNER}`, `Architecture: ${read('uname', ['-m'])}`, `Rust: ${read('rustc', ['-vV'])}`, `Xcode: ${read('xcodebuild', ['-version'])}`, `SDKs: ${['macosx', 'iphoneos', 'iphonesimulator'].map(s => `${s}=${read('xcrun', ['--sdk', s, '--show-sdk-version'])}`).join(', ')}`, 'Results cover the recorded architecture. An Intel-only supplement does not establish ARM desktop artifact acceptance or replace the other exact-head PR checks.', ''].join('\n\n'));
+          NODE
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |

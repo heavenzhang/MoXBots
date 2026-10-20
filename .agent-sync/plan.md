@@ -547,6 +547,24 @@ Native 0.5.11 reproduction found pair conflict and invalid-response failures whi
 Actual Android system file/image selection, complete encrypted Host upload with exact size/SHA, empty/oversize rejection, foreground recovery and draft preservation passed. Repairs retain fresh permission discovery and native foreground/background gates; explicit microphone interruption feedback passed without auto-record/send. Original101 identity/config/12 witnesses and runtime PIDs remain unchanged; isolated temporary grants/sessions/units were cleaned. Human explicitly deferred unavailable physical Chinese ASR and iPhone. Evidence and source/package distinctions: `dev-docs/mobile-002/android-file-voice-20261019.md`; task `codex-android-file-voice-20261019-6a6c159c.md`. Code/main delivery follows PR160 final exact-head CI/ordinary-merge receipt; no mobile public store release or original101/dailyMac upgrade belongs to this lane.
 
 
+## MOXBOTS-IPHONE-ACCEPTANCE-20261019 — chat layout follow-up (2026-10-20)
+
+Human confirmed the installed physical iPhone app works, then requested conversation text/Markdown/code/image layout repair and broader bug verification. Root01a12b99-7b38-78b1-831f-9c60257d386a remains sole internal phone build/install/acceptance owner after explicit human transfer; daily Mac, original101 and cloud excluded. Integration/release branch remains main; current internal mobile version0.1.0/build1 retained; future build identity assigned by the unified CI/release owner below, exact SHA and immutable archive digest required before installation. Structured native message rendering and reading-position policy follow task `.agent-sync/tasks/codex-mobile-chat-layout-20261020-130c5173.md`; feature branch prechecks are separate from main integration CI and phone release. Existing desktop/cloud publication owners and versions remain unchanged. Actual TARGET_RECEIPT_INVALID on a historical target is separately pending, not closed by Markdown QA.
+
+
+## Unified project CI and deployment coordination — 2026-10-20
+
+- Repository: https://github.com/heavenzhang/MoXBots.git. Existing canonical branch main; task worktrees remain supported.
+- Sole project CI/release coordinator:01a12bc2-907a-7702-b6dd-788225c5dfe4 (MoxBots桌面端统一打包负责人). Human directly answered "由桌面统一打包负责人统筹" in implementation chat01a12b99-7b38-78b1-831f-9c60257d386a after requiring one project-level CI/deployment session. This supersedes historical per-chat independent CI/build publication for future actions.
+- Development chats provide exact remote SHA, task records, local prechecks and dependencies. Coordinator reconciles existing automatic CI and organizes shared CI/results, integration according to existing Git strategy, release version/build allocation, frozen artifacts, serial target deployment and rollback. This designation does not expand target permissions or authorize daily Mac interruption.
+- Version policy: preserve current component/version conventions; owner assigns next official version/candidate/build. Immutable tag/source/artifact/CI/included tasks/rollback remain linked; changed artifact needs a new identity. No feature-branch artifact is implicitly approved for production.
+- Current intake: mobile conversation layout local tests pass; central CI/main/internal phone release pending. Current human phone account and installed build1 remain; earlier build2 suggestion is not an allocated published version. Source92658f3b1 is the first implementation checkpoint, superseded by subsequent handoff-record commits.
+- Targets retain explicit task authorization: internal Xu iPhone repair is requested; daily Mac, original101 identity/config and cloud are excluded from this mobile batch. Existing desktop/cloud queues are reconciled by the coordinator, not concurrently changed by this chat. Active release SHA/build/locks and CI evidence must be verified by coordinator before any target change.
+
+## Mobile batch priority — human update 2026-10-20
+
+Human explicitly defers unresolved speech to avoid blocking core conversations. Current batch is mobile layout/Bot-switch fixes from codex/mobile-chat-layout-20261020 plus independently reviewed compatible core conversation changes; exclude speech branch ba578a5ea until a later batch. Keep actual voice FAIL visible but not a gate for current main/build/install. Priority acceptance: session open/history, Markdown/code/table/image presentation, history scroll stability, target isolation, draft preservation and existing send/receipt authority. Task MOXBOTS-IOS-SPEECH-FAILURE-20261020 remains deferred with two real failures preserved. Per-unit owner for this current mobile batch remains human-selected01a12bc2; implementation/phone evidence01a12b99. No daily Mac/101 changes or parallel shared CI/build/install.
+
 
 
 ## GOAL-STALL-001 — Goal watchdog 结算与可见恢复原因
@@ -580,6 +598,39 @@ Release record dev-docs/releases/moxbots-0.5.15.md; branch codex/release-0515-20
 ## MOXBOTS-0515 build515.2 native-startup repair
 
 Same desktop/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 and explicit015ONLINE+local delivery. First signed015build515.1 passed sourceCI/main/Apple but failed actual native startup (duplicate React Hook dispatcher), so it is sealed/unpublished; online013 and installed014 unchanged. Branchcodex/release-0515-renderer-20261020 fixes React/react-dom singleton resolution and adds real production-built linked-dependency Hook regression. Newbundle515.2 avoids same-build artifact reuse. Laterunselectedsource remains deferred. ExactCI/main/newartifact/native/stable015/local gates still required; no independent component deployment.
+
+## Mobile core conversation checkpoint — 2026-10-21
+
+MOXBOTS-IPHONE-ACCEPTANCE-20261019 continues in existing branch/task. Added matching-snapshot send guard/read-only retry, earlier-message pagination with stable reading view and live authority separation, recovered-read notice cleanup, folded read-only tool results. Source integrated current main4206eb2ef;73policy/type/lint plus core90-message and rich-text responsive browser checks PASS. Physical original TARGET_RECEIPT_INVALID remains separately unclosed; no daily Mac workaround. Registered mobile CI/build/version/install owner01a12bc2 was asked to confirm batch/delegate execution; no parallel formalCI/build/install. Root01a12b99 owns implementation/physical evidence; current index/renderer/history QA files remain its exclusive writing scope until handoff. Independent visual work uses isolated pure components; no device or shared writer takeover.
+
+Full MOBILE-002 backlog remains separately open: login/consent/recovery; original Session approvals/late-generation rejection; actual system picker/Host complete bytes and result return; speech after current core batch per direct human deferral; real APNs/FCM background and cold-start delivery. Original chat's private handoff is retained outside Git, not authorization to alter original101/dailyMac/account or new credentials/providers. Local code, synthetic tests, remote main, immutable candidate and actual phone acceptance are distinct gates.
+
+
+## Mobile Codex conversation presentation — 2026-10-21
+
+Stable task MOXBOTS-MOBILE-PARITY-20261020, isolated branch codex/mobile-prototype-parity-20261020. Human latest direction selects Codex mobile conversation display as baseline, with approved V6 prototype for functional reference. Changes are actual React Native presentation: compact list/search/date groups, full-identity-bound info/continue, one toolbar/resting composer, on-demand popover, direct artifact entry, consistent neutral Markdown/tool/account theme. No fake management metadata or prototype transport replaces real owners.
+
+Existing owner01a12b99 explicitly authorized combining exact8128596dbdebb031dd4a6c057107ff2b6ee80d9b into this isolated developer branch after saving UI stageb8b9a2eb27a5aebdebabddfe34d2d31939c110c4. Original snapshot/history/receipt/foreground/draft/approval/safe-media guards are preserved; speechba578 excluded. Source developer may normal commit/push after local acceptance and workflow trigger verification. Main/shared CI/formal native builds/version/install stay with registered coordinator01a12bc2-907a-7702-b6dd-788225c5dfe4; owner01a12b99 independently reviews frozen SHA and retains repair/physical evidence. This record grants no parallel production action or takeover.
+
+Local Web QA is explicitly synthetic and cannot close MOBILE-002 real phone login/approval/files/voice/push. Task record `.agent-sync/tasks/codex-mobile-prototype-parity-20261020-6969939a.md`, design/combination/acceptance details `dev-docs/mobile-002/codex-conversation-parity-20261020.md`. Mainline/source intake, candidate/version, phone installation and real daily acceptance remain separate open states.
+
+## Mobile unit ownership transfer — 2026-10-21 (current)
+
+- Human explicitly answered “是，手机端交给 Bots手机端开发2” in chat01a1488b-c673-79f1-abd5-018938f2ee92 to transfer the independent mobile unit's CI, signing/install and physical acceptance. Receiving owner01a12b99 verified the actual reply via read_thread (question call_d8a3bad06a134a95b799db81d583772a). This supersedes historical coordinator entries for mobile only, not a transfer inferred from silence.
+- Unit: mobile iOS/Android app, SDK/native modules and internal artifacts. Sole CI/build/version/sign/install/verify/rollback chat01a12b99-7b38-78b1-831f-9c60257d386a. Desktop/updater stays01a12bc2-907a-7702-b6dd-788225c5dfe4; cloud/Host permissions retain prior boundaries. Source chat01a1488b holds no device/release writes. No new provider/account/private key/public port is authorized by this transfer.
+- Activity audit: no mobile xcodebuild/native build/install process, no PR or run for frozen presentation branch. Both other chats notified to stop new mobile target actions and report existing jobs. Cross-unit Test executes once through this mobile PR; do not cancel desktop jobs or use their results as mobile evidence.
+- Current core batch MOXBOTS-IPHONE-ACCEPTANCE-20261019: accepted combination2b976bd288ea07e8ae118fe21c122a7aa22271c2, runtimefreezeec78f6d68, contains core8128596 and presentationb8b9a2e. Independent77policy/type/lint/history5/layout5/navigation6 and QA-disabled Hermes PASS; native closure3f13255e Swift device/simulator and Rust iOS preflight PASS. Re-fetch main before normal protected merge and prove remote inclusion/tree, no force/admin. Later product changes enter a reviewed next batch.
+- Allocate internal iOS0.1.0/build2, tag moxbots-mobile-internal-v0.1.0-build2 (absent at allocation). Preserve signed build1/source18e13ce8 and account/data as rollback baseline; no uninstall/reset. Build verified integrated main in isolated non-WPS checkout, fresh affected framework and QA-disabled offline JS, existing developer team/profile/key. Record source/tag/archive SHA, signature/entitlements, installed version and real paths.
+- Core conversation opens/history/layout/draft/scope precede deferred speech and APNs/FCM. Actual TARGET_RECEIPT_INVALID remains open until native/Host evidence resolves it. Full MOBILE-002 backlog retained; synthetic/browser gates do not close real login/approval/files/speech/provider delivery. No daily Mac or original101 identity/config changes in this mobile batch.
+- State: preparing source PR/CI; main/new immutable artifact/install/real acceptance pending. Release/checklist dev-docs/mobile-002/internal-build2-20261021.md. Existing root branch/task carries intake; mobile formal actions now belong solely to receiving owner.
+
+### Mobile internal acceptance scheduling refinement
+
+Same human-designated mobile owner01a12b99 and build2. User explicitly authorized internal iPhone installation/real bug acceptance. An exact reviewed feature candidate may be signed and installed only as an unaccepted internal test artifact while hosted CI/main are pending, retaining source/tag/digests and build1/data rollback. This replaces the owner-imposed main-before-any-test-build scheduling restriction; it does not replace main/CI/final acceptance. First build2 sourceabc822ce (current main4206 included); CI-pool/document-only subsequent commits may promote the same tested bytes only after exact mobile/native build-input equality to actual remote main is proved. Product changes require the next build identity and reacceptance. No daily Mac, original101 or provider configuration changes.
+
+## Mobile core physical acceptance — 2026-10-21
+
+Sole mobile owner01a12b99 completed internal build2/sourceabc822ce in-place install and qualified controlled physical login/history/presentation/draft checks; all temporary Host grants/sessions/units cleaned, original101 identity/config and daily Mac untouched. Evidence and remaining business gates: `dev-docs/mobile-002/iphone-core-acceptance-20261021.md`. Final main remains pending exact-head CI. Repeated hosted ARM no-runner cancellations are not PASS; explicit Intel15 Mac-only supplement retains full commands and actual iOS native SDK checks, regular PR/push/default remains full ARM. This changes CI environment coverage only, not desktop ownership or formal release scope.
 
 
 ## REMOTE-UI-20261020 — common conversation rendering follow-up
@@ -615,3 +666,7 @@ Verifiedhuman recovery incident request routes exactlocal55aa5781e/8a65040e thro
 
 ### Desktop urgent5158: exhausted stream-body budget
 5157/source915ff89a sealed and excluded from install/publication after real LinuxCI failure. Root fix51394b4d preserves retry/ledger/Stop/progress/suspension boundaries and adds two deterministic red/green subinterval cases.313Bridge unit+127integration/type/scopedlintPASS onNode24. Existing source inputs remain unchanged; no deferredMVP/mobile/warmGoal-route changes. Same unique desktop owner, new immutablebuild515.8, existingPR173/newexactCI required. LocalApplications5156 remains verified.
+
+
+### Mobile concurrent main integration
+PR173 advanced main to a487b5d353780fef4b624b42dd01d7d0ad4958d3 during mobile final CI. Same sole mobile owner integrates latest main, preserves desktop records and ARM environment check alongside the explicit Intel-only supplement. No mobile/native/root dependency product input changed; installed internal build2 retained. New combined-head ordinary CI/main/immutable-tag proof remain required; old dac ARM success and its separate Intel run are historical, not the new tree result. No daily Mac/101 action or deferred002 scope expansion.
