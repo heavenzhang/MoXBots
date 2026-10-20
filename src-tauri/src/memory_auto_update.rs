@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 use crate::config_io::with_config_lock;
@@ -14,7 +14,6 @@ use chrono::{DateTime, Timelike, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
-use tokio::sync::Mutex;
 
 pub const SCAN_CADENCE_MINUTES: u32 = 30;
 const IDLE_COOLDOWN_MINUTES: i64 = 30;
@@ -29,8 +28,10 @@ const MANAGED_AUTO_UPDATE_RUN_MODE: crate::task::TaskRunMode = crate::task::Task
 const MANAGED_AUTO_UPDATE_PROMPT: &str =
     "System-managed memory auto-update dispatcher. This Task is hidden from ordinary UI.";
 
-static IN_FLIGHT_WORKSPACES: LazyLock<Mutex<HashSet<String>>> =
-    LazyLock::new(|| Mutex::new(HashSet::new()));
+// Membership only: never hold this lock across IO or an await. Synchronous
+// RAII release also works if an async handler is dropped during shutdown.
+static IN_FLIGHT_WORKSPACES: LazyLock<std::sync::Mutex<HashSet<String>>> =
+    LazyLock::new(|| std::sync::Mutex::new(HashSet::new()));
 static CONFIGURE_LIFECYCLES: LazyLock<crate::keyed_lifecycle::KeyedLifecycleRegistry> =
     LazyLock::new(crate::keyed_lifecycle::KeyedLifecycleRegistry::new);
 
@@ -236,19 +237,29 @@ struct WorkspaceInflightGuard {
 }
 
 impl WorkspaceInflightGuard {
-    async fn acquire(workspace_path: &str) -> Option<Self> {
+    async fn acquire(workspace_path: &str) -> Option<Arc<Self>> {
         let key = normalize_path(workspace_path);
-        let mut guard = IN_FLIGHT_WORKSPACES.lock().await;
+        let mut guard = IN_FLIGHT_WORKSPACES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if guard.contains(&key) {
             return None;
         }
         guard.insert(key.clone());
-        Some(Self { key })
+        Some(Arc::new(Self { key }))
     }
 
-    async fn release(self) {
-        let mut guard = IN_FLIGHT_WORKSPACES.lock().await;
-        guard.remove(&self.key);
+    async fn release(self: Arc<Self>) {
+        drop(self);
+    }
+}
+
+impl Drop for WorkspaceInflightGuard {
+    fn drop(&mut self) {
+        IN_FLIGHT_WORKSPACES
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&self.key);
     }
 }
 
@@ -720,7 +731,38 @@ pub async fn run_batch<R: Runtime>(
         return summary;
     }
 
-    let candidates = collect_candidates(workspace_path, config, &mut summary);
+    // History replay can be CPU-heavy as well as blocking disk IO. Keep it
+    // off the native executor shared with management/Stop/UI requests. The
+    // scan retains workspace exclusion even if this handler is canceled:
+    // spawn_blocking work cannot be forcibly stopped once it starts.
+    let scan_workspace = workspace_path.to_owned();
+    let scan_config = config.clone();
+    let mut scan_summary = summary.clone();
+    let scan_inflight = Arc::clone(&inflight);
+    let scan = tauri::async_runtime::spawn_blocking(move || {
+        let _inflight = scan_inflight;
+        let candidates = collect_candidates(&scan_workspace, &scan_config, &mut scan_summary);
+        (scan_summary, candidates)
+    })
+    .await;
+    let candidates = match scan {
+        Ok((scanned, candidates)) => {
+            summary = scanned;
+            candidates
+        }
+        Err(error) => {
+            ulog_warn!("[memory-auto-update] candidate scan failed: {}", error);
+            summary.failed += 1;
+            inflight.release().await;
+            return summary;
+        }
+    };
+    // Stop can now run while the scan is awaiting its blocking worker. It
+    // must win before any candidate metadata lookup, binding or dispatch.
+    if !scheduler.authorize_dispatch(task_id, queue_id).await {
+        inflight.release().await;
+        return summary;
+    }
     summary.eligible_sessions = candidates.len() as u32;
 
     let http_client =
@@ -911,6 +953,10 @@ fn collect_candidates(
     config: &MemoryAutoUpdateConfig,
     summary: &mut MemoryAutoUpdateBatchSummary,
 ) -> Vec<SessionCandidate> {
+    #[cfg(test)]
+    if let Some(scan) = tests::take_scan(workspace_path) {
+        return scan(workspace_path, config, summary);
+    }
     let Some(myagents_dir) = crate::app_dirs::myagents_data_dir() else {
         return vec![];
     };
@@ -1449,6 +1495,246 @@ fn is_human_user_message(message: &MessageLine, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    type TestScan = Box<
+        dyn FnOnce(
+                &str,
+                &MemoryAutoUpdateConfig,
+                &mut MemoryAutoUpdateBatchSummary,
+            ) -> Vec<SessionCandidate>
+            + Send,
+    >;
+    static SCANS: LazyLock<std::sync::Mutex<std::collections::HashMap<String, TestScan>>> =
+        LazyLock::new(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+
+    pub(super) fn take_scan(workspace: &str) -> Option<TestScan> {
+        SCANS.lock().unwrap().remove(workspace)
+    }
+
+    fn set_scan(workspace: &str, scan: TestScan) {
+        SCANS.lock().unwrap().insert(workspace.to_string(), scan);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn batch_scan_keeps_single_worker_responsive_and_workspace_exclusive() {
+        // macOS system temp resolves under /private/var, which the real
+        // workspace path guard intentionally rejects. Keep its policy intact.
+        let dir = tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let task = format!("scan-health-{}", uuid::Uuid::new_v4());
+        let scheduler = crate::task_scheduler::get_task_scheduler();
+        let queue = scheduler.claim_execution_for_test(&task).await.unwrap();
+        let app = tauri::test::mock_app();
+        let manager = crate::sidecar::create_sidecar_manager();
+        let (health_tx, health_rx) = std::sync::mpsc::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let probe = std::thread::spawn(move || {
+            let responsive = health_rx.recv_timeout(Duration::from_millis(400)).is_ok();
+            let _ = release_tx.send(responsive);
+            responsive
+        });
+        set_scan(
+            workspace,
+            Box::new(move |_, config, summary| {
+                assert_eq!(config.query_threshold, 2);
+                summary.checked_sessions = 7;
+                summary.skipped_recent_input = 3;
+                let _ = release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                vec![]
+            }),
+        );
+        let config = base_config();
+        let (summary, duplicate) = tokio::join!(
+            run_batch(
+                app.handle(),
+                "scan-agent",
+                workspace,
+                &config,
+                &manager,
+                &task,
+                &queue
+            ),
+            async {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+                // Even the intentionally failing old implementation must not
+                // fall through to the user's real candidate-history scanner.
+                set_scan(workspace, Box::new(|_, _, _| vec![]));
+                let duplicate = run_batch(
+                    app.handle(),
+                    "scan-agent",
+                    workspace,
+                    &config,
+                    &manager,
+                    &task,
+                    &queue,
+                )
+                .await;
+                let _ = health_tx.send(());
+                duplicate
+            }
+        );
+        drop(take_scan(workspace));
+        assert_eq!(summary.checked_sessions, 7);
+        assert!(
+            probe.join().unwrap(),
+            "the real run_batch blocked the only async worker during scanning"
+        );
+        assert_eq!(summary.skipped_recent_input, 3);
+        assert_eq!(summary.updated, 0);
+        assert_eq!(duplicate.skipped_duplicate, 1);
+        assert!(
+            scheduler.authorize_dispatch(&task, &queue).await,
+            "scanning must not release the Task execution claim"
+        );
+        scheduler.release_execution_for_test(&task, &queue).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn batch_scan_rechecks_task_cancellation_before_candidate_admission() {
+        let dir = tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let task = format!("scan-stop-{}", uuid::Uuid::new_v4());
+        let scheduler = crate::task_scheduler::get_task_scheduler();
+        let queue = scheduler.claim_execution_for_test(&task).await.unwrap();
+        let app = tauri::test::mock_app();
+        let manager = crate::sidecar::create_sidecar_manager();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        set_scan(
+            workspace,
+            Box::new(move |_, _, summary| {
+                summary.checked_sessions = 1;
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                vec![SessionCandidate {
+                    id: "must-never-look-up-this-session".to_string(),
+                }]
+            }),
+        );
+        let config = base_config();
+        let (summary, ()) = tokio::join!(
+            run_batch(
+                app.handle(),
+                "scan-agent",
+                workspace,
+                &config,
+                &manager,
+                &task,
+                &queue
+            ),
+            async {
+                started_rx.await.unwrap();
+                scheduler.release_execution_for_test(&task, &queue).await;
+                release_tx.send(()).unwrap();
+            }
+        );
+        assert_eq!(summary.checked_sessions, 1);
+        assert_eq!(
+            summary.eligible_sessions, 0,
+            "canceled scan results must not enter the admission loop"
+        );
+        assert_eq!(summary.updated, 0);
+        assert!(!scheduler.authorize_dispatch(&task, &queue).await);
+        assert!(WorkspaceInflightGuard::acquire(workspace).await.is_some());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn batch_scan_failure_releases_workspace_but_preserves_execution_claim() {
+        let dir = tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let task = format!("scan-panic-{}", uuid::Uuid::new_v4());
+        let scheduler = crate::task_scheduler::get_task_scheduler();
+        let queue = scheduler.claim_execution_for_test(&task).await.unwrap();
+        let app = tauri::test::mock_app();
+        let manager = crate::sidecar::create_sidecar_manager();
+        set_scan(
+            workspace,
+            Box::new(|_, _, _| panic!("isolated candidate scanner failed")),
+        );
+        let summary = run_batch(
+            app.handle(),
+            "scan-agent",
+            workspace,
+            &base_config(),
+            &manager,
+            &task,
+            &queue,
+        )
+        .await;
+        assert_eq!(summary.failed, 1);
+        assert_eq!(summary.updated, 0);
+        assert!(scheduler.authorize_dispatch(&task, &queue).await);
+        assert!(WorkspaceInflightGuard::acquire(workspace).await.is_some());
+        scheduler.release_execution_for_test(&task, &queue).await;
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn batch_scan_outlives_dropped_handler_without_reopening_workspace_or_claim() {
+        let dir = tempfile::tempdir_in(std::env::current_dir().unwrap()).unwrap();
+        let workspace = dir.path().to_str().unwrap();
+        let task = format!("scan-drop-{}", uuid::Uuid::new_v4());
+        let scheduler = crate::task_scheduler::get_task_scheduler();
+        let queue = scheduler.claim_execution_for_test(&task).await.unwrap();
+        let app = tauri::test::mock_app();
+        let manager = crate::sidecar::create_sidecar_manager();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        set_scan(
+            workspace,
+            Box::new(move |_, _, _| {
+                started_tx.send(()).unwrap();
+                release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
+                vec![]
+            }),
+        );
+        let config = base_config();
+        let mut batch = Box::pin(run_batch(
+            app.handle(),
+            "scan-agent",
+            workspace,
+            &config,
+            &manager,
+            &task,
+            &queue,
+        ));
+        tokio::select! {
+            result = &mut batch => panic!("scan completed before release: {}", result.failed),
+            started = started_rx => started.unwrap(),
+        }
+        drop(batch);
+        // Never let a broken exclusion gate read real user history in this test.
+        set_scan(workspace, Box::new(|_, _, _| vec![]));
+        let duplicate = run_batch(
+            app.handle(),
+            "scan-agent",
+            workspace,
+            &config,
+            &manager,
+            &task,
+            &queue,
+        )
+        .await;
+        assert_eq!(duplicate.skipped_duplicate, 1);
+        assert!(scheduler.authorize_dispatch(&task, &queue).await);
+        release_tx.send(()).unwrap();
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(guard) = WorkspaceInflightGuard::acquire(workspace).await {
+                    guard.release().await;
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("finished detached scan must release workspace exclusion");
+        drop(take_scan(workspace));
+        assert!(
+            scheduler.authorize_dispatch(&task, &queue).await,
+            "scan cleanup must leave finalization to the original Task owner"
+        );
+        scheduler.release_execution_for_test(&task, &queue).await;
+    }
 
     fn runtime_agent(
         id: &str,
