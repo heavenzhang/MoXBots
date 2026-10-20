@@ -1,3 +1,4 @@
+import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 
 import {
   BrainIcon,
@@ -81,6 +82,7 @@ const ProcessRow = memo(function ProcessRow({
     const toast = useToastOptional();
     const { t } = useTranslation('chat');
     const notifyRowLayoutChanged = useNotifyRowLayoutChanged();
+    const remoteContent = useRemoteConversationContent();
 
     useEffect(() => () => { if (copyTimerRef.current) clearTimeout(copyTimerRef.current); }, []);
 
@@ -89,8 +91,8 @@ const ProcessRow = memo(function ProcessRow({
     const isServerTool = block.type === 'server_tool_use';
     const outcome = getProcessOutcome(block, isStreaming);
     const providerOutcome = isServerTool ? outcome : undefined;
-    const isTaskTool = isTool && !isServerTool && !!block.tool?.name && isSubagentContainerTool(block.tool.name);
-    const isFilePatchTool = isTool
+    const isTaskTool = !remoteContent && block.tool?.presentation?.kind !== 'text' && isTool && !isServerTool && !!block.tool?.name && isSubagentContainerTool(block.tool.name);
+    const isFilePatchTool = !remoteContent && block.tool?.presentation?.kind !== 'text' && isTool
         && !isServerTool
         && (block.tool?.name === 'Edit' || block.tool?.name === 'Write'
             || block.tool?.name === 'edit' || block.tool?.name === 'write');
@@ -209,8 +211,8 @@ const ProcessRow = memo(function ProcessRow({
     // only artifact attachments). Memoized: attachments identity changes only
     // when the tool state object is replaced by an SSE update.
     const processAttachments = useMemo(
-        () => (isTool ? (block.tool?.attachments ?? []).filter((a) => a.presentation === 'process') : []),
-        [isTool, block.tool?.attachments],
+        () => (!remoteContent && isTool ? (block.tool?.attachments ?? []).filter((a) => a.presentation === 'process') : []),
+        [remoteContent, isTool, block.tool?.attachments],
     );
 
     // In result-first mode, input JSON alone does not make a useful result

@@ -3,9 +3,10 @@ import type { UpstreamConfig } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
-import { modelStreamEventType } from './utils/model-stream-event';
+import { parseModelStreamEvent, hasModelStreamProgress } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
+import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
@@ -48,6 +49,8 @@ export class ModelFailoverController implements BridgeModelFailover {
     /** A known uncertain tool outcome or recovery fence prohibits inference replay. */
     canRetry?: () => boolean;
     retryDelaysMs?: readonly [number, number, number];
+    /** Active read-idle bound; does not replenish the existing retry/replay authority. */
+    bodyIdleTimeoutMs?: number;
     recovery?: InferenceRecoveryHooks;
   }) {}
 
@@ -262,6 +265,7 @@ export class ModelFailoverController implements BridgeModelFailover {
         return response;
       }
       const reader = response.body.getReader();
+      const bodyReader = new ModelBodyReader(reader, request.signal, live, this.options.bodyIdleTimeoutMs);
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') === true;
       const parser = new SSEParser();
       const decoder = new TextDecoder();
@@ -273,7 +277,7 @@ export class ModelFailoverController implements BridgeModelFailover {
         async pull(output) {
           try {
             if (!live()) throw new Error('Model request superseded or cancelled');
-            const next = await reader.read();
+            const next = await bodyReader.read();
             if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
@@ -285,8 +289,10 @@ export class ModelFailoverController implements BridgeModelFailover {
             }
             let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              const type = modelStreamEventType(event);
-              if (!type) continue;
+              const payload = parseModelStreamEvent(event);
+              if (!payload) continue;
+              const { type } = payload;
+              if (hasModelStreamProgress(payload)) bodyReader.markProgress();
               if (type === 'error') {
                 if (!terminal) await interruptRecovery('Model stream delivered an error event', () => consumerCancelled);
                 else await blockRecovery('Model stream delivered an error after its terminal');
@@ -301,7 +307,7 @@ export class ModelFailoverController implements BridgeModelFailover {
               if (type === 'message_stop') { terminal = true; break; }
             }
             if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
-            if (!isSse) output.enqueue(next.value);
+            if (!isSse) { if (next.value.byteLength) bodyReader.markProgress(); output.enqueue(next.value); }
             else if (frames) output.enqueue(encoder.encode(frames));
             // Protocol termination counts as delivered only after the terminal
             // bytes enter the downstream queue. Durable cleanup may then await
@@ -316,7 +322,9 @@ export class ModelFailoverController implements BridgeModelFailover {
           } catch (error) {
             if (!terminalQueued || (recovery && !recoverySettled)) {
               try {
-                const reason = queryLive() ? 'Model response delivery failed' : 'Model response delivery was cancelled';
+                const reason = !queryLive() ? 'Model response delivery was cancelled'
+                  : error instanceof ModelBodyIdleTimeoutError ? 'Model response body idle timeout (upstream_body_idle_timeout)'
+                    : 'Model response delivery failed';
                 if (!terminal) await interruptRecovery(reason, () => consumerCancelled);
                 else await blockRecovery(reason);
               } catch { /* fail closed */ }

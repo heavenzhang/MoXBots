@@ -85,6 +85,29 @@ result container without local workspace/file actions. This projection fix
 requires an updated target; an older target may still send clipped JSON. No raw
 tool input, protocol extension, runtime or approval authority is added.
 
+The renderer shares the normal conversation pipeline: `RemoteConversation` projects
+immutable remote messages into `MessageList → Message → BlockGroup → ProcessRow →
+ToolUse`; `useChatScrollModel` and `useChatScrollController` own the same geometry,
+virtualization and reading/follow intent for both views. A successful fresh history
+prepend captures its anchor immediately before the data commit. The shared
+`preserveAnchorAfterPrepend` maintains that anchor across later row measurements,
+then releases it on user scrolling/navigation, disclosure, session change, deleted
+anchor or presentation suspension. Empty/duplicate remote pages advance the
+cursor without registering a false prepend. Session/generation keys isolate
+remote geometry. Unchanged parsed snapshot rows retain identity so polling keeps
+user disclosure state.
+
+`ConversationContentContext` marks remote observation content throughout the
+shared renderer. Canonical tool summaries bypass local file/result/protocol parsers;
+local file galleries, widgets, export, retry/fork/rewind and local interaction cards
+are unavailable. Permission/plan/question replies stay with the existing remote
+interaction/receipt owner. Missing timestamps stay unknown. The shared
+`ComposerSurface` primitives, autosize hook and shortcut/IME handler serve the normal
+`SimpleChatInput` and remote text-only composer; remote drafts clear only after the
+remote operation receipt is accepted. The text-only adapter does not initialize a
+local Provider, workspace file service or Session runtime. Transport-specific
+status/history and interaction slots do not confer local Session authority.
+
 Remote Markdown disables local files, attachment/image loads and active preview
 actions. Latest history lists replace their baseline; explicitly loaded older
 list pages are marked cached and are cleared by manual refresh.

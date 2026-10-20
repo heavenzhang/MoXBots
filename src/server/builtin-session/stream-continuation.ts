@@ -53,7 +53,7 @@ export class SameTurnStreamContinuation {
       || this.now() >= state.deadlineAt) return false;
     const permit = { rootId, recoveryId: state.id, marker: `mox-stream-continuation:${randomUUID()}` };
     this.pending = permit;
-    this.timer = setTimeout(() => {
+    const resumeWhenDue = () => {
       this.timer = undefined;
       const current = this.options.recovery.readState();
       if (this.pending !== permit || !this.options.isLive() || this.options.rootId() !== rootId
@@ -65,11 +65,20 @@ export class SameTurnStreamContinuation {
         else this.stop('stopped');
         return;
       }
+      // Node timer elapsed time is not the durable wall clock. An early tick
+      // must retain the permit instead of waking an input which acceptsInput
+      // will correctly reject as not due (and then leave the turn waiting).
+      const remaining = current.nextRetryAt - this.now();
+      if (remaining > 0) {
+        this.timer = setTimeout(resumeWhenDue, remaining);
+        return;
+      }
       const reminder = `<system-reminder>${permit.marker}\nThe model response was interrupted. Continue the existing unfinished task from its native conversation and confirmed tool results. Do not restart the original user request. Do not repeat completed writes, sends, submissions or deployments. Verify uncertain outcomes read-only; if they cannot be verified, stop and explain. Preserve the user's goal and constraints.</system-reminder>`;
       if (!this.options.enqueue(permit, reminder)) {
         this.fail('storage_failed', rootId);
       }
-    }, Math.max(0, state.nextRetryAt - this.now()));
+    };
+    this.timer = setTimeout(resumeWhenDue, Math.max(0, state.nextRetryAt - this.now()));
     return true;
   }
 

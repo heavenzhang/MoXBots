@@ -355,6 +355,8 @@ export function ExpandableContainer({
  */
 interface ExpandableResultProps {
   content: string;
+  /** Already decoded observation text; JSON document fields are not SDK wrappers. */
+  canonicalText?: boolean;
   className?: string;
   /** Additional wrapper className (e.g. for terminal-style bg) */
   wrapperClassName?: string;
@@ -363,12 +365,12 @@ interface ExpandableResultProps {
   fade?: ExpandFade;
 }
 
-export function ExpandableResult({ content: rawContent, className = '', wrapperClassName = '', fade = 'paper-inset' }: ExpandableResultProps) {
+export function ExpandableResult({ content: rawContent, className = '', wrapperClassName = '', fade = 'paper-inset', canonicalText = false }: ExpandableResultProps) {
   // Auto-unwrap SDK JSON wrappers so all tools display clean text
-  const content = unwrapSdkResult(rawContent);
+  const content = canonicalText ? rawContent : unwrapSdkResult(rawContent);
   return (
     <ExpandableContainer wrapperClassName={wrapperClassName} fade={fade}>
-      <pre className={`overflow-x-auto font-mono text-sm whitespace-pre-wrap select-text ${className}`}>
+      <pre className={`overflow-x-auto font-mono text-sm whitespace-pre-wrap [overflow-wrap:anywhere] select-text ${className}`}>
         {content}
       </pre>
     </ExpandableContainer>

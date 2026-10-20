@@ -1,9 +1,10 @@
 import { remoteAccountState } from "./accountFence";
-import { useEffectEvent, useEffect, useRef, useState } from "react";
+import { useEffectEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import Markdown from "@/components/Markdown";
-import { PlusIcon, RefreshIcon, SendIcon, StopIcon } from "@/components/icons";
-import { isImeComposingEvent } from "@/utils/imeKeyboard";
+import { PlusIcon, RefreshIcon, StopIcon } from "@/components/icons";
+import { TextChatComposer } from "@/components/chat-input/TextChatComposer";
+import { RemoteConversation } from "./RemoteConversation";
+import { reconcileRemoteMessages } from "./transcriptPresentation";
 import { useAgentNetworkRegistry } from "@/features/agent-network/store";
 import {
   remoteAccountMatches,
@@ -27,10 +28,9 @@ import {
   type PendingRemoteOperation,
   type KnownRemoteOperation,
 } from "./drafts";
-import { CollapsibleTool } from "@/components/tools/CollapsibleTool";
-import { ExpandableContainer } from "@/components/tools/utils";
-import { getToolBadgeConfig } from "@/components/tools/toolBadgeConfig";
 import type { RemoteSessionBinding, RemoteSessionTab } from "./tabContract";
+import { useUpdateEditorAdmission } from "@/hooks/useUpdateEditorAdmission";
+import { isComposerUpdateCheckpointLocked } from "@/utils/composerUpdateCheckpoint";
 
 const buttonShape =
   "rounded-lg px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -120,6 +120,14 @@ function RemoteSessionContent({
   pendingRef.current = pending;
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
+  const editorRoot = useRef<HTMLDivElement>(null);
+  const editorInput = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  useUpdateEditorAdmission(
+    "remote-session", editorRoot, editorInput,
+    () => composing.current || !!readRemoteDraft(tab) || !!readRemoteOperation(tab),
+    "远程会话仍有未完成的输入或请求，请完成输入并检查回执后再更新；当前内容已保留。",
+  );
   const [error, setError] = useState<string | null>(null);
   const mutationError = useRef<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -224,8 +232,15 @@ function RemoteSessionContent({
       setBefore(next.nextBefore);
       setHasOlder(next.hasMoreBefore);
     }
-    snapshotRef.current = next;
-    setSnapshot(next);
+    const stable = {
+      ...next,
+      messages: reconcileRemoteMessages(next.messages, [
+        ...olderRef.current,
+        ...(previous?.messages ?? []),
+      ]),
+    };
+    snapshotRef.current = stable;
+    setSnapshot(stable);
   }
   const synchronize = useEffectEvent(async (cancelled: () => boolean) => {
     if (polling.current || busyRef.current) return;
@@ -301,7 +316,7 @@ function RemoteSessionContent({
     };
   }, [isActive, online, tab.agentId, tab.sessionId, refresh]);
   async function mutate(operation: RemoteMutationRequest) {
-    if (busyRef.current || pendingRef.current || !online || !capable) return;
+    if (isComposerUpdateCheckpointLocked() || busyRef.current || pendingRef.current || !online || !capable) return;
     const tracked: KnownRemoteOperation = {
       kind: operation.kind,
       operationId: operation.operationId,
@@ -335,7 +350,7 @@ function RemoteSessionContent({
       if (alive()) setBusy(false);
     }
   }
-  async function loadOlder() {
+  async function loadOlder(beforePrepend: () => void) {
     if (!snapshot || !before || busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -357,10 +372,19 @@ function RemoteSessionContent({
       )
         return;
       const data = response.data;
-      setOlder((previous) => [
-        ...data.messages,
-        ...previous.filter((m) => !data.messages.some((n) => n.id === m.id)),
+      const known = new Set([
+        ...olderRef.current.map((message) => message.id),
+        ...(snapshotRef.current?.messages.map((message) => message.id) ?? []),
       ]);
+      const fresh = data.messages.filter((message) => {
+        if (known.has(message.id)) return false;
+        known.add(message.id);
+        return true;
+      });
+      if (fresh.length > 0) {
+        beforePrepend();
+        setOlder((previous) => [...fresh, ...previous]);
+      }
       setBefore(data.nextBefore);
       setHasOlder(data.hasMoreBefore);
     } catch (failure) {
@@ -415,20 +439,25 @@ function RemoteSessionContent({
       : loading
         ? "loading"
         : (snapshot?.terminal ?? snapshot?.state ?? "draft");
-  const messages = [
-    ...older.filter((m) => !snapshot?.messages.some((n) => n.id === m.id)),
-    ...(snapshot?.messages ?? []),
-  ];
-  const errorKey = error === "HOST_MANAGEMENT_TARGET_BUSY"
-    ? "channelBusy"
-    : error === "HOST_MANAGEMENT_BUSY"
-      ? "requestBusy"
-      : error?.includes("BUSY")
-        ? "busy"
-        : error?.includes("UNSUPPORTED") || error?.includes("METHOD")
-          ? "unsupported"
-          : "failed";
+  const messages = useMemo(
+    () => [
+      ...older.filter((m) => !snapshot?.messages.some((n) => n.id === m.id)),
+      ...(snapshot?.messages ?? []),
+    ],
+    [older, snapshot?.messages],
+  );
+  const errorKey =
+    error === "HOST_MANAGEMENT_TARGET_BUSY"
+      ? "channelBusy"
+      : error === "HOST_MANAGEMENT_BUSY"
+        ? "requestBusy"
+        : error?.includes("BUSY")
+          ? "busy"
+          : error?.includes("UNSUPPORTED") || error?.includes("METHOD")
+            ? "unsupported"
+            : "failed";
   const open = (sessionId?: string, title = tab.agentName) => {
+    if (isComposerUpdateCheckpointLocked()) return;
     if (scopeRef.current)
       binding.onOpen({
         title,
@@ -465,13 +494,19 @@ function RemoteSessionContent({
         !list?.items.some((latest) => latest.sessionId === item.sessionId),
     ) ?? [];
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
+    <div ref={editorRoot}
+      onCompositionStartCapture={() => { composing.current = true; }}
+      onCompositionEndCapture={() => { composing.current = false; }}
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)] text-[var(--ink)]">
       <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--line-subtle)] px-4 py-3 sm:px-6">
         <div className="min-w-0 basis-full sm:basis-0 flex-1">
           <h1 className="truncate text-lg font-semibold">
             {snapshot?.title || tab.agentName}
           </h1>
-          <p className="truncate text-xs text-[var(--ink-muted)]" title={`${locator.deviceId} / ${tab.agentId}${tab.sessionId ? ` / ${tab.sessionId}` : ""}`}>
+          <p
+            className="truncate text-xs text-[var(--ink-muted)]"
+            title={`${locator.deviceId} / ${tab.agentId}${tab.sessionId ? ` / ${tab.sessionId}` : ""}`}
+          >
             {t("remoteSession.remote")} · {tab.deviceName} · {tab.agentName}
           </p>
         </div>
@@ -522,239 +557,172 @@ function RemoteSessionContent({
             </button>
           )}
       </header>
-      <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto w-full min-w-0 max-w-3xl space-y-3">
-          {error && (
-            <p
-              className="rounded-lg bg-[var(--error-bg)] p-3 text-sm text-[var(--error)]"
-              role="alert"
-            >
-              {t(`remoteSession.${errorKey}`)}{" "}
-              <span className="font-mono text-xs">{error}</span>
-            </p>
-          )}
-          {pending && (
-            <div
-              className="rounded-lg bg-[var(--warning-bg)] p-3 text-sm text-[var(--ink-secondary)]"
-              role="status"
-            >
-              <p>
-                {t(
-                  pending.status === "unknown"
-                    ? "remoteSession.operationUnknown"
-                    : pending.status === "processing"
-                      ? "remoteSession.processing"
-                      : "remoteSession.unconfirmed",
-                )}
-              </p>
-              <p className="mt-1 font-mono text-xs">{pending.operationId}</p>
-              <button
-                type="button"
-                className={button}
-                disabled={busy || !online || pending.kind === "unknown"}
-                onClick={() => setRefresh((v) => v + 1)}
+      {(error || pending || loading) && (
+        <div
+          className="shrink-0 overflow-y-auto px-3"
+          style={{ maxHeight: "30vh" }}
+        >
+          <div className="mx-auto max-w-3xl space-y-2 py-2" aria-live="polite">
+            {error && (
+              <p
+                className="rounded-lg bg-[var(--error-bg)] p-3 text-sm text-[var(--error)]"
+                role="alert"
               >
-                {t("remoteSession.checkReceipt")}
-              </button>
-            </div>
-          )}
-          {loading && (
-            <p aria-busy="true" className="text-sm text-[var(--ink-muted)]">
-              {t("remoteSession.states.loading")}
-            </p>
-          )}
-          {!tab.sessionId && (
-            <section aria-label={t("remoteSession.history")}>
-              <h2 className="mb-3 text-sm font-semibold text-[var(--ink-muted)]">
-                {t("remoteSession.history")}
-              </h2>
-              {!loading && list?.items.length === 0 && (
-                <p className="py-5 text-sm text-[var(--ink-muted)]">
-                  {t("remoteSession.empty")}
+                {t(`remoteSession.${errorKey}`)}{" "}
+                <span className="font-mono text-xs">{error}</span>
+              </p>
+            )}
+            {pending && (
+              <div
+                className="rounded-lg bg-[var(--warning-bg)] p-3 text-sm text-[var(--ink-secondary)]"
+                role="status"
+              >
+                <p>
+                  {t(
+                    pending.status === "unknown"
+                      ? "remoteSession.operationUnknown"
+                      : pending.status === "processing"
+                        ? "remoteSession.processing"
+                        : "remoteSession.unconfirmed",
+                  )}
                 </p>
-              )}
-              <ul>{list?.items.map(sessionRow)}</ul>
-              {cachedSessions.length > 0 && (
-                <>
-                  <p className="mt-4 text-xs text-[var(--ink-muted)]">
-                    {t("remoteSession.cachedHistory")}
-                  </p>
-                  <ul aria-label={t("remoteSession.cachedHistory")}>
-                    {cachedSessions.map(sessionRow)}
-                  </ul>
-                </>
-              )}
-              {(listTail ?? list)?.hasMore && (
+                <p className="mt-1 font-mono text-xs">{pending.operationId}</p>
                 <button
                   type="button"
                   className={button}
-                  disabled={busy || !online}
-                  onClick={() => void moreSessions()}
+                  disabled={busy || !online || pending.kind === "unknown"}
+                  onClick={() => setRefresh((v) => v + 1)}
                 >
-                  {t("remoteSession.moreSessions")}
+                  {t("remoteSession.checkReceipt")}
                 </button>
-              )}
-            </section>
-          )}
-          {hasOlder && (
-            <button
-              type="button"
-              className={button}
-              disabled={busy || !online}
-              onClick={() => void loadOlder()}
-            >
-              {t("remoteSession.older")}
-            </button>
-          )}
-          {messages.map((message) => (
-            <article
-              key={message.id}
-              className={
-                message.role === "user"
-                  ? "ml-auto min-w-0 max-w-[90%] [overflow-wrap:anywhere] rounded-xl bg-[var(--message-user-bg)] px-4 py-3"
-                  : "min-w-0 [overflow-wrap:anywhere]"
-              }
-            >
-              <Markdown
-                workspacePath={null}
-                remoteContent
-                preserveNewlines={message.role === "user"}
-                allowSetextHeadings={message.role !== "user"}
-              >
-                {message.content}
-              </Markdown>
-              {message.truncated && (
-                <p className="mt-2 text-xs text-[var(--ink-muted)]">
-                  {t("remoteSession.truncated")}
-                </p>
-              )}
-              {message.tools.map((tool) => (
-                <RemoteTool key={tool.id} tool={tool} />
-              ))}
-            </article>
-          ))}
-          {snapshot?.interactions.map((interaction) => (
-            <InteractionCard
-              key={`${interaction.generation}:${interaction.turnId}:${interaction.requestId}`}
-              interaction={interaction}
-              disabled={
-                disabled ||
-                interaction.generation !== snapshot.generation ||
-                interaction.turnId !== snapshot.turnId
-              }
-              onRespond={(approved, answers) =>
-                void mutate({
-                  kind: "respond",
-                  agentId: tab.agentId,
-                  sessionId: snapshot.sessionId,
-                  generation: interaction.generation,
-                  turnId: interaction.turnId,
-                  requestId: interaction.requestId,
-                  interaction: interaction.interaction,
-                  approved,
-                  answers,
-                  operationId: crypto.randomUUID(),
-                })
-              }
-            />
-          ))}
-        </div>
-      </div>
-      <form
-        className="min-w-0 shrink-0 px-4 pb-4 pt-2 sm:px-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const text = draft.trim();
-          if (!disabled && text)
-            void mutate(
-              tab.sessionId
-                ? {
-                    kind: "send",
-                    agentId: tab.agentId,
-                    sessionId: tab.sessionId,
-                    operationId: crypto.randomUUID(),
-                    text,
-                  }
-                : {
-                    kind: "start",
-                    agentId: tab.agentId,
-                    operationId: crypto.randomUUID(),
-                    text,
-                  },
-            );
-        }}
-      >
-        <div className="mx-auto w-full min-w-0 max-w-3xl rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-3">
-          <label className="sr-only" htmlFor={`remote-composer-${tab.id}`}>
-            {t("remoteSession.message")}
-          </label>
-          <textarea
-            id={`remote-composer-${tab.id}`}
-            value={draft}
-            rows={3}
-            wrap="soft"
-            maxLength={8000}
-            disabled={disabled}
-            className="block max-h-48 min-h-20 w-full min-w-0 max-w-full resize-y overflow-x-hidden whitespace-pre-wrap [overflow-wrap:anywhere] bg-transparent text-base text-[var(--ink)] outline-none placeholder:text-[var(--ink-subtle)]"
-            placeholder={t("remoteSession.placeholder")}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              writeRemoteDraft(tab, event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (isImeComposingEvent(event)) return;
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          <div className="flex min-w-0 items-end justify-between gap-3">
-            <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-xs text-[var(--ink-muted)]">
-              {t("remoteSession.snapshotHint")}
-              {snapshot?.runtime ? ` · ${snapshot.runtime}` : ""}
-              {snapshot?.model ? ` · ${snapshot.model}` : ""}
-            </span>
-            <button
-              type="submit"
-              className={`${primary} shrink-0`}
-              disabled={disabled || !draft.trim()}
-            >
-              <SendIcon className="mr-1 inline h-4 w-4" />
-              {t("remoteSession.send")}
-            </button>
+              </div>
+            )}
+            {loading && (
+              <p aria-busy="true" className="text-sm text-[var(--ink-muted)]">
+                {t("remoteSession.states.loading")}
+              </p>
+            )}
           </div>
         </div>
-        <p className="mx-auto mt-2 max-w-3xl text-xs text-[var(--ink-subtle)]">
-          {t("remoteSession.closeHint")}
-        </p>
-      </form>
-    </div>
-  );
-}
-
-/** Remote results remain text-only: never resolve target paths in the local workspace. */
-function RemoteTool({ tool }: { tool: RemoteMessage["tools"][number] }) {
-  const { t } = useTranslation("app");
-  const config = getToolBadgeConfig(tool.name);
-  return (
-    <div className="min-w-0 py-1">
-      <CollapsibleTool
-        collapsedContent={
-          <span className="flex min-w-0 items-center gap-2 text-sm">
-            <span className="size-4 shrink-0" aria-hidden="true">{config.icon}</span>
-            <span className="min-w-0 truncate">{tool.name}</span>{" "}
-            <span className={`shrink-0 text-xs ${tool.status === "error" ? "text-[var(--error)]" : tool.status === "running" ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
-              {t(`remoteSession.toolStates.${tool.status}`)}
-            </span>
-          </span>
+      )}
+      <RemoteConversation
+        source={messages}
+        sessionKey={`remote:${tab.id}:${snapshot?.sessionId ?? "draft"}:${snapshot?.generation ?? ""}`}
+        isActive={isActive}
+        hasOlder={hasOlder}
+        olderDisabled={busy || !online}
+        olderCount={messages.length - (snapshot?.messages.length ?? 0)}
+        onLoadOlder={loadOlder}
+        header={
+          <>
+            {!tab.sessionId && (
+              <section aria-label={t("remoteSession.history")}>
+                <h2 className="mb-3 text-sm font-semibold text-[var(--ink-muted)]">
+                  {t("remoteSession.history")}
+                </h2>
+                {!loading && list?.items.length === 0 && (
+                  <p className="py-5 text-sm text-[var(--ink-muted)]">
+                    {t("remoteSession.empty")}
+                  </p>
+                )}
+                <ul>{list?.items.map(sessionRow)}</ul>
+                {cachedSessions.length > 0 && (
+                  <>
+                    <p className="mt-4 text-xs text-[var(--ink-muted)]">
+                      {t("remoteSession.cachedHistory")}
+                    </p>
+                    <ul aria-label={t("remoteSession.cachedHistory")}>
+                      {cachedSessions.map(sessionRow)}
+                    </ul>
+                  </>
+                )}
+                {(listTail ?? list)?.hasMore && (
+                  <button
+                    type="button"
+                    className={button}
+                    disabled={busy || !online}
+                    onClick={() => void moreSessions()}
+                  >
+                    {t("remoteSession.moreSessions")}
+                  </button>
+                )}
+              </section>
+            )}
+          </>
         }
-        expandedContent={tool.summary.trim() ? (
-          <ExpandableContainer>
-            <pre className="whitespace-pre-wrap font-mono text-sm [overflow-wrap:anywhere] select-text text-[var(--ink-secondary)]">{tool.summary}</pre>
-          </ExpandableContainer>
-        ) : null}
+        footer={
+          <>
+            {" "}
+            {snapshot?.interactions.map((interaction) => (
+              <InteractionCard
+                key={`${interaction.generation}:${interaction.turnId}:${interaction.requestId}`}
+                interaction={interaction}
+                disabled={
+                  disabled ||
+                  interaction.generation !== snapshot.generation ||
+                  interaction.turnId !== snapshot.turnId
+                }
+                onRespond={(approved, answers) =>
+                  void mutate({
+                    kind: "respond",
+                    agentId: tab.agentId,
+                    sessionId: snapshot.sessionId,
+                    generation: interaction.generation,
+                    turnId: interaction.turnId,
+                    requestId: interaction.requestId,
+                    interaction: interaction.interaction,
+                    approved,
+                    answers,
+                    operationId: crypto.randomUUID(),
+                  })
+                }
+              />
+            ))}
+          </>
+        }
       />
+      <div className="min-w-0 shrink-0 px-3 pb-4 pt-2">
+        <div className="mx-auto w-full max-w-3xl">
+          <TextChatComposer
+            inputRef={editorInput}
+            id={`remote-composer-${tab.id}`}
+            value={draft}
+            disabled={disabled}
+            label={t("remoteSession.message")}
+            placeholder={t("remoteSession.placeholder")}
+            sendLabel={t("remoteSession.send")}
+            onChange={(value) => {
+              if (isComposerUpdateCheckpointLocked()) return;
+              setDraft(value);
+              writeRemoteDraft(tab, value);
+            }}
+            onSend={() => {
+              const text = draft.trim();
+              if (!disabled && text)
+                void mutate(
+                  tab.sessionId
+                    ? {
+                        kind: "send",
+                        agentId: tab.agentId,
+                        sessionId: tab.sessionId,
+                        operationId: crypto.randomUUID(),
+                        text,
+                      }
+                    : {
+                        kind: "start",
+                        agentId: tab.agentId,
+                        operationId: crypto.randomUUID(),
+                        text,
+                      },
+                );
+            }}
+            status={`${t("remoteSession.snapshotHint")}${snapshot?.runtime ? ` · ${snapshot.runtime}` : ""}${snapshot?.model ? ` · ${snapshot.model}` : ""}`}
+          />
+          <p className="mt-2 text-xs text-[var(--ink-subtle)]">
+            {t("remoteSession.closeHint")}
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -770,11 +738,29 @@ function InteractionCard({
 }) {
   const { t } = useTranslation("app");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const answersRef = useRef(answers);
+  const editorRoot = useRef<HTMLElement>(null);
+  const editorInput = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
+  useUpdateEditorAdmission(
+    "remote-question", editorRoot, editorInput,
+    () => composing.current || Object.values(answersRef.current).some(value => value.length > 0),
+    "远程会话中有尚未提交的回答，请提交或清除回答后再更新；回答已保留。",
+  );
+  const changeAnswers = (update: (previous: Record<string, string>) => Record<string, string>) => {
+    if (isComposerUpdateCheckpointLocked()) return;
+    const next = update(answersRef.current);
+    answersRef.current = next;
+    setAnswers(next);
+  };
   const complete = interaction.questions.every(
     (q) => !!answers[q.answerKey]?.trim(),
   );
   return (
     <section
+      ref={editorRoot}
+      onCompositionStart={() => { composing.current = true; }}
+      onCompositionEnd={() => { composing.current = false; }}
       className="min-w-0 [overflow-wrap:anywhere] rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-4"
       aria-label={t(`remoteSession.interactions.${interaction.interaction}`)}
     >
@@ -815,7 +801,7 @@ function InteractionCard({
                         : answers[q.answerKey] === option
                     }
                     onChange={(event) =>
-                      setAnswers((previous) => {
+                      changeAnswers((previous) => {
                         const values = (previous[q.answerKey] ?? "")
                           .split("\n")
                           .filter(Boolean);
@@ -841,7 +827,7 @@ function InteractionCard({
                 className="mt-2 w-full rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] p-2 text-sm outline-[var(--focus-border)]"
                 value={answers[q.answerKey] ?? ""}
                 onChange={(event) =>
-                  setAnswers((previous) => ({
+                  changeAnswers((previous) => ({
                     ...previous,
                     [q.answerKey]: event.target.value,
                   }))

@@ -1,3 +1,4 @@
+import { ComposerSurface, ComposerTextarea, ComposerToolbar, ComposerSendButton, useComposerAutoSize } from './ComposerSurface';
 import { APP_BUILD_PROFILE } from '@/../shared/appProfile';
 import { registerComposerUpdateOwner, restoreComposerUpdateDraft, type ComposerSnapshot } from '@/utils/composerUpdateCheckpoint';
 import { agentMentionToken, activeAgentSnapshots, type AgentMentionSnapshot, type QueryMentionContext } from '../../../shared/agentMentions';
@@ -328,6 +329,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   const canSendMessage = !sendBlocked && (isExternalRuntime || isCurrentProviderAvailable);
   const isInterruptibleRetry = systemStatus?.startsWith('api_retry:') === true
     || systemStatus?.startsWith('model_recovery:') === true;
+  const isInterruptibleSystemTask = isInterruptibleRetry || systemStatus === 'compacting';
   const canSendMessageRef = useRef(canSendMessage);
   canSendMessageRef.current = canSendMessage;
   const availableProviderIdSet = useMemo(
@@ -640,34 +642,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     // eslint-disable-next-line react-hooks/exhaustive-deps -- textareaRef is stable
   }, []);
 
-  // Auto-resize textarea based on content. Grows from `effectiveMinLines`
-  // up to `MAX_LINES`; past the ceiling the textarea scrolls internally.
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    // Bug #123: don't touch textarea.style during IME composition. Style
-    // recalculation while the IME holds marked text is the historical
-    // WebKit trigger for candidate-text duplication (macOS WebView +
-    // WeChat IME voice input). The post-compositionend handler will run
-    // resize once after commit.
-    if (isComposingRef.current) return;
-
-    // Skip when the textarea is in a `display:none` subtree (Launcher hides
-    // the inactive 对话/想法 mode this way). `scrollHeight` reads as 0 there
-    // and would clamp `style.height` to `minHeight`, then no later effect
-    // would re-fire on reveal — so the user would see the wrong height
-    // until the next keystroke. Leaving the previously-correct height
-    // untouched preserves it across the hidden interval.
-    if (textarea.offsetParent === null) return;
-
-    const minHeight = LINE_HEIGHT * effectiveMinLines;
-    const maxHeight = LINE_HEIGHT * MAX_LINES;
-    textarea.style.height = 'auto';
-    const scrollHeight = textarea.scrollHeight;
-    textarea.style.height = `${Math.max(minHeight, Math.min(scrollHeight, maxHeight))}px`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- textareaRef is stable
-  }, [inputValue, resizeBump]);
+  useComposerAutoSize(textareaRef, inputValue, effectiveMinLines, resizeBump, isComposingRef);
 
   // IME composition handlers (Bug #123). Set the ref BEFORE the auto-resize
   // effect can run for the in-progress composition, and bump `resizeBump`
@@ -1456,11 +1431,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
           />
         )}
 
-        <div className={`relative border border-[var(--line)] bg-[var(--paper-elevated)] shadow-md ${
-          hasStatusBar
-            ? 'rounded-b-2xl rounded-t-none border-t-0'  // StatusBar visible: no top rounded, no top border
-            : 'rounded-2xl'  // Normal: fully rounded
-        }`}>
+        <ComposerSurface joined={hasStatusBar}>
           {/* Clickable area for focus - covers input area but not toolbar */}
           <div
             className="cursor-text"
@@ -1511,7 +1482,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 {visibleSuggestion}
               </div>
             )}
-            <textarea
+            <ComposerTextarea
               ref={textareaRef}
               value={inputValue}
               // Bug #123: lock the textarea while the repetition-warning
@@ -1533,25 +1504,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   : t('input.placeholder')
               }
               rows={effectiveMinLines}
-              className="col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)]"
-              style={{
-                minHeight: `${LINE_HEIGHT * effectiveMinLines}px`,
-                maxHeight: `${LINE_HEIGHT * MAX_LINES}px`,
-                // Wrapped prose never scrolls sideways. WebView page zoom can
-                // leave a horizontal scrollbar when the implicit axis is auto.
-                overflowX: 'hidden',
-                overflowY: 'auto',
-                // The auto-resize effect imperatively writes `style.height`
-                // each keystroke; this transition smooths the visible
-                // growth/shrink. List both `height` and `min-height` so
-                // shrink animates symmetrically to grow (WebKit textareas
-                // can drop the transition on shrink when only `height` is
-                // listed).
-                transitionProperty: 'height, min-height',
-                transitionDuration: '220ms',
-                transitionTimingFunction: 'cubic-bezier(0.22, 1, 0.36, 1)',
-                willChange: 'height',
-              }}
+
             />
             </div>
             {visibleSuggestion && <div id={'next-prompt-hint-' + sessionId} className="pt-1 text-xs text-[var(--ink-muted)]">{t('input.nextPrompt.acceptHint')}<span className="sr-only">{visibleSuggestion}</span></div>}
@@ -1599,7 +1552,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
               In thought mode (PRD §4.2) the left-side action strip collapses so
               the input reads as a pure note-taking box; the right-side send
               button remains so users can commit the thought with a click. */}
-          <div className="toolbar-menus flex items-center px-3 pb-2 pt-1 flex-nowrap min-w-0" style={{ containerType: 'inline-size' }}>
+          <ComposerToolbar>
             {/* Left side - action buttons (hidden in thought mode). Uses
                 `ml-auto` on the right group instead of `justify-between` so
                 the send button stays right-aligned even when the left strip
@@ -2350,9 +2303,9 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
               {/* SDK retry and durable model-recovery waits are both abortable
                   through the existing Session/Goal Stop owner. Keep Stop visible
                   even when a restored wait has not yet set isLoading. Compaction
-                  and other genuinely uninterruptible system tasks stay disabled. */}
-              {systemStatus && !isInterruptibleRetry ? (
-                // System task running (e.g., compacting) - not interruptible
+                  uses the same exact Session Stop owner; other system tasks stay disabled. */}
+              {systemStatus && !isInterruptibleSystemTask ? (
+                // System task without an existing interruptible owner.
                 <button
                   type="button"
                   disabled
@@ -2371,7 +2324,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 >
                   <LoaderIcon className="h-4 w-4 animate-spin" />
                 </button>
-              ) : isLoading || isInterruptibleRetry ? (
+              ) : isLoading || isInterruptibleSystemTask ? (
                 // AI responding or either retry-wait status can be stopped.
                 // The `||` is double-coverage: in normal flow isLoading stays
                 // true throughout the retry loop (no message-complete fires
@@ -2387,21 +2340,18 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   <StopIcon className="h-4 w-4" />
                 </button>
               ) : (
-                <button
+                <ComposerSendButton
                   type="button"
                   onClick={handleSend}
                   disabled={!canSendMessage || (!inputValue.trim() && images.length === 0)}
-                  className="rounded-lg bg-[var(--button-primary-bg)] p-2 text-[var(--button-primary-text)] transition-colors hover:bg-[var(--button-primary-bg-hover)] disabled:bg-[var(--ink-muted)]/15 disabled:text-[var(--ink-muted)]/60"
                   title={!canSendMessage
                     ? (providerUnavailableMessage ?? t('input.providerUnavailableDefault'))
                     : `${t('input.send')} (${sendKeyHint(sendShortcut, isMac).shortcut})`}
-                >
-                  <SendIcon className="h-4 w-4" />
-                </button>
+                />
               )}
             </div>
-          </div>
-        </div>
+          </ComposerToolbar>
+        </ComposerSurface>
       </div>
     </div>
     {repetitionWarning && (

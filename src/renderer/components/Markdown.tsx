@@ -1,3 +1,4 @@
+import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 /**
  * Markdown - Enhanced Markdown renderer for AI chat
  * 
@@ -459,8 +460,10 @@ const MarkdownChunk = memo(function MarkdownChunk({ source, remarkPlugins, rehyp
   );
 });
 
-const Markdown = memo(function Markdown({ children, compact = false, preserveNewlines = false, allowSetextHeadings = true, raw = false, basePath = '', workspacePath, remoteContent = false, streaming = false, footnoteNumbers, citationSources }: MarkdownProps) {
+const Markdown = memo(function Markdown({ children, compact = false, preserveNewlines = false, allowSetextHeadings = true, raw = false, basePath = '', workspacePath, remoteContent: explicitRemoteContent = false, streaming = false, footnoteNumbers, citationSources }: MarkdownProps) {
   const { t } = useTranslation('app');
+  const inheritedRemoteContent = useRemoteConversationContent();
+  const remoteContent = explicitRemoteContent || inheritedRemoteContent;
   const citationUnavailable = t('markdown.citationUnavailable');
   // Skip preprocessing for raw mode (file preview) - preprocessing is for streaming chat messages.
   // In raw mode, convert YAML frontmatter to a fenced code block for proper rendering.

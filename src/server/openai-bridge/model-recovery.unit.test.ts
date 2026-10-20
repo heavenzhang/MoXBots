@@ -345,10 +345,12 @@ describe('durable recovery response completion', () => {
       { headers: { 'content-type': 'text/event-stream' } }), 'abort-before-terminal');
     const reader = response.body!.getReader();
     const reading = reader.read();
+    const cancelled = expect(reading).rejects.toThrow();
     abort.abort();
-    output.enqueue(new TextEncoder().encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'));
-    output.close();
-    await expect(reading).rejects.toThrow();
+    // Cancellation now releases a held read immediately. A late producer
+    // cannot queue its terminal into an already cancelled body.
+    expect(() => output.enqueue(new TextEncoder().encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'))).toThrow();
+    await cancelled;
     expect(recovery.complete).not.toHaveBeenCalled();
   });
 

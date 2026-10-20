@@ -3,17 +3,29 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ComposerSnapshot } from './composerUpdateCheckpoint';
 import type { Tab } from '@/types/tab';
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from '@/../shared/systemSkills';
+import type { RemoteSessionTab } from '@/features/remote-session/tabContract';
 const disk = vi.hoisted(() => ({ values: new Map<string, unknown>(), write: vi.fn(), read: vi.fn(), remove: vi.fn(), browser: false }));
 vi.mock('@tauri-apps/api/path', () => ({ join: async (...parts: string[]) => parts.join('/') }));
 vi.mock('@tauri-apps/plugin-fs', () => ({ exists: async (path: string) => disk.values.has(path), remove: disk.remove }));
 vi.mock('@/config/services/configStore', () => ({ getConfigDir: async () => '/synthetic/qa', safeWriteJson: disk.write, safeLoadJson: disk.read }));
 vi.mock('@/utils/browserMock', () => ({ isBrowserDevMode: () => disk.browser }));
 const tab = { id: 'tab-a', view: 'chat', agentDir: '/synthetic/workspace-a', sessionId: 'session-a', title: 'A' } as Tab;
+const remote: RemoteSessionTab = {
+  id: 'remote-tab', view: 'remote-session', title: 'Remote', agentId: 'agent', agentName: 'Agent', deviceName: 'Host', sessionId: 'remote-session',
+  locator: { connectionId: 'owned:test', principalId: 'p', networkId: 'n', deviceId: 'd', authGeneration: 1 },
+  targetScope: { serviceId: 'service', environment: 'test', principalId: 'p', networkId: 'n', deviceId: 'd', keyGeneration: 1 },
+};
 function snapshot(patch: Partial<ComposerSnapshot> = {}): ComposerSnapshot {
   return { scope: { tabId: tab.id, sessionId: 'session-a', workspacePath: '/synthetic/workspace-a', mode: 'chat' }, text: 'KEEP-AFTER-UPDATE', context: {}, imageCount: 0, pendingAttachments: false, composing: false, sending: false, stagedWorkflow: false, ...patch };
 }
 beforeEach(() => {
   vi.resetModules(); disk.values.clear(); disk.browser = false;
+  const operations = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => operations.get(key) ?? null,
+    setItem: (key: string, value: string) => { operations.set(key, value); },
+    removeItem: (key: string) => { operations.delete(key); },
+  });
   disk.write.mockReset().mockImplementation(async (path, value) => { disk.values.set(path, JSON.parse(JSON.stringify(value))); });
   disk.read.mockReset().mockImplementation(async path => disk.values.get(path) ?? null);
   disk.remove.mockReset().mockImplementation(async path => { disk.values.delete(path); });
@@ -44,19 +56,36 @@ describe('MoxBots composer update checkpoint', () => {
     state.pendingAttachments = false;
     expect(api.canEvictComposerTab(tab.id)).toBe(true);
   });
-  it('refuses unverified remote tabs before persistence and final install, retaining live drafts', async () => {
+  it('admits empty remote tabs and rejects newly unsaved remote input before final install', async () => {
     const { api, state, freeze } = await owner();
-    expect(() => api.assertUpdateTabsSafe([{ view: 'remote-session' }])).toThrow('尚未接入安全更新检查');
+    const remoteOwners = await import('@/features/remote-session/drafts');
+    expect(() => api.assertUpdateTabsSafe([remote])).not.toThrow();
     const lease = api.beginComposerUpdateCheckpoint(serializeTabs);
-    const remote = { id: 'remote-unverified', view: 'remote-session' } as Tab;
-    await expect(lease.persist([tab, remote], tab.id)).rejects.toThrow('远程会话');
-    expect(disk.write).not.toHaveBeenCalled();
-    await lease.persist([tab], tab.id);
-    expect(() => lease.verify([tab, remote], tab.id)).toThrow('远程会话');
+    await lease.persist([tab, remote], tab.id);
+    expect(() => lease.verify([tab, remote], tab.id)).not.toThrow();
+    remoteOwners.writeRemoteDraft(remote, 'UNSENT REMOTE INPUT');
+    expect(() => lease.verify([tab, remote], tab.id)).toThrow('未发送的草稿');
+    expect(remoteOwners.readRemoteDraft(remote)).toBe('UNSENT REMOTE INPUT');
     expect(api.isComposerUpdateCheckpointLocked()).toBe(true);
     await lease.abort(); lease.release();
     expect(api.isComposerUpdateCheckpointLocked()).toBe(false);
     expect(freeze).toHaveBeenLastCalledWith(false); expect(state.text).toBe('KEEP-AFTER-UPDATE');
+  });
+  it('checks deferred remote drafts and uncertain operations without requiring a mounted remote page', async () => {
+    const { api } = await owner({ text: '' });
+    const remoteOwners = await import('@/features/remote-session/drafts');
+    remoteOwners.writeRemoteDraft(remote, '  ');
+    expect(() => api.assertUpdateTabsSafe([remote])).toThrow('未发送的草稿');
+    const lease = api.beginComposerUpdateCheckpoint(serializeTabs);
+    await expect(lease.persist([remote], remote.id)).rejects.toThrow('未发送的草稿');
+    remoteOwners.writeRemoteDraft(remote, '');
+    remoteOwners.writeRemoteOperation(remote, { kind: 'send', operationId: '12345678-1234-4234-8234-123456789abc', status: 'unconfirmed' });
+    await expect(lease.persist([remote], remote.id)).rejects.toThrow('检查回执');
+    remoteOwners.writeRemoteOperation(remote, null);
+    await lease.persist([remote], remote.id);
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('storage unavailable'); } });
+    expect(() => lease.verify([remote], remote.id)).toThrow('检查回执');
+    lease.release();
   });
 
   it('awaits durable IO, restores exact scope and never consumes for another owner', async () => {

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createBridgeHandler } from './handler';
 import type { AnthropicRequest } from './types/anthropic';
+import { ModelFailoverController } from './model-failover';
 
 const requestBody: AnthropicRequest = {
   model: 'claude-sonnet-4-6',
@@ -150,5 +151,54 @@ describe('OpenAI bridge timeout ownership', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { message: 'late upstream failure' },
     });
+  });
+
+  it.each([
+    ['chat_completions', 'ping'], ['responses', 'ping'],
+    ['responses', 'empty text'], ['anthropic', 'empty text'],
+  ] as const)('releases a real %s connection with %s but no model progress', async (upstreamFormat, heartbeatKind) => {
+    let connections = 0;
+    let closed!: () => void;
+    const connectionClosed = new Promise<void>(resolve => { closed = resolve; });
+    server = createServer((req, res) => {
+      connections++;
+      req.resume();
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.flushHeaders();
+      const heartbeatFrame = heartbeatKind === 'ping' ? 'event: ping\ndata: {}\n\n'
+        : upstreamFormat === 'anthropic'
+          ? `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: '' } })}\n\n`
+          : `data: ${JSON.stringify({ type: 'response.output_text.delta', delta: '' })}\n\n`;
+      const heartbeat = setInterval(() => res.write(heartbeatFrame), 20);
+      res.on('close', () => { clearInterval(heartbeat); closed(); });
+    });
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('failed to bind test upstream');
+    let recoveryRequests = 0;
+    let completed = 0;
+    const modelFailover = new ModelFailoverController({
+      scope: () => 'original-native-turn', resolveBackup: () => undefined, onSwitch: () => {},
+      bodyIdleTimeoutMs: 100,
+      recovery: { wait: async () => undefined, complete: async () => { completed++; },
+        interrupted: async () => { recoveryRequests++; return true; } },
+    });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({
+      providerId: 'held-body-fixture', baseUrl: `http://127.0.0.1:${address.port}`,
+      apiKey: 'fixture-only', apiProtocol: upstreamFormat === 'anthropic' ? 'anthropic' : 'openai',
+      upstreamFormat: upstreamFormat === 'anthropic' ? undefined : upstreamFormat, modelFailover,
+    }) });
+    const response = await handler(new Request('http://127.0.0.1/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...requestBody, stream: true }),
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('automatic_replay_blocked');
+    expect(body).not.toContain('message_stop');
+    await connectionClosed;
+    expect(connections).toBe(1);
+    expect(recoveryRequests).toBe(1);
+    expect(completed).toBe(0);
   });
 });

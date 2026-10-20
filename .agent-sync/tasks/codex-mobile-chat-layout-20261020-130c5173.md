@@ -84,3 +84,10 @@ Internal test scheduling: human-authorized development iPhone may receive exact 
 - [ ] Original unavailable business target TARGET_RECEIPT_INVALID; controlled synthetic success is not business recovery. Full002 send/approval/files/voice/push retain separate gates; voice deferred.
 
 Only workflow/environment and these acceptance records change after07f; mobile/native artifact inputs remainabc-equivalent and must be checked against final main before promotion/tag.
+
+
+## Concurrent main integration — 2026-10-21
+
+While the original exact dac82661 ARM run39478430991 completed all nine required jobs successfully, desktop PR173 advanced main to a487b5d353780fef4b624b42dd01d7d0ad4958d3. Integrate that main normally and retain both task histories. The shared workflow keeps main's arm64/Xcode26 verification (ARM-only for the explicit Intel supplement), the full ordinary ARM gate and all lifecycle command bodies. Old run results are historical; the new combined head requires its own ordinary full CI. The extra Intel run for dac remains separately attributed, not a result for the new SHA.
+
+Artifact sourceabc822ce mobile, native Rust closure, Cargo manifests/locks, vendor input, toolchain and root dependency inputs are byte-identical to the combined candidate; desktop renderer/server source and desktop version changed outside the iPhone build. The signed installed build2 remains an internal candidate pending current-head CI/main/input proof; never re-stamp or rebuild different bytes under build2. No new device, original101 or daily-Mac operation. Full002 original business/attachment/approval/speech/push gates remain open.

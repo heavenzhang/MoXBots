@@ -606,6 +606,12 @@ jobs:
           test "$(xcrun --sdk iphoneos --show-sdk-version)" = 26.2
           test "$(xcrun --sdk iphonesimulator --show-sdk-version)" = 26.2
       - uses: actions/checkout@v4
+      - name: Verify arm64 host and Xcode 26 SDK
+        if: env.MACOS_EXPECTED_ARCH == 'arm64'
+        run: |
+          test "$(uname -m)" = arm64
+          xcodebuild -version
+          test "$(xcrun --sdk macosx --show-sdk-version | cut -d. -f1)" -ge 26
       - uses: actions/setup-node@v4
         with:
           node-version: 24

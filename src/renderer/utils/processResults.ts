@@ -8,7 +8,7 @@ type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /** Results are projections of existing events, never a second execution ledger. */
 export function processFilePaths(entry: ProcessEntry): string[] {
-  if (entry.outcome !== 'succeeded' || !entry.block.tool) return [];
+  if (entry.outcome !== 'succeeded' || !entry.block.tool || entry.block.tool.presentation?.kind === 'text') return [];
   let model;
   try { model = resolveFilePatchRenderModel(entry.block.tool); } catch { return []; }
   if (!model || model.summary.files > model.changes.length) return [];
@@ -38,6 +38,7 @@ export function processResultLabel(entry: ProcessEntry, t: Translate): string {
   if (entry.outcome === 'unknown') return t('process.result.unknown');
   if (entry.outcome === 'stopped') return t('process.result.stopped');
   if (entry.outcome === 'failed') return shortResult(tool?.result) ?? t('process.result.failed');
+  if (tool?.presentation?.kind === 'text') return shortResult(tool.result) ?? t(`process.result.${kind}`);
   const paths = processFilePaths(entry);
   if (paths.length === 1) return t('process.result.file', { target: baseName(paths[0]) });
   if (paths.length > 1) return t('process.result.files', { count: paths.length });
