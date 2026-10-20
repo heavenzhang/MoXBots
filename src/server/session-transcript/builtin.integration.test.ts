@@ -311,6 +311,192 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
+  it('keeps a delayed watchdog launcher from clearing the Stop fence', async () => {
+    const workspace = join(state.home, 'watchdog-delayed-launch');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    await store.updateSessionMetadata(metadata.id, { pendingContinueAfterAbort: true });
+    const setTimeoutOriginal = globalThis.setTimeout;
+    let launch: (() => void) | undefined;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation(((callback: (...args: unknown[]) => void, ms?: number, ...args: unknown[]) => {
+      if (ms === 0 && String(callback).includes('failed to start watchdog auto-resume session')) {
+        launch = () => callback(...args);
+        return setTimeoutOriginal(() => undefined, 0);
+      }
+      return setTimeoutOriginal(callback, ms, ...args);
+    }) as typeof setTimeout);
+    await agent.enqueueUserMessage('new business', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    expect(launch).toBeTypeOf('function');
+    await agent.interruptCurrentResponse();
+    const { lifecycleState } = await import('../builtin-session/lifecycle');
+    expect(lifecycleState.abortRequested).toBe(true);
+    launch!();
+    await new Promise(resolve => setTimeoutOriginal(resolve, 0));
+    expect(lifecycleState.abortRequested).toBe(true);
+    expect(state.query).not.toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(0);
+  });
+
+  it('does not dispatch a recursive watchdog reminder when Stop wins during persistence', async () => {
+    const workspace = join(state.home, 'watchdog-recursive-stop');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    await agent.enqueueUserMessage('initial business', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(agent.isTurnInFlight()).toBe(false));
+    await store.updateSessionMetadata(metadata.id, { pendingContinueAfterAbort: true });
+    const persistence = await import('../builtin-session/transcript-persistence');
+    const persist = persistence.scheduleTranscriptPersist;
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    let blocked = false;
+    vi.spyOn(persistence, 'scheduleTranscriptPersist').mockImplementation(async options => {
+      if (!blocked && agent.getMessages().some(message => typeof message.content === 'string'
+        && message.content.includes('previous turn was aborted by the inactivity watchdog'))) {
+        blocked = true;
+        await gate;
+      }
+      return persist(options);
+    });
+    const enqueue = agent.enqueueUserMessage('next business', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(blocked).toBe(true));
+    await agent.interruptCurrentResponse();
+    release();
+    await enqueue;
+    await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+    expect(state.sdkInputs.filter(input => JSON.stringify(input).includes('previous turn was aborted by the inactivity watchdog'))).toHaveLength(0);
+  });
+
+  it('times out repeated compacting status heartbeats without inventing recovery progress', async () => {
+    const workspace = join(state.home, 'watchdog-compaction-status');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let now = Date.now();
+    vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    state.protocolFrames = Array.from({ length: 22 }, () => ({ type: 'system', subtype: 'status', status: 'compacting' }));
+    state.beforeFrame.mockImplementation(async frame => {
+      if (frame.type !== 'system' || frame.subtype !== 'status') return;
+      now += 30_000;
+      const tick = intervals.mock.calls.find(call => call[1] === 30_000)?.[0] as () => Promise<void>;
+      await tick();
+    });
+    await agent.enqueueUserMessage('business awaiting compaction', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(state.events).toContainEqual(['chat:agent-error',
+      expect.objectContaining({ message: expect.stringContaining('响应超时') })]));
+    await vi.waitFor(() => expect(agent.isSessionActive()).toBe(false));
+    expect(state.sdkInputs).toHaveLength(1);
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).not.toBe(true);
+  });
+
+  it.each([
+    ['new business request', true],
+    ['<system-reminder><MEMORY_UPDATE>maintain memory</MEMORY_UPDATE></system-reminder>', false],
+    ['<system-reminder>The previous turn was aborted by the inactivity watchdog (10-minute timeout). Resume from existing context and complete the unfinished task.</system-reminder>', false],
+  ] as const)('renews watchdog recovery only for a new business input (%s)', async (input, renew) => {
+    const workspace = join(state.home, 'watchdog-new-business');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    await store.updateSessionMetadata(metadata.id, { pendingContinueAfterAbort: true });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    state.beforeResult.mockImplementation(async () => {
+      if (state.sdkInputs.length === 2) await gate;
+    });
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    const { InactivityWatchdog } = await import('../utils/inactivity-watchdog');
+    vi.spyOn(InactivityWatchdog.prototype, 'evaluateTick').mockReturnValue({ fire: true, suspendedMs: 0 });
+    await agent.enqueueUserMessage(input, [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledTimes(2));
+    expect(state.sdkInputs).toHaveLength(2);
+    const tick = intervals.mock.calls.find(call => call[1] === 30_000)?.[0] as () => Promise<void>;
+    await tick();
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).toBe(renew);
+    release();
+    if (renew) await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(3));
+    else await vi.waitFor(() => expect(agent.isSessionActive()).toBe(false));
+    await vi.waitFor(() => expect(agent.isTurnInFlight()).toBe(false));
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).toBe(false);
+  });
+
+  it.each(['user', 'update'] as const)('does not resume a watchdog-aborted turn when %s Stop wins during Query teardown', async mode => {
+    const warnings = vi.spyOn(console, 'warn');
+    const workspace = join(state.home, 'watchdog-stop');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    state.beforeResult.mockImplementation(() => gate);
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    const { InactivityWatchdog } = await import('../utils/inactivity-watchdog');
+    vi.spyOn(InactivityWatchdog.prototype, 'evaluateTick').mockReturnValue({ fire: true, suspendedMs: 0 });
+    await agent.enqueueUserMessage('finish existing business task', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+    const tick = intervals.mock.calls.find(call => call[1] === 30_000)?.[0] as () => Promise<void>;
+    await tick();
+    const stopping = mode === 'user' ? agent.interruptCurrentResponse() : agent.stopBuiltinSessionForUpdate();
+    release();
+    await stopping;
+    await vi.waitFor(() => expect(agent.isSessionActive()).toBe(false));
+    await vi.waitFor(() => expect(warnings).toHaveBeenCalledWith(expect.stringContaining('Watchdog auto-resume skipped')));
+    expect(state.sdkInputs).toHaveLength(1);
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).toBe(false);
+  });
+
+  it('keeps Stop authoritative while the watchdog pending flag write is returning', async () => {
+    const workspace = join(state.home, 'watchdog-stop-persist');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let releaseResult!: () => void;
+    let releaseFlag!: () => void;
+    const resultGate = new Promise<void>(resolve => { releaseResult = resolve; });
+    const flagGate = new Promise<void>(resolve => { releaseFlag = resolve; });
+    releaseWrite = () => { releaseResult(); releaseFlag(); };
+    state.beforeResult.mockImplementation(() => resultGate);
+    let flagWritten = false;
+    const update = store.updateSessionMetadata;
+    vi.spyOn(store, 'updateSessionMetadata').mockImplementation(async (...args) => {
+      const result = await update(...args);
+      if (args[1].pendingContinueAfterAbort === true) {
+        flagWritten = true;
+        await flagGate;
+      }
+      return result;
+    });
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    const { InactivityWatchdog } = await import('../utils/inactivity-watchdog');
+    vi.spyOn(InactivityWatchdog.prototype, 'evaluateTick').mockReturnValue({ fire: true, suspendedMs: 0 });
+    await agent.enqueueUserMessage('finish existing business task', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+    const tick = intervals.mock.calls.find(call => call[1] === 30_000)?.[0] as () => Promise<void>;
+    const firing = tick();
+    await vi.waitFor(() => expect(flagWritten).toBe(true));
+    const stopping = agent.interruptCurrentResponse();
+    releaseResult();
+    await stopping;
+    releaseFlag();
+    await firing;
+    await vi.waitFor(() => expect(agent.isTurnInFlight()).toBe(false));
+    expect(state.sdkInputs).toHaveLength(1);
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).toBe(false);
+  });
+
   it('settles a watchdog-aborted Goal exactly once and preserves progress without unowned replay', async () => {
     const workspace = join(state.home, 'watchdog-goal');
     await mkdir(workspace);

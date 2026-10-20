@@ -131,14 +131,15 @@ describe('SimpleChatInput send paths', () => {
     expect(onStop).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps compaction uninterruptible while recovery waits remain stoppable', async () => {
+  it.each([true, false])('keeps compaction Stop available on the original owner (loading=%s)', async isLoading => {
     await i18n.changeLanguage('zh-CN');
     const onStop = vi.fn();
-    renderInput({ isLoading: true, systemStatus: 'compacting', onStop });
-    const busy = screen.getByRole('button', { name: '正在执行系统任务，请稍等' });
-    expect(busy).toBeDisabled();
-    fireEvent.click(busy);
-    expect(onStop).not.toHaveBeenCalled();
+    renderInput({ isLoading, systemStatus: 'compacting', onStop, value: 'preserved draft' });
+    const stop = screen.getByRole('button', { name: '停止' });
+    expect(stop).toBeEnabled();
+    fireEvent.click(stop);
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('textbox')).toHaveValue('preserved draft');
   });
 
   it.each([true, false])('does not dispatch another Stop while recovery is already stopping (loading=%s)', async (isLoading) => {

@@ -212,6 +212,10 @@ Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代�
 
 Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 lease 与 SessionStore 持久 intent，暂停/停止沿原控制 owner，详见 [模型持久恢复](model_recovery.md)。它不会重放原任务或建立第二套 Goal 调度。
 
+普通 Session 的 watchdog reminder 每段业务输入最多自动注入一次；只有新的业务输入通过最终 admission 并即将交给 SDK 时，才更新这一次额度。维护、纯 system reminder、已有 owner 的自动轮次和 provider/stream retry 不更新，避免恢复轮次自己无限续命。Stop 同步撤销等待 teardown/写盘的 scheduled reminder，并清除持久的 `pendingContinueAfterAbort`；清除不能确认时返回安全错误，不能声称已完成持久停止。该旧 watchdog fallback 不授予动作重放权限，未知工具结果和 409 仍需原恢复门禁核对。
+
+SDK 的 `system/status`（包括周期性的 `compacting` / `requesting`）只证明运行时存活，保留状态展示，但不刷新 watchdog 进展时钟，也不能单独作为自动恢复的实质活动。实际 `compact_boundary`、文本和工具进展继续刷新既有 10 分钟活动预算；用户审批等待和原模型恢复等待仍由其现有 owner 暂停计时。
+
 ### 5.1 Goal
 
 Builtin watchdog 对 Goal turn 必须先通过原 terminal observer 结算再 abort；缺少完成证据时用既有 automatic_replay_blocked 保留进度并进入恢复暂停，不能另插无 Goal owner 的 Session 续接。前端暂停状态显示 durable 原因，被 turn_conflict 拒绝的可见输入必须明确反馈未执行。

@@ -1,5 +1,25 @@
+import { parseLeadingSystemReminder } from '../../shared/systemReminder';
+import { shouldRecordAdmissionActivity, type SessionActivityTurnFacts } from '../session-core/session-activity-policy';
+
 export const WATCHDOG_RESUME_REMINDER =
   '<system-reminder>The previous turn was aborted by the inactivity watchdog (10-minute timeout). Resume from existing context and complete the unfinished task.</system-reminder>';
+
+/** A repeated runtime status is liveness, not model/tool progress. */
+export function isWatchdogProgressEvent(message: { type: string; subtype?: string }): boolean {
+  return message.type !== 'system' || (message.subtype !== 'init' && message.subtype !== 'status');
+}
+
+/** A retry or maintenance turn cannot replenish its own recovery budget. */
+export function shouldRenewWatchdogAutoResume(input: {
+  facts: SessionActivityTurnFacts;
+  ownedTurn: boolean;
+  retry: boolean;
+}): boolean {
+  const reminder = parseLeadingSystemReminder(input.facts.inputText);
+  return !input.ownedTurn && !input.retry
+    && shouldRecordAdmissionActivity(input.facts)
+    && (!reminder.hasReminder || reminder.visibleText.trim().length > 0);
+}
 
 export interface WatchdogAutoResumePlanInput {
   turnHadSubstantiveActivity: boolean;

@@ -328,6 +328,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   const canSendMessage = !sendBlocked && (isExternalRuntime || isCurrentProviderAvailable);
   const isInterruptibleRetry = systemStatus?.startsWith('api_retry:') === true
     || systemStatus?.startsWith('model_recovery:') === true;
+  const isInterruptibleSystemTask = isInterruptibleRetry || systemStatus === 'compacting';
   const canSendMessageRef = useRef(canSendMessage);
   canSendMessageRef.current = canSendMessage;
   const availableProviderIdSet = useMemo(
@@ -2350,9 +2351,9 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
               {/* SDK retry and durable model-recovery waits are both abortable
                   through the existing Session/Goal Stop owner. Keep Stop visible
                   even when a restored wait has not yet set isLoading. Compaction
-                  and other genuinely uninterruptible system tasks stay disabled. */}
-              {systemStatus && !isInterruptibleRetry ? (
-                // System task running (e.g., compacting) - not interruptible
+                  uses the same exact Session Stop owner; other system tasks stay disabled. */}
+              {systemStatus && !isInterruptibleSystemTask ? (
+                // System task without an existing interruptible owner.
                 <button
                   type="button"
                   disabled
@@ -2371,7 +2372,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 >
                   <LoaderIcon className="h-4 w-4 animate-spin" />
                 </button>
-              ) : isLoading || isInterruptibleRetry ? (
+              ) : isLoading || isInterruptibleSystemTask ? (
                 // AI responding or either retry-wait status can be stopped.
                 // The `||` is double-coverage: in normal flow isLoading stays
                 // true throughout the retry loop (no message-complete fires
