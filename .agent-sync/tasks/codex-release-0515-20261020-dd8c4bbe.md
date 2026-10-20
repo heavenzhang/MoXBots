@@ -38,3 +38,9 @@ Combined015source and CI not yet complete. Current014source has a live normal co
 ## Next step
 
 Push synchronized015source and task branch, fast-forward owned PR169 branch and update its final015description, then adopt one automatic exact-head CI; no manual duplicate dispatch. Sourcefreeze/native/signing/publication follow normalgreenmain proof. Online promotion is a required delivery step, not an optional follow-up.
+
+## Build515.2 startup repair
+
+Original015mainb97e477aea5b7a28cab659b21c1eed3469a08a38 passed CI39294949309 (attempt2,9success/1conditionalIOSskip); original Apple8ae4c74d-4dc6-42ab-a326-3ddf135b54e1 accepted TAR724fd6a4... is sealed and publication-blocked. First private native launch failed a null useEffect dispatcher and normal reload reproduced. The installed014 App and online013 were never replaced; original014 was reopened after normal private candidate quit.
+
+Production module graph contains two same-version React runtimes from frozen and older dependency roots; changing Vite cache directory alone did not fix it. Renderer dedupes React/react-dom at its root. Actual Vite production+JSDOM regression deliberately links a second React copy: pre-fix Hooks fail, fixed Hooks commit. Packagebuild515.2 is distinct; actual originalApp source/hash/normalquit and exactApprollback/private data snapshot are recorded privately, never restore unproven global shared-data copies. Root remains soledesktop publisher,0newworkers. New exactCI/main/source/build/native/publication/install gates remain.

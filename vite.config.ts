@@ -42,6 +42,9 @@ export default defineConfig({
       : html,
   }],
   resolve: {
+    // Linked or relocated dependency trees must share the renderer's React
+    // dispatcher with react-dom; two same-version copies still break Hooks.
+    dedupe: ['react', 'react-dom'],
     alias: [
       { find: '@', replacement: resolve(__dirname, 'src/renderer') },
       // Force pdf.js's LEGACY (polyfilled) build everywhere. The modern build

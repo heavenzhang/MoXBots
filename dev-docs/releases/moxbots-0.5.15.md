@@ -8,7 +8,7 @@ Current reviewed169union includes saved-account login pinning, bounded history d
 
 Adds STREAM-RESUME e9ba90839f568f991299151083d94a0a626dbe2b: ordinarybuiltinAPI and Goal keep their original turn/nativehistory/output owner after trusted partial-stream interruption, use a bounded durable wait and one hidden continuation reminder, retain completed-tool and originalHTTP replay fences, and revoke continuation immediately on Stop. Quality reference persists observed recovery facts without business-success or distributed-exactly-once claims. See ../stream-continuation/acceptance.md.
 
-Only ContextRecovery stream delivery conflicted during combination. Root retained typed JSON message_stop, downstreamterminalQueued proof and immediate trailer cancellation, with preterminal live interruption arming and consumer cancellation reset. Old inference admission evidence is never deleted. Versions synchronize015acrosspackage/Cargo/Tauri/DocWorker and twoCargo locks; macOSbundle515.1.
+Only ContextRecovery stream delivery conflicted during combination. Root retained typed JSON message_stop, downstreamterminalQueued proof and immediate trailer cancellation, with preterminal live interruption arming and consumer cancellation reset. Old inference admission evidence is never deleted. Versions synchronize015acrosspackage/Cargo/Tauri/DocWorker and twoCargo locks; macOSbundle515.2.
 
 ## Verification and completion gates
 
@@ -21,3 +21,7 @@ One normal-priority signed/notarized App will produce one immutableTAR+updater s
 ## Unit boundaries and exclusions
 
 Desktop/updater only; no Host/cloud/Windows/website/mobile deployment in this batch. Existing cloud owner and independent mobile0.1.0component sequence remain. Human deferred mobile speech; layout/speech status cannot block or masquerade as desktop acceptance. Original Air availability, unknown tool outcomes, old stuck business authority and realProvider interruption origin are not claimed repaired by tests alone. Later unselected source stays nextbatch afterfreeze.
+
+## Unpublished first candidate rejected by native startup
+
+The first signed/notarized015candidate (mainb97e477ae, build515.1) failed native startup with a null React Hook dispatcher. Its raw artifact and original AppleID remain preserved and publication-blocked; it was never installed over the daily App or published. Production module-graph diagnosis found React resolved both from the frozen build and an older linked dependency root. Resolve React and react-dom from one renderer root, and exercise actual production-built Hooks across a deliberately linked duplicate dependency tree. Corrected015uses distinct bundle515.2; no stable/tag/version015artifact is overwritten.
