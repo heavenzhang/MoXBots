@@ -61,6 +61,15 @@ try {
     await page.waitForTimeout(350);
     assert.ok(await transcript.evaluate(el => el.scrollHeight - el.clientHeight - el.scrollTop) < 5);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    const toolOutput = page.getByLabel('Bash 的只读输出', { exact: true });
+    assert.equal(await toolOutput.count(), 0, 'tool details must start collapsed');
+    await page.getByRole('button', { name: 'Bash，完成，展开输出', exact: true }).click();
+    await toolOutput.waitFor();
+    assert.ok(await page.getByLabel('Bash 的横向输出', { exact: true }).evaluate(el => el.scrollWidth > el.clientWidth));
+    assert.ok((await toolOutput.textContent()).includes('CONTROLLED_TOOL_OUTPUT\n  second line'));
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
+    await page.getByRole('button', { name: 'Bash，完成，收起输出', exact: true }).click();
+    assert.equal(await toolOutput.count(), 0);
     assert.deepEqual(errors, []);
     results.push({ width, noPageError: true, noDocumentOverflow: true, codeAndTableLocalScroll: true, noAutomaticImageRequest: true, readingPositionBefore: before, readingPositionAfter: after, returnToBottom: true });
     await context.close();
@@ -72,7 +81,7 @@ try {
     await page.getByRole('button', { name: '选择 QA 演示场景' }).click();
     await page.getByRole('button', { name: '切换 Bot 错误隔离', exact: true }).click();
     await page.getByRole('button', { name: /打开会话/ }).first().click();
-    const oldError = page.getByText('远程操作暂时不可用，请检查连接后重试。', { exact: true });
+    const oldError = page.getByText('设备返回的会话数据暂时无法读取。可重试读取；草稿会保留。', { exact: true });
     await oldError.waitFor();
     await page.getByRole('button', { name: '返回会话列表', exact: true }).click();
     await oldError.waitFor();

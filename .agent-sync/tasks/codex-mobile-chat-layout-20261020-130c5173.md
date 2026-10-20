@@ -53,3 +53,16 @@ Send exact remote task SHA, this record and local evidence to the human-designat
 Exact human direction: “如果语音功能现在修不好，先做别的，别影响整体会话功能的实现。然后这个问题回头再修”. Defer speech repair ba578a5ea37cc6c0e685ab4f7617de22e2686264 to a later mobile batch; do not wait for speech accuracy or combine its native changes into the current conversation candidate. Preserve both failed physical readings and pending task MOXBOTS-IOS-SPEECH-FAILURE-20261020. Current priorities: session open/history loading, readable Markdown/code/table/images, stable history reading, target isolation, retained drafts and existing send/receipt authority. Speech remains unaccepted; no repeated dictation or recording now.
 
 CI/version/build/install coordination remains with human-selected01a12bc2. Latest per-deployment-unit policy permits independent units and does not reassign their owners; earlier “project-wide” wording above describes the earlier decision, not authority over unrelated units. This chat continues source/read-only phone evidence without shared CI or installation.
+
+## 2026-10-21 core conversation continuation
+
+- [x] Merge actual latest main4206eb2ef locally, preserving both plan appends and concurrent remote tool rendering fix.
+- [x] Prevent failed/pending existing-session reads from falling through to a new session; read-only retry and draft retention.
+- [x] Paginate older messages via existing cursor while keeping live snapshot as sole mutation/approval authority; foreign/duplicate/non-progressing pages rejected.
+- [x] Clear only recovered snapshot-read notices, including unchanged revision; isolate target changes.
+- [x] Read-only folded tool results with bounded two-axis output display.
+- [x] Type/lint/73 policy plus core and rich-text responsive browser regressions PASS; see acceptance doc for exact scope.
+- [ ] Independent owner review, coordinated CI and protected remote-main merge.
+- [ ] Freeze new immutable internal build and install/retest actual phone open/history/layout/drafts.
+
+No claim that source repairs prove the physical target's TARGET_RECEIPT_INVALID root cause is closed. Speech stays deferred under the latest direct human instruction. Complete MOBILE-002 five-path backlog remains open; private original-chat handoff read/retained outside Git. No daily Mac/original101/cloud operation. Current writer bounds and coordinator dependency: dev-docs/mobile-002/chat-layout-20261020.md.

@@ -11,10 +11,13 @@ let notificationsEnabled = false;
 let scenario: QaScenario = 'conversation';
 let active: Snapshot | null = null;
 let staleApprovalNextRead = false;
+let readCount = 0;
+let historyFailed = false;
 let sessions: { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string }[] = [{ sessionId: 'qa-session-1', title: '产品方案讨论', updatedAt: new Date().toISOString(), preview: '梳理移动端的会话体验', runtime: 'codex' }];
 
 export function selectScenario(next: QaScenario): void {
   scenario = next;
+  readCount = 0; historyFailed = false;
   active = null;
   staleApprovalNextRead = false;
   fixtureAccount = account;
@@ -242,7 +245,7 @@ function makeSnapshot(sessionId: string, agentId: string, state: Snapshot['state
     messages: [
       { id: 'qa-message-1', role: 'assistant', timestamp: new Date(Date.now() - 8 * 60_000).toISOString(), content: '你好，我可以帮你整理产品方案。你想先讨论哪一部分？', truncated: false, tools: [] },
       { id: 'qa-message-2', role: 'user', timestamp: new Date(Date.now() - 6 * 60_000).toISOString(), content: '梳理移动端的会话体验，优先解决主界面布局。', truncated: false, tools: [] },
-      { id: 'qa-message-3', role: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), content: scenario === 'rich-text' ? messagePresentationFixture : '建议把会话内容作为主视图：顶部保留标题、Bot 和成果入口；输入区保持单行，需要附件或语音时再展开辅助操作。', truncated: false, tools: [] },
+      { id: 'qa-message-3', role: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), content: scenario === 'rich-text' ? messagePresentationFixture : '建议把会话内容作为主视图：顶部保留标题、Bot 和成果入口；输入区保持单行，需要附件或语音时再展开辅助操作。', truncated: false, tools: scenario === 'rich-text' ? [{ id: 'qa-tool-display', name: 'Bash', status: 'complete', summary: 'CONTROLLED_TOOL_OUTPUT\n  second line\n' + 'long_output_'.repeat(45) + '\nline\n'.repeat(60) }] : [] },
     ],
     interactions: includeApproval ? [{
       requestId: 'qa-approval-1', generation, turnId: turnId ?? 'qa-turn-1', interaction: 'permission',
@@ -256,6 +259,17 @@ function sessionReply(request: SessionRequest): unknown {
   if (request.kind === 'capabilities') return { kind: 'capabilities', version: 1, agentId: request.agentId, runtime: 'codex', maxActiveSessions: 5, liveUpdates: 'snapshot' };
   if (request.kind === 'list') return { kind: 'list', agentId: request.agentId, items: sessions, hasMore: false, nextBefore: null };
   if (request.kind === 'get') {
+    readCount += 1;
+    if (scenario === 'open-retry' && readCount === 1 || scenario === 'poll-recover' && readCount === 2) return { kind: 'error', code: 'TARGET_RECEIPT_INVALID' };
+    if (scenario === 'history') {
+      if (request.before && !historyFailed) { historyFailed = true; return { kind: 'error', code: 'TARGET_OWNER_UNAVAILABLE' }; }
+      const messages: Snapshot['messages'] = Array.from({ length: 90 }, (_, i) => ({ id: `history-${i + 1}`, role: 'assistant', timestamp: '', content: `### 历史记录 ${i + 1}\n\n第 ${i + 1} 条可读消息。\n\n保留当前会话和草稿，不自动发送。`, truncated: false, tools: [] }));
+      const end = request.before ? messages.findIndex(message => message.id === request.before) : messages.length;
+      if (end < 0) return { kind: 'error', code: 'REMOTE_HISTORY_ANCHOR_CHANGED' };
+      const start = Math.max(0, end - request.limit);
+      return { ...makeSnapshot(request.sessionId, request.agentId), revision: 'history-latest', messages: messages.slice(start, end), hasMoreBefore: start > 0, nextBefore: start > 0 ? messages[start].id : null };
+    }
+
     if (staleApprovalNextRead && scenario === 'stale-approval') {
       staleApprovalNextRead = false;
       active = makeSnapshot(request.sessionId, request.agentId, 'waiting_user_action', 'qa-generation-2', 'qa-turn-2', true);

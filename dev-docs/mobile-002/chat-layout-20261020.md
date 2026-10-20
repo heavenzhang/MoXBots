@@ -31,3 +31,31 @@ Integration/release branch: main. Latest human direction designates01a12bc2-907a
 ## 2026-10-20 priority update
 
 The human explicitly deferred unresolved speech so that it cannot block normal conversation delivery. The separate speech branch ba578a5ea stays out of this batch. Physical voice recognition remains failed/unaccepted; do not claim it is fixed. Proceed with independent review/current-main+layout CI, a newly frozen internal phone candidate and real session/history/layout/draft acceptance. No new recording or repeated dictation is needed now. Real file-to-Host acceptance remains its own gate, not implicitly passed. Original101/current login/daily Mac constraints remain. The CI/release owner was notified of this exact priority change.
+
+
+## Core conversation repair checkpoint — 2026-10-21
+
+Latest direct human scope: finish session open, history loading and chat layout; fully test, merge main and coordinate a new iPhone install/physical acceptance. Speech remains a later batch. Daily Mac must not be changed.
+
+### Reproduced code defects and repair
+
+- An existing-session get failure cleared the snapshot while retaining the intended session owner. Empty UI and send routing treated missing snapshot as a new chat. Existing-session send now requires a matching loaded agent/session; the event handler also rejects a stale target/render. Failure displays a read-only retry, and the existing scoped draft survives retry/reopen. An explicit synthetic send after successful retry continues the original session and does not create another one.
+- No older-history UI consumed the existing get.before cursor, so only the latest30 messages were reachable. Explicit pagination now prepends older message-only pages, rejects foreign/duplicate/stale/non-progressing pages and keeps history across overlapping latest-window updates. Latest snapshot alone continues to own generation, approvals, receipts and sends; old pages cannot grant mutation authority. Disjoint history replacement resets the reading projection rather than silently joining a gap.
+- A successful poll with the same revision left a stale read failure visible. Only snapshot-source notices now clear after a valid read; other account/receipt notices are retained. Explicit Bot switches also clear their prior view notice.
+- Native tool summaries previously flooded the transcript. Display-only tool cards start collapsed, show actual status/name and reveal selectable output with local horizontal/vertical scrolling. Tapping a card never invokes tools, retry or approval. No heuristic decoding of already unwrapped JSON documents is introduced.
+
+### Local acceptance
+
+TypeScript, Expo lint and73 policy tests PASS. Isolated no-account browser tests PASS: failed-open/new-session fence, draft retention/reopen and explicit original-session send, three-page90-message histories at320/390/768 with injected read failure/retry, stable prepend anchor, latest polling retention/exhaustion/return-bottom, same-revision recovery. Markdown/HTML/link/image/code/table/Bot-isolation regression at320/390/428/768 PASS, including folded/read-only tool output. Root viewed retry/history screenshots. Private generated evidence is output/mobile-chat-layout-20261020/core-final and layout-final. This is synthetic browser acceptance, not actual Host or phone delivery.
+
+Current-main integration base4206eb2ef8f8bf2f9dc211b4f13842441dead0de is merged locally; only shared-plan append conflict was reconciled by retaining both sides. The latest main's remote tool-output unwrapping is preserved. No shared CI rerun/formal build/install has been run by this implementation lane.
+
+### Real-device limits and remaining gates
+
+Installed phone is still18e/build1. Actual read-only phone view currently shows some business history plus TARGET_RECEIPT_INVALID. Source recovery/UX protection is implemented; the original target payload/root cause is not proved fixed by these changes. A bounded log-code scan supplied no diagnosis. Do not restart/update the excluded daily Mac or relax strict wire validation. New current-main CI and immutable phone candidate plus physical open/read/history/layout/draft verification remain required through the registered mobile batch coordinator01a12bc2.
+
+The complete MOBILE-002 backlog is retained separately: login/consent/recovery, original Session approvals/replay rejection, actual attachment/Host bytes/results return, deferred dual-platform speech, real provider-backed background/cold-start notifications. Private handoff from the original source chat is acknowledged as evidence, not a new release owner or permission to override this chat's latest direct human speech deferral. Do not close the whole backlog with layout tests.
+
+### Concurrent source work boundary
+
+This task owns mobile/app/src/app/index.tsx, MessageContent.tsx, ToolResult.tsx, messagePresentation.ts, transcriptHistory.ts and its adjacent QA/tests until this checkpoint is delivered. Independent visual/prototype work can prepare isolated pure presentation components/themes without editing these files or current device/runtime; integration requires a reviewed exact SHA and behavioral regression. No new implementation, persistence or release owner is created.
