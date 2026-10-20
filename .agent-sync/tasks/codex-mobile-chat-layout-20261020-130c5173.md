@@ -66,3 +66,7 @@ CI/version/build/install coordination remains with human-selected01a12bc2. Lates
 - [ ] Freeze new immutable internal build and install/retest actual phone open/history/layout/drafts.
 
 No claim that source repairs prove the physical target's TARGET_RECEIPT_INVALID root cause is closed. Speech stays deferred under the latest direct human instruction. Complete MOBILE-002 five-path backlog remains open; private original-chat handoff read/retained outside Git. No daily Mac/original101/cloud operation. Current writer bounds and coordinator dependency: dev-docs/mobile-002/chat-layout-20261020.md.
+
+## Mobile unit intake and CI repair — 2026-10-21
+
+Human transfer verified from actual reply, sole mobile owner now this chat01a12b99; shared plan/map and internal build2 record are updated. Root branch fast-forwarded accepted2b976 and records allocation0.1.0/build2. PR174 first exact head88cc9788 reached mobile policy PASS but shared JS root lint failed no-control-regex in messageLink. Equivalent ASCII character-code rejection plus full control/space/DEL/entity boundary regression retains safety and raises policy count78. Fresh exact-head CI is required; no failed/cancelled result counted as PASS. Current app signing/install/real core acceptance remain pending; old build1 rollback bytes independently re-read and retained. Private cache build from accepted source is preparation only, with final app built from verified integrated main.

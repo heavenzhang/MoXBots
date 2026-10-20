@@ -26,3 +26,9 @@ Private evidence is under the project pointer output/mobile-chat-layout-20261020
 ## Remaining parent work
 
 Real login/consent/recovery, original Session approvals, system picker and complete Host bytes/results, Chinese ASR and provider-backed background/cold-start notifications retain individual gates. Speech is deferred after core at the user's request, not cancelled. APNs provider is currently not configured in running cloud; that dependency does not block core installation. Existing101 identity/keys/config and daily Mac must remain intact.
+
+## Exact-head CI repair
+
+Initial PR174/head88cc9788 shared JS gate failed root ESLint no-control-regex in messageLink; mobile-only lint did not cover that stricter root rule. Replace only the ASCII control/space/DEL detection with equivalent char-code checks, without suppressing the lint rule or relaxing URL safety. Added all ASCII control/space/DEL and entity-decoded tab rejection plus adjacent valid URL/Chinese-path checks;78 policy tests PASS. Root lint and the new exact-head CI must pass before merge. Initial failed/cancelled checks are not acceptance evidence; unchanged native compile preparation may be cached after exact closure verification, never substituted for final main-pinned app provenance.
+
+Root full lint (ESLint, dependency boundaries, routed documentation/link checks) subsequently PASS with required Node24.21.0; app78 policy/typecheck PASS. No lint suppression or workflow bypass was used.

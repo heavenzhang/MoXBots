@@ -51,6 +51,15 @@ test('reading history stays above the bottom across growing responses and image 
   assert.equal(isTranscriptAtBottom(500, 600, 1165), false);
 });
 
+test('link safety rejects every ASCII control and space before URL normalization', () => {
+  for (const code of [...Array.from({ length: 33 }, (_, index) => index), 127]) {
+    assert.equal(messageLink(`https://example.com/a${String.fromCharCode(code)}b`), null, `ASCII ${code}`);
+  }
+  assert.equal(messageLink('https://example.com/a!b~c'), 'https://example.com/a!b~c');
+  assert.equal(messageLink('https://example.com/中文'), 'https://example.com/%E4%B8%AD%E6%96%87');
+  assert.equal(messageLink('https://example.com/a&#9;b'), null, 'entity-decoded controls remain blocked');
+});
+
 test('entities are decoded to inert text outside code and URL query separators are preserved', () => {
   assert.equal(messageLiteral('a &amp; b &lt;script&gt; &#x4e2d;'), 'a & b <script> 中');
   assert.equal(messageLink('https://example.com/?a=1&amp;b=2'), 'https://example.com/?a=1&b=2');

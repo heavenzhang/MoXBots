@@ -11,7 +11,10 @@ export const messageLiteral = (value: string): string => decodeHTML(value);
 
 export function messageLink(value: string): string | null {
   const decoded = decodeHTML(value);
-  if (/[\u0000-\u0020\u007f]/u.test(decoded)) return null;
+  for (let index = 0; index < decoded.length; index += 1) {
+    const code = decoded.charCodeAt(index);
+    if (code <= 0x20 || code === 0x7f) return null;
+  }
   try {
     const url = new URL(decoded);
     if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) return null;
