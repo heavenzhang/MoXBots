@@ -756,7 +756,14 @@ export function createBuiltinSessionEngine(): SessionEngine {
 
     async runInjectedTurn(request: InjectedTurnRequest): Promise<InjectedTurnResult> {
       const deadline = Date.now() + request.timeoutMs;
+      const isGoal = request.turnOwner?.kind === 'goal';
+      if (isGoal && getSessionId() !== request.sessionId) {
+        return { success: false, enqueued: false, error: 'Goal Session binding changed before continuation', status: 409 };
+      }
       await setInteractionScenario(request.scenario);
+      if (isGoal && getSessionId() !== request.sessionId) {
+        return { success: false, enqueued: false, error: 'Goal Session binding changed during continuation preparation', status: 409 };
+      }
       getAndClearLastAgentError();
       const queueId = request.queueId ?? randomUUID();
       let observedOutcome: TurnTerminalOutcome | undefined;
@@ -787,6 +794,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         request.analyticsOrigin,
         {
           allowLazySessionMaterialization: request.metadataBirthPending === true,
+          restoreGoalSessionConfig: isGoal,
           queueId,
           turnOwner: request.turnOwner,
           onTerminal: async (outcome) => {

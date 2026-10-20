@@ -220,6 +220,8 @@ Goal 是 current Session 的独立 durable state，存储在 `session_goals.json
 
 Goal 只拥有 objective、状态、end conditions、permission policy、当前 turn fence、统计与 delivery outbox；Runtime/model/provider/MCP 仍由 Session 拥有。Goal turn 通过现有 SessionEngine queue 执行，不建立第二套 queue 或 outcome cache。
 
+Builtin Goal continuation 在原 enqueue 准入 ticket 内重新解析所属 Session 的当前 provider/model/reasoning 配置，不依赖暖 Sidecar 的旧内存值。配置变化只替换空闲 Query，并保留原 native history、Goal identity 和 permission policy；运行环境或 provider history 不兼容、配置不可解析或后台任务尚未结束时明确拒绝，不自动换 Session、重放输入或取消后台工作。配置 observation 只包含执行配置，排除统计与活跃时间；跨准备、Query teardown、Goal claim 和最后 materialization await 后的同步 commit 都复核它，变化时回滚原 claim。内部配置替换只保留本轮原 admission ticket，使 Stop 在 teardown 前后仍能精确撤销；其它 injected turn 的未传配置仍表示沿用其原调用语义。
+
 turn 在 adapter 的真实 promotion boundary claim，以 `goalId + queueId + sidecarGeneration` 拒绝旧 incarnation、旧 queue 与旧进程的迟到回写。Pause、Cancel 和 terminal 先 durable commit，再精确 stop owned turn；termination 未确认时保留 queue binding、Goal owner 与恢复信息。Tab 关闭只释放 Tab owner，不能停止 Goal。
 
 自动 continuation 是 one-shot 调度，只在上一 turn settlement 后安排。deadline、execution limit、用户控制与模型 terminal 都由 `SessionGoalManager` 在线性化边界内裁决；模型只能请求允许的 terminal，不能仅靠 prompt 绕过 `aiCanExit`。

@@ -580,3 +580,8 @@ Release record dev-docs/releases/moxbots-0.5.15.md; branch codex/release-0515-20
 ## MOXBOTS-0515 build515.2 native-startup repair
 
 Same desktop/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 and explicit015ONLINE+local delivery. First signed015build515.1 passed sourceCI/main/Apple but failed actual native startup (duplicate React Hook dispatcher), so it is sealed/unpublished; online013 and installed014 unchanged. Branchcodex/release-0515-renderer-20261020 fixes React/react-dom singleton resolution and adds real production-built linked-dependency Hook regression. Newbundle515.2 avoids same-build artifact reuse. Laterunselectedsource remains deferred. ExactCI/main/newartifact/native/stable015/local gates still required; no independent component deployment.
+
+
+## MOXBOTS-GOAL-CONFIG-RESTORE-20261021 — next unfrozen desktop intake
+
+Fix warm builtin Goal continuation to adopt the owning Session's current saved provider/model/reasoning at the original admission boundary. Preserve Goal/native identity, permission, compatibility, background work and Stop/claim fences; no provider auto-selection or old input replay. Task record `.agent-sync/tasks/codex-goal-config-restore-20261021-366d1666.md` distinguishes local regression evidence from actual native acceptance. Base is fetched remote main4206eb2ef; separately verify compatibility with frozen515.7/source915ff89a without editing that checkout. Existing sole desktop/updater CI/build/version/install/publish owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; this lane delivers local commits only for its next batch.515.7signing/install is independent and unchanged. Reconcile commits5a928679/b759372e are separate intake, not part of this task diff.

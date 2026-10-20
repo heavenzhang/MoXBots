@@ -9,6 +9,11 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 
 const state = vi.hoisted(() => ({ home: '', failProductIo: false, publicationGate: null as Promise<void> | null, publicationBlocked: false, queryExitGate: null as Promise<void> | null, queryInputEnded: 0, backgroundTask: false, backgroundTaskGate: null as Promise<void> | null, independentInputPump: false, sdkInputs: [] as unknown[], resultMode: 'success' as 'success' | 'error', rejectedResumeAt: null as string | null, sdkCumulativeBase: null as { input: number; output: number } | null, compactAtTurn: null as number | null, resetAtTurn: null as number | null, sdkCommands: [] as unknown[], interruptCloses: false, throwAfterInputEnd: false, beforeTurn: vi.fn(), query: vi.fn(), sdkRead: vi.fn(), sdkFork: vi.fn(), sdkDelete: vi.fn(), rewindFiles: vi.fn(), beforeResult: vi.fn(), events: [] as [string, unknown][], queuedFollowup: false, exitWithoutResult: false, toolFrames: false, childFrames: false, protocolFrames: [] as Record<string, unknown>[], beforeFrame: vi.fn(), media: vi.fn() }));
 vi.mock('os', async original => ({ ...await original<typeof import('os')>(), homedir: () => state.home }));
+vi.mock('../utils/platform', async original => {
+  const actual = await original<typeof import('../utils/platform')>();
+  return { ...actual, getHomeDir: () => state.home, getHomeDirOrNull: () => state.home,
+    getCrossPlatformEnv: () => ({ ...actual.getCrossPlatformEnv(), home: state.home }) };
+});
 vi.mock('../utils/fs-utils', async original => {
   const actual = await original<typeof import('../utils/fs-utils')>();
   return { ...actual, ensureDirSync: (...args: Parameters<typeof actual.ensureDirSync>) => {
@@ -308,6 +313,246 @@ afterEach(async () => {
   await agent.resetSession();
   await store.drainSessionTranscripts();
   await rm(state.home, { recursive: true, force: true });
+});
+
+describe('Goal continuation Session configuration admission', () => {
+  async function warmGoal() {
+    const workspace = join(state.home, 'goal-config');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, {
+      runtime: 'builtin', model: 'old-model', providerId: 'old-provider', configSnapshotAt: 'original-config',
+    });
+    const env = (providerId: string) => ({ providerId, baseUrl: `https://${providerId}.invalid`, apiKey: 'synthetic-only' });
+    vi.spyOn(await import('../utils/admin-config'), 'resolveWorkspaceConfig').mockImplementation((_path, meta) => ({
+      model: meta?.model, providerEnv: meta?.providerId ? env(meta.providerId) : undefined,
+      providerRoute: undefined, mcpServers: [], enabledOfficialToolIds: [],
+      permissionMode: 'auto', reasoningEffort: meta?.reasoningEffort,
+    }));
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    const config = await import('../builtin-session/config');
+    config.setModel('old-model'); config.setProviderEnv(env('old-provider'));
+    await agent.enqueueUserMessage('Previously completed business action', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+    expect(state.sdkInputs).toHaveLength(1);
+    const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+    const request = {
+      prompt: 'Continue the same Goal', sessionId: metadata.id, workspacePath: workspace,
+      scenario: { type: 'desktop' as const }, permissionMode: 'fullAgency',
+      assistantChannelDelivery: 'caller-owned' as const, timeoutMs: 5000, pollMs: 1,
+      queueId: randomUUID(), turnOwner: { kind: 'goal' as const, id: 'same-goal' },
+      beforeDispatch: Object.assign(vi.fn(async () => ({ accepted: true as const })), { cancel: vi.fn() }),
+    };
+    return { workspace, metadata, config, engine, request };
+  }
+
+  it.each(['provider', 'model', 'both'] as const)('uses the latest saved %s in the warm Goal without replaying the previous action', async edit => {
+    const { metadata, engine, request } = await warmGoal();
+    const providerId = edit === 'model' ? 'old-provider' : 'new-provider';
+    const model = edit === 'provider' ? 'old-model' : 'new-model';
+    await store.updateSessionMetadata(metadata.id, { providerId, model, reasoningEffort: 'high', configSnapshotAt: 'edited-config' });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: true });
+    expect(agent.getSessionProviderId()).toBe(providerId);
+    expect(agent.getSessionModel()).toBe(model);
+    expect(agent.getSessionReasoningEffort()).toBe('high');
+    expect(state.query.mock.calls.at(-1)![0].options).toMatchObject({ model, resume: metadata.id });
+    expect(state.query).toHaveBeenCalledTimes(2);
+    expect(agent.getSessionId()).toBe(metadata.id);
+    expect(state.sdkInputs).toHaveLength(2);
+    expect(agent.getMessages().filter(message => message.role === 'user' && message.content === 'Previously completed business action')).toHaveLength(1);
+  });
+
+  it('rejects an incompatible provider history switch without resetting native identity or dispatching', async () => {
+    const { metadata, engine, request, config } = await warmGoal();
+    config.setProviderEnv(undefined); // Existing native Anthropic subscription history.
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config' });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: false, enqueued: false, error: expect.stringContaining('new Session') });
+    expect(agent.getSessionId()).toBe(metadata.id);
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+  });
+
+  it('materializes the saved canonical route with the real resolver instead of a stale frozen environment', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    vi.mocked((await import('../utils/admin-config')).resolveWorkspaceConfig).mockRestore();
+    const dir = join(state.home, '.myagents');
+    await mkdir(join(dir, 'providers'), { recursive: true });
+    await writeFile(join(dir, 'providers', 'new-provider.json'), JSON.stringify({
+      id: 'new-provider', name: 'Synthetic provider', type: 'api', enabled: true,
+      config: { baseUrl: 'https://new-provider.invalid' }, models: [{ model: 'new-model' }],
+    }));
+    await writeFile(join(dir, 'config.json'), JSON.stringify({ providerApiKeys: { 'new-provider': 'synthetic-only' } }));
+    await store.updateSessionMetadata(metadata.id, {
+      providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config',
+      providerRoute: { kind: 'provider', providerId: 'new-provider', model: 'new-model' },
+      providerEnvJson: JSON.stringify({ providerId: 'old-provider', baseUrl: 'https://old-provider.invalid', apiKey: 'synthetic-stale' }),
+    });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: true });
+    expect(agent.getSessionProviderEnv()).toMatchObject({ providerId: 'new-provider', baseUrl: 'https://new-provider.invalid', apiKey: 'synthetic-only' });
+    expect(state.query.mock.calls.at(-1)![0].options).toMatchObject({ model: 'new-model', resume: metadata.id });
+    expect(state.sdkInputs).toHaveLength(2);
+  });
+
+  it('keeps ordinary injected turns on their explicit provider instead of adopting Goal-only snapshot policy', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config' });
+    expect(await engine.runInjectedTurn({ ...request, turnOwner: undefined })).toMatchObject({ success: true });
+    expect(agent.getSessionProviderId()).toBe('old-provider');
+    expect(agent.getSessionModel()).toBe('old-model');
+  });
+
+  it('rejects another Session identity before preparing a Goal continuation', async () => {
+    const { engine, request } = await warmGoal();
+    expect(await engine.runInjectedTurn({ ...request, sessionId: randomUUID() }))
+      .toMatchObject({ success: false, enqueued: false, status: 409 });
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+  });
+
+  it('reuses an unchanged warm Query and does not interpret bookkeeping as a configuration conflict', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    request.beforeDispatch.mockImplementationOnce(async () => {
+      await store.updateSessionMetadata(metadata.id, { lastActiveAt: new Date().toISOString(), stats: { messageCount: 99, totalInputTokens: 1, totalOutputTokens: 2 } });
+      return { accepted: true };
+    });
+    const count = state.query.mock.calls.length;
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: true });
+    expect(state.query).toHaveBeenCalledTimes(count);
+    expect(state.sdkInputs).toHaveLength(2);
+  });
+
+  it('clears an old reasoning override when the Session snapshot uses the default', async () => {
+    const { engine, request, config } = await warmGoal();
+    config.setReasoningEffort('high');
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: true });
+    expect(agent.getSessionReasoningEffort()).toBeUndefined();
+    expect(agent.getSessionPermissionMode()).toBe('fullAgency');
+  });
+
+  it.each([true, false])('preserves the original recovery checkpoint when provider admission is valid=%s', async valid => {
+    const { metadata, engine, request } = await warmGoal();
+    const recovery = { version: 1 as const, id: randomUUID(), status: 'paused' as const,
+      sdkSessionId: metadata.id, routeIdentity: 'original-route', turnId: 'original-progress', goalId: 'same-goal',
+      attempt: 2, startedAt: Date.now() - 1000, nextRetryAt: Date.now(), deadlineAt: Date.now() + 30_000, lastStatus: 503 };
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model',
+      configSnapshotAt: 'edited-config', modelRecovery: recovery });
+    if (!valid) vi.mocked((await import('../utils/admin-config')).resolveWorkspaceConfig).mockReturnValue({
+      model: 'new-model', providerEnv: undefined, providerRoute: { kind: 'provider', providerId: 'new-provider', model: 'new-model' },
+      mcpServers: [], enabledOfficialToolIds: [], permissionMode: 'auto', reasoningEffort: undefined,
+    });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: valid });
+    expect(agent.getSessionId()).toBe(metadata.id);
+    expect(state.sdkInputs).toHaveLength(valid ? 2 : 1);
+    expect(store.getSessionMetadata(metadata.id)?.modelRecovery).toEqual(valid ? undefined : recovery);
+  });
+
+  it.each(['missing-model', 'unavailable-provider', 'unavailable-managed-subscription', 'changed-runtime'] as const)('refuses %s instead of using the old Query configuration', async failure => {
+    const { metadata, engine, request } = await warmGoal();
+    if (failure === 'changed-runtime') {
+      await store.updateSessionMetadata(metadata.id, { runtimeBinding: { family: 'external', id: 'codex' } });
+    } else {
+      vi.mocked((await import('../utils/admin-config')).resolveWorkspaceConfig).mockReturnValue({
+        model: failure === 'missing-model' ? undefined : 'new-model', providerEnv: undefined,
+        providerRoute: failure === 'missing-model'
+          ? { kind: 'unknown-legacy', reason: 'missing-model' }
+          : failure === 'unavailable-managed-subscription'
+            ? { kind: 'subscription', providerId: 'antigravity-sub', model: 'new-model' }
+            : { kind: 'provider', providerId: 'unavailable', model: 'new-model' },
+        mcpServers: [], enabledOfficialToolIds: [], permissionMode: 'auto', reasoningEffort: undefined,
+      });
+    }
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: false, enqueued: false });
+    expect(agent.getSessionModel()).toBe('old-model');
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+  });
+
+  it('does not replace the original Query while its background task is still running', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    const lifecycle = await import('../builtin-session/lifecycle');
+    lifecycle.recordQueryBackgroundTask(lifecycle.getQuerySession()!, 'original-background', {
+      agentType: 'local_bash', description: 'synthetic existing work',
+    });
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config' });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: false, enqueued: false, error: expect.stringContaining('background work') });
+    expect(state.query).toHaveBeenCalledTimes(1);
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the original Goal claim when configuration changes across its await', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    request.beforeDispatch.mockImplementationOnce(async () => {
+      await store.updateSessionMetadata(metadata.id, { model: 'concurrent-model' });
+      return { accepted: true };
+    });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: false });
+    expect(request.beforeDispatch.cancel).toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(1);
+  });
+
+  it('rechecks the Session configuration at the final commit after awaited materialization', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    const claim = store.claimPreparedSessionForTurnAdmission;
+    vi.spyOn(store, 'claimPreparedSessionForTurnAdmission').mockImplementationOnce(async (...args) => {
+      const result = await claim(...args);
+      await store.updateSessionMetadata(metadata.id, { model: 'late-config-edit' });
+      return result;
+    });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: false });
+    expect(request.beforeDispatch.cancel).toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(1);
+  });
+
+  it.each(['stop', 'config-edit'] as const)('does not dispatch after %s wins during the warm Query termination await', async winner => {
+    const { metadata, engine, request } = await warmGoal();
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config' });
+    state.queryExitGate = new Promise<void>(resolve => { releaseWrite = resolve; });
+    const exitingBefore = state.queryInputEnded;
+    const continuing = engine.runInjectedTurn(request);
+    await vi.waitFor(() => expect(state.queryInputEnded).toBeGreaterThan(exitingBefore));
+    const stopping = winner === 'stop' ? agent.interruptCurrentResponse() : undefined;
+    if (winner === 'config-edit') await store.updateSessionMetadata(metadata.id, { model: 'concurrent-model' });
+    releaseWrite!();
+    if (stopping) await stopping;
+    expect(await continuing).toMatchObject({ success: false });
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+    expect(agent.getSessionId()).toBe(metadata.id);
+  });
+
+  it('honors Stop before configuration teardown without replacing the old Query', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config' });
+    const resolver = vi.mocked((await import('../utils/admin-config')).resolveWorkspaceConfig);
+    const resolve = resolver.getMockImplementation()!;
+    let stopping: Promise<boolean> | undefined;
+    resolver.mockImplementationOnce((...args) => {
+      stopping = agent.interruptCurrentResponse();
+      return resolve(...args);
+    });
+    expect(await engine.runInjectedTurn(request)).toMatchObject({ success: false, enqueued: false });
+    await stopping;
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(state.query).toHaveBeenCalledTimes(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+  });
+
+  it('honors Stop after replacement Query creation but before its first model input', async () => {
+    const { metadata, engine, request } = await warmGoal();
+    await store.updateSessionMetadata(metadata.id, { providerId: 'new-provider', model: 'new-model', configSnapshotAt: 'edited-config' });
+    let atGate = false;
+    const gate = new Promise<void>(resolve => { releaseWrite = resolve; });
+    state.beforeTurn.mockImplementationOnce(async () => { atGate = true; await gate; });
+    const continuing = engine.runInjectedTurn(request);
+    await vi.waitFor(() => expect(atGate).toBe(true));
+    const stopping = agent.interruptCurrentResponse();
+    releaseWrite!();
+    await stopping;
+    expect(await continuing).toMatchObject({ success: false });
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(request.beforeDispatch).not.toHaveBeenCalled();
+  });
 });
 
 describe('builtin V2 execution independent of product storage', () => {
