@@ -21,6 +21,7 @@ export const conversationStyles = StyleSheet.create({
   messageMeta: { color: color.muted, fontSize: 12, lineHeight: 19 },
   toolText: { color: color.muted, fontSize: 12, lineHeight: 20, paddingLeft: 10, borderLeftWidth: 1, borderColor: color.line, marginTop: 8 },
   thinking: { minHeight: 30, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  transcriptBottom: { position: 'absolute', bottom: '100%', alignSelf: 'center', zIndex: 19, minHeight: 40, paddingHorizontal: 15, marginBottom: 10, borderRadius: 20, backgroundColor: color.wash },
   composerArea: { position: 'relative', zIndex: 21, paddingHorizontal: 12, paddingTop: 5, paddingBottom: 7, borderTopWidth: 0, backgroundColor: color.white },
   composer: { flexDirection: 'row', alignItems: 'flex-end', minHeight: 46, padding: 3, borderRadius: 25, backgroundColor: color.canvas, borderWidth: 1, borderColor: color.line },
   plusButton: { width: 38, height: 38, justifyContent: 'center', alignItems: 'center' },

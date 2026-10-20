@@ -40,7 +40,7 @@ export function SessionHomeScreen(props: Props) {
       <Text accessibilityRole="header" style={styles.heading}>会话</Text>
       <View style={styles.headerActions}>
         <Pressable accessibilityRole="button" accessibilityLabel="搜索会话" accessibilityState={{ expanded: searchOpen || !!search }} onPress={() => props.onSearchOpen(!searchOpen)} style={styles.iconButton}><Search size={21} color={color.ink}/></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="新建会话" accessibilityHint={!target?.online ? '请先选择在线 Bot' : undefined} disabled={!target?.online} onPress={props.onNew} style={[styles.iconButton, !target?.online && styles.disabled]}><SquarePen size={22} color={color.ink}/></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="新建会话" accessibilityHint={!target ? '请先选择 Bot' : !target.online ? '设备离线，可先保留草稿' : undefined} accessibilityState={{ disabled: !target }} disabled={!target} onPress={props.onNew} style={[styles.iconButton, !target && styles.disabled]}><SquarePen size={22} color={color.ink}/></Pressable>
       </View>
     </View>
     <View style={styles.scope}>
