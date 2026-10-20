@@ -1,4 +1,4 @@
-# MOXBOTS-BRIDGE-LIVENESS-20262021
+# MOXBOTS-BRIDGE-LIVENESS-20261021
 
 Owned Session inference can receive HTTP200 headers then only ping frames or no body bytes. The header timer has already ended, so no transport error reaches existing recovery until the outer600s Session watchdog revokes the turn. This is a source-confirmed liveness gap. Installed5156 logs show compaction-only status for e181 and separate post-compaction silence for5025; they do not identify each exact provider socket phase. A successful prior40ef turn and laterECONNRESET are separate evidence, not universal SDK breakage.
 
@@ -15,10 +15,10 @@ This patch never changes canRetry. That callback includes interrupt/paused autho
 - Node24:54 integration tests pass. Two new real loopback TCP cases exercise Chat Completions and Responses headers+ping only; both close the upstream connection, request original-owner continuation once, make one inference, never emit success terminal. Existing header/error-body/context/body-admission/failover cases remain covered.
 - Full TypeScript and changed-file ESLint pass. Root manually reviewed timeout/timer disposal, reader cancellation before IO, replay authority, request revocation, suspension and backpressure; no independent reviewer was spawned.
 - Three old Stop fixtures attempted to write/close their source after cancellation. They now assert the immediate source cancellation and retain all original no-terminal/no-complete/no-continuation/no-next-inference assertions. Broader original failure output is retained; tests were not deleted or skipped.
-- Local diagnostic/test raw logs: WPS project work/bridge-liveness-20262021; original native log indexes under release0515 owner/candidate5156. These are private read-only local receipts, not uploaded credentials or task payloads.
+- Local diagnostic/test raw logs: WPS project work/bridge-liveness-20261021; original native log indexes under release0515 owner/candidate5156. These are private read-only local receipts, not uploaded credentials or task payloads.
 
 ## Delivery boundary and dependencies
 
-Source branch codex/bridge-liveness-20262021, based on pendingPR173 source1edf. Product version515.6 is not rebuilt or overwritten. agent-session/Chat/SessionStore remain owned by the separate durable ledger reconciliation work; this patch only changes the bridge reader/failover plus tests/provider note. No native UI, application restart, activeTask, provider configuration or credentials were touched.
+Source branch codex/bridge-liveness-20261021, based on pendingPR173 source1edf. Product version515.6 is not rebuilt or overwritten. agent-session/Chat/SessionStore remain owned by the separate durable ledger reconciliation work; this patch only changes the bridge reader/failover plus tests/provider note. No native UI, application restart, activeTask, provider configuration or credentials were touched.
 
 Exact combinedCI, normalmain merge, remote containment, a new immutable build, signednative/provider stalled-body/compaction/Goal recovery and online stable publication remain pending. A real Goal with an unknown mutator must still pause until its existing owner can verify it; this transport patch alone does not claim all long-running tasks repaired. Graceful GoalStop need not terminate the persistent Query, so same Query/inputGeneration is not itself evidence of a Stop defect.

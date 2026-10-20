@@ -1,9 +1,10 @@
 <!-- git-project-sync-task:version=1 -->
-<!-- git-project-sync-task:branch=codex/bridge-liveness-20262021 -->
+<!-- git-project-sync-task:branch=codex/bridge-liveness-20261021 -->
 <!-- git-project-sync-task:base=4206eb2ef8f8bf2f9dc211b4f13842441dead0de -->
 <!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:scaffold=false -->
 
-# MOXBOTS-BRIDGE-LIVENESS-20262021
+# MOXBOTS-BRIDGE-LIVENESS-20261021
 
 ## Objective
 Bound owned inference body reads after successful headers without confusing transport heartbeats with model progress, replaying tools, or replacing Session/Goal lifecycle authority.
@@ -25,7 +26,7 @@ Negative original fixture expected cancellation after heartbeat-only200 but got0
 ## Dependencies and ownership
 DesktopCI/release owner01a12bc2-907a-7702-b6dd-788225c5dfe4. Base includes pendingPR173/source1edf. Existing recovery worker owns agent-session/Chat/SessionStore durable ledger review; this work only touches bridge reader/failover/tests and provider tech note. LoginPR175/mobilePR174 remain separately pinned; no sharedCI run or product version assigned here.
 
-## Blockers
+## Blockers and unknowns
 Hosted arm64 Mac requiredCI for currentPR173 twice could not allocate runner. This source is not merged/published/installed. Long-run native acceptance and per-item uncertain ledger resolution remain separate; canRetry=false also means interrupt/paused authority and cannot be bypassed based merely on no stream bytes.
 
 ## Next step
