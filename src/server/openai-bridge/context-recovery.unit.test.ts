@@ -50,6 +50,17 @@ describe('bounded inference context recovery', () => {
     controller.bindNoDispatchOwner({ sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true });
     const tracker = new LiveQueryToolUseTracker();
     const scope = controller.snapshotNoDispatchScope();
+    const preMaterialization = new LiveQueryToolUseTracker();
+    preMaterialization.observeStreamEvent({ type: 'content_block_start', content_block: {
+      type: 'tool_use', id: 'not-final-yet', name: 'TaskGet', input: {},
+    } }, scope);
+    expect(preMaterialization.takeErrorResult({ type: 'tool_result', tool_use_id: 'not-final-yet', is_error: true })).toBeUndefined();
+    const missingFinalInput = new LiveQueryToolUseTracker();
+    missingFinalInput.observeStreamEvent({ type: 'content_block_start', content_block: {
+      type: 'tool_use', id: 'final-without-input', name: 'TaskGet', input: {},
+    } }, scope);
+    missingFinalInput.materializeAssistantMessage({ content: [{ type: 'tool_use', id: 'final-without-input', name: 'TaskGet' }] });
+    expect(missingFinalInput.takeErrorResult({ type: 'tool_result', tool_use_id: 'final-without-input', is_error: true })).toBeUndefined();
     tracker.observeStreamEvent({ type: 'content_block_start', content_block: {
       type: 'tool_use', id: 'live-invalid', name: 'TaskGet', input: {},
     } }, scope);
@@ -65,6 +76,7 @@ describe('bounded inference context recovery', () => {
     admitted.observeStreamEvent({ type: 'content_block_start', content_block: {
       type: 'tool_use', id: 'admitted-invalid', name: 'TaskGet', input: {},
     } }, scope);
+    admitted.materializeAssistantMessage({ content: [{ type: 'tool_use', id: 'admitted-invalid', name: 'TaskGet', input: {} }] });
     await controller.authorizeTool('TaskGet', {}, 'admitted-invalid');
     const admittedPair = admitted.takeErrorResult({ type: 'tool_result', tool_use_id: 'admitted-invalid', is_error: true });
     expect(admittedPair).toBeDefined();

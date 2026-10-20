@@ -55,7 +55,7 @@ type Analysis = { completed: Map<string, Evidence>; uncertain: Set<string> };
 
 /** Tracks only tool calls observed in the current Query's live SDK stream. */
 export class LiveQueryToolUseTracker {
-  private readonly calls = new Map<string, { name: 'TaskGet' | 'Bash'; input: unknown; scope: string | undefined }>();
+  private readonly calls = new Map<string, { name: 'TaskGet' | 'Bash'; input: unknown; scope: string | undefined; materialized: boolean }>();
 
   observeStreamEvent(event: unknown, scope: string | undefined): void {
     if (!record(event) || event.type !== 'content_block_start' || !record(event.content_block)) return;
@@ -63,7 +63,7 @@ export class LiveQueryToolUseTracker {
     if (block.type !== 'tool_use' || typeof block.id !== 'string' || !block.id
       || (block.name !== 'TaskGet' && block.name !== 'Bash')) return;
     if (this.calls.size < MAX_LEDGER_ENTRIES || this.calls.has(block.id)) {
-      this.calls.set(block.id, { name: block.name, input: block.input ?? {}, scope });
+      this.calls.set(block.id, { name: block.name, input: block.input ?? {}, scope, materialized: false });
     }
   }
 
@@ -72,7 +72,9 @@ export class LiveQueryToolUseTracker {
     for (const block of message.content) {
       if (!record(block) || block.type !== 'tool_use' || typeof block.id !== 'string') continue;
       const observed = this.calls.get(block.id);
-      if (observed && observed.name === block.name) this.calls.set(block.id, { ...observed, input: block.input });
+      if (observed && observed.name === block.name && Object.hasOwn(block, 'input')) {
+        this.calls.set(block.id, { ...observed, input: block.input, materialized: true });
+      }
     }
   }
 
@@ -80,7 +82,7 @@ export class LiveQueryToolUseTracker {
     if (!record(block) || block.type !== 'tool_result' || typeof block.tool_use_id !== 'string') return undefined;
     const observed = this.calls.get(block.tool_use_id);
     this.calls.delete(block.tool_use_id);
-    if (!observed || block.is_error !== true) return undefined;
+    if (!observed || !observed.materialized || block.is_error !== true) return undefined;
     return { toolUseId: block.tool_use_id, ...observed };
   }
 }
