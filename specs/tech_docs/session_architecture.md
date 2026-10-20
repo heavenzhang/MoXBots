@@ -228,6 +228,8 @@ Goal 只拥有 objective、状态、end conditions、permission policy、当前 
 
 turn 在 adapter 的真实 promotion boundary claim，以 `goalId + queueId + sidecarGeneration` 拒绝旧 incarnation、旧 queue 与旧进程的迟到回写。Pause、Cancel 和 terminal 先 durable commit，再精确 stop owned turn；termination 未确认时保留 queue binding、Goal owner 与恢复信息。Tab 关闭只释放 Tab owner，不能停止 Goal。
 
+Goal turn 的 abort/finalize 结算在管理接口失联时保留原 queue/claim 并等待确认，按100ms指数退避至10s重试，同一结算每30s最多一条失败日志；恢复后只重复同一幂等结算，不重新派发业务输入。该退避不改变 claim admission 的取消检查节奏。
+
 自动 continuation 是 one-shot 调度，只在上一 turn settlement 后安排。deadline、execution limit、用户控制与模型 terminal 都由 `SessionGoalManager` 在线性化边界内裁决；模型只能请求允许的 terminal，不能仅靠 prompt 绕过 `aiCanExit`。
 
 continuation 在准备前后检查 Session 的 busy/background activity，在真实 promotion 的 claim 前后复核后台活跃性；builtin 在最后一次 materialization await 后再执行同步 commit guard，拒绝时先结算 durable claim 再发布拒绝。有工作未结束时返回未 dispatch 的 `goal_work_pending`，Rust 复用 one-shot scheduler 以 5 秒间隔检查，不调用模型、不计 turn/token/failure；每次检查仍经过 Goal 状态和结束条件裁决。初始用户 turn 不受此自动续跑策略限制。此事实只覆盖 Runtime 可观测的工作，不从“等待中”的文本推断外部任务。

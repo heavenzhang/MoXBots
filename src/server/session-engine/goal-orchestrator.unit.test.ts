@@ -586,6 +586,53 @@ describe('Goal orchestrator', () => {
     expect(finalizeAttempts).toBe(2);
   });
 
+  it.each(['transport error', 'rejected response'] as const)(
+    'backs off an extended finalize %s without releasing ownership or redispatching', async failure => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        const client = clientWithGoal();
+        const healthyClient = client.getMockImplementation()!;
+        let available = false;
+        let finalized = false;
+        client.mockImplementation(async (path, method, body) => {
+          if (path !== '/api/goal/turn/finalize') return healthyClient(path, method, body);
+          if (available) return { ok: true, applied: true };
+          if (failure === 'transport error') throw new Error('management unavailable');
+          return { ok: false, error: 'management unavailable' };
+        });
+        let terminal: InjectedTurnRequest['onTerminal'];
+        const sendDesktopMessage = vi.fn(async (request: DesktopMessageRequest) => {
+          expect(await request.beforeDispatch?.()).toEqual({ accepted: true });
+          terminal = request.onTerminal;
+          return { success: true, queued: false };
+        });
+        await createGoalOrchestrator(client).sendDesktopMessage({ sendDesktopMessage }, desktopRequest());
+        const settlement = Promise.resolve(terminal?.({ status: 'complete', text: 'done',
+          assistantMessagePresent: true })).then(() => { finalized = true; });
+        await vi.advanceTimersByTimeAsync(60_000);
+        const attempts = client.mock.calls.filter(([path]) => path === '/api/goal/turn/finalize');
+        expect(attempts.length).toBeLessThanOrEqual(12);
+        expect(attempts.length).toBeGreaterThan(1);
+        expect(warn.mock.calls.length).toBeLessThanOrEqual(2);
+        expect(finalized).toBe(false);
+        expect(sendDesktopMessage).toHaveBeenCalledTimes(1);
+        expect(attempts.every(call => JSON.stringify(call[2]) === JSON.stringify(attempts[0][2]))).toBe(true);
+        available = true;
+        await vi.advanceTimersByTimeAsync(10_000);
+        await settlement;
+        expect(finalized).toBe(true);
+        expect(sendDesktopMessage).toHaveBeenCalledTimes(1);
+        expect(client.mock.calls.some(([path]) => path === '/api/goal/turn/abort')).toBe(false);
+      } finally {
+        warn.mockRestore();
+        vi.clearAllTimers();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('wraps Goal IM messages with the same visible-tail protocol', async () => {
     const client = clientWithGoal();
     const enqueueImMessage = vi.fn(async (request: ImMessageRequest) => ({
