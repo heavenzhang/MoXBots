@@ -163,6 +163,8 @@ describe('persistInputOptionChange — disk write fanout', () => {
       model: 'glm-4.7-air',
       permissionMode: 'fullAgency',
       providerEnvJson: null,
+      // A concrete pick pins the Session: auto routing leaves it alone.
+      modelMode: 'manual',
     });
   });
 
@@ -188,6 +190,8 @@ describe('persistInputOptionChange — disk write fanout', () => {
       providerExecutionIdentity: null,
       model: 'deepseek-v4-pro',
       providerEnvJson: null,
+      // A concrete pick pins the Session: auto routing leaves it alone.
+      modelMode: 'manual',
     });
   });
 
@@ -212,6 +216,8 @@ describe('persistInputOptionChange — disk write fanout', () => {
       providerExecutionIdentity: null,
       model: 'claude-sonnet-4-6',
       providerEnvJson: null,
+      // A concrete pick pins the Session: auto routing leaves it alone.
+      modelMode: 'manual',
     });
   });
 

@@ -210,10 +210,16 @@ import {
 import { isSupportedLocale } from '../../shared/i18n';
 import { workspacePathsEqual } from '../../shared/workspacePath';
 import {
+  autoModelKey,
   isAutoRoutingEnabled,
   normalizeModelMode,
   parseAutoRoutingSettings,
+  type AutoRouteRecord,
 } from '../../shared/autoRoute';
+import {
+  AutoRouteTagContext,
+  type AutoRouteTagActions,
+} from '@/components/AutoRouteTag';
 import type { MainWindowPresentation } from '@/utils/mainWindowPresentation';
 import {
   coerceReasoningEffortForRuntime,
@@ -798,6 +804,7 @@ export default function Chat({
     providerVerifyStatus,
     refreshProviderData,
     refreshConfig,
+    updateConfig,
   } = useConfig();
   const currentProject = projects.find((p) =>
     workspacePathsEqual(p.path, agentDir),
@@ -4454,6 +4461,58 @@ export default function Chat({
     }
   }, [guardCronConfigMutation, patchSnapshot, t]);
 
+  // Route tag actions. 「换一个」 pins the Session and opens the model menu;
+  // 「以后这类都用它」 puts the model first in its tier for every Session.
+  const autoRouteTagActions = useMemo<AutoRouteTagActions>(() => {
+    const modelLabel = (record: AutoRouteRecord) => {
+      const routed = providers.find((p) => p.id === record.providerId);
+      const name = routed?.models?.find((m) => m.model === record.model)?.modelName ?? record.model;
+      return routed ? `${routed.name} · ${name}` : name;
+    };
+    if (inputUsesExternalRuntimeControls || !autoRoutingEnabled) return { modelLabel };
+    return {
+      modelLabel,
+      onChooseAnother: () => {
+        if (guardCronConfigMutation()) return;
+        void patchSnapshot({ modelMode: 'manual' })
+          .then(() => chatInputRef.current?.openModelMenu?.())
+          .catch((error: unknown) => {
+            console.error('[chat] Failed to pin the routed model:', error);
+            toastRef.current.error(tRef.current('autoRoute.chooseFailed', { ns: 'app' }));
+          });
+      },
+      onPreferModel: (record) => {
+        const settings = parseAutoRoutingSettings(config.autoRouting);
+        const key = autoModelKey(record);
+        const order = settings.tierOrder?.[record.tier] ?? [];
+        void updateConfig({
+          autoRouting: {
+            ...settings,
+            tierOrder: {
+              ...settings.tierOrder,
+              [record.tier]: [key, ...order.filter((entry) => entry !== key)],
+            },
+          },
+        })
+          .then(() => toastRef.current.success(
+            tRef.current('autoRoute.preferSaved', { ns: 'app', model: modelLabel(record) }),
+          ))
+          .catch((error: unknown) => {
+            console.error('[chat] Failed to save the preferred tier model:', error);
+            toastRef.current.error(tRef.current('autoRoute.preferFailed', { ns: 'app' }));
+          });
+      },
+    };
+  }, [
+    providers,
+    inputUsesExternalRuntimeControls,
+    autoRoutingEnabled,
+    guardCronConfigMutation,
+    patchSnapshot,
+    config.autoRouting,
+    updateConfig,
+  ]);
+
   // Handle model change with analytics tracking.
   // Dual-write per PRD v0.1.69 §4.3 rule 2 "写 Session + 向上写 Agent": owned sessions
   // snapshot the new model locally so this session persists the choice; project + agent
@@ -6339,6 +6398,7 @@ export default function Chat({
             Explicit UI refreshes remain a second controlled source.
           */}
       <AsyncQuestionContext.Provider value={questionActions}>
+      <AutoRouteTagContext.Provider value={autoRouteTagActions}>
         <FileActionProvider
           previewHandleRef={actionFilePreviewRef}
           workspacePath={agentDir}
@@ -7840,6 +7900,7 @@ export default function Chat({
       )}
     </div>
         </FileActionProvider>
+      </AutoRouteTagContext.Provider>
       </AsyncQuestionContext.Provider>
     </BrowserPanelContext.Provider>
   );

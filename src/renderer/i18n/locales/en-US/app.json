@@ -329,6 +329,30 @@
     "pdfRenderFailed": "Failed to render PDF",
     "pptRenderFailed": "Failed to render presentation"
   },
+  "autoRoute": {
+    "tag": "Auto",
+    "effort": "effort {{effort}}",
+    "tiers": {
+      "fast": "Fast tier",
+      "balanced": "Balanced tier",
+      "strong": "Strong tier"
+    },
+    "reasons": {
+      "classified": "Classified by difficulty",
+      "cached": "Same as a recent similar message",
+      "held-warm-cache": "Cache still warm, kept the tier",
+      "fallback-previous": "Classifier failed, kept the previous tier",
+      "classifier-failed": "Classifier failed",
+      "grown": "Context nearly full, moved to a larger window",
+      "unavailable-fallback": "No model in that tier, used the nearest one"
+    },
+    "latency": "Routing took {{ms}} ms",
+    "chooseAnother": "Choose another",
+    "preferModel": "Use it for these from now on",
+    "preferSaved": "{{model}} now comes first in this tier",
+    "preferFailed": "Could not save. Try again.",
+    "chooseFailed": "Could not switch to manual. Try again."
+  },
   "message": {
     "turnDuration": "This turn took {{duration}}",
     "widgetUnclosed": "This widget did not close. Its original text is shown below.",

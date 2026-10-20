@@ -329,6 +329,30 @@
     "pdfRenderFailed": "PDF 渲染失败",
     "pptRenderFailed": "演示文稿渲染失败"
   },
+  "autoRoute": {
+    "tag": "自动",
+    "effort": "推理 {{effort}}",
+    "tiers": {
+      "fast": "快速档",
+      "balanced": "均衡档",
+      "strong": "强力档"
+    },
+    "reasons": {
+      "classified": "按难度判断",
+      "cached": "沿用同类判断",
+      "held-warm-cache": "缓存未过期，保持不降档",
+      "fallback-previous": "判断失败，沿用上一轮",
+      "classifier-failed": "判断失败",
+      "grown": "上下文将满，换了更大窗口",
+      "unavailable-fallback": "原档无可用模型，用了相邻档"
+    },
+    "latency": "判断耗时 {{ms}} ms",
+    "chooseAnother": "换一个",
+    "preferModel": "以后这类都用它",
+    "preferSaved": "已把 {{model}} 排到这一档首位",
+    "preferFailed": "保存失败，请重试",
+    "chooseFailed": "切换为手动失败，请重试"
+  },
   "message": {
     "turnDuration": "本轮耗时 {{duration}}",
     "widgetUnclosed": "此组件未正常闭合，以下按原文显示。",

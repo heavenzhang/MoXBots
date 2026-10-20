@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 
 import { track } from '@/analytics';
 import AttachmentPreviewList from '@/components/AttachmentPreviewList';
+import { AutoRouteTag } from '@/components/AutoRouteTag';
 import BlockGroup from '@/components/BlockGroup';
 import ExecutionQuality from '@/components/ExecutionQuality';
 import { projectCitationMarkdown, type CitationSources } from '@/utils/runtimeCitations';
@@ -421,6 +422,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
               <span>via {SOURCE_LABELS[imSource as MessageSource] ?? imSource}</span>
             </div>
           )}
+          {message.metadata?.autoRoute && <AutoRouteTag record={message.metadata.autoRoute} />}
           {/* Keep the selected Markdown reading size; user prose uses normal
               weight while explicit Markdown emphasis retains its semantics. */}
           <div className="group/user-actions relative flex w-fit min-w-0 max-w-[85%] flex-col items-end"

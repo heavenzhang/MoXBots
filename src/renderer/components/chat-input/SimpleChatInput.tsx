@@ -854,6 +854,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     clearQueryContext: () => { setAgentMentions([]); setPrimaryContext(undefined); setRequiredSystemSkill(undefined); },
     getQueryContext: () => ({ agentMentions: activeAgentSnapshots(inputValueRef.current, agentMentions), primaryContext, requiredSystemSkill }),
     getImages: () => [...images],
+    openModelMenu: () => { if (!configControlsLocked) setShowModelMenu(true); },
     clearWorkspaceBoundDraft: () => {
       // Match `@<path>` tokens that target the workspace-managed `myagents_files/`
       // upload directory. Plain typed `@something` (not workspace-tied) survives.

@@ -182,4 +182,6 @@ export interface SimpleChatInputHandle {
   clearQueryContext: () => void;
   getQueryContext: () => import("../../../shared/agentMentions").QueryMentionContext;
   getImages: () => ImageAttachment[];
+  /** Open the model menu (route tag 「换一个」). */
+  openModelMenu?: () => void;
 }
