@@ -39,6 +39,13 @@ export class ModelBodyReader {
   }
 
   async read(): Promise<ReadableStreamReadResult<Uint8Array>> {
+    // Metadata can finish every read before its interval fires. Once those
+    // reads consume the shared budget, do not wait for a future timer tick.
+    if (this.remainingMs <= 0) {
+      const error = new ModelBodyIdleTimeoutError();
+      void this.reader.cancel(error).catch(() => undefined);
+      throw error;
+    }
     const watchdog = new InactivityWatchdog({ timeoutMs: Math.max(1, this.remainingMs), intervalMs: this.intervalMs });
     let timer: ReturnType<typeof setInterval> | undefined;
     let abort: (() => void) | undefined;

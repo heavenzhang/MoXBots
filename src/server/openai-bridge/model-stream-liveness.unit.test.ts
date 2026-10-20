@@ -59,6 +59,30 @@ describe('owned inference body liveness', () => {
     }
   });
 
+  it.each([5, 20])('expires a budget consumed by reads every %sms before any interval can fire', async (cadenceMs) => {
+    vi.useFakeTimers();
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn();
+    const native = new ReadableStream<Uint8Array>({ start(c) { source = c; }, cancel });
+    const reader = native.getReader();
+    const body = new ModelBodyReader(reader, new AbortController().signal, () => true, 100);
+    try {
+      for (let elapsed = 0; elapsed < 100; elapsed += cadenceMs) {
+        const pending = body.read();
+        await vi.advanceTimersByTimeAsync(cadenceMs);
+        source.enqueue(frame('ping'));
+        await pending;
+      }
+      const settled = body.read().then(() => null, error => error);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(await settled).toMatchObject({ code: 'upstream_body_idle_timeout' });
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      await reader.cancel().catch(() => undefined);
+    }
+  });
+
   it('releases a completely silent body before waiting on durable safety IO', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
