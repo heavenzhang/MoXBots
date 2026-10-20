@@ -35,6 +35,7 @@ import { resolveProviderPromptCacheCapabilities } from '../../shared/provider-pr
 import { resolveBridgeModel } from './translate/model';
 import { opencodeGoHeaders } from '../opencode-go-request';
 import { readBoundedErrorBody } from './read-error-body';
+import { composeAcceptedAttemptModelProgress } from './model-progress';
 
 const DEFAULT_TIMEOUT = 300_000; // 5 minutes
 const THOUGHT_SIG_CACHE_MAX = 500; // Max cached thought_signatures to prevent unbounded growth
@@ -492,12 +493,8 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         body: JSON.stringify(anthropicReq), signal: request.signal });
       const response = await upstream.modelFailover.run(inferenceRequest, upstream, (target, onModelProgress) => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
-      }), { ...target, modelFailover: undefined, onModelProgress: () => {
-        if (onModelProgress?.() !== true) return; // Attempt-owned lease rejected stale/cancelled progress.
-        // The same accepted attempt event renews both budgets. Token-owned Query liveness remains
-        // independent of route retry eligibility, but cannot be renewed by an old attempt.
-        upstream.onModelProgress?.();
-      } }), createHash('sha256').update(JSON.stringify({
+      }), { ...target, modelFailover: undefined,
+        onModelProgress: composeAcceptedAttemptModelProgress(onModelProgress, upstream.onModelProgress) }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
       if (!response.ok && !resolvedUpstream) log(`[bridge] Inference rejected HTTP ${response.status} (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model})`);

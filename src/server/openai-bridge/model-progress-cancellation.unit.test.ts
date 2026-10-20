@@ -1,9 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
 import { handleResponsesStreamResponse, handleStreamResponse } from './handler';
+import { ModelFailoverController } from './model-failover';
+import { createBridgeProgressContext } from './bridge-registry';
+import { composeAcceptedAttemptModelProgress } from './model-progress';
 
 const encoder = new TextEncoder();
 
 describe('bridge model progress cancellation fence', () => {
+  it('does not forward a retired attempt callback to token-owned Query liveness', async () => {
+    const context = createBridgeProgressContext();
+    let notifications = 0;
+    context.subscribe(() => notifications++);
+    const request = new Request('http://fixture.invalid/messages');
+    const callbacks: Array<() => void> = [];
+    let attempts = 0;
+    const owner = new ModelFailoverController({ scope: () => 'same-query-turn', resolveBackup: () => undefined,
+      onSwitch: () => {}, retryDelaysMs: [0, 0, 0], bodyIdleTimeoutMs: 1000 });
+    const response = await owner.run(request, { providerId: 'fixture', baseUrl: 'http://fixture.invalid' }, async (_target, onAttempt) => {
+      callbacks.push(composeAcceptedAttemptModelProgress(onAttempt, () => context.notify(request.signal)));
+      return ++attempts === 1 ? Response.json({ error: { message: 'overloaded' } }, { status: 503 })
+        : new Response(new ReadableStream<Uint8Array>({}), { headers: { 'content-type': 'text/event-stream' } });
+    }, 'stale-progress');
+    expect(attempts).toBe(2);
+    callbacks[0]?.();
+    expect(notifications).toBe(0);
+    callbacks[1]?.();
+    expect(notifications).toBe(1);
+    await response.body?.cancel();
+    context.retire();
+  });
+
   it.each(['chat', 'responses'] as const)('does not notify after %s downstream cancellation', async protocol => {
     let source!: ReadableStreamDefaultController<Uint8Array>;
     const input = new ReadableStream<Uint8Array>({ start(controller) { source = controller; } });
