@@ -1,3 +1,4 @@
+import { mobileTheme } from './mobileTheme';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -7,7 +8,7 @@ import { isFixtureMode, type NotificationRegistration } from './native';
 import { disableNotifications, enableNotifications, notificationRegistration, systemNotificationPermission, type NotificationPermission } from './notifications';
 import { notificationOpens } from './notificationPolicy';
 
-const color = { ink: '#202522', muted: '#747B76', green: '#26734D', line: '#E7EAE7', red: '#A7433B' };
+const color = { ...mobileTheme, green: mobileTheme.primary };
 const messages: Record<string, string> = {
   MOBILE_AUTHORIZATION_REQUIRED: '请先返回会话页登录，再开启会话提醒。',
   OWNED_LOGIN_REQUIRED: '请先返回会话页登录，再开启会话提醒。',

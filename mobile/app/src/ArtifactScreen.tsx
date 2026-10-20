@@ -1,3 +1,4 @@
+import { mobileTheme } from './mobileTheme';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -6,7 +7,7 @@ import { ArrowLeft, ChevronDown, Download, Eye, FileText, Image as ImageIcon, Pa
 import { artifactEventMatchesDescriptor, artifactListBelongsToOwner, ArtifactDownloadTracker, ArtifactRowBusyTracker, restoreArtifactStatuses, type ArtifactOwner } from './artifactPolicy';
 import { ArtifactActionReply, ArtifactDescriptor, ArtifactDownload, isFixtureMode, QaArtifactScenario, qaArtifactScenarioOptions, requestNative, selectQaArtifactScenario, subscribeArtifactDownloadChanges, Target } from './native';
 
-const color = { ink: '#202522', muted: '#747B76', line: '#E7EAE7', canvas: '#F7F8F6', green: '#26734D', wash: '#E9F3ED', red: '#A7433B' };
+const color = { ...mobileTheme, green: mobileTheme.primary };
 const pageLimit = 20;
 const errorCopy: Record<string, string> = {
   MOBILE_REMOTE_UNAVAILABLE: '暂时无法连接成果服务，请检查网络后刷新。',

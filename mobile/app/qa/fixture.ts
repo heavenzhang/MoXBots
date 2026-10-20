@@ -1,4 +1,5 @@
 import type { Account, ArtifactDownload, ArtifactDescriptor, NativeIntent, PendingOperation, QaScenario, SessionRequest, Snapshot, Target } from '../src/native';
+import { directoryLayoutRows } from './sessionDirectoryFixture';
 
 export type { QaScenario } from '../src/native';
 
@@ -13,6 +14,7 @@ let sessions: { sessionId: string; title: string; updatedAt: string; preview: st
 
 export function selectScenario(next: QaScenario): void {
   scenario = next;
+  if (next === 'directory-layout') sessions = directoryLayoutRows();
   active = null;
   staleApprovalNextRead = false;
   fixtureAccount = account;
