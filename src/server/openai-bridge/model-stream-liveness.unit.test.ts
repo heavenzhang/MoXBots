@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelFailoverController } from './model-failover';
 import { ModelBodyReader } from './model-body-reader';
+import type { UpstreamConfig } from './types/bridge';
 
 const encoder = new TextEncoder();
 const frame = (type: string, fields: Record<string, unknown> = {}) => encoder.encode(`event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`);
@@ -170,6 +171,37 @@ describe('owned inference body liveness', () => {
     expect(f.recovery.interrupted).not.toHaveBeenCalled();
     expect(f.recovery.blocked).not.toHaveBeenCalled();
     expect(f.recovery.complete).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('ignores late progress from a retired upstream attempt', async () => {
+    vi.useFakeTimers();
+    const callbacks: Array<() => boolean> = [];
+    let cancelCount = 0;
+    const pendingBody = new ReadableStream<Uint8Array>({ cancel() { cancelCount++; } });
+    let attempt = 0;
+    const interrupted = vi.fn(async () => true);
+    const execute = vi.fn(async (_target: UpstreamConfig, onProgress?: () => boolean) => {
+      callbacks.push(onProgress ?? (() => false));
+      attempt++;
+      return attempt === 1
+        ? Response.json({ error: { message: 'temporarily overloaded' } }, { status: 503 })
+        : new Response(pendingBody, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    const owner = new ModelFailoverController({ scope: () => 'original-turn', resolveBackup: () => undefined,
+      onSwitch: vi.fn(), retryDelaysMs: [0, 0, 0], bodyIdleTimeoutMs: 100,
+      recovery: { wait: async () => undefined, interrupted, complete: vi.fn(async () => {}), blocked: vi.fn(async () => {}) } });
+    const response = await owner.run(new Request('http://fixture.invalid/messages'),
+      { baseUrl: 'http://provider.invalid', providerId: 'fixture' }, execute, 'original');
+    expect(execute).toHaveBeenCalledTimes(2);
+    const consuming = response.text();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(callbacks[0]?.()).toBe(false); // The first request failed before headers; it cannot renew either budget.
+    await vi.advanceTimersByTimeAsync(80);
+    expect(cancelCount).toBe(1);
+    expect(interrupted).toHaveBeenCalledOnce();
+    expect(await consuming).toContain('automatic_replay_blocked');
+    expect(execute).toHaveBeenCalledTimes(2);
     expect(vi.getTimerCount()).toBe(0);
   });
 

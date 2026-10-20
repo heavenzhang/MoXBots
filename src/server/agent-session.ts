@@ -36,7 +36,8 @@ import {
   backgroundAgentDenyMessage,
   type BackgroundAgentPermissionMode,
 } from './utils/background-agent-permission';
-import { registerBridge as registerBridgeInRegistry, unregisterBridge as unregisterBridgeInRegistry, type UpstreamBridgeConfig } from './openai-bridge/bridge-registry';
+import { createBridgeProgressContext, getBridgeProgressContext, registerBridge as registerBridgeInRegistry,
+  unregisterBridge as unregisterBridgeInRegistry, type BridgeProgressContext, type UpstreamBridgeConfig } from './openai-bridge/bridge-registry';
 import { createSessionModelFailover, sessionApiFailoverEligible } from './builtin-session/model-failover';
 import { getScriptDir } from './utils/runtime';
 import { getSidecarPort } from './session-core/sidecar-port';
@@ -1789,7 +1790,11 @@ async function restorePersistedModelRecovery(): Promise<boolean> {
  * active session, derived live from `configState.currentProviderEnv` + `configState.currentModel`.
  * Called per-request by the bridge registry resolver — keep it cheap.
  */
-async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<UpstreamBridgeConfig> {
+async function resolveActiveSessionUpstreamConfig(request?: Request,
+  progressContext?: BridgeProgressContext): Promise<UpstreamBridgeConfig> {
+  // Pin Query ownership before credential resolution or continuation checks
+  // await; a late resolver must not attribute an older request to a newer Query.
+  const queryAuthority = getCurrentQueryAuthority();
   // configState.currentProviderEnv may be undefined (subscription / Anthropic-direct)
   // when the session bridge is registered; that's a registration error
   // upstream of us. Defensive: empty-string baseUrl + no model → bridge
@@ -1815,12 +1820,20 @@ async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<Up
     }
   }
   const modelFailover = activeSessionModelFailover;
+  const isModelMessage = request && /\/messages\/?$/.test(new URL(request.url).pathname);
   return {
     providerId: activeProviderEnv?.providerId ?? SUBSCRIPTION_PROVIDER_ID,
     apiProtocol: activeProviderEnv?.apiProtocol ?? 'anthropic',
     authType: activeProviderEnv?.authType,
     modelFailover,
     contextRecovery: activeSessionContextRecovery,
+    // Internal bridge-token signal: Query liveness is independent of whether
+    // this provider route is eligible for retry/backup recovery.
+    onModelProgress: isModelMessage && progressContext ? () => {
+      if (!request || request.signal.aborted || !isCurrentQueryAuthority(queryAuthority)
+        || lifecycleState.abortRequested || builtinInterrupt.isInterrupting()) return;
+      progressContext.notify(request.signal);
+    } : undefined,
     // Arm the fast failover timer only while a retry or backup switch is
     // actually authorized. When recovery is fenced (e.g. an uncertain tool
     // outcome), use the generic five-minute bound instead of failing a healthy
@@ -1951,7 +1964,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           const text = '上下文请求超出上游限制，已保存完整请求与工具结果，正在缩减历史证据并恢复当前执行。';
           getBuiltinProductContent()?.appendDiagnostic(text);
         },
-      }); } catch (error) { activeSessionBridgeToken = null; throw error; }
+      }); } catch (error) {
+        activeSessionBridgeToken = null; throw error;
+      }
     }
     if (failoverEnabled) {
       const metadata = getCurrentProductSessionMetadata();
@@ -2042,10 +2057,12 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       });
     }
   }
+  const progressContext = getBridgeProgressContext(activeSessionBridgeToken!) ?? createBridgeProgressContext();
   registerBridgeInRegistry(
     activeSessionBridgeToken,
-    resolveActiveSessionUpstreamConfig,
+    request => resolveActiveSessionUpstreamConfig(request, progressContext),
     `session:${sessionId}`,
+    progressContext,
   );
 }
 
@@ -11545,6 +11562,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
   // Declared outside try so finally can clean up
   let startupTimeoutId: ReturnType<typeof setTimeout> | undefined;
   let apiWatchdogId: ReturnType<typeof setInterval> | undefined;
+  let unsubscribeModelProgress: (() => void) | undefined;
   // PRD 0.2.27 — query-scoped copy of the reloadAnchor this start actually sent. Local
   // (not module) so a late catch from THIS invocation evicts the right uuid even if a
   // newer session has since re-armed the module-level transcriptState.pendingReloadAnchor.
@@ -12875,6 +12893,19 @@ async function startStreamingSession(preWarm = false): Promise<void> {
     // naturally absorbs inter-turn idle. Init/status heartbeats do not grant
     // progress or an automatic recovery budget.
     const watchdog = new InactivityWatchdog({ timeoutMs: WATCHDOG_TIMEOUT_MS, intervalMs: API_WATCHDOG_INTERVAL_MS });
+    const queryProgressToken = activeSessionBridgeToken;
+    const queryProgressContext = queryProgressToken ? getBridgeProgressContext(queryProgressToken) : undefined;
+    const queryProgressAuthority = activeQueryAuthority;
+    unsubscribeModelProgress = queryProgressContext?.subscribe((signal) => {
+      // Bridge model progress is only a liveness signal for this exact live
+      // Query. It never sets substantive-turn state or grants recovery budget.
+      if (!activeQuery || queryProgressToken !== activeSessionBridgeToken
+        || signal.aborted || queryProgressAuthority !== activeQueryAuthority
+        || !isCurrentQueryAuthority(queryProgressAuthority)
+        || lifecycleState.abortRequested || builtinInterrupt.isInterrupting()
+        || !isStreamingMessage || lifecycleState.preWarming) return;
+      watchdog.markActivity();
+    });
     watchdogFired = false;
     apiWatchdogId = setInterval(async () => {
       // Only check during active turns (not pre-warm, not idle between turns)
@@ -14379,6 +14410,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
     traceBuiltinInputProgress('query-exit', inputTrace);
     clearTimeout(startupTimeoutId);
     clearInterval(apiWatchdogId);
+    unsubscribeModelProgress?.();
+    unsubscribeModelProgress = undefined;
     const wasPreWarming = lifecycleState.preWarming;
     if (
       deferredRewindResult

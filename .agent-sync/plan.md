@@ -679,3 +679,8 @@ Fix warm builtin Goal continuation to adopt the owning Session's current saved p
 ## Desktop stability0.5.16 — 2026-10-21
 
 Same sole owner01a12bc2-907a-7702-b6dd-788225c5dfe4, semantic0.5.16/build516.1 after immutable015online/local completed. Combined settlement backoff/native memory blocking isolation/tool-admission evidence/warmGoal config restore; source and independent365Node/31Rust/type/lintPASS, native and original-business acceptance remainopen. Task `.agent-sync/tasks/codex-post0515-stability-20261021-8526d64d.md`. Existing5158tag/artifact are unchanged; no historical unknown clearing/forced exit. NewexactCI/main/artifact/native and safe local replacement/onlinepromotion are separately required. Mobile/Host/cloud/Windows/website not deployed. NativeUI remains coordinator01a159a6-owned; lockedMac/uncertaindispatch checkpoint must be resolved through normal owner before app replacement.
+
+
+## Desktop516.2 parallel tool repair — 2026-10-21
+
+Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4.516.1 sealed for confirmed parallel argument/block lifecycle defect; installed/online015 unchanged. Full seven-commit95d2318 source onactualmain32821 is reviewed for complete ordered tool blocks and strictterminal/error/EOF plus hidden realprogress/query/attempt/cancel fences. Newbuild516.2 under unpublisheduntagged0.5.16, no original artifactoverwrite. Task `.agent-sync/tasks/codex-release-0516-5162-20261021-c3f33106.md`. Primary523Node andrealSDKconsumer synthetic evidence accepted; exactCI/newartifact/nativeparallelRead/Goal/Stop/ownercheckpoint/unlock and production remain required. Originalsixbusiness notcomplete; MVP/a0WIP excluded. NativeUI stays coordinator-owned; no App action without freshhandback.

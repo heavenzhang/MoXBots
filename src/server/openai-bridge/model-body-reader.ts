@@ -19,6 +19,8 @@ export class ModelBodyIdleTimeoutError extends Error {
 export class ModelBodyReader {
   private remainingMs: number;
   private readonly intervalMs: number;
+  private pendingWatchdog: InactivityWatchdog | undefined;
+  private pendingReadFailed = false;
 
   constructor(
     private readonly reader: ReadableStreamDefaultReader<Uint8Array>,
@@ -31,7 +33,16 @@ export class ModelBodyReader {
     this.intervalMs = Math.min(30_000, timeoutMs / 4);
   }
 
-  markProgress(): void { this.remainingMs = this.timeoutMs; }
+  markProgress(): void {
+    if (this.pendingReadFailed) return;
+    this.remainingMs = this.timeoutMs;
+    // A protocol-level progress callback can arrive while this body read is
+    // still pending. Renew its active timer too; otherwise the accumulated
+    // budget is reset only after read() settles and valid tool-argument deltas
+    // hidden by the translator's safe buffering still time out the read.
+    this.pendingWatchdog?.setTimeoutMs(this.timeoutMs);
+    this.pendingWatchdog?.markActivity();
+  }
 
   private hasAuthority(): boolean {
     try { return this.isLive(); }
@@ -47,11 +58,14 @@ export class ModelBodyReader {
       throw error;
     }
     const watchdog = new InactivityWatchdog({ timeoutMs: Math.max(1, this.remainingMs), intervalMs: this.intervalMs });
+    this.pendingWatchdog = watchdog;
+    this.pendingReadFailed = false;
     let timer: ReturnType<typeof setInterval> | undefined;
     let abort: (() => void) | undefined;
     try {
       return await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
         const fail = (error: Error) => {
+          if (error instanceof ModelBodyIdleTimeoutError) this.pendingReadFailed = true;
           // Release the transport BEFORE durable recovery IO. Neither a stalled
           // body nor a stalled checkpoint write may retain its upstream socket.
           reject(error);
@@ -74,6 +88,8 @@ export class ModelBodyReader {
       // Credit that gap as well, including when the arriving frame is a ping.
       watchdog.evaluateTick();
       this.remainingMs = Math.max(0, this.remainingMs - watchdog.idleMs());
+      if (this.pendingWatchdog === watchdog) this.pendingWatchdog = undefined;
+      this.pendingReadFailed = false;
     }
   }
 }

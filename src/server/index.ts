@@ -2480,6 +2480,7 @@ async function main() {
             headersTimeoutMs: cfg.headersTimeoutMs,
             modelFailover: cfg.modelFailover,
             contextRecovery: cfg.contextRecovery,
+            onModelProgress: cfg.onModelProgress,
             baseUrl: cfg.baseUrl,
             apiKey: cfg.apiKey,
             credentialVersion: cfg.credentialVersion,

@@ -10,7 +10,7 @@ import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader'
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig) => Promise<Response>, requestKey?: string): Promise<Response>;
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean) => Promise<Response>, requestKey?: string): Promise<Response>;
 }
 
 /** The Session owner commits its checkpoint before authorizing another inference. */
@@ -77,7 +77,7 @@ export class ModelFailoverController implements BridgeModelFailover {
   }
 
   async run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig) => Promise<Response>, requestKey?: string): Promise<Response> {
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean) => Promise<Response>, requestKey?: string): Promise<Response> {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive?.() !== false
       && this.options.requestIdentity?.() === requestIdentity;
@@ -100,7 +100,18 @@ export class ModelFailoverController implements BridgeModelFailover {
     const live = () => queryLive() && !lease.isBlocked();
     const delays = this.options.retryDelaysMs ?? [250, 750, 1500];
     let streamOwnsFinish = false;
-    const finish = () => lease.finish();
+    let activeAttempt = 0;
+    let progressBodyReader: ModelBodyReader | undefined;
+    const finish = () => { activeAttempt++; lease.finish(); };
+    const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
+      const attempt = ++activeAttempt;
+      const onModelProgress = (): boolean => {
+        if (attempt !== activeAttempt || !live()) return false;
+        progressBodyReader?.markProgress();
+        return true;
+      };
+      return execute(target, onModelProgress);
+    };
     const cancelResponse = (response: Response) => { void response.body?.cancel().catch(() => undefined); };
     const recovery = !ambiguous ? this.options.recovery : undefined;
     const recoveryLive = () => live() && rootLive() && this.options.canRetry?.() !== false;
@@ -159,7 +170,7 @@ export class ModelFailoverController implements BridgeModelFailover {
         const target = backup ? (rootLive() ? this.options.resolveBackup() : undefined) : primary;
         if (!target) return unavailableBackup();
         inferenceAttempts++;
-        const response = await execute(target);
+        const response = await executeAttempt(target);
         if (!live()) { cancelResponse(response); return cancelled(); }
         const inspected = await inspectFailure(response);
         if (!live()) { cancelResponse(inspected.response); return cancelled(); }
@@ -240,7 +251,7 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (!target) { cancelResponse(response); response = unavailableBackup(); break; }
         cancelResponse(response);
         inferenceAttempts++;
-        response = await execute(target);
+        response = await executeAttempt(target);
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
       }
       if (!live()) { cancelResponse(response); return cancelled(); }
@@ -266,6 +277,7 @@ export class ModelFailoverController implements BridgeModelFailover {
       }
       const reader = response.body.getReader();
       const bodyReader = new ModelBodyReader(reader, request.signal, live, this.options.bodyIdleTimeoutMs);
+      progressBodyReader = bodyReader;
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') === true;
       const parser = new SSEParser();
       const decoder = new TextDecoder();

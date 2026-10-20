@@ -35,6 +35,7 @@ import { resolveProviderPromptCacheCapabilities } from '../../shared/provider-pr
 import { resolveBridgeModel } from './translate/model';
 import { opencodeGoHeaders } from '../opencode-go-request';
 import { readBoundedErrorBody } from './read-error-body';
+import { composeAcceptedAttemptModelProgress } from './model-progress';
 
 const DEFAULT_TIMEOUT = 300_000; // 5 minutes
 const THOUGHT_SIG_CACHE_MAX = 500; // Max cached thought_signatures to prevent unbounded growth
@@ -490,9 +491,10 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // to archive the exact inference before granting another call.
       const inferenceRequest = new Request(request.url, { method: 'POST', headers: request.headers,
         body: JSON.stringify(anthropicReq), signal: request.signal });
-      const response = await upstream.modelFailover.run(inferenceRequest, upstream, target => handler(new Request(request.url, {
+      const response = await upstream.modelFailover.run(inferenceRequest, upstream, (target, onModelProgress) => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
-      }), { ...target, modelFailover: undefined }), createHash('sha256').update(JSON.stringify({
+      }), { ...target, modelFailover: undefined,
+        onModelProgress: composeAcceptedAttemptModelProgress(onModelProgress, upstream.onModelProgress) }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
       if (!response.ok && !resolvedUpstream) log(`[bridge] Inference rejected HTTP ${response.status} (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model})`);
@@ -923,8 +925,8 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // Stream-body liveness is intentionally not inferred from byte cadence;
       // the Session inactivity watchdog owns true turn liveness.
       return isResponses
-        ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort)
-        : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort);
+        ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort, upstream.onModelProgress)
+        : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort, upstream.onModelProgress);
     } else {
       // Stop must still reach fetch while a successful response body is being
       // read. Headers arriving is not completion of a non-stream inference.
@@ -999,6 +1001,7 @@ export function handleStreamResponse(
   upstreamController: AbortController,
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
+  onModelProgress?: () => void,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline replaces the manual
   // ReadableStream { start } loop. The pipeline is:
@@ -1013,10 +1016,17 @@ export function handleStreamResponse(
   //
   // Cancellation: downstream cancel propagates via the readable's cancel(),
   // which we wire to abort the upstream fetch.
-  const translator = new StreamTranslator(requestModel, translateReasoning, log);
+  let modelProgressActive = true;
+  const retireModelProgress = (): void => { modelProgressActive = false; };
+  const notifyModelProgress = (): void => {
+    if (!modelProgressActive || upstreamController.signal.aborted || downstreamSignal?.aborted) return;
+    onModelProgress?.();
+  };
+  const translator = new StreamTranslator(requestModel, translateReasoning, log, notifyModelProgress);
   const sseParser = new SSEParser();
   const logStreamEnd = createStreamEndLogger('chat_completions', log);
   if (!upstreamResp.body) {
+    retireModelProgress();
     // Detach the downstream-abort listener the main handler wired to
     // request.signal before handing us lifecycle ownership. Every other exit
     // path (done/error/cancel) calls detachDownstream(); this rare empty-body
@@ -1043,11 +1053,13 @@ export function handleStreamResponse(
       for (const sseEvent of sseEvents) {
         if (sseEvent.event === 'ping') continue;
         if (sseEvent.event === 'error') {
+          retireModelProgress();
           controller.error(new Error('Upstream Chat Completions stream reported an error'));
           return;
         }
         if (sseEvent.data === '[DONE]') {
           // Protocol terminator — forward as the finalize signal (see STREAM_DONE).
+          retireModelProgress();
           controller.enqueue(STREAM_DONE);
           continue;
         }
@@ -1056,6 +1068,7 @@ export function handleStreamResponse(
         } catch {
           // Missing content/tool arguments cannot be repaired by a later valid
           // terminal. Preserve the failure so recovery cannot clear its journal.
+          retireModelProgress();
           controller.error(new Error('Malformed upstream Chat Completions stream event'));
           return;
         }
@@ -1116,9 +1129,11 @@ export function handleStreamResponse(
       for (const event of anthropicEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
       }
+      if (anthropicEvents.some(event => event.type === 'error')) retireModelProgress();
     },
     flush(controller) {
       // EOF succeeds only with a valid finish_reason; otherwise emit an error.
+      retireModelProgress();
       const finalEvents = translator.finalize();
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
@@ -1151,6 +1166,7 @@ export function handleStreamResponse(
       try {
         const { done, value } = await reader.read();
         if (done) {
+          retireModelProgress();
           try { controller.close(); } catch { /* ignore */ }
           logStreamEnd('transport_eof');
           // Fix #8: detach the downstream-abort listener on the done path
@@ -1165,12 +1181,14 @@ export function handleStreamResponse(
         controller.enqueue(value);
         // Don't recurse — Web Streams will call pull() again when desiredSize > 0.
       } catch (err) {
+        retireModelProgress();
         logStreamEnd('transport_error', err);
         try { controller.error(err); } catch { /* ignore */ }
         detachDownstream();
       }
     },
     cancel(reason): void {
+      retireModelProgress();
       logStreamEnd('downstream_cancel', reason);
       detachDownstream();
       try { upstreamController.abort(new Error('Downstream cancel')); } catch { /* ignore */ }
@@ -1261,12 +1279,20 @@ export function handleResponsesStreamResponse(
   upstreamController: AbortController,
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
+  onModelProgress?: () => void,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline (mirror of handleStreamResponse).
-  const translator = new ResponsesStreamTranslator(requestModel, log);
+  let modelProgressActive = true;
+  const retireModelProgress = (): void => { modelProgressActive = false; };
+  const notifyModelProgress = (): void => {
+    if (!modelProgressActive || upstreamController.signal.aborted || downstreamSignal?.aborted) return;
+    onModelProgress?.();
+  };
+  const translator = new ResponsesStreamTranslator(requestModel, log, notifyModelProgress);
   const sseParser = new SSEParser();
   const logStreamEnd = createStreamEndLogger('responses', log);
   if (!upstreamResp.body) {
+    retireModelProgress();
     // See handleStreamResponse: detach the request.signal listener so the rare
     // empty-body return doesn't leak it.
     if (downstreamSignal) {
@@ -1299,6 +1325,7 @@ export function handleResponsesStreamResponse(
         try {
           controller.enqueue(JSON.parse(sseEvent.data) as ResponsesStreamEvent);
         } catch {
+          retireModelProgress();
           controller.error(new Error('Malformed upstream Responses stream event'));
           return;
         }
@@ -1331,6 +1358,7 @@ export function handleResponsesStreamResponse(
       for (const ae of anthropicEvents) {
         controller.enqueue(encoder.encode(formatSSE(ae)));
       }
+      if (anthropicEvents.some(ae => ae.type === 'message_stop' || ae.type === 'error')) retireModelProgress();
       // Success, incomplete and error are protocol terminals. The translator
       // emits message_stop or an Anthropic error event,
       // so end the downstream response NOW rather than waiting for transport EOF
@@ -1345,6 +1373,7 @@ export function handleResponsesStreamResponse(
       }
     },
     flush(controller) {
+      retireModelProgress();
       const finalEvents = translator.finalize();
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
@@ -1364,6 +1393,7 @@ export function handleResponsesStreamResponse(
       try {
         const { done, value } = await reader.read();
         if (done) {
+          retireModelProgress();
           try { controller.close(); } catch { /* ignore */ }
           logStreamEnd('transport_eof');
           // Fix #8: detach downstream listener on done too — covers both
@@ -1375,12 +1405,14 @@ export function handleResponsesStreamResponse(
         controller.enqueue(value);
         // Don't recurse — Web Streams will call pull() again when desiredSize > 0.
       } catch (err) {
+        retireModelProgress();
         logStreamEnd('transport_error', err);
         try { controller.error(err); } catch { /* ignore */ }
         detachDownstream();
       }
     },
     cancel(reason): void {
+      retireModelProgress();
       logStreamEnd('downstream_cancel', reason);
       detachDownstream();
       try { upstreamController.abort(new Error('Downstream cancel')); } catch { /* ignore */ }

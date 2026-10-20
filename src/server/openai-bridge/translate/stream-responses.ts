@@ -1,9 +1,9 @@
 // ResponsesStreamTranslator: OpenAI Responses API SSE → Anthropic SSE events (state machine)
 
 import type { AnthropicStreamEvent, AnthropicResponse } from '../types/anthropic';
-import type { ResponsesStreamEvent, ResponsesResponse } from '../types/openai-responses';
+import type { ResponsesOutputFunctionCall, ResponsesStreamEvent, ResponsesResponse } from '../types/openai-responses';
 import { resolveResponsesStopReason, ResponsesApiError } from './response-responses';
-import { generateMessageId, generateToolUseId } from '../utils/id';
+import { generateMessageId } from '../utils/id';
 import {
   emptyUsage,
   fromResponsesUsage,
@@ -13,30 +13,35 @@ import {
 } from './usage';
 
 interface FunctionCallBuffer {
+  itemId: string;
   callId: string;
   name: string;
   args: string;
-  anthropicIndex: number;
+  argsFinal: boolean;
+  invalidStatus: boolean;
 }
+
+type DeferredSegment = { type: 'tool'; outputIndex: number }
+  | { type: 'text' | 'thinking'; delta: string };
 
 export class ResponsesStreamTranslator {
   private messageId: string;
   private requestModel: string;
   private contentIndex = 0;
-  private activeBlockType: 'text' | 'thinking' | 'tool_use' | null = null;
+  private activeBlockType: 'text' | 'thinking' | null = null;
   private hasEmittedStart = false;
   private hasFinished = false;
   private usage: UsageSnapshot = emptyUsage();
   private usageWarning: UsageWarningLogger | undefined;
-
-  // Track function calls by output_index
   private functionCallBuffers = new Map<number, FunctionCallBuffer>();
-  // Track reasoning block
   private hasActiveReasoning = false;
+  private deferAfterToolCall = false;
+  private deferredSegments: DeferredSegment[] = [];
 
-  constructor(requestModel: string, usageWarning?: UsageWarningLogger) {
+  constructor(requestModel: string, usageWarning?: UsageWarningLogger, onModelProgress?: () => void) {
     this.messageId = generateMessageId();
     this.requestModel = requestModel;
+    this.onModelProgress = onModelProgress;
     let warned = false;
     this.usageWarning = usageWarning
       ? (message) => {
@@ -47,12 +52,12 @@ export class ResponsesStreamTranslator {
       : undefined;
   }
 
+  private readonly onModelProgress?: () => void;
+
   /** Feed a Responses API SSE event, returns Anthropic SSE events to emit */
   feed(event: ResponsesStreamEvent): AnthropicStreamEvent[] {
     if (this.hasFinished) return [];
     const events: AnthropicStreamEvent[] = [];
-
-    // Emit message_start on first event
     if (!this.hasEmittedStart) {
       this.hasEmittedStart = true;
       events.push(this.makeMessageStart());
@@ -62,172 +67,260 @@ export class ResponsesStreamTranslator {
       case 'response.output_text.delta':
         this.handleTextDelta(event.delta, events);
         break;
-
       case 'response.output_text.done':
-        this.closeActiveBlock(events);
+        if (!this.deferAfterToolCall) this.closeActiveBlock(events);
         break;
-
       case 'response.function_call_arguments.delta':
         this.handleFunctionCallDelta(event.output_index, event.delta, events);
         break;
-
       case 'response.function_call_arguments.done':
-        this.closeFunctionCallBlock(event.output_index, events);
+        this.setCompleteArguments(event.output_index, event.arguments, events);
         break;
-
       case 'response.output_item.added':
-        if (event.item.type === 'function_call') {
-          this.closeActiveBlock(events);
-          this.activeBlockType = 'tool_use';
-
-          const callId = event.item.call_id || generateToolUseId();
-          const name = event.item.name || '';
-          const anthropicIndex = this.contentIndex;
-
-          this.functionCallBuffers.set(event.output_index, {
-            callId,
-            name,
-            args: '',
-            anthropicIndex,
-          });
-
-          events.push({
-            type: 'content_block_start',
-            index: anthropicIndex,
-            content_block: { type: 'tool_use', id: callId, name, input: {} },
-          });
-        }
+        if (event.item.type === 'function_call') this.addFunctionCall(event.output_index, event.item, events);
         break;
-
+      case 'response.output_item.done':
+        if (event.item.type === 'function_call') this.materializeFunctionCall(event.output_index, event.item, events);
+        break;
       case 'response.reasoning_summary_text.delta':
         this.handleReasoningDelta(event.delta, events);
         break;
-
       case 'response.reasoning_summary_text.done':
-        if (this.hasActiveReasoning) {
+        if (!this.deferAfterToolCall && this.hasActiveReasoning) {
           this.closeActiveBlock(events);
           this.hasActiveReasoning = false;
         }
         break;
-
       case 'response.completed':
       case 'response.failed':
       case 'response.incomplete':
-        this.handleTerminal(event.response, events);
+        this.handleTerminal(event.response, events, event.type);
         break;
-
       case 'error':
         this.finishError(event.message, events);
         break;
-
-      // Other events are no-ops for Anthropic translation
       default:
         break;
     }
-
     return events;
   }
 
   private handleTextDelta(delta: string, events: AnthropicStreamEvent[]): void {
+    if (typeof delta === 'string' && delta.length > 0) this.onModelProgress?.();
+    if (this.deferAfterToolCall) {
+      this.deferredSegments.push({ type: 'text', delta });
+      return;
+    }
     if (this.activeBlockType !== 'text') {
       this.closeActiveBlock(events);
       this.activeBlockType = 'text';
-      events.push({
-        type: 'content_block_start',
-        index: this.contentIndex,
-        content_block: { type: 'text', text: '' },
-      });
+      events.push({ type: 'content_block_start', index: this.contentIndex, content_block: { type: 'text', text: '' } });
     }
-    events.push({
-      type: 'content_block_delta',
-      index: this.contentIndex,
-      delta: { type: 'text_delta', text: delta },
-    });
+    events.push({ type: 'content_block_delta', index: this.contentIndex, delta: { type: 'text_delta', text: delta } });
   }
 
   private handleReasoningDelta(delta: string, events: AnthropicStreamEvent[]): void {
+    if (typeof delta === 'string' && delta.length > 0) this.onModelProgress?.();
+    if (this.deferAfterToolCall) {
+      this.deferredSegments.push({ type: 'thinking', delta });
+      return;
+    }
     if (this.activeBlockType !== 'thinking') {
       this.closeActiveBlock(events);
       this.activeBlockType = 'thinking';
       this.hasActiveReasoning = true;
-      events.push({
-        type: 'content_block_start',
-        index: this.contentIndex,
-        content_block: { type: 'thinking', thinking: '', signature: '' },
-      });
+      events.push({ type: 'content_block_start', index: this.contentIndex, content_block: { type: 'thinking', thinking: '', signature: '' } });
     }
-    events.push({
-      type: 'content_block_delta',
-      index: this.contentIndex,
-      delta: { type: 'thinking_delta', thinking: delta },
-    });
+    events.push({ type: 'content_block_delta', index: this.contentIndex, delta: { type: 'thinking_delta', thinking: delta } });
   }
 
-  private handleFunctionCallDelta(
-    outputIndex: number,
-    delta: string,
-    events: AnthropicStreamEvent[],
-  ): void {
+  private addFunctionCall(outputIndex: number, item: ResponsesOutputFunctionCall, events: AnthropicStreamEvent[]): void {
+    this.ensureToolSegment(outputIndex, events);
+    const buffer = this.functionCallBuffers.get(outputIndex)!;
+    this.mergeIdentity(buffer, item);
+  }
+
+  private ensureToolSegment(outputIndex: number, events: AnthropicStreamEvent[]): FunctionCallBuffer {
     let buffer = this.functionCallBuffers.get(outputIndex);
-
-    if (!buffer) {
-      // Function call started without output_item.added (shouldn't happen, but handle gracefully)
+    if (buffer) return buffer;
+    if (!this.deferAfterToolCall) {
       this.closeActiveBlock(events);
-      this.activeBlockType = 'tool_use';
-
-      const callId = generateToolUseId();
-      const anthropicIndex = this.contentIndex;
-      buffer = { callId, name: '', args: '', anthropicIndex };
-      this.functionCallBuffers.set(outputIndex, buffer);
-
-      events.push({
-        type: 'content_block_start',
-        index: anthropicIndex,
-        content_block: { type: 'tool_use', id: callId, name: '', input: {} },
-      });
+      this.hasActiveReasoning = false;
+      this.deferAfterToolCall = true;
     }
+    buffer = { itemId: '', callId: '', name: '', args: '', argsFinal: false, invalidStatus: false };
+    this.functionCallBuffers.set(outputIndex, buffer);
+    this.deferredSegments.push({ type: 'tool', outputIndex });
+    return buffer;
+  }
 
+  private handleFunctionCallDelta(outputIndex: number, delta: string, events: AnthropicStreamEvent[]): void {
+    const buffer = this.ensureToolSegment(outputIndex, events);
+    if (buffer.args === '\0') return;
+    if (buffer.argsFinal) {
+      // A repeated delta after the authoritative done event is contradictory.
+      buffer.argsFinal = false;
+      buffer.args = '\0';
+      return;
+    }
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0 || typeof delta !== 'string') return;
     buffer.args += delta;
-    events.push({
-      type: 'content_block_delta',
-      index: buffer.anthropicIndex,
-      delta: { type: 'input_json_delta', partial_json: delta },
-    });
-  }
-
-  /** Close a function call block by output_index (not global activeBlockType) */
-  private closeFunctionCallBlock(outputIndex: number, events: AnthropicStreamEvent[]): void {
-    const buffer = this.functionCallBuffers.get(outputIndex);
-    if (buffer) {
-      events.push({ type: 'content_block_stop', index: buffer.anthropicIndex });
-      // Advance contentIndex if this buffer's block is the current one
-      if (buffer.anthropicIndex === this.contentIndex) {
-        this.contentIndex++;
-      }
-      if (this.activeBlockType === 'tool_use') {
-        this.activeBlockType = null;
-      }
-    } else {
-      // Fallback: close whatever is active
-      this.closeActiveBlock(events);
+    const duplicateIdentity = [...this.functionCallBuffers.entries()].some(([index, other]) =>
+      index !== outputIndex && Boolean((buffer.callId && other.callId === buffer.callId)
+        || (buffer.itemId && other.itemId === buffer.itemId)));
+    const identityConflicted = buffer.itemId === '\0' || buffer.callId === '\0' || buffer.name === '\0';
+    if (delta.length > 0 && buffer.args !== '\0' && !buffer.invalidStatus && !identityConflicted && !duplicateIdentity) {
+      this.onModelProgress?.();
     }
   }
 
-  private handleTerminal(response: ResponsesResponse, events: AnthropicStreamEvent[]): void {
+  private setCompleteArguments(outputIndex: number, args: string, events: AnthropicStreamEvent[]): void {
+    const buffer = this.ensureToolSegment(outputIndex, events);
+    this.mergeCompleteArguments(buffer, args);
+  }
+
+  private mergeCompleteArguments(buffer: FunctionCallBuffer, args: string): void {
+    if (buffer.args === '\0' || (buffer.argsFinal && buffer.args !== args)
+      || (!buffer.argsFinal && buffer.args && !args.startsWith(buffer.args))) {
+      buffer.args = '\0';
+      return;
+    }
+    buffer.args = args;
+    buffer.argsFinal = true;
+  }
+
+  private materializeFunctionCall(outputIndex: number, item: ResponsesOutputFunctionCall, events: AnthropicStreamEvent[] = []): void {
+    const buffer = this.ensureToolSegment(outputIndex, events);
+    this.mergeIdentity(buffer, item);
+    if (item.status && item.status !== 'completed') buffer.invalidStatus = true;
+    this.mergeCompleteArguments(buffer, item.arguments);
+  }
+
+  private mergeIdentity(buffer: FunctionCallBuffer, item: ResponsesOutputFunctionCall): void {
+    if (item.id) {
+      if (buffer.itemId && buffer.itemId !== item.id) buffer.itemId = '\0';
+      else buffer.itemId = item.id;
+    }
+    if (item.call_id) {
+      if (buffer.callId && buffer.callId !== item.call_id) buffer.callId = '\0';
+      else buffer.callId = item.call_id;
+    }
+    if (item.name) {
+      if (buffer.name && buffer.name !== item.name) buffer.name = '\0';
+      else buffer.name = item.name;
+    }
+  }
+
+  private mergeTerminalOutput(response: ResponsesResponse, events: AnthropicStreamEvent[]): string | null {
+    if (!Array.isArray(response.output)) {
+      return this.functionCallBuffers.size > 0 ? 'Completed Responses response omitted its final output' : null;
+    }
+    for (const [outputIndex, observed] of this.functionCallBuffers) {
+      const item = response.output[outputIndex];
+      if (!item || item.type !== 'function_call') return 'Completed Responses output does not contain the observed function call at its original index';
+      if ((observed.itemId && observed.itemId !== item.id)
+        || (observed.callId && observed.callId !== item.call_id)
+        || (observed.name && observed.name !== item.name)
+        || (observed.argsFinal && observed.args !== item.arguments)) {
+        return 'Completed Responses output conflicts with the observed function call';
+      }
+      if (item.status && item.status !== 'completed') return 'Completed Responses output contains an unfinished function call';
+      this.materializeFunctionCall(outputIndex, item, events);
+    }
+    response.output.forEach((item, outputIndex) => {
+      if (item.type === 'function_call' && !this.functionCallBuffers.has(outputIndex)) {
+        this.materializeFunctionCall(outputIndex, item, events);
+      }
+    });
+    return null;
+  }
+
+  private validateDeferredTools(): string | null {
+    const callIdOwners = new Map<string, number>();
+    for (const [outputIndex, buffer] of this.functionCallBuffers) {
+      if (!buffer.callId || buffer.callId === '\0' || !buffer.name.trim() || buffer.name === '\0') return 'Invalid or incomplete Responses function call identity';
+      const previousOwner = callIdOwners.get(buffer.callId);
+      if (previousOwner !== undefined && previousOwner !== outputIndex) return 'Duplicate Responses function call identity';
+      callIdOwners.set(buffer.callId, outputIndex);
+      if (buffer.itemId === '\0' || buffer.invalidStatus) return 'Conflicting or unfinished Responses function call metadata';
+      if (!buffer.argsFinal) return 'Responses function call arguments were not finalized';
+      if (buffer.args === '\0') return 'Conflicting Responses function call arguments';
+      const raw = buffer.args.trim() || '{}';
+      try {
+        const value: unknown = JSON.parse(raw);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Invalid Responses function call input object';
+      } catch {
+        return 'Incomplete or invalid Responses function call input JSON';
+      }
+    }
+    return null;
+  }
+
+  private emitDeferredSegments(events: AnthropicStreamEvent[]): void {
+    for (const segment of this.deferredSegments) {
+      const index = this.contentIndex;
+      if (segment.type === 'tool') {
+        const call = this.functionCallBuffers.get(segment.outputIndex)!;
+        const raw = call.args.trim() || '{}';
+        events.push({ type: 'content_block_start', index, content_block: { type: 'tool_use', id: call.callId, name: call.name, input: {} } });
+        if (raw !== '{}') events.push({ type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: raw } });
+      } else {
+        events.push({ type: 'content_block_start', index, content_block: segment.type === 'text'
+          ? { type: 'text', text: '' }
+          : { type: 'thinking', thinking: '', signature: '' } });
+        events.push({ type: 'content_block_delta', index, delta: segment.type === 'text'
+          ? { type: 'text_delta', text: segment.delta }
+          : { type: 'thinking_delta', thinking: segment.delta } });
+      }
+      events.push({ type: 'content_block_stop', index });
+      this.contentIndex++;
+    }
+    this.deferredSegments = [];
+  }
+
+  private handleTerminal(
+    response: ResponsesResponse,
+    events: AnthropicStreamEvent[],
+    eventType: 'response.completed' | 'response.failed' | 'response.incomplete',
+  ): void {
+    if ((eventType === 'response.completed' && response.status !== 'completed')
+      || (eventType === 'response.failed' && response.status !== 'failed')
+      || (eventType === 'response.incomplete' && response.status !== 'incomplete')) {
+      this.finishError('Responses terminal event conflicts with its response status', events);
+      return;
+    }
+    if (response.status === 'failed') {
+      this.finishError(response.error?.message || 'Upstream Responses request failed', events);
+      return;
+    }
+    if (response.status === 'completed') {
+      const terminalOutputError = this.mergeTerminalOutput(response, events);
+      if (terminalOutputError) {
+        this.finishError(terminalOutputError, events);
+        return;
+      }
+    }
+    if (this.functionCallBuffers.size > 0) {
+      if (response.status !== 'completed') {
+        this.finishError('Responses function call ended without a completed response', events);
+        return;
+      }
+      const invalidTool = this.validateDeferredTools();
+      if (invalidTool) {
+        this.finishError(invalidTool, events);
+        return;
+      }
+      this.emitDeferredSegments(events);
+    }
     this.closeActiveBlock(events);
     this.hasFinished = true;
     if (response.usage) this.usage = fromResponsesUsage(response.usage, this.usageWarning);
     try {
       const stopReason = resolveResponsesStopReason(response, this.functionCallBuffers.size > 0);
-      events.push({
-        type: 'message_delta',
-        delta: { stop_reason: stopReason, stop_sequence: null },
-        usage: toAnthropicUsage(this.usage),
-      });
+      events.push({ type: 'message_delta', delta: { stop_reason: stopReason, stop_sequence: null }, usage: toAnthropicUsage(this.usage) });
       events.push({ type: 'message_stop' });
     } catch (err) {
       if (!(err instanceof ResponsesApiError)) throw err;
-      // Keep terminal usage available, but never issue a successful stop on error.
       events.push({ type: 'message_delta', delta: { stop_reason: null, stop_sequence: null }, usage: toAnthropicUsage(this.usage) });
       this.finishError(err.message, events);
     }
@@ -235,6 +328,7 @@ export class ResponsesStreamTranslator {
 
   private finishError(message: string, events: AnthropicStreamEvent[]): void {
     this.closeActiveBlock(events);
+    this.deferredSegments = [];
     this.hasFinished = true;
     events.push({ type: 'error', error: { type: 'api_error', message } });
   }
@@ -257,14 +351,8 @@ export class ResponsesStreamTranslator {
 
   private makeMessageStart(): AnthropicStreamEvent {
     const message: AnthropicResponse = {
-      id: this.messageId,
-      type: 'message',
-      role: 'assistant',
-      content: [],
-      model: this.requestModel,
-      stop_reason: null,
-      stop_sequence: null,
-      usage: toAnthropicUsage(this.usage),
+      id: this.messageId, type: 'message', role: 'assistant', content: [], model: this.requestModel,
+      stop_reason: null, stop_sequence: null, usage: toAnthropicUsage(this.usage),
     };
     return { type: 'message_start', message };
   }
