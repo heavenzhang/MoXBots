@@ -21,6 +21,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  createBridgeProgressContext,
   registerBridge,
   unregisterBridge,
   lookupBridge,
@@ -234,5 +235,36 @@ describe('bridge-registry — error propagation', () => {
     }, 'broken-test');
 
     await expect(lookupBridge('tok-throws')).rejects.toThrow('resolver broken');
+  });
+});
+
+describe('token-owned bridge progress context', () => {
+  it('keeps liveness notification token-scoped and stops it on unsubscribe, Stop, and token retirement', async () => {
+    const token = 'progress-token';
+    const context = createBridgeProgressContext();
+    registerBridge(token, async request => ({ ...baseConfig,
+      onModelProgress: () => { if (request) context.notify(request.signal); },
+    }), 'session:progress', context);
+    const controller = new AbortController();
+    const request = new Request('http://fixture.invalid/bridge/progress-token/v1/messages', { signal: controller.signal });
+    const config = await lookupBridge(token, request);
+    const observed: AbortSignal[] = [];
+    let unsubscribe = context.subscribe(signal => observed.push(signal));
+    config?.onModelProgress?.();
+    expect(observed).toEqual([request.signal]);
+    unsubscribe();
+    config?.onModelProgress?.();
+    expect(observed).toHaveLength(1);
+    unsubscribe = context.subscribe(signal => observed.push(signal));
+    controller.abort(); // Stop revokes this exact request before late model data arrives.
+    config?.onModelProgress?.();
+    expect(observed).toHaveLength(1);
+    unregisterBridge(token);
+    const replacementRequest = new Request('http://fixture.invalid/bridge/progress-token/v1/messages');
+    const replacement = await lookupBridge(token, replacementRequest);
+    expect(replacement).toBeUndefined();
+    config?.onModelProgress?.(); // A retired token's captured resolver cannot notify.
+    expect(observed).toHaveLength(1);
+    unsubscribe();
   });
 });

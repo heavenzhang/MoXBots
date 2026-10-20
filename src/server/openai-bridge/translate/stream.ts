@@ -12,12 +12,17 @@ interface ToolCallBuffer {
   args: string;
 }
 
+type DeferredSegment = { type: 'tool'; toolIndex: number }
+  | { type: 'text' | 'thinking'; delta: string };
+
 export class StreamTranslator {
   private messageId: string;
   private requestModel: string;
   private contentIndex = 0;
   private activeBlockType: 'text' | 'thinking' | 'tool_use' | null = null;
   private toolCallBuffers = new Map<number, ToolCallBuffer>();
+  private deferAfterToolCall = false;
+  private deferredSegments: DeferredSegment[] = [];
   private usage: UsageSnapshot = emptyUsage();
   private hasEmittedStart = false;
   private hasFinished = false;
@@ -25,10 +30,12 @@ export class StreamTranslator {
   private translateReasoning: boolean;
   private usageWarning: UsageWarningLogger | undefined;
 
-  constructor(requestModel: string, translateReasoning = true, usageWarning?: UsageWarningLogger) {
+  constructor(requestModel: string, translateReasoning = true, usageWarning?: UsageWarningLogger,
+    onModelProgress?: () => void) {
     this.messageId = generateMessageId();
     this.requestModel = requestModel;
     this.translateReasoning = translateReasoning;
+    this.onModelProgress = onModelProgress;
     let warned = false;
     this.usageWarning = usageWarning
       ? (message) => {
@@ -38,6 +45,8 @@ export class StreamTranslator {
         }
       : undefined;
   }
+
+  private readonly onModelProgress?: () => void;
 
   /** Feed an OpenAI stream chunk, returns Anthropic SSE events to emit */
   feed(chunk: OpenAIStreamChunk): AnthropicStreamEvent[] {
@@ -66,6 +75,7 @@ export class StreamTranslator {
       // Usage-only chunk (final chunk with no choices)
       return events;
     }
+    if (this.stopReason) return this.fail('Received Chat Completions content after finish_reason');
 
     const delta = choice.delta;
     if (!delta || typeof delta !== 'object' || Array.isArray(delta)) {
@@ -73,8 +83,11 @@ export class StreamTranslator {
     }
 
     // Handle reasoning_content (thinking)
-    if (this.translateReasoning && delta.reasoning_content) {
-      if (this.activeBlockType !== 'thinking') {
+    if (this.translateReasoning && typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+      this.onModelProgress?.();
+      if (this.deferAfterToolCall) {
+        this.deferredSegments.push({ type: 'thinking', delta: delta.reasoning_content });
+      } else if (this.activeBlockType !== 'thinking') {
         this.closeActiveBlock(events);
         this.activeBlockType = 'thinking';
         events.push({
@@ -83,16 +96,19 @@ export class StreamTranslator {
           content_block: { type: 'thinking', thinking: '', signature: '' },
         });
       }
-      events.push({
-        type: 'content_block_delta',
-        index: this.contentIndex,
-        delta: { type: 'thinking_delta', thinking: delta.reasoning_content },
-      });
+      if (!this.deferAfterToolCall) events.push({
+          type: 'content_block_delta',
+          index: this.contentIndex,
+          delta: { type: 'thinking_delta', thinking: delta.reasoning_content },
+        });
     }
 
     // Handle text content
-    if (delta.content) {
-      if (this.activeBlockType !== 'text') {
+    if (typeof delta.content === 'string' && delta.content.length > 0) {
+      this.onModelProgress?.();
+      if (this.deferAfterToolCall) {
+        this.deferredSegments.push({ type: 'text', delta: delta.content });
+      } else if (this.activeBlockType !== 'text') {
         this.closeActiveBlock(events);
         this.activeBlockType = 'text';
         events.push({
@@ -101,11 +117,11 @@ export class StreamTranslator {
           content_block: { type: 'text', text: '' },
         });
       }
-      events.push({
-        type: 'content_block_delta',
-        index: this.contentIndex,
-        delta: { type: 'text_delta', text: delta.content },
-      });
+      if (!this.deferAfterToolCall) events.push({
+          type: 'content_block_delta',
+          index: this.contentIndex,
+          delta: { type: 'text_delta', text: delta.content },
+        });
     }
 
     // Handle tool calls
@@ -129,6 +145,9 @@ export class StreamTranslator {
         return this.fail('Invalid upstream Chat Completions stream finish reason');
       }
       this.closeActiveBlock(events);
+      if (this.toolCallBuffers.size > 0) {
+        if (choice.finish_reason !== 'tool_calls') return this.fail('Tool call stream ended without a tool_calls finish reason');
+      }
       this.stopReason = translateStopReason(choice.finish_reason);
     }
 
@@ -137,37 +156,74 @@ export class StreamTranslator {
 
   private handleToolCallDelta(tc: OpenAIStreamToolCall, events: AnthropicStreamEvent[]): void {
     const idx = tc.index;
+    if (!Number.isSafeInteger(idx) || idx < 0) return;
 
     if (!this.toolCallBuffers.has(idx)) {
-      // New tool call — close previous block, start new tool_use
+      // Anthropic tool blocks have a linear lifecycle. Buffer calls until the
+      // provider terminal so interleaved OpenAI indices can be serialized as
+      // complete, independently addressable blocks.
       this.closeActiveBlock(events);
-      this.activeBlockType = 'tool_use';
-
-      const id = tc.id || generateToolUseId();
-      const name = tc.function?.name || '';
-      this.toolCallBuffers.set(idx, { id, name, args: '' });
-
-      // IMPORTANT: thought_signature is intentionally NOT included on content_block_start.
-      // The SDK stores these events in its session transcript and replays them on resume.
-      // Including non-standard fields causes API rejection ("Extra inputs are not permitted").
-      // The bridge handler caches thought_signatures separately. See: #68
-      events.push({
-        type: 'content_block_start',
-        index: this.contentIndex,
-        content_block: { type: 'tool_use', id, name, input: {} },
-      });
+      this.deferAfterToolCall = true;
+      this.toolCallBuffers.set(idx, { id: '', name: '', args: '' });
+      this.deferredSegments.push({ type: 'tool', toolIndex: idx });
     }
 
     // Accumulate arguments
     const buffer = this.toolCallBuffers.get(idx)!;
-    if (tc.function?.arguments) {
-      buffer.args += tc.function.arguments;
-      events.push({
-        type: 'content_block_delta',
-        index: this.contentIndex,
-        delta: { type: 'input_json_delta', partial_json: tc.function.arguments },
-      });
+    if (tc.id) {
+      if (buffer.id && buffer.id !== tc.id) { buffer.id = '\0'; }
+      else buffer.id = tc.id;
     }
+    if (typeof tc.function?.name === 'string' && tc.function.name.length > 0) buffer.name += tc.function.name;
+    if (typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0) {
+      buffer.args += tc.function.arguments;
+      const duplicateIdentity = buffer.id && [...this.toolCallBuffers.entries()].some(([index, other]) =>
+        index !== idx && other.id === buffer.id);
+      if (buffer.id !== '\0' && !duplicateIdentity) this.onModelProgress?.();
+    }
+  }
+
+  private validateAndEmitDeferredToolSegments(events: AnthropicStreamEvent[]): string | null {
+    const parsedInputs = new Map<number, string>();
+    const callIdOwners = new Map<string, number>();
+    for (const [toolIndex, buffer] of this.toolCallBuffers) {
+      if (buffer.id === '\0' || !buffer.name.trim()) return 'Invalid or incomplete upstream tool identity';
+      if (buffer.id) {
+        const previousOwner = callIdOwners.get(buffer.id);
+        if (previousOwner !== undefined && previousOwner !== toolIndex) return 'Duplicate upstream tool call identity';
+        callIdOwners.set(buffer.id, toolIndex);
+      }
+      const raw = buffer.args.trim() || '{}';
+      try {
+        const value: unknown = JSON.parse(raw);
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return 'Invalid upstream tool input object';
+      } catch {
+        return 'Incomplete or invalid upstream tool input JSON';
+      }
+      parsedInputs.set(toolIndex, raw);
+    }
+
+    for (const segment of this.deferredSegments) {
+      const index = this.contentIndex;
+      if (segment.type === 'tool') {
+        const call = this.toolCallBuffers.get(segment.toolIndex)!;
+        events.push({ type: 'content_block_start', index, content_block: { type: 'tool_use', id: call.id || generateToolUseId(), name: call.name, input: {} } });
+        const args = parsedInputs.get(segment.toolIndex)!;
+        if (args !== '{}') events.push({ type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: args } });
+      } else {
+        events.push({
+          type: 'content_block_start', index,
+          content_block: segment.type === 'text' ? { type: 'text', text: '' } : { type: 'thinking', thinking: '', signature: '' },
+        });
+        events.push({ type: 'content_block_delta', index, delta: segment.type === 'text'
+          ? { type: 'text_delta', text: segment.delta }
+          : { type: 'thinking_delta', thinking: segment.delta } });
+      }
+      events.push({ type: 'content_block_stop', index });
+      this.contentIndex++;
+    }
+    this.deferredSegments = [];
+    return null;
   }
 
   /**
@@ -187,6 +243,10 @@ export class StreamTranslator {
 
     const events: AnthropicStreamEvent[] = [];
     this.closeActiveBlock(events);
+    if (this.toolCallBuffers.size > 0) {
+      const invalidTool = this.validateAndEmitDeferredToolSegments(events);
+      if (invalidTool) return this.fail(invalidTool);
+    }
     this.hasFinished = true;
 
     events.push({
@@ -202,6 +262,7 @@ export class StreamTranslator {
     const events: AnthropicStreamEvent[] = [];
     this.closeActiveBlock(events);
     this.hasFinished = true;
+    this.deferredSegments = [];
     // Keep untrusted upstream bodies out of diagnostics and the SDK transcript.
     events.push({ type: 'error', error: { type: 'api_error', message } });
     return events;
