@@ -20,6 +20,7 @@ import { existsSync, linkSync, readFileSync, writeFileSync, unlinkSync, appendFi
 import { homedir } from 'os';
 import { join } from 'path';
 import * as asyncFs from 'node:fs/promises';
+import { readSessionHistoryTail } from './session-history-tail';
 import { createHash, randomUUID } from 'node:crypto';
 
 import { deriveSessionContinuation } from '../shared/sessionContinuation';
@@ -27,7 +28,7 @@ import type { DshProjectionCursor, MessageUsage, PendingConversationMutation, Pe
 import type { PendingDshInput } from './types/session';
 import { createSessionMetadata, generateSessionTitle, ownsSessionMetadataBirth } from './types/session';
 import { isValidProductSessionId, resolveTranscriptFormat } from '../shared/transcriptFormat';
-import { createTranscriptProjection, fromStoredTranscriptMessage, transcriptMessages, type TranscriptProjection, type TranscriptSaveStatus, type TranscriptObject } from '../shared/sessionTranscript';
+import { createTranscriptProjection, fromStoredTranscriptMessage, toStoredTranscriptMessage, transcriptMessages, type TranscriptProjection, type TranscriptSaveStatus, type TranscriptObject } from '../shared/sessionTranscript';
 import { copyForkAttachments, discardForkAttachments } from './session-transcript/fork-attachments';
 import { SessionTranscript } from './session-transcript/session';
 import { TranscriptFile, readTranscriptFile, syncTranscriptDirectory } from './session-transcript/file';
@@ -189,6 +190,7 @@ export async function updateBuiltinModelRecovery(
         const matches = isLive() && history === sdkSessionId
             && current.modelRecovery?.id === expected?.id
             && current.modelRecovery?.status === expected?.status
+            && current.modelRecovery?.kind === expected?.kind
             && current.modelRecovery?.sdkSessionId === expected?.sdkSessionId
             && current.modelRecovery?.routeIdentity === expected?.routeIdentity
             && current.modelRecovery?.goalId === expected?.goalId
@@ -2007,6 +2009,26 @@ export async function getSessionData(sessionId: string): Promise<SessionData | n
     }
 
     return getSessionDataFromMetadata(metadata);
+}
+
+/** Bounded display projection; execution and mutation always use the full reader. */
+export async function getSessionDisplayHistory(sessionId: string, limit: number): Promise<SessionMessage[]> {
+    const metadata = getSessionMetadata(sessionId);
+    if (!metadata || !isHistoryVisibleSession(metadata)) return [];
+    const active = activeTranscripts.get(sessionId);
+    if (active) return [...active.writer.projection.messages.values()].slice(-limit).map(toStoredTranscriptMessage);
+    const format = await sessionTranscriptFormat(metadata, sessionId);
+    if (format === 'v2') {
+        // V2 is an operation log: folding remains with the canonical reader.
+        const decoded = await readTranscriptFile(getV2SessionFilePath(sessionId), sessionId);
+        return [...decoded.projection.messages.values()].slice(-limit).map(toStoredTranscriptMessage);
+    }
+    const path = getSessionFilePath(sessionId);
+    if (await pathExists(path)) return readSessionHistoryTail(path, limit);
+    const legacyPath = getLegacySessionFilePath(sessionId);
+    if (!await pathExists(legacyPath)) return [];
+    const legacy = JSON.parse(await asyncFs.readFile(legacyPath, 'utf8')) as { messages?: SessionMessage[] };
+    return (legacy.messages ?? []).slice(-limit);
 }
 
 /**

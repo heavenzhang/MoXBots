@@ -1,5 +1,5 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBridgeHandler } from './handler';
 import { ContextRecoveryController } from './context-recovery';
 import { ModelFailoverController, type BridgeModelFailover } from './model-failover';
@@ -64,6 +64,50 @@ afterEach(async () => {
 });
 
 describe('context recovery over the existing bridge handler', () => {
+  it('hands a partial stream to the original owner without reopening either guard or repeating completed actions', async () => {
+    const upstream = await fixture((_body, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      if (upstream.requests.length === 1) {
+        res.end('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"preserved partial"}}\n\n');
+      } else {
+        res.end('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+      }
+    });
+    let generation = 0;
+    const context = new ContextRecoveryController({ scope: () => `same-root:${generation}`, isActive: () => true,
+      canRecover: () => true, protectStreaming: true, backup: async () => '/private/stream-archive.json',
+      persistLedger: async () => {} });
+    const interrupted = vi.fn(async () => true);
+    const blocked = vi.fn(async () => {});
+    const failover = new ModelFailoverController({ scope: () => `same-root:${generation}`, isActive: () => true,
+      canRetry: () => context.canRetryInference(), canSwitch: () => true, resolveBackup: () => undefined,
+      onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery: {
+        wait: async () => undefined, complete: async () => {}, interrupted, blocked,
+      } });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'anthropic',
+      baseUrl: upstream.baseUrl, apiKey: 'fixture', contextRecovery: context, modelFailover: failover }) });
+    const body = { ...history(), stream: true };
+    const partial = await (await handler(request(body))).text();
+    expect(partial).toContain('preserved partial');
+    expect(partial).toContain('automatic_replay_blocked');
+    expect(interrupted).toHaveBeenCalledTimes(1);
+    expect(blocked).not.toHaveBeenCalled();
+    expect((await handler(request(body))).status).toBe(409);
+    expect(upstream.requests).toHaveLength(1);
+    const continuation = structuredClone(body);
+    continuation.messages.push({ role: 'user', content: '<system-reminder>Verified native continuation</system-reminder>' });
+    expect(context.prepareStreamContinuation(continuation)).toBe(1);
+    failover.endTurn();
+    generation++;
+    const completed = await handler(request(continuation));
+    expect(completed.status).toBe(200);
+    expect(await completed.text()).toContain('message_stop');
+    expect(upstream.requests).toHaveLength(2);
+    // Native IDs are deliberately absent from the action key.
+    expect(await context.authorizeTool('increment_counter', { delta: 1 })).toContain('already completed successfully');
+    expect(interrupted).toHaveBeenCalledTimes(1);
+  });
+
   it.each([401, 409, 429, 503].flatMap(status => [false, true].map(declined => ({ status, declined }))))('preserves HTTP $status through both guards (durable owner declined=$declined)', async ({ status, declined }) => {
     const upstream = await fixture((_body, res) => json(res, { error: { type: 'api_error', message: 'fixture upstream rejection' } }, status));
     const diagnostics: string[] = [];

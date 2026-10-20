@@ -23,7 +23,7 @@ MoXBots 是用户拥有的 MyAgents fork，包含独立品牌桌面客户端、L
 | 有限 Bot 执行（默认关闭） | `services/agentnet/src/execution_*`、`execution-core/`、`src/host/bot-*`、`src-tauri/headless-network/src/bot_execution*` | 真实身份/原操作账本、有限 proof/lease、Host 本地策略和独立IPC；PR23/main75已发布并完成单Bot真实Linux验收；模型接入另见BOTS-MODEL-CENTER-001；共享仍待实施 |
 | 模型中心（可选、默认关闭） | `services/agentnet/src/model_center_*`、`admin-web/`、`src/host/cloud-model*` | 同一管理台的Provider/Model、Bot期望模型、有限Host会话网关和调用计量；builtin/API三协议，PR38已交主干并发布，真实管理员配置/分配/持久化通过；真实供应商调用另追踪，证据 dev-docs/bots-model-center-production-acceptance.md |
 | 多用户共享规划 | `services/agentnet/planning/` | 后续规划、共享权限、BOT-ADMIN-LIFECYCLE-V1 生命周期设计与 TODO；管理及有限执行控制面已发布；共享和扩展IAM仍待实现 |
-| 交互原型 | `dev-docs/prototypes/agentnets-bot-sharing-v1/` | HTML、设计约定、合成数据和原型验收；不接生产客户端 |
+| 交互原型 | `dev-docs/prototypes/agentnets-bot-sharing-v1/`、`dev-docs/prototypes/moxbots-mobile-001/` | HTML、移动 Web 原型源码、设计约定、合成数据和原型验收；不接生产客户端 |
 | 项目看板 | `src/renderer/features/project-board/`、`pages/ProjectBoard.tsx`，`dev-docs/project-board.md` | 按真实Task/Session展示工作区执行概况；API、原生、生产验收分开追踪 |
 | 桌面协作社区 | `src/renderer/features/community/`、`features/account/ownedAccountSelection.ts`、`src-tauri/src/agent_network/community.rs` | 复用现有 Owned 账号，通过 Rust 闭集 HTTPS 接口浏览、发帖与回复；入口含个人菜单/更多，真实登录与原生发行另验 |
 | 远程 Agent 会话 | `src/renderer/features/remote-session/`、`src/server/remote-session/`、`src-tauri/src/agent_network/remote_*`、`src/host/remote-session.ts` | 同账号正式会话入口、快照同步、原Session owner/配置冻结、审批与未确认回执；机制见 `specs/tech_docs/remote_agent_session.md`，真实双端/原生发布另验 |
@@ -90,3 +90,7 @@ User chose https://140.143.183.232/ directly. Preserve the current static design
 ## 聊天内子 Agent 查看
 
 `src/renderer/components/agent-status/subagentViewModel.ts` 与 `useSubagentViews.ts` 只读投影原Tab transcript、lifecycle和带runId校验的后台状态；`SubagentActivityPanel`/`SubagentInspector`由Chat挂载，不创建新执行器。验收与合成实际组件预览见`dev-docs/subagent-ui/acceptance.md`。TaskTool历史输入恢复复用既有完整JSON解析路径；分页报错由原TabProvider经可选onError回传。
+
+## 统一执行状态栏
+
+`src/renderer/components/agent-status/ExecutionStatusBar.tsx` 由 SimpleChatInput 挂载，复用既有待办/子 Agent 投影和 Goal 控制回调；唯一详情区与外置暂停。规范 `specs/tech_docs/goal_todo_interaction.md`，验证 `dev-docs/unified-statusbar/acceptance.md`，不新增执行/持久化 owner。

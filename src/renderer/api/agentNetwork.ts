@@ -377,6 +377,15 @@ export const startOwnedNetworkLogin = (
     issuer,
     publicTlsCaFile: publicTlsCaFile?.trim() || null,
   });
+/** Restore only the selected saved identity; native owner rejects stale revisions. */
+export const startOwnedNetworkReauthentication = (
+  connectionId: string,
+  expectedRegistryRevision: number,
+): Promise<OwnedLoginAttempt> =>
+  invoke("cmd_agent_network_owned_start_existing", {
+    connectionId,
+    expectedRegistryRevision,
+  });
 export const openOwnedNetworkAuthorization = (
   attemptId: string,
 ): Promise<void> =>

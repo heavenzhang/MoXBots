@@ -251,13 +251,23 @@ export function JoinNetworkDialog({
                     <p className="mt-1 break-all text-xs text-[var(--ink-muted)]">
                       {attempt.authorizationUrl}
                     </p>
+                    <button
+                      type="button"
+                      onClick={() => void login.check()}
+                      disabled={
+                        busy || login.checking || login.expired || login.stopped
+                      }
+                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+                    >
+                      {t("agentNetwork.ownedLogin.check")}
+                    </button>
                   </div>
                 )}
               </details>
               {attempt && (
                 <div className="mt-4 rounded-lg border border-[var(--line)] p-3">
                   <p className="text-sm font-medium">
-                    {t("agentNetwork.ownedLogin.waiting")}
+                    {t(login.stopped ? "agentNetwork.ownedLogin.stopped" : "agentNetwork.ownedLogin.waiting")}
                   </p>
                   {!login.expired && !login.stopped && (
                     <p
@@ -268,14 +278,14 @@ export function JoinNetworkDialog({
                       {t("agentNetwork.ownedLogin.autoChecking")}
                     </p>
                   )}
-                  <p className="mt-2 text-xs text-[var(--ink-muted)]">
+                  {!login.stopped && <p className="mt-2 text-xs text-[var(--ink-muted)]">
                     {t("agentNetwork.ownedLogin.expires", {
                       time: new Date(
                         attempt.expiresAt * 1000,
                       ).toLocaleTimeString(),
                     })}
-                  </p>
-                  <div className="mt-3 grid grid-cols-1 gap-2 min-[480px]:grid-cols-2">
+                  </p>}
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void login.reopen()}
@@ -285,16 +295,6 @@ export function JoinNetworkDialog({
                       className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
                     >
                       {t("agentNetwork.ownedLogin.openBrowser")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void login.check()}
-                      disabled={
-                        busy || login.checking || login.expired || login.stopped
-                      }
-                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      {t("agentNetwork.ownedLogin.check")}
                     </button>
                   </div>
                   {login.expired && (

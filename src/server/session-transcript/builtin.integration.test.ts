@@ -55,6 +55,7 @@ let agent: typeof import('../agent-session');
 let store: typeof import('../SessionStore');
 let releaseWrite: (() => void) | undefined;
 let notificationReceipts = false;
+let rejectAnchorAfterAdmission = false;
 
 function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?: string; resume?: string; resumeSessionAt?: string } }) {
   const prompt = args.prompt[Symbol.asyncIterator]();
@@ -76,6 +77,9 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
       if (args.options.resumeSessionAt === state.rejectedResumeAt) {
         if (rejectedResume) return { done: true, value: undefined };
         rejectedResume = true;
+        // The native transport can consume stdin (and Product can commit its
+        // turn) before the resume loader rejects the inferred history anchor.
+        if (rejectAnchorAfterAdmission) await (prefetchedInput ?? pullInput());
         return { done: false, value: {
           type: 'result', subtype: 'error_during_execution', is_error: true,
           result: `No message found with message.uuid of: ${state.rejectedResumeAt}`,
@@ -247,6 +251,7 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
 }
 
 beforeEach(async () => {
+  rejectAnchorAfterAdmission = false;
   notificationReceipts = false;
   state.home = await mkdtemp(join(tmpdir(), 'myagents-builtin-v2-'));
   state.events.length = 0;
@@ -306,6 +311,54 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
+  it('settles a watchdog-aborted Goal exactly once and preserves progress without unowned replay', async () => {
+    const workspace = join(state.home, 'watchdog-goal');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    state.beforeResult.mockImplementation(() => gate);
+    const intervals = vi.spyOn(globalThis, 'setInterval');
+    const { InactivityWatchdog } = await import('../utils/inactivity-watchdog');
+    vi.spyOn(InactivityWatchdog.prototype, 'evaluateTick').mockReturnValue({ fire: true, suspendedMs: 0 });
+    const terminal = vi.fn();
+    await agent.enqueueUserMessage('finish existing Goal', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, {
+        channelDelivery: NO_CHANNEL_DELIVERY, turnOwner: { kind: 'goal', id: 'goal-fixture' }, onTerminal: terminal,
+      });
+    await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+    const tick = intervals.mock.calls.find(call => call[1] === 30_000)?.[0] as (() => Promise<void>) | undefined;
+    expect(tick).toBeTypeOf('function');
+    await tick!();
+    await tick!();
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    expect(terminal.mock.calls[0][0]).toMatchObject({ status: 'error', code: 'automatic_replay_blocked' });
+    expect(state.events).toContainEqual(['chat:agent-error', expect.objectContaining({ message: expect.stringContaining('进度已保留') })]);
+    expect((await store.getSessionMetadata(metadata.id))?.pendingContinueAfterAbort).not.toBe(true);
+    release();
+    await vi.waitFor(() => expect(agent.isSessionActive()).toBe(false));
+    expect(terminal).toHaveBeenCalledOnce();
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(agent.getMessages().some(message => JSON.stringify(message).includes('answer 1'))).toBe(true);
+  });
+
+  it('surfaces a Goal turn conflict without dispatching the rejected user input', async () => {
+    const workspace = join(state.home, 'goal-conflict');
+    await mkdir(workspace);
+    await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+    const terminal = vi.fn();
+    await agent.enqueueUserMessage('continue', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, {
+        channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: terminal,
+        beforeDispatch: async () => ({ accepted: false, code: 'turn_conflict', error: 'Another Goal turn currently owns this Session' }),
+      });
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    expect(state.sdkInputs).toHaveLength(0);
+    expect(state.events).toContainEqual(['chat:agent-error', expect.objectContaining({ message: expect.stringContaining('本次消息未执行') })]);
+  });
+
   it.each([true, false])('owns recovery transport and requires durable update Stop acknowledgement (%s)', async durable => {
     vi.stubEnv('HOME', state.home);
     try {
@@ -1366,6 +1419,67 @@ it.each([
   expect(agent.getMessages().filter(message => message.role === 'user' && message.content === 'continue once')).toHaveLength(1);
   expect(state.events.some(([name]) => name === 'chat:message-error')).toBe(false);
   expect(store.getSessionMetadata(id)?.sdkResumeSessionAt).toBeUndefined();
+});
+
+it.each(['complete', 'stop'] as const)('preserves admitted continuation ownership after native anchor rejection (%s)', async outcome => {
+  const platform = await import('../utils/platform');
+  vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
+  vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
+  vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
+  const workspace = join(state.home, 'continuation-workspace');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  const snapshot = await store.loadSessionTranscript(meta.id);
+  expect(await store.appendSessionMessages(meta.id, snapshot.cursor, [
+    { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't', sdkUuid: 'native-user' },
+    { id: 'original-assistant', role: 'assistant', content: 'Interrupted work', timestamp: 't', sdkUuid: 'native-tail' },
+  ])).toMatchObject({ ok: true });
+  state.sdkRead.mockResolvedValue([{ type: 'user', uuid: 'native-user' }, { type: 'assistant', uuid: 'native-tail' }]);
+  state.rejectedResumeAt = 'native-tail';
+  state.independentInputPump = true;
+  rejectAnchorAfterAdmission = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+  const active = store.getActiveSessionTranscript(meta.id)!;
+  active.writer.observe({ kind: 'turn-update', turn: {
+    id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'interrupted',
+  } });
+  await active.writer.flush();
+  let releaseReplacement!: () => void;
+  const replacementGate = new Promise<void>(resolve => { releaseReplacement = resolve; });
+  releaseWrite = releaseReplacement;
+  let replacementBlocked = false;
+  if (outcome === 'stop') {
+    state.beforeTurn.mockImplementation(async () => {
+      if (state.sdkInputs.length === 1) {
+        replacementBlocked = true;
+        await replacementGate;
+      }
+    });
+  }
+  const engine = (await import('../session-engine/selector')).getSessionEngine();
+  const request = { text: 'Explicit continuation', continueFromTurnId: 'old-turn', sessionId: meta.id,
+    workspacePath: workspace, scenario: { type: 'desktop' as const } };
+  expect(await engine.sendDesktopMessage(request)).toMatchObject({ success: true });
+
+  if (outcome === 'stop') {
+    await vi.waitFor(() => expect(replacementBlocked).toBe(true));
+    const stopping = agent.interruptCurrentResponse();
+    releaseReplacement();
+    await expect(stopping).resolves.toBe(true);
+    await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+    expect(state.sdkInputs).toHaveLength(1);
+    expect(agent.getLastBuiltinAssistantText()).toBe('');
+    return;
+  }
+  await vi.waitFor(() => expect(agent.getLastBuiltinAssistantText()).toContain('answer 1'));
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  expect(state.query.mock.calls.map(([args]) => args.options.resumeSessionAt)).toEqual(['native-tail', undefined]);
+  // The first transport consumed stdin but did no model/tool work. Only the
+  // bare-resume transport produced an answer, and Product retains one root.
+  expect(state.sdkInputs).toHaveLength(2);
+  expect(agent.getMessages().filter(message => message.role === 'user' && message.content === request.text)).toHaveLength(1);
+  expect(state.events.some(([name]) => name === 'queue:cancelled' || name === 'chat:message-error')).toBe(false);
+  expect(await engine.sendDesktopMessage(request)).toMatchObject({ success: false, code: 'SESSION_CONTINUATION_STALE' });
 });
 
 it('pre-warm retries a rejected inferred anchor against the native head', async () => {

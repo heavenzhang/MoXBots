@@ -6,6 +6,7 @@ import {
   networkErrorKey,
   networkRequest,
   restoreOwnedCredentials,
+  startOwnedNetworkReauthentication,
   cancelOwnedCredentialRestore,
   setNetworkReadScope,
   type NetworkRequest,
@@ -349,5 +350,13 @@ describe("callable directory pagination", () => {
     invoke.mockResolvedValue({ items: [], nextCursor: cursor, complete: false });
     await expect(allCallableAgents(networkId)).rejects.toThrow("NETWORK_PAGE_INVALID");
     expect(invoke).toHaveBeenCalledTimes(2);
+  });
+});
+
+it("reauthenticates only a saved connection at its observed registry revision", async () => {
+  invoke.mockResolvedValue({ attemptId: "a" });
+  await startOwnedNetworkReauthentication("saved-connection", 7);
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("cmd_agent_network_owned_start_existing", {
+    connectionId: "saved-connection", expectedRegistryRevision: 7,
   });
 });

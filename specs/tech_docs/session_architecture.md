@@ -39,6 +39,8 @@ Session 不是单一对象，而是同一产品会话在不同生命周期阶段
 
 `runtimeBinding` 是已有 Session 的执行权威，Agent/Channel 的 `runtimePreference` 只影响未来 Session。新 birth 写合法 binding 与 legacy `runtime/runtimeSource` 投影；启动迁移在 index lock 内补齐合法 legacy 行，未知组合保留证据并标记 `runtimeBindingCompatibility`，只允许读历史。Fork/snapshot 复制 binding 或 compatibility，不能用 fallback 拼接身份。
 
+Unix 桌面 Sidecar 由原 Rust 启动 builder 注入 `MYAGENTS_SIDECAR_PARENT_PID`，仅带桌面 Sidecar marker 的进程观察 OS `ppid`。父子关系失效时先向原 `spawn_tree` 的精确 Unix 进程组发 SIGTERM，进入既有有界 shutdown。所有有该桌面 launch identity 的 Unix Sidecar 在 shutdown 排空后、退出前均对自身精确组 SIGKILL 升级；不依赖哪个信号先触发退出，也不等待下一轮观察，从而避免快于观察间隔的 drain 或忽略 TERM 工具留下孤儿。该边界和原 Rust PGID 一致，不扩展为全机扫描或自行脱离组的工具追踪。Windows 沿用 kill-on-close Job；无桌面 launch identity 的 Host、CLI 和开发服务不受该观察器管理。它是父进程退出兜底，不是新的 Session lock，也不通过端口/PID扫描接管其他进程。
+
 ### 2.1 新建、恢复与 SDK probe
 
 builtin 启动先解析持久化的 SDK candidate，再确认对应 SDK transcript 是否存在：
@@ -170,6 +172,8 @@ SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动
 
 MCP pre-warm 是 soft readiness observation，不是 AI turn 的 admission authority。未 connected、读取失败或观察超时不能拒绝业务 turn；真正的 MCP surface replacement 则是 Query-generation correctness fence，必须在 turn boundary 串行应用。
 
+准入 guard 只拥有新 turn 提交前的校验；同步转交到 active turn 后从 source item 释放。native 零模型轮次拒绝推导的 reload anchor 时，既有恢复路径重新递交同一已接纳输入，不能重新使用针对旧 interrupted turn 的 continuation guard，否则它会将自己的已提交新 root 判为 stale。尚未提交的输入、Stop/cancel、显式 Rewind/Fork 边界仍走原校验。
+
 ### 4.3 external Runtime
 
 外部 Runtime 的当前 session、process/transport、operation queue、config state、transcript cursor 与 terminal result 分别由 `src/server/runtimes/external-session/` 下的 owners 管理，对外通过 `external-session.ts` facade 暴露。
@@ -209,6 +213,8 @@ Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代�
 Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 lease 与 SessionStore 持久 intent，暂停/停止沿原控制 owner，详见 [模型持久恢复](model_recovery.md)。它不会重放原任务或建立第二套 Goal 调度。
 
 ### 5.1 Goal
+
+Builtin watchdog 对 Goal turn 必须先通过原 terminal observer 结算再 abort；缺少完成证据时用既有 automatic_replay_blocked 保留进度并进入恢复暂停，不能另插无 Goal owner 的 Session 续接。前端暂停状态显示 durable 原因，被 turn_conflict 拒绝的可见输入必须明确反馈未执行。
 
 Goal 是 current Session 的独立 durable state，存储在 `session_goals.json`，不嵌入 Session metadata，也不复用 Task/Cron。`SessionGoalManager` 是唯一业务 owner，同一 Session 最多一个 unfinished Goal。
 

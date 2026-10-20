@@ -8,6 +8,9 @@ import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
 import { ContextRecoveryController } from './openai-bridge/context-recovery';
 import { SessionModelRecovery } from './builtin-session/model-recovery';
+import { SameTurnStreamContinuation } from './builtin-session/stream-continuation';
+import type { StreamRecoveryEvidence } from '../shared/streamRecovery';
+import type { AnthropicRequest } from './openai-bridge/types/anthropic';
 import { MODEL_RECOVERY_WINDOW_MS, validModelRecovery } from '../shared/modelRecovery';
 import type { ModelFailoverSettings } from '../shared/modelFailover';
 import { archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger, updateBuiltinModelRecovery, getBuiltinModelRecovery } from './SessionStore';
@@ -20,7 +23,7 @@ import { OPENCODE_GO_SDK_CLIENT_APP, OPENCODE_GO_USER_AGENT, opencodeGoConversat
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join, resolve } from 'path';
 import { createRequire } from 'module';
-import { query, getSessionMessages as sdkGetSessionMessages, forkSession as sdkForkSession, deleteSession as sdkDeleteSession, type Query, type SDKUserMessage, type AgentDefinition, type HookInput, type HookJSONOutput, type PreToolUseHookInput, type PostToolUseHookInput, type PermissionRequestHookInput, type SlashCommand as SdkSlashCommand } from '@anthropic-ai/claude-agent-sdk';
+import { query, getSessionMessages as sdkGetSessionMessages, forkSession as sdkForkSession, deleteSession as sdkDeleteSession, type Query, type SDKUserMessage, type AgentDefinition, type HookInput, type HookJSONOutput, type PreToolUseHookInput, type PostToolUseHookInput, type PostToolUseFailureHookInput, type PermissionRequestHookInput, type SlashCommand as SdkSlashCommand } from '@anthropic-ai/claude-agent-sdk';
 import { isRetiredBundledMcpServer } from '../shared/mcpConfig';
 import { SDK_BUILTIN_TOOLS } from './sdk-builtin-tools';
 import type { CanUseTool, McpServerProvenance } from '@anthropic-ai/claude-agent-sdk';
@@ -1695,6 +1698,23 @@ let activeSessionBridgeToken: string | null = null;
 let activeSessionModelFailover: ReturnType<typeof createSessionModelFailover> | undefined;
 let activeSessionContextRecovery: ContextRecoveryController | undefined;
 let activeSessionModelRecovery: SessionModelRecovery | undefined;
+let activeSessionStreamContinuation: SameTurnStreamContinuation | undefined;
+let streamInferenceGeneration = 0;
+function currentBridgeInferenceScope(): string | undefined {
+  const root = getCurrentTurnSourceItem()?.id;
+  return root && streamInferenceGeneration ? `${root}:stream:${streamInferenceGeneration}` : root;
+}
+function recordStreamRecoveryEvidence(streamRecovery: StreamRecoveryEvidence): void {
+  const product = getBuiltinProductContent();
+  if (product?.currentTurn?.status === 'running') {
+    const message = product.assistant();
+    product.writer.observe({ kind: 'message-update', messageId: message.id, details: { streamRecovery } }, true);
+  } else {
+    const assistant = getBuiltinMessages().findLast(message => message.role === 'assistant');
+    if (assistant) assistant.streamRecovery = streamRecovery;
+  }
+}
+
 
 function currentModelRecoveryRoute(): string {
   const backup = loadAdminConfig().modelFailover as ModelFailoverSettings | undefined;
@@ -1785,6 +1805,14 @@ async function resolveActiveSessionUpstreamConfig(request?: Request): Promise<Up
         request?.signal,
       )
     : undefined;
+  if (request && /\/messages\/?$/.test(new URL(request.url).pathname) && activeSessionStreamContinuation) {
+    try { activeSessionStreamContinuation.authorizeRequest(await request.clone().json() as AnthropicRequest); }
+    catch (error) {
+      activeSessionStreamContinuation.stop('uncertain_action');
+      await activeSessionModelRecovery?.pause('Stream continuation native history or action evidence could not be verified');
+      throw error;
+    }
+  }
   const modelFailover = activeSessionModelFailover;
   return {
     providerId: activeProviderEnv?.providerId ?? SUBSCRIPTION_PROVIDER_ID,
@@ -1881,6 +1909,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
     return;
   }
   if (opts?.freshToken && activeSessionBridgeToken) {
+    activeSessionStreamContinuation?.reset();
+    activeSessionStreamContinuation = undefined;
+    streamInferenceGeneration = 0;
     // Caller is about to spawn a new subprocess. Retire the old token so
     // late requests from the dying subprocess get rejected (400 unknown
     // token) instead of resolving to the new subprocess's config — that's
@@ -1907,7 +1938,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       try { activeSessionContextRecovery = new ContextRecoveryController({
         initialLedger,
         persistLedger: ledger => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent),
-        scope: () => getCurrentTurnSourceItem()?.id,
+        scope: currentBridgeInferenceScope,
+        protectStreaming: () => failoverEnabled && !!getCurrentTurnSourceItem()
+          && getCurrentTurnSourceItem()?.turnOwner?.kind !== 'task' && !hasBuiltinBackgroundWork(),
         isActive: isCurrent,
         requestIdentity: routeIdentity,
         canRecover: () => !hasBuiltinBackgroundWork(),
@@ -1941,8 +1974,13 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         },
         write: (next, expected, live) => updateBuiltinModelRecovery(
           productSessionId, nativeHistoryId, next, expected, live, isCurrent),
+        onInterrupted: () => activeSessionStreamContinuation?.interrupted(),
         onState: recovery => {
           if (sessionId !== productSessionId) return;
+          if (recovery?.kind === 'stream' && recovery.status === 'paused') {
+            const stopped = /stop|paused|cancel/i.test(recovery.reason ?? '');
+            activeSessionStreamContinuation?.stop(stopped ? 'stopped' : 'storage_failed');
+          }
           broadcast('chat:api-retry', recovery ? { recovery } : null);
         },
       });
@@ -1954,7 +1992,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           && activeSessionContextRecovery?.canRetryInference() !== false,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => ({ env: configState.currentProviderEnv, model: configState.currentModel ?? '',
-          turnId: getCurrentTurnSourceItem()?.id }),
+          turnId: currentBridgeInferenceScope() }),
         onSwitch: (target, status) => {
           const text = `主模型暂时不可用（HTTP ${status}），已切换备用模型 ${target.providerId} / ${target.model}，沿用当前进度继续执行。`;
           const product = getBuiltinProductContent();
@@ -1966,6 +2004,39 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             broadcast('chat:message-replay', createLiveUserMessageReplay(sessionId, message));
           }
         },
+      });
+      const recovery = activeSessionModelRecovery;
+      const context = activeSessionContextRecovery;
+      activeSessionStreamContinuation = new SameTurnStreamContinuation({
+        recovery,
+        rootId: () => getCurrentTurnSourceItem()?.id,
+        isLive: () => isCurrent() && !builtinInterrupt.isInterrupting() && !hasBuiltinBackgroundWork()
+          && getCurrentTurnSourceItem()?.turnOwner?.kind !== 'task'
+          && !getCurrentProductSessionMetadata()?.pendingConversationMutation
+          && !getCurrentProductSessionMetadata()?.sdkResumeSessionAt,
+        advance: body => {
+          if (!context) throw new Error('automatic_replay_blocked: Missing original action ledger');
+          const protectedActions = context.prepareStreamContinuation(body);
+          activeSessionModelFailover?.endTurn();
+          streamInferenceGeneration++;
+          return protectedActions;
+        },
+        enqueue: (permit, reminder) => {
+          if (!lifecycleState.messageResolver) return false;
+          wakeGenerator({ id: randomUUID(), message: { role: 'user', content: reminder }, messageText: reminder,
+            wasQueued: false, resolve: () => {}, channelDelivery: { user: 'none', assistant: 'none' },
+            streamContinuation: permit });
+          return true;
+        },
+        onFailure: (reason, rootId) => {
+          if (activeSessionBridgeToken !== token || sessionId !== productSessionId
+            || getCurrentTurnSourceItem()?.id !== rootId || !isTurnInFlight()
+            || lifecycleState.abortRequested || builtinInterrupt.isInterrupting()) return;
+          const error = `automatic_replay_blocked: Stream continuation stopped (${reason}); confirmed progress was preserved.`;
+          const terminal = handleMessageError(error);
+          broadcast('chat:agent-error', withSessionCompletionTerminal(error, terminal));
+        },
+        observe: recordStreamRecoveryEvidence,
       });
     }
   }
@@ -1982,6 +2053,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
  * accumulate stale entries even when subprocesses don't restart cleanly.
  */
 function unregisterActiveSessionBridge(): void {
+  activeSessionStreamContinuation?.reset();
+  activeSessionStreamContinuation = undefined;
   if (!activeSessionBridgeToken) return;
   unregisterBridgeInRegistry(activeSessionBridgeToken);
   activeSessionBridgeToken = null;
@@ -2421,6 +2494,7 @@ let managedQueryController: AbortController | undefined;
 
 function abortPersistentSession(options: { notifyPendingRequests?: boolean } = {}): void {
   if (activeSessionModelRecovery) {
+    activeSessionStreamContinuation?.stop('stopped');
     registerSessionAbortCleanup(activeSessionModelRecovery.pause('Execution stopped; progress is preserved')
       .then(durable => { if (!durable) console.error('[agent] Model recovery stop could not be durably committed'); }));
   }
@@ -2639,6 +2713,8 @@ const scheduledWatchdogAutoResumeSessions = new Set<string>();
 const autoResumeInjectedSessions = new Set<string>();
 
 function resetTurnUsage(): void {
+  activeSessionStreamContinuation?.reset();
+  streamInferenceGeneration = 0;
   resetBuiltinTurnUsage();
   // Note: turnState.currentTurnInboxMeta is NOT reset here — it's bound on dequeue
   // (generator yield) and cleared at result handler / abort path.
@@ -10406,6 +10482,7 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
 export async function interruptCurrentResponse(reason: CancelReason = 'user'): Promise<boolean> {
   // pause() revokes locally synchronously. Send the existing exact interrupt
   // immediately as well; slow storage must not delay cancellation of the SDK.
+  activeSessionStreamContinuation?.stop('stopped');
   const persistence = activeSessionModelRecovery?.pause('Execution paused or stopped; progress is preserved')
     ?? Promise.resolve(true);
   const [durable, interrupted] = await Promise.all([persistence, interruptResponseWithoutRecovery(reason)]);
@@ -12310,6 +12387,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             },
           ],
         }],
+        PostToolUseFailure: [{ hooks: [async (input: HookInput): Promise<HookJSONOutput> => {
+          const failed = input as PostToolUseFailureHookInput;
+          await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true);
+          return {};
+        }] }],
         // PermissionRequest hook (issue #264): the ONLY permission decision point
         // for background (run_in_background) sub-agents. Runtime-verified: the SDK
         // never calls canUseTool for async sub-agents; it fires this hook with
@@ -12700,9 +12782,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         // for the file write to complete before the sidecar tears down
         // (cron sidecars in particular shut down ~1s after abort).
         const watchdogSessionId = sessionId;
+        const goalOwned = getCurrentTurnSourceItem()?.turnOwner?.kind === 'goal';
         const autoResumePlan = planWatchdogAutoResume({
           turnHadSubstantiveActivity: turnState.turnHadSubstantiveActivity,
           alreadyAutoResumed: autoResumeInjectedSessions.has(watchdogSessionId),
+          goalOwned,
         });
         if (autoResumePlan.scheduleAutoResume) {
           scheduledWatchdogAutoResumeSessions.add(watchdogSessionId);
@@ -12720,16 +12804,25 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           } catch (e) {
             console.error('[agent] Watchdog: failed to persist pendingContinueAfterAbort:', e);
           }
+        } else if (goalOwned) {
+          console.log('[agent] Watchdog: Goal recovery remains with the durable Goal owner');
         } else if (autoResumeInjectedSessions.has(watchdogSessionId)) {
           console.log(`[agent] Watchdog: auto-resume already injected for session ${watchdogSessionId} - skipping pendingContinueAfterAbort`);
         } else {
           console.log(`[agent] Watchdog: turn had no substantive SDK activity — skipping pendingContinueAfterAbort`);
         }
 
-        broadcast('chat:agent-error', {
-          message: `响应超时（10 分钟无活动${toolInfo}），已自动终止。请重试。`
-        });
-        broadcast('chat:message-error', '响应超时');
+        // Settle through the turn owner before abort clears its callback/source.
+        // With no terminal SDK evidence, a Goal must preserve uncertain actions
+        // for explicit recovery rather than replaying them in an unowned turn.
+        const timeoutMessage = goalOwned
+          ? `响应超时（10 分钟无活动${toolInfo}），目标需恢复，进度已保留。请核对执行结果后继续。`
+          : `响应超时（10 分钟无活动${toolInfo}），已自动终止。请重试。`;
+        const terminal = goalOwned && isTurnInFlight()
+          ? handleMessageError(`automatic_replay_blocked: ${timeoutMessage}`, timeoutMessage)
+          : null;
+        broadcast('chat:agent-error', { message: timeoutMessage });
+        broadcast('chat:message-error', withSessionCompletionTerminal(timeoutMessage, terminal));
         abortPersistentSession();
         if (autoResumePlan.scheduleAutoResume) {
           scheduleWatchdogAutoResumeAfterAbort(watchdogSessionId, {
@@ -13938,7 +14031,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         }
       } else if (sdkMessage.type === 'result') {
         await preparedProvider?.reportTerminal(sdkMessage.subtype === 'success');
-        const resultMessage = sdkMessage as BuiltinSdkResultMessage;
+        let resultMessage = sdkMessage as BuiltinSdkResultMessage;
         if (
           rewindResumeAt
           && isCurrentQueryAuthority(activeQueryAuthority)
@@ -13953,6 +14046,35 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           deferredRewindResult = resultMessage;
           retireRewoundQueryWhenQuiescent();
           continue;
+        }
+        if ((resultMessage.is_error || resultMessage.subtype !== 'success')
+          && activeSessionStreamContinuation?.schedule()) {
+          getBuiltinTranscriptPresentation()?.closeText();
+          getBuiltinTranscriptPresentation()?.closeThinking();
+          streamIndexToToolId.clear();
+          streamIndexToBlockType.clear();
+          toolResultIndexToId.clear();
+          pendingTextBlockTexts.clear();
+          imTextBlockIndices.clear();
+          isApiRetrying = true;
+          setSessionState('running');
+          console.log('[agent] Stream interrupted; original turn retained for checkpointed continuation');
+          continue;
+        }
+        if (activeSessionModelRecovery?.readState()?.kind === 'stream') {
+          if (!resultMessage.is_error && resultMessage.subtype === 'success' && !builtinInterrupt.isInterrupting()) {
+            if (await activeSessionModelRecovery.finishStreamTurn()) activeSessionStreamContinuation?.finish();
+            else {
+              const stopped = builtinInterrupt.isInterrupting();
+              activeSessionStreamContinuation?.stop(stopped ? 'stopped' : 'storage_failed');
+              await activeSessionModelRecovery.pause('Stream continuation task completion could not be durably committed');
+              if (!stopped) resultMessage = { ...resultMessage, is_error: true, terminal_reason: 'api_error',
+                result: 'automatic_replay_blocked: Stream continuation completion could not be durably committed. Progress was preserved; execution paused.' };
+            }
+          } else {
+            activeSessionStreamContinuation?.stop(builtinInterrupt.isInterrupting() ? 'stopped' : 'uncertain_action');
+            await activeSessionModelRecovery.pause('Stream continuation ended without a verified task terminal');
+          }
         }
         const handling = await builtinTurnLifecycle.handleSdkResult(resultMessage, recoverRejectedReloadAnchor);
         if (resultMessage.subtype === 'error_during_execution' && handling !== 'retrying' && nativeResumeBoundaryRecoveryMessage(
@@ -14389,6 +14511,11 @@ async function rejectPromotedMessageBeforeDispatch(
   item.resolve();
   if (!item.deferVisibleAdmission) {
     broadcast('queue:cancelled', { queueId: item.id });
+    if (result.code === 'turn_conflict') {
+      broadcast('chat:agent-error', {
+        message: `本次消息未执行：Goal 上一轮仍占用会话。${result.error ?? '请等待上一轮结算后再继续。'}`,
+      });
+    }
   }
   console.warn(`[goal] pre-dispatch gate rejected builtin queue item ${item.id}: ${result.error ?? result.code ?? 'stale admission'}`);
   settleCancelledInputActivity();
@@ -14488,6 +14615,19 @@ async function* messageGenerator(
       console.log('[messageGenerator] Received null — exiting (abort or session end)');
       traceBuiltinInputProgress('input-retired', inputTrace);
       return; // generator return → SDK endInput() → stdin EOF → subprocess 退出
+    }
+    if (item.streamContinuation) {
+      if (!activeSessionStreamContinuation?.acceptsInput(item.streamContinuation)) {
+        item.resolve();
+        continue;
+      }
+      // The original Product turn, output FIFO, Goal claim and usage remain owned.
+      // This is an internal native-history continuation, never a new user task.
+      yield { type: 'user' as const, message: item.message, isSynthetic: true,
+        parent_tool_use_id: null, session_id: getSessionId(),
+        uuid: item.id as `${string}-${string}-${string}-${string}-${string}` };
+      item.resolve();
+      continue;
     }
     beginPromotedItem(item);
     traceBuiltinInputProgress('provider-wait', inputTrace);
@@ -14876,6 +15016,12 @@ async function* messageGenerator(
     // caller deadline/cancel must report and stop that exact active owner
     // rather than claiming the turn was never enqueued.
     clearPromotedItem(item.id);
+    // Admission guards own the transition into a turn, not that accepted
+    // turn's later Query recovery. A zero-turn inferred-anchor rejection can
+    // re-deliver this exact source after Product has persisted its new root;
+    // rerunning the old continuation guard would reject our own committed
+    // state as stale. Unadmitted items keep their guards and cancellation.
+    item.beforeDispatch = undefined;
     isStreamingMessage = true;
     traceBuiltinInputProgress('admission-commit', inputTrace);
     if (lifecycleState.preWarming) {

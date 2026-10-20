@@ -43,6 +43,129 @@ function deferred<T>() {
 }
 
 describe('bounded inference context recovery', () => {
+  function protectedStreamFixture() {
+    const owner = { scope: 'root:0', active: true, safe: true };
+    const backup = vi.fn(async () => '/private/stream-request.json');
+    const persistLedger = vi.fn(async (_value: unknown) => {});
+    const controller = new ContextRecoveryController({ scope: () => owner.scope, isActive: () => owner.active,
+      canRecover: () => owner.safe, protectStreaming: true, backup, persistLedger });
+    const body = { ...history(), stream: true };
+    const failed = () => new Response('', { headers: { 'content-type': 'text/event-stream' } });
+    return { owner, backup, persistLedger, controller, body, failed };
+  }
+
+  it.each(['failed tool', 'unpaired tool'])('keeps an ordinary fresh inference available with a prior %s when streaming prearm is enabled', async prior => {
+    const h = protectedStreamFixture();
+    if (prior === 'failed tool') h.body.messages[2] = { role: 'user', content: [{
+      type: 'tool_result', tool_use_id: 'call-1', is_error: true, content: 'previous action failed; outcome unknown',
+    }] };
+    else h.body.messages.splice(2, 1);
+    h.body.messages.push({ role: 'user', content: 'New explicit instruction: inspect the current status read-only.' });
+    const terminal = () => new Response('event: message_stop\ndata: {"type":"message_stop"}\n\n', {
+      headers: { 'content-type': 'text/event-stream' },
+    });
+    // Prove this is an existing ordinary inference path, independent of prearm.
+    const existing = fixture();
+    const existingExecute = vi.fn(async () => terminal());
+    expect((await existing.controller.run(req(), h.body, existingExecute)).status).toBe(200);
+    expect(existingExecute).toHaveBeenCalledTimes(1);
+    const execute = vi.fn(async (actual: AnthropicRequest) => {
+      expect(actual).toEqual(h.body);
+      expect(h.controller.canRetryInference()).toBe(false);
+      return terminal();
+    });
+    const response = await h.controller.run(req(), h.body, execute);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(200);
+    await response.text();
+  });
+
+  it('still refuses post-fault continuation when a newly reserved action has an uncertain result', async () => {
+    const h = protectedStreamFixture();
+    let source!: ReadableStreamDefaultController<Uint8Array>;
+    const execute = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { source = controller; },
+    }), { headers: { 'content-type': 'text/event-stream' } }));
+    const response = await h.controller.run(req(), h.body, execute);
+    const consuming = response.text();
+    expect(await h.controller.authorizeTool('write_new', { id: 1 })).toBeUndefined();
+    // A closed transport supplies no outcome for the write-ahead reservation.
+    source.error(new Error('stream disconnected while action outcome was unknown'));
+    expect(await consuming).toContain('automatic_replay_blocked');
+    const continuation = structuredClone(h.body);
+    continuation.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'new-native-id', name: 'write_new', input: { id: 1 } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'new-native-id', is_error: true, content: 'unknown outcome' }] });
+    expect(() => h.controller.prepareStreamContinuation(continuation)).toThrow('automatic_replay_blocked');
+    expect(h.controller.beforeTool('write_new', { id: 1 })).toContain('automatic_replay_blocked');
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('protects before streaming and retires only the failed namespace while preserving completed-action evidence', async () => {
+    const h = protectedStreamFixture();
+    const execute = vi.fn(async () => {
+      expect(h.backup).toHaveBeenCalledTimes(1);
+      expect(h.persistLedger).toHaveBeenCalledTimes(1);
+      return h.failed();
+    });
+    expect(await (await h.controller.run(req(), h.body, execute)).text()).toContain('automatic_replay_blocked');
+    const continuation = structuredClone(h.body);
+    continuation.messages.push({ role: 'user', content: 'Verified native continuation marker' });
+    expect(h.controller.prepareStreamContinuation(continuation)).toBe(1);
+    expect((await h.controller.run(req(), h.body, execute)).status).toBe(409);
+    h.owner.scope = 'root:1';
+    // A scope change cannot turn an interrupted native input into new work.
+    expect((await h.controller.run(req(), h.body, execute)).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+    const success = await h.controller.run(req(), continuation, async () => ok());
+    expect(success.status).toBe(200);
+    await success.text();
+    expect(await h.controller.authorizeTool('increment_counter', { account: 'test', delta: 1 }))
+      .toContain('already completed successfully');
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows normal explicit duplicate actions before a stream fault while durably reserving every invocation', async () => {
+    const h = protectedStreamFixture();
+    let output!: ReadableStreamDefaultController<Uint8Array>;
+    const execute = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { output = controller; },
+    }), { headers: { 'content-type': 'text/event-stream' } }));
+    const response = await h.controller.run(req(), h.body, execute);
+    const consuming = response.text();
+    let counter = 1; // The native history already contains the first success.
+    for (let invocation = 0; invocation < 2; invocation++) {
+      expect(await h.controller.authorizeTool('increment_counter', { account: 'test', delta: 1 })).toBeUndefined();
+      expect(h.persistLedger.mock.calls.at(-1)?.[0]).toMatchObject({ streamArmedOnly: true,
+        uncertain: [expect.any(String)] });
+      counter++;
+      await h.controller.commitToolResult('increment_counter', { account: 'test', delta: 1 }, `counter=${counter}`);
+    }
+    output.enqueue(new TextEncoder().encode('event: message_stop\ndata: {"type":"message_stop"}\n\n'));
+    output.close();
+    expect(await consuming).not.toContain('automatic_replay_blocked');
+    expect(counter).toBe(3);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['uncertain', 'unpaired', 'owner lost', 'background', 'consumer cancel', 'successful stream', 'storage error'])
+    ('refuses continuation for %s', async reason => {
+      const h = protectedStreamFixture();
+      if (reason === 'storage error') h.persistLedger.mockRejectedValueOnce(new Error('disk failed'));
+      const response = await h.controller.run(req(), h.body, async () => reason === 'successful stream'
+        ? new Response('event: message_stop\ndata: {"type":"message_stop"}\n\n', { headers: { 'content-type': 'text/event-stream' } })
+        : reason === 'consumer cancel'
+          ? new Response(new ReadableStream({ pull() {} }), { headers: { 'content-type': 'text/event-stream' } })
+          : h.failed());
+      if (reason === 'consumer cancel') await response.body!.cancel();
+      else await response.text();
+      const continuation = structuredClone(h.body);
+      if (reason === 'uncertain') h.controller.recordToolResult('write_new', { id: 1 }, 'unknown failure', true);
+      if (reason === 'unpaired') continuation.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'unknown', name: 'write_new', input: {} }] });
+      if (reason === 'owner lost') h.owner.active = false;
+      if (reason === 'background') h.owner.safe = false;
+      expect(() => h.controller.prepareStreamContinuation(continuation)).toThrow('automatic_replay_blocked');
+    });
+
   it('arms durable action protection for availability recovery without reducing history', async () => {
     let ledger: unknown;
     const h = fixture();

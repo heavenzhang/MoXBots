@@ -9,6 +9,13 @@ import {
 } from './watchdog-auto-resume';
 
 describe('watchdog auto-resume policy', () => {
+  it('leaves Goal recovery with its durable owner even after substantive output', () => {
+    expect(planWatchdogAutoResume({
+      turnHadSubstantiveActivity: true,
+      alreadyAutoResumed: false,
+      goalOwned: true,
+    })).toEqual({ persistPendingContinue: false, scheduleAutoResume: false });
+  });
   it('marks and schedules auto-resume for a substantive watchdog abort', () => {
     expect(planWatchdogAutoResume({
       turnHadSubstantiveActivity: true,

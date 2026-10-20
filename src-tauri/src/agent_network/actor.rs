@@ -1331,15 +1331,15 @@ async fn connect(
                             ServerMessage::ChannelOffer { channel_id, initiator, responder, initiator_connection_epoch,
                                 responder_connection_epoch, initiator_binding, responder_binding, .. } => {
                                 if work.len() >= budget("pending") { return Err(NetworkError::new("NETWORK_REQUEST_CAPACITY")); }
+                                let offer = Offer { channel_id: channel_id.clone(), initiator, responder, initiator_epoch: initiator_connection_epoch,
+                                    responder_epoch: responder_connection_epoch, initiator_binding, responder_binding };
+                                offer.validate_scope(&local,&scope.connection_epoch)?;
                                 if owned_account {pairs.reserve_management_retirement(&channel_id,&scope,&local)?;}
-                                if let Err(error) = pairs.reserve(&channel_id) {
+                                if let Err(error) = pairs.reserve_offered(&offer,&local,&scope.connection_epoch) {
                                     if owned_account {pairs.retire_management(&channel_id,true);}
                                     send(&mut socket, ClientMessage::Close { scope: scope.clone(), channel_id, reason: error.code }).await?;
                                     continue;
                                 }
-                                let offer = Offer { channel_id: channel_id.clone(), initiator, responder, initiator_epoch: initiator_connection_epoch,
-                                    responder_epoch: responder_connection_epoch, initiator_binding, responder_binding };
-                                offer.validate_scope(&local,&scope.connection_epoch)?;
                                 let identity=identity.clone();
                                 work.push(async move {Work::Peer {offer,result:identity.ensure_peer().await}}.boxed());
                             }
@@ -1747,6 +1747,9 @@ async fn connect(
                             .await.unwrap_or_else(|_|Err(super::management_controller::lost(command.request.mutation(),command.sent.load(Ordering::Acquire)))),
                         None => Err(super::management_controller::lost(command.request.mutation(),false)),
                     };
+                    if let Some((reason,blocked))=pairs.take_management_busy_diagnostic() {
+                        ulog_warn!("[agent-network] stage=management-preopen method={:?} last_reason={} blocked_total={} code=HOST_MANAGEMENT_TARGET_BUSY",command.request.method,reason,blocked);
+                    }
                     if let Some(channel_id)=deferred_messages.retire_cancelled(&mut pairs) {
                         if let Ok(control_id)=deferred_messages.cleanup_control(&scope,&channel_id) {
                             let _=tokio::time::timeout(Duration::from_secs(1),send_control(&mut socket,control_id,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"HOST_MANAGEMENT_TIMEOUT".into()})).await;

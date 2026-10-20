@@ -354,7 +354,7 @@ async function resolveSessionRuntimeIdentityForOpen(
     const meta = await apiGetJson<{
       success: boolean;
       session?: SessionMetadata;
-    }>(`/sessions/${encodeURIComponent(sessionId)}?limit=1`);
+    }>(`/sessions/${encodeURIComponent(sessionId)}?view=metadata`);
     return sessionRuntimeIdentityFromMetadataForOpen(meta.session, fallback);
   } catch (error) {
     // Non-fatal: runtime is used only for history-open analytics.

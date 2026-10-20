@@ -390,7 +390,7 @@ describe('model failover over real loopback HTTP', () => {
   });
 
   it.each(['anthropic', 'anthropic_partial_frame', 'chat_completions', 'responses'] as const)(
-    'preserves durable waiting history and gives the native SDK a Goal safety error after %s truncation', async format => {
+    'retains the same durable stream-continuation chain and fences SDK replay after %s truncation', async format => {
       const primary = await fixture((_req, res) => {
         if (primary.requests.length <= 4) return json(res, { error: { message: 'overloaded' } }, 503);
         res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -445,7 +445,9 @@ describe('model failover over real loopback HTTP', () => {
       expect(failure).toContain('automatic_replay_blocked');
       expect(classifyContextTurnFailure({ errorText: failure })).toBe('automatic_replay_blocked');
       expect(complete).not.toHaveBeenCalled();
-      expect(writes.map(row => row.status)).toEqual(['waiting', 'paused']);
+      expect(writes.map(row => row.status)).toEqual(['waiting', 'waiting']);
+      expect(writes[1]).toMatchObject({ id: writes[0].id, kind: 'stream', attempt: 2,
+        startedAt: writes[0].startedAt, deadlineAt: writes[0].deadlineAt });
       expect(stored?.sdkSessionId).toBe('same-native-history');
       expect(primary.requests).toHaveLength(5);
       expect((await handler(request(history, undefined, true))).status).toBe(409);

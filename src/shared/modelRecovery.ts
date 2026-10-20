@@ -1,6 +1,8 @@
 /** Non-secret SessionStore intent; native history and the action ledger remain authoritative. */
 export interface ModelRecoveryState {
   version: 1;
+  /** A partial stream resumes through the original turn owner, never HTTP replay. */
+  kind?: 'stream';
   id: string;
   status: 'waiting' | 'paused';
   sdkSessionId: string;
@@ -20,7 +22,7 @@ export const MODEL_RECOVERY_WINDOW_MS = 30 * 60_000;
 export function validModelRecovery(value: unknown): value is ModelRecoveryState {
   if (!value || typeof value !== 'object') return false;
   const row = value as ModelRecoveryState;
-  return row.version === 1 && typeof row.id === 'string' && row.id.length > 0
+  return row.version === 1 && (row.kind === undefined || row.kind === 'stream') && typeof row.id === 'string' && row.id.length > 0
     && (row.status === 'waiting' || row.status === 'paused')
     && typeof row.sdkSessionId === 'string' && row.sdkSessionId.length > 0
     && typeof row.routeIdentity === 'string' && row.routeIdentity.length > 0

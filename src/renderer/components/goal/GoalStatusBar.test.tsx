@@ -79,6 +79,14 @@ describe("GoalStatusBar", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the durable recovery reason while keeping explicit resume available", () => {
+    const onResume = vi.fn();
+    render(<GoalStatusBar goal={goal({ status: "paused", terminalReason: "Runtime timed out; progress preserved" })} onResume={onResume} />);
+    expect(screen.getByText("Runtime timed out; progress preserved")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+    expect(onResume).toHaveBeenCalledOnce();
+  });
+
   it("shows whole-Goal execution totals after terminal settlement", () => {
     render(
       <GoalStatusBar

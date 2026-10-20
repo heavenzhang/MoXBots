@@ -1,4 +1,5 @@
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
+import { deriveSessionTodos } from '../../shared/sessionWorkProgress';
 import { projectErrorMessageResend } from '../pages/errorMessageResend';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode, useEffect, useState } from 'react';
@@ -2602,6 +2603,37 @@ describe('TabProvider session activity ownership', () => {
     fireEvent.click(screen.getByRole('button', { name: 'send message' }));
     await waitFor(() => expect(screen.getByTestId('send-receipt')).toHaveTextContent('false'));
     expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
+  });
+
+  it('restores Todo state outside the short display preview with the authoritative history page', async () => {
+    const sessionId = 'history-preview-preserves-todos';
+    const rows = [
+      { id: 'todo', role: 'assistant' as const, content: JSON.stringify([{ type: 'tool_use', tool: {
+        id: 'todo-write', name: 'TodoWrite', parsedInput: { todos: [
+          { content: 'Keep the existing task', activeForm: 'Keeping task', status: 'in_progress' },
+        ] },
+      } }]), timestamp: new Date(0).toISOString() },
+      ...Array.from({ length: 35 }, (_, index) => ({ id: `row-${index}`, role: 'assistant' as const, content: 'Later ordinary text', timestamp: new Date(0).toISOString() })),
+    ];
+    historyPreview.mockResolvedValueOnce({ id: sessionId, messages: rows.slice(-20) });
+    let tab!: ReturnType<typeof useTabState>;
+    function TodoProbe() {
+      const value = useTabState();
+      useEffect(() => { tab = value; }, [value]);
+      return <Probe />;
+    }
+    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
+      const limit = Number(new URL(url).searchParams.get('limit'));
+      return new Response(JSON.stringify({ success: true, session: {
+        id: sessionId, runtime: 'builtin', title: 'History', agentDir: '/tmp/workspace',
+        messages: rows.slice(-limit), snapshotRevision: 10, hasMoreBefore: rows.length > limit, liveSessionState: 'idle',
+      } }));
+    });
+    render(<TabProvider tabId="todo-history" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><TodoProbe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    expect(deriveSessionTodos(tab.messages).todos).toEqual([
+      expect.objectContaining({ content: 'Keep the existing task', status: 'in_progress' }),
+    ]);
   });
 
   it('discards a delayed disk preview after the live snapshot commits', async () => {
