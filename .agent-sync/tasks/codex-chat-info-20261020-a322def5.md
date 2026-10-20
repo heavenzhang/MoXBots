@@ -10,7 +10,7 @@
 
 MOXBOTS-CHAT-INFO-20261020-01: specific current action, factual key progress, explicit waiting reason and direct artifact access in existing desktop conversation flow. Human follow-up authorizes implementation, actual UI acceptance, remote main delivery and notification/handoff to existing publisher. Reuse the previously verified MoXBots canonical destination; do not rebind or change repositories. Renderer presentation only, original transcript/Tab/file-preview authorities unchanged. No separate progress panel, model call, execution/persistence owner, version allocation, client restart or production write.
 
-## To Do List and acceptance
+## Acceptance criteria
 
 - [x] Verify repository/remotes/main/clean worktree and create isolated codex/chat-info-20261020 at canonical4206eb2.
 - [x] Verify existing desktop publisher01a12bc2-907a-7702-b6dd-788225c5dfe4 and send early authorized CI/release intake.
@@ -22,6 +22,14 @@ MOXBOTS-CHAT-INFO-20261020-01: specific current action, factual key progress, ex
 - [x] Independent UI review, close mandatory defects, primary reverify.
 - [ ] Synchronize latest main, commit/push reviewed task scope; existing owner coordinates automaticCI and main integration, verify remote main contains task.
 - [ ] Final immutable SHA/test/UI evidence sent to existing publisher for next appropriate unfrozen batch; no claim of installed-client/production acceptance.
+
+## Completed
+
+Four renderer improvements implemented and primary-reviewed. Final12-file146checks, fulltsc/scopedESLint/testclassification/docs and exact finalrenderer productionbuild passed. Actual primaryUI plus independent17groups and affected narrow-label retest passed at1440/768/390, light/dark and Chinese/English. Source commit76ae76fa6fb941050f5411fbe471081bcb418523 was pushed with exact remote task ref. The first handoff gate found required continuity headings missing; this documentation-only correction supplies them without product changes.
+
+## Blockers and unknowns
+
+Remote main and sharedCI integration still pending the established publisher coordination. User explicitly authorizes final handoff messaging; exact source/evidence and request sent. No independent PR/sharedCI/release trigger from this chat. Signed native/provider/production acceptance remains with publisher's next unfrozen batch. One undetermined-origin Virtuoso development missing-key warning remains recorded; no product blocker or uncaught browser error in accepted fixture. Credentials/billing and production state not touched.
 
 ## Ownership and execution
 

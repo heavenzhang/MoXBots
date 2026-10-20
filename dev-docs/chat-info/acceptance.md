@@ -20,7 +20,7 @@
 | 实现 | 四项均完成；代码和中英文文案在本任务分支 |
 | 定向回归 | 最终12文件146项通过，含过程outcome、文件归属、状态优先级、历史隔离、字符串兼容、模型恢复倒计时、隐藏计时器、Virtuoso冻结/测量、原生runtime操作和引用 |
 | 类型与lint | 完整tsc --noEmit、修改文件ESLint通过；测试分类通过。依赖检查0 errors/18既有warnings，未增加跨层依赖 |
-| 本地renderer构建 | Vite生产renderer构建通过；最终源重建记录由交付回执核实。非正式构建、非签名制品 |
+| 本地renderer构建 | 最终源Vite生产renderer重建通过（30.00秒）；非正式构建、非签名制品 |
 | 主Agent实际页面 | `browser-check.mjs`运行真实MessageList/Message/BlockGroup/文件操作与预览组件；1440×900、768×1024、390×844；单30px状态、公开进展、键盘折叠、文件正文、完整列表、草稿和中英文暗色通过；[JSON](evidence/ui-evidence.json) |
 | 独立实际页面 | 主17组与最后受影响区域复验通过；已实际查看截图；[报告](independent-review.md)、[证据](independent-evidence/report.json) |
 | 真实联调 | 受控合成transcript与原生文件传输mock，沿原文件检查/读取与真实预览组件；未调用真实模型、账号或原生日常App |
