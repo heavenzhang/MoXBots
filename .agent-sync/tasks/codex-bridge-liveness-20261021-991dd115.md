@@ -33,3 +33,7 @@ Hosted arm64 Mac requiredCI for currentPR173 twice could not allocate runner. Th
 Finish final checks and push source; integrate the next unfrozen batch through exact combinedCI and normal main, then test actual native/provider stalled reads and originalGoal recovery with the companion ledger path.
 
 Independent primary review found type-only idle renewal P1 in62da. Five new regressions reproduced it; the current payload-based follow-up fixes empty/usage/boundary renewal and preserves real text/thinking/toolJSON. Actual native postStop compaction/admission is separately unverified, not claimed repaired.
+
+## 5157 CI subinterval budget correction
+
+CI39477221385 revealed a real liveness gap: continuous20ms empty frames complete every pending read before its25ms interval, exhausting remaining budget without allowing a tick to throw. Root reproduced two deterministic red cases at5ms/20ms, then rejects/cancels at the next read when remainingMs<=0. No inference replay, ledger or retry policy change. Original5157 remains sealed and blocked; a new immutable5158 build is required. Node24 Bridge313unit+127integration/type/scopedlint pass, including original TCP emptyAnthropic closure plus progress/backpressure/suspension/Stop regressions. Raw work/bridge-liveness-20261021/subinterval-* logs preserved outsideGit.
