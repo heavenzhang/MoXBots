@@ -13,7 +13,7 @@
 - 新增缺失 registry revision 时不发起登录的回归。
 - Node 24.20.0 / TypeScript 全项目检查通过；两个改动文件 ESLint 通过。
 - 独立只读审阅未发现 P1/P2。审阅者首次 npm 测试入口被其 Node22 的 devEngines 拒绝；主Agent用实际 Node24 完成验证，不能将审阅者测试记为通过。
-- 隔离浏览器组件交互、真实原生和发布状态见任务记录；模拟结果不能代替生产验收。
+- 真实组件在隔离Chromium1200×800和660×400通过按钮交互：正确connectionId/revision的一次pinned start、generic start为0、一次browser-open，模拟grant后自动poll更新authenticated并关闭弹窗，无pageerror。真实原生和发布仍待验，模拟结果不能代替生产验收。
 
 ## 实际故障证据与边界
 
