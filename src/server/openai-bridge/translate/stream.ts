@@ -30,10 +30,12 @@ export class StreamTranslator {
   private translateReasoning: boolean;
   private usageWarning: UsageWarningLogger | undefined;
 
-  constructor(requestModel: string, translateReasoning = true, usageWarning?: UsageWarningLogger) {
+  constructor(requestModel: string, translateReasoning = true, usageWarning?: UsageWarningLogger,
+    onModelProgress?: () => void) {
     this.messageId = generateMessageId();
     this.requestModel = requestModel;
     this.translateReasoning = translateReasoning;
+    this.onModelProgress = onModelProgress;
     let warned = false;
     this.usageWarning = usageWarning
       ? (message) => {
@@ -43,6 +45,8 @@ export class StreamTranslator {
         }
       : undefined;
   }
+
+  private readonly onModelProgress?: () => void;
 
   /** Feed an OpenAI stream chunk, returns Anthropic SSE events to emit */
   feed(chunk: OpenAIStreamChunk): AnthropicStreamEvent[] {
@@ -79,7 +83,8 @@ export class StreamTranslator {
     }
 
     // Handle reasoning_content (thinking)
-    if (this.translateReasoning && delta.reasoning_content) {
+    if (this.translateReasoning && typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+      this.onModelProgress?.();
       if (this.deferAfterToolCall) {
         this.deferredSegments.push({ type: 'thinking', delta: delta.reasoning_content });
       } else if (this.activeBlockType !== 'thinking') {
@@ -99,7 +104,8 @@ export class StreamTranslator {
     }
 
     // Handle text content
-    if (delta.content) {
+    if (typeof delta.content === 'string' && delta.content.length > 0) {
+      this.onModelProgress?.();
       if (this.deferAfterToolCall) {
         this.deferredSegments.push({ type: 'text', delta: delta.content });
       } else if (this.activeBlockType !== 'text') {
@@ -150,6 +156,7 @@ export class StreamTranslator {
 
   private handleToolCallDelta(tc: OpenAIStreamToolCall, events: AnthropicStreamEvent[]): void {
     const idx = tc.index;
+    if (!Number.isSafeInteger(idx) || idx < 0) return;
 
     if (!this.toolCallBuffers.has(idx)) {
       // Anthropic tool blocks have a linear lifecycle. Buffer calls until the
@@ -167,8 +174,11 @@ export class StreamTranslator {
       if (buffer.id && buffer.id !== tc.id) { buffer.id = '\0'; }
       else buffer.id = tc.id;
     }
-    if (tc.function?.name) buffer.name += tc.function.name;
-    if (tc.function?.arguments) buffer.args += tc.function.arguments;
+    if (typeof tc.function?.name === 'string' && tc.function.name.length > 0) buffer.name += tc.function.name;
+    if (typeof tc.function?.arguments === 'string' && tc.function.arguments.length > 0) {
+      buffer.args += tc.function.arguments;
+      if (buffer.id !== '\0') this.onModelProgress?.();
+    }
   }
 
   private validateAndEmitDeferredToolSegments(events: AnthropicStreamEvent[]): string | null {

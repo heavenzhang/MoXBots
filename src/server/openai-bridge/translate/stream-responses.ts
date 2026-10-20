@@ -38,9 +38,10 @@ export class ResponsesStreamTranslator {
   private deferAfterToolCall = false;
   private deferredSegments: DeferredSegment[] = [];
 
-  constructor(requestModel: string, usageWarning?: UsageWarningLogger) {
+  constructor(requestModel: string, usageWarning?: UsageWarningLogger, onModelProgress?: () => void) {
     this.messageId = generateMessageId();
     this.requestModel = requestModel;
+    this.onModelProgress = onModelProgress;
     let warned = false;
     this.usageWarning = usageWarning
       ? (message) => {
@@ -50,6 +51,8 @@ export class ResponsesStreamTranslator {
         }
       : undefined;
   }
+
+  private readonly onModelProgress?: () => void;
 
   /** Feed a Responses API SSE event, returns Anthropic SSE events to emit */
   feed(event: ResponsesStreamEvent): AnthropicStreamEvent[] {
@@ -103,6 +106,7 @@ export class ResponsesStreamTranslator {
   }
 
   private handleTextDelta(delta: string, events: AnthropicStreamEvent[]): void {
+    if (typeof delta === 'string' && delta.length > 0) this.onModelProgress?.();
     if (this.deferAfterToolCall) {
       this.deferredSegments.push({ type: 'text', delta });
       return;
@@ -116,6 +120,7 @@ export class ResponsesStreamTranslator {
   }
 
   private handleReasoningDelta(delta: string, events: AnthropicStreamEvent[]): void {
+    if (typeof delta === 'string' && delta.length > 0) this.onModelProgress?.();
     if (this.deferAfterToolCall) {
       this.deferredSegments.push({ type: 'thinking', delta });
       return;
@@ -151,13 +156,18 @@ export class ResponsesStreamTranslator {
 
   private handleFunctionCallDelta(outputIndex: number, delta: string, events: AnthropicStreamEvent[]): void {
     const buffer = this.ensureToolSegment(outputIndex, events);
+    if (buffer.args === '\0') return;
     if (buffer.argsFinal) {
       // A repeated delta after the authoritative done event is contradictory.
       buffer.argsFinal = false;
       buffer.args = '\0';
       return;
     }
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0 || typeof delta !== 'string') return;
     buffer.args += delta;
+    const duplicateIdentity = buffer.callId && [...this.functionCallBuffers.entries()].some(([index, other]) =>
+      index !== outputIndex && other.callId === buffer.callId);
+    if (delta.length > 0 && buffer.args !== '\0' && !buffer.invalidStatus && !duplicateIdentity) this.onModelProgress?.();
   }
 
   private setCompleteArguments(outputIndex: number, args: string, events: AnthropicStreamEvent[]): void {

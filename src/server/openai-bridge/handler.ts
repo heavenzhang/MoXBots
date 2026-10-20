@@ -490,9 +490,12 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // to archive the exact inference before granting another call.
       const inferenceRequest = new Request(request.url, { method: 'POST', headers: request.headers,
         body: JSON.stringify(anthropicReq), signal: request.signal });
-      const response = await upstream.modelFailover.run(inferenceRequest, upstream, target => handler(new Request(request.url, {
+      const response = await upstream.modelFailover.run(inferenceRequest, upstream, (target, onModelProgress) => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
-      }), { ...target, modelFailover: undefined }), createHash('sha256').update(JSON.stringify({
+      }), { ...target, modelFailover: undefined, onModelProgress: () => {
+        onModelProgress?.(); // Attempt-owned body budget.
+        upstream.onModelProgress?.(); // Token-owned Query watchdog, independent of retry eligibility.
+      } }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
       if (!response.ok && !resolvedUpstream) log(`[bridge] Inference rejected HTTP ${response.status} (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model})`);
@@ -923,8 +926,8 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // Stream-body liveness is intentionally not inferred from byte cadence;
       // the Session inactivity watchdog owns true turn liveness.
       return isResponses
-        ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort)
-        : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort);
+        ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort, upstream.onModelProgress)
+        : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort, upstream.onModelProgress);
     } else {
       // Stop must still reach fetch while a successful response body is being
       // read. Headers arriving is not completion of a non-stream inference.
@@ -999,6 +1002,7 @@ export function handleStreamResponse(
   upstreamController: AbortController,
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
+  onModelProgress?: () => void,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline replaces the manual
   // ReadableStream { start } loop. The pipeline is:
@@ -1013,7 +1017,7 @@ export function handleStreamResponse(
   //
   // Cancellation: downstream cancel propagates via the readable's cancel(),
   // which we wire to abort the upstream fetch.
-  const translator = new StreamTranslator(requestModel, translateReasoning, log);
+  const translator = new StreamTranslator(requestModel, translateReasoning, log, onModelProgress);
   const sseParser = new SSEParser();
   const logStreamEnd = createStreamEndLogger('chat_completions', log);
   if (!upstreamResp.body) {
@@ -1261,9 +1265,10 @@ export function handleResponsesStreamResponse(
   upstreamController: AbortController,
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
+  onModelProgress?: () => void,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline (mirror of handleStreamResponse).
-  const translator = new ResponsesStreamTranslator(requestModel, log);
+  const translator = new ResponsesStreamTranslator(requestModel, log, onModelProgress);
   const sseParser = new SSEParser();
   const logStreamEnd = createStreamEndLogger('responses', log);
   if (!upstreamResp.body) {

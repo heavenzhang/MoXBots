@@ -61,12 +61,48 @@ export interface BridgeCacheAffinity {
   promptCacheKeyMode?: PromptCacheKeyMode;
 }
 
+/** In-process, token-owned model-content activity channel. Never sent over HTTP or persisted. */
+export interface BridgeProgressContext {
+  notify(signal: AbortSignal): void;
+  subscribe(listener: (signal: AbortSignal) => void): () => void;
+  retire(): void;
+}
+
+export function createBridgeProgressContext(): BridgeProgressContext {
+  const listeners = new Set<(signal: AbortSignal) => void>();
+  let retired = false;
+  return {
+    notify(signal) {
+      if (retired || signal.aborted) return;
+      for (const listener of listeners) {
+        try { listener(signal); } catch { /* liveness observers cannot affect bridge ownership */ }
+      }
+    },
+    subscribe(listener) {
+      if (retired) return () => {};
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    retire() {
+      retired = true;
+      listeners.clear();
+    },
+  };
+}
+
+/** Retrieve only the in-process progress channel belonging to this registered token. */
+export function getBridgeProgressContext(token: string): BridgeProgressContext | undefined {
+  return registry.get(token)?.progressContext;
+}
+
 export interface UpstreamBridgeConfig {
   apiProtocol?: 'anthropic' | 'openai';
   authType?: 'auth_token' | 'api_key' | 'both' | 'auth_token_clear_api_key';
   headersTimeoutMs?: number | (() => number | undefined);
   modelFailover?: import('./model-failover').BridgeModelFailover;
   contextRecovery?: import('./context-recovery').BridgeContextRecovery;
+  /** Internal Query liveness notification for nonempty accepted model content. */
+  onModelProgress?: () => void;
   /** Provider owner for provider-scoped proxy policy. */
   providerId: string;
   baseUrl: string;
@@ -112,6 +148,7 @@ interface Entry {
   /** Rejections are scoped to concrete provider/endpoint/model/format targets. */
   keyRejections: Set<string>;
   breakpointRejections: Set<string>;
+  progressContext?: BridgeProgressContext;
 }
 
 const registry = new Map<string, Entry>();
@@ -132,14 +169,18 @@ export function registerBridge(
   token: string,
   resolve: (request?: Request) => UpstreamBridgeConfig | Promise<UpstreamBridgeConfig>,
   description: string,
+  progressContext?: BridgeProgressContext,
 ): void {
   const existing = registry.get(token);
+  const nextProgressContext = progressContext ?? existing?.progressContext;
+  if (existing?.progressContext && existing.progressContext !== nextProgressContext) existing.progressContext.retire();
   registry.set(token, {
     resolve,
     registeredAt: Date.now(),
     description,
     keyRejections: existing?.keyRejections ?? new Set(),
     breakpointRejections: existing?.breakpointRejections ?? new Set(),
+    progressContext: nextProgressContext,
   });
 }
 
@@ -149,6 +190,7 @@ export function registerBridge(
  * a non-existent token is a no-op.
  */
 export function unregisterBridge(token: string): void {
+  registry.get(token)?.progressContext?.retire();
   registry.delete(token);
 }
 
@@ -209,6 +251,7 @@ export function listBridges(): Array<{ token: string; description: string; ageMs
  * pair register/unregister.
  */
 export function _clearRegistryForTests(): void {
+  for (const entry of registry.values()) entry.progressContext?.retire();
   registry.clear();
 }
 

@@ -29,6 +29,46 @@ const toolBlocks = (events: AnthropicStreamEvent[]) => {
 };
 
 describe('parallel tool input block ownership', () => {
+  it('signals only nonempty model content and argument deltas, never metadata or empty frames', () => {
+    let progress = 0;
+    const chat = new StreamTranslator('fixture', true, undefined, () => progress++);
+    chat.feed(chatChunk({ content: '' }) as OpenAIStreamChunk);
+    chat.feed(chatChunk({ reasoning_content: '' }) as OpenAIStreamChunk);
+    chat.feed(chatChunk({ tool_calls: [{ index: 0, id: 'call', type: 'function', function: { name: 'f', arguments: '' } }] }) as OpenAIStreamChunk);
+    chat.feed({ ...chatChunk({}, null), choices: [], usage: { prompt_tokens: 1, completion_tokens: 0, total_tokens: 1 } } as OpenAIStreamChunk);
+    expect(progress).toBe(0);
+    chat.feed(chatChunk({ tool_calls: [{ index: 0, function: { arguments: '{' } }] }) as OpenAIStreamChunk);
+    chat.feed(chatChunk({ content: 'visible' }) as OpenAIStreamChunk);
+    expect(progress).toBe(2);
+    chat.feed(chatChunk({}, 'tool_calls') as OpenAIStreamChunk);
+    chat.feed(chatChunk({ content: 'late' }) as OpenAIStreamChunk);
+    expect(progress).toBe(2);
+
+    let conflictProgress = 0;
+    const conflictingChat = new StreamTranslator('fixture', true, undefined, () => conflictProgress++);
+    conflictingChat.feed(chatChunk({ tool_calls: [{ index: 0, id: 'first', type: 'function', function: { name: 'f', arguments: '{' } }] }) as OpenAIStreamChunk);
+    conflictingChat.feed(chatChunk({ tool_calls: [{ index: 0, id: 'changed', function: { arguments: '}' } }] }) as OpenAIStreamChunk);
+    expect(conflictProgress).toBe(1);
+
+    let responseProgress = 0;
+    const responses = new ResponsesStreamTranslator('fixture', undefined, () => responseProgress++);
+    responses.feed({ type: 'response.output_text.delta', delta: '' } as ResponsesStreamEvent);
+    responses.feed({ type: 'response.function_call_arguments.delta', output_index: 1, delta: '' } as ResponsesStreamEvent);
+    responses.feed({ type: 'response.output_text.delta', delta: 'visible' } as ResponsesStreamEvent);
+    responses.feed({ type: 'response.function_call_arguments.delta', output_index: 1, delta: '{' } as ResponsesStreamEvent);
+    expect(responseProgress).toBe(2);
+    responses.feed({ type: 'response.function_call_arguments.done', output_index: 1, arguments: '{}' } as ResponsesStreamEvent);
+    responses.feed({ type: 'response.function_call_arguments.delta', output_index: 1, delta: 'late' } as ResponsesStreamEvent);
+    expect(responseProgress).toBe(2);
+
+    let conflictResponseProgress = 0;
+    const conflictingResponses = new ResponsesStreamTranslator('fixture', undefined, () => conflictResponseProgress++);
+    conflictingResponses.feed({ type: 'response.function_call_arguments.delta', output_index: 0, delta: '{"a":' } as ResponsesStreamEvent);
+    conflictingResponses.feed({ type: 'response.function_call_arguments.done', output_index: 0, arguments: '{"b":1}' } as ResponsesStreamEvent);
+    conflictingResponses.feed({ type: 'response.function_call_arguments.delta', output_index: 0, delta: 'late' } as ResponsesStreamEvent);
+    expect(conflictResponseProgress).toBe(1);
+  });
+
   it('serializes four interleaved Chat calls with sparse indices and late id into complete blocks', () => {
     const t = new StreamTranslator('fixture');
     const events = [

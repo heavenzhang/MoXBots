@@ -9,7 +9,7 @@
 
 Preserve each parallel OpenAI Chat Completions or Responses function call's complete input and identity when translating provider streams into Anthropic content blocks. Keep tools buffered until authoritative completion, then serialize complete blocks; failed, incomplete, or unterminated streams must not expose partially assembled tool calls.
 
-Scope is limited to the two stream translators and a synthetic unit regression file. No request-policy change, ledger change, runtime configuration, build, release, or shared CI.
+Initial scope was limited to the two stream translators and synthetic regression. Root later approved the directly required liveness extension across the bridge handler, attempt-owned model failover, body reader, and Query watchdog observer. No retry/Goal/Stop policy, ledger, runtime configuration, build, release, or shared CI changes are included.
 
 ## Acceptance criteria
 
@@ -26,6 +26,9 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 - Both translators reject duplicate nonempty call IDs across provider indices before emitting any tool blocks. Responses also rejects terminal output that would remap an already observed call ID to a different index.
 - Responses now requires every streamed call to match a final completed-output function item at its original index, with consistent observed item/call IDs, name, and finalized arguments; explicit unfinished item status or terminal-event/body status mismatch fails closed. Omitted optional item status remains accepted when the completed response output and arguments are authoritative.
 - Chat Completions rejects nonempty choice content after `finish_reason`; usage-only trailing chunks with empty choices remain accepted.
+- Added a private in-process per-attempt progress callback from the translators through the bridge handler. It reports only nonempty accepted text, reasoning, and tool-argument deltas; metadata, empty deltas, terminal events, conflicting IDs, and post-done arguments do not renew activity.
+- The model failover callback is fenced by the exact active request lease and attempt generation. It renews the pending `ModelBodyReader` interval watchdog as well as its remaining idle budget, so safe translator buffering does not cause a false idle timeout. Stale failed-attempt callbacks cannot renew a later attempt.
+- The owning Session Query subscribes to its exact active bridge token's in-process progress context only during the watchdog lifecycle. It checks token identity, current Query authority and Stop state, calls `watchdog.markActivity()` only, and unsubscribes in `finally`; token retirement clears listeners. It does not mark substantive work or grant recovery authority.
 
 ## Verification
 
@@ -42,8 +45,16 @@ Scope is limited to the two stream translators and a synthetic unit regression f
 ## Blockers and unknowns
 
 - No shared CI or formal SDK consumer probe was run in this implementation worktree. Root has run the SDK probe on the prior pushed commit; the newest terminal-authority commit still needs its independent SDK recheck.
-- Root has raised a possible translated-body idle-progress interaction because arguments remain buffered until terminal; additional control comparison and an interface recommendation are pending. Do not raise timeouts, synthesize text, or count keepalives as provider progress.
+- No full SDK consumer or candidate-package acceptance was run in this worktree. Root owns independent review and publisher handoff. No formal build/release/CI action is part of this branch.
 
 ## Next step
 
-- Push this terminal-authority commit, obtain root's SDK and idle-progress review, then hand the exact reviewed SHA to the designated publisher for candidate coordination. No shared CI or release action is in this branch scope.
+- Root to independently recheck the real SDK consumer and review the completed token-owned liveness wiring before publisher handoff. No shared CI or release action is in this branch scope.
+
+## Liveness regression and verification
+
+- A real `handleStreamResponse` + `ModelFailoverController` integration fixture sends accepted tool-argument fragments every 15ms with a 60ms body-idle bound while tool blocks remain buffered until terminal. It fails when the internal callback is disabled (automatic replay blocked before `message_stop`) and passes when callbacks are connected (complete tool block and successful terminal delivered).
+- Added a fake-time stale-attempt regression: a callback captured from a failed pre-header attempt cannot renew the later response's pending read; body timeout still cancels and enters the existing interruption path.
+- Focused unit verification: `node node_modules/vitest/vitest.mjs run --project unit src/server/openai-bridge/model-stream-liveness.unit.test.ts src/server/openai-bridge/translate/parallel-tool-input.unit.test.ts src/server/openai-bridge/model-failover.unit.test.ts` — 3 files, 76 tests passed.
+- Focused integration verification: `node node_modules/vitest/vitest.mjs run --project integration src/server/openai-bridge/model-failover-buffered-tool-progress.integration.test.ts src/server/__tests__/bridge-registry.integration.test.ts` — 2 files, 16 tests passed. Covers no-MF Responses token notification, token retirement/Stop/unsubscribe, and buffered eligible-route progress.
+- `node node_modules/typescript/bin/tsc --noEmit --pretty false`, changed-file ESLint over all modified TypeScript files, and `git diff --check` — passed.
