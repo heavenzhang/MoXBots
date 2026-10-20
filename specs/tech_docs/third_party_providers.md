@@ -145,6 +145,8 @@ One-shot probe、title 和 vision 不使用 conversation affinity。连接验证
 
 Bridge 对“等待 response headers”有有界 timeout；成功 streaming body 由 SDK turn、AbortSignal 和 stream protocol owning，不应用一个短固定总时长截断长回答。HTTP status、stream error、model refusal、translator failure 和 SDK terminal 必须保持可区分。
 
+已接纳的 Session ModelFailover 推理对 body 另有 5 分钟有效模型事件闲置边界（最多一个 30 秒检查间隔误差），不是整段回答总时长。仅在消费者等待 body read 时累计；背压和进程挂起不计，ping/未知状态帧不续期，真实 content/terminal 事件重置预算。超时先取消原 reader 释放上游连接，再交原 recovery owner 的 interrupted/blocked 路径；从不补发原输入、清除 action ledger 或绕过 canRetry。Stop、Query/路由撤销也释放 pending read。原 owner 不允许恢复时仍安全暂停，不能把传输边界修复称为所有 Goal 已恢复。
+
 普通 401/403/429/5xx 不做通用重试。只有明确的 managed-auth 401 recovery 和精确识别的 cache compatibility downgrade 拥有各自单次重试预算。
 
 Responses streaming 与 non-streaming 共用 terminal policy：completed 才允许 end_turn / tool_use；incomplete 的 max_output_tokens（无工具调用）投射为 max_tokens 并保留终态 usage；content_filter、未知 incomplete reason 和截断的工具调用进入错误，不执行不完整工具。response.failed / error 保持错误语义；没有真实协议终态的 EOF（包括空流）不能补成成功。真实终态立即结束下游并释放 upstream，不等待 provider 关闭连接。streaming failure 在 error 之前投射可用的终态 usage，Anthropic error 本身不承诺 SDK 最终失败结果会保留计费统计。

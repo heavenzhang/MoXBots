@@ -68,9 +68,13 @@ describe('owner-admitted partial stream continuation', () => {
     if (reason === 'consumer cancel') await response.body!.cancel();
     else {
       const result = response.text().catch(() => 'cancelled');
-      if (reason === 'Stop') abort.abort();
-      else h.owner.safe = false;
-      source.close();
+      if (reason === 'Stop') {
+        abort.abort();
+        expect(() => source.close()).toThrow(); // held read was cancelled immediately
+      } else {
+        h.owner.safe = false;
+        source.close();
+      }
       await result;
     }
     expect(h.recovery.interrupted).not.toHaveBeenCalled();

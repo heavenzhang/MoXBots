@@ -77,9 +77,14 @@ describe.each(['failover', 'context', 'both'] as const)('%s terminal delivery', 
     const upstream = response([], true);
     const first = await h.run(upstream.source, 'first').response;
     const text = first.text();
+    const rejected = expect(text).rejects.toThrow();
     abort.abort();
-    upstream.controller.enqueue(enc.encode(terminal));
-    await expect(text).rejects.toThrow();
+    if (mode === 'context') upstream.controller.enqueue(enc.encode(terminal));
+    else {
+      expect(upstream.cancel).toHaveBeenCalledTimes(1);
+      expect(() => upstream.controller.enqueue(enc.encode(terminal))).toThrow();
+    }
+    await rejected;
     const next = h.run(response([terminal]).source, 'next-distinct');
     expect((await next.response).status).toBe(499);
     expect(next.execute).not.toHaveBeenCalled();

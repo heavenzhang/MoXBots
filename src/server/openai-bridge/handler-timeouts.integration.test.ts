@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { createBridgeHandler } from './handler';
 import type { AnthropicRequest } from './types/anthropic';
+import { ModelFailoverController } from './model-failover';
 
 const requestBody: AnthropicRequest = {
   model: 'claude-sonnet-4-6',
@@ -150,5 +151,46 @@ describe('OpenAI bridge timeout ownership', () => {
     await expect(response.json()).resolves.toMatchObject({
       error: { message: 'late upstream failure' },
     });
+  });
+
+  it.each(['chat_completions', 'responses'] as const)('releases a real %s connection that returns headers and pings but no model output', async upstreamFormat => {
+    let connections = 0;
+    let closed!: () => void;
+    const connectionClosed = new Promise<void>(resolve => { closed = resolve; });
+    server = createServer((req, res) => {
+      connections++;
+      req.resume();
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.flushHeaders();
+      const heartbeat = setInterval(() => res.write('event: ping\ndata: {}\n\n'), 20);
+      res.on('close', () => { clearInterval(heartbeat); closed(); });
+    });
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('failed to bind test upstream');
+    let recoveryRequests = 0;
+    let completed = 0;
+    const modelFailover = new ModelFailoverController({
+      scope: () => 'original-native-turn', resolveBackup: () => undefined, onSwitch: () => {},
+      bodyIdleTimeoutMs: 100,
+      recovery: { wait: async () => undefined, complete: async () => { completed++; },
+        interrupted: async () => { recoveryRequests++; return true; } },
+    });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({
+      providerId: 'held-body-fixture', baseUrl: `http://127.0.0.1:${address.port}`,
+      apiKey: 'fixture-only', upstreamFormat, modelFailover,
+    }) });
+    const response = await handler(new Request('http://127.0.0.1/v1/messages', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...requestBody, stream: true }),
+    }));
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('automatic_replay_blocked');
+    expect(body).not.toContain('message_stop');
+    await connectionClosed;
+    expect(connections).toBe(1);
+    expect(recoveryRequests).toBe(1);
+    expect(completed).toBe(0);
   });
 });
