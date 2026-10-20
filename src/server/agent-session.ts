@@ -163,7 +163,7 @@ import {
   type SystemSkillAdmissionRequirement,
 } from '../shared/systemSkills';
 import type { OfficialToolId } from '../shared/official-tools';
-import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, loadSessionTranscript } from './SessionStore';
+import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, getActiveSessionTranscript, loadSessionTranscript } from './SessionStore';
 import { TranscriptPresentation } from './session-transcript/presentation';
 import { projectTranscriptToolInput, type TranscriptObject } from '../shared/sessionTranscript';
 import { firePostTurnTitleHook } from './turn-hooks';
@@ -10501,13 +10501,30 @@ export async function stopBuiltinSessionForUpdate(assertCurrent: () => void = ()
 
 function stopPendingWatchdogAutoResume(): { pending: boolean; durable: Promise<boolean> } {
   const stoppedSessionId = sessionId;
+  const metadata = getCurrentProductSessionMetadata();
+  const transcript = getActiveSessionTranscript(stoppedSessionId);
   const pendingWatchdog = scheduledWatchdogAutoResumeSessions.has(stoppedSessionId)
-    || getCurrentProductSessionMetadata()?.pendingContinueAfterAbort === true;
+    || metadata?.pendingContinueAfterAbort === true;
+  // A failed prior flush already changed the overlay to false. That is not
+  // evidence that the disk flag was cleared, including on a repeated Stop.
+  const uncommittedClear = metadata?.pendingContinueAfterAbort === false && transcript
+    && transcript.writer.status.liveRevision > transcript.writer.status.durableRevision;
   watchdogAutoResumeEpoch++;
   scheduledWatchdogAutoResumeSessions.delete(stoppedSessionId);
-  const durable = pendingWatchdog
+  const durable = pendingWatchdog || uncommittedClear
     ? updateSessionMetadata(stoppedSessionId, { pendingContinueAfterAbort: false })
-      .then(updated => Boolean(updated && !updated.pendingContinueAfterAbort), () => false)
+      .then(async updated => {
+        if (!updated || updated.pendingContinueAfterAbort) return false;
+        const active = getActiveSessionTranscript(stoppedSessionId);
+        if (transcript && active !== transcript) return false;
+        if (!active) return true;
+        // Active metadata edits only patch the overlay and request a commit.
+        // Stop must await the original writer's bounded durable barrier, which
+        // includes index publication, before acknowledging safe process exit.
+        return await active.writer.flush()
+          && getActiveSessionTranscript(stoppedSessionId) === active
+          && active.metadata.pendingContinueAfterAbort !== true;
+      }).catch(() => false)
     : Promise.resolve(true);
   return { pending: pendingWatchdog, durable };
 }

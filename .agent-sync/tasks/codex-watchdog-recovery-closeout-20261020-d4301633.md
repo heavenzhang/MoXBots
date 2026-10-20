@@ -53,3 +53,15 @@ Unit desktop builtin client only. Existing sole CI/publisher01a12bc2-907a-7702-b
 ## Next step
 
 Parent review the local diff, then collect the exact local commit and integrate through existing owner-coordinated main/CI flow. Publisher selects a new candidate batch if the previous candidate was frozen; do not silently substitute this SHA into a frozen artifact. Verify installed version/source and the original Session/Goal business path separately after release.
+
+## Independent review follow-up — durable Stop barrier
+
+Parent independent review correctly rejected the initial8a65040 Stop acknowledgement: updateSessionMetadata's active-binding path returns an in-memory patch and schedules publication, so it did not prove disk pendingContinue was false. This correction is an additional commit;8a65040 remains unchanged.
+
+- [x] Four active-binding regressions failed against8a65040: user/update Stop settled while original file.append was blocked, and both returned success when its commit failed.
+- [x] Stop now waits for the existing active writer's bounded flush() barrier (its default2s, no timeout increase), then verifies the same writer and false flag. The writer's durable revision advances only after actual transcript sync and metadata/index publication, including file/directory sync.
+- [x] Tests seed actual disk pendingContinue=true, block original append, confirm no premature Stop success and disk still true, release the barrier, then read sessions.json directly to verify false. These reads bypass the active metadata overlay.
+- [x] Append failure returns MODEL_RECOVERY_STOP_NOT_DURABLE for both control paths. Repeated Stop also fails rather than treating its already-false overlay as proof. The original execution cancellation epoch stays revoked; update Stop cannot acknowledge safe exit. This does not claim durable success after a failed disk write or after a forced external process kill.
+- [x] Risk-related verification:4files178tests passed; TypeScript, scoped ESLint and git diff --check passed. Exact additional commit is reported outside this file; no amendment, push or target change.
+
+Evidence: /tmp/watchdog-durable-stop-red.log (all4new tests fail before fix), /tmp/watchdog-durable-stop-green.log (4pass incl repeated failures), /tmp/watchdog-durable-stop-final.log (risk regression), /tmp/watchdog-durable-stop-tsc.log and /tmp/watchdog-durable-stop-lint.log. This follow-up changes no UI, ledger, provider, Goal owner or writer implementation; prior380combined tests remain the initial commit's evidence, with only relevant server pools rerun here.

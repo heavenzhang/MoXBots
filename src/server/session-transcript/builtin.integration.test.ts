@@ -311,6 +311,65 @@ afterEach(async () => {
 });
 
 describe('builtin V2 execution independent of product storage', () => {
+  it.each(['user', 'update'] as const)('waits for the active writer before acknowledging durable watchdog %s Stop', async mode => {
+    const workspace = join(state.home, `watchdog-durable-${mode}`);
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    const active = store.getActiveSessionTranscript(metadata.id)!;
+    await store.updateSessionMetadata(metadata.id, { pendingContinueAfterAbort: true });
+    expect(await active.writer.flushForMutation()).toBe(true);
+    const diskFlag = async () => (JSON.parse(await readFile(join(state.home, '.myagents', 'sessions.json'), 'utf8')) as {
+      id: string; pendingContinueAfterAbort?: boolean;
+    }[]).find(row => row.id === metadata.id)?.pendingContinueAfterAbort;
+    expect(await diskFlag()).toBe(true);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    releaseWrite = release;
+    let blocked = false;
+    const append = active.file.append.bind(active.file);
+    vi.spyOn(active.file, 'append').mockImplementation(async (...args) => {
+      blocked = true;
+      await gate;
+      return append(...args);
+    });
+    let settled = false;
+    const stopping = (mode === 'user' ? agent.interruptCurrentResponse() : agent.stopBuiltinSessionForUpdate())
+      .then(() => { settled = true; });
+    await vi.waitFor(() => expect(blocked).toBe(true));
+    expect(settled).toBe(false);
+    expect(await diskFlag()).toBe(true);
+    release();
+    await stopping;
+    expect(settled).toBe(true);
+    expect(await diskFlag()).toBe(false);
+    expect(active.writer.status.durableRevision).toBe(active.writer.status.liveRevision);
+  });
+
+  it.each(['user', 'update'] as const)('fails closed when active writer cannot persist watchdog %s Stop', async mode => {
+    const workspace = join(state.home, `watchdog-durable-failure-${mode}`);
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    const active = store.getActiveSessionTranscript(metadata.id)!;
+    await store.updateSessionMetadata(metadata.id, { pendingContinueAfterAbort: true });
+    expect(await active.writer.flushForMutation()).toBe(true);
+    vi.spyOn(active.file, 'append').mockRejectedValue(new Error('synthetic denied metadata commit'));
+    const stopping = mode === 'user' ? agent.interruptCurrentResponse() : agent.stopBuiltinSessionForUpdate();
+    await expect(stopping).rejects.toThrow('MODEL_RECOVERY_STOP_NOT_DURABLE');
+    // A repeated call must not mistake the false in-memory overlay for disk
+    // acknowledgement after the first failed publication.
+    await expect(mode === 'user' ? agent.interruptCurrentResponse() : agent.stopBuiltinSessionForUpdate())
+      .rejects.toThrow('MODEL_RECOVERY_STOP_NOT_DURABLE');
+    expect(active.writer.status.durableRevision).toBeLessThan(active.writer.status.liveRevision);
+    const disk = JSON.parse(await readFile(join(state.home, '.myagents', 'sessions.json'), 'utf8')) as {
+      id: string; pendingContinueAfterAbort?: boolean;
+    }[];
+    expect(disk.find(row => row.id === metadata.id)?.pendingContinueAfterAbort).toBe(true);
+    if (mode === 'user') expect((await import('../builtin-session/lifecycle')).lifecycleState.abortRequested).toBe(true);
+    expect(state.sdkInputs).toHaveLength(0);
+  });
+
   it('keeps a delayed watchdog launcher from clearing the Stop fence', async () => {
     const workspace = join(state.home, 'watchdog-delayed-launch');
     await mkdir(workspace);

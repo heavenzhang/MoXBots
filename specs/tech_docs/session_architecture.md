@@ -214,6 +214,8 @@ Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 
 
 普通 Session 的 watchdog reminder 每段业务输入最多自动注入一次；只有新的业务输入通过最终 admission 并即将交给 SDK 时，才更新这一次额度。维护、纯 system reminder、已有 owner 的自动轮次和 provider/stream retry 不更新，避免恢复轮次自己无限续命。Stop 同步撤销等待 teardown/写盘的 scheduled reminder，并清除持久的 `pendingContinueAfterAbort`；清除不能确认时返回安全错误，不能声称已完成持久停止。该旧 watchdog fallback 不授予动作重放权限，未知工具结果和 409 仍需原恢复门禁核对。
 
+活跃 transcript 的 metadata patch 只更新内存并请求写入。Watchdog Stop 必须等待同一原 writer 的有界 `flush()` 成功，覆盖 transcript 和 index 的实际提交后才确认清除；旧 writer 被替换或提交失败均返回不耐久错误。失败后的内存 `false` 不能免除后续 Stop 的未提交义务；更新退出继续被该错误阻断，进程内撤销 fence 保持有效。
+
 SDK 的 `system/status`（包括周期性的 `compacting` / `requesting`）只证明运行时存活，保留状态展示，但不刷新 watchdog 进展时钟，也不能单独作为自动恢复的实质活动。实际 `compact_boundary`、文本和工具进展继续刷新既有 10 分钟活动预算；用户审批等待和原模型恢复等待仍由其现有 owner 暂停计时。
 
 ### 5.1 Goal
