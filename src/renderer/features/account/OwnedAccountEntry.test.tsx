@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   registry: null as NetworkRegistry | null,
   accept: vi.fn(),
   start: vi.fn(),
+  reauthenticate: vi.fn(),
   open: vi.fn(),
   poll: vi.fn(),
   cancel: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("@/features/agent-network/store", () => ({
 vi.mock("@/api/agentNetwork", async (original) => ({
   ...(await original<typeof import("@/api/agentNetwork")>()),
   startOwnedNetworkLogin: mocks.start,
+  startOwnedNetworkReauthentication: mocks.reauthenticate,
   openOwnedNetworkAuthorization: mocks.open,
   pollOwnedNetworkLogin: mocks.poll,
   cancelOwnedNetworkLogin: mocks.cancel,
@@ -112,6 +114,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.registry = makeRegistry();
   mocks.start.mockResolvedValue({
+    attemptId: "attempt-a",
+    authorizationUrl: "https://login.example.test/authorize",
+    expiresAt: 1_900_000_000,
+  });
+  mocks.reauthenticate.mockResolvedValue({
     attemptId: "attempt-a",
     authorizationUrl: "https://login.example.test/authorize",
     expiresAt: 1_900_000_000,
@@ -473,7 +480,8 @@ it("cancels a pending login when the same issuer account generation changes", as
   accountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  expect(mocks.start).toHaveBeenCalledTimes(2);
+  expect(mocks.start).toHaveBeenCalledOnce();
+  expect(mocks.reauthenticate).toHaveBeenCalledExactlyOnceWith("owned-a", next.revision);
 
   const stale = makeRegistry({
     state: "authenticated",
@@ -503,6 +511,48 @@ it("ends locally after explicit cancellation fails and permits a new login", asy
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   expect(mocks.start).toHaveBeenCalledTimes(2);
+});
+
+it("reauthenticates the saved product identity once and closes after its browser grant", async () => {
+  const saved = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
+  mocks.registry = saved;
+  const authenticated = makeRegistry({ state: "authenticated", principalId: "principal-existing", expiresAt: 1_900_000_000 });
+  mocks.poll.mockResolvedValue({ status: "authenticated", registry: authenticated });
+  mocks.select.mockResolvedValue(authenticated);
+  render(<OwnedAccountEntry expanded />);
+  accountAction("登录 MoXBots");
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  await screen.findByText("等待浏览器登录");
+  expect(mocks.reauthenticate).toHaveBeenCalledExactlyOnceWith("owned-a", saved.revision);
+  expect(mocks.start).not.toHaveBeenCalled();
+  fireEvent.click(await manualLoginCheck());
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(mocks.accept).toHaveBeenCalledWith(authenticated);
+  expect(mocks.open).toHaveBeenCalledOnce();
+  expect(mocks.cancel).not.toHaveBeenCalled();
+});
+
+it("keeps native reauthentication errors visible without silently creating a new identity", async () => {
+  mocks.registry = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
+  mocks.reauthenticate.mockRejectedValueOnce(new Error("REVISION_CONFLICT"));
+  render(<OwnedAccountEntry expanded />);
+  accountAction("登录 MoXBots");
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  expect(await screen.findByText("REVISION_CONFLICT")).toBeInTheDocument();
+  expect(mocks.start).not.toHaveBeenCalled();
+  expect(mocks.open).not.toHaveBeenCalled();
+});
+
+it("does not start a saved account login without its native registry revision", async () => {
+  mocks.registry = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
+  delete mocks.registry.revision;
+  render(<OwnedAccountEntry expanded />);
+  accountAction("登录 MoXBots");
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "在浏览器中继续" })).toBeEnabled());
+  expect(mocks.start).not.toHaveBeenCalled();
+  expect(mocks.reauthenticate).not.toHaveBeenCalled();
+  expect(mocks.open).not.toHaveBeenCalled();
 });
 
 it("does not accept a late authenticated poll after the account entry unmounts", async () => {

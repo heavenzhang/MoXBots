@@ -20,7 +20,9 @@ import {
   removeNetworkConnection,
   selectNetworkConnection,
   startOwnedNetworkLogin,
+  startOwnedNetworkReauthentication,
   cancelOwnedNetworkLogin,
+  type OwnedLoginAttempt,
 } from "@/api/agentNetwork";
 import {
   acceptNetworkRegistry,
@@ -412,7 +414,17 @@ export default function OwnedAccountEntry({
           }}
           onOwnedStart={async (issuer, ca) => {
             const epoch = openedLoginGeneration.current;
-            const attempt = await startOwnedNetworkLogin(issuer, ca);
+            // Reuse the selected account's native identity owner. Starting a
+            // generic login first consumes a temporary grant and then requires
+            // a second browser authorization to recover the saved device.
+            let attempt: OwnedLoginAttempt;
+            if (owned) {
+              if (typeof registry.revision !== "number")
+                throw new Error(t("ownedAccountEntry.failed"));
+              attempt = await startOwnedNetworkReauthentication(owned.id, registry.revision);
+            } else {
+              attempt = await startOwnedNetworkLogin(issuer, ca);
+            }
             if (!loginEpochIsCurrent(epoch)) {
               await cancelOwnedNetworkLogin(attempt.attemptId).catch(() => {});
               throw new Error(t("ownedAccountEntry.failed"));
