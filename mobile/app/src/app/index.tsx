@@ -567,11 +567,15 @@ function AppBody() {
     } else if (refreshedOwner.screen === 'sessions') setSessions([]);
     if (selectedTarget?.online && refreshedOwner.screen === 'chat' && refreshedOwner.sessionId) {
       if (!requestIsCurrent()) return;
-      const snapshotReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'get', agentId: selectedTarget.agentId, sessionId: refreshedOwner.sessionId, limit: 30 } }));
-      if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) {
-        if (snapshotReply.kind === 'error') throw new Error(snapshotReply.code);
-        if (snapshotReply.kind !== 'snapshot' || snapshotReply.agentId !== refreshedOwner.agentId || snapshotReply.sessionId !== refreshedOwner.sessionId) throw new Error('SESSION_SNAPSHOT_REPLY_INVALID');
-        commitSnapshot(snapshotReply);
+      try {
+        const snapshotReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'get', agentId: selectedTarget.agentId, sessionId: refreshedOwner.sessionId, limit: 30 } }));
+        if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) {
+          if (snapshotReply.kind === 'error') showSnapshotFailure(snapshotReply.code);
+          else if (snapshotReply.kind !== 'snapshot' || snapshotReply.agentId !== refreshedOwner.agentId || snapshotReply.sessionId !== refreshedOwner.sessionId) showSnapshotFailure('SESSION_SNAPSHOT_REPLY_INVALID');
+          else commitSnapshot(snapshotReply);
+        }
+      } catch (error) {
+        if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED');
       }
     }
     if (!requestIsCurrent()) return;
@@ -583,7 +587,7 @@ function AppBody() {
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
-  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, routeFocusGate]);
+  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, routeFocusGate, showSnapshotFailure]);
 
   useEffect(() => notificationOpens.subscribe(() => {
     if (routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE', 'error'); });

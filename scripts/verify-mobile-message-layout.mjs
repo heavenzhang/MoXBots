@@ -66,6 +66,10 @@ try {
     await page.getByRole('button', { name: 'Bash，完成，展开输出', exact: true }).click();
     await toolOutput.waitFor();
     assert.ok(await page.getByLabel('Bash 的横向输出', { exact: true }).evaluate(el => el.scrollWidth > el.clientWidth));
+    assert.ok(await toolOutput.evaluate(el => el.scrollHeight > el.clientHeight), 'long outputs need their own vertical reading area');
+    await toolOutput.evaluate(el => { el.scrollTop = 100; });
+    assert.ok(await toolOutput.evaluate(el => el.scrollTop) > 0);
+    if (width === 390) await page.screenshot({ path: path.join(output, 'tool-output-expanded-390.png') });
     assert.ok((await toolOutput.textContent()).includes('CONTROLLED_TOOL_OUTPUT\n  second line'));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     await page.getByRole('button', { name: 'Bash，完成，收起输出', exact: true }).click();
