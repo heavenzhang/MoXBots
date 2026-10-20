@@ -25,7 +25,7 @@ Bring the actual React Native mobile client close to the user-selected Codex mob
 - [x] Implemented session header, search, date groups and bound info sheet; compact conversation chrome, direct artifact entry, neutral reading layout and on-demand composer popover. First rendered App QA inspected; final behavior checks pending.
 - [x] Complete presentation/navigation and focused tests, preserving812 native/reading behavior.
 - [x] Final independent repair recheck and primary acceptance. Reviewer confirmed overlay repair and rendered UI; primary executed touch and keyboard checks in6sizes and inspected actual screenshots.
-- [ ] Commit final combination, synchronize source and hand off to existing integration/mobile-unit owner.
+- [x] Commit final combination, synchronize source and hand off to existing integration/mobile-unit owner. Normal remote push and project-sync handoff gate PASS; source combination is a normal merge containing8128596. Exact resulting head is reported outside this file.
 - [ ] Mainline/shared CI/native artifact/physical acceptance by existing unit owner (not delegated here).
 
 ## Verification
@@ -46,9 +46,9 @@ Bring the actual React Native mobile client close to the user-selected Codex mob
 - Required: mobile client unit, source presentation changes for iOS and Android. Existing mobile CI/build/install owner must confirm current unit mapping before target changes; no cloud/schema/protocol change intended.
 - Handoff: this remote branch and task record; report the resulting head SHA outside this file.
 - Evidence and dependencies: link tests, cross-unit compatibility/order, configuration/migrations, and rollback constraints.
-- Status: source implemented; local UI acceptance passed; remote handoff pending; no shared CI/release/build/install triggered by this task.
+- Status: source implemented; local UI acceptance and remote branch synchronization passed; precise source/evidence delivered to01a12b99 for independent review and coordinator intake; no shared CI/release/build/install triggered by this task.
 - Owners: route each unit to its designated CI/deployment chat in the latest canonical plan; this task does not claim ownership.
 
 ## Next step
 
-- Stage resolved merge paths, commit and normal-push the codex branch after verifying workflow path filters; run remote handoff gate and send exact SHA/evidence to existing owner01a12b99. No PR/sharedCI/build/install here. Mainline intake remains with the registered coordinator01a12bc2. Keep the reference unchanged and route formal CI/build/device acceptance through the unit owner.
+- Existing owner01a12b99 independently reviews the frozen source and coordinates main/CI/mobile install intake with01a12bc2. Workflow path filters were verified and the normal codex branch push did not request a shared workflow. No PR/sharedCI/build/install here. Mainline intake remains with the registered coordinator01a12bc2. Keep the reference unchanged and route formal CI/build/device acceptance through the unit owner.
