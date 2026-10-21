@@ -166,6 +166,11 @@ function PlanCard({
           {t(startStatus.error ? 'orchestrationPlan.startUncertain' : startStatus.state === 'pending' ? 'orchestrationPlan.startPending' : startStatus.state === 'claimed' ? 'orchestrationPlan.startClaimed' : 'orchestrationPlan.startDispatched')}
         </p>
       )}
+      {!confirmed && startStatus?.purpose === 'revision' && startStatus.proposalId === proposal.id && startStatus.revision === proposal.revision && (
+        <p role={startStatus.error ? 'alert' : 'status'} className="mt-3 rounded-lg bg-[var(--paper-inset)] p-3 text-xs text-[var(--ink-secondary)]">
+          {t(startStatus.error ? 'orchestrationPlan.revisionBlocked' : 'orchestrationPlan.revisionQueued')}
+        </p>
+      )}
       <details
         className="mt-3"
         open={expanded}

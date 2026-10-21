@@ -8137,7 +8137,7 @@ function observeBuiltinTaskPlanResult(toolUseId: string): void {
     && block.tool?.id === toolUseId && !block.tool.isError && ['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'].includes(block.tool.name)));
   if (!isPlanResult) return;
   const plan = deriveSessionTodos(messages);
-  if (plan.source !== 'none') observeSessionTasksInBackground(getSessionId(), { plan: plan.todos });
+  if (plan.source !== 'none') observeSessionTasksInBackground(getSessionId(), { plan: plan.todos, planTurnId: getBuiltinProductContent()?.currentTurn?.id });
 }
 
 export function getBuiltinExecutionStartedAt(): string | undefined {

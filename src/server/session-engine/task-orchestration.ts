@@ -17,6 +17,7 @@ export function canSessionDelegateSubagents(sessionId: string): boolean {
   const proposal = ledger?.proposal;
   return !!proposal && proposal.sessionId === sessionId && isSessionPlanConfirmed(proposal)
     && ledger.planStart?.proposalId === proposal.id && ledger.planStart.revision === proposal.revision
+    && ledger.planStart.purpose !== 'revision'
     && !!ledger.planStart.queueId && !!ledger.planStart.requestId
     && (ledger.planStart.state === 'dispatched' || ledger.planStart.state === 'claimed'
       && !!ledger.planStart.claimId && activePlanClaims.get(sessionId) === ledger.planStart.claimId);
@@ -89,7 +90,7 @@ export async function readSessionTasks(engine: SessionEngine) {
     ? await engine.listAgentWork().catch(() => null) : null;
   if (engine.getRuntimeIdentity().sessionId !== sessionId) throw new Error('TASK_SESSION_CHANGED');
   const uncertainStart = ledger.planStart?.state === 'claimed' && live.sessionState === 'idle'
-    && activePlanClaims.get(sessionId) !== ledger.planStart.claimId
+    && (!ledger.planStart.claimId || activePlanClaims.get(sessionId) !== ledger.planStart.claimId)
     && !engine.hasQueuedTurnOwnedBy({ kind: 'task', id: ledger.planStart.queueId });
   const confirmed = { ...ledger, ...(uncertainStart ? { planStart: { ...ledger.planStart!, error: 'PLAN_START_RECOVERY_REQUIRES_REVIEW' } } : {}), attempts: ledger.attempts.map(attempt => attempt.lifecycle.status !== 'running' ? attempt : {
     ...attempt, executionVerified: currentToolIds.has(attempt.toolUseId)
@@ -232,27 +233,29 @@ export async function mutateSessionPlan(engine: SessionEngine, sessionId: string
     const ledger = await publish(sessionId, prior, next, () => engine.getRuntimeIdentity().sessionId === sessionId);
     return { sessionId, ledger, tasks: projectSessionTasks(ledger, snapshot.messages) };
   });
-  if (action.kind === 'confirm_from_message') await startConfirmedSessionPlan(engine, sessionId);
+  if (action.kind === 'confirm_from_message') await startSessionPlanTurn(engine, sessionId);
   return result;
 }
 
 /** A durable one-shot claim is checked inside the original engine queue. */
-async function startConfirmedSessionPlan(engine: SessionEngine, sessionId: string): Promise<void> {
+async function startSessionPlanTurn(engine: SessionEngine, sessionId: string): Promise<void> {
   const start = getSessionMetadata(sessionId)?.taskOrchestration?.planStart;
   if (!start || start.state !== 'pending' || admittingPlans.has(sessionId)
     || engine.hasQueuedTurnOwnedBy({ kind: 'task', id: start.queueId })) return;
   admittingPlans.add(sessionId);
   const claimId = randomUUID();
+  const validProposal = (ledger: SessionTaskLedger) => !!ledger.proposal && (start.purpose === 'revision'
+    ? ledger.proposal.state === 'revising' && !!ledger.proposal.feedback : isSessionPlanConfirmed(ledger.proposal));
   const current = () => {
     const ledger = getSessionMetadata(sessionId)?.taskOrchestration;
     return engine.getRuntimeIdentity().sessionId === sessionId && ledger?.proposal?.id === start.proposalId
-      && ledger.proposal.revision === start.revision && isSessionPlanConfirmed(ledger.proposal)
+      && ledger.proposal.revision === start.revision && validProposal(ledger)
       && ledger.planStart?.requestId === start.requestId && ledger.planStart.claimId === claimId;
   };
   const guard: DispatchGuard = async () => serialize(sessionId, async () => {
     const prior = getSessionMetadata(sessionId)?.taskOrchestration;
     if (!prior?.proposal || prior.proposal.id !== start.proposalId || prior.proposal.revision !== start.revision
-      || !isSessionPlanConfirmed(prior.proposal) || engine.getRuntimeIdentity().sessionId !== sessionId
+      || !validProposal(prior) || engine.getRuntimeIdentity().sessionId !== sessionId
       || prior.planStart?.requestId !== start.requestId || prior.planStart.state !== 'pending' && prior.planStart.claimId !== claimId) return { accepted: false, error: 'PLAN_START_ALREADY_CLAIMED_OR_STALE' };
     if (prior.planStart.state === 'pending') await publish(sessionId, prior, { ...prior, revision: prior.revision + 1, planStart: { ...prior.planStart, state: 'claimed', claimId } }, () => engine.getRuntimeIdentity().sessionId === sessionId);
     activePlanClaims.set(sessionId, claimId);
@@ -267,8 +270,11 @@ async function startConfirmedSessionPlan(engine: SessionEngine, sessionId: strin
   try {
     const context = engine.getCurrentSessionContext();
     if (context.sessionId !== sessionId || !context.workspacePath) throw new Error('TASK_SESSION_CHANGED');
+    const text = start.purpose === 'revision'
+      ? `用户要求调整任务方案 ${start.proposalId} 第 ${start.revision} 版。请读取会话任务账本，讨论并用 revise 发布下一版草案，等待人类重新确认；不要创建正式任务或启动子 Agent。\n用户调整意见：\n${getSessionMetadata(sessionId)?.taskOrchestration?.proposal?.feedback ?? ''}`
+      : `已确认任务方案 ${start.proposalId} 第 ${start.revision} 版。请读取会话任务账本，按已确认的范围开始执行；结果回传后先验收再标完成。`;
     const result = await engine.sendDesktopMessage({ sessionId, workspacePath: context.workspacePath,
-      text: `已确认任务方案 ${start.proposalId} 第 ${start.revision} 版。请读取会话任务账本，按已确认的范围开始执行；结果回传后先验收再标完成。`,
+      text,
       scenario: { type: 'desktop', surface: 'chat' }, clientRequestId: start.queueId, queueId: start.queueId,
       turnOwner: { kind: 'task', id: start.queueId },
       turnBoundaryOnly: true, beforeDispatch: guard });
@@ -279,7 +285,7 @@ async function startConfirmedSessionPlan(engine: SessionEngine, sessionId: strin
       if (!receipt.accepted) { if (activePlanClaims.get(sessionId) === claimId) activePlanClaims.delete(sessionId); return; }
       await serialize(sessionId, async () => {
         const prior = getSessionMetadata(sessionId)?.taskOrchestration;
-        if (!prior?.planStart || !current()) return;
+        if (!prior?.planStart || !current()) { if (activePlanClaims.get(sessionId) === claimId) activePlanClaims.delete(sessionId); return; }
         await publish(sessionId, prior, { ...prior, revision: prior.revision + 1, planStart: { ...prior.planStart, state: 'dispatched', error: undefined } });
         if (activePlanClaims.get(sessionId) === claimId) activePlanClaims.delete(sessionId);
       });
@@ -317,12 +323,15 @@ export async function actOnSessionPlan(engine: SessionEngine, action: SessionPla
       commitConfirmedPlan(next);
       if (next.planStart?.proposalId !== next.proposal.id || next.planStart.revision !== next.proposal.revision)
         next.planStart = { proposalId: next.proposal.id, revision: next.proposal.revision, requestId, queueId: randomUUID(), state: 'pending' };
-    } else next.proposal = requestSessionPlanRevision(prior.proposal, action, action.feedback);
+    } else {
+      next.proposal = requestSessionPlanRevision(prior.proposal, action, action.feedback);
+      next.planStart = { proposalId: next.proposal.id, revision: next.proposal.revision, requestId, queueId: randomUUID(), purpose: 'revision', state: 'pending' };
+    }
     next.planRequests = [...(next.planRequests ?? []), { id: requestId, fingerprint }].slice(-128);
     next.revision++;
     await publish(sessionId, prior, next, () => engine.getRuntimeIdentity().sessionId === sessionId);
   });
-  if (action.kind === 'confirm') await startConfirmedSessionPlan(engine, sessionId);
+  await startSessionPlanTurn(engine, sessionId);
   const { messages: _messages, ...snapshot } = await readSessionTasks(engine);
   return snapshot;
 }

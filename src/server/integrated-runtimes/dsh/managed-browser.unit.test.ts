@@ -29,7 +29,11 @@ describe('DSH managed Browser projection', () => {
     const ready = await projectDshManagedBrowser(source, 'product-1');
     const readyPlane = compileDshProductExtensionPlane(ready);
     expect(readyPlane.snapshot.revision).not.toBe(failedPlane.snapshot.revision);
-    expect(readyPlane.snapshot.components).toEqual([expect.objectContaining({ id: 'myagents-browser', descriptor: expect.objectContaining({ transport: 'http' }) })]);
+    expect(readyPlane.snapshot.components).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'myagents-browser', descriptor: expect.objectContaining({ transport: 'http' }) }),
+      expect.objectContaining({ id: 'myagents-session-delegation-confirmation-v1', kind: 'hook', descriptor: expect.objectContaining({ event: 'PreToolUse' }) }),
+    ]));
+    expect(readyPlane.snapshot.components).toHaveLength(2);
     expect(JSON.stringify(readyPlane.snapshot)).not.toContain('synthetic-secret');
     expect(source.mcpServers[0].command).toBe('__browser_host__');
   });

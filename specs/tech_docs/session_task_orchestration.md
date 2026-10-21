@@ -18,6 +18,8 @@ Product Session 的 To Do 与子 Agent 执行共用 `SessionMetadata.taskOrchest
 
 自然语言快捷确认只接受完整明确短句，不能包含额外范围或等待约束。UI 在方案真实 render commit 后捕获已显示的 proposal/revision，随原 chat/send body 签名；Node 严格匹配后记录 humanInput。CLI 再以真实 user message 的 clientRequestId、内容 hash、消息边界与该 receipt 绑定。模型、工具、引用、后台注入的 user-role 行或修改前旧消息均不能确认新版本。已确认的同版本无需再次确认。
 
+调整意见也通过同一账本与原队列的一次性 revision 请求唤醒主 Agent 修改草案，不创建正式任务、不授权子 Agent。
+
 确认后只通过原 SessionEngine 的 turn-boundary queue 启动一次。pending 状态不打开委派权限；原队列持久化 claim 后才开放。claimed 还必须匹配本进程原 queue lease，重启遗留的未知 claim 不自动授权。最终同步 validator 一直传到 SDK admission、Codex RPC、Claude Code stdin 或 DSH turn/start 前；中间异步配置/重启不能绕过。真正 native entry 有一次性 fence。
 
 ## 恢复与原生边界

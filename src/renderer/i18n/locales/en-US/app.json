@@ -2099,6 +2099,8 @@
     "unverified": "Confirmation unverified",
     "unverifiedHint": "This version has no verified confirmation receipt. Refresh the Session to restore its latest state; do not start execution yet.",
     "discussionDraft": "I would like to discuss the plan “{{objective}}”: ",
+    "revisionQueued": "Your feedback is saved and queued in this chat to revise the draft. Formal tasks still require confirmation.",
+    "revisionBlocked": "Delivery of this revision request could not be confirmed. Check the chat, then continue the discussion; it will not be replayed automatically.",
     "startPending": "The start request is saved and waiting for the execution channel. Plan confirmation does not mean execution has started.",
     "startClaimed": "The start request is being reconciled. Check this chat and task progress before starting again.",
     "startDispatched": "The start request has reached the chat execution channel. Actual progress appears in task orchestration.",

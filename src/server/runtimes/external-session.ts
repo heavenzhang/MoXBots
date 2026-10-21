@@ -4521,6 +4521,7 @@ export async function startExternalSession(options: {
   /** Internal: false when a per-message snapshot should not overwrite desired last* state. */
   recordConfigState?: boolean;
   beforeNativeDispatch?: () => void;
+  onNativeDispatchAcknowledged?: () => void;
   onDispatchDeferred?: () => void;
   dispatchPromotion?: ExternalTurnPromotionToken;
   activityFacts?: SessionActivityTurnFacts;
@@ -4573,6 +4574,7 @@ async function _doStartExternalSession(options: {
   metadataBirthPending?: boolean;
   recordConfigState?: boolean;
   beforeNativeDispatch?: () => void;
+  onNativeDispatchAcknowledged?: () => void;
   onDispatchDeferred?: () => void;
   dispatchPromotion?: ExternalTurnPromotionToken;
   activityFacts?: SessionActivityTurnFacts;
@@ -5286,6 +5288,7 @@ async function _doStartExternalSession(options: {
             beforeDispatch: beforeNativeDispatch,
           },
         );
+        options.onNativeDispatchAcknowledged?.();
         if (beforeNativeDispatch && options.messageOperation && !options.messageOperation.context.asyncQuestionReply)
           notifyExternalMessageDispatchAccepted(options.messageOperation, options.sessionId, options.onDispatchAccepted);
         deferredInitialDispatched = true;
@@ -5312,6 +5315,7 @@ async function _doStartExternalSession(options: {
           beforeDispatch: beforeNativeDispatch,
         },
       );
+      options.onNativeDispatchAcknowledged?.();
       if (beforeNativeDispatch && options.messageOperation && !options.messageOperation.context.asyncQuestionReply)
         notifyExternalMessageDispatchAccepted(options.messageOperation, options.sessionId, options.onDispatchAccepted);
       if (options.messageOperation && persistInitialQuestionReply) {
@@ -5871,6 +5875,18 @@ async function dispatchExternalMessageOperation(
     // No await may separate this callback from native root dispatch.
     nativeBoundaryEntered = true;
   } : undefined;
+  const onNativeDispatchAcknowledged = (): void => {
+    if (!context?.beforeDispatch || nativeBoundaryEntered) return;
+    // Older native/compatibility sends can acknowledge after an early terminal
+    // without calling the new entry callback. A successful native send is
+    // consumption evidence; it can settle promotion, never a missing validator.
+    nativeBoundaryEntered = true;
+    // Retire pre-dispatch cancellation before failure cleanup can stop the
+    // process: this acknowledgement may already have caused native effects.
+    if (dispatchPromotion && isExternalTurnPromotionCurrent(dispatchPromotion))
+      finishExternalTurnPromotion(dispatchPromotion, { status: 'dispatched' });
+    if (guarded.validateAtCommit) throw new Error('Runtime acknowledged a root turn without its required final dispatch validator');
+  };
   try {
   let runtimeText = text;
   let skillAdmission: ExternalSkillAdmission;
@@ -6069,6 +6085,7 @@ async function dispatchExternalMessageOperation(
         recordConfigState: !hasQueuedExternalConfigOperation(),
         dispatchPromotion: dispatchPromotion ?? undefined,
         beforeNativeDispatch,
+        onNativeDispatchAcknowledged,
         onDispatchDeferred: () => { dispatchDeferred = true; },
         activityFacts,
         turnBinding: context.queueId
@@ -6158,6 +6175,7 @@ async function dispatchExternalMessageOperation(
         recordConfigState: !hasQueuedExternalConfigOperation(),
         dispatchPromotion: dispatchPromotion ?? undefined,
         beforeNativeDispatch,
+        onNativeDispatchAcknowledged,
         onDispatchDeferred: () => { dispatchDeferred = true; },
         activityFacts,
         turnBinding: context?.queueId
@@ -6337,6 +6355,7 @@ async function dispatchExternalMessageOperation(
         } : undefined,
       },
     );
+    onNativeDispatchAcknowledged();
     if (beforeNativeDispatch && !operation.context.asyncQuestionReply)
       notifyExternalMessageDispatchAccepted(operation, operation.context.sessionId, onDispatchAccepted);
     if (operation.context.asyncQuestionReply) {
@@ -6354,7 +6373,7 @@ async function dispatchExternalMessageOperation(
     };
   } catch (err) {
     if (
-      !runtimeDispatchStarted &&
+      !runtimeDispatchStarted && !nativeBoundaryEntered &&
       turnAdmissionActivated &&
       (getExternalUserRequestedStop() ||
         getExternalActiveProcess() !== activeProcess)
@@ -6370,7 +6389,7 @@ async function dispatchExternalMessageOperation(
       return { queued: false };
     }
     const msg = err instanceof Error ? err.message : String(err);
-    if (runtimeDispatchStarted) {
+    if (runtimeDispatchStarted || nativeBoundaryEntered) {
       const stopped = await stopExternalSession({ reason: 'failure', preserveQueue: true });
       if (!stopped && hasExternalRuntimeProcess()) {
         if (dispatchPromotion) {

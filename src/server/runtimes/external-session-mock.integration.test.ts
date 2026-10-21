@@ -10127,3 +10127,25 @@ describe('Confirmed plan original-owner claim activation', () => {
     expect(harness.runtime.sentMessages.filter(message => message.includes('已确认任务方案'))).toHaveLength(1);
   });
 });
+
+
+describe('External compatibility acknowledgement final lease', () => {
+  it('keeps an acknowledged native dispatch unknown when a required validator callback was omitted', async () => {
+    const harness = await createHarness([]);
+    const sessionId = 'compatibility-missing-final-validator';
+    const workspace = join(harness.home, 'workspace');
+    await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const cancel = vi.fn();
+    const validateAtCommit = vi.fn(() => ({ accepted: true }));
+    const guard = Object.assign(async () => ({ accepted: true, validateAtCommit }), { cancel });
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (_process, message) => {
+      harness.runtime.sentMessages.push(message);
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'unsupported final gate'),
+      beforeDispatch: guard, queueId: 'missing-final-validator', turnOwner: { kind: 'task', id: 'missing-final-validator' }, turnBoundaryOnly: true });
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: expect.stringContaining('required final dispatch validator') });
+    expect(validateAtCommit).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(harness.runtime.sentMessages).toEqual(['unsupported final gate']);
+  });
+});

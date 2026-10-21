@@ -38,3 +38,11 @@ Required: desktop/macOS/updater, sole existing owner 01a12bc2-907a-7702-b6dd-788
 ## Next step
 
 Commit/push the frozen task branch, run git-project-sync handoff gate, then send exact SHA/evidence to existing combined CI/main and desktop owner for automatic PR CI, main integration and later unfrozen publication. Verify remote main contains the accepted commit before declaring source delivery. No native/production completion claim before owner acceptance.
+
+## Completed
+
+Product task/attempt/review ledger, original execution event observation, unified status UI and root-only acceptance receipts; proposal/revision workflow with native human proof and exact displayed revision, original-queue once-only claim and final native dispatch checks; retry/reconnect/late-event/unknown-state handling and architecture documentation. Source committed and task branch pushed; main integration and publication are separate pending owner operations.
+
+## Blockers and unknowns
+
+Whole-app Rust check lacks existing packaged CLIProxy manifest resources; prepare through sole publisher, never bypass. Real Provider/native, signed artifact and production paths have not been accepted. Expanded original-runtime regression exposed early-terminal legacy async-answer promotion settlement plus DSH fixtures missing the new fixed hook receipt; repair and re-run before final integration intake. New changes never join a frozen artifact automatically.

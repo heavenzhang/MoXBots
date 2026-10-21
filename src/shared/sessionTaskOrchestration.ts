@@ -36,7 +36,7 @@ export interface SessionTaskLedger {
   pendingTaskIds?: string[];
   planRequests?: { id: string; fingerprint: string }[];
   humanInputs?: { requestId: string; proposalId: string; revision: number; bodyDigest: string }[];
-  planStart?: { proposalId: string; revision: number; requestId: string; queueId: string; state: 'pending' | 'claimed' | 'dispatched'; claimId?: string; error?: string };
+  planStart?: { proposalId: string; revision: number; requestId: string; queueId: string; purpose?: 'execution' | 'revision'; state: 'pending' | 'claimed' | 'dispatched'; claimId?: string; error?: string };
 }
 export interface SessionTaskView extends SessionTaskRecord {
   phase: TaskPhase;

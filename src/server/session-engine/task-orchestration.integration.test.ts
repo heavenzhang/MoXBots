@@ -194,6 +194,24 @@ describe('human plan confirmation in the durable Session ledger', () => {
     expect(owner.canSessionDelegateSubagents(id)).toBe(true);
     expect(ledger.planStart?.state).toBe('dispatched');
   });
+  it('wakes the original root once to discuss revision feedback without creating tasks or granting delegation', async () => {
+    await draft(); const send = dispatchingEngine();
+    const feedback = { ...action(), kind: 'request_revision' as const, feedback: 'Narrow the scope before execution' };
+    await owner.actOnSessionPlan(engine, feedback);
+    await owner.actOnSessionPlan(engine, feedback);
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[0][0].text).toContain('Narrow the scope before execution');
+    const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
+    expect(ledger.tasks).toEqual([]);
+    expect(ledger.proposal?.state).toBe('revising');
+    expect(ledger.planStart?.purpose).toBe('revision');
+    expect(owner.canSessionDelegateSubagents(id)).toBe(false);
+    await owner.mutateSessionPlan(engine, id, { kind: 'revise', proposalId: 'plan', expectedRevision: 1, content: { ...content, scope: 'Narrowed' }, changes: ['Scope narrowed'] });
+    expect(owner.canSessionDelegateSubagents(id)).toBe(false);
+    await owner.actOnSessionPlan(engine, { ...action('00000000-0000-4000-8000-000000000006'), expectedRevision: 2 });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.tasks).toHaveLength(1);
+  });
   it('rejects request reuse with changed content and stale revision after revision discussion', async () => {
     await draft(); dispatchingEngine();
     const revision = { ...action(), kind: 'request_revision' as const, feedback: 'Tighten scope' };
@@ -246,6 +264,11 @@ describe('human plan confirmation in the durable Session ledger', () => {
     await owner.actOnSessionPlan(engine, action());
     expect(send).toHaveBeenCalledTimes(1);
     expect(owner.canSessionDelegateSubagents(id)).toBe(false);
+    const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
+    await store.updateSessionMetadata(id, { taskOrchestration: { ...ledger, planStart: { ...ledger.planStart!, claimId: undefined } } });
+    engine.getLiveSessionState = () => ({ sessionState: 'idle' }) as never;
+    expect(owner.canSessionDelegateSubagents(id)).toBe(false);
+    expect((await owner.readSessionTasks(engine)).ledger.planStart?.error).toBe('PLAN_START_RECOVERY_REQUIRES_REVIEW');
   });
   it('does not let the planning turn delegate before original-queue admission, and releases only a proven non-dispatch', async () => {
     await draft();

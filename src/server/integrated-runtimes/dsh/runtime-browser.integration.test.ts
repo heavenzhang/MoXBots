@@ -74,7 +74,7 @@ describe('DSH product Browser capability lifecycle', () => {
           }
           fixture.snapshot = candidate;
           fixture.extensionRevision = revision;
-          return { state: 'applied', desiredRevision: fixture.extensionRevision, effectiveRevision: fixture.extensionRevision };
+          return { state: 'applied', desiredRevision: fixture.extensionRevision, effectiveRevision: fixture.extensionRevision, components: [{ key: 'hook:myagents-session-delegation-confirmation-v1', state: 'ready' }] };
         }
         case 'extension/catalog': return { digest: 'a'.repeat(64), revision: fixture.extensionRevision, skills: [{ name: 'fixture' }], tools: [] };
         case 'session/resume':

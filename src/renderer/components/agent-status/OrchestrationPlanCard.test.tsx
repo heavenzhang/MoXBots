@@ -224,3 +224,12 @@ describe('confirmation and execution start are separate facts', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+it('keeps revision delivery failure separate from execution confirmation', () => {
+  const proposal = { ...make(), state: 'revising' as const, feedback: '先缩小范围' };
+  render(<OrchestrationPlanCard proposal={proposal} {...callbacks()} startStatus={{ proposalId: proposal.id, revision: 1, queueId: 'queue', requestId: 'request', purpose: 'revision', state: 'claimed', error: 'PRIVATE_TECHNICAL_ERROR' }} />);
+  expect(screen.getByRole('alert')).toHaveTextContent('调整请求未能确认送达');
+  expect(screen.queryByText('PRIVATE_TECHNICAL_ERROR')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '确认并开始' })).not.toBeInTheDocument();
+  expect(screen.getByText('已提交调整意见：先缩小范围')).toBeVisible();
+});
