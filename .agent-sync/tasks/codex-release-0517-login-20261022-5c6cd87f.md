@@ -11,7 +11,7 @@ Ship human-prioritized standard OAuth as new0.5.17/build517.1 after completed0.5
 ## Scope
 ExactstandardOAuth bce+a313 composition/test repairs on currentmain7db, with only release metadata and records added by Root. Preserve original account/device, history/drafts and Keychain. No identity reset/credential deletion/business replay. Later remote/model/diagnostic and blocked orchestration code excluded. No mobile/Host/Windows deployment. Current016 tag/bytes/local/stable are immutable rollback, not repackaged.
 
-## Checkable To Do
+## Acceptance criteria
 - [x] Verify original human OAuth/main/release/Air authorization, canonicalremote/base and source tree.
 - [x] Root review service S256/state/exactloopback/code single-use, native callback/exchange/cancel/cache and original credential/registry owner.
 - [x] Preserve initialbce E0433/DOM and4206 test-only Clippy failures; author repaired shared-module composition and approved runtime/localHTTP test helpers. Source/loopback evidence: service210/8manualignore, native57, registry22, DOM84, type/scopedlint and finalClippy/TCP. Evidence dev-docs/login-oauth-standard/acceptance.md.
@@ -24,5 +24,14 @@ ExactstandardOAuth bce+a313 composition/test repairs on currentmain7db, with onl
 - [ ] Affected native login/install and originalAir real authorization/CmdQ/reopen; preserve active business and checkpoint/backup/normalquit gates.
 - [ ] Single owned publication/fullTLS rawreview/CASstable/postchecks; record source/tag/artifact/distribution/local/Air separately.
 
-## Evidence / next step
+## Verification
 Root tracking work/release-queue/login-oauth-standard-integration-20261022.json in owner workspace. Source/synthetic/loopback checks are not productionOAuth/Air acceptance. Original4206 Test39662590446 and service39662590434 are complete/preserved, no more polling. Root merged finalsource9e ancestry with5171 metadata. Push complete combinedhead once, then complete its own gates; cloud first, newdesktop second. Tag/artifact/install/publish are not yet performed.
+
+## Completed
+Root reviewed original human authorization, finalauthor9e source and bounded native-test repair; source evidence and version5171 are synchronized into this branch. Completed016delivery is preserved separately. This record does not mark production017 or Air acceptance done.
+
+## Blockers and unknowns
+ExactcombinedCI/main/cloud compatibility, signed5171 artifact and originalAir browser-login/reopen remain open. Earlier4206 test failures and corrected local proofs are retained. No required safety or source gate is waived.
+
+## Next step
+Collect exactcurrenthead fullPR186 Test/service gates, then normal protectedmain delivery, cloudfirst rollout and signed5171 preparation. Do not rerun supersededCI or mutate the installed016 business runtime during static work.
