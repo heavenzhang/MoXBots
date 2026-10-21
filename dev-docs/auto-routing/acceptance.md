@@ -1,6 +1,6 @@
 # MOXBOTS-AUTO-ROUTING-20261021 — 自动选模型 P0–P3 交付记录
 
-分支 `codex/auto-routing-20261019`，基线 `2adf5c1d2`（origin/main，PR #180 合入后的 HEAD），交付 head `c21b013bf`。
+分支 `codex/auto-routing-20261019`，基线 `2adf5c1d2`（origin/main，PR #180 合入后的 HEAD），交付 head `ba97a22b4`（源码 `c21b013bf` + 交付记录提交）。
 
 ## 1. 目标与范围
 
@@ -21,7 +21,7 @@
 - [x] 非交互 rebase 到最新 origin/main（基线 `2adf5c1d2`，跨 146 个提交，`agent-session.ts` 与 `builtin-adapter.ts` 冲突已人工合并并保留双方语义）
 - [x] `git push origin HEAD:main` 并 `git ls-remote` 核实
 - [x] 交付记录（本文件）、仓库任务记录与验收证据
-- [x] 共享 CI：run `39561027775`（`c237d5684`）conclusion `success`，全部 job 通过（iOS simulator job 为既有 skip）。先前 `c21b013bf` 的 run `39560599030` 被新推送取代后取消。
+- [x] 共享 CI：最终 main `ba97a22b4` 的 run `39563706378` conclusion `success`，全部 job 通过（iOS simulator job 为既有 skip）。此前 `c237d5684` 的 run `39561027775` 亦为 `success`；`c21b013bf` 的 run `39560599030` 被新推送取代后取消。
 - [ ] 真实客户端安装验收、真实 Provider 联调（未做）
 - [ ] 测量真实换模型（会话重载）耗时（未做，见第 6 节）
 - [ ] 桌面签名构建与发布（交唯一 release owner，本会话不构建不发布）
@@ -33,10 +33,10 @@
 | 仓库 | `https://github.com/heavenzhang/MoXBots.git` |
 | 分支 | `codex/auto-routing-20261019` |
 | 基线 main | `2adf5c1d2` |
-| 交付 head | `c21b013bf12a134bdc3adcd224113e8b545f4d7b` |
-| 远端 main（推送后核实） | `c21b013bf12a134bdc3adcd224113e8b545f4d7b` |
-| CI | run `39561027775`（Test）`success`；`39560599030` 被新推送取消 |
-| 提交 | `ef21941cf` P0、`0651a34cb` P1、`4d3c203b8` P2-1、`86b9c678b` P2-2、`901163629` P3、`c21b013bf` 依赖解环与埋点注册 |
+| 交付 head | `ba97a22b4338383dd8eb29c71d814f3edd3c422a` |
+| 远端 main（推送后核实） | `ba97a22b4338383dd8eb29c71d814f3edd3c422a` |
+| CI | run `39563706378`（`ba97a22b4`）`success`；`39561027775`（`c237d5684`）`success`；`39560599030` 被新推送取消 |
+| 提交 | `ef21941cf` P0、`0651a34cb` P1、`4d3c203b8` P2-1、`86b9c678b` P2-2、`901163629` P3、`c21b013bf` 依赖解环与埋点注册、`c237d5684` 交付记录、`ba97a22b4` CI 记录 |
 | 差异补丁 | `dev-docs/auto-routing/auto-routing-20261019.patch`，sha256 `b57e380a4d68a9e56deee8c53948d662f722940d1c1950bffb8ae96b5908c322` |
 
 改动规模：60 个文件，+3744 / −38。
@@ -69,7 +69,7 @@
 
 ## 6. 未完成 / 未验证（明确边界）
 
-- **共享 CI**：run `39561027775` 已 `success`。这不等于原生安装验收。
+- **共享 CI**：run `39563706378`（`ba97a22b4`）已 `success`。这不等于原生安装验收。
 - **真实客户端安装验收**：未构建、未安装、未截图。本地 DOM 测试不等于原生验收。
 - **真实 Provider 联调**：分类器、路由切换、请外援一次真实调用都未在本机对真实厂商跑过；单测里传输层与派工 runner 都是注入的替身。
 - **真实换模型耗时**：方案 P1 要求实测会话重载耗时，本次未测。这决定「缓存热只升不降」的阈值是否合理。

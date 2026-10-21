@@ -8,7 +8,7 @@
 
 ## MOXBOTS-AUTO-ROUTING-20261021 — 自动选模型 P0–P3
 
-每个新用户轮次由小分类模型判断难度档位并选出模型与推理强度（桌面、IM、定时任务同一条准入路径），界面只露「自动」、三档设置卡片与可纠正路由标签，P3 提供「先问我」的请外援。任务 `.agent-sync/tasks/codex-auto-routing-20261019.md`，交付记录 `dev-docs/auto-routing/acceptance.md`。源码已 rebase 到 `2adf5c1d2` 并推送 main（`c21b013bf`，60 文件 +3744/−38），本地 unit/dom/integration、tsc、ESLint、depcruise 全绿；共享 CI（run `39561027775`，success）、真实 Provider 联调、真实换模型耗时、原生安装与发布分别追踪。桌面 CI/构建/发布仍由唯一 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。
+每个新用户轮次由小分类模型判断难度档位并选出模型与推理强度（桌面、IM、定时任务同一条准入路径），界面只露「自动」、三档设置卡片与可纠正路由标签，P3 提供「先问我」的请外援。任务 `.agent-sync/tasks/codex-auto-routing-20261019.md`，交付记录 `dev-docs/auto-routing/acceptance.md`。源码已 rebase 到 `2adf5c1d2` 并推送 main（`c21b013bf` 源码，60 文件 +3744/−38；记录后 main 为 `ba97a22b4`），本地 unit/dom/integration、tsc、ESLint、depcruise 全绿；共享 CI（run `39563706378`，`ba97a22b4`，success）、真实 Provider 联调、真实换模型耗时、原生安装与发布分别追踪。桌面 CI/构建/发布仍由唯一 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。
 
 ## MOXBOTS-NATIVE-GOAL-CONTINUE-20261021 — 安全首因可见性
 
