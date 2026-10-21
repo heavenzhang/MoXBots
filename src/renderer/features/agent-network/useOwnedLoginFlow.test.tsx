@@ -513,3 +513,19 @@ it("accepts a native commit observed after the browser deadline while the view w
   expect(actions.onCancel).toHaveBeenCalledOnce();
   expect(result.current.expired).toBe(false);
 });
+
+it("can restart after cancellation fails while an older observation remains in flight", async () => {
+  const oldPoll = deferred<"authenticated">();
+  const start = vi.fn().mockResolvedValueOnce(attempt).mockResolvedValueOnce({ ...attempt, attemptId: "attempt-2" });
+  const { result, actions } = setup({ onOwnedStart: start, onOwnedPoll: vi.fn().mockReturnValue(oldPoll.promise), onOwnedCancel: vi.fn().mockRejectedValue(Error("cancel failed")) });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await tick();
+  await act(async () => { await result.current.cancel(); });
+  expect(result.current.stopped).toBe(true);
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  expect(start).toHaveBeenCalledTimes(2);
+  expect(result.current.attempt?.attemptId).toBe("attempt-2");
+  await act(async () => { oldPoll.resolve("authenticated"); });
+  expect(actions.onCancel).not.toHaveBeenCalled();
+  expect(result.current.attempt?.attemptId).toBe("attempt-2");
+});

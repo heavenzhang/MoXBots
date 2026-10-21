@@ -377,6 +377,9 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
         setPhase("stopped");
       }
     } finally {
+      // The old observation belongs to the retired epoch; its finally cannot
+      // release this flag after cancellation. A failed cancel must allow restart.
+      flight.current = false;
       cancelling.current = false;
     }
   }

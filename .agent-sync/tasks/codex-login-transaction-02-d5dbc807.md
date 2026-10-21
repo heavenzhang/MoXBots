@@ -17,7 +17,7 @@
 - [ ] Air原设备具体build/日志核查及真实单次登录、持久化、界面关闭与设备Ready。
 
 ## Completed
-独立只读诊断与源码改造完成；root审服务端，非实现者审native并关闭publication race疑点。UI120/120、TypeScript和定向ESLint通过；1280/390浏览器本地合成页面无溢出/页面异常，重试原attempt成功。native check及67/67定向状态/loopback测试通过；service全套串行203PASS/8SKIP、Clippy/fmt通过。尚未证明Air具体原生错误。没有操作Air、重置凭据或变更生产服务。
+独立只读诊断与源码改造完成；root审服务端，非实现者审native并关闭publication race疑点。UI121/121、TypeScript和定向ESLint通过；1280/390浏览器本地合成页面无溢出/页面异常，重试原attempt成功。native check及67/67定向状态/loopback测试通过；service全套串行203PASS/8SKIP、Clippy/fmt通过。尚未证明Air具体原生错误。没有操作Air、重置凭据或变更生产服务。
 
 ## Verification
 本地证据WPS项目work/MOXBOTS-LOGIN-RETURN-02；不得将模拟/native单机/CI替代Air验收。

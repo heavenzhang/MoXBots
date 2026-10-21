@@ -14,7 +14,7 @@ The Air browser attempt reached the server's original enrolled device, produced 
 
 ## Local verification
 
-- Renderer/API focused regression: 120 passed, 0 failed. Covers native phases, actionable save retry, terminal errors, unmount detach, exact existing-account entry, legacy restart message and staged reattach after browser expiry, expiry during save retry and a suspended view observing a successful native commit after its old browser deadline.
+- Renderer/API focused regression: 121 passed, 0 failed. Covers native phases, actionable save retry, terminal errors, unmount detach, exact existing-account entry, legacy restart message and staged reattach after browser expiry, expiry during save retry a suspended view observing a successful native commit after its old browser deadline, and restart after cancellation fails while an old observation remains in flight.
 - TypeScript `tsc --noEmit` and targeted ESLint: exit0. AgentNet protocol and routed-agent-doc verification: exit0.
 - Isolated Playwright on the actual dialog component: 1280×900 and390×844 pause/retry paths, no document overflow or page errors; retry resumes the same synthetic attempt. Theme runtime was initialized and screenshots inspected. This is UI-only synthetic evidence, not real authentication.
 - Service: 203 passed, 0 failed, 8 existing opt-in/manual tests ignored; Clippy with warnings denied and rustfmt passed. One unrelated notification timeout failed during the first parallel run and passed separately and in the full serial run. Exact commands and boundaries: [service-verification.md](service-verification.md).
