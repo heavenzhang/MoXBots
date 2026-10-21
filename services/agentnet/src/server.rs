@@ -46,6 +46,8 @@ use zeroize::Zeroizing;
 
 #[path = "native_password.rs"]
 mod native_password;
+#[path = "oauth_native.rs"]
+mod oauth_native;
 
 const MAX_HTTP_BODY: usize = 8 * 1024;
 const MAX_PROVIDER_BODY: usize = 256 * 1024;
@@ -119,9 +121,11 @@ enum Phase {
     Consuming,
     Delivered(SessionResponse),
     Acknowledged,
+    OAuthDelivered,
 }
 struct Flow {
     pending: Mutex<HashMap<String, Pending>>,
+    oauth: Mutex<HashMap<String, oauth_native::Context>>,
     ttl: Duration,
 }
 struct App {
@@ -466,6 +470,7 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
         store,
         flow: Flow {
             pending: Mutex::new(HashMap::new()),
+            oauth: Mutex::new(HashMap::new()),
             ttl: Duration::from_secs(300),
         },
         verification,
@@ -474,6 +479,13 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
     let router = Router::new()
         .route("/auth/login/start", post(start))
         .route("/auth/login/password", post(native_password::login))
+        .route("/auth/oauth/authorize", get(oauth_native::authorize))
+        .route(
+            "/auth/oauth/token",
+            post(oauth_native::token).layer(axum::middleware::from_fn(
+                oauth_native::token_error_middleware,
+            )),
+        )
         .route("/auth/callback", get(callback))
         .route("/auth/login/poll", post(poll))
         .route("/auth/login/ack", post(ack))
@@ -808,8 +820,8 @@ async fn callback(
     let keys_app = app.clone();
     let browser_return = callback_browser_return_path(&app, &uri);
     let result = callback_using(
-        app,
-        uri,
+        app.clone(),
+        uri.clone(),
         move |code, verifier| async move {
             let exchange = exchange_app
                 .client
@@ -836,7 +848,9 @@ async fn callback(
         },
     )
     .await;
-    if let Some(path) = browser_return {
+    if let Some(response) = oauth_native::callback_redirect(&app, &uri, result.is_ok()) {
+        Ok(response)
+    } else if let Some(path) = browser_return {
         Ok(browser_return_response(path, result.is_ok()))
     } else {
         match result {
@@ -1124,7 +1138,12 @@ where
         {
             return Err(ApiError::BadRequest);
         }
-        current.phase = Phase::Ready(subject);
+        current.phase = Phase::Ready(subject.clone());
+        let mut oauth = app.flow.oauth.lock().map_err(|_| ApiError::Internal)?;
+        if let Some(context) = oauth.get_mut(&txid) {
+            context.subject = Some(subject);
+            current.phase = Phase::OAuthDelivered;
+        }
         Ok(())
     }
     .await;
@@ -1156,6 +1175,15 @@ async fn poll(
     let now = unix_now().map_err(|_| ApiError::Internal)?;
     all.retain(|_, p| p.expires_at > now);
     let p = all.get_mut(&tx).ok_or(ApiError::BadRequest)?;
+    if app
+        .flow
+        .oauth
+        .lock()
+        .map_err(|_| ApiError::Internal)?
+        .contains_key(&tx)
+    {
+        return Err(ApiError::BadRequest);
+    }
     if p.expires_at <= now
         || p.device_id != device
         || !ct_eq(p.client_challenge.as_bytes(), challenge.as_bytes())
@@ -1186,6 +1214,7 @@ async fn poll(
                 .into_response());
         }
         Phase::Acknowledged => return Err(ApiError::BadRequest),
+        Phase::OAuthDelivered => return Err(ApiError::BadRequest),
         Phase::Ready(_) => {}
     }
     let replayable_result = p.replayable_result;
@@ -1252,6 +1281,15 @@ async fn ack(
     let now = unix_now().map_err(|_| ApiError::Internal)?;
     all.retain(|_, pending| pending.expires_at > now);
     let pending = all.get_mut(&tx).ok_or(ApiError::BadRequest)?;
+    if app
+        .flow
+        .oauth
+        .lock()
+        .map_err(|_| ApiError::Internal)?
+        .contains_key(&tx)
+    {
+        return Err(ApiError::BadRequest);
+    }
     if pending.expires_at <= now
         || pending.device_id != device
         || !ct_eq(pending.client_challenge.as_bytes(), challenge.as_bytes())
@@ -1287,6 +1325,15 @@ async fn cancel(
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(req.pkce_verifier.as_bytes()));
     let mut all = app.flow.pending.lock().map_err(|_| ApiError::Internal)?;
     let p = all.get(&tx).ok_or(ApiError::BadRequest)?;
+    if app
+        .flow
+        .oauth
+        .lock()
+        .map_err(|_| ApiError::Internal)?
+        .contains_key(&tx)
+    {
+        return Err(ApiError::BadRequest);
+    }
     if p.device_id != device || !ct_eq(p.client_challenge.as_bytes(), challenge.as_bytes()) {
         return Err(ApiError::Unauthorized);
     }
@@ -1347,6 +1394,14 @@ async fn no_store(mut response: axum::response::Response) -> axum::response::Res
     response.headers_mut().insert(
         header::CACHE_CONTROL,
         axum::http::HeaderValue::from_static("no-store"),
+    );
+    response.headers_mut().insert(
+        header::PRAGMA,
+        axum::http::HeaderValue::from_static("no-cache"),
+    );
+    response.headers_mut().insert(
+        header::REFERRER_POLICY,
+        axum::http::HeaderValue::from_static("no-referrer"),
     );
     response
 }
@@ -1492,6 +1547,7 @@ mod tests {
             store,
             flow: Flow {
                 pending: Mutex::new(HashMap::new()),
+                oauth: Mutex::new(HashMap::new()),
                 ttl: Duration::from_secs(300),
             },
             verification,
@@ -2689,6 +2745,477 @@ mod tests {
     }
     async fn no_keys() -> Result<CoreJsonWebKeySet, ApiError> {
         panic!("unexpected refresh")
+    }
+
+    fn native_authorize_uri(
+        verifier: &str,
+        state: &str,
+        redirect: &str,
+        device: &str,
+    ) -> axum::http::Uri {
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+        format!(
+            "/auth/oauth/authorize?response_type=code&client_id=moxbots-desktop&redirect_uri={}&state={state}&code_challenge={challenge}&code_challenge_method=S256&device_id={device}",
+            url::form_urlencoded::byte_serialize(redirect.as_bytes()).collect::<String>()
+        )
+        .parse()
+        .unwrap()
+    }
+
+    async fn complete_native_authorize(
+        app: &Arc<App>,
+        verifier: &str,
+        state: &str,
+        redirect: &str,
+    ) -> String {
+        let response = oauth_native::authorize(
+            State(app.clone()),
+            OriginalUri(native_authorize_uri(verifier, state, redirect, TEST_DEVICE)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::TEMPORARY_REDIRECT);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(response.headers()[header::PRAGMA], "no-cache");
+        assert_eq!(response.headers()[header::REFERRER_POLICY], "no-referrer");
+        let provider_url =
+            Url::parse(response.headers()[header::LOCATION].to_str().unwrap()).unwrap();
+        let provider_state = provider_url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .unwrap()
+            .1
+            .into_owned();
+        let nonce = provider_url
+            .query_pairs()
+            .find(|(key, _)| key == "nonce")
+            .unwrap()
+            .1
+            .into_owned();
+        let callback_uri: axum::http::Uri =
+            format!("/auth/callback?code=provider-code&state={provider_state}")
+                .parse()
+                .unwrap();
+        callback_using(
+            app.clone(),
+            callback_uri.clone(),
+            |_, _| async move { Ok(token(&nonce, false)) },
+            no_keys,
+        )
+        .await
+        .unwrap();
+        let redirect_response = oauth_native::callback_redirect(app, &callback_uri, true).unwrap();
+        assert_eq!(
+            redirect_response.headers()[header::CACHE_CONTROL],
+            "no-store"
+        );
+        assert_eq!(
+            redirect_response.headers()[header::REFERRER_POLICY],
+            "no-referrer"
+        );
+        let location = Url::parse(
+            redirect_response.headers()[header::LOCATION]
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            location.origin().ascii_serialization(),
+            Url::parse(redirect).unwrap().origin().ascii_serialization()
+        );
+        assert_eq!(location.path(), "/oauth/callback");
+        assert_eq!(
+            location
+                .query_pairs()
+                .find(|(key, _)| key == "state")
+                .unwrap()
+                .1,
+            state
+        );
+        location
+            .query_pairs()
+            .find(|(key, _)| key == "code")
+            .unwrap()
+            .1
+            .into_owned()
+    }
+
+    #[tokio::test]
+    async fn native_oauth_authorization_code_mints_one_existing_authstore_session() {
+        let (app, dir) = test_app();
+        ready_keys(&app);
+        let verifier = TEST_VERIFIER;
+        let state = URL_SAFE_NO_PAD.encode([0x37u8; 32]);
+        let redirect = "http://127.0.0.1:12345/oauth/callback";
+        let code = complete_native_authorize(&app, verifier, &state, redirect).await;
+        let request = || oauth_native::TokenRequest {
+            grant_type: "authorization_code".into(),
+            code: code.clone(),
+            redirect_uri: redirect.into(),
+            client_id: "moxbots-desktop".into(),
+            code_verifier: Zeroizing::new(verifier.into()),
+        };
+        let response = oauth_native::token(State(app.clone()), axum::Form(request()))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(response.headers()[header::PRAGMA], "no-cache");
+        assert_eq!(response.headers()[header::REFERRER_POLICY], "no-referrer");
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(value["token_type"], "Bearer");
+        let bearer = value["access_token"].as_str().unwrap();
+        let session = app.store.validate_session(bearer).unwrap();
+        assert_eq!(session.device_id, TEST_DEVICE);
+        assert_eq!(
+            session.account.network_id,
+            "11111111-1111-4111-8111-111111111111"
+        );
+        assert_eq!(session_row_count(&dir), 1);
+        assert!(matches!(
+            oauth_native::token(State(app.clone()), axum::Form(request())).await,
+            Err(ApiError::Unauthorized)
+        ));
+        assert_eq!(session_row_count(&dir), 1);
+    }
+
+    #[tokio::test]
+    async fn native_oauth_rejects_invalid_authorize_parameters_and_redirects_provider_error_safely()
+    {
+        let (app, dir) = test_app();
+        ready_keys(&app);
+        let verifier = TEST_VERIFIER;
+        let state = URL_SAFE_NO_PAD.encode([0x53u8; 32]);
+        let redirect = "http://127.0.0.1:34567/oauth/callback";
+        for uri in [
+            native_authorize_uri(verifier, "bad-state", redirect, TEST_DEVICE),
+            native_authorize_uri(
+                verifier,
+                &state,
+                "http://localhost:34567/oauth/callback",
+                TEST_DEVICE,
+            ),
+            native_authorize_uri(verifier, &state, redirect, "not-a-uuid"),
+        ] {
+            assert!(matches!(
+                oauth_native::authorize(State(app.clone()), OriginalUri(uri)).await,
+                Err(ApiError::BadRequest)
+            ));
+        }
+        let authorize_response = oauth_native::authorize(
+            State(app.clone()),
+            OriginalUri(native_authorize_uri(
+                verifier,
+                &state,
+                redirect,
+                TEST_DEVICE,
+            )),
+        )
+        .await
+        .unwrap();
+        let dex_url = Url::parse(
+            authorize_response.headers()[header::LOCATION]
+                .to_str()
+                .unwrap(),
+        )
+        .unwrap();
+        let provider_state = dex_url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .unwrap()
+            .1
+            .into_owned();
+        let callback_uri: axum::http::Uri =
+            format!("/auth/callback?error=access_denied&state={provider_state}")
+                .parse()
+                .unwrap();
+        assert!(matches!(
+            callback_using(
+                app.clone(),
+                callback_uri.clone(),
+                |_, _| async { panic!("provider denial does not exchange") },
+                no_keys
+            )
+            .await,
+            Err(ApiError::LoginFailed)
+        ));
+        let response = oauth_native::callback_redirect(&app, &callback_uri, false).unwrap();
+        let target = Url::parse(response.headers()[header::LOCATION].to_str().unwrap()).unwrap();
+        assert_eq!(
+            target.origin().ascii_serialization(),
+            "http://127.0.0.1:34567"
+        );
+        assert_eq!(
+            target
+                .query_pairs()
+                .find(|(key, _)| key == "error")
+                .unwrap()
+                .1,
+            "access_denied"
+        );
+        assert_eq!(
+            target
+                .query_pairs()
+                .find(|(key, _)| key == "state")
+                .unwrap()
+                .1,
+            state
+        );
+        assert!(target.query_pairs().all(|(key, _)| key != "code"));
+        assert_eq!(session_row_count(&dir), 0);
+    }
+
+    #[tokio::test]
+    async fn native_oauth_rejects_wrong_client_redirect_pkce_and_legacy_claim_paths() {
+        let (app, dir) = test_app();
+        ready_keys(&app);
+        let verifier = TEST_VERIFIER;
+        let state = URL_SAFE_NO_PAD.encode([0x42u8; 32]);
+        let redirect = "http://127.0.0.1:23456/oauth/callback";
+        let code = complete_native_authorize(&app, verifier, &state, redirect).await;
+        let good = || oauth_native::TokenRequest {
+            grant_type: "authorization_code".into(),
+            code: code.clone(),
+            redirect_uri: redirect.into(),
+            client_id: "moxbots-desktop".into(),
+            code_verifier: Zeroizing::new(verifier.into()),
+        };
+        let mut bad_client = good();
+        bad_client.client_id = "other-client".into();
+        let response = oauth_native::token(State(app.clone()), axum::Form(bad_client))
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(
+                &to_bytes(response.into_body(), 1024).await.unwrap()
+            )
+            .unwrap()["error"],
+            "invalid_client"
+        );
+        let mut bad_redirect = good();
+        bad_redirect.redirect_uri = "http://127.0.0.1:23457/oauth/callback".into();
+        assert!(matches!(
+            oauth_native::token(State(app.clone()), axum::Form(bad_redirect)).await,
+            Err(ApiError::Unauthorized)
+        ));
+        let mut bad_proof = good();
+        bad_proof.code_verifier = Zeroizing::new("z".repeat(43));
+        assert!(matches!(
+            oauth_native::token(State(app.clone()), axum::Form(bad_proof)).await,
+            Err(ApiError::Unauthorized)
+        ));
+        let tx = app
+            .flow
+            .oauth
+            .lock()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        let poll_request = PollRequest {
+            transaction_id: tx.clone(),
+            device_id: TEST_DEVICE.into(),
+            pkce_verifier: Zeroizing::new(verifier.into()),
+        };
+        assert!(matches!(
+            poll(State(app.clone()), Json(poll_request)).await,
+            Err(ApiError::BadRequest)
+        ));
+        assert!(matches!(
+            ack(
+                State(app.clone()),
+                Json(PollRequest {
+                    transaction_id: tx.clone(),
+                    device_id: TEST_DEVICE.into(),
+                    pkce_verifier: Zeroizing::new(verifier.into()),
+                })
+            )
+            .await,
+            Err(ApiError::BadRequest)
+        ));
+        assert!(matches!(
+            cancel(
+                State(app.clone()),
+                Json(CancelRequest {
+                    transaction_id: tx.clone(),
+                    device_id: TEST_DEVICE.into(),
+                    pkce_verifier: Zeroizing::new(verifier.into()),
+                })
+            )
+            .await,
+            Err(ApiError::BadRequest)
+        ));
+        assert!(matches!(
+            app.flow.pending.lock().unwrap()[&tx].phase,
+            Phase::OAuthDelivered
+        ));
+        app.flow
+            .oauth
+            .lock()
+            .unwrap()
+            .get_mut(&tx)
+            .unwrap()
+            .code_expires_at = Some(0);
+        assert!(matches!(
+            oauth_native::token(State(app.clone()), axum::Form(good())).await,
+            Err(ApiError::Unauthorized)
+        ));
+        assert_eq!(session_row_count(&dir), 0);
+    }
+
+    #[tokio::test]
+    async fn native_oauth_duplicate_callbacks_preserve_inflight_and_already_delivered_code() {
+        let (app, _dir) = test_app();
+        ready_keys(&app);
+        let verifier = TEST_VERIFIER;
+        let redirect = "http://127.0.0.1:45678/oauth/callback";
+        let state = URL_SAFE_NO_PAD.encode([0x62u8; 32]);
+        let code = complete_native_authorize(&app, verifier, &state, redirect).await;
+        let tx = app
+            .flow
+            .oauth
+            .lock()
+            .unwrap()
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        let provider_state = app.flow.pending.lock().unwrap()[&tx].state.to_string();
+        let callback_uri: axum::http::Uri =
+            format!("/auth/callback?error=access_denied&state={provider_state}")
+                .parse()
+                .unwrap();
+        let original_hash = app.flow.oauth.lock().unwrap()[&tx]
+            .code_hash
+            .clone()
+            .unwrap();
+        let repeated = oauth_native::callback_redirect(&app, &callback_uri, false).unwrap();
+        assert_eq!(repeated.status(), StatusCode::ACCEPTED);
+        assert!(!repeated.headers().contains_key(header::LOCATION));
+        assert_eq!(
+            app.flow.oauth.lock().unwrap()[&tx].code_hash.as_deref(),
+            Some(original_hash.as_str())
+        );
+        assert!(matches!(
+            app.flow.pending.lock().unwrap()[&tx].phase,
+            Phase::OAuthDelivered
+        ));
+        let request = oauth_native::TokenRequest {
+            grant_type: "authorization_code".into(),
+            code,
+            redirect_uri: redirect.into(),
+            client_id: "moxbots-desktop".into(),
+            code_verifier: Zeroizing::new(verifier.into()),
+        };
+        assert_eq!(
+            oauth_native::token(State(app.clone()), axum::Form(request))
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::OK
+        );
+
+        let inflight_state = URL_SAFE_NO_PAD.encode([0x73u8; 32]);
+        let response = oauth_native::authorize(
+            State(app.clone()),
+            OriginalUri(native_authorize_uri(
+                verifier,
+                &inflight_state,
+                redirect,
+                TEST_DEVICE,
+            )),
+        )
+        .await
+        .unwrap();
+        let provider_url =
+            Url::parse(response.headers()[header::LOCATION].to_str().unwrap()).unwrap();
+        let provider_state = provider_url
+            .query_pairs()
+            .find(|(key, _)| key == "state")
+            .unwrap()
+            .1
+            .into_owned();
+        let tx = app
+            .flow
+            .pending
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(_, pending)| pending.state.as_str() == provider_state)
+            .unwrap()
+            .0
+            .clone();
+        app.flow.pending.lock().unwrap().get_mut(&tx).unwrap().phase = Phase::Exchanging;
+        let malformed_duplicate: axum::http::Uri =
+            format!("/auth/callback?error=access_denied&state={provider_state}")
+                .parse()
+                .unwrap();
+        assert!(matches!(
+            callback_using(
+                app.clone(),
+                malformed_duplicate.clone(),
+                |_, _| async { panic!("duplicate provider callback must not exchange") },
+                no_keys
+            )
+            .await,
+            Err(ApiError::BadRequest)
+        ));
+        let response = oauth_native::callback_redirect(&app, &malformed_duplicate, false).unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        assert!(matches!(
+            app.flow.pending.lock().unwrap()[&tx].phase,
+            Phase::Exchanging
+        ));
+        assert!(app.flow.oauth.lock().unwrap()[&tx].code_hash.is_none());
+    }
+
+    #[tokio::test]
+    async fn native_oauth_token_extractor_and_errors_use_standard_no_store_responses() {
+        let (app, _dir) = test_app();
+        let router = || {
+            Router::new()
+                .route(
+                    "/auth/oauth/token",
+                    post(oauth_native::token).layer(axum::middleware::from_fn(
+                        oauth_native::token_error_middleware,
+                    )),
+                )
+                .with_state(app.clone())
+        };
+        let malformed = Request::builder()
+            .method("POST")
+            .uri("/auth/oauth/token")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from("{}"))
+            .unwrap();
+        let response = router().oneshot(malformed).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        assert_eq!(response.headers()[header::PRAGMA], "no-cache");
+        assert_eq!(response.headers()[header::REFERRER_POLICY], "no-referrer");
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap()["error"],
+            "invalid_request"
+        );
+
+        let invalid_grant = Request::builder()
+            .method("POST")
+            .uri("/auth/oauth/token")
+            .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+            .body(Body::from(format!("grant_type=authorization_code&client_id=moxbots-desktop&code=bad&redirect_uri=http%3A%2F%2F127.0.0.1%3A54321%2Foauth%2Fcallback&code_verifier={}", TEST_VERIFIER)))
+            .unwrap();
+        let response = router().oneshot(invalid_grant).await.unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&body).unwrap()["error"],
+            "invalid_grant"
+        );
     }
 
     #[tokio::test]

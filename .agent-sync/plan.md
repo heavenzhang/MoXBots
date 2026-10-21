@@ -1,10 +1,12 @@
-## MOXBOTS-LOGIN-RETURN-02 — 浏览器登录的可靠交付与原生提交
+## MOXBOTS-LOGIN-RETURN-02 — 标准 OAuth 登录与原 Air 验收
 
-用户反馈 Air 原设备网页登录后客户端不变，要求重构机制。任务 `.agent-sync/tasks/codex-login-transaction-02-d5dbc807.md`，设计 `dev-docs/login-transaction-02/design.md`。服务端 opt-in 可重取同一 session 并在 native 保存发布后 ACK；native 单飞后台 driver、阶段投影、staged 恢复及无 bearer 的提交回执；UI 卸载仅 detach，显式取消及真实身份边界仍生效。保留原账号/设备/凭据权限，不迁移数据库，不新增监听端口。
+2026-10-22 用户明确保留 OAuth，按成熟标准流程收敛、减少自定义环节并简化登录。新任务记录 `.agent-sync/tasks/codex-login-oauth-standard-20261022-544dc4b5.md`；本分支从远端 main 263b1cf5 隔离开始。标准交付、UI、验证及主干发布状态以新记录为准。
 
-部署单元：desktop client（src-tauri/renderer），唯一 CI/发布负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；owned cloud auth（services/agentnet），唯一负责人 `01a12b99-7b38-78b1-831f-9c60257d386a`。沿用本计划既有归属及版本规则；开发会话不分配构建号或运行共享 CI/正式部署。云端 additive 接口先上线，客户端随后升级；两个单元可各自回滚，保留 legacy 契约及已有会话。精确 SHA/CI/版本/制品摘要由 owner 冻结后记录，后续源码进入下一批。
+旧 replay/ACK 修复已 PR180 合入 main 2adf5c1d，云端已发布；516.5 为已签名候选，原 Air 登录/重开验收未完成。不能将旧候选或其他 Mac 在线视为本次完成。516.8 既有冻结批次不混入尚未提交的新范围。
 
-当前：独立分支 `codex/login-transaction-02` 源码与本地验证已完成，正在精确 SHA 发布交接；真实 Air 构建号/日志未知（用户只读命令没有输出），单机或模拟测试不能替代 Air 登录和持久化验收。本批未变更生产，远端 main、统一 CI、两个单元发布和 Air 实验分别追踪。
+部署单元沿用：desktop client（src-tauri/renderer）及 combined CI/版本由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；owned cloud auth（services/agentnet）由 `01a12b99-7b38-78b1-831f-9c60257d386a` 唯一负责。云端兼容接口先发布，桌面后发布；保留旧 Host/手机/客户端接口及会话，独立回滚程序/客户端，不回滚原业务数据库或凭据。开发会话不触发共享 CI、正式构建或生产切换。
+
+完成必须同时具备源码/测试/main 远端核验、两单元发布/制品对应和原 Air 真正登录、正常退出重开状态保留。用户已同意新包就绪后按链接操作，真实 Air 验收仍待进行。
 
 ## MOXBOTS-AUTO-ROUTING-20261021 — 自动选模型 P0–P3
 
@@ -752,3 +754,7 @@ Owner01a12bc2 integrates human-authorized old entry removal plus exactblank/scro
 ## Mobile TestFlight and selected wireless phone — 2026-10-22
 
 MOXBOTS-MOBILE-TESTFLIGHT-20261022 remains within the existing sole mobile CI/build/sign/distribution/install/acceptance owner01a12b99-7b38-78b1-831f-9c60257d386a. Human in source chat01a1488b explicitly chose TestFlight via the existing Apple account, a usable invite for their second iPhone, then selected Kevin and requested fresh install with the new icon after personally deleting the old App. This transfers no desktop/updater or101 authority; source chat remains read-only preparation/review. Original mobile0.1.0/build2 retained unchanged; fresh development internal build3 is allocated for the explicitly selected Kevin, with the separate TestFlight upload build pending actual ASC inventory. Current batch preparing account/device/distribution gates and canonical launcher repair, not uploaded/installed/published. The launcher reuses the existing canonical blue M and its actual Expo-generated opaque1024px output has been viewed; final archive/home-screen still pending. Task .agent-sync/tasks/codex-mobile-testflight-20261022-2937e67c.md; gate details dev-docs/mobile-002/testflight-distribution-20261022.md. Small self-use invite only, no unrelated internal roles/email/marketing; missing Apple verification is handled precisely, not by account switching or invented metadata.
+
+
+## Deployment coordination — MOXBOTS-0517-LOGIN-RELEASE-20261022
+Human in login source chat01a15a5c prioritizes standard OAuth, simpler login, main/release and originalAir login plus Cmd-Q/reopen persistence. Existing Root01a12bc2 owns desktop/macOSarm64/updater and combinedCI/main; cloudauth/101 owner01a12b99 deploys additive compatibility first. Completed0.5.16/build516.8 is installed and stable published with immutable source52/main263/tagv0.5.16/TAR6bf. New0.5.17/build517.1 selects only standardOAuth bce+a313 repairs and release metadata on currentmain7db; existingPR186 is reused for the combined exacthead/fulloriginalCI/protectedmain. Other pending remote/model/diagnostic source stays next unfrozen scope; author-blocked orchestration6713 excluded. Cloud/client roll back separately while retaining authDB/session/device/Keychain. OriginalAir acceptance cannot be replaced by Macmini or syntheticReady. Task .agent-sync/tasks/codex-release-0517-login-20261022-5c6cd87f.md; source evidence dev-docs/login-oauth-standard/acceptance.md.
