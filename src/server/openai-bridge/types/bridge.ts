@@ -1,6 +1,8 @@
 import type { PromptCacheCompatibility } from '../prompt-cache';
 
 export type StreamInterruptionCause = 'transport' | 'unproven';
+/** Optional diagnostic is a read-only candidate until the owned downstream error; never recovery authority. */
+export type StreamInterruptionObserver = (cause: StreamInterruptionCause, diagnostic?: import('../stream-failure-diagnostic').StreamFailureDiagnostic) => void;
 
 // Bridge configuration types
 
@@ -36,7 +38,7 @@ export interface BridgeConfig {
 
 export interface UpstreamConfig {
   /** Internal admitted-request evidence; never serialized or accepted from provider/model text. */
-  onStreamInterruption?: (cause: StreamInterruptionCause) => void;
+  onStreamInterruption?: StreamInterruptionObserver;
   /** Internal per-attempt signal for accepted model content; never serialized to a provider. */
   onModelProgress?: () => void;
   /** Missing retains the existing OpenAI translator. */

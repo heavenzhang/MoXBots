@@ -1,3 +1,4 @@
+import { safeStreamFailure, type StreamFailureDiagnostic } from './stream-failure-diagnostic';
 import { readBoundedErrorBody } from './read-error-body';
 
 type RejectedResponse = { status: number; body: string; headers: Record<string, string> };
@@ -12,7 +13,7 @@ export interface SettledScopeSnapshot {
 }
 
 type AdmissionRow = { fingerprint: string; scope?: string; inFlight: boolean; rejection?: RejectedResponse;
-  outcome?: 'delivered' | 'interrupted' | 'rejected'; interruptedAt?: number; toolUseIds: Set<string>; invalidToolIdentity?: boolean };
+  outcome?: 'delivered' | 'interrupted' | 'rejected'; interruptedAt?: number; toolUseIds: Set<string>; invalidToolIdentity?: boolean; diagnostic?: StreamFailureDiagnostic };
 
 /** Query-owned admission evidence. Foreground completion never revokes an admitted request. */
 export class QueryRequestGuard {
@@ -72,7 +73,14 @@ export class QueryRequestGuard {
         'x-moxbots-recovery': 'blocked' } });
   }
 
+  /** Exact root only; diagnostics never change admission, revision or receipt evidence. */
+  failureDiagnostic(scope: string | undefined): StreamFailureDiagnostic | undefined {
+    if (!scope) return undefined; // Unknown ownership is not a shared diagnostic namespace.
+    return [...this.requests.values()].find(row => row.scope === scope && row.diagnostic)?.diagnostic;
+  }
+
   begin(scope: string | undefined, fingerprint: string, ambiguous: boolean): {
+    recordFailureDiagnostic(diagnostic: StreamFailureDiagnostic): void;
     finish(): void;
     reject(response: Response): Promise<Response>;
     block(): void;
@@ -94,6 +102,11 @@ export class QueryRequestGuard {
     this.requests.set(key, row);
     this.revision++;
     return {
+      recordFailureDiagnostic: value => {
+        if (!scope || !row.inFlight || this.failureDiagnostic(scope)) return;
+        const diagnostic = safeStreamFailure(value);
+        if (diagnostic) row.diagnostic = diagnostic;
+      },
       finish: () => { if (row.inFlight) { row.inFlight = false; this.revision++; } },
       toolMayBeDelivered: id => {
         this.revision++; // Before the first byte can reach the native tool owner.
