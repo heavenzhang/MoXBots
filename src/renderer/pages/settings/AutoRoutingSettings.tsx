@@ -107,7 +107,7 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
     {loadFailed && <p role="alert" className="mt-4 text-xs text-[var(--error)]">{t('autoRouting.loadFailed')}</p>}
     {view && allModels.length === 0 && <p className="mt-4 text-xs text-[var(--ink-muted)]">{t('autoRouting.empty')}</p>}
 
-    {view && allModels.length > 0 && <div className="mt-4 grid grid-cols-3 gap-3">
+    {view && allModels.length > 0 && <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
       {AUTO_TIERS.map(tier => {
         const rows = view.tiers[tier] ?? [];
         const tierIndex = AUTO_TIERS.indexOf(tier);

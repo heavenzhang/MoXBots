@@ -14,8 +14,7 @@
     "logsTitle": "查看 Rust 日志",
     "nav": {
       "providers": "模型供应商",
-      "modelFailover": "备用模型",
-      "autoRouting": "自动选模型",
+      "modelPolicy": "模型策略",
       "skills": "技能 Skills",
       "plugins": "插件 Plugins",
       "tools": "工具箱",
@@ -2336,6 +2335,15 @@
     "timing": "协作消息生效时机",
     "timingHint": "仅控制 Agent 间消息与完成报告。默认实时：最近一次模型思考或工具步骤结束后注入。上方对话队列设置继续控制用户输入。",
     "unavailable": "模型当前不可用"
+  },
+  "modelPolicy": {
+    "title": "模型策略",
+    "description": "设置日常对话如何选择模型，以及模型不可用时的接管方式。",
+    "failover": "故障接管",
+    "advanced": "高级设置",
+    "backupEnabled": "已启用指定备用",
+    "backupDisabled": "未启用指定备用",
+    "failoverHint": "自动模式会在同档有可用候选时提供备用。手动固定模型或需要指定备用时，可在这里配置。"
   },
   "autoRouting": {
     "relationship": "同档有其他可用模型时，自动模式会为本轮提供下一个模型作为故障备用；启用了指定备用模型时优先使用指定项。切换仍受兼容性和安全续接条件限制。",

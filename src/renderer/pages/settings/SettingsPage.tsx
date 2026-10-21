@@ -5032,31 +5032,43 @@ export default function Settings({
 
         {activeSection === 'external-cli' && <ExternalCliSettingsSection />}
 
-        {activeSection === 'auto-routing' && (
+        {activeSection === 'model-policy' && (
           <div className="mx-auto max-w-4xl px-8 py-8">
-            <h2 className="mb-6 text-lg font-semibold text-[var(--ink)]">
-              {tSettings('autoRouting.title')}
+            <h2 className="text-lg font-semibold text-[var(--ink)]">
+              {tSettings('modelPolicy.title')}
             </h2>
+            <p className="mb-6 mt-2 text-sm text-[var(--ink-muted)]">
+              {tSettings('modelPolicy.description')}
+            </p>
             <AutoRoutingSettings
               value={config.autoRouting}
               updateConfig={updateConfig}
               loadTiers={loadAutoRouteTiers}
               providerNames={providerNamesById}
             />
-          </div>
-        )}
-
-        {activeSection === 'model-failover' && (
-          <div className="mx-auto max-w-4xl px-8 py-8">
-            <h2 className="mb-6 text-lg font-semibold text-[var(--ink)]">
-              {tSettings('modelFailover.title')}
-            </h2>
-            <ModelFailoverSettings
-              value={config.modelFailover}
-              providers={providers}
-              apiKeys={apiKeys}
-              updateConfig={updateConfig}
-            />
+            <details className="mt-8 border-t border-[var(--line)] pt-6">
+              <summary className="cursor-pointer text-sm font-medium text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+                <span>{tSettings('modelPolicy.failover')}</span>
+                <span className="ml-2 text-xs font-normal text-[var(--ink-muted)]">
+                  {tSettings('modelPolicy.advanced')}
+                </span>
+                <span className="ml-2 text-xs font-normal text-[var(--ink-muted)]">
+                  {tSettings(config.modelFailover?.enabled && config.modelFailover.backup
+                    ? 'modelPolicy.backupEnabled' : 'modelPolicy.backupDisabled')}
+                </span>
+              </summary>
+              <p className="mt-3 text-sm text-[var(--ink-muted)]">
+                {tSettings('modelPolicy.failoverHint')}
+              </p>
+              <div className="mt-4">
+                <ModelFailoverSettings
+                  value={config.modelFailover}
+                  providers={providers}
+                  apiKeys={apiKeys}
+                  updateConfig={updateConfig}
+                />
+              </div>
+            </details>
           </div>
         )}
 

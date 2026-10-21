@@ -1,0 +1,19 @@
+{
+  "environment": "http://127.0.0.1:8924/model-settings-qa",
+  "revision": "unified model-policy page",
+  "transport": "synthetic config and tiers; real SettingsPage",
+  "checks": [
+    "one sidebar entry; auto primary; advanced recovery collapsed; keyboard expansion; summary reflects enabled backup; independent values survive page navigation and browser reload",
+    "tier load failure visible; advanced backup remains available",
+    "failed backup save retains prior settings and leaves advanced controls open",
+    "canonical and both earlier deep links resolve to the single active model-policy page",
+    "model policy collapsed 1440x900: no page overflow",
+    "model policy expanded 1440x900: no page overflow",
+    "model policy collapsed 768x900: no page overflow",
+    "model policy expanded 768x900: no page overflow",
+    "model policy collapsed 390x900: no page overflow",
+    "model policy expanded 390x900: no page overflow",
+    "English single entry and advanced failure recovery"
+  ],
+  "errors": []
+}

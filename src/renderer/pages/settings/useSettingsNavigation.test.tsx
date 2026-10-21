@@ -56,9 +56,18 @@ describe('useSettingsNavigation', () => {
     expect(screen.getByTestId('section')).toHaveTextContent('skills');
   });
 
-  it.each(['auto-routing', 'model-failover'])('accepts the independent model settings deep link %s', async section => {
+  it.each(['model-policy', 'auto-routing', 'model-failover'])('resolves model settings navigation %s to the unified page', async section => {
     render(<Probe initialSection={section} />);
-    await waitFor(() => expect(screen.getByTestId('section')).toHaveTextContent(section));
+    await waitFor(() => expect(screen.getByTestId('section')).toHaveTextContent('model-policy'));
+  });
+
+  it('consumes a changed legacy navigation intent even when both target the unified page', async () => {
+    const onSectionChange = vi.fn();
+    const { rerender } = render(<Probe initialSection="auto-routing" onSectionChange={onSectionChange} />);
+    await waitFor(() => expect(onSectionChange).toHaveBeenCalledTimes(1));
+    rerender(<Probe initialSection="model-failover" onSectionChange={onSectionChange} />);
+    await waitFor(() => expect(onSectionChange).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('section')).toHaveTextContent('model-policy');
   });
 
   it('accepts a direct proxy deep link', async () => {

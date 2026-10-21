@@ -14,8 +14,7 @@
     "logsTitle": "View Rust logs",
     "nav": {
       "providers": "Model Providers",
-      "modelFailover": "Backup model",
-      "autoRouting": "Auto model selection",
+      "modelPolicy": "Model policy",
       "skills": "Skills",
       "plugins": "Plugins",
       "tools": "Tools",
@@ -2336,6 +2335,15 @@
     "timing": "Collaboration message timing",
     "timingHint": "Controls messages between agents and completion reports. Realtime delivers after the current model or tool step. The chat queue setting above controls user input.",
     "unavailable": "Model unavailable"
+  },
+  "modelPolicy": {
+    "title": "Model policy",
+    "description": "Choose how conversations select a model and continue when it becomes unavailable.",
+    "failover": "Failure recovery",
+    "advanced": "Advanced settings",
+    "backupEnabled": "Configured backup enabled",
+    "backupDisabled": "Configured backup off",
+    "failoverHint": "Auto mode supplies a same-tier fallback when one is available. Configure a backup here for a manually selected model or to override the automatic fallback."
   },
   "autoRouting": {
     "relationship": "Auto mode supplies the next available model in the same tier as a fallback for this turn, when one exists. An enabled configured backup takes priority. Compatibility and safe continuation checks still apply.",

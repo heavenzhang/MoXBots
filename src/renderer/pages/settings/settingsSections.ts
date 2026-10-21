@@ -6,8 +6,7 @@ export type SettingsSection =
   | 'external-cli'
   | 'shortcuts'
   | 'providers'
-  | 'auto-routing'
-  | 'model-failover'
+  | 'model-policy'
   | 'mcp'
   | 'skills'
   | 'sub-agents'
@@ -24,8 +23,7 @@ export const VALID_SECTIONS: SettingsSection[] = [
   'external-cli',
   'shortcuts',
   'providers',
-  'auto-routing',
-  'model-failover',
+  'model-policy',
   'mcp',
   'skills',
   'sub-agents',
@@ -36,6 +34,12 @@ export const VALID_SECTIONS: SettingsSection[] = [
   'about',
   'developer',
 ];
+
+/** Keep earlier model-settings navigation intents on the unified page. */
+export function resolveSettingsSection(value?: string): SettingsSection | undefined {
+  if (value === 'auto-routing' || value === 'model-failover') return 'model-policy';
+  return value && VALID_SECTIONS.includes(value as SettingsSection) ? value as SettingsSection : undefined;
+}
 
 export const MYAGENTS_GITHUB_URL = APP_BUILD_PROFILE === 'moxbot'
   ? 'https://github.com/heavenzhang/MoXBots'
