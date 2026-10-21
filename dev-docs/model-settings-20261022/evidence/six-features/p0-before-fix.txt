@@ -62,10 +62,10 @@ stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission 
  FAIL  |unit| src/shared/autoRoute.test.ts > decideAutoRoute > keeps failover in the actual target tier unless cross-tier backup was explicitly enabled
 AssertionError: expected { providerId: 'p', …(5) } to be undefined
 
-- Expected: 
+- Expected:
 undefined
 
-+ Received: 
++ Received:
 {
   "catalogTier": "fast",
   "model": "only-fast",
@@ -92,10 +92,10 @@ undefined
  FAIL  |unit| src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: conflict
 AssertionError: expected { providerId: 'old', modelId: 'stale' } to be undefined
 
-- Expected: 
+- Expected:
 undefined
 
-+ Received: 
++ Received:
 {
   "modelId": "stale",
   "providerId": "old",
@@ -116,4 +116,3 @@ undefined
       Tests  6 failed | 35 passed (41)
    Start at  02:14:07
    Duration  582ms (transform 123ms, setup 172ms, collect 214ms, tests 21ms, environment 0ms, prepare 163ms)
-

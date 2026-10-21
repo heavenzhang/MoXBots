@@ -20,7 +20,7 @@
 - [x] 6. 档位读取重试、失效分类器恢复、独立恢复自动分档/档内排序，保留其他配置与失败前值。
 - [x] 最终21文件414项 unit/integration/DOM、TypeScript、受影响ESLint、dependency（0 errors/18既有warnings）、测试分类通过。
 - [x] 真实组件合成浏览器9组/三宽度/故障恢复通过；非实现者独立复验无阻断项；真实SDK本地回环3路径通过。
-- [ ] 提交/远端功能分支同步与handoff gate通过，向owner交接精确SHA/证据/依赖。
+- [x] 功能源码与证据已提交；远端同步、handoff gate及发送回执由工作区同任务result.json精确记录。
 - [ ] desktop owner统一CI/main集成及远端main核验。
 - [ ] owner安排下一未冻结制品、原生配置/真实Provider/生产验收。
 
