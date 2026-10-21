@@ -148,6 +148,26 @@ For details:
   ${APP_CLI_NAME} vision readme
 </myagents-cli-vision>`;
 
+const SECTION_ROUTE_ASSIST = `<myagents-cli-route-assist>
+Auto model selection gives this Session three tiers of models (fast, balanced,
+strong). When a task is mostly another model's strength — a huge context, a
+different model's style, a second opinion — you may ask one of them for help.
+
+Ask first, always: name the model, say what you will send it and why, and wait
+for the user's explicit yes in this conversation before each request. Never
+send secrets, credentials or files the user has not agreed to share. A digital
+assistant that quietly ships user content to another vendor has broken trust.
+
+  ${APP_CLI_NAME} route candidates
+  ${APP_CLI_NAME} route assist --model <provider/model> --prompt-file <task-file> [--file <workspace-path> ...] [--effort <level>]
+
+The candidate answers one isolated text turn: no tools, no conversation
+history, no workspace access beyond the attached files. Package the task so it
+stands alone. Checking its reply, applying any change and accepting the result
+stay with you — say so plainly when the help did not work out.
+
+Full guide: \`${APP_CLI_NAME} route readme\`.`;
+
 const SECTION_SPEECH = `<myagents-cli-speech>
 MyAgents can transcribe one audio or video attachment from the current
 Workspace with its local speech models. Use the required system skill
@@ -279,7 +299,12 @@ export function buildSessionInboxSection(_scenario: InteractionScenario): string
  */
 export function buildCliToolsAppend(
   scenario: InteractionScenario,
-  options?: { includeUserTools?: boolean; enabledOfficialToolIds?: readonly OfficialToolId[] },
+  options?: {
+    includeUserTools?: boolean;
+    enabledOfficialToolIds?: readonly OfficialToolId[];
+    /** 请外援 hint: builtin Session, auto routing on, another tier model available. */
+    routeAssist?: boolean;
+  },
 ): string {
   const parts: string[] = [];
 
@@ -308,6 +333,11 @@ export function buildCliToolsAppend(
   // Personal Record capture guidance belongs in desktop and private conversations.
   if (scenario.type === 'desktop' || isPrivateUserChannel) {
     parts.push(SECTION_RECORD);
+  }
+
+  // 请外援 — desktop Sessions where auto routing can actually offer another model.
+  if (options?.routeAssist === true) {
+    parts.push(SECTION_ROUTE_ASSIST);
   }
 
   if (options?.enabledOfficialToolIds?.includes(IMAGE_UNDERSTANDING_TOOL_ID)) {

@@ -1054,6 +1054,52 @@ export async function handleRouteExplain(payload: { prompt?: unknown }): Promise
   return explain(payload, getSessionEngine().getCurrentSessionContext().sessionMeta ?? null);
 }
 
+export async function handleRouteCandidates(): Promise<AdminResponse> {
+  const { describeAssistCandidates, assistErrorResponse } = await import('./auto-route/assist');
+  try {
+    return { success: true, data: describeAssistCandidates(getSessionEngine().getCurrentSessionContext().sessionMeta ?? null) };
+  } catch (error) {
+    return assistErrorResponse(error);
+  }
+}
+
+export async function handleRouteAssist(
+  payload: { model?: unknown; prompt?: unknown; files?: unknown; effort?: unknown },
+  signal?: AbortSignal,
+): Promise<AdminResponse> {
+  const { dispatchAssist, assistErrorResponse } = await import('./auto-route/assist');
+  const files = Array.isArray(payload.files)
+    ? payload.files.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  try {
+    const sessionContext = getSessionEngine().getCurrentSessionContext();
+    const result = await dispatchAssist({
+      sessionMeta: sessionContext.sessionMeta ?? null,
+      workspacePath: sessionContext.workspacePath ?? getCurrentWorkspacePath(),
+      target: typeof payload.model === 'string' ? payload.model : '',
+      prompt: typeof payload.prompt === 'string' ? payload.prompt : '',
+      files,
+      effort: typeof payload.effort === 'string' ? payload.effort : undefined,
+      signal,
+    });
+    trackServer('route_assist_dispatch', {
+      provider_id: result.providerId,
+      model: result.model,
+      tier: result.tier,
+      attempts: result.attempts,
+      file_count: result.files.length,
+    });
+    return { success: true, data: result };
+  } catch (error) {
+    return assistErrorResponse(error);
+  }
+}
+
+export async function handleRouteAssistReadme(): Promise<AdminResponse> {
+  const { getAssistReadme } = await import('./auto-route/assist');
+  return { success: true, data: { text: getAssistReadme() } };
+}
+
 // ---------------------------------------------------------------------------
 // Official Vision CLI Tool Handlers
 // ---------------------------------------------------------------------------
@@ -3289,25 +3335,42 @@ Options for 'oauth start' (manual mode):
   --scopes         Scopes (comma or space separated)
   --callback-port  Local callback port`,
 
-  route: `${APP_CLI_NAME} route — Inspect auto model routing
+  route: `${APP_CLI_NAME} route — Inspect auto model routing and ask another model for help
 
 Auto routing picks each new turn's model from three tiers (fast, balanced,
-strong) with a small classifier model. These commands only read; they never
-change a Session's model.
+strong) with a small classifier model.
 
 Commands:
+  readme                   Show the full 请外援 guide
   tiers                    Show the three tiers and the classifier model
   explain                  Classify one request and show the model it would get
+  candidates               Show the other tier models you may ask for help
+  assist                   Run one task package on another tier model
 
 Options for 'explain':
   --prompt-file <path>     Text file with the request to classify
+
+Options for 'assist':
+  --model <provider/model> Candidate from 'route candidates'
+  --prompt-file <path>     Local text file with the self-contained task package
+  --file <path>            Workspace text file to attach (repeatable, <=256KB each)
+  --effort <level>         Reasoning effort for THIS request; omit for the model default
   --json                   Output machine-readable JSON
 
 Examples:
   ${APP_CLI_NAME} route tiers
   ${APP_CLI_NAME} route explain --prompt-file request.txt
+  ${APP_CLI_NAME} route candidates
+  ${APP_CLI_NAME} route assist --model openai/gpt-6 --prompt-file .route/task.md --file src/api.ts
 
-The request text is sent to the classifier model's provider.`,
+'tiers' and 'explain' only read; they never change a Session's model. The
+explain request text goes to the classifier model's provider.
+
+请外援 is ask-first: before every request, tell the user which model, what you
+will send it and why, then wait for an explicit yes. The candidate answers one
+isolated text turn with no tools and no conversation history; it returns when
+it finishes or fails, and Ctrl-C cancels it. Checking the reply and applying
+any change stay with you.`,
 
   vision: `${APP_CLI_NAME} vision — Official image-understanding helper
 

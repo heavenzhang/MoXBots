@@ -141,6 +141,10 @@ export interface SystemPromptOptions {
   userCliToolsEnabled?: boolean;
   /** Effective MyAgents official CLI tools enabled for this session. */
   enabledOfficialToolIds?: readonly OfficialToolId[];
+  /** 请外援: the Session is builtin, auto routing is on, and another tier
+   *  model can be asked for help. Resolved by the caller from the effective
+   *  config; the prompt only carries the answer. */
+  routeAssist?: boolean;
 }
 
 export interface DshHostPromptSection {
@@ -232,6 +236,7 @@ function buildProductSessionPrompt(scenario: InteractionScenario, options?: Syst
     const cliTools = buildCliToolsAppend(scenario, {
       includeUserTools: options.userCliToolsEnabled === true,
       enabledOfficialToolIds: options.enabledOfficialToolIds,
+      routeAssist: options.routeAssist,
     });
     if (cliTools) parts.push(cliTools);
   }

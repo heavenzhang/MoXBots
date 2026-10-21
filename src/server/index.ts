@@ -1607,6 +1607,13 @@ async function routeAdminApi(
   if (route === 'route/tiers') return await api.handleRouteTiers();
   if (route === 'route/explain')
     return await api.handleRouteExplain(payload as Parameters<typeof api.handleRouteExplain>[0]);
+  if (route === 'route/candidates') return await api.handleRouteCandidates();
+  if (route === 'route/assist/readme') return await api.handleRouteAssistReadme();
+  if (route === 'route/assist')
+    return await api.handleRouteAssist(
+      payload as Parameters<typeof api.handleRouteAssist>[0],
+      signal,
+    );
   if (route === 'vision/readme') return await api.handleVisionReadme();
   if (route === 'vision/models') return api.handleVisionModels();
   if (route === 'vision/analyze')

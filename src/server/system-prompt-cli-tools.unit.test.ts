@@ -52,6 +52,20 @@ describe('buildCliToolsAppend', () => {
     expect(text.toLowerCase()).not.toContain('anydoc');
   });
 
+  it('offers 请外援 only when the Session can actually reach another tier model', () => {
+    const off = buildCliToolsAppend({ type: 'desktop' }, { includeUserTools: false });
+    const on = buildCliToolsAppend({ type: 'desktop' }, { includeUserTools: false, routeAssist: true });
+
+    expect(off).not.toContain('<myagents-cli-route-assist>');
+    expect(on).toContain('<myagents-cli-route-assist>');
+    expect(on).toContain('myagents route candidates');
+    expect(on).toContain('myagents route assist --model');
+    // Ask-first is the only mode: the user's yes comes before every request.
+    expect(on).toContain('wait\nfor the user');
+    expect(on).toContain('no tools, no conversation');
+    expect(on).toContain('stay with you');
+  });
+
   it('injects Goal Mode into private user-facing channel prompts', () => {
     const imText = buildCliToolsAppend(
       { type: 'im', platform: 'feishu', sourceType: 'private' },

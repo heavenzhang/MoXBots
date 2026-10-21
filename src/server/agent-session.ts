@@ -2126,6 +2126,8 @@ export function startOneShotBridge(
   description: string,
   managedPurpose: ManagedOAuthPurpose = { purpose: 'execution' },
   conversationId?: string,
+  /** Normalized level; undefined keeps the historical no-reasoning wire shape. */
+  reasoningEffort?: string,
 ): { token: string; release: () => void } {
   if (providerEnv.apiProtocol !== 'openai') {
     throw new Error('startOneShotBridge called with non-OpenAI provider — caller should not need a bridge');
@@ -2141,6 +2143,7 @@ export function startOneShotBridge(
     maxOutputTokens: providerEnv.maxOutputTokens,
     maxOutputTokensParamName: providerEnv.maxOutputTokensParamName,
     upstreamFormat: providerEnv.upstreamFormat,
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     opencodeSessionId: providerEnv.providerId === OPENCODE_GO_PROVIDER_ID
       ? opencodeGoConversationId(conversationId) : undefined,
   };
@@ -11427,6 +11430,26 @@ export function isAutoAllowedRecordCliCommand(command: string): boolean {
   );
 }
 
+/** 请外援 is offered only where it can actually run: the current builtin
+ *  Session can see an auto-routing tier model other than its own. Read at
+ *  every Query replacement, so turning auto routing on takes effect without a
+ *  restart. A config read failure just hides the hint. */
+async function routeAssistEnabled(): Promise<boolean> {
+  try {
+    const { buildAutoRouteCatalog } = await import('./auto-route/router');
+    const { listAssistCandidates } = await import('./auto-route/assist');
+    const { isAutoRoutingEnabled, autoModelKey } = await import('../shared/autoRoute');
+    const catalog = buildAutoRouteCatalog(loadAdminConfig());
+    if (!isAutoRoutingEnabled(catalog.settings)) return false;
+    const providerId = getSessionProviderId();
+    const model = getSessionModel();
+    if (!providerId || !model) return false;
+    return listAssistCandidates(catalog, { providerId, model }).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function startStreamingSession(preWarm = false): Promise<void> {
   if (isUpdateRestartFrozen()) return;
   const sessionMutationBarrier = getSessionMutationBarrier();
@@ -12104,6 +12127,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           cliToolsEnabled: !launchModelOnlyCloudBot,
           userCliToolsEnabled: !launchModelOnlyCloudBot && cliToolRegistryEnabled,
           enabledOfficialToolIds,
+          routeAssist: await routeAssistEnabled(),
         }), launchHostBotBootstrap?.snapshot.config.system_prompt].filter(Boolean).join('\n\n'),
       },
       cwd: agentDir,

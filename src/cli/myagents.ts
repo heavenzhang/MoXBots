@@ -416,7 +416,7 @@ Commands:
   vision    Official image-understanding CLI tool
   tool      Manage registered CLI tools (Lab-gated; enable in Settings first)
   model     Manage model providers
-  route     Inspect auto model routing (tiers, dry-run explain)
+  route     Inspect auto model routing (tiers, dry-run explain) and ask another tier model for help
   agent     Discover local/network Agents; manage local settings and channels
   network   Inspect, authorize and restore saved Owned network connections
   runtime   Inspect Agent Runtimes (list installed + describe models/modes)
@@ -636,7 +636,7 @@ export async function callApi(
         }),
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(cliRequestTimeoutMs(route, body)),
+      signal: requestSignal(route, body),
     });
     // Non-JSON error bodies (e.g. axum 4xx returns plain text like
     // "Failed to deserialize query string: missing field `doc`") would
@@ -665,6 +665,10 @@ export async function callApi(
     const causeCode = (err as { cause?: { code?: unknown } } | undefined)?.cause?.code;
     const preConnectFailure =
       msg.includes('ECONNREFUSED') || causeCode === 'ECONNREFUSED';
+    // SIGINT: the user stopped the call. Not a transport failure to retry.
+    if (UNBOUNDED_CLI_ROUTES.has(route) && (err as { name?: string })?.name === 'AbortError') {
+      return { success: false, code: 'MYAGENTS_REQUEST_CANCELLED', error: 'Cancelled.' };
+    }
     const timedOut = err instanceof Error && err.name === 'TimeoutError';
     const transportFailure =
       timedOut ||
@@ -759,6 +763,33 @@ function sessionMutationReceipt(result: Record<string, unknown>): Record<string,
   );
 }
 
+/**
+ * Routes whose completion time is the work itself, not a bounded operation:
+ * `route/assist` returns when the other model finishes. There is no wall-clock
+ * deadline — the caller's Ctrl-C (SIGINT) is the stop signal.
+ */
+const UNBOUNDED_CLI_ROUTES = new Set(['route/assist']);
+
+export function isUnboundedCliRoute(route: string): boolean {
+  return UNBOUNDED_CLI_ROUTES.has(route);
+}
+
+/**
+ * Request signal for one CLI call. Deadline-bounded routes keep the historical
+ * per-route budget; unbounded ones are stopped only by the user (SIGINT).
+ * Every route can be cancelled by SIGINT, not just the unbounded ones.
+ */
+export function requestSignal(route: string, body: Record<string, unknown> = {}): AbortSignal {
+  const cancel = new AbortController();
+  // Default `AbortController.abort()` rejection is an AbortError, which is
+  // what `callApi` recognises as a user cancel.
+  const onInterrupt = () => cancel.abort();
+  process.once('SIGINT', onInterrupt);
+  return UNBOUNDED_CLI_ROUTES.has(route)
+    ? cancel.signal
+    : AbortSignal.any([AbortSignal.timeout(cliRequestTimeoutMs(route, body)), cancel.signal]);
+}
+
 export function cliRequestTimeoutMs(route: string, body: Record<string, unknown> = {}): number {
   const address = networkAddress(route, body);
   if (address) return REMOTE_DEADLINES[address.method].cli;
@@ -823,6 +854,24 @@ const ROUTE_TIER_LABELS: Record<string, string> = { fast: 'fast', balanced: 'bal
 
 function printRouteResult(action: string, data: Record<string, unknown> | undefined): void {
   if (!data) return;
+  if (action === 'readme') {
+    console.log(typeof data.text === 'string' ? data.text : '');
+    return;
+  }
+  if (action === 'candidates') {
+    if (data.current) console.log(`This Session: ${String(data.current)}`);
+    const candidates = (data.candidates ?? []) as Array<{ key: string; tier: string; modelName?: string; providerName: string; allowedEfforts: string[] }>;
+    if (!candidates.length) {
+      console.log('No other tier model is available. Turn auto routing on or configure another provider.');
+      return;
+    }
+    console.log('\n请外援 candidates (ask the user before each request):');
+    for (const candidate of candidates) {
+      const efforts = candidate.allowedEfforts.length ? ` · effort ${candidate.allowedEfforts.join('/')}` : '';
+      console.log(`  ${candidate.key}  [${candidate.tier} · ${candidate.providerName}${candidate.modelName ? ` · ${candidate.modelName}` : ''}${efforts}]`);
+    }
+    return;
+  }
   if (data.enabled === false) {
     console.log('Auto routing is off (Settings -> Models -> Auto routing).');
     return;
@@ -1320,8 +1369,15 @@ export function printResult(
     printRuntimeDiagnose(result.data as Record<string, unknown>);
     return;
   }
-  if (group === 'route' && (action === 'explain' || action === 'tiers')) {
+  if (group === 'route' && (action === 'explain' || action === 'tiers' || action === 'candidates' || action === 'readme')) {
     printRouteResult(action, result.data as Record<string, unknown> | undefined);
+    return;
+  }
+  if (group === 'route' && action === 'assist') {
+    const data = result.data as Record<string, unknown> | undefined;
+    const effort = data?.reasoningEffort && data.reasoningEffort !== 'default' ? ` · ${String(data.reasoningEffort)}` : '';
+    console.log(`[${String(data?.providerId ?? '')}/${String(data?.model ?? '')} · ${String(data?.tier ?? '')}${effort} · attempts ${String(data?.attempts ?? 1)} · ${Math.round(Number(data?.durationMs ?? 0) / 1000)}s]`);
+    console.log(typeof data?.text === 'string' ? data.text : '');
     return;
   }
   if (group === 'vision' && action === 'analyze') {
@@ -3477,7 +3533,7 @@ const PUBLISHED_ADMIN_ROUTES = new Set([
   'mcp/oauth/discover', 'mcp/oauth/start', 'mcp/oauth/status', 'mcp/oauth/revoke',
   'tool/list', 'tool/info', 'tool/add', 'tool/remove', 'tool/enable', 'tool/disable', 'tool/readme', 'tool/env',
   'vision/readme', 'vision/models', 'vision/analyze',
-  'route/tiers', 'route/explain',
+  'route/tiers', 'route/explain', 'route/candidates', 'route/assist', 'route/assist/readme',
   'model/list', 'model/add', 'model/remove', 'model/set-key', 'model/set-default', 'model/verify',
   'agent/list', 'agent/create', 'agent/current', 'agent/show', 'agent/enable', 'agent/disable', 'agent/archive', 'agent/unarchive',
   'agent/set', 'agent/channel/list', 'agent/channel/add', 'agent/channel/remove', 'agent/runtime-status',
@@ -5037,6 +5093,24 @@ export function buildRequestBody(
   }
 
   if (group === 'route') {
+    if (action === 'assist') {
+      assertStringFlag(flags.model, 'model');
+      assertStringFlag(flags.promptFile, 'prompt-file');
+      assertStringFlag(flags.effort, 'effort');
+      const model = typeof flags.model === 'string' ? flags.model.trim() : '';
+      const prompt = typeof flags.promptFile === 'string'
+        ? readTextFileFlag(flags.promptFile, 'prompt-file').trim()
+        : '';
+      if (!model || !prompt || rest.length > 0) {
+        console.error('Error: route assist requires --model <provider/model> and a non-empty --prompt-file <local-path>.');
+        console.error(`  Usage: ${APP_CLI_NAME} route assist --model MODEL --prompt-file task.md [--file src/a.ts ...] [--effort LEVEL]`);
+        process.exit(2);
+      }
+      const files = ((flags.file as string[] | undefined) ?? [])
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+      const effort = typeof flags.effort === 'string' ? flags.effort.trim() : '';
+      return { model, prompt, files, ...(effort ? { effort } : {}) };
+    }
     if (action === 'explain') {
       if (typeof flags.promptFile !== 'string' || !flags.promptFile.trim()) {
         console.error(`Error: route explain requires --prompt-file <path>.`);
