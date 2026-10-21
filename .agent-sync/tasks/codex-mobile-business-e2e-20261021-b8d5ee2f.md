@@ -45,3 +45,10 @@ Git project-sync start/task-init PASS on the recorded canonical base. No101 writ
 ## Next step
 
 Read existing desktop-owner Bot identity/readiness/activity; independently prepare controlled upload bytes and inspect current iPhone connection/lock state. Do not repeat the already answered target-selection question or infer authorization to change a different principal.
+
+
+## Controlled upload input
+
+`dev-docs/mobile-002/fixtures/iphone-upload-utf8-v1.txt` is explicit synthetic UTF-8 text only, 119bytes, SHA256`68d303dccf2922a1b9a65c7f0f7bd1b68cbba32427a1f1ba56c1c9897afc2873`. Use the exact pushed commit URL as the download source, the physical system picker as source selection and the existing native upload owner. Compare complete Host bytes and receipt identity, not just file name, UIprogress or HTTP200. No private account/credential/business payload is in this fixture.
+
+Current live-preflight witnesses distinguish the existing Mac and phone under one principal; existing cloud Mac is joined/Ready with published catalog. Phone idle-offline is an allowed lease state. Actual refresh is not yet proved; do not diagnose it from no visible change after a GUI event. Desktop maintenance has priority and phone UI/task submission waits for explicit handback. Only DeviceHub window position changed; original position retained for restoration.
