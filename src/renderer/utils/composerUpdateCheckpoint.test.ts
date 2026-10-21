@@ -56,6 +56,21 @@ describe('MoxBots composer update checkpoint', () => {
     state.pendingAttachments = false;
     expect(api.canEvictComposerTab(tab.id)).toBe(true);
   });
+  it('protects an update draft until its exact deferred composer mounts', async () => {
+    const { api, state, unregister } = await owner();
+    const lease = api.beginComposerUpdateCheckpoint(serializeTabs);
+    await lease.persist([tab], tab.id);
+    lease.release();
+    unregister();
+    await api.loadComposerUpdateHandoff(deserializeTabs);
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    expect(api.canEvictComposerTab('unrelated-tab')).toBe(true);
+    expect(api.restoreComposerUpdateDraft({ ...state.scope, tabId: 'unrelated-tab' }, true)).toBeNull();
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    expect(api.restoreComposerUpdateDraft(state.scope, true)?.text).toBe('KEEP-AFTER-UPDATE');
+    expect(api.canEvictComposerTab(tab.id)).toBe(true);
+  });
+
   it('admits empty remote tabs and rejects newly unsaved remote input before final install', async () => {
     const { api, state, freeze } = await owner();
     const remoteOwners = await import('@/features/remote-session/drafts');
