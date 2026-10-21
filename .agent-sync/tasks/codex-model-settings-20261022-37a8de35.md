@@ -20,7 +20,11 @@
 - [ ] 唯一桌面 CI/main owner 统一集成，远端 main 验证。
 - [ ] owner 下一未冻结制品及原生配置/真实 Provider/生产验收。
 
-## Completed / Verification
+## Completed
+
+两个独立入口及中英文说明已提交；既有配置和运行时逻辑保留。
+
+## Verification
 
 源码位于 renderer settings/nav/i18n；证据和运行方式 `dev-docs/model-settings-20261022/acceptance.md`；原始浏览器结果 `evidence/browser-results.json`。配置保存/API 为合成 transport，不作原生业务验收。主 Agent 单人实现、自验，无独立 reviewer，无外部模型调用；token/费用未知。
 
