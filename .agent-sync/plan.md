@@ -1,3 +1,11 @@
+## MOXBOTS-LOGIN-RETURN-02 — 浏览器登录的可靠交付与原生提交
+
+用户反馈 Air 原设备网页登录后客户端不变，要求重构机制。任务 `.agent-sync/tasks/codex-login-transaction-02-d5dbc807.md`，设计 `dev-docs/login-transaction-02/design.md`。服务端 opt-in 可重取同一 session 并在 native 保存发布后 ACK；native 单飞后台 driver、阶段投影、staged 恢复及无 bearer 的提交回执；UI 卸载仅 detach，显式取消及真实身份边界仍生效。保留原账号/设备/凭据权限，不迁移数据库，不新增监听端口。
+
+部署单元：desktop client（src-tauri/renderer），唯一 CI/发布负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；owned cloud auth（services/agentnet），唯一负责人 `01a12b99-7b38-78b1-831f-9c60257d386a`。沿用本计划既有归属及版本规则；开发会话不分配构建号或运行共享 CI/正式部署。云端 additive 接口先上线，客户端随后升级；两个单元可各自回滚，保留 legacy 契约及已有会话。精确 SHA/CI/版本/制品摘要由 owner 冻结后记录，后续源码进入下一批。
+
+当前：独立分支 `codex/login-transaction-02` 源码与本地验证已完成，正在精确 SHA 发布交接；真实 Air 构建号/日志未知（用户只读命令没有输出），单机或模拟测试不能替代 Air 登录和持久化验收。本批未变更生产，远端 main、统一 CI、两个单元发布和 Air 实验分别追踪。
+
 ## MOXBOTS-NATIVE-GOAL-CONTINUE-20261021 — 安全首因可见性
 
 原生case5正式Continue已入新Query/RC，随后response.failed后SDK重请求409；具体上游原因未知。下一批仅保留受限首因类别与固定提示，exactscope/attempt/request，沿现有有界registry，不改变恢复或执行权限。独立分支codex/native-goal-continue-20261021，任务记录见.agent-sync/tasks/codex-native-goal-continue-20261021-a040b693.md；root独审，desktop统一CI/发布仍由01a12bc2-907a-7702-b6dd-788225c5dfe4负责。源码已冻结并完成作者全integration（125files，1404PASS/32SKIP/0FAIL）及Bridge370unit；独审/主干/实际native验收分开记录，不操作冻结5163或原业务。

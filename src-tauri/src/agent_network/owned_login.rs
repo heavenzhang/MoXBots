@@ -114,6 +114,8 @@ pub(crate) struct OwnedLoginStart {
     pub transaction_id: String,
     pub expires_at: u64,
     pub authorization_url: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub replayable_result: bool,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -312,6 +314,25 @@ fn owned_request_failure(error: &reqwest::Error) -> NetworkError {
     failure
 }
 impl OwnedClient {
+    #[cfg(test)]
+    pub(crate) fn for_test(origin: String, instance: OwnedInstance) -> Self {
+        let url = url::Url::parse(&origin).expect("test origin");
+        assert_eq!(url.scheme(), "http");
+        assert_eq!(url.host_str(), Some("127.0.0.1"));
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .expect("test client");
+        Self {
+            origin,
+            instance,
+            http,
+        }
+    }
+
     pub(crate) fn pinned(
         instance: OwnedInstance,
         public_ca: Option<&str>,
@@ -408,6 +429,7 @@ impl OwnedClient {
         if desktop {
             body["browserReturn"] = json!(true);
             body["browserReturnPath"] = json!("/desktop");
+            body["replayableResult"] = json!(true);
         }
         let (mut status, mut value) = raw_request_with_profile(
             &self.http,
@@ -423,23 +445,41 @@ impl OwnedClient {
             },
         )
         .await?;
-        // Older services reject the optional return path before creating a
-        // transaction. Preserve their existing polling login during rollout.
+        // Each compatibility retry follows an explicit extractor rejection;
+        // never retry an ambiguous transport failure or server failure.
+        let mut requested_replay = desktop;
         if desktop
             && matches!(
                 status,
                 StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
             )
         {
-            (status, value) = raw_request(
+            requested_replay = false;
+            (status, value) = raw_request_with_profile(
                 &self.http,
                 &self.origin,
                 Method::POST,
                 "/auth/login/start",
-                Some(json!({"deviceId":device_id,"pkceChallenge":challenge})),
+                Some(json!({"deviceId":device_id,"pkceChallenge":challenge,
+                    "browserReturn":true,"browserReturnPath":"/desktop"})),
                 None,
+                OwnedRequestProfile::OptionalDesktopStart,
             )
             .await?;
+            if matches!(
+                status,
+                StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+            ) {
+                (status, value) = raw_request(
+                    &self.http,
+                    &self.origin,
+                    Method::POST,
+                    "/auth/login/start",
+                    Some(json!({"deviceId":device_id,"pkceChallenge":challenge})),
+                    None,
+                )
+                .await?;
+            }
         }
         if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
@@ -452,7 +492,8 @@ impl OwnedClient {
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
         let issuer = url::Url::parse(&self.instance.login_issuer)
             .map_err(|_| NetworkError::new("OWNED_LOGIN_INVALID"))?;
-        if !uuid(&started.transaction_id)
+        if (started.replayable_result && !requested_replay)
+            || !uuid(&started.transaction_id)
             || authorization.origin() != issuer.origin()
             || authorization.scheme() != "https"
             || !authorization.username().is_empty()
@@ -533,6 +574,27 @@ impl OwnedClient {
         session.validate(&self.instance)?;
         self.validate_session(device, &session).await?;
         Ok(OwnedPoll::Authenticated(session))
+    }
+    pub(crate) async fn acknowledge_login(
+        &self,
+        device: &str,
+        transaction: &str,
+        verifier: &str,
+    ) -> Result<(), NetworkError> {
+        let body = login_proof(device, transaction, verifier)?;
+        let (status, _) = raw_request(
+            &self.http,
+            &self.origin,
+            Method::POST,
+            "/auth/login/ack",
+            Some(body),
+            None,
+        )
+        .await?;
+        if status != StatusCode::NO_CONTENT {
+            return Err(NetworkError::new("OWNED_RESPONSE_INVALID"));
+        }
+        Ok(())
     }
     pub(crate) async fn cancel(
         &self,
@@ -938,14 +1000,16 @@ mod tests {
     async fn desktop_start_uses_opt_in_and_only_retries_explicit_old_service_rejections() {
         use std::sync::{Arc, Mutex};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        for (rejected, lifetime) in [
-            (None, 120),
-            (Some(400), 120),
-            (Some(422), 120),
-            (Some(503), 120),
+        for (rejected, lifetime, reject_twice, echo_replay) in [
+            (None, 120, false, true),
+            (Some(400), 120, false, false),
+            (Some(422), 120, false, false),
+            (Some(400), 120, true, false),
+            (Some(400), 120, false, true),
+            (Some(503), 120, false, false),
             // Exercise the actual start response path with a server deadline
             // one second beyond the client's normal maximum.
-            (None, 301),
+            (None, 301, false, false),
         ] {
             let seen = Arc::new(Mutex::new(Vec::<Value>::new()));
             let captured = seen.clone();
@@ -956,7 +1020,11 @@ mod tests {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
             let origin = format!("http://{}", listener.local_addr().unwrap());
             let expected_requests = if matches!(rejected, Some(400 | 422)) {
-                2
+                if reject_twice {
+                    3
+                } else {
+                    2
+                }
             } else {
                 1
             };
@@ -989,7 +1057,7 @@ mod tests {
                     let first = {
                         let mut seen = captured.lock().unwrap();
                         seen.push(body);
-                        seen.len() == 1
+                        seen.len() == 1 || (reject_twice && seen.len() == 2)
                     };
                     let (status, headers, body) = if let Some(status) = rejected.filter(|_| first) {
                         // Old extractor: plain text and no cache header.
@@ -999,6 +1067,7 @@ mod tests {
                             "transactionId": transaction,
                             "authorizationUrl": "https://login.example.test/dex/auth?state=fixture",
                             "expiresAt": server_expiry,
+                            "replayableResult": echo_replay,
                         }).to_string())
                     };
                     let response = format!("HTTP/1.1 {status} Response\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
@@ -1023,29 +1092,113 @@ mod tests {
             let request =
                 client.start_with_return_and_clock(&device, &challenge, true, || request_now);
             let (_, result) = tokio::join!(server, request);
-            if rejected == Some(503) {
+            if rejected == Some(503) || (rejected.is_some() && echo_replay) {
                 assert!(result.is_err());
             } else {
                 let started = result.unwrap();
                 assert_eq!(started.transaction_id, expected_transaction);
                 assert_eq!(started.expires_at, request_now + lifetime.min(300));
+                assert_eq!(started.replayable_result, echo_replay);
             }
             let seen = seen.lock().unwrap();
             assert_eq!(seen[0]["browserReturnPath"], "/desktop");
+            assert_eq!(seen[0]["replayableResult"], true);
             assert_eq!(
                 seen.len(),
                 if matches!(rejected, Some(400 | 422)) {
-                    2
+                    if reject_twice {
+                        3
+                    } else {
+                        2
+                    }
                 } else {
                     1
                 }
             );
-            if seen.len() == 2 {
-                assert!(seen[1].get("browserReturn").is_none());
+            if seen.len() >= 2 {
+                assert_eq!(seen[1]["browserReturn"], true);
+                assert!(seen[1].get("replayableResult").is_none());
                 assert_eq!(seen[0]["deviceId"], seen[1]["deviceId"]);
                 assert_eq!(seen[0]["pkceChallenge"], seen[1]["pkceChallenge"]);
             }
+            if seen.len() == 3 {
+                assert_eq!(
+                    seen[2],
+                    json!({"deviceId":device,"pkceChallenge":challenge})
+                );
+            }
         }
+    }
+    #[test]
+    fn legacy_start_dto_omits_unnegotiated_replay_field() {
+        let started: OwnedLoginStart = serde_json::from_value(json!({
+            "transactionId":"11111111-1111-4111-8111-111111111111",
+            "expiresAt":1800000000,
+            "authorizationUrl":"https://login.example.test/auth"
+        }))
+        .unwrap();
+        assert!(!started.replayable_result);
+        assert!(serde_json::to_value(started)
+            .unwrap()
+            .get("replayableResult")
+            .is_none());
+    }
+    #[tokio::test]
+    async fn acknowledgement_posts_only_native_device_bound_proof() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let device = "22222222-2222-4222-8222-222222222222";
+        let tx = "11111111-1111-4111-8111-111111111111";
+        let verifier = URL_SAFE_NO_PAD.encode([9u8; 32]);
+        let expected = verifier.clone();
+        let server = async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            loop {
+                let mut chunk = [0u8; 2048];
+                let n = socket.read(&mut chunk).await.unwrap();
+                assert!(n > 0 && bytes.len() + n <= 8192);
+                bytes.extend_from_slice(&chunk[..n]);
+                if let Some(end) = bytes.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let headers = std::str::from_utf8(&bytes[..end]).unwrap();
+                    assert!(headers.starts_with("POST /auth/login/ack HTTP/1.1"));
+                    assert!(!headers.to_ascii_lowercase().contains("authorization:"));
+                    let size: usize = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (key, value) = line.split_once(':')?;
+                            key.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse().unwrap())
+                        })
+                        .unwrap();
+                    if bytes.len() >= end + 4 + size {
+                        let body: Value =
+                            serde_json::from_slice(&bytes[end + 4..end + 4 + size]).unwrap();
+                        assert_eq!(
+                            body,
+                            json!({"deviceId":device,"transactionId":tx,"pkceVerifier":expected})
+                        );
+                        break;
+                    }
+                }
+            }
+            socket.write_all(b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
+        };
+        #[allow(clippy::disallowed_methods)]
+        let http = reqwest::Client::builder()
+            .no_proxy()
+            .timeout(Duration::from_secs(3))
+            .retry(reqwest::retry::never())
+            .build()
+            .unwrap();
+        let client = OwnedClient {
+            origin,
+            http,
+            instance: instance(),
+        };
+        let (_, result) = tokio::join!(server, client.acknowledge_login(device, tx, &verifier));
+        assert!(result.is_ok());
     }
     #[tokio::test]
     async fn source_routes_use_pinned_tls_and_native_device_pop_without_http_retries() {

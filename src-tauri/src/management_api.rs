@@ -980,12 +980,13 @@ async fn agent_network_cli_handler(
             },
             cli::Request::Login {connection_id,expected_revision,..} => {
                 let started=owner.owned_start_existing(&connection_id,expected_revision).await?;
+                owner.inner().drive_owned_login(app.clone(),manager,started.attempt_id.clone());
                 serde_json::json!({"status":"authorization-required","started":started})
             }
             cli::Request::Poll {attempt_id,..} => {
                 owner.require_cli_attempt(&attempt_id).await?;
                 match owner.owned_poll(app.clone(),manager,&attempt_id).await? {
-                    OwnedRegistryPoll::Pending => serde_json::json!({"status":"pending","started":owner.cli_started(&attempt_id).await?}),
+                    OwnedRegistryPoll::Pending { phase } => serde_json::json!({"status":"pending","phase":phase,"started":owner.cli_started(&attempt_id).await?}),
                     OwnedRegistryPoll::Reauthorize(started) => serde_json::json!({"status":"authorization-required","started":started}),
                     OwnedRegistryPoll::Authenticated(view) => serde_json::json!({"status":"authenticated","registry":cli::status(view)}),
                 }

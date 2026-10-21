@@ -101,6 +101,7 @@ struct Pending {
     expires_at: i64,
     phase: Phase,
     browser_return_path: Option<&'static str>,
+    replayable_result: bool,
 }
 type ServiceClient = CoreClient<
     EndpointSet,
@@ -116,6 +117,8 @@ enum Phase {
     Failed,
     Ready(VerifiedSubject),
     Consuming,
+    Delivered(SessionResponse),
+    Acknowledged,
 }
 struct Flow {
     pending: Mutex<HashMap<String, Pending>>,
@@ -195,6 +198,8 @@ struct StartRequest {
     browser_return: bool,
     #[serde(default, rename = "browserReturnPath")]
     browser_return_path: Option<String>,
+    #[serde(default, rename = "replayableResult")]
+    replayable_result: bool,
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -202,6 +207,8 @@ struct StartResponse {
     transaction_id: String,
     expires_at: i64,
     authorization_url: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    replayable_result: Option<bool>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -213,7 +220,7 @@ struct PollRequest {
     #[serde(rename = "pkceVerifier")]
     pkce_verifier: Zeroizing<String>,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SessionResponse {
     access_token: Zeroizing<String>,
@@ -469,6 +476,7 @@ pub async fn serve_from_config(path: impl AsRef<Path>) -> Result<(), AuthError> 
         .route("/auth/login/password", post(native_password::login))
         .route("/auth/callback", get(callback))
         .route("/auth/login/poll", post(poll))
+        .route("/auth/login/ack", post(ack))
         .route("/auth/login/cancel", delete(cancel))
         .route("/auth/session", get(session).delete(revoke))
         .route("/health", get(health))
@@ -715,7 +723,14 @@ async fn bounded_call(
 async fn start(
     State(app): State<Arc<App>>,
     Json(req): Json<StartRequest>,
-) -> Result<(StatusCode, Json<StartResponse>), ApiError> {
+) -> Result<
+    (
+        StatusCode,
+        [(header::HeaderName, &'static str); 1],
+        Json<StartResponse>,
+    ),
+    ApiError,
+> {
     let browser_return_path = match (req.browser_return, req.browser_return_path.as_deref()) {
         (false, None) => None,
         (true, None | Some("/admin")) => Some("/admin"),
@@ -770,14 +785,17 @@ async fn start(
             expires_at: expires,
             phase: Phase::Pending,
             browser_return_path,
+            replayable_result: req.replayable_result,
         },
     );
     Ok((
         StatusCode::OK,
+        [(header::CACHE_CONTROL, "no-store")],
         Json(StartResponse {
             transaction_id: tx,
             expires_at: expires,
             authorization_url: auth_url.to_string(),
+            replayable_result: req.replayable_result.then_some(true),
         }),
     ))
 }
@@ -1155,30 +1173,106 @@ async fn poll(
         }
         Phase::Failed => return Err(ApiError::LoginFailed),
         Phase::Consuming => return Err(ApiError::Busy),
+        Phase::Delivered(session) => {
+            if !p.replayable_result || !session_is_live(&app, session, &device) {
+                p.phase = Phase::Failed;
+                return Err(ApiError::LoginFailed);
+            }
+            return Ok((
+                StatusCode::OK,
+                [(header::CACHE_CONTROL, "no-store")],
+                Json(session.clone()),
+            )
+                .into_response());
+        }
+        Phase::Acknowledged => return Err(ApiError::BadRequest),
         Phase::Ready(_) => {}
     }
+    let replayable_result = p.replayable_result;
     let subject = match std::mem::replace(&mut p.phase, Phase::Consuming) {
         Phase::Ready(s) => s,
         _ => return Err(ApiError::Busy),
     };
     let result = app.store.issue_session(&subject, &device);
-    // Credential consumption is fail-closed: on storage failure remove the tx; caller starts over.
-    all.remove(&tx);
+    // Legacy transactions remain one-shot. Opted-in transactions retain their
+    // exact issued response until ACK or expiry so a lost HTTP response can be
+    // recovered without minting another bearer.
+    if !replayable_result || result.is_err() {
+        all.remove(&tx);
+    }
     let issued = result.map_err(|_| ApiError::Internal)?;
     let expires_at = issued.expires_at;
     let account = issued.account.clone();
     let token = issued.into_token();
+    let session = SessionResponse {
+        access_token: token,
+        expires_at,
+        principal_id: account.principal_id,
+        network_id: account.network_id,
+    };
+    if !session_is_live(&app, &session, &device) {
+        all.remove(&tx);
+        return Err(ApiError::LoginFailed);
+    }
+    if replayable_result {
+        let p = all.get_mut(&tx).ok_or(ApiError::BadRequest)?;
+        p.phase = Phase::Delivered(session.clone());
+    }
     Ok((
         StatusCode::OK,
         [(header::CACHE_CONTROL, "no-store")],
-        Json(SessionResponse {
-            access_token: token,
-            expires_at,
-            principal_id: account.principal_id,
-            network_id: account.network_id,
-        }),
+        Json(session),
     )
         .into_response())
+}
+
+fn session_is_live(app: &App, session: &SessionResponse, device: &str) -> bool {
+    app.store
+        .validate_session(&session.access_token)
+        .is_ok_and(|projection| {
+            projection.device_id == device
+                && projection.account.principal_id == session.principal_id
+                && projection.account.network_id == session.network_id
+                && projection.expires_at == session.expires_at
+                && projection.expires_at > unix_now().unwrap_or(i64::MAX)
+        })
+}
+
+async fn ack(
+    State(app): State<Arc<App>>,
+    Json(req): Json<PollRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let tx = canonical_uuid(&req.transaction_id).ok_or(ApiError::BadRequest)?;
+    let device = canonical_uuid(&req.device_id).ok_or(ApiError::BadRequest)?;
+    if !valid_verifier(&req.pkce_verifier) {
+        return Err(ApiError::BadRequest);
+    }
+    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(req.pkce_verifier.as_bytes()));
+    let mut all = app.flow.pending.lock().map_err(|_| ApiError::Internal)?;
+    let now = unix_now().map_err(|_| ApiError::Internal)?;
+    all.retain(|_, pending| pending.expires_at > now);
+    let pending = all.get_mut(&tx).ok_or(ApiError::BadRequest)?;
+    if pending.expires_at <= now
+        || pending.device_id != device
+        || !ct_eq(pending.client_challenge.as_bytes(), challenge.as_bytes())
+    {
+        return Err(ApiError::Unauthorized);
+    }
+    match &pending.phase {
+        Phase::Delivered(session) => {
+            if !pending.replayable_result || !session_is_live(&app, session, &device) {
+                pending.phase = Phase::Failed;
+                return Err(ApiError::LoginFailed);
+            }
+            pending.phase = Phase::Acknowledged;
+        }
+        Phase::Acknowledged => {}
+        _ => return Err(ApiError::BadRequest),
+    }
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(header::CACHE_CONTROL, "no-store")],
+    ))
 }
 
 async fn cancel(
@@ -1195,6 +1289,17 @@ async fn cancel(
     let p = all.get(&tx).ok_or(ApiError::BadRequest)?;
     if p.device_id != device || !ct_eq(p.client_challenge.as_bytes(), challenge.as_bytes()) {
         return Err(ApiError::Unauthorized);
+    }
+    if matches!(&p.phase, Phase::Acknowledged) {
+        return Ok((
+            StatusCode::NO_CONTENT,
+            [(header::CACHE_CONTROL, "no-store")],
+        ));
+    }
+    if let Phase::Delivered(session) = &p.phase {
+        app.store
+            .revoke_session(&session.access_token)
+            .map_err(|_| ApiError::Internal)?;
     }
     all.remove(&tx);
     Ok((
@@ -1330,7 +1435,10 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::{body::Body, http::Request};
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
     use openidconnect::TokenUrl;
     use sha2::Digest;
     use tower::ServiceExt;
@@ -1771,13 +1879,14 @@ mod tests {
     #[tokio::test]
     async fn browser_return_is_opt_in_state_bound_and_has_no_redirect_input() {
         let (app, _dir) = test_app();
-        let (_, Json(started)) = start(
+        let (_, _, Json(started)) = start(
             State(app.clone()),
             Json(StartRequest {
                 device_id: "22222222-2222-4222-8222-222222222222".into(),
                 pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
                 browser_return: true,
                 browser_return_path: None,
+                replayable_result: false,
             }),
         )
         .await
@@ -1850,6 +1959,7 @@ mod tests {
         }))
         .unwrap();
         assert!(!ordinary.browser_return);
+        assert!(!ordinary.replayable_result);
     }
 
     #[tokio::test]
@@ -1860,6 +1970,7 @@ mod tests {
             pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
             browser_return,
             browser_return_path: path.map(str::to_owned),
+            replayable_result: false,
         };
         for path in [
             "https://evil.test",
@@ -1878,9 +1989,10 @@ mod tests {
             start(State(app.clone()), Json(request(Some("/feedback"), false))).await,
             Err(ApiError::BadRequest)
         ));
-        let (_, Json(started)) = start(State(app.clone()), Json(request(Some("/feedback"), true)))
-            .await
-            .unwrap();
+        let (_, _, Json(started)) =
+            start(State(app.clone()), Json(request(Some("/feedback"), true)))
+                .await
+                .unwrap();
         let url = Url::parse(&started.authorization_url).unwrap();
         let state = url
             .query_pairs()
@@ -1937,12 +2049,13 @@ mod tests {
             pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
             browser_return,
             browser_return_path: Some("/desktop".into()),
+            replayable_result: false,
         };
         assert!(matches!(
             start(State(app.clone()), Json(request(false))).await,
             Err(ApiError::BadRequest)
         ));
-        let (_, Json(started)) = start(State(app.clone()), Json(request(true)))
+        let (_, _, Json(started)) = start(State(app.clone()), Json(request(true)))
             .await
             .unwrap();
         let state = app.flow.pending.lock().unwrap()[&started.transaction_id]
@@ -2003,6 +2116,7 @@ mod tests {
             pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
             browser_return,
             browser_return_path: path.map(str::to_owned),
+            replayable_result: false,
         };
         for path in [
             "https://evil.test",
@@ -2021,9 +2135,10 @@ mod tests {
             start(State(app.clone()), Json(request(Some("/community"), false))).await,
             Err(ApiError::BadRequest)
         ));
-        let (_, Json(started)) = start(State(app.clone()), Json(request(Some("/community"), true)))
-            .await
-            .unwrap();
+        let (_, _, Json(started)) =
+            start(State(app.clone()), Json(request(Some("/community"), true)))
+                .await
+                .unwrap();
         let url = Url::parse(&started.authorization_url).unwrap();
         let state = url
             .query_pairs()
@@ -2078,13 +2193,14 @@ mod tests {
             let (mut app, _dir) = test_app();
             Arc::get_mut(&mut app).unwrap().flow.ttl = Duration::from_secs(configured_seconds);
             let before = unix_now().unwrap();
-            let (_, Json(started)) = start(
+            let (_, _, Json(started)) = start(
                 State(app.clone()),
                 Json(StartRequest {
                     device_id: "22222222-2222-4222-8222-222222222222".into(),
                     pkce_challenge: URL_SAFE_NO_PAD.encode([1u8; 32]),
                     browser_return: false,
                     browser_return_path: None,
+                    replayable_result: false,
                 }),
             )
             .await
@@ -2110,17 +2226,19 @@ mod tests {
         let device = "22222222-2222-4222-8222-222222222222";
         let verifier = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
         let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
-        let (_, Json(started)) = start(
+        let (_, start_headers, Json(started)) = start(
             State(app.clone()),
             Json(StartRequest {
                 device_id: device.into(),
                 pkce_challenge: challenge.clone(),
                 browser_return: false,
                 browser_return_path: None,
+                replayable_result: false,
             }),
         )
         .await
         .unwrap();
+        assert_eq!(start_headers[0].1, "no-store");
         let auth_url = Url::parse(&started.authorization_url).unwrap();
         let params: HashMap<String, String> = auth_url
             .query_pairs()
@@ -2173,6 +2291,313 @@ mod tests {
             Err(ApiError::BadRequest)
         ));
     }
+
+    fn login_test_router(app: Arc<App>) -> Router {
+        Router::new()
+            .route("/auth/login/poll", post(poll))
+            .route("/auth/login/ack", post(ack))
+            .route("/auth/login/cancel", delete(cancel))
+            .with_state(app)
+    }
+
+    async fn json_request(
+        router: Router,
+        method: axum::http::Method,
+        path: &str,
+        value: serde_json::Value,
+    ) -> axum::response::Response {
+        router
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(path)
+                    .header(header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(serde_json::to_vec(&value).unwrap()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+    }
+
+    async fn replayable_flow(app: &Arc<App>) -> (StartResponse, PollRequest) {
+        ready_keys(app);
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes()));
+        let (_, start_headers, Json(started)) = start(
+            State(app.clone()),
+            Json(StartRequest {
+                device_id: TEST_DEVICE.into(),
+                pkce_challenge: challenge,
+                browser_return: false,
+                browser_return_path: None,
+                replayable_result: true,
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(start_headers[0].1, "no-store");
+        assert_eq!(started.replayable_result, Some(true));
+        let url = Url::parse(&started.authorization_url).unwrap();
+        let nonce = url
+            .query_pairs()
+            .find(|(key, _)| key == "nonce")
+            .unwrap()
+            .1
+            .into_owned();
+        let uri = format!(
+            "/auth/callback?code=isolated-code&state={}",
+            url.query_pairs().find(|(key, _)| key == "state").unwrap().1
+        )
+        .parse()
+        .unwrap();
+        callback_using(
+            app.clone(),
+            uri,
+            |_, _| async { Ok(token(&nonce, false)) },
+            no_keys,
+        )
+        .await
+        .unwrap();
+        let request = PollRequest {
+            transaction_id: started.transaction_id.clone(),
+            device_id: TEST_DEVICE.into(),
+            pkce_verifier: Zeroizing::new(TEST_VERIFIER.into()),
+        };
+        (started, request)
+    }
+
+    fn poll_json(request: &PollRequest) -> serde_json::Value {
+        serde_json::json!({
+            "transactionId": request.transaction_id,
+            "deviceId": request.device_id,
+            "pkceVerifier": request.pkce_verifier.as_str(),
+        })
+    }
+
+    fn session_row_count(dir: &tempfile::TempDir) -> i64 {
+        rusqlite::Connection::open(dir.path().join("auth.sqlite3"))
+            .unwrap()
+            .query_row("SELECT count(*) FROM sessions", [], |row| row.get(0))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn replayable_poll_returns_the_same_live_session_until_ack_then_hides_it() {
+        let (app, dir) = test_app();
+        let (started, request) = replayable_flow(&app).await;
+        let router = login_test_router(app.clone());
+        let first = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        let first_body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(first.into_body(), 4096).await.unwrap()).unwrap();
+        let second = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        let second_body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(second.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(first_body, second_body);
+        let bearer = first_body["accessToken"].as_str().unwrap();
+        assert!(app.store.validate_session(bearer).is_ok());
+        assert_eq!(session_row_count(&dir), 1);
+
+        let ack_response = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/ack",
+            poll_json(&request),
+        )
+        .await;
+        assert_eq!(ack_response.status(), StatusCode::NO_CONTENT);
+        assert_eq!(ack_response.headers()[header::CACHE_CONTROL], "no-store");
+        let repeat_ack = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/ack",
+            poll_json(&request),
+        )
+        .await;
+        assert_eq!(repeat_ack.status(), StatusCode::NO_CONTENT);
+        let after_ack = json_request(
+            router,
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        assert_ne!(after_ack.status(), StatusCode::OK);
+        let body = to_bytes(after_ack.into_body(), 4096).await.unwrap();
+        assert!(!String::from_utf8_lossy(&body).contains(bearer));
+        assert!(app.store.validate_session(bearer).is_ok());
+        let _ = started;
+    }
+
+    #[tokio::test]
+    async fn replayable_proof_is_device_bound_and_ack_cannot_precede_delivery() {
+        let (app, _dir) = test_app();
+        let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes()));
+        let (_, _, Json(started)) = start(
+            State(app.clone()),
+            Json(StartRequest {
+                device_id: TEST_DEVICE.into(),
+                pkce_challenge: challenge,
+                browser_return: false,
+                browser_return_path: None,
+                replayable_result: true,
+            }),
+        )
+        .await
+        .unwrap();
+        let router = login_test_router(app);
+        let request = poll_req(&started);
+        let ack_early = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/ack",
+            poll_json(&request),
+        )
+        .await;
+        assert_eq!(ack_early.status(), StatusCode::BAD_REQUEST);
+        let mut wrong_proof = poll_json(&request);
+        wrong_proof["pkceVerifier"] = "wrong-verifier-that-is-long-enough-for-validation".into();
+        let bad_proof = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            wrong_proof,
+        )
+        .await;
+        assert_eq!(bad_proof.status(), StatusCode::UNAUTHORIZED);
+        let mut wrong_device = poll_json(&request);
+        wrong_device["deviceId"] = "33333333-3333-4333-8333-333333333333".into();
+        let bad_device = json_request(
+            router,
+            axum::http::Method::POST,
+            "/auth/login/ack",
+            wrong_device,
+        )
+        .await;
+        assert_eq!(bad_device.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn cancel_revokes_only_delivered_unacknowledged_sessions() {
+        let (app, _dir) = test_app();
+        let (started, request) = replayable_flow(&app).await;
+        let router = login_test_router(app.clone());
+        let first = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(first.into_body(), 4096).await.unwrap()).unwrap();
+        let bearer = body["accessToken"].as_str().unwrap().to_owned();
+        let cancelled = json_request(
+            router.clone(),
+            axum::http::Method::DELETE,
+            "/auth/login/cancel",
+            poll_json(&request),
+        )
+        .await;
+        assert_eq!(cancelled.status(), StatusCode::NO_CONTENT);
+        assert!(app.store.validate_session(&bearer).is_err());
+
+        let (_started, request) = replayable_flow(&app).await;
+        let response = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        let bearer = body["accessToken"].as_str().unwrap().to_owned();
+        assert_eq!(
+            json_request(
+                router.clone(),
+                axum::http::Method::POST,
+                "/auth/login/ack",
+                poll_json(&request)
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert_eq!(
+            json_request(
+                router,
+                axum::http::Method::DELETE,
+                "/auth/login/cancel",
+                poll_json(&request)
+            )
+            .await
+            .status(),
+            StatusCode::NO_CONTENT
+        );
+        assert!(app.store.validate_session(&bearer).is_ok());
+        let _ = started;
+    }
+
+    #[tokio::test]
+    async fn replay_after_external_revocation_never_returns_the_bearer_again() {
+        let (app, _dir) = test_app();
+        let (_started, request) = replayable_flow(&app).await;
+        let router = login_test_router(app.clone());
+        let response = json_request(
+            router.clone(),
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        let bearer = body["accessToken"].as_str().unwrap().to_owned();
+        app.store.revoke_session(&bearer).unwrap();
+        let replay = json_request(
+            router,
+            axum::http::Method::POST,
+            "/auth/login/poll",
+            poll_json(&request),
+        )
+        .await;
+        assert_ne!(replay.status(), StatusCode::OK);
+        let body = to_bytes(replay.into_body(), 4096).await.unwrap();
+        assert!(!String::from_utf8_lossy(&body).contains(&bearer));
+    }
+
+    #[tokio::test]
+    async fn legacy_start_response_omits_replay_flag_and_legacy_poll_remains_one_shot() {
+        let (app, _dir) = test_app();
+        let (started, uri, nonce) = flow(&app).await;
+        ready_keys(&app);
+        callback_using(
+            app.clone(),
+            uri,
+            |_, _| async { Ok(token(&nonce, false)) },
+            no_keys,
+        )
+        .await
+        .unwrap();
+        let encoded = serde_json::to_value(&started).unwrap();
+        assert!(encoded.get("replayableResult").is_none());
+        let request = poll_req(&started);
+        let first = poll(State(app.clone()), Json(request)).await.unwrap();
+        assert_eq!(first.status(), StatusCode::OK);
+        let repeated = poll(State(app.clone()), Json(poll_req(&started))).await;
+        assert!(matches!(repeated, Err(ApiError::BadRequest)));
+    }
     const TEST_DEVICE: &str = "22222222-2222-4222-8222-222222222222";
     const TEST_VERIFIER: &str =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
@@ -2213,13 +2638,14 @@ mod tests {
         serde_json::from_value(serde_json::json!({"access_token":"test-only-not-authority","token_type":"Bearer","id_token":token})).unwrap()
     }
     async fn flow(app: &Arc<App>) -> (StartResponse, axum::http::Uri, String) {
-        let (_, Json(started)) = start(
+        let (_, _, Json(started)) = start(
             State(app.clone()),
             Json(StartRequest {
                 device_id: TEST_DEVICE.into(),
                 pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
                 browser_return: false,
                 browser_return_path: None,
+                replayable_result: false,
             }),
         )
         .await

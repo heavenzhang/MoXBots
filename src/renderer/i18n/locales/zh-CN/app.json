@@ -1456,7 +1456,8 @@
       "ownedSessionMissing": "未找到此连接对应的本机登录会话。连接已停止，需要显式登录后才能恢复。",
       "privateKeyMissing": "本机私钥不可用。请管理员先撤销该设备，再用新 key 加入。",
       "protocolUnsupported": "此服务不支持当前 AgentNet 协议。",
-      "featureDisabled": "请先在设置的开发者模式中开启 AgentNet 多网络。"
+      "featureDisabled": "请先在设置的开发者模式中开启 AgentNet 多网络。",
+      "ownedLoginRestartRequired": "旧版服务的登录结果未能完整接收，无法安全重取。请重新登录。"
     },
     "chooseNetwork": "选择网络",
     "officialNetwork": "MyAgents 官方网络",
@@ -1499,7 +1500,16 @@
       "checkFailed": "暂时未能确认登录结果，将自动重试；也可手动检查。{{message}}",
       "expired": "登录请求已过期，自动检测已停止。请重新登录。",
       "cancelFailed": "取消登录尚未确认，自动检测已暂停。请再次取消登录。{{message}}",
-      "restart": "重新开始登录"
+      "restart": "重新开始登录",
+      "phases": {
+        "awaiting_authorization": "等待浏览器登录",
+        "receiving_grant": "正在接收登录结果",
+        "verifying_identity": "正在验证账号身份",
+        "saving_session": "正在保存登录状态",
+        "committed": "已登录",
+        "failed": "登录需要处理"
+      },
+      "retrySave": "重试保存登录状态"
     },
     "legacyKey": {
       "mode": "设备 key（旧方式）"

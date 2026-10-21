@@ -7,6 +7,7 @@ import {
   networkRequest,
   restoreOwnedCredentials,
   startOwnedNetworkReauthentication,
+  retryOwnedNetworkLogin,
   cancelOwnedCredentialRestore,
   setNetworkReadScope,
   type NetworkRequest,
@@ -359,4 +360,14 @@ it("reauthenticates only a saved connection at its observed registry revision", 
   expect(invoke).toHaveBeenCalledExactlyOnceWith("cmd_agent_network_owned_start_existing", {
     connectionId: "saved-connection", expectedRegistryRevision: 7,
   });
+});
+
+it("retries the existing native login rather than starting a new transaction", async () => {
+  invoke.mockResolvedValue(undefined);
+  await retryOwnedNetworkLogin("attempt-1");
+  expect(invoke).toHaveBeenCalledExactlyOnceWith("cmd_agent_network_owned_retry", { attemptId: "attempt-1" });
+});
+
+it("explains legacy one-shot response loss as a restart requirement", () => {
+  expect(networkErrorKey({ code: "OWNED_LOGIN_RESTART_REQUIRED" })).toBe("ownedLoginRestartRequired");
 });

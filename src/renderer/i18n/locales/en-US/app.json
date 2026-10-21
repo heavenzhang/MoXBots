@@ -1457,7 +1457,8 @@
       "ownedSessionMissing": "No local login session was found for this connection. It is stopped and requires an explicit sign-in to recover.",
       "privateKeyMissing": "The device private key is unavailable. Ask the administrator to revoke this device, then join with a new key.",
       "protocolUnsupported": "This service does not support the current AgentNet protocol.",
-      "featureDisabled": "Enable AgentNet multiple networks in developer settings first."
+      "featureDisabled": "Enable AgentNet multiple networks in developer settings first.",
+      "ownedLoginRestartRequired": "The login result from the older service could not be received completely and cannot be safely retrieved again. Please restart sign-in."
     },
     "chooseNetwork": "Choose network",
     "officialNetwork": "MyAgents official network",
@@ -1500,7 +1501,16 @@
       "checkFailed": "Could not confirm sign-in yet. We will retry automatically, or you can check manually. {{message}}",
       "expired": "This sign-in request expired. Automatic checking has stopped. Please start again.",
       "cancelFailed": "Cancellation could not be confirmed. Automatic checking is paused. Please cancel again. {{message}}",
-      "restart": "Start sign-in again"
+      "restart": "Start sign-in again",
+      "phases": {
+        "awaiting_authorization": "Waiting for browser sign-in",
+        "receiving_grant": "Receiving login result",
+        "verifying_identity": "Verifying account identity",
+        "saving_session": "Saving login session",
+        "committed": "Signed in",
+        "failed": "Login needs attention"
+      },
+      "retrySave": "Retry saving login"
     },
     "legacyKey": {
       "mode": "Device key (legacy)"
