@@ -15,13 +15,13 @@ Continue MOXBOTS-MOBILE-002 for the human-selected current Mac and original iPho
 - [x] Actual baseline dispatcher/policy + actual queue produced an executable isolated RED; the current contract passes. Platform/AppState/opaque-claim remain adapters, not real native authority.
 - [x] Implement original opaque-claim completion handoff, original-generation pending projection, identity/account/epoch-scoped bounded durable pointers and existing source proof/confirmation protocol. No Session operation or new communication mode.
 - [x] Related local source contracts cover focus/background, eligibility, duplicate/retired-generation, reconnect/restart, account/key/issuer/network, missing/unsafe/corrupt/capacity storage and stale pending-generation boundaries. Full service-proof and installed native execution remain acceptance gates.
-- [ ] Run relevant local verification and deliver a precise committed, remotely synchronized source head to existing mobile owner01a12b99 and desktop owner01a12bc2 for a later batch.
+- [x] Relevant local verification passed and the source branch was committed/pushed to the human-confirmed remote. Exact remote handoff is verified separately; existing mobile owner01a12b99 and desktop owner01a12bc2 receive the immutable head for independent review and a later batch.
 - [ ] Owner-run installed current-Mac to original-iPhone background alert, tap and cold-start acceptance remains independently required; local tests cannot close it.
 
 ## Completed
 
 - Read the fresh canonical project map/plan, root CLAUDE.md, relevant architecture and original completion claim/SSE/background/owned source adapters. Fresh verified base is recorded in the task header.
-- Static source gap confirmed: desktop OwnedClient has the fixed source HTTP adapter but only test callers; the headless connector has the production publisher and Host main has the original event producer. This is not yet executable RED or physical reproduction.
+- Static source gap confirmed: desktop OwnedClient has the fixed source HTTP adapter but only test callers; the headless connector has the production publisher and Host main has the original event producer. The subsequent executable isolated RED is recorded below; it is not physical reproduction.
 - Original SessionCompletionClaim already fences and deduplicates frontend/background completion; the existing OS notification path suppresses a focused desktop toast. Mobile publication must retain the claim and remain independent of that presentation filter.
 - Implemented the authorized desktop adapter in notification.rs, actor.rs/mod.rs and three new source files; no sidecar/background or server/FIFO/login changes. Added the explicitly approved reproducible contract script. Existing speech source3b320048 and business source4014 remain unchanged; unknown peer untouched. Architecture/Node parity, verification and remaining gates: dev-docs/mobile-002/desktop-notification-source-20261021.md.
 
@@ -39,4 +39,4 @@ Continue MOXBOTS-MOBILE-002 for the human-selected current Mac and original iPho
 
 ## Next step
 
-Review and commit only this task's source/tests/documentation, push the immutable branch, verify the remote handoff gate, and send the exact head and diff to mobile owner01a12b99 for independent review and desktop owner01a12bc2 for a later batch. Do not mix frozen516.6 or claim actual delivery. Continue the original iPhone acceptance only after its existing owners release the proper window.
+Mobile owner01a12b99 independently reviews the exact frozen remote head/diff, then desktop owner01a12bc2 selects a later candidate and coordinates the applicable integration CI and installed production paths. Do not mix frozen516.6 or claim actual notification delivery. Continue the original iPhone acceptance only after its existing owners release the proper window; the latest Mac and original phone are locked and the human unlock request remains pending.
