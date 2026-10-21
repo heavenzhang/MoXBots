@@ -314,6 +314,11 @@ fn owned_request_failure(error: &reqwest::Error) -> NetworkError {
     failure
 }
 impl OwnedClient {
+    // Transport carries no bearer/default authorization. Native-only OAuth
+    // composition stays outside this module, which Host and mobile reuse.
+    pub(super) fn oauth_transport(&self) -> (&str, &reqwest::Client) {
+        (&self.origin, &self.http)
+    }
     #[cfg(test)]
     pub(crate) fn for_test(origin: String, instance: OwnedInstance) -> Self {
         let url = url::Url::parse(&origin).expect("test origin");

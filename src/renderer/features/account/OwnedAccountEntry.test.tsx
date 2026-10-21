@@ -243,12 +243,10 @@ it("uses the configured product issuer even when another owned instance is selec
   expect(
     screen.queryByRole("tab", { name: "设备 key（旧方式）" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByLabelText("服务 URL")).toHaveValue(
-    "https://login.example.test",
-  );
+  expect(screen.queryByLabelText("服务 URL")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(await manualLoginCheck());
+  fireEvent(window, new Event("focus"));
   await waitFor(() =>
     expect(mocks.start).toHaveBeenCalledWith(
       "https://login.example.test",
@@ -259,7 +257,7 @@ it("uses the configured product issuer even when another owned instance is selec
   expect(mocks.accept).toHaveBeenCalledWith(authenticated);
 });
 
-it("shows an unauthenticated product account when only an isolated QA account exists", () => {
+it("shows an unauthenticated product account when only an isolated QA account exists", async () => {
   const registry = makeRegistry({
     state: "authenticated",
     principalId: "qa-principal",
@@ -276,17 +274,13 @@ it("shows an unauthenticated product account when only an isolated QA account ex
   } as NetworkRegistry;
   render(<OwnedAccountEntry expanded />);
   accountAction("登录 MoXBots");
-  expect(screen.getByLabelText("服务 URL")).toHaveValue(
-    "https://login.example.test",
-  );
-  expect(screen.getByLabelText("服务 URL")).toHaveAttribute("readonly");
-  fireEvent.change(screen.getByLabelText("服务 URL"), {
-    target: { value: "https://attacker.example.test" },
-  });
-  expect(screen.getByLabelText("服务 URL")).toHaveValue(
-    "https://login.example.test",
-  );
+  expect(screen.queryByLabelText("服务 URL")).not.toBeInTheDocument();
   expect(mocks.start).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  await waitFor(() => expect(mocks.start).toHaveBeenCalledExactlyOnceWith(
+    "https://login.example.test", undefined,
+  ));
+  expect(mocks.reauthenticate).not.toHaveBeenCalled();
 });
 
 it("fails closed when the configured issuer contains a path or query", () => {
@@ -455,7 +449,7 @@ it("cancels a pending login when the same issuer account generation changes", as
   accountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(await manualLoginCheck());
+  fireEvent(window, new Event("focus"));
   await waitFor(() => expect(mocks.poll).toHaveBeenCalledWith("attempt-a"));
 
   const next = makeRegistry({
@@ -525,7 +519,7 @@ it("reauthenticates the saved product identity once and closes after its browser
   await screen.findByText("等待浏览器登录");
   expect(mocks.reauthenticate).toHaveBeenCalledExactlyOnceWith("owned-a", saved.revision);
   expect(mocks.start).not.toHaveBeenCalled();
-  fireEvent.click(await manualLoginCheck());
+  fireEvent(window, new Event("focus"));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(mocks.accept).toHaveBeenCalledWith(authenticated);
   expect(mocks.open).toHaveBeenCalledOnce();
@@ -569,7 +563,7 @@ it("does not accept a late authenticated poll after the account entry unmounts",
   accountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
-  fireEvent.click(await manualLoginCheck());
+  fireEvent(window, new Event("focus"));
   await waitFor(() => expect(mocks.poll).toHaveBeenCalledWith("attempt-a"));
   view.unmount();
   expect(mocks.cancel).not.toHaveBeenCalled();
@@ -752,11 +746,3 @@ it.each([true, false])('opens community from the personal menu without starting 
   expect(mocks.external).not.toHaveBeenCalled();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
-
-async function manualLoginCheck() {
-  const button = screen.getByRole("button", { name: "检查登录状态" });
-  if (!button.closest("details")?.open)
-    fireEvent.click(screen.getByText("高级连接选项"));
-  await waitFor(() => expect(button).toBeEnabled());
-  return button;
-}
