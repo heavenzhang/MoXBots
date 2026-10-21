@@ -3237,7 +3237,7 @@ mod tests {
                 revoke_count.fetch_add(1, Ordering::SeqCst);
                 async { reqwest::StatusCode::NO_CONTENT }
             }));
-        let server = tokio::spawn(async move {
+        let server = tauri::async_runtime::spawn(async move {
             axum::serve(listener, router).await.unwrap();
         });
         let flow = super::super::owned_oauth::NativeOAuth::bind(&origin, device)
@@ -3271,7 +3271,7 @@ mod tests {
             super::LoginProgress::Pending
         ));
         assert_eq!(grants.load(Ordering::SeqCst), 0);
-        let browser = reqwest::Client::builder().no_proxy().build().unwrap();
+        let browser = crate::local_http::builder().build().unwrap();
         assert!(browser
             .get(callback)
             .send()

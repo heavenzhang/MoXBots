@@ -32,4 +32,4 @@ Cloud auth/101: 01a12b99-7b38-78b1-831f-9c60257d386a。
 开发只提交与交接，不越权执行共享 CI、正式打包、部署或日常客户端重启。云先桌面后；旧接口/会话兼容，两单元可各自回滚；不回滚业务数据库或 key。
 
 ## Next step
-PR186首轮CI发现共享模块引用桌面类型及10项旧界面测试遗漏，已修正；headless/mobile all-targets、native57、相关DOM84通过。冻结修正SHA交desktop owner推送同PR并统一CI/main；云先桌面后发布，再原Air真实验收。
+PR186前两轮CI遗漏已修正：共享模块/旧UI测试及测试专属Clippy规范。local headless/mobile all-targets、native57、DOM84及CI同命令Clippy redlines通过，真实TCP测试重测1PASS。冻结修正SHA交desktop owner推送同PR并统一CI/main；云先桌面后发布，再原Air真实验收。
