@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/auto-routing-20261019 -->
 <!-- git-project-sync-task:base=2adf5c1d22c138d1b1c5022acc0bfd0179a78012 -->
-<!-- git-project-sync-task:status=merged-main-awaiting-ci -->
+<!-- git-project-sync-task:status=merged-main-ci-green -->
 
 # Task: MOXBOTS-AUTO-ROUTING-20261021
 
@@ -19,7 +19,7 @@
 - [x] 本地：tsc、ESLint、depcruise（0 error）、unit 619/6727、dom 316/2741、integration 124 files 1409 passed、测试分类、CLI bundle contract。
 - [x] 非交互 rebase 到 `2adf5c1d2`，解决 `agent-session.ts`、`builtin-adapter.ts` 冲突并保留双方语义。
 - [x] 推送 `HEAD:main` 并经 `git ls-remote` 核实远端 main `c21b013bf`。
-- [ ] 共享 CI run `39560599030` 结论（以 CI 页面为准）。
+- [x] 共享 CI：run `39561027775`（`c237d5684`）`success`，全部 job 通过。
 - [ ] 真实客户端安装验收、真实 Provider 联调、真实换模型耗时实测。
 - [ ] 桌面签名构建与发布（唯一 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`）。
 
