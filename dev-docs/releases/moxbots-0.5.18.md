@@ -11,7 +11,8 @@ Task MOXBOTS-0518-REMOTE-MODEL-DIAGNOSTICS-20261022. Sole desktop/macOSarm64/upd
 ## Delivery gates
 
 - [x] Actual mainbd13 and selected source heads verified; ordinary isolated integration complete.
-- [ ] Affected combined local checks and exact original PR CI.
+- [x] Affected combined local checks:24 files/371 unique cases across the initial run and corrected5-case page recheck; all8 static gates and version/locked metadata checks pass. Initial2 obsolete DOM assertions and raw failures retained, no production policy changed for the test correction.
+- [ ] Exact original combined PR CI.
 - [ ] Protected main merge and remote source containment.
 - [ ] New immutable signed/notarized artifact, production updater signature and tag.
 - [ ] Actual new target/Air runtime identity, remote history/manual send/artifacts and model-policy native persistence/real-provider checks within authorized test scope.

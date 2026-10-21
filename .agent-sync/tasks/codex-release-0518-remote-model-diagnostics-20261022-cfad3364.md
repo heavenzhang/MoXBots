@@ -13,7 +13,7 @@ Integrate the accepted remote passive-mode availability repair, six model-policy
 
 - [x] Verify current main, selected remote refs, map/plan, isolated branch, start and task-init gates.
 - [x] Integrate exact remote 28c05c6fff80316e975d962e28b3e1d302b98a7c (functional 0c20260c49d58eddbfbb24248264366ce0788152), model 2f757f8886e1b77ca0e131f4a85b900b5764a253 and diagnostic b56306f575954a257217fe40bb2f1d64257112ac preserving ancestry and original security/owner fences.
-- [ ] Review combined product diff and run affected local unit/integration/DOM/type/lint/version checks; keep simulated evidence distinct.
+- [x] Review combined product diff and run affected local unit/integration/DOM/type/lint/version checks; keep simulated evidence distinct.
 - [ ] One exact combined PR CI, protected main merge and remote containment proof; no competing shared workflow or manual rerun without a diagnosed reason.
 - [ ] One newly identified signed/notarized artifact with production updater signature, immutable tag and recorded rollback. No clone of an active build cache.
 - [ ] Controlled target-side and original Air dual-device checks, runtime/source/version/identity binding, history/manual send/artifact path, model policy/native persistence and bounded natural diagnostic observations.
@@ -25,7 +25,7 @@ Selected heads and base verified against remote; source task records read. Root 
 
 ## Verification
 
-Git project-sync observe/start/task-init passed at actual main bd13. Source-author local tests and synthetic/browser/SDK evidence remain in their original task records and are not relabeled as Root combined checks or production acceptance. Initial combined24-file run:369PASS/2FAIL; both failures were stale settings-page assertions from the earlier UI-only version. All8 static gates and version3cases plusbothlockedoffline Cargo metadata passed. The page fixture now returns the actual tier response shape; assertions verify visible automatic guidance, collapsed advanced content and the legacy specified backup mode plus provider/model identity. Failed originals retained privately; affected5-case DOM recheck pending. The three ordinary merges preserve the source heads; only shared-plan heading/append conflicts required resolution, with all current entries retained. Model-policy runtime overlap with diagnostic guards merged additively. Version018/build5181 is synchronized in bothTauri configs and App/DocumentWorker manifests/locks.
+Git project-sync observe/start/task-init passed at actual main bd13. Source-author local tests and synthetic/browser/SDK evidence remain in their original task records and are not relabeled as Root combined checks or production acceptance. Initial combined24-file run:369PASS/2FAIL; both failures were stale settings-page assertions from the earlier UI-only version. All8 static gates and version3cases plusbothlockedoffline Cargo metadata passed. The page fixture now returns the actual tier response shape; assertions verify visible automatic guidance, collapsed advanced content and the legacy specified backup mode plus provider/model identity. Failed originals retained privately; affected5-case DOM recheck PASS at e2b88da26d8ee1fef21b12d10dfac7588fec076a, followed by TypeScript and scoped ESLint PASS. Original23 unaffected files366cases passed at e6bf; the corrected page file5cases passed separately, covering371 unique cases without rerunning unaffected suites. Product code is unchanged by the test-only correction. The three ordinary merges preserve the source heads; only shared-plan heading/append conflicts required resolution, with all current entries retained. Model-policy runtime overlap with diagnostic guards merged additively. Version018/build5181 is synchronized in bothTauri configs and App/DocumentWorker manifests/locks.
 
 ## Blockers and unknowns
 
@@ -33,4 +33,4 @@ Air actual version and human-controlled remote window block dual-device acceptan
 
 ## Next step
 
-Integrate selected committed heads sequentially, resolve only reviewed overlap, run affected combined gates, then allocate exact5181 version metadata through the existing synchronization helper and create one original PR CI batch. Do not publish until artifact and applicable native gates pass.
+Affected source integration and local checks passed. Push the clean final combined head and create one original PR CI batch; receive actual CI/main and new artifact results before native acceptance/publication. Do not publish until artifact and applicable native gates pass.
