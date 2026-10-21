@@ -460,6 +460,7 @@ pub(crate) fn submit_session_completion<R: Runtime>(
         );
         return;
     }
+    crate::agent_network::notification_source::observe_claimed_completion(app, &terminal, &_claim);
     if !should_show_session_completion(app) {
         ulog_debug!(
             "[Notification] Session completion toast suppressed while main window is focused: session={} turn={}",

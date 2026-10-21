@@ -27,6 +27,7 @@ mod remote_assets_target;
 mod remote_mobile_target;
 mod remote_admission;
 mod memory;
+pub(crate) mod notification_source;
 mod owned_account_desktop;
 mod owned_admission;
 mod owned_login;

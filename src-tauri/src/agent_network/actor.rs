@@ -126,10 +126,25 @@ pub(crate) struct AgentNetwork {
     commands: mpsc::Sender<Command>,
     receiver: Mutex<Option<mpsc::Receiver<Command>>>,
     management_slot: Arc<tokio::sync::Semaphore>,
+    pub(super) notification_source: Arc<super::notification_source::DesktopNotificationSource>,
 }
 pub(crate) type ManagedConnection = Arc<AgentNetwork>;
 pub(crate) use super::registry::ManagedAgentNetwork;
 impl AgentNetwork {
+    pub(crate) fn observe_mobile_completion(&self, terminal: &crate::notification::SessionCompletionTerminal,
+        _claim: &crate::sidecar::SessionCompletionClaim) {
+        let Some(expected) = self.notification_source.capture() else { return; };
+        if self.generation() != expected.generation || self.account.as_ref().is_none_or(|a| a.ensure_current().is_err()) {
+            return;
+        }
+        let observed = (|| {
+            let _allocation = self.memory.reserve(2 * 1024 * 1024)?;
+            self.notification_source.observe(&expected, &terminal.session_id,
+                std::path::Path::new(&terminal.workspace_path), &format!("terminal:{}", terminal.turn_id))
+        })();
+        if observed.is_err() { ulog_warn!("[MobileNotification] Original desktop completion source unconfirmed"); }
+    }
+
     pub(crate) async fn community_request(
         &self,
         scope: &super::community::CommunityScope,
@@ -202,6 +217,15 @@ impl AgentNetwork {
             shutdown: false,
         });
         let (commands, receiver) = mpsc::channel(budget("pending"));
+        #[cfg(not(windows))]
+        let notification_root = uuid::Uuid::parse_str(&connection_id).ok()
+            .filter(|id| id.to_string() == connection_id)
+            .and_then(|id| crate::app_dirs::myagents_data_dir()
+                .map(|path| path.join("desktop-mobile-notify-source-v1").join(id.to_string())));
+        // Match the existing asset-store policy until a native Windows private
+        // ACL provisioner exists; no permissive pointer store is created.
+        #[cfg(windows)]
+        let notification_root = None;
         Arc::new(Self {
             connection_id,
             account,
@@ -222,6 +246,7 @@ impl AgentNetwork {
             commands,
             receiver: Mutex::new(Some(receiver)),
             management_slot: Arc::new(tokio::sync::Semaphore::new(1)),
+            notification_source: Arc::new(super::notification_source::DesktopNotificationSource::new(notification_root)),
         })
     }
     pub(crate) fn snapshot(&self) -> NetworkSnapshot {
@@ -1055,6 +1080,7 @@ fn open_asset_store() -> Result<Arc<moxbots_asset_store::AssetStore>, NetworkErr
     }
 }
 enum Work {
+    MobileNotification(Result<(), NetworkError>),
     RemoteMobile {
         channel_id: String,
         request_id: myagents_host_management_protocol::CanonicalUuid,
@@ -1232,6 +1258,12 @@ async fn connect(
     let owned_account = identity.account.is_management_only();
     *previous_out = Some((identity.account.binding_id().to_owned(), resume));
     let connection_lifetime = ConnectionLifetime(Arc::new(AtomicBool::new(true)));
+    let source_activation = super::notification_source::delivery::activation(&identity, &local, &scope, generation).ok()
+        .filter(|activation| owner.notification_source.activate(activation.clone()).is_ok());
+    let _source_lifetime = super::notification_source::Lifetime(owner.notification_source.clone(), source_activation.clone());
+    let mut source_busy = false;
+    let mut source_failures = 0u32;
+    let mut source_next = Instant::now();
     let mut work: FuturesUnordered<BoxFuture<'static, Work>> = FuturesUnordered::new();
     let mut pairs = if management_only {
         Pairs::new_management(
@@ -1640,6 +1672,11 @@ async fn connect(
                                 version:1,op_id,sender_sequence:1,return_route_id,event_id,settlement}));
                         }
                     },
+                    Work::MobileNotification(result) => {
+                        source_busy = false;
+                        source_failures = if result.is_ok() { 0 } else { source_failures.saturating_add(1) };
+                        source_next = Instant::now() + Duration::from_secs(if source_failures == 0 { 2 } else { 2u64.pow(source_failures.min(6)).min(60) });
+                    }
                     Work::Metadata { allocation: _allocation, reply, result } => { identity.account.ensure_current()?; let _ = reply.send(result); }
                     Work::Resolve { op_id, result } => {
                         if let Err(error) = result.and_then(|target| { source_returns.resolved(&op_id,&target); calls.resolved(&op_id, target, &local) }) { calls.fail(&op_id, error); }
@@ -1832,6 +1869,25 @@ async fn connect(
                 work.push(catalog_work(manager.clone(), transport.clone(), identity.token.clone(), scope.clone(), catalog_seq, management_only));
             }
             _ = tick.tick() => {
+                if hydrated && !catalog_busy && !source_busy && work.len() < budget("pending")
+                    && source_next <= Instant::now() && local_policy.as_ref().is_some_and(|p| p.joined)
+                {
+                    if let (Some(expected), Some(policy)) = (source_activation.clone(), local_policy.clone()) {
+                        if let Ok(allocation) = owner.memory.reserve(2 * 1024 * 1024) {
+                            source_busy = true;
+                            let source = owner.notification_source.clone(); let source_manager = manager.clone();
+                            let source_identity = identity.clone(); let source_memory = owner.memory.clone();
+                            work.push(async move {
+                                let _allocation = allocation;
+                                let result = tokio::time::timeout(Duration::from_secs(20),
+                                    super::notification_source::delivery::publish_once(source, source_manager,
+                                        source_identity, expected, policy, source_memory)).await
+                                    .unwrap_or_else(|_| Err(NetworkError::new("DESKTOP_NOTIFICATION_SOURCE_UNAVAILABLE")));
+                                Work::MobileNotification(result)
+                            }.boxed());
+                        }
+                    }
+                }
                 source_returns.expire();
                 let active=!source_returns.is_empty()||!target_returns.is_empty();
                 if !active {next_identity_check=None;}
