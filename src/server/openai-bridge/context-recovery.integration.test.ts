@@ -246,3 +246,107 @@ describe('context recovery over the existing bridge handler', () => {
     expect(backups).toBe(0);
   });
 });
+
+it.each(['transport', 'eof', 'half-eof', 'idle', 'authentication', 'billing', 'policy', 'claims-transport'] as const)(
+  'uses trusted handler causality rather than rewritten SSE text (%s)', async cause => {
+    let background = false;
+    const start = { type: 'message_start', message: { id: 'fixture', type: 'message', role: 'assistant', model: 'fixture', content: [], usage: { input_tokens: 1, output_tokens: 0 } } };
+    const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+    const upstream = await fixture((_body, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' }); res.write(frame(start));
+      if (!background) res.end(frame({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 0 } }) + frame({ type: 'message_stop' }));
+      else if (cause === 'transport') setTimeout(() => res.destroy(), 5);
+      else if (cause === 'eof') res.end();
+      else if (cause === 'half-eof') res.end('data: {"incomplete":');
+      else if (cause === 'idle') { /* bounded by the real test-local ModelBodyReader */ }
+      else res.end(frame({ type: 'error', error: { type: cause === 'authentication' ? 'authentication_error' : 'api_error',
+        code: cause, message: cause === 'claims-transport' ? 'transport_error: socket reset' : 'fixture permanent rejection' } }));
+    });
+    const context = new ContextRecoveryController({ scope: () => 'original-root', isActive: () => true, canRecover: () => !background,
+      protectStreaming: () => !background, recoveryOwner: { sessionId: 'session', sdkSessionId: 'native' },
+      persistLedger: async () => {}, backup: async () => 'history-archive', archiveSettledInterruption: async () => 'proof-archive' });
+    context.bindNoDispatchOwner({ sessionId: 'session', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true });
+    const modelFailover = new ModelFailoverController({ scope: () => 'original-root', isActive: () => true,
+      canRetry: () => context.canRetryInference(), canSwitch: () => !background,
+      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0], bodyIdleTimeoutMs: 200 });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'anthropic',
+      baseUrl: upstream.baseUrl, apiKey: 'fixture', contextRecovery: context, modelFailover }) });
+    const first: AnthropicRequest = { model: 'fixture', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'foreground' }] };
+    expect(await (await handler(request(first))).text()).toContain('message_stop');
+    background = true;
+    const child = structuredClone(first); child.messages.push({ role: 'user', content: 'background' });
+    expect(await (await handler(request(child))).text()).toContain('automatic_replay_blocked');
+    background = false;
+    const receipt = await context.prepareSettledInterruption(() => true);
+    expect(!!receipt).toBe(cause === 'transport' || cause === 'eof' || cause === 'idle');
+    expect(upstream.requests).toHaveLength(2);
+  },
+);
+
+it.each(['chat_completions', 'responses'] as const)('keeps raw %s socket failure distinct from provider/protocol errors through translation', async format => {
+  let background = false; let failure: 'transport' | 'permanent' | 'eof' | 'ping-eof' | 'half-eof' = 'transport';
+  const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+  const upstream = await fixture((_body, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    if (background && (failure === 'ping-eof' || failure === 'half-eof')) {
+      res.end(failure === 'ping-eof' ? 'event: ping\ndata: {}\n\n' : 'data: {"incomplete":');
+      return;
+    }
+    if (format === 'chat_completions') {
+      res.write(frame({ id: 'fixture', model: 'fixture', choices: [{ index: 0, delta: { role: 'assistant', content: 'partial' }, finish_reason: null }] }));
+      if (!background) res.end(frame({ id: 'fixture', model: 'fixture', choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }) + 'data: [DONE]\n\n');
+      else if (failure === 'transport') setTimeout(() => res.destroy(), 5);
+      else if (failure === 'eof') res.end();
+      else res.end(frame({ error: { type: 'authentication_error', message: 'transport_error claimed by provider' } }));
+    } else {
+      res.write(frame({ type: 'response.created', response: { id: 'resp', model: 'fixture', status: 'in_progress', output: [] } }));
+      res.write(frame({ type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: 'partial' }));
+      if (!background) res.end(frame({ type: 'response.completed', response: { id: 'resp', model: 'fixture', status: 'completed', output: [] } }));
+      else if (failure === 'transport') setTimeout(() => res.destroy(), 5);
+      else if (failure === 'eof') res.end();
+      else res.end(frame({ type: 'response.failed', response: { id: 'resp', model: 'fixture', status: 'failed', output: [], error: { code: 'authentication_error', message: 'transport_error claimed by provider' } } }));
+    }
+  });
+  for (failure of ['transport', 'permanent', 'eof', 'ping-eof', 'half-eof'] as const) {
+    background = false;
+    const context = new ContextRecoveryController({ scope: () => 'original-root', isActive: () => true, canRecover: () => !background,
+      protectStreaming: () => !background, recoveryOwner: { sessionId: 'session', sdkSessionId: 'native' },
+      persistLedger: async () => {}, backup: async () => 'history-archive', archiveSettledInterruption: async () => 'proof-archive' });
+    context.bindNoDispatchOwner({ sessionId: 'session', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true });
+    const modelFailover = new ModelFailoverController({ scope: () => 'original-root', isActive: () => true, canRetry: () => context.canRetryInference(),
+      canSwitch: () => !background, resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'openai', upstreamFormat: format,
+      baseUrl: upstream.baseUrl, apiKey: 'fixture', contextRecovery: context, modelFailover }) });
+    const body: AnthropicRequest = { model: 'fixture', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'foreground' }] };
+    expect(await (await handler(request(body))).text()).toContain('message_stop');
+    background = true; body.messages.push({ role: 'user', content: 'background' });
+    expect(await (await handler(request(body))).text()).toContain('automatic_replay_blocked');
+    background = false;
+    expect(!!await context.prepareSettledInterruption(() => true)).toBe(failure === 'transport' || failure === 'eof');
+  }
+});
+
+it.each(['transport', 'authentication', 'malformed'] as const)('arms the old foreground recovery only for proven transport (%s)', async cause => {
+  const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+  const upstream = await fixture((_body, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write(frame({ type: 'message_start', message: { id: 'fixture', type: 'message', role: 'assistant', content: [] } }));
+    if (cause === 'transport') setTimeout(() => res.destroy(), 5);
+    else if (cause === 'malformed') res.end('data: {not-json\n\n');
+    else res.end(frame({ type: 'error', error: { type: 'authentication_error', message: 'transport_error claimed by provider' } }));
+  });
+  const context = new ContextRecoveryController({ scope: () => 'foreground', isActive: () => true, protectStreaming: true,
+    persistLedger: async () => {}, backup: async () => 'history-archive' });
+  const interrupted = vi.fn(async () => true); const blocked = vi.fn(async () => {});
+  const modelFailover = new ModelFailoverController({ scope: () => 'foreground', isActive: () => true, canRetry: () => context.canRetryInference(),
+    canSwitch: () => true, resolveBackup: () => undefined, onSwitch: () => {}, recovery: {
+      wait: async () => undefined, complete: async () => {}, interrupted, blocked,
+    } });
+  const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'anthropic', baseUrl: upstream.baseUrl,
+    apiKey: 'fixture', modelFailover, contextRecovery: context }) });
+  const body: AnthropicRequest = { model: 'fixture', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'foreground' }] };
+  expect(await (await handler(request(body))).text()).toContain('automatic_replay_blocked');
+  expect(interrupted).toHaveBeenCalledTimes(cause === 'transport' ? 1 : 0);
+  expect(blocked).toHaveBeenCalledTimes(cause === 'transport' ? 0 : 1);
+  if (cause !== 'transport') expect(() => context.prepareStreamContinuation(body)).toThrow('automatic_replay_blocked');
+});

@@ -105,6 +105,11 @@ export async function archiveBuiltinContextRequest(sessionId: string, request: u
     } finally { await asyncFs.unlink(temporary).catch(() => undefined); }
     return path;
 }
+/** Tagged receipt shares the existing immutable archive writer and durability limits. */
+export async function archiveBuiltinSettledInterruption(sessionId: string, evidence: unknown,
+    metadata: { digest: string; scope: string }, isCurrent: () => boolean): Promise<string> {
+    return archiveBuiltinContextRequest(sessionId, evidence, metadata, isCurrent);
+}
 /** SessionStore owns both archives and the write-ahead action ledger. SDK identity
  * scopes the ledger to the native history; a new Product turn does not clear it. */
 function builtinRecoveryPath(sessionId: string, sdkSessionId: string): string {
@@ -189,9 +194,13 @@ export async function updateBuiltinModelRecovery(
         const current = rows[index];
         const history = resolveBuiltinSdkSessionId(current) ?? current.id;
         const matches = isLive() && history === sdkSessionId
+            && current.modelRecovery?.version === expected?.version
             && current.modelRecovery?.id === expected?.id
             && current.modelRecovery?.status === expected?.status
             && current.modelRecovery?.kind === expected?.kind
+            && JSON.stringify(current.modelRecovery?.liveProof) === JSON.stringify(expected?.liveProof)
+            && current.modelRecovery?.startedAt === expected?.startedAt
+            && current.modelRecovery?.deadlineAt === expected?.deadlineAt
             && current.modelRecovery?.sdkSessionId === expected?.sdkSessionId
             && current.modelRecovery?.routeIdentity === expected?.routeIdentity
             && current.modelRecovery?.goalId === expected?.goalId

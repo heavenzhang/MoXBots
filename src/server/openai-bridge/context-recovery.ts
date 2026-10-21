@@ -5,10 +5,20 @@ import { SSEParser } from './utils/sse-parser';
 import { modelStreamEventType } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard } from './request-lifetime';
+import type { StreamInterruptionCause } from './types/bridge';
+import { StreamDeliveryWitness } from './stream-delivery-witness';
+
+/** Internal, Query-local evidence capability. Never accepted from HTTP/model metadata. */
+export interface SettledInterruptionReceipt {
+  readonly id: string;
+  readonly interruptedAt: number;
+  readonly archive: string;
+  isCurrent(): boolean;
+}
 
 export interface BridgeContextRecovery {
   run(request: Request, body: AnthropicRequest,
-    execute: (projected: AnthropicRequest) => Promise<Response>): Promise<Response>;
+    execute: (projected: AnthropicRequest, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>): Promise<Response>;
 }
 
 export interface ContextRecoveryOptions {
@@ -25,6 +35,7 @@ export interface ContextRecoveryOptions {
   initialLedger?: unknown;
   recoveryOwner?: { sessionId: string; sdkSessionId: string };
   persistLedger?: (ledger: unknown, stillCurrent?: () => boolean) => Promise<void>;
+  archiveSettledInterruption?: (evidence: unknown, digest: string, scope: string, stillCurrent: () => boolean) => Promise<string>;
 }
 
 export interface ContextRecoveryCheckpoint {
@@ -306,6 +317,60 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private streamArmedOnly = false;
   private readonly retiredStreamFingerprints = new Set<string>();
   private persistenceTail: Promise<void> = Promise.resolve();
+  private nativeRevision = 0;
+  private unboundNativeAdmission = false;
+  private readonly toolOwners = new Map<string, { scope: string | undefined; fingerprint: string; actionHash?: string }>();
+  private readonly nativeAdmissions = new Map<string, { scope: string | undefined; pending: boolean; actionHash: string }>();
+  private settledReceipt: { receipt: SettledInterruptionReceipt; fingerprints: readonly string[] } | undefined;
+
+  /** Diagnostic only: never turns an ordinary error into a recovery candidate. */
+  settledInterruptionFailure(): string | undefined {
+    const state = this.current();
+    if (!state || !this.requestGuard.hasInterruptedScope(state.scope)) return undefined;
+    if (this.ledgerBlocked || this.uncertainLedger.size || state.uncertain.size) return 'history_uncertain';
+    if (this.options.canRecover?.() === false) return 'background_unsettled';
+    return 'live_proof_unavailable';
+  }
+
+  /** Called by the original native result owner only, after exact background settlement. */
+  async prepareSettledInterruption(nativeStillCurrent: () => boolean): Promise<SettledInterruptionReceipt | undefined> {
+    const state = this.current();
+    const owner = this.noDispatchOwner;
+    if (!state || !owner?.isCurrent() || !this.options.archiveSettledInterruption
+      || !this.options.persistLedger || !this.options.recoveryOwner || !nativeStillCurrent()
+      || this.options.canRecover?.() === false || this.ledgerBlocked || this.noDispatchProofsDisabled
+      || !this.actionProtectionActive || this.unboundNativeAdmission || this.uncertainLedger.size || state.uncertain.size
+      || this.requestRetryFences.size) return undefined;
+    const manifest = this.requestGuard.settledScope(state.scope);
+    if (!manifest) return undefined;
+    const native = [...this.nativeAdmissions].filter(([, admission]) => admission.scope === state.scope);
+    if (native.some(([, admission]) => admission.pending)
+      || manifest.toolUseIds.length !== native.length
+      || manifest.toolUseIds.some(id => !this.nativeAdmissions.has(id))) return undefined;
+    // This is an actual recovery, not normal-turn standby arming. Preserve
+    // completed-action denial durably even if the engine exits before advance.
+    this.streamArmedOnly = false;
+    const nativeRevision = this.nativeRevision;
+    const ledgerDigest = () => digest({ completed: [...this.completedLedger], uncertain: [...this.uncertainLedger],
+      denied: [...this.deniedLedger], noDispatch: [...this.noDispatchLedger], blocked: this.ledgerBlocked,
+      projectionActive: this.projectionActive, streamArmedOnly: this.streamArmedOnly });
+    const ledger = ledgerDigest();
+    const live = () => this.options.isActive() && owner === this.noDispatchOwner && owner.isCurrent()
+      && nativeStillCurrent() && this.options.canRecover?.() !== false && this.options.scope() === state.scope
+      && this.nativeRevision === nativeRevision && this.requestGuard.isCurrentSnapshot(manifest)
+      && !this.ledgerBlocked && !this.uncertainLedger.size && !state.uncertain.size && ledgerDigest() === ledger;
+    if (!live()) return undefined;
+    await this.persist(live);
+    if (!live()) return undefined;
+    const evidence = { version: 1, kind: 'settled-stream-no-tool-dispatch', ...this.options.recoveryOwner,
+      queryGeneration: owner.queryGeneration, scope: state.scope, manifest, nativeRevision, ledgerDigest: ledger };
+    const id = createHash('sha256').update(JSON.stringify(evidence)).digest('hex');
+    const archive = await this.options.archiveSettledInterruption(evidence, id, state.scope, live);
+    if (!live() || typeof archive !== 'string' || !archive.trim()) return undefined;
+    const receipt = Object.freeze({ id, interruptedAt: manifest.interruptedAt, archive, isCurrent: live });
+    this.settledReceipt = { receipt, fingerprints: manifest.fingerprints };
+    return receipt;
+  }
 
   constructor(private readonly options: ContextRecoveryOptions) {
     if (options.initialLedger !== undefined) this.restoreLedger(options.initialLedger);
@@ -393,7 +458,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   /** Retire only a fully settled failed stream after its owner verifies native continuation. */
   prepareStreamContinuation(body: AnthropicRequest): number {
     const state = this.current();
-    if (!state || !state.blocked || !state.streamInterrupted || !this.actionProtectionActive
+    const settled = this.settledReceipt?.receipt.isCurrent() ? this.settledReceipt : undefined;
+    if (!state || ((!state.blocked || !state.streamInterrupted) && !settled) || !this.actionProtectionActive
       || this.options.canRecover?.() === false || this.requestGuard.inFlightCount !== 0
       || state.inFlight.size !== 0 || this.requestRetryFences.size !== 0
       || this.ledgerBlocked || this.uncertainLedger.size !== 0 || state.uncertain.size !== 0) {
@@ -411,10 +477,12 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const count = this.completedLedger.size;
     // Do not delete any admission evidence. Only a separately verified new
     // namespace can proceed; old native retries remain permanently fenced.
-    if (this.retiredStreamFingerprints.size + state.delivered.size > 4096) {
+    if (this.retiredStreamFingerprints.size + state.delivered.size + (settled?.fingerprints.length ?? 0) > 4096) {
       throw new Error('automatic_replay_blocked: Stream continuation admission capacity exceeded.');
     }
     for (const fingerprint of state.delivered) this.retiredStreamFingerprints.add(fingerprint);
+    for (const fingerprint of settled?.fingerprints ?? []) this.retiredStreamFingerprints.add(fingerprint);
+    this.settledReceipt = undefined;
     this.streamArmedOnly = false;
     this.endTurn(true);
     return count;
@@ -506,6 +574,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
 
   /** Reserve before invoking a mutating tool: a crash leaves an uncertain action, never a replay. */
   async authorizeTool(name: string, input: unknown, toolUseId?: string): Promise<string | undefined> {
+    this.nativeRevision++;
+    const emission = toolUseId ? this.toolOwners.get(toolUseId) : undefined;
+    if (!toolUseId || !emission || emission.actionHash !== toolKey(name, input) || this.nativeAdmissions.has(toolUseId) || this.nativeAdmissions.size >= MAX_LEDGER_ENTRIES) this.unboundNativeAdmission = true;
+    else this.nativeAdmissions.set(toolUseId, { scope: emission.scope, pending: true, actionHash: emission.actionHash! });
     if (toolUseId) {
       if (this.observedToolUseIds.size >= MAX_LEDGER_ENTRIES) this.noDispatchProofsDisabled = true;
       else this.observedToolUseIds.add(toolUseId);
@@ -526,7 +598,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     return this.options.isActive() ? undefined : 'automatic_replay_blocked: Recovery turn was cancelled.';
   }
 
-  async commitToolResult(name: string, input: unknown, result: unknown, failed = false): Promise<void> {
+  async commitToolResult(name: string, input: unknown, result: unknown, failed = false, toolUseId?: string): Promise<void> {
+    this.nativeRevision++;
     this.recordToolResult(name, input, result, failed);
     const evidence = this.completedLedger.get(toolKey(name, input));
     if (!failed && evidence && this.options.persistLedger && !evidence.archive) {
@@ -535,6 +608,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       evidence.archive = 'durable SessionStore action ledger';
     }
     await this.persist();
+    const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
+    if (admission && admission.actionHash === toolKey(name, input) && admission.pending) admission.pending = false;
+    else this.unboundNativeAdmission = true;
+    this.nativeRevision++;
   }
 
   /**
@@ -650,7 +727,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   async run(request: Request, body: AnthropicRequest,
-    execute: (projected: AnthropicRequest) => Promise<Response>): Promise<Response> {
+    execute: (projected: AnthropicRequest, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>): Promise<Response> {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive()
       && this.options.requestIdentity?.() === requestIdentity;
@@ -690,7 +767,17 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const retryAnalysis = analyze(body, state.denied, state.completed, this.noDispatchLedger);
     const retryFence = {};
     if (!retryAnalysis || retryAnalysis.uncertain.size || state.uncertain.size) this.requestRetryFences.add(retryFence);
+    let deliveryFinished = false;
+    let interruptionCause: StreamInterruptionCause | undefined;
+    let interruptionObservedAt: number | undefined;
+    const observeInterruption = (cause: StreamInterruptionCause) => {
+      if (!deliveryFinished && queryLive() && interruptionCause !== 'unproven') {
+        interruptionObservedAt ??= Date.now();
+        interruptionCause = cause;
+      }
+    };
     const finish = () => {
+      deliveryFinished = true;
       state.inFlight.delete(fingerprint);
       state.delivered.add(fingerprint);
       lease.finish();
@@ -742,7 +829,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       const input = state.recovered ? await prepare(false) : body;
       if (input instanceof Response) return input;
       if (!live()) return cancelled();
-      let response = await execute(input);
+      let response = await execute(input, observeInterruption);
       if (!live()) { void response.body?.cancel().catch(() => undefined); return cancelled(); }
       if (!response.ok && [400, 413, 422].includes(response.status)) {
         const text = await readBoundedErrorBody(response.body);
@@ -761,7 +848,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         const reduced = await prepare(true);
         if (reduced instanceof Response) return reduced;
         if (!recoveryLive()) return cancelled();
-        response = await execute(reduced);
+        response = await execute(reduced, observeInterruption);
         if (!live()) { void response.body?.cancel().catch(() => undefined); return cancelled(); }
         if (!response.ok) {
           void response.body?.cancel().catch(() => undefined);
@@ -780,9 +867,31 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       let terminal = false;
       let terminalQueued = false;
       let consumerCancelled = false;
-      const interruptStream = () => {
-        if (!terminal && !state.blocked && recoveryLive() && !consumerCancelled) state.streamInterrupted = true;
+      const witness = new StreamDeliveryWitness();
+      const observeDelivery = (data: string): void => {
+        let payload: unknown;
+        try { payload = JSON.parse(data); } catch { lease.unknownDelivery(); return; }
+        const emission = witness.observe(payload);
+        if (witness.invalid) lease.unknownDelivery();
+        if (emission.completedTool) {
+          const { id, name, input } = emission.completedTool;
+          const owner = this.toolOwners.get(id);
+          this.nativeRevision++;
+          if (owner?.fingerprint === fingerprint && !owner.actionHash) owner.actionHash = toolKey(name, input);
+          else this.unboundNativeAdmission = true;
+        }
+        if (Object.hasOwn(emission, 'toolUseId')) {
+          const id = emission.toolUseId;
+          lease.toolMayBeDelivered(id);
+          if (typeof id === 'string' && id.length <= 256 && !this.toolOwners.has(id) && this.toolOwners.size < MAX_LEDGER_ENTRIES) {
+            this.toolOwners.set(id, { scope: currentState?.scope, fingerprint });
+          } else this.unboundNativeAdmission = true;
+        }
+      };
+      const interruptStream = (trusted = true) => {
+        if (!terminal && !state.blocked && recoveryLive() && !consumerCancelled) state.streamInterrupted = trusted;
         state.blocked = true;
+        lease.interrupted(interruptionObservedAt);
         lease.block();
       };
       const stream = new ReadableStream<Uint8Array>({
@@ -792,6 +901,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
               state.blocked = true;
               state.streamInterrupted = false;
               lease.block();
+              lease.unknownDelivery();
+              lease.interrupted();
               void reader.cancel().catch(() => undefined);
               finish();
               output.error(new Error('Model request superseded or cancelled'));
@@ -801,17 +912,21 @@ export class ContextRecoveryController implements BridgeContextRecovery {
             if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
-                interruptStream();
+                const trustedEof = interruptionCause !== 'unproven' && !parser.hasIncompleteEvent;
+                if (!trustedEof) lease.unknownDelivery();
+                interruptStream(trustedEof);
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
               }
               finish(); output.close(); return;
             }
             let frames = '';
             if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
+              if (modelStreamEventType(event) !== 'error') observeDelivery(event.data);
               const type = modelStreamEventType(event);
               if (!type) continue;
               if (type === 'error') {
-                interruptStream();
+                if (interruptionCause !== 'transport') lease.unknownDelivery();
+                interruptStream(interruptionCause === 'transport');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
                 void reader.cancel().catch(() => undefined);
                 finish(); output.close(); return;
@@ -826,12 +941,17 @@ export class ContextRecoveryController implements BridgeContextRecovery {
             else if (frames) output.enqueue(encoder.encode(frames));
             if (terminal) {
               terminalQueued = true;
+              lease.delivered();
               void reader.cancel().catch(() => undefined);
               finish();
               output.close();
             }
           } catch (error) {
-            if (!terminalQueued) interruptStream();
+            if (!terminalQueued) {
+              const trusted = queryLive() && !consumerCancelled && interruptionCause === 'transport';
+              if (!trusted) lease.unknownDelivery();
+              interruptStream(trusted);
+            }
             void reader.cancel().catch(() => undefined);
             finish();
             if (isSse && !terminalQueued && !consumerCancelled && queryLive()) {
@@ -843,7 +963,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         async cancel(reason) {
           consumerCancelled = true;
           state.streamInterrupted = false;
-          if (!terminalQueued && isSse) { state.blocked = true; lease.block(); }
+          if (!terminalQueued && isSse) { state.blocked = true; lease.unknownDelivery(); lease.interrupted(); lease.block(); }
           finish();
           try { await reader.cancel(reason); } catch { /* transport already retired */ }
         },

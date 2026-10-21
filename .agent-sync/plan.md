@@ -1,3 +1,7 @@
+## MOXBOTS-SETTLED-STREAM-CONTINUE-20261021 — 已结清后台中断的原owner续接
+
+原Query native result边界仅在清洁ledger、逐request零工具外溢证明、全root稳定manifest、nonambient背景精确结清及原owner/Stop/CAS一致时，沿原SameTurnStreamContinuation/SessionModelRecovery接续。任务 `.agent-sync/tasks/codex-settled-stream-continue-20261021-08946322.md`。缺证据failclosed，不增等待owner/队列/预算、不修改旧unknown或冻结5162；代码与本地合成验证开发中，native/业务验收另追踪。沿用desktop builtin唯一CI/发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4，由root总审后交下一批。
+
 ## MOXBOTS-STREAM-RESUME-20261020-01 — 原 turn 断流续跑
 
 普通 builtin API 会话及 Goal 沿原 Query/SessionModelRecovery、ContextRecovery 台账、Product/FIFO 与 Goal claim 自动接续；原 HTTP 与完成工具不重放，Stop 撤销后不恢复，质量参考持久记录恢复事实。代码与本地/合成 SDK 验收已完成，任务 `.agent-sync/tasks/codex-stream-resume-20261020-f5ea3680.md`，证据 `dev-docs/stream-continuation/acceptance.md`。精确 head 共享 CI、正常 main 合入/远端核验、签名客户端/真实 Provider 和用户验收分别追踪。

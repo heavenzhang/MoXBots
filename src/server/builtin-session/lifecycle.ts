@@ -76,6 +76,7 @@ type QueryBackgroundTask = {
   info: QueryBackgroundTaskInfo;
   active: boolean;
   terminalRich?: boolean;
+  authoritativeTerminal?: boolean;
   status?: BackgroundTaskDetail['status'];
   finishedAt?: number;
   summary?: string;
@@ -101,6 +102,19 @@ export function hasBuiltinActivityForUpdate(): boolean {
 // Keep the full snapshot so continuation admission can classify current work.
 // Keep acknowledgements separately: they are user decisions about exact runs,
 // not SDK facts, and must never leak to a replacement Query.
+const backgroundProofHistory = new WeakMap<Query, { runs: Map<string, { taskId: string; runId: string; terminal?: boolean }>; disabled: boolean }>();
+function rememberBackgroundRun(query: Query, taskId: string, runId: string | undefined): void {
+  let history = backgroundProofHistory.get(query);
+  if (!history) { history = { runs: new Map(), disabled: false }; backgroundProofHistory.set(query, history); }
+  if (typeof runId !== 'string' || !runId || runId.length > 256
+    || typeof taskId !== 'string' || !taskId || taskId.length > 256) { history.disabled = true; return; }
+  const key = JSON.stringify([taskId, runId]);
+  if (!history.runs.has(key)) {
+    if (history.runs.size >= 4096) history.disabled = true;
+    else history.runs.set(key, { taskId, runId });
+  }
+}
+let queryBackgroundRevision = 0;
 let queryBackgroundTasksLevel: BackgroundTaskObservation[] = [];
 let queryBackgroundAcknowledgements: BackgroundWorkAcknowledgement[] = [];
 let isProcessing = false;
@@ -133,6 +147,7 @@ function replaceQuerySession(session: Query | null): void {
     });
   }
   querySession = session;
+  queryBackgroundRevision++;
   queryBackgroundTasksLevel = [];
   queryBackgroundAcknowledgements = [];
   queryGeneration += 1;
@@ -316,6 +331,8 @@ export function recordQueryBackgroundTask(
     tasks = new Map();
     queryBackgroundTasks.set(query, tasks);
   }
+  queryBackgroundRevision++;
+  rememberBackgroundRun(query, taskId, info.runId);
   const previous = tasks.get(taskId);
   const order = previous ? compareBackgroundTaskRuns(info.runId, previous.info.runId) : 1;
   if (order < 0) return false;
@@ -406,6 +423,8 @@ export function replaceQueryBackgroundActivity(
   tasks: SDKBackgroundTasksChangedMessage['tasks'],
 ): void {
   if (querySession !== query) return;
+  queryBackgroundRevision++;
+  for (const task of tasks) if (task.ambient !== true) rememberBackgroundRun(query, task.task_id, task.run_id);
   queryBackgroundTasksLevel = tasks.map(task => ({
     taskId: task.task_id,
     ...(task.run_id ? { runId: task.run_id } : {}),
@@ -476,10 +495,24 @@ export function getQueryBackgroundContinuationSnapshot(): BackgroundContinuation
   );
 }
 
+/** Result-boundary proof. Notifications/ACKs never substitute for an SDK state-machine terminal. */
+export function snapshotSettledQueryBackground(authority: BuiltinQueryAuthority): (() => boolean) | undefined {
+  const settled = () => {
+    const history = backgroundProofHistory.get(authority.query);
+    const tasks = queryBackgroundTasks.get(authority.query);
+    return isCurrentQueryAuthority(authority) && !hasQueryBackgroundWork() && !history?.disabled
+      && [...(history?.runs.values() ?? [])].every(run => run.terminal === true)
+      && [...(tasks?.values() ?? [])].every(task => !task.active && task.authoritativeTerminal === true && !!task.info.runId);
+  };
+  if (!settled()) return undefined;
+  const revision = queryBackgroundRevision;
+  return () => revision === queryBackgroundRevision && settled();
+}
+
 export function completeQueryBackgroundTask(
   query: Query | null,
   taskId: string,
-  terminal: { runId?: string; rich?: boolean; toolUseId?: string; status?: BackgroundTaskDetail['status']; finishedAt?: number; summary?: string; outputPath?: string } = {},
+  terminal: { authoritative?: boolean; runId?: string; rich?: boolean; toolUseId?: string; status?: BackgroundTaskDetail['status']; finishedAt?: number; summary?: string; outputPath?: string } = {},
 ): { removed: boolean; becameQuiescent: boolean; broadcast: boolean; enriching?: boolean; info?: QueryBackgroundTaskInfo } {
   const ignored = { removed: false, becameQuiescent: false, broadcast: false };
   if (!query) return ignored;
@@ -492,6 +525,7 @@ export function completeQueryBackgroundTask(
   const previous = tasks.get(taskId);
   const order = previous ? compareBackgroundTaskRuns(terminal.runId, previous.info.runId) : 1;
   if (order < 0) return ignored;
+  queryBackgroundRevision++;
   const task = previous && order === 0 ? previous : {
     info: { runId: terminal.runId, ...(terminal.toolUseId ? { toolUseId: terminal.toolUseId } : {}) },
     active: false,
@@ -502,6 +536,12 @@ export function completeQueryBackgroundTask(
   const rich = terminal.rich ?? false;
   const broadcast = !enriching || (!task.terminalRich && rich);
   task.active = false;
+  if (terminal.authoritative && terminal.runId && terminal.runId === task.info.runId
+    && ['completed', 'failed', 'stopped'].includes(terminal.status ?? '')) {
+    task.authoritativeTerminal = true;
+    const run = backgroundProofHistory.get(query)?.runs.get(JSON.stringify([taskId, terminal.runId]));
+    if (run) run.terminal = true;
+  }
   task.terminalRich = Boolean(task.terminalRich || rich);
   if (terminal.toolUseId) task.info.toolUseId = terminal.toolUseId;
   if (terminal.status) task.status ??= terminal.status;
@@ -518,6 +558,10 @@ export function takeQueryBackgroundTasks(
 ): Array<[string, QueryBackgroundTaskInfo]> {
   if (!query) return [];
   const tasks = queryBackgroundTasks.get(query);
+  queryBackgroundRevision++;
+  const history = backgroundProofHistory.get(query);
+  if (history) history.disabled = true;
+  else backgroundProofHistory.set(query, { runs: new Map(), disabled: true });
   if (!tasks) return [];
   queryBackgroundTasks.delete(query);
   return [...tasks.entries()].filter(([, task]) => task.active).map(([id, task]) => [id, task.info]);

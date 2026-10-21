@@ -1,8 +1,10 @@
 /** Non-secret SessionStore intent; native history and the action ledger remain authoritative. */
 export interface ModelRecoveryState {
-  version: 1;
+  version: 1 | 2;
   /** A partial stream resumes through the original turn owner, never HTTP replay. */
   kind?: 'stream';
+  /** This receipt requires the original live Query; a restart must pause, never downgrade it. */
+  liveProof?: { kind: 'settled-stream'; authority: string; receiptId: string };
   id: string;
   status: 'waiting' | 'paused';
   sdkSessionId: string;
@@ -22,7 +24,11 @@ export const MODEL_RECOVERY_WINDOW_MS = 30 * 60_000;
 export function validModelRecovery(value: unknown): value is ModelRecoveryState {
   if (!value || typeof value !== 'object') return false;
   const row = value as ModelRecoveryState;
-  return row.version === 1 && (row.kind === undefined || row.kind === 'stream') && typeof row.id === 'string' && row.id.length > 0
+  return (row.version === 1 || row.version === 2)
+    && (row.version === 1 ? row.liveProof === undefined : row.liveProof !== undefined) && (row.kind === undefined || row.kind === 'stream') && typeof row.id === 'string' && row.id.length > 0
+    && (row.liveProof === undefined || (row.kind === 'stream' && row.liveProof?.kind === 'settled-stream'
+      && typeof row.liveProof.authority === 'string' && row.liveProof.authority.length > 0
+      && typeof row.liveProof.receiptId === 'string' && row.liveProof.receiptId.length > 0))
     && (row.status === 'waiting' || row.status === 'paused')
     && typeof row.sdkSessionId === 'string' && row.sdkSessionId.length > 0
     && typeof row.routeIdentity === 'string' && row.routeIdentity.length > 0

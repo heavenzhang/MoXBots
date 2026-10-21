@@ -7,7 +7,7 @@ import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 import type { TurnTerminalOutcome } from '../session-core/turn-queue';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
 
-const state = vi.hoisted(() => ({ home: '', failProductIo: false, publicationGate: null as Promise<void> | null, publicationBlocked: false, queryExitGate: null as Promise<void> | null, queryInputEnded: 0, backgroundTask: false, backgroundTaskGate: null as Promise<void> | null, independentInputPump: false, sdkInputs: [] as unknown[], resultMode: 'success' as 'success' | 'error', rejectedResumeAt: null as string | null, sdkCumulativeBase: null as { input: number; output: number } | null, compactAtTurn: null as number | null, resetAtTurn: null as number | null, sdkCommands: [] as unknown[], interruptCloses: false, throwAfterInputEnd: false, beforeTurn: vi.fn(), query: vi.fn(), sdkRead: vi.fn(), sdkFork: vi.fn(), sdkDelete: vi.fn(), rewindFiles: vi.fn(), beforeResult: vi.fn(), events: [] as [string, unknown][], queuedFollowup: false, exitWithoutResult: false, toolFrames: false, childFrames: false, protocolFrames: [] as Record<string, unknown>[], beforeFrame: vi.fn(), media: vi.fn() }));
+const state = vi.hoisted(() => ({ home: '', failProductIo: false, publicationGate: null as Promise<void> | null, publicationBlocked: false, queryExitGate: null as Promise<void> | null, queryInputEnded: 0, backgroundTask: false, backgroundTaskGate: null as Promise<void> | null, independentInputPump: false, sdkInputs: [] as unknown[], resultMode: 'success' as 'success' | 'error', rejectedResumeAt: null as string | null, sdkCumulativeBase: null as { input: number; output: number } | null, compactAtTurn: null as number | null, resetAtTurn: null as number | null, sdkCommands: [] as unknown[], interruptCloses: false, throwAfterInputEnd: false, beforeTurn: vi.fn(), query: vi.fn(), sdkRead: vi.fn(), sdkFork: vi.fn(), sdkDelete: vi.fn(), rewindFiles: vi.fn(), beforeResult: vi.fn(), sdkResultHandled: vi.fn(), events: [] as [string, unknown][], queuedFollowup: false, exitWithoutResult: false, toolFrames: false, childFrames: false, protocolFrames: [] as Record<string, unknown>[], beforeFrame: vi.fn(), media: vi.fn() }));
 vi.mock('os', async original => ({ ...await original<typeof import('os')>(), homedir: () => state.home }));
 vi.mock('../utils/platform', async original => {
   const actual = await original<typeof import('../utils/platform')>();
@@ -284,6 +284,7 @@ beforeEach(async () => {
   state.protocolFrames = [];
   state.beforeFrame.mockReset();
   state.beforeResult.mockReset();
+  state.sdkResultHandled.mockReset();
   state.beforeTurn.mockReset().mockResolvedValue(undefined);
   state.media.mockReset().mockResolvedValue([]);
   state.query.mockReset().mockImplementation(fakeQuery);
@@ -3136,4 +3137,154 @@ it('refuses a truncated plan instead of approving a partial display', async () =
     signal: new AbortController().signal, toolUseID: 'big-plan', requestId: 'big-plan',
   })).resolves.toMatchObject({ behavior: 'deny', interrupt: false, message: expect.stringContaining('无法完整展示') });
   expect(agent.getPendingInteractiveRequests().filter(row => row.type === 'exit-plan-mode:request')).toHaveLength(0);
+});
+
+it.each([true, false])('retains the original native error result only after settled proof (%s), with durable Stop', async settled => {
+  vi.stubEnv('HOME', state.home);
+  try {
+    agent.setSidecarPort(15432);
+    const workspace = join(state.home, 'settled-native'); await mkdir(workspace);
+    const providers = join(state.home, '.myagents', 'providers'); await mkdir(providers, { recursive: true });
+    await writeFile(join(providers, 'settled-fixture.json'), JSON.stringify({ id: 'settled-fixture', name: 'fixture', type: 'api', models: [{ model: 'fixture' }] }));
+    const module = await import('../openai-bridge/context-recovery');
+    const contexts: InstanceType<typeof module.ContextRecoveryController>[] = [];
+    const bind = module.ContextRecoveryController.prototype.bindNoDispatchOwner;
+    vi.spyOn(module.ContextRecoveryController.prototype, 'bindNoDispatchOwner').mockImplementation(function (this: InstanceType<typeof module.ContextRecoveryController>, owner) {
+      contexts.push(this); return bind.call(this, owner);
+    });
+    await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+    await agent.setSessionProviderEnv({ providerId: 'settled-fixture', baseUrl: 'http://127.0.0.1:1', apiKey: 'fixture-only' });
+    await agent.setSessionModel('fixture');
+    const lifecycle = await import('../builtin-session/lifecycle');
+    const start = { type: 'message_start', message: { id: 'fixture', type: 'message', role: 'assistant', content: [] } };
+    const frame = (event: unknown) => `data: ${JSON.stringify(event)}\n\n`;
+    state.beforeResult.mockImplementationOnce(async (result: Record<string, unknown>) => {
+      const input = { file_path: '/qa/sentinel' };
+      const events = [start, { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'native-read', name: 'Read', input: {} } },
+        { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } },
+        { type: 'content_block_stop', index: 0 }, { type: 'message_delta', delta: { stop_reason: 'tool_use' } }, { type: 'message_stop' }];
+      const body = (content: string) => ({ model: 'fixture', max_tokens: 16, stream: true, messages: [{ role: 'user' as const, content }] });
+      const run = async (content: string, events: unknown[]) => (await contexts.at(-1)!.run(new Request('http://localhost/messages'), body(content), async () =>
+        new Response(events.map(frame).join(''), { headers: { 'content-type': 'text/event-stream' } }))).text();
+      await run('original inference', events);
+      const sdk = state.query.mock.calls.at(-1)![0].options as Options;
+      const signal = new AbortController().signal;
+      const base = { session_id: agent.getSessionId()!, transcript_path: '', cwd: workspace,
+        tool_name: 'Read', tool_input: input, tool_use_id: 'native-read' };
+      await sdk.hooks!.PreToolUse![0].hooks[0]({ ...base, hook_event_name: 'PreToolUse' }, undefined, { signal });
+      await sdk.hooks!.PostToolUse![0].hooks[0]({ ...base, hook_event_name: 'PostToolUse', tool_response: 'sentinel' }, undefined, { signal });
+      const query = lifecycle.lifecycleState.query!;
+      lifecycle.recordQueryBackgroundTask(query, 'child', { runId: 'run-1' });
+      lifecycle.replaceQueryBackgroundActivity(query, [{ task_id: 'child', run_id: 'run-1', task_type: 'local_agent', description: 'fixture' }]);
+      expect(await run('background inference', [start])).toContain('automatic_replay_blocked');
+      if (settled) {
+        lifecycle.completeQueryBackgroundTask(query, 'child', { runId: 'run-1', status: 'completed', authoritative: true });
+        lifecycle.replaceQueryBackgroundActivity(query, []);
+      }
+      result.subtype = 'error_during_execution'; result.is_error = true; result.result = 'fixture stream interrupted';
+      result.terminal_reason = 'api_error';
+    });
+    await agent.enqueueUserMessage('Continue the same isolated task', undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY });
+    const id = agent.getSessionId()!;
+    if (!settled) {
+      await vi.waitFor(() => expect(agent.getMessages().some(message => typeof message.content === 'string' && message.content.includes('后台任务尚未获得精确终态'))).toBe(true));
+      expect(store.getBuiltinModelRecovery(id)).toBeUndefined();
+      expect(state.sdkInputs).toHaveLength(1);
+      return;
+    }
+    await vi.waitFor(() => expect(store.getBuiltinModelRecovery(id)).toMatchObject({ version: 2, kind: 'stream', status: 'waiting' }));
+    expect(agent.isSessionBusy()).toBe(true);
+    expect(state.sdkInputs).toHaveLength(1);
+    await agent.stopBuiltinSessionForUpdate();
+    expect(store.getBuiltinModelRecovery(id)).toMatchObject({ version: 2, status: 'paused', liveProof: { kind: 'settled-stream' } });
+    const disk = JSON.parse(await readFile(join(state.home, '.myagents', 'sessions.json'), 'utf8'));
+    expect(disk.find((row: { id: string }) => row.id === id).modelRecovery.status).toBe('paused');
+    expect(state.sdkInputs).toHaveLength(1);
+  } finally { agent.setSidecarPort(0); vi.unstubAllEnvs(); }
+});
+
+it.each([undefined, 'cold-goal'])('cold native restore refuses a v2 live-only receipt before creating any SDK Query (%s)', async goalId => {
+  const workspace = join(state.home, 'cold-proof'); await mkdir(workspace);
+  const id = randomUUID(); const now = Date.now();
+  await store.saveSessionMetadata({ id, agentDir: workspace, title: 'cold proof', createdAt: new Date().toISOString(),
+    lastActiveAt: new Date().toISOString(), runtime: 'builtin', sdkSessionId: id,
+    modelRecovery: { version: 2, kind: 'stream', id: randomUUID(), status: 'waiting', sdkSessionId: id,
+      routeIdentity: 'same-route', turnId: 'original-root', goalId, attempt: 1, startedAt: now, nextRetryAt: now + 15_000,
+      deadlineAt: now + 1_800_000, lastStatus: 502, liveProof: { kind: 'settled-stream', authority: 'old-engine', receiptId: 'old-proof' } } });
+  await agent.initializeAgent(workspace, null, id, { preWarmDisabled: true });
+  if (goalId) {
+    const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+    const result = await engine.runInjectedTurn({ prompt: 'Continue original Goal', sessionId: id, workspacePath: workspace,
+      scenario: { type: 'desktop' }, permissionMode: 'fullAgency', assistantChannelDelivery: 'caller-owned', timeoutMs: 5000, pollMs: 1,
+      queueId: randomUUID(), turnOwner: { kind: 'goal', id: goalId } });
+    expect(result).toMatchObject({ success: false, error: expect.stringContaining('live Query proof') });
+  }
+  expect(store.getBuiltinModelRecovery(id)).toMatchObject({ version: 2, status: 'paused' });
+  expect(store.getSessionMetadata(id)?.modelRecovery?.reason).toContain('live Query proof');
+  expect(state.query).not.toHaveBeenCalled(); expect(state.sdkInputs).toHaveLength(0);
+});
+
+it('drops the old native result after a Query replacement across settled-arm await', async () => {
+  // Install a transparent observer before this test's engine module loads.
+  // A persistent vi.mock factory would retain old turn singletons across resetModules.
+  vi.resetModules();
+  store = await import('../SessionStore');
+  const turnLifecycle = await import('../builtin-session/turn-lifecycle');
+  const create = turnLifecycle.createBuiltinTurnLifecycle;
+  vi.spyOn(turnLifecycle, 'createBuiltinTurnLifecycle').mockImplementation((...args) => {
+    const owner = create(...args);
+    return { ...owner, handleSdkResult: (...result) => {
+      state.sdkResultHandled(...result); return owner.handleSdkResult(...result);
+    } };
+  });
+  agent = await import('../agent-session');
+  vi.stubEnv('HOME', state.home);
+  let release!: () => void;
+  let fixtureQuery: import('@anthropic-ai/claude-agent-sdk').Query | undefined;
+  try {
+    agent.setSidecarPort(15432);
+    const workspace = join(state.home, 'settled-replaced'); await mkdir(workspace);
+    const providers = join(state.home, '.myagents', 'providers'); await mkdir(providers, { recursive: true });
+    await writeFile(join(providers, 'replaced-fixture.json'), JSON.stringify({ id: 'replaced-fixture', name: 'fixture', type: 'api', models: [{ model: 'fixture' }] }));
+    await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+    await agent.setSessionProviderEnv({ providerId: 'replaced-fixture', baseUrl: 'http://127.0.0.1:1', apiKey: 'fixture-only' });
+    await agent.setSessionModel('fixture');
+    const recovery = await import('../builtin-session/model-recovery');
+    let blocked = false; let returned = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(recovery.SessionModelRecovery.prototype, 'armSettledInterruption').mockImplementationOnce(async () => {
+      blocked = true; await gate; returned = true; return false;
+    });
+    const pause = vi.spyOn(recovery.SessionModelRecovery.prototype, 'pause');
+    const finish = vi.spyOn(recovery.SessionModelRecovery.prototype, 'finishStreamTurn');
+    state.beforeResult.mockImplementationOnce(async (result: Record<string, unknown>) => {
+      result.is_error = true; result.subtype = 'error_during_execution'; result.terminal_reason = 'api_error';
+    });
+    await agent.enqueueUserMessage('Original isolated root', undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY });
+    await vi.waitFor(() => expect(blocked).toBe(true));
+    const lifecycle = await import('../builtin-session/lifecycle'); const turn = await import('../builtin-session/turn');
+    const oldQuery = lifecycle.lifecycleState.query!; fixtureQuery = oldQuery;
+    const close = vi.fn(); const replacement = { close } as unknown as typeof oldQuery;
+    const authority = lifecycle.setQuerySessionWithAuthority(replacement, { productSessionId: agent.getSessionId()!, expectedSdkSessionId: agent.getSessionId()! });
+    const nextOwner = { id: randomUUID(), message: { role: 'user' as const, content: 'successor' }, messageText: 'successor',
+      turnOwner: { kind: 'goal' as const, id: 'successor-goal' }, wasQueued: false, resolve: () => {}, channelDelivery: NO_CHANNEL_DELIVERY };
+    turn.setCurrentTurnSourceItem(nextOwner);
+    const before = state.events.length; const handledBefore = state.sdkResultHandled.mock.calls.length; release();
+    await vi.waitFor(() => expect(returned).toBe(true));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(state.sdkResultHandled).toHaveBeenCalledTimes(handledBefore);
+    expect(lifecycle.isCurrentQueryAuthority(authority)).toBe(true);
+    expect(turn.getCurrentTurnSourceItem()).toBe(nextOwner);
+    expect(state.events.slice(before).filter(([event]) => event === 'chat:agent-error' || event === 'chat:message-error')).toEqual([]);
+    expect(pause).not.toHaveBeenCalled(); expect(finish).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(1);
+    // Restore the fixture handle solely so normal test teardown can close it.
+    lifecycle.setQuerySession(oldQuery);
+  } finally {
+    release?.();
+    if (fixtureQuery) (await import('../builtin-session/lifecycle')).setQuerySession(fixtureQuery);
+    agent.setSidecarPort(0); vi.unstubAllEnvs();
+  }
 });
