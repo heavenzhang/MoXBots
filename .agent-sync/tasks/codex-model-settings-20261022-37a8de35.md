@@ -16,7 +16,7 @@
 - [x] 中英文说明及空状态指向正确配置位置。
 - [x] 47 项 DOM 和 31 项原运行时回归；TypeScript 与改动文件 lint。
 - [x] 真实 SettingsPage 浏览器交互、合成保存/失败/刷新及三宽度无横溢出；主 Agent 视觉复核。
-- [ ] 远端功能分支同步及 handoff gate（以外部精确 SHA 回执为准）。
+- [x] 源码提交及远端功能分支同步：63fbaf74d0441616ac8d22bac93c6ae8d1f65f5c；最终文档提交的 handoff gate 以外部精确 SHA 回执为准。
 - [ ] 唯一桌面 CI/main owner 统一集成，远端 main 验证。
 - [ ] owner 下一未冻结制品及原生配置/真实 Provider/生产验收。
 
@@ -26,7 +26,7 @@
 
 ## Blockers and unknowns
 
-共享计划现有 desktop owner 唯一负责 CI/main/构建/发布，开发会话不自行触发。未创建自动触发共享 CI 的 PR。当前分支提交不是已主干交付或已发布；未取得 owner 接收回执，未跨聊天发消息。
+共享计划现有 desktop owner 唯一负责 CI/main/构建/发布，开发会话不自行触发。未创建自动触发共享 CI 的 PR。当前分支提交不是已主干交付或已发布；owner 接收、CI/main 和发布状态以工作区同任务 result.json/发布队列回执为准，本记录不冒称接收。
 
 ## Deployment request
 
