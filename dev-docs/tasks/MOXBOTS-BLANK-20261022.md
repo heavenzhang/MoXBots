@@ -14,8 +14,10 @@ Fix blank chat content after presentation/session recovery, preserve live execut
 - [x] Recover original live view with a single wheel input; no restart/replay.
 - [x] Reproduce raw itemsRendered before DOM commit; commit-boundary handoff fixes it.
 - [x] 101 focused DOM tests, scoped ESLint, TypeScript, test classification and routed-doc checks pass. Full real WebKit scroll audit and new blank/recovery/wheel audit pass.
-- [ ] Commit, merge main, remote ancestry verification.
-- [ ] Release handoff and native acceptance of new build.
+- [x] Commit and remote branch verification: functional SHA `c5eee9fe97ece51e97f8a18ce3defe32cbd45349`, branch `codex/chat-blank-20261022`.
+- [ ] Owner-coordinated main/CI integration and remote main ancestry verification.
+- [x] Release/main/CI intake request delivered to desktop owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`; this is delivery of request, not acceptance or publication.
+- [ ] Native acceptance of newly packaged code on the original long session.
 
 ## Completed
 Original view recovered at 2026-10-22 about 01:18 Asia/Shanghai. CUA screenshots and accessibility observations distinguish existing messages from missing paint. Current source worktree is isolated from the active release candidate.
@@ -39,3 +41,6 @@ Single primary, zero subagents and zero external-model calls. Scope is tightly c
 
 ## Next
 Commit and push only this task branch (no automatic CI for codex/**); existing desktop owner coordinates PR/main CI and next candidate inclusion. No formal version, shared build, original task interruption, publication or replacement initiated here.
+
+## Release intake
+Desktop deployment unit remains exclusively owned by `01a12bc2-907a-7702-b6dd-788225c5dfe4` (MoxBots桌面端统一打包负责人). Its latest snapshot reports 516.7 already built and signing/notarization active; inclusion of this later fix is unverified and must enter an unfrozen batch. This development chat did not start shared CI, PR, official build, publication or install. No new version assigned here. User-visible issue remains open until new native package acceptance.

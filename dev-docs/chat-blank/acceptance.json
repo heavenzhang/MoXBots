@@ -1,0 +1,9 @@
+{
+  "domTests": 101,
+  "blankCycles": 5,
+  "missingRows": 0,
+  "browserErrors": [],
+  "readerMovementMaxPx": 0,
+  "fullWebkitScroll": "passed",
+  "nativeNewBuild": "pending existing desktop release owner"
+}
