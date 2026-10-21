@@ -77,6 +77,7 @@ struct Attempt {
     expires_at: u64,
     consuming: bool,
     replayable_result: bool,
+    oauth: Option<super::owned_oauth::NativeOAuth>,
     phase: LoginPhase,
     failure: Option<NetworkError>,
     reauthorization: Option<super::registry::StoredOwnedConnection>,
@@ -91,6 +92,11 @@ impl Attempt {
                 self.staged_session
                     .as_ref()
                     .map(|session| session.expires_at)
+            })
+            .or_else(|| {
+                self.oauth
+                    .as_ref()
+                    .and_then(|flow| flow.received_expires_at())
             })
             .unwrap_or(self.expires_at)
     }
@@ -194,13 +200,29 @@ fn login_diagnostic_code(error: &NetworkError) -> &'static str {
     }
 }
 fn recover_poll_failure(attempt: &mut Attempt, error: NetworkError) -> NetworkError {
+    if attempt.phase == LoginPhase::ReceivingGrant
+        && attempt
+            .oauth
+            .as_ref()
+            .and_then(|flow| flow.received_expires_at())
+            .is_some()
+    {
+        // A transient identity inspection failure must not send an already
+        // received grant back to the browser deadline or reopen authorization.
+        attempt.phase = LoginPhase::VerifyingIdentity;
+    }
     let resumable = can_resume_login(
         attempt.phase,
         attempt.replayable_result,
-        attempt.staged_session.is_some() || attempt.completed.is_some(),
+        attempt.staged_session.is_some()
+            || attempt.completed.is_some()
+            || (attempt.oauth.is_some() && error.retryable),
         &error,
     );
-    let mut error = if attempt.phase == LoginPhase::ReceivingGrant && !attempt.replayable_result {
+    let mut error = if attempt.phase == LoginPhase::ReceivingGrant
+        && !attempt.replayable_result
+        && attempt.oauth.is_none()
+    {
         NetworkError::new("OWNED_LOGIN_RESTART_REQUIRED")
     } else {
         error
@@ -1000,6 +1022,74 @@ fn pkce() -> (Zeroizing<String>, String) {
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     (verifier, challenge)
 }
+async fn start_transport(
+    client: &OwnedClient,
+    device: &str,
+) -> Result<
+    (
+        super::owned_login::OwnedLoginStart,
+        Zeroizing<String>,
+        Option<super::owned_oauth::NativeOAuth>,
+    ),
+    NetworkError,
+> {
+    if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
+        let flow = client.start_oauth(device).await?;
+        let started = super::owned_login::OwnedLoginStart {
+            transaction_id: uuid::Uuid::new_v4().to_string(),
+            authorization_url: flow.authorization_url().to_owned(),
+            expires_at: flow.expires_at(),
+            replayable_result: false,
+        };
+        Ok((started, Zeroizing::new(String::new()), Some(flow)))
+    } else {
+        let (verifier, challenge) = pkce();
+        let started = client.start(device, &challenge).await?;
+        Ok((started, verifier, None))
+    }
+}
+fn persist_pending(attempt: &Attempt) -> Result<(), NetworkError> {
+    // Standard OAuth proof and the loopback listener are process-local. Only a
+    // validated session enters the existing durable credential commit path.
+    if attempt.oauth.is_some() {
+        return Ok(());
+    }
+    write(
+        &pending_entry(
+            &attempt.instance,
+            &attempt.owner_device_id,
+            attempt.public_tls_ca.as_deref(),
+        )?,
+        &record(attempt),
+    )
+}
+fn delete_pending(attempt: &Attempt) -> Result<(), NetworkError> {
+    if attempt.oauth.is_some() {
+        return Ok(());
+    }
+    delete(&pending_entry(
+        &attempt.instance,
+        &attempt.owner_device_id,
+        attempt.public_tls_ca.as_deref(),
+    )?)
+}
+async fn abandon_transport(attempt: &Attempt) {
+    if let Some(flow) = &attempt.oauth {
+        flow.cancel();
+        if let Some(token) = flow.cached_token().await {
+            let _ = attempt.client.logout(&token).await;
+        }
+    } else {
+        let _ = attempt
+            .client
+            .cancel(
+                &attempt.device_id,
+                &attempt.transaction_id,
+                &attempt.verifier,
+            )
+            .await;
+    }
+}
 fn record(attempt: &Attempt) -> SecretRecord {
     SecretRecord::Pending {
         version: VERSION,
@@ -1312,24 +1402,15 @@ impl OwnedLoginManager {
             let old = old_id.and_then(|id| state.attempts.remove(&id));
             let cleanup = old
                 .as_ref()
-                .map(|attempt| {
-                    delete(&pending_entry(
-                        &attempt.instance,
-                        &attempt.owner_device_id,
-                        attempt.public_tls_ca.as_deref(),
-                    )?)
-                })
+                .map(|attempt| delete_pending(attempt))
                 .transpose();
             (generation, old, cleanup)
         };
         if let Some(old) = old {
-            if let Some(session) = old.staged_session {
+            if let Some(session) = &old.staged_session {
                 let _ = old.client.logout(&session.access_token).await;
             } else {
-                let _ = old
-                    .client
-                    .cancel(&old.device_id, &old.transaction_id, &old.verifier)
-                    .await;
+                abandon_transport(&old).await;
             }
         }
         cleanup?;
@@ -1340,12 +1421,7 @@ impl OwnedLoginManager {
         } else {
             uuid::Uuid::new_v4().to_string()
         };
-        let (verifier, challenge) = pkce();
-        let started = if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
-            client.start_desktop(&device_id, &challenge).await?
-        } else {
-            client.start(&device_id, &challenge).await?
-        };
+        let (started, verifier, oauth) = start_transport(&client, &device_id).await?;
         let attempt_id = uuid::Uuid::new_v4().to_string();
         let attempt = Attempt {
             client,
@@ -1369,12 +1445,12 @@ impl OwnedLoginManager {
             expires_at: started.expires_at,
             consuming: false,
             replayable_result: started.replayable_result,
+            oauth,
             phase: LoginPhase::AwaitingAuthorization,
             failure: None,
             reauthorization: None,
             completed: None,
         };
-        let secret_entry = pending_entry(&instance, owner_device_id, public_tls_ca.as_deref())?;
         let mut state = self.state.lock().await;
         state
             .receipts
@@ -1384,18 +1460,11 @@ impl OwnedLoginManager {
         } else if state.generation_by_scope.get(&scope).copied() != Some(generation) {
             Err(NetworkError::new("OWNED_LOGIN_SUPERSEDED"))
         } else {
-            write(&secret_entry, &record(&attempt))
+            persist_pending(&attempt)
         };
         if let Err(error) = result {
             drop(state);
-            let _ = attempt
-                .client
-                .cancel(
-                    &attempt.device_id,
-                    &attempt.transaction_id,
-                    &attempt.verifier,
-                )
-                .await;
+            abandon_transport(&attempt).await;
             return Err(error);
         }
         let registered = state.register(&scope, generation, &attempt_id);
@@ -1688,6 +1757,7 @@ impl OwnedLoginManager {
             reuse_identity,
             staged_session,
             reauthorization,
+            oauth,
         ) = {
             let mut state = self.state.lock().await;
             let attempt = state
@@ -1718,7 +1788,8 @@ impl OwnedLoginManager {
             }
             // Legacy requests persist their consumption fence before network IO.
             // V2 proof is replayable, so pending polls do not rewrite Keychain.
-            if !attempt.replayable_result
+            if attempt.oauth.is_none()
+                && !attempt.replayable_result
                 && attempt.staged_session.is_none()
                 && attempt.reauthorization.is_none()
             {
@@ -1757,6 +1828,7 @@ impl OwnedLoginManager {
                 attempt.reuse_identity,
                 attempt.staged_session.clone(),
                 attempt.reauthorization.clone(),
+                attempt.oauth.clone(),
             )
         };
         if let Some(candidate) = reauthorization {
@@ -1767,6 +1839,8 @@ impl OwnedLoginManager {
         let result = if let Some(session) = staged_session {
             client.validate_session(&device, &session).await?;
             OwnedPoll::Authenticated(session)
+        } else if let Some(flow) = oauth {
+            client.receive_oauth(&device, &flow).await?
         } else {
             client.poll(&device, &transaction, &verifier).await?
         };
@@ -1777,10 +1851,7 @@ impl OwnedLoginManager {
                 attempt.consuming = false;
                 attempt.phase = LoginPhase::AwaitingAuthorization;
                 if !attempt.replayable_result {
-                    write(
-                        &pending_entry(&instance, &owner, ca.as_deref())?,
-                        &record(attempt),
-                    )?;
+                    persist_pending(attempt)?;
                 }
                 return Ok(LoginProgress::Pending);
             }
@@ -1840,16 +1911,31 @@ impl OwnedLoginManager {
                 .or_else(|| (eligible.len() == 1).then(|| eligible[0].clone()))
         };
         let identity_store = if reuse_identity {
-            let record = replacement.as_ref().ok_or_else(|| NetworkError::new("ACCOUNT_BINDING_CHANGED"))?;
+            let record = replacement
+                .as_ref()
+                .ok_or_else(|| NetworkError::new("ACCOUNT_BINDING_CHANGED"))?;
             validate_pinned_candidate(&instance, ca.as_deref(), &candidates, record)?;
             if record.device_id != device || record.principal_id != session.principal_id {
                 return Err(NetworkError::new("IDENTITY_SCOPE_MISMATCH"));
             }
-            let operation = crate::space_cloud::agent_network::AccountOperation::IdentityState(device.clone());
+            let operation =
+                crate::space_cloud::agent_network::AccountOperation::IdentityState(device.clone());
             let (method, path, _) = operation.request()?;
-            let value = client.identity_request(method, &path, None, &session.access_token).await?;
-            Some(super::identity_desktop::existing_owned_identity(&instance, &session.principal_id, &device, value).await?)
-        } else { None };
+            let value = client
+                .identity_request(method, &path, None, &session.access_token)
+                .await?;
+            Some(
+                super::identity_desktop::existing_owned_identity(
+                    &instance,
+                    &session.principal_id,
+                    &device,
+                    value,
+                )
+                .await?,
+            )
+        } else {
+            None
+        };
         let connection_id = replacement
             .as_ref()
             .map(|c| c.id.clone())
@@ -1875,7 +1961,7 @@ impl OwnedLoginManager {
         let mut state = self.state.lock().await;
         let attempt = current_child(&mut state, &scope, attempt_id, epoch)?;
         // No durable session or active guard is published by polling.
-        delete(&pending_entry(&instance, &owner, ca.as_deref())?)?;
+        delete_pending(attempt)?;
         attempt.completed = Some(completed.clone());
         attempt.phase = LoginPhase::SavingSession;
         attempt.consuming = false;
@@ -1899,22 +1985,19 @@ impl OwnedLoginManager {
             let mut state = self.state.lock().await;
             current_child(&mut state, scope, attempt_id, epoch)?.staged_session = None;
         }
-        let (verifier, challenge) = pkce();
-        let started = if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
-            client
-                .start_desktop(&candidate.device_id, &challenge)
-                .await?
-        } else {
-            client.start(&candidate.device_id, &challenge).await?
-        };
+        let (started, verifier, oauth) = start_transport(&client, &candidate.device_id).await?;
         let mut state = self.state.lock().await;
         let attempt = match current_child(&mut state, scope, attempt_id, epoch) {
             Ok(attempt) => attempt,
             Err(error) => {
                 drop(state);
-                let _ = client
-                    .cancel(&candidate.device_id, &started.transaction_id, &verifier)
-                    .await;
+                if let Some(flow) = oauth {
+                    flow.cancel();
+                } else {
+                    let _ = client
+                        .cancel(&candidate.device_id, &started.transaction_id, &verifier)
+                        .await;
+                }
                 return Err(error);
             }
         };
@@ -1926,19 +2009,16 @@ impl OwnedLoginManager {
         attempt.verifier = verifier;
         attempt.authorization_url = started.authorization_url.clone();
         attempt.expires_at = started.expires_at;
+        if let Some(old_flow) = attempt.oauth.take() {
+            old_flow.cancel();
+        }
+        attempt.oauth = oauth;
         attempt.replayable_result = started.replayable_result;
         attempt.phase = LoginPhase::AwaitingAuthorization;
         attempt.consuming = false;
         // A failed local pending-save retains the exact child proof in memory;
         // explicit Retry must not create a second child authorization.
-        write(
-            &pending_entry(
-                &attempt.instance,
-                &attempt.owner_device_id,
-                attempt.public_tls_ca.as_deref(),
-            )?,
-            &record(attempt),
-        )?;
+        persist_pending(attempt)?;
         Ok(LoginProgress::Reauthorize)
     }
     pub(crate) async fn record_install_error(
@@ -2061,24 +2141,16 @@ impl OwnedLoginManager {
                     },
                 );
             }
-            let cleanup = delete(&pending_entry(
-                &attempt.instance,
-                &attempt.owner_device_id,
-                attempt.public_tls_ca.as_deref(),
-            )?);
+            if let Some(flow) = &attempt.oauth {
+                flow.cancel();
+            }
+            let cleanup = delete_pending(&attempt);
             (attempt, cleanup)
         };
-        if let Some(session) = attempt.staged_session {
+        if let Some(session) = &attempt.staged_session {
             let _ = attempt.client.logout(&session.access_token).await;
         } else {
-            let _ = attempt
-                .client
-                .cancel(
-                    &attempt.device_id,
-                    &attempt.transaction_id,
-                    &attempt.verifier,
-                )
-                .await;
+            abandon_transport(&attempt).await;
         }
         cleanup
     }
@@ -2922,9 +2994,16 @@ mod tests {
                 4 => changed.removing = true,
                 _ => changed.join_authorized = false,
             }
-            assert!(super::validate_pinned_candidate(&record.descriptor, None, &candidates, &changed).is_err());
+            assert!(super::validate_pinned_candidate(
+                &record.descriptor,
+                None,
+                &candidates,
+                &changed
+            )
+            .is_err());
         }
-        let mut trust = record.descriptor.clone(); trust.root_certificate = "changed".into();
+        let mut trust = record.descriptor.clone();
+        trust.root_certificate = "changed".into();
         assert!(super::validate_pinned_candidate(&trust, None, &candidates, &record).is_err());
     }
 
@@ -3111,11 +3190,117 @@ mod tests {
             expires_at: now() + 3600,
             consuming: true,
             replayable_result: true,
+            oauth: None,
             phase: LoginPhase::SavingSession,
             failure: None,
             reauthorization: None,
             completed: None,
         }
+    }
+
+    #[tokio::test]
+    async fn oauth_callback_retries_session_inspection_without_poll_ack_or_second_token() {
+        use axum::{
+            routing::{get, post},
+            Json, Router,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let mut attempt = staged_login_attempt();
+        let device = "22222222-2222-4222-8222-222222222222";
+        let principal = "00000000-0000-0000-0000-000000000002";
+        let network = attempt.instance.network_id.clone();
+        let grants = std::sync::Arc::new(AtomicUsize::new(0));
+        let inspections = std::sync::Arc::new(AtomicUsize::new(0));
+        let revoked = std::sync::Arc::new(AtomicUsize::new(0));
+        let grant_count = grants.clone();
+        let inspect_count = inspections.clone();
+        let revoke_count = revoked.clone();
+        let router = Router::new()
+            .route("/auth/oauth/token", post(move || {
+                grant_count.fetch_add(1, Ordering::SeqCst);
+                async { ([("cache-control", "no-store")], Json(serde_json::json!({
+                    "access_token": "a".repeat(43), "token_type": "Bearer", "expires_in": 3600
+                }))) }
+            }))
+            .route("/auth/session", get(move || {
+                let index = inspect_count.fetch_add(1, Ordering::SeqCst);
+                let network = network.clone();
+                async move {
+                    let status = if index == 0 { reqwest::StatusCode::SERVICE_UNAVAILABLE } else { reqwest::StatusCode::OK };
+                    (status, [("cache-control", "no-store")], Json(if index == 0 {
+                        serde_json::json!({"error":"busy"})
+                    } else {serde_json::json!({"principalId":principal,"networkId":network,"deviceId":device,"expiresAt":now()+3600})}))
+                }
+            }).delete(move || {
+                revoke_count.fetch_add(1, Ordering::SeqCst);
+                async { reqwest::StatusCode::NO_CONTENT }
+            }));
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let flow = super::super::owned_oauth::NativeOAuth::bind(&origin, device)
+            .await
+            .unwrap();
+        let auth = url::Url::parse(flow.authorization_url()).unwrap();
+        let fields: std::collections::HashMap<_, _> = auth.query_pairs().into_owned().collect();
+        let mut callback = url::Url::parse(&fields["redirect_uri"]).unwrap();
+        callback
+            .query_pairs_mut()
+            .append_pair("state", &fields["state"])
+            .append_pair("code", &"c".repeat(43));
+        attempt.oauth = Some(flow);
+        attempt.client = super::OwnedClient::for_test(origin, attempt.instance.clone());
+        attempt.device_id = device.into();
+        attempt.staged_session = None;
+        attempt.consuming = false;
+        attempt.replayable_result = false;
+        attempt.phase = LoginPhase::AwaitingAuthorization;
+        let manager = super::OwnedLoginManager::default();
+        let scope =
+            super::attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id).unwrap();
+        {
+            let mut state = manager.state.lock().await;
+            let (generation, _) = state.begin(&scope);
+            state.register(&scope, generation, "uncertain");
+            state.attempts.insert("uncertain".into(), attempt);
+        }
+        assert!(matches!(
+            manager.poll("uncertain").await.unwrap(),
+            super::LoginProgress::Pending
+        ));
+        assert_eq!(grants.load(Ordering::SeqCst), 0);
+        let browser = reqwest::Client::builder().no_proxy().build().unwrap();
+        assert!(browser
+            .get(callback)
+            .send()
+            .await
+            .unwrap()
+            .status()
+            .is_success());
+        let error = manager.poll("uncertain").await.err().unwrap();
+        assert!(error.retryable);
+        assert_eq!(error.details.as_ref().unwrap()["canRetry"], true);
+        assert_eq!(
+            error.details.as_ref().unwrap()["phase"],
+            "verifying_identity"
+        );
+        manager.retry("uncertain").await.unwrap();
+        let result = manager.poll("uncertain").await.unwrap();
+        let super::LoginProgress::Authenticated(done) = result else {
+            panic!("validated session expected")
+        };
+        assert_eq!(done.device_id, device);
+        assert_eq!(done.session.principal_id, principal);
+        assert_eq!(grants.load(Ordering::SeqCst), 1);
+        assert_eq!(inspections.load(Ordering::SeqCst), 2);
+        // No OS credential IO is permitted before commit in this OAuth flow;
+        // cancellation revokes only its staged product session.
+        manager.cancel("uncertain").await.unwrap();
+        assert_eq!(revoked.load(Ordering::SeqCst), 1);
+        assert!(manager.state.lock().await.attempts.is_empty());
+        server.abort();
     }
 
     #[tokio::test]
@@ -3475,6 +3660,7 @@ mod tests {
             expires_at: now() + 3600,
             consuming: true,
             replayable_result: true,
+            oauth: None,
             phase: LoginPhase::SavingSession,
             failure: None,
             reauthorization: None,

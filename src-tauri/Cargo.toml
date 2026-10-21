@@ -70,6 +70,8 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-global-shortcut = "2"
 reqwest = { version = "0.13.1", features = ["stream", "json", "blocking", "multipart", "socks", "form"] }
+oauth2 = { version = "=5.0.0", default-features = false }
+subtle = "=2.6.1"
 futures-util = "0.3.31"
 tokio = { version = "1.49.0", features = ["rt", "rt-multi-thread", "sync", "time", "macros"] }
 chrono = { version = "0.4", features = ["serde"] }

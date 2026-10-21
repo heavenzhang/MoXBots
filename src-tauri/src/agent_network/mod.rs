@@ -30,6 +30,7 @@ mod memory;
 mod owned_account_desktop;
 mod owned_admission;
 mod owned_login;
+mod owned_oauth;
 mod owned_profile;
 mod pairs;
 mod policy;

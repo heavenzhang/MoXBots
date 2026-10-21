@@ -204,6 +204,10 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
                 details?: { canRetry?: boolean; phase?: OwnedLoginPhase };
               })
             : undefined;
+        if (issue?.details?.phase) {
+          showNativePhase(issue.details.phase);
+          armExpiry();
+        }
         if (issue?.code === "OWNED_LOGIN_EXPIRED") {
           markExpired();
           return;
@@ -221,7 +225,6 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
               ? "paused"
               : "stopped",
           );
-          if (issue.details?.phase) showNativePhase(issue.details.phase);
           setNotice(null);
           setError(
             issue.code === "OWNED_ACCOUNT_MISMATCH"

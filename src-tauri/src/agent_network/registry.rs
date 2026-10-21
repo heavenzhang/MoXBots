@@ -972,6 +972,14 @@ impl NetworkRegistry {
                         .await
                     {
                         Ok(_) => {
+                            // Activate only after durable credential/config commit.
+                            // The standard loopback flow needs no URL-scheme handler.
+                            if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
+                                let target = app.clone();
+                                let _ = app.run_on_main_thread(move || {
+                                    crate::tray::show_main_window(&target);
+                                });
+                            }
                             // Commit is permanent. Failed ACK only retries the proof;
                             // it cannot roll back publication or revoke its session.
                             loop {

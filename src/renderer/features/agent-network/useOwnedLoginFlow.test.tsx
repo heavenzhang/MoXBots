@@ -529,3 +529,17 @@ it("can restart after cancellation fails while an older observation remains in f
   expect(actions.onCancel).not.toHaveBeenCalled();
   expect(result.current.attempt?.attemptId).toBe("attempt-2");
 });
+
+it("keeps a received OAuth grant past browser expiry while native identity inspection recovers", async () => {
+  const poll = vi.fn().mockRejectedValue({ code: "OWNED_ACCOUNT_UNAVAILABLE", retryable: true, details: { phase: "verifying_identity", canRetry: true } });
+  const { result, actions } = setup({ onOwnedStart: vi.fn().mockResolvedValue({ ...attempt, expiresAt: 1800000003 }), onOwnedPoll: poll });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await tick();
+  expect(result.current.nativePhase).toBe("verifying_identity");
+  await tick(10_000);
+  expect(result.current.expired).toBe(false);
+  expect(actions.onOwnedOpen).toHaveBeenCalledTimes(1);
+  poll.mockResolvedValueOnce("authenticated");
+  await act(async () => { await result.current.check(); });
+  expect(actions.onCancel).toHaveBeenCalledOnce();
+});

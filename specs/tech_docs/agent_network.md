@@ -86,9 +86,11 @@ Renderer 只发送闭集 `list/detail/create/reply` intent 和非秘密 `connect
 
 ### 独立账号的桌面凭据访问
 
-登录弹窗的 `useOwnedLoginFlow` 只维护呈现生命周期：用户发起后自动调用原 browser-open、串行轮询原 poll，窗口恢复焦点时补查，成功由原 owner 发布 registry 后关闭。手动检查与浏览器重开保留为备用，完整授权链接默认折叠在高级信息中。轮询成功间隔 2 秒，失败有限退避到 15 秒；到期/取消/卸载停止计时，不并发轮询。现有身份重新授权仍使用 owner 返回的同一逻辑 attempt，不另建身份。各父入口在异步结果发布前核对 generation，取消只失效匹配的 pending attempt；凭据和成功持久化仍由 Rust owner 裁决。
+正式 MoXBots 桌面登录使用产品服务的标准 OAuth2 Authorization Code + S256 PKCE：native 先绑定仅 `127.0.0.1` 的随机高端口 listener，系统浏览器访问固定 `/auth/oauth/authorize`。云端保持既有 confidential Dex OIDC client，完整验证上游 code/issuer/audience/JWKS/nonce/state 后，只向绑定的 loopback URI 返回短期一次性 code 和原 state。native 通过 oauth2 crate 向固定 `/auth/oauth/token` 发标准 form 请求，再经原 `/auth/session` 校验精确 device/principal/network/expiry。Dex ID token/client secret 不下放桌面，产品 bearer 不进入 URL、Renderer 或日志。新路径不依赖 custom scheme、服务端 poll、replay 或 ACK；OS 凭据和 registry 仍由原提交权威拥有。协议及取舍见 [标准登录设计](../../dev-docs/login-oauth-standard/design.md)。
 
-正式 MoXBots 桌面登录额外请求闭集 `browserReturnPath: "/desktop"`。服务端将该选项绑定在原 PKCE Pending 事务中，仅 OIDC 回调验证成功后返回自动唤起页面；网页后台、社区和 headless 登录仍沿各自入口。页面仅打开固定 `moxbot://login/complete`，不传账号、token、state 或 verifier；浏览器询问是否打开应用时遵守浏览器确认，保留“打开 MoXBots”按钮。Rust 收到该精确 URL 只发出 `owned-login:browser-return` 唤醒信号并沿原窗口激活路径返回前台，Renderer 随即检查当前 attempt；该 URL 不能创建会话、认证账号或跳过原凭据保存。旧服务对新增选项显式返回 400/422 时仅重试一次原请求；其他错误及成功响应仍须通过原严格校验。QA profile 不争用正式 scheme。
+登录弹窗 `useOwnedLoginFlow` 只观察原 native driver 的本地阶段并自动关闭，focus 补查也只查询本地已验证结果，不驱动认证网络。固定实例界面隐藏 URL、CA 高级设置、授权链接和手动检查，提供单一浏览器登录入口及必要错误恢复；自托管网络设置保留。认证必须在发起登录的本机浏览器完成，普通网页登录不代表授权另一台设备。code 交换结果未知明确重登，不重复兑换；已收到 grant 的会话检查和持久化失败可重试同一内存结果。未完成事务不跨应用重启恢复，已提交会话仍经既有 Keychain/config 恢复。
+
+旧 `/auth/login/start/poll/ack/cancel` 契约保留给旧桌面、Host、手机和 Web 入口，响应 shape 不变；新 OAuth 事务拒绝旧端点消费或撤销。旧桌面 `browserReturnPath: "/desktop"` 仍由原PKCE事务绑定，固定 `moxbot://login/complete` 仅激活窗口/唤醒检查，不携带凭据或认证授权。新流程可在未注册 scheme 时通过 loopback 完成结果交付。
 
 `owned_account_desktop.rs` 在首次恢复时从 OS 凭据库读取并验证完整实例、设备、principal、连接、binding、CA 和有效期。Owned 连接使用登录响应实际绑定的独立 device ID；identity、admission、discovery、来源和本机标记均使用同一 ID，官方/legacy 保持安装级 ID。浏览器首次以临时 ID 识别账号，完整查询同账号候选登记；已有登记时精确注销临时会话，并显式再次授权旧 ID，校验同一 principal；查询失败/不完整或多候选歧义均不新建身份。
 
