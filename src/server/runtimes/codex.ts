@@ -8,7 +8,7 @@ import { parseAsyncQuestionSet } from '../../shared/asyncUserQuestions';
 // System prompt: thread/start → developerInstructions
 // Session: thread/start (new) / thread/resume (continuing)
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readCodexModels, resolveManagedCodexEffort } from './codex-models';
 import { tmpdir } from 'node:os';
 import { spawn, type Subprocess, type SubprocessStdin } from '../utils/subprocess';
@@ -849,6 +849,7 @@ export function buildCodexAppServerLaunchConfig(args: {
   codexEnv: Record<string, string | undefined>;
   mcpServers?: readonly McpServerDefinition[];
   extensionConfigArgs?: readonly string[];
+  subagentDelegationEnabled?: boolean;
 }): {
   args: string[];
   mcpServerNames: string[];
@@ -873,6 +874,10 @@ export function buildCodexAppServerLaunchConfig(args: {
     mcpServerNames = mcpConfig.serverNames;
   }
   codexArgs.push(...(args.extensionConfigArgs ?? []));
+  // These overrides must follow extension config so it cannot reopen native delegation.
+  if (args.subagentDelegationEnabled === false) {
+    codexArgs.push('-c', 'features.collab=false', '-c', 'features.multi_agent_v2=false');
+  }
   codexArgs.push('app-server');
   return { args: codexArgs, mcpServerNames, modelProvider };
 }
@@ -2632,6 +2637,7 @@ type CodexCompactControl = {
 };
 
 class CodexProcess implements RuntimeProcess {
+  readonly subagentDelegationEnabledAtLaunch: boolean;
   readonly pid: number;
   readonly runtimeGeneration: string;
   exited = false;
@@ -2762,7 +2768,8 @@ class CodexProcess implements RuntimeProcess {
   /** Latched on this exact process before asynchronous teardown starts. */
   shutdownReason: 'stop' | 'failure' | null = null;
 
-  constructor(proc: Subprocess) {
+  constructor(proc: Subprocess, subagentDelegationEnabledAtLaunch = true) {
+    this.subagentDelegationEnabledAtLaunch = subagentDelegationEnabledAtLaunch;
     this.proc = proc;
     this.pid = proc.pid;
     this.runtimeGeneration = this.processGeneration;
@@ -3028,15 +3035,18 @@ export function mapCodexTurnPlanUpdatedNotification(
   params: unknown,
 ): Extract<UnifiedEvent, { kind: 'agent_plan_update' }> {
   const p = objectValue(params);
+  const snapshotId = createHash('sha256').update(JSON.stringify([p.threadId, p.turnId, p.plan])).digest('hex').slice(0, 16);
   const todos = arrayValue(p.plan)
     .map((raw, idx): AgentPlanTodo | null => {
       const step = objectValue(raw);
       const content = stringValue(step.step)?.trim();
       if (!content) return null;
+      const explicit = content.match(/^\[task:([A-Za-z0-9._:-]{1,128})\]\s+([\s\S]+)$/);
+      const title = explicit?.[2] ?? content;
       return {
-        key: `codex-plan-${idx}`,
-        content,
-        activeForm: content,
+        key: explicit?.[1] ?? `codex-snapshot-${snapshotId}-${idx}`,
+        content: title,
+        activeForm: title,
         status: normalizeCodexPlanStatus(step.status),
       };
     })
@@ -3737,12 +3747,14 @@ export class CodexRuntime implements AgentRuntime {
           + ` servers=${admissionQueuedServerNames.size}`,
       );
     }
+    const subagentDelegationEnabledAtLaunch = options.canDelegateSubagents?.() !== false;
     const launchConfig = buildCodexAppServerLaunchConfig({
       commandPath: context.commandPath,
       runtimeSource,
       codexEnv,
       mcpServers: runtimeMcpServers,
       extensionConfigArgs: extensionMaterialization.configArgs,
+      subagentDelegationEnabled: subagentDelegationEnabledAtLaunch,
     });
     const mcpStartup = createCodexMcpStartupBarrier(launchConfig.mcpServerNames);
     console.log(
@@ -3775,7 +3787,7 @@ export class CodexRuntime implements AgentRuntime {
     }
 
     let browserRecoveryTimer: ReturnType<typeof setTimeout> | null = null;
-    const codexProc = new CodexProcess(proc);
+    const codexProc = new CodexProcess(proc, subagentDelegationEnabledAtLaunch);
     codexProc.extensionSnapshot = extensionSnapshot
       ? { ...extensionSnapshot, skills: extensionMaterialization.skills }
       : null;
@@ -4386,13 +4398,14 @@ export class CodexRuntime implements AgentRuntime {
     process: RuntimeProcess,
     message: string,
     images?: ResolvedImagePayload[],
-    options?: { clientUserMessageId?: string },
+    options?: Parameters<AgentRuntime['sendMessage']>[3],
   ): Promise<void> {
     const codexProc = process as CodexProcess;
     if (codexProc.exited) throw new Error('Codex process has exited');
     const clientUserMessageId = options?.clientUserMessageId;
     if (!clientUserMessageId) throw new Error('Codex root turn is missing clientUserMessageId');
 
+    options?.beforeDispatch?.();
     this.beginRootTurnAdmission(codexProc, clientUserMessageId);
     const input = buildCodexInput(message, images);
     try {

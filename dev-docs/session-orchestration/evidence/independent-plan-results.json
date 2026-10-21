@@ -1,0 +1,92 @@
+[
+  {
+    "width": 1280,
+    "dark": false,
+    "passed": true,
+    "composer": {
+      "x": 12,
+      "y": 802,
+      "width": 1256,
+      "height": 80
+    },
+    "overflow": {
+      "viewport": 1280,
+      "scroll": 1280
+    }
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "passed": true,
+    "composer": {
+      "x": 12,
+      "y": 802,
+      "width": 1256,
+      "height": 80
+    },
+    "overflow": {
+      "viewport": 1280,
+      "scroll": 1280
+    }
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "passed": true,
+    "composer": {
+      "x": 12,
+      "y": 746,
+      "width": 366,
+      "height": 80
+    },
+    "overflow": {
+      "viewport": 390,
+      "scroll": 390
+    }
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "passed": true,
+    "composer": {
+      "x": 12,
+      "y": 746,
+      "width": 366,
+      "height": 80
+    },
+    "overflow": {
+      "viewport": 390,
+      "scroll": 390
+    }
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "passed": true,
+    "composer": {
+      "x": 12,
+      "y": 746,
+      "width": 296,
+      "height": 80
+    },
+    "overflow": {
+      "viewport": 320,
+      "scroll": 320
+    }
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "passed": true,
+    "composer": {
+      "x": 12,
+      "y": 746,
+      "width": 296,
+      "height": 80
+    },
+    "overflow": {
+      "viewport": 320,
+      "scroll": 320
+    }
+  }
+]

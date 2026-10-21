@@ -5055,6 +5055,13 @@ RECOVERY
   Exit 1: Session not found/business error. Exit 2: delivery failure/rejection.
   Exit 3: argument error. Inline newline or >4 KB input must use a file.`,
 
+  'session/tasks': `${APP_CLI_NAME} session tasks --json — Current Session task orchestration
+List stable task IDs, execution attempts and acceptance. Mutate with --data '<JSON>'.
+Publish a draft with kind propose (proposalId/content/objective/scope/steps/acceptanceCriteria, ledger expectedRevision). Native human confirmation materializes formal steps; no dispatch before confirmation. Revise uses proposal expectedRevision/content/changes. confirm_from_message binds a subsequent actual human messageId to proposalId/expectedRevision using native ingress proof.
+Task JSON requires ledger expectedRevision and kind ensure (confirmed taskId/title/blockedBy), bind (taskId/toolUseId),
+or review (taskId/attemptId/decision accept|reject/evidence). A returned child awaits review.
+Review returns a pending receipt; only trusted main-Agent tool completion commits acceptance.
+Read again after revision conflicts; keep task IDs across retries. Internal Session capability only.`,
   'session/state': `${APP_CLI_NAME} session state <sessionId> — Read current activity
 
 Returns exactly idle, running or waiting_user_action. waiting_user_action means the target

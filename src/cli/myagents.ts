@@ -3555,7 +3555,7 @@ const PUBLISHED_ADMIN_ROUTES = new Set([
   'space/issue-list', 'space/issue-get', 'space/issue-comment', 'space/issue-comments', 'space/issue-comment-get',
   'space/issue-status', 'space/issue-claim', 'space/issue-close', 'space/issue-complete', 'space/issue-cancel-claim',
   'space/claim-local-task', 'space/attachment-download', 'space/attachment-add', 'space/attachment-inspect',
-  'session/list', 'session/get', 'session/start', 'session/send', 'session/watch', 'session/state', 'session/watches', 'session/unwatch', 'agent/network-diagnose',
+  'session/tasks', 'session/list', 'session/get', 'session/start', 'session/send', 'session/watch', 'session/state', 'session/watches', 'session/unwatch', 'agent/network-diagnose',
 ]);
 
 const PUBLISHED_COMMAND_GROUPS = new Set([
@@ -5018,6 +5018,13 @@ export function buildRequestBody(
   rest: string[],
   flags: Record<string, unknown>,
 ): Record<string, unknown> {
+  if (group === 'session' && action === 'tasks') {
+    let data: Record<string, unknown> = { kind: 'list' };
+    if (flags.data !== undefined) {
+      try { data = JSON.parse(String(flags.data)); } catch { return { kind: 'invalid' }; }
+    }
+    return { ...data, sessionId: process.env.MYAGENTS_SESSION_ID };
+  }
   if (group === 'network') {
     const invalid = () => exitAgentCliError(flags, {
       code: 'ARGUMENT_INVALID',

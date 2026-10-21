@@ -21,7 +21,10 @@ import {
 import { useSubagentViews } from "./useSubagentViews";
 import { useAgentStatusState } from "./useAgentStatusState";
 import SubagentActivityPanel from "./SubagentActivityPanel";
-import TodoSection from "./TodoSection";
+import SessionTaskPanel from "./SessionTaskPanel";
+import { useSessionTaskOrchestration } from "./useSessionTaskOrchestration";
+import { OrchestrationPlanCard } from "./OrchestrationPlanCard";
+import type { SessionPlanTarget } from "../../../shared/sessionPlanConfirmation";
 import SubagentSection from "./SubagentSection";
 import BackgroundTaskDialog, { findTaskTool } from "./BackgroundTaskDialog";
 import { isSubagentContainerTool } from "@/components/tools/subagentActivity";
@@ -30,6 +33,7 @@ import type { Message } from "@/types/chat";
 import type { SessionGoal } from "@/types/sessionGoal";
 
 export interface AgentActivityControls {
+  onDiscussPlan?: (target: SessionPlanTarget, draft: string) => void;
   containerRef: RefObject<HTMLElement | null>;
   onJumpToTool: (id: string) => void;
   onSelectSubagent: (id: string) => void;
@@ -66,6 +70,8 @@ export default memo(function ExecutionStatusBar({
     sessionId,
     tab?.streamingMessage?.id ?? null,
   );
+  const orchestration = useSessionTaskOrchestration(state.todos);
+  const tasks = activity ? orchestration.tasks : [];
   const [disclosure, setDisclosure] = useState<{
     sessionId: string | null;
     detail: Detail;
@@ -90,7 +96,7 @@ export default memo(function ExecutionStatusBar({
   const hasAgents = Boolean(
     activity && (agents.length || background.length || tab?.hasMoreBefore),
   );
-  const todosActive = state.todos.some((todo) => todo.status !== "completed");
+  const todosActive = tasks.some((task) => task.phase !== "completed");
   const [todoLingerSession, setTodoLingerSession] = useState<string | null>(
     null,
   );
@@ -114,7 +120,7 @@ export default memo(function ExecutionStatusBar({
   // Completed-only cold history stays quiet. When Goal/agents already keep the
   // bar visible, its completed Todo count remains available for review.
   const hasTodos =
-    state.todos.length > 0 &&
+    tasks.length > 0 &&
     (todosActive ||
       Boolean(goal) ||
       hasAgents ||
@@ -125,33 +131,16 @@ export default memo(function ExecutionStatusBar({
     detail === "goal"
       ? Boolean(goal)
       : detail === "todos"
-        ? hasTodos
+        ? hasTodos || hasAgents
         : detail === "agents"
           ? hasAgents
           : false;
   const presentation = goal
     ? getGoalStatusPresentation(goal, isExecuting, executionNumber, taskT)
     : null;
-  const running =
-    agents.filter((agent) => agent.status === "running").length +
-    background.filter((agent) => agent.status === "running").length;
-  const returned =
-    agents.filter((agent) => agent.status === "completed").length +
-    background.filter((agent) => agent.status === "completed").length;
-  const failed =
-    agents.filter(
-      (agent) => agent.status === "failed" || agent.status === "interrupted",
-    ).length +
-    background.filter(
-      (agent) => agent.status === "failed" || agent.status === "interrupted",
-    ).length;
-  const agentSummary = [
-    running ? t("executionStatus.running", { count: running }) : "",
-    returned ? t("executionStatus.returned", { count: returned }) : "",
-    failed ? t("executionStatus.failed", { count: failed }) : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const completed = tasks.filter(task => task.phase === "completed").length;
+  const running = tasks.filter(task => task.phase === "running").length;
+  const awaitingReview = tasks.filter(task => task.phase === "awaiting_review").length;
   const toggle = (next: Detail) =>
     setDisclosure(
       shown && next === detail ? null : { sessionId, detail: next },
@@ -181,9 +170,16 @@ export default memo(function ExecutionStatusBar({
     </button>
   );
   if (tab?.isSessionLoading && !goal) return null;
-  if (!goal && !hasTodos && !hasAgents && !selectedTask) return null;
+  if (!goal && !hasTodos && !hasAgents && !selectedTask && !orchestration.proposal) return null;
   return (
     <>
+      {orchestration.proposal && <div className="mb-2 min-w-0">
+        <OrchestrationPlanCard proposal={orchestration.proposal}
+          startStatus={orchestration.planStart}
+          onConfirm={orchestration.confirmPlan} onRequestRevision={orchestration.requestPlanRevision}
+          onDiscuss={target => activity?.onDiscussPlan?.(target, t("orchestrationPlan.discussionDraft", { objective: orchestration.proposal!.content.objective }))} />
+        {orchestration.stale && <p role="status" className="mt-1 text-xs text-[var(--warning)]">{t("orchestration.stale")} <button type="button" onClick={orchestration.retry} className="underline">{t("orchestration.retry")}</button></p>}
+      </div>}
       {selectedTask && activity && (
         <BackgroundTaskDialog
           subagent={
@@ -208,7 +204,7 @@ export default memo(function ExecutionStatusBar({
               return;
             event.stopPropagation();
             setDisclosure(null);
-            if (detail) triggers.current[detail]?.focus();
+            if (detail) triggers.current[detail === "agents" ? "todos" : detail]?.focus();
           }}
           className="mb-2 min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] text-[var(--ink)]"
         >
@@ -231,31 +227,15 @@ export default memo(function ExecutionStatusBar({
                   </>,
                   presentation.color,
                 )}
-              {hasTodos &&
-                summaryButton(
-                  "todos",
-                  <span className="whitespace-nowrap tabular-nums">
-                    {t("agentStatus.todos")} {state.summary.todoCompleted}/
-                    {state.summary.todoTotal}
-                  </span>,
-                )}
-              {hasAgents &&
-                summaryButton(
-                  "agents",
-                  <span className="whitespace-nowrap">
-                    <span>{t("subagentView.title")}</span>
-                    {agentSummary && (
-                      <>
-                        {" "}
-                        <span
-                          className={`ml-1 ${failed ? "text-[var(--error)]" : "text-[var(--ink-secondary)]"}`}
-                        >
-                          {agentSummary}
-                        </span>
-                      </>
-                    )}
-                  </span>,
-                )}
+              {(hasTodos || hasAgents) && summaryButton(
+                "todos",
+                <span className="whitespace-nowrap tabular-nums">
+                  {t("orchestration.title")} {completed}/{tasks.length}
+                  {running > 0 && ` · ${t("orchestration.running", { count: running })}`}
+                  {awaitingReview > 0 && ` · ${t("orchestration.awaiting", { count: awaitingReview })}`}
+                  {orchestration.stale && ` · ${t("orchestration.syncPending")}`}
+                </span>,
+              )}
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-0.5">
               {goal?.status === "active" && onPause && (
@@ -334,7 +314,8 @@ export default memo(function ExecutionStatusBar({
                 </div>
               )}
               {detail === "todos" && (
-                <TodoSection key={sessionId} todos={state.todos} />
+                <SessionTaskPanel key={sessionId} tasks={tasks} stale={orchestration.stale} onRetry={orchestration.retry}
+                  onSelectAgent={id => activity?.onSelectSubagent(id)} onHistory={() => setDisclosure({ sessionId, detail: "agents" })} />
               )}
               {detail === "agents" && activity && (
                 <>

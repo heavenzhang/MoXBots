@@ -3571,3 +3571,29 @@ it('retires empty pre-dispatch setup authority without consuming an output owner
   expect(end).toHaveBeenCalledOnce();
   expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('error');
 });
+
+
+describe('builtin known-unsent dispatch rollback', () => {
+  it.each(['guard', 'final-validator'] as const)('awaits durable cancel after %s rejection before settling', async phase => {
+    const workspace = join(state.home, `builtin-unsent-${phase}`);
+    await mkdir(workspace);
+    await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
+    const gate = Promise.withResolvers<void>();
+    const cancel = vi.fn(async () => { await gate.promise; });
+    const beforeDispatch = Object.assign(async () => phase === 'guard'
+      ? { accepted: false, error: 'PLAN_START_STALE' }
+      : { accepted: true, validateAtCommit: () => ({ accepted: false, error: 'PLAN_START_STALE' }) }, { cancel });
+    const terminal = vi.fn();
+    const queued = agent.enqueueUserMessage('rejected planned input', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: NO_CHANNEL_DELIVERY, beforeDispatch, onTerminal: terminal });
+    await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+    expect(terminal).not.toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(0);
+    gate.resolve();
+    const result = await queued;
+    await expect(result.dispatchAcceptance).resolves.toMatchObject({ accepted: false });
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    expect(state.sdkInputs).toHaveLength(0);
+  });
+});

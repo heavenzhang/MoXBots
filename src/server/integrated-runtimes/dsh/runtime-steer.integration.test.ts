@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PRESET_PROVIDERS } from '../../../shared/config-types';
 import { RuntimeSteerUnavailableError, type UnifiedEvent } from '../../runtimes/types';
 import { DshRuntime } from './runtime';
+import { DSH_DELEGATION_CONFIRMATION_HOOK_ID } from './delegation-gate';
 import { DshAttachmentRegistry } from './attachments';
 import { dshSessionOwnedPaths } from './owned-paths';
 import type { DshRpcObject } from './protocol-types';
@@ -57,7 +58,8 @@ describe('DSH native collaboration boundaries', () => {
           await registry.initialize();
           const snapshot = await registry.readJson(params.snapshotAttachment as { attachmentId: string; mimeType: string; sizeBytes: number; sha256: string }) as { revision: string };
           fixture.extensionRevision = snapshot.revision;
-          return { state: 'applied', desiredRevision: snapshot.revision, effectiveRevision: snapshot.revision };
+          return { state: 'applied', desiredRevision: snapshot.revision, effectiveRevision: snapshot.revision,
+            components: [{ key: `hook:${DSH_DELEGATION_CONFIRMATION_HOOK_ID}`, state: 'ready' }] };
         }
         case 'extension/catalog': return { digest: 'a'.repeat(64), revision: fixture.extensionRevision, skills: [], tools: [] };
         case 'session/create': return { runtimeSessionId: 'runtime-1', state: 'ready', toolCatalog: { effectiveTools: [] }, extensionCatalog: { digest: 'a'.repeat(64) } };
@@ -98,6 +100,22 @@ describe('DSH native collaboration boundaries', () => {
       // Native Plan state has its own owner; it cannot publish a permission
       // projection that overwrites the Product Session's desired mode.
       expect(events).toEqual([]);
+      let canonicalPrepared = false;
+      vi.spyOn(runtime as unknown as { canonicalInput: (...args: unknown[]) => Promise<unknown> }, 'canonicalInput')
+        .mockImplementationOnce(async () => {
+          await Promise.resolve();
+          canonicalPrepared = true;
+          return { parts: [{ kind: 'text', text: 'stale scope' }] };
+        });
+      const rejectFinalLease = vi.fn(() => {
+        expect(canonicalPrepared).toBe(true);
+        throw new Error('PLAN_REVISION_CHANGED');
+      });
+      await expect(runtime.sendMessage(process, 'stale scope', [], {
+        clientUserMessageId: 'rejected-user', clientOperationId: 'rejected-root', beforeDispatch: rejectFinalLease,
+      })).rejects.toThrow('PLAN_REVISION_CHANGED');
+      expect(rejectFinalLease).toHaveBeenCalledOnce();
+      expect(fixture.request.mock.calls.filter(call => call[0] === 'turn/start')).toHaveLength(0);
       await runtime.sendMessage(process, 'A', [], { clientUserMessageId: 'user-A', clientOperationId: 'root-A', allowRealtimeSteer: true });
       const beforeDispatch = vi.fn(async () => {});
       await expect(runtime.steerMessage(process, 'C', [], { clientUserMessageId: 'user-C', clientOperationId: 'root-A', beforeDispatch }))

@@ -48,6 +48,8 @@ export interface SessionStats {
  * Session metadata stored in sessions.json
  */
 export interface SessionMetadata {
+  /** Product task associations/reviews; Runtime execution remains authoritative. */
+  taskOrchestration?: import("../../shared/sessionTaskOrchestration").SessionTaskLedger;
   /** Durable inference wait; never an instruction to replay the original input. */
   modelRecovery?: import('../../shared/modelRecovery').ModelRecoveryState;
     /** Derived by the transcript owner; never an execution/auto-resume command. */

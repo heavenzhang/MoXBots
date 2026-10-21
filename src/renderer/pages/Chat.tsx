@@ -5,6 +5,7 @@ import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAct
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
 import { projectErrorMessageResend } from './errorMessageResend';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
+import type { SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
 import type { Message } from "@/types/chat";
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
@@ -5775,13 +5776,28 @@ export default function Chat({
     currentRuntime === 'builtin' ||
     currentRuntime === 'codex' ||
     currentRuntime === 'dsh';
+  const discussOrchestrationPlan = useCallback((target: SessionPlanTarget, prompt: string) => {
+    if (target.sessionId !== sessionId || sessionIdRef.current !== sessionId || !chatInputRef.current) return;
+    const existing = inputRef.current?.value ?? '';
+    const value = existing ? `${existing}\n\n${prompt}` : prompt;
+    chatInputRef.current.setValue(value);
+    requestAnimationFrame(() => {
+      if (sessionIdRef.current !== target.sessionId) return;
+      const textarea = inputRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(value.length, value.length);
+      textarea.scrollTop = textarea.scrollHeight;
+    });
+  }, [sessionId]);
   const agentActivity = useMemo(
     () => !supportsAgentStatusPanel ? undefined : ({
       containerRef: chatContentRef,
       onJumpToTool: handleJumpToTool,
       onSelectSubagent: openSubagent,
+      onDiscussPlan: discussOrchestrationPlan,
     }),
-    [supportsAgentStatusPanel, handleJumpToTool, openSubagent],
+    [supportsAgentStatusPanel, handleJumpToTool, openSubagent, discussOrchestrationPlan],
   );
 
   // PRD 0.2.32 — context 用量指示器 slot。自取数（内部 useTabState 订阅 contextUsage），

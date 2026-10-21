@@ -1,3 +1,4 @@
+import { handleSessionTaskRoute } from './session-task-orchestration';
 import type { RuntimeAgentWorkControl } from '../../shared/types/subagent-lifecycle';
 import type { McpServerDefinition } from '../../shared/config-types';
 import { normalizeOfficialToolIds } from '../../shared/official-tools';
@@ -76,6 +77,8 @@ export async function handleSessionConfigRoute(
   pathname: string,
   request: Request,
 ): Promise<Response | null> {
+  const orchestration = await handleSessionTaskRoute(pathname, request);
+  if (orchestration) return orchestration;
   if (pathname === '/api/interaction-scenario/set' && request.method === 'POST') {
     try {
       const payload = await request.json() as { scenario?: unknown };
