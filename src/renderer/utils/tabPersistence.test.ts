@@ -349,7 +349,7 @@ describe('shouldOfferRestore (Issue #309 — startup behaviour)', () => {
   });
 });
 
-describe('planRestoreTabs (Issue #309 — pill restore merge)', () => {
+describe('planRestoreTabs (Issue #309 — explicit restore merge)', () => {
   const launcher: Tab = { id: 'launch-1', view: 'launcher', title: 'New Tab' };
   function restored(id: string, session: string): Tab {
     return {

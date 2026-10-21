@@ -111,11 +111,8 @@ import { useTabCloseController } from '@/tab-workspace/useTabCloseController';
 import {
   serializeTabs,
   deserializeTabs,
-  buildRestoredTabs,
   saveOpenTabs,
   hydratePersistedState,
-  pickDurableOverride,
-  shouldOfferRestore,
   planRestoreTabs,
 } from '@/utils/tabPersistence';
 import {
@@ -123,7 +120,7 @@ import {
   loadAndClearOpenTabsDurable,
   clearOpenTabsDurable,
 } from '@/utils/tabPersistenceDurable';
-import { canEvictComposerTab, beginComposerUpdateCheckpoint, loadComposerUpdateHandoff, dismissLoadedComposerUpdateHandoff, assertUpdateTabsSafe, isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
+import { canEvictComposerTab, beginComposerUpdateCheckpoint, loadComposerUpdateHandoff, assertUpdateTabsSafe, isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
 import { consumeCleanExitMarker } from '@/utils/lastExitMarker';
 import { perfMark } from '@/utils/perfMark';
 import { RENDERER_PERF_PHASE } from '../shared/perfTrace';
@@ -467,17 +464,8 @@ export default function App() {
 
   // Session-scoped pages, kept warm in a bounded FIFO cache.
   //
-  // Startup behaviour (Issue #309): boot is ALWAYS a clean new launcher — we no
-  // longer auto-restore the previous session. Restoring is opt-in via the
-  // title-bar restore pill, surfaced only when the last exit was NOT a
-  // deliberate quit (i.e. a crash or an update-restart — see the boot-decision
-  // effect below). `buildRestoredTabs()` still runs synchronously here to
-  // CAPTURE the prior session's restorable tabs BEFORE the post-commit persist
-  // effect overwrites localStorage with this fresh launcher; the captured set
-  // becomes the pill's restore candidate. Those Tabs are not mounted until the
-  // user accepts the pill; the click path validates them before committing the
-  // final live Tab projection.
-  const [restoreCandidate] = useState(() => buildRestoredTabs());
+  // Normal startup always opens a fresh launcher. Existing sessions remain in
+  // the sidebar/history; only an explicit update-draft handoff restores pages.
   const [initialWorkspace] = useState(() => {
     const tab = createNewTab();
     return { tabs: [tab] as Tab[], activeTabId: tab.id };
@@ -512,15 +500,6 @@ export default function App() {
   const pendingSpaceRouteRef = useRef<PendingAppRoute | null>(null);
   const appRouteGenerationRef = useRef(0);
   const spaceRouteTabIdRef = useRef<string | null>(null);
-
-  // Restore pill (Issue #309). `restorePillCount > 0` shows it; the resolved
-  // candidate is held in a ref (NOT localStorage — the persist effect clears
-  // that on the fresh boot) so the user can still restore after starting work.
-  const restoreCandidateRef = useRef<{
-    tabs: Tab[];
-    activeTabId: string | null;
-  } | null>(null);
-  const [restorePillCount, setRestorePillCount] = useState(0);
 
   const handleLauncherWorkspaceSelectionChange = useCallback(
     (tabId: string, workspacePath: string | null) => {
@@ -640,59 +619,6 @@ export default function App() {
       window.removeEventListener('pagehide', onPageHide);
     };
   }, [flushOpenTabsNow]);
-
-  // Boot startup-behaviour decision (Issue #309). Boot already rendered a fresh
-  // launcher (no auto-restore); here we decide whether to OFFER restoring the
-  // previous session via the title-bar pill, by the EXIT REASON:
-  //   - Resolve the snapshot: the synchronous localStorage capture
-  //     (restoreCandidate) wins; the fsync durable backstop — written by
-  //     handleRestartAndUpdate right before the abrupt update-restart, where the
-  //     async WebView localStorage flush can be lost — fills in when the local
-  //     read came up EMPTY (pickDurableOverride).
-  //   - Read the Rust clean-exit marker: PRESENT means the user deliberately
-  //     quit (Cmd+Q / Dock / tray) → boot fresh, no pill. ABSENT means a crash
-  //     or an update-restart → offer to restore (preserves the #232 intent as an
-  //     opt-in, kills the #309 "stop force-restoring my session" complaint).
-  // Single-shot under StrictMode via the ref; loadAndClearOpenTabsDurable +
-  // consumeCleanExitMarker both delete on read, so a second pass is a no-op.
-  const bootDecisionRef = useRef(false);
-  useEffect(() => {
-    if (bootDecisionRef.current) return;
-    bootDecisionRef.current = true;
-    void (async () => {
-      const durable = await loadAndClearOpenTabsDurable();
-      const composerHandoff = APP_BUILD_PROFILE === 'moxbot'
-        ? await loadComposerUpdateHandoff(deserializeTabs).catch(error => {
-          console.error('[App] Update draft handoff could not be read:', error);
-          toastRef.current?.error('更新草稿暂时无法恢复，原交接文件已保留。');
-          return null;
-        }) : null;
-      // The awaited composer handoff owns exact tab IDs and must win over a
-      // possibly stale WebView localStorage snapshot from before update.
-      const override = composerHandoff ?? pickDurableOverride(restoreCandidate != null, durable);
-      const candidate = override
-        ? hydratePersistedState(override)
-        : restoreCandidate;
-      const lastExitWasClean = await consumeCleanExitMarker();
-      if (
-        candidate &&
-        shouldOfferRestore(composerHandoff ? false : lastExitWasClean, candidate.tabs.length)
-      ) {
-        restoreCandidateRef.current = candidate;
-        setRestorePillCount(candidate.tabs.length);
-      }
-    })();
-  }, [restoreCandidate]);
-
-  // ✕ on the pill — dismiss without restoring (don't nag again this session).
-  const handleDismissRestore = useCallback(() => {
-    setRestorePillCount(0);
-    restoreCandidateRef.current = null;
-    if (APP_BUILD_PROFILE === 'moxbot') void dismissLoadedComposerUpdateHandoff().catch(error => {
-      console.error('[App] Unable to dismiss update draft handoff:', error);
-      toastRef.current?.error('未能清除旧草稿交接，请稍后重试。');
-    });
-  }, []);
 
   // Helper-overlay launches must hand `handleLaunchProject` a real, committed
   // active launcher tab. Activating before React commits the workspace snapshot
@@ -2802,17 +2728,13 @@ export default function App() {
     ],
   );
 
-  // Startup restore reuses the existing Tab persistence owner for both Chat and
-  // Record. Chat candidates keep their Session opening admission; Record
-  // candidates are validated through RecordStore before the shell commits them.
-  // A deleted Record becomes the existing Record-list surface at the same Tab
-  // position instead of creating an empty detail owner.
-  const handleRestoreLastSession = useCallback(async () => {
-    if (APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) return;
-    const candidate = restoreCandidateRef.current;
-    setRestorePillCount(0);
-    restoreCandidateRef.current = null;
-    if (!candidate || candidate.tabs.length === 0) return;
+  // Only an update-draft handoff may restore pages. Reuse the existing Tab,
+  // RecordStore and Session opening owners; restoring never sends a message.
+  const restoreUpdateDraftPages = useCallback(async (candidate: {
+    tabs: Tab[];
+    activeTabId: string | null;
+  }) => {
+    if (isComposerUpdateCheckpointLocked() || candidate.tabs.length === 0) return;
 
     type ValidatedRestoreTarget =
       | {
@@ -2908,10 +2830,8 @@ export default function App() {
       )
     ).filter((target): target is ValidatedRestoreTarget => target !== null);
 
-    if (APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) {
+    if (isComposerUpdateCheckpointLocked()) {
       validated.forEach(({ releaseTransition }) => releaseTransition?.());
-      restoreCandidateRef.current = candidate;
-      setRestorePillCount(candidate.tabs.length);
       return;
     }
     if (validated.length === 0) return;
@@ -2958,7 +2878,7 @@ export default function App() {
       toastRef.current.info(t('appChrome.recordRestoreMissing'));
     }
 
-    track('restore_last_session', { count: addedTargets.length });
+    track('restore_last_session', { count: addedTargets.length, source: 'update_draft_handoff' });
 
     const addedChatTargets = addedTargets.filter(
       (target): target is Extract<ValidatedRestoreTarget, { kind: 'chat' }> =>
@@ -2986,6 +2906,29 @@ export default function App() {
     // Failed execution recovery leaves the restored Chat and its disk history
     // available. Each failed target exposes a retry on the same Tab.
   }, [materializeExistingSessionTab, t, tabWorkspaceController]);
+
+  // Legacy tab snapshots and quit markers no longer decide startup navigation.
+  // Consume their one-shot backstops, but restore only a validated update draft
+  // handoff. The composer owner retains that file until its exact scope mounts.
+  const bootDecisionRef = useRef(false);
+  useEffect(() => {
+    if (bootDecisionRef.current) return;
+    bootDecisionRef.current = true;
+    void (async () => {
+      await Promise.allSettled([
+        loadAndClearOpenTabsDurable(),
+        consumeCleanExitMarker(),
+      ]);
+      if (APP_BUILD_PROFILE !== 'moxbot') return;
+      try {
+        const handoff = await loadComposerUpdateHandoff(deserializeTabs);
+        if (handoff) await restoreUpdateDraftPages(hydratePersistedState(handoff));
+      } catch (error) {
+        console.error('[App] Update draft handoff could not be restored:', error);
+        toastRef.current.error('更新草稿暂时无法恢复，原交接文件已保留。');
+      }
+    })();
+  }, [restoreUpdateDraftPages]);
 
   /** Chat-local adapter: all history selections use the canonical new/jump/revive path. */
   const handleOpenChatHistorySession = useCallback(
@@ -5056,9 +4999,6 @@ export default function App() {
               updateInstalling={updateInstalling}
               updatePreparing={updatePreparing}
               onRestartAndUpdate={() => void handleRestartAndUpdate()}
-              restoreCount={restorePillCount}
-              onRestoreSession={handleRestoreLastSession}
-              onDismissRestore={handleDismissRestore}
             >
               <CurrentPageHeader
                 chrome={activeTab ? resolveTabChrome(builtinTabModules, activeTab, { t }) : { title: '' }}

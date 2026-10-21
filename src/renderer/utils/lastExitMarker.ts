@@ -6,12 +6,9 @@
 // `RESTARTING_FOR_UPDATE`) and obviously not on a crash. See
 // `src-tauri/src/app_dirs.rs::record_clean_exit`.
 //
-// On boot the renderer reads-and-clears this marker to decide the startup
-// behaviour:
-//   - marker present (`{ clean: true }`) → user quit on purpose → boot fresh,
-//     no restore pill.
-//   - marker absent (crash or update-restart) → offer to restore the previous
-//     session via the title-bar pill.
+// On boot the renderer reads-and-clears this marker as a one-shot backstop.
+// Startup navigation is now always a fresh Launcher; this marker no longer
+// decides whether historical tabs are restored.
 //
 // Why Rust writes it (not the renderer): tray "Exit" terminates the webview via
 // `app.exit(0)` without a reliable `pagehide`, so only Rust's ExitRequested
@@ -27,12 +24,10 @@ const LAST_EXIT_FILE = 'last-exit.json';
 
 /** Read + DELETE the clean-exit marker. Returns true iff the last exit was a
  *  deliberate user quit. Consume-once (deleted on read) so a stale marker can't
- *  suppress a later legitimate restore. Best-effort: any failure degrades to
- *  `false` (offer restore) — the safe direction, since a dismissable pill beats
- *  silently losing recovery after a crash. */
+ *  affect a later launch. Best-effort: failures degrade to `false`; startup
+ *  navigation no longer depends on this marker. */
 export async function consumeCleanExitMarker(): Promise<boolean> {
-    // Browser dev mode has no Rust to write the marker; treat every launch as a
-    // clean quit so dev sessions aren't perpetually nagged by the restore pill.
+    // Browser dev mode has no Rust to write the marker.
     if (isBrowserDevMode()) return true;
 
     let path: string;
@@ -43,10 +38,10 @@ export async function consumeCleanExitMarker(): Promise<boolean> {
     }
 
     // Read AND delete together: we only trust a "clean" verdict for a marker we
-    // actually CONSUMED. If the read or the delete throws, return false (offer
-    // restore) — a surviving `{"clean":true}` we couldn't delete would otherwise
-    // wrongly suppress the pill after a LATER crash. The safe direction is a
-    // dismissable pill, never silently swallowing a crash's recovery.
+    // actually CONSUMED. If the read or the delete throws, return false —
+    // a surviving `{"clean":true}` we couldn't delete would otherwise
+    // wrongly affect a later launch. The marker is now only a one-shot
+    // backstop and does not control startup navigation.
     try {
         if (!(await exists(path))) return false;
         const raw = await readTextFile(path);

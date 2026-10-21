@@ -126,10 +126,10 @@ export function registerComposerUpdateOwner(owner: ComposerOwner): () => void {
   return () => { owners.delete(owner); ownerRevision++; };
 }
 
-/** Read the existing live composer owner; automatic cache eviction must never
- * discard input, attachments, IME composition or an in-flight send. */
+/** Protect both live composer state and an update draft whose deferred page has
+ * not mounted its exact composer owner yet. */
 export function canEvictComposerTab(tabId: string): boolean {
-  if (locked) return false;
+  if (locked || loaded?.drafts.some(draft => draft.scope.tabId === tabId)) return false;
   try {
     for (const owner of owners) {
       const snapshot = owner.snapshot();
@@ -147,7 +147,7 @@ export function canEvictComposerTab(tabId: string): boolean {
 // importing the UI composition root back into a leaf composer dependency.
 export function beginComposerUpdateCheckpoint(serializeTabs: (tabs: readonly Tab[], activeTabId: string | null) => PersistedTabState | null) {
   if (!handoffChecked || handoffBlocked) throw new Error('正在检查或暂时无法读取上次更新草稿，请先恢复草稿再更新。');
-  if (loaded?.drafts.length) throw new Error('上次更新的草稿尚未恢复，请先恢复会话或明确关闭恢复提示。');
+  if (loaded?.drafts.length) throw new Error('上次更新的草稿尚未恢复，请先打开对应会话并恢复草稿。');
   if (locked) throw new Error('正在安全保存更新草稿，请稍候。');
   const participants = [...owners];
   // Reject in-flight imports/sends before freeze can suppress their completion;
@@ -221,8 +221,8 @@ export async function clearComposerUpdateHandoff(): Promise<void> {
   handoffBlocked = false;
 }
 
-/** A restore-pill dismissal only owns successfully loaded drafts. A corrupt
- * or unreadable handoff is not covered by dismissing legacy tab restoration. */
+/** Clear only successfully loaded drafts. A corrupt or unreadable handoff is
+ * never covered by clearing a previously loaded snapshot. */
 export async function dismissLoadedComposerUpdateHandoff(): Promise<void> {
   if (loaded?.drafts.length) await clearComposerUpdateHandoff();
 }
@@ -256,7 +256,12 @@ export async function loadComposerUpdateHandoff(deserializeTabs: (raw: string | 
       keys.add(key);
     }
     loaded = { version: parsed.version, tabs, drafts };
-    return tabs;
+    // The checkpoint carries the old workspace for exact-scope validation, not
+    // permission to reopen unrelated pages after an update.
+    const draftTabIds = new Set(drafts.map(draft => draft.scope.tabId));
+    const draftTabs = tabs.tabs.filter(tab => draftTabIds.has(tab.id));
+    return { ...tabs, tabs: draftTabs,
+      activeTabId: draftTabs.some(tab => tab.id === tabs.activeTabId) ? tabs.activeTabId : draftTabs[0].id };
   }).then(state => {
     handoffChecked = true;
     handoffBlocked = false;

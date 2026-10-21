@@ -1,7 +1,5 @@
-// Behavior test for the "恢复标签页" pill (Issue #309). The pill is opt-in
-// tab restore surfaced in the title bar only after a non-clean exit. We
-// mock the Tauri-heavy deps (effects bail when isTauri() is false) and assert
-// the pill's visibility gate + click wiring.
+// The current-page titlebar has no legacy tab restore action. Updates and
+// explicit native drag regions must remain available after removing the pill.
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -20,35 +18,29 @@ vi.mock('@tauri-apps/api/window', () => ({
         unmaximize: vi.fn(),
     }),
 }));
-vi.mock('./FeedbackPopover', () => ({ default: () => null }));
 
 import { i18n } from '@/i18n';
 import CustomTitleBar from './CustomTitleBar';
 
 function renderBar(over: Partial<React.ComponentProps<typeof CustomTitleBar>> = {}) {
-    const onRestoreSession = vi.fn();
-    const onDismissRestore = vi.fn();
-    const result = render(
-        <CustomTitleBar
-            onRestoreSession={onRestoreSession}
-            onDismissRestore={onDismissRestore}
-            {...over}
-        >
+    return render(
+        <CustomTitleBar {...over}>
             <div data-testid="tabbar" />
         </CustomTitleBar>,
     );
-    return { ...result, onRestoreSession, onDismissRestore };
 }
 
-describe('CustomTitleBar — 恢复标签页 pill (Issue #309)', () => {
+describe('CustomTitleBar — current-page actions', () => {
     beforeEach(async () => {
         mocks.isTauri.mockReturnValue(false);
         await i18n.changeLanguage('zh-CN');
     });
 
-    it('is hidden when restoreCount is 0 (clean quit → no nag)', () => {
-        renderBar({ restoreCount: 0 });
-        expect(screen.queryByText('恢复上次标签页')).toBeNull();
+    it('has no legacy restore or dismiss action', () => {
+        renderBar();
+        expect(screen.queryByText('恢复上次标签页')).not.toBeInTheDocument();
+        expect(screen.queryByTitle('忽略')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
 
     it('shares the global sidebar surface without a bottom divider', () => {
@@ -60,32 +52,27 @@ describe('CustomTitleBar — 恢复标签页 pill (Issue #309)', () => {
         expect(titlebar).not.toHaveClass('bg-gradient-to-b', 'from-[var(--paper)]', 'to-[var(--paper-inset)]/30');
     });
 
-    it('shows the pill and the count badge when there are restorable tabs', () => {
-        renderBar({ restoreCount: 3 });
-        expect(screen.getByText('恢复上次标签页')).toBeTruthy();
-        expect(screen.getByText('3')).toBeTruthy();
+    it('keeps restart/update wiring without the restore pill', () => {
+        const onRestartAndUpdate = vi.fn();
+        renderBar({ updateReady: true, updateVersion: '0.5.99', onRestartAndUpdate });
+        fireEvent.click(screen.getByRole('button', { name: '重启更新' }));
+        expect(onRestartAndUpdate).toHaveBeenCalledTimes(1);
+        expect(screen.queryByText('恢复上次标签页')).not.toBeInTheDocument();
     });
 
-    it('omits the count badge for a single tab', () => {
-        renderBar({ restoreCount: 1 });
-        expect(screen.getByText('恢复上次标签页')).toBeTruthy();
-        expect(screen.queryByText('1')).toBeNull();
-    });
-
-    it('restores on body click, dismisses on ✕ click', () => {
-        const { onRestoreSession, onDismissRestore } = renderBar({ restoreCount: 2 });
-
-        fireEvent.click(screen.getByText('恢复上次标签页'));
-        expect(onRestoreSession).toHaveBeenCalledTimes(1);
-        expect(onDismissRestore).not.toHaveBeenCalled();
-
-        fireEvent.click(screen.getByTitle('忽略'));
-        expect(onDismissRestore).toHaveBeenCalledTimes(1);
-        expect(onRestoreSession).toHaveBeenCalledTimes(1);
+    it('prevents a second install click and hides a replacing download', () => {
+        const onRestartAndUpdate = vi.fn();
+        const { rerender } = renderBar({ updateReady: true, updateInstalling: true, onRestartAndUpdate });
+        const button = screen.getByRole('button');
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+        expect(onRestartAndUpdate).not.toHaveBeenCalled();
+        rerender(<CustomTitleBar updateReady updatePreparing><div /></CustomTitleBar>);
+        expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
 
     it('keeps explicit draggable regions around and between titlebar actions', () => {
-        const { container } = renderBar({ restoreCount: 0 });
+        const { container } = renderBar();
         const tauriDragRegions = Array.from(container.querySelectorAll('[data-tauri-drag-region]'));
         const tabbarHost = screen.getByTestId('tabbar').parentElement;
 

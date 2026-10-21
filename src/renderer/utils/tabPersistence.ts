@@ -1,7 +1,7 @@
-// Tab restore persistence (Issue #232 / PRD 0.2.25).
+// Tab workspace persistence (Issue #232 / PRD 0.2.25).
 //
-// Persists the list of open chat / Record tabs to localStorage so they can be
-// restored after an app restart / update. This module is the PURE core:
+// Persists the list of open chat / Record tabs for explicit update handoffs and
+// recovery backstops. Normal startup always opens a fresh Launcher. This module is the PURE core:
 // serialize / deserialize / save / load with no React or sidecar coupling,
 // so the filtering + dedup + validation invariants are unit-testable in the
 // fast pool (see tabPersistence.test.ts).
@@ -156,8 +156,8 @@ export function loadPersistedTabs(): PersistedTabState | null {
 }
 
 /** Hydrate a validated PersistedTabState into normal live Tab shapes. They
- *  remain only in the restore candidate until the user accepts the pill; App
- *  validates and atomically mounts survivors. */
+ *  remain only in the validated update-handoff candidate until App validates
+ *  and atomically mounts survivors. */
 export function hydratePersistedState(state: PersistedTabState): {
   tabs: Tab[];
   activeTabId: string | null;
@@ -201,8 +201,8 @@ export function pickDurableOverride(
 
 /** Parse the Rust-written clean-exit marker (`~/.myagents/last-exit.json`).
  *  Returns true ONLY for a well-formed `{ "clean": true }`; anything else
- *  (absent → null, malformed, `clean:false`) is treated as NOT a clean quit so
- *  the boot offers to restore. See `lastExitMarker.ts`. */
+ *  (absent → null, malformed, `clean:false`) is treated as NOT a clean quit.
+ *  This compatibility codec does not decide startup navigation. */
 export function parseCleanMarker(raw: string | null): boolean {
   if (!raw) return false;
   try {
@@ -213,12 +213,8 @@ export function parseCleanMarker(raw: string | null): boolean {
   }
 }
 
-/** Decide whether to surface the "restore previous tabs" pill on boot (Issue
- *  #309). We offer restore ONLY when the last exit was NOT a deliberate user
- *  quit (i.e. a crash or an update-restart) AND there is a non-empty restorable
- *  snapshot. A clean quit means the user chose to end the window state → boot
- *  fresh, no nag. Pure + unit-tested; the title-bar pill and the App boot
- *  effect share this single predicate. */
+/** Legacy restore predicate retained for compatibility with older navigation
+ * policy tests. App startup always opens a fresh Launcher and does not call it. */
 export function shouldOfferRestore(lastExitWasClean: boolean, restorableTabCount: number): boolean {
   return !lastExitWasClean && restorableTabCount > 0;
 }
@@ -233,11 +229,10 @@ function restoreResourceIdentity(tab: Tab): string | null {
   return null;
 }
 
-/** Plan how clicking the restore pill (Issue #309) merges the previous tabs
- *  into the currently-open tabs. Replaces a still-pristine lone launcher (the
- *  boot default); otherwise APPENDS candidate tabs — de-duped by Session or
- *  Record identity and capped at MAX_TABS — so it never
- *  disturbs work the user already started.
+/** Merge validated restoration candidates into the currently-open tabs.
+ *  Replaces a still-pristine lone launcher (the boot default); otherwise APPENDS
+ *  candidate tabs — de-duped by Session or Record identity and capped at
+ *  MAX_TABS — so it never disturbs work the user already started.
  *
  *  Crucially the merged list AND the surviving `activeTabId` are computed from
  *  the SAME merge: the active id is the candidate's active tab if it survived

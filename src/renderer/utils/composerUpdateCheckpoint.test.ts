@@ -44,6 +44,52 @@ describe('MoxBots composer update checkpoint', () => {
     state.pendingAttachments = false;
     expect(api.canEvictComposerTab(tab.id)).toBe(true);
   });
+  it('protects an unmounted update draft until its exact composer accepts it', async () => {
+    const { api, state, unregister } = await owner();
+    const lease = api.beginComposerUpdateCheckpoint(serializeTabs);
+    await lease.persist([tab], tab.id);
+    lease.verify([tab], tab.id);
+    lease.release();
+    unregister();
+
+    await api.loadComposerUpdateHandoff(deserializeTabs);
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    expect(api.canEvictComposerTab('another-tab')).toBe(true);
+    expect(api.restoreComposerUpdateDraft({ ...state.scope, sessionId: 'wrong-session' }, true)).toBeNull();
+    expect(api.restoreComposerUpdateDraft({ ...state.scope, workspacePath: '/wrong-workspace' }, true)).toBeNull();
+    expect(api.restoreComposerUpdateDraft(state.scope, false)).toBeNull();
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+
+    const restored = api.restoreComposerUpdateDraft(state.scope, true);
+    expect(restored?.text).toBe('KEEP-AFTER-UPDATE');
+    state.text = restored!.text;
+    const unregisterRestored = api.registerComposerUpdateOwner({ snapshot: () => state, freeze: vi.fn() });
+    expect(api.canEvictComposerTab(tab.id)).toBe(false);
+    state.text = '';
+    expect(api.canEvictComposerTab(tab.id)).toBe(true);
+    unregisterRestored();
+    await api.clearComposerUpdateHandoff();
+  });
+  it('returns only draft-bearing pages while retaining hidden drafts for their exact owners', async () => {
+    const { api, state, unregister } = await owner();
+    const other = { ...tab, id: 'tab-b', sessionId: 'session-b' } as Tab;
+    const empty = { ...tab, id: 'tab-empty', sessionId: 'session-empty' } as Tab;
+    const record = { id: 'record-tab', view: 'record', recordId: 'record-a', title: 'Record' } as Tab;
+    const otherState = snapshot({ scope: { ...state.scope, tabId: other.id, sessionId: 'session-b' }, text: 'HIDDEN-DRAFT' });
+    const unregisterOther = api.registerComposerUpdateOwner({ snapshot: () => otherState, freeze: vi.fn() });
+    const lease = api.beginComposerUpdateCheckpoint(serializeTabs);
+    await lease.persist([empty, tab, record, other], empty.id);
+    lease.release(); unregister(); unregisterOther();
+
+    const restored = await api.loadComposerUpdateHandoff(deserializeTabs);
+    expect(restored?.tabs.map(tab => tab.id)).toEqual([tab.id, other.id]);
+    expect(restored?.activeTabId).toBe(tab.id);
+    expect(api.canEvictComposerTab(other.id)).toBe(false);
+    expect(api.restoreComposerUpdateDraft(state.scope, true)?.text).toBe(state.text);
+    expect(api.canEvictComposerTab(other.id)).toBe(false);
+    expect(api.restoreComposerUpdateDraft(otherState.scope, true)?.text).toBe('HIDDEN-DRAFT');
+    await api.clearComposerUpdateHandoff();
+  });
   it('refuses unverified remote tabs before persistence and final install, retaining live drafts', async () => {
     const { api, state, freeze } = await owner();
     expect(() => api.assertUpdateTabsSafe([{ view: 'remote-session' }])).toThrow('尚未接入安全更新检查');
