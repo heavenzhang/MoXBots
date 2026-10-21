@@ -10,7 +10,10 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 const TTL: u64 = 86_400;
@@ -68,6 +71,18 @@ pub(in crate::agent_network) struct DesktopNotificationSource {
     root: Option<PathBuf>,
     active: Mutex<Option<Activation>>,
     disk_gate: Mutex<()>,
+    policy: Mutex<Option<(Activation, PolicyLease)>>,
+}
+
+#[derive(Clone)]
+pub(in crate::agent_network) struct PolicyLease(Arc<AtomicBool>);
+impl PolicyLease {
+    pub fn current(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+    fn invalidate(&self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 fn failure() -> NetworkError {
@@ -96,6 +111,7 @@ impl DesktopNotificationSource {
             root,
             active: Mutex::new(None),
             disk_gate: Mutex::new(()),
+            policy: Mutex::new(None),
         }
     }
 
@@ -112,6 +128,7 @@ impl DesktopNotificationSource {
         {
             return Err(failure());
         }
+        self.invalidate_policy();
         *self.active.lock().map_err(|_| failure())? = Some(activation);
         Ok(())
     }
@@ -126,6 +143,51 @@ impl DesktopNotificationSource {
                 *active = None;
             }
         }
+        if let Ok(mut policy) = self.policy.lock() {
+            if policy.as_ref().is_some_and(|(a, _)| {
+                a.scope == expected.scope
+                    && a.generation == expected.generation
+                    && a.connection == expected.connection
+            }) {
+                if let Some((_, lease)) = policy.take() {
+                    lease.invalidate();
+                }
+            }
+        }
+    }
+
+    pub fn invalidate_policy(&self) {
+        // Poison may prevent new admission, never prevent revocation.
+        let mut policy = self.policy.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((_, lease)) = policy.take() {
+            lease.invalidate();
+        }
+    }
+
+    pub fn accept_policy(&self, expected: &Activation) -> Result<(), NetworkError> {
+        let mut policy = self.policy.lock().map_err(|_| failure())?;
+        if !self.current(expected) {
+            return Err(failure());
+        }
+        if let Some((_, lease)) = policy.take() {
+            lease.invalidate();
+        }
+        *policy = Some((
+            expected.clone(),
+            PolicyLease(Arc::new(AtomicBool::new(true))),
+        ));
+        Ok(())
+    }
+
+    pub fn policy_lease(&self, expected: &Activation) -> Option<PolicyLease> {
+        let policy = self.policy.lock().ok()?;
+        let (a, lease) = policy.as_ref()?;
+        (self.current(expected)
+            && a.scope == expected.scope
+            && a.connection == expected.connection
+            && a.generation == expected.generation
+            && lease.current())
+        .then(|| lease.clone())
     }
 
     pub fn capture(&self) -> Option<Activation> {
@@ -348,17 +410,28 @@ impl DesktopNotificationSource {
             .collect())
     }
 
+    #[cfg(test)]
     pub fn acknowledge(
         &self,
         expected: &Activation,
         item: &Observation,
         event_id: &str,
     ) -> Result<(), NetworkError> {
+        self.acknowledge_guarded(expected, item, event_id, || true)
+    }
+
+    pub fn acknowledge_guarded(
+        &self,
+        expected: &Activation,
+        item: &Observation,
+        event_id: &str,
+        still_authorized: impl Fn() -> bool,
+    ) -> Result<(), NetworkError> {
         if !uuid(event_id) {
             return Err(failure());
         }
         let _gate = self.disk_gate.lock().map_err(|_| failure())?;
-        if !self.current(expected) {
+        if !self.current(expected) || !still_authorized() {
             return Err(failure());
         }
         let mut disk = self.read(&expected.scope)?;
@@ -388,7 +461,7 @@ impl DesktopNotificationSource {
         if disk.confirmed.len() > MAX_CONFIRMED {
             disk.confirmed.remove(0);
         }
-        if !self.current(expected) {
+        if !self.current(expected) || !still_authorized() {
             return Err(failure());
         }
         self.write(&expected.scope, &disk)
@@ -552,6 +625,39 @@ mod tests {
             });
         assert!(result.is_err());
         assert_eq!(reads.get(), 2);
+        assert!(source.peek(&f.active).unwrap().is_none());
+    }
+
+    #[test]
+    fn policy_revocation_at_ack_store_commit_retains_unconfirmed_pointer() {
+        let f = Fixture::new();
+        let source = f.open();
+        source
+            .observe(&f.active, &sid(), &f.root, "terminal:a")
+            .unwrap();
+        source.accept_policy(&f.active).unwrap();
+        let lease = source.policy_lease(&f.active).unwrap();
+        let item = source.peek(&f.active).unwrap().unwrap();
+        let event = sid();
+        let reads = std::cell::Cell::new(0);
+        let result = source.acknowledge_guarded(&f.active, &item, &event, || {
+            let count = reads.get();
+            reads.set(count + 1);
+            if count == 1 {
+                source.invalidate_policy();
+            }
+            lease.current()
+        });
+        assert!(result.is_err());
+        assert!(source.peek(&f.active).unwrap().is_some());
+        assert!(source.policy_lease(&f.active).is_none());
+        source.accept_policy(&f.active).unwrap();
+        let fresh = source.policy_lease(&f.active).unwrap();
+        assert!(!lease.current());
+        assert!(fresh.current());
+        source
+            .acknowledge_guarded(&f.active, &item, &event, || fresh.current())
+            .unwrap();
         assert!(source.peek(&f.active).unwrap().is_none());
     }
 

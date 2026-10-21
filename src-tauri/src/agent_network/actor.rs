@@ -492,6 +492,7 @@ impl AgentNetwork {
         self.boundary.borrow().generation
     }
     pub(crate) fn catalog_changed(&self) {
+        self.notification_source.invalidate_policy();
         self.catalog_changed.notify_one();
     }
     pub(crate) fn memory_budget(&self) -> MemoryBudget {
@@ -1341,12 +1342,16 @@ async fn connect(
                         match envelope.message {
                             ServerMessage::Ready { catalog_seq: accepted, .. } if ready_requested && accepted == catalog_seq && local_policy.is_some() => {
                                 hydrated = true;
+                                if local_policy.as_ref().is_some_and(|p| p.joined) {
+                                    if let Some(expected) = &source_activation { let _ = owner.notification_source.accept_policy(expected); }
+                                }
                                 reconnect.recovered();
                                 owner.publish(app, generation, NetworkSnapshot { connection_id:owner.connection_id.clone(),state: "ready", principal_id: Some(local.principal_id.clone()),
                                     network_id: Some(local.network_id.clone()), device_name: local_policy.as_ref().map(|policy| policy.device_name.clone()), error: None, revision: 0, auth_generation: 0 });
                             }
                             ServerMessage::Changed { change, .. } => {
                                 if matches!(change, myagents_agent_network_protocol::ChangeScope::Settings | myagents_agent_network_protocol::ChangeScope::Catalog) {
+                                    owner.notification_source.invalidate_policy();
                                     local_policy = None; hydrate_dirty = true;
                                 }
                                 let snapshot = owner.snapshot(); owner.publish(app, generation, snapshot);
@@ -1684,6 +1689,7 @@ async fn connect(
                     Work::Catalog(result) => {
                         catalog_busy = false; let accepted = result?;
                         if accepted != catalog_seq { return Err(NetworkError::new("CATALOG_NOT_CURRENT")); }
+                        owner.notification_source.invalidate_policy();
                         local_policy = None; hydrate_dirty = true;
                     }
                     Work::Hydrate { catalog_seq: hydrated_seq, result } => {
@@ -1692,6 +1698,9 @@ async fn connect(
                         // projection even if its HTTP response arrives last.
                         if hydrated_seq == catalog_seq && !hydrate_dirty {
                             local_policy = Some(result?);
+                            if hydrated && ready_requested && !catalog_busy && local_policy.as_ref().is_some_and(|p| p.joined) {
+                                if let Some(expected) = &source_activation { let _ = owner.notification_source.accept_policy(expected); }
+                            }
                             if hydrated {
                                 let mut snapshot = owner.snapshot();
                                 let name = local_policy.as_ref().map(|policy| policy.device_name.clone());
@@ -1862,6 +1871,7 @@ async fn connect(
                 }.boxed());
             }
             _ = owner.catalog_changed.notified(), if !catalog_busy && !management_only => {
+                owner.notification_source.invalidate_policy();
                 catalog_seq = catalog_seq.checked_add(1).filter(|value| *value <= 9_007_199_254_740_991)
                     .ok_or_else(|| NetworkError::new("CATALOG_SEQUENCE_EXHAUSTED"))?;
                 catalog_busy = true; ready_requested = false;
@@ -1872,7 +1882,8 @@ async fn connect(
                 if hydrated && !catalog_busy && !source_busy && work.len() < budget("pending")
                     && source_next <= Instant::now() && local_policy.as_ref().is_some_and(|p| p.joined)
                 {
-                    if let (Some(expected), Some(policy)) = (source_activation.clone(), local_policy.clone()) {
+                    if let (Some(expected), Some(policy), Some(lease)) = (source_activation.clone(), local_policy.clone(),
+                        source_activation.as_ref().and_then(|expected| owner.notification_source.policy_lease(expected))) {
                         if let Ok(allocation) = owner.memory.reserve(2 * 1024 * 1024) {
                             source_busy = true;
                             let source = owner.notification_source.clone(); let source_manager = manager.clone();
@@ -1881,7 +1892,7 @@ async fn connect(
                                 let _allocation = allocation;
                                 let result = tokio::time::timeout(Duration::from_secs(20),
                                     super::notification_source::delivery::publish_once(source, source_manager,
-                                        source_identity, expected, policy, source_memory)).await
+                                        source_identity, expected, policy, source_memory, lease)).await
                                     .unwrap_or_else(|_| Err(NetworkError::new("DESKTOP_NOTIFICATION_SOURCE_UNAVAILABLE")));
                                 Work::MobileNotification(result)
                             }.boxed());

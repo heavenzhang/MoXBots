@@ -10,7 +10,7 @@ use super::super::{
     remote_session_target::{global, post, session},
     NetworkError,
 };
-use super::{Activation, DesktopNotificationSource, Observation, SourceScope};
+use super::{Activation, DesktopNotificationSource, Observation, PolicyLease, SourceScope};
 use crate::sidecar::ManagedSidecarManager;
 use myagents_agent_network_protocol::{
     CatalogItem, CatalogLifecycle, ConnectionScope, DeviceScope,
@@ -66,8 +66,10 @@ fn current(
     source: &DesktopNotificationSource,
     expected: &Activation,
     identity: &NetworkIdentity,
+    lease: &PolicyLease,
 ) -> Result<(), NetworkError> {
-    if !source.current(expected)
+    if !lease.current()
+        || !source.current(expected)
         || activation(
             identity,
             &expected.scope.local,
@@ -142,6 +144,7 @@ async fn observe_pending(
     catalog: &[CatalogItem],
     policy: &LocalPolicy,
     memory: &MemoryBudget,
+    lease: &PolicyLease,
 ) -> Result<(), NetworkError> {
     use myagents_host_management_protocol::{
         RemoteSessionRequest, RemoteSessionResult, RemoteSessionState,
@@ -161,7 +164,7 @@ async fn observe_pending(
         .skip(offset)
         .take(sessions.len().min(4))
     {
-        current(source, expected, identity)?;
+        current(source, expected, identity, lease)?;
         let workspace = manager
             .lock()
             .map_err(|_| invalid())?
@@ -194,7 +197,7 @@ async fn observe_pending(
         .await?;
         let result: RemoteSessionResult = serde_json::from_value(value).map_err(|_| invalid())?;
         result.validate().map_err(|_| invalid())?;
-        current(source, expected, identity)?;
+        current(source, expected, identity, lease)?;
         if !manager
             .lock()
             .map_err(|_| invalid())?
@@ -267,12 +270,13 @@ pub(in crate::agent_network) async fn publish_once(
     expected: Activation,
     policy: LocalPolicy,
     memory: MemoryBudget,
+    lease: PolicyLease,
 ) -> Result<(), NetworkError> {
-    current(&source, &expected, &identity)?;
+    current(&source, &expected, &identity, &lease)?;
     let catalog = read_local_catalog(&manager).await?;
-    current(&source, &expected, &identity)?;
+    current(&source, &expected, &identity, &lease)?;
     let pending_status = observe_pending(
-        &source, &manager, &identity, &expected, &catalog, &policy, &memory,
+        &source, &manager, &identity, &expected, &catalog, &policy, &memory, &lease,
     )
     .await;
     let source_read = source.clone();
@@ -280,43 +284,65 @@ pub(in crate::agent_network) async fn publish_once(
     let items = tokio::task::spawn_blocking(move || source_read.candidates(&captured))
         .await
         .map_err(|_| invalid())??;
+    let selected = select_pointer(&manager, &memory, items, &catalog, &policy).await?;
+    let Some((item, agent_id)) = selected else {
+        return pending_status;
+    };
+    publish_selected(
+        source, manager, identity, expected, memory, item, agent_id, lease,
+    )
+    .await
+}
+
+async fn select_pointer(
+    manager: &ManagedSidecarManager,
+    memory: &MemoryBudget,
+    items: Vec<Observation>,
+    catalog: &[CatalogItem],
+    policy: &LocalPolicy,
+) -> Result<Option<(Observation, String)>, NetworkError> {
     let mut selected = None;
     for item in items {
-        let Some(agent) = unique_agent(&catalog, &policy, &item.workspace_path) else {
+        let Some(agent) = unique_agent(catalog, policy, &item.workspace_path) else {
             continue;
         };
-        match validate_pointer(&manager, &memory, &item, agent).await {
+        match validate_pointer(manager, memory, &item, agent).await {
             Ok(()) => {
                 selected = Some((item, agent.to_owned()));
                 break;
             }
-            Err(e)
-                if matches!(
-                    e.code.as_str(),
-                    "REMOTE_SESSION_NOT_FOUND" | "REMOTE_AGENT_UNAVAILABLE"
-                ) =>
-            {
+            Err(e) if matches!(e.code.as_str(), "SESSION_NOT_FOUND" | "AGENT_NOT_AVAILABLE") => {
                 continue
             }
             Err(e) => return Err(e),
         }
     }
-    let Some((item, agent_id)) = selected else {
-        return pending_status;
-    };
-    current(&source, &expected, &identity)?;
+    Ok(selected)
+}
+
+async fn publish_selected(
+    source: Arc<DesktopNotificationSource>,
+    manager: ManagedSidecarManager,
+    identity: NetworkIdentity,
+    expected: Activation,
+    memory: MemoryBudget,
+    item: Observation,
+    agent_id: String,
+    lease: PolicyLease,
+) -> Result<(), NetworkError> {
+    current(&source, &expected, &identity, &lease)?;
     let NetworkAccountSession::Owned(account) = &identity.account else {
         return Err(invalid());
     };
     let (client, discovered) =
         OwnedClient::discover(&account.descriptor.issuer, account.public_tls_ca.as_deref()).await?;
     account.descriptor.ensure_same_trust(&discovered)?;
-    current(&source, &expected, &identity)?;
+    current(&source, &expected, &identity, &lease)?;
     let response = client.notification_source_request("/api/mobile-notify/v1/source/challenges", json!({
         "version":1,"sourceEventId":item.source_event_id,"connectionEpoch":expected.connection.connection_epoch,
         "agentId":agent_id,"sessionId":item.session_id
     }), &account.session.access_token).await?;
-    current(&source, &expected, &identity)?;
+    current(&source, &expected, &identity, &lease)?;
     let challenge: Challenge = serde_json::from_value(response).map_err(|_| invalid())?;
     let now = jsonwebtoken::get_current_timestamp();
     if challenge.version != 1
@@ -330,10 +356,11 @@ pub(in crate::agent_network) async fn publish_once(
     }
     // Async discovery/challenge cannot turn a stale or moved Session into proof.
     validate_pointer(&manager, &memory, &item, &agent_id).await?;
-    current(&source, &expected, &identity)?;
+    current(&source, &expected, &identity, &lease)?;
     let proof = identity
         .device_key()
         .sign_proof(&challenge.challenge_id, &challenge.nonce)?;
+    current(&source, &expected, &identity, &lease)?;
     let response = client
         .notification_source_request(
             "/api/mobile-notify/v1/source/hints",
@@ -341,13 +368,13 @@ pub(in crate::agent_network) async fn publish_once(
             &account.session.access_token,
         )
         .await?;
-    current(&source, &expected, &identity)?;
+    current(&source, &expected, &identity, &lease)?;
     let confirmation: Confirmation = serde_json::from_value(response).map_err(|_| invalid())?;
     if confirmation.version != 1 || !uuid(&confirmation.event_id) {
         return Err(invalid());
     }
     tokio::task::spawn_blocking(move || {
-        source.acknowledge(&expected, &item, &confirmation.event_id)
+        source.acknowledge_guarded(&expected, &item, &confirmation.event_id, || lease.current())
     })
     .await
     .map_err(|_| invalid())??;
