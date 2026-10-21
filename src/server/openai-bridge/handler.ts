@@ -1,3 +1,4 @@
+import { streamFailure } from './stream-failure-diagnostic';
 import { APP_BUILD_PROFILE } from '../../shared/appProfile';
 import { createHash } from 'node:crypto';
 // Bridge HTTP handler: receives Anthropic requests, translates to OpenAI, forwards, translates back
@@ -9,7 +10,7 @@ import { createHash } from 'node:crypto';
 // between majors). Importing fetch from the same package guarantees the
 // dispatcher and fetch share the same internal contract.
 import { fetch, ProxyAgent, type Dispatcher } from 'undici';
-import type { BridgeConfig, UpstreamConfig, StreamInterruptionCause } from './types/bridge';
+import type { BridgeConfig, UpstreamConfig, StreamInterruptionObserver } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
 import type { OpenAIRequest, OpenAIResponse, OpenAIStreamChunk } from './types/openai';
 import type { ResponsesRequest, ResponsesResponse, ResponsesStreamEvent } from './types/openai-responses';
@@ -409,7 +410,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
           if (next.done) { cleanup(); output.close(); }
           else { output.enqueue(next.value); bytesDelivered += next.value.byteLength; }
         } catch (error) {
-          if (!consumerCancelled && !request.signal.aborted) upstream.onStreamInterruption?.('transport');
+          if (!consumerCancelled && !request.signal.aborted) upstream.onStreamInterruption?.('transport', streamFailure('transport'));
           if (!consumerCancelled) diagnostic('response_body', error); cleanup(); output.error(error);
         }
       },
@@ -1011,7 +1012,7 @@ function observeRawTransport(body: ReadableStream<Uint8Array>, notify: UpstreamC
         const next = await reader.read();
         if (next.done) output.close(); else output.enqueue(next.value);
       } catch (error) {
-        if (!cancelled && !signal?.aborted) notify('transport');
+        if (!cancelled && !signal?.aborted) notify('transport', streamFailure('transport'));
         output.error(error);
       }
     },
@@ -1029,7 +1030,7 @@ export function handleStreamResponse(
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
   onModelProgress?: () => void,
-  onStreamInterruption?: (cause: StreamInterruptionCause) => void,
+  onStreamInterruption?: StreamInterruptionObserver,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline replaces the manual
   // ReadableStream { start } loop. The pipeline is:
@@ -1084,7 +1085,7 @@ export function handleStreamResponse(
         if (sseEvent.event === 'ping') continue;
         if (sseEvent.event === 'error') {
           retireModelProgress();
-          onStreamInterruption?.('unproven');
+          onStreamInterruption?.('unproven', streamFailure('provider_terminal'));
           controller.error(new Error('Upstream Chat Completions stream reported an error'));
           return;
         }
@@ -1100,7 +1101,7 @@ export function handleStreamResponse(
           // Missing content/tool arguments cannot be repaired by a later valid
           // terminal. Preserve the failure so recovery cannot clear its journal.
           retireModelProgress();
-          onStreamInterruption?.('unproven');
+          onStreamInterruption?.('unproven', streamFailure('protocol_validation'));
           controller.error(new Error('Malformed upstream Chat Completions stream event'));
           return;
         }
@@ -1126,7 +1127,7 @@ export function handleStreamResponse(
       // fetch releases the lingering provider socket. See issue #277.
       if (chunk === STREAM_DONE) {
         const finalized = translator.finalize();
-        if (finalized.some(event => event.type === 'error')) onStreamInterruption?.('unproven');
+        if (finalized.some(event => event.type === 'error')) onStreamInterruption?.('unproven', streamFailure('protocol_validation'));
         for (const event of finalized) {
           controller.enqueue(encoder.encode(formatSSE(event)));
         }
@@ -1163,14 +1164,18 @@ export function handleStreamResponse(
       for (const event of anthropicEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
       }
-      if (anthropicEvents.some(event => event.type === 'error')) { onStreamInterruption?.('unproven'); retireModelProgress(); }
+      if (anthropicEvents.some(event => event.type === 'error')) {
+        const error = (chunk as unknown as { error?: { code?: unknown } }).error;
+        onStreamInterruption?.('unproven', streamFailure(error && typeof error === 'object' ? 'provider_terminal' : 'protocol_validation', error?.code));
+        retireModelProgress();
+      }
     },
     flush(controller) {
       // EOF succeeds only with a valid finish_reason; otherwise emit an error.
       retireModelProgress();
       const finalEvents = translator.finalize();
       if (finalEvents.some(event => event.type === 'error')) {
-        onStreamInterruption?.(observedModelProgress && !sseParser.hasIncompleteEvent ? 'transport' : 'unproven');
+        onStreamInterruption?.(observedModelProgress && !sseParser.hasIncompleteEvent ? 'transport' : 'unproven', streamFailure('unproven_eof'));
       }
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
@@ -1317,7 +1322,7 @@ export function handleResponsesStreamResponse(
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
   onModelProgress?: () => void,
-  onStreamInterruption?: (cause: StreamInterruptionCause) => void,
+  onStreamInterruption?: StreamInterruptionObserver,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline (mirror of handleStreamResponse).
   let modelProgressActive = true;
@@ -1366,7 +1371,7 @@ export function handleResponsesStreamResponse(
           controller.enqueue(JSON.parse(sseEvent.data) as ResponsesStreamEvent);
         } catch {
           retireModelProgress();
-          onStreamInterruption?.('unproven');
+          onStreamInterruption?.('unproven', streamFailure('protocol_validation'));
           controller.error(new Error('Malformed upstream Responses stream event'));
           return;
         }
@@ -1378,7 +1383,7 @@ export function handleResponsesStreamResponse(
   const translateTransform = new TransformStream<ResponsesStreamEvent, Uint8Array>({
     transform(event, controller) {
       let safeEvent = event;
-      if (!KNOWN_RESPONSES_EVENTS.has(event.type)) onStreamInterruption?.('unproven');
+      if (!KNOWN_RESPONSES_EVENTS.has(event.type)) onStreamInterruption?.('unproven', streamFailure('protocol_validation'));
       if (event.type === 'error') {
         safeEvent = { ...event, message: sanitizeUpstreamErrorBody(event.message) };
       } else if ('response' in event) {
@@ -1400,7 +1405,15 @@ export function handleResponsesStreamResponse(
       for (const ae of anthropicEvents) {
         controller.enqueue(encoder.encode(formatSSE(ae)));
       }
-      if (anthropicEvents.some(ae => ae.type === 'error')) onStreamInterruption?.('unproven');
+      if (anthropicEvents.some(ae => ae.type === 'error')) {
+        // Status consistency is checked before trusting provider failure provenance.
+        // Arbitrary provider messages/codes never enter the retained diagnostic.
+        const failed = event.type === 'response.failed' && event.response.status === 'failed';
+        const incomplete = event.type === 'response.incomplete' && event.response.status === 'incomplete';
+        const code = failed ? event.response.error?.code : event.type === 'error' ? event.code : undefined;
+        onStreamInterruption?.('unproven', streamFailure(failed || incomplete || event.type === 'error'
+          ? 'provider_terminal' : 'protocol_validation', code));
+      }
       if (anthropicEvents.some(ae => ae.type === 'message_stop' || ae.type === 'error')) retireModelProgress();
       // Success, incomplete and error are protocol terminals. The translator
       // emits message_stop or an Anthropic error event,
@@ -1419,7 +1432,7 @@ export function handleResponsesStreamResponse(
       retireModelProgress();
       const finalEvents = translator.finalize();
       if (finalEvents.some(event => event.type === 'error')) {
-        onStreamInterruption?.(observedModelProgress && !sseParser.hasIncompleteEvent ? 'transport' : 'unproven');
+        onStreamInterruption?.(observedModelProgress && !sseParser.hasIncompleteEvent ? 'transport' : 'unproven', streamFailure('unproven_eof'));
       }
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));

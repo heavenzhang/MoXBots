@@ -1,3 +1,4 @@
+import { safeStreamFailure, streamFailure, streamFailureMessage, type StreamFailureDiagnostic } from './stream-failure-diagnostic';
 import { createHash } from 'node:crypto';
 import type { AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicToolResultBlock } from './types/anthropic';
 import { readBoundedErrorBody } from './read-error-body';
@@ -5,7 +6,7 @@ import { SSEParser } from './utils/sse-parser';
 import { modelStreamEventType } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard } from './request-lifetime';
-import type { StreamInterruptionCause } from './types/bridge';
+import type { StreamInterruptionCause, StreamInterruptionObserver } from './types/bridge';
 import { StreamDeliveryWitness } from './stream-delivery-witness';
 
 /** Internal, Query-local evidence capability. Never accepted from HTTP/model metadata. */
@@ -18,7 +19,7 @@ export interface SettledInterruptionReceipt {
 
 export interface BridgeContextRecovery {
   run(request: Request, body: AnthropicRequest,
-    execute: (projected: AnthropicRequest, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>): Promise<Response>;
+    execute: (projected: AnthropicRequest, onStreamInterruption?: StreamInterruptionObserver) => Promise<Response>): Promise<Response>;
 }
 
 export interface ContextRecoveryOptions {
@@ -727,7 +728,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   async run(request: Request, body: AnthropicRequest,
-    execute: (projected: AnthropicRequest, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>): Promise<Response> {
+    execute: (projected: AnthropicRequest, onStreamInterruption?: StreamInterruptionObserver) => Promise<Response>): Promise<Response> {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive()
       && this.options.requestIdentity?.() === requestIdentity;
@@ -757,7 +758,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const ambiguous = !currentState || this.options.canRecover?.() === false;
     const lease = this.requestGuard.begin(currentState?.scope, fingerprint, ambiguous);
     if (!lease) return this.requestGuard.rejectedResponse(currentState?.scope, fingerprint)
-      ?? required('This model request was already delivered, failed, or reached the Query safety limit. Automatic replay is blocked.');
+      ?? required('This model request was already delivered, failed, or reached the Query safety limit. Automatic replay is blocked.'
+        + streamFailureMessage(this.requestGuard.failureDiagnostic(currentState?.scope)));
     if (state.blocked || this.ledgerBlocked || state.recovering || state.inFlight.has(fingerprint) || state.delivered.has(fingerprint)
       || (state.recovered && this.requestGuard.inFlightCount > 1)) {
       lease.finish();
@@ -776,6 +778,12 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         interruptionCause = cause;
       }
     };
+    let failureCandidate: StreamFailureDiagnostic | undefined;
+    const observeFailure: StreamInterruptionObserver = (cause, diagnostic) => {
+      observeInterruption(cause);
+      if (!deliveryFinished && queryLive()) failureCandidate ??= safeStreamFailure(diagnostic);
+    };
+    const blockedFrame = () => formatReplayBlockedStreamError(this.requestGuard.failureDiagnostic(currentState?.scope));
     const finish = () => {
       deliveryFinished = true;
       state.inFlight.delete(fingerprint);
@@ -829,7 +837,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       const input = state.recovered ? await prepare(false) : body;
       if (input instanceof Response) return input;
       if (!live()) return cancelled();
-      let response = await execute(input, observeInterruption);
+      let response = await execute(input, observeFailure);
       if (!live()) { void response.body?.cancel().catch(() => undefined); return cancelled(); }
       if (!response.ok && [400, 413, 422].includes(response.status)) {
         const text = await readBoundedErrorBody(response.body);
@@ -848,7 +856,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         const reduced = await prepare(true);
         if (reduced instanceof Response) return reduced;
         if (!recoveryLive()) return cancelled();
-        response = await execute(reduced, observeInterruption);
+        failureCandidate = undefined; // A replaced inference attempt cannot become the final first cause.
+        response = await execute(reduced, observeFailure);
         if (!live()) { void response.body?.cancel().catch(() => undefined); return cancelled(); }
         if (!response.ok) {
           void response.body?.cancel().catch(() => undefined);
@@ -914,8 +923,9 @@ export class ContextRecoveryController implements BridgeContextRecovery {
               if (isSse && !terminalQueued) {
                 const trustedEof = interruptionCause !== 'unproven' && !parser.hasIncompleteEvent;
                 if (!trustedEof) lease.unknownDelivery();
+                lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('unproven_eof'));
                 interruptStream(trustedEof);
-                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+                output.enqueue(encoder.encode(blockedFrame()));
               }
               finish(); output.close(); return;
             }
@@ -925,9 +935,15 @@ export class ContextRecoveryController implements BridgeContextRecovery {
               const type = modelStreamEventType(event);
               if (!type) continue;
               if (type === 'error') {
+                // Raw Anthropic errors have no translator. Use only their exact type,
+                // never model/provider message text or synthetic diagnostic fields.
+                try {
+                  const payload = JSON.parse(event.data) as { error?: { type?: unknown } };
+                  lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('provider_terminal', payload.error?.type));
+                } catch { lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('protocol_validation')); }
                 if (interruptionCause !== 'transport') lease.unknownDelivery();
                 interruptStream(interruptionCause === 'transport');
-                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+                output.enqueue(encoder.encode(blockedFrame()));
                 void reader.cancel().catch(() => undefined);
                 finish(); output.close(); return;
               }
@@ -949,13 +965,14 @@ export class ContextRecoveryController implements BridgeContextRecovery {
           } catch (error) {
             if (!terminalQueued) {
               const trusted = queryLive() && !consumerCancelled && interruptionCause === 'transport';
+              if (queryLive() && !consumerCancelled) lease.recordFailureDiagnostic(failureCandidate ?? streamFailure(trusted ? 'transport' : 'protocol_validation'));
               if (!trusted) lease.unknownDelivery();
               interruptStream(trusted);
             }
             void reader.cancel().catch(() => undefined);
             finish();
             if (isSse && !terminalQueued && !consumerCancelled && queryLive()) {
-              output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+              output.enqueue(encoder.encode(blockedFrame()));
               output.close();
             } else output.error(error);
           }
