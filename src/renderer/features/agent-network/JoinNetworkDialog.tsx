@@ -5,7 +5,10 @@ import OverlayBackdrop from "@/components/OverlayBackdrop";
 import { CloseIcon, LoaderIcon } from "@/components/icons";
 import { useCloseLayer } from "@/hooks/useCloseLayer";
 import { isImeComposingEvent } from "@/utils/imeKeyboard";
-import { useOwnedLoginFlow } from "./useOwnedLoginFlow";
+import {
+  useOwnedLoginFlow,
+  type OwnedLoginObservation,
+} from "./useOwnedLoginFlow";
 import type { OwnedLoginAttempt } from "@/api/agentNetwork";
 
 type JoinMode = "account" | "key";
@@ -14,6 +17,7 @@ export function JoinNetworkDialog({
   onOwnedStart,
   onOwnedOpen,
   onOwnedPoll,
+  onOwnedRetry,
   onOwnedCancel,
   onCancel,
   accountOnly = false,
@@ -26,9 +30,8 @@ export function JoinNetworkDialog({
     publicTlsCaFile?: string,
   ) => Promise<OwnedLoginAttempt>;
   onOwnedOpen: (attemptId: string) => Promise<void>;
-  onOwnedPoll: (
-    attemptId: string,
-  ) => Promise<"pending" | "authenticated" | OwnedLoginAttempt>;
+  onOwnedPoll: (attemptId: string) => Promise<OwnedLoginObservation>;
+  onOwnedRetry?: (attemptId: string) => Promise<void>;
   onOwnedCancel: (attemptId: string) => Promise<void>;
   onCancel: () => void;
   accountOnly?: boolean;
@@ -51,6 +54,7 @@ export function JoinNetworkDialog({
     onOwnedStart,
     onOwnedOpen,
     onOwnedPoll,
+    onOwnedRetry,
     onOwnedCancel,
     onCancel,
   });
@@ -95,6 +99,7 @@ export function JoinNetworkDialog({
     return login.start(url, publicTlsCaFile);
   };
   const hasAttempt = attempt !== null;
+  const browserPending = ["awaiting_authorization", "receiving_grant"].includes(login.nativePhase);
   const fixedServiceUrl = accountOnly && initialUrl.trim().length > 0;
   return (
     <OverlayBackdrop
@@ -267,7 +272,11 @@ export function JoinNetworkDialog({
               {attempt && (
                 <div className="mt-4 rounded-lg border border-[var(--line)] p-3">
                   <p className="text-sm font-medium">
-                    {t(login.stopped ? "agentNetwork.ownedLogin.stopped" : "agentNetwork.ownedLogin.waiting")}
+                    {t(
+                      login.stopped
+                        ? "agentNetwork.ownedLogin.stopped"
+                        : `agentNetwork.ownedLogin.phases.${login.nativePhase}`,
+                    )}
                   </p>
                   {!login.expired && !login.stopped && (
                     <p
@@ -278,14 +287,16 @@ export function JoinNetworkDialog({
                       {t("agentNetwork.ownedLogin.autoChecking")}
                     </p>
                   )}
-                  {!login.stopped && <p className="mt-2 text-xs text-[var(--ink-muted)]">
-                    {t("agentNetwork.ownedLogin.expires", {
-                      time: new Date(
-                        attempt.expiresAt * 1000,
-                      ).toLocaleTimeString(),
-                    })}
-                  </p>}
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  {!login.stopped && browserPending && (
+                    <p className="mt-2 text-xs text-[var(--ink-muted)]">
+                      {t("agentNetwork.ownedLogin.expires", {
+                        time: new Date(
+                          attempt.expiresAt * 1000,
+                        ).toLocaleTimeString(),
+                      })}
+                    </p>
+                  )}
+                  {browserPending && <div className="mt-3 flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => void login.reopen()}
@@ -296,8 +307,18 @@ export function JoinNetworkDialog({
                     >
                       {t("agentNetwork.ownedLogin.openBrowser")}
                     </button>
-                  </div>
-                  {login.expired && (
+                  </div>}
+                  {login.canRetry && (
+                    <button
+                      type="button"
+                      onClick={() => void login.retry()}
+                      disabled={busy || login.checking}
+                      className="mt-3 rounded-lg bg-[var(--button-primary-bg)] px-3 py-2 text-sm text-[var(--button-primary-text)] disabled:opacity-50"
+                    >
+                      {t("agentNetwork.ownedLogin.retrySave")}
+                    </button>
+                  )}
+                  {(login.expired || (login.stopped && !login.canRetry)) && (
                     <button
                       type="button"
                       onClick={() => void startOwned()}

@@ -293,6 +293,7 @@ export function networkErrorKey(
   if (code === "NETWORK_TRUST_CHANGED") return "trustChanged";
   if (code === "KEY_GENERATION_CONFLICT" || code === "NETWORK_CREDENTIAL_GENERATION_CONFLICT")
     return "identityConflict";
+  if (code === "OWNED_LOGIN_RESTART_REQUIRED") return "ownedLoginRestartRequired";
   if (code === "OWNED_LOGIN_COMMIT_UNCONFIRMED") return "ownedLoginCommitUnconfirmed";
   if (code === "OWNED_ACCOUNT_MISMATCH") return "ownedAccountMismatch";
   if (code === "OWNED_IDENTITY_SELECTION_REQUIRED") return "ownedIdentitySelectionRequired";
@@ -361,12 +362,14 @@ export const joinNetworkConnection = (
   key: string,
 ): Promise<NetworkRegistry> => invoke("cmd_agent_network_join", { url, key });
 export interface OwnedLoginAttempt {
+  phase?: OwnedLoginPhase;
   attemptId: string;
   authorizationUrl: string;
   expiresAt: number;
 }
+export type OwnedLoginPhase = "awaiting_authorization" | "receiving_grant" | "verifying_identity" | "saving_session" | "committed" | "failed";
 export type OwnedLoginPoll =
-  | { status: "pending" }
+  | { status: "pending"; phase?: OwnedLoginPhase }
   | { status: "reauthorize"; authorization: OwnedLoginAttempt }
   | { status: "authenticated"; registry: NetworkRegistry };
 export const startOwnedNetworkLogin = (
@@ -394,6 +397,8 @@ export const pollOwnedNetworkLogin = (
   attemptId: string,
 ): Promise<OwnedLoginPoll> =>
   invoke("cmd_agent_network_owned_poll", { attemptId });
+export const retryOwnedNetworkLogin = (attemptId: string): Promise<void> =>
+  invoke("cmd_agent_network_owned_retry", { attemptId });
 export const cancelOwnedNetworkLogin = (attemptId: string): Promise<void> =>
   invoke("cmd_agent_network_owned_cancel", { attemptId });
 export const removeNetworkConnection = (

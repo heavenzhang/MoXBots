@@ -312,7 +312,7 @@ it("does not select or accept a late re-login result after the dialog is unmount
   fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(calls.ownedPoll).toHaveBeenCalledWith("attempt-1"));
   view.unmount();
-  expect(calls.ownedCancel).toHaveBeenCalledWith("attempt-1");
+  expect(calls.ownedCancel).not.toHaveBeenCalled();
   await act(async () => { resolvePoll({ status: "authenticated", registry: owned }); });
   expect(calls.accept).not.toHaveBeenCalled();
   expect(calls.select).not.toHaveBeenCalled();

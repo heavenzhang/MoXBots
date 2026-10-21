@@ -866,6 +866,7 @@ pub fn run() {
             agent_network::commands::cmd_agent_network_owned_start_existing,
             agent_network::commands::cmd_agent_network_owned_open_authorization,
             agent_network::commands::cmd_agent_network_owned_poll,
+            agent_network::commands::cmd_agent_network_owned_retry,
             agent_network::commands::cmd_agent_network_owned_cancel,
             agent_network::commands::cmd_agent_network_owned_restore_credentials,
             agent_network::commands::cmd_agent_network_owned_restore_cancel,

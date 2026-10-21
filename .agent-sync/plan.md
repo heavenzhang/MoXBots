@@ -1,3 +1,11 @@
+## MOXBOTS-LOGIN-RETURN-02 — 浏览器登录的可靠交付与原生提交
+
+用户反馈 Air 原设备网页登录后客户端不变，要求重构机制。任务 `.agent-sync/tasks/codex-login-transaction-02-d5dbc807.md`，设计 `dev-docs/login-transaction-02/design.md`。服务端 opt-in 可重取同一 session 并在 native 保存发布后 ACK；native 单飞后台 driver、阶段投影、staged 恢复及无 bearer 的提交回执；UI 卸载仅 detach，显式取消及真实身份边界仍生效。保留原账号/设备/凭据权限，不迁移数据库，不新增监听端口。
+
+部署单元：desktop client（src-tauri/renderer），唯一 CI/发布负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；owned cloud auth（services/agentnet），唯一负责人 `01a12b99-7b38-78b1-831f-9c60257d386a`。沿用本计划既有归属及版本规则；开发会话不分配构建号或运行共享 CI/正式部署。云端 additive 接口先上线，客户端随后升级；两个单元可各自回滚，保留 legacy 契约及已有会话。精确 SHA/CI/版本/制品摘要由 owner 冻结后记录，后续源码进入下一批。
+
+当前：独立分支 `codex/login-transaction-02` 源码与本地验证已完成，正在精确 SHA 发布交接；真实 Air 构建号/日志未知（用户只读命令没有输出），单机或模拟测试不能替代 Air 登录和持久化验收。本批未变更生产，远端 main、统一 CI、两个单元发布和 Air 实验分别追踪。
+
 ## MOXBOTS-NATIVE-GOAL-CONTINUE-20261021 — 安全首因可见性
 
 原生case5正式Continue已入新Query/RC，随后response.failed后SDK重请求409；具体上游原因未知。下一批仅保留受限首因类别与固定提示，exactscope/attempt/request，沿现有有界registry，不改变恢复或执行权限。独立分支codex/native-goal-continue-20261021，任务记录见.agent-sync/tasks/codex-native-goal-continue-20261021-a040b693.md；root独审，desktop统一CI/发布仍由01a12bc2-907a-7702-b6dd-788225c5dfe4负责。源码已冻结并完成作者全integration（125files，1404PASS/32SKIP/0FAIL）及Bridge370unit；独审/主干/实际native验收分开记录，不操作冻结5163或原业务。
@@ -701,3 +709,17 @@ Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4. Norma
 
 ### 516.3 verification-only CI fixture followup
 Originalproducerc20/516.3 signednotarizedbytes retained unchanged afterCI39521879223 failed4oldmanualfixture cases. Complete648 followup changes only testfixture/task docs: realhandler/registry+ephemeralHTTP validSSE and4negative cases; original43expectstartlines/8cases retained. Primary fullintegration1397PASS/32skip/0fail andTS/lint/peer12PASS are local synthetic. Root retains build516.3 without recompilation because everyproduction source/config/lock/buildinput file is unchanged; originalembeddedbuildidentity remainsc20, newverificationSHA/CI/main recorded separately. OldCI failure stays immutable; no claim artifactwasbuiltfromnewtestcommit. ExistingPR178 gets one exactnewheadCI, strictnormalmain thenfreshnative/maintenance/local/online gates. No newreleaseversion/tag orotherunitdeployment.
+
+
+## Mobile original business Bot acceptance — 2026-10-21
+
+Existing sole mobile owner01a12b99 continues MOXBOTS-IPHONE-ACCEPTANCE-20261019 in codex/mobile-business-e2e-20261021 from main29cb959d. The human selected the current Mac's existing Bot in source chat01a1488b; this lane's latest direct request prioritizes real iPhone create/continue send/receive and system-picker file upload, keeps speech for later, preserves original101 identity/config and excludes daily Mac client changes. Existing desktop owner01a12bc2 supplies read-only identity/readiness/activity and retains all desktop operations. Do not replace this target with101's unrelated QA account or reset/migrate identities. Prior PR174/build2 controlled history/presentation acceptance is retained but does not close these business gates. Private evidence stays in pointer output/mobile-business-e2e-20261021; source task .agent-sync/tasks/codex-mobile-business-e2e-20261021-b8d5ee2f.md. Full002 approval/speech/notification/other unfinished paths remain separately open.
+
+
+## Original Mac mobile production route repair — 2026-10-21
+
+Existing mobile owner01a12b99 reproduced actual CodexLocal catalog TARGET_RECEIPT_INVALID while original directory/list/history worked. Three missing production Sidecar exact-route registrations blocked the inner mobile/asset handlers before credential admission. Minimal source repair and RED/GREEN185 relevant local cases plus type/lint/classification are recorded in dev-docs/mobile-002/original-mac-business-acceptance-20261021.md and the existing business-e2e task. This changes desktop server routing;01a12bc2 retains sole shared CI/build/version/deploy/rollback intake. Current516.4 candidate remains immutable and excludes this later fix. Internal phone build2 inputs remain unchanged; real new/continued send, system-picker upload and complete Host digest remain OPEN until next desktop artifact and safe physical reacceptance. Original101/dailyMac settings are preserved; no task model/upload was admitted; speech remains deferred in this lane.
+
+## Deployment coordination — MOXBOTS-0516-5165 LOGIN PRIORITY
+
+Human instruction in login owner chat prioritizes actual Air login and restart persistence. Root01a12bc2-907a-7702-b6dd-788225c5dfe4 remains sole desktop and combinedCI/main owner; cloud01a12b99-7b38-78b1-831f-9c60257d386a publishes additive service support first. Newunpublished0.5.16/build516.5 deliberately includes loginbe0679dc plus mobile exactroute4014 onmain9c01. Frozen516.4 remains preserved; no tag, artifact or public manifest is overwritten. Existing automatic Test and Owned AgentNet PR workflows execute once at the combined pinned head; no developer manual dispatch. Local5158/online015 remain until actual acceptance and owned rollout. Native business maintenance requires fresh owner/schedule/drafts/backup and normalexit. Air accepts the actual newdownload via original human, then real sign-in and normalexit/restart persistence; Macmini and tests cannot substitute. Later source changes belong to another unfrozen batch.

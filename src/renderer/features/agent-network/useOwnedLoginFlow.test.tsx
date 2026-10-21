@@ -6,10 +6,14 @@ import type { OwnedLoginAttempt } from "@/api/agentNetwork";
 const nativeEvents = vi.hoisted(() => new Map<string, () => void>());
 vi.mock("@/utils/browserMock", () => ({ isTauriEnvironment: () => true }));
 vi.mock("@/utils/tauriListen", () => ({
-  listenWithCleanup: vi.fn(async (name: string, handler: () => void, signal: AbortSignal) => {
-    nativeEvents.set(name, handler);
-    signal.addEventListener("abort", () => nativeEvents.delete(name), { once: true });
-  }),
+  listenWithCleanup: vi.fn(
+    async (name: string, handler: () => void, signal: AbortSignal) => {
+      nativeEvents.set(name, handler);
+      signal.addEventListener("abort", () => nativeEvents.delete(name), {
+        once: true,
+      });
+    },
+  ),
 }));
 const attempt: OwnedLoginAttempt = {
   attemptId: "attempt-1",
@@ -46,21 +50,35 @@ afterEach(() => {
 it("immediately verifies the current PKCE attempt on native browser return and closes only after authentication", async () => {
   const poll = vi.fn().mockResolvedValue("pending");
   const { result, actions } = setup({ onOwnedPoll: poll });
-  await act(async () => { await result.current.start("https://cloud.test"); });
-  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  await act(async () => {
+    await result.current.start("https://cloud.test");
+  });
+  await act(async () => {
+    nativeEvents.get("owned-login:browser-return")?.();
+  });
   expect(actions.onOwnedPoll).toHaveBeenCalledExactlyOnceWith("attempt-1");
   expect(actions.onCancel).not.toHaveBeenCalled();
   poll.mockResolvedValueOnce("authenticated");
-  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  await act(async () => {
+    nativeEvents.get("owned-login:browser-return")?.();
+  });
   expect(actions.onCancel).toHaveBeenCalledOnce();
 });
 it("ignores browser returns without a pending attempt and after cancellation, and removes its listener on unmount", async () => {
   const { result, actions, unmount } = setup();
-  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  await act(async () => {
+    nativeEvents.get("owned-login:browser-return")?.();
+  });
   expect(actions.onOwnedPoll).not.toHaveBeenCalled();
-  await act(async () => { await result.current.start("https://cloud.test"); });
-  await act(async () => { await result.current.cancel(); });
-  await act(async () => { nativeEvents.get("owned-login:browser-return")?.(); });
+  await act(async () => {
+    await result.current.start("https://cloud.test");
+  });
+  await act(async () => {
+    await result.current.cancel();
+  });
+  await act(async () => {
+    nativeEvents.get("owned-login:browser-return")?.();
+  });
   expect(actions.onOwnedPoll).not.toHaveBeenCalled();
   unmount();
   expect(nativeEvents.has("owned-login:browser-return")).toBe(false);
@@ -115,7 +133,7 @@ it("shares one flight among background, focus and manual checks and keeps cancel
   await tick();
   expect(poll).toHaveBeenCalledTimes(1);
 });
-it("stops all automatic checks at expiry and permits a new login attempt", async () => {
+it("confirms legacy pending at expiry, stops checking and permits a new attempt", async () => {
   const short = { ...attempt, expiresAt: 1800000003 };
   const { result, actions } = setup({
     onOwnedStart: vi
@@ -129,11 +147,11 @@ it("stops all automatic checks at expiry and permits a new login attempt", async
   await tick(3000);
   expect(result.current.expired).toBe(true);
   await tick(10_000);
-  expect(actions.onOwnedPoll).toHaveBeenCalledTimes(1);
+  expect(actions.onOwnedPoll).toHaveBeenCalledTimes(2);
   await act(async () => {
     await result.current.check();
   });
-  expect(actions.onOwnedPoll).toHaveBeenCalledTimes(1);
+  expect(actions.onOwnedPoll).toHaveBeenCalledTimes(2);
   await act(async () => {
     await result.current.start("https://cloud.test");
   });
@@ -157,7 +175,7 @@ it("cleans up timers and ignores a late poll when the dialog unmounts", async ()
   expect(actions.onCancel).not.toHaveBeenCalled();
   expect(vi.getTimerCount()).toBe(0);
 });
-it("cancels a start that completes after unmount instead of opening its browser", async () => {
+it("detaches a start that completes after unmount without cancelling its native owner", async () => {
   const started = deferred<OwnedLoginAttempt>();
   const { result, actions, unmount } = setup({
     onOwnedStart: vi.fn().mockReturnValue(started.promise),
@@ -172,7 +190,7 @@ it("cancels a start that completes after unmount instead of opening its browser"
     await promise;
   });
   expect(actions.onOwnedOpen).not.toHaveBeenCalled();
-  expect(actions.onOwnedCancel).toHaveBeenCalledWith("attempt-1");
+  expect(actions.onOwnedCancel).not.toHaveBeenCalled();
 });
 it("reopens a changed authorization once, then continues checking the original attempt owner", async () => {
   const next = {
@@ -289,7 +307,7 @@ it("does not expire a valid far-future deadline through timer integer overflow",
   expect(result.current.expired).toBe(false);
   expect(actions.onOwnedPoll).not.toHaveBeenCalled();
 });
-it("stops after expiry while a poll is still in flight", async () => {
+it("waits for native observation before expiring an in-flight legacy pending response", async () => {
   const pending = deferred<"pending">();
   const poll = vi.fn().mockReturnValue(pending.promise);
   const { result } = setup({
@@ -302,11 +320,12 @@ it("stops after expiry while a poll is still in flight", async () => {
     await result.current.start("https://cloud.test");
   });
   await tick(3000);
-  expect(result.current.expired).toBe(true);
+  expect(result.current.expired).toBe(false);
   expect(result.current.checking).toBe(true);
   await act(async () => {
     pending.resolve("pending");
   });
+  expect(result.current.expired).toBe(true);
   expect(result.current.checking).toBe(false);
   await tick(10_000);
   expect(poll).toHaveBeenCalledTimes(1);
@@ -358,19 +377,155 @@ it("keeps one browser launch and one polling loop under StrictMode lifecycle rep
 });
 
 it("retains an account mismatch and stops automatic and manual polling until cancellation", async () => {
-  const poll = vi.fn().mockRejectedValue(Object.assign(new Error("wrong account"), { code: "OWNED_ACCOUNT_MISMATCH" }));
+  const poll = vi
+    .fn()
+    .mockRejectedValue(
+      Object.assign(new Error("wrong account"), {
+        code: "OWNED_ACCOUNT_MISMATCH",
+      }),
+    );
   const { result, actions } = setup({ onOwnedPoll: poll });
-  await act(async () => { await result.current.start("https://cloud.test"); });
+  await act(async () => {
+    await result.current.start("https://cloud.test");
+  });
   await tick();
   expect(result.current.error).toContain("账号与当前网络绑定不一致");
   expect(result.current.notice).toBeNull();
   expect(result.current.stopped).toBe(true);
   expect(result.current.checking).toBe(false);
-  await act(async () => { vi.advanceTimersByTime(60_000); await result.current.check(); });
+  await act(async () => {
+    vi.advanceTimersByTime(60_000);
+    await result.current.check();
+  });
   expect(poll).toHaveBeenCalledOnce();
   expect(result.current.error).toContain("账号与当前网络绑定不一致");
   expect(actions.onCancel).not.toHaveBeenCalled();
-  await act(async () => { await result.current.cancel(); });
+  await act(async () => {
+    await result.current.cancel();
+  });
   expect(actions.onOwnedCancel).toHaveBeenCalledExactlyOnceWith("attempt-1");
   expect(actions.onCancel).toHaveBeenCalledOnce();
+});
+
+it("pauses actionable native save failures and retries the same attempt only on request", async () => {
+  const failure = {
+    code: "OWNED_CREDENTIAL_STORE_FAILED",
+    retryable: false,
+    details: { phase: "saving_session", canRetry: true },
+  };
+  const poll = vi
+    .fn()
+    .mockRejectedValueOnce(failure)
+    .mockResolvedValue({ status: "pending", phase: "saving_session" });
+  const retry = vi.fn().mockResolvedValue(undefined);
+  const { result, actions } = setup({ onOwnedPoll: poll, onOwnedRetry: retry });
+  await act(async () => {
+    await result.current.start("https://cloud.test");
+  });
+  await tick();
+  expect(result.current.canRetry).toBe(true);
+  expect(result.current.nativePhase).toBe("saving_session");
+  await tick(30_000);
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    await result.current.check();
+  });
+  expect(poll).toHaveBeenCalledTimes(1);
+  expect(actions.onOwnedCancel).not.toHaveBeenCalled();
+  await act(async () => {
+    await result.current.retry();
+  });
+  await tick(1);
+  expect(retry).toHaveBeenCalledExactlyOnceWith("attempt-1");
+  expect(result.current.canRetry).toBe(false);
+  expect(result.current.nativePhase).toBe("saving_session");
+  expect(actions.onOwnedStart).toHaveBeenCalledTimes(1);
+});
+it("stops polling terminal consumed results instead of waiting forever", async () => {
+  const poll = vi
+    .fn()
+    .mockRejectedValue({
+      code: "OWNED_LOGIN_RESTART_REQUIRED",
+      retryable: false,
+    });
+  const { result } = setup({ onOwnedPoll: poll });
+  await act(async () => {
+    await result.current.start("https://cloud.test");
+  });
+  await tick();
+  await tick(30_000);
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+  });
+  expect(poll).toHaveBeenCalledTimes(1);
+  expect(result.current.stopped).toBe(true);
+  expect(result.current.canRetry).toBe(false);
+});
+it("observes native phases without treating status as a new authorization", async () => {
+  const poll = vi
+    .fn()
+    .mockResolvedValue({ status: "pending", phase: "verifying_identity" });
+  const { result, actions } = setup({ onOwnedPoll: poll });
+  await act(async () => {
+    await result.current.start("https://cloud.test");
+  });
+  await tick();
+  expect(result.current.attempt?.attemptId).toBe("attempt-1");
+  expect(result.current.nativePhase).toBe("verifying_identity");
+  expect(actions.onOwnedOpen).toHaveBeenCalledTimes(1);
+});
+
+it("reattaches a received grant after browser expiry without reopening authorization", async () => {
+  const staged = { ...attempt, expiresAt: 1799999999, phase: "saving_session" as const };
+  const poll = vi.fn().mockResolvedValue("authenticated");
+  const { result, actions } = setup({ onOwnedStart: vi.fn().mockResolvedValue(staged), onOwnedPoll: poll });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  expect(actions.onOwnedOpen).not.toHaveBeenCalled();
+  expect(result.current.expired).toBe(false);
+  expect(result.current.nativePhase).toBe("saving_session");
+  await tick();
+  expect(poll).toHaveBeenCalledExactlyOnceWith("attempt-1");
+  expect(actions.onCancel).toHaveBeenCalledOnce();
+});
+
+it("offers restart when a retained grant expires before the user retries saving", async () => {
+  const poll = vi.fn().mockRejectedValue({ code: "NETWORK_CREDENTIAL_STORE_UNAVAILABLE", retryable: false, details: { phase: "saving_session", canRetry: true } });
+  const retry = vi.fn().mockRejectedValue({ code: "OWNED_LOGIN_EXPIRED", retryable: false });
+  const { result } = setup({ onOwnedPoll: poll, onOwnedRetry: retry });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await tick();
+  expect(result.current.canRetry).toBe(true);
+  await act(async () => { await result.current.retry(); });
+  expect(result.current.stopped).toBe(true);
+  expect(result.current.canRetry).toBe(false);
+  await tick(10_000);
+  expect(poll).toHaveBeenCalledTimes(1);
+});
+
+it("accepts a native commit observed after the browser deadline while the view was suspended", async () => {
+  const poll = vi.fn().mockResolvedValue("authenticated");
+  const { result, actions } = setup({ onOwnedStart: vi.fn().mockResolvedValue({ ...attempt, expiresAt: 1800000003 }), onOwnedPoll: poll });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  // Advancing the wall clock without executing timers models a suspended view.
+  vi.setSystemTime(1800000010000);
+  await act(async () => { window.dispatchEvent(new Event("focus")); });
+  expect(poll).toHaveBeenCalledExactlyOnceWith("attempt-1");
+  expect(actions.onCancel).toHaveBeenCalledOnce();
+  expect(result.current.expired).toBe(false);
+});
+
+it("can restart after cancellation fails while an older observation remains in flight", async () => {
+  const oldPoll = deferred<"authenticated">();
+  const start = vi.fn().mockResolvedValueOnce(attempt).mockResolvedValueOnce({ ...attempt, attemptId: "attempt-2" });
+  const { result, actions } = setup({ onOwnedStart: start, onOwnedPoll: vi.fn().mockReturnValue(oldPoll.promise), onOwnedCancel: vi.fn().mockRejectedValue(Error("cancel failed")) });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await tick();
+  await act(async () => { await result.current.cancel(); });
+  expect(result.current.stopped).toBe(true);
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  expect(start).toHaveBeenCalledTimes(2);
+  expect(result.current.attempt?.attemptId).toBe("attempt-2");
+  await act(async () => { oldPoll.resolve("authenticated"); });
+  expect(actions.onCancel).not.toHaveBeenCalled();
+  expect(result.current.attempt?.attemptId).toBe("attempt-2");
 });

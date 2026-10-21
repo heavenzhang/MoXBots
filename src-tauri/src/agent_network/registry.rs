@@ -5,7 +5,7 @@ use super::actor::{AgentNetwork, ManagedConnection, NetworkSnapshot};
 use super::identity::NetworkIdentity;
 use super::memory::MemoryBudget;
 use super::owned_account_desktop::{
-    CompletedLogin, LoginProgress, OwnedLoginManager, StartedLogin,
+    CompletedLogin, LoginObservation, LoginProgress, OwnedLoginManager, StartedLogin,
 };
 use super::owned_login::OwnedInstance;
 use super::NetworkError;
@@ -108,7 +108,7 @@ pub(crate) struct RegistryView {
     pub owned_service_url: Option<&'static str>,
 }
 pub(crate) enum OwnedRegistryPoll {
-    Pending,
+    Pending { phase: &'static str },
     Reauthorize(StartedLogin),
     Authenticated(RegistryView),
 }
@@ -120,13 +120,46 @@ pub(crate) struct NetworkRegistry {
     owned_stored: Mutex<Vec<StoredOwnedConnection>>,
     owned_restore_errors: Mutex<HashMap<String, NetworkError>>,
     owned_restore_operations: Mutex<super::credential_restore::RestoreOperations>,
-    owned_login: OwnedLoginManager,
+    owned_login: Arc<OwnedLoginManager>,
+    owned_login_drivers: Mutex<HashMap<String, bool>>,
     selected: Mutex<String>,
     revision: AtomicU64,
     stopped: AtomicBool,
     selfhost_enabled: AtomicBool,
     shutdown: Notify,
     mutation: tokio::sync::Mutex<()>,
+}
+fn owned_login_selection(
+    current: &str,
+    at_start: &str,
+    new_connection: &str,
+    preserve_membership: bool,
+) -> String {
+    // Selection is presentation. A detached login may finish after the user
+    // chooses another network; it must preserve that later choice.
+    if preserve_membership || current != at_start {
+        current.to_owned()
+    } else {
+        new_connection.to_owned()
+    }
+}
+fn claim_login_driver(drivers: &mut HashMap<String, bool>, id: &str) -> bool {
+    if let Some(queued_retry) = drivers.get_mut(id) {
+        *queued_retry = true;
+        false
+    } else {
+        drivers.insert(id.to_owned(), false);
+        true
+    }
+}
+fn finish_login_driver(drivers: &mut HashMap<String, bool>, id: &str) -> bool {
+    if drivers.get(id) == Some(&true) {
+        drivers.insert(id.to_owned(), false);
+        true
+    } else {
+        drivers.remove(id);
+        false
+    }
 }
 fn config_path() -> Result<std::path::PathBuf, NetworkError> {
     crate::app_dirs::myagents_data_dir()
@@ -189,7 +222,8 @@ impl NetworkRegistry {
             owned_stored: Mutex::new(Vec::new()),
             owned_restore_errors: Mutex::new(HashMap::new()),
             owned_restore_operations: Mutex::new(Default::default()),
-            owned_login: OwnedLoginManager::default(),
+            owned_login: Arc::new(OwnedLoginManager::default()),
+            owned_login_drivers: Mutex::new(HashMap::new()),
             selected: Mutex::new(OFFICIAL.into()),
             revision: AtomicU64::new(0),
             stopped: AtomicBool::new(false),
@@ -361,6 +395,11 @@ impl NetworkRegistry {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         self.stopped.store(true, Ordering::Release);
+        let login = self.owned_login.clone();
+        let cutoff = login.invalidate_lifecycle();
+        tauri::async_runtime::spawn(async move {
+            login.retire_before(cutoff, "OWNED_LOGIN_CANCELLED").await;
+        });
         operations.cancel_all();
         drop(operations);
         for c in self.all() {
@@ -858,22 +897,191 @@ impl NetworkRegistry {
         }
         Ok(())
     }
-    pub(crate) async fn owned_poll(
+    /// A native task owns advancement, independent of WebView visibility or UI
+    /// polling. The claim map serializes tasks; it never owns another session.
+    pub(crate) fn drive_owned_login(
         self: &Arc<Self>,
         app: tauri::AppHandle,
         manager: ManagedSidecarManager,
+        attempt_id: String,
+    ) {
+        {
+            let mut drivers = self
+                .owned_login_drivers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            // A Retry can arrive after an actionable error is visible but
+            // before its old task exits. Queue it under the same claim.
+            if !claim_login_driver(&mut drivers, &attempt_id) {
+                return;
+            }
+        }
+        let owner = self.clone();
+        tauri::async_runtime::spawn(async move {
+            loop {
+                owner
+                    .run_owned_login_driver(app.clone(), manager.clone(), &attempt_id)
+                    .await;
+                let rerun = {
+                    let mut drivers = owner
+                        .owned_login_drivers
+                        .lock()
+                        .unwrap_or_else(|e| e.into_inner());
+                    finish_login_driver(&mut drivers, &attempt_id)
+                };
+                if !rerun {
+                    return;
+                }
+            }
+        });
+    }
+    async fn run_owned_login_driver(
+        self: &Arc<Self>,
+        app: tauri::AppHandle,
+        manager: ManagedSidecarManager,
+        attempt_id: &str,
+    ) {
+        loop {
+            if self.stopped.load(Ordering::Acquire)
+                || !self.selfhost_enabled.load(Ordering::Acquire)
+            {
+                self.owned_login
+                    .retire(attempt_id, NetworkError::new("NETWORK_FEATURE_DISABLED"))
+                    .await;
+                return;
+            }
+            let candidates = self
+                .owned_stored
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone();
+            if let Err(error) = self
+                .owned_login
+                .validate_scope(attempt_id, &candidates)
+                .await
+            {
+                self.owned_login.retire(attempt_id, error).await;
+                return;
+            }
+            let result = match self.owned_login.poll(attempt_id).await {
+                Ok(LoginProgress::Authenticated(login)) => {
+                    let connection_id = login.connection_id.clone();
+                    let binding_id = login.binding_id.clone();
+                    match self
+                        .install_owned_login(app.clone(), manager.clone(), login)
+                        .await
+                    {
+                        Ok(_) => {
+                            // Commit is permanent. Failed ACK only retries the proof;
+                            // it cannot roll back publication or revoke its session.
+                            loop {
+                                let still_current = !self.stopped.load(Ordering::Acquire)
+                                    && self.selfhost_enabled.load(Ordering::Acquire)
+                                    && self
+                                        .owned_stored
+                                        .lock()
+                                        .unwrap_or_else(|e| e.into_inner())
+                                        .iter()
+                                        .any(|record| {
+                                            record.id == connection_id
+                                                && record.binding_id == binding_id
+                                                && !record.removing
+                                        });
+                                if !still_current {
+                                    self.owned_login.discard_acknowledgement(attempt_id).await;
+                                    return;
+                                }
+                                if self.owned_login.acknowledge(attempt_id).await {
+                                    return;
+                                }
+                                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            }
+                        }
+                        Err(error) => Err(self
+                            .owned_login
+                            .record_install_error(attempt_id, error)
+                            .await),
+                    }
+                }
+                Ok(LoginProgress::Pending | LoginProgress::Reauthorize) => Ok(()),
+                Err(error) => Err(error),
+            };
+            if let Err(error) = result {
+                let resumable =
+                    error.details.as_ref().and_then(|d| d["canRetry"].as_bool()) == Some(true);
+                if !resumable {
+                    self.owned_login.retire(attempt_id, error).await;
+                    return;
+                }
+                if !error.retryable {
+                    return;
+                }
+                tokio::time::sleep(
+                    error
+                        .retry_after
+                        .unwrap_or(std::time::Duration::from_secs(2)),
+                )
+                .await;
+                if self.owned_login.retry(attempt_id).await.is_err() {
+                    return;
+                }
+            } else {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        }
+    }
+    pub(crate) async fn owned_retry(
+        self: &Arc<Self>,
+        app: tauri::AppHandle,
+        manager: ManagedSidecarManager,
+        attempt_id: &str,
+    ) -> Result<(), NetworkError> {
+        if self.stopped.load(Ordering::Acquire) || !self.selfhost_enabled.load(Ordering::Acquire) {
+            return Err(NetworkError::new("NETWORK_FEATURE_DISABLED"));
+        }
+        self.owned_login.retry(attempt_id).await?;
+        self.drive_owned_login(app, manager, attempt_id.to_owned());
+        Ok(())
+    }
+    pub(crate) async fn owned_poll(
+        self: &Arc<Self>,
+        _app: tauri::AppHandle,
+        _manager: ManagedSidecarManager,
         attempt_id: &str,
     ) -> Result<OwnedRegistryPoll, NetworkError> {
         if !self.selfhost_enabled.load(Ordering::Acquire) {
             return Err(NetworkError::new("NETWORK_FEATURE_DISABLED"));
         }
-        match self.owned_login.poll(attempt_id).await? {
-            LoginProgress::Pending => Ok(OwnedRegistryPoll::Pending),
-            LoginProgress::Reauthorize(started) => Ok(OwnedRegistryPoll::Reauthorize(started)),
-            LoginProgress::Authenticated(login) => self
-                .install_owned_login(app, manager, login)
-                .await
-                .map(OwnedRegistryPoll::Authenticated),
+        match self.owned_login.observe(attempt_id).await? {
+            LoginObservation::Pending {
+                authorization: Some(started),
+                ..
+            } => Ok(OwnedRegistryPoll::Reauthorize(started)),
+            LoginObservation::Pending {
+                phase,
+                authorization: None,
+            } => Ok(OwnedRegistryPoll::Pending { phase }),
+            LoginObservation::Committed {
+                connection_id,
+                binding_id,
+            } => {
+                // A receipt is evidence of the old commit, never authority to
+                // authenticate after logout or replace a later binding.
+                if !self
+                    .owned_stored
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter()
+                    .any(|record| {
+                        record.id == connection_id
+                            && record.binding_id == binding_id
+                            && !record.removing
+                    })
+                {
+                    return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+                }
+                Ok(OwnedRegistryPoll::Authenticated(self.view()))
+            }
         }
     }
     async fn install_owned_login(
@@ -945,7 +1153,12 @@ impl NetworkRegistry {
             Ok(())
         };
         let save = next.clone();
-        let selected_after = if login.preserve_membership { selected_before.clone() } else { owned.id.clone() };
+        let selected_after = owned_login_selection(
+            &selected_before,
+            &login.selected_id_at_start,
+            &owned.id,
+            login.preserve_membership,
+        );
         let selected = selected_after.clone();
         self.owned_login
             .commit_if_current(
@@ -1179,6 +1392,7 @@ impl NetworkRegistry {
             .find(|c| c.id == id)
             .cloned();
         if let Some(mut record) = owned {
+            self.owned_login.retire_connection(&id).await;
             let was_removing = record.removing;
             record.removing = true;
             let mut checkpoint = self
@@ -1421,10 +1635,26 @@ impl NetworkRegistry {
     /// connector preserves admission/credentials; a later activation gets a new
     /// generation so retired completions cannot become current again.
     fn set_selfhost_enabled(&self, enabled: bool) -> Option<Vec<ManagedConnection>> {
+        // Gate changes and login/restore publication linearize at the existing
+        // publication lock. If a commit won, disabling sees and retires its
+        // actor; if disable won, the commit's final validation rejects it.
+        let _publication = self
+            .owned_restore_operations
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if self.stopped.load(Ordering::Acquire) {
             return None;
         }
         let mut changed = self.selfhost_enabled.swap(enabled, Ordering::AcqRel) != enabled;
+        if !enabled && changed {
+            let login = self.owned_login.clone();
+            let cutoff = login.invalidate_lifecycle();
+            tauri::async_runtime::spawn(async move {
+                login
+                    .retire_before(cutoff, "NETWORK_FEATURE_DISABLED")
+                    .await;
+            });
+        }
         let stored = self
             .stored
             .lock()
@@ -1826,6 +2056,89 @@ mod tests {
     use super::*;
     use myagents_agent_network_protocol::{AgentReference, SessionReference};
 
+    #[test]
+    fn delayed_login_preserves_later_selection_and_existing_reauthentication() {
+        assert_eq!(
+            super::owned_login_selection("user-new-choice", "official", "new-login", false),
+            "user-new-choice"
+        );
+        assert_eq!(
+            super::owned_login_selection("official", "official", "new-login", false),
+            "new-login"
+        );
+        assert_eq!(
+            super::owned_login_selection("official", "official", "reauthenticated", true),
+            "official"
+        );
+        assert_eq!(
+            super::owned_login_selection("user-new-choice", "official", "reauthenticated", true),
+            "user-new-choice"
+        );
+    }
+
+    #[test]
+    fn disabling_gate_serializes_with_login_actor_publication() {
+        use std::sync::mpsc;
+        let owner = super::NetworkRegistry::new();
+        owner
+            .selfhost_enabled
+            .store(true, std::sync::atomic::Ordering::Release);
+        let publish_owner = owner.clone();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let publish = std::thread::spawn(move || {
+            let _publication = publish_owner.owned_restore_operations.lock().unwrap();
+            assert!(publish_owner
+                .selfhost_enabled
+                .load(std::sync::atomic::Ordering::Acquire));
+            ready_tx.send(()).unwrap();
+            release_rx.recv().unwrap();
+            let actor =
+                super::AgentNetwork::new("new-login".into(), None, publish_owner.memory.clone());
+            publish_owner
+                .connections
+                .lock()
+                .unwrap()
+                .insert("new-login".into(), actor);
+        });
+        ready_rx.recv().unwrap();
+        let disable_owner = owner.clone();
+        let (disabled_tx, disabled_rx) = mpsc::channel();
+        let disable = std::thread::spawn(move || {
+            disable_owner.set_selfhost_enabled(false);
+            disabled_tx.send(()).unwrap();
+        });
+        assert!(disabled_rx
+            .recv_timeout(std::time::Duration::from_millis(30))
+            .is_err());
+        release_tx.send(()).unwrap();
+        publish.join().unwrap();
+        disable.join().unwrap();
+        assert!(!owner
+            .selfhost_enabled
+            .load(std::sync::atomic::Ordering::Acquire));
+        assert!(!owner.connections.lock().unwrap().contains_key("new-login"));
+    }
+
+    #[test]
+    fn login_driver_has_one_claim_and_does_not_drop_retry_during_exit() {
+        let mut claims = std::collections::HashMap::new();
+        assert!(super::claim_login_driver(&mut claims, "attempt"));
+        assert!(!super::claim_login_driver(&mut claims, "attempt"));
+        assert_eq!(claims.len(), 1);
+        assert!(super::finish_login_driver(&mut claims, "attempt"));
+        assert_eq!(
+            claims.len(),
+            1,
+            "queued explicit retry keeps its existing task claim"
+        );
+        assert!(!super::finish_login_driver(&mut claims, "attempt"));
+        assert!(claims.is_empty());
+        assert!(super::claim_login_driver(&mut claims, "attempt"));
+        assert!(!super::claim_login_driver(&mut claims, "attempt"));
+        assert!(super::claim_login_driver(&mut claims, "other"));
+        assert_eq!(claims.len(), 2);
+    }
     #[test]
     fn community_postflight_rejects_logout_rebinding_and_same_binding_actor_replacement() {
         let owner = NetworkRegistry::new();

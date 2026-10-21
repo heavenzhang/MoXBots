@@ -337,6 +337,7 @@ where
             expires_at,
             phase: Phase::Ready(subject),
             browser_return_path: None,
+            replayable_result: false,
         },
     );
     Ok((
