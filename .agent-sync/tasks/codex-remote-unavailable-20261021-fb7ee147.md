@@ -16,7 +16,7 @@ Fix same-account remote Session access for registered visible workspaces whose P
 - [x] Reproduce old guard failure before source repair: history/manual-message and artifact regressions fail; remaining21 tests pass.
 - [x] Remove only Proactive enabled guards in desktop Session and artifact paths. Preserve target network-precheck, same-account/mount, conflicts, visibility/archive, Session workspace, generation, receipts and Stop authority. Do not mutate config, proactive switches, credentials, running processes or business sessions.
 - [x] Local regression71/71 across12 files; final strengthened affected tests23/23; full TypeScript, scoped ESLint and git diff --check passed. Existing history, explicit dispatch with proactive off, real-file artifact resolution and denial/ownership/generation boundaries verified; primary reviewed diff.
-- [ ] Commit/push precise branch and pass handoff gate.
+- [x] Source commit0c20260c49d58eddbfbb24248264366ce0788152 pushed with exact remote branch SHA confirmed; final record/handoff verification accompanies delivery.
 - [ ] Existing desktop owner integrates under required CI and verifies remote main contains repair.
 - [ ] Existing desktop owner publishes new immutable candidate, then verifies original remote history/refresh/manual send with controlled identity/data on both endpoints. No signed-client or production acceptance claimed here.
 
@@ -39,3 +39,19 @@ Primary current chat01a15c48-5b89-7522-8730-28939d4aaed9; single-agent because t
 ## Next step
 
 Finish local checks, commit/push and send precise handoff to designated desktop owner; then verify owner main/publication evidence. Until target-side signed package and original two-device read pass, report source ready with runtime acceptance pending.
+
+## Completed
+
+Repaired only the two desktop proactive-mode gates; added positive history/manual-message/real-file artifact coverage and retained rejection coverage for missing/conflicting/hidden/internal/archived/cross-workspace/stale-generation cases. Updated the authority contract. The original live target config and business tasks are unchanged.
+
+## Verification
+
+- Before repair:2 positive regressions fail,21 other cases pass.
+- Local adjacent unit/integration suite:71/71 in12 files. Final affected suite after stronger history/file assertions:23/23.
+- Full TypeScript --noEmit, scoped ESLint and git diff --check pass.
+- Read-only live projection:no target identity diagnostics, proactive off, visible/nonarchived project; old guard rejects deterministically.
+- No shared CI, production package, installation or true two-device acceptance performed by this chat.
+
+## Blockers and unknowns
+
+Required PR/main CI, main integration and immutable desktop publication belong to existing owner01a12bc2. The target-side bundle must include this change before the screenshot path can pass; controller-only login/upgrade is insufficient. Source/local validation does not prove original request reached this exact persisted local Agent, nor capture its full encrypted request trace. Other REMOTE_AGENT_UNAVAILABLE conditions remain distinct. There is no credential request or proactive-switch change needed for this code fix.
