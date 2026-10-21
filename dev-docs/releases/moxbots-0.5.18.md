@@ -11,7 +11,7 @@ Task MOXBOTS-0518-REMOTE-MODEL-DIAGNOSTICS-20261022. Sole desktop/macOSarm64/upd
 ## Delivery gates
 
 - [x] Actual mainbd13 and selected source heads verified; ordinary isolated integration complete.
-- [x] Affected combined local checks:24 files/371 unique cases across the initial run and corrected5-case page recheck; all8 static gates and version/locked metadata checks pass. Initial2 obsolete DOM assertions and raw failures retained, no production policy changed for the test correction.
+- [x] Affected combined local checks:24 files/371 case instances (369 distinct file/title pairs) across the initial run and corrected5-case page recheck; all8 static gates and version/locked metadata checks pass. Initial2 obsolete DOM assertions and raw failures retained, no production policy changed for the test correction.
 - [ ] Exact original combined PR CI.
 - [ ] Protected main merge and remote source containment.
 - [ ] New immutable signed/notarized artifact, production updater signature and tag.
@@ -19,3 +19,5 @@ Task MOXBOTS-0518-REMOTE-MODEL-DIAGNOSTICS-20261022. Sole desktop/macOSarm64/upd
 - [ ] Distribution/install/rollback verification, with real causal evidence still separate from generic diagnostic categories.
 
 Signed017/build5171 is unchanged and finishes its own originalAir OAuth/CmdQ and stable gates separately. Author-blocked orchestration6713, uncommitted work, Host/cloud/mobile/Windows deployment are excluded. Keep known immutable016 rollback artifacts; stable pointer lowering alone does not install a client downgrade. No version/tag will be overwritten with different bytes.
+
+Root packaging input review corrected only the root package-lock version metadata (top-level and root package) from017 to018; dependency graph unchanged. No5181 binary had been built. Originalcda CI is retained, with the corrected exacthead requiring its own original CI before main/artifact acceptance.
