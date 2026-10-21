@@ -3,6 +3,8 @@ import {mkdir,mkdtemp,readFile,realpath,rm,writeFile,symlink} from 'node:fs/prom
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {composeSidecarRequestHandler,resolveSidecarComposition} from '../sidecar-composition';
+import {hasValidInternalCliCredential} from '../external-cli-admission';
 const f=vi.hoisted(()=>({home:'',owner:undefined as unknown,metadata:new Map<string,Record<string,unknown>>(),registry:vi.fn(),config:vi.fn(),shown:vi.fn(),menu:vi.fn(),send:vi.fn(),ctx:vi.fn(),mcp:vi.fn(),claim:vi.fn(),suggest:vi.fn(),snapshot:vi.fn(),save:vi.fn(),ready:vi.fn(),materialize:vi.fn()}));
 vi.mock('node:os',async original=>({...await original<typeof import('node:os')>(),homedir:()=>f.home}));
 vi.mock('./desktop',()=>({resolveDesktopRemoteTarget:f.registry,desktopRemoteReceipts:new Proxy({}, {get:(_,key)=> (...args:unknown[])=>(f.owner as Record<string,(...args:unknown[])=>unknown>)[key as string](...args)})}));
@@ -33,6 +35,23 @@ beforeEach(async()=>{
  f.snapshot.mockResolvedValue({revision:'r1',messages:[{id:'assistant',role:'assistant'}]});f.suggest.mockResolvedValue({availability:'supported',suggestion:'继续检查'});
 });
 afterEach(async()=>{vi.unstubAllEnvs();await rm(f.home,{recursive:true,force:true})});
+it.each(['mobile.capabilities','mobile.models'] as const)('production Global composition reaches the original %s owner without executing a turn',async kind=>{
+ vi.stubEnv('MYAGENTS_INTERNAL_CLI_TOKEN','isolated-composition-test-only');
+ const dispatch=composeSidecarRequestHandler(resolveSidecarComposition('global',false),async incoming=>{
+  if(!hasValidInternalCliCredential(incoming))return Response.json({success:false,code:'INTERNAL_CALLER_REQUIRED'},{status:401});
+  const result=await handle(await incoming.json(),'global');
+  return Response.json(result,{status:result.success?200:409});
+ });
+ const body=JSON.stringify({request:{kind,version:1,agentId:'agent'},generation:'gen'});
+ const denied=await dispatch(new Request('http://127.0.0.1/api/remote-mobile',{method:'POST',body}));
+ expect(denied.status).toBe(401);expect(await denied.json()).toEqual({success:false,code:'INTERNAL_CALLER_REQUIRED'});
+ const response=await dispatch(new Request('http://127.0.0.1/api/remote-mobile',{method:'POST',body,headers:{'content-type':'application/json','x-myagents-internal-cli-token':'isolated-composition-test-only'}}));
+ expect(response.status).toBe(200);
+ expect(await response.json()).toMatchObject(kind==='mobile.capabilities'
+  ?{success:true,data:{kind,version:1,agentId:'agent',attachments:true,modelSelection:true,nextSuggestions:true,maxAssets:8}}
+  :{success:true,data:{kind,version:1,agentId:'agent',items:[{id:'one',label:'one'},{id:'two',label:'two'}]}});
+ expect(f.send).not.toHaveBeenCalled();expect(f.save).not.toHaveBeenCalled();expect(f.mcp).not.toHaveBeenCalled();expect(f.materialize).not.toHaveBeenCalled();
+});
 async function prepared(req:ReturnType<typeof request>){const result=await prepare({request:req});expect(result).toMatchObject({success:true});return (result as {data:{sessionId:string}}).data.sessionId}
 async function status(req:ReturnType<typeof request>){return (f.owner as ReturnType<typeof createRemoteReceiptOwner>).readMobile(req.agentId,req.operationId)}
 async function settled(req:ReturnType<typeof request>,expected='accepted'){await vi.waitFor(async()=>expect(await status(req)).toMatchObject({status:expected}))}

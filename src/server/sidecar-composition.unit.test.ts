@@ -14,6 +14,39 @@ function request(path: string, method = 'GET'): Request {
 }
 
 describe('Sidecar production composition', () => {
+  it.each([
+    ['global', '/api/remote-mobile', 'common'],
+    ['session', '/api/remote-mobile', 'common'],
+    ['global', '/api/remote-mobile/prepare', 'global'],
+    ['session', '/api/remote-assets/resolve', 'session'],
+  ] as const)('%s dispatches the exact native %s route to credential admission', async (role, path, capability) => {
+    const incoming = request(path, 'POST');
+    const credentialGate = vi.fn(async (input: Request) => Response.json({
+      success: false,
+      code: hasValidInternalCliCredential(input) ? 'PROBE_ONLY' : 'INTERNAL_CALLER_REQUIRED',
+    }, { status: 401 }));
+    const dispatch = composeSidecarRequestHandler(resolveSidecarComposition(role, false), credentialGate);
+
+    expect(classifySidecarRequest(incoming)).toBe(capability);
+    const response = await dispatch(incoming);
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ success: false, code: 'INTERNAL_CALLER_REQUIRED' });
+    expect(credentialGate).toHaveBeenCalledExactlyOnceWith(incoming);
+    credentialGate.mockClear();
+    expect((await dispatch(request(`${path}/extra`, 'POST'))).status).toBe(404);
+    expect(credentialGate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['session', '/api/remote-mobile/prepare'],
+    ['global', '/api/remote-assets/resolve'],
+  ] as const)('%s cannot reach the wrong-owner native %s route', async (role, path) => {
+    const downstream = vi.fn(async () => Response.json({ success: true }));
+    const dispatch = composeSidecarRequestHandler(resolveSidecarComposition(role, false), downstream);
+    expect((await dispatch(request(path, 'POST'))).status).toBe(404);
+    expect(downstream).not.toHaveBeenCalled();
+  });
+
   it.each(['global', 'session'] as const)('%s reaches update lifecycle credential admission', async role => {
     const control = request('/api/process/update-quiesce', 'POST');
     const credentialGate = vi.fn(async (incoming: Request) =>
