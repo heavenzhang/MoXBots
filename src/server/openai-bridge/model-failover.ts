@@ -8,6 +8,7 @@ import { parseModelStreamEvent, hasModelStreamProgress } from './utils/model-str
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
+import { observeRecoveryDiagnostic, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
@@ -32,11 +33,14 @@ type Root = { scope: string; backup?: boolean; retired?: boolean };
 /** Query-token owned; never re-enqueues input or invokes tools. */
 export class ModelFailoverController implements BridgeModelFailover {
   private state: Root | undefined;
-  private readonly guard = new QueryRequestGuard();
+  private readonly guard = new QueryRequestGuard(reason => observeRecoveryDiagnostic(
+    { event: 'inference_admission_rejected', owner: 'model_failover', reason }, this.options.onDiagnostic));
   private retiredScope: string | undefined;
   private sequence = 0;
 
   constructor(private readonly options: {
+    /** Internal diagnostic observer only; never an admission or retry capability. */
+    onDiagnostic?: RecoveryDiagnosticObserver;
     /** Foreground recovery identity. Missing identity does not revoke an ordinary Query request. */
     scope: () => string | undefined;
     resolveBackup: () => UpstreamConfig | undefined;

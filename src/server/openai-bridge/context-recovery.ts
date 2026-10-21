@@ -8,6 +8,7 @@ import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writ
 import { QueryRequestGuard } from './request-lifetime';
 import type { StreamInterruptionCause, StreamInterruptionObserver } from './types/bridge';
 import { StreamDeliveryWitness } from './stream-delivery-witness';
+import { nativeActionDiagnostic, observeRecoveryDiagnostic, type NativeActionPhase, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
 
 /** Internal, Query-local evidence capability. Never accepted from HTTP/model metadata. */
 export interface SettledInterruptionReceipt {
@@ -23,6 +24,8 @@ export interface BridgeContextRecovery {
 }
 
 export interface ContextRecoveryOptions {
+  /** Internal diagnostics; never used as ledger/checkpoint/retry evidence. */
+  onDiagnostic?: RecoveryDiagnosticObserver;
   scope: () => string | undefined;
   isActive: () => boolean;
   requestIdentity?: () => string;
@@ -303,7 +306,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private state: State | undefined;
   private projectionActive = false;
   private actionProtectionActive = false;
-  private readonly requestGuard = new QueryRequestGuard();
+  private readonly requestGuard = new QueryRequestGuard(reason => observeRecoveryDiagnostic(
+    { event: 'inference_admission_rejected', owner: 'context', reason }, this.options.onDiagnostic));
   private retiredScope: string | undefined;
   private readonly requestRetryFences = new Set<object>();
   private completedLedger = new Map<string, Evidence>();
@@ -573,8 +577,16 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     return this.options.scope();
   }
 
+  private traceNativeAction(phase: NativeActionPhase, toolUseId?: string, actionHash?: string, failed?: boolean): void {
+    try {
+      observeRecoveryDiagnostic(nativeActionDiagnostic(phase, toolUseId, actionHash,
+        this.actionProtectionActive && !!this.options.persistLedger, failed), this.options.onDiagnostic);
+    } catch { /* Digest/log failures cannot change the original hook outcome. */ }
+  }
+
   /** Reserve before invoking a mutating tool: a crash leaves an uncertain action, never a replay. */
   async authorizeTool(name: string, input: unknown, toolUseId?: string): Promise<string | undefined> {
+    this.traceNativeAction('reserve_enter', toolUseId, toolUseId ? this.toolOwners.get(toolUseId)?.actionHash : undefined);
     this.nativeRevision++;
     const emission = toolUseId ? this.toolOwners.get(toolUseId) : undefined;
     if (!toolUseId || !emission || emission.actionHash !== toolKey(name, input) || this.nativeAdmissions.has(toolUseId) || this.nativeAdmissions.size >= MAX_LEDGER_ENTRIES) this.unboundNativeAdmission = true;
@@ -586,33 +598,54 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const denied = this.beforeTool(name, input);
     if (denied) {
       try { await this.persist(); } catch { /* execution is already denied */ }
+      this.traceNativeAction('reserve_denied', toolUseId, emission?.actionHash);
       return denied;
     }
-    if (READ_ONLY_TOOLS.has(name) || !this.actionProtectionActive) return undefined;
+    if (READ_ONLY_TOOLS.has(name) || !this.actionProtectionActive) {
+      this.traceNativeAction('reserve_not_required', toolUseId, emission?.actionHash);
+      return undefined;
+    }
     const state = this.toolState();
-    if (!state) return 'automatic_replay_blocked: Recovery Query is no longer current.';
+    if (!state) {
+      this.traceNativeAction('reserve_denied', toolUseId, emission?.actionHash);
+      return 'automatic_replay_blocked: Recovery Query is no longer current.';
+    }
     const key = toolKey(name, input);
     state.uncertain.add(key);
     this.uncertainLedger.add(key);
     try { await this.persist(); }
-    catch { return 'automatic_replay_blocked: Could not durably reserve this action; execution stopped.'; }
-    return this.options.isActive() ? undefined : 'automatic_replay_blocked: Recovery turn was cancelled.';
+    catch {
+      this.traceNativeAction('reserve_failed', toolUseId, key);
+      return 'automatic_replay_blocked: Could not durably reserve this action; execution stopped.';
+    }
+    const active = this.options.isActive();
+    this.traceNativeAction(active ? 'reserve_complete' : 'reserve_denied', toolUseId, key);
+    return active ? undefined : 'automatic_replay_blocked: Recovery turn was cancelled.';
   }
 
   async commitToolResult(name: string, input: unknown, result: unknown, failed = false, toolUseId?: string): Promise<void> {
-    this.nativeRevision++;
-    this.recordToolResult(name, input, result, failed);
-    const evidence = this.completedLedger.get(toolKey(name, input));
-    if (!failed && evidence && this.options.persistLedger && !evidence.archive) {
-      // Post-recovery successes may have no original request archive yet. Their
-      // write-ahead ledger is the durable evidence; await commit before SDK proceeds.
-      evidence.archive = 'durable SessionStore action ledger';
+    let actionHash = toolUseId ? this.nativeAdmissions.get(toolUseId)?.actionHash : undefined;
+    this.traceNativeAction('commit_enter', toolUseId, actionHash, failed);
+    try {
+      this.nativeRevision++;
+      this.recordToolResult(name, input, result, failed);
+      actionHash = toolKey(name, input);
+      const evidence = this.completedLedger.get(actionHash);
+      if (!failed && evidence && this.options.persistLedger && !evidence.archive) {
+        // Post-recovery successes may have no original request archive yet. Their
+        // write-ahead ledger is the durable evidence; await commit before SDK proceeds.
+        evidence.archive = 'durable SessionStore action ledger';
+      }
+      await this.persist();
+      const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
+      if (admission && admission.actionHash === toolKey(name, input) && admission.pending) admission.pending = false;
+      else this.unboundNativeAdmission = true;
+      this.nativeRevision++;
+      this.traceNativeAction('commit_complete', toolUseId, actionHash, failed);
+    } catch (error) {
+      this.traceNativeAction('commit_failed', toolUseId, actionHash, failed);
+      throw error;
     }
-    await this.persist();
-    const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
-    if (admission && admission.actionHash === toolKey(name, input) && admission.pending) admission.pending = false;
-    else this.unboundNativeAdmission = true;
-    this.nativeRevision++;
   }
 
   /**
@@ -690,8 +723,15 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const state = this.toolState();
     if (!state) return this.actionProtectionActive || this.ledgerBlocked
       ? 'automatic_replay_blocked: Context recovery belongs to a retired or unbound turn; this action cannot run.' : undefined;
-    if (state.blocked || this.ledgerBlocked || this.requestGuard.isBlocked(this.current()?.scope,
-      !this.current() || this.options.canRecover?.() === false)) return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
+    let gate: 'state_blocked' | 'ledger_blocked' | 'request_guard_blocked' | undefined;
+    if (state.blocked) gate = 'state_blocked';
+    else if (this.ledgerBlocked) gate = 'ledger_blocked';
+    else if (this.requestGuard.isBlocked(this.current()?.scope,
+      !this.current() || this.options.canRecover?.() === false)) gate = 'request_guard_blocked';
+    if (gate) {
+      observeRecoveryDiagnostic({ event: 'native_action_gate_rejected', reason: gate }, this.options.onDiagnostic);
+      return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
+    }
     if (!state.attempted && (!this.actionProtectionActive || this.streamArmedOnly)) return undefined;
     const key = toolKey(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
