@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,6 +163,12 @@ describe("Settings image-understanding enable flow", () => {
     };
     settingsMocks.refreshConfig.mockResolvedValue(undefined);
     settingsMocks.apiPostJson.mockImplementation(async (path: string) => {
+      if (path === "/api/admin/route/tiers") {
+        return {
+          success: true,
+          data: { enabled: true, classifier: null, tiers: { fast: [], balanced: [], strong: [] } },
+        };
+      }
       if (path === "/api/admin/vision/models") {
         return {
           success: true,
@@ -192,7 +199,8 @@ describe("Settings image-understanding enable flow", () => {
 
     await user.click(screen.getByRole('button', { name: 'Model policy' }));
     expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
-    expect(screen.getByText(/Auto mode supplies the next available model in the same tier/)).toBeVisible();
+    expect(within(screen.getByRole('region', { name: 'Auto model selection' }))
+      .getByText(/Global auto selection applies only to conversations still in auto mode/)).toBeVisible();
     const recovery = screen.getByText('Failure recovery').closest('details')!;
     expect(recovery).not.toHaveAttribute('open');
     expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();
@@ -201,7 +209,7 @@ describe("Settings image-understanding enable flow", () => {
     await user.click(screen.getByText('Failure recovery'));
     expect(recovery).toHaveAttribute('open');
     expect(screen.getByRole('region', { name: 'Backup model' })).toBeVisible();
-    expect(screen.getByText(/Optional advanced setting/)).toBeVisible();
+    expect(screen.getByText(/Auto mode supplies a same-tier fallback when one is available/)).toBeVisible();
     expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
     await user.click(screen.getByText('Failure recovery'));
     expect(recovery).not.toHaveAttribute('open');
@@ -210,13 +218,16 @@ describe("Settings image-understanding enable flow", () => {
     expect(screen.getByTitle('Manage')).toBeVisible();
   });
 
-  it("keeps an enabled configured backup visible in the collapsed recovery summary", async () => {
+  it("keeps the legacy configured backup mode and identity visible in the collapsed recovery summary", async () => {
     await i18n.changeLanguage('en-US');
     settingsMocks.config.modelFailover = { enabled: true, backup: { providerId: 'vision-provider', modelId: 'vision-model' } };
     render(<ToastProvider><Settings mode="settings" initialSection="model-policy" isActive /></ToastProvider>);
     const recovery = screen.getByText('Failure recovery').closest('details')!;
     expect(recovery).not.toHaveAttribute('open');
-    expect(screen.getByText('Configured backup enabled')).toBeVisible();
+    const summary = within(recovery.querySelector('summary')!);
+    expect(summary.getByText(/Specified backup/)).toBeVisible();
+    expect(summary.getByText(/Vision Provider · Vision Model/)).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();
   });
 
   it("keeps a real provider model panel stable when Settings receives request logs (#582)", async () => {

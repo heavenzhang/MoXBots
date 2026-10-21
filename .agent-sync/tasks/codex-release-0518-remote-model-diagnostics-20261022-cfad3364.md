@@ -25,7 +25,7 @@ Selected heads and base verified against remote; source task records read. Root 
 
 ## Verification
 
-Git project-sync observe/start/task-init passed at actual main bd13. Source-author local tests and synthetic/browser/SDK evidence remain in their original task records and are not relabeled as Root combined checks or production acceptance. Combined tests have not run yet. The three ordinary merges preserve the source heads; only shared-plan heading/append conflicts required resolution, with all current entries retained. Model-policy runtime overlap with diagnostic guards merged additively. Version018/build5181 is synchronized in bothTauri configs and App/DocumentWorker manifests/locks.
+Git project-sync observe/start/task-init passed at actual main bd13. Source-author local tests and synthetic/browser/SDK evidence remain in their original task records and are not relabeled as Root combined checks or production acceptance. Initial combined24-file run:369PASS/2FAIL; both failures were stale settings-page assertions from the earlier UI-only version. All8 static gates and version3cases plusbothlockedoffline Cargo metadata passed. The page fixture now returns the actual tier response shape; assertions verify visible automatic guidance, collapsed advanced content and the legacy specified backup mode plus provider/model identity. Failed originals retained privately; affected5-case DOM recheck pending. The three ordinary merges preserve the source heads; only shared-plan heading/append conflicts required resolution, with all current entries retained. Model-policy runtime overlap with diagnostic guards merged additively. Version018/build5181 is synchronized in bothTauri configs and App/DocumentWorker manifests/locks.
 
 ## Blockers and unknowns
 
