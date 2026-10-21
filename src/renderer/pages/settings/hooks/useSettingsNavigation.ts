@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { isDeveloperSectionUnlocked } from '@/utils/developerMode';
 
 import {
-  VALID_SECTIONS,
+  resolveSettingsSection,
   type SettingsSection,
 } from '../settingsSections';
 
@@ -24,20 +24,21 @@ export function useSettingsNavigation({
 }: UseSettingsNavigationParams) {
   const onSectionChangeRef = useRef(onSectionChange);
   const floatingBallDisabled = floatingBallDevGate === false;
+  const requestedSection = resolveSettingsSection(initialSection);
 
   useEffect(() => {
     onSectionChangeRef.current = onSectionChange;
   }, [onSectionChange]);
 
   const getInitialSection = (): SettingsSection => {
-    if (initialSection && VALID_SECTIONS.includes(initialSection as SettingsSection)) {
-      if (initialSection === 'desktop-pet' && floatingBallDisabled) {
+    if (requestedSection) {
+      if (requestedSection === 'desktop-pet' && floatingBallDisabled) {
         return 'about';
       }
-      if (initialSection === 'developer' && !isDeveloperSectionUnlocked()) {
+      if (requestedSection === 'developer' && !isDeveloperSectionUnlocked()) {
         return 'about';
       }
-      return initialSection as SettingsSection;
+      return requestedSection;
     }
     return defaultSection;
   };
@@ -49,19 +50,19 @@ export function useSettingsNavigation({
   }, []);
 
   useEffect(() => {
-    if (initialSection && VALID_SECTIONS.includes(initialSection as SettingsSection)) {
+    if (requestedSection) {
       const timer = window.setTimeout(() => {
-        if (initialSection === 'desktop-pet' && floatingBallDisabled) {
+        if (requestedSection === 'desktop-pet' && floatingBallDisabled) {
           setActiveSection('about');
           notifySectionChange();
           return;
         }
-        if (initialSection === 'developer' && !isDeveloperSectionUnlocked()) {
+        if (requestedSection === 'developer' && !isDeveloperSectionUnlocked()) {
           setActiveSection('about');
           notifySectionChange();
           return;
         }
-        setActiveSection(initialSection as SettingsSection);
+        setActiveSection(requestedSection);
         notifySectionChange();
       }, 0);
 
@@ -69,7 +70,7 @@ export function useSettingsNavigation({
         window.clearTimeout(timer);
       };
     }
-  }, [floatingBallDisabled, initialSection, navigationNonce, notifySectionChange]);
+  }, [floatingBallDisabled, initialSection, requestedSection, navigationNonce, notifySectionChange]);
 
   useEffect(() => {
     if (activeSection === 'desktop-pet' && floatingBallDisabled) {

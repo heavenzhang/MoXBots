@@ -60,4 +60,17 @@ describe('Message — auto route tag', () => {
     render(<Message message={userMsg({ ...record, effort: undefined })} />);
     expect(screen.getByText('自动 · claude-opus-5-5')).toBeInTheDocument();
   });
+
+  it('describes a candidate without claiming a switch and hides tier preference after failed classification', () => {
+    const { unmount } = render(<Message message={userMsg({ ...record, backup: { providerId: 'q', model: 'backup' } })} />);
+    expect(screen.getByText('自动 · claude-opus-5-5 · 推理 high').getAttribute('aria-label')).toContain('备用候选');
+    unmount();
+    render(<AutoRouteTagContext.Provider value={{ modelLabel: row => row.model, onPreferModel: vi.fn() }}>
+      <Message message={userMsg({ ...record, reason: 'classifier-failed', unclassified: true, backupUnavailableReason: 'no-candidate' })} />
+    </AutoRouteTagContext.Provider>);
+    const label = screen.getByText('自动 · claude-opus-5-5 · 推理 high').getAttribute('aria-label');
+    expect(label).toContain('判断失败');
+    expect(label).not.toContain('强力档');
+    expect(screen.queryByRole('button', { name: '以后这类都用它' })).not.toBeInTheDocument();
+  });
 });

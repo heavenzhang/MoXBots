@@ -4,13 +4,15 @@
 
 ## 用户行为
 
-设置 → 模型供应商 → 备用模型。当前会话选定模型保持主模型，用户选择一个明确的 Provider/model 对并开启；默认关闭。模型目录/API key 无效时不能开启。既有 Query 的开启状态在下一次空闲发送时经原配置重建入口生效，不中断已有任务或后台 Agent。备用身份与关闭状态逐请求重读；当前轮接管后优先备用，下一轮回到主模型。
+设置 → 模型策略 → 故障接管（高级，默认折叠）。自动选模型为主设置；故障接管支持“跟随自动选模”“使用指定备用”“不自动切换模型”。默认跟随自动，只在同档有可用候选时接管；自动与指定备用均须显式开启跨档才允许越档。指定模式失效时不暗自改用自动备用；关闭切换仍保留原模型有限重试及Stop/动作guard。配置摘要区分已就绪与失效原因，实际发送前仍检查兼容性。
+
+会话desired主模型不被临时接管改写；同轮固定备用身份，下一轮恢复主模型。空闲新轮次在分类前清除旧自动备用，manual/null/分类失败/异常/CAS冲突不能沿用；busy/工具往返保留当前轮次。自动候选绑定实际primary且Session须仍auto。模式、跨档、模型及凭据在异步校验后重新读取，停止/权限撤销优先，不重启任务。
 
 支持内置 Claude Agent SDK 的普通 API 模型，包含 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses。主备必须经过既有 providerHistory policy（含精确 model isolation）；与主模型同一对、被禁用/删除或缺凭据的备用不参与。订阅/OAuth、专属 cloud-session grant、DSH 与外部 CLI 保持原执行 authority，不借 API 配置切换。已存在 SDK 后台任务时不发起新接管，因为公共 Query token 不能证明请求归属哪个 root。普通 API 模型即使未配置备用，也经同一 Query 的有限推理重试控制器；后台推理仍可对未交付的临时故障有限重试主模型。能否切备或缩减历史在请求接纳时固定，后台列表随后归零不能把旧后台请求升级成前台恢复 owner；动态撤销门禁仍持续生效。
 
 ## Owner 与执行位置
 
-- config.json 是 desired 配置唯一权威；`AppConfig.modelFailover` 只含 enabled 和备用的 providerId/modelId，无密钥。Renderer 使用原 updateConfig/atomicModifyConfig，保留并发其它字段。
+- config.json 是 desired 配置唯一权威；`AppConfig.modelFailover` 包含可选mode（auto/specified/off）、可选allowCrossTier、旧enabled投影及备用providerId/modelId，无密钥。无mode时旧enabled=true映射specified，否则auto，显式mode优先。Renderer 使用原 updateConfig/atomicModifyConfig，保留并发其它字段。
 - Session 仍拥有选定主模型。`builtin-session/model-failover.ts` 从原 effective catalog/credential resolver materialize 备用，不能把临时接管写成用户主模型。
 - 每个 Query 的既有 `/bridge/<token>/v1/messages` registry entry 拥有一个 controller。退役 token 隔离旧 Query，控制器 exact state 防止旧请求修改后续轮次；root 采用首次请求的稳定 scope，人工 steering 不重开预算。原 turn-lifecycle 终态清理仅释放该 root 的新接管/缩减权限，不撤销 Query 中已经接纳的合法请求。Query/token/Session/route 与 request abort 决定单次请求有效性；父 turn 的完成或 idle 不构成 Query 退役。每次请求捕获自己的 route fence，合法同 Query 切模型后的新请求重新捕获当前 route，旧 route 的迟到输出仍被拒绝。
 - 原生 SDK transcript 继续拥有执行上下文，原 SessionStore 继续拥有产品历史。SDK 接到的仍是同一次推理请求的响应；应用不重新 enqueue 用户指令，不创建 fresh native session，不回退历史、不执行任何工具。
@@ -28,13 +30,15 @@
 
 SSE 已向 Runtime 交付后如断流、error event 或 EOF 缺 message_stop，旧 HTTP 请求和指纹仍永久封闭，包括修改历史后的隐式续发。原 SameTurnStreamContinuation 可以在精确 native marker 下开启原 root 的新 inference namespace，而非重放旧请求；恢复链沿原 id 和绝对 deadline，不增加备用权限或预算。原 native result 到达时已全部结清的后台零工具断流，另须满足 [严格 settled 证明合同](context_recovery.md#settled-background-stream-continuation)；不满足时原会话明确显示暂停原因，保留所有旧 fence、工具结果和 Goal 进度。普通显式新输入仍走原 admission。取消、Query/token/turn/config 变化在每个异步决策后重新检查；旧 Query 的迟到 result 不操作新 owner。
 
+备用请求检查实际图片、工具协议和已知上下文约束：图片能力不明拒绝；工具目录声明存在时必须支持实际transport；已知上一轮context usage与实际输出预算超窗拒绝。OpenAI翻译器丢弃SDK max_tokens，故使用target显式cap而非SDK值。未知完整请求token量/真实工具能力仍属未知，配置就绪不表示已证明完整兼容。不会删内容强行适配。
+
 备用推理收到完整历史和应用控制的接续指令：基于已有工具结果继续，不重做已确认写入/发送/提交/部署；结果未知时先只读核实，不能核实就停止。此机制防止本应用因故障重放整条任务，**不提供任意外部工具的 exactly-once 事务保证**；模型仍可能提出新的同义动作，外部幂等和业务核验仍由原工具/业务 owner 负责。不会删历史、工具或图片来强行适配备用；实际不支持时终止并保留现场。
 
 ## 验证与发行
 
 `src/server/openai-bridge/background-lifecycle.integration.test.ts` 经真实 registry 和双控制器 handler 验证后台/取消/重试/隔离；`src/server/openai-bridge/model-failover.integration.test.ts` 使用真实 loopback HTTP；`builtin-session/model-failover.integration.test.ts` 验证配置/生命周期策略；组件 DOM 测试覆盖精确路由、保存与失效状态。`scripts/verify-model-failover-loopback.ts` 使用安装的真实 SDK/native child 和本地 MCP counter，无供应商调用；普通模式验证工具执行一次后503接管，`--stream-failure`验证已交付断流后停止且无备用/重复计数。
 
-验收摘要见 `dev-docs/model-failover-001-acceptance.md`。模拟供应商、真实 SDK loopback、原生安装/真实供应商分别追踪；本任务不改变已冻结的发行候选，由统一发行 owner 选入后续批次。
+模型策略六项追加验收见 `dev-docs/model-settings-20261022/acceptance.md`，入口/三模式/同档/可用性/可见决策/恢复操作分别覆盖。原接管验收摘要见 `dev-docs/model-failover-001-acceptance.md`。模拟供应商、真实 SDK loopback、原生安装/真实供应商分别追踪；本任务不改变已冻结的发行候选，由统一发行 owner 选入后续批次。
 
 任务 MOXBOTS-REQUEST-499-20261018 的完整验收、实际 SDK 后台 Agent 与有限重试/工具防重放证据见 `dev-docs/request-499-20261018-acceptance.md`。`scripts/verify-background-lifecycle-loopback.ts` 和三种 failover native 模式（接管、已交付断流、停止重试）进入正常 CI，使用隔离本地合成供应商，不连接用户账户或真实模型。
 

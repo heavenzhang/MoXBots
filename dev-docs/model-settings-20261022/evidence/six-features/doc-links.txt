@@ -1,0 +1,12 @@
+✔ finds broken inline, reference and image links with source locations (6.605125ms)
+✔ resolves encoded relative paths and ignores code examples and external scopes (2.924208ms)
+✔ reports malformed URL escapes instead of crashing the audit (0.785583ms)
+✔ uses the first reference definition, matching Markdown rendering (3.11475ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 144.41525

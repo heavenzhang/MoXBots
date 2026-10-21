@@ -11,6 +11,56 @@ const retryDelaysMs = [0, 0, 0] as const;
 
 afterEach(() => vi.useRealTimers());
 
+describe('asynchronous backup admission', () => {
+  it.each(['Stop', 'end-turn', 'policy-revoked', 'retry-revoked'])('revalidates %s after request validation without a late switch', async reason => {
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const abort = new AbortController();
+    let allowed = true;
+    let safe = true;
+    const switched = vi.fn();
+    const controller = new ModelFailoverController({ scope: () => 'root', resolveBackup: () => allowed ? backup : undefined,
+      onSwitch: switched, canRetry: () => safe, retryDelaysMs, validateBackup: async () => { entered(); await pending; return true; } });
+    const execute = vi.fn(async () => transient());
+    const run = controller.run(request(abort.signal), primary, execute);
+    await started;
+    if (reason === 'Stop') abort.abort();
+    if (reason === 'end-turn') controller.endTurn();
+    if (reason === 'policy-revoked') allowed = false;
+    if (reason === 'retry-revoked') safe = false;
+    release();
+    const response = await run;
+    expect([499, 503]).toContain(response.status);
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(switched).not.toHaveBeenCalled();
+  });
+
+  it('does not execute an already elected backup when retry authority is revoked during validation', async () => {
+    let safe = true;
+    let block = false;
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const switched = vi.fn();
+    const controller = new ModelFailoverController({ scope: () => 'root', resolveBackup: () => backup,
+      canRetry: () => safe, onSwitch: switched, retryDelaysMs,
+      validateBackup: async () => { if (block) { entered(); await pending; } return true; } });
+    const execute = vi.fn(async (target: UpstreamConfig) => target === primary ? transient() : Response.json({ ok: true }));
+    expect((await controller.run(request(), primary, execute, 'first')).status).toBe(200);
+    block = true;
+    const run = controller.run(request(), primary, execute, 'second');
+    await started;
+    safe = false;
+    release();
+    expect((await run).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(5);
+    expect(switched).toHaveBeenCalledOnce();
+  });
+});
+
 describe('owner-admitted partial stream continuation', () => {
   function fixture(interruptedResult: boolean | Error = true) {
     const owner = { active: true, safe: true, scope: 'root:0' };

@@ -1,0 +1,1 @@
+Agent docs verified: CLAUDE.md 147 lines / 14989 bytes; 40 routed docs exist; local file links checked in 73 documents.

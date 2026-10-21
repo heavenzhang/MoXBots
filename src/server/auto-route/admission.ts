@@ -87,7 +87,7 @@ export function previousTurn(messages: readonly MessageWire[]): {
     }
     const user = autoRouteMessageText(message.content);
     if (!user) continue;
-    return { user, reply, tier: message.metadata?.autoRoute?.tier, endedAt };
+    return { user, reply, tier: message.metadata?.autoRoute?.unclassified ? undefined : message.metadata?.autoRoute?.tier, endedAt };
   }
   return { endedAt };
 }
@@ -109,12 +109,14 @@ export async function applyAutoRouteAdmission(
   deps: AutoRouteAdmissionDeps,
 ): Promise<AutoRouteRecord | undefined> {
   try {
+    // Queued/steering/tool messages belong to the active turn. Its candidate
+    // remains frozen; only a genuinely idle new turn may revoke stale state.
+    if (deps.isSessionBusy()) return undefined;
+    const previousState = getAutoRouteSessionState(input.sessionId);
+    setAutoRouteSessionState(input.sessionId, previousState?.tier ? { tier: previousState.tier } : undefined);
     const meta = deps.getSessionMetadata(input.sessionId);
     const text = autoRouteMessageText(input.text);
     if (!shouldRoute(meta) || !text) return undefined;
-    // Queued and mid-turn messages inherit the running config; re-routing them
-    // would reload the Session under an active turn.
-    if (deps.isSessionBusy()) return undefined;
 
     const messages = deps.getMessages();
     const previous = previousTurn(messages);
@@ -138,9 +140,18 @@ export async function applyAutoRouteAdmission(
     });
     if (!result) return undefined;
     const { decision } = result;
+    // Even a same-model verdict can race a manual selection while classifying.
+    const latest = deps.getSessionMetadata(input.sessionId);
+    if (deps.isSessionBusy() || !shouldRoute(latest) || latest?.configSnapshotAt !== meta!.configSnapshotAt) return undefined;
     // No verdict and no previous tier: nothing to base a switch on, so the
     // turn runs on its own model (Magpie `Fallback: previous`).
-    if (decision.reason === 'classifier-failed') return undefined;
+    if (decision.reason === 'classifier-failed') {
+      if (!currentRef) return undefined;
+      return { providerId: currentRef.providerId, model: currentRef.model,
+        reason: 'classifier-failed', unclassified: true, failoverMode: result.failover?.mode,
+        ...(result.failover?.mode === 'off' ? { backupUnavailableReason: 'off' as const } : {}), latencyMs: result.latencyMs,
+        at: new Date((deps.now ?? Date.now)()).toISOString() };
+    }
 
     const target = decision.target;
     const effort = result.effort ?? normalizeReasoningEffort(request.reasoningEffort) ?? undefined;
@@ -180,6 +191,7 @@ export async function applyAutoRouteAdmission(
 
     setAutoRouteSessionState(input.sessionId, {
       tier: decision.tier,
+      primary: { providerId: target.providerId, model: target.model },
       ...(decision.backup ? { backup: { providerId: decision.backup.providerId, modelId: decision.backup.model } } : {}),
     });
 
@@ -189,6 +201,8 @@ export async function applyAutoRouteAdmission(
       model: target.model,
       ...(effort !== undefined ? { effort } : {}),
       reason: decision.reason,
+      ...(result.failover ? { failoverMode: result.failover.mode, backup: result.failover.backup,
+        backupUnavailableReason: result.failover.unavailableReason } : {}),
       ...(result.classifier ? { classifierModel: result.classifier.model } : {}),
       latencyMs: result.latencyMs,
       at: new Date((deps.now ?? Date.now)()).toISOString(),

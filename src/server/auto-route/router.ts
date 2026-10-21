@@ -4,86 +4,33 @@
 
 import {
   autoModelKey,
-  buildAutoTierTable,
   decideAutoRoute,
   findAutoTierEntry,
   fitEffort,
   isAutoRoutingEnabled,
-  isNonChatModel,
-  isAutoTier,
-  parseAutoRoutingSettings,
   pickAutoClassifier,
   type AutoModelRef,
   type AutoRouteDecision,
   type AutoRouteReason,
-  type AutoRoutingSettings,
   type AutoTier,
-  type AutoTierCandidate,
   type AutoTierEntry,
-  type AutoTierTable,
 } from '../../shared/autoRoute';
-import type { AppConfig, ModelEntity, Provider } from '../../shared/config-types';
-import { isRuntimeBackedProvider } from '../../shared/providerExecution';
+import type { AppConfig } from '../../shared/config-types';
+import { modelFailoverMode, type ModelFailoverSettings } from '../../shared/modelFailover';
 import { createConcreteProviderRoute } from '../../shared/providerRoute';
 import { reasoningEffortChoices } from '../../shared/reasoningEffort';
 import { canResumeAcrossBuiltinProviderHistory } from '../builtin-session/config';
 import type { ProviderEnv } from '../provider-types';
 import {
-  getAllEffectiveProviders,
-  getProviderSelectionError,
   loadConfig,
   materializeProviderRouteEnv,
   resolveSubscriptionAuthKind,
   type AdminAppConfig,
 } from '../utils/admin-config';
-import { lookupModelCapability, lookupProviderModelContextLength } from '../utils/model-capabilities';
 import { createAutoRouteClassifier, type AutoRouteClassifier, type ClassifyOutcome } from './classifier';
 
-/** One routable model and what it takes to run it. */
-export interface AutoRouteCatalogEntry extends AutoTierCandidate {
-  provider: Provider;
-}
-
-export interface AutoRouteCatalog {
-  settings: AutoRoutingSettings;
-  table: AutoTierTable;
-  entries: Map<string, AutoRouteCatalogEntry>;
-}
-
-/**
- * Providers that can take an auto-routed turn: enabled, builtin-executable,
- * selectable (credential / verified subscription). Runtime-backed providers
- * (Codex subscription) run their own Runtime and never join a builtin Session.
- */
-function routableProviders(config: AdminAppConfig): Provider[] {
-  return (getAllEffectiveProviders(config) as unknown as Provider[]).filter(provider =>
-    provider.enabled !== false
-    && !provider.id.startsWith('cloud-session:')
-    && !isRuntimeBackedProvider(provider)
-    && getProviderSelectionError(provider as unknown as Parameters<typeof getProviderSelectionError>[0], config) === null);
-}
-
-export function buildAutoRouteCatalog(config: AdminAppConfig = loadConfig()): AutoRouteCatalog {
-  const settings = parseAutoRoutingSettings((config as unknown as AppConfig).autoRouting);
-  const entries = new Map<string, AutoRouteCatalogEntry>();
-  for (const provider of routableProviders(config)) {
-    for (const entity of (provider.models ?? []) as ModelEntity[]) {
-      if (!entity?.model || isNonChatModel(entity.model)) continue;
-      const capability = lookupModelCapability(entity.model);
-      const candidate: AutoRouteCatalogEntry = {
-        provider,
-        providerId: provider.id,
-        model: entity.model,
-        modelName: entity.modelName,
-        ...(isAutoTier(entity.tier) ? { catalogTier: entity.tier } : {}),
-        ...(capability?.outputCostPerMillion !== undefined ? { outputCostPerMillion: capability.outputCostPerMillion } : {}),
-        contextLength: entity.contextLength ?? lookupProviderModelContextLength(entity.model, provider.id),
-      };
-      entries.set(autoModelKey(candidate), candidate);
-    }
-  }
-  return { settings, table: buildAutoTierTable([...entries.values()], settings), entries };
-}
+import { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
+export { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
 
 /** Provider env the Session would run this model with; 'subscription' for SDK-native. */
 export function resolveAutoRouteEnv(
@@ -149,6 +96,8 @@ export interface RouteTurnResult {
   classifier?: AutoModelRef;
   classify?: ClassifyOutcome;
   latencyMs: number;
+  failover?: { mode: 'auto' | 'specified' | 'off'; backup?: AutoModelRef;
+    unavailableReason?: 'off' | 'not-configured' | 'unavailable' | 'cross-tier' | 'no-candidate' };
 }
 
 /**
@@ -226,10 +175,26 @@ export async function routeTurn(
     now: now(),
     contextUsed: input.contextUsed,
     isUsable,
+    allowCrossTierBackup: (config as unknown as AppConfig).modelFailover?.allowCrossTier === true,
   });
   if (!decision) return null;
+  if (modelFailoverMode((config as unknown as AppConfig).modelFailover as ModelFailoverSettings | undefined) === 'off') delete decision.backup;
   const target = catalog.entries.get(autoModelKey(decision.target));
+  const settings = (config as unknown as AppConfig).modelFailover;
+  const mode = modelFailoverMode(settings);
+  const failover: NonNullable<RouteTurnResult['failover']> = { mode };
+  if (mode === 'off') failover.unavailableReason = 'off';
+  else if (mode === 'specified') {
+    const ref = settings?.backup ? { providerId: settings.backup.providerId, model: settings.backup.modelId } : undefined;
+    const entry = findAutoTierEntry(catalog.table, ref);
+    if (!ref) failover.unavailableReason = 'not-configured';
+    else if (!entry || !isUsable(entry) || autoModelKey(entry) === autoModelKey(decision.target)) failover.unavailableReason = 'unavailable';
+    else if (settings?.allowCrossTier !== true && entry.tier !== decision.target.tier) failover.unavailableReason = 'cross-tier';
+    else failover.backup = ref;
+  } else if (decision.backup) failover.backup = { providerId: decision.backup.providerId, model: decision.backup.model };
+  else failover.unavailableReason = 'no-candidate';
   return {
+    failover,
     decision,
     effort: autoRouteEffort(target, decision.tier),
     ...(classifierRef ? { classifier: classifierRef } : {}),
