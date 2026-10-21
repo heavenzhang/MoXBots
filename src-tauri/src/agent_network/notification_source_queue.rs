@@ -71,7 +71,23 @@ pub(in crate::agent_network) struct DesktopNotificationSource {
     root: Option<PathBuf>,
     active: Mutex<Option<Activation>>,
     disk_gate: Mutex<()>,
-    policy: Mutex<Option<(Activation, PolicyLease)>>,
+    policy: Mutex<PolicyState>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(in crate::agent_network) struct PolicyVersion {
+    pub revision: u64,
+    pub catalog_revision: u64,
+}
+impl PolicyVersion {
+    fn usable(self) -> bool {
+        self.revision != u64::MAX && self.catalog_revision != u64::MAX
+    }
+}
+#[derive(Default)]
+struct PolicyState {
+    version: PolicyVersion,
+    accepted: Option<(Activation, PolicyLease)>,
 }
 
 #[derive(Clone)]
@@ -111,7 +127,7 @@ impl DesktopNotificationSource {
             root,
             active: Mutex::new(None),
             disk_gate: Mutex::new(()),
-            policy: Mutex::new(None),
+            policy: Mutex::new(PolicyState::default()),
         }
     }
 
@@ -134,6 +150,7 @@ impl DesktopNotificationSource {
     }
 
     pub fn deactivate(&self, expected: &Activation) {
+        let mut retired = false;
         if let Ok(mut active) = self.active.lock() {
             if active.as_ref().is_some_and(|a| {
                 a.generation == expected.generation
@@ -141,17 +158,22 @@ impl DesktopNotificationSource {
                     && a.connection == expected.connection
             }) {
                 *active = None;
+                retired = true;
             }
         }
         if let Ok(mut policy) = self.policy.lock() {
-            if policy.as_ref().is_some_and(|(a, _)| {
+            if policy.accepted.as_ref().is_some_and(|(a, _)| {
                 a.scope == expected.scope
                     && a.generation == expected.generation
                     && a.connection == expected.connection
             }) {
-                if let Some((_, lease)) = policy.take() {
+                if let Some((_, lease)) = policy.accepted.take() {
                     lease.invalidate();
                 }
+                retired = true;
+            }
+            if retired {
+                policy.version.revision = policy.version.revision.saturating_add(1);
             }
         }
     }
@@ -159,20 +181,57 @@ impl DesktopNotificationSource {
     pub fn invalidate_policy(&self) {
         // Poison may prevent new admission, never prevent revocation.
         let mut policy = self.policy.lock().unwrap_or_else(|p| p.into_inner());
-        if let Some((_, lease)) = policy.take() {
+        policy.version.revision = policy.version.revision.saturating_add(1);
+        if let Some((_, lease)) = policy.accepted.take() {
             lease.invalidate();
         }
     }
 
-    pub fn accept_policy(&self, expected: &Activation) -> Result<(), NetworkError> {
-        let mut policy = self.policy.lock().map_err(|_| failure())?;
-        if !self.current(expected) {
-            return Err(failure());
-        }
-        if let Some((_, lease)) = policy.take() {
+    pub fn invalidate_catalog(&self) {
+        let mut policy = self.policy.lock().unwrap_or_else(|p| p.into_inner());
+        policy.version.revision = policy.version.revision.saturating_add(1);
+        policy.version.catalog_revision = policy.version.catalog_revision.saturating_add(1);
+        if let Some((_, lease)) = policy.accepted.take() {
             lease.invalidate();
         }
-        *policy = Some((
+    }
+
+    pub fn policy_version(&self) -> PolicyVersion {
+        self.policy
+            .lock()
+            .map(|p| p.version)
+            .unwrap_or(PolicyVersion {
+                revision: u64::MAX,
+                catalog_revision: u64::MAX,
+            })
+    }
+
+    /// Only notifications covered by the actor's original catalog read/Notify
+    /// arm may authorize the metadata job; unseen synchronous dirties stay closed.
+    pub fn hydration_version(&self, observed_catalog_revision: u64) -> PolicyVersion {
+        PolicyVersion {
+            catalog_revision: observed_catalog_revision,
+            ..self.policy_version()
+        }
+    }
+
+    pub fn is_policy_version_current(&self, version: PolicyVersion) -> bool {
+        version.usable() && self.policy.lock().is_ok_and(|p| p.version == version)
+    }
+
+    pub fn accept_policy(
+        &self,
+        expected: &Activation,
+        version: PolicyVersion,
+    ) -> Result<(), NetworkError> {
+        let mut policy = self.policy.lock().map_err(|_| failure())?;
+        if !version.usable() || policy.version != version || !self.current(expected) {
+            return Err(failure());
+        }
+        if let Some((_, lease)) = policy.accepted.take() {
+            lease.invalidate();
+        }
+        policy.accepted = Some((
             expected.clone(),
             PolicyLease(Arc::new(AtomicBool::new(true))),
         ));
@@ -181,8 +240,9 @@ impl DesktopNotificationSource {
 
     pub fn policy_lease(&self, expected: &Activation) -> Option<PolicyLease> {
         let policy = self.policy.lock().ok()?;
-        let (a, lease) = policy.as_ref()?;
-        (self.current(expected)
+        let (a, lease) = policy.accepted.as_ref()?;
+        (policy.version.usable()
+            && self.current(expected)
             && a.scope == expected.scope
             && a.connection == expected.connection
             && a.generation == expected.generation
@@ -629,13 +689,36 @@ mod tests {
     }
 
     #[test]
+    fn policy_admission_requires_exact_launch_and_observed_catalog_versions() {
+        let f = Fixture::new();
+        let source = f.open();
+        let original = source.policy_version();
+        source.accept_policy(&f.active, original).unwrap();
+        let old = source.policy_lease(&f.active).unwrap();
+        source.invalidate_catalog();
+        assert!(!old.current());
+        assert!(source.accept_policy(&f.active, original).is_err());
+        let unseen = source.hydration_version(original.catalog_revision);
+        assert_eq!(unseen.revision, source.policy_version().revision);
+        assert!(source.accept_policy(&f.active, unseen).is_err());
+        let observed = source.policy_version().catalog_revision;
+        let fresh = source.hydration_version(observed);
+        source.accept_policy(&f.active, fresh).unwrap();
+        assert!(source.policy_lease(&f.active).unwrap().current());
+        source.invalidate_policy();
+        assert!(source.accept_policy(&f.active, fresh).is_err());
+    }
+
+    #[test]
     fn policy_revocation_at_ack_store_commit_retains_unconfirmed_pointer() {
         let f = Fixture::new();
         let source = f.open();
         source
             .observe(&f.active, &sid(), &f.root, "terminal:a")
             .unwrap();
-        source.accept_policy(&f.active).unwrap();
+        source
+            .accept_policy(&f.active, source.policy_version())
+            .unwrap();
         let lease = source.policy_lease(&f.active).unwrap();
         let item = source.peek(&f.active).unwrap().unwrap();
         let event = sid();
@@ -651,7 +734,9 @@ mod tests {
         assert!(result.is_err());
         assert!(source.peek(&f.active).unwrap().is_some());
         assert!(source.policy_lease(&f.active).is_none());
-        source.accept_policy(&f.active).unwrap();
+        source
+            .accept_policy(&f.active, source.policy_version())
+            .unwrap();
         let fresh = source.policy_lease(&f.active).unwrap();
         assert!(!lease.current());
         assert!(fresh.current());

@@ -74,6 +74,13 @@ const actorPath=path.join(root,'src-tauri/src/agent_network/actor.rs');
 const actor=fs.readFileSync(actorPath,'utf8');
 function actorMethod(anchor){const at=index(actor,anchor),start=actor.lastIndexOf('\n',at)+1,end=actor.indexOf('\n    }',at);if(end<at)throw Error('Changed actor method');return actor.slice(start,end+6);}
 function actorArm(anchor){const at=index(actor,anchor),start=actor.indexOf('=> {',at)+4,indent=actor.slice(actor.lastIndexOf('\n',at)+1,at).match(/^ */)[0],end=actor.indexOf('\n'+indent+'}',start);if(start<at||end<start)throw Error('Changed actor arm');return actor.slice(start,end);}
+const readyAnchor='ServerMessage::Ready { catalog_seq: accepted, .. } if ready_requested && accepted == catalog_seq && local_policy.is_some() => {';
+const readyAt=index(actor,readyAnchor);
+const readyGuard=actor.slice(readyAt,actor.indexOf('=> {',readyAt)).split(' if ')[1].trim();
+const notifyArm=actorArm('_ = owner.catalog_changed.notified(), if !catalog_busy && !management_only =>');
+const notifyPrefix=notifyArm.slice(0,index(notifyArm,'catalog_seq = catalog_seq.checked_add'));
+const launchAnchor='let source_version = owner.notification_source.hydration_version(source_catalog_seen);';
+index(actor,launchAnchor);
 const declarationStart=delivery.lastIndexOf('#[derive',index(delivery,'struct Challenge'));
 const protocolTypes=delivery.slice(declarationStart,index(delivery,'pub(in crate::agent_network) async fn publish_once'));
 const legacy=options['legacy-unfenced']===true;
@@ -81,7 +88,7 @@ if(legacy===fn('async fn publish_selected(').includes('lease: PolicyLease'))thro
 const proofCall=legacy?'publish_selected(source,manager,identity,expected,MemoryBudget,item,agent).await':'publish_selected(source,manager,identity,expected,MemoryBudget,item,agent,lease).await';
 const flow=String.raw`
  use std::{cell::RefCell,sync::atomic::{AtomicBool,AtomicU8,AtomicUsize,Ordering}};
- use queue::PolicyLease;
+ use queue::{PolicyLease,PolicyVersion};
  #[derive(Clone)]struct Descriptor{issuer:String}
  impl Descriptor{fn ensure_same_trust(&self,other:&Self)->Result<(),NetworkError>{if self.issuer==other.issuer{Ok(())}else{Err(invalid())}}}
  struct OwnedSession{principal_id:String,network_id:String,access_token:String}
@@ -114,27 +121,48 @@ const flow=String.raw`
  __UUID__
  __PROTOCOL_TYPES__
  __PROOF__
- #[derive(Clone)]struct Snapshot{device_name:Option<String>}
- struct ActorFixture{notification_source:Arc<DesktopNotificationSource>,catalog_changed:tokio::sync::Notify}
+ #[derive(Clone,Default)]struct Snapshot{device_name:Option<String>,connection_id:String,state:&'static str,principal_id:Option<String>,network_id:Option<String>,error:Option<NetworkError>,revision:u64,auth_generation:u64}
+ type NetworkSnapshot=Snapshot;
+ struct ActorFixture{connection_id:String,notification_source:Arc<DesktopNotificationSource>,catalog_changed:tokio::sync::Notify}
  impl ActorFixture{
   __CATALOG_METHOD__
-  fn snapshot(&self)->Snapshot{Snapshot{device_name:None}}
+  fn snapshot(&self)->Snapshot{Snapshot{device_name:None,..Snapshot::default()}}
   fn publish(&self,_:&(),_:u64,_:Snapshot){}
  }
  fn deliver_change(owner:&ActorFixture,kind:&str)->Result<(),NetworkError>{
   if kind=="local"{owner.catalog_changed();return Ok(());}
-  let mut local_policy:Option<LocalPolicy>=None;let mut hydrate_dirty=false;let app=&();let generation=1;
+  let mut local_policy:Option<LocalPolicy>=None;let mut hydrate_dirty=false;let mut source_policy_version=None::<PolicyVersion>;let app=&();let generation=1;
   if kind=="catalog-ack"{let result:Result<u64,NetworkError>=Ok(1);let catalog_seq=1;let mut catalog_busy=true;__CATALOG_ARM__ return Ok(());}
   let change=if kind=="settings"{myagents_agent_network_protocol::ChangeScope::Settings}else{myagents_agent_network_protocol::ChangeScope::Catalog};
   __CHANGED_ARM__
   Ok(())
  }
- async fn accepted_hydrate(owner:&ActorFixture,expected:&Activation,policy:LocalPolicy,ready:bool,dirty:bool)->Result<(),NetworkError>{
+ fn launch_version(owner:&ActorFixture,source_catalog_seen:u64)->PolicyVersion{__LAUNCH_VERSION__ source_version}
+ async fn consume_local_dirty(owner:&ActorFixture,seen:u64)->u64{
+  owner.catalog_changed.notified().await;
+  let mut source_catalog_seen=seen;let mut source_policy_version=None::<PolicyVersion>;
+  __NOTIFY_PREFIX__
+  source_catalog_seen
+ }
+ struct Reconnect;impl Reconnect{fn recovered(&mut self){}}
+ fn accept_ready(owner:&ActorFixture,expected:&Activation,policy:LocalPolicy,source_policy_version:Option<PolicyVersion>)->bool{
+  let ready_requested=true;let accepted=1;let catalog_seq=1;let local_policy=Some(policy);let mut hydrated=false;
+  let source_activation=Some(expected.clone());let local=expected.scope.local.clone();let mut reconnect=Reconnect;
+  let app=&();let generation=expected.generation;
+  if __READY_GUARD__ {__READY_ARM__}
+  hydrated
+ }
+ async fn accepted_hydrate(owner:&ActorFixture,expected:&Activation,policy:LocalPolicy,ready:bool,dirty:bool)->Result<Option<PolicyVersion>,NetworkError>{
+  let source_version=launch_version(owner,owner.notification_source.policy_version().catalog_revision);
+  hydrate_result(owner,expected,policy,ready,dirty,source_version).await
+ }
+ async fn hydrate_result(owner:&ActorFixture,expected:&Activation,policy:LocalPolicy,ready:bool,dirty:bool,source_version:PolicyVersion)->Result<Option<PolicyVersion>,NetworkError>{
+  let mut source_policy_version=None;
   let mut hydrate_busy=true;let hydrated_seq=1;let catalog_seq=1;let hydrate_dirty=dirty;let mut local_policy=None;
   let hydrated=ready;let mut ready_requested=ready;let catalog_busy=false;let result:Result<LocalPolicy,NetworkError>=Ok(policy);
   let source_activation=Some(expected.clone());let scope=expected.connection.clone();let app=&();let generation=expected.generation;let mut socket=();
   __HYDRATE_ARM__
-  Ok(())
+  Ok(source_policy_version)
  }
  async fn send(_: &mut(),_:myagents_agent_network_protocol::ClientMessage)->Result<String,NetworkError>{Ok("fixture".into())}
  struct FlowFixture{root:std::path::PathBuf,source:Arc<DesktopNotificationSource>,manager:ManagedSidecarManager,identity:NetworkIdentity,expected:Activation,item:Observation,policy:LocalPolicy,context:Arc<Context>}
@@ -154,8 +182,8 @@ const flow=String.raw`
    let policy=LocalPolicy{device_name:"fixture".into(),joined:true,membership_revision:1,mounts:HashMap::new()};
    Self{root,source,manager,identity,expected,item,policy,context}
   }
-  fn actor(&self)->ActorFixture{ActorFixture{notification_source:self.source.clone(),catalog_changed:tokio::sync::Notify::new()}}
-  fn lease(&self)->PolicyLease{self.source.accept_policy(&self.expected).unwrap();self.source.policy_lease(&self.expected).unwrap()}
+  fn actor(&self)->ActorFixture{ActorFixture{connection_id:"fixture".into(),notification_source:self.source.clone(),catalog_changed:tokio::sync::Notify::new()}}
+  fn lease(&self)->PolicyLease{self.source.accept_policy(&self.expected,self.source.policy_version()).unwrap();self.source.policy_lease(&self.expected).unwrap()}
   fn launch(&self,lease:PolicyLease)->impl std::future::Future<Output=Result<(),NetworkError>>+Send+'static{
    let source=self.source.clone();let manager=self.manager.clone();let identity=self.identity.clone();let expected=self.expected.clone();let item=self.item.clone();let agent=fixture()["agentB"].as_str().unwrap().to_string();async move{__PROOF_CALL__}
   }
@@ -165,8 +193,9 @@ const flow=String.raw`
   let rt=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();rt.block_on(async{
    for kind in ["settings","catalog","local","catalog-ack"]{
     let f=FlowFixture::new(1);let lease=f.lease();let task=tokio::spawn(f.launch(lease));tokio::time::timeout(std::time::Duration::from_secs(3),f.context.challenge.notified()).await.unwrap();
-    deliver_change(&f.actor(),kind).unwrap();
-    accepted_hydrate(&f.actor(),&f.expected,f.policy.clone(),true,false).await.unwrap();
+    let owner=f.actor();deliver_change(&owner,kind).unwrap();
+    if kind=="local"{consume_local_dirty(&owner,0).await;}
+    accepted_hydrate(&owner,&f.expected,f.policy.clone(),true,false).await.unwrap();
     f.context.release.notify_one();let result=task.await.unwrap();
     assert!(result.is_err()&&f.context.signs.load(Ordering::Acquire)==0&&f.context.hints.load(Ordering::Acquire)==0&&f.source.peek(&f.expected).unwrap().is_some(),"POLICY_DIRTY_REUSED_OLD_PUBLICATION");
     f.context.mode.store(0,Ordering::Release);let fresh=f.source.policy_lease(&f.expected).expect("accepted fresh hydrate must issue a new lease");f.launch(fresh).await.unwrap();
@@ -176,7 +205,7 @@ const flow=String.raw`
  }
  #[test]fn policy_dirty_after_challenge_validation_cannot_sign(){
   let f=FlowFixture::new(0);let source=f.source.clone();
-  f.manager.lock().unwrap().before_return=Some(Arc::new(move||{let owner=ActorFixture{notification_source:source.clone(),catalog_changed:tokio::sync::Notify::new()};deliver_change(&owner,"settings").unwrap();}));
+  f.manager.lock().unwrap().before_return=Some(Arc::new(move||{let owner=ActorFixture{connection_id:"fixture".into(),notification_source:source.clone(),catalog_changed:tokio::sync::Notify::new()};deliver_change(&owner,"settings").unwrap();}));
   let rt=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();let result=rt.block_on(f.launch(f.lease()));
   assert!(result.is_err()&&f.context.signs.load(Ordering::Acquire)==0&&f.context.hints.load(Ordering::Acquire)==0&&f.source.peek(&f.expected).unwrap().is_some(),"POLICY_DIRTY_AFTER_CHALLENGE_SIGNED");
  }
@@ -197,11 +226,49 @@ const flow=String.raw`
    accepted_hydrate(&f.actor(),&f.expected,f.policy.clone(),true,true).await.unwrap();assert!(f.source.policy_lease(&f.expected).is_none());
   });
  }
+ #[test]fn unconsumed_local_dirty_cannot_accept_old_inflight_hydrate(){
+  let rt=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();rt.block_on(async{
+   let f=FlowFixture::new(0);let owner=f.actor();let seen=f.source.policy_version().catalog_revision;
+   let launched=launch_version(&owner,seen);owner.catalog_changed();
+   let accepted=hydrate_result(&owner,&f.expected,f.policy.clone(),true,false,launched).await.unwrap();
+   assert!(accepted.is_none()&&f.source.policy_lease(&f.expected).is_none(),"UNCONSUMED_LOCAL_DIRTY_ACCEPTED_STALE_POLICY");
+  });
+ }
+ #[test]fn hydrate_launched_before_notify_consumption_cannot_cover_unseen_catalog(){
+  let rt=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();rt.block_on(async{
+   let f=FlowFixture::new(0);let owner=f.actor();let seen=f.source.policy_version().catalog_revision;
+   owner.catalog_changed();let launched=launch_version(&owner,seen);
+   assert_eq!(launched.revision,f.source.policy_version().revision);assert_ne!(launched.catalog_revision,f.source.policy_version().catalog_revision);
+   let accepted=hydrate_result(&owner,&f.expected,f.policy.clone(),true,false,launched).await.unwrap();
+   assert!(accepted.is_none()&&f.source.policy_lease(&f.expected).is_none(),"UNSEEN_CATALOG_LAUNCH_ACCEPTED");
+  });
+ }
+ #[test]fn ready_cannot_reissue_policy_after_unconsumed_local_dirty(){
+  let rt=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();rt.block_on(async{
+   let f=FlowFixture::new(0);let owner=f.actor();let seen=f.source.policy_version().catalog_revision;
+   let launched=launch_version(&owner,seen);
+   let accepted=hydrate_result(&owner,&f.expected,f.policy.clone(),false,false,launched).await.unwrap();
+   assert!(accepted.is_some()&&f.source.policy_lease(&f.expected).is_none());
+   owner.catalog_changed();assert!(accept_ready(&owner,&f.expected,f.policy.clone(),accepted));
+   assert!(f.source.policy_lease(&f.expected).is_none(),"READY_REISSUED_STALE_POLICY");
+  });
+ }
+ #[test]fn consumed_local_dirty_and_fresh_hydrate_restore_publication(){
+  let rt=tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();rt.block_on(async{
+   let f=FlowFixture::new(0);let owner=f.actor();let seen=f.source.policy_version().catalog_revision;
+   owner.catalog_changed();let observed=consume_local_dirty(&owner,seen).await;assert!(observed>seen);
+   let launched=launch_version(&owner,observed);
+   let accepted=hydrate_result(&owner,&f.expected,f.policy.clone(),false,false,launched).await.unwrap();
+   assert_eq!(accepted,Some(launched));assert!(accept_ready(&owner,&f.expected,f.policy.clone(),accepted));
+   f.launch(f.source.policy_lease(&f.expected).expect("fresh accepted projection must restore publication")).await.unwrap();
+   assert!(f.source.peek(&f.expected).unwrap().is_none());
+  });
+ }
  __LIFETIME__
  #[test]fn original_connection_lifetime_cleans_before_ready_and_preserves_successor(){
   let f=FlowFixture::new(0);let lifetime=Lifetime(f.source.clone(),Some(f.expected.clone()));drop(lifetime);assert!(!f.source.current(&f.expected));assert!(f.source.policy_lease(&f.expected).is_none());
   let f=FlowFixture::new(0);let lifetime=Lifetime(f.source.clone(),Some(f.expected.clone()));let old=f.lease();let mut successor=f.expected.clone();successor.connection.connection_epoch=uuid::Uuid::new_v4().to_string();
-  f.source.activate(successor.clone()).unwrap();f.source.accept_policy(&successor).unwrap();let current=f.source.policy_lease(&successor).unwrap();drop(lifetime);assert!(!old.current());assert!(current.current());assert!(f.source.current(&successor));drop(Lifetime(f.source.clone(),Some(successor)));assert!(!current.current());
+  f.source.activate(successor.clone()).unwrap();f.source.accept_policy(&successor,f.source.policy_version()).unwrap();let current=f.source.policy_lease(&successor).unwrap();drop(lifetime);assert!(!old.current());assert!(current.current());assert!(f.source.current(&successor));drop(Lifetime(f.source.clone(),Some(successor)));assert!(!current.current());
  }
 `;
 const rust=String.raw`
@@ -212,7 +279,7 @@ mod agent_network{
  use std::{collections::HashMap,path::Path,sync::{Arc,Mutex}};
  use serde::Deserialize;use serde_json::{Value,json};
  use myagents_agent_network_protocol::{CatalogItem,CatalogLifecycle,ConnectionScope,DeviceScope,ClientMessage};
- #[derive(Debug)] pub struct NetworkError{pub code:String}impl NetworkError{pub fn new(s:&'static str)->Self{Self{code:s.into()}}pub fn cloud(s:&str,_:u16)->Self{Self{code:s.into()}}}
+ #[derive(Debug,Clone)] pub struct NetworkError{pub code:String}impl NetworkError{pub fn new(s:&'static str)->Self{Self{code:s.into()}}pub fn cloud(s:&str,_:u16)->Self{Self{code:s.into()}}}
  fn invalid()->NetworkError{NetworkError::new("DESKTOP_NOTIFICATION_SOURCE_INVALID")}
  #[path=__QUEUE__] mod queue;
  use queue::{Activation,DesktopNotificationSource,Observation,SourceScope};
@@ -267,7 +334,9 @@ let harness=rust.replace('__WORKSPACE__',JSON.stringify(path.join(root,'src-taur
   .replace('__CATALOG_METHOD__',actorMethod('pub(crate) fn catalog_changed('))
   .replace('__CATALOG_ARM__',actorArm('Work::Catalog(result) =>'))
   .replace('__CHANGED_ARM__',actorArm('ServerMessage::Changed { change, .. } =>'))
-  .replace('__HYDRATE_ARM__',actorArm('Work::Hydrate { catalog_seq: hydrated_seq, result } =>'))
+  .replace('__HYDRATE_ARM__',actorArm('Work::Hydrate { catalog_seq: hydrated_seq, source_version, result } =>'))
+  .replace('__LAUNCH_VERSION__',launchAnchor).replace('__NOTIFY_PREFIX__',notifyPrefix)
+  .replace('__READY_GUARD__',readyGuard).replace('__READY_ARM__',actorArm(readyAnchor))
   .replace('__PROOF_CALL__',proofCall)
   .replace('__LIFETIME__',(()=>{const text=fs.readFileSync(path.join(root,'src-tauri/src/agent_network/notification_source.rs'),'utf8');return text.slice(index(text,'pub(super) struct Lifetime'),index(text,'/// Called only after SidecarManager'));})()));
 const sourcePath=path.join(directory,'flow.rs'),binary=path.join(directory,'flow-tests');fs.writeFileSync(sourcePath,harness);
@@ -277,5 +346,5 @@ if(compiled.error||compiled.status!==0)throw Error(`Compilation failed, not RED:
 const run=spawnSync(binary,['--nocapture'],{cwd:directory,encoding:'utf8',timeout:20000,maxBuffer:4*1024*1024});
 const output=`${run.stdout??''}${run.stderr??''}`;fs.writeFileSync(path.join(directory,'tests.log'),output);
 const passed=!run.error&&(options['expect-red']?run.status===101&&output.includes('ACTUAL_PRECHECK_HEAD_BLOCKED_LATER_SOURCE')&&output.includes('POLICY_DIRTY_REUSED_OLD_PUBLICATION'):run.status===0);
-const report={passed,expected:options['expect-red']?'RED':'GREEN',exit:run.status,deliverySha256:hash(delivery),actorSha256:hash(actor),precheckSha256:hash(target),precheckFragmentSha256:hash(precheck),queueSha256:hash(fs.readFileSync(queuePath)),esbuildVersion:esbuild.version,dependencyEvidence,directory,boundaries:'Actual Node precheck/schema + real shared helpers; actual Rust selection, proof sequencing and actor dirty/hydrate bodies. Registry/history/HTTP/signing/actor platform/error adapters isolated. No App/native claim/real device/cloud/proof acceptance.'};
+const report={passed,expected:options['expect-red']?'RED':'GREEN',exit:run.status,deliverySha256:hash(delivery),actorSha256:hash(actor),precheckSha256:hash(target),precheckFragmentSha256:hash(precheck),queueSha256:hash(fs.readFileSync(queuePath)),esbuildVersion:esbuild.version,dependencyEvidence,directory,boundaries:'Actual Node precheck/schema + real shared helpers; actual Rust selection, proof sequencing and actor dirty/hydrate/Ready bodies and launch-version expression. Registry/history/HTTP/signing/actor platform/error adapters isolated. No App/native claim/real device/cloud/proof acceptance.'};
 fs.writeFileSync(path.join(directory,'report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));if(!passed)process.exitCode=1;

@@ -5,7 +5,7 @@ use tauri::Manager;
 #[path = "notification_source_queue.rs"]
 mod queue;
 pub(super) use queue::{
-    Activation, DesktopNotificationSource, Observation, PolicyLease, SourceScope,
+    Activation, DesktopNotificationSource, Observation, PolicyLease, PolicyVersion, SourceScope,
 };
 #[path = "notification_source_delivery.rs"]
 pub(super) mod delivery;

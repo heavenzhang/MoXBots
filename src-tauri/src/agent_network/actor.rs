@@ -492,7 +492,7 @@ impl AgentNetwork {
         self.boundary.borrow().generation
     }
     pub(crate) fn catalog_changed(&self) {
-        self.notification_source.invalidate_policy();
+        self.notification_source.invalidate_catalog();
         self.catalog_changed.notify_one();
     }
     pub(crate) fn memory_budget(&self) -> MemoryBudget {
@@ -1131,6 +1131,7 @@ enum Work {
     Catalog(Result<u64, NetworkError>),
     Hydrate {
         catalog_seq: u64,
+        source_version: super::notification_source::PolicyVersion,
         result: Result<LocalPolicy, NetworkError>,
     },
     Precheck {
@@ -1262,6 +1263,8 @@ async fn connect(
     let source_activation = super::notification_source::delivery::activation(&identity, &local, &scope, generation).ok()
         .filter(|activation| owner.notification_source.activate(activation.clone()).is_ok());
     let _source_lifetime = super::notification_source::Lifetime(owner.notification_source.clone(), source_activation.clone());
+    let mut source_catalog_seen = owner.notification_source.policy_version().catalog_revision;
+    let mut source_policy_version = None::<super::notification_source::PolicyVersion>;
     let mut source_busy = false;
     let mut source_failures = 0u32;
     let mut source_next = Instant::now();
@@ -1343,7 +1346,7 @@ async fn connect(
                             ServerMessage::Ready { catalog_seq: accepted, .. } if ready_requested && accepted == catalog_seq && local_policy.is_some() => {
                                 hydrated = true;
                                 if local_policy.as_ref().is_some_and(|p| p.joined) {
-                                    if let Some(expected) = &source_activation { let _ = owner.notification_source.accept_policy(expected); }
+                                    if let (Some(expected),Some(version)) = (&source_activation,source_policy_version) { let _ = owner.notification_source.accept_policy(expected,version); }
                                 }
                                 reconnect.recovered();
                                 owner.publish(app, generation, NetworkSnapshot { connection_id:owner.connection_id.clone(),state: "ready", principal_id: Some(local.principal_id.clone()),
@@ -1352,6 +1355,7 @@ async fn connect(
                             ServerMessage::Changed { change, .. } => {
                                 if matches!(change, myagents_agent_network_protocol::ChangeScope::Settings | myagents_agent_network_protocol::ChangeScope::Catalog) {
                                     owner.notification_source.invalidate_policy();
+                                    source_policy_version = None;
                                     local_policy = None; hydrate_dirty = true;
                                 }
                                 let snapshot = owner.snapshot(); owner.publish(app, generation, snapshot);
@@ -1690,16 +1694,18 @@ async fn connect(
                         catalog_busy = false; let accepted = result?;
                         if accepted != catalog_seq { return Err(NetworkError::new("CATALOG_NOT_CURRENT")); }
                         owner.notification_source.invalidate_policy();
+                        source_policy_version = None;
                         local_policy = None; hydrate_dirty = true;
                     }
-                    Work::Hydrate { catalog_seq: hydrated_seq, result } => {
+                    Work::Hydrate { catalog_seq: hydrated_seq, source_version, result } => {
                         hydrate_busy = false;
                         // A later catalog/settings notification invalidates this
                         // projection even if its HTTP response arrives last.
                         if hydrated_seq == catalog_seq && !hydrate_dirty {
                             local_policy = Some(result?);
+                            source_policy_version = owner.notification_source.is_policy_version_current(source_version).then_some(source_version);
                             if hydrated && ready_requested && !catalog_busy && local_policy.as_ref().is_some_and(|p| p.joined) {
-                                if let Some(expected) = &source_activation { let _ = owner.notification_source.accept_policy(expected); }
+                                if let (Some(expected),Some(version)) = (&source_activation,source_policy_version) { let _ = owner.notification_source.accept_policy(expected,version); }
                             }
                             if hydrated {
                                 let mut snapshot = owner.snapshot();
@@ -1872,6 +1878,8 @@ async fn connect(
             }
             _ = owner.catalog_changed.notified(), if !catalog_busy && !management_only => {
                 owner.notification_source.invalidate_policy();
+                source_catalog_seen = owner.notification_source.policy_version().catalog_revision;
+                source_policy_version = None;
                 catalog_seq = catalog_seq.checked_add(1).filter(|value| *value <= 9_007_199_254_740_991)
                     .ok_or_else(|| NetworkError::new("CATALOG_SEQUENCE_EXHAUSTED"))?;
                 catalog_busy = true; ready_requested = false;
@@ -1977,10 +1985,12 @@ async fn connect(
             let transport = transport.clone();
             let token = identity.token.clone();
             let local = local.clone();
+            let source_version = owner.notification_source.hydration_version(source_catalog_seen);
             work.push(
                 async move {
                     Work::Hydrate {
                         catalog_seq,
+                        source_version,
                         result: if owned_account {
                             super::policy::hydrate_owned(&transport, &token, &local).await
                         } else {
