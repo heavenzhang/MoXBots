@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ModelFailoverController } from './model-failover';
-import type { UpstreamConfig } from './types/bridge';
+import type { UpstreamConfig, StreamInterruptionCause } from './types/bridge';
 import { QueryRequestGuard } from './request-lifetime';
 
 const primary: UpstreamConfig = { baseUrl: 'http://primary.invalid', providerId: 'primary', model: 'main' };
@@ -26,23 +26,27 @@ describe('owner-admitted partial stream continuation', () => {
       onSwitch: vi.fn(), retryDelaysMs, recovery });
     return { owner, recovery, controller };
   }
-  it.each(['EOF', 'error event', 'malformed', 'read failure'])('offers %s exactly once, without replay or pausing its accepted checkpoint', async failure => {
+  it.each(['EOF', 'error event', 'malformed', 'read failure'])('separates trusted transport from provider/protocol %s, without replay', async failure => {
     const h = fixture();
     let source!: ReadableStreamDefaultController<Uint8Array>;
     const upstream = new ReadableStream<Uint8Array>({ start(value) { source = value; } });
-    const execute = vi.fn(async () => new Response(upstream, { headers: { 'content-type': 'text/event-stream' } }));
+    let notify: ((cause: StreamInterruptionCause) => void) | undefined;
+    const execute = vi.fn(async (_target: UpstreamConfig, _progress?: () => boolean, onInterruption?: (cause: StreamInterruptionCause) => void) => {
+      notify = onInterruption; return new Response(upstream, { headers: { 'content-type': 'text/event-stream' } });
+    });
     const response = await h.controller.run(request(), primary, execute, 'failed-input');
     const output = response.text();
     source.enqueue(new TextEncoder().encode('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"text":"partial"}}\n\n'));
-    if (failure === 'read failure') source.error(new Error('socket closed'));
+    if (failure === 'read failure') { notify?.('transport'); source.error(new Error('socket closed')); }
     else {
       if (failure === 'error event') source.enqueue(new TextEncoder().encode('event: error\ndata: {"type":"error"}\n\n'));
       if (failure === 'malformed') source.enqueue(new TextEncoder().encode('data: invalid-json\n\n'));
       source.close();
     }
     expect(await output).toContain('automatic_replay_blocked');
-    expect(h.recovery.interrupted).toHaveBeenCalledTimes(1);
-    expect(h.recovery.blocked).not.toHaveBeenCalled();
+    const trusted = failure === 'EOF' || failure === 'read failure';
+    expect(h.recovery.interrupted).toHaveBeenCalledTimes(trusted ? 1 : 0);
+    expect(h.recovery.blocked).toHaveBeenCalledTimes(trusted ? 0 : 1);
     expect(h.recovery.complete).not.toHaveBeenCalled();
     expect(execute).toHaveBeenCalledTimes(1);
     expect((await h.controller.run(request(), primary, execute, 'different-input')).status).toBe(409);
@@ -332,4 +336,22 @@ describe('Query request safety evidence', () => {
     expect(guard.begin(undefined, 'history', true)).toBeUndefined();
     expect(admitted.isBlocked()).toBe(false);
   });
+});
+
+it('does not let a retired attempt label a later provider SSE error as transport', async () => {
+  const interrupted = vi.fn(async () => true); const blocked = vi.fn(async () => {});
+  const observed = vi.fn();
+  const controller = new ModelFailoverController({ scope: () => 'root', isActive: () => true, canRetry: () => true, canSwitch: () => true,
+    resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs, recovery: { wait: async () => undefined,
+      complete: async () => {}, interrupted, blocked } });
+  let first: ((cause: StreamInterruptionCause) => void) | undefined; let attempt = 0;
+  const response = await controller.run(request(), { ...primary, onStreamInterruption: observed }, async (_target, _progress, cause) => {
+    attempt++;
+    if (attempt === 1) { first = cause; return transient(); }
+    first?.('transport'); // The first attempt no longer has authority.
+    return new Response('data: {"type":"error","error":{"type":"authentication_error"}}\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  }, 'same-native-request');
+  expect(await response.text()).toContain('automatic_replay_blocked');
+  expect(attempt).toBe(2); expect(interrupted).not.toHaveBeenCalled(); expect(blocked).toHaveBeenCalledOnce();
+  expect(observed).toHaveBeenCalledExactlyOnceWith('unproven');
 });
