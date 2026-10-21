@@ -21,3 +21,7 @@ The installed Expo generateUniversalIconAsync production function was executed a
 - User paths: original conversation/file/approval/speech/notification acceptance stays open independently; no UI fixture, source check or source receipt replaces the actual phone flow.
 
 Private metadata, generator reports and subsequent archive/device receipts are retained under the project pointer output/mobile-testflight-20261022. No password, private key, session token, device list or generated application is committed.
+
+## Official distribution upload checkpoint
+
+App6825572591,originalbundle/team,0.1.0/build3. Source d79 and main7db/CI/unchanged archive retained. Actual submitted IPA25,434,122B/SHA256 aca9f7e0c0499784115bc43988b749ca709573e105325870229314c18af2c3fc; official upload exit0, Apple processing. Its9Mach-O pre-signature bodies and non-signature resources exactly match the separately verified export2;246CRC/deep-strictsignature PASS and independentreview received. Nonfatal missing third-party dSYMs and absentactualAPNs entitlement recorded, not hidden. TestFlight-only supersedes wireless/development installation. Appleprocessing/compliance/BetaReview/liveinstallableinvitation remain OPEN; originalXu physicalbusiness acceptance separately waiting deviceavailability. Private contact/credential data are excluded fromGit. Exact checkpoint andnext gates are in thetaskrecord.

@@ -16,9 +16,9 @@ The human request was independently read in source chat01a1488b, turn01a15fa9: u
 
 - [x] Verify canonical repository, actual protected main source, ownership and explicit target.
 - [x] Read existing pairing/development-profile compatibility without operating other devices.
-- [ ] Establish original paired wireless transport and, if available, verify an appropriate controlled installation on the selected target; an unavailable tunnel is not an installation.
-- [ ] Verify actual App Store Connect session/role/app/build inventory and matching distribution-signing capability; reuse existing suitable artifacts/links first.
-- [ ] Pin protected source, allocate an unused legal build number, coordinate one necessary mobile CI batch, build and verify an App Store distribution archive with exact provenance and digest.
+- [x] Wireless/development installation branch cancelled by the human; TestFlight only. Original Xu physical business acceptance waits until the phone is at hand.
+- [x] Verified actual UNIS ASC/Developer sessions, original team/bundle, new App6825572591 and empty initial build inventory; existing managed distribution signing reused.
+- [x] Pinned d79/protectedmain7db, passed exact CI and independently reviewed original archive;0.1.0/build3 unused in actual ASC inventory. Official distribution export and actual upload IPA independently verified.
 - [ ] Validate/upload, observe processing, answer export questions from verified facts, finish any required Beta App Review, and verify a compatible build is actually available through the invitation.
 - [ ] Limit an external self-use invitation group to a small audience without adding unrelated internal roles, marketing or unsolicited email.
 - [ ] Keep source/main, CI, signing/archive, upload, processing/review, invitation and actual installation as separate states.
@@ -50,3 +50,17 @@ Use the explicit GUI window to read the existing Xcode account/team capability a
 ## Fresh development build identity
 
 The human removed Kevin's old App and requested a fresh installation with the corrected launcher. The sole mobile owner allocates internal0.1.0/build3 for this new development-signed candidate; build2/tag/bytes remain immutable and Xu is not updated. A separate final TestFlight build number will be allocated only after actual ASC inventory, preventing a development IPA from being relabeled as distribution. Exact source, internal-tag reservation, runtime native digest, signed archive and final on-device version are separate receipts. Existing development certificate has now been verified from its X509 OU as the original teamQJ5URBG9AP; the display-name personal identifier is not used as team authority.
+
+## TestFlight upload checkpoint — 2026-10-22
+
+Human latest direct instruction requires the usable second-iPhone TestFlight invitation; original phone business acceptance waits until physically available, daily Mac and101 identity/config remain excluded. TestFlight-only supersedes every earlier wireless/nearby/development-install step. No selected phone was operated in this continuation.
+
+Existing UNIS teamQJ5URBG9AP, original bundlecom.moxbots.mobileinternal, newASC App6825572591, SKU moxbots-mobile-internal, Simplified Chinese and limited App access were actually verified. Initial TestFlight inventory had no builds. Existing Distribution Managed signing was reused by official Xcode automatic provisioning, with an App Store-only profile; no new Apple account, role, API key or device registration.
+
+Original unsigned archive/source d79aef18dbb803b78b5734181a250f1866af56ad and protectedmain7db1f441ea446414f234f4fa53d96d6de4ba060b are retained. Official signed local export IPA:25,434,111B/SHA256 c4517cc7fd5d589d3ddc1b530cc4edd299e1609f40505173533816312e75b768. The distinct actual destination-upload IPA was captured from the exact ContentDelivery package path:25,434,122B/SHA256 aca9f7e0c0499784115bc43988b749ca709573e105325870229314c18af2c3fc,246CRC entries, deep/strict codesign PASS. Nine Mach-O pre-signature bodies are identical to the accepted local export; other resources,JS,Assets.car,Info and profile match byte-for-byte. These are separate signed artifacts, not an incorrect shared SHA claim.
+
+The unique official upload completed exit0: Upload succeeded, uploaded package processing, EXPORT SUCCEEDED. Upload ID868ab268-1786-4f51-8a3d-4764b0dd2370. Three nonfatal missing-dSYM warnings for React,ReactNativeDependencies,hermesvm remain recorded; no symbols success claim. Push entitlement/real APNs and speech acceptance remain OPEN; no provider delivery inferred from the profile.
+
+Actual source, code/main, signing and upload gates passed. Apple processed-build availability, build-level export compliance, required Beta App Review and an actually installable invitation remain OPEN. Human supplied review contact details, confirmed no France distribution, and authorized an isolated Apple-review account with only test data and no original businessBot/101/daily-account access. Contact/credential data are private, never in Git. Live Dex has no user-management gRPC; account activation needs a minimal static-entry append and fresh Dex-only quiet window, presently held behind desktop017/Air login coordination. No Dex/AuthStore/device change has been applied by this checkpoint.
+
+The mobile signing/upload process has ended, and the shared native/Xcode window was explicitly returned to desktop01a12bc2. Independent source coordinator01a1488b reviewed both actual IPA identities and signatures. Private receipts: pointer output/mobile-testflight-20261022 and output/testflight-20261022. Next: actual Apple processing check, fresh authorized authentication window, exact isolated reviewer account login and access-isolation verification, complete Beta metadata/review and verify live invitation. Do not repeat upload or rebuild immutable source; do not substitute original-phone physical acceptance.
