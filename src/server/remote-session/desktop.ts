@@ -26,7 +26,9 @@ function failure(error:unknown): {success:false;code:string} {
 async function target(agentId:string,sessionId?:string,preparedOperation?:string) {
   const registry=await resolvePersistedAgentWorkspaceRegistry();
   const identity=registry.agentProjections.find(p=>p.agentId===agentId);
-  if(registry.diagnostics.some(d=>d.agentIds.includes(agentId))||!identity||identity.agent.enabled!==true||!identity.project||!isProjectVisibleToUser(identity.project)||isProjectArchived(identity.project)) throw new RemoteSessionError('REMOTE_AGENT_UNAVAILABLE');
+  // enabled controls Proactive Agent automation, not explicit same-account
+  // Session access. Match the authenticated network-precheck workspace policy.
+  if(registry.diagnostics.some(d=>d.agentIds.includes(agentId))||!identity||!identity.project||!isProjectVisibleToUser(identity.project)||isProjectArchived(identity.project)) throw new RemoteSessionError('REMOTE_AGENT_UNAVAILABLE');
   if(sessionId){
     const meta=getSessionMetadata(sessionId);
     const prepared=preparedOperation && meta?.materializationState==='prepared' && meta.materializationSourceSessionId===preparedOperation;

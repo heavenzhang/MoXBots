@@ -214,8 +214,10 @@ async function resolveDesktopRemoteArtifactsOwned(value: unknown) {
 
   const registry = await resolvePersistedAgentWorkspaceRegistry();
   const identity = registry.agentProjections.find((item) => item.agentId === input.agentId);
+  // Proactive automation may be off while explicit remote Session access is
+  // available; retain the same workspace policy as network-precheck/desktop.
   if (!identity || registry.diagnostics.some((diagnostic) => diagnostic.agentIds.includes(input.agentId)) ||
-      identity.agent.enabled !== true || !identity.project || !isProjectVisibleToUser(identity.project) ||
+      !identity.project || !isProjectVisibleToUser(identity.project) ||
       isProjectArchived(identity.project) || !workspacePathsEqual(metadata.agentDir, identity.workspacePath) ||
       !workspacePathsEqual(context.workspacePath, identity.workspacePath)) {
     throw new RemoteSessionError('REMOTE_AGENT_UNAVAILABLE');
