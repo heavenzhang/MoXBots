@@ -47,3 +47,16 @@ This cannot retroactively prove zero spill for old installed streams or clear hi
 ## Next step
 
 Root independently reviews the fixed feature SHA and reruns its own cause/owner probes, then hands accepted changes to the existing sole publisher for actual-main integration and a later release batch. Do not modify the frozen prior batch or operate original sessions from this branch.
+
+
+## CI fixture follow-up — 2026-10-21
+
+Root reported PR178 / CI39521879223 failure in the old `session-transcript/stream-continuation.integration.test.ts` fixture. Exact clean feature HEAD `7f85cea3062aeb56d875485cae6e97d86a575dce` independently reproduced **four failures / four passes (eight expanded tests)**. The fixture manually composed Context and ModelFailover without the production handler's trusted interruption callback; it also supplied an orphan delta instead of a legal message prefix. The new fail-closed production policy correctly refused authority at native continuation marker advance. This is not evidence that the actual handler failed.
+
+- [x] Replace only that test's manual controller composition with the actual `createBridgeHandler`, original token registry/config, and an ephemeral `127.0.0.1` HTTP Anthropic provider. Complete legal message/content frames end with genuine EOF on the interrupted response; healthy responses include the complete protocol terminal. No cause callback is synthesized or policy stubbed.
+- [x] Preserve every original test/assertion for ordinary/Goal root/native owner, actual transcript durability, Stop, completion-commit failure, and a second independent task. Original eight pass through the real handler. Added upstream request counts prove the expected one request per admitted input.
+- [x] Four additional actual-handler/native-result negatives cover permanent SSE error, incomplete frame, malformed SSE and downstream reader cancellation. Each terminates with error, one original input, one upstream request, and no waiting recovery checkpoint. All twelve tests pass.
+- [x] TypeScript, scoped single-file ESLint, test classification and diff check pass. Only this integration fixture and this task record change; no production source, permission, timeout, version, configuration or installed state changes.
+- [ ] Root independent **entire integration project (124 files)** run after this precise feature SHA, then existing publisher coordination. This follow-up executed the affected file only; earlier 256 integration / 458 unit results do not substitute for the new full-project gate. The CI failure remains recorded and cannot be called a CI pass until the deployment owner runs the next batch.
+
+Evidence is retained outside Git at `work/salary-recovery-20261020/settled-stream-continue-diagnostic/ci-fixture-followup/`: `baseline-7f85-red.log`, `handler-final-green.log`, `typecheck.log`, `lint.log`, `classification.log`, `fixture.patch`, `original-assertions.json` and the final synchronized handoff receipt. Temporary HOME, synthetic SDK protocol and local HTTP provider only; no paid/real provider, App, original Session, shared CI or build operations. Next: root reviews the incremental SHA and runs all integration files, then sole publisher decides main/release admission.

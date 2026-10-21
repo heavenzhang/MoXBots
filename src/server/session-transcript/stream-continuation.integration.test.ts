@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Options, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { AnthropicRequest } from '../openai-bridge/types/anthropic';
@@ -30,9 +31,56 @@ vi.mock('../sse', async original => ({
 let agent: typeof import('../agent-session');
 let store: typeof import('../SessionStore');
 let turnState: typeof import('../builtin-session/turn');
+let upstream: Server;
+let upstreamBaseUrl: string;
+let upstreamRequests: number;
+let failure: 'eof' | 'permanent' | 'half-frame' | 'malformed' | 'cancel';
 
-// This fixture owns only the SDK protocol. The real bridge controllers,
-// SessionModelRecovery, original-turn generator and SessionStore run unchanged.
+const sse = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
+const start = (id: string) => ({ type: 'message_start', message: { id, type: 'message', role: 'assistant',
+  model: 'fixture-model', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 4, output_tokens: 0 } } });
+
+async function startUpstream() {
+  upstreamRequests = 0;
+  failure = 'eof';
+  upstream = createServer((req, res) => {
+    // Drain only: no request body, credentials or business data are retained.
+    req.resume();
+    req.on('end', () => {
+      const interrupted = ++upstreamRequests % 2 === 1;
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.write(sse(start(`response-${upstreamRequests}`)));
+      res.write(sse({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }));
+      res.write(sse({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta',
+        text: interrupted ? 'preserved partial text' : 'continued final text' } }));
+      if (!interrupted) {
+        res.end(sse({ type: 'content_block_stop', index: 0 })
+          + sse({ type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } })
+          + sse({ type: 'message_stop' }));
+      } else if (failure === 'permanent') {
+        res.end(sse({ type: 'error', error: { type: 'authentication_error', message: 'fixture rejection' } }));
+      } else if (failure === 'half-frame') {
+        res.end('data: {"type":"content_block_delta"');
+      } else if (failure === 'malformed') {
+        res.end('data: {not-json\n\n');
+      } else if (failure === 'cancel') {
+        // The downstream reader explicitly cancels; teardown closes the socket.
+        res.flushHeaders();
+      } else {
+        // Complete legal frames followed by EOF before the protocol terminal.
+        res.end();
+      }
+    });
+  });
+  await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+  const address = upstream.address();
+  if (!address || typeof address === 'string') throw new Error('fixture did not bind');
+  upstreamBaseUrl = `http://127.0.0.1:${address.port}`;
+}
+
+// This fixture owns only the SDK protocol and a temporary loopback provider.
+// The production handler, registry, controllers, original-turn generator and
+// SessionStore run unchanged, including their internal trusted-cause wiring.
 function fakeQuery(args: { prompt: AsyncIterable<SDKUserMessage>; options: Options }) {
   const prompt = args.prompt[Symbol.asyncIterator]();
   let close!: () => void;
@@ -62,7 +110,7 @@ function fakeQuery(args: { prompt: AsyncIterable<SDKUserMessage>; options: Optio
         const frame = (event: unknown) => ({ ...envelope, type: 'stream_event', event });
         const text = interrupted ? 'preserved partial text' : 'continued final text';
         yield { ...envelope, type: 'system', subtype: 'init', model: 'fixture-model', tools: [], mcp_servers: [] };
-        yield frame({ type: 'message_start', message: { id: `response-${turn}` } });
+        yield frame(start(`response-${turn}`));
         yield frame({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
         yield frame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text } });
         yield { ...envelope, type: 'assistant', message: { id: `response-${turn}`, role: 'assistant',
@@ -95,6 +143,7 @@ beforeEach(async () => {
   state.query.mockReset().mockImplementation(fakeQuery);
   state.sdkRead.mockReset().mockResolvedValue([]);
   state.gateway.mockReset();
+  await startUpstream();
   vi.resetModules();
   store = await import('../SessionStore');
   agent = await import('../agent-session');
@@ -103,6 +152,13 @@ beforeEach(async () => {
   state.sdkRead.mockImplementation(async () => agent.getMessages().filter(row => row.sdkUuid)
     .map(row => ({ type: row.role, uuid: row.sdkUuid })));
   const bridge = await import('../openai-bridge/bridge-registry');
+  const { createBridgeHandler } = await import('../openai-bridge/handler');
+  const handler = createBridgeHandler({ logger: null, getUpstreamConfig: async request => {
+    const token = new URL(request.url).pathname.split('/').at(-3)!;
+    const config = await bridge.lookupBridge(token, request);
+    if (!config?.contextRecovery || !config.modelFailover) throw new Error('Missing production bridge recovery owners');
+    return config;
+  } });
   state.gateway.mockImplementation(async (input, turn, options) => {
     const base = options.env!.ANTHROPIC_BASE_URL!;
     const interrupted = turn % 2 === 1;
@@ -114,17 +170,13 @@ beforeEach(async () => {
           { role: 'assistant', content: 'preserved partial text' },
           { role: 'user', content: input.message.content as string }] };
     const request = new Request(`${base}/v1/messages`, { method: 'POST', body: JSON.stringify(body) });
-    const token = new URL(base).pathname.split('/').at(-1)!;
-    const config = await bridge.lookupBridge(token, request);
-    if (!config?.contextRecovery || !config.modelFailover) throw new Error('Missing production bridge recovery owners');
-    const response = await config.contextRecovery.run(request, body, async projected => config.modelFailover!.run(
-      new Request(request.url, { method: 'POST', body: JSON.stringify(projected) }),
-      { baseUrl: config.baseUrl, model: config.model, providerId: config.providerId },
-      async () => new Response(interrupted
-        ? 'event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}\n\n'
-        : 'event: message_stop\ndata: {"type":"message_stop"}\n\n', { headers: { 'content-type': 'text/event-stream' } }),
-      JSON.stringify(projected.messages),
-    ));
+    const response = await handler(request);
+    if (interrupted && failure === 'cancel') {
+      const reader = response.body!.getReader();
+      expect((await reader.read()).done).toBe(false);
+      await reader.cancel();
+      return;
+    }
     const text = await response.text();
     expect(response.status).toBe(200);
     expect(text).toContain(interrupted ? 'automatic_replay_blocked' : 'message_stop');
@@ -137,6 +189,8 @@ afterEach(async () => {
   await agent.resetSession();
   agent.setSidecarPort(0);
   await store.drainSessionTranscripts();
+  upstream.closeAllConnections();
+  await new Promise<void>(resolve => upstream.close(() => resolve()));
   vi.restoreAllMocks(); vi.unstubAllEnvs();
   await rm(state.home, { recursive: true, force: true });
 });
@@ -150,11 +204,28 @@ async function initialize() {
     type: 'api', models: [{ model: 'fixture-model' }] }));
   agent.setSidecarPort(15432);
   await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
-  await agent.setSessionProviderEnv({ providerId: 'stream-fixture', baseUrl: 'http://127.0.0.1:1', apiKey: 'synthetic-fixture' });
+  await agent.setSessionProviderEnv({ providerId: 'stream-fixture', baseUrl: upstreamBaseUrl,
+    apiProtocol: 'anthropic', apiKey: 'synthetic-fixture' });
   await agent.setSessionModel('fixture-model');
 }
 
 describe('production original-turn stream continuation with synthetic SDK protocol', () => {
+  it.each(['permanent', 'half-frame', 'malformed', 'cancel'] as const)(
+    'does not continue a native root after an unproven handler interruption (%s)', async cause => {
+      failure = cause;
+      await initialize();
+      const terminal = vi.fn<(outcome: TurnTerminalOutcome) => void>();
+      await agent.enqueueUserMessage('Original bounded task', undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: true, onTerminal: terminal });
+      await vi.waitFor(() => { expect(state.faults).toEqual([]); expect(terminal).toHaveBeenCalledTimes(1); });
+      expect(terminal.mock.calls[0][0]).toMatchObject({ status: 'error', code: 'automatic_replay_blocked' });
+      expect(state.inputs).toHaveLength(1);
+      expect(upstreamRequests).toBe(1);
+      expect(store.getBuiltinModelRecovery(agent.getSessionId()!)?.status).not.toBe('waiting');
+    },
+  );
+
   it('keeps public Stop terminal and durable quality after a delayed recovery-failure pause acknowledgement', async () => {
     state.delay = 150;
     await initialize();
@@ -260,6 +331,7 @@ describe('production original-turn stream continuation with synthetic SDK protoc
     }
     expect(state.query).toHaveBeenCalledTimes(1);
     expect(state.inputs).toHaveLength(4);
+    expect(upstreamRequests).toBe(4);
   });
 
   it.each([undefined, 'goal-original'])('retains the original ordinary/Goal turn (%s) through bridge partial and persisted completion', async goalId => {
@@ -275,6 +347,7 @@ describe('production original-turn stream continuation with synthetic SDK protoc
     expect(terminal.mock.calls[0][0]).toMatchObject({ status: 'complete', usage: { inputTokens: 8, outputTokens: 10 } });
     expect(state.query).toHaveBeenCalledTimes(1);
     expect(state.inputs).toHaveLength(2);
+    expect(upstreamRequests).toBe(2);
     expect(state.inputs[1]).toMatchObject({ isSynthetic: true });
     expect(state.inputs[1].message.content).toContain('mox-stream-continuation:');
     expect(state.inputs[1].message.content).not.toContain('Original bounded task');
