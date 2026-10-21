@@ -6,6 +6,10 @@
 
 当前：独立分支 `codex/login-transaction-02` 源码与本地验证已完成，正在精确 SHA 发布交接；真实 Air 构建号/日志未知（用户只读命令没有输出），单机或模拟测试不能替代 Air 登录和持久化验收。本批未变更生产，远端 main、统一 CI、两个单元发布和 Air 实验分别追踪。
 
+## MOXBOTS-AUTO-ROUTING-20261021 — 自动选模型 P0–P3
+
+每个新用户轮次由小分类模型判断难度档位并选出模型与推理强度（桌面、IM、定时任务同一条准入路径），界面只露「自动」、三档设置卡片与可纠正路由标签，P3 提供「先问我」的请外援。任务 `.agent-sync/tasks/codex-auto-routing-20261019.md`，交付记录 `dev-docs/auto-routing/acceptance.md`。源码已 rebase 到 `2adf5c1d2` 并推送 main（`c21b013bf`，60 文件 +3744/−38），本地 unit/dom/integration、tsc、ESLint、depcruise 全绿；共享 CI run `39560599030`、真实 Provider 联调、真实换模型耗时、原生安装与发布分别追踪。桌面 CI/构建/发布仍由唯一 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。
+
 ## MOXBOTS-NATIVE-GOAL-CONTINUE-20261021 — 安全首因可见性
 
 原生case5正式Continue已入新Query/RC，随后response.failed后SDK重请求409；具体上游原因未知。下一批仅保留受限首因类别与固定提示，exactscope/attempt/request，沿现有有界registry，不改变恢复或执行权限。独立分支codex/native-goal-continue-20261021，任务记录见.agent-sync/tasks/codex-native-goal-continue-20261021-a040b693.md；root独审，desktop统一CI/发布仍由01a12bc2-907a-7702-b6dd-788225c5dfe4负责。源码已冻结并完成作者全integration（125files，1404PASS/32SKIP/0FAIL）及Bridge370unit；独审/主干/实际native验收分开记录，不操作冻结5163或原业务。
