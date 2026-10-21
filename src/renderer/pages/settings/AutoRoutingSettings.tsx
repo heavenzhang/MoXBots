@@ -22,7 +22,7 @@ export interface AutoRouteTierRow extends AutoModelRef {
 
 export interface AutoRouteTiersView {
   enabled: boolean;
-  classifier: (AutoModelRef & { chosenBy?: 'user' | 'auto' }) | null;
+  classifier: (AutoModelRef & { chosenBy?: 'user' | 'auto'; available?: boolean; unavailableReason?: string }) | null;
   tiers: Record<AutoTier, AutoRouteTierRow[]>;
 }
 
@@ -42,29 +42,40 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
   const settings = parseAutoRoutingSettings(value);
   const enabled = isAutoRoutingEnabled(settings);
   const [view, setView] = useState<AutoRouteTiersView | null>(null);
+  const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
+  const [saved, setSaved] = useState(false);
   const saving = useRef(false);
 
+  const requestId = useRef(0);
   const refresh = useCallback(async () => {
+    const id = ++requestId.current;
+    setLoading(true);
     try {
-      setView(await loadTiers());
-      setLoadFailed(false);
+      const next = await loadTiers();
+      if (id === requestId.current) { setView(next); setLoadFailed(false); }
     } catch {
-      setLoadFailed(true);
+      if (id === requestId.current) setLoadFailed(true);
+    } finally {
+      if (id === requestId.current) setLoading(false);
     }
   }, [loadTiers]);
   // Tiers follow the provider catalog and this card's own saves.
   const settingsKey = JSON.stringify(value ?? null);
-  useEffect(() => { void refresh(); }, [refresh, settingsKey]);
+  useEffect(() => {
+    void refresh();
+    return () => { requestId.current += 1; };
+  }, [refresh, settingsKey]);
 
   const save = async (next: Settings) => {
     if (saving.current) return;
     saving.current = true;
     setBusy(true);
     setError(false);
-    try { await updateConfig({ autoRouting: next }); }
+    setSaved(false);
+    try { await updateConfig({ autoRouting: next }); setSaved(true); }
     catch { setError(true); }
     finally { saving.current = false; setBusy(false); }
   };
@@ -88,6 +99,12 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
   const allModels = AUTO_TIERS.flatMap(tier => view?.tiers[tier] ?? []);
   const classifier = view?.classifier ?? null;
   const classifierValue = settings.classifier ? autoModelKey(settings.classifier) : '';
+  const classifierUnavailable = Boolean(settings.classifier && (
+    !allModels.some(row => autoModelKey(row) === classifierValue)
+    || !classifier
+    || classifier.available === false
+    || autoModelKey(classifier) !== classifierValue
+  ));
 
   return <section aria-label={t('autoRouting.title')} className="min-w-0 rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-5">
     <div className="flex items-start justify-between gap-4">
@@ -104,8 +121,13 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       </button>
     </div>
 
-    {loadFailed && <p role="alert" className="mt-4 text-xs text-[var(--error)]">{t('autoRouting.loadFailed')}</p>}
+    {loading && <p role="status" className="mt-4 text-xs text-[var(--ink-muted)]">{t('autoRouting.loading')}</p>}
+    {loadFailed && <div className="mt-4 flex items-center gap-3 text-xs text-[var(--error)]"><p role="alert">{t('autoRouting.loadFailed')}</p><button type="button" onClick={() => void refresh()}>{t('autoRouting.retry')}</button></div>}
     {view && allModels.length === 0 && <p className="mt-4 text-xs text-[var(--ink-muted)]">{t('autoRouting.empty')}</p>}
+    {view && settings.classifier && classifierUnavailable && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-[var(--error)]">
+      <p role="alert">{t('autoRouting.classifierUnavailable', { model: label(settings.classifier) })}</p>
+      <button type="button" disabled={busy} onClick={() => { const { classifier: _old, ...rest } = settings; void save(rest); }}>{t('autoRouting.restoreAutoClassifier')}</button>
+    </div>}
 
     {view && allModels.length > 0 && <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
       {AUTO_TIERS.map(tier => {
@@ -118,15 +140,15 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
           <ol className="mt-2 space-y-1">
             {rows.map((row, index) => <li key={autoModelKey(row)} className="flex min-w-0 items-center gap-1 text-sm text-[var(--ink)]">
               <span className="min-w-0 flex-1 truncate" title={label(row)}>{label(row)}</span>
-              <button type="button" disabled={busy || index === 0}
+              <button type="button" disabled={busy || loading || index === 0}
                 aria-label={t('autoRouting.moveUp', { model: label(row) })}
                 onClick={() => moveUp(tier, index)}
                 className="rounded px-1 text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] disabled:opacity-40">↑</button>
-              <button type="button" disabled={busy || tierIndex === 0}
+              <button type="button" disabled={busy || loading || tierIndex === 0}
                 aria-label={t('autoRouting.moveFaster', { model: label(row) })}
                 onClick={() => moveTier(row, AUTO_TIERS[tierIndex - 1])}
                 className="rounded px-1 text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] disabled:opacity-40">←</button>
-              <button type="button" disabled={busy || tierIndex === AUTO_TIERS.length - 1}
+              <button type="button" disabled={busy || loading || tierIndex === AUTO_TIERS.length - 1}
                 aria-label={t('autoRouting.moveStronger', { model: label(row) })}
                 onClick={() => moveTier(row, AUTO_TIERS[tierIndex + 1])}
                 className="rounded px-1 text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] disabled:opacity-40">→</button>
@@ -142,7 +164,7 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
           ? t(classifier.chosenBy === 'user' ? 'autoRouting.classifierUser' : 'autoRouting.classifierAuto', { model: label(allModels.find(row => autoModelKey(row) === autoModelKey(classifier)) ?? classifier) })
           : t('autoRouting.classifierNone')}
       </p>
-      <CustomSelect ariaLabel={t('autoRouting.classifier')} size="md" disabled={busy} value={classifierValue}
+      <CustomSelect ariaLabel={t('autoRouting.classifier')} size="md" disabled={busy || loading} value={classifierValue}
         options={[
           { value: '', label: t('autoRouting.classifierAutoOption') },
           ...allModels.map(row => ({ value: autoModelKey(row), label: label(row) })),
@@ -155,8 +177,14 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       <p className="text-xs text-[var(--ink-muted)]">{t('autoRouting.privacy')}</p>
     </div>}
 
+    {view && <div className="mt-4 flex flex-wrap gap-3">
+      <button type="button" disabled={busy || loading || !settings.tierOverrides} onClick={() => { const { tierOverrides: _old, ...rest } = settings; void save(rest); }}>{t('autoRouting.restoreDefaultTiers')}</button>
+      <button type="button" disabled={busy || loading || !settings.tierOrder} onClick={() => { const { tierOrder: _old, ...rest } = settings; void save(rest); }}>{t('autoRouting.restoreDefaultOrder')}</button>
+    </div>}
+
     <div className="mt-3 min-h-5 text-xs" aria-live="polite">
       {busy && <p role="status" className="text-[var(--ink-muted)]">{t('autoRouting.saving')}</p>}
+      {saved && <p role="status" className="text-[var(--ink-muted)]">{t('autoRouting.saved')}</p>}
       {error && <p role="alert" className="text-[var(--error)]">{t('autoRouting.saveFailed')}</p>}
     </div>
   </section>;

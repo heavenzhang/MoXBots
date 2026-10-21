@@ -330,6 +330,8 @@
     "pptRenderFailed": "演示文稿渲染失败"
   },
   "autoRoute": {
+    "backupCandidate": "本轮备用候选：{{model}}（执行时复核）",
+    "backupReasons": {"off": "已关闭自动切换模型", "not-configured": "指定备用尚未配置", "unavailable": "指定备用不可用于当前会话", "cross-tier": "指定备用跨档，当前未允许跨档", "no-candidate": "本轮没有符合策略的备用候选"},
     "tag": "自动",
     "effort": "推理 {{effort}}",
     "tiers": {

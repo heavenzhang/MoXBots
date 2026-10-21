@@ -16,7 +16,7 @@ const provider: Provider = {
   models: ['fast', 'balanced', 'strong'].map(tier => ({ model: `qa-${tier}`, modelName: `验收 ${tier}`, modelSeries: 'test' })),
 };
 const providers = [provider];
-const apiKeys = { 'qa-provider': 'synthetic-not-a-real-key' };
+const apiKeys: Record<string, string> = new URLSearchParams(location.search).has('missing-key') ? {} : { 'qa-provider': 'synthetic-not-a-real-key' };
 const projects: never[] = [];
 const verifyStatus = {};
 const storageKey = 'model-settings-qa';
@@ -28,7 +28,7 @@ function Fixture() {
   }));
   const actions = useMemo(() => new Proxy({
     updateConfig: async (patch: Partial<AppConfig>) => {
-      if (patch.modelFailover?.enabled && new URLSearchParams(location.search).has('fail-save')) throw new Error('Synthetic save failure');
+      if ((patch.modelFailover || patch.autoRouting) && new URLSearchParams(location.search).has('fail-save')) throw new Error('Synthetic save failure');
       setConfig(current => {
         const next = { ...current, ...patch };
         localStorage.setItem(storageKey, JSON.stringify(next));

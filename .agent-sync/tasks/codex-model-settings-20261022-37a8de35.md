@@ -7,40 +7,44 @@
 
 ## Objective
 
-用户最终明确要求：合并为一个“模型策略”入口，自动选模型为主要设置，备用放在“故障接管”的高级设置。前一“两入口”候选f8626f148已取代并已通知既有 desktop owner 停用。本次继续使用用户确认的 https://github.com/heavenzhang/MoXBots.git。
+沿用用户明确确认的 https://github.com/heavenzhang/MoXBots.git。统一“模型策略”入口已在 cdf33fd9；用户追加授权补齐六项，先修 stale backup 与默认同档接管，跨档须手动开启。通过本地验证及独立审阅后，将精确源码交给既有 desktop 唯一负责人统一合入发布。
 
-## Acceptance criteria / To Do List
+## Acceptance criteria
 
-- [x] 一个模型策略入口；供应商页不挂载两张策略卡片。
-- [x] 自动选模型为主区域；故障接管默认折叠，展开后才显示备用配置。
-- [x] 已启用指定备用的状态在折叠摘要可见；禁用时如实显示未启用。
-- [x] 中英文、窄窗口档位纵排、旧导航意图转到统一入口并正确消费。
-- [x] 50项DOM及实际组件合成浏览器三宽度/键盘/保存/刷新/失败验证；产品服务端逻辑与配置shape不变。
-- [x] 最终 TypeScript/lint 通过；最终提交/远端同步和 handoff gate 以工作区同任务 result.json 精确回执为准。
-- [ ] 唯一 desktop CI/main owner 统一集成、远端 main 验证。
-- [ ] 下一未冻结制品及原生配置/真实 Provider/生产验收。
+- [x] 单一“模型策略”入口，自动选模型为主，高级故障接管默认折叠，旧导航兼容。
+- [x] 1. 空闲新轮次清旧自动备用；manual/null/分类失败/抛错/CAS冲突不得沿用；busy当前轮次不改。
+- [x] 2. 自动及指定备用默认与实际主模型同档，显式 allowCrossTier=true 才越档。
+- [x] 3. 跟随自动/指定备用/不自动切换三种模式，兼容旧enabled；保留主模型重试、Stop、动作guard。
+- [x] 4. 配置就绪反馈与运行时供应商/凭据/endpoint/history、图片、已知上下文及工具协议约束分别检查。
+- [x] 5. 标签说明实际主模型、候选与未选原因；真实发送备用请求前才报告已切换。
+- [x] 6. 档位读取重试、失效分类器恢复、独立恢复自动分档/档内排序，保留其他配置与失败前值。
+- [x] 最终21文件414项 unit/integration/DOM、TypeScript、受影响ESLint、dependency（0 errors/18既有warnings）、测试分类通过。
+- [x] 真实组件合成浏览器9组/三宽度/故障恢复通过；非实现者独立复验无阻断项；真实SDK本地回环3路径通过。
+- [ ] 提交/远端功能分支同步与handoff gate通过，向owner交接精确SHA/证据/依赖。
+- [ ] desktop owner统一CI/main集成及远端main核验。
+- [ ] owner安排下一未冻结制品、原生配置/真实Provider/生产验收。
 
 ## Completed
 
-模型策略统一入口及高级折叠区、状态摘要、旧导航规范化、中英文与响应式修订已完成。未修改用户配置或服务端接管机制。
+前两项先以回归复现失败并转绿。六项源码已实现，最终验证及独立review通过。未触碰日常App、真实Provider、生产配置或冻结发布候选。目录读取已拆成catalog叶模块，避免新循环依赖。独立审阅发现异步校验期间canRetry撤销竞态及OpenAI输出预算误判，主Agent修复后复验。
 
 ## Verification
 
-`dev-docs/model-settings-20261022/acceptance.md` 与 `evidence/unified/browser-results.json` 为最终验收记录。根 evidence 两入口截图是历史；最终以 unified 子目录为准。浏览器为真实 SettingsPage + 合成配置/API，无真实账号/Provider；主 Agent 自验，无独立 reviewer。服务端未改，保留初版31项回归不重复运行。
+证据目录 `dev-docs/model-settings-20261022/`；旧 `evidence/unified/` 只证明入口调整，六项以新增 `evidence/six-features/` 和功能验收文档为准。mock/loopback证明安全门禁与请求行为，不能证明真实Provider能力、原生持久化或生产可用性。未知上下文容量或工具能力仍属未知；仅拦截已知不兼容条件，不虚称已实测。
 
 ## Blockers and unknowns
 
-现有 desktop owner 唯一负责共享 CI/main/构建/发布。开发会话不主动建PR/运行共享CI/打包/替换日常App。当前功能分支不是已主干/已发布；接收回执、最终远端与后续版本状态见工作区 result.json 和发布队列。
+共享CI/main/正式构建与发布仅由既有desktop owner负责。当前功能分支未合入/未发布。真实Provider与原生业务路径验收由其候选制品阶段执行。当前工作区并行写入边界：UI worker仅settings/i18n；主Agentshared/server/route tag/证据；独立reviewer只读，不操作CI或生产。
 
 ## Deployment request
 
-- Required: desktop client UI，仅 renderer settings/navigation/i18n，含窄窗口布局。
-- Owner: 01a12bc2-907a-7702-b6dd-788225c5dfe4，沿用 canonical plan；不改变其当前冻结候选。
-- Handoff: 本任务分支的最新精确远端 SHA，本记录与最终验收证据；旧两入口请求已取代。
-- Dependencies: 既有 main 自动路由组件；无跨单元依赖、schema或协议迁移，保留 config shape 和原回滚制品。
-- Status: 源码/本地合成验收完成；共享 CI/main/下一未冻结发行和原生验收待 owner。
-- Version/tag/artifact digest: 未分配，继续由既有 owner 唯一管理。
+- Unit: desktop client（renderer settings、共享配置及内置Session/bridge策略），沿用单一部署单元。
+- Owner: 01a12bc2-907a-7702-b6dd-788225c5dfe4（MoxBots桌面端统一打包负责人）。
+- Candidate: 以最终远端分支精确SHA为准；替代cdf33fd9 UI-only请求，不加入已冻结批次。
+- Compatibility: modelFailover.mode/allowCrossTier均可选，旧enabled按既有语义解析；无数据迁移，无新Session/recovery owner。
+- Status: 源码已验收，待提交push与交接；共享CI/main/版本/构建/原生与生产验收待owner。
+- Version/tag/artifact digest: 未分配，由owner管理。
 
 ## Next step
 
-desktop owner 取得本分支最新精确 SHA，使用最终统一入口版本替代旧f862请求；同步实际 main，组织其统一CI和正常合入，核实远端main包含最终成果，再在下一未冻结制品组织原生导航/折叠/配置落盘验证。
+完成受影响验证与独立review，提交push本任务分支，记录精确SHA与证据，按用户本次授权请求owner统一合入并发布；收到请求不等同已发布。

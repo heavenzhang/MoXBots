@@ -744,4 +744,4 @@ Existing sole desktop/updater owner01a12bc2 investigates distinct mainpush395701
 
 ## MOXBOTS-MODEL-SETTINGS-20261022 — 模型策略统一入口
 
-任务 `.agent-sync/tasks/codex-model-settings-20261022-37a8de35.md`，验收 `dev-docs/model-settings-20261022/acceptance.md`，最终浏览器证据 `evidence/unified/`。用户最终明确将两入口合并为单一model-policy；自动选模型主区域，备用模型位于默认折叠的“故障接管 · 高级设置”，折叠时保留指定备用启用状态。前一f862两入口请求取代并已通知owner；既有config writer/shape和服务端恢复机制不变。50DOM及真实组件合成浏览器三尺寸/键盘/保存/刷新/失败通过，窄窗口档位单列。最终类型/lint通过；remote gate精确回执、共享CI/main、原生/生产分别追踪。desktop唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4继续统筹CI/main/版本/构建/发布；开发会话不自行建PR或操作日常App，不静默加入冻结候选。
+任务 `.agent-sync/tasks/codex-model-settings-20261022-37a8de35.md`，验收 `dev-docs/model-settings-20261022/`。统一入口 cdf33fd9 已提交，用户追加六项：空闲新轮次清旧备用、默认同档/显式跨档、三种模式、配置与运行时可用性、实际决策反馈、档位重试与独立恢复。前两项先复现再修复，六项最终414 tests/真实SDK本地回环3路径/合成UI9组及独立review通过；六项证据使用 evidence/six-features，旧unified截图仅证明入口。desktop唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4继续统筹CI/main/版本/构建/发布；开发会话通过验证后交接精确SHA和证据，不自行PR/共享CI/打包/日常App，不加入冻结批次。分别追踪源码/模拟/loopback/合成UI/原生/生产/主干。

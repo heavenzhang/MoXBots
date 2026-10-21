@@ -1,0 +1,17 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-settings
+
+ ✓ |unit| src/shared/autoRoute.test.ts (24 tests) 5ms
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown
+[auto-route] admission skipped: synthetic
+
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > a routing failure never blocks the turn
+[auto-route] admission skipped: boom
+
+ ✓ |unit| src/server/auto-route/admission.unit.test.ts (17 tests) 9ms
+
+ Test Files  2 passed (2)
+      Tests  41 passed (41)
+   Start at  02:14:34
+   Duration  685ms (transform 167ms, setup 212ms, collect 303ms, tests 14ms, environment 0ms, prepare 171ms)
+

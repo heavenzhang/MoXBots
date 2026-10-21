@@ -4,6 +4,7 @@ import AgentFunctionSettings from './sections/AgentFunctionSettings';
 import { DshCollaborationSettings } from './DshCollaborationSettings';
 import { ModelFailoverSettings } from './ModelFailoverSettings';
 import { AutoRoutingSettings, type AutoRouteTiersView } from './AutoRoutingSettings';
+import { configuredBackupStatus, modelFailoverMode } from '../../../shared/modelFailover';
 import { getPlatformHiddenProviderIds, isLinuxDesktop } from '@/utils/desktopPlatform';
 import { isImeComposingEvent } from '@/utils/imeKeyboard';
 import {
@@ -5052,10 +5053,14 @@ export default function Settings({
                 <span className="ml-2 text-xs font-normal text-[var(--ink-muted)]">
                   {tSettings('modelPolicy.advanced')}
                 </span>
-                <span className="ml-2 text-xs font-normal text-[var(--ink-muted)]">
-                  {tSettings(config.modelFailover?.enabled && config.modelFailover.backup
-                    ? 'modelPolicy.backupEnabled' : 'modelPolicy.backupDisabled')}
-                </span>
+                {(() => {
+                  const mode = modelFailoverMode(config.modelFailover);
+                  const backupState = configuredBackupStatus(config.modelFailover, providers, apiKeys);
+                  const brokenSpecified = mode === 'specified' && backupState.status !== 'ready';
+                  return <span className={`ml-2 text-xs font-normal ${brokenSpecified ? 'text-[var(--error)]' : 'text-[var(--ink-muted)]'}`}>
+                    {brokenSpecified ? tSettings('modelPolicy.backupInvalid', { reason: tSettings(`modelFailover.status.${backupState.status}`, { model: backupState.label ?? config.modelFailover?.backup?.modelId ?? '' }) }) : tSettings(`modelPolicy.mode.${mode}`)}{mode === 'specified' && !brokenSpecified && backupState.label ? ` · ${backupState.label}` : ''}
+                  </span>;
+                })()}
               </summary>
               <p className="mt-3 text-sm text-[var(--ink-muted)]">
                 {tSettings('modelPolicy.failoverHint')}
@@ -5066,6 +5071,7 @@ export default function Settings({
                   providers={providers}
                   apiKeys={apiKeys}
                   updateConfig={updateConfig}
+                  onOpenProviders={() => setActiveSection('providers')}
                 />
               </div>
             </details>

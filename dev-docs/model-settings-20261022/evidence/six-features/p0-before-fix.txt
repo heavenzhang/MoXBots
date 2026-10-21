@@ -1,0 +1,119 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-settings
+
+ ❯ |unit| src/shared/autoRoute.test.ts (24 tests | 1 failed) 9ms
+   ✓ parseAutoRouteAnswer > takes the first integer in range 1ms
+   ✓ parseAutoRouteAnswer > separates "none" from off-format answers 0ms
+   ✓ buildAutoRouteClassifierPrompt > lists the three levels and wraps the message 0ms
+   ✓ buildAutoRouteClassifierPrompt > carries the previous turn and its tier for short follow-ups 0ms
+   ✓ buildAutoRouteClassifierPrompt > caps long messages and keeps the end of a long reply 0ms
+   ✓ buildAutoRouteClassifierPrompt > cutMiddle counts characters, not UTF-16 units 0ms
+   ✓ fitEffort > maps tiers to low / medium / high when supported 0ms
+   ✓ fitEffort > picks the nearest supported level and sends nothing when unknown 0ms
+   ✓ tiering > reads size words as words, not substrings 0ms
+   ✓ tiering > follows override → catalog → curated → price → name → balanced 1ms
+   ✓ tiering > tiers the models configured on the development machine as expected 0ms
+   ✓ tiering > puts the user order first inside a tier 0ms
+   ✓ tiering > prefers a non-tiny fast model as the classifier unless the user chose one 0ms
+   ✓ parseAutoRoutingSettings / normalizeModelMode > drops malformed parts instead of guessing 0ms
+   ✓ parseAutoRoutingSettings / normalizeModelMode > defaults the model mode to auto 0ms
+   × decideAutoRoute > keeps failover in the actual target tier unless cross-tier backup was explicitly enabled 4ms
+     → expected { providerId: 'p', …(5) } to be undefined
+   ✓ decideAutoRoute > switches to the first model of the requested tier with the next as backup 0ms
+   ✓ decideAutoRoute > keeps the current model when it is already in the requested tier 0ms
+   ✓ decideAutoRoute > does not move down while the cache is warm, and does once it is cold 0ms
+   ✓ decideAutoRoute > always moves up, warm cache or not 0ms
+   ✓ decideAutoRoute > falls back to the nearest tier when the requested one has nothing usable 0ms
+   ✓ decideAutoRoute > under context pressure only moves to a larger window 0ms
+   ✓ decideAutoRoute > keeps the current tier when the classifier failed 0ms
+   ✓ decideAutoRoute > returns null when nothing is usable 0ms
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown
+[auto-route] admission skipped: synthetic
+
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > a routing failure never blocks the turn
+[auto-route] admission skipped: boom
+
+ ❯ |unit| src/server/auto-route/admission.unit.test.ts (17 tests | 5 failed) 13ms
+   × applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: manual 4ms
+     → expected { providerId: 'old', modelId: 'stale' } to be undefined
+   × applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: disabled 0ms
+     → expected { providerId: 'old', modelId: 'stale' } to be undefined
+   × applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: failed 0ms
+     → expected { providerId: 'old', modelId: 'stale' } to be undefined
+   × applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown 1ms
+     → expected { providerId: 'old', modelId: 'stale' } to be undefined
+   × applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: conflict 1ms
+     → expected { providerId: 'old', modelId: 'stale' } to be undefined
+   ✓ applyAutoRouteAdmission > keeps the admitted backup for busy messages and tool round trips 0ms
+   ✓ applyAutoRouteAdmission > switches an idle auto Session, persists the snapshot and broadcasts 1ms
+   ✓ applyAutoRouteAdmission > same tier keeps the live route: no snapshot write, no reload 0ms
+   ✓ applyAutoRouteAdmission > does not route a busy Session (queued, mid-turn, tool round trip) 0ms
+   ✓ applyAutoRouteAdmission > leaves manual, runtime-backed and non-builtin Sessions alone 1ms
+   ✓ applyAutoRouteAdmission > a routing failure never blocks the turn 0ms
+   ✓ applyAutoRouteAdmission > a concurrent manual pick wins over the routed switch 0ms
+   ✓ applyAutoRouteAdmission > feeds the previous turn, its tier, context use and image needs to the router 1ms
+   ✓ applyAutoRouteAdmission > a failed classifier with no previous tier keeps the turn on its own model 1ms
+   ✓ applyAutoRouteAdmission > skips reminder-only turns 0ms
+   ✓ message helpers > reads visible text only 0ms
+   ✓ message helpers > previousTurn skips diagnostics and empty users 0ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 6 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  |unit| src/shared/autoRoute.test.ts > decideAutoRoute > keeps failover in the actual target tier unless cross-tier backup was explicitly enabled
+AssertionError: expected { providerId: 'p', …(5) } to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+{
+  "catalogTier": "fast",
+  "model": "only-fast",
+  "providerId": "p",
+  "rank": 50,
+  "source": "catalog",
+  "tier": "fast",
+}
+
+ ❯ src/shared/autoRoute.test.ts:164:44
+    162|     ]);
+    163|     const input = { table, tier: 'balanced' as const, verdict: 'classi…
+    164|     expect(decideAutoRoute(input)?.backup).toBeUndefined();
+       |                                            ^
+    165|     expect(decideAutoRoute({ ...input, allowCrossTierBackup: true })?.…
+    166|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+ FAIL  |unit| src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: manual
+ FAIL  |unit| src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: disabled
+ FAIL  |unit| src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: failed
+ FAIL  |unit| src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown
+ FAIL  |unit| src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: conflict
+AssertionError: expected { providerId: 'old', modelId: 'stale' } to be undefined
+
+- Expected: 
+undefined
+
++ Received: 
+{
+  "modelId": "stale",
+  "providerId": "old",
+}
+
+ ❯ src/server/auto-route/admission.unit.test.ts:79:38
+     77|       : { updateSessionMetadata: vi.fn(async () => null) });
+     78|     await applyAutoRouteAdmission({}, input, d);
+     79|     expect(getAutoRouteBackup('s1')).toBeUndefined();
+       |                                      ^
+     80|     if (reason !== 'manual') expect(vi.mocked(d.route).mock.calls[0]?.…
+     81|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  6 failed | 35 passed (41)
+   Start at  02:14:07
+   Duration  582ms (transform 123ms, setup 172ms, collect 214ms, tests 21ms, environment 0ms, prepare 163ms)
+
