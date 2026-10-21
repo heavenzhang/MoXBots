@@ -735,3 +735,8 @@ Human instruction in login owner chat prioritizes actual Air login and restart p
 
 ## Deployment coordination — MOXBOTS-0516-5166 FIFO RECOVERY
 Same sole desktop/macOSarm64/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 explicitly selects fullactualmainc237 auto-routing batch plus complete1b16 nativeFIFO ownership repair after exactsource review. Newimmutablebuild516.6, semantic0.5.16, includesPR180 login+mobile3routes ancestry. Onlyplan insertion conflict resolved byretaining both entries; no uncommittedteam/background WIP copied. Experimental4e4bc2 tool-only repair excluded. Frozen5165 Aircanary9ae1/public releasepath remains unchanged; newartifact namespace mustbe distinct, stable015/rollback intact. CombinedCI/main/build/native/Applications/stable andoriginalAir/mobiledevice acceptance tracked separately. Currentbusinessrunning cannotuseoldpaused/backup/window. Task .agent-sync/tasks/codex-release-0516-5166-20261021-21e47a60.md.
+
+
+## MOXBOTS-0516-CREDENTIAL-ROUTE-CI-20261021 — child failure evidence
+
+Existing sole desktop/updater owner01a12bc2 investigates distinct mainpush39570124070 Linux concurrency failure after PR181. Test-only child--nocapture preserves20rounds/4processes/15sdeadline/assertions, exposing actual panic discarded by libtest capture into nullstdout. Exact RootRust1.92 output probe confirms diagnostic behavior, not actual route rootcause. Frozen516.6 producer97/App/TAR71bcd remain immutable; no rebuild or false native acceptance. Task `.agent-sync/tasks/codex-credential-route-ci-diagnostic-20261021-830fd6cc.md`; subsequent rootcause repair and exactCI/main/native gates separate.

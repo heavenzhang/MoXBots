@@ -2249,6 +2249,9 @@ mod tests {
                         "--exact",
                         "agent_network::credential_slots::tests::process_commit_helper",
                         "--ignored",
+                        // libtest otherwise captures panic details into stdout,
+                        // which this helper deliberately discards below.
+                        "--nocapture",
                     ])
                     .env("MOXBOTS_SLOT_TEST_ROOT", &root)
                     .env("MOXBOTS_SLOT_TEST_ROUTE", &id)
