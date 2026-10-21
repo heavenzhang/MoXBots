@@ -13,7 +13,7 @@ use std::{
     collections::HashMap,
     io::Read,
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc, Mutex, MutexGuard, OnceLock,
     },
 };
@@ -39,6 +39,8 @@ enum SecretRecord {
         authorization_url: String,
         expires_at: u64,
         consuming: bool,
+        #[serde(default)]
+        replayable_result: bool,
     },
     Session {
         version: u8,
@@ -60,6 +62,7 @@ struct Attempt {
     device_id: String,
     owner_device_id: String,
     child_epoch: u64,
+    lifecycle_epoch: u64,
     candidates: Vec<super::registry::StoredOwnedConnection>,
     selected_id: String,
     reuse_identity: bool,
@@ -73,7 +76,145 @@ struct Attempt {
     authorization_url: String,
     expires_at: u64,
     consuming: bool,
+    replayable_result: bool,
+    phase: LoginPhase,
+    failure: Option<NetworkError>,
+    reauthorization: Option<super::registry::StoredOwnedConnection>,
     completed: Option<CompletedLogin>,
+}
+impl Attempt {
+    fn deadline(&self) -> u64 {
+        self.completed
+            .as_ref()
+            .map(|done| done.session.expires_at)
+            .or_else(|| {
+                self.staged_session
+                    .as_ref()
+                    .map(|session| session.expires_at)
+            })
+            .unwrap_or(self.expires_at)
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LoginPhase {
+    AwaitingAuthorization,
+    ReceivingGrant,
+    VerifyingIdentity,
+    SavingSession,
+}
+impl LoginPhase {
+    fn name(self) -> &'static str {
+        match self {
+            Self::AwaitingAuthorization => "awaiting_authorization",
+            Self::ReceivingGrant => "receiving_grant",
+            Self::VerifyingIdentity => "verifying_identity",
+            Self::SavingSession => "saving_session",
+        }
+    }
+}
+/// Receipts contain no bearer or identity private key. PKCE proof is retained
+/// separately and only until its original transaction deadline for ACK retry.
+struct LoginReceipt {
+    connection_id: String,
+    binding_id: String,
+    expires_at: u64,
+    reuse_identity: bool,
+    acknowledgement: Option<LoginAcknowledgement>,
+    failure: Option<NetworkError>,
+}
+#[derive(Clone)]
+struct LoginAcknowledgement {
+    client: OwnedClient,
+    device_id: String,
+    transaction_id: String,
+    verifier: Zeroizing<String>,
+    expires_at: u64,
+}
+pub(crate) enum LoginObservation {
+    Pending {
+        phase: &'static str,
+        authorization: Option<StartedLogin>,
+    },
+    Committed {
+        connection_id: String,
+        binding_id: String,
+    },
+}
+
+// Transport ambiguity is safe to repeat only with the negotiated replay
+// protocol. A received grant stays staged on local/identity errors.
+fn can_resume_login(
+    phase: LoginPhase,
+    replayable: bool,
+    staged: bool,
+    error: &NetworkError,
+) -> bool {
+    if matches!(
+        error.code.as_str(),
+        "OWNED_LOGIN_CANCELLED"
+            | "OWNED_LOGIN_SUPERSEDED"
+            | "OWNED_LOGIN_EXPIRED"
+            | "OWNED_ACCOUNT_MISMATCH"
+            | "IDENTITY_SCOPE_MISMATCH"
+            | "ACCOUNT_BINDING_CHANGED"
+            | "OWNED_SESSION_INVALID"
+            | "OWNED_REAUTH_REQUIRED"
+            | "UNAUTHORIZED"
+            | "OWNED_LOGIN_COMMIT_UNCONFIRMED"
+            | "NETWORK_FEATURE_DISABLED"
+            | "NETWORK_CONNECTION_ACTIVE"
+            | "NETWORK_TRUST_CHANGED"
+            | "NETWORK_CERTIFICATE_INVALID"
+            | "OWNED_INSTANCE_INVALID"
+            | "OWNED_RESPONSE_INVALID"
+            | "NETWORK_ACCOUNT_RESPONSE_INVALID"
+            | "IDENTITY_RESPONSE_INVALID"
+            | "IDENTITY_STATE_INVALID"
+            | "IDENTITY_CERTIFICATE_INVALID"
+            | "IDENTITY_KEY_MISMATCH"
+            | "OWNED_CA_FILE_INVALID"
+            | "OWNED_TRUST_CHANGED"
+            | "NETWORK_DESCRIPTOR_INVALID"
+    ) {
+        return false;
+    }
+    staged
+        || matches!(
+            phase,
+            LoginPhase::AwaitingAuthorization | LoginPhase::VerifyingIdentity
+        )
+        || (replayable && error.retryable)
+}
+fn login_diagnostic_code(error: &NetworkError) -> &'static str {
+    match error.code.as_str() {
+        "OWNED_LOGIN_RESTART_REQUIRED" => "OWNED_LOGIN_RESTART_REQUIRED",
+        "OWNED_LOGIN_COMMIT_UNCONFIRMED" => "OWNED_LOGIN_COMMIT_UNCONFIRMED",
+        "OWNED_LOGIN_BUSY" => "OWNED_LOGIN_BUSY",
+        _ => super::actor::diagnostic_code(error),
+    }
+}
+fn recover_poll_failure(attempt: &mut Attempt, error: NetworkError) -> NetworkError {
+    let resumable = can_resume_login(
+        attempt.phase,
+        attempt.replayable_result,
+        attempt.staged_session.is_some() || attempt.completed.is_some(),
+        &error,
+    );
+    let mut error = if attempt.phase == LoginPhase::ReceivingGrant && !attempt.replayable_result {
+        NetworkError::new("OWNED_LOGIN_RESTART_REQUIRED")
+    } else {
+        error
+    };
+    error.details = Some(serde_json::json!({"phase":attempt.phase.name(),"canRetry":resumable}));
+    attempt.consuming = false;
+    attempt.failure = Some(error.clone());
+    crate::ulog_warn!(
+        "[owned-login] phase={} code={} can_retry={}",
+        attempt.phase.name(),
+        login_diagnostic_code(&error),
+        resumable
+    );
+    error
 }
 #[derive(Clone)]
 pub(crate) struct CompletedLogin {
@@ -90,6 +231,7 @@ pub(crate) struct CompletedLogin {
     pub session: OwnedSession,
     pub identity_store: Option<Arc<dyn super::crypto::IdentityStore>>,
     pub preserve_membership: bool,
+    pub selected_id_at_start: String,
     guard: Arc<AuthorizedSessionGuard>,
 }
 #[derive(Clone, Serialize)]
@@ -98,10 +240,12 @@ pub(crate) struct StartedLogin {
     pub attempt_id: String,
     pub authorization_url: String,
     pub expires_at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub phase: Option<&'static str>,
 }
 pub(crate) enum LoginProgress {
     Pending,
-    Reauthorize(StartedLogin),
+    Reauthorize,
     Authenticated(CompletedLogin),
 }
 #[derive(Default)]
@@ -109,6 +253,7 @@ struct State {
     attempts: HashMap<String, Attempt>,
     current_by_scope: HashMap<String, String>,
     generation_by_scope: HashMap<String, u64>,
+    receipts: HashMap<String, LoginReceipt>,
 }
 impl State {
     fn ensure_startable(&self, scope: &str) -> Result<(), NetworkError> {
@@ -163,6 +308,7 @@ impl State {
 #[derive(Default)]
 pub(crate) struct OwnedLoginManager {
     state: tokio::sync::Mutex<State>,
+    lifecycle_epoch: AtomicU64,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -866,6 +1012,7 @@ fn record(attempt: &Attempt) -> SecretRecord {
         authorization_url: attempt.authorization_url.clone(),
         expires_at: attempt.expires_at,
         consuming: attempt.consuming,
+        replayable_result: attempt.replayable_result,
     }
 }
 
@@ -1120,6 +1267,7 @@ impl OwnedLoginManager {
         if crate::app_dirs::IS_UPDATER_QA {
             return Err(NetworkError::new("UPDATER_QA_CREDENTIALS_DISABLED"));
         }
+        let lifecycle_epoch = self.lifecycle_epoch.load(Ordering::Acquire);
         let device = crate::device_identity::current_device_identity()
             .map_err(|_| NetworkError::new("DEVICE_ID_UNAVAILABLE"))?;
         if device.device_id != owner_device_id {
@@ -1131,6 +1279,35 @@ impl OwnedLoginManager {
         let (generation, old, cleanup) = {
             let mut state = self.state.lock().await;
             state.ensure_startable(&scope)?;
+            if let Some(existing) = state
+                .current_by_scope
+                .get(&scope)
+                .and_then(|id| state.attempts.get(id))
+            {
+                let same_intent = existing.lifecycle_epoch == lifecycle_epoch
+                    && existing.deadline() > now()
+                    && existing.public_tls_ca == public_tls_ca
+                    && existing.candidates == candidates
+                    && existing.selected_id == selected_id
+                    && existing.reuse_identity == pinned.is_some()
+                    && pinned
+                        .as_ref()
+                        .is_none_or(|record| existing.resolved_candidate.as_ref() == Some(record))
+                    && existing.failure.as_ref().is_none_or(|error| {
+                        error
+                            .details
+                            .as_ref()
+                            .is_some_and(|d| d["canRetry"] == true)
+                    });
+                if same_intent {
+                    return Ok(StartedLogin {
+                        attempt_id: existing.attempt_id.clone(),
+                        authorization_url: existing.authorization_url.clone(),
+                        expires_at: existing.expires_at,
+                        phase: Some(existing.phase.name()),
+                    });
+                }
+            }
             let (generation, old_id) = state.begin(&scope);
             let old = old_id.and_then(|id| state.attempts.remove(&id));
             let cleanup = old
@@ -1177,6 +1354,7 @@ impl OwnedLoginManager {
             device_id,
             owner_device_id: owner_device_id.to_owned(),
             child_epoch: 0,
+            lifecycle_epoch,
             candidates,
             selected_id,
             reuse_identity: pinned.is_some(),
@@ -1190,11 +1368,20 @@ impl OwnedLoginManager {
             authorization_url: started.authorization_url.clone(),
             expires_at: started.expires_at,
             consuming: false,
+            replayable_result: started.replayable_result,
+            phase: LoginPhase::AwaitingAuthorization,
+            failure: None,
+            reauthorization: None,
             completed: None,
         };
         let secret_entry = pending_entry(&instance, owner_device_id, public_tls_ca.as_deref())?;
         let mut state = self.state.lock().await;
-        let result = if state.generation_by_scope.get(&scope).copied() != Some(generation) {
+        state
+            .receipts
+            .retain(|_, receipt| receipt.expires_at > now());
+        let result = if self.lifecycle_epoch.load(Ordering::Acquire) != lifecycle_epoch {
+            Err(NetworkError::new("OWNED_LOGIN_CANCELLED"))
+        } else if state.generation_by_scope.get(&scope).copied() != Some(generation) {
             Err(NetworkError::new("OWNED_LOGIN_SUPERSEDED"))
         } else {
             write(&secret_entry, &record(&attempt))
@@ -1218,11 +1405,12 @@ impl OwnedLoginManager {
             attempt_id,
             authorization_url: started.authorization_url,
             expires_at: started.expires_at,
+            phase: None,
         })
     }
     pub(crate) async fn existing_attempts(&self) -> Vec<serde_json::Value> {
         let state = self.state.lock().await;
-        let mut attempts: Vec<_> = state.attempts.values().filter(|a| a.reuse_identity && a.expires_at > now()).map(|a|
+        let mut attempts: Vec<_> = state.attempts.values().filter(|a| a.reuse_identity && a.deadline() > now()).map(|a|
             serde_json::json!({"attemptId":a.attempt_id,"connectionId":a.selected_id,"expiresAt":a.expires_at})
         ).collect();
         attempts.sort_by(|a, b| a["attemptId"].as_str().cmp(&b["attemptId"].as_str()));
@@ -1236,12 +1424,13 @@ impl OwnedLoginManager {
         let a = state
             .attempts
             .get(attempt_id)
-            .filter(|a| a.reuse_identity && a.expires_at > now())
+            .filter(|a| a.reuse_identity && a.deadline() > now())
             .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
         Ok(StartedLogin {
             attempt_id: a.attempt_id.clone(),
             authorization_url: a.authorization_url.clone(),
             expires_at: a.expires_at,
+            phase: Some(a.phase.name()),
         })
     }
     pub(crate) async fn require_existing_attempt(
@@ -1253,6 +1442,10 @@ impl OwnedLoginManager {
             .attempts
             .get(attempt_id)
             .is_some_and(|attempt| attempt.reuse_identity)
+            || state
+                .receipts
+                .get(attempt_id)
+                .is_some_and(|receipt| receipt.reuse_identity && receipt.expires_at > now())
         {
             Ok(())
         } else {
@@ -1265,7 +1458,7 @@ impl OwnedLoginManager {
             .attempts
             .get(attempt_id)
             .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
-        if attempt.expires_at <= now() || attempt.consuming {
+        if attempt.expires_at <= now() {
             return Err(NetworkError::new("OWNED_LOGIN_EXPIRED"));
         }
         let url = url::Url::parse(&attempt.authorization_url)
@@ -1281,7 +1474,203 @@ impl OwnedLoginManager {
         crate::browser::open_external(url.as_str())
             .map_err(|_| NetworkError::new("OWNED_BROWSER_UNAVAILABLE"))
     }
+    pub(crate) async fn validate_scope(
+        &self,
+        attempt_id: &str,
+        candidates: &[super::registry::StoredOwnedConnection],
+    ) -> Result<(), NetworkError> {
+        let state = self.state.lock().await;
+        let attempt = state
+            .attempts
+            .get(attempt_id)
+            .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
+        if attempt.lifecycle_epoch != self.lifecycle_epoch.load(Ordering::Acquire) {
+            return Err(NetworkError::new("OWNED_LOGIN_CANCELLED"));
+        }
+        let device = crate::device_identity::current_device_identity()
+            .map_err(|_| NetworkError::new("DEVICE_ID_UNAVAILABLE"))?;
+        if device.device_id != attempt.owner_device_id {
+            return Err(NetworkError::new("IDENTITY_SCOPE_MISMATCH"));
+        }
+        let expected: Vec<_> = attempt
+            .candidates
+            .iter()
+            .filter(|c| c.descriptor.issuer == attempt.instance.issuer)
+            .collect();
+        let current: Vec<_> = candidates
+            .iter()
+            .filter(|c| c.descriptor.issuer == attempt.instance.issuer)
+            .collect();
+        if expected != current {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
+        Ok(())
+    }
+    pub(crate) async fn observe(&self, attempt_id: &str) -> Result<LoginObservation, NetworkError> {
+        let state = self.state.lock().await;
+        if let Some(receipt) = state
+            .receipts
+            .get(attempt_id)
+            .filter(|r| r.expires_at > now())
+        {
+            if let Some(error) = &receipt.failure {
+                return Err(error.clone());
+            }
+            return Ok(LoginObservation::Committed {
+                connection_id: receipt.connection_id.clone(),
+                binding_id: receipt.binding_id.clone(),
+            });
+        }
+        let attempt = state
+            .attempts
+            .get(attempt_id)
+            .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
+        if attempt.commit_unconfirmed {
+            return Err(NetworkError::new("OWNED_LOGIN_COMMIT_UNCONFIRMED"));
+        }
+        if attempt.deadline() <= now() {
+            return Err(NetworkError::new("OWNED_LOGIN_EXPIRED"));
+        }
+        if let Some(error) = &attempt.failure {
+            return Err(error.clone());
+        }
+        Ok(LoginObservation::Pending {
+            phase: attempt.phase.name(),
+            authorization: (attempt.child_epoch > 0 && attempt.staged_session.is_none()).then(
+                || StartedLogin {
+                    attempt_id: attempt.attempt_id.clone(),
+                    authorization_url: attempt.authorization_url.clone(),
+                    expires_at: attempt.expires_at,
+                    phase: Some(attempt.phase.name()),
+                },
+            ),
+        })
+    }
+    pub(crate) async fn retry(&self, attempt_id: &str) -> Result<(), NetworkError> {
+        let mut state = self.state.lock().await;
+        let attempt = state
+            .attempts
+            .get_mut(attempt_id)
+            .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
+        if attempt.commit_unconfirmed {
+            return Err(NetworkError::new("OWNED_LOGIN_COMMIT_UNCONFIRMED"));
+        }
+        if attempt.deadline() <= now() {
+            return Err(NetworkError::new("OWNED_LOGIN_EXPIRED"));
+        }
+        if let Some(error) = &attempt.failure {
+            if error.details.as_ref().and_then(|d| d["canRetry"].as_bool()) != Some(true) {
+                return Err(error.clone());
+            }
+        }
+        attempt.failure = None;
+        Ok(())
+    }
+    pub(crate) async fn discard_acknowledgement(&self, attempt_id: &str) {
+        if let Some(receipt) = self.state.lock().await.receipts.get_mut(attempt_id) {
+            receipt.acknowledgement = None;
+        }
+    }
+    pub(crate) async fn acknowledge(&self, attempt_id: &str) -> bool {
+        let proof = {
+            let state = self.state.lock().await;
+            state
+                .receipts
+                .get(attempt_id)
+                .and_then(|r| r.acknowledgement.clone())
+        };
+        let Some(proof) = proof else {
+            return true;
+        };
+        let expired = proof.expires_at <= now();
+        let done = expired
+            || proof
+                .client
+                .acknowledge_login(&proof.device_id, &proof.transaction_id, &proof.verifier)
+                .await
+                .is_ok();
+        if done {
+            let mut state = self.state.lock().await;
+            if let Some(receipt) = state.receipts.get_mut(attempt_id) {
+                receipt.acknowledgement = None;
+            }
+        } else {
+            crate::ulog_warn!("[owned-login] phase=committed code=OWNED_LOGIN_ACK_RETRY");
+        }
+        done
+    }
     pub(crate) async fn poll(&self, attempt_id: &str) -> Result<LoginProgress, NetworkError> {
+        let result = self.poll_inner(attempt_id).await;
+        if let Err(error) = result {
+            let mut state = self.state.lock().await;
+            let Some(attempt) = state.attempts.get_mut(attempt_id) else {
+                return Err(error);
+            };
+            if error.code == "OWNED_LOGIN_BUSY" {
+                return Err(error);
+            }
+            let error = recover_poll_failure(attempt, error);
+            return Err(error);
+        }
+        result
+    }
+    async fn resume_completed(
+        &self,
+        attempt_id: &str,
+    ) -> Result<Option<CompletedLogin>, NetworkError> {
+        let prepared = {
+            let mut state = self.state.lock().await;
+            let attempt = state
+                .attempts
+                .get(attempt_id)
+                .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
+            let scope = attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id)?;
+            if !state.is_current(&scope, attempt_id) {
+                return Err(NetworkError::new("OWNED_LOGIN_SUPERSEDED"));
+            }
+            let attempt = state.attempts.get_mut(attempt_id).expect("checked attempt");
+            if attempt.commit_unconfirmed {
+                return Err(NetworkError::new("OWNED_LOGIN_COMMIT_UNCONFIRMED"));
+            }
+            if let Some(error) = &attempt.failure {
+                return Err(error.clone());
+            }
+            if let Some(done) = attempt.completed.clone() {
+                if attempt.consuming {
+                    return Err(NetworkError::new("OWNED_LOGIN_BUSY"));
+                }
+                attempt.consuming = true;
+                Some((
+                    attempt.client.clone(),
+                    attempt.device_id.clone(),
+                    scope,
+                    attempt.child_epoch,
+                    done,
+                ))
+            } else {
+                None
+            }
+        };
+        let Some((client, device, scope, epoch, done)) = prepared else {
+            return Ok(None);
+        };
+        // A credential/config repair can outlive the original validation. The
+        // same grant must still be accepted by the service before publication.
+        client.validate_session(&device, &done.session).await?;
+        let mut state = self.state.lock().await;
+        let attempt = current_child(&mut state, &scope, attempt_id, epoch)?;
+        if !attempt.completed.as_ref().is_some_and(|current| {
+            current.binding_id == done.binding_id && current.connection_id == done.connection_id
+        }) {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
+        attempt.consuming = false;
+        Ok(Some(done))
+    }
+    async fn poll_inner(&self, attempt_id: &str) -> Result<LoginProgress, NetworkError> {
+        if let Some(done) = self.resume_completed(attempt_id).await? {
+            return Ok(LoginProgress::Authenticated(done));
+        }
         let (
             client,
             instance,
@@ -1297,6 +1686,8 @@ impl OwnedLoginManager {
             selected,
             resolved,
             reuse_identity,
+            staged_session,
+            reauthorization,
         ) = {
             let mut state = self.state.lock().await;
             let attempt = state
@@ -1311,21 +1702,44 @@ impl OwnedLoginManager {
             if attempt.commit_unconfirmed {
                 return Err(NetworkError::new("OWNED_LOGIN_COMMIT_UNCONFIRMED"));
             }
-            if let Some(done) = &attempt.completed {
-                return Ok(LoginProgress::Authenticated(done.clone()));
+            if attempt.completed.is_some() {
+                // A concurrent preparation finished between the two snapshots;
+                // its existing driver owns installation, without a second grant.
+                return Err(NetworkError::new("OWNED_LOGIN_BUSY"));
             }
-            if attempt.consuming || attempt.expires_at <= now() {
-                return Err(NetworkError::new("OWNED_LOGIN_RESULT_UNAVAILABLE"));
+            if let Some(error) = &attempt.failure {
+                return Err(error.clone());
+            }
+            if attempt.deadline() <= now() {
+                return Err(NetworkError::new("OWNED_LOGIN_EXPIRED"));
+            }
+            if attempt.consuming {
+                return Err(NetworkError::new("OWNED_LOGIN_BUSY"));
+            }
+            // Legacy requests persist their consumption fence before network IO.
+            // V2 proof is replayable, so pending polls do not rewrite Keychain.
+            if !attempt.replayable_result
+                && attempt.staged_session.is_none()
+                && attempt.reauthorization.is_none()
+            {
+                attempt.consuming = true;
+                attempt.phase = LoginPhase::AwaitingAuthorization;
+                write(
+                    &pending_entry(
+                        &attempt.instance,
+                        &attempt.owner_device_id,
+                        attempt.public_tls_ca.as_deref(),
+                    )?,
+                    &record(attempt),
+                )?;
             }
             attempt.consuming = true;
-            write(
-                &pending_entry(
-                    &attempt.instance,
-                    &attempt.owner_device_id,
-                    attempt.public_tls_ca.as_deref(),
-                )?,
-                &record(attempt),
-            )?;
+            attempt.phase = if attempt.staged_session.is_some() || attempt.reauthorization.is_some()
+            {
+                LoginPhase::VerifyingIdentity
+            } else {
+                LoginPhase::ReceivingGrant
+            };
             (
                 attempt.client.clone(),
                 attempt.instance.clone(),
@@ -1341,18 +1755,33 @@ impl OwnedLoginManager {
                 attempt.selected_id.clone(),
                 attempt.resolved_candidate.clone(),
                 attempt.reuse_identity,
+                attempt.staged_session.clone(),
+                attempt.reauthorization.clone(),
             )
         };
-        let result = client.poll(&device, &transaction, &verifier).await?;
+        if let Some(candidate) = reauthorization {
+            return self
+                .start_reauthorization(attempt_id, &scope, epoch, candidate)
+                .await;
+        }
+        let result = if let Some(session) = staged_session {
+            client.validate_session(&device, &session).await?;
+            OwnedPoll::Authenticated(session)
+        } else {
+            client.poll(&device, &transaction, &verifier).await?
+        };
         let session = match result {
             OwnedPoll::Pending => {
                 let mut state = self.state.lock().await;
                 let attempt = current_child(&mut state, &scope, attempt_id, epoch)?;
                 attempt.consuming = false;
-                write(
-                    &pending_entry(&instance, &owner, ca.as_deref())?,
-                    &record(attempt),
-                )?;
+                attempt.phase = LoginPhase::AwaitingAuthorization;
+                if !attempt.replayable_result {
+                    write(
+                        &pending_entry(&instance, &owner, ca.as_deref())?,
+                        &record(attempt),
+                    )?;
+                }
                 return Ok(LoginProgress::Pending);
             }
             OwnedPoll::Authenticated(session) => session,
@@ -1360,7 +1789,11 @@ impl OwnedLoginManager {
         {
             let mut state = self.state.lock().await;
             match current_child(&mut state, &scope, attempt_id, epoch) {
-                Ok(attempt) => attempt.staged_session = Some(session.clone()),
+                Ok(attempt) => {
+                    attempt.staged_session = Some(session.clone());
+                    attempt.phase = LoginPhase::VerifyingIdentity;
+                    crate::ulog_info!("[owned-login] phase=verifying_identity code=GRANT_STAGED");
+                }
                 Err(error) => {
                     drop(state);
                     let _ = client.logout(&session.access_token).await;
@@ -1385,62 +1818,17 @@ impl OwnedLoginManager {
             let registered = registered_candidates(&client, &instance, &session, &eligible).await?;
             if let Some(candidate) = select_registered_candidate(&eligible, &registered, &selected)?
             {
-                // PKCE tokens remain device-bound. Restore the old identity only
-                // after retiring this temporary session and authorizing that ID.
-                client.logout(&session.access_token).await?;
+                // Keep the chosen exact identity before retiring the temporary
+                // grant. A failed child start resumes this transition in place.
                 {
                     let mut state = self.state.lock().await;
-                    current_child(&mut state, &scope, attempt_id, epoch)?.staged_session = None;
+                    let attempt = current_child(&mut state, &scope, attempt_id, epoch)?;
+                    attempt.expected_principal = Some(session.principal_id.clone());
+                    attempt.reauthorization = Some(candidate.clone());
                 }
-                let (next_verifier, challenge) = pkce();
-                let started = if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
-                    client.start_desktop(&candidate.device_id, &challenge).await?
-                } else {
-                    client.start(&candidate.device_id, &challenge).await?
-                };
-                let mut state = self.state.lock().await;
-                let attempt = match current_child(&mut state, &scope, attempt_id, epoch) {
-                    Ok(attempt) => attempt,
-                    Err(error) => {
-                        drop(state);
-                        let _ = client
-                            .cancel(
-                                &candidate.device_id,
-                                &started.transaction_id,
-                                &next_verifier,
-                            )
-                            .await;
-                        return Err(error);
-                    }
-                };
-                attempt.device_id = candidate.device_id.clone();
-                attempt.child_epoch = epoch + 1;
-                attempt.expected_principal = Some(session.principal_id.clone());
-                attempt.resolved_candidate = Some(candidate);
-                attempt.transaction_id = started.transaction_id;
-                attempt.verifier = next_verifier;
-                attempt.authorization_url = started.authorization_url.clone();
-                attempt.expires_at = started.expires_at;
-                attempt.consuming = false;
-                if let Err(error) = write(
-                    &pending_entry(&instance, &owner, ca.as_deref())?,
-                    &record(attempt),
-                ) {
-                    let child_device = attempt.device_id.clone();
-                    let child_transaction = attempt.transaction_id.clone();
-                    let child_verifier = attempt.verifier.clone();
-                    attempt.consuming = true;
-                    drop(state);
-                    let _ = client
-                        .cancel(&child_device, &child_transaction, &child_verifier)
-                        .await;
-                    return Err(error);
-                }
-                return Ok(LoginProgress::Reauthorize(StartedLogin {
-                    attempt_id: attempt_id.to_owned(),
-                    authorization_url: started.authorization_url,
-                    expires_at: started.expires_at,
-                }));
+                return self
+                    .start_reauthorization(attempt_id, &scope, epoch, candidate)
+                    .await;
             }
             // Configuration alone does not prove enrollment. Reuse its UI
             // connection ID when repairing an unregistered failed login, while
@@ -1478,6 +1866,7 @@ impl OwnedLoginManager {
             session_bound: true,
             identity_store,
             preserve_membership: reuse_identity,
+            selected_id_at_start: selected,
             candidates: eligible,
             replaces: replacement.map(|c| c.id),
             guard: staged_guard(&connection_id, &binding_id, session.expires_at),
@@ -1488,9 +1877,145 @@ impl OwnedLoginManager {
         // No durable session or active guard is published by polling.
         delete(&pending_entry(&instance, &owner, ca.as_deref())?)?;
         attempt.completed = Some(completed.clone());
+        attempt.phase = LoginPhase::SavingSession;
+        attempt.consuming = false;
+        crate::ulog_info!("[owned-login] phase=saving_session code=IDENTITY_VERIFIED");
         Ok(LoginProgress::Authenticated(completed))
     }
+    async fn start_reauthorization(
+        &self,
+        attempt_id: &str,
+        scope: &str,
+        epoch: u64,
+        candidate: super::registry::StoredOwnedConnection,
+    ) -> Result<LoginProgress, NetworkError> {
+        let (client, staged) = {
+            let mut state = self.state.lock().await;
+            let attempt = current_child(&mut state, scope, attempt_id, epoch)?;
+            (attempt.client.clone(), attempt.staged_session.clone())
+        };
+        if let Some(session) = staged {
+            client.logout(&session.access_token).await?;
+            let mut state = self.state.lock().await;
+            current_child(&mut state, scope, attempt_id, epoch)?.staged_session = None;
+        }
+        let (verifier, challenge) = pkce();
+        let started = if crate::app_dirs::APP_URL_SCHEME == "moxbot" {
+            client
+                .start_desktop(&candidate.device_id, &challenge)
+                .await?
+        } else {
+            client.start(&candidate.device_id, &challenge).await?
+        };
+        let mut state = self.state.lock().await;
+        let attempt = match current_child(&mut state, scope, attempt_id, epoch) {
+            Ok(attempt) => attempt,
+            Err(error) => {
+                drop(state);
+                let _ = client
+                    .cancel(&candidate.device_id, &started.transaction_id, &verifier)
+                    .await;
+                return Err(error);
+            }
+        };
+        attempt.device_id = candidate.device_id.clone();
+        attempt.child_epoch += 1;
+        attempt.resolved_candidate = Some(candidate);
+        attempt.reauthorization = None;
+        attempt.transaction_id = started.transaction_id;
+        attempt.verifier = verifier;
+        attempt.authorization_url = started.authorization_url.clone();
+        attempt.expires_at = started.expires_at;
+        attempt.replayable_result = started.replayable_result;
+        attempt.phase = LoginPhase::AwaitingAuthorization;
+        attempt.consuming = false;
+        // A failed local pending-save retains the exact child proof in memory;
+        // explicit Retry must not create a second child authorization.
+        write(
+            &pending_entry(
+                &attempt.instance,
+                &attempt.owner_device_id,
+                attempt.public_tls_ca.as_deref(),
+            )?,
+            &record(attempt),
+        )?;
+        Ok(LoginProgress::Reauthorize)
+    }
+    pub(crate) async fn record_install_error(
+        &self,
+        attempt_id: &str,
+        mut error: NetworkError,
+    ) -> NetworkError {
+        let mut state = self.state.lock().await;
+        if let Some(attempt) = state.attempts.get_mut(attempt_id) {
+            let can_retry = can_resume_login(
+                LoginPhase::SavingSession,
+                attempt.replayable_result,
+                true,
+                &error,
+            );
+            error.details =
+                Some(serde_json::json!({"phase":"saving_session","canRetry":can_retry}));
+            attempt.failure = Some(error.clone());
+            attempt.consuming = false;
+            crate::ulog_warn!(
+                "[owned-login] phase=saving_session code={} can_retry={}",
+                login_diagnostic_code(&error),
+                can_retry
+            );
+        }
+        error
+    }
+    pub(crate) async fn retire(&self, attempt_id: &str, error: NetworkError) {
+        // Terminal status linearizes with cancellation before remote cleanup,
+        // so an offline legacy server cannot hide Restart Required as Not Found.
+        let _ = self.cancel_with_reason(attempt_id, Some(error)).await;
+    }
+    pub(crate) fn invalidate_lifecycle(&self) -> u64 {
+        self.lifecycle_epoch.fetch_add(1, Ordering::AcqRel)
+    }
+    pub(crate) async fn retire_before(&self, cutoff: u64, code: &'static str) {
+        let ids: Vec<_> = self
+            .state
+            .lock()
+            .await
+            .attempts
+            .values()
+            .filter(|attempt| attempt.lifecycle_epoch <= cutoff)
+            .map(|attempt| attempt.attempt_id.clone())
+            .collect();
+        for id in ids {
+            self.retire(&id, NetworkError::new(code)).await;
+        }
+    }
+    pub(crate) async fn retire_connection(&self, connection_id: &str) {
+        let ids: Vec<_> = self
+            .state
+            .lock()
+            .await
+            .attempts
+            .values()
+            .filter(|attempt| {
+                attempt
+                    .candidates
+                    .iter()
+                    .any(|candidate| candidate.id == connection_id)
+            })
+            .map(|attempt| attempt.attempt_id.clone())
+            .collect();
+        for id in ids {
+            self.retire(&id, NetworkError::new("ACCOUNT_BINDING_CHANGED"))
+                .await;
+        }
+    }
     pub(crate) async fn cancel(&self, attempt_id: &str) -> Result<(), NetworkError> {
+        self.cancel_with_reason(attempt_id, None).await
+    }
+    async fn cancel_with_reason(
+        &self,
+        attempt_id: &str,
+        reason: Option<NetworkError>,
+    ) -> Result<(), NetworkError> {
         let (attempt, cleanup) = {
             let mut state = self.state.lock().await;
             // The disk pointer may already reference this token. Closing the UI
@@ -1508,6 +2033,34 @@ impl OwnedLoginManager {
             };
             let scope = attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id)?;
             state.invalidate(&scope, attempt_id);
+            if let Some(mut error) = reason {
+                error.retryable = false;
+                error.details = Some(serde_json::json!({"phase":"failed","canRetry":false}));
+                state
+                    .receipts
+                    .retain(|_, receipt| receipt.expires_at > now());
+                if state.receipts.len() >= SESSION_GUARD_LIMIT {
+                    if let Some(oldest) = state
+                        .receipts
+                        .iter()
+                        .min_by_key(|(_, receipt)| receipt.expires_at)
+                        .map(|(id, _)| id.clone())
+                    {
+                        state.receipts.remove(&oldest);
+                    }
+                }
+                state.receipts.insert(
+                    attempt_id.to_owned(),
+                    LoginReceipt {
+                        connection_id: String::new(),
+                        binding_id: String::new(),
+                        expires_at: now().saturating_add(600),
+                        reuse_identity: attempt.reuse_identity,
+                        acknowledgement: None,
+                        failure: Some(error),
+                    },
+                );
+            }
             let cleanup = delete(&pending_entry(
                 &attempt.instance,
                 &attempt.owner_device_id,
@@ -1546,7 +2099,8 @@ impl OwnedLoginManager {
                 .attempts
                 .get(&login.attempt_id)
                 .is_some_and(|attempt| {
-                    attempt.expires_at > now()
+                    attempt.deadline() > now()
+                        && attempt.lifecycle_epoch == self.lifecycle_epoch.load(Ordering::Acquire)
                         && attempt.completed.as_ref().is_some_and(|done| {
                             done.binding_id == login.binding_id
                                 && done.connection_id == login.connection_id
@@ -1621,8 +2175,42 @@ impl OwnedLoginManager {
                 return Err(error);
             }
         };
-        state.attempts.remove(&login.attempt_id);
+        let attempt = state
+            .attempts
+            .remove(&login.attempt_id)
+            .expect("validated attempt");
+        state
+            .receipts
+            .retain(|_, receipt| receipt.expires_at > now());
+        if state.receipts.len() >= SESSION_GUARD_LIMIT {
+            if let Some(oldest) = state
+                .receipts
+                .iter()
+                .min_by_key(|(_, receipt)| receipt.expires_at)
+                .map(|(id, _)| id.clone())
+            {
+                state.receipts.remove(&oldest);
+            }
+        }
+        state.receipts.insert(
+            login.attempt_id.clone(),
+            LoginReceipt {
+                connection_id: login.connection_id.clone(),
+                binding_id: login.binding_id.clone(),
+                expires_at: now().saturating_add(600),
+                reuse_identity: attempt.reuse_identity,
+                failure: None,
+                acknowledgement: attempt.replayable_result.then(|| LoginAcknowledgement {
+                    client: attempt.client,
+                    device_id: attempt.device_id,
+                    transaction_id: attempt.transaction_id,
+                    verifier: attempt.verifier,
+                    expires_at: attempt.expires_at,
+                }),
+            },
+        );
         state.invalidate(&scope, &login.attempt_id);
+        crate::ulog_info!("[owned-login] phase=committed code=SESSION_PUBLISHED");
         Ok(result)
     }
     pub(crate) async fn delete_saved_session_if_binding(
@@ -2203,6 +2791,7 @@ fn publish_validated_session(
         replaces: None,
         identity_store: None,
         preserve_membership: true,
+        selected_id_at_start: String::new(),
         guard,
         session: validated.session,
     };
@@ -2275,7 +2864,7 @@ pub(crate) fn load_session_for_removal(
 mod tests {
     use super::{
         account_from_login, now, storage_transaction_lock, AuthorizedSessionGuard, CompletedLogin,
-        OwnedInstance, SessionGuardCache, SessionSlot, State, KEYRING_READS,
+        LoginPhase, OwnedInstance, SessionGuardCache, SessionSlot, State, KEYRING_READS,
     };
     use crate::agent_network::{credential_slots, NetworkError};
     use std::sync::{atomic::AtomicBool, mpsc, Arc, Mutex};
@@ -2484,6 +3073,367 @@ mod tests {
         assert_eq!(slots.borrow().len(), 2);
     }
 
+    fn staged_login_attempt() -> super::Attempt {
+        let mut instance = instance("00000000-0000-0000-0000-000000000003");
+        instance.root_certificate = crate::agent_network::crypto::tests::Fixture::new().ca.pem();
+        let mut jwk = crate::agent_network::crypto::DevicePrivateKey::generate()
+            .unwrap()
+            .public_jwk()
+            .unwrap();
+        jwk["kid"] = serde_json::json!("unconfirmed-test");
+        jwk["alg"] = serde_json::json!("ES256");
+        jwk["use"] = serde_json::json!("sig");
+        instance.jwks = serde_json::json!({"keys": [jwk]});
+        super::Attempt {
+            client: super::OwnedClient::pinned(instance.clone(), None).unwrap(),
+            instance,
+            public_tls_ca: None,
+            device_id: "scoped-device".into(),
+            owner_device_id: "installation".into(),
+            child_epoch: 1,
+            lifecycle_epoch: 0,
+            candidates: vec![],
+            selected_id: "old".into(),
+            reuse_identity: false,
+            expected_principal: None,
+            resolved_candidate: None,
+            staged_session: Some(super::OwnedSession {
+                access_token: "a".repeat(43),
+                principal_id: "00000000-0000-0000-0000-000000000002".into(),
+                network_id: "00000000-0000-0000-0000-000000000003".into(),
+                expires_at: now() + 3600,
+            }),
+            commit_unconfirmed: false,
+            attempt_id: "uncertain".into(),
+            transaction_id: "transaction".into(),
+            verifier: Zeroizing::new("verifier".into()),
+            authorization_url: "https://login.example".into(),
+            expires_at: now() + 3600,
+            consuming: true,
+            replayable_result: true,
+            phase: LoginPhase::SavingSession,
+            failure: None,
+            reauthorization: None,
+            completed: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn prepared_save_retry_revalidates_revoked_grant_before_reporting_authenticated() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut attempt = staged_login_attempt();
+        attempt.device_id = "22222222-2222-4222-8222-222222222222".into();
+        attempt.consuming = false;
+        attempt.client = super::OwnedClient::for_test(
+            format!("http://{}", listener.local_addr().unwrap()),
+            attempt.instance.clone(),
+        );
+        let session = attempt.staged_session.as_ref().unwrap().clone();
+        attempt.completed = Some(CompletedLogin {
+            attempt_id: attempt.attempt_id.clone(),
+            connection_id: "prepared".into(),
+            binding_id: "prepared-binding".into(),
+            instance: attempt.instance.clone(),
+            public_tls_ca: None,
+            device_id: attempt.device_id.clone(),
+            owner_device_id: attempt.owner_device_id.clone(),
+            session_bound: true,
+            candidates: vec![],
+            replaces: None,
+            session,
+            identity_store: None,
+            preserve_membership: false,
+            selected_id_at_start: "official".into(),
+            guard: super::staged_guard("prepared", "prepared-binding", now() + 3600),
+        });
+        let manager = super::OwnedLoginManager::default();
+        let scope =
+            super::attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id).unwrap();
+        {
+            let mut state = manager.state.lock().await;
+            let (generation, _) = state.begin(&scope);
+            assert!(state.register(&scope, generation, "uncertain"));
+            state.attempts.insert("uncertain".into(), attempt);
+        }
+        let server = async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = Vec::new();
+            while !bytes.windows(4).any(|part| part == b"\r\n\r\n") {
+                let mut chunk = [0u8; 2048];
+                let n = socket.read(&mut chunk).await.unwrap();
+                assert!(n > 0 && bytes.len() + n < 8192);
+                bytes.extend_from_slice(&chunk[..n]);
+            }
+            let request = std::str::from_utf8(&bytes).unwrap();
+            assert!(request.starts_with("GET /auth/session "));
+            assert!(!request.contains("/auth/login/poll"));
+            let body = r#"{"error":{"code":"OWNED_REAUTH_REQUIRED"}}"#;
+            socket.write_all(format!("HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+        };
+        let request = async {
+            let error = manager
+                .poll("uncertain")
+                .await
+                .err()
+                .expect("revoked grant cannot authenticate");
+            assert_eq!(error.code, "OWNED_SESSION_INVALID");
+            assert_eq!(error.details.unwrap()["canRetry"], false);
+            let state = manager.state.lock().await;
+            assert!(!state.attempts["uncertain"].consuming);
+            assert!(state.attempts["uncertain"].completed.is_some());
+            assert!(
+                state.receipts.is_empty(),
+                "no commit or ACK authority was published"
+            );
+            drop(state);
+            assert_eq!(
+                manager.retry("uncertain").await.unwrap_err().code,
+                "OWNED_SESSION_INVALID"
+            );
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(6), async {
+            tokio::join!(server, request);
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn real_poll_retries_staged_grant_then_advances_to_identity_without_reconsuming() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut attempt = staged_login_attempt();
+        attempt.device_id = "22222222-2222-4222-8222-222222222222".into();
+        attempt.phase = LoginPhase::VerifyingIdentity;
+        attempt.consuming = false;
+        attempt.client = super::OwnedClient::for_test(
+            format!("http://{}", listener.local_addr().unwrap()),
+            attempt.instance.clone(),
+        );
+        let session = attempt.staged_session.as_ref().unwrap().clone();
+        let mut saved = candidate("old", &session.principal_id);
+        saved.descriptor = attempt.instance.clone();
+        saved.network_id = session.network_id.clone();
+        saved.device_id = "33333333-3333-4333-8333-333333333333".into();
+        attempt.candidates = vec![saved];
+        let inspection =
+            serde_json::json!({"deviceId":attempt.device_id,"principalId":session.principal_id,
+            "networkId":session.network_id,"expiresAt":session.expires_at})
+            .to_string();
+        let token = session.access_token.clone();
+        let server = async move {
+            for (index, (status, body)) in [
+                (
+                    "503 Service Unavailable",
+                    r#"{"error":{"code":"NETWORK_QUERY_FAILED"}}"#.to_owned(),
+                ),
+                ("200 OK", inspection),
+                ("200 OK", r#"{"unexpected":true}"#.to_owned()),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let (mut socket, _) = listener.accept().await.unwrap();
+                let mut bytes = Vec::new();
+                while !bytes.windows(4).any(|part| part == b"\r\n\r\n") {
+                    let mut chunk = [0u8; 2048];
+                    let n = socket.read(&mut chunk).await.unwrap();
+                    assert!(n > 0 && bytes.len() + n < 8192);
+                    bytes.extend_from_slice(&chunk[..n]);
+                }
+                let request = std::str::from_utf8(&bytes).unwrap();
+                if index < 2 {
+                    assert!(request.starts_with("GET /auth/session "));
+                } else {
+                    assert!(request.starts_with("GET /api/agent-network/identity/"));
+                }
+                assert!(!request.contains("/auth/login/poll"));
+                assert!(request.contains(&format!("Bearer {token}")));
+                let response = format!("HTTP/1.1 {status}\r\nContent-Type: application/json\r\nCache-Control: no-store\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+        };
+        let manager = super::OwnedLoginManager::default();
+        let scope =
+            super::attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id).unwrap();
+        {
+            let mut state = manager.state.lock().await;
+            let (generation, _) = state.begin(&scope);
+            assert!(state.register(&scope, generation, "uncertain"));
+            state.attempts.insert("uncertain".into(), attempt);
+        }
+        let recovery = async {
+            let first = manager.poll("uncertain").await.err().unwrap();
+            assert_eq!(first.code, "NETWORK_QUERY_FAILED");
+            assert!(first.retryable);
+            {
+                let state = manager.state.lock().await;
+                let attempt = &state.attempts["uncertain"];
+                assert!(!attempt.consuming);
+                assert_eq!(
+                    attempt.staged_session.as_ref().unwrap().access_token,
+                    session.access_token
+                );
+            }
+            manager.retry("uncertain").await.unwrap();
+            let second = manager.poll("uncertain").await.err().unwrap();
+            assert_eq!(second.code, "IDENTITY_STATE_INVALID");
+            assert_eq!(second.details.unwrap()["canRetry"], false);
+            let state = manager.state.lock().await;
+            let attempt = &state.attempts["uncertain"];
+            assert!(!attempt.consuming);
+            assert_eq!(
+                attempt.staged_session.as_ref().unwrap().access_token,
+                session.access_token
+            );
+            assert!(attempt.completed.is_none());
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(6), async {
+            tokio::join!(server, recovery);
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn staged_grant_can_resume_after_transaction_expiry_until_session_expiry() {
+        let mut attempt = staged_login_attempt();
+        attempt.expires_at = now() - 1;
+        attempt.phase = super::LoginPhase::VerifyingIdentity;
+        let session_expiry = attempt.staged_session.as_ref().unwrap().expires_at;
+        assert_eq!(attempt.deadline(), session_expiry);
+        let manager = super::OwnedLoginManager::default();
+        manager
+            .state
+            .lock()
+            .await
+            .attempts
+            .insert("uncertain".into(), attempt);
+        assert!(matches!(
+            manager.observe("uncertain").await.unwrap(),
+            super::LoginObservation::Pending {
+                phase: "verifying_identity",
+                ..
+            }
+        ));
+        manager.retry("uncertain").await.unwrap();
+        let mut state = manager.state.lock().await;
+        let attempt = state.attempts.get_mut("uncertain").unwrap();
+        attempt.staged_session.as_mut().unwrap().expires_at = now() - 1;
+        drop(state);
+        assert_eq!(
+            manager.retry("uncertain").await.unwrap_err().code,
+            "OWNED_LOGIN_EXPIRED"
+        );
+    }
+
+    #[test]
+    fn staged_identity_failure_releases_singleflight_without_losing_grant() {
+        let mut attempt = staged_login_attempt();
+        attempt.phase = super::LoginPhase::VerifyingIdentity;
+        let token = attempt
+            .staged_session
+            .as_ref()
+            .unwrap()
+            .access_token
+            .clone();
+        let error =
+            super::recover_poll_failure(&mut attempt, NetworkError::new("NETWORK_QUERY_FAILED"));
+        assert!(!attempt.consuming);
+        assert!(error.retryable);
+        assert_eq!(error.details.unwrap()["canRetry"], true);
+        assert_eq!(attempt.staged_session.as_ref().unwrap().access_token, token);
+        assert!(attempt.completed.is_none());
+    }
+
+    #[test]
+    fn lost_grant_response_requires_negotiated_replay_before_retry() {
+        let mut attempt = staged_login_attempt();
+        attempt.staged_session = None;
+        attempt.phase = super::LoginPhase::ReceivingGrant;
+        let error =
+            super::recover_poll_failure(&mut attempt, NetworkError::new("NETWORK_QUERY_FAILED"));
+        assert_eq!(error.code, "NETWORK_QUERY_FAILED");
+        assert_eq!(error.details.unwrap()["canRetry"], true);
+        assert!(!attempt.consuming);
+        attempt.replayable_result = false;
+        let error =
+            super::recover_poll_failure(&mut attempt, NetworkError::new("NETWORK_QUERY_FAILED"));
+        assert_eq!(error.code, "OWNED_LOGIN_RESTART_REQUIRED");
+        assert!(!error.retryable);
+        assert_eq!(error.details.unwrap()["canRetry"], false);
+        assert!(!attempt.consuming);
+    }
+
+    #[test]
+    fn local_save_failure_pauses_with_same_grant_and_security_failures_never_resume() {
+        let mut attempt = staged_login_attempt();
+        let error = super::recover_poll_failure(
+            &mut attempt,
+            NetworkError::new("NETWORK_CREDENTIAL_STORE_UNAVAILABLE"),
+        );
+        assert!(!error.retryable);
+        assert_eq!(error.details.unwrap()["canRetry"], true);
+        assert!(attempt.staged_session.is_some());
+        for code in [
+            "OWNED_ACCOUNT_MISMATCH",
+            "IDENTITY_SCOPE_MISMATCH",
+            "ACCOUNT_BINDING_CHANGED",
+            "OWNED_LOGIN_COMMIT_UNCONFIRMED",
+        ] {
+            let error = super::recover_poll_failure(&mut attempt, NetworkError::new(code));
+            assert_eq!(error.details.unwrap()["canRetry"], false);
+        }
+    }
+
+    #[tokio::test]
+    async fn committed_receipt_is_idempotent_and_late_cancel_preserves_it() {
+        let manager = super::OwnedLoginManager::default();
+        manager.state.lock().await.receipts.insert(
+            "done".into(),
+            super::LoginReceipt {
+                connection_id: "connection".into(),
+                binding_id: "binding".into(),
+                expires_at: now() + 600,
+                reuse_identity: true,
+                acknowledgement: None,
+                failure: None,
+            },
+        );
+        for _ in 0..3 {
+            assert!(
+                matches!(manager.observe("done").await.unwrap(), super::LoginObservation::Committed { connection_id, binding_id }
+                if connection_id == "connection" && binding_id == "binding")
+            );
+        }
+        manager.cancel("done").await.unwrap();
+        assert!(matches!(
+            manager.observe("done").await.unwrap(),
+            super::LoginObservation::Committed { .. }
+        ));
+        manager.require_existing_attempt("done").await.unwrap();
+        assert!(manager.acknowledge("done").await);
+        assert!(manager.retry("done").await.is_err());
+        assert!(manager.state.lock().await.attempts.is_empty());
+    }
+
+    #[test]
+    fn pending_record_legacy_decode_defaults_replay_capability() {
+        let attempt = staged_login_attempt();
+        let mut value = serde_json::to_value(super::record(&attempt)).unwrap();
+        value.as_object_mut().unwrap().remove("replayable_result");
+        // Serde enum field naming follows the existing snake_case record format.
+        let restored: super::SecretRecord = serde_json::from_value(value).unwrap();
+        assert!(matches!(
+            restored,
+            super::SecretRecord::Pending {
+                replayable_result: false,
+                ..
+            }
+        ));
+    }
+
     #[tokio::test]
     async fn closing_unconfirmed_login_cannot_revoke_its_possibly_committed_token() {
         let mut instance = instance("00000000-0000-0000-0000-000000000003");
@@ -2505,6 +3455,7 @@ mod tests {
             device_id: "scoped-device".into(),
             owner_device_id: "installation".into(),
             child_epoch: 1,
+            lifecycle_epoch: 0,
             candidates: vec![],
             selected_id: "old".into(),
             reuse_identity: false,
@@ -2523,6 +3474,10 @@ mod tests {
             authorization_url: "https://login.example".into(),
             expires_at: now() + 3600,
             consuming: true,
+            replayable_result: true,
+            phase: LoginPhase::SavingSession,
+            failure: None,
+            reauthorization: None,
             completed: None,
         };
         {
@@ -3004,6 +3959,7 @@ mod tests {
             replaces: None,
             identity_store: None,
             preserve_membership: false,
+            selected_id_at_start: "official".into(),
             session,
             guard,
         };

@@ -9,7 +9,7 @@ import {
   UserIcon,
   TeamIcon,
 } from "@/components/icons";
-import { canonicalOwnedIssuer } from '@/utils/ownedCloud';
+import { canonicalOwnedIssuer } from "@/utils/ownedCloud";
 import { Popover } from "@/components/ui/Popover";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useToast } from "@/components/Toast";
@@ -22,6 +22,7 @@ import {
   startOwnedNetworkLogin,
   startOwnedNetworkReauthentication,
   cancelOwnedNetworkLogin,
+  retryOwnedNetworkLogin,
   type OwnedLoginAttempt,
 } from "@/api/agentNetwork";
 import {
@@ -31,9 +32,12 @@ import {
 import { JoinNetworkDialog } from "@/features/agent-network/JoinNetworkDialog";
 import FeedbackDialog from "@/features/feedback/FeedbackDialog";
 
-import { ownedAccountCandidates, selectedOwnedAccount } from './ownedAccountSelection';
+import {
+  ownedAccountCandidates,
+  selectedOwnedAccount,
+} from "./ownedAccountSelection";
 
-export { canonicalOwnedIssuer } from '@/utils/ownedCloud';
+export { canonicalOwnedIssuer } from "@/utils/ownedCloud";
 
 export default function OwnedAccountEntry({
   expanded,
@@ -95,10 +99,8 @@ export default function OwnedAccountEntry({
     return () => {
       mounted.current = false;
       generation.current += 1;
-      const pending = pendingAttemptId.current;
+      // Detach presentation; the native driver owns the accepted login.
       pendingAttemptId.current = null;
-      if (pending && !completedAttempt.current)
-        void cancelOwnedNetworkLogin(pending).catch(() => {});
     };
   }, []);
 
@@ -232,7 +234,8 @@ export default function OwnedAccountEntry({
   const primaryAccountAction = () => {
     setMenuOpen(false);
     if (chooseAccount) onOpenAgentNetwork?.();
-    else if (state === "authorizationRequired") void selectRecoveredConnection();
+    else if (state === "authorizationRequired")
+      void selectRecoveredConnection();
     else if (state === "unavailable") onOpenAgentNetwork?.();
     else startLogin();
   };
@@ -245,8 +248,9 @@ export default function OwnedAccountEntry({
       ? { connectionId: owned.id, principalId, bindingId }
       : null;
 
-  const label = chooseAccount ? t("community:chooseAccount") :
-    state === "authenticated"
+  const label = chooseAccount
+    ? t("community:chooseAccount")
+    : state === "authenticated"
       ? t("ownedAccountEntry.signedInAs", {
           instance: owned?.name ?? t("ownedAccountEntry.instance"),
           account: principalId.slice(0, 8) || t("ownedAccountEntry.account"),
@@ -322,7 +326,8 @@ export default function OwnedAccountEntry({
                 disabled={
                   !serviceUrl ||
                   busy ||
-                  ((state === "authorizationRequired" || chooseAccount) && !onOpenAgentNetwork)
+                  ((state === "authorizationRequired" || chooseAccount) &&
+                    !onOpenAgentNetwork)
                 }
                 className="w-full rounded-md px-2 py-2 text-left hover:bg-[var(--hover-bg)] disabled:opacity-60"
                 onClick={primaryAccountAction}
@@ -345,7 +350,10 @@ export default function OwnedAccountEntry({
             <button
               type="button"
               disabled={!onOpenCommunity}
-              onClick={() => { setMenuOpen(false); onOpenCommunity?.(); }}
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenCommunity?.();
+              }}
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-[var(--hover-bg)] disabled:opacity-60"
             >
               <TeamIcon className="h-4 w-4" />
@@ -421,18 +429,27 @@ export default function OwnedAccountEntry({
             if (owned) {
               if (typeof registry.revision !== "number")
                 throw new Error(t("ownedAccountEntry.failed"));
-              attempt = await startOwnedNetworkReauthentication(owned.id, registry.revision);
+              attempt = await startOwnedNetworkReauthentication(
+                owned.id,
+                registry.revision,
+              );
             } else {
               attempt = await startOwnedNetworkLogin(issuer, ca);
             }
             if (!loginEpochIsCurrent(epoch)) {
-              await cancelOwnedNetworkLogin(attempt.attemptId).catch(() => {});
-              throw new Error(t("ownedAccountEntry.failed"));
+              if (mounted.current) {
+                await cancelOwnedNetworkLogin(attempt.attemptId).catch(
+                  () => {},
+                );
+                throw new Error(t("ownedAccountEntry.failed"));
+              }
+              return attempt;
             }
             pendingAttemptId.current = attempt.attemptId;
             completedAttempt.current = false;
             return attempt;
           }}
+          onOwnedRetry={retryOwnedNetworkLogin}
           onOwnedOpen={(attemptId) => openOwnedNetworkAuthorization(attemptId)}
           onOwnedCancel={async (attemptId) => {
             if (pendingAttemptId.current === attemptId) {
@@ -450,7 +467,7 @@ export default function OwnedAccountEntry({
             const result = await pollOwnedNetworkLogin(attemptId);
             if (!loginEpochIsCurrent(epoch)) return "pending";
             if (result.status === "reauthorize") return result.authorization;
-            if (result.status !== "authenticated") return "pending";
+            if (result.status !== "authenticated") return result;
             const next = result.registry;
             pendingAttemptId.current = null;
             completedAttempt.current = true;

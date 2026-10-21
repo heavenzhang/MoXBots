@@ -572,7 +572,7 @@ it("does not accept a late authenticated poll after the account entry unmounts",
   fireEvent.click(await manualLoginCheck());
   await waitFor(() => expect(mocks.poll).toHaveBeenCalledWith("attempt-a"));
   view.unmount();
-  expect(mocks.cancel).toHaveBeenCalledWith("attempt-a");
+  expect(mocks.cancel).not.toHaveBeenCalled();
   await act(async () => {
     resolvePoll({
       status: "authenticated",
