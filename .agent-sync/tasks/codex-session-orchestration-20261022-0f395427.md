@@ -16,7 +16,8 @@ MB-ORCH-20261022-01: session task/attempt/acceptance orchestration. Product Sess
 - [x] Implement stable task identity, attempt binding, revision-fenced root review and durable recovery, with confirmed proposal and original queue start.
 - [x] Validate event/retry/replay/conflict/session isolation, exact human proof/visible revision, queue claim and final native dispatch guards.
 - [x] Primary and independent running UI checks (1280/390/320, light/dark), then bounded UI implementation and primary review.
-- [ ] Commit, synchronize latest main and verify remote main includes work.
+- [x] Commit/push task branch and deliberately incorporate latest main263b1cf5; handoff gate passed on a76ac2f54.
+- [ ] Existing combined CI/main owner integrates; verify remote main includes final task commit.
 - [ ] Hand exact SHA/evidence to existing desktop publisher; native acceptance remains owner gate.
 
 ## Acceptance criteria
@@ -25,7 +26,7 @@ Execution events update the associated task without another model plan update. A
 
 ## Verification
 
-Node24 + reused local dependency symlink (not clean-install evidence). Focused pure/DOM/actual SessionStore disk suite: 133 passed. UI/TabProvider owner regression:130 passed (overlap with focused cases; do not add counts). Native adapter/gate unit42; original external guard/Stop16; actual builtin rollback3; DSH async-final-boundary1; once-entry1; actual original queue activation2 passed. TypeScript clean prior final guards; final scoped lint/build checks recorded in delivery evidence. Web/server/CLI builds passed. lint:deps has0errors/18existing warnings; classification and agent-doc checks pass. Two six-combination actual-component browser matrices pass; parent viewed screenshots. Independent review is in dev-docs/session-orchestration/review.md.
+Node24 + reused local dependency symlink (not clean-install evidence). Final broad matrix:54files/1038passed,19native skipped; separate CLI/protocol494passed and metadata affected-path40passed (overlaps are not added). Focused pure/DOM/actual SessionStore disk suite:133passed before added revision cases. UI/TabProvider owner regression:130 passed (overlap with focused cases; do not add counts). Native adapter/gate unit42; original external guard/Stop16; actual builtin rollback3; DSH async-final-boundary1; once-entry1; actual original queue activation2 passed. TypeScript and scoped lint passed; fixed execution/UI source web/server/CLI builds passed. Full verification and remaining gates: dev-docs/session-orchestration/validation.md. Web/server/CLI builds passed. lint:deps has0errors/18existing warnings; classification and agent-doc checks pass. Two six-combination actual-component browser matrices pass; parent viewed screenshots. Independent review is in dev-docs/session-orchestration/review.md.
 
 Rust authority module uses existing P256 dependency and passed isolated same-source compile+6tests. Whole repository cargo test is BLOCKED by pre-existing missing CLIProxy resources/manifest-v1.json, not bypassed. Signed desktop/native/Provider and production acceptance are NOT run here. Native DSH hook readiness and Codex idle permission snapshot behavior remain release gates. Unknown recovered claim is not an execution grant and is not blindly replayed.
 
@@ -45,4 +46,4 @@ Product task/attempt/review ledger, original execution event observation, unifie
 
 ## Blockers and unknowns
 
-Whole-app Rust check lacks existing packaged CLIProxy manifest resources; prepare through sole publisher, never bypass. Real Provider/native, signed artifact and production paths have not been accepted. Expanded original-runtime regression exposed early-terminal legacy async-answer promotion settlement plus DSH fixtures missing the new fixed hook receipt; repair and re-run before final integration intake. New changes never join a frozen artifact automatically.
+Whole-app Rust check lacks existing packaged CLIProxy manifest resources; prepare through sole publisher, never bypass. Real Provider/native, signed artifact and production paths have not been accepted. Expanded original-runtime regressions were repaired without weakening assertions; final full matrix passed1038 with19native skips. Whole-app/native/production acceptance and actual remote-main integration remain open. New changes never join a frozen artifact automatically.
