@@ -16,7 +16,8 @@ ExactstandardOAuth bce+a313 composition/test repairs on currentmain7db, with onl
 - [x] Root review service S256/state/exactloopback/code single-use, native callback/exchange/cancel/cache and original credential/registry owner.
 - [x] Preserve initialbce E0433/DOM and4206 test-only Clippy failures; author repaired shared-module composition and approved runtime/localHTTP test helpers. Source/loopback evidence: service210/8manualignore, native57, registry22, DOM84, type/scopedlint and finalClippy/TCP. Evidence dev-docs/login-oauth-standard/acceptance.md.
 - [x] Allocate517.1 in isolatedRootworktree. Package/lock/Rust/Tauri versions align; no dependency upgrade.
-- [ ] Collect remaining4206 original CI/cache, then Root single ordinary push of this combinedhead to existingPR186; no obsoleteSHA rerun.
+- [x] Collect all4206 original CI/cache: serviceSUCCESS, Test7SUCCESS/1conditionalSKIP/2testFAIL. Finalauthor9e native defaultparallel275PASS/1existingignore and exactClippyredlines0; Root reviewed unchanged one-second bound, realTCP clone callback, Weak owner release and originaltask termination.
+- [ ] Root single ordinary push of complete combinedhead to existingPR186; no obsoleteSHA rerun.
 - [ ] Exacthead completeTest/serviceCI, protected normalmain merge, actualremote ancestry/tree verification.
 - [ ] Cloudowner compatible service artifact/backup/rollout and old/new auth gates.
 - [ ] Freeze exactsource and first normalpriority desktop build/sign/notary/strict/TARreadback/updater signature, fixedReader unchanged.
@@ -24,4 +25,4 @@ ExactstandardOAuth bce+a313 composition/test repairs on currentmain7db, with onl
 - [ ] Single owned publication/fullTLS rawreview/CASstable/postchecks; record source/tag/artifact/distribution/local/Air separately.
 
 ## Evidence / next step
-Root tracking work/release-queue/login-oauth-standard-integration-20261022.json in owner workspace. Source/synthetic/loopback checks are not productionOAuth/Air acceptance. Collect original4206 Test39662590446 and service39662590434 before push to avoid cancelling useful remaining jobs/cache. Then complete exactnewhead gates; cloud first, newdesktop second. Tag/artifact/install/publish are not yet performed.
+Root tracking work/release-queue/login-oauth-standard-integration-20261022.json in owner workspace. Source/synthetic/loopback checks are not productionOAuth/Air acceptance. Original4206 Test39662590446 and service39662590434 are complete/preserved, no more polling. Root merged finalsource9e ancestry with5171 metadata. Push complete combinedhead once, then complete its own gates; cloud first, newdesktop second. Tag/artifact/install/publish are not yet performed.
