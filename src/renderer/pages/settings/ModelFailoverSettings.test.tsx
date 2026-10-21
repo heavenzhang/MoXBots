@@ -20,12 +20,12 @@ describe('backup model settings', () => {
   it('defaults off and cannot enable without a selected backup', () => {
     const update = vi.fn();
     render(<ModelFailoverSettings value={undefined} providers={[provider]} apiKeys={keys} updateConfig={update} />);
-    const toggle = screen.getByRole('switch', { name: 'Enable automatic model failover' });
+    const toggle = screen.getByRole('switch', { name: 'Enable configured backup model' });
     expect(toggle).toHaveAttribute('aria-checked', 'false');
     expect(toggle).toBeDisabled();
     fireEvent.click(toggle);
     expect(update).not.toHaveBeenCalled();
-    expect(screen.getByText('Select a backup model before enabling automatic failover.')).toBeVisible();
+    expect(screen.getByText(/Select a backup before enabling this override/)).toBeVisible();
   });
 
   it('selects exactly one provider/model through the config owner without enabling it', async () => {
@@ -172,6 +172,6 @@ describe('backup model settings', () => {
     fireEvent.click(screen.getByText('切换规则与适用范围'));
     expect(screen.getByText(/仅支持 Claude Agent SDK 运行环境的 API 模型；DSH、订阅模型和外部 CLI 暂不支持/)).toBeVisible();
     expect(screen.getByText(/保留进度并停止，避免自动重复执行操作/)).toBeVisible();
-    expect(screen.getByRole('switch', { name: '启用模型自动切换' })).toBeDisabled();
+    expect(screen.getByRole('switch', { name: '启用指定备用模型' })).toBeDisabled();
   });
 });

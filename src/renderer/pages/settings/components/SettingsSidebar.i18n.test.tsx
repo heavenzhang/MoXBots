@@ -48,6 +48,8 @@ describe('SettingsSidebar i18n', () => {
       .map(button => button.textContent);
     expect(labels).toEqual([
       'Model Providers',
+      'Auto model selection',
+      'Backup model',
       'General',
       'Channel',
       'Desktop Pet',

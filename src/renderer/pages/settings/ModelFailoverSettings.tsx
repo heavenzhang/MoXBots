@@ -51,6 +51,7 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
       <div className="min-w-0">
         <h3 className="text-base font-medium text-[var(--ink)]">{t('modelFailover.title')}</h3>
         <p className="mt-2 text-sm text-[var(--ink-muted)]">{t('modelFailover.description')}</p>
+        <p className="mt-2 text-sm text-[var(--ink-muted)]">{t('modelFailover.relationship')}</p>
       </div>
       <button type="button" role="switch" aria-label={t('modelFailover.enable')} aria-checked={settings.enabled}
         aria-describedby={hintId} disabled={busy || (!settings.enabled && !ready)}

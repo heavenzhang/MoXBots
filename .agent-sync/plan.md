@@ -740,3 +740,8 @@ Same sole desktop/macOSarm64/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 e
 ## MOXBOTS-0516-CREDENTIAL-ROUTE-CI-20261021 — child failure evidence
 
 Existing sole desktop/updater owner01a12bc2 investigates distinct mainpush39570124070 Linux concurrency failure after PR181. Test-only child--nocapture preserves20rounds/4processes/15sdeadline/assertions, exposing actual panic discarded by libtest capture into nullstdout. Exact RootRust1.92 output probe confirms diagnostic behavior, not actual route rootcause. Frozen516.6 producer97/App/TAR71bcd remain immutable; no rebuild or false native acceptance. Task `.agent-sync/tasks/codex-credential-route-ci-diagnostic-20261021-830fd6cc.md`; subsequent rootcause repair and exactCI/main/native gates separate.
+
+
+## MOXBOTS-MODEL-SETTINGS-20261022 — 自动与备用模型独立入口
+
+任务 `.agent-sync/tasks/codex-model-settings-20261022-37a8de35.md`，验收 `dev-docs/model-settings-20261022/acceptance.md`。两个设置卡片从 providers 拆为 auto-routing/model-failover 独立侧栏和 deep link；备用保留为可选高级配置，明确指定项优先和自动同档候选边界。代码、47 DOM/31 runtime 回归、TypeScript/lint、真实组件合成浏览器三尺寸及保存/失败检查通过；远端分支、共享 CI/main、原生发布/验收分别追踪。desktop client 继续由既有唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4统一 CI/main/构建/版本/发布；本开发会话不启动共享 CI、PR 自动 CI、构建或日常 App 操作。无其他部署单元改动。

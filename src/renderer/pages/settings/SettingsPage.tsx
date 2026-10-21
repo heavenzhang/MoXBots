@@ -5032,6 +5032,34 @@ export default function Settings({
 
         {activeSection === 'external-cli' && <ExternalCliSettingsSection />}
 
+        {activeSection === 'auto-routing' && (
+          <div className="mx-auto max-w-4xl px-8 py-8">
+            <h2 className="mb-6 text-lg font-semibold text-[var(--ink)]">
+              {tSettings('autoRouting.title')}
+            </h2>
+            <AutoRoutingSettings
+              value={config.autoRouting}
+              updateConfig={updateConfig}
+              loadTiers={loadAutoRouteTiers}
+              providerNames={providerNamesById}
+            />
+          </div>
+        )}
+
+        {activeSection === 'model-failover' && (
+          <div className="mx-auto max-w-4xl px-8 py-8">
+            <h2 className="mb-6 text-lg font-semibold text-[var(--ink)]">
+              {tSettings('modelFailover.title')}
+            </h2>
+            <ModelFailoverSettings
+              value={config.modelFailover}
+              providers={providers}
+              apiKeys={apiKeys}
+              updateConfig={updateConfig}
+            />
+          </div>
+        )}
+
         {/* Providers section uses wider layout */}
         {activeSection === 'providers' && (
           <div className="mx-auto max-w-4xl px-8 py-8">
@@ -5071,24 +5099,6 @@ export default function Settings({
             <p className="mb-6 text-sm text-[var(--ink-muted)]">
               {tSettings('providers.description')}
             </p>
-
-            <div className="mb-6">
-              <AutoRoutingSettings
-                value={config.autoRouting}
-                updateConfig={updateConfig}
-                loadTiers={loadAutoRouteTiers}
-                providerNames={providerNamesById}
-              />
-            </div>
-
-            <div className="mb-6">
-              <ModelFailoverSettings
-                value={config.modelFailover}
-                providers={providers}
-                apiKeys={apiKeys}
-                updateConfig={updateConfig}
-              />
-            </div>
 
             {/* Provider list */}
             <div className="grid grid-cols-2 gap-4">

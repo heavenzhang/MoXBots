@@ -182,6 +182,29 @@ describe("Settings image-understanding enable flow", () => {
     });
   });
 
+  it("navigates between independent model settings without loading routing on the provider page", async () => {
+    await i18n.changeLanguage('en-US');
+    const user = userEvent.setup();
+    render(<ToastProvider><Settings mode="settings" initialSection="providers" isActive /></ToastProvider>);
+    expect(screen.queryByRole('region', { name: 'Auto model selection' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Backup model' })).not.toBeInTheDocument();
+    expect(settingsMocks.apiPostJson.mock.calls.some(([path]) => path === '/api/admin/route/tiers')).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'Auto model selection' }));
+    expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'Backup model' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Auto mode supplies the next available model in the same tier/)).toBeVisible();
+    expect(settingsMocks.apiPostJson.mock.calls.some(([path]) => path === '/api/admin/route/tiers')).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: 'Backup model' }));
+    expect(screen.getByRole('region', { name: 'Backup model' })).toBeVisible();
+    expect(screen.queryByRole('region', { name: 'Auto model selection' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Optional advanced setting/)).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Model Providers' }));
+    expect(screen.queryByRole('region', { name: 'Backup model' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('Manage')).toBeVisible();
+  });
+
   it("keeps a real provider model panel stable when Settings receives request logs (#582)", async () => {
     await i18n.changeLanguage('en-US');
     let resolveModels!: (value: unknown) => void;

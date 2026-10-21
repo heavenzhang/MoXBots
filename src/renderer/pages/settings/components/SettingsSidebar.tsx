@@ -14,6 +14,8 @@ interface SettingsSidebarProps {
 
 const NAV_ITEMS: Array<{ section: SettingsSection; labelKey: string }> = [
   { section: 'providers', labelKey: 'sidebar.nav.providers' },
+  { section: 'auto-routing', labelKey: 'sidebar.nav.autoRouting' },
+  { section: 'model-failover', labelKey: 'sidebar.nav.modelFailover' },
   { section: 'general', labelKey: 'sidebar.nav.general' },
   { section: 'agent', labelKey: 'sidebar.nav.bots' },
   { section: 'desktop-pet', labelKey: 'sidebar.nav.floatingBall' },

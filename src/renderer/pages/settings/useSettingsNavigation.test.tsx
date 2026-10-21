@@ -56,6 +56,11 @@ describe('useSettingsNavigation', () => {
     expect(screen.getByTestId('section')).toHaveTextContent('skills');
   });
 
+  it.each(['auto-routing', 'model-failover'])('accepts the independent model settings deep link %s', async section => {
+    render(<Probe initialSection={section} />);
+    await waitFor(() => expect(screen.getByTestId('section')).toHaveTextContent(section));
+  });
+
   it('accepts a direct proxy deep link', async () => {
     render(<Probe initialSection="proxy" />);
 

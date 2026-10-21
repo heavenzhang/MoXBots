@@ -1,0 +1,77 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+const output = resolve(import.meta.dirname, 'evidence');
+await mkdir(output, { recursive: true });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.QA_CHROMIUM ?? '/Users/zhangshaohua/Library/Caches/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-mac-arm64/chrome-headless-shell' });
+const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const errors = [];
+page.on('pageerror', e => errors.push(e.message));
+const base = 'http://127.0.0.1:8924/model-settings-qa';
+const evidence = { environment: base, transport: 'synthetic config and tiers; real SettingsPage', checks: [], errors };
+await page.goto(base);
+await page.getByRole('button', { name: '自动选模型', exact: true }).waitFor();
+assert.equal(await page.getByRole('region', { name: '自动选模型' }).count(), 0);
+assert.equal(await page.getByRole('region', { name: '备用模型' }).count(), 0);
+await page.getByRole('button', { name: '自动选模型', exact: true }).click();
+await page.getByRole('group', { name: '强力', exact: true }).waitFor();
+const auto = page.getByRole('switch', { name: '启用自动选模型' });
+assert.equal(await auto.getAttribute('aria-checked'), 'true');
+await auto.click();
+assert.equal(await auto.getAttribute('aria-checked'), 'false');
+await page.getByRole('button', { name: '备用模型', exact: true }).click();
+const backup = page.getByRole('switch', { name: '启用指定备用模型' });
+assert.equal(await backup.isDisabled(), true);
+await page.getByRole('button', { name: '备用供应商与模型', exact: true }).click();
+await page.getByRole('button', { name: '验收模型服务 · qa-balanced', exact: true }).click();
+await backup.click();
+assert.equal(await backup.getAttribute('aria-checked'), 'true');
+await page.getByText('切换规则与适用范围', { exact: true }).click();
+await page.getByText(/仅支持 Claude Agent SDK/).waitFor();
+await page.screenshot({ path: resolve(output, 'backup-1440.png') });
+await page.getByRole('button', { name: '自动选模型', exact: true }).click();
+assert.equal(await auto.getAttribute('aria-checked'), 'false');
+await page.screenshot({ path: resolve(output, 'auto-1440.png') });
+await page.reload();
+await page.getByRole('button', { name: '备用模型', exact: true }).click();
+assert.equal(await backup.getAttribute('aria-checked'), 'true');
+assert.match(await page.getByRole('button', { name: '备用供应商与模型', exact: true }).innerText(), /qa-balanced/);
+evidence.checks.push('provider page excludes both cards; navigation; auto off; backup selection and enable; independent state; browser storage reload persistence');
+// Model catalog failure remains visible and does not affect the backup page.
+await page.route('**/api/admin/route/tiers', route => route.fulfill({ status: 503, contentType: 'application/json', body: '{"error":"synthetic-offline"}' }));
+await page.getByRole('button', { name: '自动选模型', exact: true }).click();
+await page.getByText('读取档位失败，稍后再试。', { exact: true }).waitFor();
+await page.getByRole('button', { name: '备用模型', exact: true }).click();
+assert.equal(await backup.getAttribute('aria-checked'), 'true');
+await page.unroute('**/api/admin/route/tiers');
+evidence.checks.push('tier load failure is visible; backup remains accessible');
+// Saving failure retains the prior persisted config and exposes an error.
+await backup.click();
+await page.goto(`${base}?section=model-failover&fail-save=1`);
+await backup.click();
+await page.getByRole('alert').filter({ hasText: '保存失败' }).waitFor();
+assert.equal(await backup.getAttribute('aria-checked'), 'false');
+evidence.checks.push('failed save leaves switch off and persisted model selection unchanged');
+for (const width of [1440, 768, 390]) {
+  await page.setViewportSize({ width, height: 900 });
+  for (const [section, label] of [['auto-routing','自动选模型'],['model-failover','备用模型']]) {
+    await page.goto(`${base}?section=${section}`);
+    await page.getByRole('region', { name: label, exact: true }).waitFor();
+    if (section === 'auto-routing') await page.getByRole('group', { name: '强力', exact: true }).waitFor();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    assert.equal(overflow, 0, `${section} overflow at ${width}`);
+    await page.screenshot({ path: resolve(output, `${section}-${width}.png`), fullPage: true });
+    evidence.checks.push(`${section} ${width}x900: visible card, no page overflow`);
+  }
+}
+await page.setViewportSize({ width: 1440, height: 900 });
+await page.goto(`${base}?lang=en-US&section=auto-routing`);
+await page.getByRole('group', { name: 'Strong', exact: true }).waitFor();
+await page.getByRole('button', { name: 'Backup model', exact: true }).click();
+await page.getByRole('region', { name: 'Backup model', exact: true }).waitFor();
+evidence.checks.push('English navigation and both settings pages');
+assert.deepEqual(errors, []);
+await writeFile(resolve(output, 'browser-results.json'), JSON.stringify(evidence, null, 2)+'\n');
+await browser.close();
+console.log(JSON.stringify(evidence));

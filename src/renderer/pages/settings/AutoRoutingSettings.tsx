@@ -94,6 +94,7 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       <div className="min-w-0">
         <h3 className="text-base font-medium text-[var(--ink)]">{t('autoRouting.title')}</h3>
         <p id={hintId} className="mt-2 text-sm text-[var(--ink-muted)]">{t('autoRouting.description')}</p>
+        <p className="mt-2 text-sm text-[var(--ink-muted)]">{t('autoRouting.relationship')}</p>
       </div>
       <button type="button" role="switch" aria-label={t('autoRouting.enable')} aria-checked={enabled}
         aria-describedby={hintId} disabled={busy}

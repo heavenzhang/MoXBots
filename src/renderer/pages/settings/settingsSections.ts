@@ -6,6 +6,8 @@ export type SettingsSection =
   | 'external-cli'
   | 'shortcuts'
   | 'providers'
+  | 'auto-routing'
+  | 'model-failover'
   | 'mcp'
   | 'skills'
   | 'sub-agents'
@@ -22,6 +24,8 @@ export const VALID_SECTIONS: SettingsSection[] = [
   'external-cli',
   'shortcuts',
   'providers',
+  'auto-routing',
+  'model-failover',
   'mcp',
   'skills',
   'sub-agents',

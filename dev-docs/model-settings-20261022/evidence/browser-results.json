@@ -1,0 +1,17 @@
+{
+  "environment": "http://127.0.0.1:8924/model-settings-qa",
+  "transport": "synthetic config and tiers; real SettingsPage",
+  "checks": [
+    "provider page excludes both cards; navigation; auto off; backup selection and enable; independent state; browser storage reload persistence",
+    "tier load failure is visible; backup remains accessible",
+    "failed save leaves switch off and persisted model selection unchanged",
+    "auto-routing 1440x900: visible card, no page overflow",
+    "model-failover 1440x900: visible card, no page overflow",
+    "auto-routing 768x900: visible card, no page overflow",
+    "model-failover 768x900: visible card, no page overflow",
+    "auto-routing 390x900: visible card, no page overflow",
+    "model-failover 390x900: visible card, no page overflow",
+    "English navigation and both settings pages"
+  ],
+  "errors": []
+}
