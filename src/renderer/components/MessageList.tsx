@@ -942,17 +942,28 @@ const MessageList = memo(function MessageList({
     data: virtuosoData,
     heightEstimateSeed: virtuosoHeightEstimateSeed,
   });
-  const handleItemsRendered = useCallback(
-    (items: ListItem<MessageType>[]) => {
-      debugProbe?.handleItemsRendered(items);
-      // Always notify the scroll owner: recovery itself settles from this event.
-      // Only publish rows eligible for the startup reveal when presentation is ready.
-      onItemsRendered(canLayoutVirtualList && !isViewportRecoveryFenced
-        ? items.flatMap(item => item.data ? [item.data] : [])
-        : EMPTY_MESSAGES);
-    },
-    [debugProbe, onItemsRendered, canLayoutVirtualList, isViewportRecoveryFenced],
-  );
+  // Virtuoso emits listState.items before React commits the corresponding
+  // range. Recovery queries the row DOM to finish its visibility fence; calling
+  // it from that event can miss the anchor and wait forever for another range
+  // event. Publish after the same React commit instead of guessing with a timer.
+  const [renderedItems, setRenderedItems] = useState<ListItem<MessageType>[] | null>(null);
+  const onDebugItemsRendered = debugProbe?.handleItemsRendered;
+  const handleItemsRendered = useCallback((items: ListItem<MessageType>[]) => {
+    setRenderedItems(previous => previous?.length === items.length
+      && items.every((item, index) => {
+        const before = previous[index];
+        return before.index === item.index && before.offset === item.offset
+          && before.size === item.size && before.data === item.data;
+      }) ? previous : items);
+  }, []);
+  useLayoutEffect(() => {
+    if (renderedItems === null) return;
+    onDebugItemsRendered?.(renderedItems);
+    // Recovery still receives this commit while the startup reveal is fenced.
+    onItemsRendered(canLayoutVirtualList && !isViewportRecoveryFenced
+      ? renderedItems.flatMap(item => item.data ? [item.data] : [])
+      : EMPTY_MESSAGES);
+  }, [renderedItems, onDebugItemsRendered, onItemsRendered, canLayoutVirtualList, isViewportRecoveryFenced]);
 
   return (
     <MessageListPresentationContext.Provider value={canLayoutVirtualList}>
