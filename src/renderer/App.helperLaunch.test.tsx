@@ -22,6 +22,11 @@ const tauriCoreMocks = vi.hoisted(() => ({
 
 vi.mock('@tauri-apps/api/core', () => tauriCoreMocks);
 
+vi.mock('../shared/appProfile', async importOriginal => ({
+  ...await importOriginal<typeof import('../shared/appProfile')>(),
+  get APP_BUILD_PROFILE() { return mocks.buildProfile; },
+}));
+
 const mocks = vi.hoisted(() => {
   const project = {
     id: 'helper-project',
@@ -154,6 +159,9 @@ const mocks = vi.hoisted(() => {
       >;
       activeTabId: string | null;
     },
+    buildProfile: 'myagents' as 'myagents' | 'moxbot',
+    resolveUpdateHandoff: null as null | (() => void),
+    updateHandoffAbsent: false,
     lastExitWasClean: true,
     setAppActiveCorrelation: vi.fn(),
     setAppActiveTabId: vi.fn(),
@@ -292,22 +300,21 @@ vi.mock('@/components/BugReportOverlay', () => ({
 }));
 
 vi.mock('@/components/CustomTitleBar', () => ({
-  default: ({
-    children,
-    restoreCount = 0,
-    onRestoreSession,
-  }: {
-    children: React.ReactNode;
-    restoreCount?: number;
-    onRestoreSession?: () => void;
-  }) => (
-    <div data-testid="titlebar">
-      {restoreCount > 0 && (
-        <button data-testid="restore-session" onClick={onRestoreSession} />
-      )}
-      {children}
-    </div>
+  default: ({ children }: { children: React.ReactNode }) => (
+    <div data-testid="titlebar">{children}</div>
   ),
+}));
+
+// Delay the explicit composer handoff's disk read to exercise the same
+// admission races as before. Legacy durable tabs alone never trigger restore.
+vi.mock('@/utils/composerUpdateCheckpoint', async importOriginal => ({
+  ...await importOriginal<typeof import('@/utils/composerUpdateCheckpoint')>(),
+  loadComposerUpdateHandoff: vi.fn(async () => {
+    if (!mocks.durableTabs || mocks.updateHandoffAbsent) return null;
+    return new Promise(resolve => {
+      mocks.resolveUpdateHandoff = () => resolve(mocks.durableTabs);
+    });
+  }),
 }));
 
 vi.mock('@/components/CurrentPageHeader', () => ({
@@ -565,6 +572,11 @@ vi.mock('@/config/services/agentConfigService', () => ({
 
 import App from './App';
 
+async function releaseUpdateHandoff() {
+  await waitFor(() => expect(mocks.resolveUpdateHandoff).not.toBeNull());
+  await act(async () => mocks.resolveUpdateHandoff!());
+}
+
 describe('App helper launch', () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -585,7 +597,10 @@ describe('App helper launch', () => {
     mocks.selfAwarenessProject = mocks.project;
     mocks.deleteTargetSessionId = null;
     mocks.deleteResults.length = 0;
+    mocks.buildProfile = 'myagents';
     mocks.durableTabs = null;
+    mocks.resolveUpdateHandoff = null;
+    mocks.updateHandoffAbsent = false;
     mocks.lastExitWasClean = true;
     mocks.useRealTabProvider = false;
     mocks.tauriEnvironment = false;
@@ -1477,9 +1492,26 @@ describe('App helper launch', () => {
     });
   });
 
+  it('starts fresh without a restore entry or reopening legacy persisted pages', async () => {
+    mocks.lastExitWasClean = false;
+    mocks.updateHandoffAbsent = true;
+    mocks.buildProfile = 'moxbot';
+    mocks.durableTabs = { version: 1, activeTabId: 'legacy', tabs: [{
+      view: 'chat', id: 'legacy', agentDir: mocks.project.path,
+      sessionId: 'legacy-session', title: 'History remains in SessionStore',
+    }] };
+    render(<App />);
+    await waitFor(() => expect(composerUpdateCheckpoint.loadComposerUpdateHandoff).toHaveBeenCalled());
+    expect(activePageTitle()).toBe('New Tab');
+    expect(screen.queryByTestId('restore-session')).not.toBeInTheDocument();
+    expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
+    expect(mocks.deleteSession).not.toHaveBeenCalled();
+  });
+
   it('restores a persisted Record tab without creating a Session owner', async () => {
     localStorage.clear();
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -1494,7 +1526,7 @@ describe('App helper launch', () => {
     };
     render(<App />);
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     await waitFor(() => {
       const latest = latestTabWorkspace();
@@ -1520,6 +1552,7 @@ describe('App helper launch', () => {
     localStorage.clear();
     mocks.lastExitWasClean = false;
     mocks.recordGet.mockResolvedValueOnce(null);
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -1534,7 +1567,7 @@ describe('App helper launch', () => {
     };
     render(<App />);
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     await waitFor(() => {
       const latest = latestTabWorkspace();
@@ -1559,6 +1592,7 @@ describe('App helper launch', () => {
     localStorage.clear();
     mocks.lastExitWasClean = false;
     mocks.recordGet.mockResolvedValue(null);
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -1569,7 +1603,7 @@ describe('App helper launch', () => {
     };
     render(<App />);
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     await waitFor(() => {
       const taskTabs = latestTabWorkspace().tabs.filter((tab) => tab.view === 'taskcenter');
@@ -1583,6 +1617,7 @@ describe('App helper launch', () => {
     localStorage.clear();
     mocks.lastExitWasClean = false;
     mocks.recordGet.mockResolvedValue(null);
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [{ view: 'record', id: 'missing-record', recordId: 'deleted-record', title: 'Deleted' }],
@@ -1592,7 +1627,7 @@ describe('App helper launch', () => {
     act(() => latestSidebarProps().onOpenTaskCenter());
     await waitFor(() => expect(latestTabWorkspace().tabs.filter((tab) => tab.view === 'taskcenter')).toHaveLength(1));
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     await waitFor(() => expect(latestTabWorkspace().tabs.filter((tab) => tab.view === 'taskcenter')).toHaveLength(1));
     expect(latestTabWorkspace().tabs.some((tab) => tab.id === 'missing-record')).toBe(false);
@@ -1606,6 +1641,7 @@ describe('App helper launch', () => {
     }));
     mocks.deleteTargetSessionId = sessionId;
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [{
@@ -1619,7 +1655,7 @@ describe('App helper launch', () => {
     };
     render(<App />);
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
     await waitFor(() => {
       expect(mocks.canRestoreSession).toHaveBeenCalledWith(sessionId, mocks.project.path);
     });
@@ -1659,6 +1695,7 @@ describe('App helper launch', () => {
       callbacks.forEach((callback) => callback(timestamp));
     };
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -1681,7 +1718,7 @@ describe('App helper launch', () => {
     };
     render(<App />);
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
     await waitFor(() => {
       expect(mocks.ensureSessionSidecar).toHaveBeenCalledTimes(2);
     });
@@ -1721,6 +1758,7 @@ describe('App helper launch', () => {
     }));
     mocks.deleteTargetSessionId = sessionId;
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [{
@@ -1734,13 +1772,14 @@ describe('App helper launch', () => {
     };
     render(<App />);
 
-    const restoreButton = await screen.findByTestId('restore-session');
+    await waitFor(() => expect(mocks.resolveUpdateHandoff).not.toBeNull());
+    const restoreButton = mocks.resolveUpdateHandoff!;
     fireEvent.click(screen.getByTestId('app-delete-session'));
     await waitFor(() => {
       expect(mocks.querySessionHasPersistentOwners).toHaveBeenCalledWith(sessionId);
     });
 
-    fireEvent.click(restoreButton);
+    await act(async () => restoreButton());
     await waitFor(() => {
       expect(activePageTitle()).toBe('New Tab');
     });
@@ -1766,6 +1805,7 @@ describe('App helper launch', () => {
     const firstSessionId = '11111111-2222-4333-8444-555555555551';
     const secondSessionId = '11111111-2222-4333-8444-555555555552';
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -1789,7 +1829,7 @@ describe('App helper launch', () => {
     mocks.ensureSessionSidecar.mockResolvedValue({ port: 31417, isNew: false });
     render(<App />);
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     await waitFor(() => {
       expect(mocks.ensureSessionSidecar).toHaveBeenCalledTimes(2);
@@ -1836,6 +1876,7 @@ describe('App helper launch', () => {
     let resolveFirstGeneration!: (generation: number | null) => void;
     mocks.tauriEnvironment = true;
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [{
@@ -1857,7 +1898,8 @@ describe('App helper launch', () => {
 
     render(<App />);
 
-    const restoreButton = await screen.findByTestId('restore-session');
+    await waitFor(() => expect(mocks.resolveUpdateHandoff).not.toBeNull());
+    const restoreButton = mocks.resolveUpdateHandoff!;
     await waitFor(() => {
       expect(mocks.listeners.has('session:sidecar-terminal')).toBe(true);
     });
@@ -1868,7 +1910,7 @@ describe('App helper launch', () => {
     }));
     await waitFor(() => expect(mocks.getSessionGeneration).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(restoreButton);
+    await act(async () => restoreButton());
     await waitFor(() => {
       const restored = (latestTabWorkspace().tabs as Array<{
         id: string;
@@ -1895,6 +1937,7 @@ describe('App helper launch', () => {
     const secondSessionId = '33333333-2222-4333-8444-555555555552';
     mocks.useRealTabProvider = true;
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -1951,7 +1994,7 @@ describe('App helper launch', () => {
     });
 
     render(<App />);
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     expect(await screen.findByText('Second persisted restore message')).toBeInTheDocument();
     expect(screen.queryByText('First persisted restore message')).not.toBeInTheDocument();
@@ -1978,6 +2021,7 @@ describe('App helper launch', () => {
     const successfulSessionId = '22222222-2222-4333-8444-555555555552';
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: [
@@ -2012,7 +2056,7 @@ describe('App helper launch', () => {
       expect(active?.view).toBe('settings');
     });
 
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
 
     await waitFor(() => {
       const latest = latestTabWorkspace();
@@ -2369,6 +2413,7 @@ describe('App helper launch', () => {
   it.each([false, true])('reports a restore denied entirely by capacity (missing record: %s)', async (missingRecord) => {
     mocks.lastExitWasClean = false;
     if (missingRecord) mocks.recordGet.mockResolvedValue(null);
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = {
       version: 1,
       tabs: missingRecord
@@ -2378,11 +2423,12 @@ describe('App helper launch', () => {
       activeTabId: 'restore-capacity',
     };
     render(<App />);
-    const restoreButton = await screen.findByTestId('restore-session');
+    await waitFor(() => expect(mocks.resolveUpdateHandoff).not.toBeNull());
+    const restoreButton = mocks.resolveUpdateHandoff!;
     for (let index = 1; index < 12; index += 1) {
       act(() => openPageByShortcut());
     }
-    await act(async () => fireEvent.click(restoreButton));
+    await act(async () => restoreButton());
     expect(mocks.toast.info).toHaveBeenCalledExactlyOnceWith('正在保存或保留未完成的编辑，请稍后重试或关闭不再需要的页面。');
     expect(latestTabWorkspace().tabs).toHaveLength(12);
     expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
@@ -3332,10 +3378,11 @@ it('keeps discussion input at its source when durable saving fails', async () =>
     mocks.tauriEnvironment = true;
     mocks.lastExitWasClean = false;
     mocks.canRestoreSession.mockResolvedValue(false);
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = { version: 1, activeTabId: 'discussion-recovery', tabs: [{ view: 'chat', id: 'discussion-recovery', agentDir: mocks.project.path, sessionId: 'pending-discussion-recovery', title: 'Discussion', discussionId: 'discussion-saved' }] };
     tauriCoreMocks.invoke.mockImplementation(async command => command === 'cmd_task_read_discussion_input' ? { text: 'original', primaryContext: { kind: 'task-discussion', input: { workspacePath: mocks.project.path } } } : undefined);
     render(<App />);
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
     await waitFor(() => expect(mocks.chatProps.some(props => !!props.startupError)).toBe(true));
     expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
     await waitFor(() => expect(latestTabWorkspace().tabs).toContainEqual(expect.objectContaining({ id: 'discussion-recovery', discussionId: 'discussion-saved' })));
@@ -3393,10 +3440,11 @@ it('keeps discussion input at its source when durable saving fails', async () =>
   it('uses normal Session validation when the archived discussion input is temporarily unreadable', async () => {
     mocks.tauriEnvironment = true;
     mocks.lastExitWasClean = false;
+    mocks.buildProfile = 'moxbot';
     mocks.durableTabs = { version: 1, activeTabId: 'read-failure', tabs: [{ view: 'chat', id: 'read-failure', agentDir: mocks.project.path, sessionId: 'saved-session', title: 'Discussion', discussionId: 'saved-discussion' }] };
     tauriCoreMocks.invoke.mockImplementation(async command => { if (command === 'cmd_task_read_discussion_input') throw new Error('temporarily unreadable'); return undefined; });
     render(<App />);
-    fireEvent.click(await screen.findByTestId('restore-session'));
+    await releaseUpdateHandoff();
     await waitFor(() => expect(mocks.canRestoreSession).toHaveBeenCalledWith('saved-session', mocks.project.path));
     await waitFor(() => expect(latestTabWorkspace().tabs).toContainEqual(expect.objectContaining({ id: 'read-failure', discussionId: 'saved-discussion' })));
   });

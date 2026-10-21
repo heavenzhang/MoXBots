@@ -158,3 +158,7 @@ Settings 是单实例 Tab，内部导航顺序为：模型供应商、通用设�
 - 排序默认保持既有置顶/最近时间规则，首次拖动后相应容器使用手动顺序。新建条目（`createdAt` 晚于该容器已排序条目的最新 `createdAt`）排列在手动条目之前，其内部仍按原置顶/最近时间规则；其余未列入顺序的旧条目（被收藏筛选或部分加载隐藏）仍按原规则排列在手动条目后，不会被清除顺序。
 - 归档视图保留原Agent树和恢复入口，禁用资源拖拽/移动；分区配置保留，回到全部/收藏时恢复。
 - 偏好写失败显示可恢复提示并保持旧投影。分区会话请求沿用既有metadata store，未加载不会被当作删除。此偏好为本机界面设置，不承诺跨设备同步。
+
+### Startup and update drafts
+
+The titlebar has no legacy restore-previous-tabs entry. Normal startup opens a fresh Launcher; conversations remain accessible through sidebar/history. Only a validated composer update handoff reopens its recorded pages, using existing Session/Record admission and exact composer identities. Restored input is never auto-sent. Deferred pages with unapplied drafts stay protected from cache eviction, and unreadable handoffs remain on disk with an error.

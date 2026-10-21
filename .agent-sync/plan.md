@@ -740,3 +740,7 @@ Same sole desktop/macOSarm64/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 e
 ## MOXBOTS-0516-CREDENTIAL-ROUTE-CI-20261021 — child failure evidence
 
 Existing sole desktop/updater owner01a12bc2 investigates distinct mainpush39570124070 Linux concurrency failure after PR181. Test-only child--nocapture preserves20rounds/4processes/15sdeadline/assertions, exposing actual panic discarded by libtest capture into nullstdout. Exact RootRust1.92 output probe confirms diagnostic behavior, not actual route rootcause. Frozen516.6 producer97/App/TAR71bcd remain immutable; no rebuild or false native acceptance. Task `.agent-sync/tasks/codex-credential-route-ci-diagnostic-20261021-830fd6cc.md`; subsequent rootcause repair and exactCI/main/native gates separate.
+
+
+## Desktop516.7 legacy restore entry removal — 2026-10-22
+Same sole desktop/macOSarm64/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 continues MOXBOTS-0516-RELEASE-20261021. Explicit human request removes obsolete titlebar restore UI while retaining history and exact-scope update drafts. New immutablebuild516.7 follows base85981 with renderer-only startup/draft protection changes; no additional feature intake. Existing516.6 execution/QA evidence is retained for unchanged server paths, with only affected startup/history/draft/nativeinstallation checks added. NormalCI/main/newartifact/Apple/TLSstable/localidentity and rollback remain required. Task .agent-sync/tasks/codex-release-0516-5167-20261022-12f12a58.md.
