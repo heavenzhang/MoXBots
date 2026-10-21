@@ -4,6 +4,7 @@ import AgentFunctionSettings from './sections/AgentFunctionSettings';
 import { DshCollaborationSettings } from './DshCollaborationSettings';
 import { ModelFailoverSettings } from './ModelFailoverSettings';
 import { AutoRoutingSettings, type AutoRouteTiersView } from './AutoRoutingSettings';
+import { configuredBackupStatus, modelFailoverMode } from '../../../shared/modelFailover';
 import { getPlatformHiddenProviderIds, isLinuxDesktop } from '@/utils/desktopPlatform';
 import { isImeComposingEvent } from '@/utils/imeKeyboard';
 import {
@@ -5032,6 +5033,51 @@ export default function Settings({
 
         {activeSection === 'external-cli' && <ExternalCliSettingsSection />}
 
+        {activeSection === 'model-policy' && (
+          <div className="mx-auto max-w-4xl px-8 py-8">
+            <h2 className="text-lg font-semibold text-[var(--ink)]">
+              {tSettings('modelPolicy.title')}
+            </h2>
+            <p className="mb-6 mt-2 text-sm text-[var(--ink-muted)]">
+              {tSettings('modelPolicy.description')}
+            </p>
+            <AutoRoutingSettings
+              value={config.autoRouting}
+              updateConfig={updateConfig}
+              loadTiers={loadAutoRouteTiers}
+              providerNames={providerNamesById}
+            />
+            <details className="mt-8 border-t border-[var(--line)] pt-6">
+              <summary className="cursor-pointer text-sm font-medium text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+                <span>{tSettings('modelPolicy.failover')}</span>
+                <span className="ml-2 text-xs font-normal text-[var(--ink-muted)]">
+                  {tSettings('modelPolicy.advanced')}
+                </span>
+                {(() => {
+                  const mode = modelFailoverMode(config.modelFailover);
+                  const backupState = configuredBackupStatus(config.modelFailover, providers, apiKeys);
+                  const brokenSpecified = mode === 'specified' && backupState.status !== 'ready';
+                  return <span className={`ml-2 text-xs font-normal ${brokenSpecified ? 'text-[var(--error)]' : 'text-[var(--ink-muted)]'}`}>
+                    {brokenSpecified ? tSettings('modelPolicy.backupInvalid', { reason: tSettings(`modelFailover.status.${backupState.status}`, { model: backupState.label ?? config.modelFailover?.backup?.modelId ?? '' }) }) : tSettings(`modelPolicy.mode.${mode}`)}{mode === 'specified' && !brokenSpecified && backupState.label ? ` · ${backupState.label}` : ''}
+                  </span>;
+                })()}
+              </summary>
+              <p className="mt-3 text-sm text-[var(--ink-muted)]">
+                {tSettings('modelPolicy.failoverHint')}
+              </p>
+              <div className="mt-4">
+                <ModelFailoverSettings
+                  value={config.modelFailover}
+                  providers={providers}
+                  apiKeys={apiKeys}
+                  updateConfig={updateConfig}
+                  onOpenProviders={() => setActiveSection('providers')}
+                />
+              </div>
+            </details>
+          </div>
+        )}
+
         {/* Providers section uses wider layout */}
         {activeSection === 'providers' && (
           <div className="mx-auto max-w-4xl px-8 py-8">
@@ -5071,24 +5117,6 @@ export default function Settings({
             <p className="mb-6 text-sm text-[var(--ink-muted)]">
               {tSettings('providers.description')}
             </p>
-
-            <div className="mb-6">
-              <AutoRoutingSettings
-                value={config.autoRouting}
-                updateConfig={updateConfig}
-                loadTiers={loadAutoRouteTiers}
-                providerNames={providerNamesById}
-              />
-            </div>
-
-            <div className="mb-6">
-              <ModelFailoverSettings
-                value={config.modelFailover}
-                providers={providers}
-                apiKeys={apiKeys}
-                updateConfig={updateConfig}
-              />
-            </div>
 
             {/* Provider list */}
             <div className="grid grid-cols-2 gap-4">

@@ -12,7 +12,7 @@ import { SameTurnStreamContinuation } from './builtin-session/stream-continuatio
 import type { StreamRecoveryEvidence } from '../shared/streamRecovery';
 import type { AnthropicRequest } from './openai-bridge/types/anthropic';
 import { MODEL_RECOVERY_WINDOW_MS, validModelRecovery } from '../shared/modelRecovery';
-import type { ModelFailoverSettings } from '../shared/modelFailover';
+import { modelFailoverMode, type ModelFailoverSettings } from '../shared/modelFailover';
 import { archiveBuiltinSettledInterruption, archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger, updateBuiltinModelRecovery, getBuiltinModelRecovery } from './SessionStore';
 import { configureBuiltinTranscriptBinding } from './builtin-session/transcript';
 import { createHash, randomUUID } from 'crypto';
@@ -38,6 +38,7 @@ import {
 } from './utils/background-agent-permission';
 import { createBridgeProgressContext, getBridgeProgressContext, registerBridge as registerBridgeInRegistry,
   unregisterBridge as unregisterBridgeInRegistry, type BridgeProgressContext, type UpstreamBridgeConfig } from './openai-bridge/bridge-registry';
+import { bareModelId, normalizeModelMode } from '../shared/autoRoute';
 import { getAutoRouteBackup } from './auto-route/session-state';
 import { createSessionModelFailover, sessionApiFailoverEligible } from './builtin-session/model-failover';
 import { getScriptDir } from './utils/runtime';
@@ -1755,7 +1756,7 @@ function currentModelRecoveryRoute(): string {
   return createHash('sha256').update(JSON.stringify([configState.currentProviderEnv?.providerId,
     configState.currentProviderEnv?.baseUrl, configState.currentModel,
     configState.currentProviderEnv?.apiProtocol, configState.currentProviderEnv?.upstreamFormat,
-    backup?.enabled, backup?.backup])).digest('hex');
+    modelFailoverMode(backup), backup?.allowCrossTier === true, backup?.backup])).digest('hex');
 }
 
 const restoringModelRecoveryIds = new Set<string>();
@@ -2051,6 +2052,16 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           broadcast('chat:api-retry', recovery ? { recovery } : null);
         },
       });
+      const appendModelPolicyDiagnostic = (text: string) => {
+        const product = getBuiltinProductContent();
+        if (product) product.appendDiagnostic(text);
+        else {
+          const message = { id: `diagnostic-${randomUUID()}`, role: 'assistant' as const,
+            content: text, timestamp: new Date().toISOString(), messageKind: 'diagnostic' as const };
+          appendMessage(message);
+          broadcast('chat:message-replay', createLiveUserMessageReplay(sessionId, message));
+        }
+      };
       activeSessionModelFailover = createSessionModelFailover({
         recovery: activeSessionModelRecovery,
         isLive: isCurrent,
@@ -2058,19 +2069,26 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           && activeSessionModelRecovery?.readState()?.status !== 'paused'
           && activeSessionContextRecovery?.canRetryInference() !== false,
         canSwitch: () => !hasBuiltinBackgroundWork(),
-        current: () => ({ env: configState.currentProviderEnv, model: configState.currentModel ?? '',
-          turnId: currentBridgeInferenceScope() }),
-        autoBackup: () => getAutoRouteBackup(productSessionId),
+        current: () => {
+          const usage = getSessionMetadata(productSessionId)?.lastContextUsage;
+          const model = configState.currentModel ?? '';
+          return { env: configState.currentProviderEnv, model, turnId: currentBridgeInferenceScope(),
+            contextTokens: usage?.model && bareModelId(usage.model) === bareModelId(model) ? usage.contextTokens : undefined };
+        },
+        autoBackup: () => {
+          if (normalizeModelMode(getSessionMetadata(productSessionId)?.modelMode) !== 'auto') return undefined;
+          const providerId = configState.currentProviderEnv?.providerId;
+          const model = configState.currentModel;
+          return providerId && model ? getAutoRouteBackup(productSessionId, { providerId, model }) : undefined;
+        },
+        onUnavailable: reason => {
+          appendModelPolicyDiagnostic(`本轮未切换备用模型：${reason}。保留当前执行进度，原模型恢复仍受现有重试和停止规则限制。`);
+        },
         onSwitch: (target, status) => {
-          const text = `主模型暂时不可用（HTTP ${status}），已切换备用模型 ${target.providerId} / ${target.model}，沿用当前进度继续执行。`;
-          const product = getBuiltinProductContent();
-          if (product) product.appendDiagnostic(text);
-          else {
-            const message = { id: `diagnostic-${randomUUID()}`, role: 'assistant' as const,
-              content: text, timestamp: new Date().toISOString(), messageKind: 'diagnostic' as const };
-            appendMessage(message);
-            broadcast('chat:message-replay', createLiveUserMessageReplay(sessionId, message));
-          }
+          const provider = target.providerId ? findEffectiveProvider(target.providerId, loadAdminConfig()) : undefined;
+          const modelName = (Array.isArray(provider?.models) ? provider.models : []).find(row => row.model === target.model)?.modelName ?? target.model;
+          const text = `主模型 ${configState.currentModel ?? ''} 暂时不可用（HTTP ${status}），已切换备用模型 ${provider?.name ?? target.providerId} · ${modelName}，沿用当前进度继续执行；本轮接管不会改写会话选定的主模型。`;
+          appendModelPolicyDiagnostic(text);
         },
       });
       const recovery = activeSessionModelRecovery;

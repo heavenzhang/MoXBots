@@ -79,6 +79,30 @@ it('rejects cross-session references, a current ref paired with a foreign savedP
   expect(f.external).not.toHaveBeenCalled();
 });
 
+it('resolves artifacts while proactive mode is off without changing the switch', async () => {
+  const passive = { ...agent, agent: { ...agent.agent, enabled: false } };
+  f.registry.mockResolvedValue({ agentProjections: [passive], diagnostics: [], config: {} });
+  const file = path.join(root, 'attachments', sessionId, 'turn-1', 'out.txt');
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, 'passive workspace output');
+  f.data.mockResolvedValue({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, file)], transcriptFormat: 1 });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: true, data: {
+    items: [{ relative: `${sessionId}/turn-1/out.txt`, name: 'out.txt' }],
+  } });
+  expect(passive.agent.enabled).toBe(false);
+});
+
+it.each([
+  { agentProjections: [], diagnostics: [] },
+  { agentProjections: [{ ...agent, project: { ...project, hidden: true } }], diagnostics: [] },
+  { agentProjections: [{ ...agent, project: { ...project, archivedAt: '2026-10-21T00:00:00Z' } }], diagnostics: [] },
+  { agentProjections: [agent], diagnostics: [{ agentIds: ['agent'] }] },
+])('preserves artifact workspace availability boundaries (%#)', async registry => {
+  f.registry.mockResolvedValue({ ...registry, config: {} });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false, code: 'REMOTE_AGENT_UNAVAILABLE' });
+  expect(f.data).not.toHaveBeenCalled();
+});
+
 it('rejects arbitrary external paths and wrong workspace ownership', async () => {
   f.data.mockResolvedValueOnce({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn/out.txt`, path.join(root, 'outside.txt'))], transcriptFormat: 1 });
   expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false });

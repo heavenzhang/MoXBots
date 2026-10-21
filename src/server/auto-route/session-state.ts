@@ -9,6 +9,8 @@ export interface AutoRouteBackupRef {
 
 interface AutoRouteSessionState {
   tier?: 'fast' | 'balanced' | 'strong';
+  /** The candidate is valid only for the primary chosen by this admission. */
+  primary?: { providerId: string; model: string };
   backup?: AutoRouteBackupRef;
 }
 
@@ -32,6 +34,8 @@ export function getAutoRouteSessionState(sessionId: string): AutoRouteSessionSta
 }
 
 /** Failover backup chosen by auto routing for this Session's current turn. */
-export function getAutoRouteBackup(sessionId: string): AutoRouteBackupRef | undefined {
-  return states.get(sessionId)?.backup;
+export function getAutoRouteBackup(sessionId: string, primary?: { providerId: string; model: string }): AutoRouteBackupRef | undefined {
+  const state = states.get(sessionId);
+  if (primary && (state?.primary?.providerId !== primary.providerId || state.primary.model !== primary.model)) return undefined;
+  return state?.backup;
 }

@@ -63,10 +63,41 @@ describe('auto routing settings card', () => {
     expect(screen.getByRole('button', { name: 'Move Fixture · Haiku 5.5 to a faster tier' })).toBeDisabled();
   });
 
+  it('restores tier assignment without removing ordering, classifier or enabled state', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const value = { enabled: false, classifier: { providerId: 'q', model: 'grok-4.7' }, tierOverrides: { 'p/claude-sonnet-5-5': 'strong' as const }, tierOrder: { fast: ['p/claude-haiku-5-5'] } };
+    render(<AutoRoutingSettings value={value} updateConfig={update} loadTiers={async () => view} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore automatic tier assignment' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ autoRouting: {
+      enabled: false, classifier: value.classifier, tierOrder: value.tierOrder,
+    } }));
+    expect(await screen.findByText('Saved.')).toBeVisible();
+  });
+
+  it('restores model order without removing manual tier moves', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const value = { tierOverrides: { 'p/claude-sonnet-5-5': 'strong' as const }, tierOrder: { fast: ['p/claude-haiku-5-5'] } };
+    render(<AutoRoutingSettings value={value} updateConfig={update} loadTiers={async () => view} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Restore default model order' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ autoRouting: {
+      tierOverrides: value.tierOverrides,
+    } }));
+  });
+
+  it('shows a saved classifier that has become unavailable and offers automatic recovery', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const staleView = { ...view, classifier: { providerId: 'gone', model: 'old-model', available: false, unavailableReason: 'provider disabled' } };
+    render(<AutoRoutingSettings value={{ classifier: { providerId: 'gone', model: 'old-model' } }} updateConfig={update} loadTiers={async () => staleView} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Saved classifier gone · old-model is unavailable');
+    fireEvent.click(screen.getByRole('button', { name: 'Restore automatic classifier' }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ autoRouting: {} }));
+  });
+
   it('reports a failed tier read and a failed save', async () => {
     const update = vi.fn().mockRejectedValue(new Error('disk'));
     const { unmount } = render(<AutoRoutingSettings value={undefined} updateConfig={update} loadTiers={async () => { throw new Error('offline'); }} />);
-    expect(await screen.findByText('Could not load tiers. Try again later.')).toBeVisible();
+    expect(await screen.findByText('Could not load tiers.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeVisible();
     fireEvent.click(screen.getByRole('switch', { name: 'Enable auto model selection' }));
     expect(await screen.findByText('Could not save. Try again.')).toBeVisible();
     unmount();

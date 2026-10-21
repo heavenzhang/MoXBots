@@ -330,6 +330,8 @@
     "pptRenderFailed": "Failed to render presentation"
   },
   "autoRoute": {
+    "backupCandidate": "Backup candidate: {{model}} (checked at execution)",
+    "backupReasons": {"off": "Automatic model switching is off", "not-configured": "Configured backup is missing", "unavailable": "Configured backup is unavailable for this session", "cross-tier": "Configured backup crosses tiers; cross-tier recovery is off", "no-candidate": "No backup candidate matches this turn policy"},
     "tag": "Auto",
     "effort": "effort {{effort}}",
     "tiers": {

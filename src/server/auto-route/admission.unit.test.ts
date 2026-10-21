@@ -68,6 +68,43 @@ const input = { sessionId: 's1', text: '设计一个同步引擎', source: 'desk
 describe('applyAutoRouteAdmission', () => {
   beforeEach(() => setAutoRouteSessionState('s1', undefined));
 
+  it.each(['manual', 'disabled', 'failed', 'thrown', 'conflict'])('revokes the previous automatic backup before an idle new turn: %s', async reason => {
+    setAutoRouteSessionState('s1', { tier: 'strong', backup: { providerId: 'old', modelId: 'stale' } });
+    const d = deps(reason === 'manual' ? { sessionMeta: meta({ modelMode: 'manual' }) }
+      : reason === 'disabled' ? { route: vi.fn(async () => null) }
+      : reason === 'thrown' ? { route: vi.fn(async () => { throw new Error('synthetic'); }) }
+      : reason === 'failed' ? { route: vi.fn(async () => result('claude-opus-5-5', { reason: 'classifier-failed' })) }
+      : { updateSessionMetadata: vi.fn(async () => null) });
+    await applyAutoRouteAdmission({}, input, d);
+    expect(getAutoRouteBackup('s1')).toBeUndefined();
+    if (reason !== 'manual') expect(vi.mocked(d.route).mock.calls[0]?.[0].previousTier).toBe('strong');
+  });
+
+  it('keeps the admitted backup for busy messages and tool round trips', async () => {
+    const backup = { providerId: 'old', modelId: 'retained' };
+    setAutoRouteSessionState('s1', { tier: 'strong', backup });
+    await applyAutoRouteAdmission({}, input, deps({ isSessionBusy: () => true }));
+    expect(getAutoRouteBackup('s1')).toEqual(backup);
+  });
+
+  it('only lends an automatic backup to the admitted primary', () => {
+    const backup = { providerId: 'q', modelId: 'candidate' };
+    setAutoRouteSessionState('s1', { tier: 'balanced', primary: { providerId: 'p', model: 'admitted' }, backup });
+    expect(getAutoRouteBackup('s1', { providerId: 'p', model: 'admitted' })).toEqual(backup);
+    expect(getAutoRouteBackup('s1', { providerId: 'p', model: 'manual-pick' })).toBeUndefined();
+    expect(getAutoRouteBackup('s1', { providerId: 'other', model: 'admitted' })).toBeUndefined();
+  });
+
+  it('does not install a same-model backup after a concurrent switch to manual', async () => {
+    let manual = false;
+    const d = deps({ route: vi.fn(async () => { manual = true; return result('claude-sonnet-5-5', { switches: false, backup: entry('grok-4.7') }); }) });
+    const original = d.getSessionMetadata;
+    d.getSessionMetadata = id => manual ? meta({ modelMode: 'manual' }) : original(id);
+    expect(await applyAutoRouteAdmission({}, input, d)).toBeUndefined();
+    expect(getAutoRouteBackup('s1')).toBeUndefined();
+    expect(d.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+
   it('switches an idle auto Session, persists the snapshot and broadcasts', async () => {
     const d = deps({ route: vi.fn(async () => result('claude-opus-5-5', { backup: entry('grok-4.7') }, 'high')) });
     const request = { model: 'claude-sonnet-5-5', providerRoute: { kind: 'provider' as const, providerId: 'p', model: 'claude-sonnet-5-5' } };
@@ -163,7 +200,7 @@ describe('applyAutoRouteAdmission', () => {
   it('a failed classifier with no previous tier keeps the turn on its own model', async () => {
     const d = deps({ route: vi.fn(async () => result('claude-opus-5-5', { tier: undefined, reason: 'classifier-failed' })) });
     const request = { model: 'claude-sonnet-5-5' };
-    expect(await applyAutoRouteAdmission(request, input, d)).toBeUndefined();
+    expect(await applyAutoRouteAdmission(request, input, d)).toMatchObject({ model: 'claude-sonnet-5-5', unclassified: true, reason: 'classifier-failed' });
     expect(request).toEqual({ model: 'claude-sonnet-5-5' });
     expect(d.updateSessionMetadata).not.toHaveBeenCalled();
     expect(d.broadcast).not.toHaveBeenCalled();

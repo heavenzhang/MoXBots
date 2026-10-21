@@ -8,6 +8,7 @@ import { parseModelStreamEvent, hasModelStreamProgress } from './utils/model-str
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
+import { observeRecoveryDiagnostic, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
@@ -32,15 +33,21 @@ type Root = { scope: string; backup?: boolean; retired?: boolean };
 /** Query-token owned; never re-enqueues input or invokes tools. */
 export class ModelFailoverController implements BridgeModelFailover {
   private state: Root | undefined;
-  private readonly guard = new QueryRequestGuard();
+  private readonly guard = new QueryRequestGuard(reason => observeRecoveryDiagnostic(
+    { event: 'inference_admission_rejected', owner: 'model_failover', reason }, this.options.onDiagnostic));
   private retiredScope: string | undefined;
   private sequence = 0;
 
   constructor(private readonly options: {
+    /** Internal diagnostic observer only; never an admission or retry capability. */
+    onDiagnostic?: RecoveryDiagnosticObserver;
     /** Foreground recovery identity. Missing identity does not revoke an ordinary Query request. */
     scope: () => string | undefined;
     resolveBackup: () => UpstreamConfig | undefined;
     onSwitch: (target: UpstreamConfig, status: number) => void;
+    /** Admission-only validation against the original request; never sends inference. */
+    validateBackup?: (request: Request, target: UpstreamConfig) => Promise<boolean>;
+    onBackupUnavailable?: () => void;
     onTurnEnd?: () => void;
     canSwitch?: () => boolean;
     /** Exact Query/token/route authorization, independent of foreground idle. */
@@ -167,7 +174,17 @@ export class ModelFailoverController implements BridgeModelFailover {
       }
       return true;
     };
-    const runTarget = async (backup: boolean): Promise<Response> => {
+    const resolveBackup = async (): Promise<UpstreamConfig | undefined> => {
+      const target = recoveryLive() ? this.options.resolveBackup() : undefined;
+      if (!target) return undefined;
+      if (this.options.validateBackup && !await this.options.validateBackup(request, target)) return undefined;
+      if (!recoveryLive()) return undefined;
+      // Config/credentials may change while request validation awaits its body.
+      const latest = this.options.resolveBackup();
+      return latest && latest.providerId === target.providerId && latest.model === target.model
+        && latest.baseUrl === target.baseUrl ? latest : undefined;
+    };
+    const runTarget = async (backup: boolean, onAdmitted?: (target: UpstreamConfig) => void): Promise<Response> => {
       const retryLive = () => live() && this.options.canRetry?.() !== false && (!backup || rootLive());
       // Four attempts per inference/provider: initial call plus three safe retries.
       // An SDK replay enters the admission guard instead of acquiring another budget.
@@ -177,8 +194,10 @@ export class ModelFailoverController implements BridgeModelFailover {
           if (!await validateRecoveryResume()) return rootLive() ? replayBlocked() : cancelled();
           if (!recoveryLive()) return cancelled();
         }
-        const target = backup ? (rootLive() ? this.options.resolveBackup() : undefined) : primary;
-        if (!target) return unavailableBackup();
+        const target = backup ? await resolveBackup() : primary;
+        if (!live()) return cancelled();
+        if (!target || (backup && !recoveryLive())) return unavailableBackup();
+        if (attempt === 0) onAdmitted?.(target);
         inferenceAttempts++;
         const response = await executeAttempt(target);
         if (!live()) { cancelResponse(response); return cancelled(); }
@@ -223,14 +242,18 @@ export class ModelFailoverController implements BridgeModelFailover {
             cancelResponse(response);
             response = await runTarget(true);
           } else {
-            const backup = this.options.resolveBackup();
-            if (backup && rootLive()) {
-              state!.backup = true;
+            const backup = await resolveBackup();
+            if (!live()) { cancelResponse(response); return cancelled(); }
+            if (backup && recoveryLive()) {
               usingBackup = true;
               const status = response.status;
               cancelResponse(response);
-              this.options.onSwitch(backup, status);
-              response = await runTarget(true);
+              response = await runTarget(true, admitted => {
+                state!.backup = true;
+                this.options.onSwitch(admitted, status);
+              });
+            } else if (rootLive()) {
+              try { this.options.onBackupUnavailable?.(); } catch { /* diagnostics do not alter recovery */ }
             }
           }
         }
@@ -257,7 +280,8 @@ export class ModelFailoverController implements BridgeModelFailover {
           return rootLive() ? replayBlocked() : cancelled();
         }
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
-        const target = usingBackup ? this.options.resolveBackup() : primary;
+        const target = usingBackup ? await resolveBackup() : primary;
+        if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
         if (!target) { cancelResponse(response); response = unavailableBackup(); break; }
         cancelResponse(response);
         inferenceAttempts++;

@@ -18,8 +18,14 @@ The existing authenticated channel binds service, environment, principal,
 network, device and key generation. The inspected target scope becomes mandatory
 after capabilities. Controller/target channel roles are explicit. Desktop
 targets accept only this Session extension, not Host configuration methods.
-Every request revalidates the local registered enabled Agent, project visibility
-and workspace association. Callers cannot provide a path, runtime configuration,
+Every request revalidates the local registered Agent, project visibility,
+archive state and workspace association, matching the authenticated target
+network-precheck. `AgentConfig.enabled` controls Proactive Agent automation and
+does not authorize explicit same-account remote Session access; remote reads,
+manual messages and artifacts remain available when proactive mode is off.
+Network/mount authorization is still enforced by the authenticated Rust channel.
+Neither remote access nor this policy enables proactive jobs or changes config.
+Callers cannot provide a path, runtime configuration,
 credentials or another caller identity. Private Host Bot Sessions are excluded
 by their persistent `hostBotBinding` birth marker and existing delegation owner.
 
