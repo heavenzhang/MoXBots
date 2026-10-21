@@ -12,7 +12,7 @@ Integrate the accepted remote passive-mode availability repair, six model-policy
 ## Acceptance criteria
 
 - [x] Verify current main, selected remote refs, map/plan, isolated branch, start and task-init gates.
-- [ ] Integrate exact remote 28c05c6fff80316e975d962e28b3e1d302b98a7c (functional 0c20260c49d58eddbfbb24248264366ce0788152), model 2f757f8886e1b77ca0e131f4a85b900b5764a253 and diagnostic b56306f575954a257217fe40bb2f1d64257112ac preserving ancestry and original security/owner fences.
+- [x] Integrate exact remote 28c05c6fff80316e975d962e28b3e1d302b98a7c (functional 0c20260c49d58eddbfbb24248264366ce0788152), model 2f757f8886e1b77ca0e131f4a85b900b5764a253 and diagnostic b56306f575954a257217fe40bb2f1d64257112ac preserving ancestry and original security/owner fences.
 - [ ] Review combined product diff and run affected local unit/integration/DOM/type/lint/version checks; keep simulated evidence distinct.
 - [ ] One exact combined PR CI, protected main merge and remote containment proof; no competing shared workflow or manual rerun without a diagnosed reason.
 - [ ] One newly identified signed/notarized artifact with production updater signature, immutable tag and recorded rollback. No clone of an active build cache.
@@ -25,7 +25,7 @@ Selected heads and base verified against remote; source task records read. Root 
 
 ## Verification
 
-Git project-sync observe/start/task-init passed at actual main bd13. Source-author local tests and synthetic/browser/SDK evidence remain in their original task records and are not relabeled as Root combined checks or production acceptance. Combined tests have not run yet.
+Git project-sync observe/start/task-init passed at actual main bd13. Source-author local tests and synthetic/browser/SDK evidence remain in their original task records and are not relabeled as Root combined checks or production acceptance. Combined tests have not run yet. The three ordinary merges preserve the source heads; only shared-plan heading/append conflicts required resolution, with all current entries retained. Model-policy runtime overlap with diagnostic guards merged additively. Version018/build5181 is synchronized in bothTauri configs and App/DocumentWorker manifests/locks.
 
 ## Blockers and unknowns
 
