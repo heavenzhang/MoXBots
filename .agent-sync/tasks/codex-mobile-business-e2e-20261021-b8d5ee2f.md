@@ -29,7 +29,7 @@ Repository https://github.com/heavenzhang/MoXBots.git, canonical main; this isol
 
 ## Completed
 
-- Original target selection independently read from the human source message. Mac selected connection metadata matches the original phone account; live cloud/auth/mount Ready remains unverified.
+- Original target selection independently read from the human source message. Mac selected connection metadata matches the original phone account. Independent cloud read-only witnesses confirmed Ready and four existing published catalog items before the desktop maintenance window; post-maintenance readiness and actual phone selection remain open.
 - Physical iPhone currently displays no available Bot/three unavailable directory records; installed0.1.0/build2 retained and device is accessible. No runtime/configuration write has occurred.
 - Controlled local upload input and SHA manifest prepared in the private output.
 
@@ -39,12 +39,12 @@ Git project-sync start/task-init PASS on the recorded canonical base. No101 writ
 
 ## Blockers and unknowns
 
-- Existing Mac selected connection metadata does not establish a current authenticated WSS/Ready/published mount. Desktop owner has its own active login/release window; this lane neither operates nor restarts the daily client.
+- The desktop owner currently holds its own maintenance/GUI window. Earlier live Ready/catalog evidence does not establish post-maintenance callability. Wait explicit handback and stable original device before phone UI or task submission; this lane neither operates nor restarts the daily client.
 - Real send/receive and native file-picker/Host complete-byte proof remain unaccepted until the existing target is callable. Speech remains deferred here; no original101 identity/config mutation is authorized as a substitute.
 
 ## Next step
 
-Read existing desktop-owner Bot identity/readiness/activity; independently prepare controlled upload bytes and inspect current iPhone connection/lock state. Do not repeat the already answered target-selection question or infer authorization to change a different principal.
+Wait the desktop owner's explicit handback, then verify stable original Mac Ready and physically refresh/select its existing published Bot. Prove actual phone events before diagnosing no visual change. Perform a bounded new/continued test session and exact119-byte file upload; never automatically replay unknown operations.
 
 
 ## Controlled upload input
@@ -52,3 +52,8 @@ Read existing desktop-owner Bot identity/readiness/activity; independently prepa
 `dev-docs/mobile-002/fixtures/iphone-upload-utf8-v1.txt` is explicit synthetic UTF-8 text only, 119bytes, SHA256`68d303dccf2922a1b9a65c7f0f7bd1b68cbba32427a1f1ba56c1c9897afc2873`. Use the exact pushed commit URL as the download source, the physical system picker as source selection and the existing native upload owner. Compare complete Host bytes and receipt identity, not just file name, UIprogress or HTTP200. No private account/credential/business payload is in this fixture.
 
 Current live-preflight witnesses distinguish the existing Mac and phone under one principal; existing cloud Mac is joined/Ready with published catalog. Phone idle-offline is an allowed lease state. Actual refresh is not yet proved; do not diagnose it from no visible change after a GUI event. Desktop maintenance has priority and phone UI/task submission waits for explicit handback. Only DeviceHub window position changed; original position retained for restoration.
+
+
+## Installed build input assessment
+
+At canonical main29cb959d784d868190c03181ae8f3fc79490e6b2, the complete mobile tree is unchanged from immutable build2 sourceabc822cebb403ef438fff63558d529e33f3f95f3. Native scope2 digest remains3f13255ee21d17197cfee59b33e93e06f51a4faf6d983b39ef2ec719976f0048. Root package/Cargo manifests and locks differ only in the desktop package version0.5.15→0.5.16; dependency entries are unchanged. These changes do not require replacing the accepted build2 bytes. A future selected mobile/native change still requires a distinct internal build. This is source-input evidence, not business-path acceptance. Private proof:installed-input-equivalence.json.
