@@ -17,7 +17,7 @@ Mobile/source integration/CI/sign/install/rollback owner remains01a12b99 under t
 
 Repository https://github.com/heavenzhang/MoXBots.git, canonical main; this isolated task starts at29cb959d784d868190c03181ae8f3fc79490e6b2. Prior core delivery PR174/main31af remains accepted history, not proof of these new business gates. Installed signed internal0.1.0/build2 and its immutable original bytes remain the baseline; changed phone inputs require a new internal build identity.
 
-## To Do List / acceptance criteria
+## Acceptance criteria
 
 - [x] Verify actual checkout/remote/clean canonical base and unique mobile execution ownership; preserve prior worktree.
 - [ ] Resolve existing Mac Bot and phone account/identity/readiness, using read-only evidence; recover only authorized connection state through its existing owner.
@@ -27,9 +27,20 @@ Repository https://github.com/heavenzhang/MoXBots.git, canonical main; this isol
 - [ ] Independently review and normally merge current main, verify remote containment/tree; coordinate the same verified internal phone artifact and physical regression.
 - [ ] Clean only task-owned test artifacts/permissions where appropriate, retain evidence and original business data; report code/CI/installation/real-user gates separately.
 
-## Verification and current evidence
+## Completed
+
+- Original target selection independently read from the human source message. Mac selected connection metadata matches the original phone account; live cloud/auth/mount Ready remains unverified.
+- Physical iPhone currently displays no available Bot/three unavailable directory records; installed0.1.0/build2 retained and device is accessible. No runtime/configuration write has occurred.
+- Controlled local upload input and SHA manifest prepared in the private output.
+
+## Verification
 
 Git project-sync start/task-init PASS on the recorded canonical base. No101 write, daily Mac operation, phone reinstall or runtime restart has occurred in this continuation. Private runtime/evidence records: project pointer output/mobile-business-e2e-20261021/. Never commit credentials, tokens, key material or business contents.
+
+## Blockers and unknowns
+
+- Existing Mac selected connection metadata does not establish a current authenticated WSS/Ready/published mount. Desktop owner has its own active login/release window; this lane neither operates nor restarts the daily client.
+- Real send/receive and native file-picker/Host complete-byte proof remain unaccepted until the existing target is callable. Speech remains deferred here; no original101 identity/config mutation is authorized as a substitute.
 
 ## Next step
 
