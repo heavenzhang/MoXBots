@@ -11,7 +11,7 @@ Root task: SALARY-RECOVERY-20261020. Repository https://github.com/heavenzhang/M
 
 Continue the original Session/Goal at its original native result boundary only after a clean armed durable ledger, stable whole-root request manifest, strict zero tool spill for interrupted requests, paired exact tool IDs/action hashes for delivered tools, and all background runs already authoritatively settled. Reuse SameTurnStreamContinuation and SessionModelRecovery; retain original root/id/absolute deadline and old HTTP fingerprints. No replacement recovery owner, polling, queue, timeout increase, model/permission change or clearing uncertain actions. No changes to frozen candidates, user state, original business sessions, production or App.
 
-## Checkable delivery
+## Acceptance criteria
 
 - [x] Remote/worktree/base/status verified; vendored git-project-sync map → plan → task and architecture/Session/recovery contracts read. observe/start/task-init passed for the explicit remote/base.
 - [x] Production handler, Context/MF, native Pre/PostToolUse/Failure and native result wired; tool evidence revision changes before enqueue/admission; evidence maps independently bounded.
@@ -24,7 +24,7 @@ Continue the original Session/Goal at its original native result boundary only a
 - [ ] Root independent review and actual-main integration (next step).
 - [ ] Actual native/provider and original business-path acceptance after sole-publisher selection; intentionally outside this source-only task.
 
-## Evidence and red/green
+## Completed
 
 Local diagnostic folder (not Git or memory): work/salary-recovery-20261020/settled-stream-continue-diagnostic/ in the root workspace.
 
@@ -36,9 +36,11 @@ Local diagnostic folder (not Git or memory): work/salary-recovery-20261020/settl
 - rollback-reader.jsonl runs actual old 2158/e7 predicates: v1 supported, v2 rejected. New validator rejects missing-proof v2 and a v1 downgrade; pause/wait/rebind/CAS preserve v2.
 - One full run was aborted because a newly introduced global vi.mock factory cached old turn singletons across resetModules. It was replaced by a test-local pre-import transparent spy; the old V1 case plus the entire native file then passed. Aborted fixture log is retained and is not reported as a pass.
 
+## Verification
+
 Final local verification: 22 unit files / 458 tests PASS; seven related integration files / 256 tests PASS (including entire 152-test builtin SDK-loop file). Full TypeScript, scoped ESLint on every changed/new TS path, test classification and diff check PASS. Synthetic SDK/loopback only: no real provider request/native child/App/production action, no CI/build/install/version operation. Exact commands and logs are in diagnostic README. Real writer tests use isolated temporary HOME.
 
-## Explicit limitations
+## Blockers and unknowns
 
 This cannot retroactively prove zero spill for old installed streams or clear historical unknown tools. Cold v2 recovery deliberately pauses: Session/Goal restore or another engine cannot reconstruct live permission from ledger/archive alone. Explicit subsequent business continuation follows existing product admission and completed/unknown action guards. First version conservatively requires terminal proof for every known task edge; ambiguous ambient edges can deny this path. A result arriving before background settlement is not retained. Terminal HTTP rejections and unproven/provider/protocol causes remain blocked. Exact action-hash protection is not a transaction guarantee for semantically changed external operations.
 
