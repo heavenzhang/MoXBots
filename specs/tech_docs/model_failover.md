@@ -37,3 +37,10 @@ SSE 已向 Runtime 交付后如断流、error event 或 EOF 缺 message_stop，�
 验收摘要见 `dev-docs/model-failover-001-acceptance.md`。模拟供应商、真实 SDK loopback、原生安装/真实供应商分别追踪；本任务不改变已冻结的发行候选，由统一发行 owner 选入后续批次。
 
 任务 MOXBOTS-REQUEST-499-20261018 的完整验收、实际 SDK 后台 Agent 与有限重试/工具防重放证据见 `dev-docs/request-499-20261018-acceptance.md`。`scripts/verify-background-lifecycle-loopback.ts` 和三种 failover native 模式（接管、已交付断流、停止重试）进入正常 CI，使用隔离本地合成供应商，不连接用户账户或真实模型。
+
+
+### 流终态的安全首因提示
+
+`onStreamInterruption(cause, diagnostic?)` 的第二参只承载受限origin/category枚举；原cause时机/次数及transport/unproven许可判断不变。provider code仅通过严格allowlist映射到固定类别，未知code/message/body/header均不保留。MF候选与attempt/response绑定，授权retry/backup成功或旧attempt退休后不落Query槽；Context候选只在最终下游error/EOF边界提交。两层都沿现有request取消及owner守卫，诊断不是恢复authority。
+
+exactscope首次失败只存在现有有界QueryRequestGuard admission row，不新增map、revision、持久化、checkpoint字段或cold恢复。相同scope后续blocked409与原blockedSSE附加固定中文首因，既有SDK terminal错误转发显示给原Session；不同显式root即便fingerprint相同也不继承。原HTTP状态/blocked headers和所有防重放/Stop/预算/receipt约束保持。诊断只说明故障来源类别，不表示原任务成功或允许重试。

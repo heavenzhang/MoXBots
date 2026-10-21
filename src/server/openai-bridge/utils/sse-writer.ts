@@ -1,3 +1,4 @@
+import { streamFailureMessage, type StreamFailureDiagnostic } from '../stream-failure-diagnostic';
 // Anthropic SSE event serializer
 
 import type { AnthropicStreamEvent } from '../types/anthropic';
@@ -14,8 +15,8 @@ export function formatSSEFrame(event: SSEEvent): string {
 }
 
 /** Cross-process safety classification; never include the upstream body/error. */
-export function formatReplayBlockedStreamError(): string {
+export function formatReplayBlockedStreamError(diagnostic?: StreamFailureDiagnostic): string {
   return formatSSE({ type: 'error', error: { type: 'api_error',
-    message: 'automatic_replay_blocked: Model stream failed before verified completion. Check preserved progress before continuing.',
+    message: 'automatic_replay_blocked: Model stream failed before verified completion. Check preserved progress before continuing.' + streamFailureMessage(diagnostic),
   } });
 }

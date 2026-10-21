@@ -1,3 +1,7 @@
+## MOXBOTS-NATIVE-GOAL-CONTINUE-20261021 — 安全首因可见性
+
+原生case5正式Continue已入新Query/RC，随后response.failed后SDK重请求409；具体上游原因未知。下一批仅保留受限首因类别与固定提示，exactscope/attempt/request，沿现有有界registry，不改变恢复或执行权限。独立分支codex/native-goal-continue-20261021，任务记录见.agent-sync/tasks/codex-native-goal-continue-20261021-a040b693.md；root独审，desktop统一CI/发布仍由01a12bc2-907a-7702-b6dd-788225c5dfe4负责。源码已冻结并完成作者全integration（125files，1404PASS/32SKIP/0FAIL）及Bridge370unit；独审/主干/实际native验收分开记录，不操作冻结5163或原业务。
+
 ## MOXBOTS-SETTLED-STREAM-CONTINUE-20261021 — 已结清后台中断的原owner续接
 
 原Query native result边界仅在清洁ledger、逐request零工具外溢证明、全root稳定manifest、nonambient背景精确结清及原owner/Stop/CAS一致时，沿原SameTurnStreamContinuation/SessionModelRecovery接续。任务 `.agent-sync/tasks/codex-settled-stream-continue-20261021-08946322.md`。缺证据failclosed，不增等待owner/队列/预算、不修改旧unknown或冻结5162；代码与本地合成验证开发中，native/业务验收另追踪。沿用desktop builtin唯一CI/发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4，由root总审后交下一批。

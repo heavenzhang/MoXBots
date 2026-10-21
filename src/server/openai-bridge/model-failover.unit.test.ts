@@ -353,5 +353,5 @@ it('does not let a retired attempt label a later provider SSE error as transport
   }, 'same-native-request');
   expect(await response.text()).toContain('automatic_replay_blocked');
   expect(attempt).toBe(2); expect(interrupted).not.toHaveBeenCalled(); expect(blocked).toHaveBeenCalledOnce();
-  expect(observed).toHaveBeenCalledExactlyOnceWith('unproven');
+  expect(observed).toHaveBeenCalledExactlyOnceWith('unproven', { origin: 'provider_terminal', category: 'authentication' });
 });

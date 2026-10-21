@@ -1,5 +1,6 @@
+import { safeStreamFailure, streamFailure, streamFailureMessage, type StreamFailureDiagnostic } from './stream-failure-diagnostic';
 import { isModelFailoverStatus } from '../../shared/modelFailover';
-import type { UpstreamConfig, StreamInterruptionCause } from './types/bridge';
+import type { UpstreamConfig, StreamInterruptionCause, StreamInterruptionObserver } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
@@ -10,7 +11,7 @@ import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader'
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>, requestKey?: string): Promise<Response>;
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: StreamInterruptionObserver) => Promise<Response>, requestKey?: string): Promise<Response>;
 }
 
 /** The Session owner commits its checkpoint before authorizing another inference. */
@@ -77,7 +78,7 @@ export class ModelFailoverController implements BridgeModelFailover {
   }
 
   async run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>, requestKey?: string): Promise<Response> {
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: StreamInterruptionObserver) => Promise<Response>, requestKey?: string): Promise<Response> {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive?.() !== false
       && this.options.requestIdentity?.() === requestIdentity;
@@ -89,7 +90,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     const ambiguous = !scope || this.options.canSwitch?.() === false;
     const fingerprint = requestKey ?? `unfingerprinted-${++this.sequence}`;
     const lease = this.guard.begin(scope, fingerprint, ambiguous);
-    if (!lease) return this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked();
+    if (!lease) return this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked(this.guard.failureDiagnostic(scope));
     // Only root-owned recovery may change provider. Ordinary primary inference and
     // its bounded pre-delivery retries remain valid across a parent turn boundary.
     // A request admitted with ambiguous ownership cannot acquire a foreground root
@@ -102,18 +103,22 @@ export class ModelFailoverController implements BridgeModelFailover {
     let streamOwnsFinish = false;
     let activeAttempt = 0;
     let attemptInterruption: StreamInterruptionCause | undefined;
+    let attemptDiagnostic: StreamFailureDiagnostic | undefined;
     let progressBodyReader: ModelBodyReader | undefined;
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
       const attempt = ++activeAttempt;
       attemptInterruption = undefined;
+      attemptDiagnostic = undefined;
       const onModelProgress = (): boolean => {
         if (attempt !== activeAttempt || !live()) return false;
         progressBodyReader?.markProgress();
         return true;
       };
-      const onStreamInterruption = (cause: StreamInterruptionCause) => {
-        if (attempt === activeAttempt && live() && attemptInterruption !== 'unproven') attemptInterruption = cause;
+      const onStreamInterruption: StreamInterruptionObserver = (cause, diagnostic) => {
+        if (attempt !== activeAttempt || !live()) return;
+        if (attemptInterruption !== 'unproven') attemptInterruption = cause;
+        attemptDiagnostic ??= safeStreamFailure(diagnostic);
       };
       return execute(target, onModelProgress, onStreamInterruption);
     };
@@ -280,6 +285,13 @@ export class ModelFailoverController implements BridgeModelFailover {
         }
         return response;
       }
+      const streamedAttempt = activeAttempt;
+      const commitFailure = (fallback: 'transport' | 'protocol_validation' | 'unproven_eof') => {
+        if (streamedAttempt !== activeAttempt || !queryLive()) return;
+        const diagnostic = attemptDiagnostic ?? streamFailure(fallback);
+        lease.recordFailureDiagnostic(diagnostic);
+      };
+      const blockedFrame = () => formatReplayBlockedStreamError(this.guard.failureDiagnostic(scope));
       const reader = response.body.getReader();
       const bodyReader = new ModelBodyReader(reader, request.signal, live, this.options.bodyIdleTimeoutMs);
       progressBodyReader = bodyReader;
@@ -299,11 +311,12 @@ export class ModelFailoverController implements BridgeModelFailover {
             if (next.done) {
               if (isSse && !terminalQueued) {
                 const trustedEof = attemptInterruption !== 'unproven' && !parser.hasIncompleteEvent;
-                primary.onStreamInterruption?.(trustedEof ? 'transport' : 'unproven');
+                primary.onStreamInterruption?.(trustedEof ? 'transport' : 'unproven', attemptDiagnostic ?? streamFailure('unproven_eof'));
                 if (trustedEof) await interruptRecovery('Model stream ended without message_stop', () => consumerCancelled);
                 else await blockRecovery('Model stream ended with unproven provider/protocol failure');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
-                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+                commitFailure('unproven_eof');
+                output.enqueue(encoder.encode(blockedFrame()));
               } else await completeRecovery();
               finish(); output.close(); return;
             }
@@ -314,11 +327,16 @@ export class ModelFailoverController implements BridgeModelFailover {
               const { type } = payload;
               if (hasModelStreamProgress(payload)) bodyReader.markProgress();
               if (type === 'error') {
-                primary.onStreamInterruption?.(attemptInterruption === 'transport' ? 'transport' : 'unproven');
+                // Native Anthropic errors bypass the translators; use only their
+                // known error type if no trusted attempt diagnostic was supplied.
+                attemptDiagnostic ??= streamFailure(attemptInterruption === 'transport' ? 'transport' : 'provider_terminal',
+                  (payload.error as { type?: unknown } | undefined)?.type);
+                primary.onStreamInterruption?.(attemptInterruption === 'transport' ? 'transport' : 'unproven', attemptDiagnostic);
                 if (!terminal && attemptInterruption === 'transport') await interruptRecovery('Model stream delivery transport failed', () => consumerCancelled);
                 else await blockRecovery('Model stream reported an unproven provider/protocol error');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
-                output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+                commitFailure('protocol_validation');
+                output.enqueue(encoder.encode(blockedFrame()));
                 void reader.cancel().catch(() => undefined);
                 finish(); output.close(); return;
               }
@@ -343,7 +361,8 @@ export class ModelFailoverController implements BridgeModelFailover {
           } catch (error) {
             if (queryLive() && !consumerCancelled && !terminalQueued) {
               primary.onStreamInterruption?.(attemptInterruption === 'transport'
-                || (attemptInterruption !== 'unproven' && error instanceof ModelBodyIdleTimeoutError) ? 'transport' : 'unproven');
+                || (attemptInterruption !== 'unproven' && error instanceof ModelBodyIdleTimeoutError) ? 'transport' : 'unproven',
+                attemptDiagnostic ?? streamFailure(error instanceof ModelBodyIdleTimeoutError ? 'transport' : 'protocol_validation'));
             }
             if (!terminalQueued || (recovery && !recoverySettled)) {
               try {
@@ -357,11 +376,16 @@ export class ModelFailoverController implements BridgeModelFailover {
               } catch { /* fail closed */ }
             }
             void reader.cancel().catch(() => undefined);
+            if (isSse && !terminalQueued && !consumerCancelled && queryLive()) {
+              const trusted = attemptInterruption === 'transport'
+                || (attemptInterruption !== 'unproven' && error instanceof ModelBodyIdleTimeoutError);
+              commitFailure(trusted ? 'transport' : 'protocol_validation');
+            }
             finish();
             if (isSse && !terminalQueued && !consumerCancelled && queryLive()) {
               // A socket error would lose its message across HTTP. Deliver a
               // protocol error so the native SDK/Goal owner can pause safely.
-              output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
+              output.enqueue(encoder.encode(blockedFrame()));
               output.close();
             } else output.error(error);
           }
@@ -409,10 +433,10 @@ async function inspectFailure(response: Response): Promise<{ response: Response;
   recoverable: body !== undefined && classifyOpenAiUpstreamFailure(response.status, body).kind !== 'permanent_billing' };
 }
 
-function replayBlocked(): Response {
+function replayBlocked(diagnostic?: StreamFailureDiagnostic): Response {
   return new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error',
     code: 'automatic_replay_blocked',
-    message: 'automatic_replay_blocked: This model request was already delivered, failed, or reached the Query safety limit. Progress is preserved; automatic replay is blocked.' } }),
+    message: 'automatic_replay_blocked: This model request was already delivered, failed, or reached the Query safety limit. Progress is preserved; automatic replay is blocked.' + streamFailureMessage(diagnostic) } }),
   { status: 409, headers: { 'content-type': 'application/json', 'x-should-retry': 'false',
     'x-moxbots-recovery': 'blocked' } });
 }
