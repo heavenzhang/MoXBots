@@ -820,19 +820,28 @@ mod tests {
         let flow = NativeOAuth::bind("https://owned.example", DEVICE)
             .await
             .unwrap();
-        let address = url::Url::parse(&fields(&flow)["redirect_uri"])
+        let task = flow
+            .0
+            .listener
+            .lock()
             .unwrap()
-            .socket_addrs(|| None)
-            .unwrap()[0];
+            .as_ref()
+            .unwrap()
+            .inner()
+            .abort_handle();
+        let owner = Arc::downgrade(&flow.0);
         let other = flow.clone();
         drop(flow);
         accept_code(&other).await;
+        assert!(owner.upgrade().is_some());
+        assert!(!task.is_finished());
         drop(other);
+        assert!(owner.upgrade().is_none());
+        // Observe this listener's actual task termination. Probing its old
+        // ephemeral port can instead connect to another parallel test's socket.
+        // Completion drops the task-owned listener; keep the same bounded limit.
         tokio::time::timeout(Duration::from_secs(1), async {
-            loop {
-                if TcpStream::connect(address).await.is_err() {
-                    break;
-                }
+            while !task.is_finished() {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
         })

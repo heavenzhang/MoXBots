@@ -40,3 +40,9 @@ Native worker未实现manager/client/registry/UI，已只读确认新旧transpor
 修正后的实际本地验证：headless-network与mobile/connection各自cargo check --all-targets均PASS（日志 /tmp/login-oauth-standard-{headless,mobile}-check.log）；desktop owned定向57/57 PASS（/tmp/login-oauth-standard-native-repair-tests.log）；四份登录相关DOM测试84/84 PASS（/tmp/login-oauth-standard-ui-repair.log）。Service worker独立只读审阅模块分离修正，无阻断。后续由既有desktop owner推送修正候选，自动PR CI仍须重新确认；main、服务发布、桌面发布、Air真实验收保持未完成。
 
 第二轮PR head4206b461b0f251f5f7c4c066a378bf63a3ee522b（仅为首次push前补提交rationale，源码tree与896aa5a79一致），Test39662590446的完整native 1783 PASS / 0 FAIL / 8 ignore，但Clippy redlines拒绝新增manager TCP测试内两处原始调用。修正仅将测试server spawn改为tauri::async_runtime::spawn、localhost browser改为crate::local_http::builder，不增加allow或放宽门禁。主Agent实际执行与CI相同的 `cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D clippy::disallowed_methods -D clippy::disallowed_macros`，exit0（仍有既有普通warning）；该真实TCP重试测试定向1/1 PASS。日志 /tmp/login-oauth-standard-clippy-repair.log 与 /tmp/login-oauth-standard-redline-test.log。生产逻辑及服务代码不变；再次交owner更新同PR并收集新精确head完整CI。
+
+同轮macOS CI在并行agent_network回归中发现新增listener last-drop测试1秒旧地址连接探测超时（274PASS/1FAIL/1ignore，日志 /tmp/login-oauth-standard-ci-macos.log）。代码审阅未见Inner自持有，单凭端口可连接不能区分取消调度与被其他测试重绑；不把未复现当无问题。主Agent原测试本机同过滤器默认并行275PASS/1ignore后，将测试改为Weak owner释放和原listener AbortHandle完成态直接验证，仍通过真实TCP callback验证clone保活，保留原1秒上限、无ignore或production修改。非实现者独立复审通过；修正后按macOS CI agent_network默认并行275PASS/0FAIL/1ignore（/tmp/login-oauth-standard-network-parallel-repair.log）。
+
+第二轮其余完整CI已结束：service39662590434 SUCCESS；Test39662590446除上述两项已修正测试问题外，各job成功，条件iOS simulator跳过。不能以此替代最终新head CI或主干。下一步仅一次提交推送最终测试修正，由原owner重新采集精确head完整CI。
+
+最终listener测试修正后，再执行相同all-targets Clippy redlines命令exit0（/tmp/login-oauth-standard-clippy-final.log）；既有普通warnings保留。
