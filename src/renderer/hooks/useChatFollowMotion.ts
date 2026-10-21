@@ -89,6 +89,15 @@ export function useChatFollowMotion({
       }
     };
 
+    // A virtual range can clamp scrollTop after its final size notification and
+    // our last frame, even when the final scrollHeight did not change. Reconcile
+    // that committed scroll once through the same motion owner. Direct user
+    // input already disables follow synchronously; settled geometry does no work.
+    const onScroll = () => {
+      if (frame === null && canFollow() && bottom() - scroller.scrollTop > 1) align();
+    };
+    scroller.addEventListener('scroll', onScroll, { passive: true });
+
     alignRef.current = align;
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(align);
     observer?.observe(scroller);
@@ -98,6 +107,7 @@ export function useChatFollowMotion({
       alignRef.current = () => {};
       cancel();
       observer?.disconnect();
+      scroller.removeEventListener('scroll', onScroll);
       motionPreference?.removeEventListener('change', align);
     };
   }, [scroller, virtuosoRef, followEnabledRef, admitted, recoveryFenced, sessionId, presentationGeneration]);

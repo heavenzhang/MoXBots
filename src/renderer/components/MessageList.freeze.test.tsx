@@ -199,6 +199,33 @@ describe('MessageList — freeze data while inactive (Virtuoso cache-poisoning r
     vi.restoreAllMocks();
   });
 
+  it('notifies recovery only after the announced virtual rows commit to the DOM', () => {
+    const user = msg('newly-mounted-anchor', 'query', 'user');
+    const observedMounts: boolean[] = [];
+    const onItemsRendered = vi.fn((rows: readonly MessageType[]) => {
+      if (rows.length > 0) {
+        observedMounts.push(Boolean(document.querySelector(
+          '[data-message-id="newly-mounted-anchor"]',
+        )));
+      }
+    });
+    const props: React.ComponentProps<typeof MessageList> = {
+      messages: [], streamingMessage: null, isLoading: false,
+      virtuosoRef: { current: null }, followEnabledRef: { current: false },
+      scrollToBottom: vi.fn(), handleAtBottomChange: vi.fn(), onItemsRendered,
+    };
+    const { rerender } = render(<MessageList {...props} />);
+    act(() => {
+      // Virtuoso publishes listState.items before React commits that range.
+      // No second range event is guaranteed for equal-sized replacement rows.
+      lastData().itemsRendered?.([
+        { index: 0, originalIndex: 0, offset: 0, size: 80, data: user },
+      ]);
+      rerender(<MessageList {...props} messages={[user]} />);
+    });
+    expect(observedMounts).toEqual([true]);
+  });
+
   it('publishes committed rows only when presentable, while still allowing recovery to settle', () => {
     const user = msg('accepted-user', 'query', 'user');
     const onItemsRendered = vi.fn();
