@@ -28,7 +28,9 @@ Repository https://github.com/heavenzhang/MoXBots.git, canonical main; this isol
 - [ ] Independently review and normally merge current main, verify remote containment/tree; coordinate the same verified internal phone artifact and physical regression.
 - [ ] Clean only task-owned test artifacts/permissions where appropriate, retain evidence and original business data; report code/CI/installation/real-user gates separately.
 
-## Initial checkpoints (historical; superseded by the physical results below)
+## Completed
+
+Initial checkpoints below are historical and superseded by the physical results in the later section.
 
 - Original target selection independently read from the human source message. Mac selected connection metadata matches the original phone account. Independent cloud read-only witnesses confirmed Ready and four existing published catalog items before the desktop maintenance window; post-maintenance readiness and actual phone selection remain open.
 - Physical iPhone currently displays no available Bot/three unavailable directory records; installed0.1.0/build2 retained and device is accessible. No runtime/configuration write has occurred.
@@ -38,7 +40,7 @@ Repository https://github.com/heavenzhang/MoXBots.git, canonical main; this isol
 
 Git project-sync start/task-init PASS on the recorded canonical base. No101 write, daily Mac operation, phone reinstall or runtime restart has occurred in this continuation. Private runtime/evidence records: project pointer output/mobile-business-e2e-20261021/. Never commit credentials, tokens, key material or business contents.
 
-## Current blockers and unknowns
+## Blockers and unknowns
 
 - The human explicitly prioritized a safely coordinated phone window. Both desktop-granted windows have now been returned; the desktop owner is continuing its own authorized release maintenance. Original Mac directory/list/history and actual manual refresh are physically confirmed. Mobile capabilities/models admission still fails TARGET_RECEIPT_INVALID until the independently reviewed route repair is integrated and runs in a new desktop candidate. Obtain a new explicit handback before further phone UI/task submission; this lane neither operates nor restarts the daily client.
 - Real send/receive and native file-picker/Host complete-byte proof remain unaccepted until the existing target is callable. Speech remains deferred here; no original101 identity/config mutation is authorized as a substitute.
