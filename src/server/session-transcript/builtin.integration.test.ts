@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 import type { TurnTerminalOutcome } from '../session-core/turn-queue';
 import type { Options } from '@anthropic-ai/claude-agent-sdk';
+import type { ContextRecoveryController } from '../openai-bridge/context-recovery';
+import type { ModelFailoverController } from '../openai-bridge/model-failover';
 
 const state = vi.hoisted(() => ({ home: '', failProductIo: false, publicationGate: null as Promise<void> | null, publicationBlocked: false, queryExitGate: null as Promise<void> | null, queryInputEnded: 0, backgroundTask: false, backgroundTaskGate: null as Promise<void> | null, independentInputPump: false, sdkInputs: [] as unknown[], resultMode: 'success' as 'success' | 'error', rejectedResumeAt: null as string | null, sdkCumulativeBase: null as { input: number; output: number } | null, compactAtTurn: null as number | null, resetAtTurn: null as number | null, sdkCommands: [] as unknown[], interruptCloses: false, throwAfterInputEnd: false, beforeTurn: vi.fn(), query: vi.fn(), sdkRead: vi.fn(), sdkFork: vi.fn(), sdkDelete: vi.fn(), rewindFiles: vi.fn(), beforeResult: vi.fn(), sdkResultHandled: vi.fn(), events: [] as [string, unknown][], queuedFollowup: false, exitWithoutResult: false, toolFrames: false, childFrames: false, protocolFrames: [] as Record<string, unknown>[], beforeFrame: vi.fn(), media: vi.fn() }));
 vi.mock('os', async original => ({ ...await original<typeof import('os')>(), homedir: () => state.home }));
@@ -3287,4 +3289,285 @@ it('drops the old native result after a Query replacement across settled-arm awa
     if (fixtureQuery) (await import('../builtin-session/lifecycle')).setQuerySession(fixtureQuery);
     agent.setSidecarPort(0); vi.unstubAllEnvs();
   }
+});
+
+async function startRealtimeBridgeFixture({ successor = true, closeOnInterrupt = false, failSetup = false } = {}) {
+  const recoveryModule = await import('../builtin-session/model-recovery');
+  type Recovery = InstanceType<typeof recoveryModule.SessionModelRecovery>;
+  const recoveries = new Set<Recovery>();
+  const readState = recoveryModule.SessionModelRecovery.prototype.readState;
+  vi.spyOn(recoveryModule.SessionModelRecovery.prototype, 'readState').mockImplementation(function (this: Recovery) {
+    recoveries.add(this); return readState.call(this);
+  });
+  const frames: unknown[] = [];
+  let wake: (() => void) | undefined;
+  let closed = false;
+  let resolveClosed!: () => void;
+  const closedPromise = new Promise<void>(resolve => { resolveClosed = resolve; });
+  const received: { uuid: string; message: unknown }[] = [];
+  const close = () => { closed = true; resolveClosed(); wake?.(); };
+  releaseWrite = close;
+  const emit = (...messages: unknown[]) => { frames.push(...messages); wake?.(); };
+  let sdkOptions!: Options;
+  state.query.mockImplementation((args: { prompt: AsyncIterable<{ uuid: string; message: unknown }>; options: Options }) => {
+    sdkOptions = args.options;
+    const prompt = args.prompt[Symbol.asyncIterator]();
+    void (async () => {
+      while (!closed) {
+        const next = await Promise.race([prompt.next(), closedPromise.then(() => ({ done: true as const, value: undefined }))]);
+        if (next.done) break;
+        received.push(next.value);
+      }
+    })();
+    emit({ type: 'system', subtype: 'init', session_id: args.options.sessionId, uuid: randomUUID(),
+      model: 'fixture-model', tools: [], mcp_servers: [] });
+    return {
+      async next() {
+        while (!closed && !frames.length) await new Promise<void>(resolve => { wake = resolve; });
+        return closed ? { done: true, value: undefined } : { done: false, value: frames.shift() };
+      },
+      [Symbol.asyncIterator]() { return this; },
+      initializationResult: async () => ({ commands: [] }),
+      interrupt: async () => { if (closeOnInterrupt) close(); return { still_queued: received[1] ? [received[1].uuid] : [] }; },
+      cancelAsyncMessage: async () => true, close,
+      mcpServerStatus: async () => [], setModel: async () => {}, setPermissionMode: async () => {}, setMcpServers: async () => {},
+    };
+  });
+  const workspace = join(state.home, 'workspace'); await mkdir(workspace);
+  const providerDir = join(state.home, '.myagents', 'providers'); await mkdir(providerDir, { recursive: true });
+  await writeFile(join(providerDir, 'steering-fixture.json'), JSON.stringify({ id: 'steering-fixture', name: 'fixture', type: 'api', models: [{ model: 'fixture-model' }] }));
+  const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+  agent.setSidecarPort(15432);
+  await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+  await agent.setSessionProviderEnv({ providerId: 'steering-fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-only', apiProtocol: 'openai' });
+  await agent.setSessionModel('fixture-model');
+  const send = (text: string) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined,
+    { channelDelivery: NO_CHANNEL_DELIVERY, queueResponseModeOverride: 'realtime' });
+  const assistant = (text: string) => ({ type: 'assistant', session_id: metadata.id,
+    parent_tool_use_id: null, uuid: randomUUID(), message: { id: randomUUID(), role: 'assistant', model: 'fixture-model',
+      content: [{ type: 'text', text }], usage: { input_tokens: 1, output_tokens: 1 } } });
+  if (failSetup) {
+    const persistence = await import('../builtin-session/transcript-persistence');
+    await agent.enqueueUserMessage('Guarded first input', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, {
+        channelDelivery: NO_CHANNEL_DELIVERY,
+        beforeDispatch: async () => {
+          vi.spyOn(persistence, 'scheduleTranscriptPersist').mockRejectedValueOnce(new Error('fixture admission persistence failed'));
+          return { accepted: true };
+        },
+      });
+    await vi.waitFor(() => expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('error'));
+  } else {
+    await send('Bounded original A');
+    await vi.waitFor(() => expect(received).toHaveLength(1));
+    emit(assistant('A partial'));
+    await vi.waitFor(() => expect(agent.getLastBuiltinAssistantText()).toBe('A partial'));
+  }
+  const turn = await import('../builtin-session/turn');
+  expect(turn.peekPendingOutputOwner()?.sourceItem?.id).toBe(received[0]?.uuid);
+  const base = sdkOptions.env!.ANTHROPIC_BASE_URL!;
+  const bridge = await import('../openai-bridge/bridge-registry');
+  const token = new URL(base).pathname.split('/').at(-1)!;
+  const body = (content: string) => ({ model: 'fixture-model', max_tokens: 16, stream: true,
+    messages: [{ role: 'user' as const, content }] });
+  const oldBody = body('Bounded original A');
+  const oldRequest = new Request(`${base}/v1/messages`, { method: 'POST', body: JSON.stringify(oldBody) });
+  const config = await bridge.lookupBridge(token, oldRequest);
+  expect(config?.modelFailover).toBeDefined();
+  const sessionConfig = config! as NonNullable<typeof config> & {
+    modelFailover: ModelFailoverController; contextRecovery: ContextRecoveryController;
+  };
+  const b = successor ? await send('Explicit successor B') : undefined;
+  if (successor) {
+    await vi.waitFor(() => expect(received).toHaveLength(2));
+    // Stdin yield is not a native result: output FIFO still owns A.
+    expect(turn.peekPendingOutputOwner()?.sourceItem?.id).toBe(received[0].uuid);
+    expect(turn.getCurrentTurnSourceItem()?.id).toBe(received[1].uuid);
+  }
+  return { received, turn, base, bridge, token, body, oldRequest, config: sessionConfig, emit, b, send,
+    getRecovery: () => {
+      // Invoke the existing liveness observer without pinning a failover root.
+      // The recovery instance has otherwise not been read before first run.
+      sessionConfig.contextRecovery.canRetryInference();
+      const recovery = [...recoveries].at(-1);
+      if (!recovery) throw new Error('fixture recovery was not observed');
+      return recovery;
+    } };
+}
+
+it.each(['before', 'after'] as const)('keeps a force-steered native successor outside the cancelled predecessor bridge lease (A lease %s B yield)', async timing => {
+  const { received, turn, base, bridge, token, body, oldRequest, config, emit, send } = await startRealtimeBridgeFixture({ successor: false });
+  let b: Awaited<ReturnType<typeof send>>;
+  if (timing === 'after') {
+    b = await send('Explicit successor B');
+    await vi.waitFor(() => expect(received).toHaveLength(2));
+  }
+  // The real registered Query controller admits an old A inference after B has
+  // crossed stdin, while native A still owns the FIFO. No provider/tool runs.
+  let upstreamCalls = 0;
+  const oldResponse = await config.modelFailover!.run(oldRequest, config, async () => {
+    upstreamCalls++;
+    return new Response(new ReadableStream({ start(output) {
+      output.enqueue(new TextEncoder().encode('data: {"type":"message_start","message":{"content":[]}}\n\n'));
+    } }), { headers: { 'content-type': 'text/event-stream' } });
+  }, 'old-inference');
+  const reader = oldResponse.body!.getReader(); await reader.read();
+  if (timing === 'before') {
+    b = await send('Explicit successor B');
+    await vi.waitFor(() => expect(received).toHaveLength(2));
+  }
+  await reader.cancel();
+  // A's sealed scope still rejects both a replay and a new fingerprint before
+  // the native result transfers the FIFO. No old inference is replayed.
+  for (const fingerprint of ['old-inference', 'old-distinct-retry']) {
+    const retry = new Request(`${base}/v1/messages`, { method: 'POST', body: JSON.stringify(body('A retry')) });
+    const rejected = await config.modelFailover!.run(retry, config, async () => {
+      upstreamCalls++; throw new Error('sealed A reached upstream');
+    }, fingerprint);
+    expect(rejected.status).toBe(409);
+  }
+  const force = agent.forceExecuteQueueItem(b!.queueId!);
+  emit({ type: 'result', session_id: agent.getSessionId()!, uuid: randomUUID(), subtype: 'error_during_execution',
+    is_error: true, terminal_reason: 'aborted_streaming', errors: ['Request interrupted by user'],
+    duration_ms: 1, duration_api_ms: 1, num_turns: 1, total_cost_usd: 0,
+    usage: { input_tokens: 1, output_tokens: 1 }, permission_denials: [] });
+  await vi.waitFor(() => expect(state.events.some(([event, data]) => event === 'queue:started'
+    && (data as { queueId?: string }).queueId === b!.queueId)).toBe(true));
+  await force;
+  expect(turn.peekPendingOutputOwner()?.sourceItem?.id).toBe(received[1].uuid);
+  const nextBody = body('Explicit successor B');
+  const nextRequest = new Request(`${base}/v1/messages`, { method: 'POST', body: JSON.stringify(nextBody) });
+  const nextConfig = await bridge.lookupBridge(token, nextRequest);
+  const response = await nextConfig!.modelFailover!.run(nextRequest, nextConfig!, async () => {
+    upstreamCalls++;
+    return new Response('data: {"type":"message_start","message":{"content":[]}}\n\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn"}}\n\ndata: {"type":"message_stop"}\n\n', { headers: { 'content-type': 'text/event-stream' } });
+  }, 'new-distinct-inference');
+  // Before the fix cancellation of old A wrongly sealed B's scope (409).
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('message_stop');
+  const repeated = await nextConfig!.modelFailover!.run(
+    new Request(nextRequest), nextConfig!, async () => { upstreamCalls++; throw new Error('B replay reached upstream'); },
+    'new-distinct-inference');
+  expect(repeated.status).toBe(409);
+  expect(upstreamCalls).toBe(2);
+  expect(received).toHaveLength(2);
+});
+
+it.each(['genuine', 'cloned-source', 'wrong-root'] as const)('retains only scheduler-proven hidden provider retry recovery (%s)', async provenance => {
+  const { getRecovery, turn, received, emit, base, body } = await startRealtimeBridgeFixture({ successor: false });
+  const recovery = getRecovery();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  try {
+    emit({ type: 'result', session_id: agent.getSessionId()!, uuid: randomUUID(), subtype: 'success',
+      is_error: false, result: '[Error]: Concurrency limit exceeded for account, please retry later',
+      terminal_reason: 'completed', duration_ms: 1, duration_api_ms: 1, num_turns: 1, total_cost_usd: 0,
+      usage: { input_tokens: 1, output_tokens: 1 }, permission_denials: [] });
+    await vi.waitFor(() => expect(state.events.some(([event, data]) => event === 'chat:api-retry'
+      && (data as { attempt?: number } | null)?.attempt === 1)).toBe(true));
+    await vi.advanceTimersByTimeAsync(15_000);
+    await vi.waitFor(() => expect(received).toHaveLength(2));
+  } finally { vi.useRealTimers(); }
+  const original = turn.peekPendingOutputOwner()!.sourceItem!;
+  const retry = turn.getCurrentTurnSourceItem()!;
+  expect(original.id).toBe(received[0].uuid);
+  expect(retry.id).toBe(received[1].uuid);
+  expect(retry).not.toBe(original);
+  expect(retry.transientProviderRetry).toMatchObject({ rootQueueId: original.id, attempt: 1 });
+  if (provenance === 'cloned-source') turn.setCurrentTurnSourceItem({ ...retry, id: randomUUID() });
+  if (provenance === 'wrong-root') retry.transientProviderRetry!.rootQueueId = randomUUID();
+  const module = await import('../builtin-session/stream-continuation');
+  const continuations = new Set<InstanceType<typeof module.SameTurnStreamContinuation>>();
+  const interrupted = module.SameTurnStreamContinuation.prototype.interrupted;
+  vi.spyOn(module.SameTurnStreamContinuation.prototype, 'interrupted').mockImplementation(function (this: InstanceType<typeof module.SameTurnStreamContinuation>) {
+    continuations.add(this); interrupted.call(this);
+  });
+  const request = new Request(`${base}/v1/messages`, { method: 'POST', body: JSON.stringify(body('Retry inference')) });
+  expect(await recovery.interrupted(request)).toBe(provenance === 'genuine');
+  if (provenance === 'genuine') {
+    expect(recovery.readState()).toMatchObject({ kind: 'stream', status: 'waiting', turnId: original.id });
+    expect(store.getBuiltinModelRecovery(agent.getSessionId()!)).toMatchObject({ turnId: original.id });
+    // Deadline failure must settle the retained logical root even though the
+    // latest hidden input has another UUID. It must not silently stay busy.
+    const continuation = [...continuations][0];
+    const checkpoint = recovery.readState()!;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let clock: ReturnType<typeof vi.spyOn> | undefined;
+    try {
+      expect(continuation.schedule()).toBe(true);
+      clock = vi.spyOn(Date, 'now').mockReturnValue(checkpoint.deadlineAt + 1);
+      await vi.advanceTimersByTimeAsync(15_000);
+      await vi.waitFor(() => expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('error'));
+      expect(state.events.some(([event]) => event === 'chat:agent-error')).toBe(true);
+      expect(store.getBuiltinModelRecovery(agent.getSessionId()!)).toMatchObject({ status: 'paused', turnId: original.id });
+      expect(turn.peekPendingOutputOwner()).toBeNull();
+    } finally { clock?.mockRestore(); vi.useRealTimers(); }
+  } else {
+    expect(recovery.readState()).toBeUndefined();
+    expect(store.getBuiltinModelRecovery(agent.getSessionId()!)).toBeUndefined();
+  }
+  expect(received).toHaveLength(2);
+});
+
+it('does not arm recovery or settled continuation for A after realtime B was admitted', async () => {
+  const { getRecovery, oldRequest, config, received } = await startRealtimeBridgeFixture();
+  const recovery = getRecovery();
+  expect(await recovery.interrupted(oldRequest)).toBe(false);
+  expect(await recovery.armSettledInterruption()).toBe(false);
+  expect(recovery.readState()).toBeUndefined();
+  expect(store.getBuiltinModelRecovery(agent.getSessionId()!)).toBeUndefined();
+  expect(config.contextRecovery?.canRetryInference()).toBe(true);
+  expect(received).toHaveLength(2); // No synthetic continuation jumps B.
+});
+
+it('does not adopt an A recovery across preparation await after realtime B admission', async () => {
+  const { getRecovery, oldRequest, send, received } = await startRealtimeBridgeFixture({ successor: false });
+  const recovery = getRecovery();
+  const context = await import('../openai-bridge/context-recovery');
+  let release!: () => void;
+  let entered = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const protect = context.ContextRecoveryController.prototype.protectInference;
+  vi.spyOn(context.ContextRecoveryController.prototype, 'protectInference').mockImplementationOnce(async function (this: InstanceType<typeof context.ContextRecoveryController>, body) {
+    entered = true; await gate; return protect.call(this, body);
+  });
+  const pending = recovery.interrupted(oldRequest);
+  try {
+    await vi.waitFor(() => expect(entered).toBe(true));
+    await send('Explicit successor B');
+    await vi.waitFor(() => expect(received).toHaveLength(2));
+  } finally { release(); }
+  expect(await pending).toBe(false);
+  expect(recovery.readState()).toBeUndefined();
+  expect(store.getBuiltinModelRecovery(agent.getSessionId()!)).toBeUndefined();
+  expect(received).toHaveLength(2);
+});
+
+it('does not retire executing A when only SDK-queued B is cancelled', async () => {
+  const { config, b, turn, received } = await startRealtimeBridgeFixture();
+  const end = vi.spyOn(config.modelFailover!, 'endTurn');
+  await expect(agent.cancelQueueItem(b!.queueId!)).resolves.toMatchObject({ status: 'cancelled' });
+  expect(turn.peekPendingOutputOwner()?.sourceItem?.id).toBe(received[0].uuid);
+  expect(end).not.toHaveBeenCalled();
+  expect(received).toHaveLength(2);
+});
+
+it('retires the executing FIFO root when Stop ends the Query without an SDK result', async () => {
+  const { config, turn, received } = await startRealtimeBridgeFixture({ successor: false, closeOnInterrupt: true });
+  const end = vi.spyOn(config.modelFailover!, 'endTurn');
+  await expect(agent.interruptCurrentResponse()).resolves.toBe(true);
+  await vi.waitFor(() => expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('stopped'));
+  expect(turn.peekPendingOutputOwner()).toBeNull();
+  expect(end).toHaveBeenCalledOnce();
+  expect(received).toHaveLength(1);
+});
+
+it('retires empty pre-dispatch setup authority without consuming an output owner', async () => {
+  const module = await import('../openai-bridge/model-failover');
+  const end = vi.spyOn(module.ModelFailoverController.prototype, 'endTurn');
+  const { turn, received } = await startRealtimeBridgeFixture({ successor: false, failSetup: true });
+  expect(turn.peekPendingOutputOwner()).toBeNull();
+  expect(received).toHaveLength(0);
+  expect(end).toHaveBeenCalledOnce();
+  expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('error');
 });

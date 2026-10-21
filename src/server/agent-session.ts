@@ -1252,6 +1252,9 @@ function stageSessionBoundAssistantBlock(text: string | (() => string | undefine
 
 let isApiRetrying = false;  // Track api_retry state to clear when streaming resumes
 let transientProviderRetryTimer: ReturnType<typeof setTimeout> | null = null;
+// Only the existing scheduler can prove a hidden retry retains this exact
+// native FIFO source; a matching rootQueueId string alone grants no authority.
+const transientProviderRetryRoots = new WeakMap<MessageQueueItem, MessageQueueItem>();
 
 type RewoundQueryInputGate = {
   retirement: AbortController;
@@ -1396,6 +1399,8 @@ function scheduleTransientProviderRetry(decision: TransientProviderTextRetry): b
       attempt: decision.attempt,
     },
   };
+  const nativeRoot = currentExclusiveRecoverySource();
+  if (nativeRoot) transientProviderRetryRoots.set(retryItem, nativeRoot);
   const scheduledSessionId = sessionId;
   transientProviderRetryTimer = setTimeout(() => {
     transientProviderRetryTimer = null;
@@ -1472,6 +1477,13 @@ function removePendingOutputOwnerByQueueId(queueId: string | null | undefined): 
 }
 
 function takeCurrentOutputOwner(): PendingOutputOwner | null {
+  // Retire the executing native root before the FIFO exposes its successor.
+  // A force-send survivor deliberately skips the ordinary turn cleanup, while
+  // the Session failover adapter pins its original scope until endTurn().
+  if (peekPendingOutputOwner()) {
+    activeSessionModelFailover?.endTurn();
+    activeSessionContextRecovery?.endTurn();
+  }
   return turnPopPendingOutputOwner();
 }
 
@@ -1707,8 +1719,23 @@ let activeSessionContextRecovery: ContextRecoveryController | undefined;
 let activeSessionModelRecovery: SessionModelRecovery | undefined;
 let activeSessionStreamContinuation: SameTurnStreamContinuation | undefined;
 let streamInferenceGeneration = 0;
+function currentBridgeExecutionSource(): MessageQueueItem | undefined {
+  // Native output still belongs to FIFO A when realtime stdin has accepted B.
+  // First inputs enter this FIFO before yield; same-turn continuations retain
+  // their original slot. An empty FIFO grants no root from the latest input.
+  return peekPendingOutputOwner()?.sourceItem;
+}
+function currentExclusiveRecoverySource(): MessageQueueItem | undefined {
+  const source = currentBridgeExecutionSource();
+  const current = getCurrentTurnSourceItem();
+  // Recovering A must never jump an independently accepted successor B.
+  return source && current && (source === current || (
+    current.transientProviderRetry?.rootQueueId === source.id
+    && transientProviderRetryRoots.get(current) === source
+  )) ? source : undefined;
+}
 function currentBridgeInferenceScope(): string | undefined {
-  const root = getCurrentTurnSourceItem()?.id;
+  const root = currentBridgeExecutionSource()?.id;
   return root && streamInferenceGeneration ? `${root}:stream:${streamInferenceGeneration}` : root;
 }
 function recordStreamRecoveryEvidence(streamRecovery: StreamRecoveryEvidence): void {
@@ -1963,8 +1990,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         recoveryOwner: { sessionId: productSessionId, sdkSessionId: nativeHistoryId },
         persistLedger: (ledger, stillCurrent) => saveBuiltinContextLedger(productSessionId, nativeHistoryId, ledger, isCurrent, stillCurrent),
         scope: currentBridgeInferenceScope,
-        protectStreaming: () => failoverEnabled && !!getCurrentTurnSourceItem()
-          && getCurrentTurnSourceItem()?.turnOwner?.kind !== 'task' && !hasBuiltinBackgroundWork(),
+        protectStreaming: () => failoverEnabled && !!currentExclusiveRecoverySource()
+          && currentExclusiveRecoverySource()?.turnOwner?.kind !== 'task' && !hasBuiltinBackgroundWork(),
         isActive: isCurrent,
         requestIdentity: routeIdentity,
         canRecover: () => !hasBuiltinBackgroundWork(),
@@ -1990,7 +2017,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       activeSessionModelRecovery = new SessionModelRecovery({
         read: () => getBuiltinModelRecovery(productSessionId),
         current: () => {
-          const source = getCurrentTurnSourceItem();
+          const source = currentExclusiveRecoverySource();
           if (!source || source.turnOwner?.kind === 'task' || !exactHistory()) return undefined;
           return { sdkSessionId: nativeHistoryId, routeIdentity: currentModelRecoveryRoute(), turnId: source.id,
             goalId: source.turnOwner?.kind === 'goal' ? source.turnOwner.id : undefined };
@@ -2002,13 +2029,13 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         },
         prepareSettledInterruption: async () => {
           const authority = getCurrentQueryAuthority();
-          const root = getCurrentTurnSourceItem();
+          const root = currentExclusiveRecoverySource();
           if (!authority || !root || root.turnOwner?.kind === 'task' || !isCurrentQueryAuthority(authority)
             || !exactHistory() || builtinInterrupt.isInterrupting() || hasBuiltinBackgroundWork()) return undefined;
           const settled = snapshotSettledQueryBackground(authority);
           if (!settled) return undefined;
           const live = () => settled() && isCurrent() && exactHistory() && !builtinInterrupt.isInterrupting()
-            && getCurrentTurnSourceItem() === root && !getCurrentProductSessionMetadata()?.pendingConversationMutation
+            && currentExclusiveRecoverySource() === root && !getCurrentProductSessionMetadata()?.pendingConversationMutation
             && !getCurrentProductSessionMetadata()?.sdkResumeSessionAt;
           return activeSessionContextRecovery?.prepareSettledInterruption(live);
         },
@@ -2050,9 +2077,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
       const context = activeSessionContextRecovery;
       activeSessionStreamContinuation = new SameTurnStreamContinuation({
         recovery,
-        rootId: () => getCurrentTurnSourceItem()?.id,
+        rootId: () => currentExclusiveRecoverySource()?.id,
         isLive: () => isCurrent() && !builtinInterrupt.isInterrupting() && !hasBuiltinBackgroundWork()
-          && getCurrentTurnSourceItem()?.turnOwner?.kind !== 'task'
+          && !!currentExclusiveRecoverySource() && currentExclusiveRecoverySource()?.turnOwner?.kind !== 'task'
           && !getCurrentProductSessionMetadata()?.pendingConversationMutation
           && !getCurrentProductSessionMetadata()?.sdkResumeSessionAt,
         advance: body => {
@@ -2071,7 +2098,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         },
         onFailure: (reason, rootId) => {
           if (activeSessionBridgeToken !== token || sessionId !== productSessionId
-            || getCurrentTurnSourceItem()?.id !== rootId || !isTurnInFlight()
+            || currentExclusiveRecoverySource()?.id !== rootId || !isTurnInFlight()
             || lifecycleState.abortRequested || builtinInterrupt.isInterrupting()) return;
           const error = `automatic_replay_blocked: Stream continuation stopped (${reason}); confirmed progress was preserved.`;
           const terminal = handleMessageError(error);
@@ -7607,6 +7634,9 @@ function handleToolResultComplete(toolUseId: string, content: string, isError?: 
 
 const builtinTurnLifecycle = createBuiltinTurnLifecycle({
   endModelFailoverTurn: () => {
+    // The FIFO pop already retired the native predecessor. A successor may
+    // own SDK output now; an old Product cleanup must not retire that root.
+    if (peekPendingOutputOwner()) return;
     activeSessionModelFailover?.endTurn();
     activeSessionContextRecovery?.endTurn();
   },
