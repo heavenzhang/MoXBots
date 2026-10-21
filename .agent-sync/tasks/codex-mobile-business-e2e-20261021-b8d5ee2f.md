@@ -20,10 +20,11 @@ Repository https://github.com/heavenzhang/MoXBots.git, canonical main; this isol
 ## Acceptance criteria
 
 - [x] Verify actual checkout/remote/clean canonical base and unique mobile execution ownership; preserve prior worktree.
-- [ ] Resolve existing Mac Bot and phone account/identity/readiness, using read-only evidence; recover only authorized connection state through its existing owner.
+- [x] Resolve existing Mac Bot and phone account/identity/readiness using read-only cloud/native witnesses and actual physical directory/list/history; no identity/configuration repair was required. Mobile catalog admission remains a separate reproduced defect.
 - [ ] Create a bounded test conversation from the physical iPhone; verify durable operation/session identity, actual Host execution and reply, then continue the same session without duplicate work.
 - [ ] Select a controlled file in the actual iPhone picker; upload through native transport to the selected existing Host; compare complete bytes/size/SHA and confirm the attachment/result in the conversation.
-- [ ] Reproduce any defect with meaningful regression; implement under the correct state owner, run appropriate local/integration and exact-candidate CI.
+- [x] Reproduce production mobile route rejection, add RED regression, implement minimal exact-role registration and pass185 related local cases plus type/lint/classification.
+- [ ] Obtain exact-candidate shared CI and owner-integrated main delivery; source repair is not a live acceptance result.
 - [ ] Independently review and normally merge current main, verify remote containment/tree; coordinate the same verified internal phone artifact and physical regression.
 - [ ] Clean only task-owned test artifacts/permissions where appropriate, retain evidence and original business data; report code/CI/installation/real-user gates separately.
 
@@ -44,7 +45,7 @@ Git project-sync start/task-init PASS on the recorded canonical base. No101 writ
 
 ## Next step
 
-Wait the desktop owner's explicit handback, then verify stable original Mac Ready and physically refresh/select its existing published Bot. Prove actual phone events before diagnosing no visual change. Perform a bounded new/continued test session and exact119-byte file upload; never automatically replay unknown operations.
+Submit the independently reviewed exact server-route repair and evidence to the existing desktop unit owner for its shared CI/main/next immutable candidate. Preserve frozen516.4. After deployment and a fresh safe phone handback, recheck capabilities, actual new/continued test Session and system-picker119-byte file/Host digest; never automatically replay unknown operations.
 
 
 ## Controlled upload input
@@ -57,3 +58,8 @@ Current live-preflight witnesses distinguish the existing Mac and phone under on
 ## Installed build input assessment
 
 At canonical main29cb959d784d868190c03181ae8f3fc79490e6b2, the complete mobile tree is unchanged from immutable build2 sourceabc822cebb403ef438fff63558d529e33f3f95f3. Native scope2 digest remains3f13255ee21d17197cfee59b33e93e06f51a4faf6d983b39ef2ec719976f0048. Root package/Cargo manifests and locks differ only in the desktop package version0.5.15→0.5.16; dependency entries are unchanged. These changes do not require replacing the accepted build2 bytes. A future selected mobile/native change still requires a distinct internal build. This is source-input evidence, not business-path acceptance. Private proof:installed-input-equivalence.json.
+
+
+## Actual original-Mac reproduction and source repair
+
+Both granted phone windows explicitly returned; DeviceHub geometry restored and keyboard capture off. Existing CodexLocal list/history actually read; catalog chain still failed TARGET_RECEIPT_INVALID and blocked attachments/sending. No new Session/model/upload/original business mutation occurred. Production composition omitted three mobile/asset exact routes; minimal fix and failing-before/passing-after tests completed on integrated main9c01aa370e607e7fd0404f4a3062f8ebed316fbe. Full evidence/boundaries:dev-docs/mobile-002/original-mac-business-acceptance-20261021.md. Desktop server is the affected deployment unit; sole desktop owner01a12bc2 receives CI/main/new-candidate intake. Phone source/build2 unchanged; speech deferred. Shared CI/main/deployed repair and actual send/upload remain pending.

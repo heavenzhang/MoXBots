@@ -78,6 +78,8 @@ const SESSION_EXACT_PATHS = new Set([
   '/api/image',
   // Rust delegates live transcript reads to the selected Session owner.
   '/api/internal/session/text-page',
+  // Native artifact metadata is resolved by the selected Session owner.
+  '/api/remote-assets/resolve',
   '/api/audio',
   '/api/interaction-scenario/set',
   '/api/mcp/set',
@@ -112,6 +114,8 @@ const SESSION_PREFIXES = [
 
 const GLOBAL_EXACT_PATHS = new Set([
   '/api/remote-session/prepare',
+  // Only Global may prepare a frozen mobile Session birth.
+  '/api/remote-mobile/prepare',
   '/agent/upload',
   '/api/assets/qr-code',
   '/api/browser/session/retire',
@@ -143,6 +147,9 @@ const COMMON_EXACT_PATHS = new Set([
   // The handler still requires the internal credential and exact generation.
   '/api/process/update-quiesce',
   '/api/remote-session',
+  // Global reads capabilities/models/receipts; Session owns turn admission.
+  // The handler retains its native credential, generation and target guards.
+  '/api/remote-mobile',
   '/api/im/model-options',
   '/api/proxy/set',
   // Both Global one-shots and Session Queries own managed-provider leases.
