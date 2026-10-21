@@ -251,7 +251,9 @@ export type EventName =
   // 服务端统一 AI turn 事件。由 trackServer() 上报，但仍属于同一事件契约。
   | 'ai_turn_complete'
   // 自动选模型：每个被路由的新轮次一条，不含用户原文。
-  | 'auto_route_decide';
+  | 'auto_route_decide'
+  // 请外援：每次把任务交给另一个档位模型时一条，不含用户原文与任务内容。
+  | 'route_assist_dispatch';
 
 /**
  * session_new 事件参数

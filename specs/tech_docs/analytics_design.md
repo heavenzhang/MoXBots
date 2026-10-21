@@ -296,6 +296,7 @@ Server-side AI turn:
 
 - `ai_turn_complete`
 - `auto_route_decide`
+- `route_assist_dispatch`
 
 `auto_route_decide` is emitted once per new builtin turn that auto routing
 chose a model for (Session in auto mode, idle at admission). It records
@@ -304,6 +305,11 @@ chose a model for (Session in auto mode, idle at admission). It records
 `has_backup`, `classifier_model`, `classifier_ok`, `classifier_cached`,
 `classifier_latency_ms` and total `latency_ms`. It never carries message text.
 Queued or mid-turn messages are not routed and do not emit it.
+
+`route_assist_dispatch` is emitted once per `route assist` call (请外援). It
+records `provider_id`, `model`, `tier` of the model that helped, `attempts`
+and `file_count`. It never carries the task package, the reply or file
+contents.
 
 `ai_turn_complete` is the canonical usage event for a successfully completed
 root turn. Builtin emits after a non-aborted successful result; the shared

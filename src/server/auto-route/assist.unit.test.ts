@@ -35,7 +35,6 @@ vi.mock('../title-generator', () => ({ generateUtilityText: vi.fn() }));
 const catalogFixture = catalog as unknown as AutoRouteCatalog;
 const { dispatchAssist, describeAssistCandidates, findAssistCandidate, listAssistCandidates, AutoRouteAssistError } = await import('./assist');
 const { cliRequestTimeoutMs, isUnboundedCliRoute } = await import('../../cli/myagents');
-const { requestSignal } = await import('../../cli/myagents');
 
 function meta(extra: Partial<SessionMetadata> = {}): SessionMetadata {
   return { id: 'session-1', agentDir: '/w', title: 't', createdAt: '', lastActiveAt: '', runtime: 'builtin', providerId: 'ds', model: 'deepseek-v4.1', ...extra } as SessionMetadata;

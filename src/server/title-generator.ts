@@ -33,6 +33,7 @@ import type { RuntimeSource, RuntimeType } from '../shared/types/runtime';
 import { ensureDirSync } from './utils/fs-utils';
 import { createGuardedSdkQuery } from './utils/sdk-child-launch-guard';
 import { getPreparedSdkSystemPrompt, prepareProviderBinding, type PreparedProvider } from './utils/managed-proxy-binding';
+import { isSdkEffortLevel, normalizeReasoningEffort } from '../shared/reasoningEffort';
 
 const TITLE_MAX_LENGTH = 30;
 export const BUILTIN_TITLE_TIMEOUT_MS = 30_000;
@@ -215,6 +216,15 @@ export interface TextUtilityTask {
   signal?: AbortSignal;
   requireSuccessfulTerminal?: boolean;
   settingSources?: Array<'project'>;
+  /** Wall-clock budget. Omitted = the short classification budget; `null` =
+   *  no budget at all (real generative work that ends on its own or on
+   *  `signal`). */
+  timeoutMs?: number | null;
+  /** Bridge diagnostics label prefix. */
+  label?: string;
+  /** Present = generative work: honour this effort setting ('default' | level)
+   *  instead of forcing the cheapest no-thinking classification path. */
+  reasoning?: { effort?: string };
 }
 
 /** Isolated SDK text turn: no tools, MCP, transcript persistence or Product Session writes. */
@@ -237,7 +247,8 @@ async function generateUtilityTextAdmitted(
   // dedicated /bridge/<token> path, fully isolated from the active session.
   // For Anthropic-direct / subscription title-gen, no token is needed.
   const bridge = providerEnv?.apiProtocol === 'openai'
-    ? startOneShotBridge(providerEnv, model, `title-gen:${providerEnv.baseUrl ?? 'anthropic'}`, undefined, requestConversationId)
+    ? startOneShotBridge(providerEnv, model, `${task.label ?? 'title-gen'}:${providerEnv.baseUrl ?? 'anthropic'}`, undefined, requestConversationId,
+      task.reasoning ? normalizeReasoningEffort(task.reasoning.effort) : undefined)
     : null;
   const controller = new AbortController();
   let prepared: PreparedProvider | undefined;
@@ -245,7 +256,8 @@ async function generateUtilityTextAdmitted(
   const aborted = new Promise<null>(resolve => { resolveAbort = () => resolve(null); });
   const abort = () => { controller.abort(); resolveAbort(); };
   task.signal?.addEventListener('abort', abort, { once: true });
-  const deadline = setTimeout(abort, BUILTIN_TITLE_TIMEOUT_MS);
+  const timeoutMs = task.timeoutMs === null ? null : (task.timeoutMs ?? BUILTIN_TITLE_TIMEOUT_MS);
+  const deadline = timeoutMs === null ? null : setTimeout(abort, timeoutMs);
   try {
     const preparing = prepareProviderBinding({ providerEnv, model, controller });
     void preparing.then(binding => { if (controller.signal.aborted && prepared !== binding) return binding.release(); }).catch(() => {});
@@ -257,7 +269,7 @@ async function generateUtilityTextAdmitted(
   } catch {
     return null;
   } finally {
-    clearTimeout(deadline);
+    if (deadline) clearTimeout(deadline);
     task.signal?.removeEventListener('abort', abort);
     controller.abort();
     await prepared?.release().catch(() => console.warn('[cliproxy] Title binding release was not confirmed'));
@@ -322,8 +334,13 @@ async function generateTitleInner(
         // Title generation is a short text-classification task. Adaptive thinking
         // can spend the whole one-shot budget on hidden reasoning or delay first
         // text on strong reasoning models, so force the cheapest text path.
-        thinking: { type: 'disabled' },
-        effort: 'low',
+        // Generative callers opt into their own effort ('default' = SDK default).
+        ...(task.reasoning
+          ? (() => {
+              const effort = normalizeReasoningEffort(task.reasoning.effort);
+              return isSdkEffortLevel(effort) ? { effort } : {};
+            })()
+          : { thinking: { type: 'disabled' as const }, effort: 'low' as const }),
         includePartialMessages: false,
         persistSession: false,
         mcpServers: {},
@@ -354,9 +371,10 @@ async function generateTitleInner(
     if (!titleQuery) return null;
     let titleText: string | null = null;
 
-    // Race: SDK response vs timeout
+    // Race: SDK response vs (optional) timeout
     const timeoutPromise = new Promise<null>((resolve) => {
-      timeout = setTimeout(() => { controller.abort(); resolve(null); }, BUILTIN_TITLE_TIMEOUT_MS);
+      if (task.timeoutMs === null) return; // no wall-clock budget for this caller
+      timeout = setTimeout(() => { controller.abort(); resolve(null); }, task.timeoutMs ?? BUILTIN_TITLE_TIMEOUT_MS);
     });
 
     const queryPromise = (async (): Promise<string | null> => {

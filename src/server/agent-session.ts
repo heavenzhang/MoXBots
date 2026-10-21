@@ -185,6 +185,9 @@ import {
 } from './utils/session-materialization';
 import { isManagedCodexProviderReady } from './utils/managed-codex-readiness';
 import { canonicalizeManagedProviderEnv, findEffectiveProvider, findProjectAgentByWorkspacePath, getDefaultEnabledOfficialToolIdsForWorkspace, getEffectiveMcpServers, getEffectiveOfficialToolIdsForSession, isCliToolRegistryEnabled, loadConfig as loadAdminConfig, resolveSubscriptionAuthKind, resolveWorkspaceConfig } from './utils/admin-config';
+// The 请外援 hint only reads a process-local flag kept by the auto-route module;
+// importing it here must never pull router.ts in (depcruise no-circular).
+import { getRouteAssistEnabled } from './auto-route/assist-hint';
 import type { AgentConfig } from '../shared/types/agent';
 import {
   invalidateMcpEffectiveSnapshot,
@@ -11430,26 +11433,6 @@ export function isAutoAllowedRecordCliCommand(command: string): boolean {
   );
 }
 
-/** 请外援 is offered only where it can actually run: the current builtin
- *  Session can see an auto-routing tier model other than its own. Read at
- *  every Query replacement, so turning auto routing on takes effect without a
- *  restart. A config read failure just hides the hint. */
-async function routeAssistEnabled(): Promise<boolean> {
-  try {
-    const { buildAutoRouteCatalog } = await import('./auto-route/router');
-    const { listAssistCandidates } = await import('./auto-route/assist');
-    const { isAutoRoutingEnabled, autoModelKey } = await import('../shared/autoRoute');
-    const catalog = buildAutoRouteCatalog(loadAdminConfig());
-    if (!isAutoRoutingEnabled(catalog.settings)) return false;
-    const providerId = getSessionProviderId();
-    const model = getSessionModel();
-    if (!providerId || !model) return false;
-    return listAssistCandidates(catalog, { providerId, model }).length > 0;
-  } catch {
-    return false;
-  }
-}
-
 async function startStreamingSession(preWarm = false): Promise<void> {
   if (isUpdateRestartFrozen()) return;
   const sessionMutationBarrier = getSessionMutationBarrier();
@@ -12127,7 +12110,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           cliToolsEnabled: !launchModelOnlyCloudBot,
           userCliToolsEnabled: !launchModelOnlyCloudBot && cliToolRegistryEnabled,
           enabledOfficialToolIds,
-          routeAssist: await routeAssistEnabled(),
+          routeAssist: getRouteAssistEnabled(),
         }), launchHostBotBootstrap?.snapshot.config.system_prompt].filter(Boolean).join('\n\n'),
       },
       cwd: agentDir,

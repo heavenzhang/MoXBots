@@ -26,6 +26,7 @@ import type { SessionMetadata } from '../types/session';
 import { loadConfig, type AdminAppConfig } from '../utils/admin-config';
 import { assertSafeFilePath } from '../utils/safe-file-path';
 import { buildAutoRouteCatalog, resolveAutoRouteEnv, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './router';
+import { setRouteAssistAvailable } from './assist-hint';
 
 const MAX_PROMPT_CHARS = 200_000;
 const MAX_FILES = 12;
@@ -86,6 +87,24 @@ export function listAssistCandidates(catalog: AutoRouteCatalog, current: AutoMod
     }
   }
   return result;
+}
+
+/** Record the answer for the system prompt hint; any failure hides it. */
+export function refreshRouteAssistAvailability(sessionMeta: SessionMetadata | null | undefined): boolean {
+  try {
+    if (!sessionMeta || (sessionMeta.runtime ?? 'builtin') !== 'builtin' || sessionMeta.providerExecutionIdentity) {
+      setRouteAssistAvailable(false);
+      return false;
+    }
+    const catalog = buildAutoRouteCatalog();
+    const available = isAutoRoutingEnabled(catalog.settings)
+      && listAssistCandidates(catalog, currentRef(sessionMeta)).length > 0;
+    setRouteAssistAvailable(available);
+    return available;
+  } catch {
+    setRouteAssistAvailable(false);
+    return false;
+  }
 }
 
 /** Exact `provider/model` first, then a unique model id or display name. */

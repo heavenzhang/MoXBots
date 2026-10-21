@@ -1055,10 +1055,15 @@ export async function handleRouteExplain(payload: { prompt?: unknown }): Promise
 }
 
 export async function handleRouteCandidates(): Promise<AdminResponse> {
-  const { describeAssistCandidates, assistErrorResponse } = await import('./auto-route/assist');
+  const { describeAssistCandidates, assistErrorResponse, refreshRouteAssistAvailability } = await import('./auto-route/assist');
+  const sessionMeta = getSessionEngine().getCurrentSessionContext().sessionMeta ?? null;
   try {
-    return { success: true, data: describeAssistCandidates(getSessionEngine().getCurrentSessionContext().sessionMeta ?? null) };
+    const data = describeAssistCandidates(sessionMeta);
+    // The primary just learned who can help; let the next Query expose the hint.
+    refreshRouteAssistAvailability(sessionMeta);
+    return { success: true, data };
   } catch (error) {
+    refreshRouteAssistAvailability(sessionMeta);
     return assistErrorResponse(error);
   }
 }
