@@ -1,5 +1,6 @@
 import { safeStreamFailure, type StreamFailureDiagnostic } from './stream-failure-diagnostic';
 import { readBoundedErrorBody } from './read-error-body';
+import type { AdmissionRejectionReason } from './recovery-causal-diagnostics';
 
 type RejectedResponse = { status: number; body: string; headers: Record<string, string> };
 const MAX_REJECTION_BYTES = 1_048_576;
@@ -25,6 +26,16 @@ export class QueryRequestGuard {
   private proofDisabled = false;
   private readonly blocked = new Set<string | undefined>();
   private exhausted = false;
+
+  constructor(private readonly onRejected?: (reason: AdmissionRejectionReason) => void) {}
+
+  private rejectAdmission(reason: AdmissionRejectionReason): undefined {
+    try {
+      const observed: unknown = this.onRejected?.(reason);
+      if (observed instanceof Promise) void observed.catch(() => {});
+    } catch { /* A diagnostic cannot change this decision. */ }
+    return undefined;
+  }
 
   isBlocked(scope: string | undefined, ambiguous = false): boolean {
     return this.blocked.has(scope) || (ambiguous && this.blocked.size > 0);
@@ -93,11 +104,16 @@ export class QueryRequestGuard {
     const key = JSON.stringify([scope, fingerprint]);
     // Unknown/background ownership must not escape a retired root's replay fence.
     // A distinct, unambiguous foreground root can intentionally infer from the same history.
-    if (this.exhausted || this.isBlocked(scope, ambiguous)
-      || this.requests.has(key) || (ambiguous && [...this.requests.values()].some(row => row.fingerprint === fingerprint))) return undefined;
+    if (this.exhausted) return this.rejectAdmission('registry_exhausted');
+    if (this.isBlocked(scope, ambiguous)) return this.rejectAdmission(
+      this.blocked.has(scope) ? 'blocked_exact_scope' : 'blocked_ambiguous_scope');
+    if (this.requests.has(key)) return this.rejectAdmission('duplicate_exact_key');
+    if (ambiguous && [...this.requests.values()].some(row => row.fingerprint === fingerprint)) {
+      return this.rejectAdmission('duplicate_ambiguous_fingerprint');
+    }
     // Never evict safety evidence while a native Query can still replay it. The owner
     // releases this bounded registry with the Query, rather than silently reopening requests.
-    if (this.requests.size >= 4096) { this.exhausted = true; return undefined; }
+    if (this.requests.size >= 4096) { this.exhausted = true; return this.rejectAdmission('registry_capacity'); }
     const row: AdmissionRow = { fingerprint, scope, inFlight: true, toolUseIds: new Set() };
     this.requests.set(key, row);
     this.revision++;

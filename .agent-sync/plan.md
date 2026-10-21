@@ -1,3 +1,7 @@
+## MOXBOTS-RECOVERY-CAUSAL-DIAGNOSTICS-20261022 — 下一未冻结批的安全补证
+
+仅补未来Query准入拒绝枚举、fetch本地错误码/abort类别及原native工具reserve/commit串行点的脱敏阶段；不改变安全条件、返回HTTP、ledger、Stop、重试/恢复权限或预算。任务 `.agent-sync/tasks/codex-recovery-causal-diagnostics-20261022-8df66bab.md`。从指定263起点核查后，因main仅有mobile build3变动而在新clean树FF actual7db通过start门；目标源字节一致。当前5168/source52/tag263/签名包保持冻结，原solepublisher01a12bc2-907a-7702-b6dd-788225c5dfe4继续现稳定晋级，不等待本任务。开发只交源分支与聚焦本地测试，下一未冻结批的统一CI/main/构建/原生验收由其选择。新增日志不是历史根因查明、业务完成或恢复授权。
+
 ## MOXBOTS-LOGIN-RETURN-02 — 浏览器登录的可靠交付与原生提交
 
 用户反馈 Air 原设备网页登录后客户端不变，要求重构机制。任务 `.agent-sync/tasks/codex-login-transaction-02-d5dbc807.md`，设计 `dev-docs/login-transaction-02/design.md`。服务端 opt-in 可重取同一 session 并在 native 保存发布后 ACK；native 单飞后台 driver、阶段投影、staged 恢复及无 bearer 的提交回执；UI 卸载仅 detach，显式取消及真实身份边界仍生效。保留原账号/设备/凭据权限，不迁移数据库，不新增监听端口。

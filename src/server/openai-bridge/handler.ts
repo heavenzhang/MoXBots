@@ -23,7 +23,7 @@ import { StreamTranslator } from './translate/stream';
 import { ResponsesStreamTranslator } from './translate/stream-responses';
 import { translateError } from './translate/errors';
 import { SSEParser } from './utils/sse-parser';
-import { transportDiagnostic } from './transport-diagnostics';
+import { fetchFailureDiagnostic, transportDiagnostic } from './transport-diagnostics';
 import { formatSSE } from './utils/sse-writer';
 import { buildPromptCacheKey, hashForLog, promptCacheTarget } from './prompt-cache';
 import {
@@ -751,6 +751,11 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
           request.signal.removeEventListener('abort', onDownstreamAbort);
         }
         const isTimeout = didHeadersTimeout;
+        try {
+          const observed: unknown = log(fetchFailureDiagnostic(err, { headersTimedOut: didHeadersTimeout,
+            downstreamAborted: request.signal.aborted, controllerAborted: controller.signal.aborted }));
+          if (observed instanceof Promise) void observed.catch(() => {});
+        } catch { /* A diagnostic cannot change the original mapped HTTP/error response. */ }
         // undici surfaces the real reason on `err.cause` (TypeError: fetch failed
         // is the wrapper). Inline the cause so logs aren't useless.
         const causeRaw = err instanceof Error ? (err as Error & { cause?: unknown }).cause : undefined;
