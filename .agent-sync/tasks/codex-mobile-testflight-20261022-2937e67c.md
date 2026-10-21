@@ -41,8 +41,12 @@ The current launcher PNG was independently viewed as a duplicated, cropped multi
 
 ## Blockers and unknowns
 
-The desktop owner is finishing an in-flight native read-only check and will explicitly hand back a short Xcode Accounts/Device Hub window. Until then, no shared native input. Actual selected-team capability, ASC app record, distribution provisioning, highest uploaded build number, export classification and review metadata must be verified, not invented. No upload, invitation or installation success is claimed.
+The desktop owner is finishing an in-flight native read-only check and will explicitly hand back a short Xcode Accounts/Device Hub window. Until then, no shared native input. Actual selected-team capability, ASC app record, distribution provisioning, highest uploaded TestFlight build number, export classification and review metadata must be verified, not invented. No upload, invitation or installation success is claimed.
 
 ## Next step
 
 Use the explicit GUI window to read the existing Xcode account/team capability and selected phone's official nearby-pairing state; return the window immediately. Continue ASC authentication/inventory independently where possible. Request only a concrete unresolved Apple verification or fact after inspecting existing configuration. Private receipts are in the project pointer output/mobile-testflight-20261022; credentials, device records and generated applications stay outside Git.
+
+## Fresh development build identity
+
+The human removed Kevin's old App and requested a fresh installation with the corrected launcher. The sole mobile owner allocates internal0.1.0/build3 for this new development-signed candidate; build2/tag/bytes remain immutable and Xu is not updated. A separate final TestFlight build number will be allocated only after actual ASC inventory, preventing a development IPA from being relabeled as distribution. Exact source, internal-tag reservation, runtime native digest, signed archive and final on-device version are separate receipts. Existing development certificate has now been verified from its X509 OU as the original teamQJ5URBG9AP; the display-name personal identifier is not used as team authority.

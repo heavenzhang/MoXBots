@@ -4,7 +4,7 @@ The human explicitly requested TestFlight upload through the existing developer 
 
 ## Source and launcher
 
-The task begins from protected main263b1cf5c064c7ee5f375fd5c3f5697854e35723. The existing mobile version is0.1.0/build2. A new distribution build number remains unassigned until real ASC inventory is checked; do not assume a free number or overwrite an existing artifact/tag.
+The task begins from protected main263b1cf5c064c7ee5f375fd5c3f5697854e35723. The existing mobile version is0.1.0/build2. Internal fresh-development build3 is now allocated by the sole mobile owner for Kevin's new-icon installation, keeping build2 immutable and Xu unchanged. The separate final TestFlight upload build remains unassigned until real ASC inventory; never relabel the development IPA or overwrite a tag.
 
 The old mobile/app/assets/icon.png (SHA256339790a1a341a04a977578d1ade916aedd501aac3c5abcdb29551384ea4a58e5) was actually viewed by both the implementation owner and independent reviewer. It showed repeated cropped colour-channel shapes rather than the canonical single blue M. The cause is not attributed to a particular encoder without proof.
 
