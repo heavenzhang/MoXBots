@@ -110,6 +110,29 @@ describe('chat follow motion', () => {
     expect(frames.size).toBe(0);
   });
 
+  it('settles a late virtualizer clamp without leaving a permanent motion loop', () => {
+    const f = fixture();
+    advance();
+    // A range commit can clamp scrollTop after the prior motion has settled,
+    // while final scrollHeight is unchanged and no size event follows it.
+    f.scroller.scrollTop = 495;
+    act(() => f.scroller.dispatchEvent(new Event('scroll')));
+    for (let i = 0; i < 20; i++) advance();
+    expect(f.scroller.scrollTop).toBe(500);
+    expect(frames.size).toBe(0);
+    f.scrollTo.mockClear();
+    act(() => f.scroller.dispatchEvent(new Event('scroll')));
+    advance();
+    expect(f.scrollTo).not.toHaveBeenCalled();
+    expect(frames.size).toBe(0);
+    f.props.followEnabledRef.current = false;
+    f.scroller.scrollTop = 400;
+    act(() => f.scroller.dispatchEvent(new Event('scroll')));
+    advance();
+    expect(f.scrollTo).not.toHaveBeenCalled();
+    expect(frames.size).toBe(0);
+  });
+
   it('stops before the next write when user intent changes, even without a React commit', () => {
     const f = fixture();
     f.grow(200);

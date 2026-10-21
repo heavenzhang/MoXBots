@@ -62,6 +62,8 @@ App 的 Tab memo comparator 只让 active Chat 响应 presentation 对象变化�
 - 目标 row 尚未挂载：在 fence 内只调用一次 `scrollToIndex({align:'start'})` 请求挂载；最终 offset 等待 Virtuoso `itemsRendered` 后结算。`align:start` 是内部 mounting step，不是可见最终状态。
 - 目标 message 已删除：结束事务，不猜相邻位置。
 
+Virtuoso 的 `itemsRendered` 来自同步 list-state 发布，可能早于该范围的 React DOM 提交。MessageList 先接收并按行身份、位置和尺寸去重，在 layout effect 中再通知恢复和启动 owner；不能直接把原始事件当成 DOM 已挂载。否则等高范围替换可能不再发第二次事件，恢复 fence 会一直保留，直到用户滚动取消。
+
 所有 callback 都核对当前 Session、presentation generation 与 pending transaction identity。发送消息/回到底部、搜索、工具定位，以及 `useVirtuosoScroll` 已识别的 wheel/touch/scrollbar/viewport-key 输入优先级更高，会取消未完成的 continuity transaction。恢复 fence 内禁止普通跟随对齐；恢复后已经到底时不得再次发出滚动命令。
 
 ## 5. 不变量与禁止项
@@ -89,7 +91,7 @@ Virtuoso 的 Footer 必须使用模块级稳定组件类型，动态内容通过
 
 搜索、工具/Query 定位与 rewind/retry 调用 `pauseAutoScroll()` 后保持阅读模式，直到用户回到底部；不以固定500/2000ms定时器恢复过去的跟随决定。新的阅读输入还通过 Virtuoso 的 `scrollBy({top:0, behavior:'auto'})` 取消进行中的原生平滑滚动。react-virtuoso 4.18.3 原版的 index 定位会在动画停止后继续响应尺寸变化并重试旧目标；`scripts/patch-react-virtuoso.mjs` 在库的 scrollToIndex owner 内让新的 scrollBy 清除旧的测量/动画订阅及超时，两个模块格式一起校验并修复。版本固定为4.18.3，安装时应用，开发/构建/typecheck前验证；升级时必须重跑真实浏览器取消定位回归并评估移除补丁。
 
-同一补丁还修正 element viewport 的垂直滚动范围投影。React 替换可见行时会先移除旧行、再更新 list padding；WebKit 可按中间状态缩小的 scrollHeight 钳制位置，即使最终总高度没有变化。Viewport 中一个绝对定位、无交互且对辅助技术隐藏的节点直接投影库已有的 `totalListHeight + deviation`，在提交期间维持模型声明的滚动范围。它位于测量列表之外，不持有高度缓存，不参与行/header/footer 测量，不改变 viewport 自身尺寸；自然内容可以超出它，行缩短也仍触发列表 ResizeObserver 并更新模型。禁止给测量列表设置固定高度或 min-height，否则可能屏蔽缩小通知、留下空白。Window/custom scroll parent 已有库级模型高度投影，horizontal 路径保持原行为。不能用原生 scroll 事件无限追底补偿中间状态回退，那会使可见范围在两段历史间持续震荡。
+同一补丁还修正 element viewport 的垂直滚动范围投影。React 替换可见行时会先移除旧行、再更新 list padding；WebKit 可按中间状态缩小的 scrollHeight 钳制位置，即使最终总高度没有变化。Viewport 中一个绝对定位、无交互且对辅助技术隐藏的节点直接投影库已有的 `totalListHeight + deviation`，在提交期间维持模型声明的滚动范围。它位于测量列表之外，不持有高度缓存，不参与行/header/footer 测量，不改变 viewport 自身尺寸；自然内容可以超出它，行缩短也仍触发列表 ResizeObserver 并更新模型。禁止给测量列表设置固定高度或 min-height，否则可能屏蔽缩小通知、留下空白。Window/custom scroll parent 已有库级模型高度投影，horizontal 路径保持原行为。不能用原生 scroll 事件无条件追底补偿中间状态回退，那会使可见范围在两段历史间持续震荡。既有 motion owner 仅在当前 follow 意图有效、没有在途动画且已提交位置仍离底时，合并一次 scroll 通知重新结算；已到底或用户开始阅读时不创建帧、不写入位置，不能恢复过去的 follow 意图。
 
 MessageList 将 `followOutput` 固定为 `false`，因为 react-virtuoso 4.18.3 的同数量尺寸增长/viewport缩小路径只检查原始prop是否为false，并不会调用function形式的策略。自动跟随由 MessageList 的 `useChatFollowMotion` / `alignFollowingViewport` 统一处理：React layout commit、Virtuoso `totalListHeightChanged` 和 scroller resize 都更新同一运动循环；每帧读取当前 scrollHeight，通过 Virtuoso `scrollTo({top, behavior:"auto"})` 的像素 API 移动，不直接写 scrollTop，也不为每次更新重新启动原生 smooth。
 
@@ -125,6 +127,8 @@ MessageList 的呈现准入与 recovery fence 继续由现有 owner 裁决；不
 - geometry admission / frozen input：`src/renderer/components/MessageList.tsx`
 - follow motion（无独立意图状态）：`src/renderer/hooks/useChatFollowMotion.ts`
 - continuity transaction：`src/renderer/hooks/useChatScrollController.ts`
+
+`node scripts/verify-chat-blank.mjs webkit` 使用真实列表核验 DOM 提交后才发布已渲染消息、五轮隐藏/恢复与零高度变换保持阅读锚点，以及滚轮接管后持续新输出不再移动阅读位置。
 
 回归测试至少覆盖：visible blur 零恢复命令、latest-wins native sampling、generation reducer、inactive/最小化 frozen input、首次在恢复 generation mount、follow/anchor 两种恢复、unmounted anchor event-driven settlement、Session switch、旧 generation callback、显式用户导航抢占和 inactive Tab memo 隔离。Windows WebView2 与 macOS WKWebView 真机还要验证事件时线和无首句/顶部/底部闪跳；源码审计不能代替真机门禁。
 

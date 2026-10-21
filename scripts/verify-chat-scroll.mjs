@@ -182,7 +182,7 @@ try {
   }
   await page.waitForTimeout(300);
   const streamed = await bottom('streamed');
-  assert.equal(streamed.statusY, initial.statusY);
+  assert.ok(Math.abs(streamed.statusY - initial.statusY) <= 1, 'streaming moved the settled status row beyond pixel rounding');
   assert.ok(await status.evaluate(el => el === document.querySelector('[data-chat-status-row]')));
 
   // One bounded burst must move through several painted frames, not jump by a line.
