@@ -1,9 +1,13 @@
+import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionModelRecovery } from './model-recovery';
+import { createBridgeHandler } from '../openai-bridge/handler';
+import { ModelFailoverController } from '../openai-bridge/model-failover';
+import { SameTurnStreamContinuation } from './stream-continuation';
 import { ContextRecoveryController } from '../openai-bridge/context-recovery';
 import type { AnthropicRequest } from '../openai-bridge/types/anthropic';
 
@@ -117,4 +121,126 @@ describe('durable model recovery through the real SessionStore', () => {
     await expect(h.make().recovery.admit(h.request())).rejects.toThrow('stopped');
     fixture.failIndex = false;
   });
+});
+
+
+describe('native result settled-stream integration with the original writer and recovery owner', () => {
+  it.each([undefined, 'same-goal'])('continues two namespaces on the same budget and rejects cold proof for %s', async goalId => {
+    const id = randomUUID(); const native = randomUUID();
+    await store.saveSessionMetadata({ id, sdkSessionId: native, agentDir: fixture.home, title: 'isolated proof',
+      createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin' });
+    let now = Date.now(); let generation = 0; let background = false; let active = true;
+    let queued: { marker: string; reminder: string } | undefined;
+    const scope = () => `original-root:${generation}`;
+    const context = new ContextRecoveryController({ scope, isActive: () => active, canRecover: () => !background,
+      protectStreaming: () => !background, recoveryOwner: { sessionId: id, sdkSessionId: native },
+      backup: (value, metadata) => store.archiveBuiltinContextRequest(id, value, metadata, () => active),
+      archiveSettledInterruption: (value, digest, scope, live) => store.archiveBuiltinSettledInterruption(id, value, { digest, scope }, () => active && live()),
+      persistLedger: (value, live) => store.saveBuiltinContextLedger(id, native, value, () => active, live) });
+    context.bindNoDispatchOwner({ sessionId: id, sdkSessionId: native, queryGeneration: 1, isCurrent: () => active });
+    const prepare = async (request: Request) => context.protectInference(await request.json());
+    const options = { read: () => store.getBuiltinModelRecovery(id),
+      write: (next: import('../../shared/modelRecovery').ModelRecoveryState | undefined, expected: import('../../shared/modelRecovery').ModelRecoveryState | undefined, live: () => boolean) => store.updateBuiltinModelRecovery(id, native, next, expected, live, () => active),
+      current: () => ({ sdkSessionId: native, routeIdentity: 'same-route', turnId: 'original-root', goalId }),
+      isLive: () => active, prepare, prepareSettledInterruption: () => context.prepareSettledInterruption(() => active && !background),
+      now: () => now, onInterrupted: () => continuation.interrupted() };
+    const recovery = new SessionModelRecovery(options);
+    const continuation = new SameTurnStreamContinuation({ recovery, rootId: () => 'original-root', isLive: () => active && !background,
+      advance: value => { const protectedActions = context.prepareStreamContinuation(value); generation++; failover.endTurn(); return protectedActions; },
+      enqueue: (permit, reminder) => { queued = { marker: permit.marker, reminder }; return true; }, observe: () => {} , now: () => now });
+    const failover = new ModelFailoverController({ scope, isActive: () => active, canRetry: () => context.canRetryInference(),
+      canSwitch: () => !background, resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0], recovery });
+    const events = (partial = false) => [
+      { type: 'message_start', message: { id: 'fixture', type: 'message', role: 'assistant', model: 'fixture', content: [], usage: { input_tokens: 1, output_tokens: 0 } } },
+      ...(!partial ? [{ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 1 } }, { type: 'message_stop' }] : []),
+    ].map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    let partial = false; let dispatches = 0;
+    const upstream = createServer(async (request, response) => {
+      for await (const _chunk of request) { /* drain fixture input without storing it */ }
+      dispatches++; response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(events(partial));
+    });
+    await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+    const address = upstream.address(); if (!address || typeof address === 'string') throw new Error('fixture listen failed');
+    const handler = createBridgeHandler({ logger: null,
+      getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'anthropic', baseUrl: `http://127.0.0.1:${address.port}`, apiKey: 'fixture', contextRecovery: context, modelFailover: failover }) });
+    try {
+    const body: AnthropicRequest = { model: 'fixture', max_tokens: 16, stream: true, messages: [
+      { role: 'user', content: 'Continue only from completed action.' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'historic-write', name: 'write_record', input: { record: 1 } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'historic-write', content: 'committed' }] },
+    ] };
+    const run = async (value: AnthropicRequest) => handler(new Request('http://localhost/v1/messages', { method: 'POST', body: JSON.stringify(value), headers: { 'content-type': 'application/json' } }));
+    expect(await (await run(body)).text()).toContain('message_stop');
+    background = true; partial = true;
+    const backgroundBody = structuredClone(body); backgroundBody.messages.push({ role: 'user', content: 'background inference' });
+    expect(await (await run(backgroundBody)).text()).toContain('automatic_replay_blocked');
+    background = false;
+    const next = structuredClone(body); next.messages.push({ role: 'user', content: 'foreground after background terminal' });
+    expect((await run(next)).status).toBe(409);
+    now = Date.now();
+    expect(await recovery.armSettledInterruption()).toBe(true);
+    const first = store.getBuiltinModelRecovery(id)!;
+    const durableLedger = store.loadBuiltinContextLedger(id, native) as { streamArmedOnly: boolean };
+    expect(durableLedger.streamArmedOnly).toBe(false);
+    const coldContext = new ContextRecoveryController({ scope, initialLedger: durableLedger, isActive: () => true,
+      backup: async () => 'unused' });
+    expect(await coldContext.authorizeTool('write_record', { record: 1 }, 'cold-replay')).toContain('already completed');
+    const disk = JSON.parse(await readFile(join(fixture.home, '.myagents', 'sessions.json'), 'utf8'));
+    expect(disk[0].modelRecovery.liveProof).toEqual(first.liveProof);
+    const proofPath = join(fixture.home, '.myagents', 'context-recovery', id, `${first.liveProof!.receiptId}.json`);
+    const proof = JSON.parse(await readFile(proofPath, 'utf8'));
+    expect(proof.request.kind).toBe('settled-stream-no-tool-dispatch');
+    expect(proof.request.manifest.fingerprints).toHaveLength(2);
+    now = first.nextRetryAt;
+    expect(continuation.schedule()).toBe(true);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(queued).toBeDefined(); next.messages.push({ role: 'user', content: queued!.reminder });
+    expect(continuation.authorizeRequest(next)).toBe(true);
+    partial = true;
+    expect(await (await run(next)).text()).toContain('automatic_replay_blocked');
+    const second = store.getBuiltinModelRecovery(id)!;
+    expect(second.id).toBe(first.id); expect(second.deadlineAt).toBe(first.deadlineAt);
+    now = second.nextRetryAt; queued = undefined;
+    expect(continuation.schedule()).toBe(true); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(queued).toBeDefined();
+    const final = structuredClone(next); final.messages.push({ role: 'user', content: queued!.reminder });
+    expect(continuation.authorizeRequest(final)).toBe(true);
+    partial = false; expect(await (await run(final)).text()).toContain('message_stop');
+    expect(store.getBuiltinModelRecovery(id)!.id).toBe(first.id);
+    expect(await context.authorizeTool('write_record', { record: 1 }, 'replay-id')).toContain('already completed');
+    const cold = new SessionModelRecovery(options);
+    await expect(cold.admit(new Request('http://localhost/model'))).rejects.toThrow('live Query proof');
+    expect(store.getBuiltinModelRecovery(id)!.status).toBe('paused');
+    expect(dispatches).toBe(4);
+    } finally {
+      active = false; continuation.reset(); upstream.closeAllConnections();
+      await new Promise<void>(resolve => upstream.close(() => resolve()));
+    }
+  });
+});
+
+it('Stop fences a settled checkpoint committed by the writer before arm has adopted its return value', async () => {
+  const id = randomUUID(); const native = randomUUID(); const now = Date.now();
+  await store.saveSessionMetadata({ id, sdkSessionId: native, agentDir: fixture.home, title: 'isolated Stop CAS',
+    createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin' });
+  let release!: () => void; let committed = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const options = { read: () => store.getBuiltinModelRecovery(id),
+    write: async (next: import('../../shared/modelRecovery').ModelRecoveryState | undefined, expected: import('../../shared/modelRecovery').ModelRecoveryState | undefined, live: () => boolean) => {
+      const accepted = await store.updateBuiltinModelRecovery(id, native, next, expected, live, () => true);
+      if (accepted && next?.status === 'waiting') { committed = true; await gate; }
+      return accepted;
+    }, current: () => ({ sdkSessionId: native, routeIdentity: 'route', turnId: 'original-root', goalId: 'goal' }),
+    isLive: () => true, prepare: async () => {}, now: () => now,
+    prepareSettledInterruption: async () => ({ id: 'isolated-proof', archive: 'fixture-proof', interruptedAt: now, isCurrent: () => true }) };
+  const recovery = new SessionModelRecovery(options);
+  const arm = recovery.armSettledInterruption();
+  try {
+    await vi.waitFor(() => expect(committed).toBe(true));
+    expect(await recovery.pause('user stopped')).toBe(true);
+    expect(store.getBuiltinModelRecovery(id)).toMatchObject({ version: 2, status: 'paused' });
+  } finally { release(); await arm; }
+  const disk = JSON.parse(await readFile(join(fixture.home, '.myagents', 'sessions.json'), 'utf8'));
+  expect(disk[0].modelRecovery.status).toBe('paused');
+  await expect(new SessionModelRecovery(options).admit(new Request('http://localhost/model'))).rejects.toThrow();
 });

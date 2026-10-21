@@ -1,5 +1,5 @@
 import { isModelFailoverStatus } from '../../shared/modelFailover';
-import type { UpstreamConfig } from './types/bridge';
+import type { UpstreamConfig, StreamInterruptionCause } from './types/bridge';
 import { classifyOpenAiUpstreamFailure } from './translate/errors';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
@@ -10,7 +10,7 @@ import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader'
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => boolean) => Promise<Response>, requestKey?: string): Promise<Response>;
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>, requestKey?: string): Promise<Response>;
 }
 
 /** The Session owner commits its checkpoint before authorizing another inference. */
@@ -77,7 +77,7 @@ export class ModelFailoverController implements BridgeModelFailover {
   }
 
   async run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => boolean) => Promise<Response>, requestKey?: string): Promise<Response> {
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: (cause: StreamInterruptionCause) => void) => Promise<Response>, requestKey?: string): Promise<Response> {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive?.() !== false
       && this.options.requestIdentity?.() === requestIdentity;
@@ -101,16 +101,21 @@ export class ModelFailoverController implements BridgeModelFailover {
     const delays = this.options.retryDelaysMs ?? [250, 750, 1500];
     let streamOwnsFinish = false;
     let activeAttempt = 0;
+    let attemptInterruption: StreamInterruptionCause | undefined;
     let progressBodyReader: ModelBodyReader | undefined;
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
       const attempt = ++activeAttempt;
+      attemptInterruption = undefined;
       const onModelProgress = (): boolean => {
         if (attempt !== activeAttempt || !live()) return false;
         progressBodyReader?.markProgress();
         return true;
       };
-      return execute(target, onModelProgress);
+      const onStreamInterruption = (cause: StreamInterruptionCause) => {
+        if (attempt === activeAttempt && live() && attemptInterruption !== 'unproven') attemptInterruption = cause;
+      };
+      return execute(target, onModelProgress, onStreamInterruption);
     };
     const cancelResponse = (response: Response) => { void response.body?.cancel().catch(() => undefined); };
     const recovery = !ambiguous ? this.options.recovery : undefined;
@@ -293,7 +298,10 @@ export class ModelFailoverController implements BridgeModelFailover {
             if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
-                await interruptRecovery('Model stream ended without message_stop', () => consumerCancelled);
+                const trustedEof = attemptInterruption !== 'unproven' && !parser.hasIncompleteEvent;
+                primary.onStreamInterruption?.(trustedEof ? 'transport' : 'unproven');
+                if (trustedEof) await interruptRecovery('Model stream ended without message_stop', () => consumerCancelled);
+                else await blockRecovery('Model stream ended with unproven provider/protocol failure');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
               } else await completeRecovery();
@@ -306,8 +314,9 @@ export class ModelFailoverController implements BridgeModelFailover {
               const { type } = payload;
               if (hasModelStreamProgress(payload)) bodyReader.markProgress();
               if (type === 'error') {
-                if (!terminal) await interruptRecovery('Model stream delivered an error event', () => consumerCancelled);
-                else await blockRecovery('Model stream delivered an error after its terminal');
+                primary.onStreamInterruption?.(attemptInterruption === 'transport' ? 'transport' : 'unproven');
+                if (!terminal && attemptInterruption === 'transport') await interruptRecovery('Model stream delivery transport failed', () => consumerCancelled);
+                else await blockRecovery('Model stream reported an unproven provider/protocol error');
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 output.enqueue(encoder.encode(formatReplayBlockedStreamError()));
                 void reader.cancel().catch(() => undefined);
@@ -332,12 +341,18 @@ export class ModelFailoverController implements BridgeModelFailover {
               if (!consumerCancelled) output.close();
             }
           } catch (error) {
+            if (queryLive() && !consumerCancelled && !terminalQueued) {
+              primary.onStreamInterruption?.(attemptInterruption === 'transport'
+                || (attemptInterruption !== 'unproven' && error instanceof ModelBodyIdleTimeoutError) ? 'transport' : 'unproven');
+            }
             if (!terminalQueued || (recovery && !recoverySettled)) {
               try {
                 const reason = !queryLive() ? 'Model response delivery was cancelled'
                   : error instanceof ModelBodyIdleTimeoutError ? 'Model response body idle timeout (upstream_body_idle_timeout)'
                     : 'Model response delivery failed';
-                if (!terminal) await interruptRecovery(reason, () => consumerCancelled);
+                const trustedTransport = attemptInterruption === 'transport'
+                  || (attemptInterruption !== 'unproven' && error instanceof ModelBodyIdleTimeoutError);
+                if (!terminal && trustedTransport) await interruptRecovery(reason, () => consumerCancelled);
                 else await blockRecovery(reason);
               } catch { /* fail closed */ }
             }

@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 // between majors). Importing fetch from the same package guarantees the
 // dispatcher and fetch share the same internal contract.
 import { fetch, ProxyAgent, type Dispatcher } from 'undici';
-import type { BridgeConfig, UpstreamConfig } from './types/bridge';
+import type { BridgeConfig, UpstreamConfig, StreamInterruptionCause } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
 import type { OpenAIRequest, OpenAIResponse, OpenAIStreamChunk } from './types/openai';
 import type { ResponsesRequest, ResponsesResponse, ResponsesStreamEvent } from './types/openai-responses';
@@ -36,6 +36,12 @@ import { resolveBridgeModel } from './translate/model';
 import { opencodeGoHeaders } from '../opencode-go-request';
 import { readBoundedErrorBody } from './read-error-body';
 import { composeAcceptedAttemptModelProgress } from './model-progress';
+
+const KNOWN_RESPONSES_EVENTS = new Set(['response.created', 'response.in_progress', 'response.completed', 'response.failed',
+  'response.incomplete', 'error', 'response.output_item.added', 'response.output_item.done',
+  'response.content_part.added', 'response.content_part.done', 'response.output_text.delta', 'response.output_text.done',
+  'response.function_call_arguments.delta', 'response.function_call_arguments.done',
+  'response.reasoning_summary_text.delta', 'response.reasoning_summary_text.done']);
 
 const DEFAULT_TIMEOUT = 300_000; // 5 minutes
 const THOUGHT_SIG_CACHE_MAX = 500; // Max cached thought_signatures to prevent unbounded growth
@@ -402,7 +408,10 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
           const next = await reader.read();
           if (next.done) { cleanup(); output.close(); }
           else { output.enqueue(next.value); bytesDelivered += next.value.byteLength; }
-        } catch (error) { if (!consumerCancelled) diagnostic('response_body', error); cleanup(); output.error(error); }
+        } catch (error) {
+          if (!consumerCancelled && !request.signal.aborted) upstream.onStreamInterruption?.('transport');
+          if (!consumerCancelled) diagnostic('response_body', error); cleanup(); output.error(error);
+        }
       },
       async cancel() {
         consumerCancelled = true;
@@ -480,9 +489,9 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
     }
 
     if (upstream.contextRecovery) {
-      const response = await upstream.contextRecovery.run(request, anthropicReq, projected => handler(new Request(request.url, {
+      const response = await upstream.contextRecovery.run(request, anthropicReq, (projected, onStreamInterruption) => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(projected), signal: request.signal,
-      }), { ...upstream, contextRecovery: undefined }));
+      }), { ...upstream, contextRecovery: undefined, onStreamInterruption }));
       if (!response.ok && !resolvedUpstream) log(`[bridge] Inference rejected HTTP ${response.status} (provider=${upstream.providerId}, model=${upstream.model ?? anthropicReq.model})`);
       return response;
     }
@@ -491,9 +500,9 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // to archive the exact inference before granting another call.
       const inferenceRequest = new Request(request.url, { method: 'POST', headers: request.headers,
         body: JSON.stringify(anthropicReq), signal: request.signal });
-      const response = await upstream.modelFailover.run(inferenceRequest, upstream, (target, onModelProgress) => handler(new Request(request.url, {
+      const response = await upstream.modelFailover.run(inferenceRequest, upstream, (target, onModelProgress, onStreamInterruption) => handler(new Request(request.url, {
         method: 'POST', headers: request.headers, body: JSON.stringify(anthropicReq), signal: request.signal,
-      }), { ...target, modelFailover: undefined,
+      }), { ...target, modelFailover: undefined, onStreamInterruption,
         onModelProgress: composeAcceptedAttemptModelProgress(onModelProgress, upstream.onModelProgress) }), createHash('sha256').update(JSON.stringify({
         model: anthropicReq.model, system: anthropicReq.system, messages: anthropicReq.messages, tools: anthropicReq.tools,
       }, (key, value) => key === 'cache_control' ? undefined : value)).digest('hex'));
@@ -925,8 +934,8 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // Stream-body liveness is intentionally not inferred from byte cadence;
       // the Session inactivity watchdog owns true turn liveness.
       return isResponses
-        ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort, upstream.onModelProgress)
-        : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort, upstream.onModelProgress);
+        ? handleResponsesStreamResponse(upstreamResp, responseModel, log, controller, request.signal, onDownstreamAbort, upstream.onModelProgress, upstream.onStreamInterruption)
+        : handleStreamResponse(upstreamResp, responseModel, translateReasoning, log, thoughtSignatureCache, controller, request.signal, onDownstreamAbort, upstream.onModelProgress, upstream.onStreamInterruption);
     } else {
       // Stop must still reach fetch while a successful response body is being
       // read. Headers arriving is not completion of a non-stream inference.
@@ -992,6 +1001,24 @@ async function handleNonStreamResponse(
 // Exported for the streaming-usage integration test (issue #277): drives the
 // real parse→translate pipeline from a synthetic upstream Response so the
 // `[DONE]`-driven finalization can be asserted without mocking the network.
+function observeRawTransport(body: ReadableStream<Uint8Array>, notify: UpstreamConfig['onStreamInterruption'], signal?: AbortSignal): ReadableStream<Uint8Array> {
+  if (!notify) return body;
+  const reader = body.getReader();
+  let cancelled = false;
+  return new ReadableStream<Uint8Array>({
+    async pull(output) {
+      try {
+        const next = await reader.read();
+        if (next.done) output.close(); else output.enqueue(next.value);
+      } catch (error) {
+        if (!cancelled && !signal?.aborted) notify('transport');
+        output.error(error);
+      }
+    },
+    async cancel(reason) { cancelled = true; await reader.cancel(reason); },
+  });
+}
+
 export function handleStreamResponse(
   upstreamResp: Response,
   requestModel: string,
@@ -1002,6 +1029,7 @@ export function handleStreamResponse(
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
   onModelProgress?: () => void,
+  onStreamInterruption?: (cause: StreamInterruptionCause) => void,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline replaces the manual
   // ReadableStream { start } loop. The pipeline is:
@@ -1017,9 +1045,11 @@ export function handleStreamResponse(
   // Cancellation: downstream cancel propagates via the readable's cancel(),
   // which we wire to abort the upstream fetch.
   let modelProgressActive = true;
+  let observedModelProgress = false;
   const retireModelProgress = (): void => { modelProgressActive = false; };
   const notifyModelProgress = (): void => {
     if (!modelProgressActive || upstreamController.signal.aborted || downstreamSignal?.aborted) return;
+    observedModelProgress = true;
     onModelProgress?.();
   };
   const translator = new StreamTranslator(requestModel, translateReasoning, log, notifyModelProgress);
@@ -1054,6 +1084,7 @@ export function handleStreamResponse(
         if (sseEvent.event === 'ping') continue;
         if (sseEvent.event === 'error') {
           retireModelProgress();
+          onStreamInterruption?.('unproven');
           controller.error(new Error('Upstream Chat Completions stream reported an error'));
           return;
         }
@@ -1069,6 +1100,7 @@ export function handleStreamResponse(
           // Missing content/tool arguments cannot be repaired by a later valid
           // terminal. Preserve the failure so recovery cannot clear its journal.
           retireModelProgress();
+          onStreamInterruption?.('unproven');
           controller.error(new Error('Malformed upstream Chat Completions stream event'));
           return;
         }
@@ -1093,7 +1125,9 @@ export function handleStreamResponse(
       // then sees a clean EOF) and unwinds the pipeline; aborting the upstream
       // fetch releases the lingering provider socket. See issue #277.
       if (chunk === STREAM_DONE) {
-        for (const event of translator.finalize()) {
+        const finalized = translator.finalize();
+        if (finalized.some(event => event.type === 'error')) onStreamInterruption?.('unproven');
+        for (const event of finalized) {
           controller.enqueue(encoder.encode(formatSSE(event)));
         }
         logStreamEnd('protocol_done');
@@ -1129,12 +1163,15 @@ export function handleStreamResponse(
       for (const event of anthropicEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
       }
-      if (anthropicEvents.some(event => event.type === 'error')) retireModelProgress();
+      if (anthropicEvents.some(event => event.type === 'error')) { onStreamInterruption?.('unproven'); retireModelProgress(); }
     },
     flush(controller) {
       // EOF succeeds only with a valid finish_reason; otherwise emit an error.
       retireModelProgress();
       const finalEvents = translator.finalize();
+      if (finalEvents.some(event => event.type === 'error')) {
+        onStreamInterruption?.(observedModelProgress && !sseParser.hasIncompleteEvent ? 'transport' : 'unproven');
+      }
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
       }
@@ -1145,7 +1182,7 @@ export function handleStreamResponse(
   // Compose the pipeline. piped through cancels propagate up through
   // pipeThrough; failures in either transform are caught when the consumer
   // reads the response body, which Hono surfaces as a 500.
-  const upstreamReadable = upstreamResp.body;
+  const upstreamReadable = observeRawTransport(upstreamResp.body, onStreamInterruption, downstreamSignal);
   const finalReadable = upstreamReadable
     .pipeThrough(sseParseTransform)
     .pipeThrough(translateTransform);
@@ -1280,12 +1317,15 @@ export function handleResponsesStreamResponse(
   downstreamSignal: AbortSignal | undefined,
   onDownstreamAbort: () => void,
   onModelProgress?: () => void,
+  onStreamInterruption?: (cause: StreamInterruptionCause) => void,
 ): Response {
   // Pattern 2 §2.3.3 — TransformStream pipeline (mirror of handleStreamResponse).
   let modelProgressActive = true;
+  let observedModelProgress = false;
   const retireModelProgress = (): void => { modelProgressActive = false; };
   const notifyModelProgress = (): void => {
     if (!modelProgressActive || upstreamController.signal.aborted || downstreamSignal?.aborted) return;
+    observedModelProgress = true;
     onModelProgress?.();
   };
   const translator = new ResponsesStreamTranslator(requestModel, log, notifyModelProgress);
@@ -1326,6 +1366,7 @@ export function handleResponsesStreamResponse(
           controller.enqueue(JSON.parse(sseEvent.data) as ResponsesStreamEvent);
         } catch {
           retireModelProgress();
+          onStreamInterruption?.('unproven');
           controller.error(new Error('Malformed upstream Responses stream event'));
           return;
         }
@@ -1337,6 +1378,7 @@ export function handleResponsesStreamResponse(
   const translateTransform = new TransformStream<ResponsesStreamEvent, Uint8Array>({
     transform(event, controller) {
       let safeEvent = event;
+      if (!KNOWN_RESPONSES_EVENTS.has(event.type)) onStreamInterruption?.('unproven');
       if (event.type === 'error') {
         safeEvent = { ...event, message: sanitizeUpstreamErrorBody(event.message) };
       } else if ('response' in event) {
@@ -1358,6 +1400,7 @@ export function handleResponsesStreamResponse(
       for (const ae of anthropicEvents) {
         controller.enqueue(encoder.encode(formatSSE(ae)));
       }
+      if (anthropicEvents.some(ae => ae.type === 'error')) onStreamInterruption?.('unproven');
       if (anthropicEvents.some(ae => ae.type === 'message_stop' || ae.type === 'error')) retireModelProgress();
       // Success, incomplete and error are protocol terminals. The translator
       // emits message_stop or an Anthropic error event,
@@ -1375,6 +1418,9 @@ export function handleResponsesStreamResponse(
     flush(controller) {
       retireModelProgress();
       const finalEvents = translator.finalize();
+      if (finalEvents.some(event => event.type === 'error')) {
+        onStreamInterruption?.(observedModelProgress && !sseParser.hasIncompleteEvent ? 'transport' : 'unproven');
+      }
       for (const event of finalEvents) {
         controller.enqueue(encoder.encode(formatSSE(event)));
       }
@@ -1382,7 +1428,7 @@ export function handleResponsesStreamResponse(
     },
   });
 
-  const finalReadable = upstreamResp.body
+  const finalReadable = observeRawTransport(upstreamResp.body, onStreamInterruption, downstreamSignal)
     .pipeThrough(sseParseTransform)
     .pipeThrough(translateTransform);
 

@@ -7,13 +7,13 @@ import { selectBuiltinRewindBoundary } from './session-core/builtin-rewind-bound
 import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
 import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
-import { SessionModelRecovery } from './builtin-session/model-recovery';
+import { SessionModelRecovery, settledStreamFailureMessage } from './builtin-session/model-recovery';
 import { SameTurnStreamContinuation } from './builtin-session/stream-continuation';
 import type { StreamRecoveryEvidence } from '../shared/streamRecovery';
 import type { AnthropicRequest } from './openai-bridge/types/anthropic';
 import { MODEL_RECOVERY_WINDOW_MS, validModelRecovery } from '../shared/modelRecovery';
 import type { ModelFailoverSettings } from '../shared/modelFailover';
-import { archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger, updateBuiltinModelRecovery, getBuiltinModelRecovery } from './SessionStore';
+import { archiveBuiltinSettledInterruption, archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger, updateBuiltinModelRecovery, getBuiltinModelRecovery } from './SessionStore';
 import { configureBuiltinTranscriptBinding } from './builtin-session/transcript';
 import { createHash, randomUUID } from 'crypto';
 import { OPENCODE_GO_PROVIDER_ID } from '../shared/opencode-go';
@@ -310,6 +310,7 @@ export { hasBuiltinActivityForUpdate, setUpdateRestartFrozen } from './builtin-s
 import {
   clearQueryMcpPrewarmOwner,
   completeQueryBackgroundTask,
+  snapshotSettledQueryBackground,
   getQueryMcpPrewarmOwner,
   hasQueryBackgroundTask,
   hasQueryBackgroundTasks,
@@ -1741,6 +1742,10 @@ async function restorePersistedModelRecovery(): Promise<boolean> {
       { ...recovery, status: 'paused', reason }, recovery, () => true, () => true);
   };
   try {
+    if (recovery.liveProof) {
+      await pause('Recovery requires the original live Query proof; explicit continuation is required');
+      return false;
+    }
     if (!validModelRecovery(recovery) || !sessionRegistered || metadata.pendingConversationMutation
       || metadata.sdkResumeSessionAt || nativeHistoryId !== recovery.sdkSessionId
       || recovery.routeIdentity !== currentModelRecoveryRoute() || Date.now() >= recovery.deadlineAt) {
@@ -1960,6 +1965,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         requestIdentity: routeIdentity,
         canRecover: () => !hasBuiltinBackgroundWork(),
         backup: (body, metadata) => archiveBuiltinContextRequest(productSessionId, body, metadata, isCurrent),
+        archiveSettledInterruption: (evidence, digest, scope, live) => archiveBuiltinSettledInterruption(
+          productSessionId, evidence, { digest, scope }, () => isCurrent() && live()),
         onRecovery: () => {
           const text = '上下文请求超出上游限制，已保存完整请求与工具结果，正在缩减历史证据并恢复当前执行。';
           getBuiltinProductContent()?.appendDiagnostic(text);
@@ -1988,6 +1995,18 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         prepare: async request => {
           if (!activeSessionContextRecovery) throw new Error('Action protection unavailable');
           await activeSessionContextRecovery.protectInference(await request.json());
+        },
+        prepareSettledInterruption: async () => {
+          const authority = getCurrentQueryAuthority();
+          const root = getCurrentTurnSourceItem();
+          if (!authority || !root || root.turnOwner?.kind === 'task' || !isCurrentQueryAuthority(authority)
+            || !exactHistory() || builtinInterrupt.isInterrupting() || hasBuiltinBackgroundWork()) return undefined;
+          const settled = snapshotSettledQueryBackground(authority);
+          if (!settled) return undefined;
+          const live = () => settled() && isCurrent() && exactHistory() && !builtinInterrupt.isInterrupting()
+            && getCurrentTurnSourceItem() === root && !getCurrentProductSessionMetadata()?.pendingConversationMutation
+            && !getCurrentProductSessionMetadata()?.sdkResumeSessionAt;
+          return activeSessionContextRecovery?.prepareSettledInterruption(live);
         },
         write: (next, expected, live) => updateBuiltinModelRecovery(
           productSessionId, nativeHistoryId, next, expected, live, isCurrent),
@@ -9373,6 +9392,20 @@ export async function enqueueUserMessage(
   }
 
   const pausedRecovery = getBuiltinModelRecovery(sessionId);
+  // Goal restore is a new turn admission, never the original one-use stream
+  // permit. Refuse a live-only cold checkpoint before launching any SDK Query.
+  if (options.turnOwner?.kind === 'goal' && pausedRecovery?.status === 'waiting'
+    && pausedRecovery.liveProof && !isTurnInFlight()) {
+    const metadata = getSessionMetadata(configSessionId);
+    if (!metadata || pausedRecovery.goalId !== options.turnOwner.id) {
+      return { queued: false, error: 'automatic_replay_blocked: Recovery belongs to a different original Goal owner' };
+    }
+    const nativeId = resolveBuiltinSdkSessionId(metadata) ?? configSessionId;
+    const reason = 'Recovery requires the original live Query proof; explicit continuation is required';
+    await updateBuiltinModelRecovery(configSessionId, nativeId, { ...pausedRecovery, status: 'paused', reason },
+      pausedRecovery, () => sessionId === configSessionId, () => false);
+    return { queued: false, error: `automatic_replay_blocked: ${reason}` };
+  }
   const recoveryToResume = !isTurnInFlight() && pausedRecovery?.status === 'paused'
     && (options.fromDesktopChatSend || (options.turnOwner?.kind === 'goal' && pausedRecovery.goalId === options.turnOwner.id))
     ? pausedRecovery : undefined;
@@ -11585,6 +11618,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
   // Query identity without falling back to mutable lifecycleState.query.
   let activeQuery: Query | null = null;
   const queryContextRecovery = activeSessionContextRecovery;
+  const queryModelRecovery = activeSessionModelRecovery;
+  const queryStreamContinuation = activeSessionStreamContinuation;
   let activeQueryAuthority: BuiltinQueryAuthority | null = null;
   const queryInitialCompletionTerminal = getLastSessionCompletionTerminal();
   const queryProductSessionId = sessionId;
@@ -12506,7 +12541,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput, _toolUseId: string | undefined, options: { signal: AbortSignal }): Promise<HookJSONOutput> => {
               const postInput = input as PostToolUseHookInput;
-              await queryContextRecovery?.commitToolResult(postInput.tool_name, postInput.tool_input, postInput.tool_response);
+              await queryContextRecovery?.commitToolResult(postInput.tool_name, postInput.tool_input, postInput.tool_response, false, postInput.tool_use_id);
               // Bounded progress check: only content-level, per-turn evidence can
               // produce a hint (declared edit stage + overlapping re-reads + no
               // edit/write). It never stops, switches, or replays anything.
@@ -12546,7 +12581,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         }],
         PostToolUseFailure: [{ hooks: [async (input: HookInput): Promise<HookJSONOutput> => {
           const failed = input as PostToolUseFailureHookInput;
-          await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true);
+          await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id);
           return {};
         }] }],
         // PermissionRequest hook (issue #264): the ONLY permission decision point
@@ -13298,6 +13333,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             const outputFile = taskMsg.subtype === 'task_notification' ? taskMsg.output_file ?? '' : '';
             const completion = completeQueryBackgroundTask(activeQuery, taskMsg.task_id, {
               runId: taskMsg.run_id,
+              authoritative: taskMsg.subtype === 'task_updated',
               rich: Boolean(summary.trim() || outputFile),
               toolUseId: taskMsg.tool_use_id,
               status: status === 'killed' ? 'stopped' : status,
@@ -14224,6 +14260,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         }
       } else if (sdkMessage.type === 'result') {
         await preparedProvider?.reportTerminal(sdkMessage.subtype === 'success');
+        if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
         let resultMessage = sdkMessage as BuiltinSdkResultMessage;
         if (
           rewindResumeAt
@@ -14240,8 +14277,17 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           retireRewoundQueryWhenQuiescent();
           continue;
         }
-        if ((resultMessage.is_error || resultMessage.subtype !== 'success')
-          && activeSessionStreamContinuation?.schedule()) {
+        const failedInferenceResult = resultMessage.is_error || resultMessage.subtype !== 'success';
+        // This is the original native result owner, never a detached waiter. If
+        // every background/request/tool owner is not settled now, finalize as
+        // before; no held result, polling loop or second recovery owner exists.
+        let streamContinuationScheduled = failedInferenceResult && queryStreamContinuation?.schedule();
+        if (failedInferenceResult && !streamContinuationScheduled) {
+          const armed = await queryModelRecovery?.armSettledInterruption();
+          if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
+          if (armed) streamContinuationScheduled = queryStreamContinuation?.schedule();
+        }
+        if (streamContinuationScheduled) {
           getBuiltinTranscriptPresentation()?.closeText();
           getBuiltinTranscriptPresentation()?.closeThinking();
           streamIndexToToolId.clear();
@@ -14254,19 +14300,30 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           console.log('[agent] Stream interrupted; original turn retained for checkpointed continuation');
           continue;
         }
-        if (activeSessionModelRecovery?.readState()?.kind === 'stream') {
+        const settledBlocked = failedInferenceResult && !builtinInterrupt.isInterrupting()
+          ? queryContextRecovery?.settledInterruptionFailure() : undefined;
+        if (settledBlocked) {
+          const reason = settledBlocked === 'live_proof_unavailable'
+            ? queryModelRecovery?.settledInterruptionFailure() ?? settledBlocked : settledBlocked;
+          getBuiltinProductContent()?.appendDiagnostic(settledStreamFailureMessage(reason));
+        }
+        if (queryModelRecovery?.readState()?.kind === 'stream') {
           if (!resultMessage.is_error && resultMessage.subtype === 'success' && !builtinInterrupt.isInterrupting()) {
-            if (await activeSessionModelRecovery.finishStreamTurn()) activeSessionStreamContinuation?.finish();
+            const finished = await queryModelRecovery.finishStreamTurn();
+            if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
+            if (finished) queryStreamContinuation?.finish();
             else {
               const stopped = builtinInterrupt.isInterrupting();
-              activeSessionStreamContinuation?.stop(stopped ? 'stopped' : 'storage_failed');
-              await activeSessionModelRecovery.pause('Stream continuation task completion could not be durably committed');
+              queryStreamContinuation?.stop(stopped ? 'stopped' : 'storage_failed');
+              await queryModelRecovery.pause('Stream continuation task completion could not be durably committed');
+              if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
               if (!stopped) resultMessage = { ...resultMessage, is_error: true, terminal_reason: 'api_error',
                 result: 'automatic_replay_blocked: Stream continuation completion could not be durably committed. Progress was preserved; execution paused.' };
             }
           } else {
-            activeSessionStreamContinuation?.stop(builtinInterrupt.isInterrupting() ? 'stopped' : 'uncertain_action');
-            await activeSessionModelRecovery.pause('Stream continuation ended without a verified task terminal');
+            queryStreamContinuation?.stop(builtinInterrupt.isInterrupting() ? 'stopped' : 'uncertain_action');
+            await queryModelRecovery.pause('Stream continuation ended without a verified task terminal');
+            if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
           }
         }
         const handling = await builtinTurnLifecycle.handleSdkResult(resultMessage, recoverRejectedReloadAnchor);

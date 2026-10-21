@@ -11,6 +11,11 @@ export class SSEParser {
   private eventType: string | undefined;
   private dataLines: string[] = [];
 
+  /** EOF cannot certify a frame whose field/data bytes have not been dispatched. */
+  get hasIncompleteEvent(): boolean {
+    return this.buffer.trim().length > 0 || this.eventType !== undefined || this.dataLines.length > 0;
+  }
+
   /** Feed a text chunk, returns parsed SSE events */
   feed(chunk: string): SSEEvent[] {
     this.buffer += chunk;

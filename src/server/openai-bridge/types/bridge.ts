@@ -1,5 +1,7 @@
 import type { PromptCacheCompatibility } from '../prompt-cache';
 
+export type StreamInterruptionCause = 'transport' | 'unproven';
+
 // Bridge configuration types
 
 export interface BridgeConfig {
@@ -33,6 +35,8 @@ export interface BridgeConfig {
 }
 
 export interface UpstreamConfig {
+  /** Internal admitted-request evidence; never serialized or accepted from provider/model text. */
+  onStreamInterruption?: (cause: StreamInterruptionCause) => void;
   /** Internal per-attempt signal for accepted model content; never serialized to a provider. */
   onModelProgress?: () => void;
   /** Missing retains the existing OpenAI translator. */

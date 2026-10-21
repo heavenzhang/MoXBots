@@ -1,3 +1,7 @@
+## MOXBOTS-SETTLED-STREAM-CONTINUE-20261021 — 已结清后台中断的原owner续接
+
+原Query native result边界仅在清洁ledger、逐request零工具外溢证明、全root稳定manifest、nonambient背景精确结清及原owner/Stop/CAS一致时，沿原SameTurnStreamContinuation/SessionModelRecovery接续。任务 `.agent-sync/tasks/codex-settled-stream-continue-20261021-08946322.md`。缺证据failclosed，不增等待owner/队列/预算、不修改旧unknown或冻结5162；代码与本地合成验证开发中，native/业务验收另追踪。沿用desktop builtin唯一CI/发布owner01a12bc2-907a-7702-b6dd-788225c5dfe4，由root总审后交下一批。
+
 ## MOXBOTS-STREAM-RESUME-20261020-01 — 原 turn 断流续跑
 
 普通 builtin API 会话及 Goal 沿原 Query/SessionModelRecovery、ContextRecovery 台账、Product/FIFO 与 Goal claim 自动接续；原 HTTP 与完成工具不重放，Stop 撤销后不恢复，质量参考持久记录恢复事实。代码与本地/合成 SDK 验收已完成，任务 `.agent-sync/tasks/codex-stream-resume-20261020-f5ea3680.md`，证据 `dev-docs/stream-continuation/acceptance.md`。精确 head 共享 CI、正常 main 合入/远端核验、签名客户端/真实 Provider 和用户验收分别追踪。
@@ -684,3 +688,12 @@ Same sole owner01a12bc2-907a-7702-b6dd-788225c5dfe4, semantic0.5.16/build516.1 a
 ## Desktop516.2 parallel tool repair — 2026-10-21
 
 Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4.516.1 sealed for confirmed parallel argument/block lifecycle defect; installed/online015 unchanged. Full seven-commit95d2318 source onactualmain32821 is reviewed for complete ordered tool blocks and strictterminal/error/EOF plus hidden realprogress/query/attempt/cancel fences. Newbuild516.2 under unpublisheduntagged0.5.16, no original artifactoverwrite. Task `.agent-sync/tasks/codex-release-0516-5162-20261021-c3f33106.md`. Primary523Node andrealSDKconsumer synthetic evidence accepted; exactCI/newartifact/nativeparallelRead/Goal/Stop/ownercheckpoint/unlock and production remain required. Originalsixbusiness notcomplete; MVP/a0WIP excluded. NativeUI stays coordinator-owned; no App action without freshhandback.
+
+
+## Desktop516.3 settled stream continuation — 2026-10-21
+
+Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4. Normally integrates complete7f85 settled-stream repair on actualmaine7, preserving parallelTool95. Only exact originalQuery/root and authoritative settledbackground/request/tool evidence+cleanledger+zero interruptedtoolspill permit sameowner/sameid/earliestdeadline continuation; Stop/CAS/route andlive-onlyv2/cold/oldreader refusal preserved. Primary791Node+9localHTTPcause probes/TS/lint andindependent overlapping458+219 review accepted, notnativeproof. Newimmutablebuild516.3 underunpublisheduntagged0.5.16;5162 originals retained uninstalled/unpublished. Task `.agent-sync/tasks/codex-release-0516-5163-20261021-1218d09a.md`. ExistingUIunlock/checkpoint/backup/normalexit handback andgenuine native checks remain required; currentlocal/online015/5158. NoMVP/a0WIP/otherdeploymentunit release orhistoricalunknownclear.
+
+
+### 516.3 verification-only CI fixture followup
+Originalproducerc20/516.3 signednotarizedbytes retained unchanged afterCI39521879223 failed4oldmanualfixture cases. Complete648 followup changes only testfixture/task docs: realhandler/registry+ephemeralHTTP validSSE and4negative cases; original43expectstartlines/8cases retained. Primary fullintegration1397PASS/32skip/0fail andTS/lint/peer12PASS are local synthetic. Root retains build516.3 without recompilation because everyproduction source/config/lock/buildinput file is unchanged; originalembeddedbuildidentity remainsc20, newverificationSHA/CI/main recorded separately. OldCI failure stays immutable; no claim artifactwasbuiltfromnewtestcommit. ExistingPR178 gets one exactnewheadCI, strictnormalmain thenfreshnative/maintenance/local/online gates. No newreleaseversion/tag orotherunitdeployment.

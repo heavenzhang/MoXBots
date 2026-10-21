@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import type { SettledInterruptionReceipt } from '../openai-bridge/context-recovery';
 import {
   MODEL_RECOVERY_WINDOW_MS,
   modelRecoveryDelay,
@@ -29,13 +31,15 @@ export interface SessionModelRecoveryOptions {
   } | undefined;
   isLive: () => boolean;
   prepare: (request: Request) => Promise<void>;
+  prepareSettledInterruption?: () => Promise<SettledInterruptionReceipt | undefined>;
   onState?: (state: ModelRecoveryState | null) => void;
   onInterrupted?: () => void;
   now?: () => number;
 }
 
 function sameCheckpoint(left: ModelRecoveryState, right: ModelRecoveryState): boolean {
-  return left.kind === right.kind && left.id === right.id
+  return left.version === right.version && left.kind === right.kind && left.id === right.id
+    && JSON.stringify(left.liveProof) === JSON.stringify(right.liveProof)
     && left.status === right.status
     && left.sdkSessionId === right.sdkSessionId
     && left.routeIdentity === right.routeIdentity
@@ -52,6 +56,10 @@ function sameCheckpoint(left: ModelRecoveryState, right: ModelRecoveryState): bo
 export class SessionModelRecovery implements InferenceRecoveryHooks {
   private readonly now: () => number;
   private epoch = 0;
+  private readonly liveProofAuthority = randomUUID();
+  private liveReceipt: SettledInterruptionReceipt | undefined;
+  private liveProofReleased = false;
+  private settledFailure: 'live_proof_unavailable' | 'checkpoint_owned' | 'budget_exhausted' | 'storage_or_cas_failed' | undefined;
   private pending: ModelRecoveryState | undefined;
   private pendingExpected: ModelRecoveryState | undefined;
   private persistedExpected: ModelRecoveryState | undefined;
@@ -94,6 +102,8 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   resetForNewTurn(): void {
     this.epoch += 1;
     this.localState = undefined;
+    this.liveReceipt = undefined;
+    this.liveProofReleased = false;
     this.pending = undefined;
     this.pendingExpected = undefined;
     this.persistedExpected = undefined;
@@ -133,6 +143,10 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       throw error instanceof Error ? error : new Error('Cannot read persisted model recovery state');
     }
     if (!stored) return undefined;
+    if (stored.liveProof && (!this.hasLiveProof(stored) || !this.liveProofReleased)) {
+      await this.pause('Recovery requires the original live Query proof', stored);
+      throw new Error('Recovery requires the original live Query proof; preserved progress needs explicit continuation');
+    }
     if (stored.status === 'paused') throw new Error(stored.reason ?? 'Model recovery is paused');
     const owner = this.options.current();
     if (!owner || !this.sameHistoryAndRoute(stored, owner)) {
@@ -222,6 +236,10 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     } catch {
       return undefined;
     }
+    if (stored?.liveProof && !this.hasLiveProof(stored)) {
+      await this.pause('Recovery requires the original live Query proof', stored);
+      return undefined;
+    }
     if (stored?.status === 'paused') {
       this.localState = stored;
       this.notify(stored);
@@ -240,8 +258,9 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     // checkpoint counts durable wait rounds only and survives process restart.
     const attempt = (existing?.attempt ?? 0) + 1;
     const candidate: ModelRecoveryState = {
-      version: 1,
+      version: existing?.version ?? 1,
       ...(failure.kind === 'stream' || existing?.kind === 'stream' ? { kind: 'stream' as const } : {}),
+      ...(existing?.liveProof ? { liveProof: existing.liveProof } : {}),
       id: existing?.id ?? crypto.randomUUID(),
       status: 'waiting',
       sdkSessionId: current.sdkSessionId,
@@ -323,6 +342,61 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     return Math.max(0, candidate.nextRetryAt - this.now());
   }
 
+  settledInterruptionFailure(): string | undefined { return this.settledFailure; }
+
+  /** No synthetic HTTP request: only the native result owner can mint this live-only receipt. */
+  async armSettledInterruption(): Promise<boolean> {
+    this.settledFailure = 'live_proof_unavailable';
+    if (this.waitInProgress || this.completing || this.boundRequest || !this.options.isLive()
+      || !this.options.prepareSettledInterruption) { this.settledFailure = 'checkpoint_owned'; return false; }
+    const owner = this.options.current();
+    if (!owner) return false;
+    let stored: ModelRecoveryState | undefined;
+    try {
+      const raw = this.options.read();
+      if (raw !== undefined && !validModelRecovery(raw)) return false;
+      stored = raw;
+    } catch { return false; }
+    if (stored && (stored.status !== 'waiting' || stored.kind !== 'stream'
+      || !this.matchesCurrent(stored, false) || (stored.liveProof && !this.hasLiveProof(stored)))) return false;
+    const epoch = this.epoch;
+    this.waitInProgress = true;
+    try {
+      const receipt = await this.options.prepareSettledInterruption();
+      if (!receipt || !receipt.isCurrent() || this.epoch !== epoch || !this.options.isLive()) return false;
+      const startedAt = Math.min(stored?.startedAt ?? receipt.interruptedAt, receipt.interruptedAt);
+      const deadlineAt = Math.min(stored?.deadlineAt ?? Infinity, startedAt + MODEL_RECOVERY_WINDOW_MS);
+      const attempt = (stored?.attempt ?? 0) + 1;
+      const nextRetryAt = this.now() + modelRecoveryDelay(attempt);
+      if (!Number.isSafeInteger(startedAt) || startedAt > this.now() || nextRetryAt >= deadlineAt) {
+        this.settledFailure = 'budget_exhausted'; return false;
+      }
+      const candidate: ModelRecoveryState = { version: 2, kind: 'stream', id: stored?.id ?? randomUUID(),
+        status: 'waiting', ...owner, startedAt, deadlineAt, nextRetryAt, attempt, lastStatus: 502,
+        liveProof: { kind: 'settled-stream', authority: this.liveProofAuthority, receiptId: receipt.id } };
+      const live = () => this.epoch === epoch && this.options.isLive() && receipt.isCurrent()
+        && this.matchesCurrent(candidate, false) && !this.boundRequest && !this.completing;
+      this.pending = candidate; this.pendingExpected = stored;
+      if (!live()) return false;
+      this.settledFailure = 'storage_or_cas_failed';
+      if (!await this.options.write(candidate, stored, live) || !live()) return false;
+      this.liveReceipt = receipt; this.liveProofReleased = false;
+      this.localState = candidate; this.persistedExpected = candidate;
+      this.settledFailure = undefined;
+      this.notify(candidate); this.options.onInterrupted?.();
+      return true;
+    } catch { return false; }
+    finally {
+      if (this.epoch === epoch) { this.pending = undefined; this.pendingExpected = undefined; }
+      this.waitInProgress = false;
+    }
+  }
+
+  private hasLiveProof(state: ModelRecoveryState): boolean {
+    return !state.liveProof || (state.liveProof.authority === this.liveProofAuthority
+      && state.liveProof.receiptId === this.liveReceipt?.id);
+  }
+
   /** A trusted bridge partial receipt arms the same durable chain before SDK termination. */
   async interrupted(request: Request): Promise<boolean> {
     const allowed = await this.wait(request, { status: 502, attempt: 1, usingBackup: false, kind: 'stream' }) !== undefined;
@@ -334,6 +408,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   releaseStreamBinding(): boolean {
     const state = this.localState;
     if (!state || state.kind !== 'stream' || state.status !== 'waiting'
+      || !this.hasLiveProof(state) || (state.liveProof && !this.liveProofReleased && !this.liveReceipt?.isCurrent())
       || !this.options.isLive() || !this.matchesCurrent(state, false)
       || this.now() >= state.deadlineAt || this.now() < state.nextRetryAt) return false;
     try {
@@ -342,6 +417,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     } catch { return false; }
     this.boundRequest = undefined;
     this.boundEpoch = undefined;
+    if (state.liveProof) this.liveProofReleased = true;
     return true;
   }
 
@@ -494,6 +570,12 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
         if (current?.id === source.id && current.status === 'paused'
           && current.sdkSessionId === source.sdkSessionId
           && current.routeIdentity === source.routeIdentity) return true;
+        // The original writer may have committed our exact pending candidate
+        // before its Promise returns. Stop owns that candidate too; it must
+        // fence the committed row instead of treating its own CAS as a successor.
+        if (wasPending && current && sameCheckpoint(current, source)) {
+          return await this.options.write(paused, current, live);
+        }
         // A changed checkpoint belongs to a newer Query (or was already
         // superseded). It is safe to treat this local owner's stop as complete,
         // but never write the stale source over that checkpoint.
@@ -532,4 +614,17 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   private notify(state: ModelRecoveryState | null): void {
     try { this.options.onState?.(state); } catch { /* notification does not own recovery */ }
   }
+}
+
+/** Fixed, non-secret copy. Hashes, requests and provider credentials never enter the user explanation. */
+export function settledStreamFailureMessage(code: string): string {
+  const messages: Record<string, string> = {
+    history_uncertain: '历史工具结果仍不确定，需要先只读核对。',
+    background_unsettled: '后台任务尚未获得精确终态，暂不能安全自动继续。',
+    checkpoint_owned: '原恢复入口已被停止、占用或替换。',
+    budget_exhausted: '原恢复时间预算已用尽。',
+    storage_or_cas_failed: '恢复证据未能耐久保存或原执行身份已变化。',
+    live_proof_unavailable: '未能核证所有请求与后台任务均已结清且中断请求未下发工具。',
+  };
+  return `自动继续已暂停：${messages[code] ?? messages.live_proof_unavailable}已完成的进度保留，不会重放原操作。`;
 }

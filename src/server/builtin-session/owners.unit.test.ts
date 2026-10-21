@@ -37,6 +37,7 @@ import {
   setSessionTerminationPromise,
   setSystemInitInfo,
   snapshotLifecycle,
+  snapshotSettledQueryBackground,
   takeQueryBackgroundTasks,
   waitForQueryExit,
   waitForMessage,
@@ -998,5 +999,33 @@ describe('builtin-session owners', () => {
     expect(second.revoked).toBe(true);
     expect(isCurrentQueryAuthority(second)).toBe(false);
     expect(isCurrentQueryAuthority(replacementForSameQuery)).toBe(true);
+  });
+});
+
+
+describe('result-boundary background proof', () => {
+  beforeEach(() => resetLifecycleForTest());
+  it('requires exact authoritative terminal even when a level-only run disappears', () => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    replaceQueryBackgroundActivity(query, [{ task_id: 'background', run_id: 'run-1', task_type: 'agent', description: 'isolated fixture' }]);
+    replaceQueryBackgroundActivity(query, []);
+    expect(snapshotSettledQueryBackground(authority)).toBeUndefined();
+    completeQueryBackgroundTask(query, 'background', { runId: 'run-1', status: 'completed' });
+    expect(snapshotSettledQueryBackground(authority)).toBeUndefined();
+    completeQueryBackgroundTask(query, 'background', { runId: 'run-1', status: 'completed', authoritative: true });
+    const proof = snapshotSettledQueryBackground(authority)!;
+    expect(proof()).toBe(true);
+    replaceQueryBackgroundActivity(query, []);
+    expect(proof()).toBe(false);
+    takeQueryBackgroundTasks(query);
+    expect(snapshotSettledQueryBackground(authority)).toBeUndefined();
+  });
+  it('cannot launder unknown run identity through an empty replacement level', () => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    replaceQueryBackgroundActivity(query, [{ task_id: 'unknown-run', task_type: 'agent', description: 'isolated fixture' }]);
+    replaceQueryBackgroundActivity(query, []);
+    expect(snapshotSettledQueryBackground(authority)).toBeUndefined();
   });
 });

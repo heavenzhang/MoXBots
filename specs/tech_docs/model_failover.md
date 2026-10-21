@@ -26,7 +26,7 @@
 
 每个 logical root 对 model/system/messages/tools 的指纹只允许一条在途/已交付请求；cache_control 不参与指纹。已退休 root 的请求证据保留至 Query 释放；无法证明 root 的后台请求也必须通过同一守卫，不能因为 scope 消失而裸转发。明确的新前台 root 与旧后台请求隔离，不继承其恢复预算或诊断归属。每个控制器最多保留 4096 条请求指纹，达到上限明确停止接纳，不能静默淘汰安全证据以重新开放重放。桥接内部有限重试属于同一请求，SDK 之后自动再次发送相同请求会收到 409，避免依赖 SDK 自己的重试配置实现安全边界。
 
-SSE 已向 Runtime 交付后如断流、error event 或 EOF 缺 message_stop，封闭本轮所有自动恢复请求，包括修改历史后的隐式续发；保留已完成工作并报告失败。原 root 终态之后的新输入可按既有恢复路径执行。取消、token/turn/config 变化在每个异步故障决策后重新检查，不再发新备用请求。
+SSE 已向 Runtime 交付后如断流、error event 或 EOF 缺 message_stop，旧 HTTP 请求和指纹仍永久封闭，包括修改历史后的隐式续发。原 SameTurnStreamContinuation 可以在精确 native marker 下开启原 root 的新 inference namespace，而非重放旧请求；恢复链沿原 id 和绝对 deadline，不增加备用权限或预算。原 native result 到达时已全部结清的后台零工具断流，另须满足 [严格 settled 证明合同](context_recovery.md#settled-background-stream-continuation)；不满足时原会话明确显示暂停原因，保留所有旧 fence、工具结果和 Goal 进度。普通显式新输入仍走原 admission。取消、Query/token/turn/config 变化在每个异步决策后重新检查；旧 Query 的迟到 result 不操作新 owner。
 
 备用推理收到完整历史和应用控制的接续指令：基于已有工具结果继续，不重做已确认写入/发送/提交/部署；结果未知时先只读核实，不能核实就停止。此机制防止本应用因故障重放整条任务，**不提供任意外部工具的 exactly-once 事务保证**；模型仍可能提出新的同义动作，外部幂等和业务核验仍由原工具/业务 owner 负责。不会删历史、工具或图片来强行适配备用；实际不支持时终止并保留现场。
 
