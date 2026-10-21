@@ -30,3 +30,11 @@ Native worker未实现manager/client/registry/UI，已只读确认新旧transpor
 最终增量核查：token已收到但 identity inspection 暂时503时，native阶段提升为verifying_identity，UI更新native阶段并解除旧browser TTL计时；新hook测试证明3秒授权期限过去10秒后仍可接收真实native成功。原生TCP整合测试增加该阶段断言；非实现者复审terminal/expiry/busy/cancel边界无阻断。
 
 本轮沿用两位既有本地协作者，服务端和native传输文件互斥，主Agent整合manager/UI并总审。未升级或降档模型；未调用外部模型，既有本地上下文和工具足以完成该范围。没有可准确归属的token/费用实测，不编造节省比例。
+
+## PR186 首轮 CI 修正
+
+首轮候选 bce4b094ec3283d1a370df3add72f55b9a4ca184，Test run39660350758 / service run39660350905。Test发现共享owned_login模块误引用桌面专属owned_oauth，导致headless/mobile/iOS编译失败；另两处上层账号入口10项DOM测试还操作已移除的URL/手动检查控件。不能将本地定向测试通过当作完整CI通过。
+
+修正将start_oauth/receive_oauth实现移入桌面专属owned_oauth，仅在共享OwnedClient暴露只读origin/既有reqwest transport借用；不改变TLS、token或设备身份边界，不向Host/mobile引入桌面OAuth依赖。服务端未变化。两处既有上层测试改用浏览器返回focus，固定实例确认没有可编辑URL且调用精确原issuer/connection/revision；保留取消、迟到结果及账号隔离断言。
+
+修正后的实际本地验证：headless-network与mobile/connection各自cargo check --all-targets均PASS（日志 /tmp/login-oauth-standard-{headless,mobile}-check.log）；desktop owned定向57/57 PASS（/tmp/login-oauth-standard-native-repair-tests.log）；四份登录相关DOM测试84/84 PASS（/tmp/login-oauth-standard-ui-repair.log）。Service worker独立只读审阅模块分离修正，无阻断。后续由既有desktop owner推送修正候选，自动PR CI仍须重新确认；main、服务发布、桌面发布、Air真实验收保持未完成。

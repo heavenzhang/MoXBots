@@ -314,26 +314,10 @@ fn owned_request_failure(error: &reqwest::Error) -> NetworkError {
     failure
 }
 impl OwnedClient {
-    pub(crate) async fn start_oauth(
-        &self,
-        device: &str,
-    ) -> Result<super::owned_oauth::NativeOAuth, NetworkError> {
-        super::owned_oauth::NativeOAuth::bind(&self.origin, device).await
-    }
-
-    pub(crate) async fn receive_oauth(
-        &self,
-        device: &str,
-        flow: &super::owned_oauth::NativeOAuth,
-    ) -> Result<OwnedPoll, NetworkError> {
-        let Some((token, _expires_at)) = flow.token(&self.http).await? else {
-            return Ok(OwnedPoll::Pending);
-        };
-        // The existing service snapshot remains the authority for principal,
-        // network, exact device and expiry. An OAuth response alone cannot
-        // create or replace a local identity.
-        let session = self.inspect_session(device, &token).await?;
-        Ok(OwnedPoll::Authenticated(session))
+    // Transport carries no bearer/default authorization. Native-only OAuth
+    // composition stays outside this module, which Host and mobile reuse.
+    pub(super) fn oauth_transport(&self) -> (&str, &reqwest::Client) {
+        (&self.origin, &self.http)
     }
     #[cfg(test)]
     pub(crate) fn for_test(origin: String, instance: OwnedInstance) -> Self {

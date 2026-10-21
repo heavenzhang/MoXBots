@@ -1,7 +1,10 @@
 //! Public-client Authorization Code + S256 transport. The existing login manager
 //! remains the identity, credential and registry commit owner. This module only
 //! owns the short-lived loopback callback and one token exchange.
-use super::NetworkError;
+use super::{
+    owned_login::{OwnedClient, OwnedPoll},
+    NetworkError,
+};
 use oauth2::{
     basic::{BasicClient, BasicTokenType},
     AsyncHttpClient, AuthType, AuthUrl, AuthorizationCode, ClientId, CsrfToken, EndpointNotSet,
@@ -25,6 +28,29 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 use zeroize::Zeroizing;
+
+// Desktop-only composition; shared OwnedClient stays usable by Headless and
+// mobile crates without importing Tauri or the native loopback listener.
+impl OwnedClient {
+    pub(crate) async fn start_oauth(&self, device: &str) -> Result<NativeOAuth, NetworkError> {
+        NativeOAuth::bind(self.oauth_transport().0, device).await
+    }
+
+    pub(crate) async fn receive_oauth(
+        &self,
+        device: &str,
+        flow: &NativeOAuth,
+    ) -> Result<OwnedPoll, NetworkError> {
+        let Some((token, _expires_at)) = flow.token(self.oauth_transport().1).await? else {
+            return Ok(OwnedPoll::Pending);
+        };
+        // The existing service snapshot remains the authority for principal,
+        // network, exact device and expiry. An OAuth response alone cannot
+        // create or replace a local identity.
+        let session = self.inspect_session(device, &token).await?;
+        Ok(OwnedPoll::Authenticated(session))
+    }
+}
 
 const CLIENT_ID: &str = "moxbots-desktop";
 const CALLBACK_PATH: &str = "/oauth/callback";
