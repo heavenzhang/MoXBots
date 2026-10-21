@@ -30,6 +30,15 @@ export class QueryRequestGuard {
     return this.blocked.has(scope) || (ambiguous && this.blocked.size > 0);
   }
 
+  /** A completed foreground response can own its emitted tools after an Agent starts.
+   * This does not reopen inference, an interrupted root, or an unbound background call. */
+  ownsDeliveredTool(scope: string, fingerprint: string, toolUseId: string): boolean {
+    if (this.exhausted || this.proofDisabled || this.blocked.has(scope)) return false;
+    const row = this.requests.get(JSON.stringify([scope, fingerprint]));
+    return !!row && !row.inFlight && row.outcome === 'delivered'
+      && !row.invalidToolIdentity && row.toolUseIds.has(toolUseId);
+  }
+
   get inFlightCount(): number {
     return [...this.requests.values()].filter(row => row.inFlight).length;
   }

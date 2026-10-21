@@ -320,7 +320,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private persistenceTail: Promise<void> = Promise.resolve();
   private nativeRevision = 0;
   private unboundNativeAdmission = false;
-  private readonly toolOwners = new Map<string, { scope: string | undefined; fingerprint: string; actionHash?: string }>();
+  private readonly toolOwners = new Map<string, { scope: string | undefined; fingerprint: string; foreground: boolean; actionHash?: string }>();
   private readonly nativeAdmissions = new Map<string, { scope: string | undefined; pending: boolean; actionHash: string }>();
   private settledReceipt: { receipt: SettledInterruptionReceipt; fingerprints: readonly string[] } | undefined;
 
@@ -574,16 +574,25 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   /** Reserve before invoking a mutating tool: a crash leaves an uncertain action, never a replay. */
-  async authorizeTool(name: string, input: unknown, toolUseId?: string): Promise<string | undefined> {
+  async authorizeTool(name: string, input: unknown, toolUseId?: string,
+    nativeOwner?: { sdkSessionId: string; agentId?: string }): Promise<string | undefined> {
     this.nativeRevision++;
     const emission = toolUseId ? this.toolOwners.get(toolUseId) : undefined;
+    const current = this.current();
+    const deliveredForeground = !!toolUseId && !!emission && !!current && emission.foreground
+      && emission.scope === current.scope && emission.actionHash === toolKey(name, input)
+      && !this.unboundNativeAdmission && !this.nativeAdmissions.has(toolUseId)
+      && this.nativeAdmissions.size < MAX_LEDGER_ENTRIES
+      && !!nativeOwner && nativeOwner.sdkSessionId === this.options.recoveryOwner?.sdkSessionId
+      && nativeOwner.agentId === undefined
+      && this.requestGuard.ownsDeliveredTool(current.scope, emission.fingerprint, toolUseId);
     if (!toolUseId || !emission || emission.actionHash !== toolKey(name, input) || this.nativeAdmissions.has(toolUseId) || this.nativeAdmissions.size >= MAX_LEDGER_ENTRIES) this.unboundNativeAdmission = true;
     else this.nativeAdmissions.set(toolUseId, { scope: emission.scope, pending: true, actionHash: emission.actionHash! });
     if (toolUseId) {
       if (this.observedToolUseIds.size >= MAX_LEDGER_ENTRIES) this.noDispatchProofsDisabled = true;
       else this.observedToolUseIds.add(toolUseId);
     }
-    const denied = this.beforeTool(name, input);
+    const denied = this.checkTool(name, input, deliveredForeground);
     if (denied) {
       try { await this.persist(); } catch { /* execution is already denied */ }
       return denied;
@@ -596,6 +605,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.uncertainLedger.add(key);
     try { await this.persist(); }
     catch { return 'automatic_replay_blocked: Could not durably reserve this action; execution stopped.'; }
+    if (deliveredForeground && (this.current()?.scope !== emission!.scope
+      || !this.requestGuard.ownsDeliveredTool(emission!.scope!, emission!.fingerprint, toolUseId!))) {
+      return 'automatic_replay_blocked: The delivered foreground tool owner changed before admission committed.';
+    }
     return this.options.isActive() ? undefined : 'automatic_replay_blocked: Recovery turn was cancelled.';
   }
 
@@ -686,12 +699,16 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   beforeTool(name: string, input: unknown): string | undefined {
+    return this.checkTool(name, input, false);
+  }
+
+  private checkTool(name: string, input: unknown, deliveredForeground: boolean): string | undefined {
     if (READ_ONLY_TOOLS.has(name)) return undefined;
     const state = this.toolState();
     if (!state) return this.actionProtectionActive || this.ledgerBlocked
       ? 'automatic_replay_blocked: Context recovery belongs to a retired or unbound turn; this action cannot run.' : undefined;
     if (state.blocked || this.ledgerBlocked || this.requestGuard.isBlocked(this.current()?.scope,
-      !this.current() || this.options.canRecover?.() === false)) return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
+      !deliveredForeground && (!this.current() || this.options.canRecover?.() === false))) return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
     if (!state.attempted && (!this.actionProtectionActive || this.streamArmedOnly)) return undefined;
     const key = toolKey(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
@@ -893,7 +910,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
           const id = emission.toolUseId;
           lease.toolMayBeDelivered(id);
           if (typeof id === 'string' && id.length <= 256 && !this.toolOwners.has(id) && this.toolOwners.size < MAX_LEDGER_ENTRIES) {
-            this.toolOwners.set(id, { scope: currentState?.scope, fingerprint });
+            this.toolOwners.set(id, { scope: currentState?.scope, fingerprint, foreground: !!recoveryOwner });
           } else this.unboundNativeAdmission = true;
         }
       };

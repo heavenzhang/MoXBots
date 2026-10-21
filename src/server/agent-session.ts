@@ -12494,7 +12494,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput): Promise<HookJSONOutput> => {
               const pre = input as PreToolUseHookInput;
-              const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input, pre.tool_use_id);
+              const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input, pre.tool_use_id,
+                { sdkSessionId: pre.session_id, agentId: pre.agent_id });
               if (duplicate) return {
                 hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
                   permissionDecision: 'deny' as const, permissionDecisionReason: duplicate },
