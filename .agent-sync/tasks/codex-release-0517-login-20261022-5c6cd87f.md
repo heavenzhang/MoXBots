@@ -15,7 +15,7 @@ ExactstandardOAuth bce+a313 composition/test repairs on currentmain7db, with onl
 - [x] Verify original human OAuth/main/release/Air authorization, canonicalremote/base and source tree.
 - [x] Root review service S256/state/exactloopback/code single-use, native callback/exchange/cancel/cache and original credential/registry owner.
 - [x] Preserve initialbce E0433/DOM and4206 test-only Clippy failures; author repaired shared-module composition and approved runtime/localHTTP test helpers. Source/loopback evidence: service210/8manualignore, native57, registry22, DOM84, type/scopedlint and finalClippy/TCP. Evidence dev-docs/login-oauth-standard/acceptance.md.
-- [x] Allocate517.1 in isolatedRootworktree. Package/lock/Rust/Tauri versions align; no dependency upgrade.
+- [x] Allocate517.1 in isolatedRootworktree. Package/lock/Rust/Tauri and Document Worker manifest/lock versions align; no dependency upgrade.
 - [x] Collect all4206 original CI/cache: serviceSUCCESS, Test7SUCCESS/1conditionalSKIP/2testFAIL. Finalauthor9e native defaultparallel275PASS/1existingignore and exactClippyredlines0; Root reviewed unchanged one-second bound, realTCP clone callback, Weak owner release and originaltask termination.
 - [ ] Root single ordinary push of complete combinedhead to existingPR186; no obsoleteSHA rerun.
 - [ ] Exacthead completeTest/serviceCI, protected normalmain merge, actualremote ancestry/tree verification.
@@ -35,3 +35,5 @@ ExactcombinedCI/main/cloud compatibility, signed5171 artifact and originalAir br
 
 ## Next step
 Collect exactcurrenthead fullPR186 Test/service gates, then normal protectedmain delivery, cloudfirst rollout and signed5171 preparation. Do not rerun supersededCI or mutate the installed016 business runtime during static work.
+
+Final release-metadata correction: the existing sync-version test found Document Worker still016 after Root initial bump. Root ran the existing sync-version.js, updated only its matching package lock entry, and verified Node24 sync-version tests3PASS plus both locked/offline Cargo metadata packages017 and fixedReader13adb unchanged. No production OAuth logic changed. Preparedf347 source/cache/preflight originals remain sealed; no app binary was built from that revision.
