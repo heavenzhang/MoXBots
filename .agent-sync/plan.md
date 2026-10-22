@@ -836,3 +836,7 @@ Human requests backlog/rotation coverage first, then real ordinary Session and R
 ## MOXBOTS-0519-NEXT-FEATURES-20261023 — unfrozen combined source
 
 Same sole desktop/macOS/updater and combined CI/main owner01a12bc2 integrates model-policy ded910, remote-sync cfc808, recovery a39d, readonly10f1/code85 and mobile-owned Node menu0ac9 on actual PR193/main86ba. Root retains both plan appends/adjacent imports, fixes actual390px long-classifier clipping, and passes312 combined-source checks plus scoped static/classification gates. Original author/independent evidence is reused. Exact-head shared CI and normal-main delivery pending; frozen519.1/ef33 and released518.2 remain unchanged. No new build/version/tag/native/publish claim. Dedicated demoHost deployment and real mobile review remain original mobile owner after exact source/CI/main handoff; no original101/dailyMac action. Taskcodex-release-0519-next-features-20261023-31c3ba5b.md and dev-docs/release-0519-next-20261023/acceptance.md hold boundaries.
+
+
+模型策略组合修复（MOXBOTS-MODEL-POLICY-20261022-02，2026-10-23）：原owner PR194候选的Host loopback未通过，不合并失败候选。开发分支同步main86ba，吸收owner候选目录异常隔离源修；新增仅成功auto-route CAS可使用的单请求进程内快照握手，保留外部配置/权限/owner变化拒绝和operation去重。115项局部组合测试、类型/lint/分类/依赖及独立源审通过；证据dev-docs/model-policy-20261022/acceptance.md。交原唯一desktop owner01a12bc2吸收并重验精确候选；未触发共享CI/正式构建/Host或App操作，主干及发布仍待其门禁。
+

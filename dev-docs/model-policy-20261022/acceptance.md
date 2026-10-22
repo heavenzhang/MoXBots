@@ -28,3 +28,14 @@
 ## 执行记录
 
 主Agent负责契约、shared/server、原配置writer接线、集成与关键路径复验；`/root/ui_implementation`（gpt-6-luna/medium）独立工作树实现UI；`/root/ui_acceptance`（gpt-6.1-sol/medium）不实现源码，负责独立交互/视觉；`/root/backend_review`（gpt-6-luna/medium）只读审查。选择依据为互斥文件和独立验收收益；明确选择纯内置模式，外部模型调用为0。实测收益为发现并修复上述具体缺陷；精确用量、金额和节省比例未知，不作推算。
+
+
+## 2026-10-23 组合主干修复
+
+原desktop owner的PR194（head68c5dcbb）组合CI/Host loopback暴露两处交互：另一Host Provider的凭据解析异常使整个候选目录失败；分类完成后的自动路由成功CAS被mobile原冻结观察误判成外部修改。原loopback为失败证据，不能称通过。本分支正常合入main86ba4b0f49821639756a3b2214fb38e4affe428b，仅.agent-sync/plan.md保留双方条目解决冲突；吸收owner目录异常隔离源修81bcb12fff24b04ca31de9640c2bb05900395daa为8a3f698b0，不吸收其无关主题修正。
+
+新增服务端进程内、单请求、仅一次的auto-route snapshot acknowledgement：在原SessionStore CAS中同时检查原snapshotAt/仍auto/精确owner观察；捕获CAS实际读取的before副本，仅成功后同步校验after并推进本请求expected观察。仅允许自动路由字段变化；保留permissions/tools/runtime/mode/session/workspace/generation和prepared首轮claim、operation回执去重。回调不进入wire、metadata或receipt；不把auto改为manual，不移除CAS，不自动重放。成功握手后任何异常不会回退旧请求。
+
+6文件115项通过（包含16种外部变更阶段组合、切换与same-model缺路由、订阅候选、同一operation仅一次及原desktop拒绝回归），见evidence/remote-auto-cas-tests.txt。类型、受影响ESLint、分类、依赖检查exit0（依赖18项既有warning，0error），evidence/remote-auto-cas-results.json。独立只读审阅闭环subscription路由P1，最终无P0/P1，evidence/remote-auto-cas-review.md。
+
+本轮仅source/local synthetic测试。原Host loopback、精确候选CI及PR194/main集成由唯一desktop owner继续，本会话未运行共享CI/Host fixture、App、业务或正式包。依赖：owner吸收精确修复提交后验证其集成候选；主Agent再读远端main确认包含性。版本/制品/生产状态未改变。

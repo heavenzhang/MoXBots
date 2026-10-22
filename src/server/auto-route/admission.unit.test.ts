@@ -255,3 +255,59 @@ describe('message helpers', () => {
     expect(previousTurn([])).toEqual({ endedAt: undefined });
   });
 });
+
+
+describe('request-local snapshot admission', () => {
+  it('acknowledges the exact successful CAS before broadcasting, preserving a detached before snapshot', async () => {
+    const d = deps();
+    const didApply = vi.fn((before: SessionMetadata, after: SessionMetadata) => {
+      expect(before.model).toBe('claude-sonnet-5-5');
+      expect(after.model).toBe('claude-opus-5-5');
+      expect(before.lastActiveAt).toBe('activity-during-classification');
+      expect(d.broadcast).not.toHaveBeenCalled();
+    });
+    vi.mocked(d.route).mockImplementation(async () => {
+      d.stored()!.lastActiveAt = 'activity-during-classification';
+      return result('claude-opus-5-5');
+    });
+    const isCurrent = vi.fn(() => true);
+    await applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent, didApply } }, input, d);
+    expect(isCurrent).toHaveBeenCalledTimes(1); expect(didApply).toHaveBeenCalledTimes(1);
+    d.stored()!.model = 'later';
+    expect(didApply.mock.calls[0][0].model).toBe('claude-sonnet-5-5');
+    expect(didApply.mock.calls[0][1].model).toBe('claude-opus-5-5');
+  });
+
+  it('retains the old snapshot when its remote owner vetoes the CAS', async () => {
+    const d = deps(), didApply = vi.fn();
+    expect(await applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent: () => false, didApply } }, input, d)).toBeUndefined();
+    expect(d.stored()!.model).toBe('claude-sonnet-5-5');
+    expect(didApply).not.toHaveBeenCalled(); expect(d.broadcast).not.toHaveBeenCalled();
+  });
+
+  it('propagates a failed acknowledgement instead of silently dispatching a fallback', async () => {
+    const d = deps(), error = new Error('remote owner changed');
+    await expect(applyAutoRouteAdmission({ autoRouteSnapshotAdmission: {
+      isCurrent: () => true, didApply: () => { throw error; },
+    } }, input, d)).rejects.toBe(error);
+    expect(d.broadcast).not.toHaveBeenCalled(); expect(d.trackDecision).not.toHaveBeenCalled();
+  });
+
+  it.each(['manual', 'busy', 'same-model'] as const)('does not acknowledge an unwritten %s turn', async mode => {
+    const d = deps({ ...(mode === 'manual' ? { sessionMeta: meta({ modelMode: 'manual' }) } : {}),
+      isSessionBusy: () => mode === 'busy',
+      route: vi.fn(async () => result('claude-sonnet-5-5', { switches: false })),
+    });
+    const didApply = vi.fn();
+    await applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent: () => true, didApply } }, input, d);
+    expect(didApply).not.toHaveBeenCalled(); expect(d.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+});
+
+
+it('does not fall back to the old request after acknowledging a successful CAS', async () => {
+  const error = new Error('broadcast failure'), d = deps({ broadcast: () => { throw error; } });
+  const didApply = vi.fn();
+  await expect(applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent: () => true, didApply } }, input, d)).rejects.toBe(error);
+  expect(didApply).toHaveBeenCalledTimes(1);
+});

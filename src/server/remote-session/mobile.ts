@@ -28,6 +28,7 @@ import { isManagedCodexProviderReady } from '../utils/managed-codex-readiness';
 import { desktopRemoteReceipts as receipts, resolveDesktopRemoteTarget as target } from './desktop';
 import { RemoteSessionError } from './receipts';
 import { rejectRemoteAdmission } from './admission';
+import { createRemoteAutoRouteSnapshotAdmission } from './auto-route-admission';
 import { buildRemoteSnapshot } from './projection';
 import { resolveRemoteMobileModelChoices } from './mobile-models';
 
@@ -183,17 +184,26 @@ async function perform(request:Mutation,sessionId:string,generation:string,asset
     generationCurrent(generation);const {identity}=await target(request.agentId,sessionId,request.kind==='mobile.start'?request.operationId:undefined);
     const engine=getSessionEngine(),ctx=engine.getCurrentSessionContext(),metadata=getSessionMetadata(sessionId)!;
     if(ctx.sessionId!==sessionId||(!ctx.workspacePath||!workspacePathsEqual(ctx.workspacePath,identity.workspacePath))||imSnapshotObservation(metadata)!==observation)fail('REMOTE_SESSION_OWNER_CHANGED');
+    const autoRouteSnapshotAdmission=createRemoteAutoRouteSnapshotAdmission({
+      initial:metadata,observation,observe:imSnapshotObservation,current:()=>getSessionMetadata(sessionId),
+      isOwnerCurrent:()=>{
+        const current=engine.getCurrentSessionContext();
+        return generation===process.env.MYAGENTS_SIDECAR_GENERATION&&current.sessionId===sessionId
+          &&!!current.workspacePath&&workspacePathsEqual(current.workspacePath,identity.workspacePath);
+      },
+    });
     const config=resolveWorkspaceConfig(identity.workspacePath,metadata);
     if(config.mcpServers){const changed=await engine.updateMcpServers(config.mcpServers);if(!changed.success)fail('REMOTE_RUNTIME_CONFIGURATION_FAILED')}
     const payload=await copyAssets(request,sessionId,identity.workspacePath,assets);
     const beforeDispatch=async()=>{
       generationCurrent(generation);await target(request.agentId,sessionId,request.kind==='mobile.start'?request.operationId:undefined);
-      if(imSnapshotObservation(getSessionMetadata(sessionId)!)!==observation)return {accepted:false as const,error:'REMOTE_SESSION_OWNER_CHANGED'};
+      const current=getSessionMetadata(sessionId);
+      if(!current||!autoRouteSnapshotAdmission.isCurrent(current))return {accepted:false as const,error:'REMOTE_SESSION_OWNER_CHANGED'};
       if(request.kind==='mobile.start'){const claim=await claimPreparedSessionForTurnAdmission(sessionId,request.operationId,{title:metadata.title,lastMessagePreview:request.text.slice(0,200)});if(claim.status!=='claimed'&&claim.status!=='already-committed')return {accepted:false as const,error:'REMOTE_PREPARED_ADMISSION_FAILED'};}
       return {accepted:true as const};
     };
     handedOff=true;
-    const admitted=await engine.sendDesktopMessage({...payload,clientRequestId:request.operationId,sessionId,workspacePath:identity.workspacePath,scenario:{type:'desktop'},turnBoundaryOnly:true,model:model??config.model,permissionMode:config.permissionMode,providerRoute:config.providerRoute&&config.providerRoute.kind!=='unknown-legacy'&&model?{...config.providerRoute,model}:config.providerRoute,providerEnv:config.providerEnv,reasoningEffort:config.reasoningEffort,beforeDispatch});
+    const admitted=await engine.sendDesktopMessage({...payload,clientRequestId:request.operationId,sessionId,workspacePath:identity.workspacePath,scenario:{type:'desktop'},turnBoundaryOnly:true,model:model??config.model,permissionMode:config.permissionMode,providerRoute:config.providerRoute&&config.providerRoute.kind!=='unknown-legacy'&&model?{...config.providerRoute,model}:config.providerRoute,providerEnv:config.providerEnv,reasoningEffort:config.reasoningEffort,beforeDispatch,autoRouteSnapshotAdmission});
     if(!admitted.success||admitted.error)rejectRemoteAdmission(admitted.error,'enqueue',request,sessionId);
     if(request.kind==='mobile.send'&&admitted.queued&&admitted.queueId)void admitted.dispatchAcceptance?.catch(()=>{});
     else{const acceptance=await admitted.dispatchAcceptance;if(acceptance&&!acceptance.accepted)rejectRemoteAdmission(acceptance.error,'dispatch',request,sessionId)}

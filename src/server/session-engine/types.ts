@@ -15,7 +15,7 @@ import type { McpServerDefinition } from '../../shared/config-types';
 import type { ProviderEnv } from '../provider-types';
 import type { InteractionScenario } from '../system-prompt';
 import type { SessionSource, TurnAnalyticsSource } from '../types/session';
-import type { SessionMessage, SessionMetadata } from '../types/session';
+import type { AutoRouteSnapshotAdmission, SessionMessage, SessionMetadata } from '../types/session';
 import type { ImagePayload } from '../runtimes/types';
 import type { InboxTurnMeta } from '../inbox/types';
 import type { BackgroundContinuationSnapshot, BackgroundWorkAcknowledgementRequest, BackgroundWorkAcknowledgementResult } from '../background-continuation-policy';
@@ -71,6 +71,8 @@ export type DesktopMessageRequest = {
   turnOwner?: TurnOwner;
   onTerminal?: TurnTerminalObserver;
   beforeDispatch?: DispatchGuard;
+  /** Internal acknowledgement of this request's own auto-route snapshot CAS. */
+  autoRouteSnapshotAdmission?: AutoRouteSnapshotAdmission;
   /** Strong app-owned Skill admission for product workflow turns. */
   requiredSystemSkill?: ProductSystemSkillRequirement;
 };

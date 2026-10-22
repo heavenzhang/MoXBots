@@ -13,7 +13,7 @@ import { createConcreteProviderRoute, type ProviderRoute } from '../../shared/pr
 import { normalizeReasoningEffort } from '../../shared/reasoningEffort';
 import type { MessageWire } from '../builtin-session/types';
 import type { ProviderEnv } from '../provider-types';
-import type { SessionMetadata } from '../types/session';
+import type { AutoRouteSnapshotAdmission, SessionMetadata } from '../types/session';
 import { buildSessionSnapshotPatchUpdates } from '../utils/session-snapshot-patch';
 import type { RouteTurnInput, RouteTurnResult } from './router';
 import { getAutoRouteSessionState, setAutoRouteSessionState } from './session-state';
@@ -21,6 +21,7 @@ import { AutoRoutePoolUnavailableError } from './errors';
 
 /** The routable part of a desktop / IM / background request. Mutated in place. */
 export interface AutoRoutableRequest {
+  autoRouteSnapshotAdmission?: AutoRouteSnapshotAdmission;
   model?: string;
   providerRoute?: ProviderRoute;
   providerEnv?: ProviderEnv | 'subscription';
@@ -113,6 +114,7 @@ export async function applyAutoRouteAdmission(
   input: AutoRouteAdmissionInput,
   deps: AutoRouteAdmissionDeps,
 ): Promise<AutoRouteRecord | undefined> {
+  let snapshotAdmissionCommitted = false;
   const fallback = () => {
     if (!deps.isSessionBusy() && shouldRoute(deps.getSessionMetadata(input.sessionId))) deps.assertFallbackAllowed?.();
     return undefined;
@@ -123,7 +125,10 @@ export async function applyAutoRouteAdmission(
     if (deps.isSessionBusy()) return undefined;
     const previousState = getAutoRouteSessionState(input.sessionId);
     setAutoRouteSessionState(input.sessionId, previousState?.tier ? { tier: previousState.tier } : undefined);
-    const meta = deps.getSessionMetadata(input.sessionId);
+    const stored = deps.getSessionMetadata(input.sessionId);
+    // Store implementations may return a live object. The caller must observe
+    // the exact pre-route snapshot, including edits racing classification.
+    const meta = stored && request.autoRouteSnapshotAdmission ? structuredClone(stored) : stored;
     const text = autoRouteMessageText(input.text);
     if (!shouldRoute(meta) || !text) return undefined;
 
@@ -180,11 +185,22 @@ export async function applyAutoRouteAdmission(
       const nowIso = new Date((deps.now ?? Date.now)()).toISOString();
       const updates = buildSessionSnapshotPatchUpdates({ existing: meta!, payload, nowIso });
       const expected = meta!.configSnapshotAt;
-      const updated = await deps.updateSessionMetadata(input.sessionId, updates, latest =>
-        latest.configSnapshotAt === expected && normalizeModelMode(latest.modelMode) === 'auto');
+      let beforeSnapshot = meta!;
+      const updated = await deps.updateSessionMetadata(input.sessionId, updates, latest => {
+        const accepted = latest.configSnapshotAt === expected && normalizeModelMode(latest.modelMode) === 'auto'
+          && (!request.autoRouteSnapshotAdmission || request.autoRouteSnapshotAdmission.isCurrent(latest));
+        if (accepted && request.autoRouteSnapshotAdmission) beforeSnapshot = structuredClone(latest);
+        return accepted;
+      });
       // Someone changed the Session config meanwhile (e.g. picked a model):
       // their choice wins and this turn runs as requested.
       if (!updated) return fallback();
+      if (request.autoRouteSnapshotAdmission) {
+        // Once the remote caller observes this write, a later failure must not
+        // return the old request as a best-effort fallback.
+        snapshotAdmissionCommitted = true;
+        request.autoRouteSnapshotAdmission.didApply(beforeSnapshot, structuredClone(updated));
+      }
       deps.broadcast('chat:session-config-changed', { sessionId: updated.id });
     }
 
@@ -235,6 +251,7 @@ export async function applyAutoRouteAdmission(
     });
     return record;
   } catch (error) {
+    if (snapshotAdmissionCommitted) throw error;
     if (error instanceof AutoRoutePoolUnavailableError && !deps.isSessionBusy()
       && shouldRoute(deps.getSessionMetadata(input.sessionId))) throw error;
     fallback();

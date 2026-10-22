@@ -1,0 +1,232 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy
+
+ ✓ |unit| src/server/remote-session/admission.unit.test.ts (14 tests) 3ms
+stderr | src/server/remote-session/desktop.unit.test.ts > persists the safe refusal from enqueue and never executes a duplicate rejected operation
+[remote-session] admission rejected {
+  phase: 'enqueue',
+  code: 'REMOTE_PROVIDER_UNAVAILABLE',
+  kind: 'send',
+  operationId: '3bf0cbf0-c2ac-4f48-82b5-2facaaefd5a9',
+  agentId: 'agent',
+  sessionId: 'session'
+}
+
+ ✓ |unit| src/server/remote-session/auto-route-admission.unit.test.ts (13 tests) 10ms
+stderr | src/server/remote-session/desktop.unit.test.ts > persists the safe refusal from dispatch and never executes a duplicate rejected operation
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_PROVIDER_UNAVAILABLE',
+  kind: 'send',
+  operationId: 'fb5b917b-6749-44b6-afd9-a7f164d6fa46',
+  agentId: 'agent',
+  sessionId: 'session'
+}
+
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown
+[auto-route] admission skipped: synthetic
+
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > a routing failure never blocks the turn
+[auto-route] admission skipped: boom
+
+ ✓ |unit| src/server/auto-route/admission.unit.test.ts (31 tests) 17ms
+stderr | src/server/remote-session/desktop.unit.test.ts > reports first-message enqueue rejection without binding or re-adopting its prepared Session
+[remote-session] admission rejected {
+  phase: 'enqueue',
+  code: 'REMOTE_PROVIDER_SELECTION_REQUIRED',
+  kind: 'start',
+  operationId: '7c3d6b09-d2df-4edb-b9bf-d55e3d751a8a',
+  agentId: 'agent',
+  sessionId: '11111111-1111-4111-8111-111111111111'
+}
+
+stderr | src/server/remote-session/desktop.unit.test.ts > reports first-message dispatch rejection without binding or re-adopting its prepared Session
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_PROVIDER_SELECTION_REQUIRED',
+  kind: 'start',
+  operationId: 'c955abf0-ebaf-4dbc-8dbf-3c53ff232721',
+  agentId: 'agent',
+  sessionId: '11111111-1111-4111-8111-111111111111'
+}
+
+ ✓ |unit| src/server/remote-session/desktop.unit.test.ts (19 tests) 389ms
+stderr | src/server/remote-session/mobile.integration.test.ts > retains a safe enqueue refusal in the durable receipt and does not replay it
+[remote-session] admission rejected {
+  phase: 'enqueue',
+  code: 'REMOTE_PROVIDER_UNAVAILABLE',
+  kind: 'mobile.send',
+  operationId: '613e0140-a4c5-4767-a5a1-f3930bebb6c7',
+  agentId: 'agent',
+  sessionId: 'session'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > retains a safe dispatch refusal in the durable receipt and does not replay it
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_PROVIDER_UNAVAILABLE',
+  kind: 'mobile.send',
+  operationId: 'a0136992-90f3-481e-89cc-89140359ab11',
+  agentId: 'agent',
+  sessionId: 'session'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > only one concurrent adoption dispatches and a definitive engine refusal creates a terminal receipt
+[remote-session] admission rejected {
+  phase: 'enqueue',
+  code: 'REMOTE_SESSION_ADMISSION_REJECTED',
+  kind: 'mobile.send',
+  operationId: '0e3a319c-f90c-4d02-bec1-195a86a70e40',
+  agentId: 'agent',
+  sessionId: 'session'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '1799bbeb-f4a5-44d5-8e90-d6bf8f56899f',
+  agentId: 'agent',
+  sessionId: 'fd1871aa-cdec-4b3a-8bd8-bc628cc6c42a'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: 'f51b9401-7791-4b48-b7e7-738c3dc28a21',
+  agentId: 'agent',
+  sessionId: '9321464a-b0d6-4adf-93ec-1e8e39d3ba66'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: 'fc9962fc-c9ec-41e3-9010-a68a690d6205',
+  agentId: 'agent',
+  sessionId: '57bd2d17-0c3f-42f9-820c-d7096441e87c'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: 'b02b885b-c41b-4db4-ae3f-4edd5045edbd',
+  agentId: 'agent',
+  sessionId: '2280a654-fe06-47ee-9a92-66f52a284075'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: 'e637a2c2-4f44-4dfe-b0c6-7b60c6d71840',
+  agentId: 'agent',
+  sessionId: '99e255cf-942e-45de-bdb2-e25799cc2b5a'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '48b174c0-415e-429a-99df-4d702601845b',
+  agentId: 'agent',
+  sessionId: '3ad82a65-e098-479d-b5a0-f26f64494f64'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations classifying without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '889d0a34-af6b-48b2-9ac3-90495ac5e3eb',
+  agentId: 'agent',
+  sessionId: '4c4073ef-bca2-4099-8435-1fbf43385339'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '9b6a8fe8-ab4c-4ab6-8fb9-7f4b1275f6b8',
+  agentId: 'agent',
+  sessionId: '55b8542e-0a78-46ca-9579-9b3e84429aa5'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '110ab83f-62d1-4a4b-8405-679f83bb3935',
+  agentId: 'agent',
+  sessionId: '3aa5dd24-dbe8-4b73-a87b-9b65e240b3b0'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '71ec845d-0db3-49bc-bb1e-289203c557a5',
+  agentId: 'agent',
+  sessionId: 'c793f60a-a85d-4d23-af13-165546e403dc'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '69b8234c-ba57-4436-b672-4568db416c6a',
+  agentId: 'agent',
+  sessionId: '73d3b954-156c-4dc6-8a74-820bb14d7ef4'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: 'fdc7c622-8087-4516-8f1e-3bcf1b3fba5c',
+  agentId: 'agent',
+  sessionId: 'b5ba297e-8e4d-4100-9707-9e370e4eded5'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: 'e59ef4a0-bce4-44d5-b79c-8a0514f4dc73',
+  agentId: 'agent',
+  sessionId: 'ba7317d2-935b-4c3c-a5ce-2973a44e9e68'
+}
+
+stderr | src/server/remote-session/mobile.integration.test.ts > still rejects external mutations after-CAS without claiming the prepared start
+[remote-session] admission rejected {
+  phase: 'dispatch',
+  code: 'REMOTE_SESSION_OWNER_CHANGED',
+  kind: 'mobile.start',
+  operationId: '0587de86-3fc5-4b6d-bc18-83cea26d5132',
+  agentId: 'agent',
+  sessionId: 'e0322000-ac8f-48b0-9dde-43c567d23a3a'
+}
+
+ ✓ |integration| src/server/remote-session/mobile.integration.test.ts (27 tests) 4482ms
+   ✓ still rejects external mutations classifying without claiming the prepared start  1019ms
+   ✓ still rejects external mutations after-CAS without claiming the prepared start  1146ms
+ ✓ |integration| src/server/auto-route/policy.integration.test.ts (11 tests) 4ms
+
+ Test Files  6 passed (6)
+      Tests  115 passed (115)
+   Start at  03:50:14
+   Duration  6.33s (transform 579ms, setup 546ms, collect 1.21s, tests 4.91s, environment 0ms, prepare 454ms)

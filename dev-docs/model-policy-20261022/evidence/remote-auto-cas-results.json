@@ -1,0 +1,39 @@
+{
+  "task": "MOXBOTS-MODEL-POLICY-20261022-02",
+  "scope": "remote automatic-route own-CAS acknowledgement",
+  "tests": {
+    "files": 6,
+    "passed": 115,
+    "exitCode": 0,
+    "log": "remote-auto-cas-tests.txt",
+    "externalMutationVariants": 16
+  },
+  "typecheck": {
+    "exitCode": 0,
+    "log": "remote-auto-cas-typecheck.txt"
+  },
+  "eslint": {
+    "exitCode": 0,
+    "log": "remote-auto-cas-eslint.txt"
+  },
+  "testClassification": {
+    "exitCode": 0,
+    "serverTests": 452,
+    "integration": 128,
+    "credentialed": 6
+  },
+  "dependencyCruiser": {
+    "exitCode": 0,
+    "errors": 0,
+    "warnings": 18,
+    "log": "remote-auto-cas-deps.txt"
+  },
+  "independentReview": {
+    "reviewer": "/root/backend_review",
+    "finalP0P1": 0,
+    "fixedFinding": "concrete subscription routes must also be acknowledged"
+  },
+  "hostLoopback": "pending designated owner's exact integrated candidate",
+  "sharedCI": "not triggered by this task",
+  "nativeAndProduction": "not performed"
+}

@@ -5,13 +5,17 @@ import {join} from 'node:path';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import {composeSidecarRequestHandler,resolveSidecarComposition} from '../sidecar-composition';
 import {hasValidInternalCliCredential} from '../external-cli-admission';
+import {buildAutoTierTable} from '../../shared/autoRoute';
+import {applyAutoRouteAdmission} from '../auto-route/admission';
+import type {DesktopMessageRequest} from '../session-engine/types';
+import type {SessionMetadata} from '../types/session';
 const f=vi.hoisted(()=>({home:'',owner:undefined as unknown,metadata:new Map<string,Record<string,unknown>>(),registry:vi.fn(),config:vi.fn(),shown:vi.fn(),menu:vi.fn(),send:vi.fn(),ctx:vi.fn(),mcp:vi.fn(),claim:vi.fn(),suggest:vi.fn(),snapshot:vi.fn(),save:vi.fn(),ready:vi.fn(),materialize:vi.fn()}));
 vi.mock('node:os',async original=>({...await original<typeof import('node:os')>(),homedir:()=>f.home}));
 vi.mock('./desktop',()=>({resolveDesktopRemoteTarget:f.registry,desktopRemoteReceipts:new Proxy({}, {get:(_,key)=> (...args:unknown[])=>(f.owner as Record<string,(...args:unknown[])=>unknown>)[key as string](...args)})}));
 vi.mock('../SessionStore',()=>({getSessionMetadata:(id:string)=>f.metadata.get(id),updateSessionMetadata:async(id:string,updates:Record<string,unknown>,guard:(current:Record<string,unknown>)=>boolean)=>{const current=f.metadata.get(id)!;if(!guard(current))return null;const updated={...current,...updates};f.metadata.set(id,updated);return updated},saveSessionMetadata:f.save,publishSessionForHandoff:async()=>true,claimPreparedSessionForTurnAdmission:f.claim,getAttachmentPath:(relative:string)=>join(f.home,'.myagents','attachments',relative)}));
 vi.mock('../session-engine',()=>({runProcessUpdateAdmission:async(op:()=>unknown)=>op(),getSessionEngine:()=>({getCurrentSessionContext:f.ctx,sendDesktopMessage:f.send,updateMcpServers:f.mcp})}));
 vi.mock('../admin-api',()=>({handleAgentShow:f.shown}));
-vi.mock('../routes/im-model-selection',()=>({handleImModelRoute:f.menu,imSnapshotObservation:(meta:Record<string,unknown>)=>createHash('sha256').update(JSON.stringify([meta.configSnapshotAt,meta.runtime,meta.runtimeSource,meta.providerId,meta.model,meta.permissionMode])).digest('hex')}));
+vi.mock('../routes/im-model-selection',()=>({handleImModelRoute:f.menu,imSnapshotObservation:(meta:Record<string,unknown>)=>createHash('sha256').update(JSON.stringify([meta.configSnapshotAt,meta.runtime,meta.runtimeSource,meta.runtimeBinding,meta.providerId,meta.providerRoute,meta.providerExecutionIdentity,meta.providerEnvJson,meta.model,meta.reasoningEffort,meta.permissionMode,meta.mcpEnabledServers,meta.enabledPluginIds,meta.enabledOfficialToolIds])).digest('hex')}));
 vi.mock('../session-prompt-suggestion',()=>({suggestNextPrompt:f.suggest}));
 vi.mock('../utils/admin-config',()=>({resolveWorkspaceConfig:f.config}));
 vi.mock('../utils/session-snapshot',()=>({snapshotForOwnedSession:()=>({runtime:'builtin',providerId:'alpha',model:'one',permissionMode:'plan',providerRoute:{kind:'provider',providerId:'alpha',model:'one'},configSnapshotAt:'baseline'})}));
@@ -154,4 +158,64 @@ it.each(['invalid-utf8','nul'] as const)('rejects %s beyond the first block befo
  await handle({request:req,generation:'gen',assets:[first,second]},'session');await settled(req,'rejected');
  expect(f.send).not.toHaveBeenCalled();
  await expect(readFile(join(workspace,'myagents_files','remote-mobile','session',req.operationId,first.assetId+'.txt'))).rejects.toMatchObject({code:'ENOENT'});
+});
+
+
+// Exercise the real route admission and original mobile guard together. No
+// supplier/SDK/native calls: only the existing in-memory store and receipt owner.
+function automaticEngine(options: { sameModel?: boolean; subscription?: boolean; duringClassify?: () => void; beforeDispatch?: () => void } = {}) {
+ const table=buildAutoTierTable([{providerId:'alpha',model:'one'},{providerId:options.subscription?'anthropic-sub':'alpha',model:'two'}]);
+ const target=Object.values(table).flat().find(row=>row.model===(options.sameModel?'one':'two'))!;
+ f.send.mockImplementation(async(sent:DesktopMessageRequest)=>{
+  await applyAutoRouteAdmission(sent,{sessionId:sent.sessionId,text:sent.text,source:'desktop'},{
+   getSessionMetadata:id=>f.metadata.get(id) as unknown as SessionMetadata,
+   isSessionBusy:()=>false,getMessages:()=>[],current:()=>({providerId:'alpha',model:'one',env:undefined}),
+   route:async()=>{options.duringClassify?.();return {decision:{tier:target.tier,target,reason:'classified',switches:!options.sameModel},latencyMs:1}},
+   updateSessionMetadata:async(id,updates,predicate)=>{
+    const current=f.metadata.get(id)! as unknown as SessionMetadata;if(!predicate(current))return null;
+    const next={...current,...updates};f.metadata.set(id,next as unknown as Record<string,unknown>);return next;
+   },broadcast:()=>{},trackDecision:()=>{},supportsImages:()=>true,
+  });
+  options.beforeDispatch?.();
+  return {success:true,dispatchAcceptance:sent.beforeDispatch!()};
+ });
+}
+
+it.each([false,true])('admits its own automatic CAS for an original prepared start (same-model=%s), once',async sameModel=>{
+ const req=request('mobile.start'),id=await prepared(req);f.ctx.mockReturnValue({sessionId:id,workspacePath:workspace});
+ automaticEngine({sameModel});
+ await handle({request:req,generation:'gen',preparedSessionId:id},'session');await settled(req);
+ expect(f.metadata.get(id)).toMatchObject({model:sameModel?'one':'two',providerRoute:{kind:'provider',providerId:'alpha',model:sameModel?'one':'two'}});
+ expect(f.metadata.get(id)!.modelMode).not.toBe('manual');
+ expect(f.claim).toHaveBeenCalledTimes(1);
+ expect(await handle({request:req,generation:'gen',preparedSessionId:id},'session')).toMatchObject({data:{status:'accepted'}});
+ expect(f.send).toHaveBeenCalledTimes(1);
+});
+
+it.each(['classifying','after-CAS'] as const)('still rejects external mutations %s without claiming the prepared start',async phase=>{
+ for(const change of ['model','permission','mcp','runtime','mode','generation','workspace','session'] as const){
+  const req=request('mobile.start'),id=await prepared(req);f.ctx.mockReturnValue({sessionId:id,workspacePath:workspace});
+  const mutate=()=>{
+   const current=f.metadata.get(id)!;
+   if(change==='generation')vi.stubEnv('MYAGENTS_SIDECAR_GENERATION','other');
+   else if(change==='workspace')f.ctx.mockReturnValue({sessionId:id,workspacePath:workspace+'/other'});
+   else if(change==='session')f.ctx.mockReturnValue({sessionId:'other',workspacePath:workspace});
+   else Object.assign(current,change==='model'?{model:'external'}:change==='permission'?{permissionMode:'full'}:change==='mcp'?{mcpEnabledServers:['extra']}:change==='runtime'?{runtime:'codex'}:{modelMode:'manual'});
+  };
+  automaticEngine(phase==='classifying'?{duringClassify:mutate}:{beforeDispatch:mutate});
+  f.claim.mockClear();
+  await handle({request:req,generation:'gen',preparedSessionId:id},'session');await settled(req,'rejected');
+  expect(await status(req)).toMatchObject({code:'REMOTE_SESSION_OWNER_CHANGED'});expect(f.claim).not.toHaveBeenCalled();
+  if(phase==='classifying')expect(f.metadata.get(id)!.configSnapshotAt).toBe('frozen');
+  vi.stubEnv('MYAGENTS_SIDECAR_GENERATION','gen');
+ }
+});
+
+
+it('admits an eligible subscription route selected by the original automatic policy',async()=>{
+ const req=request('mobile.start'),id=await prepared(req);f.ctx.mockReturnValue({sessionId:id,workspacePath:workspace});
+ automaticEngine({subscription:true});
+ await handle({request:req,generation:'gen',preparedSessionId:id},'session');await settled(req);
+ expect(f.metadata.get(id)).toMatchObject({model:'two',providerId:'anthropic-sub',providerRoute:{kind:'subscription',providerId:'anthropic-sub',model:'two'}});
+ expect(f.claim).toHaveBeenCalledTimes(1);
 });
