@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppConfig } from '../../shared/config-types';
 
-const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>, providers: [] as unknown[] }));
+const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>, providers: [] as unknown[], unavailableProvider: '' }));
 vi.mock('../utils/admin-config', () => ({
   loadConfig: () => fixture.config,
   getAllEffectiveProviders: () => fixture.providers,
-  getProviderSelectionError: () => null,
+  getProviderSelectionError: (provider: { id: string }) => {
+    if (provider.id === fixture.unavailableProvider) throw new Error('Synthetic Host credential reference unavailable');
+    return null;
+  },
   resolveSubscriptionAuthKind: () => undefined,
   materializeProviderRouteEnv: (ref: { providerId: string }) => ({ providerId: ref.providerId, apiKey: 'synthetic', baseUrl: 'http://fixture.invalid' }),
 }));
@@ -16,6 +19,7 @@ import { AutoRoutePoolUnavailableError } from './errors';
 describe('effective model policy route plan', () => {
   beforeEach(() => {
     fixture.config = {};
+    fixture.unavailableProvider = '';
     fixture.providers = [{ id: 'p', name: 'Fixture', type: 'api', config: {}, models: [
       { model: 'primary', tier: 'balanced' }, { model: 'automatic', tier: 'balanced' },
       { model: 'specified', tier: 'balanced' }, { model: 'cross', tier: 'fast' },
@@ -28,6 +32,16 @@ describe('effective model policy route plan', () => {
       classifier: { classify: vi.fn(async () => ({ ok: true as const, tier: 'balanced' as const, latencyMs: 1, cached: false })), lastFailure: () => undefined, reset: vi.fn() },
     });
   };
+  it('keeps an unavailable Host credential scoped to its provider without bypassing an explicit pool', async () => {
+    fixture.providers.unshift({ id: 'unavailable', name: 'Unbound Host provider', type: 'api', config: {}, models: [{ model: 'blocked', tier: 'balanced' }] });
+    fixture.unavailableProvider = 'unavailable';
+    const catalog = buildAutoRouteCatalog(fixture.config);
+    expect(catalog.models).toContainEqual(expect.objectContaining({ providerId: 'unavailable', model: 'blocked', available: false, unavailableReason: 'provider-unavailable' }));
+    expect(catalog.entries.has('unavailable/blocked')).toBe(false);
+    expect((await plan())?.decision.target.providerId).toBe('p');
+    fixture.config.autoRouting = { pool: { 'unavailable/blocked': { enabled: true } } };
+    await expect(plan()).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
+  });
   it('reports the specified candidate instead of the unused automatic candidate', async () => {
     const result = await plan({ enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } });
     expect(result?.decision.backup?.model).toBe('automatic');

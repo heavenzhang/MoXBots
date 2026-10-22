@@ -30,7 +30,14 @@ export interface AutoRouteCatalog {
 function providerUnavailableReason(provider: Provider, config: AdminAppConfig): AutoRouteManagedModel['unavailableReason'] {
   if (provider.enabled === false) return 'provider-disabled';
   if (provider.id.startsWith('cloud-session:') || isRuntimeBackedProvider(provider)) return 'runtime-unsupported';
-  if (getProviderSelectionError(provider as unknown as Parameters<typeof getProviderSelectionError>[0], config) !== null) return 'provider-unavailable';
+  try {
+    if (getProviderSelectionError(provider as unknown as Parameters<typeof getProviderSelectionError>[0], config) !== null) return 'provider-unavailable';
+  } catch {
+    // A Host worker owns only its bound Provider credential. Another configured
+    // reference may be unavailable here; that candidate is ineligible, not an
+    // error in the entire catalog. Actual route materialization stays strict.
+    return 'provider-unavailable';
+  }
   return undefined;
 }
 
