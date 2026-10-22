@@ -16,8 +16,8 @@ MOXBOTS-0519-NEXT-FEATURES-20261023. Existing sole desktop/macOSarm64/updater an
 - [x] Remote admission879 passed exact CI39833774970 and normal PR193 main86ba4b0f; tested/main tree equal.
 - [x] Review exact remote-sync cfc80852, readonly recovery10f1/85, recovery Store/scannera39; source-scoped accepted; original checks reused.
 - [x] Read model-policy ded910 source and independent evidence; classify actual390px long-classifier control clipping P2, retain repro.
-- [ ] Integrate exact sources and Host menu0ac9 without touching original author worktrees; preserve shared plan/task records.
-- [ ] Fix only confirmed classifier layout and run affected integration/geometry checks. No blind repetition of accepted isolated suites.
+- [x] Integrate exact sources and Host menu0ac9 without touching original author worktrees; preserve shared plan/task records.
+- [x] Fix only confirmed classifier layout and run affected integration/geometry checks. No blind repetition of accepted isolated suites.
 - [ ] Root final combined review, shared exact-head CI, normal protected main merge and remote containment/tree verification.
 - [ ] Only after explicit new candidate freeze assign next build, one normal-priority build/sign/notary/archive, bounded affected native/dual-device acceptance, publication and local delivery under existing gates.
 
@@ -33,6 +33,10 @@ Host menu0ac9ca3f25d27046f9d718519da389427850e44a: sole mobile owner delivers3 N
 
 Root directly reviews/integrates; no new agents or external models. Existing author/independent tests are synthetic or isolated Store proofs as recorded, not native/real-provider or dual-device proof. UI changes only in source/isolated fixture. No business Stop, repeated tool action, data migration, copied QA credentials, source freeze replacement, deployment ownership takeover or outside-scope server deployment.
 
+## Current verification
+
+All five exact sources normally merged. Root fixed the demonstrated390px classifier clipping with only grid/select width constraints; actual390/800 geometry passes. Combined312 checks passed (73DOM/149unit/90integration), type output clean/scoped lint0/classification0. See dev-docs/release-0519-next-20261023/acceptance.md. This evidence is source/isolated validation only.
+
 ## Next step
 
-Normal-merge reviewed exact source commits into this isolated branch, reconcile adjacent imports/localized keys/shared plan appends, implement the bounded long-classifier layout fix and preserve exact evidence. Shared CI is owned by this chat; collect any existing run before new invocation. Publication/local install remains separately gated.
+Push this exact combined head, run its single original PR CI, then normally merge only after required checks pass and verify remote containment/tested tree. Report exact source closure to the existing mobile owner for dedicated demoHost acceptance. App freeze/build/native/install/stable remain separately gated; do not mutate frozen519.1.
