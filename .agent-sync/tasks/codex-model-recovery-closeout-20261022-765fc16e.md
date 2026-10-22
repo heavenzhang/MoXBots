@@ -11,7 +11,7 @@ Human renewed scope on 2026-10-22: close retained-log backlog/rotation gaps firs
 
 ## Acceptance criteria
 
-- [ ] Retained historical unified/crash files scanned from byte zero with durable identity cursors; pending bytes reach zero at a declared snapshot. Missing historical files remain explicit gaps.
+- [x] Retained historical unified/crash files scanned from byte zero with durable identity cursors; pending bytes reached zero at a declared snapshot. All49 retained files/about1.02GB covered;28 removed legacy104-byte crash records remain explicit historical gaps.
 - [ ] Ordinary real-model interruption resumes original native history and completes controlled multistep work, completed effect count exactly one.
 - [ ] Actual Goal same owner/turn/deadline survives temporary model failure; pause/resume/cancel and original completed effects verified.
 - [ ] Waiting Stop, cold admit/prepare Stop and reopen cannot wake old execution; partial/unpaired or uncertain effects never blind-replay. Reconciliation must be evidence-backed.
@@ -33,7 +33,7 @@ Publisher currently owns frozen519.1 native/build lifecycle. Read-only source/lo
 
 ## Next step
 
-Install independently reviewed schema3 operational watcher/cursor from staged full backfill, preserve unavailable historical files, then execute publisher-provided signed-native/real-Provider matrix under a fresh GUI/runtime window. Native/publication gates remain open.
+Schema3 operational watcher installed from committed5bf28253cc12988ed9dfd9157b3fe680c69cffd0 with original tool/cursor backup. Live readback pending0/errors0,712 indexed metadata occurrences (not712 defects); current180-minute heartbeat scope updated to continue closeout. Sole publisher received exact source,18 tests, scoped review and coverage receipt for normal CI/main intake. Next: receive controlled signed-native/real-provider window and close the remaining matrix; native/publication gates remain open.
 
 ## Deployment request
 
