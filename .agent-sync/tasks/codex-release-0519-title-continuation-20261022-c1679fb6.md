@@ -15,13 +15,14 @@ Existing sole desktop/macOSarm64/updater and combined CI/main/version/publisher 
 - [x] AI titles use persisted admitted user requests through the existing asynchronous single title service, preserving manual-name/current-owner/attempt/budget/runtime guards.
 - [x] Ordinary running/new/hydrating/busy sessions advertise no continuation; stopped/interrupted exact-turn continuation and cold recovery stay intact.
 - [x] Root version and root lock projections consistently reserve0.5.19/519.1 without dependency, SDK, Reader or mobile version changes.
-- [ ] Select exact combined source after any required main/credential-ledger CI repair; original CI and protected main delivery with remote SHA verification.
+- [x] Reconcile exact protected mobile main13b5e155ea2b23632aec2734f34a6b581eb2bfeb after original diagnostic CI39748783192 passed nine jobs and one conditional skip; preserve the original failed run.
+- [ ] Select this exact combined source for its one original CI and protected main delivery with remote SHA verification.
 - [ ] One new immutable artifact, signing/notarization and same-artifact local/formal publication after proportionate affected acceptance.
 - [ ] Fresh maintenance owner/durable generation/schedule/backup admission before new App operations; one controlled safe real Provider title+Store+sidebar/tab check and affected continuation behavior. Do not repeat5182 or old business tasks.
 
 ## Completed
 
-Ordinary merges preserve both full author histories. The two session_architecture documentation edits auto-merged and retain both accepted-request title and interrupted-only continuation contracts. Root reviewed the affected boundary; no second execution/storage owner or business autosend was added. Version metadata is reserved in this checkpoint only. No producer has been frozen, no019 CI/build/sign/Apple/tag/install/publication started.
+Ordinary merges preserve both full author histories. The two session_architecture documentation edits auto-merged and retain both accepted-request title and interrupted-only continuation contracts. Root reviewed the affected boundary; no second execution/storage owner or business autosend was added. Version metadata is reserved in this checkpoint only. This source is now ready for selection into its one original CI after main reconciliation; no019 CI/build/sign/Apple/tag/install/publication has started. The only merge conflict was adjacent plan appends; both were retained.
 
 ## Verification
 
@@ -29,8 +30,8 @@ Original AI-title author evidence:430 tests/11 files, TypeScript/lint/classifica
 
 ## Blockers and unknowns
 
-Unrelated existing mobile PR190 original Linux CI39739522534 failed credential-ledger subprocess admission at63d223010; its root cause remains unresolved. Sole mobile diagnostic writer prepared reviewed diagnostic sourceab7e7cf2fc77bfe3e19426fcbc0f4c2282157105; Root coordinates that existing PR's one changed-head Linux evidence run separately. Do not copy a proposed guard relaxation, suppress the test, blindly rerun old CI, or infer local macOS probes are Linux proof.019 source is not frozen or represented as production ready. Actual real title generation and newly installed runtime acceptance are still pending; do not claim5182 already has these later changes. Other deployment units and uncommitted work stay outside this batch.
+Original mobile PR190 Linux CI39739522534 failed credential-ledger subprocess admission at63d223010; its root cause remains unresolved. Root and independent review approved guard-preserving diagnostic sourceab7, then original exact newhead e5 CI39748783192 passed nine jobs/one conditional skip, Linux1794pass and clippy. Normal main13b5e155 has the exact tested treeea7fe955. Mobile build4 still names its actual source63 and signing/distribution remains under its separate sole owner; no guard relaxation or old-run suppression occurred. This is separate from selecting019's own exact source/CI. Actual real title generation and new native acceptance remain pending. Orchestration8b is not included: Root found two P1 source gaps (external CC policy is not consumed; Codex birth-enabled same-turn propose does not fence subsequent spawn). Its original writer is repairing those independently, and later commits cannot silently join this selection. Other units and uncommitted work stay outside.
 
 ## Next step
 
-Preserve this branch remotely, finish the separately owned PR190 diagnostic Linux evidence, then reconcile actual main deliberately and select the exact019 producer/one original combined CI. Retain this task's source and affected acceptance boundaries through the normal main/artifact/install/publish flow; no duplicate5182 build or native work.
+Push this reconciled exact source and let the existing sole owner create one019 PR/original combined CI; accept only that exact head before protected main delivery and artifact selection. Retain this task's source and affected acceptance boundaries through the normal main/artifact/install/publish flow; no duplicate5182 build or native work.
