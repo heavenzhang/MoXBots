@@ -222,3 +222,35 @@ describe('decideAutoRoute', () => {
     expect(decideAutoRoute({ table, tier: 'fast', verdict: 'classified', now, isUsable: () => false })).toBeNull();
   });
 });
+
+
+describe('explicit auto-routing candidate pool', () => {
+  const candidates = [
+    { providerId: 'p', model: 'claude-haiku-5-5' },
+    { providerId: 'p', model: 'claude-sonnet-5-5' },
+  ];
+  it('keeps legacy directory behavior but treats an explicit empty pool as empty', () => {
+    expect(Object.values(buildAutoTierTable(candidates)).flat()).toHaveLength(2);
+    expect(Object.values(buildAutoTierTable(candidates, { pool: {} })).flat()).toEqual([]);
+  });
+  it('never re-adds removed or newly discovered models and preserves paused membership', () => {
+    const settings = parseAutoRoutingSettings(JSON.parse(JSON.stringify({ pool: {
+      'p/claude-haiku-5-5': { enabled: false }, 'p/claude-sonnet-5-5': { enabled: true },
+    } })));
+    expect(settings.pool?.['p/claude-haiku-5-5']).toEqual({ enabled: false });
+    expect(Object.values(buildAutoTierTable([...candidates, { providerId: 'p', model: 'new' }], settings))
+      .flat().map(row => row.model)).toEqual(['claude-sonnet-5-5']);
+  });
+  it('fails closed for malformed membership, without losing explicit empty intent', () => {
+    expect(parseAutoRoutingSettings({ pool: { bad: true, 'p/m': { enabled: 'true' } } }).pool)
+      .toEqual({ 'p/m': { enabled: false } });
+    expect(parseAutoRoutingSettings({ pool: {} }).pool).toEqual({});
+  });
+  it('cannot hold a removed current model when classification fails', () => {
+    const table = buildAutoTierTable(candidates, { pool: { 'p/claude-sonnet-5-5': { enabled: true } } });
+    const result = decideAutoRoute({ table, current: candidates[0], tier: undefined,
+      verdict: 'classifier-failed', now: 100, isUsable: () => true });
+    expect(result?.target.model).toBe('claude-sonnet-5-5');
+    expect(result?.reason).toBe('unavailable-fallback');
+  });
+});

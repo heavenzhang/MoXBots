@@ -288,7 +288,28 @@ export interface AutoRoutingSettings {
   tierOverrides?: Record<string, AutoTier>;
   /** In-tier order the user chose; unlisted models follow in inferred order. */
   tierOrder?: Partial<Record<AutoTier, string[]>>;
+  /** Absent follows the provider directory. Present is an explicit membership
+   * snapshot; an empty object deliberately permits no automatic candidates. */
+  pool?: Record<string, { enabled: boolean }>;
 }
+
+export interface AutoRouteManagedModel extends AutoModelRef {
+  modelName?: string;
+  providerName?: string;
+  tier: AutoTier;
+  source: AutoTierSource;
+  inPool: boolean;
+  enabled: boolean;
+  available: boolean;
+  unavailableReason?: 'provider-disabled' | 'provider-unavailable' | 'runtime-unsupported' | 'model-unavailable' | 'not-chat';
+}
+
+export function isAutoPoolEnabled(settings: AutoRoutingSettings, ref: AutoModelRef): boolean {
+  return settings.pool === undefined || settings.pool[autoModelKey(ref)]?.enabled === true;
+}
+
+/** Pure edits run against the latest config inside its existing writer lock. */
+export type AutoRoutingModifier = (current: AutoRoutingSettings) => AutoRoutingSettings;
 
 /** Untrusted config → settings. Malformed parts are dropped, never guessed. */
 export function parseAutoRoutingSettings(value: unknown): AutoRoutingSettings {
@@ -296,6 +317,12 @@ export function parseAutoRoutingSettings(value: unknown): AutoRoutingSettings {
   const raw = value as Record<string, unknown>;
   const out: AutoRoutingSettings = {};
   if (typeof raw.enabled === 'boolean') out.enabled = raw.enabled;
+  if (raw.pool && typeof raw.pool === 'object' && !Array.isArray(raw.pool)) {
+    out.pool = Object.fromEntries(Object.entries(raw.pool as Record<string, unknown>)
+      .filter(([key]) => parseAutoModelKey(key) !== null)
+      .map(([key, entry]) => [key, { enabled: Boolean(entry && typeof entry === 'object'
+        && (entry as Record<string, unknown>).enabled === true) }]));
+  }
   const classifier = raw.classifier as Record<string, unknown> | undefined;
   if (classifier && typeof classifier.providerId === 'string' && typeof classifier.model === 'string'
     && classifier.providerId.trim() && classifier.model.trim()) {
@@ -365,7 +392,7 @@ export function buildAutoTierTable(
   const seen = new Set<string>();
   const chat = candidates.filter(candidate => {
     const key = autoModelKey(candidate);
-    if (seen.has(key) || isNonChatModel(candidate.model)) return false;
+    if (seen.has(key) || isNonChatModel(candidate.model) || !isAutoPoolEnabled(settings, candidate)) return false;
     seen.add(key);
     return true;
   });
@@ -501,6 +528,9 @@ export function decideAutoRoute(input: AutoRouteDecisionInput): AutoRouteDecisio
   const candidates = ordered(tier);
   if (candidates.length === 0) return null;
   let target = currentEntry && currentUsable && currentEntry.tier === tier ? currentEntry : candidates[0];
+  // A removed/paused current model must not survive admission's classifier
+  // failure fallback. Only an eligible current entry may keep that behavior.
+  if (!currentUsable && input.current && reason === 'classifier-failed') reason = 'unavailable-fallback';
   if (target.tier !== tier && reason !== 'held-warm-cache') reason = 'unavailable-fallback';
 
   // Context pressure: only a model with a larger window may take the turn.
