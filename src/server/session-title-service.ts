@@ -5,7 +5,7 @@
  * title and applies it. It replaces the former frontend-driven trigger in
  * TabProvider, which only covered open Chat tabs and was lost on tab close /
  * refresh. Living in the sidecar, it fires for every owner uniformly (Chat / IM
- * / Cron / background) off the post-turn-success hook in both runtime paths
+ * / Cron / background) off request admission and successful-turn hooks in both runtime paths
  * (agent-session.ts builtin, external-session.ts external).
  *
  * Contract (red-lines from the #296 design baseline):
@@ -26,7 +26,7 @@ import type { RuntimeType } from '../shared/types/runtime';
 import type { ProviderEnv } from './provider-types';
 import { getSessionData, getSessionMetadata, updateSessionMetadata } from './SessionStore';
 import { broadcast } from './sse';
-import { setPostTurnTitleHook } from './turn-hooks';
+import { setPostTurnTitleHook, type SessionTitleTrigger } from './turn-hooks';
 import {
   buildTitleRoundsFromMessages,
   shouldAttemptAutoTitle,
@@ -96,34 +96,40 @@ export async function generateAndApplyTitle(
 }
 
 /**
- * Post-turn-success hook. Called fire-and-forget from both runtime paths after a
- * turn the runtime reported as successful. Decides (pure policy) whether to
- * title this session now, reconstructs rounds from the persisted transcript, and
+ * Request-admission / post-turn-success hook. Called fire-and-forget from both
+ * runtime paths. Decides (pure policy) whether to title this session now,
+ * reconstructs requests or rounds from the canonical transcript, and
  * — if there are enough — generates + applies the title. All failures swallowed.
  *
  * @param sessionId   session whose turn just completed
  * @param runtime     runtime that ran the turn ('builtin' | 'claude-code' | …)
  * @param model       RAW (un-suffixed) model id the turn used, or undefined
  * @param providerEnv live provider env (builtin only; external uses CLI auth)
+ * @param trigger admission summarizes the request without trusting unfinished output
  */
 export async function maybeGenerateTitleAfterTurn(
   sessionId: string,
   runtime: RuntimeType,
   model: string | undefined,
   providerEnv?: ProviderEnv,
+  trigger: SessionTitleTrigger = 'completed-turn',
 ): Promise<void> {
   if (!sessionId || inFlight.has(sessionId)) return;
   inFlight.add(sessionId);
   try {
     const meta = getSessionMetadata(sessionId);
-    if (!meta) return;
+    if (!meta || meta.materializationState === 'prepared') return;
 
     // Cheap pre-filter (no disk read): titleSource final? attempts exhausted?
     // user-message count inside the [min, max] window?
     if (!shouldAttemptAutoTitle({
       titleSource: meta.titleSource,
       titleGenAttempts: meta.titleGenAttempts,
-      userMessageCount: meta.stats?.messageCount ?? 0,
+      // V2's request is already in the canonical live transcript, while its
+      // asynchronously committed stats may still read zero at admission.
+      userMessageCount: trigger === 'accepted-user'
+        ? Math.max(1, meta.stats?.messageCount ?? 0)
+        : meta.stats?.messageCount ?? 0,
     })) return;
 
     // Expensive step, now justified: read the transcript and reconstruct rounds.
@@ -131,6 +137,7 @@ export async function maybeGenerateTitleAfterTurn(
     if (!data) return;
     const rounds = buildTitleRoundsFromMessages(data.messages, {
       isUserTitleable: index => isHumanUserMessage(data.messages[index], meta.origin),
+      userRequestsOnly: trigger === 'accepted-user',
     });
     if (rounds.length < AUTO_TITLE_MIN_ROUNDS) return; // self-heals on a later turn
 
@@ -161,7 +168,7 @@ export async function maybeGenerateTitleAfterTurn(
  * handling, so the runtime path never awaits or sees a rejection.
  */
 export function installAutoTitleHook(): void {
-  setPostTurnTitleHook((sessionId, runtime, model, providerEnv) => {
-    void maybeGenerateTitleAfterTurn(sessionId, runtime, model, providerEnv);
+  setPostTurnTitleHook((sessionId, runtime, model, providerEnv, trigger) => {
+    void maybeGenerateTitleAfterTurn(sessionId, runtime, model, providerEnv, trigger);
   });
 }

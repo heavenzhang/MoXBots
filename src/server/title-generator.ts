@@ -12,8 +12,8 @@ import { withModelQaUtilityAdmission } from './utils/model-qa-utility-admission'
  *                so external sessions no longer fall back to Anthropic SDK.
  *
  * Always single-turn; never persists the title session. Timing: the backend
- * Title Service triggers this after the first completed, titleable QA round;
- * before that the session shows the default truncated-first-message title.
+ * Title Service triggers this when a human request is admitted, with successful
+ * turns as a retry opportunity. The default snippet is only provisional.
  */
 
 import { randomUUID } from 'crypto';

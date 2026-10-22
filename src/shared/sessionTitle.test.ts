@@ -13,6 +13,35 @@ import {
 } from './sessionTitle';
 import { buildFloatingBallContextReminder, buildGoalContinuationReminder } from './systemReminder';
 
+describe('accepted request title context', () => {
+  const request = '【发生时间】2026年10月20日第一次出现\n【操作步骤】审批与报销-个人报销-提交报销审批\n【实际结果】网络错误无法提交\n【预期结果】能提交成功';
+  it('summarizes a full request before an assistant reply exists', () => {
+    expect(buildTitleRoundsFromMessages([{ role: 'user', content: request }], { userRequestsOnly: true }))
+      .toEqual([{ user: request, assistant: '' }]);
+  });
+  it('never treats partial or failed assistant output as a completed result', () => {
+    expect(buildTitleRoundsFromMessages([
+      { role: 'user', content: request }, { role: 'assistant', content: 'Error: 401 Unauthorized' },
+    ], { userRequestsOnly: true })).toEqual([{ user: request, assistant: '' }]);
+  });
+  it('keeps consecutive human requests without requiring QA adjacency', () => {
+    expect(buildTitleRoundsFromMessages([
+      { role: 'user', content: '排查报销审批' }, { role: 'user', content: '所有人都提示网络错误' },
+    ], { userRequestsOnly: true })).toHaveLength(2);
+  });
+  it('excludes maintenance, wrapper-only, blank and caller-rejected requests', () => {
+    expect(buildTitleRoundsFromMessages([
+      { role: 'user', content: '<HEARTBEAT>check' },
+      { role: 'user', content: '<system-reminder>hidden</system-reminder>' },
+      { role: 'user', content: '   ' },
+      { role: 'user', content: 'machine-generated task' },
+    ], { userRequestsOnly: true, isUserTitleable: index => index !== 3 })).toEqual([]);
+  });
+  it('retains the completed-round policy when admission mode is not requested', () => {
+    expect(buildTitleRoundsFromMessages([{ role: 'user', content: request }])).toEqual([]);
+  });
+});
+
 describe('stripSystemWrapper', () => {
   it('returns plain text unchanged', () => {
     expect(stripSystemWrapper('帮我看看今天的邮件')).toBe('帮我看看今天的邮件');
