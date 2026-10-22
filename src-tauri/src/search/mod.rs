@@ -15,6 +15,8 @@ mod record_indexer;
 mod schema;
 mod searcher;
 mod session_indexer;
+#[cfg(test)]
+mod test_process;
 mod tokenizer;
 mod util;
 mod watcher;

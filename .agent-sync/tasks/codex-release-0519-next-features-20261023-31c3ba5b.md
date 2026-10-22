@@ -18,7 +18,7 @@ MOXBOTS-0519-NEXT-FEATURES-20261023. Existing sole desktop/macOSarm64/updater an
 - [x] Read model-policy ded910 source and independent evidence; classify actual390px long-classifier control clipping P2, retain repro.
 - [x] Integrate exact sources and Host menu0ac9 without touching original author worktrees; preserve shared plan/task records.
 - [x] Fix only confirmed classifier layout and run affected integration/geometry checks. No blind repetition of accepted isolated suites.
-- [ ] Root final combined review, shared exact-head CI, normal protected main merge and remote containment/tree verification.
+- [x] Root final combined review; original CI39849289844 nineSUCCESS/conditional iOSskip; normalmain54f09b8d/tested6770 treece5 equal and all five source ancestors verified.
 - [ ] Only after explicit new candidate freeze assign next build, one normal-priority build/sign/notary/archive, bounded affected native/dual-device acceptance, publication and local delivery under existing gates.
 
 ## Scope and source evidence
@@ -52,3 +52,8 @@ All five exact sources normally merged. Root fixed the demonstrated390px classif
 ## Next step
 
 Push this corrected source/test closure once and collect its original PR194 CI. Previous68/88/4c runs remain failed or cancelled with raw retained; none authorizes main. Only full exact-head CI and unchanged PR/base guards permit one normal merge and tested-main tree/remote-ancestor verification. Hand the exact source closure to the existing mobile owner for dedicated demoHost acceptance. App freeze/build/native/install/stable remain separate; do not mutate frozen519.1 or replay old suites.
+
+
+## Source/main delivery closeout
+
+PR194 actualMERGED main54f09b8d17e87702a08fcd4ccb40b0289c6a97b7, exacttested6770/treece5; original CI39849289844 attempt1 nineSUCCESS/oneconditional iOSskip. Sole observer95380 collectedexit0, no live old CI/main process. All five exact sources contained; newNode source closure handed to original mobile owner for dedicatedbb90 only. No source remerge/rerun required. Root subsequently selects newbuild519.2 producer54 and a packaging overlay instead of changing frozen519.1; App/native/local/stable remain separate. Newly observed automaticmain CI search-test failures are handled by taskcodex-release-0519-index-test-drain-20261023-48b727a4.md, test-only and no App rebuild.

@@ -840,3 +840,10 @@ Same sole desktop/macOS/updater and combined CI/main owner01a12bc2 integrates mo
 
 模型策略组合修复（MOXBOTS-MODEL-POLICY-20261022-02，2026-10-23）：原owner PR194候选的Host loopback未通过，不合并失败候选。开发分支同步main86ba，吸收owner候选目录异常隔离源修；新增仅成功auto-route CAS可使用的单请求进程内快照握手，保留外部配置/权限/owner变化拒绝和operation去重。115项局部组合测试、类型/lint/分类/依赖及独立源审通过；证据dev-docs/model-policy-20261022/acceptance.md。交原唯一desktop owner01a12bc2吸收并重验精确候选；未触发共享CI/正式构建/Host或App操作，主干及发布仍待其门禁。
 
+
+
+## MOXBOTS-0519-INDEX-TEST-ISOLATION-20261023 / current519.2
+
+Root01a12bc2 remains sole desktop/macOS/updater and combinedCI/main/version owner. PR194 original Test39849289844 passed9success/conditional iOSskip, normalmain54f09b8d17e87702a08fcd4ccb40b0289c6a97b7/tested6770 treece5 equal. Newimmutable0.5.19/build519.2 is selected from exactmain54 using reviewed Tauri build-time CFBundleVersion overlay; tracked source stays clean, no Info-only relabel or frozen519.1 overwrite. One normalnice0/jobs4 build20481 and firststage/sign pass; no App execution/native/install/stable019 acceptance yet, actual518.2/stable018 unchanged.
+
+Automatic mainpush39852196790 independently reports2 unchanged Tantivy immediate-reopen LockBusy tests (1805pass/8ignored). This task preserves both original bodies/assertions and runs each in an exact private test subprocess so unrelated concurrent spawns cannot inherit its writer FD. Pinned library/probe evidence supports interference, exact historical holder is unknown; no product shutdown repair claim or blind rerun. Only cfg(test) code changes, new original CI/main gated. Existing519.2 binary is retained without rebuild. Fresh owner/durable/full schedule/draft/consistent backup and finite affected native/actual dual-device gates remain separate; no original business stop/replay or independent deployment takeover. Taskcodex-release-0519-index-test-drain-20261023-48b727a4.md holds continuation.

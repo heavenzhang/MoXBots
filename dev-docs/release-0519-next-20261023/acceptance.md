@@ -50,3 +50,10 @@ The next original4c7e CI reaches encrypted Mobile→WSS→Host completion: recei
 Actual local standard/large-image loopbacks pass6203/8353ms, each native2/classifier2, retaining duplicate/start/restart receipt and attachment-byte assertions; fixture lint0. The three-target Rust full-chain text/assets/FFI/renewal matrix is not claimed locally and remains the exact corrected CI gate, avoiding a duplicate local Rust build. Previous39847060816 was cancelled after its distinct failed job; its sole observer/pipeline54822 collected nonzero and performed no main merge.
 
 All three latest fixture changes received separate read-only source review with no P0/P1; native1/2, observations[1], original image/file digest and duplicate/restart assertions are retained. No additional test or runtime action was performed by that reviewer.
+
+
+## Original shared CI and normal-main delivery
+
+Exact6770eeaf89b7faa671a73f0739d4c5e065192097 / CI39849289844 attempt1 passes nine jobs with the conditional iOS lane skipped. Normal PR194 merge is54f09b8d17e87702a08fcd4ccb40b0289c6a97b7; tested/actualmain treece5bf3f18f12906896f3d0b51daa95474002ae19 is identical, remote contains all original sources. Sole observer95380 collectedexit0; previous failed/cancelled raw remains. This closes source/main delivery only. New519.2 producer54 is built once with actual build-time bundle519.2 overlay; old519.1, installed518.2 and stable018 are not relabeled.
+
+Automatic main-push39852196790 later independently exposes two old immediate search writer-reopen LockBusy tests. Their raw1805pass/2fail/8ignored and source/library diagnosis are retained. A separate cfg(test)-only isolation correction retains all original assertions; corrected CI is pending. No unchanged App rebuild or public release is authorized by this paragraph. Exact historical child attribution and full native/dual-device acceptance remain unknown/pending.
