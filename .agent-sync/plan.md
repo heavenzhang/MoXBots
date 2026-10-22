@@ -817,3 +817,6 @@ Same sole owner01a12bc2 reserves unbuilt0.5.19/build519.1. Failed/unbuiltbbed re
 用户明确要求完整实现并合入主干。P0显式候选池及实际执行约束，P1搜索/批量/失效引用维护，P2全宽模型身份与排序换档，P3保存/撤销和清楚说明均已实现；171项局部测试、静态检查、独立后端审阅、实际组件合成UI10组/四宽及键盘修复复验、主Agent5组交互复验通过。任务 `.agent-sync/tasks/codex-model-policy-20261022-2bdce833.md`，完整证据 `dev-docs/model-policy-20261022/acceptance.md`。
 
 沿用desktop builtin client唯一CI/main/版本/制品/发布会话01a12bc2-907a-7702-b6dd-788225c5dfe4；开发分支交精确SHA和证据，不能进入已冻结5.18/5.19批次，不自行共享CI/正式打包或更改日常App。源代码/main、合成与原生持久化/真实Provider、正式制品/生产验收分别追踪；版本/tag/制品摘要由原owner分配。原配置writer和Session/Query authority不变，无凭据/数据迁移。
+## MB-REMOTE-ADMISSION-20261022 — 远程拒绝原因与安全回执
+
+原始enqueue/dispatch原因不再全部丢成通用拒绝，desktop/mobile共用安全分类与仅含阶段/ID/码的关联日志；查看端区分配置拒绝与连接失败，旧通用码兼容，保留草稿和原operation去重，不自动重发或替换Provider/权限/Session。验收与边界dev-docs/remote-session/admission-20261022.md，任务.agent-sync/tasks/codex-remote-admission-20261022-a033d65f.md。原目标Mino/Mac-mini-3约0.5.15，日志和确切build未知，不能宣称原故障已恢复。涉及现有desktop builtin client/macOS desktop/updater不可分割单元；唯一CI/build/version/install/publish/rollback owner01a12bc2-907a-7702-b6dd-788225c5dfe4不变。开发分支本地80项/类型/lint及隔离browser验证，push仅源交接；共享CI、正常主干集成和下一未冻结批次由owner处理，不自行PR触发CI，不改冻结版本，不涉及独立cloud/Host/phone发布。

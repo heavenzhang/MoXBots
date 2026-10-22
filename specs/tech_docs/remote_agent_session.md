@@ -56,6 +56,19 @@ for 12 seconds become unconfirmed; PID existence alone is insufficient. The
 desktop prepared handoff expires after 60 seconds without adoption. These
 observation deadlines never authorize replay or mean the operation was stopped.
 
+Admission refusals preserve a bounded category rather than raw adapter errors.
+The desktop and mobile Session owners distinguish enqueue from dispatch,
+project known Provider/model, permission, workspace, queue, cancellation and
+prepared-birth failures to safe codes, and record only phase/code plus original
+operation/Agent/Session IDs in target-side logs. Prompts, answers, raw error text,
+paths and credentials are excluded from this projection and its logs. Unknown
+refusals remain explicit refusals. No category permits an automatic retry,
+Provider substitution, permission change or Session replacement. The viewer
+retains the draft and describes target-side configuration failures separately
+from transport/read failures; old generic admission codes remain supported.
+Detailed categories require an updated target; a viewer update cannot recover
+a cause discarded by an older target or repair its configuration.
+
 HTTP returns processing without waiting for a turn. A new Session is bound only
 after actual dispatch acceptance. An existing send with a real queueId may be
 acknowledged at original queue acceptance so approval of an earlier turn remains

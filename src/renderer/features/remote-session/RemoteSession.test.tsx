@@ -170,6 +170,29 @@ it("opens a draft without local session owner and binds only an accepted remote 
     false,
   );
 });
+it.each([
+  ['REMOTE_PROVIDER_UNAVAILABLE', 'providerUnavailable'],
+  ['REMOTE_SESSION_ADMISSION_REJECTED', 'admissionRejected'],
+  ['REMOTE_SESSION_DISPATCH_REJECTED', 'dispatchRejected'],
+])("shows %s as a refusal, preserves draft across refresh and does not resend", async (code, key) => {
+  const base = mocks.request.getMockImplementation()!;
+  mocks.request.mockImplementation(async (...args) => args[2].kind === 'start'
+    ? { scope, data: { kind: 'receipt', agentId: 'a', sessionId: 's', operationId: args[2].operationId, status: 'rejected', code } }
+    : base(...args));
+  render(<RemoteSession tab={tab} isActive binding={binding} />);
+  await screen.findByText('remoteSession.empty');
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Keep the original task' } });
+  fireEvent.click(screen.getByRole('button', { name: 'remoteSession.send' }));
+  await screen.findByText(`remoteSession.${key}`);
+  expect(screen.queryByText('remoteSession.failed')).not.toBeInTheDocument();
+  expect(screen.getByRole('textbox')).toHaveValue('Keep the original task');
+  const count = mocks.request.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'remoteSession.refresh' }));
+  await waitFor(() => expect(mocks.request.mock.calls.length).toBeGreaterThan(count));
+  expect(mocks.request.mock.calls.filter(call => call[2].kind === 'start')).toHaveLength(1);
+  expect(screen.getByRole('textbox')).toHaveValue('Keep the original task');
+  expect(binding.onBound).not.toHaveBeenCalled();
+});
 it("retains uncertain operation ID, suppresses duplicate sends and checks receipt without resending", async () => {
   const base = mocks.request.getMockImplementation()!;
   mocks.request.mockImplementation(async (...args) => {

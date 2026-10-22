@@ -1,4 +1,5 @@
 import { remoteAccountState } from "./accountFence";
+import { remoteAdmissionErrorKey } from "./admissionError";
 import { useEffectEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PlusIcon, RefreshIcon, StopIcon } from "@/components/icons";
@@ -446,7 +447,7 @@ function RemoteSessionContent({
     ],
     [older, snapshot?.messages],
   );
-  const errorKey =
+  const errorKey = remoteAdmissionErrorKey(error) ?? (
     error === "HOST_MANAGEMENT_TARGET_BUSY"
       ? "channelBusy"
       : error === "HOST_MANAGEMENT_BUSY"
@@ -455,7 +456,7 @@ function RemoteSessionContent({
           ? "busy"
           : error?.includes("UNSUPPORTED") || error?.includes("METHOD")
             ? "unsupported"
-            : "failed";
+            : "failed");
   const open = (sessionId?: string, title = tab.agentName) => {
     if (isComposerUpdateCheckpointLocked()) return;
     if (scopeRef.current)
