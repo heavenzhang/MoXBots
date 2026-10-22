@@ -67,7 +67,7 @@ it('persists and reloads an AI title while the first business turn is still runn
   content.admitUser({ id: 'pending-user', role: 'user', content: request, timestamp: 't' });
   state.generate.mockResolvedValue('报销审批提交失败排查');
   await service.maybeGenerateTitleAfterTurn(sessionId, 'codex', 'model', undefined, 'accepted-user');
-  expect(state.generate).toHaveBeenLastCalledWith([{ user: request, assistant: '' }], 'codex', 'model', '/synthetic-title-workspace', 'managed-provider');
+  expect(state.generate).toHaveBeenLastCalledWith([{ user: request, assistant: '' }], 'codex', 'model', '/synthetic-title-workspace', 'managed-provider', sessionId);
   expect(await active.writer.flush()).toBe(true);
   const data = await store.getSessionData(sessionId);
   expect(data?.title).toBe('报销审批提交失败排查');

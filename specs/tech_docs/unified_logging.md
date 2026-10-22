@@ -270,6 +270,26 @@ HTTP client 的错误文本通常携带完整请求 URL。若协议把凭据放�
 
 ## 文件结构
 
+### 会话标题模型调用
+
+`title-generator.ts` 在既有 SDK/external utility 边界通过 `title-generation-trace.ts`
+输出低频 `[title-generation]` 语义记录，仍由 Node UnifiedLogger 单一持久化，
+不增加日志文件、模型调用、Session writer 或执行 owner。相同 `generationId` 关联
+`request`、真实 Runtime/SDK `terminal` 与生成器 `result`；Product `sessionId`
+和独立 `utilitySessionId` 分开，未提供 Product Session 的独立调用不伪造其身份。
+
+记录只保留受控 identity、runtime/source、Provider ID、requested model，以及 SDK
+在终态报告的有界 model IDs。Prompt、原始返回和清理后标题均只有
+`{present, chars, hash}`（UTF-8 SHA-256）；不记录正文、标题明文、凭据、endpoint、
+workspace 或原始错误。请求模型和 SDK 报告模型是不同证据，不能当作供应商账单。
+其他通用 SDK text utility 不标记为标题调用。
+
+`request` 单项不证明已发生推理；验收需对应同一 generation 的成功 `terminal`
+和 `result.outcome=generated`，将 `returnedTitle.hash` 与实际 Store 标题计算值比对。
+`result` 只证明生成器返回，不证明人工命名 CAS 之后已落盘，仍须检查
+`titleSource=auto`、尝试记录及原生侧栏/标签和重开结果。取消后的迟到事件不能补写成功证明。
+日志为 best effort；缺失记录不能被截图、metadata 或合成测试替代，也不能追认为旧制品已有证据。
+
 ```
 ~/.myagents/
 └── logs/

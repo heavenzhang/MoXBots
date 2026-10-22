@@ -70,7 +70,7 @@ export async function generateAndApplyTitle(
     // runtimeSource so a Managed Codex conversation cannot silently fall back
     // to the user's system CLI (and inherit ~/.codex MCP/config) for titling.
     const runtimeSource = getSessionMetadata(sessionId)?.runtimeSource;
-    title = await generateTitleExternal(rounds, runtime, model || '', agentDir, runtimeSource);
+    title = await generateTitleExternal(rounds, runtime, model || '', agentDir, runtimeSource, sessionId);
   }
   if (!title) return null;
 

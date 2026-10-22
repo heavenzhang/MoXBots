@@ -61,6 +61,7 @@ describe('generateAndApplyTitle', () => {
       'gpt-5.6-sol',
       '/workspace',
       'managed-provider',
+      'session-1',
     );
   });
 });
@@ -98,7 +99,7 @@ describe('first-turn task summary lifecycle', () => {
     mocks.getSessionData.mockResolvedValue({ messages: [{ role: 'user', content: request }] });
     mocks.generateTitleExternal.mockResolvedValue('报销审批提交失败排查');
     await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
-    expect(mocks.generateTitleExternal).toHaveBeenCalledWith([{ user: request, assistant: '' }], 'codex', 'model', '/workspace', undefined);
+    expect(mocks.generateTitleExternal).toHaveBeenCalledWith([{ user: request, assistant: '' }], 'codex', 'model', '/workspace', undefined, 'session-1');
     expect(mocks.broadcast).toHaveBeenCalledWith('chat:session-title-changed', {
       sessionId: 'session-1', title: '报销审批提交失败排查', titleSource: 'auto',
     });

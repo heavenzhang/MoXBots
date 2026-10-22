@@ -1,6 +1,7 @@
 import { APP_DATA_DIR_NAME } from '../shared/appProfile';
 import { isUpdaterQaBuild, isModelQaBuild } from '../shared/updaterQa';
 import { withModelQaUtilityAdmission } from './utils/model-qa-utility-admission';
+import { createTitleGenerationTrace } from './title-generation-trace';
 /**
  * title-generator.ts — AI-powered session title generation.
  *
@@ -206,7 +207,7 @@ export async function generateTitle(
   conversationId?: string,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  return generateUtilityText({ prompt: buildUserPrompt(rounds), systemPrompt: SYSTEM_PROMPT, clean: cleanTitle, signal, settingSources: ['project'], requireSuccessfulTerminal: true }, model, providerEnv, conversationId);
+  return generateUtilityText({ prompt: buildUserPrompt(rounds), systemPrompt: SYSTEM_PROMPT, clean: cleanTitle, signal, settingSources: ['project'], requireSuccessfulTerminal: true, sessionTitleTrace: { sessionId: conversationId } }, model, providerEnv, conversationId);
 }
 
 export interface TextUtilityTask {
@@ -225,6 +226,8 @@ export interface TextUtilityTask {
   /** Present = generative work: honour this effort setting ('default' | level)
    *  instead of forcing the cheapest no-thinking classification path. */
   reasoning?: { effort?: string };
+  /** Only the session-title entry point opts into content-free invocation evidence. */
+  sessionTitleTrace?: { sessionId?: string };
 }
 
 /** Isolated SDK text turn: no tools, MCP, transcript persistence or Product Session writes. */
@@ -290,6 +293,8 @@ async function generateTitleInner(
   const sessionId = randomUUID();
   let titleQuery: import('@anthropic-ai/claude-agent-sdk').Query | undefined;
   let timeout: ReturnType<typeof setTimeout> | undefined;
+  let trace: ReturnType<typeof createTitleGenerationTrace> | undefined;
+  let generatedTitle: string | null = null;
 
   try {
     const cliPath = resolveClaudeCodeCli();
@@ -308,6 +313,13 @@ async function generateTitleInner(
       Number(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW),
     );
     const prompt = task.prompt;
+    if (task.sessionTitleTrace) {
+      trace = createTitleGenerationTrace({
+        sessionId: task.sessionTitleTrace.sessionId, utilitySessionId: sessionId, runtime: 'builtin',
+        providerId: providerEnv?.providerId ?? SUBSCRIPTION_PROVIDER_ID, requestedModel: model,
+      });
+      trace.request(prompt);
+    }
 
     async function* titlePrompt() {
       yield {
@@ -383,6 +395,8 @@ async function generateTitleInner(
         if (!providerEnv?.endpointSource && !task.requireSuccessfulTerminal) { if (text) return text; continue; }
         if (text) titleText = text;
         if (message.type === 'result') {
+          trace?.terminal({ success: message.subtype === 'success' && !message.is_error, text: titleText,
+            reportedModels: Object.keys(message.modelUsage ?? {}), responseSessionId: message.session_id });
           await prepared?.reportTerminal(message.subtype === 'success');
           return message.subtype === 'success' ? titleText : null;
         }
@@ -404,7 +418,8 @@ async function generateTitleInner(
     }
 
     const cleaned = task.clean(titleText);
-    return cleaned || null;
+    generatedTitle = cleaned || null;
+    return generatedTitle;
   } catch (err) {
     await prepared?.reportTerminal(false);
     console.warn('[title-generator] SDK query failed:', err);
@@ -413,6 +428,7 @@ async function generateTitleInner(
     clearTimeout(timeout);
     controller.abort();
     try { titleQuery?.close(); } catch { /* process already exited */ }
+    trace?.result(generatedTitle);
   }
 }
 
@@ -521,6 +537,7 @@ export async function generateTitleExternal(
   model: string,
   workspacePath: string,
   runtimeSource?: RuntimeSource,
+  conversationId?: string,
 ): Promise<string | null> {
   if (isUpdaterQaBuild() || isModelQaBuild()) return null;
   const startTime = Date.now();
@@ -568,6 +585,9 @@ export async function generateTitleExternal(
     model,
     runtimeSource,
   });
+  const trace = createTitleGenerationTrace({ sessionId: conversationId, utilitySessionId: titleSessionId,
+    runtime: runtimeType, runtimeSource, requestedModel: model });
+  trace.request(userPrompt);
 
   const startPromise = runtime.startSession(titleSessionOptions, (event) => {
     // Guard: events can still stream in after we've settled (timeout winner / late turn_complete).
@@ -575,9 +595,11 @@ export async function generateTitleExternal(
     if (event.kind === 'text_delta') {
       collected += event.text;
     } else if (event.kind === 'turn_complete') {
+      trace.terminal({ success: true, text: collected || null });
       outcome = collected ? 'ok' : 'empty';
       settle(collected || null);
     } else if (event.kind === 'session_complete') {
+      trace.terminal({ success: event.subtype === 'success', text: collected || null });
       // On non-success (for example, a Codex turn error) a few tokens may have
       // streamed before the failure — those partial fragments make garbage titles. Settle null.
       if (event.subtype === 'success') {
@@ -648,10 +670,12 @@ export async function generateTitleExternal(
     // Preserve the outcome tag the callback/catch/timeout set so ops can distinguish
     // timeout / start-failed / error / empty in the logs.
     console.warn(`[title-generator] external ${runtimeType} produced no title (outcome=${outcome}, ${durationMs}ms)`);
+    trace.result(null);
     return null;
   }
 
   const cleaned = cleanTitle(titleText);
-  console.log(`[title-generator] Generated title via ${runtimeType}: "${cleaned}" (outcome=${outcome}, ${durationMs}ms, ${rounds.length} rounds)`);
-  return cleaned.length > 0 ? cleaned : null;
+  const generatedTitle = cleaned.length > 0 ? cleaned : null;
+  trace.result(generatedTitle);
+  return generatedTitle;
 }
