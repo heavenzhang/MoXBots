@@ -355,47 +355,130 @@ impl NetworkRegistry {
             .cloned()
             .collect::<Vec<_>>();
         if !owned.is_empty() {
-            // Login/removal/restore may be between durable and actor publication.
-            // A synchronous source lookup must not adopt that partial binding.
+            // Match current authorities, not durable history count. Both locks
+            // belong to existing mutation/publication owners; lookup does no IO.
             let _mutation = self
                 .mutation
                 .try_lock()
                 .map_err(|_| NetworkError::new("ACCOUNT_BINDING_CHANGED"))?;
-            if owned.len() != 1
-                || self
-                    .stored
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .iter()
-                    .any(|record| {
-                        record.descriptor.service_id == reference.service_id
-                            && record.descriptor.network_id == reference.network_id
-                    })
+            let publication = self
+                .owned_restore_operations
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if self
+                .stored
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .iter()
+                .any(|record| {
+                    record.descriptor.service_id == reference.service_id
+                        && record.descriptor.network_id == reference.network_id
+                })
+                || (owned.len() > 1 && owned.iter().any(|record| record.removing))
             {
                 return Err(NetworkError::new("NETWORK_SCOPE_MISMATCH"));
             }
-            let record = &owned[0];
-            if record.removing || self.stopped.load(Ordering::Acquire) {
+            if self.stopped.load(Ordering::Acquire) || owned.iter().any(|record| record.removing) {
                 return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
             }
-            let actor = self.connection(&record.id)?;
-            let generation = actor.generation();
+            if !self.selfhost_enabled.load(Ordering::Acquire) {
+                return Err(NetworkError::new("NETWORK_FEATURE_DISABLED"));
+            }
+            let captured = {
+                let connections = self.connections.lock().unwrap_or_else(|e| e.into_inner());
+                let errors = self
+                    .owned_restore_errors
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                owned
+                    .iter()
+                    .map(|record| {
+                        (
+                            record,
+                            connections
+                                .get(&record.id)
+                                .map(|actor| (actor.clone(), actor.generation())),
+                            errors.get(&record.id).cloned(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let mut selected = None;
+            let mut inactive_error = None;
+            for (record, actor, restore_error) in &captured {
+                if publication.has_connection(&record.id) {
+                    return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+                }
+                let result = match actor {
+                    Some((actor, _)) => actor.ensure_owned_reference_binding(record),
+                    None => match restore_error {
+                        // No live actor is no current authority. Unknown restore
+                        // failures are not proof of invalidity and block routing.
+                        None => Err(NetworkError::new("NETWORK_CONNECTION_NOT_FOUND")),
+                        Some(error) => Err(error.clone()),
+                    },
+                };
+                match result {
+                    Ok(()) => {
+                        if selected.is_some() {
+                            return Err(NetworkError::new("NETWORK_SCOPE_MISMATCH"));
+                        }
+                        selected = actor.as_ref().map(|(actor, _)| (actor.clone(), *record));
+                    }
+                    Err(error)
+                        if error.code == "OWNED_SESSION_INVALID"
+                            || (actor.is_none()
+                                && (restore_error.is_none()
+                                    || error.code == "OWNED_SESSION_RECORD_MISSING")) =>
+                    {
+                        inactive_error.get_or_insert(error);
+                    }
+                    // Binding/trust/authorization/store errors remain unknown:
+                    // never infer that another account may replace this one.
+                    Err(error) => return Err(error),
+                }
+            }
+            let (actor, record) = selected.ok_or_else(|| {
+                inactive_error.unwrap_or_else(|| NetworkError::new("NETWORK_SCOPE_MISMATCH"))
+            })?;
             actor.ensure_owned_reference_binding(record)?;
-            // The account guard is process-local, but can observe a concurrent
-            // auth/power boundary. Preserve exact record, actor and generation.
-            let current = self.connection(&record.id)?;
+            // Revalidate every excluded candidate as well: an absent or expired
+            // historical slot must not become another live authority mid-guard.
             let records = self.owned_stored.lock().unwrap_or_else(|e| e.into_inner());
-            let mut matching = records.iter().filter(|item| {
-                item.descriptor.service_id == reference.service_id
-                    && item.network_id == reference.network_id
-            });
-            if matching.next() != Some(record)
-                || matching.next().is_some()
+            let current_owned = records
+                .iter()
+                .filter(|item| {
+                    item.descriptor.service_id == reference.service_id
+                        && item.network_id == reference.network_id
+                })
+                .collect::<Vec<_>>();
+            if current_owned != owned.iter().collect::<Vec<_>>()
                 || self.stopped.load(Ordering::Acquire)
-                || !Arc::ptr_eq(&actor, &current)
-                || actor.generation() != generation
             {
                 return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+            }
+            let connections = self.connections.lock().unwrap_or_else(|e| e.into_inner());
+            let errors = self
+                .owned_restore_errors
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            for (record, previous, previous_error) in &captured {
+                let same = match (previous, connections.get(&record.id)) {
+                    (Some((before, generation)), Some(current)) => {
+                        Arc::ptr_eq(before, current) && current.generation() == *generation
+                    }
+                    (None, None) => {
+                        errors.get(&record.id).map(|error| &error.code)
+                            == previous_error.as_ref().map(|error| &error.code)
+                    }
+                    _ => false,
+                };
+                if !same {
+                    return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+                }
+            }
+            if !self.selfhost_enabled.load(Ordering::Acquire) {
+                return Err(NetworkError::new("NETWORK_FEATURE_DISABLED"));
             }
             return Ok(actor);
         }
@@ -2644,6 +2727,80 @@ mod tests {
         }
     }
 
+    async fn assert_owned_reference_history_routes(mode: &str) {
+        let (owner, agent, live_account) = owned_reference_fixture();
+        let mut historical = owner.owned_stored.lock().unwrap()[0].clone();
+        historical.id = uuid::Uuid::new_v4().to_string();
+        historical.binding_id = uuid::Uuid::new_v4().to_string();
+        historical.principal_id = uuid::Uuid::new_v4().to_string();
+        if mode == "expired-actor" {
+            let account = owned_reference_account(&historical, 1, Arc::new(|| Ok(())));
+            owner.connections.lock().unwrap().insert(
+                historical.id.clone(),
+                AgentNetwork::with_generation(
+                    historical.id.clone(),
+                    Some(NetworkAccountSession::Owned(account)),
+                    owner.memory.clone(),
+                    10,
+                ),
+            );
+        } else if mode == "invalid-restore" {
+            owner.owned_restore_errors.lock().unwrap().insert(
+                historical.id.clone(),
+                NetworkError::new("OWNED_SESSION_INVALID"),
+            );
+        }
+        owner
+            .owned_stored
+            .lock()
+            .unwrap()
+            .insert(0, historical.clone());
+        for selected in [
+            historical.id,
+            live_account.connection_id.clone(),
+            OFFICIAL.into(),
+        ] {
+            *owner.selected.lock().unwrap() = selected;
+            assert_eq!(
+                source_routing_error(
+                    &owner,
+                    &agent.encode().unwrap(),
+                    "agent.show",
+                    json!({}),
+                    "external-cli"
+                )
+                .await,
+                "SOURCE_GENERATION_CHANGED",
+                "{mode}: historical rows must not mask the sole valid actor"
+            );
+            assert_eq!(
+                owner
+                    .for_reference(&agent)
+                    .unwrap()
+                    .snapshot()
+                    .connection_id,
+                live_account.connection_id
+            );
+            assert_eq!(
+                owner.owned_stored.lock().unwrap().len(),
+                2,
+                "history must remain intact"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn owned_reference_history_expired_actor_keeps_unique_valid_binding_routable() {
+        assert_owned_reference_history_routes("expired-actor").await;
+    }
+
+    #[tokio::test]
+    async fn owned_reference_history_absent_actor_keeps_unique_valid_binding_routable() {
+        for mode in ["missing-actor", "invalid-restore"] {
+            assert_owned_reference_history_routes(mode).await;
+        }
+    }
+
     #[tokio::test]
     async fn owned_reference_rejects_foreign_scope_disabled_removing_and_missing_actor() {
         let (owner, agent, account) = owned_reference_fixture();
@@ -2699,6 +2856,22 @@ mod tests {
         let mut other = record.clone();
         other.id = uuid::Uuid::new_v4().to_string();
         other.principal_id = uuid::Uuid::new_v4().to_string();
+        other.binding_id = uuid::Uuid::new_v4().to_string();
+        other.device_id = uuid::Uuid::new_v4().to_string();
+        let other_account = owned_reference_account(
+            &other,
+            jsonwebtoken::get_current_timestamp() + 3600,
+            Arc::new(|| Ok(())),
+        );
+        owner.connections.lock().unwrap().insert(
+            other.id.clone(),
+            AgentNetwork::with_generation(
+                other.id.clone(),
+                Some(NetworkAccountSession::Owned(other_account)),
+                owner.memory.clone(),
+                18,
+            ),
+        );
         owner.owned_stored.lock().unwrap().push(other.clone());
         for selected in [record.id.clone(), other.id.clone(), OFFICIAL.into()] {
             *owner.selected.lock().unwrap() = selected;
@@ -2707,7 +2880,7 @@ mod tests {
                 "NETWORK_SCOPE_MISMATCH"
             );
         }
-        // An expired/removing second record is not permission to silently switch accounts.
+        // A removing second binding is still an in-progress identity boundary.
         owner.owned_stored.lock().unwrap()[1].removing = true;
         assert_eq!(
             owner.for_reference(&agent).err().unwrap().code,
@@ -2723,6 +2896,146 @@ mod tests {
             owner.for_reference(&agent).err().unwrap().code,
             "NETWORK_SCOPE_MISMATCH"
         );
+    }
+
+    #[test]
+    fn owned_reference_history_unknown_authority_or_restore_in_progress_blocks_other_account() {
+        for code in [
+            "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED",
+            "NETWORK_CREDENTIAL_STORE_UNAVAILABLE",
+            "ACCOUNT_BINDING_CHANGED",
+            "NETWORK_TRUST_CHANGED",
+            "UNRECOGNIZED_FIXTURE_ERROR",
+            "restoring",
+        ] {
+            let (owner, agent, _) = owned_reference_fixture();
+            let mut old = owner.owned_stored.lock().unwrap()[0].clone();
+            old.id = uuid::Uuid::new_v4().to_string();
+            old.binding_id = uuid::Uuid::new_v4().to_string();
+            old.principal_id = uuid::Uuid::new_v4().to_string();
+            if code == "restoring" {
+                owner
+                    .owned_restore_operations
+                    .lock()
+                    .unwrap()
+                    .begin(&uuid::Uuid::new_v4().to_string(), &old.id)
+                    .unwrap();
+            } else if code == "ACCOUNT_BINDING_CHANGED" || code == "NETWORK_TRUST_CHANGED" {
+                let error_code = code;
+                let account = owned_reference_account(
+                    &old,
+                    jsonwebtoken::get_current_timestamp() + 3600,
+                    Arc::new(move || {
+                        if error_code == "ACCOUNT_BINDING_CHANGED" {
+                            Err(NetworkError::new(error_code))
+                        } else {
+                            Ok(())
+                        }
+                    }),
+                );
+                owner.connections.lock().unwrap().insert(
+                    old.id.clone(),
+                    AgentNetwork::with_generation(
+                        old.id.clone(),
+                        Some(NetworkAccountSession::Owned(account)),
+                        owner.memory.clone(),
+                        10,
+                    ),
+                );
+                if code == "NETWORK_TRUST_CHANGED" {
+                    old.descriptor.issuer = "https://changed.invalid".into();
+                }
+            } else {
+                owner
+                    .owned_restore_errors
+                    .lock()
+                    .unwrap()
+                    .insert(old.id.clone(), NetworkError::new(code));
+            }
+            owner.owned_stored.lock().unwrap().insert(0, old);
+            assert_eq!(
+                owner.for_reference(&agent).err().unwrap().code,
+                if code == "restoring" {
+                    "ACCOUNT_BINDING_CHANGED"
+                } else {
+                    code
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn owned_reference_history_excluded_candidate_cannot_become_another_live_authority_mid_guard() {
+        for mode in [
+            "absent-becomes-present",
+            "expired-actor-replaced",
+            "expired-generation-changed",
+        ] {
+            let (owner, agent, _) = owned_reference_fixture();
+            let live = owner.owned_stored.lock().unwrap()[0].clone();
+            let mut old = live.clone();
+            old.id = uuid::Uuid::new_v4().to_string();
+            old.binding_id = uuid::Uuid::new_v4().to_string();
+            old.principal_id = uuid::Uuid::new_v4().to_string();
+            if mode != "absent-becomes-present" {
+                let account = owned_reference_account(&old, 1, Arc::new(|| Ok(())));
+                owner.connections.lock().unwrap().insert(
+                    old.id.clone(),
+                    AgentNetwork::with_generation(
+                        old.id.clone(),
+                        Some(NetworkAccountSession::Owned(account)),
+                        owner.memory.clone(),
+                        10,
+                    ),
+                );
+            }
+            owner.owned_stored.lock().unwrap().insert(0, old.clone());
+            let weak = Arc::downgrade(&owner);
+            let guard = Arc::new(move || {
+                let owner = weak.upgrade().unwrap();
+                if mode == "expired-generation-changed" {
+                    owner
+                        .connections
+                        .lock()
+                        .unwrap()
+                        .get(&old.id)
+                        .unwrap()
+                        .stop();
+                } else {
+                    let account = owned_reference_account(
+                        &old,
+                        jsonwebtoken::get_current_timestamp() + 3600,
+                        Arc::new(|| Ok(())),
+                    );
+                    owner.connections.lock().unwrap().insert(
+                        old.id.clone(),
+                        AgentNetwork::with_generation(
+                            old.id.clone(),
+                            Some(NetworkAccountSession::Owned(account)),
+                            owner.memory.clone(),
+                            10,
+                        ),
+                    );
+                }
+                Ok(())
+            });
+            let account =
+                owned_reference_account(&live, jsonwebtoken::get_current_timestamp() + 3600, guard);
+            owner.connections.lock().unwrap().insert(
+                live.id.clone(),
+                AgentNetwork::with_generation(
+                    live.id.clone(),
+                    Some(NetworkAccountSession::Owned(account)),
+                    owner.memory.clone(),
+                    17,
+                ),
+            );
+            assert_eq!(
+                owner.for_reference(&agent).err().unwrap().code,
+                "ACCOUNT_BINDING_CHANGED",
+                "{mode}"
+            );
+        }
     }
 
     #[test]

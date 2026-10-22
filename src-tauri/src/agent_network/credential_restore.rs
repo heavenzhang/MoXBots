@@ -67,6 +67,13 @@ impl RestoreOperations {
         }
         Ok(())
     }
+    /// Lookup never treats an in-progress credential restoration as an absent
+    /// historical actor, even while its async reader has released mutation.
+    pub(super) fn has_connection(&self, connection: &str) -> bool {
+        self.active
+            .values()
+            .any(|(current, _)| current == connection)
+    }
     pub(super) fn current(&self, id: &str, token: &Arc<AtomicBool>) -> bool {
         !token.load(Ordering::Acquire)
             && self

@@ -45,3 +45,16 @@ Code/local-synthetic verification complete; root independent review pending. Fea
 Root reviews exact pushed SHA, then sole publisher selects it only into a new unfrozen batch and records actual loaded version plus native acceptance.
 
 Initial handoff gate correctly blocked on missing standard task section headings despite exact remote SHA/clean state; this documentation follow-up supplies the required sections without changing tested runtime bytes. Original blocked gate evidence is preserved.
+
+
+## Publisher boundary correction — durable history is not current authority
+
+The publisher supplied a real configuration counterexample after3b9: two non-removing same-service/network historical rows, one OWNED_SESSION_INVALID and one authenticated/ready. The3b9 nine green cases proved only the earlier partial contract and did not fix that actual configuration. The prior source handoff and all old evidence remain unchanged as history; it is not an accepted native fix.
+
+- New red: history-boundary-red.log runs2 added regressions against unchanged3b9 runtime; both fail NETWORK_SCOPE_MISMATCH (0 passed/2 failed). The test patch is retained separately.
+- Corrected lookup evaluates each original bound actor. Only locally proven OWNED_SESSION_INVALID, an absent actor with no unknown restore error, or absent actor with explicit OWNED_SESSION_RECORD_MISSING is excluded. ACCOUNT_BINDING_CHANGED (including changing/indeterminate bindings), trust/authorization/store/unrecognized errors still reject the entire lookup. Zero valid candidates remain rejected. No credential lookup, history deletion or selected fallback.
+- RestoreOperations gains only a read-only has_connection projection; original publication lock keeps an in-progress restore from being misclassified as historical absence while its reader is between awaits. No new state/owner or restore operation is created.
+- Every candidate's exact record and captured actor presence/pointer/generation is rechecked after guards, including excluded candidates. Two genuinely current actors with different principals/bindings/devices remain ambiguous. Existing removing/legacy/disabled/generation rejection remains.
+- New tests cover historical expired actor plus unique valid actor, absent/invalid-restore history plus unique valid actor, unknown authority/in-progress restore refusal, and excluded candidate appearing/replaced/changing generation mid-guard. Existing ambiguity test now actually installs two valid actors, instead of assuming two durable rows are authorities.
+- Evidence under the same external directory: history-boundary-red{.log,.patch}, history-boundary-green-final.log, history-legacy-routing-control.log, history-static-checks.log and new history-correction handoff. Only affected11 owned tests plus2 legacy routing controls execute; no broad suite, native/App/business/CI/build action.
+- Publisher alone has reserved the next unfrozen518.2; no version/source/artifact from frozen518.1 is rewritten. Independent root review, publisher main/CI/new candidate and originalAir/native acceptance remain pending.
