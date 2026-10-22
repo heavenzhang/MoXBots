@@ -346,7 +346,9 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       {active.length > 0 && <div className="mt-4 grid gap-2" id="auto-routing-classifier">
         <p className="text-sm text-[var(--ink-secondary)]">{classifier ? t(classifier.chosenBy === 'user' ? 'autoRouting.classifierUserCompact' : 'autoRouting.classifierAutoCompact') : t('autoRouting.classifierNone')}</p>
         <CustomSelect ariaLabel={t('autoRouting.classifier')} size="md" disabled={!canManage} value={classifierUnavailable ? '' : classifierKey}
-          options={[{ value: '', label: t('autoRouting.classifierAutoOption') }, ...active.map(model => ({ value: autoModelKey(model), label: label(model) }))]}
+          options={[{ value: '', label: !settings.classifier && classifier && classifier.available !== false
+            ? t('autoRouting.classifierAutoOptionWithModel', { model: label(active.find(model => autoModelKey(model) === autoModelKey(classifier)) ?? classifier) })
+            : t('autoRouting.classifierAutoOption') }, ...active.map(model => ({ value: autoModelKey(model), label: label(model) }))]}
           onChange={key => { const ref = key ? parseAutoModelKey(key) : null; savePatch(ref ? { classifier: ref } : {}, ref ? [] : ['classifier']); }} />
         <p className="text-xs text-[var(--ink-muted)]">{t('autoRouting.privacy')}</p>
       </div>}

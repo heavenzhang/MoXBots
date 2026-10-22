@@ -810,3 +810,10 @@ Same sole mobile owner01a12b99 continues MOXBOTS-MOBILE-TESTFLIGHT-20261022 afte
 ## Desktop019 explicit source reconciliation after PR192
 
 Same sole owner01a12bc2 reserves unbuilt0.5.19/build519.1. Failed/unbuiltbbed remains preserved; new revision deliberately reconciles title2df/a83+continuationc5b with normally deliveredmain375080609b51c7de993511c6b36505ea23eefcb1 (orchestration6bcd/fixturebcb/credentialce2, PR192 originalCI39771492747 nineSUCCESS/oneconditional iOSskip, tested-main treeequal). Root merged admission-source review and7focused checks PASS; original430/145 not repeated. Exact newCI/main/native capability/first B artifact/fresh maintenance/local/stable gates remain. No silent source mixing or released5182/tag changes, no new deployment owner or mobile/Host/cloud/Windows deployment. Taskcodex-release-0519-title-continuation-20261022-c1679fb6.md is current source/acceptance authority.
+
+
+## MOXBOTS-MODEL-POLICY-20261022-02 — 候选池维护与模型策略交互
+
+用户明确要求完整实现并合入主干。P0显式候选池及实际执行约束，P1搜索/批量/失效引用维护，P2全宽模型身份与排序换档，P3保存/撤销和清楚说明均已实现；171项局部测试、静态检查、独立后端审阅、实际组件合成UI10组/四宽及键盘修复复验、主Agent5组交互复验通过。任务 `.agent-sync/tasks/codex-model-policy-20261022-2bdce833.md`，完整证据 `dev-docs/model-policy-20261022/acceptance.md`。
+
+沿用desktop builtin client唯一CI/main/版本/制品/发布会话01a12bc2-907a-7702-b6dd-788225c5dfe4；开发分支交精确SHA和证据，不能进入已冻结5.18/5.19批次，不自行共享CI/正式打包或更改日常App。源代码/main、合成与原生持久化/真实Provider、正式制品/生产验收分别追踪；版本/tag/制品摘要由原owner分配。原配置writer和Session/Query authority不变，无凭据/数据迁移。

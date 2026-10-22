@@ -2383,7 +2383,7 @@
     "classifierAutoOption": "Choose automatically",
     "restoreDefaultTiers": "Restore automatic tier assignment",
     "restoreDefaultOrder": "Restore default model order",
-    "privacy": "The classifier receives this message and a short excerpt of the previous turn, through the same model provider as the conversation.",
+    "privacy": "The selected classifier provider receives this message and a short excerpt of the previous turn. It may differ from the provider handling the conversation.",
     "saving": "Saving…",
     "saveFailed": "Could not save. Try again.",
     "saved": "Saved.",
@@ -2461,7 +2461,8 @@
       "price": "Catalog price",
       "name": "Model name",
       "default": "Default tier"
-    }
+    },
+    "classifierAutoOptionWithModel": "Automatic · {{model}}"
   },
   "modelFailover": {
     "relationship": "Auto mode supplies the next available model in the same tier. A specified backup is used only in specified mode. Switching models does not affect retries on the original model.",
