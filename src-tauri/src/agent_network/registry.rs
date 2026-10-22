@@ -343,6 +343,62 @@ impl NetworkRegistry {
         &self,
         reference: &myagents_agent_network_protocol::AgentReference,
     ) -> Result<ManagedConnection, NetworkError> {
+        let owned = self
+            .owned_stored
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|record| {
+                record.descriptor.service_id == reference.service_id
+                    && record.network_id == reference.network_id
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        if !owned.is_empty() {
+            // Login/removal/restore may be between durable and actor publication.
+            // A synchronous source lookup must not adopt that partial binding.
+            let _mutation = self
+                .mutation
+                .try_lock()
+                .map_err(|_| NetworkError::new("ACCOUNT_BINDING_CHANGED"))?;
+            if owned.len() != 1
+                || self
+                    .stored
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .iter()
+                    .any(|record| {
+                        record.descriptor.service_id == reference.service_id
+                            && record.descriptor.network_id == reference.network_id
+                    })
+            {
+                return Err(NetworkError::new("NETWORK_SCOPE_MISMATCH"));
+            }
+            let record = &owned[0];
+            if record.removing || self.stopped.load(Ordering::Acquire) {
+                return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+            }
+            let actor = self.connection(&record.id)?;
+            let generation = actor.generation();
+            actor.ensure_owned_reference_binding(record)?;
+            // The account guard is process-local, but can observe a concurrent
+            // auth/power boundary. Preserve exact record, actor and generation.
+            let current = self.connection(&record.id)?;
+            let records = self.owned_stored.lock().unwrap_or_else(|e| e.into_inner());
+            let mut matching = records.iter().filter(|item| {
+                item.descriptor.service_id == reference.service_id
+                    && item.network_id == reference.network_id
+            });
+            if matching.next() != Some(record)
+                || matching.next().is_some()
+                || self.stopped.load(Ordering::Acquire)
+                || !Arc::ptr_eq(&actor, &current)
+                || actor.generation() != generation
+            {
+                return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+            }
+            return Ok(actor);
+        }
         let id = {
             self.stored
                 .lock()
@@ -2489,8 +2545,353 @@ mod tests {
         *owner.stored.lock().unwrap() = vec![stored];
         owner.set_selfhost_enabled(true).unwrap();
         // The UI is showing official, but the selector owns request routing.
-        assert_eq!(owner.view().selected, OFFICIAL);
+        assert_eq!(*owner.selected.lock().unwrap(), OFFICIAL);
         (owner, reference)
+    }
+
+    fn owned_reference_account(
+        record: &StoredOwnedConnection,
+        expires_at: u64,
+        guard: Arc<dyn Fn() -> Result<(), NetworkError> + Send + Sync>,
+    ) -> Arc<super::super::account::OwnedAccount> {
+        Arc::new(super::super::account::OwnedAccount {
+            binding_id: record.binding_id.clone(),
+            connection_id: record.id.clone(),
+            device_id: record.device_id.clone(),
+            session_bound: record.session_bound,
+            descriptor: record.descriptor.clone(),
+            active: Arc::new(AtomicBool::new(true)),
+            session: super::super::owned_login::OwnedSession {
+                access_token: "x".repeat(43),
+                expires_at,
+                principal_id: record.principal_id.clone(),
+                network_id: record.network_id.clone(),
+            },
+            public_tls_ca: record.public_tls_ca.clone(),
+            join_authorized: AtomicBool::new(true),
+            guard,
+        })
+    }
+
+    fn owned_reference_fixture() -> (
+        ManagedAgentNetwork,
+        AgentReference,
+        Arc<super::super::account::OwnedAccount>,
+    ) {
+        let owner = NetworkRegistry::new();
+        owner.selfhost_enabled.store(true, Ordering::Release);
+        let mut record = cli_test_record();
+        record.id = uuid::Uuid::new_v4().to_string();
+        record.binding_id = uuid::Uuid::new_v4().to_string();
+        record.network_id = uuid::Uuid::new_v4().to_string();
+        record.descriptor.network_id = record.network_id.clone();
+        let reference = AgentReference {
+            service_id: record.descriptor.service_id.clone(),
+            network_id: record.network_id.clone(),
+            mount_id: uuid::Uuid::new_v4().to_string(),
+        };
+        let account = owned_reference_account(
+            &record,
+            jsonwebtoken::get_current_timestamp() + 3600,
+            Arc::new(|| Ok(())),
+        );
+        let actor = AgentNetwork::with_generation(
+            record.id.clone(),
+            Some(NetworkAccountSession::Owned(account.clone())),
+            owner.memory.clone(),
+            17,
+        );
+        owner
+            .connections
+            .lock()
+            .unwrap()
+            .insert(record.id.clone(), actor);
+        owner.owned_stored.lock().unwrap().push(record);
+        (owner, reference, account)
+    }
+
+    #[tokio::test]
+    async fn owned_reference_source_routes_directory_selector_without_selected_fallback() {
+        let (owner, agent, account) = owned_reference_fixture();
+        assert!(owner.stored.lock().unwrap().is_empty());
+        assert_eq!(*owner.selected.lock().unwrap(), OFFICIAL);
+        // This is the same actor set used by directory discovery, not a selected connection.
+        assert!(owner
+            .all()
+            .iter()
+            .any(|actor| actor.snapshot().connection_id == account.connection_id));
+        let actor = owner
+            .for_reference(&agent)
+            .expect("advertised owned-only reference must route");
+        assert_eq!(actor.snapshot().connection_id, account.connection_id);
+        assert_eq!(actor.generation(), 17);
+        let session = SessionReference {
+            agent: agent.clone(),
+            local_session_id: "legacy-session".into(),
+        }
+        .encode()
+        .unwrap();
+        for kind in ["internal-session", "external-cli"] {
+            for (selector, method) in [
+                (agent.encode().unwrap(), "agent.show"),
+                (session.clone(), "session.state"),
+            ] {
+                assert_eq!(
+                    source_routing_error(&owner, &selector, method, json!({}), kind).await,
+                    "SOURCE_GENERATION_CHANGED"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn owned_reference_rejects_foreign_scope_disabled_removing_and_missing_actor() {
+        let (owner, agent, account) = owned_reference_fixture();
+        for foreign in [
+            AgentReference {
+                service_id: uuid::Uuid::new_v4().to_string(),
+                ..agent.clone()
+            },
+            AgentReference {
+                network_id: uuid::Uuid::new_v4().to_string(),
+                ..agent.clone()
+            },
+        ] {
+            assert_eq!(
+                source_routing_error(
+                    &owner,
+                    &foreign.encode().unwrap(),
+                    "agent.show",
+                    json!({}),
+                    "external-cli"
+                )
+                .await,
+                "NETWORK_SCOPE_MISMATCH"
+            );
+        }
+        owner.selfhost_enabled.store(false, Ordering::Release);
+        assert_eq!(
+            owner.for_reference(&agent).err().unwrap().code,
+            "NETWORK_FEATURE_DISABLED"
+        );
+        owner.selfhost_enabled.store(true, Ordering::Release);
+        owner.owned_stored.lock().unwrap()[0].removing = true;
+        assert_eq!(
+            owner.for_reference(&agent).err().unwrap().code,
+            "ACCOUNT_BINDING_CHANGED"
+        );
+        owner.owned_stored.lock().unwrap()[0].removing = false;
+        owner
+            .connections
+            .lock()
+            .unwrap()
+            .remove(&account.connection_id);
+        assert_eq!(
+            owner.for_reference(&agent).err().unwrap().code,
+            "NETWORK_CONNECTION_NOT_FOUND"
+        );
+    }
+
+    #[test]
+    fn owned_reference_rejects_multiple_principals_and_legacy_collision_regardless_of_selection() {
+        let (owner, agent, _) = owned_reference_fixture();
+        let record = owner.owned_stored.lock().unwrap()[0].clone();
+        let mut other = record.clone();
+        other.id = uuid::Uuid::new_v4().to_string();
+        other.principal_id = uuid::Uuid::new_v4().to_string();
+        owner.owned_stored.lock().unwrap().push(other.clone());
+        for selected in [record.id.clone(), other.id.clone(), OFFICIAL.into()] {
+            *owner.selected.lock().unwrap() = selected;
+            assert_eq!(
+                owner.for_reference(&agent).err().unwrap().code,
+                "NETWORK_SCOPE_MISMATCH"
+            );
+        }
+        // An expired/removing second record is not permission to silently switch accounts.
+        owner.owned_stored.lock().unwrap()[1].removing = true;
+        assert_eq!(
+            owner.for_reference(&agent).err().unwrap().code,
+            "NETWORK_SCOPE_MISMATCH"
+        );
+        owner.owned_stored.lock().unwrap().pop();
+        let (legacy, _) = source_routing_fixture();
+        let mut collision = legacy.stored.lock().unwrap()[0].clone();
+        collision.descriptor.service_id = agent.service_id.clone();
+        collision.descriptor.network_id = agent.network_id.clone();
+        owner.stored.lock().unwrap().push(collision);
+        assert_eq!(
+            owner.for_reference(&agent).err().unwrap().code,
+            "NETWORK_SCOPE_MISMATCH"
+        );
+    }
+
+    #[test]
+    fn owned_reference_rejects_changed_bound_identity_and_trust() {
+        for field in [
+            "binding",
+            "device",
+            "principal",
+            "network",
+            "session-bound",
+            "issuer",
+            "ca",
+        ] {
+            let (owner, agent, _) = owned_reference_fixture();
+            let mut records = owner.owned_stored.lock().unwrap();
+            let record = &mut records[0];
+            match field {
+                "binding" => record.binding_id = uuid::Uuid::new_v4().to_string(),
+                "device" => record.device_id = uuid::Uuid::new_v4().to_string(),
+                "principal" => record.principal_id = uuid::Uuid::new_v4().to_string(),
+                "network" => record.descriptor.network_id = uuid::Uuid::new_v4().to_string(),
+                "session-bound" => record.session_bound = !record.session_bound,
+                "issuer" => record.descriptor.issuer = "https://changed.invalid".into(),
+                "ca" => record.public_tls_ca = Some("changed-fixture".into()),
+                _ => unreachable!(),
+            }
+            drop(records);
+            let code = owner.for_reference(&agent).err().unwrap().code;
+            assert!(
+                matches!(
+                    code.as_str(),
+                    "ACCOUNT_BINDING_CHANGED" | "NETWORK_TRUST_CHANGED"
+                ),
+                "{field}: {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn owned_reference_rejects_expired_revoked_or_unowned_actor_without_credentials_io() {
+        for mode in [
+            "expired",
+            "guard-revoked",
+            "deactivated",
+            "unowned",
+            "stopped",
+        ] {
+            let (owner, agent, original) = owned_reference_fixture();
+            let record = owner.owned_stored.lock().unwrap()[0].clone();
+            let guard = Arc::new(move || {
+                if mode == "guard-revoked" {
+                    Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"))
+                } else {
+                    Ok(())
+                }
+            });
+            let account = owned_reference_account(
+                &record,
+                if mode == "expired" {
+                    1
+                } else {
+                    jsonwebtoken::get_current_timestamp() + 3600
+                },
+                guard,
+            );
+            let actor = AgentNetwork::with_generation(
+                record.id.clone(),
+                if mode == "unowned" {
+                    None
+                } else {
+                    Some(NetworkAccountSession::Owned(account))
+                },
+                owner.memory.clone(),
+                18,
+            );
+            if mode == "deactivated" {
+                actor.deactivate();
+            }
+            if mode == "stopped" {
+                owner.stopped.store(true, Ordering::Release);
+            }
+            owner
+                .connections
+                .lock()
+                .unwrap()
+                .insert(record.id.clone(), actor);
+            let code = owner.for_reference(&agent).err().unwrap().code;
+            assert_eq!(
+                code,
+                if mode == "expired" {
+                    "OWNED_SESSION_INVALID"
+                } else {
+                    "ACCOUNT_BINDING_CHANGED"
+                },
+                "{mode}"
+            );
+            assert!(original.active.load(Ordering::Acquire));
+        }
+    }
+
+    #[tokio::test]
+    async fn owned_reference_rejects_inflight_mutation_without_adopting_another_connection() {
+        let (owner, agent, _) = owned_reference_fixture();
+        let held = owner.mutation.lock().await;
+        assert_eq!(
+            owner.for_reference(&agent).err().unwrap().code,
+            "ACCOUNT_BINDING_CHANGED"
+        );
+        drop(held);
+        assert!(owner.for_reference(&agent).is_ok());
+    }
+
+    #[test]
+    fn owned_reference_revalidates_record_actor_and_generation_after_account_guard() {
+        for mode in ["record", "actor", "generation", "disabled"] {
+            let (owner, agent, _) = owned_reference_fixture();
+            let record = owner.owned_stored.lock().unwrap()[0].clone();
+            let weak = Arc::downgrade(&owner);
+            let id = record.id.clone();
+            let guard = Arc::new(move || {
+                let owner = weak.upgrade().unwrap();
+                match mode {
+                    "record" => {
+                        owner.owned_stored.lock().unwrap()[0].binding_id =
+                            uuid::Uuid::new_v4().to_string()
+                    }
+                    "actor" => {
+                        owner.connections.lock().unwrap().insert(
+                            id.clone(),
+                            AgentNetwork::with_generation(
+                                id.clone(),
+                                None,
+                                owner.memory.clone(),
+                                17,
+                            ),
+                        );
+                    }
+                    "generation" => owner.connections.lock().unwrap().get(&id).unwrap().stop(),
+                    "disabled" => owner.selfhost_enabled.store(false, Ordering::Release),
+                    _ => unreachable!(),
+                }
+                Ok(())
+            });
+            let account = owned_reference_account(
+                &record,
+                jsonwebtoken::get_current_timestamp() + 3600,
+                guard,
+            );
+            let actor = AgentNetwork::with_generation(
+                record.id.clone(),
+                Some(NetworkAccountSession::Owned(account)),
+                owner.memory.clone(),
+                17,
+            );
+            owner
+                .connections
+                .lock()
+                .unwrap()
+                .insert(record.id.clone(), actor);
+            assert_eq!(
+                owner.for_reference(&agent).err().unwrap().code,
+                if mode == "disabled" {
+                    "NETWORK_FEATURE_DISABLED"
+                } else {
+                    "ACCOUNT_BINDING_CHANGED"
+                },
+                "{mode}"
+            );
+        }
     }
 
     async fn source_routing_error(

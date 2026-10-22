@@ -36,6 +36,8 @@ Registry 的递增 revision 隔离迟到拓扑/选择投影；每连接 snapshot
 
 @ 与 `agent list` 并行发现所有活跃网络，返回 `networks[]` 的各自 context/完整性，以及带 `connectionId` / `networkName` 的候选。健康结果保留；本地 alias 只按真实本机/localAgentId 折叠，远端不同网络 selector 不合并。查询快照按其所属网络检查，不按当前页面选择。`agent list --network NAME_OR_CONNECTION_ID` 筛选；`agent network-diagnose` 逐网络报告，分页 cursor 须同时指定 `--network`。完整 selector 决定 source routing，失败无跨网 fallback。
 
+Owned 完整引用也由原 registry 的 `owned_stored` 与 actor/account binding 解析，不依赖当前页面选择。service/network 只匹配到唯一 owned 记录且没有同 scope 的 legacy 记录时，核对原 connection/binding/device/principal/network、固定 trust、有效 session 与进程内 guard，再复核记录、actor 和 generation。相同 service/network 多账号的 selector 不含账号标识，必须拒绝歧义，不能选第一个或转到当前选中账号；removing、过期、身份变更、功能关闭或 mutation 尚未发布完成时保守拒绝。此步骤只修正连接解析，不授予能力或执行许可，后续来源 Sidecar generation、Calls scope 与目标授权检查保持原路径。
+
 本地返回引用在原 opId/returnRouteId 上附带可选 `connectionId`；旧缺省仅指官方，新网络必须带自己的连接。Node watch registry 的关联比较含该字段，Rust 回程进入准确 actor；watch 取消使用读取时的 generation，避免迟到取消命中新权限。
 
 ## 调用与回程

@@ -771,3 +771,8 @@ Existing desktop/macOSarm64/updater and combinedCI/main/version owner remains Ro
 ## MOXBOTS-MODEL-SETTINGS-20261022 — 模型策略统一入口
 
 任务 `.agent-sync/tasks/codex-model-settings-20261022-37a8de35.md`，验收 `dev-docs/model-settings-20261022/`。统一入口 cdf33fd9 已提交，用户追加六项：空闲新轮次清旧备用、默认同档/显式跨档、三种模式、配置与运行时可用性、实际决策反馈、档位重试与独立恢复。前两项先复现再修复，六项最终414 tests/真实SDK本地回环3路径/合成UI9组及独立review通过；六项证据使用 evidence/six-features，旧unified截图仅证明入口。desktop唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4继续统筹CI/main/版本/构建/发布；开发会话通过验证后交接精确SHA和证据，不自行PR/共享CI/打包/日常App，不加入冻结批次。分别追踪源码/模拟/loopback/合成UI/原生/生产/主干。
+
+
+## MOXBOTS-0518-OWNED-REFERENCE-ADMISSION-20261022
+
+Parent SALARY-RECOVERY-20261020. Isolated feature codex/owned-reference-admission-20261022 starts from verified main c83b4c5b41a6a72f273c90aa7f1f768d916651ab. Repair only directory-selector lookup into the original valid owned connection, with full service/network uniqueness, exact account binding and generation checks; no selected fallback, new capability, retry, ledger or runtime mutation. Task `.agent-sync/tasks/codex-owned-reference-admission-20261022-1f99efc3.md` records targeted red/green and handoff. Frozen518.1/source4a92/artifacts remain unchanged. Desktop/macOS/updater and shared CI/main/release owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; root independent source review precedes publisher selection for the next unfrozen batch. Synthetic routing evidence is separate from originalAir executable identity, actual native source branch trace, remote permission/invoke and publication acceptance.
