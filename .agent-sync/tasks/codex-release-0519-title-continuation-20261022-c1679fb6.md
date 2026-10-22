@@ -35,3 +35,7 @@ Original mobile PR190 Linux CI39739522534 failed credential-ledger subprocess ad
 ## Next step
 
 Push this reconciled exact source and let the existing sole owner create one019 PR/original combined CI; accept only that exact head before protected main delivery and artifact selection. Retain this task's source and affected acceptance boundaries through the normal main/artifact/install/publish flow; no duplicate5182 build or native work.
+
+## Root version-contract correction before any build
+
+The first selected sourcef439 reserved the app root version but missed the independently versioned Document Worker manifest/lock. The existing sync-version contract reproduced this deterministically (1 failed/2 passed); the source was not built or installed. This followup changes only that package version projection to0.5.19, preserving its dependency graph. Focused sync-version3/3 and offline locked cargo metadata are checked before selecting the exact new head into the samePR191. The superseded CI/source and RED log are retained; this is a changed-head correction, not an unchanged rerun or duplicate build. Original title/continuation suites are not rerun.
