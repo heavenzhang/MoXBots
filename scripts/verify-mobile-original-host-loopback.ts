@@ -11,6 +11,7 @@ import {join,resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
 import {crc32,deflateSync} from 'node:zlib';
+import {AUTO_ROUTE_CLASSIFIER_SYSTEM_PROMPT} from '../src/shared/autoRoute';
 import type {InternalManagementAuthority} from '../src/host/management-ipc';
 
 const started=Date.now(), repository=resolve(import.meta.dirname,'..');
@@ -33,7 +34,7 @@ const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'wor
 const ipcDirectory=join(root,'ipc'),socketPath=join(ipcDirectory,'management.sock');
 const secret=randomBytes(32).toString('base64url');
 const children:ChildProcess[]=[];
-let diagnostics='',calls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
+let diagnostics='',calls=0,classifierCalls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
 const evidence:string[]=[];
 const descendants=new Map<number,{pid:number;ppid:number;pgid:number;birth:string;command:string}>();
 function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object});evidence.push(line);console.log(line);}
@@ -92,8 +93,21 @@ const supplier=httpServer(async(request,response)=>{
     for await(const part of request){size+=part.length;if(size>8*1024*1024)throw Error('FIXTURE_REQUEST_TOO_LARGE');chunks.push(Buffer.from(part));}
     if(request.url.includes('count_tokens')){response.writeHead(200,{'content-type':'application/json'}).end('{"input_tokens":100}');return;}
     assert.equal(request.headers['x-api-key'],secret);
-    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};
+    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown;system?:unknown;stream?:unknown;tools?:unknown};
     assert.equal(body.model,'original-host-model');
+    // Utility classification shares the Provider, but does not execute a native
+    // user turn and must not increment its exactly-once counter/observations.
+    if(body.system===AUTO_ROUTE_CLASSIFIER_SYSTEM_PROMPT){
+      assert.notEqual(body.stream,true);assert.equal(body.tools,undefined);
+      classifierCalls++;record('supplier-classifier-request',{classifierCalls,streaming:false,hasTools:false});
+      response.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({
+        id:`classifier-${classifierCalls}`,type:'message',role:'assistant',model:body.model,
+        content:[{type:'text',text:'2'}],stop_reason:'end_turn',stop_sequence:null,
+        usage:{input_tokens:100,output_tokens:1},
+      }));
+      return;
+    }
+    assert.equal(body.stream,true,'native turn must use the streaming SDK transport');
     const encoded=JSON.stringify(body.messages);
     seenAttachment ||= imageBoundary ? encoded.includes('"type":"image"') : encoded.includes('@myagents_files/remote-mobile/');
     calls++;captureProcesses();reply(response);
@@ -272,7 +286,9 @@ try{
   assert.deepEqual((await mobile({kind:'mobile.receipt',operationId:sendId})).result,sendReceipt);
   assert.equal(calls,callsAfterSend);
   record('restart-recovered-same-source-and-receipts-without-session-dispatch',{sourceEventId:hint.sourceEventId,originalEpoch:hint.connectionEpoch,supplierCalls:calls});
-  record('PASS',{elapsedMs:Date.now()-started,scope:'actual main + worker + SessionEngine/Store + native SDK, synthetic loopback supplier; no WSS/provider/phone acceptance'});
+  assert.equal(calls,2,'two native turns only, excluding classifier requests');
+  assert(classifierCalls>0,'automatic routing must remain exercised');
+  record('PASS',{elapsedMs:Date.now()-started,nativeSupplierCalls:calls,classifierCalls,scope:'actual main + worker + SessionEngine/Store + native SDK, synthetic loopback supplier; no WSS/provider/phone acceptance'});
 }catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',supplierCalls:calls,elapsedMs:Date.now()-started,privateFixture:root});process.exitCode=1;}
 finally{
   captureProcesses();

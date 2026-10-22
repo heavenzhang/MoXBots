@@ -35,11 +35,15 @@ Root directly reviews/integrates; no new agents or external models. Existing aut
 
 ## Completed
 
-All five exact reviewed sources are merged; the source branch is pushed. Root maintenance restoration, scoped reviews, narrow layout fix and combined312 checks are complete. Original author worktrees and frozen519.1 remain untouched.
+All five exact reviewed sources are merged into this integration branch; main delivery is separately gated. Root maintenance restoration, scoped reviews, narrow layout fix and combined312 checks are complete. Original author worktrees and frozen519.1 remain untouched.
 
 ## Blockers and unknowns
 
-Shared exact-head CI39839893384 failed the theme architecture guard and original Host loopback. Root corrected the theme surface token and isolated unavailable Provider credentials with a RED/GREEN regression;20 focused checks and19 existing theme guard checks pass. The loopback then exposed the automatic-route owned snapshot versus remote frozen-observation conflict (supplierCalls1/REMOTE_SESSION_OWNER_CHANGED); the original owner delivered925258df6, now absorbed as97f17679f. Root connected the same proven capability to the separate Host worker path; the original loopback now passes2turns/attachment/duplicate non-replay/restart source recovery in9.152s, with TypeScript/scoped lint0. Corrected exact-head shared CI/main remain pending. No guard is removed and no automatic-mode preference is changed to evade the failure. Shared corrected exact-head CI/main delivery remains pending. Actual signed-native and dual-device acceptance, a new immutable candidate build and production delivery have not occurred for this batch. No claim of original business incident repair or complete real-provider recovery coverage.
+Corrected exact-head shared CI/main is pending. The first source failures (theme token, per-Provider credential exception and original frozen-observation versus this request automatic-route CAS) are corrected with guards retained. Author925 correction is absorbed as97f, plus separate Host wiring. Original failed runs/raw are preserved.
+
+Later fixtures still counted classifier requests as native turns or consumed their first tool phase. All three original-Host suppliers now separate the exact shared non-stream/no-tools classifier protocol from streaming native requests. Native text1/assets2 expectations remain unchanged; positive classifier assertions prevent disabling auto. Standard/image actual Host loopbacks each pass native2/classifier2 (6203/8353ms); permission deny/allow/expired/Stop passes3classifier/6native (6446ms). Separate read-only reviews pass. The full encrypted text/assets/FFI/renewal chain remains the current exact CI gate, not a claimed local result.
+
+Actual signed-native App and dual-device acceptance, a new immutable candidate build and production delivery have not occurred for this batch. No original business incident repair or complete real-provider recovery coverage is claimed.
 
 ## Current verification
 
@@ -47,4 +51,4 @@ All five exact sources normally merged. Root fixed the demonstrated390px classif
 
 ## Next step
 
-Original PR194 CI39839893384 (exact remote68c5dcbb) collected failure and all raw retained; second exact88df CI39844969629 has a distinct interaction-fixture failure, with raw preserved and its own observer to collect. Original925 correction is absorbed and the separate Host path passes its original reproduction. Finish narrow source review, then push one corrected head for its original CI; normally merge only after required checks pass and verify remote containment/tested tree. Report exact source closure to the existing mobile owner for dedicated demoHost acceptance. App freeze/build/native/install/stable remain separately gated; do not mutate frozen519.1.
+Push this corrected source/test closure once and collect its original PR194 CI. Previous68/88/4c runs remain failed or cancelled with raw retained; none authorizes main. Only full exact-head CI and unchanged PR/base guards permit one normal merge and tested-main tree/remote-ancestor verification. Hand the exact source closure to the existing mobile owner for dedicated demoHost acceptance. App freeze/build/native/install/stable remain separate; do not mutate frozen519.1 or replay old suites.
