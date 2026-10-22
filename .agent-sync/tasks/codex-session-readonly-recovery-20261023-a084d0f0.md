@@ -16,7 +16,7 @@
 - [x] 完成/未知账本和原证据保持；真实 SessionStore 重建验证；Stop/owner/background 在持久化 await 期间变化不得 dispatch。
 - [ ] 经唯一桌面 owner 组织精确 CI、集成并核验远端 main。
 - [ ] 由同一 owner 分配后续候选、签名/原生/真实 Provider 验证，并在安全维护窗口发布。
-- [ ] 原报告 Session 恢复对话且不重放原业务动作。当前未执行，不能宣布会话已恢复。
+- [x] 原报告 Session 经用户明确批准的受控上下文重建，保留 Product Session ID 与完整旧记录备份；两次 Read、真实回复、native/V2 持久化及 terminal complete 均核验通过，未重放原业务动作。此项不替代未安装源码修复的验收。
 
 ## Completed
 
@@ -28,13 +28,13 @@
 
 - 首轮新增 3 项 RED：两种恢复模式返回 409；持久化故障被报为 transport failure。
 - unit/bridge integration 初轮 91/91；真实 SessionStore 夹具补齐 V2 首条消息后 3/3。最终组合回归结果见 dev-docs/session-readonly-recovery-20261023.md。
-- 本地定向、模拟 HTTP、实际 SessionStore 与真实 Provider/安装验收分别记录；没有向日常 App 发送恢复、重试或业务指令。
+- 本地定向、模拟 HTTP、实际 SessionStore 与真实 Provider/安装验收分别记录。后续已按用户明确批准，在现有日常 App 的指定原会话执行受控上下文重建及一次只读验证；未替换安装包、重启 App 或重放业务指令。
 
 ## Blockers and unknowns
 
 - 部署单元：macOS 桌面/Sidecar，不涉及云服务、Host、CRM 业务或移动端；唯一 CI/部署 owner：01a12bc2-907a-7702-b6dd-788225c5dfe4。
 - 519.1/ef33b512 已冻结；本修改不属于该包。不得覆盖版本/tag 或自行运行共享 CI、安装/重启日常 App。
-- 本聊天只推送无自动 CI 的 codex/ 任务分支；建立 PR 会自动启动共享 CI，应由既定 owner 组织。尚未获本次跨聊天消息授权；本地队列登记不代表已通知或接收。
+- 本聊天只推送无自动 CI 的 codex/ 任务分支；建立 PR 会自动启动共享 CI，应由既定 owner 组织。用户已明确授权发送并交接，源码及验证证据已实际发送给既定 owner；发送不代表已审查、合入或发布。
 - 此修复恢复只读核对能力，不自动清除未知工具结果或恢复业务写入；未知结果须由原操作 owner 核实。无现成持久化核销入口，本轮不新增此类权限。
 
 ## Next step

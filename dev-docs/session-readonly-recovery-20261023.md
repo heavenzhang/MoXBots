@@ -1,6 +1,6 @@
 # MB-SESSION-RECOVERY-20261023
 
-源码修复与本地验证已完成；当前安装 0.5.18/518.2 的原会话尚未恢复。基线为远端 main `5eb2ebc87489b92e250338026e2b971346ed9e15`，分支 `codex/session-readonly-recovery-20261023`。CI/main/正式包及原会话验收待唯一桌面 owner 组织。
+源码修复与本地验证已完成；原会话另经用户明确批准的受控上下文重建，已在当前安装 0.5.18/518.2 实际恢复。基线为远端 main `5eb2ebc87489b92e250338026e2b971346ed9e15`，分支 `codex/session-readonly-recovery-20261023`。本源码修复的 CI/main/正式包及安装验收仍待唯一桌面 owner 组织，不能用会话重建成功代替。
 
 ## 事实与根因
 
@@ -23,8 +23,17 @@
 - [x] 最终组合 32 文件 / 559 项全部通过；TypeScript、4 个改动代码/测试文件的 ESLint、测试分类、agent 文档及 diff whitespace 检查通过。
 - [ ] 唯一 desktop owner 的 CI/main 集成；分支 push 不等于主干交付。
 - [ ] 签名客户端、真实 Provider、原报告 Session 验收与发布。
+- [x] 独立运行恢复：用户批准保留 Product Session ID、完整备份旧记录后重建上下文；当前安装包中两次 Read 成功、真实模型回复与 native/V2 持久化一致，本轮 terminal 为 complete。此项不验证未安装的源码修复。
 
 私有测试日志和诊断回执位于交付工作区 `work/MB-SESSION-RECOVERY-20261023/`。仓库只保留合成场景与非秘密摘要，不保存原业务请求、工资附件或原始账本内容。
+
+## 原会话受控重建验收
+
+2026-10-23 01:44 至 01:46（Asia/Shanghai），在原会话 idle 且没有后台任务时，通过既有 `/chat/rewind` 回到首条输入之前。Product Session ID 保持不变，SDK Session identity 由产品正常生成；旧聊天、native transcript、附件和恢复账本先私有备份，14 个文件的 SHA256 全部复核通过，旧 uncertain ledger 原文件 hash 仍与备份一致。没有手工删改账本或伪造未知动作的执行结果。
+
+接口返回 conversation rewind success；可选 SDK file rewind 返回 failed，未宣称文件回滚成功。原 native 的 7 个 file-history snapshot 均无 tracked file backups，原工具记录亦无文件编辑，本次只重建对话上下文。
+
+随后仅发送一次带原目标和已提交进度的恢复输入，实际执行两次 Read 读取业务交付记录，工具结果均成功，并返回完整答复。原 sidecar terminal `complete`，V2 turn/message 均持久化 complete，V2 答复与 native transcript 一致；未执行 Bash、业务写入、导入、构建或发布。原业务修复已交付 sales-performance-worklog/master，生产未发布。私有证据为同目录 `controlled-rebuild-verification.json`、发送回执及重建前后 transcript。未重启 App，也未进行 GUI 目视验收。
 
 ## 交接、限制与回滚
 
