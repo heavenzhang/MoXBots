@@ -5,11 +5,11 @@
 
 # MOXBOTS-MOBILE-CI-LEDGER-20261022
 
-## Objective and ownership
+## Objective
 
 Unblock the existing TestFlight PR190 by locating its actual Linux credential-ledger subprocess failure. Desktop owner01a12bc2 explicitly assigned this chat01a12b99 as the sole bounded diagnostic/source writer; desktop retains review, combinedCI/main and any desktop release. Independent reviewer01a1488b is read-only. Existing mainc806 and mobile63/build4 remain immutable. No dailyMac credential, Keychain, original101, cloud service or published5182 artifact operation.
 
-## Acceptance and To Do
+## Acceptance criteria
 
 - [x] Preserve original run39739522534 attempt1, failedjob119693095854 and exact logSHA2a5e49d6bddb59b66dea104a94d1acd0f964163cda407f0a15b0c483feb6f8d8.
 - [x] Identify actual step: cargo test child process_commit_helper line2209 CredentialUnavailable; parent line2271 round0/helper0 exit101;1793pass/1fail/8ignored. This was not clippy.
@@ -26,6 +26,18 @@ Unblock the existing TestFlight PR190 by locating its actual Linux credential-le
 Private pointer output/mobile-testflight-20261022 contains original CI receipt/logs, credential-ledger-probe-stage-status.json, isolated probe logs and deterministic retired-snapshot model RED/GREEN. The probe uses production app_dirs=None and OSIdentityStore panic stubs with OS-store features disabled; it cannot read actual credentials. It is not the full Tauri binary or Linux environment. Initial probe compile failure was a missing disabled-OS type; no test ran then.
 
 A controlled private model returns actual FD metadata after its fixture owner is unlinked: first pathname-observation guard rejects nlink0, while the existing later FD guard already accepts non-owned nlink0. A proposed private branch makes the unowned model green and keeps owned mode rejected. This is a scheduling model and a candidate boundary, NOT proof that original CI hit that branch. No corresponding production relaxation is included here.
+
+## Completed
+
+Original failed CI evidence was preserved; scoped local probe and private controlled-unlink model were recorded; diagnostic-only source was committed and pushed. No production relaxation, shared CI dispatch or release operation occurred.
+
+## Verification
+
+`rustfmt --edition 2021 --check src-tauri/src/agent_network/credential_slots.rs` and `git diff --check` passed. Exact diagnostic file copied into isolated module harness:25 passed,1 ignored helper. Remote source head and clean worktree were verified. Full Linux/Tauri CI is pending the designated owner; local fixtures are not a substitute.
+
+## Blockers and unknowns
+
+Original Linux failure stage remains unproven. No existing local Linux daemon/VM was available. Desktop review and the one necessary new diagnostic head CI are pending. OriginalAir quiet-fact question remains a separate dependency for reviewer activation; do not infer it from service Ready.
 
 ## Current source changes
 
