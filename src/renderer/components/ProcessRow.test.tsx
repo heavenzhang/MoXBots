@@ -27,7 +27,7 @@ it('shows a completed open child handle without a running indicator', () => {
       status: 'completed', startedAt: 100, finishedAt: 200,
     },
   } } as ContentBlock;
-  const { container } = render(<ProcessRow block={block} index={0} totalBlocks={1} isStreaming={false} />);
+  const { container } = render(<ProcessRow block={block} index={0} hasFollowingBlock={false} isStreaming={false} />);
   expect(screen.getByText('已完成，可继续')).toBeTruthy();
   expect(container.querySelector('.animate-spin')).toBeNull();
 });
@@ -38,7 +38,7 @@ function thinkingBlock(overrides: Partial<ContentBlock> = {}): ContentBlock {
 
 describe('ProcessRow thinking block expand behaviour', () => {
   it('does NOT auto-expand a live (streaming) thinking block', () => {
-    render(<ProcessRow block={thinkingBlock()} index={0} totalBlocks={1} isStreaming />);
+    render(<ProcessRow block={thinkingBlock()} index={0} hasFollowingBlock={false} isStreaming />);
     // Collapsed: the reasoning body is unmounted …
     expect(screen.queryByText(new RegExp(REASONING, 'i'))).toBeNull();
     // … but the live "thinking" indicator is still shown.
@@ -46,7 +46,7 @@ describe('ProcessRow thinking block expand behaviour', () => {
   });
 
   it('expands only when the user clicks the row', () => {
-    render(<ProcessRow block={thinkingBlock()} index={0} totalBlocks={1} isStreaming />);
+    render(<ProcessRow block={thinkingBlock()} index={0} hasFollowingBlock={false} isStreaming />);
     expect(screen.queryByText(new RegExp(REASONING, 'i'))).toBeNull();
     fireEvent.click(screen.getByRole('button')); // the header is the only button while collapsed
     expect(screen.getByText(new RegExp(REASONING, 'i'))).toBeTruthy();
@@ -54,7 +54,7 @@ describe('ProcessRow thinking block expand behaviour', () => {
 
   it('signals onUserExpand when opened, but not when collapsing', () => {
     const onUserExpand = vi.fn();
-    render(<ProcessRow block={thinkingBlock()} index={0} totalBlocks={1} isStreaming onUserExpand={onUserExpand} />);
+    render(<ProcessRow block={thinkingBlock()} index={0} hasFollowingBlock={false} isStreaming onUserExpand={onUserExpand} />);
     const btn = screen.getByRole('button');
     fireEvent.click(btn); // open
     expect(onUserExpand).toHaveBeenCalledTimes(1);
@@ -67,7 +67,7 @@ describe('ProcessRow thinking block expand behaviour', () => {
       <ProcessRow
         block={thinkingBlock({ isComplete: true, thinkingDurationMs: 3000 })}
         index={0}
-        totalBlocks={1}
+        hasFollowingBlock={false}
         isStreaming={false}
       />,
     );
@@ -94,7 +94,7 @@ describe('ProcessRow Codex CollabAgent activity', () => {
       },
     } as ContentBlock;
 
-    const { container } = render(<ProcessRow block={block} index={0} totalBlocks={1} isStreaming />);
+    const { container } = render(<ProcessRow block={block} index={0} hasFollowingBlock={false} isStreaming />);
 
     expect(screen.getByText('子 Agent')).toBeInTheDocument();
     expect(screen.getByText('Agent 消息')).toBeInTheDocument();
@@ -124,7 +124,7 @@ describe('ProcessRow tool body layout ownership', () => {
       },
     } as ContentBlock;
 
-    const { container } = render(<ProcessRow block={editBlock} index={0} totalBlocks={1} />);
+    const { container } = render(<ProcessRow block={editBlock} index={0} hasFollowingBlock={false} />);
     const header = screen.getByRole('button', { expanded: false });
     fireEvent.click(header);
 
@@ -147,7 +147,7 @@ describe('ProcessRow tool body layout ownership', () => {
       },
     } as ContentBlock;
 
-    const { container } = render(<ProcessRow block={readBlock} index={0} totalBlocks={1} />);
+    const { container } = render(<ProcessRow block={readBlock} index={0} hasFollowingBlock={false} />);
     fireEvent.click(screen.getByRole('button', { expanded: false }));
 
     expect(container.querySelector('[data-process-body-layout="indented"]')).toHaveClass('ml-7');
@@ -166,7 +166,7 @@ describe('ProcessRow Provider tool ownership', () => {
       type: 'server_tool_use', providerRouteId: 'fixture-provider', providerBlockType: 'server_tool_use',
       tool: { id: 'provider-call', name: 'vendor_tool', input: {}, result, isError, isLoading, streamIndex: 0 },
     } as ContentBlock;
-    const { container } = render(<ProcessRow block={block} index={0} totalBlocks={2} isStreaming={streaming} />);
+    const { container } = render(<ProcessRow block={block} index={0} hasFollowingBlock isStreaming={streaming} />);
     expect(container.querySelector(`[data-provider-outcome="${outcome}"]`)).toHaveTextContent(label);
     expect(Boolean(container.querySelector('.animate-spin'))).toBe(outcome === 'running');
   });
@@ -186,7 +186,7 @@ describe('ProcessRow Provider tool ownership', () => {
       },
     } as ContentBlock;
 
-    const { container } = render(<ProcessRow block={block} index={0} totalBlocks={1} />);
+    const { container } = render(<ProcessRow block={block} index={0} hasFollowingBlock={false} />);
 
     expect(container.querySelector('[data-provider-owned="true"]')).toHaveTextContent('Provider 执行');
   });

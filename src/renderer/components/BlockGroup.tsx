@@ -16,7 +16,21 @@ interface BlockGroupProps {
   isStreaming?: boolean;
 }
 
-function ProcessPhaseCard({ phase, live, totalBlocks }: { phase: ProcessPhase; live: boolean; totalBlocks: number }) {
+interface ProcessPhaseCardProps { phase: ProcessPhase; live: boolean; hasFollowingPhase: boolean }
+
+// The projection creates new entry arrays on each stream event. Only changed
+// blocks (or their lifecycle/outcome) invalidate a committed phase's rows.
+function samePhase(previous: ProcessPhaseCardProps, next: ProcessPhaseCardProps) {
+  return previous.live === next.live && previous.hasFollowingPhase === next.hasFollowingPhase
+    && previous.phase.key === next.phase.key && previous.phase.kind === next.phase.kind
+    && previous.phase.entries.length === next.phase.entries.length
+    && previous.phase.entries.every((entry, index) => {
+      const other = next.phase.entries[index];
+      return entry.block === other.block && entry.index === other.index && entry.outcome === other.outcome;
+    });
+}
+
+const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollowingPhase }: ProcessPhaseCardProps) {
   const { t } = useTranslation('chat');
   const [expanded, setExpanded] = useState(false);
   // File aggregation can reparent a completed row; keep user choices by event ID.
@@ -24,6 +38,9 @@ function ProcessPhaseCard({ phase, live, totalBlocks }: { phase: ProcessPhase; l
   const detailsId = useId();
   const notify = useNotifyRowLayoutChanged();
   const handleChildExpand = useCallback(() => { notify('block-group-expand'); setExpanded(true); }, [notify]);
+  const handleExpansionChange = useCallback((open: boolean, block: ContentBlock, index: number) => {
+    setRowExpansions(previous => ({ ...previous, [block.id ?? block.tool?.id ?? index]: open }));
+  }, []);
   const { counts, outcome } = summarizeProcessPhase(phase.entries);
   // Real active/failed calls and child navigation anchors remain reachable.
   const important = (entry: ProcessPhase['entries'][number]) =>
@@ -67,21 +84,23 @@ function ProcessPhaseCard({ phase, live, totalBlocks }: { phase: ProcessPhase; l
         </p>}
         {group.entries.map((entry, index) => <ProcessRow
           key={entry.block.id ?? entry.block.tool?.id ?? entry.index}
-          block={entry.block} index={entry.index} totalBlocks={totalBlocks} isStreaming={live} onUserExpand={handleChildExpand}
+          block={entry.block} index={entry.index}
+          hasFollowingBlock={hasFollowingPhase || entry.index !== phase.entries.at(-1)?.index}
+          isStreaming={live} onUserExpand={handleChildExpand}
           resultFirst resultLabel={group.entries.length > 1 ? t('process.result.updateNumber', { count: index + 1 }) : undefined}
           expandedOverride={rowExpansions[entry.block.id ?? entry.block.tool?.id ?? entry.index]}
-          onExpansionChange={open => setRowExpansions(previous => ({ ...previous, [entry.block.id ?? entry.block.tool?.id ?? entry.index]: open }))}
+          onExpansionChange={handleExpansionChange}
         />)}
       </div>)}
     </div>
   </section>;
-}
+}, samePhase);
 
 const BlockGroup = memo(function BlockGroup({ blocks, isStreaming = false }: BlockGroupProps) {
   const phases = buildProcessPhases(blocks, isStreaming);
   if (!phases.length) return null;
   return <div className="my-2 min-w-0 space-y-1 select-none" data-process-group>
-    {phases.map(phase => <ProcessPhaseCard key={phase.key} phase={phase} live={isStreaming} totalBlocks={blocks.length} />)}
+    {phases.map((phase, index) => <ProcessPhaseCard key={phase.key} phase={phase} live={isStreaming} hasFollowingPhase={index < phases.length - 1} />)}
   </div>;
 });
 export default BlockGroup;
