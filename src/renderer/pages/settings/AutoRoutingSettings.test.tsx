@@ -165,6 +165,17 @@ describe('auto routing candidate pool settings', () => {
     expect(screen.queryByRole('button', { name: 'Pause selected' })).not.toBeInTheDocument();
   });
 
+  it('selects a model from its identity hit area without making row controls part of the label', async () => {
+    renderCard();
+    const list = await screen.findByRole('list');
+    const row = within(list).getAllByRole('listitem')[0];
+    const checkbox = within(row).getByRole('checkbox', { name: 'Select Fixture · Haiku 5.5' });
+    fireEvent.click(within(row).getByText('Haiku 5.5'));
+    expect(checkbox).toBeChecked();
+    fireEvent.click(within(row).getByRole('button', { name: 'Move Fixture · Haiku 5.5 down' }));
+    expect(checkbox).toBeChecked();
+  });
+
   it('keeps batch selection and confirmation available after a failed save', async () => {
     const update = vi.fn().mockRejectedValue(new Error('disk unavailable'));
     renderCard({ updateConfig: update });

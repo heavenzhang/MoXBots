@@ -1,5 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import React from 'react';
 
 import { i18n } from '@/i18n';
 import ConfirmDialog from './ConfirmDialog';
@@ -21,5 +22,36 @@ describe('ConfirmDialog i18n', () => {
 
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
+  });
+
+  it('traps focus in opt-in modal, starts on cancel, restores trigger, and ignores close while loading', () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    function Harness({ loading = false }: { loading?: boolean }) {
+      const [open, setOpen] = React.useState(false);
+      return <><button onClick={() => setOpen(true)}>Open</button>{open && <ConfirmDialog modal loading={loading} title="Confirm change" message="Proceed?" onConfirm={onConfirm} onCancel={() => { onCancel(); setOpen(false); }} />}</>;
+    }
+    const { rerender } = render(<Harness />);
+    const trigger = screen.getByRole('button', { name: 'Open' });
+    trigger.focus();
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole('dialog', { name: 'Confirm change' });
+    const cancel = screen.getByRole('button', { name: 'Cancel' });
+    const confirm = screen.getByRole('button', { name: 'Confirm' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: 'Tab', shiftKey: true });
+    expect(confirm).toHaveFocus();
+    fireEvent.keyDown(confirm, { key: 'Tab' });
+    expect(cancel).toHaveFocus();
+
+    rerender(<Harness loading />);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    rerender(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveFocus();
   });
 });

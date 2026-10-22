@@ -291,9 +291,9 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       {addOpen && <div className="mt-3 rounded-lg border border-[var(--line)] p-3">
         <div className="flex flex-wrap items-center gap-2"><p className="min-w-0 flex-1 text-sm font-medium text-[var(--ink)]">{t('autoRouting.addHeading')}</p><CustomSelect ariaLabel={t('autoRouting.addTier')} size="sm" value={addTier} options={AUTO_TIERS.map(tier => ({ value: tier, label: t(`autoRouting.tiers.${tier}`) }))} onChange={tier => setAddTier(tier as AutoTier)} /></div>
         <div className="mt-2"><label htmlFor={`${searchId}-add`} className="sr-only">{t('autoRouting.searchAdd')}</label><input id={`${searchId}-add`} value={addQuery} onChange={event => { setAddQuery(event.target.value); setAddSelected(new Set()); }} placeholder={t('autoRouting.searchAdd')} className="min-h-9 w-full min-w-0 rounded-md border border-[var(--line)] bg-[var(--paper)] px-3 text-sm text-[var(--ink)] placeholder:text-[var(--ink-muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]" /></div>
-        <div className="mt-2 max-h-48 overflow-y-auto">{visibleAddModels.map(model => <label key={autoModelKey(model)} className="flex min-w-0 items-center gap-2 border-b border-[var(--line)] py-2 text-sm">
-          <input type="checkbox" checked={addSelected.has(autoModelKey(model))} disabled={!canManage || !model.available || model.unavailableReason === 'not-chat'} onChange={() => toggleSet(setAddSelected, addSelected, autoModelKey(model))} />
-          <span className="min-w-0 flex-1"><span className="block break-words text-[var(--ink)]">{name(model)}</span><span className="block break-all text-xs text-[var(--ink-muted)]">{provider(model)} · {model.model}</span></span>
+        <div className="mt-2 max-h-48 overflow-y-auto">{visibleAddModels.map(model => <label key={autoModelKey(model)} className="flex min-h-8 min-w-0 items-center gap-2 border-b border-[var(--line)] py-2 text-sm">
+          <span className="flex min-h-8 min-w-8 shrink-0 items-center justify-center"><input type="checkbox" checked={addSelected.has(autoModelKey(model))} disabled={!canManage || !model.available || model.unavailableReason === 'not-chat'} onChange={() => toggleSet(setAddSelected, addSelected, autoModelKey(model))} /></span>
+          <span className="min-w-0 flex-1"><span className="block min-w-0 break-all text-[var(--ink)]">{name(model)}</span><span className="block break-all text-xs text-[var(--ink-muted)]">{provider(model)} · {model.model}</span></span>
           {(!model.available || model.unavailableReason === 'not-chat') && <span className="text-xs text-[var(--ink-muted)]">{t('autoRouting.unavailable')}</span>}
         </label>)}</div>
         {addModels.length === 0 ? <p className="py-2 text-xs text-[var(--ink-muted)]">{t('autoRouting.addEmpty')}</p> : visibleAddModels.length === 0 && <p className="py-2 text-xs text-[var(--ink-muted)]">{t('autoRouting.noAddMatches')}</p>}
@@ -312,7 +312,7 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       </div>}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-        <label className="flex min-h-8 items-center gap-2"><input type="checkbox" disabled={!canManage || visible.length === 0} checked={visible.length > 0 && visibleKeys.every(key => selected.has(key))} onChange={toggleVisible} />{t('autoRouting.selectVisible', { count: visible.length })}</label>
+        <label className="flex min-h-8 items-center gap-2"><span className="flex min-h-8 min-w-8 items-center justify-center"><input type="checkbox" disabled={!canManage || visible.length === 0} checked={visible.length > 0 && visibleKeys.every(key => selected.has(key))} onChange={toggleVisible} /></span>{t('autoRouting.selectVisible', { count: visible.length })}</label>
         {visibleSelected.length > 0 && <><span className="text-[var(--ink-muted)]">{t('autoRouting.selected', { count: visibleSelected.length })}</span><button type="button" disabled={!canManage} className="min-h-8 px-2 underline" onClick={() => beginMembershipAction('pause', visibleSelected)}>{t('autoRouting.pauseSelected')}</button><button type="button" disabled={!canManage} className="min-h-8 px-2 underline" onClick={() => beginMembershipAction('restore', visibleSelected)}>{t('autoRouting.resumeSelected')}</button><button type="button" disabled={!canManage} className="min-h-8 px-2 text-[var(--error)] underline" onClick={() => beginMembershipAction('exclude', visibleSelected)}>{t('autoRouting.removeSelected')}</button></>}
       </div>
       <div role="list" className="mt-1 max-h-[min(55vh,36rem)] overflow-y-auto rounded-lg border border-[var(--line)]">
@@ -322,13 +322,15 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
           const index = order.findIndex(row => autoModelKey(row) === key);
           const unavailable = !model.available;
           return <div role="listitem" key={key} className="flex min-w-0 flex-col gap-2 border-b border-[var(--line)] p-2.5 last:border-b-0 sm:flex-row sm:items-start">
-            <input aria-label={t('autoRouting.selectModel', { model: label(model) })} type="checkbox" className="mt-1 shrink-0" disabled={!canManage} checked={selected.has(key)} onChange={() => toggleSet(setSelected, selected, key)} />
-            <div className="min-w-0 flex-1">
+            <label className="flex min-h-8 min-w-0 flex-1 items-start gap-2">
+              <span className="flex min-h-8 min-w-8 shrink-0 items-center justify-center"><input aria-label={t('autoRouting.selectModel', { model: label(model) })} type="checkbox" disabled={!canManage} checked={selected.has(key)} onChange={() => toggleSet(setSelected, selected, key)} /></span>
+              <span className="min-w-0 flex-1">
               <div className="flex min-w-0 flex-wrap items-center gap-2 break-words text-sm font-medium text-[var(--ink)]"><span>{name(model)}</span>{index === 0 && !unavailable && model.enabled && <span className="shrink-0 rounded bg-[var(--paper-inset)] px-1.5 py-0.5 text-xs font-normal text-[var(--ink-muted)]">{t('autoRouting.firstPriority')}</span>}</div>
-              <div className="break-all text-xs text-[var(--ink-muted)]">{provider(model)} · {model.model}</div>
+              <div className="min-w-0 break-all text-xs text-[var(--ink-muted)]">{provider(model)} · {model.model}</div>
               {model.source && <div className="mt-0.5 break-words text-xs text-[var(--ink-muted)]">{t('autoRouting.source')}: {sourceLabel(model.source)}</div>}
               {(unavailable || !model.enabled) && <div className="mt-1 text-xs text-[var(--error)]">{unavailable ? t(`autoRouting.unavailableReasons.${model.unavailableReason ?? 'model-unavailable'}`) : t('autoRouting.paused')}</div>}
-            </div>
+              </span>
+            </label>
             <div className="flex max-w-full flex-wrap justify-start gap-1 sm:shrink-0 sm:justify-end">
               {model.available && model.inPool && model.enabled && <CustomSelect ariaLabel={t('autoRouting.setTier', { model: label(model) })} className="w-28 max-w-full" size="sm" value={model.tier} disabled={!canManage} onChange={tier => changeTier(model, tier as AutoTier)} options={AUTO_TIERS.map(tier => ({ value: tier, label: t(`autoRouting.tiers.${tier}`) }))} />}
               {model.available && model.inPool && model.enabled && <button type="button" aria-label={t('autoRouting.moveUp', { model: label(model) })} title={t('autoRouting.moveUp', { model: label(model) })} disabled={!canManage || index <= 0} onClick={() => moveOrder(model, -1)} className="min-h-8 min-w-8 rounded border border-[var(--line)] text-sm text-[var(--ink-secondary)] disabled:opacity-40">↑</button>}
@@ -356,6 +358,6 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       </div><p className="mt-2 text-xs text-[var(--ink-muted)]">{t('autoRouting.restorePoolHint')}</p></details>
     </>}
 
-    {confirm && <ConfirmDialog title={t(`autoRouting.confirm.${confirm.mode}.title`)} message={t(`autoRouting.confirm.${confirm.mode}.message`, { count: confirm.mode === 'follow' ? catalog.filter(model => model.available).length : confirm.keys.length })} confirmText={t('autoRouting.confirm.action')} confirmVariant={confirm.mode === 'exclude' || confirm.mode === 'follow' ? 'danger' : 'primary'} onCancel={() => setConfirm(null)} onConfirm={applyMembershipAction} />}
+    {confirm && <ConfirmDialog modal loading={busy} title={t(`autoRouting.confirm.${confirm.mode}.title`)} message={t(`autoRouting.confirm.${confirm.mode}.message`, { count: confirm.mode === 'follow' ? catalog.filter(model => model.available).length : confirm.keys.length })} confirmText={t('autoRouting.confirm.action')} confirmVariant={confirm.mode === 'exclude' || confirm.mode === 'follow' ? 'danger' : 'primary'} onCancel={() => setConfirm(null)} onConfirm={applyMembershipAction} />}
   </section>;
 }
