@@ -20,7 +20,7 @@ import { stopBotChild } from './bot-child-stop';
 import { atomicModifyConfig, loadConfig, loadProjects, materializeProviderRouteEnv, resolveWorkspaceConfig } from '../server/utils/admin-config';
 import { createConcreteProviderRoute, isConcreteProviderRoute } from '../shared/providerRoute';
 import { createHostResourceOwner, HostResourceError, type HostResourceRequest } from './resources';
-import { connectHostManagementIpc, type LocalSourceAuthority } from './management-ipc';
+import { connectHostManagementIpc, hostOwnerAssetRequest, type LocalSourceAuthority } from './management-ipc';
 import { createHostProviderCredentialOwner, HostProviderCredentialError, type ProviderCredentialInput } from './provider-credentials';
 import { HOST_PROVIDER_REFERENCE, readHostSystemdCredential, resolveHostProviderCredential } from '../server/utils/host-credentials';
 import { withWorkspaceAgentRegistrationIntent } from '../server/utils/agent-workspace-identity';
@@ -553,13 +553,13 @@ async function serve(): Promise<void> {
           if (authority.local.deviceId !== identity.hostId || shuttingDown) throw new Error('HOST_MANAGEMENT_OWNER_CHANGED');
           notificationSource.activate({connection:authority.connection,local:authority.local,accountBinding:authority.accountBinding,managementBinding:authority.managementBinding});
           if (operation.kind.startsWith('asset.stage.')) return mobileAssetStaging.handle(authority, operation);
-          if(operation.kind==='assets.request'&&operation.request.kind==='list'){
-            const target=await ensureOwnerWorker(operation.request.agentId,operation.request.sessionId);
-            return workerCall(target,'asset-owner',{kind:'list',agentId:operation.request.agentId,sessionId:operation.request.sessionId,limit:operation.request.limit,before:operation.request.before});
-          }
-          if(operation.kind==='assets.request'&&operation.request.kind==='read'){
-            const target=await ensureOwnerWorker(operation.request.agentId,operation.request.sessionId);
-            return workerCall(target,'asset-owner',{kind:'read',agentId:operation.request.agentId,sessionId:operation.request.sessionId,sourceId:operation.request.artifactId,offset:operation.request.offset,maxBytes:operation.request.maxBytes});
+          const ownerAssetRequest=hostOwnerAssetRequest(operation);
+          if(ownerAssetRequest){
+            const request=ownerAssetRequest;
+            const target=await ensureOwnerWorker(request.agentId,request.sessionId);
+            return request.kind==='list'
+              ? workerCall(target,'asset-owner',{kind:'list',agentId:request.agentId,sessionId:request.sessionId,limit:request.limit,before:request.before})
+              : workerCall(target,'asset-owner',{kind:'read',agentId:request.agentId,sessionId:request.sessionId,sourceId:request.artifactId,offset:request.offset,maxBytes:request.maxBytes});
           }
           if(operation.kind==='mobile.request'){
             const request=remoteMobileRequestSchema.parse(operation.request);

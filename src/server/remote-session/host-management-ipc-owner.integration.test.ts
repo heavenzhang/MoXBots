@@ -4,7 +4,7 @@ import { chmod, mkdtemp, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { once } from 'node:events';
-import { connectHostManagementIpc } from '../../host/management-ipc';
+import { connectHostManagementIpc, hostOwnerAssetRequest, type InternalManagementOperation } from '../../host/management-ipc';
 
 const authority={
  connection:{serviceId:'service',networkId:'network',bootEpoch:'boot',connectionEpoch:'connection'},
@@ -28,7 +28,7 @@ describe('Host management IPC owner bridge',()=>{
   if(directory){await rm(directory,{recursive:true,force:true});directory=undefined;}
  });
 
- it('round-trips owner list and bounded read data without paths over authenticated Unix IPC',async()=>{
+ it.each(['legacy','rust-owner'] as const)('round-trips %s list and bounded read bytes without paths over authenticated Unix IPC',async(spelling)=>{
   directory=await mkdtemp(join(homedir(),'.host-owner-ipc-'));
   await chmod(directory,0o750);
   const socketPath=join(directory,'management.sock');
@@ -38,12 +38,16 @@ describe('Host management IPC owner bridge',()=>{
   await chmod(socketPath,0o660);
   const bytes=Buffer.from('private owner bytes');
   const chunkHash=(await import('node:crypto')).createHash('sha256').update(bytes).digest('hex');
-  const dispatchInternal=async(_authority:unknown,operation:{kind:string;request?:{kind:string}})=>{
-   if(operation.kind!=='assets.request')throw new Error('TEST_UNEXPECTED_OPERATION');
-   if(operation.request?.kind==='list')return {kind:'owner-page',agentId:'agent-a',sessionId,items:[{sourceId,name:'result.txt',mimeType:'text/plain',sizeBytes:bytes.length,sha256:chunkHash}],hasMore:false,nextBefore:null};
-   if(operation.request?.kind==='read')return {kind:'owner-chunk',sourceId,offset:0,dataBase64:bytes.toString('base64'),sha256:chunkHash,eof:true};
+  const observed: InternalManagementOperation[]=[];
+  const dispatchInternal=async(_authority:unknown,operation:InternalManagementOperation)=>{
+   observed.push(operation);
+   const request=hostOwnerAssetRequest(operation);
+   if(request?.agentId!=='agent-a'||request.sessionId!==sessionId)throw new Error('TEST_UNEXPECTED_OWNER');
+   if(request.kind==='list')return {kind:'owner-page',agentId:'agent-a',sessionId,items:[{sourceId,name:'result.txt',mimeType:'text/plain',sizeBytes:bytes.length,sha256:chunkHash}],hasMore:false,nextBefore:null};
+   if(request.kind==='read'&&request.artifactId===sourceId&&request.offset===0&&request.maxBytes===24*1024)return {kind:'owner-chunk',sourceId,offset:0,dataBase64:bytes.toString('base64'),sha256:chunkHash,eof:true};
    throw new Error('TEST_UNEXPECTED_OWNER_REQUEST');
   };
+
   host=await connectHostManagementIpc({socketPath,expectedUid:process.getuid!(),expectedGid:process.getgid!(),expectedDeviceId:'host-device',dispatch:async()=>({}),dispatchInternal,isShuttingDown:()=>false});
   const [client]=await incoming;socket=client;
   const pending:Buffer[]=[];
@@ -59,10 +63,14 @@ describe('Host management IPC owner bridge',()=>{
   const send=async(requestId:string,operation:unknown)=>{
    const body=Buffer.from(JSON.stringify({kind:'internal-request',requestId,authority,operation}));const frame=Buffer.alloc(4+body.length);frame.writeUInt32BE(body.length);body.copy(frame,4);client.write(frame);return nextResponse();
   };
-  const listed=await send('cccccccc-cccc-4ccc-8ccc-cccccccccccc',{kind:'assets.request',request:{version:1,agentId:'agent-a',kind:'list',sessionId,limit:1}});
+  const listed=await send('cccccccc-cccc-4ccc-8ccc-cccccccccccc',spelling==='legacy'?{kind:'assets.request',request:{version:1,agentId:'agent-a',kind:'list',sessionId,limit:1}}:{kind:'asset.owner.list',agentId:'agent-a',sessionId,limit:1,before:null});
   expect(listed.result).toMatchObject({kind:'owner-page',sessionId,items:[{sourceId,name:'result.txt',sizeBytes:bytes.length}]});
   expect(JSON.stringify(listed.result)).not.toContain('sourcePath');
-  const read=await send('dddddddd-dddd-4ddd-8ddd-dddddddddddd',{kind:'assets.request',request:{version:1,agentId:'agent-a',kind:'read',sessionId,artifactId:sourceId,offset:0,maxBytes:24*1024}});
+  const read=await send('dddddddd-dddd-4ddd-8ddd-dddddddddddd',spelling==='legacy'?{kind:'assets.request',request:{version:1,agentId:'agent-a',kind:'read',sessionId,artifactId:sourceId,offset:0,maxBytes:24*1024}}:{kind:'asset.owner.read',agentId:'agent-a',sessionId,sourceId,offset:0,maxBytes:24*1024});
   expect(read.result).toMatchObject({kind:'owner-chunk',sourceId,offset:0,dataBase64:bytes.toString('base64'),sha256:chunkHash,eof:true});
+  expect(observed).toHaveLength(2);
+  const denied=await send('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',{kind:'asset.owner.read',agentId:'agent-a',sessionId,sourceId,offset:-1,maxBytes:24*1024});
+  expect(denied.result).toEqual({kind:'error',code:'INVALID_REQUEST'});
+  expect(observed).toHaveLength(2);
  });
 });

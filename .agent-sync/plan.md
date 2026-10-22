@@ -840,3 +840,30 @@ Same sole desktop/macOS/updater and combined CI/main owner01a12bc2 integrates mo
 
 模型策略组合修复（MOXBOTS-MODEL-POLICY-20261022-02，2026-10-23）：原owner PR194候选的Host loopback未通过，不合并失败候选。开发分支同步main86ba，吸收owner候选目录异常隔离源修；新增仅成功auto-route CAS可使用的单请求进程内快照握手，保留外部配置/权限/owner变化拒绝和operation去重。115项局部组合测试、类型/lint/分类/依赖及独立源审通过；证据dev-docs/model-policy-20261022/acceptance.md。交原唯一desktop owner01a12bc2吸收并重验精确候选；未触发共享CI/正式构建/Host或App操作，主干及发布仍待其门禁。
 
+
+
+## MOXBOTS-0519-INDEX-TEST-ISOLATION-20261023 / current519.2
+
+Root01a12bc2 remains sole desktop/macOS/updater and combinedCI/main/version owner. PR194 original Test39849289844 passed9success/conditional iOSskip, normalmain54f09b8d17e87702a08fcd4ccb40b0289c6a97b7/tested6770 treece5 equal. Newimmutable0.5.19/build519.2 is selected from exactmain54 using reviewed Tauri build-time CFBundleVersion overlay; tracked source stays clean, no Info-only relabel or frozen519.1 overwrite. One normalnice0/jobs4 build20481 and firststage/sign pass; no App execution/native/install/stable019 acceptance yet, actual518.2/stable018 unchanged.
+
+Automatic mainpush39852196790 independently reports2 unchanged Tantivy immediate-reopen LockBusy tests (1805pass/8ignored). This task preserves both original bodies/assertions and runs each in an exact private test subprocess so unrelated concurrent spawns cannot inherit its writer FD. Pinned library/probe evidence supports interference, exact historical holder is unknown; no product shutdown repair claim or blind rerun. Only cfg(test) code changes, new original CI/main gated. Existing519.2 binary is retained without rebuild. Fresh owner/durable/full schedule/draft/consistent backup and finite affected native/actual dual-device gates remain separate; no original business stop/replay or independent deployment takeover. Taskcodex-release-0519-index-test-drain-20261023-48b727a4.md holds continuation.
+
+
+PR195 followup after original7599 Windows fixture timeout: only cfg(test) workspace watcher phase checks change. Distinct pre-existing atomic destination prevents consuming previous same-path rename as save acknowledgement; final delete requires native Remove and nonexistence. Original20s deadline and four real mutations retained; phase/bounded event diagnostics added.10 actual macOS filesystem runs pass using exact production NoCache function/existing compiled dependencies, not a second App build or Windows proof. Exact previous phase remains unknown. Collect original39855997677 before changed-head CI; no blind rerun, production source54/519.2 artifact remains frozen.
+
+## Mobile reviewer real artifact owner repair — 2026-10-23
+
+MOXBOTS-MOBILE-ARTIFACT-OWNER-20261023 follows actual dedicated D2 App new/continue/history and87B upload PASS, artifact-list MOBILE_ARTIFACT_RESPONSE_INVALID FAIL. Node-only nullable Rust OwnerList cursor/OwnerList+OwnerRead original-worker dispatch compatibility fix; task `.agent-sync/tasks/codex-mobile-artifact-owner-20261023-eb54d54e.md`, evidence `dev-docs/mobile-002/artifact-owner-20261023.md`. Source/local regression, actualwire, CI/main, immutable reviewerNode artifact, known-Session-preserving deployment, D2 real UI and Apple external/installable invitation remain separate gates. Original mobile/reviewerHost/Apple owner01a12b99 retains its lane, original combinedCI/main/desktop owner01a12bc2 receives exact commit; no second publisher, nativeGUI lease or original101/dailyMac action is inferred. IPA4/currentNode54 and existing Session/history/upload remain immutable old evidence.
+
+
+## PR195 combined source closeout — independent deployment units
+
+Root01a12bc2 retains sharedCI/main and desktop/macOS/updater, original01a12b99 retains dedicated reviewerHost Node/mobile lane. Root accepts sourcec065a901b2a8592bf54f7e664e88f1030a03167f (productione6cc6b32) after exact5blob/40check/raw/independent review. Combine its Host-only compatibility fix with the now-reviewed test fixture correction in one changed-head PR195 CI, after original7599 CI39855997677 is fully collected (8success/Windows watcherfail/iOSskip; Linux original index bodies and clippy pass). Both appends preserved by normal merge.
+
+Desktop artifact0.5.19/build519.2 remains producer54f09b8d/treece5/TAR7624c74c; it is never relabeled as containingc065. Actual shippedserver/bridge maps and unminifiedCLI have no modifiedHost inputs; runtimeRust prefixes, renderer, scripts, locks/resources/version are unchanged. Thus no desktop rebuild/sign/notary repeat for this combined source. New Host Node producer is the future actual CI-acceptedmain and must get a fresh immutable bundle/pin/review and known-Session-preserving deployment solely by original mobile owner to ownbb90. No original101/dailyMac/IPA4/cloud/Windows deployment. Separate source/tag/artifact/installed/native/mobile/Node results; no global completion claim.
+
+
+Current combined PR195 clarification: standaloneHost c065 production changes are outside the already-signed desktop entry closures; actual signed server/bridge/CLI bytes were matched to frozen build outputs, build maps exclude modifiedHost inputs, and Rust runtime prefixes are byte-identical after cfg(test) separation. This does not relabel desktop519.2 as newHost source. Original7599 fullCI collected8success/1Windows watcherfail/conditional iOSskip, including Linux original index tests and clippyPASS; next changed source includes the reviewed watcher phase correction plus c065 in one shared run, no separate overlapping CI or App rebuild. Runtime/directProvider/title/Goal/dual-device and release results remain separate.
+
+
+2026-10-23 Root PR195 ebf originalCI39862815312 collected8green/RustrecordingFAIL/iOSskip; WindowswatcherPASS. Next cfg(test) FakeSession first-real-push ack2s/no added sleep or retry, Ready/no-audio rules preserved; exact-source stub-sink100thread roundsPASS, not originalCIcause/nativecapture proof. SameRoot sharedCI/main; standaloneHost rollout stays originalmobile, desktop519.2 source54/TAR7624 staticimmutable/no rebuild. See current index-test task and release0519acceptance.

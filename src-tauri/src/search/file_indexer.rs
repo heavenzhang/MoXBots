@@ -1138,6 +1138,11 @@ mod tests {
 
     #[test]
     fn active_workspace_writer_lock_is_never_deleted_as_stale() {
+        if crate::search::test_process::run_isolated(
+            "search::file_indexer::tests::active_workspace_writer_lock_is_never_deleted_as_stale",
+        ) {
+            return;
+        }
         let temp = tempfile::tempdir().unwrap();
         let index_dir = temp.path().join("index");
         fs::create_dir_all(&index_dir).unwrap();

@@ -50,3 +50,22 @@ The next original4c7e CI reaches encrypted Mobile→WSS→Host completion: recei
 Actual local standard/large-image loopbacks pass6203/8353ms, each native2/classifier2, retaining duplicate/start/restart receipt and attachment-byte assertions; fixture lint0. The three-target Rust full-chain text/assets/FFI/renewal matrix is not claimed locally and remains the exact corrected CI gate, avoiding a duplicate local Rust build. Previous39847060816 was cancelled after its distinct failed job; its sole observer/pipeline54822 collected nonzero and performed no main merge.
 
 All three latest fixture changes received separate read-only source review with no P0/P1; native1/2, observations[1], original image/file digest and duplicate/restart assertions are retained. No additional test or runtime action was performed by that reviewer.
+
+
+## Original shared CI and normal-main delivery
+
+Exact6770eeaf89b7faa671a73f0739d4c5e065192097 / CI39849289844 attempt1 passes nine jobs with the conditional iOS lane skipped. Normal PR194 merge is54f09b8d17e87702a08fcd4ccb40b0289c6a97b7; tested/actualmain treece5bf3f18f12906896f3d0b51daa95474002ae19 is identical, remote contains all original sources. Sole observer95380 collectedexit0; previous failed/cancelled raw remains. This closes source/main delivery only. New519.2 producer54 is built once with actual build-time bundle519.2 overlay; old519.1, installed518.2 and stable018 are not relabeled.
+
+Automatic main-push39852196790 later independently exposes two old immediate search writer-reopen LockBusy tests. Their raw1805pass/2fail/8ignored and source/library diagnosis are retained. A separate cfg(test)-only isolation correction retains all original assertions; corrected CI is pending. No unchanged App rebuild or public release is authorized by this paragraph. Exact historical child attribution and full native/dual-device acceptance remain unknown/pending.
+
+
+The test-isolation correction's original7599 CI separately exposes an unchanged Windows native workspace watcher timeout (168pass/1fail). Its original phase is unknown. A source-identified fixture ambiguity is corrected without changing production: atomic save now overwrites a distinct pre-existing path, final deletion requires native Remove/nonexistence, all four real operations and20s deadline remain, and bounded event/phase diagnostics are included. The exact production debouncer with edited test passes10 consecutive macOS native filesystem runs; Windows proof remains its corrected exact CI. This adds no App build, changed runtime source or broader production acceptance.
+
+
+## Exact ebf0 CI recording fixture follow-up
+
+Original CI39862815312 attempt1 is collected:8SUCCESS, cargo failure, conditional iOSskip; corrected Windows workspace IO succeeds. The sole Rust failure is recording::manager::tests::one_source_can_be_excluded_and_restored_inside_the_same_generation, Interrupted versus Ready (1806passed/1failed/8ignored). Root preserves original job120117503675 rawSHAe8ce91dc72755cda3f85d428768ea5f3585a7239832e922b69a9761b16dae415. The recording file is unchanged from main54; exact original scheduling is unknown. No unchanged rerun or merge was performed.
+
+The cfg(test) FakeSession previously returned immediately after spawning its producer. The source-toggle test can stop it before any source frame is pushed, while the real empty-capture rule correctly returns Interrupted. The fixture now acknowledges its first actual fake-source push through a bounded2s channel before returning; original10ms producer cadence, product empty-capture/ownership checks and Ready assertion remain unchanged. No fixed startup sleep, retry, lock deletion, ignored test or production prefix change. A standalone harness using the exact changed FakeSession plus stub sinks passes100 once-only real std-thread rounds; it proves the first-push handshake, not real Tauri capture or the exact historic CI cause. The initial standalone harness's missing JoinHandle import is retained separately from product/CI failures.
+
+Next: one new changed-head original shared CI and normal protected main gate. Existing desktop519.2 producer54/TAR7624 is unchanged and has originalPR194 nine-green CI and completed static packaging; this independentHost/test closeout does not require rebuilding it or prevent independently authorized desktop maintenance/native preparation. Native affected acceptance, installation and online publication remain their own evidence states.

@@ -332,6 +332,9 @@ mod tests {
 
     #[test]
     fn rebuild_upsert_delete_and_reopen_are_derived_from_records() {
+        if crate::search::test_process::run_isolated("search::record_indexer::tests::rebuild_upsert_delete_and_reopen_are_derived_from_records") {
+            return;
+        }
         let temp = tempdir().unwrap();
         let index_dir = temp.path().join("records");
         let index = RecordIndex::new(index_dir.clone()).unwrap();
