@@ -32,6 +32,34 @@ beforeEach(()=>{
 });
 afterEach(()=>vi.unstubAllEnvs());
 async function settle(){await vi.waitFor(()=>expect(f.finish).toHaveBeenCalled())}
+it.each(['enqueue','dispatch'] as const)('persists the safe refusal from %s and never executes a duplicate rejected operation',async phase=>{
+  const request=mutation();
+  const error='Provider "private-provider" is unavailable or missing an API key. secret-token';
+  f.send.mockResolvedValue(phase==='enqueue'?{success:false,error}:{success:true,dispatchAcceptance:Promise.resolve({accepted:false,error})});
+  await handleDesktopRemoteSession({request,generation:'gen'},'session');await settle();
+  expect(f.finish).toHaveBeenCalledWith(request,'rejected','session','REMOTE_PROVIDER_UNAVAILABLE');
+  const rejected={...receipt(request,'rejected'),code:'REMOTE_PROVIDER_UNAVAILABLE'};
+  f.begin.mockResolvedValueOnce({fresh:false,receipt:rejected});
+  expect(await handleDesktopRemoteSession({request,generation:'gen'},'session')).toMatchObject({data:rejected});
+  expect(f.send).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(f.finish.mock.calls)).not.toContain('secret-token');
+});
+it.each(['enqueue','dispatch'] as const)('reports first-message %s rejection without binding or re-adopting its prepared Session',async phase=>{
+  const request={kind:'start' as const,agentId:'agent',operationId:randomUUID(),text:'first remote task'};
+  const initial={kind:'receipt',agentId:'agent',operationId:request.operationId,sessionId:'session',status:'processing',code:null};
+  f.read.mockResolvedValue(initial);f.adopt.mockResolvedValue(true);
+  const error='Provider/model selection is incomplete. Select a provider-model pair before sending.';
+  f.send.mockResolvedValue(phase==='enqueue'?{success:false,error}:{success:true,dispatchAcceptance:Promise.resolve({accepted:false,error})});
+  const envelope={request,generation:'gen',preparedSessionId:'11111111-1111-4111-8111-111111111111'};
+  // Use the exact prepared Session ID throughout the original owner boundary.
+  const id=envelope.preparedSessionId;f.metadata.mockReturnValue({id,agentDir:'/workspace',materializationState:'prepared',materializationSourceSessionId:request.operationId});
+  f.ctx.mockReturnValue({sessionId:id,workspacePath:'/workspace'});f.read.mockResolvedValue({...initial,sessionId:id});
+  await handleDesktopRemoteSession(envelope,'session');await settle();
+  expect(f.finish).toHaveBeenCalledWith(request,'rejected',id,'REMOTE_PROVIDER_SELECTION_REQUIRED');
+  f.read.mockResolvedValue({...initial,sessionId:id,status:'rejected',code:'REMOTE_PROVIDER_SELECTION_REQUIRED'});
+  expect(await handleDesktopRemoteSession(envelope,'session')).toMatchObject({data:{status:'rejected',code:'REMOTE_PROVIDER_SELECTION_REQUIRED'}});
+  expect(f.send).toHaveBeenCalledTimes(1);expect(f.adopt).toHaveBeenCalledTimes(1);
+});
 it('reads history and admits explicit messages while proactive mode is off without enabling it',async()=>{
   const passive={...agent,agent:{...agent.agent,enabled:false}};
   f.registry.mockResolvedValue({agentProjections:[passive],diagnostics:[],config:{}});

@@ -14,6 +14,7 @@ import { claimPreparedSessionForTurnAdmission, getSessionMetadata, getSessionsBy
 import { getSessionEngine, stopActiveTurn, runProcessUpdateAdmission } from '../session-engine';
 import { buildRemoteSnapshot, projectRemoteInteractions } from './projection';
 import { createRemoteReceiptOwner, RemoteSessionError } from './receipts';
+import { rejectRemoteAdmission } from './admission';
 
 export const desktopRemoteReceipts = createRemoteReceiptOwner('desktop');
 const receipts = desktopRemoteReceipts;
@@ -86,7 +87,7 @@ async function performOwned(request:Mutation,sessionId:string,generation:string)
       }:async()=>{await target(request.agentId,sessionId);return {accepted:true as const}};
       handedOff=true;
       const admitted=await engine.sendDesktopMessage({text:request.text,clientRequestId:request.operationId,sessionId,workspacePath:identity.workspacePath,scenario:{type:'desktop'},turnBoundaryOnly:true,model:config.model,permissionMode:config.permissionMode,providerRoute:config.providerRoute,providerEnv:config.providerEnv,reasoningEffort:config.reasoningEffort,beforeDispatch});
-      if(!admitted.success||admitted.error)throw new RemoteSessionError('REMOTE_SESSION_ADMISSION_REJECTED');
+      if(!admitted.success||admitted.error)rejectRemoteAdmission(admitted.error,'enqueue',request,sessionId);
       if(request.kind==='send'&&admitted.queued&&admitted.queueId){
         // The original queue has accepted this existing Session message. Its
         // promotion can wait on a human response to the currently running turn.
@@ -94,7 +95,7 @@ async function performOwned(request:Mutation,sessionId:string,generation:string)
         void admitted.dispatchAcceptance?.catch(()=>{});
       }else{
         const acceptance=await admitted.dispatchAcceptance;
-        if(acceptance&&!acceptance.accepted)throw new RemoteSessionError('REMOTE_SESSION_ADMISSION_REJECTED');
+        if(acceptance&&!acceptance.accepted)rejectRemoteAdmission(acceptance.error,'dispatch',request,sessionId);
       }
     }else{
       if(request.generation!==generation||engine.getExecutionTurnId()!==request.turnId)throw new RemoteSessionError('REMOTE_SESSION_INTERACTION_EXPIRED');

@@ -810,3 +810,7 @@ Same sole mobile owner01a12b99 continues MOXBOTS-MOBILE-TESTFLIGHT-20261022 afte
 ## Desktop019 explicit source reconciliation after PR192
 
 Same sole owner01a12bc2 reserves unbuilt0.5.19/build519.1. Failed/unbuiltbbed remains preserved; new revision deliberately reconciles title2df/a83+continuationc5b with normally deliveredmain375080609b51c7de993511c6b36505ea23eefcb1 (orchestration6bcd/fixturebcb/credentialce2, PR192 originalCI39771492747 nineSUCCESS/oneconditional iOSskip, tested-main treeequal). Root merged admission-source review and7focused checks PASS; original430/145 not repeated. Exact newCI/main/native capability/first B artifact/fresh maintenance/local/stable gates remain. No silent source mixing or released5182/tag changes, no new deployment owner or mobile/Host/cloud/Windows deployment. Taskcodex-release-0519-title-continuation-20261022-c1679fb6.md is current source/acceptance authority.
+
+## MB-REMOTE-ADMISSION-20261022 — 远程拒绝原因与安全回执
+
+原始enqueue/dispatch原因不再全部丢成通用拒绝，desktop/mobile共用安全分类与仅含阶段/ID/码的关联日志；查看端区分配置拒绝与连接失败，旧通用码兼容，保留草稿和原operation去重，不自动重发或替换Provider/权限/Session。验收与边界dev-docs/remote-session/admission-20261022.md，任务.agent-sync/tasks/codex-remote-admission-20261022-a033d65f.md。原目标Mino/Mac-mini-3约0.5.15，日志和确切build未知，不能宣称原故障已恢复。涉及现有desktop builtin client/macOS desktop/updater不可分割单元；唯一CI/build/version/install/publish/rollback owner01a12bc2-907a-7702-b6dd-788225c5dfe4不变。开发分支本地80项/类型/lint及隔离browser验证，push仅源交接；共享CI、正常主干集成和下一未冻结批次由owner处理，不自行PR触发CI，不改冻结版本，不涉及独立cloud/Host/phone发布。
