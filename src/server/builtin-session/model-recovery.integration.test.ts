@@ -33,11 +33,16 @@ afterEach(async () => {
   await rm(fixture.home, { recursive: true, force: true });
 });
 
-async function harness(goalId?: string) {
+async function harness(goalId?: string, activeTranscript = false) {
   const id = randomUUID();
   const native = randomUUID();
-  await store.saveSessionMetadata({ id, sdkSessionId: native, agentDir: fixture.home, title: 'recovery fixture',
-    createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin' });
+  if (activeTranscript) {
+    await store.createSession(fixture.home, { id, sdkSessionId: native, title: 'recovery fixture' });
+    await store.flushSessionTranscriptsForUpdate();
+  } else {
+    await store.saveSessionMetadata({ id, sdkSessionId: native, agentDir: fixture.home, title: 'recovery fixture',
+      createdAt: new Date().toISOString(), lastActiveAt: new Date().toISOString(), runtime: 'builtin' });
+  }
   let turnId = 'original-turn';
   let now = 100_000;
   const body: AnthropicRequest = { model: 'fixture', max_tokens: 128, messages: [
@@ -97,6 +102,36 @@ describe('durable model recovery through the real SessionStore', () => {
     const restored = h.make();
     await expect(restored.recovery.admit(h.request())).rejects.toThrow('stopped');
     expect(store.getSessionMetadata(h.id)!.modelRecovery).toMatchObject({ status: 'paused', reason: 'user stopped' });
+  });
+
+  it.each(['false', 'throw'] as const)('fences failed automatic enqueue despite transcript flush %s and rejects cold recovery', async failure => {
+    const h = await harness(undefined, true);
+    const first = h.make();
+    expect(await first.recovery.interrupted(h.request())).toBe(true);
+    const saved = store.getBuiltinModelRecovery(h.id)!;
+    const active = store.getActiveSessionTranscript(h.id)!;
+    const flush = vi.spyOn(active.writer, 'flush');
+    if (failure === 'throw') flush.mockRejectedValue(new Error('fixture transcript IO failure'));
+    else flush.mockResolvedValue(false);
+    const onFailure = vi.fn();
+    const enqueue = vi.fn(() => false);
+    const continuation = new SameTurnStreamContinuation({ recovery: first.recovery,
+      rootId: () => 'original-turn', isLive: () => true, now: () => saved.nextRetryAt,
+      advance: () => { throw new Error('failed admission must not advance inference'); },
+      enqueue, observe: () => {}, onFailure });
+    try {
+      continuation.interrupted(); expect(continuation.schedule()).toBe(true);
+      await vi.waitFor(() => expect(onFailure).toHaveBeenCalledOnce());
+      expect(enqueue).toHaveBeenCalledOnce();
+      const rows = JSON.parse(await readFile(join(fixture.home, '.myagents', 'sessions.json'), 'utf8'));
+      expect(rows[0].modelRecovery).toMatchObject({ id: saved.id, status: 'waiting' });
+      // A failed body flush must not block the existing independent control fence.
+      expect(store.getBuiltinModelRecovery(h.id)).toMatchObject({ id: saved.id, status: 'paused' });
+      flush.mockRestore(); await active.revoke();
+      vi.resetModules(); store = await import('../SessionStore');
+      expect(store.getBuiltinModelRecovery(h.id)).toMatchObject({ id: saved.id, status: 'paused' });
+      await expect(h.make().recovery.admit(h.request())).rejects.toThrow('stopped');
+    } finally { continuation.reset(); flush.mockRestore(); }
   });
 
   it('rejects a lost-native-identity writer and leaves the checkpoint intact', async () => {
