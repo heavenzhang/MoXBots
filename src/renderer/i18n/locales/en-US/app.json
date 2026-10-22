@@ -2099,6 +2099,8 @@
     }
   },
   "orchestrationPlan": {
+    "unsupported": "This runtime does not support confirming or adjusting task plans yet. Your plan and records are preserved. Switch to a supported runtime to continue. Task progress and result review remain available.",
+    "supportUnverified": "Plan confirmation support has not been verified. Restore the connection or refresh the conversation to continue. Your plan and draft are preserved.",
     "title": "Plan draft",
     "version": "Plan version {{version}}",
     "pending": "Awaiting confirmation",

@@ -12,6 +12,10 @@ Product Session 的 To Do 与子 Agent 执行共用 `SessionMetadata.taskOrchest
 
 ## 方案与人类确认
 
+强确认能力以 `session tasks` / GET 响应的非持久化 `planSupport` 为准，不能从模型名、客户端标签或 ledger/SSE 推断。当前仅 builtin SDK 与 Integrated DSH 的 adapter 具备 mandatory 动态委派 gate。Codex 与外置 Claude Code 拒绝新 `propose/revise/confirm_from_message` 及用户方案 action；拒绝发生在读取投影之前，原 Session/runtime authority 在 metadata CAS 内再次核对。不能用普通工具权限、启动时快照、下一轮重启、事后通知或提示词替代同轮前置阻断。
+
+旧方案不删除、不降级。切换或恢复至不支持的 Runtime 时，相关 owner 的 pending/revising/未知 claim 在原 RPC/stdin 前再次检查并拒绝；无 proposal 和原生队列证明的独立 Task/Goal 等继续原授权，`ensure/bind/review`、统一任务进度和成果验收保持可用。原有已 dispatched 的有效授权不被追溯撤销。UI 保留方案及未发送意见，能力未知或不支持时不发布自然语言确认 target、不提交确认，并说明切换到支持的 Runtime。
+
 需要新的人类方案决策时先 propose，讨论与 revise 仍写在同一账本；确认前不创建该方案正式 steps、不派发其子 Agent。没有 proposal 的会话沿用原执行授权；已有 Task/Goal 等由原生队列 owner 证明的独立工作不被别人的草案误拦。草案在同一 metadata CAS 中保存服务端采集的 originTurn，同 owner 提出的新草案仍需其适用确认；未知 origin 不推断独立授权。不能通过 source 字符串、CLI 或模型自报取得权限。简单回答和已有授权内的执行不新增确认。确认绑定 Session、proposal ID、revision；同 requestId 幂等。范围、目标或验收标准改变使受影响 steps 进入新验收代次；删除的旧 steps 只保留历史，不能通过旧授权复活。
 
 原生 Tab proxy 用仅驻 Rust 内存的 P256 私钥签署限定的 plan POST 与 chat/send 请求；Sidecar 只收到 SPKI 公钥。Node 验证精确 Session/path/body SHA、时间窗、nonce 和 DER 签名。工具环境、CLI credential、普通 loopback POST、客户端自填 source 均不证明人类操作。浏览器开发夹具不能替代此原生边界。
@@ -34,7 +38,7 @@ SDK PreToolUse、DSH 和 Codex 使用同一原队列作用域 policy；没有 pr
 
 本任务本地 pure、真实 SessionStore 磁盘、实际 adapter/mock-native 与生产 React 组件合成浏览器检查，分别证明对应层级。6 个宽度/主题组合与证据见 `dev-docs/session-orchestration/review.md`。本地 web/server/CLI 构建不等于签名客户端和真实 Provider 验收。
 
-桌面/macOS/updater 唯一现有发布负责人仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。候选必须包含本任务精确 SHA，正式资源准备后运行 Rust 编译/CI，再在签名制品验证：未确认拦截→确认一次启动→真实子 Agent 回传待验收→主 Agent 验收完成；拒绝/重试与晚到；断线/重启 unknown/receipt 对账；三 Runtime 的真实 gate 和 DSH hook ready。当前冻结批次不追加本任务，不在开发会话重启日常客户端或分配正式版本。
+桌面/macOS/updater 唯一现有发布负责人仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。候选必须包含本任务精确 SHA，正式资源准备后运行 Rust 编译/CI，再在签名制品验证：未确认拦截→确认一次启动→真实子 Agent 回传待验收→主 Agent 验收完成；拒绝/重试与晚到；断线/重启 unknown/receipt 对账；SDK/DSH 的真实动态 gate 与 DSH hook ready，Codex/外置 CC 的 unsupported 入口及旧 pending 的 native 输入拒绝；各 Runtime 原任务返回/成果验收回归。当前冻结批次不追加本任务，不在开发会话重启日常客户端或分配正式版本。
 
 ## 原布局中的增量交互
 

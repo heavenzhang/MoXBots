@@ -38,7 +38,7 @@ Required: desktop/macOS/updater, sole existing owner 01a12bc2-907a-7702-b6dd-788
 
 ## Next step
 
-Commit/push the frozen task branch, run git-project-sync handoff gate, then send exact SHA/evidence to existing combined CI/main and desktop owner for automatic PR CI, main integration and later unfrozen publication. Verify remote main contains the accepted commit before declaring source delivery. No native/production completion claim before owner acceptance.
+Verify the successor task branch through git-project-sync handoff and send exact SHA/evidence to the existing combined CI/main owner for delta review, automatic PR CI, protected main integration and later unfrozen publication. Verify remote main contains the accepted commit before declaring source delivery. No native/production completion claim before owner acceptance.
 
 ## Completed
 
@@ -62,3 +62,19 @@ User approved the original-layout V2 prototype for implementation. Keep native t
 Current source and local checks do not alter the installed client, original business tasks, 518.2 candidate or stable channel. Completion requires the user-approved incremental UI plus the originally requested state consistency; prototype approval alone closes none of the native/release gates.
 
 Latest approved-source/evidence authority: `dev-docs/session-orchestration/incremental-validation.md`; UI source fixture `incremental-preview/`, compatibility review `evidence/compatibility-review.md`. Old6713 development hold is resolved for source intake; real native/signed/production gates remain open. Original tool/attachment/queue/Composer source owners were retained.
+
+## Exact-source review corrections — 2026-10-22
+
+The sole main/CI owner requested changes on 8b326d79: ORCH-CC-DELEGATION-01 (external CC never consumes the delegation callback) and ORCH-CODEX-LIVE-DELEGATION-02 (birth snapshot does not revoke same-turn delegation after propose/revise). These are source defects, not deferred native acceptance items; earlier broad/component passes did not cover that contract.
+
+- [x] Independently verify both gaps without touching Provider/daily app, preserve original 8b review source.
+- [x] Add explicit nonpersistent planSupport; unsupported plan decisions reject before any observation/write and revalidate Session/runtime in metadata CAS. Existing plans remain intact.
+- [x] Fence imported pending/revision/unknown claims at original external native input boundary, preserve no-proposal and independent Task/Goal scope.
+- [x] Retain task projection/ensure/bind/main review across all runtimes; disable unsupported/unverified plan confirmation and preserve feedback/records across runtime changes.
+- [x] Finish concentrated regression (1165 broad +128 input/plan专项 with31 overlap,19 native skipped), final tsc/lint/local builds and independent browser review at1000/768. Evidence: dev-docs/session-orchestration/evidence/runtime-gate/fit-review.md.
+- [x] Prepare exact successor source/evidence for commit/push; sole owner delta review and protected main remain next.
+- [ ] Sole owner shared CI/protected main integration; verify remote-main containment; signed/native publication and business acceptance remain separate.
+
+Current safe support is builtin SDK/Integrated DSH for new human-confirmed plan decisions. Codex/external CC need native mandatory live gate support before that additional capability can be enabled; no version inference, prompt-only grant or globally disabled legacy delegation. This limitation does not remove unified task status/result acceptance for those runtimes. No new runtime binary, formal version, shared CI or deployment is produced by the development thread.
+
+Before successor handoff, latest remote main13b5e155e was merged without conflict. Concurrent mobile/credential diagnostic changes do not alter the locally tested renderer/server source closure. Native/whole Rust CI remains the designated owner gate; no published/source acceptance inferred from local checks.

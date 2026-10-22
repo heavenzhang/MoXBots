@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canDelegateForSessionPlan, SESSION_PLAN_QUEUE_PREFIX as prefix, type SessionPlanWithOrigin } from './session-plan-policy';
+import { sessionPlanSupport, canDelegateForSessionPlan, SESSION_PLAN_QUEUE_PREFIX as prefix, type SessionPlanWithOrigin } from './session-plan-policy';
 import type { SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
 
 function ledger(): SessionTaskLedger & { proposal: SessionPlanWithOrigin } {
@@ -61,5 +61,17 @@ describe('Session plan scope on the original turn queue', () => {
   it('does not grant a plan queue with an owner/queue mismatch', () => {
     expect(canDelegateForSessionPlan('session', ledger(), { ...planTurn, queueId: 'unrelated' })).toBe(false);
     expect(canDelegateForSessionPlan('session', ledger(), { ...planTurn, owner: { kind: 'goal', id: planTurn.owner.id } })).toBe(false);
+  });
+});
+
+
+describe('Live Runtime plan support projection', () => {
+  it.each([
+    ['builtin', undefined, true, 'builtin'], ['external', 'dsh', true, 'dsh'],
+    ['external', 'codex', false, 'codex'], ['external', 'claude-code', false, 'claude-code'],
+    ['external', undefined, false, 'unknown'], [undefined, 'builtin', false, 'builtin'],
+  ] as const)('reports %s/%s without assuming a native gate', (kind, runtime, supported, name) => {
+    expect(sessionPlanSupport(kind, runtime)).toEqual({ supported, runtime: name,
+      ...(!supported ? { reason: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' } : {}) });
   });
 });

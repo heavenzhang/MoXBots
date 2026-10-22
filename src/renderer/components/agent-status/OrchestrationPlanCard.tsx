@@ -1,17 +1,19 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import {
   isSessionPlanConfirmed,
   type SessionPlanProposal,
   type SessionPlanTarget,
 } from "../../../shared/sessionPlanConfirmation";
-import type { SessionTaskLedger } from "../../../shared/sessionTaskOrchestration";
+import type { SessionTaskLedger, SessionTaskSnapshot } from "../../../shared/sessionTaskOrchestration";
 
 export interface PlanUserAction extends SessionPlanTarget {
   requestId: string;
 }
 export interface OrchestrationPlanCardProps {
   proposal: SessionPlanProposal;
+  planSupport: SessionTaskSnapshot['planSupport'] | undefined;
+  containerRef?: RefObject<HTMLElement | null>;
   startStatus?: SessionTaskLedger['planStart'];
   onConfirm: (action: PlanUserAction) => Promise<void>;
   onRequestRevision: (
@@ -37,6 +39,8 @@ function PlanCard({
   onRequestRevision,
   onDiscuss,
   startStatus,
+  planSupport,
+  containerRef,
 }: OrchestrationPlanCardProps) {
   const { t } = useTranslation("app");
   const titleId = useId();
@@ -45,7 +49,7 @@ function PlanCard({
   const [feedback, setFeedback] = useState("");
   const [busy, setBusy] = useState<"confirm" | "revision" | null>(null);
   const [error, setError] = useState(false);
-  const [expanded, setExpanded] = useState(!isSessionPlanConfirmed(proposal));
+  const [expanded, setExpanded] = useState(!isSessionPlanConfirmed(proposal) && planSupport?.supported === true);
   const locked = useRef(false);
   const live = useRef(false);
   const requestIds = useRef<{
@@ -54,6 +58,29 @@ function PlanCard({
   }>({});
   const feedbackRef = useRef<HTMLTextAreaElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
+  const cardRef = useRef<HTMLElement>(null);
+  const [availableHeight, setAvailableHeight] = useState<number>();
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    const overlay = card?.closest<HTMLElement>('[data-chat-input-overlay]');
+    const container = containerRef?.current ?? (overlay?.offsetParent instanceof HTMLElement ? overlay.offsetParent : null);
+    if (!card || !container || !overlay) return;
+    // Reserve the measured original queue, attachments, toolbar and input.
+    // Only this added card scrolls; the existing chat/Composer owners stay put.
+    const measure = () => {
+      const bounds = container.getBoundingClientRect();
+      const room = Math.max(0, Math.min(bounds.bottom, window.innerHeight) - Math.max(bounds.top, 0));
+      const otherContent = overlay.getBoundingClientRect().height - card.getBoundingClientRect().height;
+      const height = Math.max(80, Math.floor(Math.min(640, window.innerHeight * 0.65, room - otherContent - 8)));
+      setAvailableHeight(prior => prior === height ? prior : height);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(overlay);
+    window.addEventListener('resize', measure);
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [containerRef]);
   useEffect(() => {
     live.current = true;
     return () => {
@@ -73,11 +100,13 @@ function PlanCard({
   };
   const confirmed = isSessionPlanConfirmed(proposal);
   const awaiting = proposal.state === "awaiting_confirmation";
-  const controlsDisabled = busy !== null || !awaiting;
+  const supported = planSupport?.supported === true;
+  const controlsDisabled = busy !== null || !awaiting || !supported;
 
   async function submit(kind: "confirm" | "revision") {
     if (
       locked.current ||
+      !supported ||
       !awaiting ||
       (kind === "revision" && !feedback.trim()) ||
       (kind === "confirm" && editing && !!feedback.trim())
@@ -122,6 +151,8 @@ function PlanCard({
         : t("orchestrationPlan.pending");
   return (
     <section
+      ref={cardRef}
+      style={availableHeight === undefined ? undefined : { maxHeight: availableHeight }}
       aria-labelledby={titleId}
       className="max-h-[min(40rem,65vh)] min-w-0 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] p-4 text-[var(--ink)]"
     >
@@ -152,13 +183,18 @@ function PlanCard({
               : "orchestrationPlan.confirmedHint",
           )}
         </p>
-      ) : (
+      ) : supported ? (
         <p className="mt-2 text-xs text-[var(--ink-muted)]">
           {t(
             proposal.state === "confirmed"
               ? "orchestrationPlan.unverifiedHint"
               : "orchestrationPlan.pendingHint",
           )}
+        </p>
+      ) : null}
+      {!supported && (
+        <p className="mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]">
+          {t(planSupport?.supported === false ? 'orchestrationPlan.unsupported' : 'orchestrationPlan.supportUnverified')}
         </p>
       )}
       {confirmed && startStatus && startStatus.proposalId === proposal.id && startStatus.revision === proposal.revision && (
@@ -283,7 +319,7 @@ function PlanCard({
                 rows={3}
                 maxLength={4000}
                 value={feedback}
-                disabled={busy !== null}
+                disabled={busy !== null || !supported}
                 onChange={(event) => setFeedback(event.target.value)}
                 className="w-full resize-y rounded-lg border border-[var(--line)] bg-[var(--paper)] p-3 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
               />

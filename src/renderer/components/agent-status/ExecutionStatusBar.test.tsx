@@ -300,7 +300,7 @@ describe("unified execution status", () => {
 function planOnly() {
   tab.messages=[];tab.agentPlanTodos=[];tab.sessionState='idle';
   const proposal={id:'proposal-1',sessionId:'s1',revision:1,policyVersion:'1',state:'awaiting_confirmation' as const,content:{objective:'先确认范围后修复导出',scope:'仅修改导出与必要回归',steps:[{id:'inspect',title:'核查接口'}],acceptanceCriteria:['核对结果']},changes:[]};
-  tab.apiGet.mockResolvedValue({success:true,sessionId:'s1',ledger:{...emptyTaskLedger(),revision:1,proposal}});
+  tab.apiGet.mockResolvedValue({success:true,planSupport:{supported:true,runtime:'builtin'},sessionId:'s1',ledger:{...emptyTaskLedger(),revision:1,proposal}});
   return proposal;
 }
 describe('plan confirmation in the actual execution status composition',()=>{
@@ -315,7 +315,7 @@ describe('plan confirmation in the actual execution status composition',()=>{
   });
   it('renders confirmed only from an authoritative receipt and collapses the confirmed plan',async()=>{
     const proposal=planOnly();
-    tab.apiPost.mockResolvedValue({success:true,sessionId:'s1',ledger:{...emptyTaskLedger(),revision:2,proposal:{...proposal,state:'confirmed',confirmation:{source:'button',revision:1,evidenceId:'user-click',confirmedAt:'2026-10-22T01:00:00Z'}}}});
+    tab.apiPost.mockResolvedValue({success:true,planSupport:{supported:true,runtime:'builtin'},sessionId:'s1',ledger:{...emptyTaskLedger(),revision:2,proposal:{...proposal,state:'confirmed',confirmation:{source:'button',revision:1,evidenceId:'user-click',confirmedAt:'2026-10-22T01:00:00Z'}}}});
     render(<ExecutionStatusBar activity={activity}/>);
     fireEvent.click(await screen.findByRole('button',{name:'确认并开始'}));
     await screen.findByText('方案已确认');
@@ -333,7 +333,7 @@ describe('plan confirmation in the actual execution status composition',()=>{
     expect(screen.queryByText('方案已确认')).not.toBeInTheDocument();
   });
   it('posts requested revision feedback and keeps it visibly awaiting a new proposal',async()=>{
-    const proposal=planOnly();tab.apiPost.mockResolvedValue({success:true,sessionId:'s1',ledger:{...emptyTaskLedger(),revision:2,proposal:{...proposal,state:'revising',feedback:'仅先排查'}}});
+    const proposal=planOnly();tab.apiPost.mockResolvedValue({success:true,planSupport:{supported:true,runtime:'builtin'},sessionId:'s1',ledger:{...emptyTaskLedger(),revision:2,proposal:{...proposal,state:'revising',feedback:'仅先排查'}}});
     render(<ExecutionStatusBar activity={activity}/>);
     fireEvent.click(await screen.findByRole('button',{name:'调整方案'}));
     fireEvent.change(screen.getByRole('textbox',{name:'希望调整哪些内容？'}),{target:{value:'仅先排查'}});

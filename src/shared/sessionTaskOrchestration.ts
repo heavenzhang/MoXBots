@@ -46,7 +46,13 @@ export interface SessionTaskView extends SessionTaskRecord {
   activeForm?: string;
   reviewAttemptId?: string;
 }
-export interface SessionTaskSnapshot { sessionId: string; ledger: SessionTaskLedger; tasks: SessionTaskView[] }
+export interface SessionPlanSupport {
+  supported: boolean;
+  runtime: string;
+  reason?: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE';
+}
+/** Runtime capability is a response projection, never part of the durable ledger/SSE. */
+export interface SessionTaskSnapshot { sessionId: string; ledger: SessionTaskLedger; tasks: SessionTaskView[]; planSupport: SessionPlanSupport }
 export type SessionTaskAction =
   | { kind: 'ensure'; taskId: string; title: string; blockedBy?: string[]; expectedRevision: number }
   | { kind: 'bind'; taskId: string; toolUseId: string; expectedRevision: number }

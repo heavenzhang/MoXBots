@@ -1,7 +1,7 @@
 import type { SessionPlanTurnScope } from '../session-engine/session-plan-policy';
 import type { DispatchGuardResult } from '../session-core/turn-queue';
 import { projectOrchestrationProgress } from '../../shared/sessionTaskOrchestration';
-import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
+import { assertSessionPlanRootDispatch, canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
 import { deriveSessionWorkProgress } from '../../shared/sessionWorkProgress';
 import { desktopContextOf } from '../../shared/agentMentions';
 import { runtimeProviderAnalytics } from '../session-core/turn-analytics';
@@ -5678,6 +5678,11 @@ async function dispatchExternalMessageOperation(
   operation: ExternalMessageOperation,
   onDispatchAccepted: (() => void) | undefined,
 ): Promise<ExternalSendResult> {
+  const validatePlanAdmission = () => assertSessionPlanRootDispatch(operation.context.sessionId,
+    getExternalActivePair()?.runtime.type ?? getCurrentRuntimeType(),
+    { queueId: operation.context.queueId, owner: operation.context.turnOwner });
+  try { validatePlanAdmission(); }
+  catch (error) { return { queued: false, error: error instanceof Error ? error.message : 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' }; }
   const hasInputImages = images && images.length > 0;
   if (hasInputImages && !context?.sessionId) {
     return { queued: false, error: '图片附件缺少会话上下文，无法发送' };
@@ -5874,7 +5879,8 @@ async function dispatchExternalMessageOperation(
     return canceledBeforeDispatch();
   }
 
-  const beforeNativeDispatch = context?.beforeDispatch ? () => {
+  const beforeNativeDispatch = () => {
+    validatePlanAdmission();
     if (nativeBoundaryEntered) throw new Error('External operation already entered native dispatch');
     const result = guarded.validateAtCommit?.() ?? { accepted: true };
     if (!result.accepted || getExternalLifecycleSessionId() !== operation.context.sessionId) {
@@ -5883,7 +5889,7 @@ async function dispatchExternalMessageOperation(
     }
     // No await may separate this callback from native root dispatch.
     nativeBoundaryEntered = true;
-  } : undefined;
+  };
   const onNativeDispatchAcknowledged = (): void => {
     if (!context?.beforeDispatch || nativeBoundaryEntered) return;
     // Older native/compatibility sends can acknowledge after an early terminal
@@ -6365,7 +6371,7 @@ async function dispatchExternalMessageOperation(
       },
     );
     onNativeDispatchAcknowledged();
-    if (beforeNativeDispatch && !operation.context.asyncQuestionReply)
+    if (!operation.context.asyncQuestionReply)
       notifyExternalMessageDispatchAccepted(operation, operation.context.sessionId, onDispatchAccepted);
     if (operation.context.asyncQuestionReply) {
       await admitExternalAsyncQuestionReply(

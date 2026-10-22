@@ -27,9 +27,40 @@ const make = () =>
     },
   );
 const callbacks = () => ({
+  planSupport: { supported: true, runtime: 'builtin' },
   onConfirm: vi.fn(async () => {}),
   onRequestRevision: vi.fn(async () => {}),
   onDiscuss: vi.fn(),
+});
+
+describe('native plan support', () => {
+  it('preserves a recovered draft but prevents unsupported confirmation or adjustment', () => {
+    const props = callbacks();
+    render(<OrchestrationPlanCard proposal={make()} {...props}
+      planSupport={{ supported: false, runtime: 'codex', reason: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' }} />);
+    expect(screen.getByText('修复导出并验证结果')).toBeVisible();
+    expect(screen.getByText(/此运行时暂不支持确认或调整任务方案/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '确认并开始' }));
+    fireEvent.click(screen.getByRole('button', { name: '调整方案' }));
+    expect(screen.getByRole('button', { name: '确认并开始' })).toBeDisabled();
+    expect(props.onConfirm).not.toHaveBeenCalled();
+    expect(props.onRequestRevision).not.toHaveBeenCalled();
+  });
+
+  it('keeps unsent adjustment text across a runtime capability change', () => {
+    const props = callbacks();
+    const proposal = make();
+    const { rerender } = render(<OrchestrationPlanCard proposal={proposal} {...props} />);
+    fireEvent.click(screen.getByRole('button', { name: '调整方案' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '只处理本次范围' } });
+    rerender(<OrchestrationPlanCard proposal={proposal} {...props} planSupport={undefined} />);
+    expect(screen.getByRole('textbox')).toHaveValue('只处理本次范围');
+    expect(screen.getByRole('textbox')).toBeDisabled();
+    expect(screen.getByRole('button', { name: '提交调整意见' })).toBeDisabled();
+    rerender(<OrchestrationPlanCard proposal={proposal} {...props} />);
+    expect(screen.getByRole('textbox')).toHaveValue('只处理本次范围');
+    expect(screen.getByRole('button', { name: '提交调整意见' })).toBeEnabled();
+  });
 });
 
 describe("orchestration plan draft interaction", () => {

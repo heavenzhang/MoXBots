@@ -2097,6 +2097,8 @@
     }
   },
   "orchestrationPlan": {
+    "unsupported": "此运行时暂不支持确认或调整任务方案。方案与记录已保留，请切换到支持的运行时后继续。原任务状态和成果验收仍可查看。",
+    "supportUnverified": "方案确认能力尚未核实，请恢复连接或刷新会话后继续。方案及填写内容已保留。",
     "title": "计划草案",
     "version": "方案第 {{version}} 版",
     "pending": "待确认",

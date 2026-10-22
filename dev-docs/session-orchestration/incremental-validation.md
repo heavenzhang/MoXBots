@@ -34,6 +34,33 @@
 
 源码提交/远端 main、共享 CI、签名资源、原生/Provider、安装和生产验收分别记录。desktop/macOS/updater 及 combined CI/main 仍由既有会话 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；本开发会话交精确远端任务 SHA，由其组织下一未冻结批次，不把成果加入已发布或冻结的5.18制品。
 
-旧6713 author-blocked 标记所指的无proposal兼容缺陷已修，开发侧可申请源码集成；不解除整库Rust资源准备、signed-human/native、DSH hook ready、Codex出生快照、真实子Agent回传/验收、断线重启/未知claim对账等门禁。此前整库Rust缺CLIProxy manifest的记录仍不是通过；本轮未修改Rust源码或绕过该资源门禁。
+旧6713的无proposal兼容缺陷已修；后续8b的exact-source审查又发现外置CC与Codex同轮新proposal的两项P1。该8b不能申请合入；当前修复按下节能力准入处理，必须以继任精确SHA复审。不解除整库Rust资源准备、signed-human/native、DSH hook ready、Codex出生快照、真实子Agent回传/验收、断线重启/未知claim对账等门禁。此前整库Rust缺CLIProxy manifest的记录仍不是通过；本轮未修改Rust源码或绕过该资源门禁。
 
 执行：主 Agent 负责界面、集成、独立后端审阅与整体验证；复用1名既有 Agent 实施后端兼容并独立验收界面，未新建协调层。沿用本地协作避免重复上下文，不调用外部模型，无模型升级/回退；精确用量和费用未知。两项独审UI缺口（请求终态可重试、历史attempt真实性）已修并验证，后续继续以原owner和实际footer几何校验取代看图猜测。
+
+## 8b exact-source 审查修复
+
+统一发布负责人独立审查157文件实际改动，要求修复 ORCH-CC-DELEGATION-01 与 ORCH-CODEX-LIVE-DELEGATION-02。之前的1114/组件132通过不能证明这两个动态门禁；未用这些结果代替源码审查。
+
+- `planSupport` 是服务端当前adapter能力的非持久化响应，当前只向 builtin SDK / Integrated DSH 开放新的强确认方案。Codex / 外置 CC / unknown 在任何 proposal/revision/confirmation 投影读取或写入前拒绝；Session/runtime/source/binding 在原metadata CAS内再次核对。没有改native binary、增加权限或全局关掉原有委派。
+- 同轮无proposal→propose/revise 在unsupported runtime不会生成可误执行的待确认方案。既有pending/revising/unknown claim保留，相关owner在原RPC/stdin紧前再次检查；原无proposal及独立Task/Goal等继续原授权。统一任务状态、ensure/bind/review不因该能力限制被删掉。
+- UI只接受REST能力，ledger/SSE不能授予方案支持；同revision的能力变化也生效。同Session运行时变更使旧能力与在途POST失效；未知/同步失败禁提交、清自然语言确认target。方案/未发送意见保留，unsupported说明切换运行时，不展示确认后会启动的承诺。
+
+本轮新增红绿：真实Store7项和Codex最终dispatch6项先失败；前端unsupported/草稿保留2项先失败，修复后通过。CC首轮7个测试使用了不适用的Codex full-auto权限，已纠正fixture为CC原默认，不算产品失败；断言未删除。完整后端70unit+267integration通过（与下列总回归重叠）；集中tsc发现3项控制流类型问题并修复，19项受影响回归复验通过。
+
+| 最终复核 | 当前结果与边界 |
+| --- | --- |
+| Root扩大回归 | 1134 passed /19 native skipped，58 passed files+1 skipped；另正确路径ProcessRow/BlockGroup 31 passed，2文件不重叠。合计1165 passed，19 native skipped |
+| 前端4文件定向 | 53 passed，含方案capability、状态栏、原Results；已包含在上行，不相加 |
+| TypeScript / scoped backend+UI lint / diff | passed，未安装或更新依赖 |
+| 实际组件夹具构建 | passed，新增旧方案unsupported恢复场景，非真实native |
+| 独立浏览器 | 1000/768两高度各270旅程+中心检查、84详情滚动检查通过；supported方案12矩阵336通过。检查部分重叠，不当作独立业务case累计；零pageerror/业务/外网请求。原132均包含 |
+| 本地web/server/CLI构建 | passed；web含8项theme检查。正式签名制品和整库Rust资源仍由原发布负责人处理 |
+
+日志命令：`/tmp/moxbots-orch-runtime-{broad,processrows,ui-final,types,ui-lint,fixture-build,web}.log`；后端红绿与精确命令在本机 `/tmp/moxbots-orchestration-runtime-gate-evidence-20261022/summary.txt`。复现原broad命令时加入 `session-plan-policy.unit.test.ts` / `system-prompt-cli-tools.unit.test.ts`；dom行使用真实路径 `src/renderer/components/ProcessRow.test.tsx` / `BlockGroup.test.tsx` / `MessageList.footer.test.tsx`。这里没有重跑已通过的无关路径，也没有将native skip计为通过。
+
+该修复保留新方案强确认的明确能力限制。完整Codex/CC动态gate属于后续原生能力扩展；普通hook加载/ready不能证明错误/超时failclosed，不能仅补脚本就打开能力。部署负责人仍为同一线程，继任SHA经其delta审查、共享CI及保护主干集成后，才构成源码主干交付；当前未发布。
+
+短窗口复核曾揭示新增方案卡65vh未扣除原Composer/queue，320/390×768展开时队列和说明越界；320工具按钮被context slot覆盖。最终仅限制新增卡片：测量原会话可用高度并扣除原queue/附件/toolbar/input；整段原输入及消息滚动owner不变。原toolbar组在空间不足时换行，不遮按钮。相关7文件128 DOM回归通过（31与上述主回归重叠），最终tsc/scoped lint/web/夹具构建通过。独立复验在1000/768明暗六组合关闭可关闭的夹具提示，再正常scrollIntoView核验中心，无force；旧失败与全部原图保留。当前证据以 `evidence/runtime-gate/fit-review.md` 与对应JSON/脚本为准；先前210阶段仅为修正前的历史。
+
+交付同步：任务分支已再次合入最新main13b5e155（仅并发mobile/凭据诊断/docs，未变上述被测renderer/server源码）；旧8b及修复前证据保留。修复在隔离worktree测试后回到原任务分支，后继SHA由唯一main/CI owner复审，不覆盖已发布版本。

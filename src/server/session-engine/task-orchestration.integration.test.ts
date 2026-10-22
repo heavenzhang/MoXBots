@@ -372,3 +372,63 @@ describe('human plan confirmation in the durable Session ledger', () => {
     expect(store.getSessionMetadata(id)?.taskOrchestration?.proposal?.state).toBe('awaiting_confirmation');
   });
 });
+
+describe('Runtime plan support capability', () => {
+  const content = { objective: 'Outcome', scope: 'New decision', steps: [{ id: 'new-work', title: 'New work' }], acceptanceCriteria: ['Verified'] };
+  function external(runtime: string) {
+    Object.defineProperty(engine, 'kind', { value: 'external', configurable: true });
+    engine.getRuntimeIdentity = () => ({ sessionId: id, runtime }) as never;
+  }
+  it.each(['codex', 'claude-code', 'unknown'])('rejects same-turn propose on %s without changing any ledger field', async runtime => {
+    await store.updateSessionMetadata(id, { taskOrchestration: { revision: 0, tasks: [], bindings: {}, attempts: [], reviews: [] } });
+    external(runtime);
+    const before = JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration);
+    await expect(owner.mutateSessionPlan(engine, id, { kind: 'propose', proposalId: 'new-plan', expectedRevision: 0, content })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    expect(JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration)).toBe(before);
+  });
+  it.each(['codex', 'claude-code'])('rejects same-turn revise and human plan actions on %s without changing receipts', async runtime => {
+    external(runtime);
+    const before = JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration);
+    await expect(owner.mutateSessionPlan(engine, id, { kind: 'revise', proposalId: 'fixture-plan', expectedRevision: 1, content, changes: ['New scope'] })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    await expect(owner.mutateSessionPlan(engine, id, { kind: 'confirm_from_message', proposalId: 'fixture-plan', expectedRevision: 1, messageId: 'user' })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    await expect(owner.actOnSessionPlan(engine, { kind: 'confirm', sessionId: id, proposalId: 'fixture-plan', expectedRevision: 1, requestId: 'unsupported' })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    await expect(owner.actOnSessionPlan(engine, { kind: 'request_revision', sessionId: id, proposalId: 'fixture-plan', expectedRevision: 1, requestId: 'unsupported-revision', feedback: 'Change scope' })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    expect(JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration)).toBe(before);
+  });
+  it('reports ephemeral support without persisting it or discarding a cold unknown claim', async () => {
+    const prior = store.getSessionMetadata(id)!.taskOrchestration!;
+    await store.updateSessionMetadata(id, { taskOrchestration: { ...prior, planStart: { ...prior.planStart!, state: 'claimed', claimId: 'cold-unknown' } } });
+    external('codex');
+    const read = await owner.readSessionTasks(engine);
+    expect(read).toMatchObject({ planSupport: { supported: false, runtime: 'codex', reason: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' } });
+    expect(read.ledger.planStart).toMatchObject({ state: 'claimed', claimId: 'cold-unknown' });
+    expect(store.getSessionMetadata(id)!.taskOrchestration).not.toHaveProperty('planSupport');
+  });
+  it('rechecks runtime support inside the actual metadata CAS', async () => {
+    await store.updateSessionMetadata(id, { taskOrchestration: { revision: 0, tasks: [], bindings: {}, attempts: [], reviews: [] } });
+    const original = store.updateSessionMetadata;
+    vi.spyOn(store, 'updateSessionMetadata').mockImplementationOnce((...args) => { external('codex'); return original(...args); });
+    await expect(owner.mutateSessionPlan(engine, id, { kind: 'propose', proposalId: 'raced-plan', expectedRevision: 0, content })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.proposal).toBeUndefined();
+  });
+  it('rechecks human confirmation capability inside the actual metadata CAS', async () => {
+    const before = JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration);
+    const original = store.updateSessionMetadata;
+    vi.spyOn(store, 'updateSessionMetadata').mockImplementationOnce((...args) => { external('claude-code'); return original(...args); });
+    await expect(owner.actOnSessionPlan(engine, { kind: 'confirm', sessionId: id, proposalId: 'fixture-plan', expectedRevision: 1, requestId: 'raced-confirm' })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    expect(JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration)).toBe(before);
+  });
+  it('reports builtin and DSH support from the live owner rather than a stored flag', async () => {
+    expect((await owner.readSessionTasks(engine)).planSupport).toEqual({ supported: true, runtime: 'builtin' });
+    external('dsh');
+    expect((await owner.readSessionTasks(engine)).planSupport).toEqual({ supported: true, runtime: 'dsh' });
+  });
+  it('retains nonproposal tracking on an unsupported runtime', async () => {
+    await store.updateSessionMetadata(id, { taskOrchestration: { revision: 0, tasks: [], bindings: {}, attempts: [], reviews: [] } });
+    external('claude-code');
+    await mutate({ kind: 'ensure', taskId: 'native-work', title: 'Already authorized' });
+    await owner.observeSessionTasks(id, { attempts: [attempt('completed')] });
+    const bound = await mutate({ kind: 'bind', taskId: 'native-work', toolUseId: 'launch' });
+    expect(bound.ledger.bindings.launch).toBe('native-work');
+  });
+});

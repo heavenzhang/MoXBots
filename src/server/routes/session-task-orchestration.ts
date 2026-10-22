@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { getSessionEngine } from '../session-engine';
-import { actOnSessionPlan, mutateSessionPlan, mutateSessionTasks, readSessionTasks } from '../session-engine/task-orchestration';
+import { actOnSessionPlan, readSessionPlanSupport, mutateSessionPlan, mutateSessionTasks, readSessionTasks } from '../session-engine/task-orchestration';
 import { verifySessionUserAction } from '../session-engine/user-action-proof';
 
 const identifier = z.string().min(1).max(256).refine(s => Array.from(s).every(char => char.charCodeAt(0) >= 32));
@@ -42,7 +42,7 @@ export async function handleSessionTaskCommand(payload: unknown): Promise<Record
     const parsed = actionSchema.safeParse(input);
     if (!parsed.success) throw new Error('TASK_INVALID_ACTION');
     return { success: true, ...await mutateSessionTasks(engine, sessionId as string, parsed.data) };
-  } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'TASK_UNAVAILABLE' }; }
+  } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'TASK_UNAVAILABLE', planSupport: readSessionPlanSupport(engine) }; }
 }
 
 export async function handleSessionTaskRoute(pathname: string, request: Request): Promise<Response | null> {
@@ -53,7 +53,7 @@ export async function handleSessionTaskRoute(pathname: string, request: Request)
       if (!parsed.success) throw new Error('PLAN_INVALID_ACTION');
       if (!verifySessionUserAction(request, parsed.data.sessionId, body)) throw new Error('PLAN_NATIVE_USER_ACTION_REQUIRED');
       return Response.json({ success: true, ...await actOnSessionPlan(getSessionEngine(), parsed.data) });
-    } catch (error) { return Response.json({ success: false, error: error instanceof Error ? error.message : 'PLAN_UNAVAILABLE' }, { status: 409 }); }
+    } catch (error) { return Response.json({ success: false, error: error instanceof Error ? error.message : 'PLAN_UNAVAILABLE', planSupport: readSessionPlanSupport(getSessionEngine()) }, { status: 409 }); }
   }
   if (pathname !== '/api/session/task-orchestration' || request.method !== 'GET') return null;
   const result = await handleSessionTaskCommand({ kind: 'list', sessionId: new URL(request.url).searchParams.get('sessionId') });

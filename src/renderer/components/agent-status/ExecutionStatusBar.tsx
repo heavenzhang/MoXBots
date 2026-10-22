@@ -175,6 +175,8 @@ export default memo(function ExecutionStatusBar({
     <>
       {orchestration.proposal && <div className="mb-2 min-w-0">
         <OrchestrationPlanCard proposal={orchestration.proposal}
+          planSupport={orchestration.planSupport}
+          containerRef={activity?.containerRef}
           startStatus={orchestration.planStart}
           onConfirm={orchestration.confirmPlan} onRequestRevision={orchestration.requestPlanRevision}
           onDiscuss={target => activity?.onDiscussPlan?.(target, t("orchestrationPlan.discussionDraft", { objective: orchestration.proposal!.content.objective }))} />

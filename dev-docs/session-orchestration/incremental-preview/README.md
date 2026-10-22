@@ -16,3 +16,5 @@ python3 -m http.server 4352 --bind 127.0.0.1 --directory dev-docs/session-orches
 独立脚本位于 `../evidence/incremental-ui.mjs`。从本目录运行，Playwright 有默认浏览器时可直接运行；否则设置 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 为已有测试浏览器位置。`ORCHESTRATION_PREVIEW_URL` 可覆盖本地地址。脚本生成本地 evidence；不要把它当作真实 Provider 测试，也不应提交生成的缓存、dist 或业务数据。
 
 默认网络围栏拒绝业务端点及外部服务，不使用日常客户端或凭据。来源与验收边界见 `../incremental-validation.md`。
+
+新增 `历史方案 · 能力不支持` 场景，仅模拟持久化旧 pending 在不具备强方案门禁的运行时恢复；使用真实 OrchestrationPlanCard 与共享 capability hook，确认/调整入口关闭、记录及完整 Composer 保留。此场景不执行原生输入或 Provider。

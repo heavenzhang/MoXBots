@@ -1,4 +1,4 @@
-import type { SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
+import type { SessionPlanSupport, SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
 import { isSessionPlanConfirmed, type SessionPlanProposal } from '../../shared/sessionPlanConfirmation';
 import type { TurnOwner } from '../session-core/turn-queue';
 
@@ -32,4 +32,12 @@ export function canDelegateForSessionPlan(sessionId: string, ledger: SessionTask
     && start.purpose !== 'revision' && !!start.queueId && !!start.requestId
     && (start.state === 'dispatched' || start.state === 'claimed'
       && !!start.claimId && activeClaimId === start.claimId);
+}
+
+/** Only owners with a mandatory dynamic native gate support new plan decisions. */
+export function sessionPlanSupport(kind: string | undefined, runtime?: string): SessionPlanSupport {
+  const name = runtime ?? (kind === 'builtin' ? 'builtin' : 'unknown');
+  return kind === 'builtin' || runtime === 'dsh'
+    ? { supported: true, runtime: name }
+    : { supported: false, runtime: name, reason: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' };
 }

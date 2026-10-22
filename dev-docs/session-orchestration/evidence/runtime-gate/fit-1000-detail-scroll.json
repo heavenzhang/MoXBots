@@ -1,0 +1,1802 @@
+[
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "collapsed hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 561.609375,
+        "width": 734,
+        "height": 17.390625,
+        "top": 561.609375,
+        "right": 1135,
+        "bottom": 579,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "expanded hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 393.390625,
+        "width": 734,
+        "height": 17.390625,
+        "top": 393.390625,
+        "right": 1135,
+        "bottom": 410.78125,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "detail 原任务、历史成果、附件及草稿全部保留。当前场景模拟切换至不支持强确认的运行时。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 480.78125,
+        "width": 730,
+        "height": 21,
+        "top": 480.78125,
+        "right": 1131,
+        "bottom": 501.78125,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "P:mt-1 whitespace-pre-wrap text-[var(--ink-secondary)]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "detail 核对并继续下一步任务",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 421,
+        "y": 548.78125,
+        "width": 140,
+        "height": 17,
+        "top": 548.78125,
+        "right": 561,
+        "bottom": 565.78125,
+        "left": 421
+      },
+      "hit": true,
+      "topElement": "SPAN:whitespace-pre-wrap"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "detail 切换至支持的运行时后再确认；本地演示不执行真实任务。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 421,
+        "y": 612.78125,
+        "width": 710,
+        "height": 21,
+        "top": 612.78125,
+        "right": 1131,
+        "bottom": 633.78125,
+        "left": 421
+      },
+      "hit": true,
+      "topElement": "LI:"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "确认并开始",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 643.78125,
+        "width": 104,
+        "height": 42,
+        "top": 643.78125,
+        "right": 505,
+        "bottom": 685.78125,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "调整方案",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 513,
+        "y": 643.78125,
+        "width": 90,
+        "height": 42,
+        "top": 643.78125,
+        "right": 603,
+        "bottom": 685.78125,
+        "left": 513
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg border border-[var(--line)] px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "继续讨论",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 611,
+        "y": 643.78125,
+        "width": 88,
+        "height": 42,
+        "top": 643.78125,
+        "right": 699,
+        "bottom": 685.78125,
+        "left": 611
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "queue 编辑",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 805,
+        "y": 236,
+        "width": 68,
+        "height": 32,
+        "top": 236,
+        "right": 873,
+        "bottom": 268,
+        "left": 805
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "queue 立即发送",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 877,
+        "y": 236,
+        "width": 100,
+        "height": 32,
+        "top": 236,
+        "right": 977,
+        "bottom": 268,
+        "left": 877
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "queue 取消排队",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 1107,
+        "y": 236,
+        "width": 32,
+        "height": 32,
+        "top": 236,
+        "right": 1139,
+        "bottom": 268,
+        "left": 1107
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "input",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 838,
+        "width": 734,
+        "height": 52,
+        "top": 838,
+        "right": 1135,
+        "bottom": 890,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "TEXTAREA:col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] "
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "attachment",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 402,
+        "y": 759,
+        "width": 62,
+        "height": 62,
+        "top": 759,
+        "right": 464,
+        "bottom": 821,
+        "left": 402
+      },
+      "hit": true,
+      "topElement": "IMG:h-full w-full object-cover"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "tools",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 551,
+        "y": 894,
+        "width": 66,
+        "height": 36,
+        "top": 894,
+        "right": 617,
+        "bottom": 930,
+        "left": 551
+      },
+      "hit": true,
+      "topElement": "SPAN:toolbar-label"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "card geometry",
+    "details": {
+      "rect": {
+        "x": 384,
+        "y": 289,
+        "width": 768,
+        "height": 398,
+        "top": 289,
+        "right": 1152,
+        "bottom": 687,
+        "left": 384
+      },
+      "scrollTop": 6,
+      "scrollHeight": 418,
+      "clientHeight": 396
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "collapsed hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 561.609375,
+        "width": 734,
+        "height": 17.390625,
+        "top": 561.609375,
+        "right": 1135,
+        "bottom": 579,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "expanded hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 393.390625,
+        "width": 734,
+        "height": 17.390625,
+        "top": 393.390625,
+        "right": 1135,
+        "bottom": 410.78125,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "detail 原任务、历史成果、附件及草稿全部保留。当前场景模拟切换至不支持强确认的运行时。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 480.78125,
+        "width": 730,
+        "height": 21,
+        "top": 480.78125,
+        "right": 1131,
+        "bottom": 501.78125,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "P:mt-1 whitespace-pre-wrap text-[var(--ink-secondary)]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "detail 核对并继续下一步任务",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 421,
+        "y": 548.78125,
+        "width": 140,
+        "height": 17,
+        "top": 548.78125,
+        "right": 561,
+        "bottom": 565.78125,
+        "left": 421
+      },
+      "hit": true,
+      "topElement": "SPAN:whitespace-pre-wrap"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "detail 切换至支持的运行时后再确认；本地演示不执行真实任务。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 421,
+        "y": 612.78125,
+        "width": 710,
+        "height": 21,
+        "top": 612.78125,
+        "right": 1131,
+        "bottom": 633.78125,
+        "left": 421
+      },
+      "hit": true,
+      "topElement": "LI:"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "确认并开始",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 643.78125,
+        "width": 104,
+        "height": 42,
+        "top": 643.78125,
+        "right": 505,
+        "bottom": 685.78125,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "调整方案",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 513,
+        "y": 643.78125,
+        "width": 90,
+        "height": 42,
+        "top": 643.78125,
+        "right": 603,
+        "bottom": 685.78125,
+        "left": 513
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg border border-[var(--line)] px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "继续讨论",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 611,
+        "y": 643.78125,
+        "width": 88,
+        "height": 42,
+        "top": 643.78125,
+        "right": 699,
+        "bottom": 685.78125,
+        "left": 611
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "queue 编辑",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 805,
+        "y": 236,
+        "width": 68,
+        "height": 32,
+        "top": 236,
+        "right": 873,
+        "bottom": 268,
+        "left": 805
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "queue 立即发送",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 877,
+        "y": 236,
+        "width": 100,
+        "height": 32,
+        "top": 236,
+        "right": 977,
+        "bottom": 268,
+        "left": 877
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "queue 取消排队",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 1107,
+        "y": 236,
+        "width": 32,
+        "height": 32,
+        "top": 236,
+        "right": 1139,
+        "bottom": 268,
+        "left": 1107
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "input",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 401,
+        "y": 838,
+        "width": 734,
+        "height": 52,
+        "top": 838,
+        "right": 1135,
+        "bottom": 890,
+        "left": 401
+      },
+      "hit": true,
+      "topElement": "TEXTAREA:col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] "
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "attachment",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 402,
+        "y": 759,
+        "width": 62,
+        "height": 62,
+        "top": 759,
+        "right": 464,
+        "bottom": 821,
+        "left": 402
+      },
+      "hit": true,
+      "topElement": "IMG:h-full w-full object-cover"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "tools",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 551,
+        "y": 894,
+        "width": 66,
+        "height": 36,
+        "top": 894,
+        "right": 617,
+        "bottom": 930,
+        "left": 551
+      },
+      "hit": true,
+      "topElement": "SPAN:toolbar-label"
+    }
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "card geometry",
+    "details": {
+      "rect": {
+        "x": 384,
+        "y": 289,
+        "width": 768,
+        "height": 398,
+        "top": 289,
+        "right": 1152,
+        "bottom": 687,
+        "left": 384
+      },
+      "scrollTop": 6,
+      "scrollHeight": 418,
+      "clientHeight": 396
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "collapsed hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 523.828125,
+        "width": 324,
+        "height": 52.171875,
+        "top": 523.828125,
+        "right": 357,
+        "bottom": 576,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "expanded hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 432.390625,
+        "width": 324,
+        "height": 52.171875,
+        "top": 432.390625,
+        "right": 357,
+        "bottom": 484.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "detail 原任务、历史成果、附件及草稿全部保留。当前场景模拟切换至不支持强确认的运行时。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 554.5625,
+        "width": 320,
+        "height": 42,
+        "top": 554.5625,
+        "right": 353,
+        "bottom": 596.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-1 whitespace-pre-wrap text-[var(--ink-secondary)]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "detail 核对并继续下一步任务",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 643.5625,
+        "width": 140,
+        "height": 17,
+        "top": 643.5625,
+        "right": 193,
+        "bottom": 660.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "SPAN:whitespace-pre-wrap"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "detail 切换至支持的运行时后再确认；本地演示不执行真实任务。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 566.5625,
+        "width": 300,
+        "height": 42,
+        "top": 566.5625,
+        "right": 353,
+        "bottom": 608.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "LI:"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "确认并开始",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 624.5625,
+        "width": 104,
+        "height": 42,
+        "top": 624.5625,
+        "right": 137,
+        "bottom": 666.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "调整方案",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 145,
+        "y": 624.5625,
+        "width": 90,
+        "height": 42,
+        "top": 624.5625,
+        "right": 235,
+        "bottom": 666.5625,
+        "left": 145
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg border border-[var(--line)] px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "继续讨论",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 243,
+        "y": 624.5625,
+        "width": 88,
+        "height": 42,
+        "top": 624.5625,
+        "right": 331,
+        "bottom": 666.5625,
+        "left": 243
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "queue 编辑",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 29,
+        "y": 275,
+        "width": 68,
+        "height": 32,
+        "top": 275,
+        "right": 97,
+        "bottom": 307,
+        "left": 29
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "queue 立即发送",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 101,
+        "y": 275,
+        "width": 100,
+        "height": 32,
+        "top": 275,
+        "right": 201,
+        "bottom": 307,
+        "left": 101
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "queue 取消排队",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 329,
+        "y": 275,
+        "width": 32,
+        "height": 32,
+        "top": 275,
+        "right": 361,
+        "bottom": 307,
+        "left": 329
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "input",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 835,
+        "width": 324,
+        "height": 52,
+        "top": 835,
+        "right": 357,
+        "bottom": 887,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "TEXTAREA:col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] "
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "attachment",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 34,
+        "y": 756,
+        "width": 62,
+        "height": 62,
+        "top": 756,
+        "right": 96,
+        "bottom": 818,
+        "left": 34
+      },
+      "hit": true,
+      "topElement": "IMG:h-full w-full object-cover"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "tools",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 115,
+        "y": 896,
+        "width": 30,
+        "height": 26,
+        "top": 896,
+        "right": 145,
+        "bottom": 922,
+        "left": 115
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "card geometry",
+    "details": {
+      "rect": {
+        "x": 16,
+        "y": 328,
+        "width": 358,
+        "height": 356,
+        "top": 328,
+        "right": 374,
+        "bottom": 684,
+        "left": 16
+      },
+      "scrollTop": 141,
+      "scrollHeight": 495,
+      "clientHeight": 354
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "collapsed hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 523.828125,
+        "width": 324,
+        "height": 52.171875,
+        "top": 523.828125,
+        "right": 357,
+        "bottom": 576,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "expanded hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 432.390625,
+        "width": 324,
+        "height": 52.171875,
+        "top": 432.390625,
+        "right": 357,
+        "bottom": 484.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "detail 原任务、历史成果、附件及草稿全部保留。当前场景模拟切换至不支持强确认的运行时。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 554.5625,
+        "width": 320,
+        "height": 42,
+        "top": 554.5625,
+        "right": 353,
+        "bottom": 596.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-1 whitespace-pre-wrap text-[var(--ink-secondary)]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "detail 核对并继续下一步任务",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 643.5625,
+        "width": 140,
+        "height": 17,
+        "top": 643.5625,
+        "right": 193,
+        "bottom": 660.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "SPAN:whitespace-pre-wrap"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "detail 切换至支持的运行时后再确认；本地演示不执行真实任务。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 566.5625,
+        "width": 300,
+        "height": 42,
+        "top": 566.5625,
+        "right": 353,
+        "bottom": 608.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "LI:"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "确认并开始",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 624.5625,
+        "width": 104,
+        "height": 42,
+        "top": 624.5625,
+        "right": 137,
+        "bottom": 666.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "调整方案",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 145,
+        "y": 624.5625,
+        "width": 90,
+        "height": 42,
+        "top": 624.5625,
+        "right": 235,
+        "bottom": 666.5625,
+        "left": 145
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg border border-[var(--line)] px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "继续讨论",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 243,
+        "y": 624.5625,
+        "width": 88,
+        "height": 42,
+        "top": 624.5625,
+        "right": 331,
+        "bottom": 666.5625,
+        "left": 243
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "queue 编辑",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 29,
+        "y": 275,
+        "width": 68,
+        "height": 32,
+        "top": 275,
+        "right": 97,
+        "bottom": 307,
+        "left": 29
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "queue 立即发送",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 101,
+        "y": 275,
+        "width": 100,
+        "height": 32,
+        "top": 275,
+        "right": 201,
+        "bottom": 307,
+        "left": 101
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "queue 取消排队",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 329,
+        "y": 275,
+        "width": 32,
+        "height": 32,
+        "top": 275,
+        "right": 361,
+        "bottom": 307,
+        "left": 329
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "input",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 835,
+        "width": 324,
+        "height": 52,
+        "top": 835,
+        "right": 357,
+        "bottom": 887,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "TEXTAREA:col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] "
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "attachment",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 34,
+        "y": 756,
+        "width": 62,
+        "height": 62,
+        "top": 756,
+        "right": 96,
+        "bottom": 818,
+        "left": 34
+      },
+      "hit": true,
+      "topElement": "IMG:h-full w-full object-cover"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "tools",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 115,
+        "y": 896,
+        "width": 30,
+        "height": 26,
+        "top": 896,
+        "right": 145,
+        "bottom": 922,
+        "left": 115
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "card geometry",
+    "details": {
+      "rect": {
+        "x": 16,
+        "y": 328,
+        "width": 358,
+        "height": 356,
+        "top": 328,
+        "right": 374,
+        "bottom": 684,
+        "left": 16
+      },
+      "scrollTop": 141,
+      "scrollHeight": 495,
+      "clientHeight": 354
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "collapsed hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 439.828125,
+        "width": 254,
+        "height": 52.171875,
+        "top": 439.828125,
+        "right": 287,
+        "bottom": 492,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "expanded hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 433.390625,
+        "width": 254,
+        "height": 52.171875,
+        "top": 433.390625,
+        "right": 287,
+        "bottom": 485.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "detail 原任务、历史成果、附件及草稿全部保留。当前场景模拟切换至不支持强确认的运行时。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 555.5625,
+        "width": 250,
+        "height": 63,
+        "top": 555.5625,
+        "right": 283,
+        "bottom": 618.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-1 whitespace-pre-wrap text-[var(--ink-secondary)]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "detail 核对并继续下一步任务",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 479.5625,
+        "width": 140,
+        "height": 17,
+        "top": 479.5625,
+        "right": 193,
+        "bottom": 496.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "SPAN:whitespace-pre-wrap"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "detail 切换至支持的运行时后再确认；本地演示不执行真实任务。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 543.5625,
+        "width": 230,
+        "height": 42,
+        "top": 543.5625,
+        "right": 283,
+        "bottom": 585.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "LI:"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "确认并开始",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 601.5625,
+        "width": 104,
+        "height": 42,
+        "top": 601.5625,
+        "right": 137,
+        "bottom": 643.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "调整方案",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 145,
+        "y": 601.5625,
+        "width": 90,
+        "height": 42,
+        "top": 601.5625,
+        "right": 235,
+        "bottom": 643.5625,
+        "left": 145
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg border border-[var(--line)] px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "继续讨论",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 590.5625,
+        "width": 88,
+        "height": 40,
+        "top": 590.5625,
+        "right": 121,
+        "bottom": 630.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "queue 编辑",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 29,
+        "y": 276,
+        "width": 68,
+        "height": 32,
+        "top": 276,
+        "right": 97,
+        "bottom": 308,
+        "left": 29
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "queue 立即发送",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 101,
+        "y": 276,
+        "width": 100,
+        "height": 32,
+        "top": 276,
+        "right": 201,
+        "bottom": 308,
+        "left": 101
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "queue 取消排队",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 259,
+        "y": 276,
+        "width": 32,
+        "height": 32,
+        "top": 276,
+        "right": 291,
+        "bottom": 308,
+        "left": 259
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "input",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 799,
+        "width": 254,
+        "height": 52,
+        "top": 799,
+        "right": 287,
+        "bottom": 851,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "TEXTAREA:col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] "
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "attachment",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 34,
+        "y": 720,
+        "width": 62,
+        "height": 62,
+        "top": 720,
+        "right": 96,
+        "bottom": 782,
+        "left": 34
+      },
+      "hit": true,
+      "topElement": "IMG:h-full w-full object-cover"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "tools",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 115,
+        "y": 858,
+        "width": 30,
+        "height": 26,
+        "top": 858,
+        "right": 145,
+        "bottom": 884,
+        "left": 115
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "card geometry",
+    "details": {
+      "rect": {
+        "x": 16,
+        "y": 329,
+        "width": 288,
+        "height": 319,
+        "top": 329,
+        "right": 304,
+        "bottom": 648,
+        "left": 16
+      },
+      "scrollTop": 247,
+      "scrollHeight": 564,
+      "clientHeight": 317
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "collapsed hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 439.828125,
+        "width": 254,
+        "height": 52.171875,
+        "top": 439.828125,
+        "right": 287,
+        "bottom": 492,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "expanded hint",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 433.390625,
+        "width": 254,
+        "height": 52.171875,
+        "top": 433.390625,
+        "right": 287,
+        "bottom": 485.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "detail 原任务、历史成果、附件及草稿全部保留。当前场景模拟切换至不支持强确认的运行时。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 555.5625,
+        "width": 250,
+        "height": 63,
+        "top": 555.5625,
+        "right": 283,
+        "bottom": 618.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "P:mt-1 whitespace-pre-wrap text-[var(--ink-secondary)]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "detail 核对并继续下一步任务",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 479.5625,
+        "width": 140,
+        "height": 17,
+        "top": 479.5625,
+        "right": 193,
+        "bottom": 496.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "SPAN:whitespace-pre-wrap"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "detail 切换至支持的运行时后再确认；本地演示不执行真实任务。",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 53,
+        "y": 543.5625,
+        "width": 230,
+        "height": 42,
+        "top": 543.5625,
+        "right": 283,
+        "bottom": 585.5625,
+        "left": 53
+      },
+      "hit": true,
+      "topElement": "LI:"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "确认并开始",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 601.5625,
+        "width": 104,
+        "height": 42,
+        "top": 601.5625,
+        "right": 137,
+        "bottom": 643.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm font-medium text-[var(--on-accent)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:cursor-not-allowed disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "调整方案",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 145,
+        "y": 601.5625,
+        "width": 90,
+        "height": 42,
+        "top": 601.5625,
+        "right": 235,
+        "bottom": 643.5625,
+        "left": 145
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg border border-[var(--line)] px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "继续讨论",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 590.5625,
+        "width": 88,
+        "height": 40,
+        "top": 590.5625,
+        "right": 121,
+        "bottom": 630.5625,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "BUTTON:min-h-9 rounded-lg px-3 py-2 text-sm text-[var(--ink-secondary)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "queue 编辑",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 29,
+        "y": 276,
+        "width": 68,
+        "height": 32,
+        "top": 276,
+        "right": 97,
+        "bottom": 308,
+        "left": 29
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "queue 立即发送",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 101,
+        "y": 276,
+        "width": 100,
+        "height": 32,
+        "top": 276,
+        "right": 201,
+        "bottom": 308,
+        "left": 101
+      },
+      "hit": true,
+      "topElement": "BUTTON:inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-sm text-[var(--ink-muted)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink-muted)] disabled:cursor-default disabled:opacity-50"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "queue 取消排队",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 259,
+        "y": 276,
+        "width": 32,
+        "height": 32,
+        "top": 276,
+        "right": 291,
+        "bottom": 308,
+        "left": 259
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "input",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 33,
+        "y": 799,
+        "width": 254,
+        "height": 52,
+        "top": 799,
+        "right": 287,
+        "bottom": 851,
+        "left": 33
+      },
+      "hit": true,
+      "topElement": "TEXTAREA:col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] "
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "attachment",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 34,
+        "y": 720,
+        "width": 62,
+        "height": 62,
+        "top": 720,
+        "right": 96,
+        "bottom": 782,
+        "left": 34
+      },
+      "hit": true,
+      "topElement": "IMG:h-full w-full object-cover"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "tools",
+    "pass": true,
+    "details": {
+      "rect": {
+        "x": 115,
+        "y": 858,
+        "width": 30,
+        "height": 26,
+        "top": 858,
+        "right": 145,
+        "bottom": 884,
+        "left": 115
+      },
+      "hit": true,
+      "topElement": "path:[object SVGAnimatedString]"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "card geometry",
+    "details": {
+      "rect": {
+        "x": 16,
+        "y": 329,
+        "width": 288,
+        "height": 319,
+        "top": 329,
+        "right": 304,
+        "bottom": 648,
+        "left": 16
+      },
+      "scrollTop": 247,
+      "scrollHeight": 564,
+      "clientHeight": 317
+    }
+  }
+]

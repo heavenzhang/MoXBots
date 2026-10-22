@@ -9937,20 +9937,27 @@ describe('Delegation compatibility on original turn owners', () => {
     expect(launchFlags).toEqual([true]);
     const owner = await import('../session-engine/task-orchestration');
     const snapshot = await owner.readSessionTasks(harness.engine);
-    await owner.mutateSessionPlan(harness.engine, sessionId, { kind: 'propose', proposalId: 'new-human-plan', expectedRevision: snapshot.ledger.revision,
+    if (runtimeType === 'dsh') await owner.mutateSessionPlan(harness.engine, sessionId, { kind: 'propose', proposalId: 'new-human-plan', expectedRevision: snapshot.ledger.revision,
       content: { objective: 'New scope', scope: 'Needs a new decision', steps: [{ id: 'new-work', title: 'New work' }], acceptanceCriteria: ['Review'] } });
+    else {
+      const { createSessionPlan } = await import('../../shared/sessionPlanConfirmation');
+      await harness.sessionStore.updateSessionMetadata(sessionId, { taskOrchestration: { ...snapshot.ledger, revision: snapshot.ledger.revision + 1,
+        proposal: Object.assign(createSessionPlan({ id: 'new-human-plan', sessionId }, { objective: 'Legacy scope', scope: 'Needs a decision', steps: [{ id: 'new-work', title: 'New work' }], acceptanceCriteria: ['Review'] }), { originTurn: {} }) } });
+    }
     const task = await harness.engine.sendDesktopMessage({ ...request, text: 'continue existing task', queueId: 'native-task-queue',
       turnOwner: { kind: 'task', id: 'existing-task' }, turnBoundaryOnly: true, beforeDispatch: async () => ({ accepted: true }) });
     await expect(task.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
     await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
     expect(sendFlags[0]).toBe(true);
     const ordinary = await harness.engine.sendDesktopMessage({ ...request, text: 'discuss the new proposal' });
+    if (runtimeType === 'codex') {
+      await expect(ordinary.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' });
+      return;
+    }
     await expect(ordinary.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
     await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
-    // Codex changes its birth capability at the next ordinary turn. DSH
-    // keeps its native hook and reads the current owner at every tool call.
-    if (runtimeType === 'codex') expect(launchFlags.at(-1)).toBe(false);
-    else expect(sendFlags.at(-1)).toBe(false);
+    // DSH keeps its native hook and reads the current owner at every tool call.
+    expect(sendFlags.at(-1)).toBe(false);
   });
 });
 
@@ -10129,7 +10136,7 @@ describe('External native lease consumption', () => {
 });
 
 describe('Confirmed plan original-owner claim activation', () => {
-  it.each(['codex', 'dsh'] as const)('opens %s delegation only after the original queue claims the pending plan', async runtimeType => {
+  it.each(['dsh'] as const)('opens %s delegation only after the original queue claims the pending plan', async runtimeType => {
     const harness = await createHarness([
       { kind: 'success', text: 'draft discussion' },
       { kind: 'success', text: 'confirmed execution' },
@@ -10140,7 +10147,6 @@ describe('Confirmed plan original-owner claim activation', () => {
       const enabled = options.canDelegateSubagents!();
       flags.push(enabled);
       const process = await launch(options, events);
-      if (runtimeType === 'codex') Object.assign(process, { subagentDelegationEnabledAtLaunch: enabled });
       return process;
     });
     const sessionId = `plan-original-claim-${runtimeType}`;
@@ -10197,5 +10203,60 @@ describe('External compatibility acknowledgement final lease', () => {
     expect(validateAtCommit).not.toHaveBeenCalled();
     expect(cancel).not.toHaveBeenCalled();
     expect(harness.runtime.sentMessages).toEqual(['unsupported final gate']);
+  });
+});
+
+describe('Unsupported Runtime persisted plan dispatch fence', () => {
+  async function persisted(harness: Harness, sessionId: string, workspacePath: string, state: 'pending' | 'revision' | 'unknown-claim') {
+    const { createSessionPlan, confirmSessionPlan } = await import('../../shared/sessionPlanConfirmation');
+    let proposal = Object.assign(createSessionPlan({ id: 'legacy-plan', sessionId }, { objective: 'Decision', scope: 'Original scope', steps: [{ id: 'work', title: 'Work' }], acceptanceCriteria: ['Verified'] }), { originTurn: {} });
+    if (state === 'unknown-claim') proposal = confirmSessionPlan(proposal, { sessionId, proposalId: proposal.id, expectedRevision: 1 }, { source: 'button', evidenceId: 'legacy-confirm', confirmedAt: new Date().toISOString() }) as typeof proposal;
+    if (state === 'revision') proposal.state = 'revising';
+    const metadata = createSessionMetadata(workspacePath, { id: sessionId,
+      runtime: harness.runtime.type, runtimeSource: 'system-cli', taskOrchestration: { revision: 1, tasks: [], bindings: {}, attempts: [], reviews: [], proposal,
+        ...(state === 'unknown-claim' ? { planStart: { proposalId: 'legacy-plan', revision: 1, requestId: 'legacy-confirm', queueId: 'session-plan:cold', state: 'claimed', claimId: 'unknown' } } : {}) } });
+    if (harness.sessionStore.getSessionMetadata(sessionId)) await harness.sessionStore.updateSessionMetadata(sessionId, { taskOrchestration: metadata.taskOrchestration });
+    else await harness.sessionStore.saveSessionMetadata(metadata);
+  }
+  it.each((['codex', 'claude-code'] as const).flatMap(runtime => (['cold', 'warm'] as const).flatMap(path => (['pending', 'revision', 'unknown-claim'] as const).map(state => ({ runtime, path, state })))))('blocks $runtime/$path/$state before native root input', async ({ runtime, path, state }) => {
+    const harness = await createHarness([{ kind: 'success', text: 'must not execute' }], { runtimeType: runtime });
+    const sessionId = `unsupported-${runtime}-${path}-${state}`, workspace = join(harness.home, 'workspace');
+    await persisted(harness, sessionId, workspace, state);
+    if (path === 'warm') await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const before = JSON.stringify(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration);
+    const result = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'continue the plan'), permissionMode: getDefaultRuntimePermissionMode(runtime) });
+    const receipt = result.dispatchAcceptance ? await result.dispatchAcceptance : result;
+    expect(receipt).toMatchObject({ accepted: false, error: expect.stringContaining('PLAN_RUNTIME_DELEGATION_UNAVAILABLE') });
+    expect(harness.runtime.sentMessages).toEqual([]);
+    expect(harness.runtime.startSessionInitialMessages.filter(Boolean)).toEqual([]);
+    expect(JSON.stringify(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration)).toBe(before);
+  });
+  it.each(['codex', 'claude-code'] as const)('fresh-reads a concurrent legacy plan immediately before %s native stdin/RPC', async runtime => {
+    const harness = await createHarness([], { runtimeType: runtime });
+    const sessionId = `race-${runtime}`, workspace = join(harness.home, 'workspace');
+    await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const preparing = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let nativeInputs = 0;
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (_process, _text, _images, options) => {
+      preparing.resolve(); await release.promise;
+      options?.beforeDispatch?.(); // same synchronous boundary as the real adapters
+      nativeInputs++;
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'not a plan when queued'), permissionMode: getDefaultRuntimePermissionMode(runtime) });
+    await preparing.promise;
+    await persisted(harness, sessionId, workspace, 'pending');
+    release.resolve();
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: expect.stringContaining('PLAN_RUNTIME_DELEGATION_UNAVAILABLE') });
+    expect(nativeInputs).toBe(0);
+    expect(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration!.proposal?.state).toBe('awaiting_confirmation');
+  });
+  it.each(['codex', 'claude-code'] as const)('preserves unrelated original Task authority on %s beside a pending plan', async runtime => {
+    const harness = await createHarness([{ kind: 'success', text: 'independent task' }], { runtimeType: runtime });
+    const sessionId = `independent-${runtime}`, workspace = join(harness.home, 'workspace');
+    await persisted(harness, sessionId, workspace, 'pending');
+    const result = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'continue original task'), permissionMode: getDefaultRuntimePermissionMode(runtime), queueId: 'original-task-queue', turnOwner: { kind: 'task', id: 'original-task' }, turnBoundaryOnly: true, beforeDispatch: async () => ({ accepted: true }) });
+    await expect(result.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(harness.runtime.sentMessages).toEqual(['continue original task']);
   });
 });
