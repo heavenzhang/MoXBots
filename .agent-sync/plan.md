@@ -133,6 +133,10 @@ Root owns integration, packaging, installation and acceptance. Exact 6ac native 
 
 # Development Plan
 
+## MB-SESSION-RECOVERY-20261023 — 停止后的原会话只读核对
+
+停止请求可以留下已 reserve、未 commit 的未知工具结果；最新 main 的 strict ledger 会拒绝新的普通输入，且本地准备错误被误报为 transport failure。本任务保留原 Session/native history/ledger，让新的未投影输入只做 Read/Grep/Glob，拒绝业务工具、自动 retry/failover 和未知动作重放。任务 `.agent-sync/tasks/codex-session-readonly-recovery-20261023-a084d0f0.md`，证据 `dev-docs/session-readonly-recovery-20261023.md`。代码/本地/模拟验证、CI/main、正式包、原会话恢复分别追踪；唯一桌面 CI/部署 owner 仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。本轮进入下一未冻结批次，不改已冻结 519.1、现运行 518.2、云或业务状态；没有单独触发共享 CI 或跨聊天消息。
+
 ## MOXBOTS-HOST-CONFIG-20261013
 
 当前Agent按用户明确授权实现Host管理复用Settings模型配置、一键应用当前桌面主Agent来源、远端受限目录选择。交付记录 `.agent-sync/tasks/codex-host-config-delivery-20261013-5d88db02.md`（开发阶段旧记录保留），合同 `specs/tech_docs/host_configuration_reuse.md`。Node/Rust/来源及共享UI已实现，独立审查与合成IAB通过；af725700六项CI及Linux目录用例通过，已同步会话恢复main20e89b6f，组合源CI/main待核验。Host基础已由PR24交main fb92ce9c，交付分支已从其独立创建；开发冻结依赖9149753c及Mac凭据实验不进入交付；原凭据聊天负责基础拆分和统一安装，用户已授权协调。本任务未操作安装包，当前运行版本按统一安装owner回执另行核验。
