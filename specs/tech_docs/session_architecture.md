@@ -208,6 +208,8 @@ Retry 的 `model` / `reasoningEffort` 是与普通发送一致的可选发送意
 
 Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代表 turn 已结束；前端等待执行事件，缺失时读取 `/api/session-state`，并丢弃已被更新执行事件、恢复或连接代际取代的读结果。Reset 成功返回前由 adapter 通过既有 publisher 发布新 identity 的 desktop 元数据和当前执行配置快照，并等待 writer 的 `flushForMutation` 确认磁盘可见；保证尚未发送首条消息也能绑定 Task/Goal、重启后仍能恢复模型配置。前端只有在后端确认新 identity 后才采用新空会话；拒绝时保留历史，丢响应时回读真实 binding。App 打开新 Tab 失败须与「可在当前空会话 reset」区分，不能用失败触发破坏性的 fallback。
 
+普通会话的「继续未完成任务」候选由 V2 transcript owner 从最新用户轮次的 `stopped` / `interrupted` terminal 投影。正常 `running`（包括新会话的首轮）只展示现有执行进度，不发布继续候选；冷启动时仍由原 execution owner 将遗留 running 结算为 interrupted，之后才允许投影入口。Renderer 同时拒绝旧版 metadata 的 running 候选，hydration 未就绪、执行或交互/队列阻塞期间不显示横幅；这些展示判断不授予执行权限，原 Session/turn/generation 准入与显式一次性点击继续生效。
+
 ## 5. Goal 与跨 Session 协作
 
 Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 lease 与 SessionStore 持久 intent，暂停/停止沿原控制 owner，详见 [模型持久恢复](model_recovery.md)。它不会重放原任务或建立第二套 Goal 调度。

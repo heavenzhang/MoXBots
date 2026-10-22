@@ -61,12 +61,12 @@ describe('SessionStore V2 ownership and compatibility', () => {
     expect((await store.getSessionData(metadata.id))?.messages[0].content).toBe('saved before restart');
   });
 
-  it('publishes unfinished turn metadata across cold restart and clears it after a successful continuation', async () => {
+  it('advertises continuation only after cold recovery settles the running turn, then clears it after success', async () => {
     const { metadata, active } = await create();
     active.writer.observe({ kind: 'message-create', message: { id: 'u1', role: 'user', content: 'work', timestamp: 't' } });
     active.writer.observe({ kind: 'turn-update', turn: { id: 'turn1', rootUserMessageId: 'u1', startedAt: 't', status: 'running' } });
     await store.flushSessionTranscriptsForUpdate();
-    expect(store.getSessionMetadata(metadata.id)?.continuation?.turnId).toBe('turn1');
+    expect(store.getSessionMetadata(metadata.id)?.continuation).toBeUndefined();
     await active.revoke();
     vi.resetModules(); store = await import('../SessionStore');
     // Only the cold execution owner may retire the old running generation.
