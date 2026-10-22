@@ -108,10 +108,11 @@ import type {
 } from './types';
 import { decideBuiltinInjectedTurnResult } from '../session-core/turn-result-policy';
 import { applyAutoRouteAdmission, type AutoRoutableRequest } from '../auto-route/admission';
-import { routeTurn } from '../auto-route/router';
+import { buildAutoRouteCatalog, routeTurn } from '../auto-route/router';
+import { AutoRoutePoolUnavailableError } from '../auto-route/errors';
 import { trackServer } from '../analytics';
 import { modelSupportsModality } from '../utils/model-capabilities';
-import type { AutoRouteRecord } from '../../shared/autoRoute';
+import { findAutoTierEntry, isAutoRoutingEnabled, type AutoRouteRecord } from '../../shared/autoRoute';
 import type { DispatchGuard, TurnTerminalOutcome } from '../session-core/turn-queue';
 import {
   ensureRegisteredAgentSessionOrigin,
@@ -192,6 +193,13 @@ async function autoRouteRequest<T extends AutoRoutableRequest & { sessionId: str
     getMessages,
     current: () => ({ providerId: getSessionProviderId(), model: getSessionModel(), env: getSessionProviderEnv() }),
     route: input => routeTurn(input),
+    assertFallbackAllowed: () => {
+      const catalog = buildAutoRouteCatalog();
+      if (!isAutoRoutingEnabled(catalog.settings) || catalog.settings.pool === undefined) return;
+      const providerId = getSessionProviderId();
+      const model = getSessionModel();
+      if (!providerId || !model || !findAutoTierEntry(catalog.table, { providerId, model })) throw new AutoRoutePoolUnavailableError();
+    },
     updateSessionMetadata: (sessionId, updates, precondition) => updateSessionMetadata(sessionId, updates, precondition),
     broadcast,
     trackDecision: params => trackServer('auto_route_decide', params),

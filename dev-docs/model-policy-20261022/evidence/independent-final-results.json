@@ -1,0 +1,18 @@
+{
+  "revision": "a13083257 + uncommitted ConfirmDialog modal Enter patch",
+  "checks": [
+    {
+      "name": "Cancel initial focus Enter causes zero writes",
+      "status": "pass"
+    },
+    {
+      "name": "Tab trap and Escape restores original trigger",
+      "status": "pass"
+    },
+    {
+      "name": "Confirm focused Enter writes once; loading blocks repeat and close",
+      "status": "pass"
+    }
+  ],
+  "boundary": "synthetic fixture; previous core and responsive results retained"
+}

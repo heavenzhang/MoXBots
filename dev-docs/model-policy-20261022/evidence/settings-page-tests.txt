@@ -1,0 +1,85 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy
+
+stdout | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx
+[isTauriEnvironment] Detection: {
+  hasTauriGlobal: false,
+  hasTauriInternals: false,
+  protocol: 'http:',
+  hostname: 'localhost',
+  isTauriProtocol: false,
+  result: false
+}
+[browserMock] 🌐 Running in browser development mode
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > opens one model policy page with the backup under collapsed advanced failure recovery
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps the legacy configured backup mode and identity visible in the collapsed recovery summary
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps a real provider model panel stable when Settings receives request logs (#582)
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps the switch off on cancel, then locks dismissal until confirmed save enables it
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps the pending modal open on save failure and then allows cancellation
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+ ✓ |dom| src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx (5 tests) 551ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  22:41:38
+   Duration  3.89s (transform 1.12s, setup 228ms, collect 2.36s, tests 551ms, environment 459ms, prepare 62ms)

@@ -12,6 +12,14 @@
 
 ## Owner 与执行位置
 
+### 自动候选池与显式备用的范围
+
+`AppConfig.autoRouting.pool` 缺省时兼容旧目录自动管理；存在时是用户维护的精确成员名单，键为原 `providerId/model`，值的 `enabled:false` 表示暂停，空对象表示无候选。目录新增、禁用或删除不能扩大显式名单；失效保存成员在管理页保留原因和修复入口。配置仍由原 ConfigProvider/atomicModifyConfig 在锁内重读后执行纯变换，保留其他设置及未知扩展字段。
+
+自动选模、自动判断模型和跟随自动的备用使用启用且配置可用的成员。显式空池或没有兼容候选时，空闲自动新轮次返回可恢复错误，不能沿用已移出的当前模型；手动固定会话和进行中的轮次不因此重启或阻断。自动备用在切换前再次读取最新成员资格，暂停或移出会撤销候选。指定备用独立于自动池，仍按完整有效目录和原历史/协议/凭据/档位门禁检查，移出自动池不等于删除指定备用。
+
+维护页显示完整模型身份、分档来源、档内优先级和配置就绪状态，后者不声称真实调用成功。暂停/移出已指定的判断模型时明确说明并恢复自动判断；指定备用引用保留并提供故障接管设置入口。所有自动选择策略沿用原会话/Query owner，下一新轮次生效。
+
 - config.json 是 desired 配置唯一权威；`AppConfig.modelFailover` 包含可选mode（auto/specified/off）、可选allowCrossTier、旧enabled投影及备用providerId/modelId，无密钥。无mode时旧enabled=true映射specified，否则auto，显式mode优先。Renderer 使用原 updateConfig/atomicModifyConfig，保留并发其它字段。
 - Session 仍拥有选定主模型。`builtin-session/model-failover.ts` 从原 effective catalog/credential resolver materialize 备用，不能把临时接管写成用户主模型。
 - 每个 Query 的既有 `/bridge/<token>/v1/messages` registry entry 拥有一个 controller。退役 token 隔离旧 Query，控制器 exact state 防止旧请求修改后续轮次；root 采用首次请求的稳定 scope，人工 steering 不重开预算。原 turn-lifecycle 终态清理仅释放该 root 的新接管/缩减权限，不撤销 Query 中已经接纳的合法请求。Query/token/Session/route 与 request abort 决定单次请求有效性；父 turn 的完成或 idle 不构成 Query 退役。每次请求捕获自己的 route fence，合法同 Query 切模型后的新请求重新捕获当前 route，旧 route 的迟到输出仍被拒绝。

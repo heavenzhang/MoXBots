@@ -1,5 +1,5 @@
 import { isImeComposingEvent } from '@/utils/imeKeyboard';
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { LoaderIcon } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +17,8 @@ interface ConfirmDialogProps {
     confirmVariant?: 'danger' | 'primary';
     danger?: boolean; // Deprecated, use confirmVariant
     loading?: boolean;
+    /** Opt-in accessible modal behavior; defaults off for legacy callers. */
+    modal?: boolean;
     /**
      * When true, suppress the global Enter-to-confirm shortcut. Use for
      * confirmations triggered automatically as a safety net (e.g. Bug #123's
@@ -41,6 +43,7 @@ export default function ConfirmDialog({
     confirmVariant,
     danger = false,
     loading = false,
+    modal = false,
     disableEnterShortcut = false,
     alternativeAction,
     onConfirm,
@@ -48,17 +51,44 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
     const { t } = useTranslation('common');
     // Cmd+W dismissal: z-[300] matches the component's CSS z-index
-    useCloseLayer(() => { onCancel(); return true; }, 300);
+    useCloseLayer(() => { if (loading) return modal; onCancel(); return true; }, 300);
 
     // Support both old and new props
     const finalConfirmText = confirmText || confirmLabel || t('actions.confirm');
     const finalCancelText = cancelText || cancelLabel || t('actions.cancel');
     const isDanger = confirmVariant === 'danger' || danger;
+    const dialogRef = useRef<HTMLDivElement>(null);
+    const cancelRef = useRef<HTMLButtonElement>(null);
+    const titleId = useId();
+
+    useEffect(() => {
+        if (!modal) return;
+        const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        cancelRef.current?.focus();
+        return () => { trigger?.focus(); };
+    }, [modal]);
 
     // Keyboard: Enter to confirm (unless disabled), Escape to cancel
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
         if (isImeComposingEvent(e)) return;
+        if (modal && e.key === 'Tab') {
+            const focusables = dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+            if (!focusables?.length) { e.preventDefault(); return; }
+            const first = focusables[0];
+            const last = focusables[focusables.length - 1];
+            if (e.shiftKey && (document.activeElement === first || !dialogRef.current?.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && (document.activeElement === last || !dialogRef.current?.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+            return;
+        }
         if (loading) return;
+        if (modal && e.key === 'Enter') {
+            // In an accessible modal Enter activates the focused button. The
+            // legacy document shortcut must never turn Cancel into Confirm.
+            if (document.activeElement instanceof HTMLButtonElement
+                && dialogRef.current?.contains(document.activeElement)) return;
+            e.preventDefault();
+            return;
+        }
         if (e.key === 'Enter' && !disableEnterShortcut) {
             e.preventDefault();
             onConfirm();
@@ -66,7 +96,7 @@ export default function ConfirmDialog({
             e.preventDefault();
             onCancel();
         }
-    }, [loading, disableEnterShortcut, onConfirm, onCancel]);
+    }, [loading, modal, disableEnterShortcut, onConfirm, onCancel]);
 
     useEffect(() => {
         document.addEventListener('keydown', handleKeyDown);
@@ -79,9 +109,9 @@ export default function ConfirmDialog({
     // body level — observed 2026-05-08 with SessionHistoryDropdown.
     return createPortal(
         <OverlayBackdrop onClose={loading ? undefined : onCancel} className="z-[300] px-4">
-            <div className="glass-panel max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto">
+            <div ref={dialogRef} role={modal ? 'dialog' : undefined} aria-modal={modal ? true : undefined} aria-labelledby={modal ? titleId : undefined} tabIndex={modal ? -1 : undefined} className="glass-panel max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto">
                 <div className="border-b border-[var(--line)] px-5 py-4">
-                    <div className="break-words text-lg font-semibold text-[var(--ink)]">{title}</div>
+                    <div id={modal ? titleId : undefined} className="break-words text-lg font-semibold text-[var(--ink)]">{title}</div>
                 </div>
                 <div className="px-5 py-4">
                     {/* `whitespace-pre-line` lets callers pass multi-line messages via `\n`
@@ -91,6 +121,7 @@ export default function ConfirmDialog({
                 </div>
                 <div className={`flex justify-end gap-2 border-t border-[var(--line)] px-5 py-3 ${alternativeAction ? 'flex-wrap' : ''}`}>
                     <button
+                        ref={cancelRef}
                         type="button"
                         onClick={onCancel}
                         disabled={loading}

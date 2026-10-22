@@ -200,7 +200,9 @@ describe("Settings image-understanding enable flow", () => {
     await user.click(screen.getByRole('button', { name: 'Model policy' }));
     expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
     expect(within(screen.getByRole('region', { name: 'Auto model selection' }))
-      .getByText(/Global auto selection applies only to conversations still in auto mode/)).toBeVisible();
+      .getByText(/Sessions where you picked a model by hand are left alone/)).toBeVisible();
+    expect(within(screen.getByRole('region', { name: 'Auto model selection' }))
+      .getByText(/Changes take effect next turn/)).toBeVisible();
     const recovery = screen.getByText('Failure recovery').closest('details')!;
     expect(recovery).not.toHaveAttribute('open');
     expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();

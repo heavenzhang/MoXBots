@@ -1,0 +1,24 @@
+{
+  "revision": "a13083257",
+  "repair": "b9035fb6",
+  "checks": [
+    {
+      "name": "UI-01 label/name and 32px hitbox + 390 layout",
+      "status": "pass"
+    },
+    {
+      "name": "UI-02 dialog role initial focus trap Escape return",
+      "status": "pass"
+    },
+    {
+      "name": "keyboard Enter on focused cancel cancels",
+      "status": "fail",
+      "error": "Cancel Enter unexpectedly persisted pause\n+ actual - expected\n\n+ {\n+   'qa-provider-a/qa-balanced-1': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-balanced-3': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-balanced-5': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-balanced-7': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-fast-1': {\n+     enabled: false\n+   },\n+   'qa-provider-a/qa-fast-3': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-1': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-11': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-13': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-3': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-5': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-7': {\n+     enabled: true\n+   },\n+   'qa-provider-a/qa-strong-9': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-balanced-2': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-balanced-4': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-balanced-6': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-fast-2': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-strong-10': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-strong-12': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-strong-2': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-strong-4': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-strong-6': {\n+     enabled: true\n+   },\n+   'qa-provider-b/qa-strong-8': {\n+     enabled: true\n+   }\n+ }\n- undefined\n"
+    },
+    {
+      "name": "slow save blocks repeated confirm and closing",
+      "status": "pass"
+    }
+  ],
+  "boundary": "synthetic fixture only"
+}

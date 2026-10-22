@@ -27,6 +27,7 @@ import {
 import type { RuntimeModelInfo } from '../../shared/types/runtime';
 import type { TokenDanceAuthView } from '../../shared/tokendance';
 import type { AgentConfig } from '../../shared/types/agent';
+import { parseAutoRoutingSettings, type AutoRoutingModifier } from '../../shared/autoRoute';
 import { apiGetJson } from '@/api/apiFetch';
 import {
     notifyConfigChanged,
@@ -237,6 +238,7 @@ export interface ConfigDataValue {
 
 export interface ConfigActionsValue {
     updateConfig: (updates: Partial<AppConfig>) => Promise<void>;
+    modifyAutoRoutingSettings: (modify: AutoRoutingModifier) => Promise<void>;
     /** Merge-aware proxy update — see ConfigProvider for the lost-update rationale (#230). */
     patchProxySettings: (partial: Partial<ProxySettings>) => Promise<void>;
     refreshConfig: () => Promise<void>;
@@ -799,6 +801,21 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         // No more CONFIG_CHANGED event — all consumers share this Context
     }, [acceptLocalDiskWrite]);
 
+    // Candidate membership is edited against the disk-latest subdocument,
+    // under the same config lock as all other settings. A stale settings panel
+    // must not replace another panel's pool, classifier, or tier changes.
+    const modifyAutoRoutingSettings = useCallback(async (modify: AutoRoutingModifier) => {
+        const newConfig = await atomicModifyConfig(c => {
+            const raw = c.autoRouting && typeof c.autoRouting === 'object' ? { ...c.autoRouting } : {};
+            const next = parseAutoRoutingSettings(modify(parseAutoRoutingSettings(raw)));
+            // Replace only this editor's schema. Future/other fields belong
+            // to their own editor; also preserve deletion of known fields.
+            for (const key of ['enabled', 'pool', 'classifier', 'tierOverrides', 'tierOrder'] as const) delete raw[key];
+            return { ...c, autoRouting: { ...raw, ...next } };
+        });
+        if (acceptLocalDiskWrite()) setConfig(newConfig);
+    }, [acceptLocalDiskWrite]);
+
     // #230: Merge-aware proxy patch. Callers pass only the field(s) they changed;
     // the merge happens against `c` (the disk-latest config) INSIDE the
     // atomicModifyConfig modifier, under withConfigLock. This is what prevents
@@ -1250,7 +1267,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
     ]);
 
     const actions = useMemo<ConfigActionsValue>(() => ({
-        updateConfig, patchProxySettings, refreshConfig, reload: load, refreshProviderData,
+        updateConfig, modifyAutoRoutingSettings, patchProxySettings, refreshConfig, reload: load, refreshProviderData,
         addProject, updateProject, patchProject, removeProject, touchProject,
         addCustomProvider, updateCustomProvider, deleteCustomProvider, refreshProviders,
         savePresetCustomModels, removePresetCustomModel, savePrimaryModel, saveProviderModelAliases,
@@ -1258,7 +1275,7 @@ export function ConfigProvider({ children }: { children: React.ReactNode }) {
         saveProviderVerifyStatus,
         requestManagedCodexRuntimeUpdate,
     }), [
-        updateConfig, patchProxySettings, refreshConfig, load, refreshProviderData,
+        updateConfig, modifyAutoRoutingSettings, patchProxySettings, refreshConfig, load, refreshProviderData,
         addProject, updateProject, patchProject, removeProject, touchProject,
         addCustomProvider, updateCustomProvider, deleteCustomProvider, refreshProviders,
         savePresetCustomModels, removePresetCustomModel, savePrimaryModel, saveProviderModelAliases,

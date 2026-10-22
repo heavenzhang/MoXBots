@@ -12,6 +12,7 @@ import { reconcilePersistedAgentWorkspaceIdentitiesLocked } from './services/age
 import { atomicModifyConfig } from './services/appConfigService';
 
 const mocks = vi.hoisted(() => ({
+  routingWriter: null as null | ((modify: import('../../shared/autoRoute').AutoRoutingModifier) => Promise<void>),
   addProjectAction: null as null | ((path: string) => Promise<Project>),
   notifyConfigChanged: vi.fn(),
   config: {} as AppConfig,
@@ -111,7 +112,8 @@ function project(id: string, name: string, path: string): Project {
 
 function Probe() {
   const { config, projects, providers, apiKeys, providerVerifyStatus, error } = useConfigData();
-  const { updateConfig, updateCustomProvider, addProject } = useConfigActions();
+  const { updateConfig, updateCustomProvider, addProject, modifyAutoRoutingSettings } = useConfigActions();
+  React.useEffect(() => { mocks.routingWriter = modifyAutoRoutingSettings; }, [modifyAutoRoutingSettings]);
   React.useEffect(() => { mocks.addProjectAction = addProject; }, [addProject]);
   return (
     <>
@@ -178,6 +180,25 @@ describe('ConfigProvider external config invalidation', () => {
       createdAgents: [],
       agentProjections: [],
       diagnostics: [],
+    });
+  });
+
+  it('rebases candidate edits on disk-latest routing and preserves unrelated configuration', async () => {
+    render(<ConfigProvider><Probe /></ConfigProvider>);
+    await waitFor(() => expect(mocks.routingWriter).toBeTypeOf('function'));
+    // External writer changed both this subdocument and another config field
+    // without a React refresh; the stable action must merge the latest disk.
+    mocks.config = { ...mocks.config, defaultProviderId: 'other-window', autoRouting: {
+      classifier: { providerId: 'p', model: 'judge' }, tierOrder: { fast: ['p/m'] },
+      pool: { 'p/existing': { enabled: true } }, futurePolicy: { x: 1 },
+    } as AppConfig['autoRouting'] };
+    const writer = mocks.routingWriter!;
+    await act(async () => writer(current => ({ ...current, pool: { ...current.pool, 'p/new': { enabled: true } } })));
+    await act(async () => writer(current => ({ ...current, enabled: false })));
+    expect(mocks.config.defaultProviderId).toBe('other-window');
+    expect(mocks.config.autoRouting).toEqual({ enabled: false,
+      classifier: { providerId: 'p', model: 'judge' }, tierOrder: { fast: ['p/m'] },
+      pool: { 'p/existing': { enabled: true }, 'p/new': { enabled: true } }, futurePolicy: { x: 1 },
     });
   });
 

@@ -2344,7 +2344,11 @@
     "backupEnabled": "Configured backup enabled",
     "backupDisabled": "Configured backup off",
     "failoverHint": "Auto mode supplies a same-tier fallback when one is available. Configure a backup here for a manually selected model or to override the automatic fallback.",
-    "mode": { "auto": "Same-tier automatic", "specified": "Specified backup", "off": "No model switching" },
+    "mode": {
+      "auto": "Same-tier automatic",
+      "specified": "Specified backup",
+      "off": "No model switching"
+    },
     "backupInvalid": "Specified backup unavailable: {{reason}}"
   },
   "autoRouting": {
@@ -2376,13 +2380,89 @@
     "classifierNone": "Classifier: no model available",
     "classifierUnavailable": "Saved classifier {{model}} is unavailable",
     "restoreAutoClassifier": "Restore automatic classifier",
-    "classifierAutoOption": "Pick automatically",
+    "classifierAutoOption": "Choose automatically",
     "restoreDefaultTiers": "Restore automatic tier assignment",
     "restoreDefaultOrder": "Restore default model order",
-    "privacy": "The classifier receives this message and a short excerpt of the previous turn, through the same model provider as the conversation.",
+    "privacy": "The selected classifier provider receives this message and a short excerpt of the previous turn. It may differ from the provider handling the conversation.",
     "saving": "Saving…",
     "saveFailed": "Could not save. Try again.",
-    "saved": "Saved."
+    "saved": "Saved.",
+    "nextTurn": "Changes take effect next turn",
+    "poolAutomatic": "Candidate pool follows the provider directory",
+    "poolManual": "Candidate pool is manually managed",
+    "priorityHint": "In each tier, the current model stays first while it is available; the remaining models follow the list. Setup status does not verify a live model call.",
+    "tierSummary": "Available models by tier",
+    "search": "Search model, name, or provider",
+    "filter": "Filter candidate models",
+    "filters": {
+      "all": "All active candidates",
+      "paused": "Paused",
+      "unavailable": "Unavailable"
+    },
+    "addModels": "Add models",
+    "cancelAdd": "Close add panel",
+    "addHeading": "Add from provider directory",
+    "addTier": "Assign tier",
+    "addEmpty": "No models outside the candidate pool. Add a model or repair a provider in Model Providers.",
+    "addSelected": "Add {{count}} selected",
+    "selectVisible": "Select visible ({{count}})",
+    "selected": "{{count}} selected",
+    "pauseSelected": "Pause selected",
+    "resumeSelected": "Resume selected",
+    "removeSelected": "Remove selected",
+    "selectModel": "Select {{model}}",
+    "setTier": "Set tier for {{model}}",
+    "moveDown": "Move {{model}} down",
+    "pause": "Pause",
+    "resume": "Resume",
+    "remove": "Remove",
+    "fixProvider": "Repair provider",
+    "source": "Tier source",
+    "paused": "Paused in automatic pool",
+    "unavailable": "Unavailable",
+    "unavailableReasons": {
+      "provider-disabled": "Provider disabled",
+      "provider-unavailable": "Provider unavailable",
+      "runtime-unsupported": "Unsupported by this runtime",
+      "model-unavailable": "Model unavailable",
+      "not-chat": "Not a chat model"
+    },
+    "openProviders": "Open Model Providers",
+    "advanced": "Advanced tier and pool controls",
+    "restorePool": "Restore pool from directory",
+    "restorePoolHint": "This will re-include every currently available chat model in the provider directory. Confirm before applying.",
+    "backupNote": "{{model}} remains the specified backup after removal from automatic candidates.",
+    "manageBackup": "Manage backup",
+    "undo": "Undo",
+    "confirm": {
+      "exclude": {
+        "title": "Remove from automatic candidates?",
+        "message": "{{count}} model(s) will leave automatic selection. Provider and manually selected models stay configured. Any matching classifier setting will also be cleared so selection returns to automatic."
+      },
+      "pause": {
+        "title": "Pause automatic candidates?",
+        "message": "{{count}} model(s) will stop being selected automatically. Any matching classifier setting will also be cleared so selection returns to automatic."
+      },
+      "restore": {
+        "title": "Restore automatic candidates?",
+        "message": "{{count}} model(s) will be enabled for automatic selection. Restoring the full directory can add newly listed models."
+      },
+      "action": "Confirm"
+    },
+    "undoConflict": "Undo was skipped because this setting changed after the save. Refresh and review the current value.",
+    "firstPriority": "First priority",
+    "searchAdd": "Search model name, provider, or ID",
+    "noAddMatches": "No directory models match this search.",
+    "classifierAutoCompact": "Classifier: automatic selection",
+    "classifierUserCompact": "Classifier: fixed selection",
+    "sources": {
+      "override": "User tier choice",
+      "catalog": "Provider directory",
+      "price": "Catalog price",
+      "name": "Model name",
+      "default": "Default tier"
+    },
+    "classifierAutoOptionWithModel": "Automatic · {{model}}"
   },
   "modelFailover": {
     "relationship": "Auto mode supplies the next available model in the same tier. A specified backup is used only in specified mode. Switching models does not affect retries on the original model.",
@@ -2395,7 +2475,12 @@
     "keyMissing": "No API key",
     "title": "Backup model",
     "enable": "Backup mode",
-    "mode": { "label": "Failure recovery mode", "auto": "Follow automatic model selection", "specified": "Use specified backup", "off": "Do not switch models" },
+    "mode": {
+      "label": "Failure recovery mode",
+      "auto": "Follow automatic model selection",
+      "specified": "Use specified backup",
+      "off": "Do not switch models"
+    },
     "modeHint": "Current mode: {{mode}}. Disabling model switching does not disable the original model’s limited retries.",
     "allowCrossTier": "Allow a backup from a different tier (off by default)",
     "openProviders": "Open model providers to fix this",

@@ -1,0 +1,11 @@
+{
+  "checks": [
+    "Cancel Enter leaves candidate configuration unchanged",
+    "Remove creates explicit membership and stays removed after reload",
+    "Search and re-add excluded directory model with persisted membership",
+    "Failed save preserves data and confirmation; explicit retry succeeds",
+    "390px critical maintenance layout has no horizontal overflow"
+  ],
+  "errors": [],
+  "scope": "actual component; synthetic browser persistence; no native or real Provider calls"
+}
