@@ -101,7 +101,7 @@ export function deriveSessionTitle(rawMessage: string | null | undefined, maxLen
 // renderer and sidecar can't drift on what counts as a titleable round.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Minimum number of completed, titleable QA rounds before auto-title fires. */
+/** Minimum number of titleable requests / completed QA rounds for auto-title. */
 export const AUTO_TITLE_MIN_ROUNDS = 1;
 
 /**
@@ -175,8 +175,8 @@ function extractMessageText(content: string): string {
 }
 
 /**
- * Reconstruct completed QA rounds (user → assistant pairs) from an ordered
- * message list, dropping the rounds that must never seed a title:
+ * Reconstruct completed QA rounds (user → assistant pairs), or admitted human
+ * requests in userRequestsOnly mode, dropping content that must never seed a title:
  *   - pure system-injected user turns (`<HEARTBEAT>` / `<MEMORY_UPDATE>` /
  *     `<system-reminder>` without a user-visible tail) — pure noise, not a
  *     user's real ask. Mixed reminder + user-query turns keep the query tail.
@@ -190,15 +190,19 @@ function extractMessageText(content: string): string {
  */
 export function buildTitleRoundsFromMessages(
   messages: readonly TitleRoundMessage[],
-  options?: { isUserTitleable?: (messageIndex: number) => boolean },
+  options?: {
+    isUserTitleable?: (messageIndex: number) => boolean;
+    /** Accepted requests can be summarized before any assistant response exists. */
+    userRequestsOnly?: boolean;
+  },
 ): TitleRound[] {
   const rounds: TitleRound[] = [];
-  for (let i = 0; i < messages.length - 1; i++) {
+  for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const next = messages[i + 1];
-    if (msg.role !== 'user' || next.role !== 'assistant') continue;
+    if (msg.role !== 'user') continue;
+    if (!options?.userRequestsOnly && next?.role !== 'assistant') continue;
     if (options?.isUserTitleable && !options.isUserTitleable(i)) {
-      i++;
       continue;
     }
 
@@ -208,10 +212,13 @@ export function buildTitleRoundsFromMessages(
     if (rawUserText.includes('<HEARTBEAT>')
       || rawUserText.includes('<MEMORY_UPDATE>')
       || (reminder.hasReminder && !reminder.visibleText)) {
-      i++; // consume the paired assistant turn too
       continue;
     }
-    const assistantText = extractMessageText(next.content);
+    if (options?.userRequestsOnly && !userText.trim()) continue;
+    // A running/failed assistant turn says nothing about the task's outcome.
+    // Summarize only the request at admission; the completed-turn path retains
+    // its existing error-response filter and richer QA context for retries.
+    const assistantText = options?.userRequestsOnly ? '' : extractMessageText(next.content);
     if (isLikelyErrorTitle(assistantText)) {
       i++;
       continue;
@@ -220,7 +227,6 @@ export function buildTitleRoundsFromMessages(
       user: boundTitleContext(userText),
       assistant: boundTitleContext(assistantText, 500),
     });
-    i++; // skip the assistant message we just paired
   }
   return rounds;
 }

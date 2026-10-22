@@ -171,7 +171,7 @@ import type { OfficialToolId } from '../shared/official-tools';
 import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, getActiveSessionTranscript, loadSessionTranscript } from './SessionStore';
 import { TranscriptPresentation } from './session-transcript/presentation';
 import { projectTranscriptToolInput, type TranscriptObject } from '../shared/sessionTranscript';
-import { firePostTurnTitleHook } from './turn-hooks';
+import { fireAcceptedUserTitleHook, firePostTurnTitleHook } from './turn-hooks';
 import { createSessionMetadata, type SessionMetadata, type SessionMessage, type MessageAttachment, type SessionSource, type TurnAnalyticsSource } from './types/session';
 import { originFromTurnAttribution } from '../shared/session-origin';
 import type { SessionOrigin } from '../shared/session-origin';
@@ -15490,6 +15490,12 @@ async function* messageGenerator(
       item.resolve();
       traceBuiltinInputProgress('input-retired', inputTrace);
       return;
+    }
+
+    // The request is now admitted and recorded. A long/failed business turn
+    // must not keep its timestamp/scaffolding prefix as the session title.
+    if (!item.transientProviderRetry && !item.streamContinuation) {
+      fireAcceptedUserTitleHook(sessionId, 'builtin', configState.currentModel, configState.currentProviderEnv);
     }
 
     if (!getCurrentProductSessionMetadata()?.pendingContinueAfterAbort && shouldRenewWatchdogAutoResume({

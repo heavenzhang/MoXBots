@@ -2859,7 +2859,8 @@ function SessionRow({
   const fullTitle = getFullSessionDisplayText(session);
   const [continuing, setContinuing] = useState(false);
   const continuationInFlight = useRef(false);
-  const canContinue = !!onContinue && !!session.continuation && !deleteProtected
+  const canContinue = !!onContinue && !!session.continuation
+    && session.continuation.status !== 'running' && !deleteProtected
     && (session.runtime === undefined || session.runtime === 'builtin')
     && !session.archived && !session.systemMaintenanceKind
     && tab?.view !== 'remote-session' && !(tab?.view === 'chat' && (tab.isGenerating || tab.pendingContinuation));

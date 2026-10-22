@@ -1,6 +1,6 @@
 import type { TranscriptProjection } from './sessionTranscript';
 
-/** Display-only projection of the latest accepted conversation turn. Runtime
+/** Display-only projection of stopped/interrupted conversation work. Runtime
  * and workflow owners still decide whether a new continuation can execute. */
 export interface SessionContinuation {
   turnId: string;
@@ -18,7 +18,7 @@ export function deriveSessionContinuation(projection: TranscriptProjection): Ses
   const lastTurn = [...projection.turns.values()].at(-1);
   if (!lastTurn || lastTurn.origin === 'collaboration'
     || lastTurn.rootUserMessageId !== lastUser.id
-    || !['running', 'stopped', 'interrupted'].includes(lastTurn.status)) return undefined;
+    || !['stopped', 'interrupted'].includes(lastTurn.status)) return undefined;
   return {
     turnId: lastTurn.id,
     rootUserMessageId: lastUser.id,
@@ -32,7 +32,10 @@ export function matchesSessionContinuation(
   messages: ReadonlyArray<{ id: string; role: string; turnId?: string; deliveryStatus?: string; transcriptState?: string; messageKind?: string }>,
   expectedTurnId?: string,
 ): continuation is SessionContinuation {
-  if (!continuation || (expectedTurnId && continuation.turnId !== expectedTurnId)) return false;
+  // Older list metadata may advertise a live running turn. It is not a resume
+  // candidate; cold recovery must first settle it through the execution owner.
+  if (!continuation || continuation.status === 'running'
+    || (expectedTurnId && continuation.turnId !== expectedTurnId)) return false;
   const lastUser = messages.filter(message => message.role === 'user'
     && !message.id.startsWith('task-notification-')).at(-1);
   if (lastUser && (lastUser.deliveryStatus || lastUser.id !== continuation.rootUserMessageId)) return false;
