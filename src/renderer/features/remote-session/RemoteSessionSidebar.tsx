@@ -79,7 +79,7 @@ export function RemoteSessionSidebar({ tabs, activeTabId, onSelect, onClose, onO
             </button>
             {onClose && <div className="absolute right-1.5 top-1.5"><Tip label={t("remoteSession.sidebar.close")} position="bottom" align="end">
               <button type="button" aria-label={t("remoteSession.sidebar.closeSession", { title })} onClick={() => onClose(tab.id)}
-                className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--global-sidebar-bg)] text-[var(--ink-muted)] opacity-0 hover:text-[var(--ink)] focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100">
+                className="flex h-6 w-6 items-center justify-center rounded-md bg-[var(--global-sidebar-surface)] text-[var(--ink-muted)] opacity-0 hover:text-[var(--ink)] focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100">
                 <CloseIcon className="h-3 w-3" />
               </button>
             </Tip></div>}
