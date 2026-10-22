@@ -888,7 +888,7 @@ async fn original_mobile_wss_host_chain() {
             let handle=tokio::runtime::Handle::current();
             tokio::task::spawn_blocking(move || {observe_stack("attachment-default-blocking-thread");let phase=Box::pin(attachment_continuation(&mut owner,&target,&receipt,&phase_root));eprintln!("fixture-future-bytes attachment-phase={}",std::mem::size_of_val(phase.as_ref().get_ref()));handle.block_on(phase);}).await.unwrap();
         }
-        fs::write(root.join("stop"),b"stop").unwrap();let actual=wait_json(&root.join("host-result.json")).await;assert_eq!(actual["calls"],if mode=="assets"{2}else{1});
+        fs::write(root.join("stop"),b"stop").unwrap();let actual=wait_json(&root.join("host-result.json")).await;assert_eq!(actual["calls"],if mode=="assets"{2}else{1});assert!(actual["classifierCalls"].as_u64().unwrap_or(0)>0,"automatic routing must remain exercised separately from native calls");
         if mode=="assets" {assert_eq!(actual["materialized"].as_array().unwrap().len(),2);assert_eq!(actual["sessions"].as_array().unwrap().len(),1);eprintln!("actual-encrypted-attachment-host-evidence={}",json!({"supplierCalls":actual["calls"],"supplierObservations":actual["supplierObservations"],"materialized":actual["materialized"]}));}assert!(actual["sessions"].as_array().unwrap().iter().any(|s|s["id"]==receipt["sessionId"]));
     }).await;
     tasks.abort_all();

@@ -4,6 +4,7 @@ import { buildAutoTierTable, type AutoTierEntry } from '../../shared/autoRoute';
 import type { MessageWire } from '../builtin-session/types';
 import type { SessionMetadata } from '../types/session';
 import { applyAutoRouteAdmission, autoRouteMessageText, previousTurn, type AutoRouteAdmissionDeps } from './admission';
+import { AutoRoutePoolUnavailableError } from './errors';
 import type { RouteTurnInput, RouteTurnResult } from './router';
 import { getAutoRouteBackup, setAutoRouteSessionState } from './session-state';
 
@@ -67,6 +68,32 @@ const input = { sessionId: 's1', text: '设计一个同步引擎', source: 'desk
 
 describe('applyAutoRouteAdmission', () => {
   beforeEach(() => setAutoRouteSessionState('s1', undefined));
+
+  it('surfaces an empty managed pool rather than falling back to the current model', async () => {
+    const request = { model: 'removed-current' };
+    const d = deps({ route: vi.fn(async () => { throw new AutoRoutePoolUnavailableError(); }) });
+    await expect(applyAutoRouteAdmission(request, input, d)).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
+    expect(request).toEqual({ model: 'removed-current' });
+    expect(d.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+  it('does not apply pool restrictions to a manually fixed Session or an active turn', async () => {
+    for (const extra of [{ sessionMeta: meta({ modelMode: 'manual' }) }, { isSessionBusy: () => true }]) {
+      const route = vi.fn(async () => { throw new AutoRoutePoolUnavailableError(); });
+      await expect(applyAutoRouteAdmission({}, input, deps({ ...extra, route }))).resolves.toBeUndefined();
+      expect(route).not.toHaveBeenCalled();
+    }
+  });
+  it.each(['thrown', 'null', 'unclassified'])('does not bypass explicit membership on a %s fallback', async reason => {
+    const d = deps({
+      route: vi.fn(async () => {
+        if (reason === 'thrown') throw new Error('classifier/setup failed');
+        if (reason === 'null') return null;
+        return result('claude-opus-5-5', { reason: 'classifier-failed' });
+      }),
+      assertFallbackAllowed: () => { throw new AutoRoutePoolUnavailableError(); },
+    });
+    await expect(applyAutoRouteAdmission({}, input, d)).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
+  });
 
   it.each(['manual', 'disabled', 'failed', 'thrown', 'conflict'])('revokes the previous automatic backup before an idle new turn: %s', async reason => {
     setAutoRouteSessionState('s1', { tier: 'strong', backup: { providerId: 'old', modelId: 'stale' } });
@@ -227,4 +254,60 @@ describe('message helpers', () => {
     expect(turn).toEqual({ user: 'first', reply: 'reply', tier: undefined, endedAt: Date.parse('2026-10-19T00:01:00.000Z') });
     expect(previousTurn([])).toEqual({ endedAt: undefined });
   });
+});
+
+
+describe('request-local snapshot admission', () => {
+  it('acknowledges the exact successful CAS before broadcasting, preserving a detached before snapshot', async () => {
+    const d = deps();
+    const didApply = vi.fn((before: SessionMetadata, after: SessionMetadata) => {
+      expect(before.model).toBe('claude-sonnet-5-5');
+      expect(after.model).toBe('claude-opus-5-5');
+      expect(before.lastActiveAt).toBe('activity-during-classification');
+      expect(d.broadcast).not.toHaveBeenCalled();
+    });
+    vi.mocked(d.route).mockImplementation(async () => {
+      d.stored()!.lastActiveAt = 'activity-during-classification';
+      return result('claude-opus-5-5');
+    });
+    const isCurrent = vi.fn(() => true);
+    await applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent, didApply } }, input, d);
+    expect(isCurrent).toHaveBeenCalledTimes(1); expect(didApply).toHaveBeenCalledTimes(1);
+    d.stored()!.model = 'later';
+    expect(didApply.mock.calls[0][0].model).toBe('claude-sonnet-5-5');
+    expect(didApply.mock.calls[0][1].model).toBe('claude-opus-5-5');
+  });
+
+  it('retains the old snapshot when its remote owner vetoes the CAS', async () => {
+    const d = deps(), didApply = vi.fn();
+    expect(await applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent: () => false, didApply } }, input, d)).toBeUndefined();
+    expect(d.stored()!.model).toBe('claude-sonnet-5-5');
+    expect(didApply).not.toHaveBeenCalled(); expect(d.broadcast).not.toHaveBeenCalled();
+  });
+
+  it('propagates a failed acknowledgement instead of silently dispatching a fallback', async () => {
+    const d = deps(), error = new Error('remote owner changed');
+    await expect(applyAutoRouteAdmission({ autoRouteSnapshotAdmission: {
+      isCurrent: () => true, didApply: () => { throw error; },
+    } }, input, d)).rejects.toBe(error);
+    expect(d.broadcast).not.toHaveBeenCalled(); expect(d.trackDecision).not.toHaveBeenCalled();
+  });
+
+  it.each(['manual', 'busy', 'same-model'] as const)('does not acknowledge an unwritten %s turn', async mode => {
+    const d = deps({ ...(mode === 'manual' ? { sessionMeta: meta({ modelMode: 'manual' }) } : {}),
+      isSessionBusy: () => mode === 'busy',
+      route: vi.fn(async () => result('claude-sonnet-5-5', { switches: false })),
+    });
+    const didApply = vi.fn();
+    await applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent: () => true, didApply } }, input, d);
+    expect(didApply).not.toHaveBeenCalled(); expect(d.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+});
+
+
+it('does not fall back to the old request after acknowledging a successful CAS', async () => {
+  const error = new Error('broadcast failure'), d = deps({ broadcast: () => { throw error; } });
+  const didApply = vi.fn();
+  await expect(applyAutoRouteAdmission({ autoRouteSnapshotAdmission: { isCurrent: () => true, didApply } }, input, d)).rejects.toBe(error);
+  expect(didApply).toHaveBeenCalledTimes(1);
 });

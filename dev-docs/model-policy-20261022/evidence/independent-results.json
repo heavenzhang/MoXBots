@@ -1,0 +1,66 @@
+{
+  "revision": "77cb23006",
+  "environment": "http://127.0.0.1:8931/model-policy-qa",
+  "boundary": "production component/shared policy; synthetic localStorage; no native/provider",
+  "checks": [
+    {
+      "name": "legacy baseline + four widths/no overflow",
+      "status": "pass"
+    },
+    {
+      "name": "sort actual visible rows + direct tier",
+      "status": "pass"
+    },
+    {
+      "name": "pause + restore + removal + re-add",
+      "status": "pass"
+    },
+    {
+      "name": "search resets selection and batch stays within results",
+      "status": "pass"
+    },
+    {
+      "name": "failed write preserves state and can retry",
+      "status": "pass"
+    },
+    {
+      "name": "undo conflict retains concurrent setting",
+      "status": "pass"
+    },
+    {
+      "name": "load failure disables switch and retry recovers",
+      "status": "pass"
+    },
+    {
+      "name": "explicit empty does not repopulate; keyboard add panel",
+      "status": "pass"
+    },
+    {
+      "name": "specified backup note and target available",
+      "status": "pass"
+    },
+    {
+      "name": "classifier cleared on pause; explicit unavailable repair",
+      "status": "pass"
+    },
+    {
+      "name": "confirmation keyboard semantics and checkbox hit area",
+      "status": "fail",
+      "error": "row checkbox hit area <32px"
+    }
+  ],
+  "errors": [],
+  "checkboxBounds": {
+    "x": 272,
+    "y": 478.75,
+    "width": 13,
+    "height": 13
+  },
+  "dialogRoles": 0,
+  "dialogFocus": {
+    "tag": "BUTTON",
+    "text": "暂停"
+  },
+  "escapeCloses": true,
+  "focusAfterEscape": "暂停"
+}

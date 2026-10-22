@@ -1,7 +1,7 @@
 import type { ModelFailoverSettings } from '../../shared/modelFailover';
 import { isModelFailoverProvider, modelFailoverMode } from '../../shared/modelFailover';
 import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
-import { findAutoTierEntry, isAutoRoutingEnabled, parseAutoRoutingSettings } from '../../shared/autoRoute';
+import { findAutoTierEntry, isAutoPoolEnabled, isAutoRoutingEnabled, parseAutoRoutingSettings } from '../../shared/autoRoute';
 import { buildAutoRouteCatalog } from '../auto-route/catalog';
 import { lookupModelCapability, lookupProviderModelContextLength } from '../utils/model-capabilities';
 import type { ModelEntity } from '../../shared/config-types';
@@ -71,8 +71,12 @@ export function createSessionModelFailover(options: {
       unavailableReason = '备用不能安全续接当前会话历史'; return undefined;
     }
     const catalog = buildAutoRouteCatalog(config);
-    const primaryTier = findAutoTierEntry(catalog.table, { providerId: env!.providerId!, model: current.model });
-    const backupTier = findAutoTierEntry(catalog.table, { providerId: ref.providerId, model: ref.modelId });
+    if (modelFailoverMode(settings) === 'auto' && !isAutoPoolEnabled(catalog.settings, { providerId: ref.providerId, model: ref.modelId })) {
+      unavailableReason = '自动备用已暂停或移出候选池'; return undefined;
+    }
+    const directory = catalog.directoryTable ?? catalog.table;
+    const primaryTier = findAutoTierEntry(directory, { providerId: env!.providerId!, model: current.model });
+    const backupTier = findAutoTierEntry(modelFailoverMode(settings) === 'auto' ? catalog.table : directory, { providerId: ref.providerId, model: ref.modelId });
     if (!backupTier || !primaryTier || (settings?.allowCrossTier !== true && primaryTier.tier !== backupTier.tier)) {
       unavailableReason = settings?.allowCrossTier === true ? '无法确认主备模型的可用档位' : '未开启跨档接管，备用不在当前主模型档位'; return undefined;
     }

@@ -353,6 +353,92 @@ describe('bounded inference context recovery', () => {
     expect(h.backup).not.toHaveBeenCalled();
   });
 
+  it.each(['next turn', 'restored Query'])('permits read-only reconciliation after a stopped reserved action in a %s', async mode => {
+    let scope = 'original-turn';
+    let ledger: unknown;
+    const options = { scope: () => scope, isActive: () => true, protectStreaming: true,
+      backup: async () => '/archive/original.json',
+      persistLedger: async (value: unknown) => { ledger = structuredClone(value); } };
+    let controller = new ContextRecoveryController(options);
+    await controller.protectInference(history());
+    await controller.authorizeTool('write_record', { id: 'uncertain' });
+    const preserved = structuredClone(ledger);
+    controller.endTurn();
+    scope = 'explicit-followup';
+    if (mode === 'restored Query') controller = new ContextRecoveryController({ ...options, initialLedger: ledger });
+    const body: AnthropicRequest = { ...history(), stream: true };
+    body.messages.push(
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'stopped-tool', name: 'write_record', input: { id: 'uncertain' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'stopped-tool', is_error: true, content: 'Tool interrupted.' }] },
+      { role: 'user', content: 'Continue from the preserved evidence. Verify uncertain outcomes read-only.' });
+    const execute = vi.fn(async (actual: AnthropicRequest) => {
+      expect(actual).toEqual(body);
+      expect(controller.canRetryInference()).toBe(false);
+      expect(controller.beforeTool('Read', { file_path: '/fixture/status.json' })).toBeUndefined();
+      expect(controller.beforeTool('write_record', { id: 'uncertain' })).toContain('read-only');
+      expect(controller.beforeTool('write_record', { id: 'different' })).toContain('read-only');
+      expect(controller.beforeTool('Bash', { command: 'echo fixture' })).toContain('read-only');
+      return ok();
+    });
+    const response = await controller.run(req(), body, execute);
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(ledger).toEqual(preserved);
+    expect((await controller.run(req(), body, execute)).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+    await expect(controller.protectInference(body)).rejects.toThrow('read-only reconciliation');
+    expect(() => controller.prepareStreamContinuation(body)).toThrow('automatic_replay_blocked');
+  });
+
+  it('reports local ledger persistence failure without calling it a model transport failure', async () => {
+    const controller = new ContextRecoveryController({ scope: () => 'explicit-turn', isActive: () => true,
+      protectStreaming: true, backup: async () => '/archive/original.json',
+      persistLedger: async () => { throw new Error('private disk path must not be exposed'); } });
+    const execute = vi.fn(async () => ok());
+    const response = await controller.run(req(), { ...history(), stream: true }, execute);
+    expect(response.status).toBe(409);
+    const error = await response.text();
+    expect(error).toContain('Recovery ledger could not be committed');
+    expect(error).not.toContain('model transport failed');
+    expect(error).not.toContain('private disk path');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it.each(['Stop', 'scope change', 'background work'])('does not dispatch a read-only inference after %s during ledger persistence', async change => {
+    const gate = deferred<void>();
+    const entered = deferred<void>();
+    let active = true;
+    let scope = 'explicit-turn';
+    let safe = true;
+    const controller = new ContextRecoveryController({ scope: () => scope, isActive: () => active,
+      canRecover: () => safe, protectStreaming: true, backup: async () => '/archive/original.json',
+      initialLedger: { version: 1, completed: [], uncertain: ['a'.repeat(64)], denied: [], blocked: false,
+        projectionActive: false, streamArmedOnly: false },
+      persistLedger: async () => { entered.resolve(); await gate.promise; } });
+    const execute = vi.fn(async () => ok());
+    const pending = controller.run(req(), { ...history(), stream: true }, execute);
+    await entered.promise;
+    if (change === 'Stop') active = false;
+    if (change === 'scope change') scope = 'new-owner';
+    if (change === 'background work') safe = false;
+    gate.resolve();
+    expect((await pending).status).toBe(change === 'Stop' ? 499 : 409);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('does not turn a restored projected recovery into read-only prearm authority', async () => {
+    const controller = new ContextRecoveryController({ scope: () => 'explicit-turn', isActive: () => true,
+      protectStreaming: true, backup: async () => '/archive/original.json', persistLedger: async () => {},
+      initialLedger: { version: 1, completed: [], uncertain: ['a'.repeat(64)], denied: [], blocked: false,
+        projectionActive: true, streamArmedOnly: false } });
+    const execute = vi.fn(async () => ok());
+    const response = await controller.run(req(), { ...history(), stream: true }, execute);
+    expect(response.status).toBe(409);
+    expect(await response.text()).toContain('read-only reconciliation');
+    expect(execute).not.toHaveBeenCalled();
+  });
+
   it('stops availability recovery if its durable action ledger cannot be committed', async () => {
     const h = fixture();
     const controller = new ContextRecoveryController({ scope: () => 'same-turn', isActive: () => true,

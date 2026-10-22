@@ -1,5 +1,6 @@
 import UpdateRestartConfirmation from '@/components/UpdateRestartConfirmation';
 import { restoreRemoteTabForAccount } from '@/features/remote-session/accountFence';
+import { applyRemoteObservation } from '@/features/remote-session/observation';
 import { currentNetworkSnapshot } from '@/features/agent-network/store';
 import type { RemoteSessionOpenIntent } from '@/features/remote-session/tabContract';
 import { APP_BUILD_PROFILE } from '../shared/appProfile';
@@ -4938,8 +4939,15 @@ export default function App() {
     tabWorkspaceController.open('remote-session', intent);
   }, [tabWorkspaceController]);
   const agentNetworkBinding = useMemo<BuiltinTabBindings['agentnetwork']>(() => ({ onOpenRemoteSession: openRemoteSession }), [openRemoteSession]);
+  const closeRemoteSession = useCallback((tabId: string) => { requestCloseTab(tabId, 'user'); }, [requestCloseTab]);
   const remoteSessionBinding = useMemo<BuiltinTabBindings['remote-session']>(() => ({
     onOpen: openRemoteSession,
+    onOpenNetwork: () => tabWorkspaceController.open('agentnetwork', { title: t('tabs.agentNetwork') }),
+    onObservation: (tabId, authGeneration, observation) => {
+      tabWorkspaceController.update(tabId, 'remote-session', tab => applyRemoteObservation(
+        tab, currentNetworkSnapshot(tab.locator.connectionId), authGeneration, observation,
+      ));
+    },
     onTarget: (tabId, scope) => {
       tabWorkspaceController.update(tabId, 'remote-session', tab => {
         const current = currentNetworkSnapshot(tab.locator.connectionId);
@@ -4954,7 +4962,7 @@ export default function App() {
         return { ...tab, sessionId, targetScope: scope, title, locator: { ...tab.locator, authGeneration: current.authGeneration } };
       });
     },
-  }), [openRemoteSession, tabWorkspaceController]);
+  }), [openRemoteSession, t, tabWorkspaceController]);
   const tabBindings = useMemo<BuiltinTabBindings>(
     () => composeBuiltinTabBindings({
       launcher: launcherBinding,
@@ -4991,6 +4999,8 @@ export default function App() {
             tabs={tabs}
             activeTab={activeTab}
             activeWorkspacePath={activeWorkspacePath}
+            onSelectRemoteTab={handleSelectTab}
+            onCloseRemoteTab={closeRemoteSession}
             sessionNotificationBadgeCounts={sessionNotificationBadgeCounts}
             teamSpaceAvailable={teamSpaceAvailable}
             onNewTab={handleSidebarNewChat}

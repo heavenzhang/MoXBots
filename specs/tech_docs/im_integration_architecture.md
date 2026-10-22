@@ -128,6 +128,8 @@ Agent 默认设置变更只刷新出生模板，并向所有已建立私聊 bind
 
 `/model` 从 Node 读取桌面同源 Provider 顺序、启用/删除/自定义模型与 readiness，按供应商分组、模型连续编号，混入真实 Managed Codex catalog。本机 Claude Code/Codex CLI Session 仅显示该 CLI 的模型。无 Runtime 或权限选择菜单。
 
+模型菜单与新会话 birth 计划只解析非敏感 `ProviderHistoryEnv` 投影，沿同一 Workspace / canonical route / legacy-disable 规则比较兼容性；Host supervisor 只检查凭据引用是否已配置，不读取 Worker 私有快照。原执行 readiness 仍严格物化凭据；兼容选择在写 snapshot 前解析真实执行环境，失败不得保存配置或应用运行时。
+
 每个 peer 只保存最后成功展示的临时菜单（Session id、execution observation、条目 identity）；数字绑定该菜单而非重新计算的顺序。选择前重查 availability，在 SessionStore writer 锁内 CAS 校验 observation 与当前 engine binding。兼容选择先写 snapshot，再经 SessionEngine apply；忙时下一轮生效。随后在 fresh config 锁内写 Agent 默认，释放 peer fence 后触发 Rust 模板刷新。分阶段失败明确返回已提交内容。
 
 不兼容条目标记“（会启用新会话）”，选择后直接完整 birth 并复用既有 handover 接管该私聊，不二次确认、不修改旧 snapshot、不自动重放未确认写入。`chat:session-config-changed` 仅携带 Session id；打开同一 Session 的 Tab 经自己的代理回读 metadata 更新模型展示。

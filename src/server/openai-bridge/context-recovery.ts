@@ -54,6 +54,7 @@ type NoDispatchEvidence = {
   toolUseId: string; toolName: 'TaskGet' | 'Bash'; actionHash: string; reason: 'missing-taskId' | 'missing-command';
 };
 type State = {
+  reconciliationOnly?: boolean;
   scope: string;
   attempted: boolean;
   recovered: boolean;
@@ -301,6 +302,11 @@ function cancelled(): Response {
   });
 }
 
+/** Only owner-authored reasons may cross the bridge; never forward arbitrary thrown text. */
+class RecoveryPreparationError extends Error {
+  constructor(readonly reason: string) { super(`context_recovery_required: ${reason}`); }
+}
+
 /** Owned by one existing Query. Only retries inference; never executes or re-enqueues a tool. */
 export class ContextRecoveryController implements BridgeContextRecovery {
   private state: State | undefined;
@@ -425,35 +431,43 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const state = this.current();
     if (!state || this.options.canRecover?.() === false || this.requestGuard.inFlightCount > 1
       || this.ledgerBlocked || state.blocked || this.requestGuard.isBlocked(state.scope)) {
-      throw new Error('context_recovery_required: The inference has no exclusive recovery authority.');
+      throw new RecoveryPreparationError('The inference has no exclusive recovery authority.');
     }
     const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger);
     const safeHistory = !!analysis && analysis.uncertain.size === 0 && state.uncertain.size === 0;
-    if (prearm && (!safeHistory || !this.canRetryInference())
-      && (!this.actionProtectionActive || this.streamArmedOnly)) {
+    if (prearm && (!safeHistory || !this.canRetryInference()) && !state.attempted && !this.projectionActive) {
       // An explicit ordinary inference is not recovery. Legacy failed/unpaired
       // history must not create a new 409 before that input reaches the model.
-      // Arm new tool reservations, but keep its existing retry fence intact;
-      // this unsafe history cannot authorize automatic continuation.
+      // A restored strict ledger must also permit inspection. Preserve its
+      // completed/uncertain evidence and restrict this turn to native read tools;
+      // this inference grants neither action nor automatic recovery authority.
       if (analysis) {
-        if (!this.mergeLedger(analysis.completed, analysis.uncertain)) throw new Error('context_recovery_required: Action ledger capacity exceeded.');
+        const completed = new Map([...analysis.completed].map(([key, evidence]) =>
+          [key, this.completedLedger.get(key) ?? evidence]));
+        if (!this.mergeLedger(completed, analysis.uncertain)) throw new RecoveryPreparationError('Action ledger capacity exceeded.');
         for (const key of analysis.uncertain) state.uncertain.add(key);
       }
-      this.streamArmedOnly = true;
+      state.reconciliationOnly = true;
+      this.streamArmedOnly = !this.actionProtectionActive || this.streamArmedOnly;
       this.actionProtectionActive = true;
       await this.persist();
+      if (this.current() !== state || this.options.canRecover?.() === false) {
+        throw new RecoveryPreparationError('The read-only reconciliation owner changed during ledger persistence.');
+      }
       return;
     }
     if (!this.canRetryInference() || !safeHistory || !analysis) {
-      throw new Error('context_recovery_required: An earlier tool outcome requires read-only reconciliation.');
+      throw new RecoveryPreparationError('An earlier tool outcome requires read-only reconciliation.');
     }
     const sourceDigest = createHash('sha256').update(JSON.stringify(body)).digest('hex');
-    const archive = await this.options.backup(body, { digest: sourceDigest, scope: state.scope });
+    let archive: string;
+    try { archive = await this.options.backup(body, { digest: sourceDigest, scope: state.scope }); }
+    catch { throw new RecoveryPreparationError('The original history could not be durably archived; business actions stopped.'); }
     if (this.current() !== state || !this.options.isActive() || this.options.canRecover?.() === false) {
-      throw new Error('context_recovery_required: The recovery owner changed during archival.');
+      throw new RecoveryPreparationError('The recovery owner changed during archival.');
     }
     const completed = new Map([...analysis.completed].map(([key, value]) => [key, { ...value, archive, digest: sourceDigest }]));
-    if (!this.mergeLedger(completed, analysis.uncertain)) throw new Error('context_recovery_required: Action ledger capacity exceeded.');
+    if (!this.mergeLedger(completed, analysis.uncertain)) throw new RecoveryPreparationError('Action ledger capacity exceeded.');
     for (const [key, value] of completed) state.completed.set(key, value);
     this.streamArmedOnly = prearm && (!this.actionProtectionActive || this.streamArmedOnly);
     this.actionProtectionActive = true;
@@ -557,7 +571,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     try { await commit; }
     catch {
       this.ledgerBlocked = true;
-      throw new Error('context_recovery_required: Recovery ledger could not be committed; business actions stopped.');
+      throw new RecoveryPreparationError('Recovery ledger could not be committed; business actions stopped.');
     }
   }
 
@@ -731,6 +745,9 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     if (gate) {
       observeRecoveryDiagnostic({ event: 'native_action_gate_rejected', reason: gate }, this.options.onDiagnostic);
       return 'automatic_replay_blocked: Context recovery stopped with preserved progress. Business actions are blocked until recovery is resolved.';
+    }
+    if (state.reconciliationOnly) {
+      return 'automatic_replay_blocked: An earlier tool outcome is uncertain. Only Read, Grep and Glob are allowed for read-only reconciliation; business actions remain blocked.';
     }
     if (!state.attempted && (!this.actionProtectionActive || this.streamArmedOnly)) return undefined;
     const key = toolKey(name, input);
@@ -1027,8 +1044,9 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       });
       streamOwnsFinish = true;
       return new Response(stream, { status: response.status, headers: response.headers });
-    } catch {
+    } catch (error) {
       if (!live()) return cancelled();
+      if (error instanceof RecoveryPreparationError) return stop(error.reason);
       return stop('The model transport failed. Automatic replay is blocked and progress was preserved.');
     } finally {
       if (ownsRecovery) state.recovering = false;

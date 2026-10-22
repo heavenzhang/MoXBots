@@ -9,6 +9,7 @@ import {join,resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
 import {crc32,deflateSync} from 'node:zlib';
+import {AUTO_ROUTE_CLASSIFIER_SYSTEM_PROMPT} from '../../src/shared/autoRoute';
 
 
 const repository=resolve(import.meta.dirname,'../..');
@@ -20,7 +21,7 @@ const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'wor
 const ipcDirectory=join(root,'ipc'),socketPath=join(ipcDirectory,'management.sock');
 const secret=randomBytes(32).toString('base64url');
 const children:ChildProcess[]=[];
-let diagnostics='',calls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
+let diagnostics='',calls=0,classifierCalls=0,seenAttachment=false,hostPid:number|undefined,hostBirth:string|undefined;
 const evidence:string[]=[];
 const supplierObservations:Array<{call:number;fileReference:boolean;images:Array<{mimeType:string;sizeBytes:number;sha256:string}>}>=[];
 const digest=(bytes:Buffer)=>createHash('sha256').update(bytes).digest('hex');
@@ -95,8 +96,21 @@ const supplier=httpServer(async(request,response)=>{
     for await(const part of request){size+=part.length;if(size>8*1024*1024)throw Error('FIXTURE_REQUEST_TOO_LARGE');chunks.push(Buffer.from(part));}
     if(request.url.includes('count_tokens')){response.writeHead(200,{'content-type':'application/json'}).end('{"input_tokens":100}');return;}
     assert.equal(request.headers['x-api-key'],secret);
-    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};
+    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown;system?:unknown;stream?:unknown;tools?:unknown};
     assert.equal(body.model,'original-host-model');
+    // Utility classification shares the Provider, but does not execute a native
+    // user turn and must not increment its exactly-once counter/observations.
+    if(body.system===AUTO_ROUTE_CLASSIFIER_SYSTEM_PROMPT){
+      assert.notEqual(body.stream,true);assert.equal(body.tools,undefined);
+      classifierCalls++;record('supplier-classifier-request',{classifierCalls,streaming:false,hasTools:false});
+      response.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({
+        id:`classifier-${classifierCalls}`,type:'message',role:'assistant',model:body.model,
+        content:[{type:'text',text:'2'}],stop_reason:'end_turn',stop_sequence:null,
+        usage:{input_tokens:100,output_tokens:1},
+      }));
+      return;
+    }
+    assert.equal(body.stream,true,'native turn must use the streaming SDK transport');
     seenAttachment ||= JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/');
     calls++;supplierObservations.push({call:calls,fileReference:JSON.stringify(body.messages).includes('@myagents_files/remote-mobile/'),images:imageBlocks(body.messages)});captureProcesses();reply(response);
   }catch{response.writeHead(500).end();}
@@ -174,7 +188,9 @@ try{
     }
     assert.equal(calls,2);assert(supplierObservations[1]?.fileReference);const image=materialized.find(item=>item.name==='fixture.png')!;assert(supplierObservations[1]?.images.some(item=>item.mimeType==='image/png'&&item.sha256===image.sha256&&item.sizeBytes===image.sizeBytes));
   }
-  await writeFile(join(root,'host-result.json'),JSON.stringify({calls,seenAttachment,sessions,supplierObservations,materialized}),{mode:0o600});
+  assert(classifierCalls>0,'automatic routing must remain exercised');
+  assert.equal(supplierObservations.length,calls);
+  await writeFile(join(root,'host-result.json'),JSON.stringify({calls,classifierCalls,seenAttachment,sessions,supplierObservations,materialized}),{mode:0o600});
 }catch(error){console.error(String(error));console.error(diagnostics.slice(-6000));process.exitCode=1;}
 finally{captureProcesses();for(const c of children.reverse())await stop(c);
   for(const current of processRows()){const born=descendants.get(current.pid);if(born&&born.birth===current.birth)try{process.kill(current.pid,'SIGKILL');}catch{/* already exited */}}

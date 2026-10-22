@@ -1,0 +1,16 @@
+{
+  "url": "http://127.0.0.1:44183/__remote_sync_audit",
+  "checks": [
+    "background activity appears without taking focus",
+    "sidebar returns to original session and clears unread",
+    "offline keeps draft and disables sending",
+    "reconnect refreshes original session without losing draft",
+    "compact close control stays inside the row at the upper right",
+    "compact layout exposes remote sessions in existing flyout",
+    "actual restore retains original entry and keeps closed entry removed",
+    "observation never sends a remote mutation",
+    "no renderer errors"
+  ],
+  "errors": [],
+  "scope": "Actual renderer components; synthetic account and transport only"
+}

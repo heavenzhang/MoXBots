@@ -141,9 +141,10 @@ export class SameTurnStreamContinuation {
     void this.options.recovery.pause(reason === 'budget_exhausted'
       ? 'Stream continuation recovery window expired'
       : reason === 'uncertain_action' ? 'Stream continuation lost exclusive action authority' : 'Stream continuation input owner is unavailable')
-      .then(() => {
+      .then(persisted => {
         if (this.epoch !== epoch || this.options.rootId() !== rootId) return;
-        this.stop(reason); this.options.onFailure?.(reason, rootId);
+        const failure = persisted ? reason : 'storage_failed';
+        this.stop(failure); this.options.onFailure?.(failure, rootId);
       }).catch(() => {
         if (this.epoch !== epoch || this.options.rootId() !== rootId) return;
         this.stop('storage_failed'); this.options.onFailure?.('storage_failed', rootId);

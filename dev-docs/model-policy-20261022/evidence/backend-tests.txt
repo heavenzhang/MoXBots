@@ -1,0 +1,203 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy
+
+ ✓ |unit| src/server/auto-route/admin.unit.test.ts (3 tests) 2ms
+ ✓ |unit| src/shared/autoRoute.test.ts (28 tests) 5ms
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown
+[auto-route] admission skipped: synthetic
+
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > a routing failure never blocks the turn
+[auto-route] admission skipped: boom
+
+ ✓ |unit| src/server/auto-route/admission.unit.test.ts (24 tests) 15ms
+ ✓ |unit| src/server/auto-route/classifier.unit.test.ts (7 tests) 25ms
+ ✓ |unit| src/server/auto-route/assist.unit.test.ts (9 tests) 13ms
+stdout | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx
+[isTauriEnvironment] Detection: {
+  hasTauriGlobal: false,
+  hasTauriInternals: false,
+  protocol: 'http:',
+  hostname: 'localhost',
+  isTauriProtocol: false,
+  result: false
+}
+[browserMock] 🌐 Running in browser development mode
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > keeps the readable disk snapshot visible when identity materialization is deferred
+[ConfigProvider] Identity maintenance deferred: Error: config write interrupted
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:236:53
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > keeps the readable disk snapshot available when startup maintenance is lock-busy
+[ConfigProvider] Startup config maintenance deferred: Error: Agent config intent busy; retry
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:282:7
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3) {
+  code: 'AGENT_CONFIG_INTENT_BUSY'
+}
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > runs at most one deferred maintenance retry
+[ConfigProvider] Startup config maintenance deferred: Error: Projects busy; retry
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:295:32
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3) {
+  code: 'PROJECTS_BUSY'
+}
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > runs at most one deferred maintenance retry
+[ConfigProvider] Deferred startup config maintenance still unavailable: Error: Projects busy; retry
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:295:32
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3) {
+  code: 'PROJECTS_BUSY'
+}
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > cancels a deferred maintenance retry on unmount
+[ConfigProvider] Startup config maintenance deferred: Error: Projects busy; retry
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:314:32
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3) {
+  code: 'PROJECTS_BUSY'
+}
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > surfaces a true initial snapshot read failure
+Failed to load config: Error: config disk unavailable
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:330:47
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)
+    at runTest (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1574:12)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runSuite (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1729:8)
+    at runFiles (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:1787:3)
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > keeps the current snapshot visible when external reconciliation is lock-busy
+[ConfigProvider] Failed to refresh config after config-changed: Error: Projects busy; retry
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:343:7
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20 {
+  code: 'PROJECTS_BUSY'
+}
+
+stderr | src/renderer/config/ConfigProvider.externalRefresh.test.tsx > ConfigProvider external config invalidation > keeps healthy projects visible when external identity maintenance fails
+[ConfigProvider] Identity maintenance deferred: Error: Agent identity maintenance failed
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/config/ConfigProvider.externalRefresh.test.tsx:360:53
+    at file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20
+
+ ✓ |dom| src/renderer/config/ConfigProvider.externalRefresh.test.tsx (22 tests) 476ms
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > opens one model policy page with the backup under collapsed advanced failure recovery
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps the legacy configured backup mode and identity visible in the collapsed recovery summary
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps a real provider model panel stable when Settings receives request logs (#582)
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps the switch off on cancel, then locks dismissal until confirmed save enables it
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+stderr | src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx > Settings image-understanding enable flow > keeps the pending modal open on save failure and then allows cancellation
+[listenWithCleanup] Failed to register listener for 'cliproxy:changed': TypeError: Cannot read properties of undefined (reading 'transformCallback')
+    at transformCallback (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/core.js:72:39)
+    at listen (file:///Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/@tauri-apps/api/event.js:79:18)
+    at listenWithCleanup (/Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/utils/tauriListen.ts:130:25)
+    at /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-policy/src/renderer/hooks/useCliProxyStatus.ts:26:10
+    at Object.react_stack_bottom_frame (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:25989:20)
+    at runWithFiberInDEV (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:874:13)
+    at commitHookEffectListMount (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13249:29)
+    at commitHookPassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:13336:11)
+    at commitPassiveMountOnFiber (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15484:13)
+    at recursivelyTraversePassiveMountEffects (/Users/zhangshaohua/Documents/Codex/2026-10-15/moxbots-unified-055-integration/node_modules/react-dom/cjs/react-dom-client.development.js:15439:11)
+
+ ✓ |dom| src/renderer/pages/settings/SettingsPage.visionTool.dom.test.tsx (5 tests) 544ms
+ ✓ |integration| src/server/auto-route/policy.integration.test.ts (10 tests) 7ms
+stdout | src/server/builtin-session/model-failover.integration.test.ts > Session API failover authority > keeps the replay guard after settings are disabled mid-root
+[recovery-causal] {"event":"inference_admission_rejected","owner":"model_failover","reason":"duplicate_exact_key"}
+
+stdout | src/server/builtin-session/model-failover.integration.test.ts > Session API failover authority > does not start a new failover when background ownership becomes ambiguous
+[recovery-causal] {"event":"inference_admission_rejected","owner":"model_failover","reason":"duplicate_exact_key"}
+
+ ✓ |integration| src/server/builtin-session/model-failover.integration.test.ts (32 tests) 20ms
+
+ Test Files  9 passed (9)
+      Tests  140 passed (140)
+   Start at  22:56:46
+   Duration  4.31s (transform 1.88s, setup 959ms, collect 4.09s, tests 1.11s, environment 1.06s, prepare 722ms)

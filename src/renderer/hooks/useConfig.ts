@@ -3,7 +3,7 @@
 // New code should prefer useConfigData() / useConfigActions() directly.
 import { useConfigData } from '@/config/useConfigData';
 import { useConfigActions } from '@/config/useConfigActions';
-import type { AddProjectOptions } from '@/config/ConfigProvider';
+import type { AddProjectOptions, ConfigActionsValue } from '@/config/ConfigProvider';
 import type {
     AppConfig,
     ModelAliases,
@@ -61,6 +61,7 @@ export interface UseConfigResult {
 
     // Config updates
     updateConfig: (updates: Partial<AppConfig>) => Promise<void>;
+    modifyAutoRoutingSettings: ConfigActionsValue['modifyAutoRoutingSettings'];
     /** Merge-aware proxy update — pass only changed fields; merges against disk-latest config (#230) */
     patchProxySettings: (partial: Partial<ProxySettings>) => Promise<void>;
 

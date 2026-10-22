@@ -1894,6 +1894,22 @@
     }
   },
   "remoteSession": {
+    "sidebar": {
+      "title": "Remote sessions",
+      "unread": "New activity",
+      "close": "Close here; remote execution continues",
+      "closeSession": "Close remote session: {{title}}"
+    },
+    "sync": {
+      "loading": "Synchronizing…",
+      "current": "Synced · Automatic updates",
+      "offline": "Synchronization disconnected",
+      "error": "Synchronization failed",
+      "lastSynced": "Last synced {{time}}",
+      "retained": "Keeping the last synchronized content and your draft. Reconnect to confirm remote execution state.",
+      "reconnect": "Reconnect",
+      "network": "View network connection"
+    },
     "remote": "Remote session",
     "openSession": "Open session",
     "accountChanged": "The account changed. Open this session again from the current account’s network.",

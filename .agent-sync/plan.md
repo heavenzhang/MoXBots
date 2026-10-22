@@ -133,6 +133,10 @@ Root owns integration, packaging, installation and acceptance. Exact 6ac native 
 
 # Development Plan
 
+## MB-SESSION-RECOVERY-20261023 — 停止后的原会话只读核对
+
+停止请求可以留下已 reserve、未 commit 的未知工具结果；最新 main 的 strict ledger 会拒绝新的普通输入，且本地准备错误被误报为 transport failure。本任务保留原 Session/native history/ledger，让新的未投影输入只做 Read/Grep/Glob，拒绝业务工具、自动 retry/failover 和未知动作重放。任务 `.agent-sync/tasks/codex-session-readonly-recovery-20261023-a084d0f0.md`，证据 `dev-docs/session-readonly-recovery-20261023.md`。代码/本地/模拟验证、CI/main、正式包、原会话恢复分别追踪；唯一桌面 CI/部署 owner 仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。本轮进入下一未冻结批次，不改已冻结 519.1、现运行 518.2、云或业务状态；没有单独触发共享 CI 或跨聊天消息。
+
 ## MOXBOTS-HOST-CONFIG-20261013
 
 当前Agent按用户明确授权实现Host管理复用Settings模型配置、一键应用当前桌面主Agent来源、远端受限目录选择。交付记录 `.agent-sync/tasks/codex-host-config-delivery-20261013-5d88db02.md`（开发阶段旧记录保留），合同 `specs/tech_docs/host_configuration_reuse.md`。Node/Rust/来源及共享UI已实现，独立审查与合成IAB通过；af725700六项CI及Linux目录用例通过，已同步会话恢复main20e89b6f，组合源CI/main待核验。Host基础已由PR24交main fb92ce9c，交付分支已从其独立创建；开发冻结依赖9149753c及Mac凭据实验不进入交付；原凭据聊天负责基础拆分和统一安装，用户已授权协调。本任务未操作安装包，当前运行版本按统一安装owner回执另行核验。
@@ -814,3 +818,25 @@ Same sole owner01a12bc2 reserves unbuilt0.5.19/build519.1. Failed/unbuiltbbed re
 ## MB-REMOTE-ADMISSION-20261022 — 远程拒绝原因与安全回执
 
 原始enqueue/dispatch原因不再全部丢成通用拒绝，desktop/mobile共用安全分类与仅含阶段/ID/码的关联日志；查看端区分配置拒绝与连接失败，旧通用码兼容，保留草稿和原operation去重，不自动重发或替换Provider/权限/Session。验收与边界dev-docs/remote-session/admission-20261022.md，任务.agent-sync/tasks/codex-remote-admission-20261022-a033d65f.md。原目标Mino/Mac-mini-3约0.5.15，日志和确切build未知，不能宣称原故障已恢复。涉及现有desktop builtin client/macOS desktop/updater不可分割单元；唯一CI/build/version/install/publish/rollback owner01a12bc2-907a-7702-b6dd-788225c5dfe4不变。开发分支本地80项/类型/lint及隔离browser验证，push仅源交接；共享CI、正常主干集成和下一未冻结批次由owner处理，不自行PR触发CI，不改冻结版本，不涉及独立cloud/Host/phone发布。
+
+## MOXBOTS-MODEL-POLICY-20261022-02 — 候选池维护与模型策略交互
+
+用户明确要求完整实现并合入主干。P0显式候选池及实际执行约束，P1搜索/批量/失效引用维护，P2全宽模型身份与排序换档，P3保存/撤销和清楚说明均已实现；171项局部测试、静态检查、独立后端审阅、实际组件合成UI10组/四宽及键盘修复复验、主Agent5组交互复验通过。任务 `.agent-sync/tasks/codex-model-policy-20261022-2bdce833.md`，完整证据 `dev-docs/model-policy-20261022/acceptance.md`。
+
+沿用desktop builtin client唯一CI/main/版本/制品/发布会话01a12bc2-907a-7702-b6dd-788225c5dfe4；开发分支交精确SHA和证据，不能进入已冻结5.18/5.19批次，不自行共享CI/正式打包或更改日常App。源代码/main、合成与原生持久化/真实Provider、正式制品/生产验收分别追踪；版本/tag/制品摘要由原owner分配。原配置writer和Session/Query authority不变，无凭据/数据迁移。
+
+## MB-REMOTE-SYNC-20261023 — 已确认原型的远程会话侧栏与自动同步
+
+用户已确认原型并要求实现。当前分支 codex/remote-sync-20261023，从 main 5eb2ebc87489b92e250338026e2b971346ed9e15 开发；进度 `.agent-sync/tasks/codex-remote-sync-20261023-c59085e7.md`，验收 `dev-docs/remote-sync-20261023/acceptance.md`。已打开远程会话投影到侧栏及收起浮层；前台约1.5秒、后台约5秒快照观察，切回/重连立即校准，未读与执行状态分开；原持久化与账号/回执/Stop owner 不变。无协议、数据库或敏感权限迁移。
+
+部署单元 desktop client 的共享 CI、版本、正式构建及发布仍唯一属于 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不触发其共享 CI 或改变 0.5.19 已冻结候选。源码/本地验证、远端 main、统一发布及真实双设备验收分别追踪，下一未冻结批次待精确 SHA 交接。
+## MOXBOTS-MODEL-RECOVERY-001 — renewed completion scope, 2026-10-22
+Human requests backlog/rotation coverage first, then real ordinary Session and Rust Goal interruption-to-completion, safe pause/Stop/cancel and completed-effect count1. Task `.agent-sync/tasks/codex-model-recovery-closeout-20261022-765fc16e.md`; source/retained-log coverage/simulated/native/provider/production remain separate. Existing sole desktop/macOS/updater and shared CI/main publisher01a12bc2-907a-7702-b6dd-788225c5dfe4 retains all release/version/runtime windows; new work never modifies frozen519.1 or released518.2. Standalone metadata-only scanner can be repaired/backfilled without an App rebuild; reproducible product fixes go to the owner's next unfrozen batch. Preserve uncertain ledgers and missing historical evidence explicitly.
+
+## MOXBOTS-0519-NEXT-FEATURES-20261023 — unfrozen combined source
+
+Same sole desktop/macOS/updater and combined CI/main owner01a12bc2 integrates model-policy ded910, remote-sync cfc808, recovery a39d, readonly10f1/code85 and mobile-owned Node menu0ac9 on actual PR193/main86ba. Root retains both plan appends/adjacent imports, fixes actual390px long-classifier clipping, and passes312 combined-source checks plus scoped static/classification gates. Original author/independent evidence is reused. Exact-head shared CI and normal-main delivery pending; frozen519.1/ef33 and released518.2 remain unchanged. No new build/version/tag/native/publish claim. Dedicated demoHost deployment and real mobile review remain original mobile owner after exact source/CI/main handoff; no original101/dailyMac action. Taskcodex-release-0519-next-features-20261023-31c3ba5b.md and dev-docs/release-0519-next-20261023/acceptance.md hold boundaries.
+
+
+模型策略组合修复（MOXBOTS-MODEL-POLICY-20261022-02，2026-10-23）：原owner PR194候选的Host loopback未通过，不合并失败候选。开发分支同步main86ba，吸收owner候选目录异常隔离源修；新增仅成功auto-route CAS可使用的单请求进程内快照握手，保留外部配置/权限/owner变化拒绝和operation去重。115项局部组合测试、类型/lint/分类/依赖及独立源审通过；证据dev-docs/model-policy-20261022/acceptance.md。交原唯一desktop owner01a12bc2吸收并重验精确候选；未触发共享CI/正式构建/Host或App操作，主干及发布仍待其门禁。
+

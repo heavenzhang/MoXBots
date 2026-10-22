@@ -90,8 +90,37 @@ can be verified. Draft text and answers are not persisted by this feature.
 
 ## Observation and UI
 
-Active Tabs synchronize bounded complete snapshots, about 1.5 seconds after the
-previous request finishes. This is not token streaming. A page contains at most
+Opened Tabs synchronize bounded complete snapshots: about 1.5 seconds after the
+previous request finishes in the visible foreground, and about 5 seconds in the
+background. Focus/visibility return, activation, explicit refresh and connection
+recovery wake observation immediately; wakeups during a read coalesce into one
+subsequent read. Restored remote Tabs mount immediately so their observation does
+not depend on first activation. This is not token streaming.
+
+`remoteSessionRequest` serializes this feature's requests per connection ID,
+matching the Rust actor's single management slot. Receipts and explicit operations
+precede queued snapshot reads without interrupting an active request. Queued
+requests revalidate identity, auth generation, readiness, target scope and abort
+before invoke. Cancelling observation never retries a mutation or issues Stop.
+Other management clients retain their original owner and may still report busy.
+
+The global sidebar projects App's existing remote Tabs above local workspaces,
+including the existing collapsed-sidebar resource flyout. It submits focus/close
+intents to App, never owns a second remote history store or execution lifecycle.
+Same-identity duplicates prefer the current auth generation, then the active Tab,
+without reordering other identities. Unverified identity hides private labels;
+principal/network mismatch removes that account's rows. Current-generation
+observations update title, execution state and a separate unread marker. Only
+visible message/interaction changes mark a background view unread; metadata and
+execution-state-only changes do not. Foreground visibility clears unread.
+
+Observation status and the last successful sync time are distinct from remote
+execution status. A failed read or disconnected network retains the current
+in-memory content and draft, disables unavailable actions and exposes retry or
+the existing network page. A resumed connection rereads the original Session;
+it never replays an unconfirmed operation. Titles, messages and transient sidebar
+observations remain outside the existing durable remote-Tab codec; restored
+source labels use identifiers until current metadata is available. A page contains at most
 30 messages and the Session result body is at most 48 KiB, leaving envelope room
 under the existing 64 KiB transport limit. Oversized or unreadable projections
 fail explicitly. Native thinking and raw tool inputs are not message projections.

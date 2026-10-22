@@ -44,6 +44,13 @@ export interface SessionStats {
   totalCacheCreationTokens?: number;
 }
 
+/** Process-local handoff from a successful automatic-route CAS to its caller.
+ * Never persisted, serialized or accepted from a remote request. */
+export interface AutoRouteSnapshotAdmission {
+  isCurrent(snapshot: SessionMetadata): boolean;
+  didApply(before: SessionMetadata, after: SessionMetadata): void;
+}
+
 /**
  * Session metadata stored in sessions.json
  */

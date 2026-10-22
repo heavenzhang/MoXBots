@@ -355,7 +355,6 @@ async function main(): Promise<void> {
         const selectedModel=args.remoteMobile===true&&typeof args.modelId==='string'?args.modelId:undefined;
         if(selectedModel&&snapshot.providerRoute.kind!=='provider')throw new Error('REMOTE_MOBILE_MODEL_UNAVAILABLE');
         const providerRoute=selectedModel&&snapshot.providerRoute.kind==='provider'?{...snapshot.providerRoute,model:selectedModel}:snapshot.providerRoute;
-        const frozenObservation=JSON.stringify([snapshot.providerRoute,snapshot.model,snapshot.runtime,snapshot.runtimeSource,snapshot.permissionMode,snapshot.configSnapshotAt]);
         const provider = config.materializeProviderRouteEnv(providerRoute);
         if (provider?.apiKey) credentials.add(provider.apiKey);
         if (provider?.apiProtocol === 'openai') await ensureLoopbackBridge();
@@ -365,15 +364,31 @@ async function main(): Promise<void> {
           const {imSnapshotObservation}=await import('./routes/im-model-selection');
           if(imSnapshotObservation(snapshot)!==args.remoteObservation)throw new Error('REMOTE_SESSION_OWNER_CHANGED');
         }
+        const autoRouteSnapshotAdmission = args.remoteMobile === true
+          ? (await import('./remote-session/auto-route-admission')).createRemoteAutoRouteSnapshotAdmission({
+            initial: snapshot, observation: args.remoteObservation as string,
+            observe: (await import('./routes/im-model-selection')).imSnapshotObservation,
+            current: () => store.getSessionMetadata(sessionId),
+            isOwnerCurrent: () => {
+              const current = engine.getCurrentSessionContext();
+              return !closing && process.env.MYAGENTS_HOST_GENERATION === generation
+                && current.sessionId === sessionId && !!current.workspacePath
+                && resolve(current.workspacePath) === resolve(workspacePath);
+            },
+          }) : undefined;
         const result = await engine.sendDesktopMessage({
           text: args.text, images: mobileImages, sessionId, workspacePath, scenario: { type: 'desktop' },
           providerRoute, ...(selectedModel?{model:selectedModel}:{}), permissionMode: args.remote === true ? snapshot.permissionMode ?? 'custom':'custom',
           clientRequestId: typeof args.clientRequestId === 'string' ? args.clientRequestId : randomUUID(), turnBoundaryOnly: true,
+          autoRouteSnapshotAdmission,
           beforeDispatch: async () => {
             if (typeof args.remoteAgentId==='string') {
               try {validateRemoteAgent(args.remoteAgentId);} catch {return {accepted:false,error:'REMOTE_SESSION_AGENT_UNAVAILABLE'};}
             }
-            if(args.remoteMobile===true){const current=store.getSessionMetadata(sessionId);const {imSnapshotObservation}=await import('./routes/im-model-selection');if(!current||imSnapshotObservation(current)!==args.remoteObservation||JSON.stringify([current.providerRoute,current.model,current.runtime,current.runtimeSource,current.permissionMode,current.configSnapshotAt])!==frozenObservation)return {accepted:false,error:'REMOTE_SESSION_OWNER_CHANGED'};}
+            if (autoRouteSnapshotAdmission) {
+              const current = store.getSessionMetadata(sessionId);
+              if (!current || !autoRouteSnapshotAdmission.isCurrent(current)) return { accepted: false, error: 'REMOTE_SESSION_OWNER_CHANGED' };
+            }
             return { accepted: !closing, ...(closing ? { error: 'Host worker is shutting down' } : {}) };
           },
           onTerminal: outcome => { send({ type: 'terminal', generation: generation!, sessionId, outcome }); },

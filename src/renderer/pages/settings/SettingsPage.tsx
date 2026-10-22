@@ -368,6 +368,7 @@ export default function Settings({
     config,
     isLoading: configLoading,
     updateConfig,
+    modifyAutoRoutingSettings,
     patchProxySettings,
     providers,
     projects,
@@ -5044,10 +5045,17 @@ export default function Settings({
             <AutoRoutingSettings
               value={config.autoRouting}
               updateConfig={updateConfig}
+              modifySettings={modifyAutoRoutingSettings}
               loadTiers={loadAutoRouteTiers}
               providerNames={providerNamesById}
+              specifiedBackup={modelFailoverMode(config.modelFailover) === 'specified' && config.modelFailover?.backup
+                ? { providerId: config.modelFailover.backup.providerId, model: config.modelFailover.backup.modelId } : undefined}
+              onOpenProviders={providerId => {
+                setActiveSection('providers');
+                if (providerId && providers.some(provider => provider.id === providerId)) setManagingProviderId(providerId);
+              }}
             />
-            <details className="mt-8 border-t border-[var(--line)] pt-6">
+            <details id="model-failover-settings" className="mt-8 border-t border-[var(--line)] pt-6">
               <summary className="cursor-pointer text-sm font-medium text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
                 <span>{tSettings('modelPolicy.failover')}</span>
                 <span className="ml-2 text-xs font-normal text-[var(--ink-muted)]">
