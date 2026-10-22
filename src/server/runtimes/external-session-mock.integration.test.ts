@@ -253,6 +253,8 @@ class FakeRuntime implements AgentRuntime {
       }
       this.canSteerMessage = () => this.steerAvailable;
       this.steerMessage = async (_process, message, _images, steerOptions) => {
+        // The gate below delays the RPC reply, not native input preparation.
+        steerOptions?.beforeNativeDispatch?.();
         this.steeredMessages.push({
           message,
           clientUserMessageId: steerOptions?.clientUserMessageId,
@@ -433,6 +435,7 @@ class FakeRuntime implements AgentRuntime {
     _images?: Parameters<AgentRuntime['sendMessage']>[2],
     options?: Parameters<AgentRuntime['sendMessage']>[3],
   ): Promise<void> {
+    options?.beforeDispatch?.();
     if (this.rejectDispatchAck) {
       this.sentMessages.push(message);
       if (this.rejectedSendGate) await this.rejectedSendGate;
@@ -1317,6 +1320,25 @@ function runInjectedTurn(harness: Harness, request: TestInjectedTurnRequest) {
 }
 
 describe('external SessionEngine with fake runtime', () => {
+  it('triggers the title owner at request admission while the runtime is still silent', async () => {
+    const harness = await createHarness([{ kind: 'silent' }]);
+    const { setPostTurnTitleHook } = await import('../turn-hooks');
+    const titleHook = vi.fn();
+    setPostTurnTitleHook(titleHook);
+    const sessionId = 'session-title-before-terminal';
+    const workspacePath = join(harness.home, 'workspace');
+    const sent = await harness.engine.sendDesktopMessage(
+      desktopRequest(sessionId, workspacePath, '【发生时间】2026年10月20日第一次出现\n【实际结果】报销审批网络错误'),
+    );
+    await expect(sent.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    await waitFor(() => titleHook.mock.calls.length === 1, 'admission title hook');
+    // desktopRequest pins this model; live metadata is allowed to omit the
+    // execution snapshot's model and must not select the utility model.
+    expect(titleHook).toHaveBeenCalledWith(sessionId, 'codex', 'gpt-5-codex', undefined, 'accepted-user');
+    expect(broadcastEvents.some(event => event.event === 'chat:message-complete')).toBe(false);
+    expect((await harness.sessionStore.getSessionData(sessionId))?.messages).toHaveLength(1);
+  });
+
   it('renders a missing-multiSelect question and returns the selected answer to the runtime caller', async () => {
     const harness = await createHarness([], { runtimeType: 'dsh' });
     const sessionId = 'session-ask-normalization';
@@ -9900,4 +9922,433 @@ describe('external SessionEngine with fake runtime', () => {
       broadcastEvents.some((event) => event.event === 'chat:agent-error'),
     ).toBe(false);
   });
+});
+
+
+describe('Delegation compatibility on original turn owners', () => {
+  it.each(['codex', 'dsh'] as const)('preserves %s native work while isolating a new human draft', async runtimeType => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'original ordinary work' },
+      { kind: 'success', text: 'existing Task work' },
+      { kind: 'success', text: 'new human discussion' },
+    ], { runtimeType, runtimeSource: runtimeType === 'dsh' ? 'integrated' : 'system-cli' });
+    const launch = harness.runtime.startSession.bind(harness.runtime);
+    let currentGate: () => boolean;
+    const launchFlags: boolean[] = [];
+    vi.spyOn(harness.runtime, 'startSession').mockImplementation(async (options, events) => {
+      currentGate = options.canDelegateSubagents!;
+      const enabled = currentGate(); launchFlags.push(enabled);
+      const process = await launch(options, events);
+      if (runtimeType === 'codex') Object.assign(process, { subagentDelegationEnabledAtLaunch: enabled });
+      return process;
+    });
+    const nativeSend = harness.runtime.sendMessage.bind(harness.runtime);
+    const sendFlags: boolean[] = [];
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (...args) => {
+      sendFlags.push(currentGate());
+      return nativeSend(...args);
+    });
+    const sessionId = `compatibility-native-owner-${runtimeType}`;
+    const workspace = join(harness.home, 'workspace');
+    const request = desktopRequest(sessionId, workspace, 'ordinary authorized work without a proposal');
+    if (runtimeType === 'dsh') Object.assign(request, { permissionMode: 'workspace-autonomous', model: 'deepseek-flash', providerRoute: { kind: 'provider', providerId: 'deepseek', model: 'deepseek-flash' } });
+    const first = await harness.engine.sendDesktopMessage(request);
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(launchFlags).toEqual([true]);
+    const owner = await import('../session-engine/task-orchestration');
+    const snapshot = await owner.readSessionTasks(harness.engine);
+    if (runtimeType === 'dsh') await owner.mutateSessionPlan(harness.engine, sessionId, { kind: 'propose', proposalId: 'new-human-plan', expectedRevision: snapshot.ledger.revision,
+      content: { objective: 'New scope', scope: 'Needs a new decision', steps: [{ id: 'new-work', title: 'New work' }], acceptanceCriteria: ['Review'] } });
+    else {
+      const { createSessionPlan } = await import('../../shared/sessionPlanConfirmation');
+      await harness.sessionStore.updateSessionMetadata(sessionId, { taskOrchestration: { ...snapshot.ledger, revision: snapshot.ledger.revision + 1,
+        proposal: Object.assign(createSessionPlan({ id: 'new-human-plan', sessionId }, { objective: 'Legacy scope', scope: 'Needs a decision', steps: [{ id: 'new-work', title: 'New work' }], acceptanceCriteria: ['Review'] }), { originTurn: {} }) } });
+    }
+    const task = await harness.engine.sendDesktopMessage({ ...request, text: 'continue existing task', queueId: 'native-task-queue',
+      turnOwner: { kind: 'task', id: 'existing-task' }, turnBoundaryOnly: true, beforeDispatch: async () => ({ accepted: true }) });
+    await expect(task.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(sendFlags[0]).toBe(true);
+    const ordinary = await harness.engine.sendDesktopMessage({ ...request, text: 'discuss the new proposal' });
+    if (runtimeType === 'codex') {
+      await expect(ordinary.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' });
+      return;
+    }
+    await expect(ordinary.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    // DSH keeps its native hook and reads the current owner at every tool call.
+    expect(sendFlags.at(-1)).toBe(false);
+  });
+});
+
+describe('Native subagent confirmation lifecycle', () => {
+  it('replaces Codex at the next idle send and fences the old live callback', async () => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'draft response' },
+      { kind: 'success', text: 'confirmed response' },
+      { kind: 'success', text: 'revised draft response' },
+    ]);
+    let confirmed = false;
+    const orchestration = await import('../session-engine/task-orchestration');
+    vi.spyOn(orchestration, 'canSessionDelegateSubagents').mockImplementation(() => confirmed);
+    const callbacks: Array<() => boolean> = [];
+    const launch = harness.runtime.startSession.bind(harness.runtime);
+    vi.spyOn(harness.runtime, 'startSession').mockImplementation(async (options, events) => {
+      expect(options.canDelegateSubagents).toBeTypeOf('function');
+      callbacks.push(options.canDelegateSubagents!);
+      const enabled = options.canDelegateSubagents!();
+      const process = await launch(options, events);
+      Object.assign(process, { subagentDelegationEnabledAtLaunch: enabled });
+      return process;
+    });
+    const sessionId = 'native-delegation-confirmation';
+    const workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'discuss the draft'));
+    await expect(first.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(callbacks).toHaveLength(1);
+    expect(callbacks[0]!()).toBe(false);
+    confirmed = true;
+    const second = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'execute the confirmed plan'));
+    await expect(second.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(callbacks).toHaveLength(2);
+    expect(callbacks[0]!()).toBe(false);
+    expect(callbacks[1]!()).toBe(true);
+    expect(harness.runtime.startSessionResumeIds[1]).toBeDefined();
+    const data = await harness.sessionStore.getSessionData(sessionId);
+    expect(data?.messages.filter(message => message.role === 'user')).toHaveLength(2);
+    confirmed = false;
+    const third = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'discuss a revised draft'));
+    await expect(third.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(callbacks).toHaveLength(3);
+    expect(callbacks[1]!()).toBe(false);
+    expect(callbacks[2]!()).toBe(false);
+    expect(harness.runtime.startSessionResumeIds[2]).toBeDefined();
+  });
+
+  it('defers confirmation gate replacement until the active turn is terminal', async () => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'finish the current response', completeDelayMs: 100 },
+      { kind: 'success', text: 'next confirmed turn' },
+    ]);
+    let confirmed = false;
+    const orchestration = await import('../session-engine/task-orchestration');
+    vi.spyOn(orchestration, 'canSessionDelegateSubagents').mockImplementation(() => confirmed);
+    const launch = harness.runtime.startSession.bind(harness.runtime);
+    const starts = vi.spyOn(harness.runtime, 'startSession').mockImplementation(async (options, events) => {
+      const enabled = options.canDelegateSubagents!();
+      const process = await launch(options, events);
+      Object.assign(process, { subagentDelegationEnabledAtLaunch: enabled });
+      return process;
+    });
+    const stops = vi.spyOn(harness.runtime, 'stopSession');
+    const sessionId = 'native-delegation-busy-boundary';
+    const workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'continue the active response'));
+    await expect(first.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    confirmed = true;
+    expect(stops).not.toHaveBeenCalled();
+    expect(starts).toHaveBeenCalledOnce();
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(stops).toHaveBeenCalledOnce();
+    const data = await harness.sessionStore.getSessionData(sessionId);
+    expect(data?.messages.find(message => message.role === 'assistant')?.content).toContain('finish the current response');
+    const next = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'execute the confirmed next turn'));
+    await expect(next.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(starts).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('External final dispatch lease', () => {
+  it.each([
+    ['cold', 'revision'], ['cold', 'session'], ['warm', 'revision'], ['warm', 'session'],
+  ] as const)('rejects %s native dispatch after a post-claim %s change and awaits cancellation', async (path, change) => {
+    const harness = await createHarness([], { deferStart: path === 'cold' });
+    const sessionId = `final-lease-${path}-${change}`;
+    const workspace = join(harness.home, 'workspace');
+    if (path === 'warm') await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    let current = true;
+    let claimed = false;
+    let canceled = false;
+    const cancelGate = Promise.withResolvers<void>();
+    const cancel = vi.fn(async () => { await cancelGate.promise; canceled = true; });
+    const guard = Object.assign(async () => {
+      claimed = true;
+      return { accepted: true, validateAtCommit: () => ({ accepted: current, error: 'PLAN_REVISION_CHANGED' }) };
+    }, { cancel });
+    const nativePreparation = Promise.withResolvers<void>();
+    let preparing = false;
+    if (path === 'warm') {
+      const send = harness.runtime.sendMessage.bind(harness.runtime);
+      vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (...args) => {
+        preparing = true;
+        await nativePreparation.promise;
+        return send(...args);
+      });
+    }
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'guarded native input'),
+      beforeDispatch: guard, queueId: `lease-${path}-${change}`, turnOwner: { kind: 'task', id: `lease-${path}-${change}` }, turnBoundaryOnly: true });
+    await waitFor(() => claimed && (path === 'cold' ? harness.runtime.startSessionInitialMessages.length > 0 : preparing), 'post-claim runtime preparation');
+    if (change === 'revision') current = false;
+    else {
+      const lifecycle = await import('./external-session/lifecycle');
+      lifecycle.bindExternalSessionContext({ sessionId: 'different-session', workspacePath: workspace, scenario: { type: 'desktop' } });
+    }
+    if (path === 'cold') harness.runtime.releaseStart(); else nativePreparation.resolve();
+    await waitFor(() => cancel.mock.calls.length > 0, 'known-unsent cancellation');
+    expect(harness.runtime.sentMessages).toEqual([]);
+    expect(canceled).toBe(false);
+    let settled = false;
+    void sent.dispatchAcceptance!.then(() => { settled = true; });
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(settled).toBe(false);
+    cancelGate.resolve();
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false });
+    expect(canceled).toBe(true);
+  });
+
+  it('retains the claim when native dispatch began but its acknowledgement is lost', async () => {
+    const harness = await createHarness([]);
+    const sessionId = 'final-lease-uncertain';
+    const workspace = join(harness.home, 'workspace');
+    await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const cancel = vi.fn();
+    const guard = Object.assign(async () => ({ accepted: true, validateAtCommit: () => ({ accepted: true }) }), { cancel });
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (_process, message, _images, options) => {
+      options?.beforeDispatch?.();
+      harness.runtime.sentMessages.push(message);
+      throw new Error('native acknowledgement lost');
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'possibly consumed'),
+      beforeDispatch: guard, queueId: 'uncertain-lease', turnOwner: { kind: 'task', id: 'uncertain-lease' }, turnBoundaryOnly: true });
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false });
+    expect(harness.runtime.sentMessages).toEqual(['possibly consumed']);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('External native lease consumption', () => {
+  it('consumes the actual native boundary once while leaving the validator repeatable', async () => {
+    const harness = await createHarness([{ kind: 'success', text: 'once' }]);
+    const sessionId = 'native-boundary-once';
+    const workspace = join(harness.home, 'workspace');
+    await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const validateAtCommit = vi.fn(() => ({ accepted: true }));
+    const cancel = vi.fn();
+    const guard = Object.assign(async () => ({ accepted: true, validateAtCommit }), { cancel });
+    const native = harness.runtime.sendMessage.bind(harness.runtime);
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (process, message, images, options) => {
+      options?.beforeDispatch?.();
+      expect(() => options?.beforeDispatch?.()).toThrow();
+      return native(process, message, images, { ...options, beforeDispatch: undefined });
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'execute once'),
+      beforeDispatch: guard, queueId: 'native-once', turnOwner: { kind: 'task', id: 'native-once' }, turnBoundaryOnly: true });
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(validateAtCommit).toHaveBeenCalledOnce();
+    expect(harness.runtime.sentMessages).toEqual(['execute once']);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('Confirmed plan original-owner claim activation', () => {
+  it.each(['dsh'] as const)('opens %s delegation only after the original queue claims the pending plan', async runtimeType => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'draft discussion' },
+      { kind: 'success', text: 'confirmed execution' },
+    ], { runtimeType, runtimeSource: runtimeType === 'dsh' ? 'integrated' : 'system-cli' });
+    const launch = harness.runtime.startSession.bind(harness.runtime);
+    const flags: boolean[] = [];
+    vi.spyOn(harness.runtime, 'startSession').mockImplementation(async (options, events) => {
+      const enabled = options.canDelegateSubagents!();
+      flags.push(enabled);
+      const process = await launch(options, events);
+      return process;
+    });
+    const sessionId = `plan-original-claim-${runtimeType}`;
+    const workspace = join(harness.home, 'workspace');
+    const request = desktopRequest(sessionId, workspace, 'discuss the plan');
+    if (runtimeType === 'dsh') Object.assign(request, { permissionMode: 'workspace-autonomous', model: 'deepseek-flash', providerRoute: { kind: 'provider', providerId: 'deepseek', model: 'deepseek-flash' } });
+    const first = await harness.engine.sendDesktopMessage(request);
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    const owner = await import('../session-engine/task-orchestration');
+    const snapshot = await owner.readSessionTasks(harness.engine);
+    await owner.mutateSessionPlan(harness.engine, sessionId, { kind: 'propose', proposalId: 'confirmed-plan', expectedRevision: snapshot.ledger.revision,
+      content: { objective: 'Controlled execution', scope: 'One verified outcome', steps: [{ id: 'work', title: 'Verify outcome' }], acceptanceCriteria: ['Evidence passes'] } });
+    const release = Promise.withResolvers<void>();
+    let waitingForOriginalQueue = false;
+    const send = harness.engine.sendDesktopMessage.bind(harness.engine);
+    vi.spyOn(harness.engine, 'sendDesktopMessage').mockImplementation(async request => {
+      waitingForOriginalQueue = true;
+      await release.promise;
+      return send(request);
+    });
+    const confirmed = owner.actOnSessionPlan(harness.engine, { kind: 'confirm', sessionId, proposalId: 'confirmed-plan', expectedRevision: 1,
+      requestId: '00000000-0000-4000-8000-000000000081' });
+    await waitFor(() => waitingForOriginalQueue, 'confirmed pending plan queue admission');
+    expect(harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.planStart?.state).toBe('pending');
+    expect(owner.canSessionDelegateSubagents(sessionId)).toBe(false);
+    expect(flags).toEqual([true]);
+    release.resolve();
+    await confirmed;
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    await waitFor(() => harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.planStart?.state === 'dispatched', 'plan dispatched receipt');
+    expect(owner.canSessionDelegateSubagents(sessionId)).toBe(true);
+    expect(flags).toEqual([true]);
+    expect(harness.runtime.sentMessages.filter(message => message.includes('已确认任务方案'))).toHaveLength(1);
+  });
+});
+
+
+describe('External compatibility acknowledgement final lease', () => {
+  it('keeps an acknowledged native dispatch unknown when a required validator callback was omitted', async () => {
+    const harness = await createHarness([]);
+    const sessionId = 'compatibility-missing-final-validator';
+    const workspace = join(harness.home, 'workspace');
+    await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const cancel = vi.fn();
+    const validateAtCommit = vi.fn(() => ({ accepted: true }));
+    const guard = Object.assign(async () => ({ accepted: true, validateAtCommit }), { cancel });
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (_process, message) => {
+      harness.runtime.sentMessages.push(message);
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'unsupported final gate'),
+      beforeDispatch: guard, queueId: 'missing-final-validator', turnOwner: { kind: 'task', id: 'missing-final-validator' }, turnBoundaryOnly: true });
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: expect.stringContaining('required final dispatch validator') });
+    expect(validateAtCommit).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+    expect(harness.runtime.sentMessages).toEqual(['unsupported final gate']);
+  });
+});
+
+describe('Unsupported Runtime persisted plan dispatch fence', () => {
+  async function persisted(harness: Harness, sessionId: string, workspacePath: string, state: 'pending' | 'revision' | 'unknown-claim') {
+    const { createSessionPlan, confirmSessionPlan } = await import('../../shared/sessionPlanConfirmation');
+    let proposal = Object.assign(createSessionPlan({ id: 'legacy-plan', sessionId }, { objective: 'Decision', scope: 'Original scope', steps: [{ id: 'work', title: 'Work' }], acceptanceCriteria: ['Verified'] }), { originTurn: {} });
+    if (state === 'unknown-claim') proposal = confirmSessionPlan(proposal, { sessionId, proposalId: proposal.id, expectedRevision: 1 }, { source: 'button', evidenceId: 'legacy-confirm', confirmedAt: new Date().toISOString() }) as typeof proposal;
+    if (state === 'revision') proposal.state = 'revising';
+    const metadata = createSessionMetadata(workspacePath, { id: sessionId,
+      runtime: harness.runtime.type, runtimeSource: 'system-cli', taskOrchestration: { revision: 1, tasks: [], bindings: {}, attempts: [], reviews: [], proposal,
+        ...(state === 'unknown-claim' ? { planStart: { proposalId: 'legacy-plan', revision: 1, requestId: 'legacy-confirm', queueId: 'session-plan:cold', state: 'claimed', claimId: 'unknown' } } : {}) } });
+    if (harness.sessionStore.getSessionMetadata(sessionId)) await harness.sessionStore.updateSessionMetadata(sessionId, { taskOrchestration: metadata.taskOrchestration });
+    else await harness.sessionStore.saveSessionMetadata(metadata);
+  }
+  it.each((['codex', 'claude-code'] as const).flatMap(runtime => (['cold', 'warm'] as const).flatMap(path => (['pending', 'revision', 'unknown-claim'] as const).map(state => ({ runtime, path, state })))))('blocks $runtime/$path/$state before native root input', async ({ runtime, path, state }) => {
+    const harness = await createHarness([{ kind: 'success', text: 'must not execute' }], { runtimeType: runtime });
+    const sessionId = `unsupported-${runtime}-${path}-${state}`, workspace = join(harness.home, 'workspace');
+    await persisted(harness, sessionId, workspace, state);
+    if (path === 'warm') await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const before = JSON.stringify(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration);
+    const result = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'continue the plan'), permissionMode: getDefaultRuntimePermissionMode(runtime) });
+    const receipt = result.dispatchAcceptance ? await result.dispatchAcceptance : result;
+    expect(receipt).toMatchObject({ accepted: false, error: expect.stringContaining('PLAN_RUNTIME_DELEGATION_UNAVAILABLE') });
+    expect(harness.runtime.sentMessages).toEqual([]);
+    expect(harness.runtime.startSessionInitialMessages.filter(Boolean)).toEqual([]);
+    expect(JSON.stringify(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration)).toBe(before);
+  });
+  it.each(['codex', 'claude-code'] as const)('fresh-reads a concurrent legacy plan immediately before %s native stdin/RPC', async runtime => {
+    const harness = await createHarness([], { runtimeType: runtime });
+    const sessionId = `race-${runtime}`, workspace = join(harness.home, 'workspace');
+    await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' } });
+    const preparing = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let nativeInputs = 0;
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (_process, _text, _images, options) => {
+      preparing.resolve(); await release.promise;
+      options?.beforeDispatch?.(); // same synchronous boundary as the real adapters
+      nativeInputs++;
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'not a plan when queued'), permissionMode: getDefaultRuntimePermissionMode(runtime) });
+    await preparing.promise;
+    await persisted(harness, sessionId, workspace, 'pending');
+    release.resolve();
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: expect.stringContaining('PLAN_RUNTIME_DELEGATION_UNAVAILABLE') });
+    expect(nativeInputs).toBe(0);
+    expect(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration!.proposal?.state).toBe('awaiting_confirmation');
+  });
+  it.each(['codex', 'claude-code'] as const)('preserves unrelated original Task authority on %s beside a pending plan', async runtime => {
+    const harness = await createHarness([{ kind: 'success', text: 'independent task' }], { runtimeType: runtime });
+    const sessionId = `independent-${runtime}`, workspace = join(harness.home, 'workspace');
+    await persisted(harness, sessionId, workspace, 'pending');
+    const result = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'continue original task'), permissionMode: getDefaultRuntimePermissionMode(runtime), queueId: 'original-task-queue', turnOwner: { kind: 'task', id: 'original-task' }, turnBoundaryOnly: true, beforeDispatch: async () => ({ accepted: true }) });
+    await expect(result.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(harness.runtime.sentMessages).toEqual(['continue original task']);
+  });
+  it.each(['pending', 'revision', 'unknown-claim'] as const)('blocks realtime Codex %s before its native steer adapter', async state => {
+    const harness = await createHarness([{ kind: 'silent' }], { realtimeSteering: true, config: { chatQueueResponseMode: 'realtime' } });
+    const sessionId = `realtime-plan-${state}`, workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'active root'));
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await persisted(harness, sessionId, workspace, state);
+    const before = JSON.stringify(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration);
+    const sent = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'must stay unsent'));
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: expect.stringContaining('PLAN_RUNTIME_DELEGATION_UNAVAILABLE') });
+    expect(harness.runtime.steeredMessages).toEqual([]);
+    expect((await harness.sessionStore.getSessionData(sessionId))?.messages.some(message => message.role === 'user' && message.content === 'must stay unsent')).toBe(false);
+    expect(JSON.stringify(harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration)).toBe(before);
+  });
+
+  it.each(['guard', 'adapter'] as const)('fresh-checks realtime plan state after asynchronous %s preparation', async boundary => {
+    const harness = await createHarness([{ kind: 'silent' }], { realtimeSteering: true, config: { chatQueueResponseMode: 'realtime' } });
+    const sessionId = `realtime-plan-race-${boundary}`, workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'active root'));
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    const preparing = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    let nativeInputs = 0;
+    const guard = async () => { preparing.resolve(); await release.promise; return { accepted: true as const }; };
+    vi.spyOn(harness.runtime as AgentRuntime & { steerMessage: NonNullable<AgentRuntime['steerMessage']> }, 'steerMessage').mockImplementation(async (_process, _text, _images, options) => {
+      if (boundary === 'adapter') { preparing.resolve(); await release.promise; }
+      options?.beforeNativeDispatch?.();
+      nativeInputs++;
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'late legacy plan'), ...(boundary === 'guard' ? { beforeDispatch: guard } : {}) });
+    await preparing.promise;
+    await persisted(harness, sessionId, workspace, 'pending');
+    release.resolve();
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false, error: expect.stringContaining('PLAN_RUNTIME_DELEGATION_UNAVAILABLE') });
+    expect(nativeInputs).toBe(0);
+  });
+
+  it.each(['task', 'goal'] as const)('keeps the independent original %s owner for realtime plan policy', async kind => {
+    const harness = await createHarness([{ kind: 'silent' }], { realtimeSteering: true, config: { chatQueueResponseMode: 'realtime' } });
+    const sessionId = `realtime-independent-${kind}`, workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'original authorized root'), queueId: 'original-root', turnOwner: { kind, id: 'original-owner' }, beforeDispatch: async () => ({ accepted: true }), turnBoundaryOnly: true });
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await persisted(harness, sessionId, workspace, 'pending');
+    const sent = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'independent realtime input'));
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    expect(harness.runtime.steeredMessages).toHaveLength(1);
+    expect((await harness.sessionStore.getSessionData(sessionId))?.messages.some(message => message.content === 'independent realtime input')).toBe(false); // RPC ack alone is not consumption.
+  });
+
+  it.each(['session', 'turn', 'process', 'lease', 'generation'] as const)('rejects a realtime %s change at the native boundary', async change => {
+    const harness = await createHarness([{ kind: 'silent' }], { realtimeSteering: true, config: { chatQueueResponseMode: 'realtime' } });
+    const sessionId = `realtime-stale-${change}`, workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'active original root'));
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    const preparing = Promise.withResolvers<RuntimeProcess>(), release = Promise.withResolvers<void>();
+    let current = true, nativeInputs = 0;
+    vi.spyOn(harness.runtime as AgentRuntime & { steerMessage: NonNullable<AgentRuntime['steerMessage']> }, 'steerMessage').mockImplementation(async (process, _text, _images, options) => {
+      preparing.resolve(process); await release.promise;
+      options?.beforeNativeDispatch?.(); nativeInputs++;
+    });
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'stale realtime input'), beforeDispatch: async () => ({ accepted: true, validateAtCommit: () => ({ accepted: current, error: 'stale realtime lease' }) }) });
+    const process = await preparing.promise;
+    if (change === 'session') (await import('./external-session/lifecycle')).bindExternalSessionContext({ sessionId: 'replacement-session', workspacePath: workspace, scenario: { type: 'desktop' } });
+    if (change === 'turn') (await import('./external-session/turn-lifecycle')).bindExternalTurn('replacement-turn');
+    if (change === 'process') process.exited = true;
+    if (change === 'lease') current = false;
+    if (change === 'generation') (await import('./external-session/operation-queue')).clearExternalQueueOperationsWithCancellation();
+    release.resolve();
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: false });
+    expect(nativeInputs).toBe(0);
+    if (change === 'process') process.exited = false;
+  });
+
 });

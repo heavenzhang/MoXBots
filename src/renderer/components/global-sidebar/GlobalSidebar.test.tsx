@@ -280,13 +280,13 @@ describe('GlobalSidebar rail flyout', () => {
     expect(button).toBeEnabled();
   });
 
-  it.each(['complete', 'protected', 'generating', 'maintenance', 'archived', 'external'] as const)(
+  it.each(['complete', 'running', 'protected', 'generating', 'maintenance', 'archived', 'external'] as const)(
     'does not offer continuation for a %s Session', async kind => {
       mocks.forcedRail = false;
       const project = { id: 'project-1', name: 'Project one', path: '/work/project-one' };
       const session = { id: 'session-1', agentDir: project.path, title: 'History',
         createdAt: '2026-09-02T00:00:00Z', lastActiveAt: '2026-09-02T12:00:00Z',
-        ...(kind === 'complete' ? {} : { continuation: { turnId: 'turn-1', rootUserMessageId: 'user-1', status: 'stopped' } }),
+        ...(kind === 'complete' ? {} : { continuation: { turnId: 'turn-1', rootUserMessageId: 'user-1', status: kind === 'running' ? 'running' : 'stopped' } }),
         ...(kind === 'maintenance' ? { systemMaintenanceKind: 'memory_auto_update' } : {}),
         ...(kind === 'archived' ? { archived: true } : {}),
         ...(kind === 'external' ? { runtime: 'codex' } : {}),

@@ -2,7 +2,7 @@ const { withAndroidManifest, withInfoPlist, withProjectBuildGradle, withGradlePr
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
-/** Permissions belong to the installed internal app, requested only on a mic tap. */
+/** Native privacy descriptions match explicit attachment and microphone actions. */
 module.exports = function withMoxBotsRemote(config) {
   config = withDangerousMod(config, ['ios', async (entry) => {
     // The bare Expo template has a generic launch image even without the splash
@@ -57,6 +57,7 @@ allprojects {
     return entry;
   });
   config = withInfoPlist(config, (entry) => {
+    entry.modResults.NSPhotoLibraryUsageDescription = '用于将你主动选择的照片添加为会话附件。';
     entry.modResults.NSMicrophoneUsageDescription = '用于录制你主动发起的语音输入。';
     entry.modResults.NSSpeechRecognitionUsageDescription = '将语音转换为可编辑的消息草稿。';
     entry.modResults.MoxBotsServiceOrigin = 'https://140.143.183.232';

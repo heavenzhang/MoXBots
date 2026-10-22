@@ -74,6 +74,7 @@ pub mod session_goal;
 pub mod session_metadata;
 pub mod session_tags;
 pub mod session_transcript;
+mod session_user_action;
 pub mod session_visibility;
 mod sidecar;
 pub mod space_cloud;

@@ -1,0 +1,3872 @@
+{
+  "boundary": "Real PlanCard/Composer; synthetic SDK capability, ledger, Chat and Inspector. No submit action, native Runtime or Provider.",
+  "checks": [
+    {
+      "key": "1280-1000-light",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 476.78125,
+          "width": 730,
+          "height": 21,
+          "top": 476.78125,
+          "right": 1131,
+          "bottom": 497.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 544.78125,
+          "width": 140,
+          "height": 17,
+          "top": 544.78125,
+          "right": 561,
+          "bottom": 561.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 608.78125,
+          "width": 710,
+          "height": 21,
+          "top": 608.78125,
+          "right": 1131,
+          "bottom": 629.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 554.5625,
+          "width": 734,
+          "height": 89,
+          "top": 554.5625,
+          "right": 1135,
+          "bottom": 643.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 643.5625,
+          "width": 122,
+          "height": 42,
+          "top": 643.5625,
+          "right": 523,
+          "bottom": 685.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 805,
+          "y": 236,
+          "width": 68,
+          "height": 32,
+          "top": 236,
+          "right": 873,
+          "bottom": 268,
+          "left": 805
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 877,
+          "y": 236,
+          "width": 100,
+          "height": 32,
+          "top": 236,
+          "right": 977,
+          "bottom": 268,
+          "left": 877
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1107,
+          "y": 236,
+          "width": 32,
+          "height": 32,
+          "top": 236,
+          "right": 1139,
+          "bottom": 268,
+          "left": 1107
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 838,
+          "width": 734,
+          "height": 52,
+          "top": 838,
+          "right": 1135,
+          "bottom": 890,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 402,
+          "y": 759,
+          "width": 62,
+          "height": 62,
+          "top": 759,
+          "right": 464,
+          "bottom": 821,
+          "left": 402
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 551,
+          "y": 894,
+          "width": 66,
+          "height": 36,
+          "top": 894,
+          "right": 617,
+          "bottom": 930,
+          "left": 551
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 524.5625,
+          "width": 734,
+          "height": 89,
+          "top": 524.5625,
+          "right": 1135,
+          "bottom": 613.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-light",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 476.78125,
+          "width": 730,
+          "height": 21,
+          "top": 476.78125,
+          "right": 1131,
+          "bottom": 497.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 544.78125,
+          "width": 140,
+          "height": 17,
+          "top": 544.78125,
+          "right": 561,
+          "bottom": 561.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 608.78125,
+          "width": 710,
+          "height": 21,
+          "top": 608.78125,
+          "right": 1131,
+          "bottom": 629.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 554.5625,
+          "width": 734,
+          "height": 89,
+          "top": 554.5625,
+          "right": 1135,
+          "bottom": 643.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 643.5625,
+          "width": 122,
+          "height": 42,
+          "top": 643.5625,
+          "right": 523,
+          "bottom": 685.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 805,
+          "y": 236,
+          "width": 68,
+          "height": 32,
+          "top": 236,
+          "right": 873,
+          "bottom": 268,
+          "left": 805
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 877,
+          "y": 236,
+          "width": 100,
+          "height": 32,
+          "top": 236,
+          "right": 977,
+          "bottom": 268,
+          "left": 877
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1107,
+          "y": 236,
+          "width": 32,
+          "height": 32,
+          "top": 236,
+          "right": 1139,
+          "bottom": 268,
+          "left": 1107
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 838,
+          "width": 734,
+          "height": 52,
+          "top": 838,
+          "right": 1135,
+          "bottom": 890,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 402,
+          "y": 759,
+          "width": 62,
+          "height": 62,
+          "top": 759,
+          "right": 464,
+          "bottom": 821,
+          "left": 402
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 551,
+          "y": 894,
+          "width": 66,
+          "height": 36,
+          "top": 894,
+          "right": 617,
+          "bottom": 930,
+          "left": 551
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 524.5625,
+          "width": 734,
+          "height": 89,
+          "top": 524.5625,
+          "right": 1135,
+          "bottom": 613.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "1280-1000-dark",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 399.390625,
+          "width": 324,
+          "height": 21,
+          "top": 399.390625,
+          "right": 357,
+          "bottom": 420.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 533.171875,
+          "width": 320,
+          "height": 63,
+          "top": 533.171875,
+          "right": 353,
+          "bottom": 596.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 643.171875,
+          "width": 140,
+          "height": 17,
+          "top": 643.171875,
+          "right": 193,
+          "bottom": 660.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 567.171875,
+          "width": 300,
+          "height": 42,
+          "top": 567.171875,
+          "right": 353,
+          "bottom": 609.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 568.34375,
+          "width": 324,
+          "height": 89,
+          "top": 568.34375,
+          "right": 357,
+          "bottom": 657.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 641.34375,
+          "width": 122,
+          "height": 42,
+          "top": 641.34375,
+          "right": 155,
+          "bottom": 683.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 275,
+          "width": 68,
+          "height": 32,
+          "top": 275,
+          "right": 97,
+          "bottom": 307,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 275,
+          "width": 100,
+          "height": 32,
+          "top": 275,
+          "right": 201,
+          "bottom": 307,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 329,
+          "y": 275,
+          "width": 32,
+          "height": 32,
+          "top": 275,
+          "right": 361,
+          "bottom": 307,
+          "left": 329
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 835,
+          "width": 324,
+          "height": 52,
+          "top": 835,
+          "right": 357,
+          "bottom": 887,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 756,
+          "width": 62,
+          "height": 62,
+          "top": 756,
+          "right": 96,
+          "bottom": 818,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 896,
+          "width": 30,
+          "height": 26,
+          "top": 896,
+          "right": 145,
+          "bottom": 922,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 399.390625,
+          "width": 324,
+          "height": 21,
+          "top": 399.390625,
+          "right": 357,
+          "bottom": 420.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 522.34375,
+          "width": 324,
+          "height": 89,
+          "top": 522.34375,
+          "right": 357,
+          "bottom": 611.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "390-1000-light",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 399.390625,
+          "width": 324,
+          "height": 21,
+          "top": 399.390625,
+          "right": 357,
+          "bottom": 420.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 533.171875,
+          "width": 320,
+          "height": 63,
+          "top": 533.171875,
+          "right": 353,
+          "bottom": 596.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 643.171875,
+          "width": 140,
+          "height": 17,
+          "top": 643.171875,
+          "right": 193,
+          "bottom": 660.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 567.171875,
+          "width": 300,
+          "height": 42,
+          "top": 567.171875,
+          "right": 353,
+          "bottom": 609.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 568.34375,
+          "width": 324,
+          "height": 89,
+          "top": 568.34375,
+          "right": 357,
+          "bottom": 657.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 641.34375,
+          "width": 122,
+          "height": 42,
+          "top": 641.34375,
+          "right": 155,
+          "bottom": 683.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 275,
+          "width": 68,
+          "height": 32,
+          "top": 275,
+          "right": 97,
+          "bottom": 307,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 275,
+          "width": 100,
+          "height": 32,
+          "top": 275,
+          "right": 201,
+          "bottom": 307,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 329,
+          "y": 275,
+          "width": 32,
+          "height": 32,
+          "top": 275,
+          "right": 361,
+          "bottom": 307,
+          "left": 329
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 835,
+          "width": 324,
+          "height": 52,
+          "top": 835,
+          "right": 357,
+          "bottom": 887,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 756,
+          "width": 62,
+          "height": 62,
+          "top": 756,
+          "right": 96,
+          "bottom": 818,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 896,
+          "width": 30,
+          "height": 26,
+          "top": 896,
+          "right": 145,
+          "bottom": 922,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 399.390625,
+          "width": 324,
+          "height": 21,
+          "top": 399.390625,
+          "right": 357,
+          "bottom": 420.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 522.34375,
+          "width": 324,
+          "height": 89,
+          "top": 522.34375,
+          "right": 357,
+          "bottom": 611.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "390-1000-dark",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 400.390625,
+          "width": 254,
+          "height": 21,
+          "top": 400.390625,
+          "right": 287,
+          "bottom": 421.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 534.171875,
+          "width": 250,
+          "height": 63,
+          "top": 534.171875,
+          "right": 283,
+          "bottom": 597.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 630.171875,
+          "width": 140,
+          "height": 17,
+          "top": 630.171875,
+          "right": 193,
+          "bottom": 647.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 483.171875,
+          "width": 230,
+          "height": 42,
+          "top": 483.171875,
+          "right": 283,
+          "bottom": 525.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 532.34375,
+          "width": 254,
+          "height": 89,
+          "top": 532.34375,
+          "right": 287,
+          "bottom": 621.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 605.34375,
+          "width": 122,
+          "height": 42,
+          "top": 605.34375,
+          "right": 155,
+          "bottom": 647.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 276,
+          "width": 68,
+          "height": 32,
+          "top": 276,
+          "right": 97,
+          "bottom": 308,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 276,
+          "width": 100,
+          "height": 32,
+          "top": 276,
+          "right": 201,
+          "bottom": 308,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 259,
+          "y": 276,
+          "width": 32,
+          "height": 32,
+          "top": 276,
+          "right": 291,
+          "bottom": 308,
+          "left": 259
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 799,
+          "width": 254,
+          "height": 52,
+          "top": 799,
+          "right": 287,
+          "bottom": 851,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 720,
+          "width": 62,
+          "height": 62,
+          "top": 720,
+          "right": 96,
+          "bottom": 782,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 858,
+          "width": 30,
+          "height": 26,
+          "top": 858,
+          "right": 145,
+          "bottom": 884,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 400.390625,
+          "width": 254,
+          "height": 21,
+          "top": 400.390625,
+          "right": 287,
+          "bottom": 421.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 486.34375,
+          "width": 254,
+          "height": 89,
+          "top": 486.34375,
+          "right": 287,
+          "bottom": 575.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "320-1000-light",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 400.390625,
+          "width": 254,
+          "height": 21,
+          "top": 400.390625,
+          "right": 287,
+          "bottom": 421.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 534.171875,
+          "width": 250,
+          "height": 63,
+          "top": 534.171875,
+          "right": 283,
+          "bottom": 597.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 630.171875,
+          "width": 140,
+          "height": 17,
+          "top": 630.171875,
+          "right": 193,
+          "bottom": 647.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 483.171875,
+          "width": 230,
+          "height": 42,
+          "top": 483.171875,
+          "right": 283,
+          "bottom": 525.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 532.34375,
+          "width": 254,
+          "height": 89,
+          "top": 532.34375,
+          "right": 287,
+          "bottom": 621.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 605.34375,
+          "width": 122,
+          "height": 42,
+          "top": 605.34375,
+          "right": 155,
+          "bottom": 647.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 276,
+          "width": 68,
+          "height": 32,
+          "top": 276,
+          "right": 97,
+          "bottom": 308,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 276,
+          "width": 100,
+          "height": 32,
+          "top": 276,
+          "right": 201,
+          "bottom": 308,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 259,
+          "y": 276,
+          "width": 32,
+          "height": 32,
+          "top": 276,
+          "right": 291,
+          "bottom": 308,
+          "left": 259
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 799,
+          "width": 254,
+          "height": 52,
+          "top": 799,
+          "right": 287,
+          "bottom": 851,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 720,
+          "width": 62,
+          "height": 62,
+          "top": 720,
+          "right": 96,
+          "bottom": 782,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 858,
+          "width": 30,
+          "height": 26,
+          "top": 858,
+          "right": 145,
+          "bottom": 884,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 400.390625,
+          "width": 254,
+          "height": 21,
+          "top": 400.390625,
+          "right": 287,
+          "bottom": 421.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 486.34375,
+          "width": 254,
+          "height": 89,
+          "top": 486.34375,
+          "right": 287,
+          "bottom": 575.34375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "320-1000-dark",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 361.78125,
+          "width": 730,
+          "height": 21,
+          "top": 361.78125,
+          "right": 1131,
+          "bottom": 382.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 429.78125,
+          "width": 140,
+          "height": 17,
+          "top": 429.78125,
+          "right": 561,
+          "bottom": 446.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 361.78125,
+          "width": 710,
+          "height": 21,
+          "top": 361.78125,
+          "right": 1131,
+          "bottom": 382.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 365.5625,
+          "width": 734,
+          "height": 89,
+          "top": 365.5625,
+          "right": 1135,
+          "bottom": 454.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 395.5625,
+          "width": 122,
+          "height": 42,
+          "top": 395.5625,
+          "right": 523,
+          "bottom": 437.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 805,
+          "y": 236,
+          "width": 68,
+          "height": 32,
+          "top": 236,
+          "right": 873,
+          "bottom": 268,
+          "left": 805
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 877,
+          "y": 236,
+          "width": 100,
+          "height": 32,
+          "top": 236,
+          "right": 977,
+          "bottom": 268,
+          "left": 877
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1107,
+          "y": 236,
+          "width": 32,
+          "height": 32,
+          "top": 236,
+          "right": 1139,
+          "bottom": 268,
+          "left": 1107
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 606,
+          "width": 734,
+          "height": 52,
+          "top": 606,
+          "right": 1135,
+          "bottom": 658,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 402,
+          "y": 527,
+          "width": 62,
+          "height": 62,
+          "top": 527,
+          "right": 464,
+          "bottom": 589,
+          "left": 402
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 551,
+          "y": 662,
+          "width": 66,
+          "height": 36,
+          "top": 662,
+          "right": 617,
+          "bottom": 698,
+          "left": 551
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 327.5625,
+          "width": 734,
+          "height": 89,
+          "top": 327.5625,
+          "right": 1135,
+          "bottom": 416.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "1280-768-light",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 361.78125,
+          "width": 730,
+          "height": 21,
+          "top": 361.78125,
+          "right": 1131,
+          "bottom": 382.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 429.78125,
+          "width": 140,
+          "height": 17,
+          "top": 429.78125,
+          "right": 561,
+          "bottom": 446.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 421,
+          "y": 361.78125,
+          "width": 710,
+          "height": 21,
+          "top": 361.78125,
+          "right": 1131,
+          "bottom": 382.78125,
+          "left": 421
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 365.5625,
+          "width": 734,
+          "height": 89,
+          "top": 365.5625,
+          "right": 1135,
+          "bottom": 454.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 395.5625,
+          "width": 122,
+          "height": 42,
+          "top": 395.5625,
+          "right": 523,
+          "bottom": 437.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 805,
+          "y": 236,
+          "width": 68,
+          "height": 32,
+          "top": 236,
+          "right": 873,
+          "bottom": 268,
+          "left": 805
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 877,
+          "y": 236,
+          "width": 100,
+          "height": 32,
+          "top": 236,
+          "right": 977,
+          "bottom": 268,
+          "left": 877
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1107,
+          "y": 236,
+          "width": 32,
+          "height": 32,
+          "top": 236,
+          "right": 1139,
+          "bottom": 268,
+          "left": 1107
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 606,
+          "width": 734,
+          "height": 52,
+          "top": 606,
+          "right": 1135,
+          "bottom": 658,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 402,
+          "y": 527,
+          "width": 62,
+          "height": 62,
+          "top": 527,
+          "right": 464,
+          "bottom": 589,
+          "left": 402
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 551,
+          "y": 662,
+          "width": 66,
+          "height": 36,
+          "top": 662,
+          "right": 617,
+          "bottom": 698,
+          "left": 551
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 360.390625,
+          "width": 734,
+          "height": 21,
+          "top": 360.390625,
+          "right": 1135,
+          "bottom": 381.390625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 327.5625,
+          "width": 734,
+          "height": 89,
+          "top": 327.5625,
+          "right": 1135,
+          "bottom": 416.5625,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "1280-768-dark",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 399.390625,
+          "width": 324,
+          "height": 21,
+          "top": 399.390625,
+          "right": 357,
+          "bottom": 420.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 358.171875,
+          "width": 320,
+          "height": 63,
+          "top": 358.171875,
+          "right": 353,
+          "bottom": 421.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 381.171875,
+          "width": 140,
+          "height": 17,
+          "top": 381.171875,
+          "right": 193,
+          "bottom": 398.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 409.171875,
+          "width": 300,
+          "height": 42,
+          "top": 409.171875,
+          "right": 353,
+          "bottom": 451.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 363.375,
+          "width": 324,
+          "height": 89,
+          "top": 363.375,
+          "right": 357,
+          "bottom": 452.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 393.375,
+          "width": 122,
+          "height": 42,
+          "top": 393.375,
+          "right": 155,
+          "bottom": 435.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 275,
+          "width": 68,
+          "height": 32,
+          "top": 275,
+          "right": 97,
+          "bottom": 307,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 275,
+          "width": 100,
+          "height": 32,
+          "top": 275,
+          "right": 201,
+          "bottom": 307,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 329,
+          "y": 275,
+          "width": 32,
+          "height": 32,
+          "top": 275,
+          "right": 361,
+          "bottom": 307,
+          "left": 329
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 603,
+          "width": 324,
+          "height": 52,
+          "top": 603,
+          "right": 357,
+          "bottom": 655,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 524,
+          "width": 62,
+          "height": 62,
+          "top": 524,
+          "right": 96,
+          "bottom": 586,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 664,
+          "width": 30,
+          "height": 26,
+          "top": 664,
+          "right": 145,
+          "bottom": 690,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 379.390625,
+          "width": 324,
+          "height": 21,
+          "top": 379.390625,
+          "right": 357,
+          "bottom": 400.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 345.375,
+          "width": 324,
+          "height": 89,
+          "top": 345.375,
+          "right": 357,
+          "bottom": 434.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "390-768-light",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 399.390625,
+          "width": 324,
+          "height": 21,
+          "top": 399.390625,
+          "right": 357,
+          "bottom": 420.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 358.171875,
+          "width": 320,
+          "height": 63,
+          "top": 358.171875,
+          "right": 353,
+          "bottom": 421.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 381.171875,
+          "width": 140,
+          "height": 17,
+          "top": 381.171875,
+          "right": 193,
+          "bottom": 398.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 409.171875,
+          "width": 300,
+          "height": 42,
+          "top": 409.171875,
+          "right": 353,
+          "bottom": 451.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 363.375,
+          "width": 324,
+          "height": 89,
+          "top": 363.375,
+          "right": 357,
+          "bottom": 452.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 393.375,
+          "width": 122,
+          "height": 42,
+          "top": 393.375,
+          "right": 155,
+          "bottom": 435.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 275,
+          "width": 68,
+          "height": 32,
+          "top": 275,
+          "right": 97,
+          "bottom": 307,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 275,
+          "width": 100,
+          "height": 32,
+          "top": 275,
+          "right": 201,
+          "bottom": 307,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 329,
+          "y": 275,
+          "width": 32,
+          "height": 32,
+          "top": 275,
+          "right": 361,
+          "bottom": 307,
+          "left": 329
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 603,
+          "width": 324,
+          "height": 52,
+          "top": 603,
+          "right": 357,
+          "bottom": 655,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 524,
+          "width": 62,
+          "height": 62,
+          "top": 524,
+          "right": 96,
+          "bottom": 586,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 664,
+          "width": 30,
+          "height": 26,
+          "top": 664,
+          "right": 145,
+          "bottom": 690,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 379.390625,
+          "width": 324,
+          "height": 21,
+          "top": 379.390625,
+          "right": 357,
+          "bottom": 400.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 345.375,
+          "width": 324,
+          "height": 89,
+          "top": 345.375,
+          "right": 357,
+          "bottom": 434.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "390-768-dark",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 394.390625,
+          "width": 254,
+          "height": 21,
+          "top": 394.390625,
+          "right": 287,
+          "bottom": 415.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 341.171875,
+          "width": 250,
+          "height": 63,
+          "top": 341.171875,
+          "right": 283,
+          "bottom": 404.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 364.171875,
+          "width": 140,
+          "height": 17,
+          "top": 364.171875,
+          "right": 193,
+          "bottom": 381.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 373.171875,
+          "width": 230,
+          "height": 42,
+          "top": 373.171875,
+          "right": 283,
+          "bottom": 415.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 329.375,
+          "width": 254,
+          "height": 89,
+          "top": 329.375,
+          "right": 287,
+          "bottom": 418.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 357.375,
+          "width": 122,
+          "height": 42,
+          "top": 357.375,
+          "right": 155,
+          "bottom": 399.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 276,
+          "width": 68,
+          "height": 32,
+          "top": 276,
+          "right": 97,
+          "bottom": 308,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 276,
+          "width": 100,
+          "height": 32,
+          "top": 276,
+          "right": 201,
+          "bottom": 308,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 259,
+          "y": 276,
+          "width": 32,
+          "height": 32,
+          "top": 276,
+          "right": 291,
+          "bottom": 308,
+          "left": 259
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 567,
+          "width": 254,
+          "height": 52,
+          "top": 567,
+          "right": 287,
+          "bottom": 619,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 488,
+          "width": 62,
+          "height": 62,
+          "top": 488,
+          "right": 96,
+          "bottom": 550,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 626,
+          "width": 30,
+          "height": 26,
+          "top": 626,
+          "right": 145,
+          "bottom": 652,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 362.390625,
+          "width": 254,
+          "height": 21,
+          "top": 362.390625,
+          "right": 287,
+          "bottom": 383.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 328.375,
+          "width": 254,
+          "height": 89,
+          "top": 328.375,
+          "right": 287,
+          "bottom": 417.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "320-768-light",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "objective reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 394.390625,
+          "width": 254,
+          "height": 21,
+          "top": 394.390625,
+          "right": 287,
+          "bottom": 415.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "detail 仅模拟支持确认的方案编辑与布局；原输入、草稿、附件及队列均保留，不发送真实消息或运行任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 341.171875,
+          "width": 250,
+          "height": 63,
+          "top": 341.171875,
+          "right": 283,
+          "bottom": 404.171875,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "detail 核对并继续下一步任务",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 364.171875,
+          "width": 140,
+          "height": 17,
+          "top": 364.171875,
+          "right": 193,
+          "bottom": 381.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "detail 原输入、方案详情和调整意见可正常访问；本地演示不执行真实任务。",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 53,
+          "y": 373.171875,
+          "width": 230,
+          "height": 42,
+          "top": 373.171875,
+          "right": 283,
+          "bottom": 415.171875,
+          "left": 53
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "confirm enabled before feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "feedback input reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 329.375,
+          "width": 254,
+          "height": 89,
+          "top": 329.375,
+          "right": 287,
+          "bottom": 418.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "feedback submit reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 357.375,
+          "width": 122,
+          "height": 42,
+          "top": 357.375,
+          "right": 155,
+          "bottom": 399.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "submit enabled without being clicked",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "confirm closed while unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "queue 编辑",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 276,
+          "width": 68,
+          "height": 32,
+          "top": 276,
+          "right": 97,
+          "bottom": 308,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "queue 立即发送",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 276,
+          "width": 100,
+          "height": 32,
+          "top": 276,
+          "right": 201,
+          "bottom": 308,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "queue 取消排队",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 259,
+          "y": 276,
+          "width": 32,
+          "height": 32,
+          "top": 276,
+          "right": 291,
+          "bottom": 308,
+          "left": 259
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "original input",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 567,
+          "width": 254,
+          "height": 52,
+          "top": 567,
+          "right": 287,
+          "bottom": 619,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "attachment",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 488,
+          "width": 62,
+          "height": 62,
+          "top": 488,
+          "right": 96,
+          "bottom": 550,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "tools",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 626,
+          "width": 30,
+          "height": 26,
+          "top": 626,
+          "right": 145,
+          "bottom": 652,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "original draft retained",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "attachment retained",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsent feedback retained",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "objective reachable after feedback",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 362.390625,
+          "width": 254,
+          "height": 21,
+          "top": 362.390625,
+          "right": 287,
+          "bottom": 383.390625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "feedback reachable after scrolling",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 328.375,
+          "width": 254,
+          "height": 89,
+          "top": 328.375,
+          "right": 287,
+          "bottom": 417.375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported keeps unsent feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported disables feedback",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported disables submit",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported disables 取消调整",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "key": "320-768-dark",
+      "name": "scenario stayed awaiting confirmation",
+      "pass": true
+    }
+  ],
+  "errors": [],
+  "businessRequests": [],
+  "blockedRequests": []
+}

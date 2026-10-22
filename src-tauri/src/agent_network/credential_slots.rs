@@ -37,8 +37,25 @@ const MAX_BYTES: usize = 256 * 1024;
 #[cfg(unix)]
 const MAX_ROUTES: usize = 4096;
 const DOMAIN: &str = "moxbots.fixed-reader.credential-slots.v1";
+#[cfg(test)]
+fn isolated_ledger_diagnostic(stage: &str, details: impl std::fmt::Debug) {
+    if std::env::var_os("MOXBOTS_SLOT_TEST_ROOT").is_some() {
+        eprintln!("isolated credential ledger stage={stage} details={details:?}");
+    }
+}
+#[cfg_attr(test, track_caller)]
 fn unavailable() -> CryptoError {
+    #[cfg(test)]
+    isolated_ledger_diagnostic("unavailable", std::panic::Location::caller());
     CryptoError::CredentialUnavailable
+}
+#[cfg_attr(test, track_caller)]
+#[cfg(unix)]
+fn unavailable_io(stage: &str, error: std::io::Error) -> CryptoError {
+    #[cfg(test)]
+    isolated_ledger_diagnostic(stage, (error.kind(), error.raw_os_error()));
+    let _ = (stage, error);
+    unavailable()
 }
 fn hash43(value: &[u8]) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(value))
@@ -223,7 +240,8 @@ impl Ledger {
         let mut prefix = PathBuf::new();
         for component in self.root.parent().ok_or_else(unavailable)?.components() {
             prefix.push(component.as_os_str());
-            let m = fs::symlink_metadata(&prefix).map_err(|_| unavailable())?;
+            let m = fs::symlink_metadata(&prefix)
+                .map_err(|error| unavailable_io("ancestor-metadata", error))?;
             let trusted_sticky = m.uid() == 0 && m.mode() & 0o7000 == 0o1000;
             if !m.is_dir()
                 || (m.uid() != 0 && m.uid() != uid)
@@ -241,24 +259,30 @@ impl Ledger {
                 fs::DirBuilder::new()
                     .mode(0o700)
                     .create(&self.root)
-                    .map_err(|_| unavailable())?;
+                    .map_err(|error| unavailable_io("root-create", error))?;
                 File::open(self.root.parent().ok_or_else(unavailable)?)
                     .and_then(|f| f.sync_all())
-                    .map_err(|_| unavailable())?;
+                    .map_err(|error| unavailable_io("root-parent-sync", error))?;
             }
-            Err(_) => return Err(unavailable()),
+            Err(error) => return Err(unavailable_io("root-metadata", error)),
             Ok(_) => {}
         }
         let f = OpenOptions::new()
             .read(true)
             .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
             .open(&self.root)
-            .map_err(|_| unavailable())?;
-        let m = f.metadata().map_err(|_| unavailable())?;
+            .map_err(|error| unavailable_io("root-open", error))?;
+        let m = f
+            .metadata()
+            .map_err(|error| unavailable_io("root-fstat", error))?;
         if !m.is_dir()
             || m.uid() != unsafe { libc::geteuid() }
             || m.mode() & 0o7022 != 0
-            || self.root.canonicalize().map_err(|_| unavailable())? != self.root
+            || self
+                .root
+                .canonicalize()
+                .map_err(|error| unavailable_io("root-canonicalize", error))?
+                != self.root
         {
             return Err(unavailable());
         }
@@ -273,8 +297,11 @@ impl Ledger {
     fn lock_directory(&self, root: &File) -> Result<(PathBuf, File), CryptoError> {
         let name = std::ffi::CString::new(LOCK_PARENT).map_err(|_| unavailable())?;
         let created = unsafe { libc::mkdirat(root.as_raw_fd(), name.as_ptr(), 0o700) } == 0;
-        if !created && std::io::Error::last_os_error().kind() != std::io::ErrorKind::AlreadyExists {
-            return Err(unavailable());
+        if !created {
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::AlreadyExists {
+                return Err(unavailable_io("lock-parent-mkdirat", error));
+            }
         }
         let fd = unsafe {
             libc::openat(
@@ -284,35 +311,60 @@ impl Ledger {
             )
         };
         if fd < 0 {
-            return Err(unavailable());
+            return Err(unavailable_io(
+                "lock-parent-openat",
+                std::io::Error::last_os_error(),
+            ));
         }
         let dir = unsafe { File::from_raw_fd(fd) };
-        let m = dir.metadata().map_err(|_| unavailable())?;
+        let m = dir
+            .metadata()
+            .map_err(|error| unavailable_io("lock-parent-fstat", error))?;
         if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } || m.mode() & 0o7777 != 0o700 {
             return Err(unavailable());
         }
         if created {
-            root.sync_all().map_err(|_| unavailable())?;
+            root.sync_all()
+                .map_err(|error| unavailable_io("lock-parent-sync", error))?;
         }
         Ok((self.root.join(LOCK_PARENT), dir))
     }
     fn lock_preflight(&self, lock: &std::path::Path, owned: bool) -> Result<(), CryptoError> {
+        self.lock_preflight_with_owner_metadata(lock, owned, |owner| fs::symlink_metadata(owner))
+    }
+    fn lock_preflight_with_owner_metadata(
+        &self,
+        lock: &std::path::Path,
+        owned: bool,
+        owner_metadata: impl FnOnce(&std::path::Path) -> std::io::Result<fs::Metadata>,
+    ) -> Result<(), CryptoError> {
         match fs::symlink_metadata(lock) {
             Err(e) if !owned && e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(_) => Err(unavailable()),
+            Err(error) => Err(unavailable_io("lock-path-metadata", error)),
             Ok(m) => {
                 if !m.is_dir() || m.uid() != unsafe { libc::geteuid() } || m.mode() & 0o7022 != 0 {
                     return Err(unavailable());
                 }
                 let owner = lock.join("owner");
-                match fs::symlink_metadata(&owner) {
+                match owner_metadata(&owner) {
                     Ok(m)
                         if m.is_file()
-                            && m.nlink() == 1
+                            && (m.nlink() == 1 || (!owned && m.nlink() == 0))
                             && m.uid() == unsafe { libc::geteuid() }
                             && m.mode() & 0o7022 == 0
                             && m.len() <= 256 =>
                     {
+                        // Linux can return the inode pinned by pathname lookup
+                        // after the current holder has unlinked it on release.
+                        // Like NotFound/the retired-FD case below, this only
+                        // ends an UNOWNED preflight; it never grants the lock.
+                        // transaction must still acquire a fresh lock, recheck
+                        // both pinned directories and pass owned=true preflight.
+                        if m.nlink() == 0 {
+                            #[cfg(test)]
+                            isolated_ledger_diagnostic("owner-path-retired", m.nlink());
+                            return Ok(());
+                        }
                         let file = OpenOptions::new()
                             .read(true)
                             .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
@@ -322,10 +374,14 @@ impl Ledger {
                             Err(e) if !owned && e.kind() == std::io::ErrorKind::NotFound => {
                                 return Ok(())
                             }
-                            Err(_) => return Err(unavailable()),
+                            Err(error) => return Err(unavailable_io("owner-open", error)),
                         };
-                        let current = file.metadata().map_err(|_| unavailable())?;
+                        let current = file
+                            .metadata()
+                            .map_err(|error| unavailable_io("owner-fstat", error))?;
                         if !owned && current.nlink() == 0 {
+                            #[cfg(test)]
+                            isolated_ledger_diagnostic("owner-fd-retired", current.nlink());
                             return Ok(());
                         }
                         if !current.is_file()
@@ -333,13 +389,24 @@ impl Ledger {
                             || current.uid() != unsafe { libc::geteuid() }
                             || current.mode() & 0o7022 != 0
                         {
+                            #[cfg(test)]
+                            isolated_ledger_diagnostic(
+                                "owner-fd-rejected",
+                                (
+                                    owned,
+                                    current.is_file(),
+                                    current.nlink(),
+                                    current.uid(),
+                                    current.mode(),
+                                ),
+                            );
                             return Err(unavailable());
                         }
                         let mut token = String::new();
                         (&mut file)
                             .take(257)
                             .read_to_string(&mut token)
-                            .map_err(|_| unavailable())?;
+                            .map_err(|error| unavailable_io("owner-read", error))?;
                         let token = token.trim_ascii();
                         if !owned && token.is_empty() {
                             return Ok(());
@@ -361,7 +428,23 @@ impl Ledger {
                         Ok(())
                     }
                     Err(e) if !owned && e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-                    _ => Err(unavailable()),
+                    Ok(metadata) => {
+                        #[cfg(test)]
+                        isolated_ledger_diagnostic(
+                            "owner-path-rejected",
+                            (
+                                owned,
+                                metadata.is_file(),
+                                metadata.nlink(),
+                                metadata.uid(),
+                                metadata.mode(),
+                                metadata.len(),
+                            ),
+                        );
+                        let _ = metadata;
+                        Err(unavailable())
+                    }
+                    Err(error) => Err(unavailable_io("owner-path-metadata", error)),
                 }
             }
         }
@@ -392,7 +475,12 @@ impl Ledger {
             })?;
             Ok(op(&dir))
         })
-        .map_err(|_| unavailable())?
+        .map_err(|error| {
+            #[cfg(test)]
+            isolated_ledger_diagnostic("transaction-lock", &error);
+            let _ = error;
+            unavailable()
+        })?
     }
     fn read(&self, dir: &File) -> Result<BTreeMap<String, RouteFamily>, CryptoError> {
         let name = std::ffi::CString::new(NAME).map_err(|_| unavailable())?;
@@ -404,14 +492,17 @@ impl Ledger {
             )
         };
         if fd < 0 {
-            return if std::io::Error::last_os_error().kind() == std::io::ErrorKind::NotFound {
+            let error = std::io::Error::last_os_error();
+            return if error.kind() == std::io::ErrorKind::NotFound {
                 Ok(BTreeMap::new())
             } else {
-                Err(unavailable())
+                Err(unavailable_io("ledger-openat", error))
             };
         }
         let mut f = unsafe { File::from_raw_fd(fd) };
-        let m = f.metadata().map_err(|_| unavailable())?;
+        let m = f
+            .metadata()
+            .map_err(|error| unavailable_io("ledger-fstat", error))?;
         if !m.is_file()
             || m.uid() != unsafe { libc::geteuid() }
             || m.nlink() != 1
@@ -424,7 +515,7 @@ impl Ledger {
         (&mut f)
             .take((MAX_BYTES + 1) as u64)
             .read_to_end(&mut bytes)
-            .map_err(|_| unavailable())?;
+            .map_err(|error| unavailable_io("ledger-read", error))?;
         if bytes.len() > MAX_BYTES {
             return Err(unavailable());
         }
@@ -514,17 +605,23 @@ impl Ledger {
             )
         };
         if fd < 0 {
-            return Err(unavailable());
+            return Err(unavailable_io(
+                "ledger-temp-openat",
+                std::io::Error::last_os_error(),
+            ));
         }
         let mut f = unsafe { File::from_raw_fd(fd) };
         let result = (|| {
             // umask cannot make the required mode ambiguous.
             if unsafe { libc::fchmod(f.as_raw_fd(), 0o600) } != 0 {
-                return Err(unavailable());
+                return Err(unavailable_io(
+                    "ledger-temp-chmod",
+                    std::io::Error::last_os_error(),
+                ));
             }
             f.write_all(&bytes)
                 .and_then(|_| f.sync_all())
-                .map_err(|_| unavailable())?;
+                .map_err(|error| unavailable_io("ledger-temp-write-sync", error))?;
             if !self.same_directory(dir) {
                 return Err(unavailable());
             }
@@ -537,9 +634,13 @@ impl Ledger {
                 )
             } != 0
             {
-                return Err(unavailable());
+                return Err(unavailable_io(
+                    "ledger-renameat",
+                    std::io::Error::last_os_error(),
+                ));
             }
-            dir.sync_all().map_err(|_| unavailable())?;
+            dir.sync_all()
+                .map_err(|error| unavailable_io("ledger-publish-sync", error))?;
             Ok(())
         })();
         if result.is_err() {
@@ -2194,6 +2295,131 @@ mod tests {
         assert!(!ledger.root.join(NAME).exists());
         assert!(!old.join(NAME).exists());
     }
+    fn fixture_lock_owner(ledger: &Ledger) -> PathBuf {
+        let root = ledger.directory().unwrap();
+        let (parent, _) = ledger.lock_directory(&root).unwrap();
+        let lock = parent.join(LOCK);
+        fs::DirBuilder::new().mode(0o700).create(&lock).unwrap();
+        fs::write(lock.join("owner"), b"rust:123:456\n").unwrap();
+        fs::set_permissions(lock.join("owner"), fs::Permissions::from_mode(0o644)).unwrap();
+        lock
+    }
+    fn retired_owner_snapshot(owner: &Path) -> std::io::Result<fs::Metadata> {
+        // Model the Linux stat observation captured in CI: the pathname lookup
+        // pinned an inode, then the current holder's normal release unlinked it
+        // before attributes were returned. Use real unlinked inode metadata,
+        // never fabricated Metadata or a sleep-dependent scheduling assertion.
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
+            .open(owner)?;
+        fs::remove_dir_all(owner.parent().unwrap())?;
+        let metadata = file.metadata()?;
+        assert_eq!(metadata.nlink(), 0);
+        Ok(metadata)
+    }
+    #[test]
+    fn retired_owner_path_observation_allows_only_a_fresh_transaction() {
+        let (_dir, ledger, _) = fixture();
+        let lock = fixture_lock_owner(&ledger);
+        ledger
+            .lock_preflight_with_owner_metadata(&lock, false, retired_owner_snapshot)
+            .expect("a retired observation must not block the next lock acquisition");
+        assert!(!lock.exists());
+        let id = format!("session:{}", hash43(b"retired-owner-observation"));
+        ledger
+            .transaction(|dir| {
+                // An observation is not ownership: the real primitive must
+                // acquire a new lock and pass the unchanged owned preflight.
+                assert!(lock.is_dir());
+                ledger.lock_preflight(&lock, true).unwrap();
+                let mut routes = ledger.read(dir)?;
+                routes.insert(id.clone(), RouteFamily::LocalV1);
+                ledger.write(dir, routes)
+            })
+            .unwrap();
+        assert!(ledger.route(&id).unwrap());
+    }
+    #[test]
+    fn retired_owner_path_observation_cannot_prove_owned_lock() {
+        let (_dir, ledger, _) = fixture();
+        let lock = fixture_lock_owner(&ledger);
+        assert!(ledger
+            .lock_preflight_with_owner_metadata(&lock, true, retired_owner_snapshot)
+            .is_err());
+    }
+    #[test]
+    fn retired_owner_path_observation_keeps_mode_and_size_guards() {
+        for (mode, size) in [(0o666, 24), (0o4644, 24), (0o644, 257)] {
+            let (_dir, ledger, _) = fixture();
+            let lock = fixture_lock_owner(&ledger);
+            let owner = lock.join("owner");
+            fs::write(&owner, vec![b'x'; size]).unwrap();
+            fs::set_permissions(&owner, fs::Permissions::from_mode(mode)).unwrap();
+            assert!(
+                ledger
+                    .lock_preflight_with_owner_metadata(&lock, false, retired_owner_snapshot)
+                    .is_err(),
+                "retired metadata must keep mode={mode:o}/size={size} closed"
+            );
+        }
+    }
+    #[test]
+    fn retired_owner_observation_does_not_bypass_lock_directory_guards() {
+        let (_dir, ledger, _) = fixture();
+        let lock = fixture_lock_owner(&ledger);
+        fs::set_permissions(&lock, fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(ledger
+            .lock_preflight_with_owner_metadata(&lock, false, |_| {
+                panic!("untrusted lock directory must be rejected before owner observation")
+            })
+            .is_err());
+        fs::set_permissions(&lock, fs::Permissions::from_mode(0o700)).unwrap();
+        let moved = lock.with_file_name("retired-lock");
+        fs::rename(&lock, &moved).unwrap();
+        std::os::unix::fs::symlink(&moved, &lock).unwrap();
+        assert!(ledger
+            .lock_preflight_with_owner_metadata(&lock, false, |_| {
+                panic!("symlink lock directory must be rejected before owner observation")
+            })
+            .is_err());
+    }
+    #[test]
+    fn retired_owner_observation_does_not_validate_a_replacement_owner() {
+        let (_dir, ledger, _) = fixture();
+        let lock = fixture_lock_owner(&ledger);
+        ledger
+            .lock_preflight_with_owner_metadata(&lock, false, |owner| {
+                let metadata = retired_owner_snapshot(owner)?;
+                // Replace the pathname after observing the old inode. No
+                // decision about that old inode can validate this new owner.
+                fs::DirBuilder::new().mode(0o700).create(&lock)?;
+                fs::write(owner, b"unknown-replacement-owner")?;
+                Ok(metadata)
+            })
+            .unwrap();
+        assert!(ledger.lock_preflight(&lock, true).is_err());
+    }
+    #[test]
+    fn live_owner_hardlink_symlink_and_invalid_token_remain_rejected() {
+        let (_dir, ledger, _) = fixture();
+        let lock = fixture_lock_owner(&ledger);
+        let owner = lock.join("owner");
+        let extra = ledger.root.join("extra-owner");
+        fs::hard_link(&owner, &extra).unwrap();
+        assert!(ledger.lock_preflight(&lock, false).is_err());
+        fs::remove_file(&owner).unwrap();
+        std::os::unix::fs::symlink(&extra, &owner).unwrap();
+        assert!(ledger.lock_preflight(&lock, false).is_err());
+        fs::remove_file(&owner).unwrap();
+        fs::write(&owner, b"unknown-owner-format").unwrap();
+        assert!(ledger.lock_preflight(&lock, false).is_err());
+        fs::write(&owner, b"rust:0:456\n").unwrap();
+        assert!(ledger.lock_preflight(&lock, false).is_err());
+        let other_pid = if std::process::id() == 123 { 124 } else { 123 };
+        fs::write(&owner, format!("rust:{other_pid}:456\n")).unwrap();
+        assert!(ledger.lock_preflight(&lock, true).is_err());
+    }
     #[test]
     #[ignore = "private subprocess entry; parent test supplies only its isolated TempDir"]
     fn process_commit_helper() {
@@ -2212,7 +2438,12 @@ mod tests {
     fn real_process_commits_serialize_without_losing_routes() {
         // Every isolated round must pass; this is contention coverage, not a
         // retry after failure. Keep all four real helpers concurrent.
-        for round in 0..20 {
+        let diagnostic_end = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        for round in 0..200 {
+            assert!(
+                std::time::Instant::now() < diagnostic_end,
+                "isolated diagnostic budget"
+            );
             let dir = tempfile::Builder::new()
                 .prefix("mah-credential-slots-process-")
                 .tempdir()
@@ -2264,7 +2495,10 @@ mod tests {
                 children.0.push(child);
                 ids.push(id);
             }
-            let end = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            let end = std::cmp::min(
+                diagnostic_end,
+                std::time::Instant::now() + std::time::Duration::from_secs(15),
+            );
             for index in 0..children.0.len() {
                 loop {
                     if let Some(status) = children.0[index].try_wait().unwrap() {

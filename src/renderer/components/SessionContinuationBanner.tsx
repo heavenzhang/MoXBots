@@ -49,7 +49,9 @@ export function SessionContinuationBanner({
     void run(request.turnId).catch(onUnavailable);
   }, [request, ready, blocked, turnId, run, onConsumed, onUnavailable]);
 
-  if (!turnId || accepted.current === `${sessionId}:${turnId}`) return null;
+  // A saved unfinished turn cannot describe current work until hydration and
+  // live admission are ready. Busy work owns its existing progress UI.
+  if (!turnId || !ready || blocked || accepted.current === `${sessionId}:${turnId}`) return null;
   return (
     <div className="relative z-10 flex-shrink-0 border-b border-[var(--line)] bg-[var(--paper-inset)] px-4 py-2 text-sm">
       <div className="mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-2">

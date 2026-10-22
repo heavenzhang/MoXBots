@@ -957,6 +957,27 @@ export default function TabProvider({
   // Ref to track currentSessionId in SSE event handlers and API functions (avoid stale closure)
   const currentSessionIdRef = useRef<string | null>(currentSessionId);
   currentSessionIdRef.current = currentSessionId;
+  // Ephemeral composer association, not another plan store. Only the rendered
+  // plan publishes this target; receiving a newer SSE ledger cannot advance it.
+  const visiblePlanTargetRef = useRef<{ sessionId: string; proposalId: string; expectedRevision: number } | null>(null);
+  const visiblePlanScopeRef = useRef(currentSessionId);
+  if (visiblePlanScopeRef.current !== currentSessionId) {
+    visiblePlanScopeRef.current = currentSessionId;
+    visiblePlanTargetRef.current = null;
+  }
+  useLayoutEffect(() => {
+    const observe = (event: Event) => {
+      const detail = (event as CustomEvent<{ tabId?: string; sessionId?: string; target?: { proposalId?: unknown; expectedRevision?: unknown } | null }>).detail;
+      if (detail?.tabId !== tabId || !detail.sessionId || detail.sessionId !== currentSessionIdRef.current) return;
+      if (detail.target === null) { visiblePlanTargetRef.current = null; return; }
+      const target = detail.target;
+      if (!target || typeof target.proposalId !== 'string' || !target.proposalId
+        || typeof target.expectedRevision !== 'number' || !Number.isSafeInteger(target.expectedRevision) || target.expectedRevision < 1) return;
+      visiblePlanTargetRef.current = { sessionId: detail.sessionId, proposalId: target.proposalId, expectedRevision: target.expectedRevision };
+    };
+    window.addEventListener('session-orchestration-visible-plan', observe);
+    return () => { window.removeEventListener('session-orchestration-visible-plan', observe); visiblePlanTargetRef.current = null; };
+  }, [tabId]);
 
   // Create Tab-scoped API functions
   // Uses Session-centric port lookup via currentSessionIdRef
@@ -3999,6 +4020,14 @@ export default function TabProvider({
           break;
         }
 
+        case 'chat:task-orchestration': {
+          const payload = data as { sessionId?: string };
+          if (payload?.sessionId === currentSessionIdRef.current) {
+            window.dispatchEvent(new CustomEvent('session-task-orchestration', { detail: data }));
+          }
+          break;
+        }
+
         case 'chat:agent-plan-update': {
           const payload = data as {
             sessionId?: string | null;
@@ -5884,6 +5913,9 @@ export default function TabProvider({
       const skill = skillMatch ? skillMatch[1] : null;
       const hasImages = !!(images && images.length > 0);
       const sessionIdForSend = currentSessionIdRef.current ?? sessionId;
+      const displayedPlan = visiblePlanTargetRef.current;
+      const orchestrationPlanTarget = displayedPlan?.sessionId === sessionIdForSend
+        ? { proposalId: displayedPlan.proposalId, expectedRevision: displayedPlan.expectedRevision } : undefined;
       const releaseSendTransition = sessionIdForSend
         ? claimSessionOpeningTransition(sessionIdForSend)
         : null;
@@ -5994,6 +6026,7 @@ export default function TabProvider({
       // IM/Task callers omit the field entirely (undefined = "keep current provider").
       const sendPayload = {
         clientRequestId,
+        ...(orchestrationPlanTarget ? { orchestrationPlanTarget } : {}),
         continueFromTurnId,
         text: trimmed,
         agentMentions,

@@ -31,3 +31,10 @@ describe('toClientSessionMetadata', () => {
     expect(metadata.providerEnvJson).toContain('secret');
   });
 });
+
+it('keeps the task ledger on its dedicated Session snapshot without mutating persistence', () => {
+  const meta = { id: 'session', taskOrchestration: { revision: 2, tasks: [], bindings: {}, attempts: [], reviews: [] } };
+  const client = toClientSessionMetadata(meta);
+  expect(client).toEqual({ id: 'session' });
+  expect(meta.taskOrchestration.revision).toBe(2);
+});

@@ -1,3 +1,6 @@
+import { SessionTaskOrchestrationProvider, useSessionTaskOrchestrationContext } from '@/components/agent-status/useSessionTaskOrchestration';
+import { SessionTaskActionsContext, type TaskReviewTarget } from '@/components/agent-status/SessionTaskActionsContext';
+import SessionTaskResults from '@/components/agent-status/SessionTaskResults';
 import { isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
 import { SessionContinuationBanner, type ContinuationRequest } from '@/components/SessionContinuationBanner';
 import { matchesSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
@@ -5,6 +8,7 @@ import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAct
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
 import { projectErrorMessageResend } from './errorMessageResend';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
+import type { SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
 import type { Message } from "@/types/chat";
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
@@ -687,7 +691,11 @@ function isCurrentSessionGoal(
   return Boolean(goal);
 }
 
-export default function Chat({
+export default function Chat(props: ChatProps) {
+  return <SessionTaskOrchestrationProvider><ChatContent {...props} /></SessionTaskOrchestrationProvider>;
+}
+
+function ChatContent({
   registerFileEditSubmitter,
   windowPresentation,
   onNewSession,
@@ -5776,13 +5784,65 @@ export default function Chat({
     currentRuntime === 'builtin' ||
     currentRuntime === 'codex' ||
     currentRuntime === 'dsh';
+  const discussOrchestrationPlan = useCallback((target: SessionPlanTarget, prompt: string) => {
+    if (target.sessionId !== sessionId || sessionIdRef.current !== sessionId || !chatInputRef.current) return;
+    const existing = inputRef.current?.value ?? '';
+    const value = existing ? `${existing}\n\n${prompt}` : prompt;
+    chatInputRef.current.setValue(value);
+    requestAnimationFrame(() => {
+      if (sessionIdRef.current !== target.sessionId) return;
+      const textarea = inputRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(value.length, value.length);
+      textarea.scrollTop = textarea.scrollHeight;
+    });
+  }, [sessionId]);
+  const taskState = useSessionTaskOrchestrationContext();
+  const taskStateRef = useRef(taskState);
+  taskStateRef.current = taskState;
+  const resolveReviewTargets = useCallback((targets: readonly TaskReviewTarget[]) => {
+    const current = taskStateRef.current;
+    if (!current || current.stale || !targets.length || sessionIdRef.current !== current.sessionId
+      || targets.some(target => target.sessionId !== current.sessionId)) return null;
+    const selected = targets.map(target => current.tasks.find(task => task.id === target.taskId
+      && task.phase === 'awaiting_review' && (task.reviewAttemptId ?? 'main') === target.attemptId));
+    return selected.every(task => !!task) ? selected.filter(task => !!task) : null;
+  }, []);
+  const taskActions = useMemo(() => ({
+    disabled: isSessionLoading || !isConnected || sessionState === 'stopping'
+      || !!pendingPermission || !!pendingAskUserQuestion || !!pendingExitPlanMode || !!pendingEnterPlanMode
+      || !!questionTarget || !!goalDraftConfig || (cronState.isEnabled && !cronState.task),
+    onInspect: openSubagent,
+    onReview: async (targets: readonly TaskReviewTarget[]) => {
+      if (isComposerUpdateCheckpointLocked()) return false;
+      const selected = resolveReviewTargets(targets);
+      if (!selected) return false;
+      const entries = selected.map(task => `- ${task.title} [task:${task.id}] (${task.reviewAttemptId ?? 'main'})`).join('\n');
+      // This is a request in the original queue, never a direct review mutation.
+      // The captured attempt prevents a later retry from inheriting this request.
+      return (await handleSendMessageRef.current(t('orchestration.inline.reviewPrompt', { ns: 'app', entries }))) === true;
+    },
+    onComposeRework: (targets: readonly TaskReviewTarget[]) => {
+      const selected = resolveReviewTargets(targets);
+      if (!selected || !chatInputRef.current || isComposerUpdateCheckpointLocked()) return;
+      const entries = selected.map(task => `- ${task.title} [task:${task.id}] (${task.reviewAttemptId ?? 'main'})`).join('\n');
+      const existing = chatInputRef.current.getCurrentValue();
+      const prompt = t('orchestration.inline.reworkPrompt', { ns: 'app', entries });
+      chatInputRef.current.setValue(existing ? `${existing}\n\n${prompt}` : prompt);
+    },
+  }), [isSessionLoading, isConnected, sessionState, pendingPermission, pendingAskUserQuestion,
+    pendingExitPlanMode, pendingEnterPlanMode, questionTarget, goalDraftConfig, cronState.isEnabled,
+    cronState.task, openSubagent, resolveReviewTargets, t]);
+  const taskResults = useMemo(() => <SessionTaskResults />, []);
   const agentActivity = useMemo(
     () => !supportsAgentStatusPanel ? undefined : ({
       containerRef: chatContentRef,
       onJumpToTool: handleJumpToTool,
       onSelectSubagent: openSubagent,
+      onDiscussPlan: discussOrchestrationPlan,
     }),
-    [supportsAgentStatusPanel, handleJumpToTool, openSubagent],
+    [supportsAgentStatusPanel, handleJumpToTool, openSubagent, discussOrchestrationPlan],
   );
 
   // PRD 0.2.32 — context 用量指示器 slot。自取数（内部 useTabState 订阅 contextUsage），
@@ -6388,6 +6448,7 @@ export default function Chat({
   ]);
 
   return (
+    <SessionTaskActionsContext.Provider value={taskActions}>
     <BrowserPanelContext.Provider value={browserPanelCtx}>
       {/*
             FileActionProvider.refreshTrigger intentionally excludes
@@ -6845,6 +6906,7 @@ export default function Chat({
 
             {/* Message list with max-width */}
                 <MessageList
+                  footerContent={taskResults}
                   messages={chatScrollModel.data}
                   streamingMessage={streamingMessage}
                   firstItemIndex={chatScrollModel.firstItemIndex}
@@ -7904,5 +7966,6 @@ export default function Chat({
       </AutoRouteTagContext.Provider>
       </AsyncQuestionContext.Provider>
     </BrowserPanelContext.Provider>
+    </SessionTaskActionsContext.Provider>
   );
 }

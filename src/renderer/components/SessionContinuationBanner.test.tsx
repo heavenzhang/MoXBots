@@ -8,6 +8,26 @@ function fixture(overrides: Partial<Parameters<typeof SessionContinuationBanner>
     onContinue: vi.fn(async () => true), onConsumed: vi.fn(), onUnavailable: vi.fn(), ...overrides };
 }
 describe('explicit continuation', () => {
+  it('does not label a live first turn as unfinished or expose a disabled resume action', () => {
+    const props = fixture({ sessionId: 'fresh-session', turnId: 'first-turn', blocked: true });
+    const { rerender } = render(<SessionContinuationBanner {...props} />);
+    expect(screen.queryByText('shell.continuation.title')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    // A successful first turn removes the candidate rather than revealing it.
+    rerender(<SessionContinuationBanner {...props} blocked={false} turnId={undefined} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(props.onContinue).not.toHaveBeenCalled();
+  });
+  it('shows restored unfinished work only after hydration and execution are ready', () => {
+    const props = fixture({ ready: false });
+    const { rerender } = render(<SessionContinuationBanner {...props} />);
+    expect(screen.queryByText('shell.continuation.title')).not.toBeInTheDocument();
+    rerender(<SessionContinuationBanner {...props} ready blocked />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    rerender(<SessionContinuationBanner {...props} ready />);
+    expect(screen.getByRole('button')).toBeEnabled();
+    expect(props.onContinue).not.toHaveBeenCalled();
+  });
   it('does not execute merely because an interrupted conversation was restored', () => {
     const props = fixture(); render(<SessionContinuationBanner {...props} />);
     expect(screen.getByRole('button', { name: 'shell.continuation.continue' })).toBeEnabled();

@@ -16,9 +16,9 @@ The human request was independently read in source chat01a1488b, turn01a15fa9: u
 
 - [x] Verify canonical repository, actual protected main source, ownership and explicit target.
 - [x] Read existing pairing/development-profile compatibility without operating other devices.
-- [ ] Establish original paired wireless transport and, if available, verify an appropriate controlled installation on the selected target; an unavailable tunnel is not an installation.
-- [ ] Verify actual App Store Connect session/role/app/build inventory and matching distribution-signing capability; reuse existing suitable artifacts/links first.
-- [ ] Pin protected source, allocate an unused legal build number, coordinate one necessary mobile CI batch, build and verify an App Store distribution archive with exact provenance and digest.
+- [x] Wireless/development installation branch cancelled by the human; TestFlight only. Original Xu physical business acceptance waits until the phone is at hand.
+- [x] Verified actual UNIS ASC/Developer sessions, original team/bundle, new App6825572591 and empty initial build inventory; existing managed distribution signing reused.
+- [x] Pinned d79/protectedmain7db, passed exact CI and independently reviewed original archive;0.1.0/build3 unused in actual ASC inventory. Official distribution export and actual upload IPA independently verified.
 - [ ] Validate/upload, observe processing, answer export questions from verified facts, finish any required Beta App Review, and verify a compatible build is actually available through the invitation.
 - [ ] Limit an external self-use invitation group to a small audience without adding unrelated internal roles, marketing or unsolicited email.
 - [ ] Keep source/main, CI, signing/archive, upload, processing/review, invitation and actual installation as separate states.
@@ -45,8 +45,46 @@ The desktop owner is finishing an in-flight native read-only check and will expl
 
 ## Next step
 
-Use the explicit GUI window to read the existing Xcode account/team capability and selected phone's official nearby-pairing state; return the window immediately. Continue ASC authentication/inventory independently where possible. Request only a concrete unresolved Apple verification or fact after inspecting existing configuration. Private receipts are in the project pointer output/mobile-testflight-20261022; credentials, device records and generated applications stay outside Git.
+Return the local-only diagnostic merge's exact head, parents and delta to desktop01a12bc2. Do not push or open another PR: the desktop owner explicitly retains the only FF push to existingPR190 and the one necessary diagnostic Linux CI. After the actual Linux stage/evidence and normal CI/main gates are accepted, the existing mobile owner resumes signing/upload and real Apple Build Uploads checks. Reviewer activation still requires the originalAir existing quiet-fact answer, real isolated App login/demo and no original-business/101 access. Keep original unsigned4/source63 immutable; do not rebuild it for this diagnostic-only integration.
 
 ## Fresh development build identity
 
 The human removed Kevin's old App and requested a fresh installation with the corrected launcher. The sole mobile owner allocates internal0.1.0/build3 for this new development-signed candidate; build2/tag/bytes remain immutable and Xu is not updated. A separate final TestFlight build number will be allocated only after actual ASC inventory, preventing a development IPA from being relabeled as distribution. Exact source, internal-tag reservation, runtime native digest, signed archive and final on-device version are separate receipts. Existing development certificate has now been verified from its X509 OU as the original teamQJ5URBG9AP; the display-name personal identifier is not used as team authority.
+
+## TestFlight upload checkpoint — 2026-10-22
+
+Human latest direct instruction requires the usable second-iPhone TestFlight invitation; original phone business acceptance waits until physically available, daily Mac and101 identity/config remain excluded. TestFlight-only supersedes every earlier wireless/nearby/development-install step. No selected phone was operated in this continuation.
+
+Existing UNIS teamQJ5URBG9AP, original bundlecom.moxbots.mobileinternal, newASC App6825572591, SKU moxbots-mobile-internal, Simplified Chinese and limited App access were actually verified. Initial TestFlight inventory had no builds. Existing Distribution Managed signing was reused by official Xcode automatic provisioning, with an App Store-only profile; no new Apple account, role, API key or device registration.
+
+Original unsigned archive/source d79aef18dbb803b78b5734181a250f1866af56ad and protectedmain7db1f441ea446414f234f4fa53d96d6de4ba060b are retained. Official signed local export IPA:25,434,111B/SHA256 c4517cc7fd5d589d3ddc1b530cc4edd299e1609f40505173533816312e75b768. The distinct actual destination-upload IPA was captured from the exact ContentDelivery package path:25,434,122B/SHA256 aca9f7e0c0499784115bc43988b749ca709573e105325870229314c18af2c3fc,246CRC entries, deep/strict codesign PASS. Nine Mach-O pre-signature bodies are identical to the accepted local export; other resources,JS,Assets.car,Info and profile match byte-for-byte. These are separate signed artifacts, not an incorrect shared SHA claim.
+
+The unique official upload completed exit0: Upload succeeded, uploaded package processing, EXPORT SUCCEEDED. Upload ID868ab268-1786-4f51-8a3d-4764b0dd2370. Three nonfatal missing-dSYM warnings for React,ReactNativeDependencies,hermesvm remain recorded; no symbols success claim. Push entitlement/real APNs and speech acceptance remain OPEN; no provider delivery inferred from the profile.
+
+Actual source, code/main, signing and upload gates passed. Apple processed-build availability, build-level export compliance, required Beta App Review and an actually installable invitation remain OPEN. Human supplied review contact details, confirmed no France distribution, and authorized an isolated Apple-review account with only test data and no original businessBot/101/daily-account access. Contact/credential data are private, never in Git. Live Dex has no user-management gRPC; account activation needs a minimal static-entry append and fresh Dex-only quiet window, presently held behind desktop017/Air login coordination. No Dex/AuthStore/device change has been applied by this checkpoint.
+
+The mobile signing/upload process has ended, and the shared native/Xcode window was explicitly returned to desktop01a12bc2. Independent source coordinator01a1488b reviewed both actual IPA identities and signatures. Private receipts: pointer output/mobile-testflight-20261022 and output/testflight-20261022. Next: actual Apple processing check, fresh authorized authentication window, exact isolated reviewer account login and access-isolation verification, complete Beta metadata/review and verify live invitation. Do not repeat upload or rebuild immutable source; do not substitute original-phone physical acceptance.
+
+## Apple upload rejection and immutable build4 — 2026-10-22
+
+Actual authenticated Apple App6825572591 response exposed its related Build Uploads URL; reading that authoritative record found upload868ab268-1786-4f51-8a3d-4764b0dd2370 FAILED, code90683, missing NSPhotoLibraryUsageDescription. The successful Xcode upload only established receipt and initial processing; the empty TestFlight platform list concealed this later validation rejection. Private original JSON/screenshot: pointer output/mobile-testflight-20261022/apple-build3-upload-failed-90683.*. Never relabel build3 as still processing or overwrite/re-upload its preserved bytes.
+
+The existing native config plugin now describes explicitly selected photos as conversation attachments. NativeAttachmentPicker still uses PHPickerViewController with one selected image; no authorization request, library enumeration, camera or photo-write permission was added. Sole mobile owner allocates new0.1.0/build4; original team/bundle/account/source icon stay unchanged. Synced actualmainc8068493 before the fix; mobile/protocol/crypto inputs were unchanged from d79 except root package version bookkeeping. Latest desktop candidate remains independent and immutable.
+
+- [x] Reproduce missing key in immutable build3 archive against actual Apple90683.
+- [x] Expo58 introspection and actual official prebuild produce build4 Info.plist with purpose; unchanged bundle, no camera/photo-write keys.
+- [x] Mobile typecheck/lint and all78 policy tests PASS on Node24.
+- [ ] Independent source review, coordinated exact combinedCI/main delivery, new archive and actual signed/submitted Info verification.
+- [ ] New Apple Build Uploads completion, isolated reviewer real login/access checks, Beta review and actually installable small invitation.
+
+Root01a12b99 owns mobile build/sign/upload. Desktop01a12bc2 has explicitly returned build/sign/Apple CLI resources after5182; native GUI remains separately leased to its navigation reviewer, so this lane uses background ASC and CLI only. Cloud Dex window is not granted by that handback; originalAir operator confirmation is still required. DailyMac and101 identity/config remain excluded.
+
+## Local-only PR190 diagnostic integration — 2026-10-22
+
+PR190 original run39739522534 attempt1 failed its desktop credential-ledger child process: process_commit_helper returned CredentialUnavailable, parent real_process_commits_serialize_without_losing_routes reported round0/helper0 exit101.1793Rust cases passed,1failed,8ignored; overall8jobs succeeded and1conditional iOS job skipped. The full failed logSHA is2a5e49d6bddb59b66dea104a94d1acd0f964163cda407f0a15b0c483feb6f8d8. No unchanged rerun, signed/uploaded4 or main success is implied.
+
+The desktop main/CI owner explicitly reviewed diagnostic source4de5b15d406d0d0a81fa4abb86593d7888e7ccc6 and docs-only successorab7e7cf2fc77bfe3e19426fcbc0f4c2282157105 as PASS_SCOPED_DIAGNOSTIC_ONLY, then requested their normal merge into this original63d2230102919960f4406fad175411c81b86e62c branch. Both diagnostic commits and the original mobile history are preserved. Only credential_slots.rs changes runtime-source text: new output is cfg(test), I/O errors retain the same public variant, safety guards are unchanged, and the bounded200x4 diagnostic contention has no retry tolerance. Original Linux cause remains unresolved. Independent source review and25PASS/1ignored local module evidence are scoped diagnostics, not fullTauri/Linux or production acceptance.
+
+Before this merge, actual unsigned4/archive source63 passed primary and independent172file/size/SHA checks:200176749B, compact sorted manifest438b35da9a841fab0c0b70434d084e3d3abb935f7152a2156f2ee8c5847e2094, actual App0.1.0/4/originalbundle/min16.4/photo purpose, blueM compiled assets byte-equal the previously viewed artifact. Its complete new native source digest1b9ddd844da22122f1998cf35d87e600f1b9e23d18dfe1f2a83b4958d740a010 was recomputed after archive. The conservative scope includes desktop modules; do not relabel the archive with this later merge's source or infer whole-scope digest equality. No archive/binary was rebuilt or modified during integration. Actual Distribution signing/submitted IPA/Apple acceptance/Beta review/installable invitation remain open.
+
+This merge is deliberately LOCAL ONLY under the owner's exact handback. The mobile chat must stop before push/CI and provide exact head/parents/delta; desktop alone verifies and FF pushes the existingPR190. Original63 remote head, frozenbuild4, all published5182 artifacts, dailyMac client and101 identity/config remain unchanged by this handback. Private diagnostic and artifact evidence stays under pointer output/mobile-testflight-20261022 and output/testflight-20261022.

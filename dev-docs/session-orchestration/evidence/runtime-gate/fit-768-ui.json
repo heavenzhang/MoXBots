@@ -1,0 +1,2248 @@
+{
+  "boundary": "Production Provider/ProcessRow association/Results/Composer components; synthetic Agent, chat sending and Inspector shell. No full Chat/native/Provider acceptance.",
+  "checks": [
+    {
+      "name": "1280-light: native associations",
+      "pass": true
+    },
+    {
+      "name": "1280-light: no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 1280,
+        "width": 1280
+      }
+    },
+    {
+      "name": "1280-light: composer visible",
+      "pass": true,
+      "details": {
+        "x": 401,
+        "y": 606,
+        "width": 734,
+        "height": 52
+      }
+    },
+    {
+      "name": "1280-light: task count before review",
+      "pass": true
+    },
+    {
+      "name": "1280-light: simulated Inspector shell opens",
+      "pass": true
+    },
+    {
+      "name": "1280-light: Inspector shell Escape",
+      "pass": true
+    },
+    {
+      "name": "1280-light: rework appends draft",
+      "pass": true
+    },
+    {
+      "name": "1280-light: rework keeps attachment",
+      "pass": true,
+      "details": {
+        "attachmentCount": 2
+      }
+    },
+    {
+      "name": "1280-light: rework focuses composer",
+      "pass": true
+    },
+    {
+      "name": "1280-light: rework does not mutate phase",
+      "pass": true
+    },
+    {
+      "name": "1280-light: queue edit preserves occupied composer",
+      "pass": true
+    },
+    {
+      "name": "1280-light: native tools control retained",
+      "pass": true
+    },
+    {
+      "name": "1280-light: before keeps draft",
+      "pass": true
+    },
+    {
+      "name": "1280-light: after keeps draft and attachments",
+      "pass": true
+    },
+    {
+      "name": "1280-light: request only enters review",
+      "pass": true
+    },
+    {
+      "name": "1280-light: request is not acceptance",
+      "pass": true
+    },
+    {
+      "name": "1280-light: simulated completion is 4/4",
+      "pass": true
+    },
+    {
+      "name": "1280-light: fixture automatic approval tail positioning",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1007.5,
+          "y": 216.359375,
+          "width": 108,
+          "height": 36,
+          "top": 216.359375,
+          "right": 1115.5,
+          "bottom": 252.359375,
+          "left": 1007.5
+        },
+        "hit": true
+      },
+      "boundary": "Fixture scrollToIndex LAST; not a full production Chat scroll-controller test."
+    },
+    {
+      "name": "1280-light: original approval reachable and unobscured after native scroll",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1007.5,
+          "y": 216.359375,
+          "width": 108,
+          "height": 36,
+          "top": 216.359375,
+          "right": 1115.5,
+          "bottom": 252.359375,
+          "left": 1007.5
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: original deny reachable",
+      "pass": true
+    },
+    {
+      "name": "1280-light: tool approval not acceptance",
+      "pass": true
+    },
+    {
+      "name": "1280-light: rework keeps accepted task",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported objective retained",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported explanation visible",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported disables 调整方案",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported details retained",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported native tools visible",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported composer unobscured",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 580,
+          "width": 734,
+          "height": 78,
+          "top": 580,
+          "right": 1135,
+          "bottom": 658,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: unsupported queue edit retained",
+      "pass": true
+    },
+    {
+      "name": "1280-light: height768 unsupported hint center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 332.390625,
+          "width": 734,
+          "height": 17.390625,
+          "top": 332.390625,
+          "right": 1135,
+          "bottom": 349.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 确认并开始 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 369.78125,
+          "width": 104,
+          "height": 42,
+          "top": 369.78125,
+          "right": 505,
+          "bottom": 411.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 调整方案 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 513,
+          "y": 369.78125,
+          "width": 90,
+          "height": 42,
+          "top": 369.78125,
+          "right": 603,
+          "bottom": 411.78125,
+          "left": 513
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 继续讨论 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 611,
+          "y": 369.78125,
+          "width": 88,
+          "height": 42,
+          "top": 369.78125,
+          "right": 699,
+          "bottom": 411.78125,
+          "left": 611
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 queue 编辑 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 805,
+          "y": 235.5,
+          "width": 68,
+          "height": 32,
+          "top": 235.5,
+          "right": 873,
+          "bottom": 267.5,
+          "left": 805
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 queue 立即发送 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 877,
+          "y": 235.5,
+          "width": 100,
+          "height": 32,
+          "top": 235.5,
+          "right": 977,
+          "bottom": 267.5,
+          "left": 877
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 queue 取消排队 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1107,
+          "y": 235.5,
+          "width": 32,
+          "height": 32,
+          "top": 235.5,
+          "right": 1139,
+          "bottom": 267.5,
+          "left": 1107
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 Composer input center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 580,
+          "width": 734,
+          "height": 78,
+          "top": 580,
+          "right": 1135,
+          "bottom": 658,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 attachment center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 402,
+          "y": 501,
+          "width": 62,
+          "height": 62,
+          "top": 501,
+          "right": 464,
+          "bottom": 563,
+          "left": 402
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: height768 tools center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 551,
+          "y": 662,
+          "width": 66,
+          "height": 36,
+          "top": 662,
+          "right": 617,
+          "bottom": 698,
+          "left": 551
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-light: unsupported before keeps input",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported after keeps attachment",
+      "pass": true
+    },
+    {
+      "name": "1280-light: unsupported no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 1280,
+        "width": 1280
+      }
+    },
+    {
+      "name": "1280-dark: native associations",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 1280,
+        "width": 1280
+      }
+    },
+    {
+      "name": "1280-dark: composer visible",
+      "pass": true,
+      "details": {
+        "x": 401,
+        "y": 606,
+        "width": 734,
+        "height": 52
+      }
+    },
+    {
+      "name": "1280-dark: task count before review",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: simulated Inspector shell opens",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: Inspector shell Escape",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: rework appends draft",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: rework keeps attachment",
+      "pass": true,
+      "details": {
+        "attachmentCount": 2
+      }
+    },
+    {
+      "name": "1280-dark: rework focuses composer",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: rework does not mutate phase",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: queue edit preserves occupied composer",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: native tools control retained",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: before keeps draft",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: after keeps draft and attachments",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: request only enters review",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: request is not acceptance",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: simulated completion is 4/4",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: fixture automatic approval tail positioning",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1007.5,
+          "y": 216.359375,
+          "width": 108,
+          "height": 36,
+          "top": 216.359375,
+          "right": 1115.5,
+          "bottom": 252.359375,
+          "left": 1007.5
+        },
+        "hit": true
+      },
+      "boundary": "Fixture scrollToIndex LAST; not a full production Chat scroll-controller test."
+    },
+    {
+      "name": "1280-dark: original approval reachable and unobscured after native scroll",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1007.5,
+          "y": 216.359375,
+          "width": 108,
+          "height": 36,
+          "top": 216.359375,
+          "right": 1115.5,
+          "bottom": 252.359375,
+          "left": 1007.5
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: original deny reachable",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: tool approval not acceptance",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: rework keeps accepted task",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported objective retained",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported explanation visible",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported disables 调整方案",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported details retained",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported native tools visible",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported composer unobscured",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 580,
+          "width": 734,
+          "height": 78,
+          "top": 580,
+          "right": 1135,
+          "bottom": 658,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: unsupported queue edit retained",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: height768 unsupported hint center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 332.390625,
+          "width": 734,
+          "height": 17.390625,
+          "top": 332.390625,
+          "right": 1135,
+          "bottom": 349.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 确认并开始 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 369.78125,
+          "width": 104,
+          "height": 42,
+          "top": 369.78125,
+          "right": 505,
+          "bottom": 411.78125,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 调整方案 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 513,
+          "y": 369.78125,
+          "width": 90,
+          "height": 42,
+          "top": 369.78125,
+          "right": 603,
+          "bottom": 411.78125,
+          "left": 513
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 继续讨论 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 611,
+          "y": 369.78125,
+          "width": 88,
+          "height": 42,
+          "top": 369.78125,
+          "right": 699,
+          "bottom": 411.78125,
+          "left": 611
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 queue 编辑 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 805,
+          "y": 235.5,
+          "width": 68,
+          "height": 32,
+          "top": 235.5,
+          "right": 873,
+          "bottom": 267.5,
+          "left": 805
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 queue 立即发送 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 877,
+          "y": 235.5,
+          "width": 100,
+          "height": 32,
+          "top": 235.5,
+          "right": 977,
+          "bottom": 267.5,
+          "left": 877
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 queue 取消排队 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 1107,
+          "y": 235.5,
+          "width": 32,
+          "height": 32,
+          "top": 235.5,
+          "right": 1139,
+          "bottom": 267.5,
+          "left": 1107
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 Composer input center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 401,
+          "y": 580,
+          "width": 734,
+          "height": 78,
+          "top": 580,
+          "right": 1135,
+          "bottom": 658,
+          "left": 401
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 attachment center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 402,
+          "y": 501,
+          "width": 62,
+          "height": 62,
+          "top": 501,
+          "right": 464,
+          "bottom": 563,
+          "left": 402
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: height768 tools center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 551,
+          "y": 662,
+          "width": 66,
+          "height": 36,
+          "top": 662,
+          "right": 617,
+          "bottom": 698,
+          "left": 551
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "1280-dark: unsupported before keeps input",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported after keeps attachment",
+      "pass": true
+    },
+    {
+      "name": "1280-dark: unsupported no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 1280,
+        "width": 1280
+      }
+    },
+    {
+      "name": "390-light: native associations",
+      "pass": true
+    },
+    {
+      "name": "390-light: no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "name": "390-light: composer visible",
+      "pass": true,
+      "details": {
+        "x": 33,
+        "y": 603,
+        "width": 324,
+        "height": 52
+      }
+    },
+    {
+      "name": "390-light: task count before review",
+      "pass": true
+    },
+    {
+      "name": "390-light: simulated Inspector shell opens",
+      "pass": true
+    },
+    {
+      "name": "390-light: Inspector shell Escape",
+      "pass": true
+    },
+    {
+      "name": "390-light: rework appends draft",
+      "pass": true
+    },
+    {
+      "name": "390-light: rework keeps attachment",
+      "pass": true,
+      "details": {
+        "attachmentCount": 2
+      }
+    },
+    {
+      "name": "390-light: rework focuses composer",
+      "pass": true
+    },
+    {
+      "name": "390-light: rework does not mutate phase",
+      "pass": true
+    },
+    {
+      "name": "390-light: queue edit preserves occupied composer",
+      "pass": true
+    },
+    {
+      "name": "390-light: native tools control retained",
+      "pass": true
+    },
+    {
+      "name": "390-light: before keeps draft",
+      "pass": true
+    },
+    {
+      "name": "390-light: after keeps draft and attachments",
+      "pass": true
+    },
+    {
+      "name": "390-light: request only enters review",
+      "pass": true
+    },
+    {
+      "name": "390-light: request is not acceptance",
+      "pass": true
+    },
+    {
+      "name": "390-light: simulated completion is 4/4",
+      "pass": true
+    },
+    {
+      "name": "390-light: fixture automatic approval tail positioning",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 238,
+          "y": 213.484375,
+          "width": 108,
+          "height": 36,
+          "top": 213.484375,
+          "right": 346,
+          "bottom": 249.484375,
+          "left": 238
+        },
+        "hit": true
+      },
+      "boundary": "Fixture scrollToIndex LAST; not a full production Chat scroll-controller test."
+    },
+    {
+      "name": "390-light: original approval reachable and unobscured after native scroll",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 238,
+          "y": 213.484375,
+          "width": 108,
+          "height": 36,
+          "top": 213.484375,
+          "right": 346,
+          "bottom": 249.484375,
+          "left": 238
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: original deny reachable",
+      "pass": true
+    },
+    {
+      "name": "390-light: tool approval not acceptance",
+      "pass": true
+    },
+    {
+      "name": "390-light: rework keeps accepted task",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported objective retained",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported explanation visible",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported disables 调整方案",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported details retained",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported native tools visible",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported composer unobscured",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 577,
+          "width": 324,
+          "height": 78,
+          "top": 577,
+          "right": 357,
+          "bottom": 655,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: unsupported queue edit retained",
+      "pass": true
+    },
+    {
+      "name": "390-light: height768 unsupported hint center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 347.390625,
+          "width": 324,
+          "height": 52.171875,
+          "top": 347.390625,
+          "right": 357,
+          "bottom": 399.5625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 确认并开始 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 366.59375,
+          "width": 104,
+          "height": 42,
+          "top": 366.59375,
+          "right": 137,
+          "bottom": 408.59375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 调整方案 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 145,
+          "y": 366.59375,
+          "width": 90,
+          "height": 42,
+          "top": 366.59375,
+          "right": 235,
+          "bottom": 408.59375,
+          "left": 145
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 继续讨论 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 243,
+          "y": 366.59375,
+          "width": 88,
+          "height": 42,
+          "top": 366.59375,
+          "right": 331,
+          "bottom": 408.59375,
+          "left": 243
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 queue 编辑 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 265.5,
+          "width": 68,
+          "height": 32,
+          "top": 265.5,
+          "right": 97,
+          "bottom": 297.5,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 queue 立即发送 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 265.5,
+          "width": 100,
+          "height": 32,
+          "top": 265.5,
+          "right": 201,
+          "bottom": 297.5,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 queue 取消排队 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 329,
+          "y": 265.5,
+          "width": 32,
+          "height": 32,
+          "top": 265.5,
+          "right": 361,
+          "bottom": 297.5,
+          "left": 329
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 Composer input center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 577,
+          "width": 324,
+          "height": 78,
+          "top": 577,
+          "right": 357,
+          "bottom": 655,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 attachment center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 498,
+          "width": 62,
+          "height": 62,
+          "top": 498,
+          "right": 96,
+          "bottom": 560,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: height768 tools center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 664,
+          "width": 30,
+          "height": 26,
+          "top": 664,
+          "right": 145,
+          "bottom": 690,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-light: unsupported before keeps input",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported after keeps attachment",
+      "pass": true
+    },
+    {
+      "name": "390-light: unsupported no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "name": "390-dark: native associations",
+      "pass": true
+    },
+    {
+      "name": "390-dark: no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "name": "390-dark: composer visible",
+      "pass": true,
+      "details": {
+        "x": 33,
+        "y": 603,
+        "width": 324,
+        "height": 52
+      }
+    },
+    {
+      "name": "390-dark: task count before review",
+      "pass": true
+    },
+    {
+      "name": "390-dark: simulated Inspector shell opens",
+      "pass": true
+    },
+    {
+      "name": "390-dark: Inspector shell Escape",
+      "pass": true
+    },
+    {
+      "name": "390-dark: rework appends draft",
+      "pass": true
+    },
+    {
+      "name": "390-dark: rework keeps attachment",
+      "pass": true,
+      "details": {
+        "attachmentCount": 2
+      }
+    },
+    {
+      "name": "390-dark: rework focuses composer",
+      "pass": true
+    },
+    {
+      "name": "390-dark: rework does not mutate phase",
+      "pass": true
+    },
+    {
+      "name": "390-dark: queue edit preserves occupied composer",
+      "pass": true
+    },
+    {
+      "name": "390-dark: native tools control retained",
+      "pass": true
+    },
+    {
+      "name": "390-dark: before keeps draft",
+      "pass": true
+    },
+    {
+      "name": "390-dark: after keeps draft and attachments",
+      "pass": true
+    },
+    {
+      "name": "390-dark: request only enters review",
+      "pass": true
+    },
+    {
+      "name": "390-dark: request is not acceptance",
+      "pass": true
+    },
+    {
+      "name": "390-dark: simulated completion is 4/4",
+      "pass": true
+    },
+    {
+      "name": "390-dark: fixture automatic approval tail positioning",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 238,
+          "y": 213.484375,
+          "width": 108,
+          "height": 36,
+          "top": 213.484375,
+          "right": 346,
+          "bottom": 249.484375,
+          "left": 238
+        },
+        "hit": true
+      },
+      "boundary": "Fixture scrollToIndex LAST; not a full production Chat scroll-controller test."
+    },
+    {
+      "name": "390-dark: original approval reachable and unobscured after native scroll",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 238,
+          "y": 213.484375,
+          "width": 108,
+          "height": 36,
+          "top": 213.484375,
+          "right": 346,
+          "bottom": 249.484375,
+          "left": 238
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: original deny reachable",
+      "pass": true
+    },
+    {
+      "name": "390-dark: tool approval not acceptance",
+      "pass": true
+    },
+    {
+      "name": "390-dark: rework keeps accepted task",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported objective retained",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported explanation visible",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported disables 调整方案",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported details retained",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported native tools visible",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported composer unobscured",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 577,
+          "width": 324,
+          "height": 78,
+          "top": 577,
+          "right": 357,
+          "bottom": 655,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: unsupported queue edit retained",
+      "pass": true
+    },
+    {
+      "name": "390-dark: height768 unsupported hint center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 347.390625,
+          "width": 324,
+          "height": 52.171875,
+          "top": 347.390625,
+          "right": 357,
+          "bottom": 399.5625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 确认并开始 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 366.59375,
+          "width": 104,
+          "height": 42,
+          "top": 366.59375,
+          "right": 137,
+          "bottom": 408.59375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 调整方案 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 145,
+          "y": 366.59375,
+          "width": 90,
+          "height": 42,
+          "top": 366.59375,
+          "right": 235,
+          "bottom": 408.59375,
+          "left": 145
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 继续讨论 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 243,
+          "y": 366.59375,
+          "width": 88,
+          "height": 42,
+          "top": 366.59375,
+          "right": 331,
+          "bottom": 408.59375,
+          "left": 243
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 queue 编辑 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 265.5,
+          "width": 68,
+          "height": 32,
+          "top": 265.5,
+          "right": 97,
+          "bottom": 297.5,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 queue 立即发送 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 265.5,
+          "width": 100,
+          "height": 32,
+          "top": 265.5,
+          "right": 201,
+          "bottom": 297.5,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 queue 取消排队 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 329,
+          "y": 265.5,
+          "width": 32,
+          "height": 32,
+          "top": 265.5,
+          "right": 361,
+          "bottom": 297.5,
+          "left": 329
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 Composer input center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 577,
+          "width": 324,
+          "height": 78,
+          "top": 577,
+          "right": 357,
+          "bottom": 655,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 attachment center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 498,
+          "width": 62,
+          "height": 62,
+          "top": 498,
+          "right": 96,
+          "bottom": 560,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: height768 tools center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 664,
+          "width": 30,
+          "height": 26,
+          "top": 664,
+          "right": 145,
+          "bottom": 690,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "390-dark: unsupported before keeps input",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported after keeps attachment",
+      "pass": true
+    },
+    {
+      "name": "390-dark: unsupported no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 390,
+        "width": 390
+      }
+    },
+    {
+      "name": "320-light: native associations",
+      "pass": true
+    },
+    {
+      "name": "320-light: no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 320,
+        "width": 320
+      }
+    },
+    {
+      "name": "320-light: composer visible",
+      "pass": true,
+      "details": {
+        "x": 33,
+        "y": 567,
+        "width": 254,
+        "height": 52
+      }
+    },
+    {
+      "name": "320-light: task count before review",
+      "pass": true
+    },
+    {
+      "name": "320-light: simulated Inspector shell opens",
+      "pass": true
+    },
+    {
+      "name": "320-light: Inspector shell Escape",
+      "pass": true
+    },
+    {
+      "name": "320-light: rework appends draft",
+      "pass": true
+    },
+    {
+      "name": "320-light: rework keeps attachment",
+      "pass": true,
+      "details": {
+        "attachmentCount": 2
+      }
+    },
+    {
+      "name": "320-light: rework focuses composer",
+      "pass": true
+    },
+    {
+      "name": "320-light: rework does not mutate phase",
+      "pass": true
+    },
+    {
+      "name": "320-light: queue edit preserves occupied composer",
+      "pass": true
+    },
+    {
+      "name": "320-light: native tools control retained",
+      "pass": true
+    },
+    {
+      "name": "320-light: before keeps draft",
+      "pass": true
+    },
+    {
+      "name": "320-light: after keeps draft and attachments",
+      "pass": true
+    },
+    {
+      "name": "320-light: request only enters review",
+      "pass": true
+    },
+    {
+      "name": "320-light: request is not acceptance",
+      "pass": true
+    },
+    {
+      "name": "320-light: simulated completion is 4/4",
+      "pass": true
+    },
+    {
+      "name": "320-light: fixture automatic approval tail positioning",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 168,
+          "y": 211.9375,
+          "width": 108,
+          "height": 36,
+          "top": 211.9375,
+          "right": 276,
+          "bottom": 247.9375,
+          "left": 168
+        },
+        "hit": true
+      },
+      "boundary": "Fixture scrollToIndex LAST; not a full production Chat scroll-controller test."
+    },
+    {
+      "name": "320-light: original approval reachable and unobscured after native scroll",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 168,
+          "y": 211.9375,
+          "width": 108,
+          "height": 36,
+          "top": 211.9375,
+          "right": 276,
+          "bottom": 247.9375,
+          "left": 168
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: original deny reachable",
+      "pass": true
+    },
+    {
+      "name": "320-light: tool approval not acceptance",
+      "pass": true
+    },
+    {
+      "name": "320-light: rework keeps accepted task",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported objective retained",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported explanation visible",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported disables 调整方案",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported details retained",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported native tools visible",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported composer unobscured",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 541,
+          "width": 254,
+          "height": 78,
+          "top": 541,
+          "right": 287,
+          "bottom": 619,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: unsupported queue edit retained",
+      "pass": true
+    },
+    {
+      "name": "320-light: height768 unsupported hint center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 311.390625,
+          "width": 254,
+          "height": 52.171875,
+          "top": 311.390625,
+          "right": 287,
+          "bottom": 363.5625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 确认并开始 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 328.59375,
+          "width": 104,
+          "height": 42,
+          "top": 328.59375,
+          "right": 137,
+          "bottom": 370.59375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 调整方案 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 145,
+          "y": 328.59375,
+          "width": 90,
+          "height": 42,
+          "top": 328.59375,
+          "right": 235,
+          "bottom": 370.59375,
+          "left": 145
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 继续讨论 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 348.59375,
+          "width": 88,
+          "height": 40,
+          "top": 348.59375,
+          "right": 121,
+          "bottom": 388.59375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 queue 编辑 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 229.5,
+          "width": 68,
+          "height": 32,
+          "top": 229.5,
+          "right": 97,
+          "bottom": 261.5,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 queue 立即发送 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 229.5,
+          "width": 100,
+          "height": 32,
+          "top": 229.5,
+          "right": 201,
+          "bottom": 261.5,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 queue 取消排队 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 259,
+          "y": 229.5,
+          "width": 32,
+          "height": 32,
+          "top": 229.5,
+          "right": 291,
+          "bottom": 261.5,
+          "left": 259
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 Composer input center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 541,
+          "width": 254,
+          "height": 78,
+          "top": 541,
+          "right": 287,
+          "bottom": 619,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 attachment center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 462,
+          "width": 62,
+          "height": 62,
+          "top": 462,
+          "right": 96,
+          "bottom": 524,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: height768 tools center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 626,
+          "width": 30,
+          "height": 26,
+          "top": 626,
+          "right": 145,
+          "bottom": 652,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-light: unsupported before keeps input",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported after keeps attachment",
+      "pass": true
+    },
+    {
+      "name": "320-light: unsupported no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 320,
+        "width": 320
+      }
+    },
+    {
+      "name": "320-dark: native associations",
+      "pass": true
+    },
+    {
+      "name": "320-dark: no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 320,
+        "width": 320
+      }
+    },
+    {
+      "name": "320-dark: composer visible",
+      "pass": true,
+      "details": {
+        "x": 33,
+        "y": 567,
+        "width": 254,
+        "height": 52
+      }
+    },
+    {
+      "name": "320-dark: task count before review",
+      "pass": true
+    },
+    {
+      "name": "320-dark: simulated Inspector shell opens",
+      "pass": true
+    },
+    {
+      "name": "320-dark: Inspector shell Escape",
+      "pass": true
+    },
+    {
+      "name": "320-dark: rework appends draft",
+      "pass": true
+    },
+    {
+      "name": "320-dark: rework keeps attachment",
+      "pass": true,
+      "details": {
+        "attachmentCount": 2
+      }
+    },
+    {
+      "name": "320-dark: rework focuses composer",
+      "pass": true
+    },
+    {
+      "name": "320-dark: rework does not mutate phase",
+      "pass": true
+    },
+    {
+      "name": "320-dark: queue edit preserves occupied composer",
+      "pass": true
+    },
+    {
+      "name": "320-dark: native tools control retained",
+      "pass": true
+    },
+    {
+      "name": "320-dark: before keeps draft",
+      "pass": true
+    },
+    {
+      "name": "320-dark: after keeps draft and attachments",
+      "pass": true
+    },
+    {
+      "name": "320-dark: request only enters review",
+      "pass": true
+    },
+    {
+      "name": "320-dark: request is not acceptance",
+      "pass": true
+    },
+    {
+      "name": "320-dark: simulated completion is 4/4",
+      "pass": true
+    },
+    {
+      "name": "320-dark: fixture automatic approval tail positioning",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 168,
+          "y": 211.9375,
+          "width": 108,
+          "height": 36,
+          "top": 211.9375,
+          "right": 276,
+          "bottom": 247.9375,
+          "left": 168
+        },
+        "hit": true
+      },
+      "boundary": "Fixture scrollToIndex LAST; not a full production Chat scroll-controller test."
+    },
+    {
+      "name": "320-dark: original approval reachable and unobscured after native scroll",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 168,
+          "y": 211.9375,
+          "width": 108,
+          "height": 36,
+          "top": 211.9375,
+          "right": 276,
+          "bottom": 247.9375,
+          "left": 168
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: original deny reachable",
+      "pass": true
+    },
+    {
+      "name": "320-dark: tool approval not acceptance",
+      "pass": true
+    },
+    {
+      "name": "320-dark: rework keeps accepted task",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported objective retained",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported explanation visible",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported disables 确认并开始",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported disables 调整方案",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported disables 继续讨论",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported details retained",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported keeps original draft and attachment",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported native tools visible",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported composer unobscured",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 541,
+          "width": 254,
+          "height": 78,
+          "top": 541,
+          "right": 287,
+          "bottom": 619,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: unsupported queue edit retained",
+      "pass": true
+    },
+    {
+      "name": "320-dark: height768 unsupported hint center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 311.390625,
+          "width": 254,
+          "height": 52.171875,
+          "top": 311.390625,
+          "right": 287,
+          "bottom": 363.5625,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 确认并开始 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 328.59375,
+          "width": 104,
+          "height": 42,
+          "top": 328.59375,
+          "right": 137,
+          "bottom": 370.59375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 调整方案 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 145,
+          "y": 328.59375,
+          "width": 90,
+          "height": 42,
+          "top": 328.59375,
+          "right": 235,
+          "bottom": 370.59375,
+          "left": 145
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 继续讨论 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 348.59375,
+          "width": 88,
+          "height": 40,
+          "top": 348.59375,
+          "right": 121,
+          "bottom": 388.59375,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 queue 编辑 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 29,
+          "y": 229.5,
+          "width": 68,
+          "height": 32,
+          "top": 229.5,
+          "right": 97,
+          "bottom": 261.5,
+          "left": 29
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 queue 立即发送 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 101,
+          "y": 229.5,
+          "width": 100,
+          "height": 32,
+          "top": 229.5,
+          "right": 201,
+          "bottom": 261.5,
+          "left": 101
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 queue 取消排队 center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 259,
+          "y": 229.5,
+          "width": 32,
+          "height": 32,
+          "top": 229.5,
+          "right": 291,
+          "bottom": 261.5,
+          "left": 259
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 Composer input center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 33,
+          "y": 541,
+          "width": 254,
+          "height": 78,
+          "top": 541,
+          "right": 287,
+          "bottom": 619,
+          "left": 33
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 attachment center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 34,
+          "y": 462,
+          "width": 62,
+          "height": 62,
+          "top": 462,
+          "right": 96,
+          "bottom": 524,
+          "left": 34
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: height768 tools center reachable",
+      "pass": true,
+      "details": {
+        "rect": {
+          "x": 115,
+          "y": 626,
+          "width": 30,
+          "height": 26,
+          "top": 626,
+          "right": 145,
+          "bottom": 652,
+          "left": 115
+        },
+        "hit": true
+      }
+    },
+    {
+      "name": "320-dark: unsupported before keeps input",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported after keeps attachment",
+      "pass": true
+    },
+    {
+      "name": "320-dark: unsupported no horizontal overflow",
+      "pass": true,
+      "details": {
+        "scroll": 320,
+        "width": 320
+      }
+    }
+  ],
+  "errors": [],
+  "blockedRequests": [],
+  "businessRequests": [],
+  "screenshots": [
+    "independent-1280-light-returned.png",
+    "independent-1280-light-review.png",
+    "independent-1280-light-accepted.png",
+    "independent-1280-light-approval.png",
+    "independent-1280-light-rework.png",
+    "independent-1280-light-unsupported-plan.png",
+    "independent-1280-dark-returned.png",
+    "independent-1280-dark-review.png",
+    "independent-1280-dark-accepted.png",
+    "independent-1280-dark-approval.png",
+    "independent-1280-dark-rework.png",
+    "independent-1280-dark-unsupported-plan.png",
+    "independent-390-light-returned.png",
+    "independent-390-light-review.png",
+    "independent-390-light-accepted.png",
+    "independent-390-light-approval.png",
+    "independent-390-light-rework.png",
+    "independent-390-light-unsupported-plan.png",
+    "independent-390-dark-returned.png",
+    "independent-390-dark-review.png",
+    "independent-390-dark-accepted.png",
+    "independent-390-dark-approval.png",
+    "independent-390-dark-rework.png",
+    "independent-390-dark-unsupported-plan.png",
+    "independent-320-light-returned.png",
+    "independent-320-light-review.png",
+    "independent-320-light-accepted.png",
+    "independent-320-light-approval.png",
+    "independent-320-light-rework.png",
+    "independent-320-light-unsupported-plan.png",
+    "independent-320-dark-returned.png",
+    "independent-320-dark-review.png",
+    "independent-320-dark-accepted.png",
+    "independent-320-dark-approval.png",
+    "independent-320-dark-rework.png",
+    "independent-320-dark-unsupported-plan.png"
+  ]
+}

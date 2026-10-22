@@ -51,3 +51,31 @@ it('persists the first-turn task summary in real V2 storage and reloads it', asy
   expect(reloaded.getSessionMetadata(sessionId)?.title).toBe('费用包校验与毛利展示优化');
   expect((await reloaded.getSessionData(sessionId))?.messages).toHaveLength(2);
 });
+
+it('persists and reloads an AI title while the first business turn is still running', async () => {
+  store = await import('./SessionStore');
+  service = await import('./session-title-service');
+  const request = '【发生时间】2026年10月20日第一次出现\n【操作步骤】个人报销-提交审批\n【实际结果】网络错误无法提交';
+  const metadata = await store.createSession('/synthetic-title-workspace', {
+    title: request.slice(0, 40), runtime: 'codex', runtimeSource: 'managed-provider',
+    stats: { messageCount: 0, totalInputTokens: 0, totalOutputTokens: 0 },
+  });
+  sessionId = metadata.id;
+  const active = store.getActiveSessionTranscript(sessionId)!;
+  const { ProductTranscriptContent } = await import('./session-transcript/content');
+  const content = new ProductTranscriptContent(active.writer);
+  content.admitUser({ id: 'pending-user', role: 'user', content: request, timestamp: 't' });
+  state.generate.mockResolvedValue('报销审批提交失败排查');
+  await service.maybeGenerateTitleAfterTurn(sessionId, 'codex', 'model', undefined, 'accepted-user');
+  expect(state.generate).toHaveBeenLastCalledWith([{ user: request, assistant: '' }], 'codex', 'model', '/synthetic-title-workspace', 'managed-provider');
+  expect(await active.writer.flush()).toBe(true);
+  const data = await store.getSessionData(sessionId);
+  expect(data?.title).toBe('报销审批提交失败排查');
+  expect(data?.messages).toHaveLength(1);
+  expect([...active.writer.projection.turns.values()].at(-1)?.status).toBe('running');
+  await active.revoke();
+  vi.resetModules();
+  const reloaded = await import('./SessionStore');
+  expect(reloaded.getSessionMetadata(sessionId)?.title).toBe('报销审批提交失败排查');
+  expect((await reloaded.getSessionData(sessionId))?.messages).toHaveLength(1);
+});

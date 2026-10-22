@@ -9,11 +9,15 @@ function fixture(status: TranscriptTurn['status']) {
   return projection;
 }
 describe('persisted conversation continuation', () => {
-  it.each(['stopped', 'interrupted', 'running'] as const)('projects exact %s work without replaying input', status => {
+  it.each(['stopped', 'interrupted'] as const)('projects exact %s work without replaying input', status => {
     expect(deriveSessionContinuation(fixture(status))).toEqual({ turnId: 'turn1', rootUserMessageId: 'u1', status });
   });
-  it.each(['complete', 'error'] as const)('does not offer completed or unresolved-error %s work as resumable', status => {
+  it.each(['running', 'complete', 'error'] as const)('does not offer active, completed or unresolved-error %s work as resumable', status => {
     expect(deriveSessionContinuation(fixture(status))).toBeUndefined();
+  });
+  it('rejects legacy running metadata even when the original root matches', () => {
+    expect(matchesSessionContinuation({ turnId: 'turn1', rootUserMessageId: 'u1', status: 'running' },
+      [{ id: 'u1', role: 'user' }])).toBe(false);
   });
   it('does not infer incomplete work from user text or an older stopped turn', () => {
     const projection = fixture('stopped');

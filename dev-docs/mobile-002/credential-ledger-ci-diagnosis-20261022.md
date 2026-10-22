@@ -1,0 +1,37 @@
+# PR190 credential-ledger failure diagnosis
+
+The TestFlight purpose repair itself has an accepted immutable unsigned build4/source63d223010. Its first combinedCI39739522534 failed a desktop-only credential ledger subprocess test, not Apple signing or its new photo purpose.1793 Rust tests passed; the child failed with CredentialUnavailable and the parent reported round0/helper0 exit101. The original error constructor discards the actual safety stage and I/O error, so the cause is unresolved.
+
+The sole diagnostic writer prepares a new head with fixture-only stage/readback diagnostics, preserving every safety guard and public failure. Relevant IO errors retain ErrorKind/raw errno for the isolated helper only. Path metadata rejection and opened-FD metadata rejection are distinct; observations include only owned flag, regular-file flag, link count, UID,mode,length. No route token or credential content is logged. Release builds do not contain test diagnostic output. Diagnostic200-round contention (all four helpers must succeed in every round) is capped at120s for this diagnostic candidate; it is not a retry-after-failure policy.
+
+macOS isolated20x4 and200x4 passing does not replace LinuxCI. Docker default and desktop-linux sockets and existing Lima instances were unavailable; no daemon, VM or production Linux server was started or used. A private controlled-unlink model produced actual nlink0 FD metadata and demonstrates an asymmetric existing boundary, but it does not establish which branch failed originally. The proposed nlink0 handling is not in this diagnostic source.
+
+Desktop01a12bc2 retains the original PR190 and only combinedCI/main execution. It must review exact SHA before selecting one necessary diagnostic Linux run; no unchanged rerun, guard suppression, ignored failure or unofficial upload is permitted. The frozen63 IPA source/unsigned archive remains retained. An eventual different candidate needs its mobile/native-import/JS/Info impact evaluated and CI tied to the new head; no broad native-input equivalence is inferred. Source, simulated/model checks, Linux evidence, main delivery, distribution signing, Apple acceptance and actual invite are separate states.
+
+Private receipts live under the MoxBot pointer output/mobile-testflight-20261022. Do not copy credentials, runtime stores or full private configuration into Git. The originalAir quiet-window fact and reviewer-account activation remain separate pending gates.
+
+Exact diagnostic source was copied into the private module harness (only inner-doc adaptation and external OS-store panic shims). With local-v1 compile selection,25 credential module cases passed/1 private subprocess entry ignored; the original contention itself ran200 rounds with no tolerance. This is scoped macOS evidence; full real Tauri/Linux tests remain required. Rustfmt and git diff checks passed.
+
+
+## PR192 observed retirement boundary and bounded repair
+
+Original PR190 failed without a specific stage; its diagnostic-only changed-head run39748783192 later passed. Neither run established the original PR190 cause. PR192/headbcb33185 run39768392014, Rustjob119790049045, now actually failed the identical credential file (SHA256e34484d9f8e9d3a43ad9ba1c882012ccf338abfeb4355f0c571d0ff7fd7697c6).1800 cases passed/1failed/8ignored; round133/helper2 exited101. RawlogSHA256 af47baac43c49dafea11f0809f690688684ff7f7b126899a67ac5aa66b6204bf records `owner-path-rejected=(false,true,0,1001,33188,24)` followed by unavailable at426. This establishes the actual failed pathname observation was an unowned regular inode with zero links, trustedUID/mode100644 and bounded size, rather than a token parse or ledger mutation failure.
+
+The normal Rust lock primitive releases by removing its owner/lock directory only after its mutator completes. A pathname metadata request can retain an inode while the holder releases it. The upstream [Linux stat implementation](https://github.com/torvalds/linux/blob/master/fs/stat.c) separates filename lookup from attribute retrieval and fills nlink from the inode (read2026-10-22). That supports this interleaving; it is not a trace of this runner's exact kernel. The deterministic regression uses a real fixture owner FD and normal fixture lock-directory removal to return actual unlinked-inode Metadata at the pathname observation seam. It models the observed schedule without sleeps or fabricated Metadata. On the unchanged original guard it fails with CredentialUnavailable; the owned and unsafe metadata controls already reject.
+
+The repair treats only a regular/same-effectiveUID/original-safe-mode/at-most256-byte nlink0 observation in **unowned** preflight like an already gone owner, matching its existing NotFound and retired-FD handling. This decision grants no ownership and reads/writes no ledger or credential. The transaction still must acquire the real create-dir lock, verify the pinned route directory and private lock-parent dev/inode, then re-read the current owner with owned=true before invoking its mutator. A replacement owner is validated independently. Owned nlink0 and live nlink2 still reject. Owner parsing, PID checks, nofollow/nonblock opens, directory trust, route namespace/generation and backend decisions are unchanged. The existing FD-retirement behavior and generic file-lock primitive are not changed by this patch.
+
+| Boundary | Regression evidence |
+| --- | --- |
+| Trusted unowned retired observation | Original guard RED; repaired GREEN; subsequent actual transaction acquires a new lock, verifies owned owner and persists/reads its route |
+| Owned retired observation | Rejected in both RED and GREEN |
+| Retired unsafe mode/special bits/size257 | Rejected; no relaxation of these fields |
+| Writable or symlink lock directory | Rejected before invoking owner metadata observer |
+| Path replaced with malformed owner | Old observation cannot validate it; fresh owned preflight rejects |
+| Live owner hardlink/symlink/malformed token/zeroPID/wrong ownedPID | Rejected |
+| Directory/namespace and transaction fences | Original implementations unchanged; existing corruption, namespace-swap and backend-preflight module cases pass |
+| Concurrency and bounds | Original200rounds/four concurrent processes, every helper/route mandatory,120s total and15s per round retained byte-for-byte |
+
+The exact-source isolated macOS module suite passes31/0failed/1privatehelperignored (7 unrelated file-lock tests filtered), including the200x4 parent, in41.03s. Five focused retirement cases pass. The initial harness parameter compile error ran no test and is retained separately; it is not the RED result. The actual RED result was2pass/1failure at the positive retired-observation case. Probe source only adapts inner documentation; app_dirs=None and disabled OS-store panic shims prevent production credential access. These local results do not replace full Tauri/Linux changed-headCI or main delivery. Original PR190's unstaged cause remains unproven; do not retroactively label it repaired based only on PR192.
+
+This repair stays local for desktop01a12bc2 review and integration into its existingPR192. No push/PR/CI dispatch here, no private-state publication, no Keychain/Apple/Host/cloud operation. Existing accepted TestFlight4 remains producer63d223010, with its own e5/main13b verification closure; this desktop-only later patch is not relabeled into it or frozen5191/5182 artifacts. Private original/new logs and provenance are under pointer output/mobile-testflight-20261022/ledger-retirement-*.

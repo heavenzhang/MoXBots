@@ -195,7 +195,7 @@ MyAgents 只包含客户端实现；`src/server/agent-network/` 是本机 Node S
 | Sidecar Manager | Rust；Session owner set、generation、recovery、Global intent 和请求 lease | [Session](./tech_docs/session_architecture.md)、[冷启动](./tech_docs/sidecar_cold_start.md) |
 | Tab Workspace | App + feature module；Tab union、导航、恢复、关闭 lifecycle | [DESIGN](./DESIGN.md)、[Chat 呈现](./tech_docs/chat_scroll_presentation_lifecycle.md) |
 | System Prompt | Node；产品 append、Workspace 指令和逐轮 reminder 分层组装 | [Prompt](./tech_docs/system_prompt_architecture.md)、[Reminder](./tech_docs/system_reminder_protocol.md) |
-| SessionEngine | Node facade；builtin/integrated/external Runtime 的唯一 route-facing 入口 | [Multi-Agent Runtime](./tech_docs/multi_agent_runtime.md) |
+| SessionEngine | Node facade；builtin/integrated/external Runtime 的唯一 route-facing 入口 | [Multi-Agent Runtime](./tech_docs/multi_agent_runtime.md)、[会话任务编排](./tech_docs/session_task_orchestration.md) |
 | Builtin Session | Node；Claude Agent SDK Query、queue、turn、transcript 与配置 owner 分层 | [Session](./tech_docs/session_architecture.md) |
 | Integrated DSH | Session Sidecar 的 adapter 与独立 DSH 进程；原生 Session/Turn、工具、子 Agent 与 mutation receipts 由 Runtime 拥有，Host 负责配置、交互和 Product projection | [DSH 集成](./tech_docs/myagents_dsh_integrated_runtime.md) |
 | External Runtime | Node；Claude Code/Codex adapter、进程与 normalized event | [Multi-Agent Runtime](./tech_docs/multi_agent_runtime.md) |

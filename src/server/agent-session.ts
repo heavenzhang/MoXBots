@@ -1,4 +1,6 @@
-import { deriveSessionWorkProgress } from '../shared/sessionWorkProgress';
+import { projectOrchestrationProgress } from '../shared/sessionTaskOrchestration';
+import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from './session-engine/task-orchestration';
+import { deriveSessionTodos, deriveSessionWorkProgress } from '../shared/sessionWorkProgress';
 import { bootstrapFromEnvironment as hostBotBootstrapFromEnvironment } from '../host/bot-session-bootstrap';
 import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../shared/appProfile';
 import { desktopContextOf } from '../shared/agentMentions';
@@ -169,7 +171,7 @@ import type { OfficialToolId } from '../shared/official-tools';
 import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, getActiveSessionTranscript, loadSessionTranscript } from './SessionStore';
 import { TranscriptPresentation } from './session-transcript/presentation';
 import { projectTranscriptToolInput, type TranscriptObject } from '../shared/sessionTranscript';
-import { firePostTurnTitleHook } from './turn-hooks';
+import { fireAcceptedUserTitleHook, firePostTurnTitleHook } from './turn-hooks';
 import { createSessionMetadata, type SessionMetadata, type SessionMessage, type MessageAttachment, type SessionSource, type TurnAnalyticsSource } from './types/session';
 import { originFromTurnAttribution } from '../shared/session-origin';
 import type { SessionOrigin } from '../shared/session-origin';
@@ -8142,8 +8144,18 @@ export async function getBuiltinBackgroundTaskDetail(toolUseId: string) {
 }
 
 export function getBuiltinWorkProgressSnapshot() {
-  return deriveSessionWorkProgress(getBuiltinMessages(), { live: true,
-    activeBackground: readQueryBackgroundTasks(lifecycleState.query) });
+  return projectOrchestrationProgress(deriveSessionWorkProgress(getBuiltinMessages(), { live: true,
+    activeBackground: readQueryBackgroundTasks(lifecycleState.query) }), getSessionMetadata(getSessionId())?.taskOrchestration, getBuiltinMessages());
+}
+
+/** Successful native bookkeeping results publish immediately, including Task tools. */
+function observeBuiltinTaskPlanResult(toolUseId: string): void {
+  const messages = getBuiltinMessages();
+  const isPlanResult = messages.some(message => Array.isArray(message.content) && message.content.some(block => block.type === 'tool_use'
+    && block.tool?.id === toolUseId && !block.tool.isError && ['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'].includes(block.tool.name)));
+  if (!isPlanResult) return;
+  const plan = deriveSessionTodos(messages);
+  if (plan.source !== 'none') observeSessionTasksInBackground(getSessionId(), { plan: plan.todos, planTurnId: getBuiltinProductContent()?.currentTurn?.id });
 }
 
 export function getBuiltinExecutionStartedAt(): string | undefined {
@@ -12551,6 +12563,18 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput): Promise<HookJSONOutput> => {
               const pre = input as PreToolUseHookInput;
+              if ((pre.tool_name === 'Agent' || pre.tool_name === 'Task')
+                && (!isCurrentQueryAuthority(activeQueryAuthority)
+                  || getQueryGeneration() !== inputTrace.generation
+                  || lifecycleState.abortRequested || sessionId !== queryProductSessionId
+                  || !canSessionDelegateSubagents(queryProductSessionId, {
+                    queueId: getBuiltinCurrentTurnQueueId() ?? undefined, owner: getBuiltinCurrentTurnIdentity()?.owner }))) {
+                return {
+                  hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason: '请先讨论并确认当前会话编排草案，再启动子 Agent。' },
+                };
+              }
               const duplicate = await queryContextRecovery?.authorizeTool(pre.tool_name, pre.tool_input, pre.tool_use_id);
               if (duplicate) return {
                 hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
@@ -12598,6 +12622,12 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput, _toolUseId: string | undefined, options: { signal: AbortSignal }): Promise<HookJSONOutput> => {
               const postInput = input as PostToolUseHookInput;
+              if (isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
+                && !lifecycleState.abortRequested && sessionId === queryProductSessionId) {
+                await confirmSessionTaskReviewFromRootTool(queryProductSessionId, { id: postInput.tool_use_id, name: postInput.tool_name,
+                  isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
+                  input: postInput.tool_input, output: postInput.tool_response, root: !postInput.agent_id });
+              }
               await queryContextRecovery?.commitToolResult(postInput.tool_name, postInput.tool_input, postInput.tool_response, false, postInput.tool_use_id);
               // Bounded progress check: only content-level, per-turn evidence can
               // produce a hint (declared edit stage + overlapping re-reads + no
@@ -13374,6 +13404,11 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             runId: taskMsg.run_id,
           });
           if (recorded) {
+            if (taskMsg.tool_use_id && taskMsg.task_type !== 'local_bash') observeSessionTasksInBackground(sessionId, { attempts: [{
+              id: `${taskMsg.tool_use_id}:${taskMsg.run_id ?? 'initial'}`, toolUseId: taskMsg.tool_use_id,
+              title: taskMsg.description ?? taskMsg.task_id, executionVerified: true, runId: taskMsg.run_id, executionTaskId: taskMsg.task_id,
+              lifecycle: { status: 'running', startedAt: Date.now() },
+            }] });
             broadcast('chat:task-started', {
               sessionId,
               taskId: taskMsg.task_id,
@@ -13399,6 +13434,12 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               outputPath: outputFile || undefined,
             });
             if (completion.broadcast) {
+              if (completion.info?.toolUseId && completion.info.agentType !== 'local_bash') observeSessionTasksInBackground(sessionId, { attempts: [{
+                id: `${completion.info.toolUseId}:${taskMsg.run_id ?? 'initial'}`, toolUseId: completion.info.toolUseId,
+                title: completion.info.description ?? taskMsg.description ?? taskMsg.task_id, executionVerified: true, runId: taskMsg.run_id, executionTaskId: taskMsg.task_id,
+                lifecycle: { status: status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'interrupted',
+                  startedAt: completion.info.startedAt ?? 0, finishedAt: taskMsg.patch?.end_time ?? Date.now(), result: summary },
+              }] });
               broadcast('chat:task-notification', {
                 sessionId,
                 taskId: taskMsg.task_id,
@@ -14031,6 +14072,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                 });
                 if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
                 handleToolResultComplete(toolResultBlock.tool_use_id, contentStr);
+                observeBuiltinTaskPlanResult(toolResultBlock.tool_use_id);
                 broadcast('chat:tool-result-complete', {
                   toolUseId: toolResultBlock.tool_use_id,
                   content: stripped ? PLAYWRIGHT_RESULT_SENTINEL : contentStr,
@@ -14268,6 +14310,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   contentStr,
                   toolResultBlock.is_error || false
                 );
+                if (!toolResultBlock.is_error) observeBuiltinTaskPlanResult(toolResultBlock.tool_use_id);
                 broadcast('chat:tool-result-complete', {
                   toolUseId: toolResultBlock.tool_use_id,
                   content: stripped ? PLAYWRIGHT_RESULT_SENTINEL : contentStr,
@@ -14812,6 +14855,9 @@ async function rejectPromotedMessageBeforeDispatch(
       console.error('[agent] pre-dispatch durable rollback failed:', error);
     }
   }
+  // This owner has not yielded the input to the SDK. Settle its durable
+  // domain claim before publishing a rejected dispatch receipt.
+  await item.beforeDispatch?.cancel?.();
   releaseTurnAdmissionTicket(item.id);
   if (getInFlightQueueId() === item.id) clearInFlightSlot();
   clearPromotedItem(item.id);
@@ -15444,6 +15490,12 @@ async function* messageGenerator(
       item.resolve();
       traceBuiltinInputProgress('input-retired', inputTrace);
       return;
+    }
+
+    // The request is now admitted and recorded. A long/failed business turn
+    // must not keep its timestamp/scaffolding prefix as the session title.
+    if (!item.transientProviderRetry && !item.streamContinuation) {
+      fireAcceptedUserTitleHook(sessionId, 'builtin', configState.currentModel, configState.currentProviderEnv);
     }
 
     if (!getCurrentProductSessionMetadata()?.pendingContinueAfterAbort && shouldRenewWatchdogAutoResume({

@@ -82,9 +82,9 @@ DSH 原生会话使用官方 JSONL persistence，Runtime 自己的 coordination 
 
 ### 3.0 自动任务标题
 
-`session-title-service.ts` 是自动命名 owner。首次成功且可用于命名的人类问答完成后，后台异步概括任务对象和动作；标题通常为 8–16 个中文字符，最多 30 个字符，保留必要的项目、版本或文件标识。创建时的首条消息预览仅作暂存标题，不应被当作最终概要。
+`session-title-service.ts` 是自动命名 owner。builtin 和 external 在人类请求接纳并录入原 transcript 后，后台异步概括请求的任务对象和动作，不等待业务执行成功；标题通常为 8–16 个中文字符，最多 30 个字符，保留必要的项目、版本或文件标识。创建时的首条消息预览仅作暂存标题，不应被当作最终概要。
 
-命名上下文每轮最多保留用户 2000、助手 500 个 Unicode code point；超限同时保留首部和尾部，避免长背景后的真实需求丢失。系统自动消息、错误回答和失败的生成终态不用于发布标题；认证错误也不能成为标题。失败保持当前标题并按现有有界策略在后续成功轮次重试。
+命名上下文每轮最多保留用户 2000、助手 500 个 Unicode code point；超限同时保留首部和尾部，避免长背景后的真实需求丢失。接纳时只取人类请求，不采用未完成或失败的助手输出；成功终态仍可用有效问答重试。系统自动消息、错误回答和标题生成自身的失败终态不用于发布标题；认证错误也不能成为标题。失败保持当前标题，在后续人类请求接纳或成功轮次按现有有界策略重试；同一会话 in-flight 去重，最多尝试 10 次。prepared 会话不启动命名。
 
 生成成功通过 `SessionStore.updateSessionMetadata` 持久化，并发布 `chat:session-title-changed` 更新界面。生成期间发生的手动命名在写入锁内再次检查，自动命名不得覆盖 `titleSource: 'user'`。已概括或手动命名的历史任务不会批量重新命名。
 
@@ -207,6 +207,8 @@ Retry 的 `model` / `reasoningEffort` 是与普通发送一致的可选发送意
 响应必须区分会话提交、重发接纳和文件恢复结果：文件已恢复而记录修改失败不能说文件未变；会话已提交而 Runtime restore 失败不能说完全没执行。传输失败时前端回读权威历史，不用旧消息快照覆盖、不自动重发；明确的校验/能力拒绝直接展示原因。Fork 调用方用稳定的 `targetSessionId`，metadata 的 `forkOrigin` 关联来源；丢失响应后查询同一目标或重试同一身份，已发布目标返回已有结果。查询尚未确认目标只表示待确认，不证明此前失败；打开 Tab 失败也不删除已发布分支。这不承诺跨进程崩溃的 exactly-once 执行。
 
 Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代表 turn 已结束；前端等待执行事件，缺失时读取 `/api/session-state`，并丢弃已被更新执行事件、恢复或连接代际取代的读结果。Reset 成功返回前由 adapter 通过既有 publisher 发布新 identity 的 desktop 元数据和当前执行配置快照，并等待 writer 的 `flushForMutation` 确认磁盘可见；保证尚未发送首条消息也能绑定 Task/Goal、重启后仍能恢复模型配置。前端只有在后端确认新 identity 后才采用新空会话；拒绝时保留历史，丢响应时回读真实 binding。App 打开新 Tab 失败须与「可在当前空会话 reset」区分，不能用失败触发破坏性的 fallback。
+
+普通会话的「继续未完成任务」候选由 V2 transcript owner 从最新用户轮次的 `stopped` / `interrupted` terminal 投影。正常 `running`（包括新会话的首轮）只展示现有执行进度，不发布继续候选；冷启动时仍由原 execution owner 将遗留 running 结算为 interrupted，之后才允许投影入口。Renderer 同时拒绝旧版 metadata 的 running 候选，hydration 未就绪、执行或交互/队列阻塞期间不显示横幅；这些展示判断不授予执行权限，原 Session/turn/generation 准入与显式一次性点击继续生效。
 
 ## 5. Goal 与跨 Session 协作
 

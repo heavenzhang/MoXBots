@@ -1,0 +1,3 @@
+@import '../../../src/renderer/index.css';
+@source '../../../src/renderer';
+@source './main.tsx';

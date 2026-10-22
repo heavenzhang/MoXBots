@@ -1,3 +1,4 @@
+import { assertDshDelegationHookReady, evaluateDshDelegationHook, DSH_DELEGATION_CONFIRMATION_HOOK_ID } from './delegation-gate';
 import { runDshTextUtility } from './text-utility';
 import { APP_DATA_DIR_NAME } from '../../../shared/appProfile';
 import { buildTurnProviderAnalytics, type TurnProviderAnalytics } from '../../session-core/turn-analytics';
@@ -1124,7 +1125,18 @@ export class DshRuntime implements AgentRuntime {
                 })
               : Promise.resolve({ state: 'failed', code: 'host_tool_authority_mismatch' });
           })(),
-      'host/hook/execute': () => ({ state: 'continue' }),
+      'host/hook/execute': params => {
+        const plane = extensionPlaneForHostRequest(params);
+        return evaluateDshDelegationHook({
+          params,
+          productSessionId: options.sessionId,
+          runtimeGeneration: processValue?.runtimeGeneration ?? host.identity?.runtimeGeneration,
+          runtimeSessionId: processValue?.runtimeSessionId,
+          componentGenerationAccepted: !!plane?.snapshot.components.some(component =>
+            component.id === DSH_DELEGATION_CONFIRMATION_HOOK_ID && component.kind === 'hook' && component.enabled),
+          canDelegateSubagents: options.canDelegateSubagents,
+        });
+      },
       'host/attachment/put': params => attachments.put(params),
       'host/attachment/acquire': params => attachments.acquire(params),
       'host/attachment/release': params => attachments.release(params),
@@ -1269,6 +1281,7 @@ export class DshRuntime implements AgentRuntime {
           `DSH extension snapshot did not become effective before Session binding: ${JSON.stringify(extensionReceipt)}`,
         );
       }
+      assertDshDelegationHookReady(extensionResult);
       const extensionCatalog = await host.request('extension/catalog', {});
       const extensionFacts = extensionCatalogFacts(extensionPlane, extensionCatalog, extensionResult);
       const extensionDigest = extensionFacts.digest;
@@ -1471,6 +1484,7 @@ export class DshRuntime implements AgentRuntime {
     clientUserMessageId: string,
     requestedClientOperationId?: string,
     allowRealtimeSteer = true,
+    beforeDispatch?: () => void,
   ): Promise<void> {
     if (process.activeOperationId) throw new Error('DSH already owns an active root turn');
     // Global collaboration choices become effective through the existing
@@ -1500,10 +1514,12 @@ export class DshRuntime implements AgentRuntime {
     process.operationUserMessages.set(clientOperationId, clientUserMessageId);
     try {
       await process.configuration.preparedProvider?.beforeTurn();
+      const input = await this.canonicalInput(process, message, images);
+      beforeDispatch?.();
       const result = await process.host.request('turn/start', {
         clientOperationId,
         clientUserMessageId,
-        input: await this.canonicalInput(process, message, images),
+        input,
         configRevision: process.configuration.revision,
         extensionDigest: process.extensionDigest,
         executionEnvironmentRevision: process.executionEnvironment.revision,
@@ -1542,6 +1558,7 @@ export class DshRuntime implements AgentRuntime {
       options?.clientUserMessageId ?? `user-${randomUUID()}`,
       options?.clientOperationId,
       options?.allowRealtimeSteer !== false,
+      options?.beforeDispatch,
     );
   }
 
@@ -1720,6 +1737,7 @@ export class DshRuntime implements AgentRuntime {
     result: DshRpcObject,
   ): Promise<RuntimeExtensionDiagnostics> {
     const catalog = await process.host.request('extension/catalog', {});
+    assertDshDelegationHookReady(result);
     const facts = extensionCatalogFacts(plane, catalog, result);
     process.extensionPlane = plane;
     process.extensionCatalog = catalog;
@@ -1885,7 +1903,7 @@ export class DshRuntime implements AgentRuntime {
     runtimeProcess: RuntimeProcess,
     message: string,
     images?: ResolvedImagePayload[],
-    options?: { clientUserMessageId?: string; clientOperationId?: string; beforeDispatch?: (identity: { clientOperationId: string; inputFingerprint: string }) => Promise<void> },
+    options?: { clientUserMessageId?: string; clientOperationId?: string; beforeNativeDispatch?: () => void; beforeDispatch?: (identity: { clientOperationId: string; inputFingerprint: string }) => Promise<void> },
   ): Promise<void> {
     const process = dshProcess(runtimeProcess);
     if (!options?.clientUserMessageId) throw new Error('DSH realtime input requires a stable Product user identity');
@@ -1901,6 +1919,10 @@ export class DshRuntime implements AgentRuntime {
     const inputFingerprint = fingerprintDshNativeInput(input);
     if (pending && pending.runtimeInputFingerprint !== inputFingerprint) throw new Error('The recovered DSH input differs from its original Runtime request');
     await options.beforeDispatch?.({ clientOperationId, inputFingerprint });
+    if (process.exited || !pending && (process.activeOperationId !== clientOperationId
+      || process.realtimeSteerEligibleOperationId !== clientOperationId))
+      throw new RuntimeSteerUnavailableError('DSH realtime input native root changed during preparation');
+    options.beforeNativeDispatch?.();
     process.injectedUserMessages.add(options.clientUserMessageId);
     let result: DshRpcObject;
     try {
