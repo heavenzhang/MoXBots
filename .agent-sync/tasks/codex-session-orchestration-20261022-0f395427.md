@@ -78,3 +78,14 @@ The sole main/CI owner requested changes on 8b326d79: ORCH-CC-DELEGATION-01 (ext
 Current safe support is builtin SDK/Integrated DSH for new human-confirmed plan decisions. Codex/external CC need native mandatory live gate support before that additional capability can be enabled; no version inference, prompt-only grant or globally disabled legacy delegation. This limitation does not remove unified task status/result acceptance for those runtimes. No new runtime binary, formal version, shared CI or deployment is produced by the development thread.
 
 Before successor handoff, latest remote main13b5e155e was merged without conflict. Concurrent mobile/credential diagnostic changes do not alter the locally tested renderer/server source closure. Native/whole Rust CI remains the designated owner gate; no published/source acceptance inferred from local checks.
+
+## Realtime admission follow-up — ORCH-REALTIME-PLAN-ADMISSION-03
+
+Sole owner delta review on0ba closed source findings01/02 by explicit unsupported plan admission, then proved a separate Codex realtime turn/steer route bypassed the new-root fence. This is a source correction, not a deferred native acceptance item. Preserve0ba and its review; isolated successor starts from exact0ba with no renderer changes.
+
+- [x] Reproduce unsupported pending/revision/unknown plus async preparation races; original adapter accepted incorrectly.
+- [x] Apply current original native owner/Session/generation policy at realtime entry and immediately before actual native RPC, preserving no-proposal and independent Task/Goal.
+- [x] Validate actual adapter fence, original realtime/fallback and data/receipt boundaries: 280 integration +34 unit, overlapping14 affected; final types/scoped lint/server+CLI local build passed. Primary Agent independently reviewed original-owner capture, async preparation/native boundary and known-unsent/unknown receipt handling. Evidence: dev-docs/session-orchestration/evidence/runtime-gate/realtime-03-review.md.
+- [ ] Commit/push exact successor; sole owner delta review, original sharedCI/main, then next unfrozen native/signed acceptance.
+
+UI and capability scope remain the reviewed0ba source. The 03 tests prove synthetic actual-adapter/Store boundaries, not signed/native readiness or Provider execution; main integration and release remain pending the designated owner.

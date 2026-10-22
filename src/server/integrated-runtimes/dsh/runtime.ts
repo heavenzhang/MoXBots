@@ -1903,7 +1903,7 @@ export class DshRuntime implements AgentRuntime {
     runtimeProcess: RuntimeProcess,
     message: string,
     images?: ResolvedImagePayload[],
-    options?: { clientUserMessageId?: string; clientOperationId?: string; beforeDispatch?: (identity: { clientOperationId: string; inputFingerprint: string }) => Promise<void> },
+    options?: { clientUserMessageId?: string; clientOperationId?: string; beforeNativeDispatch?: () => void; beforeDispatch?: (identity: { clientOperationId: string; inputFingerprint: string }) => Promise<void> },
   ): Promise<void> {
     const process = dshProcess(runtimeProcess);
     if (!options?.clientUserMessageId) throw new Error('DSH realtime input requires a stable Product user identity');
@@ -1919,6 +1919,10 @@ export class DshRuntime implements AgentRuntime {
     const inputFingerprint = fingerprintDshNativeInput(input);
     if (pending && pending.runtimeInputFingerprint !== inputFingerprint) throw new Error('The recovered DSH input differs from its original Runtime request');
     await options.beforeDispatch?.({ clientOperationId, inputFingerprint });
+    if (process.exited || !pending && (process.activeOperationId !== clientOperationId
+      || process.realtimeSteerEligibleOperationId !== clientOperationId))
+      throw new RuntimeSteerUnavailableError('DSH realtime input native root changed during preparation');
+    options.beforeNativeDispatch?.();
     process.injectedUserMessages.add(options.clientUserMessageId);
     let result: DshRpcObject;
     try {

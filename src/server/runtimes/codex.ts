@@ -4564,7 +4564,7 @@ export class CodexRuntime implements AgentRuntime {
     process: RuntimeProcess,
     message: string,
     images?: ResolvedImagePayload[],
-    options?: { clientUserMessageId?: string },
+    options?: { clientUserMessageId?: string; beforeNativeDispatch?: () => void },
   ): Promise<void> {
     const codexProc = process as CodexProcess;
     if (codexProc.exited) throw new Error('Codex process has exited');
@@ -4576,12 +4576,14 @@ export class CodexRuntime implements AgentRuntime {
     const input = buildCodexInput(message, images);
     let result: { turnId?: string };
     try {
-      result = await codexProc.rpc.call('turn/steer', buildCodexTurnSteerParams({
+      const params = buildCodexTurnSteerParams({
         threadId: codexProc.threadId,
         input,
         expectedTurnId: activeTurnId,
         clientUserMessageId: options?.clientUserMessageId,
-      }), 15_000) as { turnId?: string };
+      });
+      options?.beforeNativeDispatch?.();
+      result = await codexProc.rpc.call('turn/steer', params, 15_000) as { turnId?: string };
     } catch (error) {
       if (isCodexNoActiveTurnSteerRejection(error)) {
         if (codexProc.activeSteerTurnId === activeTurnId) {

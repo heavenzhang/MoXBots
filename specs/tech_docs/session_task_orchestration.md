@@ -16,6 +16,8 @@ Product Session 的 To Do 与子 Agent 执行共用 `SessionMetadata.taskOrchest
 
 旧方案不删除、不降级。切换或恢复至不支持的 Runtime 时，相关 owner 的 pending/revising/未知 claim 在原 RPC/stdin 前再次检查并拒绝；无 proposal 和原生队列证明的独立 Task/Goal 等继续原授权，`ensure/bind/review`、统一任务进度和成果验收保持可用。原有已 dispatched 的有效授权不被追溯撤销。UI 保留方案及未发送意见，能力未知或不支持时不发布自然语言确认 target、不提交确认，并说明切换到支持的 Runtime。
 
+Realtime 输入同样使用当前原生 turn 的 Session、queue generation、process/runtime 和原 Task/Goal owner，不从新输入的 source 或 caller owner 推断授权。入口和异步准备后 fresh-check，独立同步 `beforeNativeDispatch` 在 Codex `turn/steer`、DSH `turn/followUp` 的实际 RPC 前再次复核；DSH 原异步 fingerprint/intent 持久化仍先完成。已证实未发出的拒绝先释放 guard，已进入原生但缺回执的输入保留原恢复语义；transport ACK 不证明消息消费或任务验收。原生明确没有活动 turn 时沿原队列回退，不自动换 owner。
+
 需要新的人类方案决策时先 propose，讨论与 revise 仍写在同一账本；确认前不创建该方案正式 steps、不派发其子 Agent。没有 proposal 的会话沿用原执行授权；已有 Task/Goal 等由原生队列 owner 证明的独立工作不被别人的草案误拦。草案在同一 metadata CAS 中保存服务端采集的 originTurn，同 owner 提出的新草案仍需其适用确认；未知 origin 不推断独立授权。不能通过 source 字符串、CLI 或模型自报取得权限。简单回答和已有授权内的执行不新增确认。确认绑定 Session、proposal ID、revision；同 requestId 幂等。范围、目标或验收标准改变使受影响 steps 进入新验收代次；删除的旧 steps 只保留历史，不能通过旧授权复活。
 
 原生 Tab proxy 用仅驻 Rust 内存的 P256 私钥签署限定的 plan POST 与 chat/send 请求；Sidecar 只收到 SPKI 公钥。Node 验证精确 Session/path/body SHA、时间窗、nonce 和 DER 签名。工具环境、CLI credential、普通 loopback POST、客户端自填 source 均不证明人类操作。浏览器开发夹具不能替代此原生边界。

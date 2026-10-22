@@ -6465,10 +6465,43 @@ async function steerExternalMessage(input: {
   generation: number;
 }): Promise<ExternalRealtimeSteerDispatch> {
   const userMsg = input.operation.userProjection.message;
+  let commitRollback: Promise<void> | undefined;
+  const rejectUnsent = async (error: unknown, rollback?: Promise<void>): Promise<ExternalRealtimeSteerDispatch> => {
+    await rollback;
+    await input.context.beforeDispatch?.cancel?.();
+    markExternalUserMessageRetracted(input.operation);
+    broadcast('queue:cancelled', { queueId: input.queueId });
+    return { result: { queued: false, error: error instanceof Error ? error.message : String(error) } };
+  };
+  const validateSession = () => {
+    if (!isCurrentExternalOperationGeneration(input.generation)
+      || getExternalLifecycleSessionId() !== input.context.sessionId)
+      throw new Error('External realtime input Session/generation changed');
+  };
+  try { validateSession(); } catch (error) { return rejectUnsent(error); }
   const active = getExternalActiveSteerPair();
   if (!active) {
     return deferRealtimeOperationToTurnBoundary(input);
   }
+
+  // Realtime input belongs to the active original native root, never the
+  // arriving Desktop/Inbox operation's optional owner or source text.
+  const turnScope = currentExternalPlanTurn();
+  const turnStartedAt = getExternalTurnStartTime();
+  const runtimeSessionId = getExternalRuntimeSessionId();
+  const validateRealtimeAdmission = () => {
+    validateSession();
+    const current = getExternalActivePair();
+    const owner = currentExternalPlanTurn();
+    if (active.process.exited || current?.process !== active.process || current.runtime !== active.runtime
+      || getExternalRuntimeSessionId() !== runtimeSessionId
+      || getExternalExecutionTurnId() !== turnScope.queueId
+      || getExternalTurnStartTime() !== turnStartedAt
+      || owner.owner?.kind !== turnScope.owner?.kind || owner.owner?.id !== turnScope.owner?.id)
+      throw new Error('External realtime input native turn owner changed');
+    assertSessionPlanRootDispatch(input.context.sessionId, active.runtime.type, turnScope);
+  };
+  try { validateRealtimeAdmission(); } catch (error) { return rejectUnsent(error); }
 
   let resolvedImages: ResolvedImagePayload[] | undefined;
   try {
@@ -6490,9 +6523,10 @@ async function steerExternalMessage(input: {
     input.context.beforeDispatch,
   );
   if (!guarded.accepted) {
-    broadcast('queue:cancelled', { queueId: input.queueId });
-    return { result: { queued: false, error: guarded.error } };
+    return rejectUnsent(guarded.error ?? 'External realtime input rejected', guarded.rollbackBeforeReject);
   }
+
+  try { validateRealtimeAdmission(); } catch (error) { return rejectUnsent(error, guarded.rollbackBeforeReject); }
 
   const steerOrigin =
     input.context.analyticsOrigin ??
@@ -6525,6 +6559,7 @@ async function steerExternalMessage(input: {
   }
   const admission = Promise.withResolvers<void>();
   let dshIntentPersisted = false;
+  let nativeBoundaryEntered = false;
   void admission.promise.catch(() => undefined);
   registerPendingRealtimeSteeredUserMessage({
     queueId: input.queueId,
@@ -6554,6 +6589,16 @@ async function steerExternalMessage(input: {
       resolvedImages && resolvedImages.length > 0 ? resolvedImages : undefined,
       {
         clientUserMessageId: userMsg.id,
+        beforeNativeDispatch: () => {
+          validateRealtimeAdmission();
+          if (nativeBoundaryEntered) throw new Error('External realtime input already entered native dispatch');
+          const lease = guarded?.validateAtCommit?.();
+          if (lease && !lease.accepted) {
+            commitRollback = lease.rollbackBeforeReject;
+            throw new Error(lease.error ?? lease.code ?? 'External realtime dispatch lease is stale');
+          }
+          nativeBoundaryEntered = true;
+        },
         ...(userMsg.runtimeOperationAnchor?.runtime === 'dsh'
           ? {
               clientOperationId:
@@ -6616,7 +6661,18 @@ async function steerExternalMessage(input: {
       return deferRealtimeOperationToTurnBoundary(input);
     }
     const message = err instanceof Error ? err.message : String(err);
-    if (dshIntentPersisted) {
+    if (!nativeBoundaryEntered) {
+      if (dshIntentPersisted) {
+        const anchor = userMsg.runtimeOperationAnchor!;
+        const settled = await settleDshInput({ sessionId: input.context.sessionId,
+          clientOperationId: anchor.clientOperationId, clientUserMessageId: userMsg.id, state: 'cancelled' });
+        if (!settled.success) return { result: { queued: true } };
+      }
+      await commitRollback;
+      await guarded.rollbackBeforeReject;
+      await input.context.beforeDispatch?.cancel?.();
+    }
+    if (dshIntentPersisted && nativeBoundaryEntered) {
       console.warn(
         '[external-session] DSH realtime input awaits native receipt reconciliation',
       );

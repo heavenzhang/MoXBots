@@ -64,3 +64,9 @@
 短窗口复核曾揭示新增方案卡65vh未扣除原Composer/queue，320/390×768展开时队列和说明越界；320工具按钮被context slot覆盖。最终仅限制新增卡片：测量原会话可用高度并扣除原queue/附件/toolbar/input；整段原输入及消息滚动owner不变。原toolbar组在空间不足时换行，不遮按钮。相关7文件128 DOM回归通过（31与上述主回归重叠），最终tsc/scoped lint/web/夹具构建通过。独立复验在1000/768明暗六组合关闭可关闭的夹具提示，再正常scrollIntoView核验中心，无force；旧失败与全部原图保留。当前证据以 `evidence/runtime-gate/fit-review.md` 与对应JSON/脚本为准；先前210阶段仅为修正前的历史。
 
 交付同步：任务分支已再次合入最新main13b5e155（仅并发mobile/凭据诊断/docs，未变上述被测renderer/server源码）；旧8b及修复前证据保留。修复在隔离worktree测试后回到原任务分支，后继SHA由唯一main/CI owner复审，不覆盖已发布版本。
+
+## Realtime input follow-up (03)
+
+发布负责人复审0ba已关闭前两项source finding，同时确认 `ORCH-REALTIME-PLAN-ADMISSION-03`：realtime mode使用独立steer路径，旧pending/revision/unknown方案及async preparation竞态仍能进入Codex turn/steer。新root输入fence不覆盖该入口。当前继任仅补这条路径的原owner/Session/generation fresh-check与实际RPC前同步validator；UI、公开能力范围和既有账本不改。不能把0ba的原通过矩阵当作03通过证据。最终独立原生验收仍由发布会话处理。
+
+03 final: 280 integration通过（240 mock native、39真实临时SessionStore、1 actual DSH adapter/synthetic host）及34 unit；后续const-only清理后14受影响定向、tsc/scoped lint通过，14是280子集。本地server/CLI build通过，renderer未改，不重复已完成的浏览器矩阵。5个新integration及实际Codex adapter validator先RED，修复后GREEN；首轮宽回归的1项失败定位并纠正fake adapter将同步validator放到延迟RPC ACK之后的错误时序，原晚ACK持久化断言保留并通过。主Agent复核实际源码边界及原owner，无native/Provider执行。完整可复现命令及失败说明见 `evidence/runtime-gate/realtime-03-review.md`。本轮不会解除签名/native/共享CI/主干门禁。

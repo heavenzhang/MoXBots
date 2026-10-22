@@ -35,3 +35,26 @@ describe('native root final lease checks', () => {
     expect(writeLine).not.toHaveBeenCalled();
   });
 });
+
+
+describe('Codex realtime native admission validator', () => {
+  it('rejects a stale realtime plan before turn/steer RPC', async () => {
+    const call = vi.fn().mockResolvedValue({ turnId: 'native-turn' });
+    const process = { exited: false, activeSteerTurnId: 'native-turn', threadId: 'thread', rpc: { call } } as unknown as RuntimeProcess;
+    await expect(new CodexRuntime().steerMessage(process, 'blocked realtime', [], {
+      clientUserMessageId: 'unsent-user', beforeNativeDispatch: () => { throw new Error('PLAN_RUNTIME_DELEGATION_UNAVAILABLE'); },
+    })).rejects.toThrow('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
+    expect(call).not.toHaveBeenCalled();
+  });
+  it('validates an ordinary realtime input once immediately before its exact turn RPC', async () => {
+    const events: string[] = [];
+    const call = vi.fn(async () => { events.push('rpc'); return { turnId: 'native-turn' }; });
+    const beforeNativeDispatch = vi.fn(() => { events.push('validate'); });
+    const process = { exited: false, activeSteerTurnId: 'native-turn', threadId: 'thread', rpc: { call } } as unknown as RuntimeProcess;
+    await new CodexRuntime().steerMessage(process, 'ordinary input', [], { clientUserMessageId: 'user', beforeNativeDispatch });
+    expect(events).toEqual(['validate', 'rpc']);
+    expect(beforeNativeDispatch).toHaveBeenCalledOnce();
+    expect(call).toHaveBeenCalledWith('turn/steer', expect.objectContaining({ expectedTurnId: 'native-turn', threadId: 'thread' }), 15_000);
+  });
+
+});

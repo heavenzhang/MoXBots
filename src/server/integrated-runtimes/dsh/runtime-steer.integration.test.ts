@@ -117,6 +117,13 @@ describe('DSH native collaboration boundaries', () => {
       expect(rejectFinalLease).toHaveBeenCalledOnce();
       expect(fixture.request.mock.calls.filter(call => call[0] === 'turn/start')).toHaveLength(0);
       await runtime.sendMessage(process, 'A', [], { clientUserMessageId: 'user-A', clientOperationId: 'root-A', allowRealtimeSteer: true });
+      const realtimePreparation = vi.fn(async () => { await Promise.resolve(); });
+      const beforeNativeDispatch = vi.fn(() => { throw new Error('stale realtime native lease'); });
+      await expect(runtime.steerMessage(process, 'blocked follow-up', [], { clientUserMessageId: 'blocked-follow-up', clientOperationId: 'root-A', beforeDispatch: realtimePreparation, beforeNativeDispatch }))
+        .rejects.toThrow('stale realtime native lease');
+      expect(realtimePreparation).toHaveBeenCalledOnce();
+      expect(beforeNativeDispatch).toHaveBeenCalledOnce();
+      expect(fixture.request.mock.calls.filter(call => call[0] === 'turn/followUp')).toHaveLength(0);
       const beforeDispatch = vi.fn(async () => {});
       await expect(runtime.steerMessage(process, 'C', [], { clientUserMessageId: 'user-C', clientOperationId: 'root-A', beforeDispatch }))
         .rejects.toBeInstanceOf(RuntimeSteerUnavailableError);

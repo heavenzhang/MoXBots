@@ -639,6 +639,8 @@ export interface AgentRuntime {
     options?: {
       clientUserMessageId?: string;
       clientOperationId?: string;
+      /** Synchronous owner/policy check immediately before native RPC; no await after it. */
+      beforeNativeDispatch?: () => void;
       beforeDispatch?: (identity: { clientOperationId: string; inputFingerprint: string }) => Promise<void>;
     },
   ): Promise<void>;
