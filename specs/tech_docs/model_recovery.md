@@ -44,6 +44,12 @@ Goal intents are excluded from ordinary cold enqueue: only the original Rust Goa
 
 External/subscription/managed/integrated runtimes keep their native inference and credential ownership. This bridge does not intercept those processes or replay their tools; this release establishes the recovery contract for builtin API execution in both product modes. Real Provider, signed native installation and production business acceptance remain separate release gates.
 
+### Explicit read-only reconciliation
+
+A stopped native tool can leave a durable write-ahead reservation without a committed outcome. A subsequent ordinary, unprojected inference may inspect that same history even when the restored ledger is already in strict protection mode. Streaming prearm retains completed archives, uncertain actions and the existing protection mode, persists through SessionStore, and rechecks the original turn/background authority before dispatch. During that turn, only the existing native `Read`, `Grep` and `Glob` tools may run; Bash, MCP tools, completed actions and unrelated business writes remain blocked. Neither model text nor a successful read clears uncertainty or authorizes replay.
+
+This exception does not admit automatic availability recovery, same-turn stream continuation, a restored context projection, corrupt ledgers, stale owners or canceled requests. Inference retry and failover remain fenced. Local archive, persistence and owner failures return their bounded owner-authored reason rather than being mislabeled as model transport failures; arbitrary thrown text is never forwarded.
+
 ## Verification
 
 Focused bridge/Session owner tests cover storage and control races, Retry-After, canceled/expired re-admission, partial SSE, and success cleanup. SessionStore integration uses actual private archives/ledger/index and forces index publication failure after Stop. Builtin execution integration checks stop during explicit resume CAS and refuses missing native history. UI uses the production MessageList/GoalStatusBar with synthetic state transitions.

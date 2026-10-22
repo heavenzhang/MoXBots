@@ -64,6 +64,50 @@ afterEach(async () => {
 });
 
 describe('context recovery over the existing bridge handler', () => {
+  it('keeps a restored uncertain Session available for native reads without failover retries or business actions', async () => {
+    const upstream = await fixture((_body, res) => {
+      if (upstream.requests.length === 3) return json(res, { error: { message: 'fixture unavailable' } }, 503);
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+    });
+    let ledger: unknown;
+    const options = { scope: () => 'explicit-read-only-turn', isActive: () => true, protectStreaming: true,
+      backup: async () => '/archive/original.json', persistLedger: async (value: unknown) => { ledger = structuredClone(value); } };
+    const original = new ContextRecoveryController(options);
+    await original.protectInference(history());
+    await original.authorizeTool('write_record', { id: 'uncertain' });
+    const preserved = structuredClone(ledger);
+    const context = new ContextRecoveryController({ ...options, initialLedger: ledger });
+    const switched = vi.fn();
+    const failover = new ModelFailoverController({ scope: options.scope, isActive: options.isActive,
+      canRetry: () => context.canRetryInference(), canSwitch: () => true, resolveBackup: () => undefined,
+      onSwitch: switched, retryDelaysMs: [0, 0, 0] });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'anthropic',
+      baseUrl: upstream.baseUrl, apiKey: 'fixture', contextRecovery: context, modelFailover: failover }) });
+    const body = { ...history(), stream: true };
+    body.messages.push({ role: 'user', content: 'Inspect the uncertain result read-only.' });
+    expect(await (await handler(request(body))).text()).toContain('message_stop');
+    expect(await context.authorizeTool('Read', { file_path: '/fixture/result.json' }, 'read-status')).toBeUndefined();
+    const followup = structuredClone(body);
+    followup.messages.push(
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'read-status', name: 'Read', input: { file_path: '/fixture/result.json' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-status', content: 'fixture status evidence' }] });
+    expect(await (await handler(request(followup))).text()).toContain('message_stop');
+    for (const [name, input] of [['increment_counter', { delta: 1 }], ['write_record', { id: 'other' }],
+      ['Bash', { command: 'echo fixture' }]] as const) {
+      expect(context.beforeTool(name, input)).toContain('read-only');
+    }
+    const unavailable = structuredClone(followup);
+    unavailable.messages.push({ role: 'user', content: 'Report only the evidence already read.' });
+    const failed = await handler(request(unavailable));
+    expect(failed.status).toBe(503);
+    await failed.text();
+    expect(upstream.requests).toHaveLength(3);
+    expect(upstream.requests.slice(0, 2).map(body => body.messages)).toEqual([body.messages, followup.messages]);
+    expect(switched).not.toHaveBeenCalled();
+    expect(ledger).toEqual(preserved);
+  });
+
   it('hands a partial stream to the original owner without reopening either guard or repeating completed actions', async () => {
     const upstream = await fixture((_body, res) => {
       res.writeHead(200, { 'content-type': 'text/event-stream' });
