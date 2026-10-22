@@ -782,6 +782,10 @@ Parent SALARY-RECOVERY-20261020. Isolated feature codex/owned-reference-admissio
 
 User explicitly requests diagnosis/fix, remote main, existing desktop publisher release and original-long-session validation. Task `.agent-sync/tasks/codex-chat-switch-delay-20261022-20c722f5.md`, base c83b4c5b. Real MessageList/Virtuoso WebKit reproduces372-process-block update invalidation: unchanged phases plus whole-group count/inline row callbacks repeat1119 locale calls per append. Phase identity/lifecycle/boundary comparison, stable expansion handler and row-local boundary cut this to3–6; measured synthetic click1028ms→139ms, not native end-to-end proof. Existing historical WebContent attribution/whole delay remain uncertain. Exact source/local synthetic/CI/main/native/new release/installed/original-session gates remain separate. Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 retains CI/build/version/sign/install/stable/rollback; source request goes into next unfrozen batch, never rewrites017/018 immutable artifacts. Do not stop/replay salary business, seize native UI, or treat fixture as original-session acceptance.
 
+## MOXBOTS-NEW-SESSION-CONTINUATION-20261022
+
+User screenshot reports an unfinished-task banner during a fresh normal conversation. Task `.agent-sync/tasks/codex-new-session-continuation-20261022-ef8b8618.md` fixes the existing V2 continuation projection to stopped/interrupted only, rejects legacy running candidates, and hides the banner before hydration or while busy. Cold recovery still settles through its original execution owner before publishing a candidate. Local regression/browser/review, remote-main and installed acceptance remain separate. Existing desktop CI/main/version/build/publish owner01a12bc2-907a-7702-b6dd-788225c5dfe4 receives this repair for the next unfrozen batch; immutable518.2 and business tasks stay outside this source lane.
+
 
 ## Desktop018 next immutable build518.2 — 2026-10-22
 
