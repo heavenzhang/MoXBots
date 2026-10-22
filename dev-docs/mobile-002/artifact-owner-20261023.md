@@ -19,4 +19,8 @@ Private evidence root: project pointer `output/mobile-testflight-20261022/review
 
 ## Remaining gates
 
-Actual mTLS wire failure, scoped independent source review, exact-head CI/main, new immutable Node artifact and separately reviewed known-Session-preserving rollout, then real App list/download/preview/image. No production or external Apple review submitted by this source change. Existing supplier/current Node source54, original101 identity/config and daily Mac are untouched. Do not use the former zero-Session update helper now that the controlled Session and upload exist.
+Scoped independent source review, exact-head CI/main, new immutable Node artifact and separately reviewed known-Session-preserving rollout, then real App list/download/preview/image. No production or external Apple review submitted by this source change. Existing supplier/current Node source54, original101 identity/config and daily Mac are untouched. Do not use the former zero-Session update helper now that the controlled Session and upload exist.
+
+## Actual pre-fix wire confirmation
+
+Exactly one scoped reviewed original MobileConnection/mTLS probe on the existing reviewerSession returned `{ok:true,value:{version:1,kind:error,code:INVALID_REQUEST}}`. Receipt `artifact-probe-actual.json`: exit0 is diagnostic/cleanup success, not artifact-list success. Alias mapped natively to the exact reviewerHost/Agent before request. No message, grant or configuration mutation. New transient controller009ece64-1bb9-48c7-b6a4-a4bca0216176 left only its own membership via recordedCAS revision1→2, then original logout/validate proved session invalid. Before/after original101 baseline, Node incarnation and existing identity/config/provider/upload87B hashes match. Raw error remains retained; current Node54/IPA4 are unchanged.

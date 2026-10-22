@@ -15,7 +15,7 @@ MOXBOTS-MOBILE-ARTIFACT-OWNER-20261023, child of MOXBOTS-MOBILE-TESTFLIGHT-20261
 - [x] Reproduce nullable Rust first-page cursor rejection and missing owner dispatch on original built Host main.
 - [x] Route both existing private IPC spellings through original ensureOwnerWorker and asset-owner; preserve account/network/device/Agent/Session/workspace/generation checks.
 - [x] Local source regressions:40PASS; typecheck, changed-file eslint and classification PASS.
-- [ ] Original-protocol actual reviewer assets.list failure receipt; isolated probe review/cleanup confirmed before run.
+- [x] Original-protocol actual reviewer assets.list returns `{ok:true,value:{version:1,kind:error,code:INVALID_REQUEST}}`; scoped reviewed820b/b6c tool once, exact alias/device, controller009ece64 left via CAS1→2 and logout validation revoked; original101/config/identity/87B file hashes unchanged.
 - [ ] Independent source review, sole combined CI/main owner intake and remote-main verification.
 - [ ] New immutable ownNode artifact from accepted exact main; current54 pin + existing Session/history/files preserved by a separately reviewed update/rollback plan.
 - [ ] Fresh explicit D2 GUI window; actual list/download/preview/image acceptance; accurate Apple BetaReview and installable invitation.
@@ -34,8 +34,8 @@ Canonical Git https://github.com/heavenzhang/MoXBots.git, main. Source and dedic
 
 ## Blockers and unknowns
 
-Actual wire cause still awaiting bounded original-protocol read; raw response must be retained before final diagnosis. Existing reviewer Session3a42 and87B upload prohibit replay of the old zero-Session first-update helper. GUI lease explicitly returned to desktop; fresh grant required before D2 interaction. Apple external group remains0builds/0testers; review/invitation not ready.
+Actual wire INVALID_REQUEST confirmed and retained in private artifact-probe-actual.json. Existing reviewer Session3a42 and87B upload prohibit replay of the old zero-Session first-update helper. GUI lease explicitly returned to desktop; fresh grant required before D2 interaction. Apple external group remains0builds/0testers; review/invitation not ready.
 
 ## Next step
 
-Complete scoped diagnostic review and one actual assets.list; use its precise response to confirm/further refine this narrow fix, then request independent exact-commit review and sole CI/main intake.
+Complete independent exact-commit source review and sole CI/main intake; prepare a fresh known-Session-preserving reviewerNode rollout, then request D2 GUI acceptance window.
