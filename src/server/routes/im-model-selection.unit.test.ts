@@ -5,12 +5,13 @@ import { createRuntimeBackedProviderIdentity } from '../../shared/providerExecut
 
 const mocks = vi.hoisted(() => ({
   loadConfig: vi.fn(), loadProjects: vi.fn(), agent: vi.fn(), providers: vi.fn(), env: vi.fn(),
-  availability: vi.fn(), resolve: vi.fn(), ready: vi.fn(), models: vi.fn(), get: vi.fn(), update: vi.fn(),
+  historyEnv: vi.fn(), historyResolve: vi.fn(), subscriptionKind: vi.fn(), availability: vi.fn(), resolve: vi.fn(), ready: vi.fn(), models: vi.fn(), get: vi.fn(), update: vi.fn(),
   context: vi.fn(), apply: vi.fn(), commit: vi.fn(), broadcast: vi.fn(),
 }));
 vi.mock('../utils/admin-config', () => ({ loadConfig: mocks.loadConfig, loadProjects: mocks.loadProjects,
   findProjectAgentByWorkspacePath: mocks.agent, getAllEffectiveProviders: mocks.providers,
-  resolveProviderEnv: mocks.env, getProviderSelectionError: mocks.availability, resolveWorkspaceConfig: mocks.resolve }));
+  resolveProviderEnv: mocks.env, getProviderHistorySelectionError: mocks.availability, resolveWorkspaceConfig: mocks.resolve,
+  resolveProviderHistoryEnv: mocks.historyEnv, resolveWorkspaceProviderHistoryEnv: mocks.historyResolve, resolveSubscriptionAuthKind: mocks.subscriptionKind }));
 vi.mock('../utils/managed-codex-readiness', () => ({ isManagedCodexProviderReady: mocks.ready }));
 // Model-selection policy is tested with all providers available; platform
 // availability is covered by runtimeProviderProjection's own tests.
@@ -51,6 +52,8 @@ beforeEach(() => {
   ]);
   mocks.env.mockImplementation((id: string) => ({ ...env, providerId: id, baseUrl: `https://${id}.example/v1` }));
   mocks.resolve.mockReturnValue({ providerEnv: env });
+  mocks.historyEnv.mockImplementation((id: string) => ({ providerId: id, baseUrl: `https://${id}.example/v1`, apiProtocol: 'anthropic' }));
+  mocks.historyResolve.mockReturnValue({ providerId: 'alpha', baseUrl: env.baseUrl, apiProtocol: 'anthropic' });
   mocks.ready.mockReturnValue(true);
   mocks.models.mockResolvedValue([{ value: 'codex-live', displayName: 'Codex Live', supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }]);
   mocks.get.mockImplementation(() => metadata);
@@ -72,6 +75,7 @@ describe('private IM Session model owner', () => {
     expect(mocks.models).toHaveBeenCalledWith('codex', { runtimeSource: 'managed-provider' });
     expect(mocks.apply).not.toHaveBeenCalled();
     expect(mocks.commit).not.toHaveBeenCalled();
+    expect(mocks.env).not.toHaveBeenCalled(); expect(mocks.resolve).not.toHaveBeenCalled();
   });
   it('uses native CLI models exclusively without product providers or Runtime switches', async () => {
     metadata.runtime = 'codex'; metadata.runtimeSource = 'system-cli';
@@ -162,6 +166,35 @@ describe('private IM Session model owner', () => {
     mocks.context.mockReturnValue({ sessionId: 's' });
     mocks.availability.mockReturnValue('missing credentials');
     expect((await choose())!.status).toBe(409); expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it('refuses missing execution credentials before persisting or applying any change', async () => {
+    mocks.resolve.mockImplementation(() => { throw new Error('Host credential reference is unavailable'); });
+    expect((await choose())!.status).toBe(409);
+    expect(metadata.model).toBe('one');
+    expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+  });
+  it('refuses an unresolved API credential even when a configured reference exists', async () => {
+    mocks.resolve.mockReturnValue({ providerEnv: undefined });
+    expect((await choose())!.status).toBe(409);
+    expect(mocks.update).not.toHaveBeenCalled(); expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+  });
+  it.each([['xai-sub', 'host-managed-oauth'], ['antigravity-sub', 'proxy-managed']])('refuses missing %s managed transport before any write', async (id, kind) => {
+    metadata.providerId = id; metadata.providerRoute = createConcreteProviderRoute(id, 'one');
+    mocks.providers.mockReturnValue([{ id, name: id, type: 'subscription', subscriptionAuth: { kind }, models: [{ model: 'two', modelName: 'Two' }] }]);
+    mocks.historyResolve.mockReturnValue(undefined); mocks.historyEnv.mockReturnValue(undefined);
+    mocks.subscriptionKind.mockReturnValue(kind); mocks.resolve.mockReturnValue({ providerEnv: undefined });
+    expect((await choose(selection(id)))!.status).toBe(409);
+    expect(metadata.model).toBe('one'); expect(mocks.update).not.toHaveBeenCalled();
+    expect(mocks.apply).not.toHaveBeenCalled(); expect(mocks.commit).not.toHaveBeenCalled();
+  });
+  it('retains the original SDK-native subscription sentinel without an execution env', async () => {
+    metadata.providerId = 'anthropic-sub'; metadata.providerRoute = createConcreteProviderRoute('anthropic-sub', 'one');
+    mocks.providers.mockReturnValue([{ id: 'anthropic-sub', name: 'Claude', type: 'subscription', subscriptionAuth: { kind: 'sdk-native' }, models: [{ model: 'two', modelName: 'Two' }] }]);
+    mocks.historyResolve.mockReturnValue(undefined); mocks.historyEnv.mockReturnValue(undefined);
+    mocks.subscriptionKind.mockReturnValue('sdk-native'); mocks.resolve.mockReturnValue({ providerEnv: undefined });
+    expect((await choose(selection('anthropic-sub')))!.status).toBe(200);
+    expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ providerEnv: undefined, model: 'two' }));
+    expect(mocks.commit).toHaveBeenCalledWith('a', selection('anthropic-sub'), 'high');
   });
   it('reports partial Runtime failure after the snapshot commit without writing defaults', async () => {
     mocks.apply.mockRejectedValue(new Error('Runtime gone'));

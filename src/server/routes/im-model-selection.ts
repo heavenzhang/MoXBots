@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 import { coerceReasoningEffortSettingForRuntime, reasoningEffortAfterModelChange, type ModelReasoningCapabilities } from '../../shared/reasoningEffort';
 import { getSessionEngine, queryRuntimeModels } from '../session-engine';
 import { getSessionMetadata, updateSessionMetadata } from '../SessionStore';
-import { findProjectAgentByWorkspacePath, getAllEffectiveProviders, getProviderSelectionError, loadConfig, loadProjects, resolveProviderEnv } from '../utils/admin-config';
+import { findProjectAgentByWorkspacePath, getAllEffectiveProviders, getProviderHistorySelectionError, loadConfig, loadProjects, resolveProviderEnv, resolveProviderHistoryEnv, resolveWorkspaceProviderHistoryEnv, resolveSubscriptionAuthKind } from '../utils/admin-config';
 import { snapshotForImSession } from '../utils/session-snapshot';
 import { resolveWorkspaceConfig } from '../utils/admin-config';
 import { isManagedCodexProviderReady } from '../utils/managed-codex-readiness';
@@ -51,19 +51,19 @@ async function modelContext(agentId: string, sessionId?: string) {
       .filter(provider => !platformHiddenProviderIds(process.platform).includes(provider.id)) as unknown as Provider[], runtime);
     const currentProvider = current.providerExecutionIdentity
       ?? (current.providerId && current.model ? { kind: 'builtin-provider' as const, route: createConcreteProviderRoute(current.providerId, current.model) } : undefined);
-    const currentEnv = metadata ? resolveWorkspaceConfig(workspacePath, metadata, { includeMcp: false }).providerEnv : resolveProviderEnv(agent.providerId ?? 'anthropic-sub', config);
+    const currentEnv = resolveWorkspaceProviderHistoryEnv(workspacePath, metadata);
     for (const provider of providers) {
-      if (getProviderSelectionError(provider as unknown as ReturnType<typeof getAllEffectiveProviders>[number], config)) continue;
+      if (getProviderHistorySelectionError(provider as unknown as ReturnType<typeof getAllEffectiveProviders>[number], config)) continue;
       for (const model of provider.models) {
         if (!isProviderModelCompatibleWithRuntime(runtime, provider, model.model)) continue;
         const nextIntent = toProviderExecutionIntent(provider, model.model);
-        const nextEnv = provider.id === current.providerId ? currentEnv : provider.id === CODEX_SUBSCRIPTION_PROVIDER_ID ? undefined : resolveProviderEnv(provider.id, config);
+        const nextEnv = provider.id === CODEX_SUBSCRIPTION_PROVIDER_ID ? undefined : resolveProviderHistoryEnv(provider.id, config, model.model);
         const requiresNewSession = !!metadata && !canReuseSessionAcrossProviderExecutionBoundary({ currentIntent: currentProvider, nextIntent, currentProviderEnv: currentEnv ? { ...currentEnv, model: current.model } : undefined, nextProviderEnv: nextEnv ? { ...nextEnv, model: model.model } : undefined, legacyCurrentProviderUnknown: !currentProvider && !currentEnv });
         options.push({ selection: { kind: 'product-provider', providerId: provider.id, model: model.model }, group: provider.name, name: model.modelName, isCurrent: current.providerId === provider.id && current.model === model.model, requiresNewSession, capabilities: model });
       }
     }
   }
-  return { config, workspacePath, agent, metadata, current, options, currentEnv: metadata ? resolveWorkspaceConfig(workspacePath, metadata, { includeMcp: false }).providerEnv : undefined };
+  return { config, workspacePath, agent, metadata, current, options };
 }
 
 /** Observe desired execution fields, excluding transcript/activity and credentials. */
@@ -135,12 +135,24 @@ export async function handleImModelRoute(path: string, request: Request): Promis
           ? { providerExecutionIdentity: createRuntimeBackedProviderIdentity({ providerId: CODEX_SUBSCRIPTION_PROVIDER_ID, model: selection.model }), model: selection.model, reasoningEffort: effort }
           : { providerRoute: createConcreteProviderRoute(selection.providerId, selection.model), model: selection.model, reasoningEffort: effort, providerEnvJson: metadata.providerId === selection.providerId ? metadata.providerEnvJson : null };
       const updates = buildSessionSnapshotPatchUpdates({ existing: metadata, payload, nowIso: new Date().toISOString() });
+      // Only the bound Session execution path materializes credentials. Do this
+      // before committing a snapshot, so a missing worker secret cannot save a change.
+      const providerEnv = selection.kind === 'product-provider' && selection.providerId !== CODEX_SUBSCRIPTION_PROVIDER_ID
+        ? metadata.providerId === selection.providerId
+          ? resolveWorkspaceConfig(context.workspacePath, { ...metadata, ...updates }, { includeMcp: false }).providerEnv
+          : resolveProviderEnv(selection.providerId, context.config, selection.model)
+        : undefined;
+      if (selection.kind === 'product-provider' && !providerEnv
+        && selection.providerId !== CODEX_SUBSCRIPTION_PROVIDER_ID
+        && resolveSubscriptionAuthKind(selection.providerId, context.config) !== 'sdk-native') {
+        return json({ success: false, error: 'Provider credential is unavailable' }, 409);
+      }
       const updated = await updateSessionMetadata(metadata.id, updates, current => engine.getCurrentSessionContext().sessionId === body.sessionId && imSnapshotObservation(current) === body.snapshotObservation);
       if (!updated) return json({ success: false, error: 'Session configuration changed', sessionConfig: 'failed' }, 409);
       broadcast('chat:session-config-changed', { sessionId: updated.id });
       if (engine.getCurrentSessionContext().sessionId !== body.sessionId) return json({ success: false, sessionConfig: 'saved', runtimeApply: 'failed', error: '会话已切换，原会话模型已保存，请查看 /status' }, 409);
       let applied;
-      try { applied = await engine.applyModelSelection({ model: selection.model, providerEnv: selection.kind === 'product-provider' && selection.providerId !== CODEX_SUBSCRIPTION_PROVIDER_ID ? (metadata.providerId === selection.providerId ? context.currentEnv : resolveProviderEnv(selection.providerId, context.config)) : undefined, reasoningEffort: effort });
+      try { applied = await engine.applyModelSelection({ model: selection.model, providerEnv, reasoningEffort: effort });
       } catch { return json({ success: false, sessionConfig: 'saved', runtimeApply: 'failed', error: '会话模型已保存，运行时应用失败；请查看 /status 后重试' }, 500); }
       if (!applied.success) return json({ success: false, sessionConfig: 'saved', runtimeApply: 'failed', error: applied.error }, 500);
       let defaults;
