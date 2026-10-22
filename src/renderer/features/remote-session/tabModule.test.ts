@@ -100,3 +100,13 @@ it("restores a first-message draft locator when its durable operation remains un
   });
   pendingMock.present = false;
 });
+
+it("mounts restored remote observers immediately and excludes transient observations from persistence", () => {
+  const tab = remoteSessionTabModule.open.create(intent, { id: "tab" });
+  expect(remoteSessionTabModule.initialMount()).toBe("immediate");
+  const saved = remoteSessionTabModule.persistence.serialize({ ...tab,
+    observation: { title: "private observation", state: "running", sync: "current", lastSyncedAt: 100, hasUnread: true, authGeneration: 4 },
+  });
+  expect(saved).not.toHaveProperty("observation");
+  expect(JSON.stringify(saved)).not.toContain("private observation");
+});

@@ -810,3 +810,10 @@ Same sole mobile owner01a12b99 continues MOXBOTS-MOBILE-TESTFLIGHT-20261022 afte
 ## Desktop019 explicit source reconciliation after PR192
 
 Same sole owner01a12bc2 reserves unbuilt0.5.19/build519.1. Failed/unbuiltbbed remains preserved; new revision deliberately reconciles title2df/a83+continuationc5b with normally deliveredmain375080609b51c7de993511c6b36505ea23eefcb1 (orchestration6bcd/fixturebcb/credentialce2, PR192 originalCI39771492747 nineSUCCESS/oneconditional iOSskip, tested-main treeequal). Root merged admission-source review and7focused checks PASS; original430/145 not repeated. Exact newCI/main/native capability/first B artifact/fresh maintenance/local/stable gates remain. No silent source mixing or released5182/tag changes, no new deployment owner or mobile/Host/cloud/Windows deployment. Taskcodex-release-0519-title-continuation-20261022-c1679fb6.md is current source/acceptance authority.
+
+
+## MB-REMOTE-SYNC-20261023 — 已确认原型的远程会话侧栏与自动同步
+
+用户已确认原型并要求实现。当前分支 codex/remote-sync-20261023，从 main 5eb2ebc87489b92e250338026e2b971346ed9e15 开发；进度 `.agent-sync/tasks/codex-remote-sync-20261023-c59085e7.md`，验收 `dev-docs/remote-sync-20261023/acceptance.md`。已打开远程会话投影到侧栏及收起浮层；前台约1.5秒、后台约5秒快照观察，切回/重连立即校准，未读与执行状态分开；原持久化与账号/回执/Stop owner 不变。无协议、数据库或敏感权限迁移。
+
+部署单元 desktop client 的共享 CI、版本、正式构建及发布仍唯一属于 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不触发其共享 CI 或改变 0.5.19 已冻结候选。源码/本地验证、远端 main、统一发布及真实双设备验收分别追踪，下一未冻结批次待精确 SHA 交接。

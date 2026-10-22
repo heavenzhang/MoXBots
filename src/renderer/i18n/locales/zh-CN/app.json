@@ -1893,6 +1893,22 @@
     }
   },
   "remoteSession": {
+    "sidebar": {
+      "title": "远程会话",
+      "unread": "有新消息",
+      "close": "从列表关闭，远端继续执行",
+      "closeSession": "关闭远程会话：{{title}}"
+    },
+    "sync": {
+      "loading": "正在同步…",
+      "current": "已同步 · 自动更新",
+      "offline": "同步已中断",
+      "error": "同步暂时失败",
+      "lastSynced": "上次同步 {{time}}",
+      "retained": "保留最后同步的内容和当前草稿；远端执行状态待重新连接后确认。",
+      "reconnect": "重新连接",
+      "network": "查看网络连接"
+    },
     "remote": "远程会话",
     "openSession": "打开会话",
     "accountChanged": "账号已变化。请从当前账号的网络重新打开会话。",

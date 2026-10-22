@@ -275,14 +275,15 @@ it("removes messages, composer and approval controls immediately on account chan
   expect(screen.queryByText("remoteSession.allowOnce")).toBeNull();
   expect(screen.getByText("remoteSession.accountChanged")).toBeInTheDocument();
 });
-it("does not poll hidden tabs or offline targets", async () => {
+it("observes background tabs but does not poll offline targets", async () => {
   const view = render(
     <RemoteSession tab={tab} isActive={false} binding={binding} />,
   );
-  expect(mocks.request).not.toHaveBeenCalled();
+  await waitFor(() => expect(mocks.request).toHaveBeenCalled());
+  const beforeOffline = mocks.request.mock.calls.length;
   mocks.registry.connections[0].snapshot.state = "disconnected";
   view.rerender(<RemoteSession tab={tab} isActive binding={binding} />);
-  expect(mocks.request).not.toHaveBeenCalled();
+  expect(mocks.request).toHaveBeenCalledTimes(beforeOffline);
   expect(
     screen.getByRole("button", { name: "remoteSession.send" }),
   ).toBeDisabled();

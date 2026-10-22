@@ -1,4 +1,6 @@
 import { remoteAccountState } from "./accountFence";
+import { remoteActivityKey } from "./observation";
+import { useRemoteSessionPolling } from "./useRemoteSessionPolling";
 import { useEffectEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PlusIcon, RefreshIcon, StopIcon } from "@/components/icons";
@@ -28,7 +30,7 @@ import {
   type PendingRemoteOperation,
   type KnownRemoteOperation,
 } from "./drafts";
-import type { RemoteSessionBinding, RemoteSessionTab } from "./tabContract";
+import type { RemoteSessionObservation, RemoteSessionBinding, RemoteSessionTab } from "./tabContract";
 import { useUpdateEditorAdmission } from "@/hooks/useUpdateEditorAdmission";
 import { isComposerUpdateCheckpointLocked } from "@/utils/composerUpdateCheckpoint";
 
@@ -98,7 +100,7 @@ function RemoteSessionContent({
   online: boolean;
   binding: RemoteSessionBinding;
 }) {
-  const { t } = useTranslation("app");
+  const { t, i18n } = useTranslation("app");
   const [scope, setScope] = useState<OwnedHostScope | null>(tab.targetScope);
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
@@ -134,7 +136,37 @@ function RemoteSessionContent({
   const [refresh, setRefresh] = useState(0);
   const mounted = useRef(true);
   const controllers = useRef(new Set<AbortController>());
-  const polling = useRef(false);
+  const [visible, setVisible] = useState(() => document.visibilityState !== "hidden");
+  const readingRef = useRef(isActive && visible);
+  readingRef.current = isActive && visible;
+  const [observation, setObservation] = useState<RemoteSessionObservation>({
+    title: tab.title, state: tab.sessionId ? "idle" : "draft", sync: "loading", lastSyncedAt: null, hasUnread: false,
+  });
+  const observationRef = useRef(observation);
+  const activityRef = useRef<string | null>(null);
+  function reportObservation(patch: Partial<RemoteSessionObservation>) {
+    if (!mounted.current || !remoteAccountMatches(locator)) return;
+    const next = { ...observationRef.current, ...patch };
+    if (readingRef.current) next.hasUnread = false;
+    observationRef.current = next;
+    setObservation(next);
+    binding.onObservation?.(tab.id, locator.authGeneration, next);
+  }
+  const reportReading = useEffectEvent(() => reportObservation({ hasUnread: false }));
+  const reportConnection = useEffectEvent(() => {
+    reportObservation({ sync: online ? "loading" : "offline" });
+    if (!online) setLoading(false);
+    else if (!snapshotRef.current) setLoading(true);
+  });
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  useEffect(() => {
+    if (isActive && visible && observationRef.current.hasUnread) reportReading();
+  }, [isActive, visible]);
+  useEffect(() => { reportConnection(); }, [online]);
   const snapshotRef = useRef(snapshot);
   snapshotRef.current = snapshot;
   const pageEpoch = useRef(0);
@@ -239,12 +271,16 @@ function RemoteSessionContent({
         ...(previous?.messages ?? []),
       ]),
     };
+    const activity = remoteActivityKey(next);
+    const changed = activityRef.current !== null && activityRef.current !== activity;
+    activityRef.current = activity;
     snapshotRef.current = stable;
     setSnapshot(stable);
+    reportObservation({ title: next.title, state: next.terminal ?? next.state, sync: "current",
+      lastSyncedAt: Date.now(), hasUnread: observationRef.current.hasUnread || changed });
   }
-  const synchronize = useEffectEvent(async (cancelled: () => boolean) => {
-    if (polling.current || busyRef.current) return;
-    polling.current = true;
+  const synchronize = async (cancelled: () => boolean) => {
+    if (busyRef.current) return;
     try {
       if (!capableRef.current) {
         const response = await request({
@@ -288,33 +324,26 @@ function RemoteSessionContent({
           // Latest page is an authoritative replacement. Older fetched pages
           // remain a separately labelled cache; missing latest rows stay gone.
           setList(response.data);
+          reportObservation({ sync: "current", lastSyncedAt: Date.now() });
         }
       }
       if (!cancelled() && alive()) setError(mutationError.current);
     } catch (failure) {
-      if (!cancelled() && alive()) setError(remoteErrorCode(failure));
+      if (!cancelled() && alive()) {
+        setError(remoteErrorCode(failure));
+        reportObservation({ sync: "error" });
+      }
     } finally {
-      polling.current = false;
       if (!cancelled() && alive()) setLoading(false);
     }
+  };
+  useRemoteSessionPolling({
+    enabled: online,
+    foreground: isActive && visible,
+    scopeKey: `${tab.agentId}:${tab.sessionId ?? "list"}`,
+    refresh,
+    synchronize,
   });
-  useEffect(() => {
-    if (!isActive || !online) {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const sync = async () => {
-      await synchronize(() => cancelled);
-      if (!cancelled) timer = setTimeout(() => void sync(), 1500);
-    };
-    void sync();
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [isActive, online, tab.agentId, tab.sessionId, refresh]);
   async function mutate(operation: RemoteMutationRequest) {
     if (isComposerUpdateCheckpointLocked() || busyRef.current || pendingRef.current || !online || !capable) return;
     const tracked: KnownRemoteOperation = {
@@ -605,6 +634,18 @@ function RemoteSessionContent({
           </div>
         </div>
       )}
+      <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2 text-xs text-[var(--ink-muted)] sm:px-6" data-remote-sync-status>
+        <span role="status">{t(`remoteSession.sync.${!online ? "offline" : observation.sync}`)}</span>
+        {observation.lastSyncedAt !== null && <span>{t("remoteSession.sync.lastSynced", {
+          time: new Date(observation.lastSyncedAt).toLocaleTimeString(i18n?.language, { hour: "2-digit", minute: "2-digit" }),
+        })}</span>}
+        {(observation.sync === "error" || !online) && <span className="min-w-0 flex-1">{t("remoteSession.sync.retained")}</span>}
+        {(observation.sync === "error" || !online) && <button type="button" className={button}
+          disabled={!online && !binding.onOpenNetwork}
+          onClick={() => online ? setRefresh(value => value + 1) : binding.onOpenNetwork?.()}>
+          {t(online ? "remoteSession.sync.reconnect" : "remoteSession.sync.network")}
+        </button>}
+      </div>
       <RemoteConversation
         source={messages}
         sessionKey={`remote:${tab.id}:${snapshot?.sessionId ?? "draft"}:${snapshot?.generation ?? ""}`}

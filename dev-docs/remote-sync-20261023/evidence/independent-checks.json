@@ -1,0 +1,158 @@
+{
+  "task": "MB-REMOTE-SYNC-20261023",
+  "scope": "Independent UI review only",
+  "environment": {
+    "browser": "isolated Playwright headless Chromium",
+    "node": "v24.21.0",
+    "viewportRuns": [
+      "1440x900",
+      "900x760"
+    ],
+    "target": "http://127.0.0.1:44183/__remote_sync_audit",
+    "accountAndTauriBoundaries": "synthetic fixture; remote transport responses are simulated by the harness"
+  },
+  "checks": [
+    {
+      "name": "1440x900 desktop component harness loaded",
+      "result": "passed"
+    },
+    {
+      "name": "background new message does not steal focus or replace local view",
+      "result": "passed"
+    },
+    {
+      "name": "selecting the original sidebar tab returns to its updated session",
+      "result": "passed"
+    },
+    {
+      "name": "offline state retains composer draft and disables sending",
+      "result": "passed"
+    },
+    {
+      "name": "reconnect refreshes the session while retaining the draft",
+      "result": "passed"
+    },
+    {
+      "name": "900x760 collapsed rail exposes remote session row in Agent 工作区 flyout without horizontal overflow",
+      "result": "passed"
+    },
+    {
+      "name": "flyout close removes local row and emits no remote mutation kind",
+      "result": "passed"
+    },
+    {
+      "name": "no renderer page errors",
+      "result": "passed"
+    },
+    {
+      "name": "close placement after main agent fix at 1440x900 and 900x760; remaining row height stable",
+      "result": "passed"
+    }
+  ],
+  "screenshots": [
+    "desktop-1440x900.png",
+    "offline-1440x900.png",
+    "flyout-900x760.png",
+    "prototype-1440x900.png",
+    "prototype-900x760.png",
+    "prototype-flyout-900x760.png",
+    "prototype-flyout-hover-900x760.png",
+    "close-fixed-1440x900.png",
+    "close-fixed-900x760.png",
+    "close-fixed-hover-1440x900.png",
+    "close-fixed-hover-900x760.png"
+  ],
+  "remoteRequestKinds": {
+    "beforeFlyoutClose": [
+      "capabilities",
+      "capabilities",
+      "get",
+      "get",
+      "get",
+      "get",
+      "get",
+      "get"
+    ],
+    "afterFlyoutClose": [
+      "capabilities",
+      "capabilities",
+      "get",
+      "get",
+      "get",
+      "get",
+      "get",
+      "get",
+      "get"
+    ],
+    "mutations": [
+      "start",
+      "send",
+      "respond",
+      "stop"
+    ]
+  },
+  "rendererErrors": [],
+  "acceptanceLimit": "Component harness evidence only. No authenticated remote account, second device, server persistence, or production path was exercised.",
+  "closePlacementRepair": {
+    "status": "passed",
+    "viewports": {
+      "1440x900": {
+        "row": {
+          "x": 8,
+          "y": 294,
+          "width": 240,
+          "height": 62.390625
+        },
+        "close": {
+          "x": 218,
+          "y": 300,
+          "width": 24,
+          "height": 24
+        },
+        "wrapperPosition": "absolute",
+        "remainingRowHeightBefore": 62.390625,
+        "remainingRowHeightAfter": 62.390625
+      },
+      "900x760": {
+        "row": {
+          "x": 81,
+          "y": 161,
+          "width": 302,
+          "height": 62.390625
+        },
+        "close": {
+          "x": 353,
+          "y": 167,
+          "width": 24,
+          "height": 24
+        },
+        "wrapperPosition": "absolute",
+        "remainingRowHeightBefore": 62.390625,
+        "remainingRowHeightAfterReopen": 62.390625
+      }
+    },
+    "assertions": [
+      "close button inside row at upper right",
+      "close wrapper does not add list flow height",
+      "remaining remote row height remains stable after local close"
+    ]
+  },
+  "initialClosePlacementFinding": {
+    "status": "found-before-fix",
+    "viewport": "900x760",
+    "row": {
+      "x": 81,
+      "y": 161,
+      "width": 302,
+      "height": 62.390625
+    },
+    "close": {
+      "x": 75,
+      "y": 229.390625,
+      "width": 24,
+      "height": 24
+    },
+    "wrapperPosition": "relative",
+    "impact": "visible offset and list row inflation; close action still worked"
+  }
+}
