@@ -25,10 +25,18 @@
 完整证据 `dev-docs/model-policy-20261022/acceptance.md`。合并最新main后171项定向测试通过，TypeScript/受影响ESLint/测试分类/依赖检查通过；独立UI10组关键交互及四宽、最终3组键盘增量通过，主Agent5组浏览器复验通过。UI和localStorage是隔离合成，不证明真实Provider/原生持久化/生产。后端只读审阅最终无P0/P1。
 
 ## Blockers and unknowns
-无开发阻断。初次start远端查询短暂失败后，保留并暂存本任务补丁，恢复干净起点后start/task-init通过，已恢复补丁。共享CI/main/正式构建与发布由唯一desktop owner控制，不自行触发。未改变日常App或真实配置。
+组合PR194的原Host loopback失败，主干门禁未通过；本分支已修复并通过115项局部组合回归及静态检查，原owner需要在其精确集成候选重验。初次start远端查询短暂失败后，保留并暂存本任务补丁，恢复干净起点后start/task-init通过，已恢复补丁。共享CI/main/正式构建与发布由唯一desktop owner控制，不自行触发。未改变日常App或真实配置。
 
 ## Deployment request
 Unit desktop builtin client；唯一CI/deployment/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4（MoxBots桌面端统一打包负责人），沿用canonical共享计划。下一未冻结批次，不加入当前5.18冻结包。接口向后兼容无迁移；手动固定/指定备用独立保留。版本/tag/制品摘要由owner分配。
 
 ## Next step
-提交push最终源码与证据，通过handoff gate，按用户明确“合入主干”要求交既有desktop owner统一PR/CI/main。主Agent等待精确main回执并用远端ref和祖先关系回读核实；发布/原生/真实Provider仍按该owner的下一未冻结制品记录，不把代码合入写成已发布。
+本轮源修提交push并通过handoff gate，交既有desktop owner吸收auto-route单请求CAS acknowledgement和其目录隔离修复，复验原Host loopback及统一PR194/CI/main。主Agent等待精确main回执并用远端ref和祖先关系回读核实；发布/原生/真实Provider仍按该owner的下一未冻结制品记录，不把代码合入写成已发布。
+
+
+## Combined integration correction 2026-10-23
+- [x] 正常同步main86ba4b0；保留计划双方条目；吸收owner81bcb12目录异常隔离修复。
+- [x] 成功auto-route CAS的一次性进程内快照握手；保留原owner/generation/snapshot/mode/claim/operation authority。
+- [x] 115项局部组合回归，类型/lint/分类/依赖exit0，独立源审无剩余P0/P1；完整证据见acceptance.md及remote-auto-cas-results.json。
+- [ ] 唯一desktop owner吸收精确源修，原Host loopback及其候选共享CI通过。
+- [ ] owner合入远端main，主Agent核实包含性；正式制品/原生/真实Provider按owner批次另验。
