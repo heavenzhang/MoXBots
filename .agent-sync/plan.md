@@ -840,3 +840,7 @@ Same sole desktop/macOS/updater and combined CI/main owner01a12bc2 integrates mo
 
 模型策略组合修复（MOXBOTS-MODEL-POLICY-20261022-02，2026-10-23）：原owner PR194候选的Host loopback未通过，不合并失败候选。开发分支同步main86ba，吸收owner候选目录异常隔离源修；新增仅成功auto-route CAS可使用的单请求进程内快照握手，保留外部配置/权限/owner变化拒绝和operation去重。115项局部组合测试、类型/lint/分类/依赖及独立源审通过；证据dev-docs/model-policy-20261022/acceptance.md。交原唯一desktop owner01a12bc2吸收并重验精确候选；未触发共享CI/正式构建/Host或App操作，主干及发布仍待其门禁。
 
+
+## Mobile reviewer real artifact owner repair — 2026-10-23
+
+MOXBOTS-MOBILE-ARTIFACT-OWNER-20261023 follows actual dedicated D2 App new/continue/history and87B upload PASS, artifact-list MOBILE_ARTIFACT_RESPONSE_INVALID FAIL. Node-only nullable Rust OwnerList cursor/OwnerList+OwnerRead original-worker dispatch compatibility fix; task `.agent-sync/tasks/codex-mobile-artifact-owner-20261023-eb54d54e.md`, evidence `dev-docs/mobile-002/artifact-owner-20261023.md`. Source/local regression, actualwire, CI/main, immutable reviewerNode artifact, known-Session-preserving deployment, D2 real UI and Apple external/installable invitation remain separate gates. Original mobile/reviewerHost/Apple owner01a12b99 retains its lane, original combinedCI/main/desktop owner01a12bc2 receives exact commit; no second publisher, nativeGUI lease or original101/dailyMac action is inferred. IPA4/currentNode54 and existing Session/history/upload remain immutable old evidence.

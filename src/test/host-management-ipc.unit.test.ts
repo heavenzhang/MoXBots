@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseInternalManagementRequest } from '../host/management-ipc';
+import { parseInternalManagementRequest, hostOwnerAssetRequest } from '../host/management-ipc';
 
 const authority = {
   connection:{serviceId:'service',networkId:'network',bootEpoch:'boot',connectionEpoch:'connection'},
@@ -17,6 +17,27 @@ describe('private Host management envelope',()=>{
     expect(parseInternalManagementRequest(value,'other-device')).toBeNull();
     expect(parseInternalManagementRequest({...value,extra:true},'host-device')).toBeNull();
     expect(parseInternalManagementRequest({...value,operation:{...value.operation,arbitraryPath:'/tmp/file'}},'host-device')).toBeNull();
+  });
+
+  it('accepts the original Rust owner-list wire with an explicit null first-page cursor',()=>{
+    const value={kind:'internal-request',requestId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',authority,
+      operation:{kind:'asset.owner.list',agentId:'agent-1',sessionId:'session-1',limit:20,before:null}};
+    expect(parseInternalManagementRequest(value,'host-device')).not.toBeNull();
+    for (const before of [false,1,{},'', 'x'.repeat(257)]) {
+      expect(parseInternalManagementRequest({...value,operation:{...value.operation,before}},'host-device')).toBeNull();
+    }
+    expect(parseInternalManagementRequest({...value,operation:{...value.operation,sourcePath:'/tmp/forged'}},'host-device')).toBeNull();
+  });
+
+  it('routes both wire spellings to the same original owner without inventing a new session or path',()=>{
+    const list={version:1 as const,kind:'list' as const,agentId:'agent-1',sessionId:'session-1',limit:20};
+    expect(hostOwnerAssetRequest({kind:'asset.owner.list',agentId:list.agentId,sessionId:list.sessionId,limit:20,before:null})).toEqual(list);
+    expect(hostOwnerAssetRequest({kind:'asset.owner.list',agentId:list.agentId,sessionId:list.sessionId,limit:20,before:'next-page'})).toEqual({...list,before:'next-page'});
+    expect(hostOwnerAssetRequest({kind:'assets.request',request:list})).toEqual(list);
+    const read={version:1 as const,kind:'read' as const,agentId:'agent-1',sessionId:'session-1',artifactId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',offset:24*1024,maxBytes:24*1024};
+    expect(hostOwnerAssetRequest({kind:'asset.owner.read',agentId:read.agentId,sessionId:read.sessionId,sourceId:read.artifactId,offset:read.offset,maxBytes:read.maxBytes})).toEqual(read);
+    expect(hostOwnerAssetRequest({kind:'assets.request',request:read})).toEqual(read);
+    expect(hostOwnerAssetRequest({kind:'assets.request',request:{version:1,kind:'capabilities',agentId:'agent-1'}})).toBeNull();
   });
 
   it('rejects account rebinding and mismatched network authority',()=>{
