@@ -4,7 +4,9 @@
 // the renderer's next send and the picker follow it), and a text-free route
 // record rides along on the user message.
 //
-// Never blocks a turn: any failure leaves the request exactly as it came in.
+// Legacy routing failures keep the original request. An unavailable explicit
+// candidate pool blocks an idle automatic turn instead of using an excluded
+// current/default model; manual and already-active turns are unaffected.
 
 import { normalizeModelMode, type AutoModelRef, type AutoRouteRecord, type AutoTier } from '../../shared/autoRoute';
 import { createConcreteProviderRoute, type ProviderRoute } from '../../shared/providerRoute';
@@ -15,6 +17,7 @@ import type { SessionMetadata } from '../types/session';
 import { buildSessionSnapshotPatchUpdates } from '../utils/session-snapshot-patch';
 import type { RouteTurnInput, RouteTurnResult } from './router';
 import { getAutoRouteSessionState, setAutoRouteSessionState } from './session-state';
+import { AutoRoutePoolUnavailableError } from './errors';
 
 /** The routable part of a desktop / IM / background request. Mutated in place. */
 export interface AutoRoutableRequest {
@@ -30,6 +33,8 @@ export interface AutoRouteAdmissionDeps {
   getMessages: () => MessageWire[];
   current: () => { providerId: string | null; model: string | undefined; env: ProviderEnv | undefined };
   route: (input: RouteTurnInput) => Promise<RouteTurnResult | null>;
+  /** Recheck latest explicit membership before any best-effort fallback. */
+  assertFallbackAllowed?: () => void;
   updateSessionMetadata: (
     sessionId: string,
     updates: ReturnType<typeof buildSessionSnapshotPatchUpdates>,
@@ -108,6 +113,10 @@ export async function applyAutoRouteAdmission(
   input: AutoRouteAdmissionInput,
   deps: AutoRouteAdmissionDeps,
 ): Promise<AutoRouteRecord | undefined> {
+  const fallback = () => {
+    if (!deps.isSessionBusy() && shouldRoute(deps.getSessionMetadata(input.sessionId))) deps.assertFallbackAllowed?.();
+    return undefined;
+  };
   try {
     // Queued/steering/tool messages belong to the active turn. Its candidate
     // remains frozen; only a genuinely idle new turn may revoke stale state.
@@ -138,15 +147,16 @@ export async function applyAutoRouteAdmission(
       freshHistory: messages.length === 0,
       ...(input.hasImages ? { accept: (ref: AutoModelRef) => deps.supportsImages(ref.model) } : {}),
     });
-    if (!result) return undefined;
+    if (!result) return fallback();
     const { decision } = result;
     // Even a same-model verdict can race a manual selection while classifying.
     const latest = deps.getSessionMetadata(input.sessionId);
-    if (deps.isSessionBusy() || !shouldRoute(latest) || latest?.configSnapshotAt !== meta!.configSnapshotAt) return undefined;
+    if (deps.isSessionBusy() || !shouldRoute(latest) || latest?.configSnapshotAt !== meta!.configSnapshotAt) return fallback();
     // No verdict and no previous tier: nothing to base a switch on, so the
     // turn runs on its own model (Magpie `Fallback: previous`).
     if (decision.reason === 'classifier-failed') {
-      if (!currentRef) return undefined;
+      if (!currentRef) return fallback();
+      deps.assertFallbackAllowed?.();
       return { providerId: currentRef.providerId, model: currentRef.model,
         reason: 'classifier-failed', unclassified: true, failoverMode: result.failover?.mode,
         ...(result.failover?.mode === 'off' ? { backupUnavailableReason: 'off' as const } : {}), latencyMs: result.latencyMs,
@@ -174,7 +184,7 @@ export async function applyAutoRouteAdmission(
         latest.configSnapshotAt === expected && normalizeModelMode(latest.modelMode) === 'auto');
       // Someone changed the Session config meanwhile (e.g. picked a model):
       // their choice wins and this turn runs as requested.
-      if (!updated) return undefined;
+      if (!updated) return fallback();
       deps.broadcast('chat:session-config-changed', { sessionId: updated.id });
     }
 
@@ -225,6 +235,9 @@ export async function applyAutoRouteAdmission(
     });
     return record;
   } catch (error) {
+    if (error instanceof AutoRoutePoolUnavailableError && !deps.isSessionBusy()
+      && shouldRoute(deps.getSessionMetadata(input.sessionId))) throw error;
+    fallback();
     console.warn('[auto-route] admission skipped:', error instanceof Error ? error.message : String(error));
     return undefined;
   }

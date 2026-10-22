@@ -8,6 +8,7 @@ import {
   findAutoTierEntry,
   fitEffort,
   isAutoRoutingEnabled,
+  isAutoPoolEnabled,
   pickAutoClassifier,
   type AutoModelRef,
   type AutoRouteDecision,
@@ -30,6 +31,7 @@ import {
 import { createAutoRouteClassifier, type AutoRouteClassifier, type ClassifyOutcome } from './classifier';
 
 import { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
+import { AutoRoutePoolUnavailableError } from './errors';
 export { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
 
 /** Provider env the Session would run this model with; 'subscription' for SDK-native. */
@@ -102,7 +104,8 @@ export interface RouteTurnResult {
 
 /**
  * Classify a new turn and choose its model. Returns null when auto routing is
- * off or nothing is routable; the turn then runs on the current model.
+ * off or nothing is routable in legacy directory mode. An explicit pool with
+ * no compatible candidates raises a recoverable error instead of bypassing it.
  */
 export async function routeTurn(
   input: RouteTurnInput,
@@ -118,6 +121,8 @@ export async function routeTurn(
   const config = deps.config ?? loadConfig();
   const catalog = deps.catalog ?? buildAutoRouteCatalog(config);
   if (!isAutoRoutingEnabled(catalog.settings)) return null;
+  const managedPool = catalog.settings.pool !== undefined;
+  if (managedPool && !Object.values(catalog.table).some(rows => rows.length > 0)) throw new AutoRoutePoolUnavailableError();
 
   const envCache = new Map<string, ProviderEnv | 'subscription' | undefined>();
   const envFor = (ref: AutoModelRef) => {
@@ -147,7 +152,7 @@ export async function routeTurn(
   let tier: AutoTier | undefined;
   let verdict: 'classified' | 'cached' | 'fallback-previous' | 'classifier-failed' = 'classifier-failed';
   let classify: ClassifyOutcome | undefined;
-  if (classifierRef) {
+  if (classifierRef && catalog.entries.has(autoModelKey(classifierRef)) && isAutoPoolEnabled(catalog.settings, classifierRef)) {
     const engine = deps.classifier ?? await getAutoRouteClassifier();
     classify = await engine.classify(classifierRef, {
       text: input.text,
@@ -177,7 +182,11 @@ export async function routeTurn(
     isUsable,
     allowCrossTierBackup: (config as unknown as AppConfig).modelFailover?.allowCrossTier === true,
   });
-  if (!decision) return null;
+  if (!decision) {
+    if (managedPool) throw new AutoRoutePoolUnavailableError();
+    return null;
+  }
+  if (managedPool && !currentEntry && decision.reason === 'classifier-failed') decision.reason = 'unavailable-fallback';
   if (modelFailoverMode((config as unknown as AppConfig).modelFailover as ModelFailoverSettings | undefined) === 'off') delete decision.backup;
   const target = catalog.entries.get(autoModelKey(decision.target));
   const settings = (config as unknown as AppConfig).modelFailover;
@@ -186,7 +195,7 @@ export async function routeTurn(
   if (mode === 'off') failover.unavailableReason = 'off';
   else if (mode === 'specified') {
     const ref = settings?.backup ? { providerId: settings.backup.providerId, model: settings.backup.modelId } : undefined;
-    const entry = findAutoTierEntry(catalog.table, ref);
+    const entry = findAutoTierEntry(catalog.directoryTable ?? catalog.table, ref);
     if (!ref) failover.unavailableReason = 'not-configured';
     else if (!entry || !isUsable(entry) || autoModelKey(entry) === autoModelKey(decision.target)) failover.unavailableReason = 'unavailable';
     else if (settings?.allowCrossTier !== true && entry.tier !== decision.target.tier) failover.unavailableReason = 'cross-tier';
@@ -197,7 +206,7 @@ export async function routeTurn(
     failover,
     decision,
     effort: autoRouteEffort(target, decision.tier),
-    ...(classifierRef ? { classifier: classifierRef } : {}),
+    ...(classifierRef && classify ? { classifier: classifierRef } : {}),
     ...(classify ? { classify } : {}),
     latencyMs: now() - started,
   };

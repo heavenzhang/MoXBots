@@ -1,5 +1,5 @@
 import { isImeComposingEvent } from '@/utils/imeKeyboard';
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { LoaderIcon } from '@/components/icons';
 import { useTranslation } from 'react-i18next';
@@ -51,7 +51,7 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
     const { t } = useTranslation('common');
     // Cmd+W dismissal: z-[300] matches the component's CSS z-index
-    useCloseLayer(() => { if (loading) return false; onCancel(); return true; }, 300);
+    useCloseLayer(() => { if (loading) return modal; onCancel(); return true; }, 300);
 
     // Support both old and new props
     const finalConfirmText = confirmText || confirmLabel || t('actions.confirm');
@@ -59,6 +59,7 @@ export default function ConfirmDialog({
     const isDanger = confirmVariant === 'danger' || danger;
     const dialogRef = useRef<HTMLDivElement>(null);
     const cancelRef = useRef<HTMLButtonElement>(null);
+    const titleId = useId();
 
     useEffect(() => {
         if (!modal) return;
@@ -80,6 +81,14 @@ export default function ConfirmDialog({
             return;
         }
         if (loading) return;
+        if (modal && e.key === 'Enter') {
+            // In an accessible modal Enter activates the focused button. The
+            // legacy document shortcut must never turn Cancel into Confirm.
+            if (document.activeElement instanceof HTMLButtonElement
+                && dialogRef.current?.contains(document.activeElement)) return;
+            e.preventDefault();
+            return;
+        }
         if (e.key === 'Enter' && !disableEnterShortcut) {
             e.preventDefault();
             onConfirm();
@@ -100,9 +109,9 @@ export default function ConfirmDialog({
     // body level — observed 2026-05-08 with SessionHistoryDropdown.
     return createPortal(
         <OverlayBackdrop onClose={loading ? undefined : onCancel} className="z-[300] px-4">
-            <div ref={dialogRef} role={modal ? 'dialog' : undefined} aria-modal={modal ? true : undefined} aria-labelledby={modal ? 'confirm-dialog-title' : undefined} tabIndex={modal ? -1 : undefined} className="glass-panel max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto">
+            <div ref={dialogRef} role={modal ? 'dialog' : undefined} aria-modal={modal ? true : undefined} aria-labelledby={modal ? titleId : undefined} tabIndex={modal ? -1 : undefined} className="glass-panel max-h-[calc(100dvh-2rem)] w-full max-w-sm overflow-y-auto">
                 <div className="border-b border-[var(--line)] px-5 py-4">
-                    <div id={modal ? 'confirm-dialog-title' : undefined} className="break-words text-lg font-semibold text-[var(--ink)]">{title}</div>
+                    <div id={modal ? titleId : undefined} className="break-words text-lg font-semibold text-[var(--ink)]">{title}</div>
                 </div>
                 <div className="px-5 py-4">
                     {/* `whitespace-pre-line` lets callers pass multi-line messages via `\n`

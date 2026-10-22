@@ -45,6 +45,32 @@ describe('Session API failover authority', () => {
     expect(unavailable.mock.calls[0][0]).toBeTruthy();
   });
 
+  it.each(['paused', 'removed'])('revokes an automatic backup that becomes %s during primary retries', async state => {
+    fixture.config.modelFailover = { mode: 'auto' };
+    fixture.config.autoRouting = { pool: { 'primary/a': { enabled: true }, 'backup/b': { enabled: true } } };
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+      isLive: () => true, onSwitch: switched, autoBackup: () => ({ providerId: 'backup', modelId: 'b' }) });
+    const execute = vi.fn(async target => {
+      fixture.config.autoRouting = { pool: { 'primary/a': { enabled: true }, ...(state === 'paused' ? { 'backup/b': { enabled: false } } : {}) } };
+      return new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 });
+    });
+    expect((await controller.run(request(), { providerId: 'primary', model: 'a', baseUrl: primary.baseUrl! }, execute)).status).toBe(503);
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(execute.mock.calls.every(([target]) => target.providerId === 'primary')).toBe(true);
+    expect(switched).not.toHaveBeenCalled();
+  });
+  it('retains a specified backup outside the automatic pool, including a fixed primary outside it', async () => {
+    fixture.config.autoRouting = { pool: {} };
+    fixture.config.modelFailover = { mode: 'specified', backup: { providerId: 'backup', modelId: 'b' } };
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }),
+      isLive: () => true, onSwitch: switched });
+    expect((await controller.run(request(), { providerId: 'primary', model: 'a', baseUrl: primary.baseUrl! }, async target =>
+      new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }))).status).toBe(200);
+    expect(switched).toHaveBeenCalledOnce();
+  });
+
   it('permits an explicitly enabled cross-tier configured backup', async () => {
     fixture.config.modelFailover = { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'backup', modelId: 'b' } };
     fixture.providers.backup = { id: 'backup', type: 'api', models: [{ model: 'b', tier: 'fast' }] };

@@ -1,7 +1,7 @@
 // `route tiers` / `route explain`: read-only views of auto routing. Neither
 // changes a Session's model; explain runs the real classifier once.
 
-import { AUTO_TIERS, autoModelKey, isAutoRoutingEnabled, pickAutoClassifier, type AutoModelRef } from '../../shared/autoRoute';
+import { AUTO_TIERS, autoModelKey, isAutoPoolEnabled, isAutoRoutingEnabled, pickAutoClassifier, type AutoModelRef } from '../../shared/autoRoute';
 import { loadConfig } from '../utils/admin-config';
 import { buildAutoRouteCatalog, resolveAutoRouteEnv, routeTurn } from './router';
 
@@ -18,12 +18,14 @@ function currentRef(sessionMeta: { providerId?: string | null; model?: string | 
 export function handleRouteTiers(sessionMeta?: { providerId?: string | null; model?: string | null } | null): AdminResult {
   const catalog = buildAutoRouteCatalog();
   const classifier = pickAutoClassifier(catalog.table, catalog.settings, currentRef(sessionMeta));
+  const classifierAvailable = !!classifier && catalog.entries.has(autoModelKey(classifier)) && isAutoPoolEnabled(catalog.settings, classifier);
   return {
     success: true,
     data: {
       enabled: isAutoRoutingEnabled(catalog.settings),
-      classifier: classifier ? { ...classifier, chosenBy: catalog.settings.classifier ? 'user' : 'auto', available: catalog.entries.has(autoModelKey(classifier)),
-        ...(!catalog.entries.has(autoModelKey(classifier)) ? { unavailableReason: 'unavailable' } : {}) } : null,
+      classifier: classifier ? { ...classifier, chosenBy: catalog.settings.classifier ? 'user' : 'auto', available: classifierAvailable,
+        ...(!classifierAvailable ? { unavailableReason: 'unavailable' } : {}) } : null,
+      models: catalog.models ?? [],
       tiers: Object.fromEntries(AUTO_TIERS.map(tier => [tier, catalog.table[tier].map(entry => ({
         providerId: entry.providerId,
         model: entry.model,
@@ -50,11 +52,14 @@ export async function handleRouteExplain(
     return { success: true, data: { enabled: false } };
   }
   // Explain is a dry run of a fresh turn: no warm cache, no context pressure.
-  const result = await routeTurn({
+  let result;
+  try { result = await routeTurn({
     text: prompt,
     current,
     currentEnv: currentEnv === 'subscription' ? undefined : currentEnv,
-  }, { catalog, config });
+  }, { catalog, config }); } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Unable to select an automatic candidate.' };
+  }
   if (!result) return { success: false, error: 'No model is available for auto routing. Configure a provider first.' };
   const { decision } = result;
   return {

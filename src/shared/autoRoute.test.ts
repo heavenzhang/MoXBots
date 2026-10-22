@@ -245,6 +245,8 @@ describe('explicit auto-routing candidate pool', () => {
     expect(parseAutoRoutingSettings({ pool: { bad: true, 'p/m': { enabled: 'true' } } }).pool)
       .toEqual({ 'p/m': { enabled: false } });
     expect(parseAutoRoutingSettings({ pool: {} }).pool).toEqual({});
+    expect(parseAutoRoutingSettings({ pool: [] }).pool).toEqual({});
+    expect(parseAutoRoutingSettings({ pool: null }).pool).toEqual({});
   });
   it('cannot hold a removed current model when classification fails', () => {
     const table = buildAutoTierTable(candidates, { pool: { 'p/claude-sonnet-5-5': { enabled: true } } });

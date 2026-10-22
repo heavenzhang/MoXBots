@@ -4,6 +4,7 @@ import { buildAutoTierTable, type AutoTierEntry } from '../../shared/autoRoute';
 import type { MessageWire } from '../builtin-session/types';
 import type { SessionMetadata } from '../types/session';
 import { applyAutoRouteAdmission, autoRouteMessageText, previousTurn, type AutoRouteAdmissionDeps } from './admission';
+import { AutoRoutePoolUnavailableError } from './errors';
 import type { RouteTurnInput, RouteTurnResult } from './router';
 import { getAutoRouteBackup, setAutoRouteSessionState } from './session-state';
 
@@ -67,6 +68,32 @@ const input = { sessionId: 's1', text: '设计一个同步引擎', source: 'desk
 
 describe('applyAutoRouteAdmission', () => {
   beforeEach(() => setAutoRouteSessionState('s1', undefined));
+
+  it('surfaces an empty managed pool rather than falling back to the current model', async () => {
+    const request = { model: 'removed-current' };
+    const d = deps({ route: vi.fn(async () => { throw new AutoRoutePoolUnavailableError(); }) });
+    await expect(applyAutoRouteAdmission(request, input, d)).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
+    expect(request).toEqual({ model: 'removed-current' });
+    expect(d.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+  it('does not apply pool restrictions to a manually fixed Session or an active turn', async () => {
+    for (const extra of [{ sessionMeta: meta({ modelMode: 'manual' }) }, { isSessionBusy: () => true }]) {
+      const route = vi.fn(async () => { throw new AutoRoutePoolUnavailableError(); });
+      await expect(applyAutoRouteAdmission({}, input, deps({ ...extra, route }))).resolves.toBeUndefined();
+      expect(route).not.toHaveBeenCalled();
+    }
+  });
+  it.each(['thrown', 'null', 'unclassified'])('does not bypass explicit membership on a %s fallback', async reason => {
+    const d = deps({
+      route: vi.fn(async () => {
+        if (reason === 'thrown') throw new Error('classifier/setup failed');
+        if (reason === 'null') return null;
+        return result('claude-opus-5-5', { reason: 'classifier-failed' });
+      }),
+      assertFallbackAllowed: () => { throw new AutoRoutePoolUnavailableError(); },
+    });
+    await expect(applyAutoRouteAdmission({}, input, d)).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
+  });
 
   it.each(['manual', 'disabled', 'failed', 'thrown', 'conflict'])('revokes the previous automatic backup before an idle new turn: %s', async reason => {
     setAutoRouteSessionState('s1', { tier: 'strong', backup: { providerId: 'old', modelId: 'stale' } });

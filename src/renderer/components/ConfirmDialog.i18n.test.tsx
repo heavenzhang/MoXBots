@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import React from 'react';
+import userEvent from '@testing-library/user-event';
 
 import { i18n } from '@/i18n';
 import ConfirmDialog from './ConfirmDialog';
@@ -22,6 +23,19 @@ describe('ConfirmDialog i18n', () => {
 
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirm' })).toBeInTheDocument();
+  });
+  it('lets Enter activate Cancel or Confirm according to actual modal focus', async () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    const user = userEvent.setup();
+    render(<ConfirmDialog modal title="Maintain pool" message="Proceed?" onConfirm={onConfirm} onCancel={onCancel} />);
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onConfirm).not.toHaveBeenCalled();
+    screen.getByRole('button', { name: 'Confirm' }).focus();
+    await user.keyboard('{Enter}');
+    expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
   it('traps focus in opt-in modal, starts on cancel, restores trigger, and ignores close while loading', () => {

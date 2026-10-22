@@ -317,8 +317,9 @@ export function parseAutoRoutingSettings(value: unknown): AutoRoutingSettings {
   const raw = value as Record<string, unknown>;
   const out: AutoRoutingSettings = {};
   if (typeof raw.enabled === 'boolean') out.enabled = raw.enabled;
-  if (raw.pool && typeof raw.pool === 'object' && !Array.isArray(raw.pool)) {
-    out.pool = Object.fromEntries(Object.entries(raw.pool as Record<string, unknown>)
+  if (Object.hasOwn(raw, 'pool') && raw.pool !== undefined) {
+    const members = raw.pool && typeof raw.pool === 'object' && !Array.isArray(raw.pool) ? raw.pool : {};
+    out.pool = Object.fromEntries(Object.entries(members as Record<string, unknown>)
       .filter(([key]) => parseAutoModelKey(key) !== null)
       .map(([key, entry]) => [key, { enabled: Boolean(entry && typeof entry === 'object'
         && (entry as Record<string, unknown>).enabled === true) }]));
