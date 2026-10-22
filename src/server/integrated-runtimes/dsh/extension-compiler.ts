@@ -1,3 +1,4 @@
+import { DSH_DELEGATION_CONFIRMATION_HOOK_ID } from './delegation-gate';
 import { parseFullSkillContent } from '../../../shared/slashCommands';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -244,7 +245,16 @@ export function compileDshExtensionSnapshot(input?: {
   return createSnapshot({
     formatVersion: 1,
     revision,
-    components: structuredClone(input?.components ?? []),
+    components: [
+      ...structuredClone(input?.components ?? []).filter(component => component.id !== DSH_DELEGATION_CONFIRMATION_HOOK_ID),
+      {
+        id: DSH_DELEGATION_CONFIRMATION_HOOK_ID, enabled: true, kind: 'hook',
+        descriptor: {
+          event: 'PreToolUse', originScope: ['root', 'foreground_child', 'background_child'],
+          failurePolicy: 'deny',
+        },
+      },
+    ],
     resources: structuredClone(input?.resources ?? []),
     skillSourcePolicy: {
       revision: `${revision}:skill-policy`,

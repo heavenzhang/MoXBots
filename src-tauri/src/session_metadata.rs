@@ -22,6 +22,9 @@ fn sessions_path() -> Result<std::path::PathBuf, String> {
 pub(crate) fn redact_session_metadata(mut session: Value) -> Option<Value> {
     crate::mcp_selection::normalize_mcp_selection_field(&mut session);
     let obj = session.as_object_mut()?;
+    // Task events belong to the selected Session, not the global history
+    // projection. Excluding the ledger also avoids list-wide refresh churn.
+    obj.remove("taskOrchestration");
     if obj
         .get("materializationState")
         .and_then(Value::as_str)
@@ -347,6 +350,16 @@ mod tests {
             value["mcpEnabledServers"],
             json!(["playwright", "tavily-search"])
         );
+    }
+
+    #[test]
+    fn task_execution_changes_do_not_invalidate_history_projection() {
+        let before =
+            redact_session_metadata(json!({"id":"s", "taskOrchestration":{"revision":1}})).unwrap();
+        let after =
+            redact_session_metadata(json!({"id":"s", "taskOrchestration":{"revision":2}})).unwrap();
+        assert_eq!(before, after);
+        assert!(after.get("taskOrchestration").is_none());
     }
 
     #[test]

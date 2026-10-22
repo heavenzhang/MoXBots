@@ -149,3 +149,7 @@ myagents_files/
 
 # Derived MoX bot guides/templates; authoritative source stays in bundled-*
 /src-tauri/resources/moxbot-bundled/
+
+# Local Session orchestration component preview cache
+.cache/session-orchestration-vite/
+dev-docs/session-orchestration/incremental-preview/.vite-cache/

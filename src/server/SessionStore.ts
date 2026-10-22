@@ -4539,6 +4539,7 @@ export async function updateSessionMetadata(
         | 'sdkResumeSessionAt'
         | 'pendingContinueAfterAbort'
         | 'modelRecovery'
+        | 'taskOrchestration'
     >> & {
         /** Pin intent. SessionStore owns the canonical ordering timestamp. */
         pinned?: boolean;

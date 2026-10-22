@@ -1,0 +1,242 @@
+[
+  {
+    "name": "independent-1280-dark-unsupported-plan.png",
+    "sha256": "69ba35962d26ce3403309e0cffe3986566b3fd4f9e796c93cbb5c1a60c5d33a7",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-unsupported-details-clean.png",
+    "sha256": "8f5e8789cabc8e326d4995499fa87b99e83d4d11aa850d3e341f2df1080e2e3e",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-approval.png",
+    "sha256": "f51b151dcc77cb9f3dec25febca08d3dcbaec27113b90e285991d77b93fec890",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-rework.png",
+    "sha256": "cbbb36ad95efd7ed132646bf194c3c4e7dcfa9be1410d0360c410197245f717b",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-rework.png",
+    "sha256": "51085c42763a173da44a50dc9ec8ce4a380790272c49db2416118a27c03b909f",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-rework.png",
+    "sha256": "4ce3df15f7a8325bbd2a36cff567d22f5e95db3a1dbf5a1fd75e326f9606f283",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-unsupported-plan.png",
+    "sha256": "888e0928c0d35ba7ee2b5946a7286ba6de720c059eec57e3b8a922ab3a173f0c",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-review.png",
+    "sha256": "d46abc4a511bed18314d44a94ccb7985eb790bd4328a8966e3c3399b35f89c40",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-approval.png",
+    "sha256": "625db08ca38de683796cacfebfe4b4b96e573834a0427de3d99e866bbff7b9fd",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-unsupported-clean.png",
+    "sha256": "1ddb925d3b79e8e834da19d499be9d94218cf9548c4514192b55bcb44e2d9002",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-approval.png",
+    "sha256": "b49f7210878b51b47eadb84e7af275531c8b81a306cf260c77b3ece910c76a5c",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-rework.png",
+    "sha256": "2c944192c5443310f520f38d388b9c664258edcabd20a3da2516b4441e6999f1",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-review.png",
+    "sha256": "ae5b32a74454d27f00dc0dec4d9a4c62fa9320d0f26a6ed1ab149929fbaec85c",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-unsupported-details-clean.png",
+    "sha256": "2e46fe5d83ff4bb6fdaa03b89bd50abdc08edf04bebe3dfe2765f3c293fff03b",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-approval.png",
+    "sha256": "0ab339bf5f3153feea53c2b15ffe7016dff089134533b84b633a0d758ad0f6a6",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-unsupported-details-clean.png",
+    "sha256": "4dab0ca5eaf5458d9de09ee34400f6a77379d37167f53829cc026f7479dd3d3f",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-approval.png",
+    "sha256": "a34dab153507a607ca2bab7e9d2058430393f13bf705516c8d9c1afc5e1a7fbc",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-approval.png",
+    "sha256": "9acd893c8c204d70431795dfa4b47ba97d25af9bf4d8493df14623f0495129dc",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-unsupported-details-clean.png",
+    "sha256": "dbcc82714419e94b951230e7925f92e47cf036fe94da69ae28118e1b01c5625f",
+    "retainedInGit": true
+  },
+  {
+    "name": "independent-390-dark-accepted.png",
+    "sha256": "1a0026cea43ea4cfbd8972fbe191b8a81dd6965408a2573c18c5224c385a004f",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-unsupported-clean.png",
+    "sha256": "bfde407268f59adc7b3b19e7788106165accd020a919988cdb25ca706ec18ca3",
+    "retainedInGit": true
+  },
+  {
+    "name": "independent-320-dark-unsupported-plan.png",
+    "sha256": "a04b2867e3e6f467635e8d14af208d0d1d0d0bf126f1106ba9aa12cfade9ac20",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-unsupported-clean.png",
+    "sha256": "ea5b69ef142e965acab9d6581441d5bcc0ce5a4f292d0647308ed394d9eadb14",
+    "retainedInGit": true
+  },
+  {
+    "name": "independent-390-light-returned.png",
+    "sha256": "7a7bbe3b306a2910dce1c039f301601cf9b851221f9e9a57af748400c5e59c82",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-unsupported-plan.png",
+    "sha256": "2da639a63cfe5bf5c912a6c97298b7da820e1d89a653bbb1f4ed6beb5b2c901c",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-review.png",
+    "sha256": "6b5609a6bc23a976ddc2a66d9a22ac9fe485b55ef60d8a75eb8622abf81976a0",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-review.png",
+    "sha256": "6dc0409c571b3add55a2a9f3f0ca15cef19d0551849f989a48929fb003f327a0",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-accepted.png",
+    "sha256": "c2c833d4ad85061c1e3a10fb223cd72c95a23c80411cfdb1c0f9f992ff44d893",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-unsupported-clean.png",
+    "sha256": "a9c612542d21d8000620f8e69b3e0f4ea8701a719c773e56523a069624ec8ec4",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-returned.png",
+    "sha256": "c073c20dbeee348caf0c361d32cda74cba360803b5ba222e158abefdadd5a43e",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-review.png",
+    "sha256": "327008cc5de64b7d8e33ce4dff934bc34077d4867618ca64ad13b7dd1116afd9",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-unsupported-plan.png",
+    "sha256": "afa2f9b98b7b448d698460443f71271c8248f4f512dd71d81a420f2fe6fc6103",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-dark-unsupported-details-clean.png",
+    "sha256": "3700fe834c60b8bc8e7d299d2f3dfd6e19ca3bf3997e1c20cf95a9d8928afbc6",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-rework.png",
+    "sha256": "c9753037485f6186659d2450ec642033229b5c462b5e819a8b98f37f04e703d8",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-returned.png",
+    "sha256": "c9bc920bb91866a96c9a00386c96ef7f6c5bd0369d6885179eb2683af6b2d7f7",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-unsupported-plan.png",
+    "sha256": "11a46af8d8f061a2c9e9078ae217d952ee7a9876ed0bb00fbb377aaa65aff0ce",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-accepted.png",
+    "sha256": "d1f4d7570d24d50b1bf2206ccfdcce8c7afd7a3d9d3e099837df9bf0f6112ed2",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-390-light-unsupported-clean.png",
+    "sha256": "2900f31d09eab1b5b13df985184a60eee7291cd2bfd502d07b30d05b816f14b8",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-returned.png",
+    "sha256": "8a0005ac0b51e10dd5ee435a3bcd1114b85cff05baf128d05c6633c63c734832",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-accepted.png",
+    "sha256": "81039c0bf54d45d191238b090c29db68ff678a5f426a590afddf6399d0d979db",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-unsupported-details-clean.png",
+    "sha256": "eab83b65cd4e84dcb4c804e8db46f43894198ab1358e80d25cbd7ebf744a50c5",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-unsupported-clean.png",
+    "sha256": "69a717494e7384810c90e6fa6a96bc794d55e256f6c877eefe97a97ce8a0b489",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-light-accepted.png",
+    "sha256": "3ab83a03fc03e4842f1b62c805e9ddd48efb5860e2a4dc694735c186e39b0003",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-returned.png",
+    "sha256": "27bc33bddff3c7c4dc839f77b393d371eb08b76ddac103179a453d31936718a3",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-dark-review.png",
+    "sha256": "d8b409133a95620a6210a92aac3910833085bb28c0d7ecda32dd1c9c8f7f9e55",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-rework.png",
+    "sha256": "35407149fa76bf9971f340f76aef4cc828f322871f598880a2b13548cc5fd1bf",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-320-dark-accepted.png",
+    "sha256": "1dda7cfb12c1315804d8ac22337cb62296025098657d1a08906e18cb2f1ecae7",
+    "retainedInGit": false
+  },
+  {
+    "name": "independent-1280-light-returned.png",
+    "sha256": "c1c0d85f50ccac3312eccfeb33a69d323b9d60a88448dfa19247a3136dcb9e13",
+    "retainedInGit": false
+  }
+]

@@ -81,6 +81,7 @@ export const SSE_EVENT_PRIORITIES: Readonly<Record<string, SseEventPriority>> = 
   // [sse] missing-from-priorities warning per process).
   'chat:context-usage': 'coalescible',
   'chat:agent-plan-update': 'coalescible',
+  'chat:task-orchestration': 'coalescible',
   'chat:runtime-tool-catalog': 'coalescible',
   'chat:mcp-effective-snapshot': 'coalescible',
   // (Phase E PRD 0.2.7: `workspace:files-changed` SSE event removed; the
@@ -339,7 +340,7 @@ const SILENT_EVENTS = new Set([
   // Repeated UI snapshots are transport projections. Runtime owners retain
   // semantic diagnostics, and turn owners retain final output/usage summaries.
   'chat:mcp-effective-snapshot', 'chat:runtime-tool-catalog',
-  'chat:context-usage', 'chat:agent-plan-update', 'chat:runtime-diagnostics',
+  'chat:context-usage', 'chat:agent-plan-update', 'chat:task-orchestration', 'chat:runtime-diagnostics',
 ]);
 
 // Time-window coalescing for high-frequency streaming deltas.

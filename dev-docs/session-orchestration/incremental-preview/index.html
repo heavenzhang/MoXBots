@@ -1,0 +1,6 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MoXBots · 原布局增量对比</title><link rel="icon" href="/moxbots-icon.png"><script>
+// Prototype-only I/O fence. UI modules and local assets can load, business endpoints cannot.
+window.prototypeBlockedRequests=[];
+const nativeFetch=window.fetch.bind(window);
+window.fetch=(input,init)=>{const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url,location.href);if(url.origin!==location.origin||/^\/(api|chat|agent|sessions)(\/|$)/.test(url.pathname)){window.prototypeBlockedRequests.push(url.pathname);return Promise.resolve(new Response(JSON.stringify({success:false,prototypeOnly:true,error:'本地原型不连接业务接口'}),{status:503,headers:{'Content-Type':'application/json'}}))}return nativeFetch(input,init)};
+</script></head><body><div id="root"></div><script type="module" src="/main.tsx"></script></body></html>

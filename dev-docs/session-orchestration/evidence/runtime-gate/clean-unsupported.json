@@ -1,0 +1,38 @@
+[
+  {
+    "width": 1280,
+    "theme": "light",
+    "name": "unsupported hint center unobscured",
+    "pass": true
+  },
+  {
+    "width": 1280,
+    "theme": "dark",
+    "name": "unsupported hint center unobscured",
+    "pass": true
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "name": "unsupported hint center unobscured",
+    "pass": true
+  },
+  {
+    "width": 390,
+    "theme": "dark",
+    "name": "unsupported hint center unobscured",
+    "pass": true
+  },
+  {
+    "width": 320,
+    "theme": "light",
+    "name": "unsupported hint center unobscured",
+    "pass": true
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "name": "unsupported hint center unobscured",
+    "pass": true
+  }
+]

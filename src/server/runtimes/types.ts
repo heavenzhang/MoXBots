@@ -77,6 +77,8 @@ export interface SessionStartOptions {
   sessionId: string;
   workspacePath: string;
   initialTurn?: RuntimeInitialTurn;
+  /** Product owner checks the current confirmed plan; omitted preserves legacy delegation. */
+  canDelegateSubagents?: () => boolean;
   systemPromptAppend?: string;
   /** Declarative Host context used only by the Integrated DSH Runtime. */
   systemContext?: DshSystemContextSnapshot;
@@ -135,6 +137,8 @@ export interface RuntimeProcess {
   readonly pid: number;
   /** Optional adapter-owned identity for generation-scoped projections/callbacks. */
   readonly runtimeGeneration?: string;
+  /** Frozen native launch gate. Owner must restart at an idle boundary when it changes. */
+  readonly subagentDelegationEnabledAtLaunch?: boolean;
   /** Runtime admission completed a durable mutation that changed Product transcript state. */
   readonly productTranscriptChangedAtStartup?: boolean;
   /** Runtime-native Skill names confirmed after startup, when the adapter can inspect them. */
@@ -593,6 +597,8 @@ export interface AgentRuntime {
     options?: {
       clientUserMessageId?: string;
       clientOperationId?: string;
+      /** Synchronous original-owner lease check, called after all preparation immediately before native root dispatch. */
+      beforeDispatch?: () => void;
       /** Recovered roots remain turn-boundary-only until their exact terminal settles. */
       allowRealtimeSteer?: boolean;
     },
@@ -633,6 +639,8 @@ export interface AgentRuntime {
     options?: {
       clientUserMessageId?: string;
       clientOperationId?: string;
+      /** Synchronous owner/policy check immediately before native RPC; no await after it. */
+      beforeNativeDispatch?: () => void;
       beforeDispatch?: (identity: { clientOperationId: string; inputFingerprint: string }) => Promise<void>;
     },
   ): Promise<void>;

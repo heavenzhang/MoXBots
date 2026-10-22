@@ -978,12 +978,20 @@ pub async fn session_sidecar_http_request(
     session_id_hint: String,
     sidecar_owner_type: String,
     sidecar_owner_id: String,
-    request: SidecarHttpRequest,
+    mut request: SidecarHttpRequest,
 ) -> Result<HttpResponse, String> {
     let owner = frontend_sidecar_owner(&sidecar_owner_type, sidecar_owner_id)?;
     let dispatch =
         acquire_session_dispatch_with_wait(sidecar_manager.inner(), &session_id_hint, &owner)
             .await?;
+    crate::session_user_action::stamp_session_request(
+        &mut request.headers,
+        &request.method,
+        &request.path,
+        request.body.as_deref(),
+        &session_id_hint,
+        matches!(owner, SidecarOwner::Tab(_)),
+    )?;
     let request = request.resolve(&dispatch)?;
     let response = execute_http_request(app, spill_manager.inner().clone(), request, true).await;
     // The generation lease protects only the Sidecar request and response
@@ -998,9 +1006,10 @@ pub async fn global_sidecar_http_request(
     app: AppHandle,
     sidecar_manager: tauri::State<'_, ManagedSidecarManager>,
     spill_manager: tauri::State<'_, Arc<ProxySpillManager>>,
-    request: SidecarHttpRequest,
+    mut request: SidecarHttpRequest,
 ) -> Result<HttpResponse, String> {
     let dispatch = acquire_global_dispatch_with_wait(sidecar_manager.inner()).await?;
+    crate::session_user_action::strip_untrusted_headers(&mut request.headers);
     let request = request.resolve(&dispatch)?;
     let response = execute_http_request(app, spill_manager.inner().clone(), request, true).await;
     drop(dispatch);
@@ -1011,11 +1020,12 @@ pub async fn global_sidecar_http_request(
 pub async fn proxy_analytics_http_request(
     app: AppHandle,
     spill_manager: tauri::State<'_, Arc<ProxySpillManager>>,
-    request: HttpRequest,
+    mut request: HttpRequest,
 ) -> Result<HttpResponse, String> {
     if !request.method.eq_ignore_ascii_case("POST") {
         return Err("Analytics proxy only accepts POST requests".to_string());
     }
+    crate::session_user_action::strip_untrusted_headers(&mut request.headers);
     execute_http_request(app, spill_manager.inner().clone(), request, false).await
 }
 

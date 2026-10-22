@@ -5,37 +5,35 @@
 
 # MOXBOTS-0519-TITLE-CONTINUATION-20261022
 
-## Objective
+## Objective and owner
 
-Existing sole desktop/macOSarm64/updater and combined CI/main/version/publisher remains Root01a12bc2-907a-7702-b6dd-788225c5dfe4. Integrate accepted-request AI title source2dfc3c4053e486f77c7a56e8ed936f79e2c69f90 (functional a83affddad751ac628fc30479a2be420c785604c) and new-session continuation display repairc5b6998fa850140d2c8622288d40f28e3207a967 from their explicit source requests. Reserve next UNFROZEN0.5.19/build519.1; immutable0.5.18/build518.2 is already installed and stable published. No released tag/bytes are replaced.
+Root01a12bc2-907a-7702-b6dd-788225c5dfe4 remains sole desktop/macOSarm64/updater, sharedCI/main/version/build/publisher owner. Reserve the next unbuilt0.5.19/build519.1. Published/installed0.5.18/build518.2 and its tag/artifact remain immutable. This explicit source revision reconciles reviewed title2df/a83 and continuationc5b with current canonical main375080609b51c7de993511c6b36505ea23eefcb1, including the now-reviewed orchestration6bcd, fixture lintbcb and credentialce2 repair normally delivered byPR192. This is a new source revision, never an amendment of frozen bbed or reuse of old results.
 
-## Acceptance criteria
+## To Do List
 
-- [x] Exact source intake and original author evidence reviewed; isolated integration and source ownership preserved.
-- [x] AI titles use persisted admitted user requests through the existing asynchronous single title service, preserving manual-name/current-owner/attempt/budget/runtime guards.
-- [x] Ordinary running/new/hydrating/busy sessions advertise no continuation; stopped/interrupted exact-turn continuation and cold recovery stay intact.
-- [x] Root version and root lock projections consistently reserve0.5.19/519.1 without dependency, SDK, Reader or mobile version changes.
-- [x] Reconcile exact protected mobile main13b5e155ea2b23632aec2734f34a6b581eb2bfeb after original diagnostic CI39748783192 passed nine jobs and one conditional skip; preserve the original failed run.
-- [ ] Select this exact combined source for its one original CI and protected main delivery with remote SHA verification.
-- [ ] One new immutable artifact, signing/notarization and same-artifact local/formal publication after proportionate affected acceptance.
-- [ ] Fresh maintenance owner/durable generation/schedule/backup admission before new App operations; one controlled safe real Provider title+Store+sidebar/tab check and affected continuation behavior. Do not repeat5182 or old business tasks.
+- [x] Preserve original authors, task histories, clean isolated integration and original failed-source evidence.
+- [x] Title admission uses the persisted/current-owner boundary, original single asynchronous service, manual-title CAS, runtimeSource and bounded attempts/context.
+- [x] Continuation remains display-only: stopped/interrupted exact turns; hydration/busy/running cannot advertise continuation; original Stop/admission/cold recovery remain owners.
+- [x] Reconcile current main375 without conflicts. PR192 exact60e6 originalCI39771492747 passed9jobs/1conditional iOSskip; Linux1807pass/0fail/8ignored and clippy. Actual main tree equals tested treeedf3.
+- [x] Independently review merged overlapping admission paths and source/metadata ownership. Seven targeted merged external-engine checks pass, covering silent title admission, DSH original-queue claim and realtime pending/async fences;234unselected are not passes. Original430/145 matrices were not repeated.
+- [x] Fresh static root, Tauri and Document Worker0.5.19/519.1 projection assertions; dependency graph/SDK0.3.296 and Reader closure inputs preserved. Earlier version RED/GREEN retained.
+- [ ] Commit/push this changed source, select its exact immutable revision, obtain one original exacthead CI, then normal protected main/tested-tree/remote containment verification.
+- [ ] Before first formal B, verify actual fixed Reader/DSH/SDK inputs and mandatory capability contract. One normal-priority build; no unnecessary private A or reuse of a previous final binary.
+- [ ] Fresh authoritative maintenance admission, backup and affected signed/native paths; original business tasks are not replayed. Actual Provider title/Store/sidebar/tab, changed continuation and supported plan/delegate/return/root-review/recovery need truthful separate conclusions.
+- [ ] Same-artifact signing/notary, local installation/formal-channel publication and rollback proof. No deployed claim from CI.
 
-## Completed
+## Source and evidence boundaries
 
-Ordinary merges preserve both full author histories. The two session_architecture documentation edits auto-merged and retain both accepted-request title and interrupted-only continuation contracts. Root reviewed the affected boundary; no second execution/storage owner or business autosend was added. Version metadata is reserved in this checkpoint only. This source is now ready for selection into its one original CI after main reconciliation; no019 CI/build/sign/Apple/tag/install/publication has started. The only merge conflict was adjacent plan appends; both were retained.
+Title author's430 local tests/11files and continuation145 local tests plus actual component WebKit1200/620 and independent review remain accepted for unchanged paths. New Root focused7 checks use fake Runtime and temporary Store; no actual Provider or signed App proof. PR192's1807 Linux tests include unchanged200rounds×4helpers and new real-retired-inode safety controls. Those CI results do not substitute for this changed source's exact CI or future native acceptance.
 
-## Verification
+New plan decisions are supported only for builtin SDK/Integrated DSH mandatory admission. Codex/CC task tracking remains, unsupported confirmation rejects before mutation; actual pinned native readiness remains a release gate. No new executor/storage owner, false child-return completion or blind unknown-receipt replay is introduced. Source, CI/main, artifact, local runtime and distribution remain separate states.
 
-Original AI-title author evidence:430 tests/11 files, TypeScript/lint/classification PASS at exact handed source, documented in dev-docs/ai-title-20261022/acceptance.md. Original continuation evidence: five RED assertions,145 focused domain/DOM/store/admission tests PASS, actual component WebKit1200/620 states and independent themed UI/source review. Those are source-linked synthetic/component checks, not real Provider or new native artifact evidence. Root reviewed the diffs and their merge; did not rerun these passed suites. Root performs only version/dependency delta assertions and git diff checks for this metadata checkpoint. Original immutable5182 delivery record remains in its private release owner directory.
+## Preserved failures and exclusions
 
-## Blockers and unknowns
+Old f439 missed the Document Worker version: existing contract RED1fail/2pass, corrected bbed GREEN3/3 with locked metadata; neither was built. Bbed originalCI39757460762 failed unchanged CLIProxy callback rebind at272 (1793pass/1fail/8ignored), exact cause still unproven. No unchanged rerun or claim that PR192 fixed that original cause. PR192 first fixture lint failure and later credential nlink0 failure remain preserved; the original credential writer repaired the observed unowned-retired boundary with strict owned/identity/security checks and original budgets retained. Original PR190 unstaged failure is not retroactively assigned the later observed cause.
 
-Original mobile PR190 Linux CI39739522534 failed credential-ledger subprocess admission at63d223010; its root cause remains unresolved. Root and independent review approved guard-preserving diagnostic sourceab7, then original exact newhead e5 CI39748783192 passed nine jobs/one conditional skip, Linux1794pass and clippy. Normal main13b5e155 has the exact tested treeea7fe955. Mobile build4 still names its actual source63 and signing/distribution remains under its separate sole owner; no guard relaxation or old-run suppression occurred. This is separate from selecting019's own exact source/CI. Actual real title generation and new native acceptance remain pending. Orchestration8b is not included: Root found two P1 source gaps (external CC policy is not consumed; Codex birth-enabled same-turn propose does not fence subsequent spawn). Its original writer is repairing those independently, and later commits cannot silently join this selection. Other units and uncommitted work stay outside.
+Uncommitted OAuth/other source, independent mobile/Host/cloud/Windows/website deployments and remaining physical remote/model matrices stay outside this artifact. Latest main mobile provenance remains source63/unsigned4 under its own owner; desktop does not relabel or deploy that artifact. No formal519 prepare/cachecopy/build/sign/Apple/App/install/publication has run.
 
 ## Next step
 
-Push this reconciled exact source and let the existing sole owner create one019 PR/original combined CI; accept only that exact head before protected main delivery and artifact selection. Retain this task's source and affected acceptance boundaries through the normal main/artifact/install/publish flow; no duplicate5182 build or native work.
-
-## Root version-contract correction before any build
-
-The first selected sourcef439 reserved the app root version but missed the independently versioned Document Worker manifest/lock. The existing sync-version contract reproduced this deterministically (1 failed/2 passed); the source was not built or installed. This followup changes only that package version projection to0.5.19, preserving its dependency graph. Focused sync-version3/3 and offline locked cargo metadata are checked before selecting the exact new head into the samePR191. The superseded CI/source and RED log are retained; this is a changed-head correction, not an unchanged rerun or duplicate build. Original title/continuation suites are not rerun.
+Record the new exact commit and remote handoff; retire the failed unbuilt bbed selection explicitly, then accept only the changed-head originalCI before normal main delivery. Check pinned native capability compatibility before the first formal build, and perform only affected acceptance after fresh maintenance admission. Existing5182 result is not repeated or substituted for the new artifact.

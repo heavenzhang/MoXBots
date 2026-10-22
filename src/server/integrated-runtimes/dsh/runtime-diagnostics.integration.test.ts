@@ -40,7 +40,7 @@ vi.mock('./process-host', async original => ({
         await registry.initialize();
         const snapshot = await registry.readJson(params.snapshotAttachment as { attachmentId: string; mimeType: string; sizeBytes: number; sha256: string }) as DshRpcObject;
         fixture.revision = String(snapshot.revision);
-        return { state: 'applied', desiredRevision: snapshot.revision, effectiveRevision: snapshot.revision };
+        return { state: 'applied', desiredRevision: snapshot.revision, effectiveRevision: snapshot.revision, components: [{ key: 'hook:myagents-session-delegation-confirmation-v1', state: 'ready' }] };
       }
       if (method === 'extension/catalog') return { revision: fixture.revision, digest: 'a'.repeat(64), skills: [], tools: [] };
       if (method === 'session/resume' || method === 'session/create') {
