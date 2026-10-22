@@ -771,3 +771,8 @@ Existing desktop/macOSarm64/updater and combinedCI/main/version owner remains Ro
 ## MOXBOTS-MODEL-SETTINGS-20261022 — 模型策略统一入口
 
 任务 `.agent-sync/tasks/codex-model-settings-20261022-37a8de35.md`，验收 `dev-docs/model-settings-20261022/`。统一入口 cdf33fd9 已提交，用户追加六项：空闲新轮次清旧备用、默认同档/显式跨档、三种模式、配置与运行时可用性、实际决策反馈、档位重试与独立恢复。前两项先复现再修复，六项最终414 tests/真实SDK本地回环3路径/合成UI9组及独立review通过；六项证据使用 evidence/six-features，旧unified截图仅证明入口。desktop唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4继续统筹CI/main/版本/构建/发布；开发会话通过验证后交接精确SHA和证据，不自行PR/共享CI/打包/日常App，不加入冻结批次。分别追踪源码/模拟/loopback/合成UI/原生/生产/主干。
+
+
+## MOXBOTS-BLANK-20261022: long-session navigation delay follow-up
+
+User explicitly requests diagnosis/fix, remote main, existing desktop publisher release and original-long-session validation. Task `.agent-sync/tasks/codex-chat-switch-delay-20261022-20c722f5.md`, base c83b4c5b. Real MessageList/Virtuoso WebKit reproduces372-process-block update invalidation: unchanged phases plus whole-group count/inline row callbacks repeat1119 locale calls per append. Phase identity/lifecycle/boundary comparison, stable expansion handler and row-local boundary cut this to3–6; measured synthetic click1028ms→139ms, not native end-to-end proof. Existing historical WebContent attribution/whole delay remain uncertain. Exact source/local synthetic/CI/main/native/new release/installed/original-session gates remain separate. Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 retains CI/build/version/sign/install/stable/rollback; source request goes into next unfrozen batch, never rewrites017/018 immutable artifacts. Do not stop/replay salary business, seize native UI, or treat fixture as original-session acceptance.

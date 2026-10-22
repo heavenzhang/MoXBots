@@ -44,12 +44,12 @@ import type { ContentBlock } from '@/types/chat';
 interface ProcessRowProps {
     block: ContentBlock;
     index: number;
-    totalBlocks: number;
+    hasFollowingBlock: boolean;
     isStreaming?: boolean;
     resultFirst?: boolean;
     resultLabel?: string;
     expandedOverride?: boolean;
-    onExpansionChange?: (expanded: boolean) => void;
+    onExpansionChange?: (expanded: boolean, block: ContentBlock, index: number) => void;
     // Called when the user EXPANDS this row. The parent BlockGroup uses it to
     // suppress its auto-fold for the turn — otherwise folding would unmount a
     // row the user deliberately opened and silently lose its expanded state.
@@ -59,7 +59,7 @@ interface ProcessRowProps {
 const ProcessRow = memo(function ProcessRow({
     block,
     index,
-    totalBlocks,
+    hasFollowingBlock,
     isStreaming = false,
     resultFirst = false,
     resultLabel,
@@ -241,7 +241,7 @@ const ProcessRow = memo(function ProcessRow({
         const willExpand = !isExpanded;
         notifyRowLayoutChanged(willExpand ? 'process-row-expand' : 'process-row-collapse');
         setUserToggled(willExpand);
-        onExpansionChange?.(willExpand);
+        onExpansionChange?.(willExpand, block, index);
         // Signal the parent group on EXPAND so it can pin its layout (stop the
         // auto-fold that would unmount this row and drop the just-opened state).
         if (willExpand) onUserExpand?.();
@@ -330,7 +330,7 @@ const ProcessRow = memo(function ProcessRow({
     const toolAnchorId = isTaskTool ? block.tool?.id : undefined;
     return (
         <div
-            className={`group select-none ${index < totalBlocks - 1 ? 'border-b border-[var(--line-subtle)]' : ''}`}
+            className={`group select-none ${hasFollowingBlock ? 'border-b border-[var(--line-subtle)]' : ''}`}
             data-tool-id={toolAnchorId}
             data-process-row={outcome}
         >
