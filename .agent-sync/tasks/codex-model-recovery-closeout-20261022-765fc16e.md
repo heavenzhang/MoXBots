@@ -23,6 +23,8 @@ Human renewed scope on 2026-10-22: close retained-log backlog/rotation gaps firs
 - [x] Existing desktop/macOS/updater/combined CI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 notified; frozen0.5.19 excluded from new work.
 - [x] Legacy prefix-loss fixture reproduces real missed diagnostic; new scanner18 filesystem regressions and independent re-review PASS after initial3 boundary defects plus2 migration follow-up findings were repaired.
 
+- [x] Independent review found and reproduced failed-enqueue/failed-transcript-flush cold-wakeup defect; original Store control-fence repair plus failure classification passed64 recovery checks,34 transcript checks and typecheck. Independent re-review scoped PASS. Native/new artifact/main still pending.
+
 ## Verification
 
 `python3 scripts/diagnostics/watch-stability.test.py`:18 PASS. Real SDK/signed native/real provider/production not implied. Public source protocol remains specs/tech_docs/model_recovery.md; new closeout evidence dev-docs/model-recovery/closeout-20261022.md. Private logs, cursors and full metadata receipts stay outside Git in the existing work/model-recovery-001-20261019 folder.

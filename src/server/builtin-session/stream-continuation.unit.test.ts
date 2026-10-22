@@ -18,11 +18,12 @@ function harness(goalId?: string) {
   const advance = vi.fn((_body: AnthropicRequest) => 3);
   const enqueue = vi.fn((_permit: StreamContinuationPermit, _reminder: string) => true);
   const observe = vi.fn();
+  const onFailure = vi.fn();
   const continuation = new SameTurnStreamContinuation({
     recovery: { readState: () => state, releaseStreamBinding, pause } as unknown as SessionModelRecovery,
-    rootId: () => root, isLive: () => live, advance, enqueue, observe,
+    rootId: () => root, isLive: () => live, advance, enqueue, observe, onFailure,
   });
-  return { continuation, advance, enqueue, observe, releaseStreamBinding, pause,
+  return { continuation, advance, enqueue, observe, releaseStreamBinding, pause, onFailure,
     setRoot: (value: string | undefined) => { root = value; },
     setLive: (value: boolean) => { live = value; },
     patchState: (value: Partial<ModelRecoveryState>) => { state = { ...state, ...value }; },
@@ -154,6 +155,16 @@ describe('same original-turn stream continuation', () => {
     h.continuation.interrupted(); h.continuation.schedule(); vi.advanceTimersByTime(15_000);
     expect(h.pause).toHaveBeenCalledExactlyOnceWith('Stream continuation input owner is unavailable');
     expect(h.observe).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'blocked', reason: 'storage_failed', continuations: 0 }));
+    expect(h.advance).not.toHaveBeenCalled();
+  });
+
+  it('reports storage failure when the failure pause cannot be durably committed', async () => {
+    const h = harness(); h.pause.mockResolvedValue(false);
+    h.continuation.interrupted(); h.continuation.schedule();
+    h.patchState({ deadlineAt: 25_000 });
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(h.onFailure).toHaveBeenCalledExactlyOnceWith('storage_failed', 'original-root');
+    expect(h.observe).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'blocked', reason: 'storage_failed' }));
     expect(h.advance).not.toHaveBeenCalled();
   });
 

@@ -184,7 +184,18 @@ export async function updateBuiltinModelRecovery(
     isLive: () => boolean, isCurrentQuery: () => boolean,
 ): Promise<boolean> {
     const active = activeTranscripts.get(sessionId);
-    if (active && !(await active.writer.flush())) return false;
+    let transcriptDurable = true;
+    if (active) {
+        try { transcriptDurable = await active.writer.flush(); }
+        catch (error) {
+            if (next?.status !== 'paused') throw error;
+            transcriptDurable = false;
+        }
+    }
+    // Revoking inference is independent of transcript body IO. A failed flush
+    // must still reach the existing same-checkpoint stop fence below; it does
+    // not authorize publishing any unsaved transcript or recovery admission.
+    if (!transcriptDurable && next?.status !== 'paused') return false;
     let accepted = false;
     let published: SessionMetadata | undefined;
     await withSessionsLock(async () => {
@@ -230,7 +241,7 @@ export async function updateBuiltinModelRecovery(
         } else if (next && builtinModelRecoveryStopped(sessionId, next)) {
             return;
         }
-        if (!isLive()) return;
+        if (!isLive() || !transcriptDurable) return;
         const updated = { ...current, modelRecovery: next };
         rows[index] = updated;
         try {
