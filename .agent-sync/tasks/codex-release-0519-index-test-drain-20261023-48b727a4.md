@@ -42,3 +42,10 @@ Same desktop/macOSarm64/updater owner Root01a12bc2; test-only correction needs s
 ## Next step
 
 Push exact correction once, collect original PR CI, then normal protected merge only after required jobs pass. Preserve failed main39852196790 and do not rerun it unchanged. Continue existing static519.2 signing/notary/archive steps once, without overlapping original controls.
+
+
+## Native watcher phase correction after new Windows failure
+
+Exact7599 originalCI39855997677 Windows job120094238487 compiles, then the unchanged native workspace watcher times out (168pass/1fail/1544filtered). Original raw only names helper line306, so exact create/rename/atomic/delete phase cannot be attributed. Pinned notify8.2 starts ReadDirectoryChangesW before registration acknowledgement; an arbitrary startup sleep is unjustified.
+
+Source review finds a distinct fixture weakness: the atomic-save check reuses the previous rename target, so a late rename can be consumed as save acknowledgement; debouncer source explicitly drops a queued created+removed path. The corrected fixture seeds an existing distinct atomic destination before watch registration, retains all four real mutations and content checks, requires a real Remove event/nonexistence for deletion, and records bounded event kinds/paths plus exact phase on failure. No product watcher or timeout changes. The actual production debouncer function and revised test, linked against existing compiled dependencies, pass10 consecutive macOS native filesystem runs with fresh TempDirs and no failure retries. This is not Windows proof or an App rebuild. Original7599 CI must be collected before pushing new correction; corrected exact-head CI is still required.
