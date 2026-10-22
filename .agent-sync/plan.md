@@ -864,3 +864,6 @@ Desktop artifact0.5.19/build519.2 remains producer54f09b8d/treece5/TAR7624c74c; 
 
 
 Current combined PR195 clarification: standaloneHost c065 production changes are outside the already-signed desktop entry closures; actual signed server/bridge/CLI bytes were matched to frozen build outputs, build maps exclude modifiedHost inputs, and Rust runtime prefixes are byte-identical after cfg(test) separation. This does not relabel desktop519.2 as newHost source. Original7599 fullCI collected8success/1Windows watcherfail/conditional iOSskip, including Linux original index tests and clippyPASS; next changed source includes the reviewed watcher phase correction plus c065 in one shared run, no separate overlapping CI or App rebuild. Runtime/directProvider/title/Goal/dual-device and release results remain separate.
+
+
+2026-10-23 Root PR195 ebf originalCI39862815312 collected8green/RustrecordingFAIL/iOSskip; WindowswatcherPASS. Next cfg(test) FakeSession first-real-push ack2s/no added sleep or retry, Ready/no-audio rules preserved; exact-source stub-sink100thread roundsPASS, not originalCIcause/nativecapture proof. SameRoot sharedCI/main; standaloneHost rollout stays originalmobile, desktop519.2 source54/TAR7624 staticimmutable/no rebuild. See current index-test task and release0519acceptance.

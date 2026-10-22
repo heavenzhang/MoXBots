@@ -49,3 +49,12 @@ SharedCI/main executor Root01a12bc2, normal guarded exacthead merge only. Deskto
 ## Next step
 
 One push/original PR195 CI for final combined source. Only full9success/conditional iOSskip, unchanged remote base/task/PR/protection and exact scope/desktop closure permit one normal merge. Preserve all earlier failures and do not rerun old observers/build/Apple. Then hand exactmain/tree/CI/Node closure to original mobile owner while Root handles finite desktop maintenance/native/local/publication under existing authorization and gates.
+
+
+## Exact ebf0 CI recording fixture follow-up
+
+Original CI39862815312 attempt1 is collected:8SUCCESS, cargo failure, conditional iOSskip; corrected Windows workspace IO succeeds. The sole Rust failure is recording::manager::tests::one_source_can_be_excluded_and_restored_inside_the_same_generation, Interrupted versus Ready (1806passed/1failed/8ignored). Root preserves original job120117503675 rawSHAe8ce91dc72755cda3f85d428768ea5f3585a7239832e922b69a9761b16dae415. The recording file is unchanged from main54; exact original scheduling is unknown. No unchanged rerun or merge was performed.
+
+The cfg(test) FakeSession previously returned immediately after spawning its producer. The source-toggle test can stop it before any source frame is pushed, while the real empty-capture rule correctly returns Interrupted. The fixture now acknowledges its first actual fake-source push through a bounded2s channel before returning; original10ms producer cadence, product empty-capture/ownership checks and Ready assertion remain unchanged. No fixed startup sleep, retry, lock deletion, ignored test or production prefix change. A standalone harness using the exact changed FakeSession plus stub sinks passes100 once-only real std-thread rounds; it proves the first-push handshake, not real Tauri capture or the exact historic CI cause. The initial standalone harness's missing JoinHandle import is retained separately from product/CI failures.
+
+Next: one new changed-head original shared CI and normal protected main gate. Existing desktop519.2 producer54/TAR7624 is unchanged and has originalPR194 nine-green CI and completed static packaging; this independentHost/test closeout does not require rebuilding it or prevent independently authorized desktop maintenance/native preparation. Native affected acceptance, installation and online publication remain their own evidence states.

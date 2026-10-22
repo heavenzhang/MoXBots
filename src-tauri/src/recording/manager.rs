@@ -2925,7 +2925,9 @@ mod tests {
             let paused = Arc::new(AtomicBool::new(false));
             let running_worker = running.clone();
             let paused_worker = paused.clone();
+            let (first_push_tx, first_push_rx) = std::sync::mpsc::channel();
             let worker = std::thread::spawn(move || {
+                let mut first_push_tx = Some(first_push_tx);
                 while running_worker.load(Ordering::Acquire) {
                     if !paused_worker.load(Ordering::Acquire) {
                         if let Some(sink) = sinks.microphone.as_ref() {
@@ -2934,10 +2936,18 @@ mod tests {
                         if let Some(sink) = sinks.system.as_ref() {
                             sink.push_f32(&[0.03; 960]);
                         }
+                        if let Some(tx) = first_push_tx.take() {
+                            let _ = tx.send(());
+                        }
                     }
                     std::thread::sleep(Duration::from_millis(10));
                 }
             });
+            // Ready assertions require an actual fake-source push, not merely
+            // a spawned worker that stop() can beat before its first frame.
+            first_push_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("fake capture did not push its first source frame");
             Self {
                 running,
                 paused,
