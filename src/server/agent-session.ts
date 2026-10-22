@@ -12567,7 +12567,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                 && (!isCurrentQueryAuthority(activeQueryAuthority)
                   || getQueryGeneration() !== inputTrace.generation
                   || lifecycleState.abortRequested || sessionId !== queryProductSessionId
-                  || !canSessionDelegateSubagents(queryProductSessionId))) {
+                  || !canSessionDelegateSubagents(queryProductSessionId, {
+                    queueId: getBuiltinCurrentTurnQueueId() ?? undefined, owner: getBuiltinCurrentTurnIdentity()?.owner }))) {
                 return {
                   hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
                     permissionDecision: 'deny' as const,

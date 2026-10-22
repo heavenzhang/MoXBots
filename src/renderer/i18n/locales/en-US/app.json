@@ -331,7 +331,13 @@
   },
   "autoRoute": {
     "backupCandidate": "Backup candidate: {{model}} (checked at execution)",
-    "backupReasons": {"off": "Automatic model switching is off", "not-configured": "Configured backup is missing", "unavailable": "Configured backup is unavailable for this session", "cross-tier": "Configured backup crosses tiers; cross-tier recovery is off", "no-candidate": "No backup candidate matches this turn policy"},
+    "backupReasons": {
+      "off": "Automatic model switching is off",
+      "not-configured": "Configured backup is missing",
+      "unavailable": "Configured backup is unavailable for this session",
+      "cross-tier": "Configured backup crosses tiers; cross-tier recovery is off",
+      "no-candidate": "No backup candidate matches this turn policy"
+    },
     "tag": "Auto",
     "effort": "effort {{effort}}",
     "tiers": {
@@ -2073,7 +2079,24 @@
     },
     "returned": "Returned",
     "completedCount": "Completed {{count}} tasks",
-    "mainAgent": "Main Agent execution and review"
+    "mainAgent": "Main Agent execution and review",
+    "inline": {
+      "results": "Related results",
+      "viewResult": "View result",
+      "review": "Request main Agent review",
+      "rework": "Give rework feedback",
+      "sending": "Submitting review request…",
+      "requested": "Review requested",
+      "failed": "Review request was not submitted. Retry; results and acceptance remain unchanged.",
+      "requestBoundary": "The main Agent checks the completion criteria before marking tasks complete.",
+      "reviewPrompt": "Review these returned results:\n{{entries}}\nCheck only the listed attempts against the completion criteria and record evidence. Accept after checking, or record why rework is needed. Do not rerun accepted tasks or treat tool permission as acceptance.",
+      "reworkPrompt": "Please check rework feedback for these results:\n{{entries}}\nReason for rework: ",
+      "accepted": "Main Agent accepted {{count}} results",
+      "retryReview": "Request review again",
+      "historical": "Historical attempt {{count}}",
+      "attemptHistory": "{{count}} execution records",
+      "acceptedCount": "{{count}} accepted"
+    }
   },
   "orchestrationPlan": {
     "title": "Plan draft",

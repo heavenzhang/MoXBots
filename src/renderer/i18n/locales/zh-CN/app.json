@@ -331,7 +331,13 @@
   },
   "autoRoute": {
     "backupCandidate": "本轮备用候选：{{model}}（执行时复核）",
-    "backupReasons": {"off": "已关闭自动切换模型", "not-configured": "指定备用尚未配置", "unavailable": "指定备用不可用于当前会话", "cross-tier": "指定备用跨档，当前未允许跨档", "no-candidate": "本轮没有符合策略的备用候选"},
+    "backupReasons": {
+      "off": "已关闭自动切换模型",
+      "not-configured": "指定备用尚未配置",
+      "unavailable": "指定备用不可用于当前会话",
+      "cross-tier": "指定备用跨档，当前未允许跨档",
+      "no-candidate": "本轮没有符合策略的备用候选"
+    },
     "tag": "自动",
     "effort": "推理 {{effort}}",
     "tiers": {
@@ -2071,7 +2077,24 @@
     },
     "returned": "已回传",
     "completedCount": "已完成 {{count}} 项",
-    "mainAgent": "主 Agent 执行与验收"
+    "mainAgent": "主 Agent 执行与验收",
+    "inline": {
+      "results": "关联成果",
+      "viewResult": "查看成果",
+      "review": "让主 Agent 验收",
+      "rework": "提出返工意见",
+      "sending": "正在提交验收请求…",
+      "requested": "验收请求已提交",
+      "failed": "验收请求未提交，请重试。原成果与验收状态保持不变。",
+      "requestBoundary": "主 Agent 将对照完成标准核对，验收通过后才标记完成。",
+      "reviewPrompt": "请主 Agent 验收以下已回传成果：\n{{entries}}\n仅核对列出的这次尝试，对照完成标准检查实际成果并记录证据；通过后记录验收，发现问题则记录返工原因。不要自动重跑已验收任务，也不要把工具允许当作验收。",
+      "reworkPrompt": "请主 Agent 检查以下成果的返工意见：\n{{entries}}\n返工原因：",
+      "accepted": "主 Agent 已验收 {{count}} 项成果",
+      "retryReview": "重新请求验收",
+      "historical": "历史尝试 {{count}}",
+      "attemptHistory": "{{count}} 次执行记录",
+      "acceptedCount": "已验收 {{count}} 项"
+    }
   },
   "orchestrationPlan": {
     "title": "计划草案",

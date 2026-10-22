@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, createElement, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTabStateOptional } from '@/context/TabContext';
 import { BACKGROUND_TASK_STATUS_EVENT } from '@/utils/backgroundTaskStatus';
 import { collectTaskAttempts, emptyTaskLedger, mergeTaskObservations, projectSessionTasks,
@@ -8,9 +8,27 @@ import type { SessionPlanProposal } from '../../../shared/sessionPlanConfirmatio
 import type { PlanUserAction } from './OrchestrationPlanCard';
 
 type PlanLedger = SessionTaskLedger & { proposal?: SessionPlanProposal };
+const EMPTY_PLAN: readonly ProgressTodo[] = [];
+const SessionTaskContext = createContext<ReturnType<typeof useSessionTaskSnapshot> | null>(null);
+
+/** One observer per Chat; transcript rows and Composer share its projection. */
+export function SessionTaskOrchestrationProvider({ children }: { children: ReactNode }) {
+  const tab = useTabStateOptional();
+  const state = useSessionTaskSnapshot(tab?.agentPlanTodos ?? EMPTY_PLAN);
+  return createElement(SessionTaskContext.Provider, { value: state }, children);
+}
+
+export const useSessionTaskOrchestrationContext = () => useContext(SessionTaskContext);
+
+export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[]) {
+  const shared = useSessionTaskOrchestrationContext();
+  // Standalone status bars still work; real Chat must not duplicate polling.
+  const local = useSessionTaskSnapshot(fallbackPlan, shared === null);
+  return shared ?? local;
+}
 
 /** Durable snapshot plus immediate event-driven transcript projection. */
-export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[]) {
+function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled = true) {
   const tab = useTabStateOptional();
   const sessionId = tab?.sessionId ?? null;
   const apiGet = tab?.apiGet;
@@ -23,14 +41,15 @@ export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
   const [refresh, setRefresh] = useState(0);
   useEffect(() => {
-    if (!sessionId || !apiGet || tab?.isSessionLoading) return;
+    if (!enabled || !sessionId || !apiGet || tab?.isSessionLoading) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     let busy = false;
     const adopt = (value: { sessionId?: string; ledger?: PlanLedger }) => {
       if (disposed || value.sessionId !== sessionId || !value.ledger || !Number.isSafeInteger(value.ledger.revision)) return;
       const ledger = value.ledger;
-      setSnapshot(prior => prior?.sessionId === sessionId && prior.ledger.revision > ledger.revision ? prior : { sessionId, ledger });
+      setSnapshot(prior => prior?.sessionId === sessionId && (prior.ledger.revision > ledger.revision
+        || JSON.stringify(prior.ledger) === JSON.stringify(ledger)) ? prior : { sessionId, ledger });
       setFailure(null);
     };
     const read = async () => {
@@ -54,7 +73,7 @@ export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[
     window.addEventListener(BACKGROUND_TASK_STATUS_EVENT, background);
     void read();
     return () => { disposed = true; clearTimeout(timer); window.removeEventListener('session-task-orchestration', event); window.removeEventListener(BACKGROUND_TASK_STATUS_EVENT, background); };
-  }, [sessionId, apiGet, tab?.isSessionLoading, refresh]);
+  }, [enabled, sessionId, apiGet, tab?.isSessionLoading, refresh]);
   const submitPlanAction = useCallback(async (kind: 'confirm' | 'request_revision', action: PlanUserAction & { feedback?: string }) => {
     if (!apiPost || !sessionId || action.sessionId !== sessionId || currentSession.current !== sessionId) throw new Error('PLAN_SESSION_CHANGED');
     const epoch = scope.current.epoch;
@@ -72,17 +91,18 @@ export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[
   const confirmPlan = useCallback((action: PlanUserAction) => submitPlanAction('confirm', action), [submitPlanAction]);
   const requestPlanRevision = useCallback((action: PlanUserAction & { feedback: string }) => submitPlanAction('request_revision', action), [submitPlanAction]);
   const tasks = useMemo(() => {
+    if (!enabled) return [];
     const ledger = snapshot?.sessionId === sessionId ? snapshot.ledger : emptyTaskLedger();
     const current = mergeTaskObservations(ledger, collectTaskAttempts(tab?.messages ?? [], tab?.streamingMessage?.id),
       snapshot?.sessionId !== sessionId && fallbackPlan.length > 0 ? fallbackPlan : undefined);
     return projectSessionTasks(current, tab?.messages ?? []);
-  }, [snapshot, sessionId, tab?.messages, tab?.streamingMessage?.id, fallbackPlan]);
+  }, [enabled, snapshot, sessionId, tab?.messages, tab?.streamingMessage?.id, fallbackPlan]);
   const proposal = snapshot?.sessionId === sessionId && snapshot.ledger.proposal?.sessionId === sessionId ? snapshot.ledger.proposal : undefined;
   // Publish only after this proposal has committed to the UI. Ingress must
   // bind a user's reply to the displayed revision, never the latest SSE head.
   useEffect(() => {
     const tabId = tab?.tabId;
-    if (!tabId || !sessionId) return;
+    if (!enabled || !tabId || !sessionId) return;
     const target = !tab?.isSessionLoading && proposal?.state === 'awaiting_confirmation'
       ? { proposalId: proposal.id, expectedRevision: proposal.revision } : null;
     const publish = (target: { proposalId: string; expectedRevision: number } | null) => {
@@ -90,7 +110,8 @@ export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[
     };
     publish(target);
     return () => publish(null);
-  }, [tab?.tabId, sessionId, tab?.isSessionLoading, proposal?.id, proposal?.revision, proposal?.state]);
+  }, [enabled, tab?.tabId, sessionId, tab?.isSessionLoading, proposal?.id, proposal?.revision, proposal?.state]);
   const planStart = proposal && snapshot?.ledger.planStart?.proposalId === proposal.id && snapshot.ledger.planStart.revision === proposal.revision ? snapshot.ledger.planStart : undefined;
-  return { tasks, proposal, planStart, confirmPlan, requestPlanRevision, stale: failure?.sessionId === sessionId, retry: () => setRefresh(v => v + 1) };
+  const canRetryReview = tab?.sessionState === 'idle' && !tab.isLoading && !tab.queuedMessages?.length;
+  return { sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal, planStart, confirmPlan, requestPlanRevision, stale: failure?.sessionId === sessionId, retry: () => setRefresh(v => v + 1) };
 }

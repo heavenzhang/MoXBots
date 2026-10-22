@@ -1,3 +1,4 @@
+import type { SessionPlanTurnScope } from '../session-engine/session-plan-policy';
 import type { DispatchGuardResult } from '../session-core/turn-queue';
 import { projectOrchestrationProgress } from '../../shared/sessionTaskOrchestration';
 import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
@@ -427,6 +428,7 @@ import {
   isExternalTurnPromotionInFlight,
   markExternalSessionComplete,
   getExternalExecutionTurnId,
+  getExternalCurrentTurnIdentity,
   markExternalTurnComplete,
   markExternalTurnStarted,
   notifyExternalTurnOutcome,
@@ -684,21 +686,26 @@ function clearPendingExternalProcessConfigRestarts(): void {
   setManagedCodexExtensionRestartPending(false);
 }
 
+/** Ownerless turns must not inherit the process's original Task owner. */
+function currentExternalPlanTurn(): SessionPlanTurnScope {
+  return { queueId: getExternalExecutionTurnId() ?? undefined, owner: getExternalCurrentTurnIdentity()?.owner };
+}
+
 /** Native Codex freezes tool availability at launch; only its lifecycle owner replaces it. */
-function externalSubagentDelegationRestartRequired(): boolean {
+function externalSubagentDelegationRestartRequired(turn?: SessionPlanTurnScope | null): boolean {
   const active = getExternalActivePair();
   const sessionId = getExternalLifecycleSessionId();
   return !!active && active.runtime.type === 'codex' && !active.process.exited && !!sessionId
     && typeof active.process.subagentDelegationEnabledAtLaunch === 'boolean'
-    && active.process.subagentDelegationEnabledAtLaunch !== canSessionDelegateSubagents(sessionId);
+    && active.process.subagentDelegationEnabledAtLaunch !== canSessionDelegateSubagents(sessionId, turn ?? currentExternalPlanTurn());
 }
 
-function pendingExternalProcessConfigRestartReasons(): string[] {
+function pendingExternalProcessConfigRestartReasons(turn?: SessionPlanTurnScope | null): string[] {
   return [
     ...(pendingExternalProxyRestart ? ['proxy'] : []),
     ...(pendingExternalOfficialToolsRestart ? ['official-tools'] : []),
     ...(pendingExternalCapabilityRestart ? ['capabilities'] : []),
-    ...(externalSubagentDelegationRestartRequired() ? ['subagent-delegation'] : []),
+    ...(externalSubagentDelegationRestartRequired(turn) ? ['subagent-delegation'] : []),
     ...(isManagedCodexExtensionRestartPending()
       ? ['managed-codex-extensions']
       : []),
@@ -712,12 +719,13 @@ function invalidateExternalMcpProjection(): void {
 
 function applyPendingExternalProcessConfigInvalidation(
   preservePromotion?: ExternalTurnPromotionToken | null,
+  delegationTurn?: SessionPlanTurnScope,
 ): Promise<void> {
   if (externalProcessConfigInvalidationInFlight) {
     return externalProcessConfigInvalidationInFlight;
   }
 
-  const reasons = pendingExternalProcessConfigRestartReasons();
+  const reasons = pendingExternalProcessConfigRestartReasons(delegationTurn);
   if (reasons.length === 0) return Promise.resolve();
   const proxyOriginalKey = pendingExternalProxyRestartOriginalKey;
 
@@ -5057,7 +5065,8 @@ async function _doStartExternalSession(options: {
         canDelegateSubagents: () => currentEventReceiver === receive
           && getExternalRuntimeGeneration() === nativeGeneration
           && getExternalLifecycleSessionId() === options.sessionId
-          && canSessionDelegateSubagents(options.sessionId),
+          && canSessionDelegateSubagents(options.sessionId,
+            currentExternalPlanTurn()),
         systemPromptAppend,
         ...(dshSystemContext === undefined
           ? {}
@@ -5951,10 +5960,10 @@ async function dispatchExternalMessageOperation(
   // that invalid prompt/env owner: retry invalidation before selecting Case 3.
   if (
     externalProcessConfigInvalidationInFlight ||
-    pendingExternalProcessConfigRestartReasons().length > 0
+    pendingExternalProcessConfigRestartReasons({ queueId: context?.queueId, owner: context?.turnOwner }).length > 0
   ) {
     try {
-      await applyPendingExternalProcessConfigInvalidation(dispatchPromotion);
+      await applyPendingExternalProcessConfigInvalidation(dispatchPromotion, { queueId: context?.queueId, owner: context?.turnOwner });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (dispatchPromotion) finishExternalTurnPromotion(dispatchPromotion);

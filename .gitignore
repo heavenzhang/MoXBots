@@ -152,3 +152,4 @@ myagents_files/
 
 # Local Session orchestration component preview cache
 .cache/session-orchestration-vite/
+dev-docs/session-orchestration/incremental-preview/.vite-cache/

@@ -176,6 +176,60 @@ describe('human plan confirmation in the durable Session ledger', () => {
     engine.sendDesktopMessage = send;
     return send;
   }
+  it('tracks and explicitly binds native work without manufacturing a human proposal', async () => {
+    await store.updateSessionMetadata(id, { taskOrchestration: { revision: 0, tasks: [], bindings: {}, attempts: [], reviews: [] } });
+    expect(owner.canSessionDelegateSubagents(id)).toBe(true);
+    await mutate({ kind: 'ensure', taskId: 'native-work', title: 'Original authorized work' });
+    await owner.observeSessionTasks(id, { attempts: [attempt('completed')] });
+    const bound = await mutate({ kind: 'bind', taskId: 'native-work', toolUseId: 'launch' });
+    expect(bound.ledger.proposal).toBeUndefined();
+    expect(bound.ledger.bindings.launch).toBe('native-work');
+    expect(bound.tasks.find(task => task.id === 'native-work')?.phase).toBe('awaiting_review');
+  });
+  it('keeps native task tracking usable beside a pending proposal without materializing reserved steps', async () => {
+    await draft();
+    await mutate({ kind: 'ensure', taskId: 'native-work', title: 'Existing task' });
+    await owner.observeSessionTasks(id, { attempts: [attempt('completed')] });
+    const bound = await mutate({ kind: 'bind', taskId: 'native-work', toolUseId: 'launch' });
+    expect(bound.ledger.bindings.launch).toBe('native-work');
+    expect(bound.ledger.tasks.find(task => task.id === 'native-work')?.proposalId).toBeUndefined();
+    await expect(mutate({ kind: 'ensure', taskId: 'work', title: 'Cannot steal proposal step' })).rejects.toThrow('PLAN_CONFIRMATION_REQUIRED');
+    expect(owner.canSessionDelegateSubagents(id, { queueId: 'native-queue', owner: { kind: 'task', id: 'native-task' } })).toBe(true);
+    expect(owner.canSessionDelegateSubagents(id)).toBe(false);
+  });
+  it('rejects origin stamping when the original turn changes during a proposal read', async () => {
+    await store.updateSessionMetadata(id, { taskOrchestration: { revision: 0, tasks: [], bindings: {}, attempts: [], reviews: [] } });
+    let queueId = 'original-turn';
+    engine.getExecutionTurnId = () => queueId;
+    engine.getCurrentTurnIdentity = () => ({ queueId, owner: { kind: 'task', id: 'original-task' } });
+    engine.getLiveSessionOverlay = () => { queueId = 'different-turn'; return { isActive: true }; };
+    await expect(owner.mutateSessionPlan(engine, id, { kind: 'propose', proposalId: 'raced-plan', expectedRevision: 0, content })).rejects.toThrow('TASK_TURN_CHANGED');
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.proposal).toBeUndefined();
+  });
+  it('stamps the original Goal owner and does not let it bypass its own new draft', async () => {
+    engine.getCurrentTurnIdentity = () => ({ queueId: 'goal-input', owner: { kind: 'goal', id: 'goal' } });
+    engine.getExecutionTurnId = () => 'goal-input';
+    await draft();
+    const scope = { queueId: 'goal-next', owner: { kind: 'goal' as const, id: 'goal' } };
+    expect(owner.canSessionDelegateSubagents(id, scope)).toBe(false);
+    expect(owner.canSessionDelegateSubagents(id, { queueId: 'task', owner: { kind: 'task', id: 'other' } })).toBe(true);
+    await owner.mutateSessionPlan(engine, id, { kind: 'revise', proposalId: 'plan', expectedRevision: 1,
+      content: { ...content, scope: 'Updated goal scope' }, changes: ['Scope changed'] });
+    expect(owner.canSessionDelegateSubagents(id, scope)).toBe(false);
+  });
+  it('retains plan queue classification after revision and a cold metadata reload', async () => {
+    await draft(); dispatchingEngine(); await owner.actOnSessionPlan(engine, action());
+    const queueId = store.getSessionMetadata(id)!.taskOrchestration!.planStart!.queueId;
+    expect(queueId).toMatch(/^session-plan:/);
+    const turn = { queueId, owner: { kind: 'task' as const, id: queueId } };
+    expect(owner.canSessionDelegateSubagents(id, turn)).toBe(true);
+    await owner.mutateSessionPlan(engine, id, { kind: 'revise', proposalId: 'plan', expectedRevision: 1,
+      content: { ...content, scope: 'New scope' }, changes: ['Changed scope'] });
+    expect(owner.canSessionDelegateSubagents(id, turn)).toBe(false);
+    await store.getActiveSessionTranscript(id)?.revoke();
+    vi.resetModules(); store = await import('../SessionStore'); owner = await import('./task-orchestration');
+    expect(owner.canSessionDelegateSubagents(id, turn)).toBe(false);
+  });
   it('stores an editable proposal without creating formal tasks or enabling delegation', async () => {
     const proposed = await draft();
     expect(proposed.ledger.tasks).toEqual([]);

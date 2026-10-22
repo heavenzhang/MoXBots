@@ -47,3 +47,18 @@ Product task/attempt/review ledger, original execution event observation, unifie
 ## Blockers and unknowns
 
 Whole-app Rust check lacks existing packaged CLIProxy manifest resources; prepare through sole publisher, never bypass. Real Provider/native, signed artifact and production paths have not been accepted. Expanded original-runtime regressions were repaired without weakening assertions; final full matrix passed1038 with19native skips. Whole-app/native/production acceptance and actual remote-main integration remain open. New changes never join a frozen artifact automatically.
+
+## Approved incremental implementation — 2026-10-22
+
+User approved the original-layout V2 prototype for implementation. Keep native tools, sent/draft attachments, queue editing/cancel/send-now, original permission cards and full Composer. Use one shared per-Chat task observer; add only native-tool associations, conversation result/review/rework actions and the unified summary. The execution/review ledger remains the existing authority.
+
+- [x] Incorporate current remote main c8068493 without replacing other owners' committed work.
+- [x] Fix universal proposal gate incompatibility in isolated source; independent backend review and tests are pending primary acceptance.
+- [x] Complete integrated UI, target/attempt safety and draft/attachment preservation checks.
+- [x] Validate actual production components, necessary event/retry/reconnect regressions and independent UI review (1114 broad, final9 DOM,132 component assertions; native19 skipped).
+- [ ] Commit/push exact task head and pass handoff; existing combined CI/main owner integrates and selects next unfrozen release.
+- [ ] Verify remote-main containment; signed/native and production acceptance remain separate owner gates.
+
+Current source and local checks do not alter the installed client, original business tasks, 518.2 candidate or stable channel. Completion requires the user-approved incremental UI plus the originally requested state consistency; prototype approval alone closes none of the native/release gates.
+
+Latest approved-source/evidence authority: `dev-docs/session-orchestration/incremental-validation.md`; UI source fixture `incremental-preview/`, compatibility review `evidence/compatibility-review.md`. Old6713 development hold is resolved for source intake; real native/signed/production gates remain open. Original tool/attachment/queue/Composer source owners were retained.

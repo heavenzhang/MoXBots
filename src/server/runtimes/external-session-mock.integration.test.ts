@@ -9904,6 +9904,56 @@ describe('external SessionEngine with fake runtime', () => {
 });
 
 
+describe('Delegation compatibility on original turn owners', () => {
+  it.each(['codex', 'dsh'] as const)('preserves %s native work while isolating a new human draft', async runtimeType => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'original ordinary work' },
+      { kind: 'success', text: 'existing Task work' },
+      { kind: 'success', text: 'new human discussion' },
+    ], { runtimeType, runtimeSource: runtimeType === 'dsh' ? 'integrated' : 'system-cli' });
+    const launch = harness.runtime.startSession.bind(harness.runtime);
+    let currentGate: () => boolean;
+    const launchFlags: boolean[] = [];
+    vi.spyOn(harness.runtime, 'startSession').mockImplementation(async (options, events) => {
+      currentGate = options.canDelegateSubagents!;
+      const enabled = currentGate(); launchFlags.push(enabled);
+      const process = await launch(options, events);
+      if (runtimeType === 'codex') Object.assign(process, { subagentDelegationEnabledAtLaunch: enabled });
+      return process;
+    });
+    const nativeSend = harness.runtime.sendMessage.bind(harness.runtime);
+    const sendFlags: boolean[] = [];
+    vi.spyOn(harness.runtime, 'sendMessage').mockImplementation(async (...args) => {
+      sendFlags.push(currentGate());
+      return nativeSend(...args);
+    });
+    const sessionId = `compatibility-native-owner-${runtimeType}`;
+    const workspace = join(harness.home, 'workspace');
+    const request = desktopRequest(sessionId, workspace, 'ordinary authorized work without a proposal');
+    if (runtimeType === 'dsh') Object.assign(request, { permissionMode: 'workspace-autonomous', model: 'deepseek-flash', providerRoute: { kind: 'provider', providerId: 'deepseek', model: 'deepseek-flash' } });
+    const first = await harness.engine.sendDesktopMessage(request);
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(launchFlags).toEqual([true]);
+    const owner = await import('../session-engine/task-orchestration');
+    const snapshot = await owner.readSessionTasks(harness.engine);
+    await owner.mutateSessionPlan(harness.engine, sessionId, { kind: 'propose', proposalId: 'new-human-plan', expectedRevision: snapshot.ledger.revision,
+      content: { objective: 'New scope', scope: 'Needs a new decision', steps: [{ id: 'new-work', title: 'New work' }], acceptanceCriteria: ['Review'] } });
+    const task = await harness.engine.sendDesktopMessage({ ...request, text: 'continue existing task', queueId: 'native-task-queue',
+      turnOwner: { kind: 'task', id: 'existing-task' }, turnBoundaryOnly: true, beforeDispatch: async () => ({ accepted: true }) });
+    await expect(task.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(sendFlags[0]).toBe(true);
+    const ordinary = await harness.engine.sendDesktopMessage({ ...request, text: 'discuss the new proposal' });
+    await expect(ordinary.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    // Codex changes its birth capability at the next ordinary turn. DSH
+    // keeps its native hook and reads the current owner at every tool call.
+    if (runtimeType === 'codex') expect(launchFlags.at(-1)).toBe(false);
+    else expect(sendFlags.at(-1)).toBe(false);
+  });
+});
+
 describe('Native subagent confirmation lifecycle', () => {
   it('replaces Codex at the next idle send and fences the old live callback', async () => {
     const harness = await createHarness([
@@ -10117,13 +10167,13 @@ describe('Confirmed plan original-owner claim activation', () => {
     await waitFor(() => waitingForOriginalQueue, 'confirmed pending plan queue admission');
     expect(harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.planStart?.state).toBe('pending');
     expect(owner.canSessionDelegateSubagents(sessionId)).toBe(false);
-    expect(flags).toEqual([false]);
+    expect(flags).toEqual([true]);
     release.resolve();
     await confirmed;
     await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
     await waitFor(() => harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.planStart?.state === 'dispatched', 'plan dispatched receipt');
     expect(owner.canSessionDelegateSubagents(sessionId)).toBe(true);
-    expect(flags).toEqual(runtimeType === 'codex' ? [false, true] : [false]);
+    expect(flags).toEqual([true]);
     expect(harness.runtime.sentMessages.filter(message => message.includes('已确认任务方案'))).toHaveLength(1);
   });
 });

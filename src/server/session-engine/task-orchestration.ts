@@ -10,17 +10,11 @@ import { deriveSessionTodos } from '../../shared/sessionWorkProgress';
 import { confirmSessionPlan, createSessionPlan, isSessionPlanConfirmed, requestSessionPlanRevision, reviseSessionPlan,
   type SessionPlanContent, type SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import type { DispatchGuard } from '../session-core/turn-queue';
+import { canDelegateForSessionPlan, SESSION_PLAN_QUEUE_PREFIX, type SessionPlanTurnScope } from './session-plan-policy';
 
 /** Original native owners call this synchronously at their dispatch boundary. */
-export function canSessionDelegateSubagents(sessionId: string): boolean {
-  const ledger = getSessionMetadata(sessionId)?.taskOrchestration;
-  const proposal = ledger?.proposal;
-  return !!proposal && proposal.sessionId === sessionId && isSessionPlanConfirmed(proposal)
-    && ledger.planStart?.proposalId === proposal.id && ledger.planStart.revision === proposal.revision
-    && ledger.planStart.purpose !== 'revision'
-    && !!ledger.planStart.queueId && !!ledger.planStart.requestId
-    && (ledger.planStart.state === 'dispatched' || ledger.planStart.state === 'claimed'
-      && !!ledger.planStart.claimId && activePlanClaims.get(sessionId) === ledger.planStart.claimId);
+export function canSessionDelegateSubagents(sessionId: string, turn?: SessionPlanTurnScope | null): boolean {
+  return canDelegateForSessionPlan(sessionId, getSessionMetadata(sessionId)?.taskOrchestration, turn, activePlanClaims.get(sessionId));
 }
 
 const pending = new Map<string, Promise<unknown>>();
@@ -112,7 +106,10 @@ export async function mutateSessionTasks(engine: SessionEngine, sessionId: strin
       if (task?.retired) throw new Error('PLAN_TASK_RETIRED');
       const authorization = [prior.proposal, ...(prior.proposalHistory ?? [])].find(plan => plan && isSessionPlanConfirmed(plan)
         && plan.id === task?.proposalId && plan.revision === task.proposalRevision && plan.content.steps.some(step => step.id === task.id));
-      if (!authorization || prior.pendingTaskIds?.includes(action.taskId)) throw new Error('PLAN_CONFIRMATION_REQUIRED');
+      // Tracking native/imported work is not a new execution grant. Only
+      // proposal-owned/reserved step IDs require the exact plan authorization.
+      const reserved = [prior.proposal, ...(prior.proposalHistory ?? [])].some(plan => plan?.content.steps.some(step => step.id === action.taskId));
+      if ((task?.proposalId || reserved) && (!authorization || prior.pendingTaskIds?.includes(action.taskId))) throw new Error('PLAN_CONFIRMATION_REQUIRED');
     }
     const confirmed = snapshot.ledger.revision === prior.revision
       ? { ...prior, attempts: prior.attempts.map(attempt => {
@@ -179,7 +176,7 @@ function confirmFromUserMessage(ledger: SessionTaskLedger, target: SessionPlanTa
   ledger.proposal = confirmSessionPlan(ledger.proposal, target, { source: 'user_message', evidenceId: messageId, confirmedAt: new Date().toISOString() });
   commitConfirmedPlan(ledger);
   if (ledger.planStart?.proposalId !== target.proposalId || ledger.planStart.revision !== target.expectedRevision)
-    ledger.planStart = { proposalId: target.proposalId, revision: target.expectedRevision, requestId: proof.requestId, queueId: randomUUID(), state: 'pending' };
+    ledger.planStart = { proposalId: target.proposalId, revision: target.expectedRevision, requestId: proof.requestId, queueId: SESSION_PLAN_QUEUE_PREFIX + randomUUID(), state: 'pending' };
 }
 
 /** Called only after Rust's signature has proved the original desktop ingress. */
@@ -202,17 +199,25 @@ export async function recordSessionPlanHumanInput(sessionId: string, requestId: 
 
 /** Drafts and human receipts use the SAME metadata CAS as attempts/reviews. */
 export async function mutateSessionPlan(engine: SessionEngine, sessionId: string, action: SessionPlanCommand) {
+  const originTurn: SessionPlanTurnScope = { queueId: engine.getExecutionTurnId?.() ?? undefined,
+    owner: structuredClone(engine.getCurrentTurnIdentity?.()?.owner) };
+  const sameOriginTurn = () => action.kind !== 'propose' || (engine.getExecutionTurnId?.() ?? undefined) === originTurn.queueId;
   const snapshot = await readSessionTasks(engine);
   if (snapshot.sessionId !== sessionId) throw new Error('TASK_SESSION_CHANGED');
   const result = await serialize(sessionId, async () => {
     if (engine.getRuntimeIdentity().sessionId !== sessionId) throw new Error('TASK_SESSION_CHANGED');
+    if (!sameOriginTurn()) throw new Error('TASK_TURN_CHANGED');
     const prior = getSessionMetadata(sessionId)?.taskOrchestration ?? emptyTaskLedger();
     const next = structuredClone(prior);
     const target = { sessionId, proposalId: action.proposalId, expectedRevision: action.expectedRevision };
     if (action.kind === 'propose') {
       if (prior.revision !== action.expectedRevision) throw new Error('TASK_REVISION_CONFLICT');
       if (next.proposal) throw new Error('PLAN_ALREADY_EXISTS_USE_REVISE');
-      next.proposal = createSessionPlan({ id: action.proposalId, sessionId }, action.content);
+      next.proposal = Object.assign(createSessionPlan({ id: action.proposalId, sessionId }, action.content), {
+        // The native queue, not CLI parameters/source labels, identifies the
+        // work that requested this new decision. Preserved across revisions.
+        originTurn,
+      });
       next.proposalUserBoundary = snapshot.messages.findLast(message => message.role === 'user')?.id;
     } else {
       if (!next.proposal) throw new Error('PLAN_NOT_FOUND');
@@ -230,7 +235,7 @@ export async function mutateSessionPlan(engine: SessionEngine, sessionId: string
     }
     if (JSON.stringify(next) === JSON.stringify(prior)) return { sessionId, ledger: prior, tasks: projectSessionTasks(prior, snapshot.messages) };
     next.revision++;
-    const ledger = await publish(sessionId, prior, next, () => engine.getRuntimeIdentity().sessionId === sessionId);
+    const ledger = await publish(sessionId, prior, next, () => engine.getRuntimeIdentity().sessionId === sessionId && sameOriginTurn());
     return { sessionId, ledger, tasks: projectSessionTasks(ledger, snapshot.messages) };
   });
   if (action.kind === 'confirm_from_message') await startSessionPlanTurn(engine, sessionId);
@@ -322,10 +327,10 @@ export async function actOnSessionPlan(engine: SessionEngine, action: SessionPla
       next.proposal = confirmSessionPlan(prior.proposal, action, { source: 'button', evidenceId: requestId, confirmedAt: new Date().toISOString() });
       commitConfirmedPlan(next);
       if (next.planStart?.proposalId !== next.proposal.id || next.planStart.revision !== next.proposal.revision)
-        next.planStart = { proposalId: next.proposal.id, revision: next.proposal.revision, requestId, queueId: randomUUID(), state: 'pending' };
+        next.planStart = { proposalId: next.proposal.id, revision: next.proposal.revision, requestId, queueId: SESSION_PLAN_QUEUE_PREFIX + randomUUID(), state: 'pending' };
     } else {
       next.proposal = requestSessionPlanRevision(prior.proposal, action, action.feedback);
-      next.planStart = { proposalId: next.proposal.id, revision: next.proposal.revision, requestId, queueId: randomUUID(), purpose: 'revision', state: 'pending' };
+      next.planStart = { proposalId: next.proposal.id, revision: next.proposal.revision, requestId, queueId: SESSION_PLAN_QUEUE_PREFIX + randomUUID(), purpose: 'revision', state: 'pending' };
     }
     next.planRequests = [...(next.planRequests ?? []), { id: requestId, fingerprint }].slice(-128);
     next.revision++;
