@@ -1,0 +1,155 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-10-22/moxbots-model-settings
+
+ ✓ |unit| src/server/builtin-session/model-recovery.unit.test.ts (38 tests) 264ms
+ ✓ |unit| src/server/openai-bridge/model-failover.unit.test.ts (45 tests) 244ms
+ ✓ |unit| src/server/auto-route/classifier.unit.test.ts (7 tests) 30ms
+ ✓ |unit| src/shared/autoRoute.test.ts (24 tests) 64ms
+ ✓ |unit| src/server/openai-bridge/model-recovery.unit.test.ts (62 tests) 1164ms
+   ✓ durable inference waiting on the original Query lease > respects a restored waiting checkpoint before its first upstream inference  1074ms
+ ✓ |unit| src/server/openai-bridge/context-recovery.unit.test.ts (58 tests) 1139ms
+   ✓ bounded inference context recovery > bounds armed background settlement and blocks further actions without losing prior evidence  728ms
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > revokes the previous automatic backup before an idle new turn: thrown
+[auto-route] admission skipped: synthetic
+
+stderr | src/server/auto-route/admission.unit.test.ts > applyAutoRouteAdmission > a routing failure never blocks the turn
+[auto-route] admission skipped: boom
+
+ ✓ |unit| src/server/auto-route/admission.unit.test.ts (19 tests) 94ms
+ ✓ |unit| src/shared/modelFailover.test.ts (7 tests) 3ms
+ ✓ |unit| src/server/auto-route/admin.unit.test.ts (3 tests) 2ms
+ ✓ |dom| src/renderer/pages/settings/components/SettingsSidebar.i18n.test.tsx (3 tests) 358ms
+ ✓ |dom| src/renderer/pages/settings/useSettingsNavigation.test.tsx (10 tests) 995ms
+   ✓ useSettingsNavigation > routes legacy proxy entry actions to the standalone proxy section  546ms
+ ✓ |unit| src/server/auto-route/assist.unit.test.ts (9 tests) 122ms
+ ✓ |dom| src/renderer/pages/settings/AutoRoutingSettings.test.tsx (8 tests) 1417ms
+   ✓ auto routing settings card > shows three tiers, the automatic classifier and the privacy note; on by default  781ms
+ ✓ |dom| src/renderer/pages/settings/ModelFailoverSettings.test.tsx (15 tests) 2771ms
+   ✓ backup model settings > defaults to same-tier automatic failover and keeps cross-tier selection off  436ms
+   ✓ backup model settings > requires an API key and excludes disabled, subscription, runtime-backed and cloud-session providers  520ms
+   ✓ backup model settings > searches names and IDs, supports keyboard choice, empty results and reopening  308ms
+   ✓ backup model settings > filters providers and keys without changing the saved selection or writing config  369ms
+stdout | src/renderer/components/Message.autoRoute.test.tsx
+[isTauriEnvironment] Detection: {
+  hasTauriGlobal: false,
+  hasTauriInternals: false,
+  protocol: 'http:',
+  hostname: 'localhost',
+  isTauriProtocol: false,
+  result: false
+}
+[browserMock] 🌐 Running in browser development mode
+
+ ✓ |dom| src/renderer/components/Message.autoRoute.test.tsx (4 tests) 161ms
+ ✓ |integration| src/server/openai-bridge/model-failover.integration.test.ts (34 tests) 3103ms
+   ✓ model failover over real loopback HTTP > bounds a anthropic error body that stalls after response headers without starting backup  1015ms
+   ✓ model failover over real loopback HTTP > bounds a openai error body that stalls after response headers without starting backup  1094ms
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.6 status=ok sizeBytes=369
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.254 status=ok sizeBytes=893
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.426 status=ok sizeBytes=893
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.245 status=ok sizeBytes=503
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner original-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.342 status=ok sizeBytes=369
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner original-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.293 status=ok sizeBytes=926
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner original-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.318 status=ok sizeBytes=926
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > restores native history and action evidence for owner original-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.196 status=ok sizeBytes=503
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > keeps explicit Stop durable and rejects an automatic cold restart
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.248 status=ok sizeBytes=369
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > keeps explicit Stop durable and rejects an automatic cold restart
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.383 status=ok sizeBytes=893
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > keeps explicit Stop durable and rejects an automatic cold restart
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.847 status=ok sizeBytes=924
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > rejects a lost-native-identity writer and leaves the checkpoint intact
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.167 status=ok sizeBytes=369
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > rejects a lost-native-identity writer and leaves the checkpoint intact
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.629 status=ok sizeBytes=893
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > keeps Stop authoritative when the sessions index cannot be rewritten
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.245 status=ok sizeBytes=369
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > keeps Stop authoritative when the sessions index cannot be rewritten
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.3 status=ok sizeBytes=893
+
+stderr | src/server/builtin-session/model-recovery.integration.test.ts > durable model recovery through the real SessionStore > keeps Stop authoritative when the sessions index cannot be rewritten
+[SessionStore] Recovery stop is fenced; metadata publication failed
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.152 status=ok sizeBytes=367
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.219 status=ok sizeBytes=1148
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.355 status=ok sizeBytes=1148
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.253 status=ok sizeBytes=1148
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.959 status=ok sizeBytes=1148
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.439 status=ok sizeBytes=1214
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.218 status=ok sizeBytes=367
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.284 status=ok sizeBytes=1177
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.33 status=ok sizeBytes=1177
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.21 status=ok sizeBytes=1177
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.216 status=ok sizeBytes=1177
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.952 status=ok sizeBytes=1243
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > Stop fences a settled checkpoint committed by the writer before arm has adopted its return value
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.149 status=ok sizeBytes=370
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > Stop fences a settled checkpoint committed by the writer before arm has adopted its return value
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.16 status=ok sizeBytes=1120
+
+stdout | src/server/builtin-session/model-recovery.integration.test.ts > Stop fences a settled checkpoint committed by the writer before arm has adopted its return value
+[perf] trace=storage_io phase=sessions_metadata_write durationMs=0.619 status=ok sizeBytes=1151
+
+ ✓ |integration| src/server/builtin-session/model-recovery.integration.test.ts (8 tests) 1856ms
+   ✓ durable model recovery through the real SessionStore > restores native history and action evidence for owner undefined  594ms
+   ✓ native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for undefined  303ms
+   ✓ native result settled-stream integration with the original writer and recovery owner > continues two namespaces on the same budget and rejects cold proof for same-goal  334ms
+stdout | src/server/openai-bridge/context-recovery.integration.test.ts > keeps raw chat_completions socket failure distinct from provider/protocol errors through translation
+[bridge] cancel() on finalReadable failed: Invalid state: ReadableStream is locked
+
+ ✓ |integration| src/server/openai-bridge/context-recovery.integration.test.ts (25 tests) 452ms
+ ✓ |integration| src/server/openai-bridge/model-failover-buffered-tool-progress.integration.test.ts (2 tests) 182ms
+ ✓ |integration| src/server/builtin-session/model-failover.integration.test.ts (29 tests) 18ms
+ ✓ |integration| src/server/auto-route/policy.integration.test.ts (4 tests) 2ms
+
+ Test Files  21 passed (21)
+      Tests  414 passed (414)
+   Start at  02:33:00
+   Duration  16.48s (transform 8.52s, setup 10.64s, collect 18.42s, tests 14.44s, environment 6.60s, prepare 3.01s)

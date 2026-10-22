@@ -63,6 +63,17 @@ Renderer HTTP 请求通过 `x-myagents-log-session-id` 传递日志关联 Sessio
 
 ## 日志类型
 
+### 恢复因果诊断（只读）
+
+`openai-bridge/recovery-causal-diagnostics.ts` 定义固定事件，走原 Node 日志 owner 和既有请求上下文；不新建 registry、writer 或恢复 authority。
+
+- `inference_admission_rejected`：`owner=context/model_failover`，`reason` 是原守卫顺序中第一个成立的条件：`registry_exhausted`、`blocked_exact_scope`、`blocked_ambiguous_scope`、`duplicate_exact_key`、`duplicate_ambiguous_fingerprint`、`registry_capacity`。不输出 scope、请求指纹、Bridge token 或请求内容；不重新调用 `begin`。
+- `upstream_fetch_failed`：仅白名单 Node/undici/TLS code、`codeStatus` 和本地 headers timer / downstream abort / unattributed abort 标志。未知 code 只记 `unknown`，不保留原值、message、URL、host、headers 或环境。两种 abort 标志同时出现时不推断谁先发生。连接错误码本身不能证明远端 peer、代理路径或服务端原因。
+- `native_action`：原 Pre/Post/Failure 调用的 enter/complete/denied/failed/not_required 阶段；`hook` 说明原调用类别，不代表业务执行成功。只记 tool ID 的 SHA256 前24位及已存在 action hash 的前24位，缺失记 `unavailable`，不重新序列化工具参数。`persistence=active` 表示原 ledger persist 路径启用；`inactive` 时 complete 不表示落盘；readonly 的 reserve_not_required 也不表示创建了业务 reservation。commit_complete 在原 persist 与 native admission 更新完成后产生，commit_failed 不吞掉真实错误。
+- `native_action_gate_rejected`：原 generic denial 中第一个成立的 `state_blocked`、`ledger_blocked` 或 `request_guard_blocked`，不是对历史故障的根因猜测；原 `current()` 和 guard 求值次序/次数保持。
+
+内部 observer 可关闭或替换，抛出/拒绝不影响原准入、HTTP、工具 hook、持久化、预算、Stop 或 receipt。事件不进 ledger/checkpoint，也不能据此自动清除 unknown、重放工具或授予恢复。摘要只用于关联，不能充当唯一身份或证明。统一日志仍有有界队列和丢弃可能；缺日志不证明 hook 没执行。本次诊断只增加安全事件，不改原有错误正文或已有日志合同，也不能倒推出旧502/409的未知事实。
+
 ```typescript
 // src/shared/types/log.ts
 // The historical 'bun' source tag remains part of the persisted wire format.

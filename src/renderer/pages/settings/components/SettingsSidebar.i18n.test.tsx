@@ -30,6 +30,9 @@ describe('SettingsSidebar i18n', () => {
     expect(screen.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'General' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Model Providers' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Model policy' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Auto model selection' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Backup model' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Desktop Pet' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Network Proxy' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'External Calls' })).toBeInTheDocument();
@@ -48,6 +51,7 @@ describe('SettingsSidebar i18n', () => {
       .map(button => button.textContent);
     expect(labels).toEqual([
       'Model Providers',
+      'Model policy',
       'General',
       'Channel',
       'Desktop Pet',

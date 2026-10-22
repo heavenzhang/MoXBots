@@ -4483,6 +4483,7 @@ export default function Chat({
           });
       },
       onPreferModel: (record) => {
+        if (!record.tier || record.unclassified) return;
         const settings = parseAutoRoutingSettings(config.autoRouting);
         const key = autoModelKey(record);
         const order = settings.tierOrder?.[record.tier] ?? [];

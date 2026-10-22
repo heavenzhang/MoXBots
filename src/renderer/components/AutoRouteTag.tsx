@@ -26,9 +26,11 @@ export function AutoRouteTag({ record }: { record: AutoRouteRecord }) {
   const parts = [t('autoRoute.tag'), model];
   if (record.effort) parts.push(t('autoRoute.effort', { effort: record.effort }));
   const detail = [
-    t(`autoRoute.tiers.${record.tier}`),
+    ...(!record.tier || record.unclassified ? [] : [t(`autoRoute.tiers.${record.tier}`)]),
     t(`autoRoute.reasons.${record.reason}`),
     t('autoRoute.latency', { ms: Math.max(0, Math.round(record.latencyMs)) }),
+    ...(record.backup ? [t('autoRoute.backupCandidate', { model: actions?.modelLabel({ ...record, ...record.backup }) ?? record.backup.model })] : []),
+    ...(record.backupUnavailableReason ? [t(`autoRoute.backupReasons.${record.backupUnavailableReason}`)] : []),
   ].join(' · ');
 
   return (
@@ -44,7 +46,7 @@ export function AutoRouteTag({ record }: { record: AutoRouteRecord }) {
           {t('autoRoute.chooseAnother')}
         </button>
       )}
-      {actions?.onPreferModel && (
+      {actions?.onPreferModel && record.tier && !record.unclassified && (
         <button type="button" onClick={() => actions.onPreferModel?.(record)}
           className="rounded px-1 hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]">
           {t('autoRoute.preferModel')}

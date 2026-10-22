@@ -155,6 +155,16 @@ describe('decideAutoRoute', () => {
   const usable = () => true;
   const now = 10_000_000;
 
+  it('keeps failover in the actual target tier unless cross-tier backup was explicitly enabled', () => {
+    const table = buildAutoTierTable([
+      { providerId: 'p', model: 'only-balanced', catalogTier: 'balanced' },
+      { providerId: 'p', model: 'only-fast', catalogTier: 'fast' },
+    ]);
+    const input = { table, tier: 'balanced' as const, verdict: 'classified' as const, now, isUsable: usable };
+    expect(decideAutoRoute(input)?.backup).toBeUndefined();
+    expect(decideAutoRoute({ ...input, allowCrossTierBackup: true })?.backup?.tier).toBe('fast');
+  });
+
   it('switches to the first model of the requested tier with the next as backup', () => {
     const decision = decideAutoRoute({ table, tier: 'strong', verdict: 'classified', now, isUsable: usable });
     expect(decision).toMatchObject({ tier: 'strong', reason: 'classified', switches: true });

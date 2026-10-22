@@ -357,6 +357,16 @@ try {
     window.audit.replace(Array(250).fill('Tall tail before shrink.').join('\n\n'));
   });
   await page.waitForTimeout(500);
+  // gap=0 also holds for the previous committed range while the new tall row
+  // is still being admitted. Measure shrink only after the test's 250 actual
+  // paragraphs are mounted and measured at the tail, not that stale extent.
+  await page.waitForFunction(() => {
+    const row = document.querySelector('[data-message-id="stream"]');
+    const state = window.audit.snapshot();
+    return row?.querySelectorAll('p').length === 250
+      && row.getBoundingClientRect().height > 4000
+      && state.anchor === 'stream' && Math.abs(state.gap) <= 1;
+  }, null, { timeout: 5000 });
   const grownTail = await bottom('grownTail');
   await page.evaluate(() => window.audit.replace('Short tail after shrink.'));
   await page.waitForTimeout(500);

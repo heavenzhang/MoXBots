@@ -3,15 +3,16 @@ import { useTranslation } from 'react-i18next';
 
 import CustomSelect from '../../components/CustomSelect';
 import type { AppConfig, Provider } from '../../../shared/config-types';
-import { isModelFailoverProvider, type ModelFailoverSettings as Settings } from '../../../shared/modelFailover';
+import { configuredBackupStatus, isModelFailoverProvider, modelFailoverMode, type ModelFailoverSettings as Settings } from '../../../shared/modelFailover';
 
 const modelKey = (ref: NonNullable<Settings['backup']>) => JSON.stringify([ref.providerId, ref.modelId]);
 
-export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig }: {
+export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig, onOpenProviders }: {
   value: Settings | undefined;
   providers: readonly Provider[];
   apiKeys: Readonly<Record<string, string>>;
   updateConfig: (patch: Partial<AppConfig>) => Promise<void>;
+  onOpenProviders?: () => void;
 }) {
   const { t } = useTranslation('settings');
   const hintId = useId();
@@ -21,6 +22,7 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
   const [error, setError] = useState(false);
   const saving = useRef(false);
   const settings = value ?? { enabled: false };
+  const mode = modelFailoverMode(value);
   const eligibleProviders = providers.filter(isModelFailoverProvider);
   const models = eligibleProviders.flatMap(provider => provider.models.map(model => ({
     providerId: provider.id,
@@ -31,10 +33,9 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
   })));
   const selectedKey = settings.backup ? modelKey(settings.backup) : '';
   const selected = models.find(model => modelKey(model) === selectedKey);
-  const ready = Boolean(selected?.hasKey);
-  const hint = !settings.backup ? t('modelFailover.chooseHint')
-    : !selected ? t('modelFailover.unavailableHint')
-      : !selected.hasKey ? t('modelFailover.keyHint') : t('modelFailover.readyHint');
+  const backupStatus = configuredBackupStatus(settings, providers, apiKeys);
+  const modeLabel = t(`modelFailover.mode.${mode}`);
+  const statusHint = t(`modelFailover.status.${backupStatus.status}`, { model: backupStatus.label ?? settings.backup?.modelId ?? '' });
 
   const save = async (next: Settings) => {
     if (saving.current) return;
@@ -51,13 +52,22 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
       <div className="min-w-0">
         <h3 className="text-base font-medium text-[var(--ink)]">{t('modelFailover.title')}</h3>
         <p className="mt-2 text-sm text-[var(--ink-muted)]">{t('modelFailover.description')}</p>
+        <p className="mt-2 text-sm text-[var(--ink-muted)]">{t('modelFailover.relationship')}</p>
       </div>
-      <button type="button" role="switch" aria-label={t('modelFailover.enable')} aria-checked={settings.enabled}
-        aria-describedby={hintId} disabled={busy || (!settings.enabled && !ready)}
-        onClick={() => { if (settings.enabled || ready) void save({ ...settings, enabled: !settings.enabled }); }}
-        className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60 ${settings.enabled ? 'bg-[var(--accent)]' : 'bg-[var(--line-strong)]'}`}>
-        <span className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--toggle-thumb)] shadow transition-transform motion-reduce:transition-none ${settings.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-      </button>
+    </div>
+    <div className="mt-4 grid gap-2">
+      <CustomSelect ariaLabel={t('modelFailover.mode.label')} size="md" disabled={busy} value={mode}
+        options={(['auto', 'specified', 'off'] as const).map(option => ({ value: option, label: t(`modelFailover.mode.${option}`) }))}
+        onChange={next => { if (next === 'auto' || next === 'specified' || next === 'off') void save({ ...settings, mode: next, enabled: next === 'specified' }); }} />
+      <p className="text-xs text-[var(--ink-muted)]">{t('modelFailover.modeHint', { mode: modeLabel })}</p>
+      {mode === 'specified' && <p id={hintId} className={`text-xs ${backupStatus.status === 'ready' ? 'text-[var(--ink-muted)]' : 'text-[var(--error)]'}`} role={backupStatus.status === 'ready' ? undefined : 'alert'}>
+        {statusHint}{onOpenProviders && backupStatus.status !== 'ready' && <> <button type="button" className="underline" onClick={onOpenProviders}>{t('modelFailover.openProviders')}</button></>}
+      </p>}
+    </div>
+    <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-[var(--ink-secondary)]">
+      <input id="model-failover-cross-tier" type="checkbox" checked={settings.allowCrossTier === true} disabled={busy || mode === 'off'}
+        onChange={event => void save({ ...settings, mode, enabled: mode === 'specified', allowCrossTier: event.target.checked })} />
+      <label htmlFor="model-failover-cross-tier">{t('modelFailover.allowCrossTier')}</label>
     </div>
     <div className="mt-4 grid gap-2">
       <p className="text-sm font-medium text-[var(--ink-secondary)]">{t('modelFailover.backup')}</p>
@@ -83,9 +93,10 @@ export function ModelFailoverSettings({ value, providers, apiKeys, updateConfig 
         ]}
         onChange={key => {
           const model = models.find(candidate => modelKey(candidate) === key);
-          void save({ enabled: settings.enabled && Boolean(model?.hasKey), ...(model ? { backup: { providerId: model.providerId, modelId: model.modelId } } : {}) });
+          const { backup: _previous, ...rest } = settings;
+          void save({ ...rest, ...(model ? { backup: { providerId: model.providerId, modelId: model.modelId } } : {}), enabled: mode === 'specified', mode });
         }} />
-      <p id={hintId} className="text-xs text-[var(--ink-muted)]">{hint}</p>
+      <p className="text-xs text-[var(--ink-muted)]">{backupStatus.label ? t('modelFailover.selectedModel', { model: backupStatus.label }) : t('modelFailover.noSelectedModel')}</p>
       {!models.length && <p className="text-xs text-[var(--ink-muted)]">{t('modelFailover.empty')}</p>}
     </div>
     <details className="mt-4">
