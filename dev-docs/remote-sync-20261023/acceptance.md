@@ -20,7 +20,7 @@
 | 实际组件浏览器 | 1440×900、900×760；9条检查通过，pageerror为0。详见 evidence/checks.json |
 | 独立审阅 | 组件7/7；两尺寸交互与关闭按钮定位复验通过，详见 review.md、evidence/independent-checks.json |
 | 本地生产配置Web构建 | 最终源码通过，48.79秒；有现有大chunk提示。输出在/tmp/mb-remote-sync-web-dist，不是桌面正式签名制品 |
-| 远端分支 / main | 提交同步待完成；不绕过共享CI归属与门禁 |
+| 远端分支 / main | 功能提交已同步任务分支；最终handoff另存机读回执。main待唯一owner统一CI/合入，不绕过门禁 |
 | 桌面发行 / 真实双端 | 未执行，由既定桌面owner协调下一未冻结批次 |
 
 浏览器使用实际 GlobalSidebar、RemoteSession、RemoteConversation/MessageList、原 Tab controller、持久 codec 和真实远程 API 客户端/队列；Tauri命令、账号和远端响应为封闭合成 fixture。没有真实登录、跨设备传输、Provider执行或生产写入。真实验证需要两个包含本次前端的客户端及已授权可控会话：另一端新增消息、本端切走后未读/状态更新、切回、断线恢复、正常重开和关闭不Stop。
