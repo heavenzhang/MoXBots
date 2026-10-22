@@ -820,3 +820,9 @@ Same sole owner01a12bc2 reserves unbuilt0.5.19/build519.1. Failed/unbuiltbbed re
 用户明确要求完整实现并合入主干。P0显式候选池及实际执行约束，P1搜索/批量/失效引用维护，P2全宽模型身份与排序换档，P3保存/撤销和清楚说明均已实现；171项局部测试、静态检查、独立后端审阅、实际组件合成UI10组/四宽及键盘修复复验、主Agent5组交互复验通过。任务 `.agent-sync/tasks/codex-model-policy-20261022-2bdce833.md`，完整证据 `dev-docs/model-policy-20261022/acceptance.md`。
 
 沿用desktop builtin client唯一CI/main/版本/制品/发布会话01a12bc2-907a-7702-b6dd-788225c5dfe4；开发分支交精确SHA和证据，不能进入已冻结5.18/5.19批次，不自行共享CI/正式打包或更改日常App。源代码/main、合成与原生持久化/真实Provider、正式制品/生产验收分别追踪；版本/tag/制品摘要由原owner分配。原配置writer和Session/Query authority不变，无凭据/数据迁移。
+
+## MB-REMOTE-SYNC-20261023 — 已确认原型的远程会话侧栏与自动同步
+
+用户已确认原型并要求实现。当前分支 codex/remote-sync-20261023，从 main 5eb2ebc87489b92e250338026e2b971346ed9e15 开发；进度 `.agent-sync/tasks/codex-remote-sync-20261023-c59085e7.md`，验收 `dev-docs/remote-sync-20261023/acceptance.md`。已打开远程会话投影到侧栏及收起浮层；前台约1.5秒、后台约5秒快照观察，切回/重连立即校准，未读与执行状态分开；原持久化与账号/回执/Stop owner 不变。无协议、数据库或敏感权限迁移。
+
+部署单元 desktop client 的共享 CI、版本、正式构建及发布仍唯一属于 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不触发其共享 CI 或改变 0.5.19 已冻结候选。源码/本地验证、远端 main、统一发布及真实双设备验收分别追踪，下一未冻结批次待精确 SHA 交接。

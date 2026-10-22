@@ -122,7 +122,8 @@ export const remoteSessionTabModule = {
       targetScope: intent.targetScope ?? null,
     }),
   },
-  initialMount: () => "deferred-content",
+  // Restored background sessions must observe without waiting for a first click.
+  initialMount: () => "immediate",
   persistence: remoteSessionTabPersistenceCodec,
 } satisfies TabModuleDefinition<
   RemoteSessionTab,

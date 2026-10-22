@@ -58,36 +58,131 @@ export function remoteErrorCode(error: unknown): string {
     return error.code;
   return "REMOTE_SESSION_UNAVAILABLE";
 }
+
+type QueuedDispatch = {
+  priority: number;
+  order: number;
+  signal: AbortSignal;
+  validate: () => void;
+  dispatch: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (reason: unknown) => void;
+  onAbort: () => void;
+};
+type DispatchQueue = { active: boolean; pending: QueuedDispatch[] };
+const dispatchQueues = new Map<string, DispatchQueue>();
+let dispatchOrder = 0;
+
+function requestPriority(request: RemoteSessionRequest): number {
+  // Reads that refresh ordinary remote state yield to receipts and operations.
+  return request.kind === "capabilities" || request.kind === "list" || request.kind === "get" ? 0 : 1;
+}
+
+function queuedDispatch<T>(
+  locator: HostLocator,
+  request: RemoteSessionRequest,
+  signal: AbortSignal,
+  validate: () => void,
+  dispatch: () => Promise<T>,
+): Promise<T> {
+  let queue = dispatchQueues.get(locator.connectionId);
+  if (!queue) {
+    queue = { active: false, pending: [] };
+    dispatchQueues.set(locator.connectionId, queue);
+  }
+  const state = queue;
+  return new Promise<T>((resolve, reject) => {
+    const task: QueuedDispatch = {
+      priority: requestPriority(request),
+      order: dispatchOrder++,
+      signal,
+      validate,
+      dispatch,
+      resolve: (value) => resolve(value as T),
+      reject,
+      onAbort: () => {
+        remove();
+        reject(new DOMException("Aborted", "AbortError"));
+        pump();
+      },
+    };
+    const remove = () => {
+      const index = state.pending.indexOf(task);
+      if (index >= 0) state.pending.splice(index, 1);
+      signal.removeEventListener("abort", task.onAbort);
+    };
+    const pump = () => {
+      if (state.active) return;
+      while (state.pending.length) {
+        state.pending.sort((a, b) => b.priority - a.priority || a.order - b.order);
+        const next = state.pending.shift()!;
+        next.signal.removeEventListener("abort", next.onAbort);
+        try {
+          next.validate();
+        } catch (error) {
+          next.reject(error);
+          continue;
+        }
+        state.active = true;
+        void next.dispatch().then(next.resolve, next.reject).finally(() => {
+          state.active = false;
+          pump();
+          if (!state.active && !state.pending.length) dispatchQueues.delete(locator.connectionId);
+        });
+        return;
+      }
+      dispatchQueues.delete(locator.connectionId);
+    };
+    signal.addEventListener("abort", task.onAbort, { once: true });
+    state.pending.push(task);
+    pump();
+  });
+}
+
 export async function remoteSessionRequest(
   locator: HostLocator,
   targetScope: OwnedHostScope | null,
   request: RemoteSessionRequest,
   signal: AbortSignal,
 ): Promise<{ scope: OwnedHostScope; data: RemoteSessionResult }> {
+  locator = { ...locator };
+  targetScope = targetScope ? remoteScopeSchema.parse(targetScope) : null;
+  request = remoteSessionRequestSchema.parse(request);
   const fence = () => {
     if (signal.aborted) throw new DOMException("Aborted", "AbortError");
     if (!remoteAccountMatches(locator))
       throw { code: "REMOTE_SESSION_ACCOUNT_CHANGED" };
   };
-  fence();
-  const snapshot = currentNetworkSnapshot(locator.connectionId);
-  if (
-    locator.connectionId === "official" ||
-    (!targetScope && request.kind !== "capabilities")
-  )
-    throw { code: "REMOTE_SESSION_TARGET_REQUIRED" };
-  if (snapshot?.state !== "ready") throw { code: "REMOTE_SESSION_OFFLINE" };
-  remoteSessionRequestSchema.parse(request);
+  const validateDispatch = () => {
+    fence();
+    const snapshot = currentNetworkSnapshot(locator.connectionId);
+    if (
+      locator.connectionId === "official" ||
+      (!targetScope && request.kind !== "capabilities")
+    )
+      throw { code: "REMOTE_SESSION_TARGET_REQUIRED" };
+    if (snapshot?.state !== "ready") throw { code: "REMOTE_SESSION_OFFLINE" };
+    if (
+      targetScope &&
+      (targetScope.principalId !== locator.principalId ||
+        targetScope.networkId !== locator.networkId ||
+        targetScope.deviceId !== locator.deviceId)
+    )
+      throw { code: "REMOTE_SESSION_TARGET_CHANGED" };
+  };
+  validateDispatch();
   let raw: unknown;
   try {
-    raw = await invoke("cmd_agent_network_management", {
-      request: {
-        ...locator,
-        targetScope,
-        method: "session.remote",
-        params: { remoteSession: request },
-      },
-    });
+    raw = await queuedDispatch(locator, request, signal, validateDispatch, () =>
+      invoke("cmd_agent_network_management", {
+        request: {
+          ...locator,
+          targetScope,
+          method: "session.remote",
+          params: { remoteSession: request },
+        },
+      }),
+    );
   } catch (error) {
     fence();
     throw {

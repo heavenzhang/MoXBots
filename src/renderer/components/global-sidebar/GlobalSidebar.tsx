@@ -161,6 +161,7 @@ import { OverflowNameTooltip } from '@/components/workspace-tree/OverflowNameToo
 import NotificationCenterFlyout from '@/notifications/NotificationCenterFlyout';
 import { useNotificationCenter } from '@/notifications/useNotificationCenter';
 import type { AppRoute } from '../../../shared/appRoute';
+import { RemoteSessionSidebar } from '@/features/remote-session/RemoteSessionSidebar';
 
 const loadHistorySearchOverlayContent = () => import('@/components/HistorySearchOverlayContent');
 const HistorySearchOverlayContent = lazy(loadHistorySearchOverlayContent);
@@ -215,6 +216,8 @@ export function sortWorkspaceSessions(sessions: readonly SessionMetadata[]): Ses
 export type CapabilitySection = 'skills' | 'plugins' | 'mcp';
 
 interface GlobalSidebarProps {
+  onSelectRemoteTab?: (tabId: string) => void;
+  onCloseRemoteTab?: (tabId: string) => void;
   tabs: readonly Tab[];
   activeTab: Tab | undefined;
   activeWorkspacePath: string | null;
@@ -502,6 +505,8 @@ function HistorySearchOverlayFallback({ onClose }: { onClose: () => void }) {
 }
 
 export default memo(function GlobalSidebar({
+  onSelectRemoteTab,
+  onCloseRemoteTab,
   tabs,
   activeTab,
   activeWorkspacePath,
@@ -1185,6 +1190,17 @@ export default memo(function GlobalSidebar({
   const isWindows = typeof navigator !== 'undefined'
     && navigator.platform.toLowerCase().includes('win');
   const tree = (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="max-h-[50%] shrink-0 overflow-y-auto overscroll-contain">
+        <RemoteSessionSidebar
+          tabs={tabs.filter(tab => tab.view === 'remote-session')}
+          activeTabId={activeTab?.id}
+          onSelect={onSelectRemoteTab ? tabId => { onSelectRemoteTab(tabId); closeFlyout(); } : undefined}
+          onClose={onCloseRemoteTab}
+          onOpen={onOpenAgentNetwork ? () => { onOpenAgentNetwork(); closeFlyout(); } : undefined}
+        />
+      </div>
+      <div className="min-h-0 flex-1">
     <WorkspaceTree
       organization={preference.organization}
       onUpdateOrganization={(update) => new Promise<boolean>((resolve) => updatePreference((current) => ({ ...current, organization: update(current.organization) }), resolve))}
@@ -1244,6 +1260,8 @@ export default memo(function GlobalSidebar({
       }}
       onNestedInteractionChange={handleNestedInteractionChange}
     />
+      </div>
+    </div>
   );
 
   return (
