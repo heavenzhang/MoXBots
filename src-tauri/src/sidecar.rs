@@ -331,6 +331,10 @@ fn append_sidecar_entrypoint_args(
         }
     }
     cmd.env("MYAGENTS_APP_VERSION", env!("CARGO_PKG_VERSION"));
+    cmd.env(
+        crate::session_user_action::PUBLIC_KEY_ENV,
+        crate::session_user_action::public_key_spki_base64(),
+    );
     // Unix children otherwise survive an ungraceful desktop exit. Bind both
     // launch paths to this exact parent; Node retires through its normal exit
     // handler (including SDK children) if the OS reparents it.
@@ -434,6 +438,11 @@ mod sidecar_process_role_tests {
         );
         for command in [&global, &session] {
             let environment: std::collections::HashMap<_, _> = command.get_envs().collect();
+            let user_action_public_key = crate::session_user_action::public_key_spki_base64();
+            assert_eq!(
+                environment.get(std::ffi::OsStr::new(crate::session_user_action::PUBLIC_KEY_ENV)),
+                Some(&Some(std::ffi::OsStr::new(&user_action_public_key))),
+            );
             assert_eq!(
                 environment.get(std::ffi::OsStr::new("MYAGENTS_APP_VERSION")),
                 Some(&Some(std::ffi::OsStr::new(env!("CARGO_PKG_VERSION")))),

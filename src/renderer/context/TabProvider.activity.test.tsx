@@ -3562,3 +3562,60 @@ describe('TabProvider question receipts and Task history ownership', () => {
     await waitFor(() => expect(sseHarness.state.connected).toBe(false));
   });
 });
+
+describe('rendered orchestration proposal target in the original chat send', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); historyPreview.mockResolvedValue(null);
+    sseHarness.state.connected=false; sseHarness.state.generation=1;sseHarness.state.eventHandler=null;sseHarness.state.statusHandler=null;
+    tauriHarness.isTauri=false;tauriHarness.listeners.clear();
+    tauriHarness.proxyFetch.mockImplementation(async()=>new Response(JSON.stringify({success:true})));
+  });
+  const visible = (tabId:string,sessionId:string,target:{proposalId:string;expectedRevision:number}|null) => window.dispatchEvent(new CustomEvent('session-orchestration-visible-plan',{detail:{tabId,sessionId,target}}));
+  const payload = () => {
+    const send=tauriHarness.proxyFetch.mock.calls.find(([url])=>String(url).endsWith('/chat/send'));
+    return JSON.parse(String(send?.[1]?.body));
+  };
+  it('keeps the displayed stale revision in the signed body instead of adopting an unseen SSE revision',async()=>{
+    const sessionId='pending-visible-plan';
+    render(<TabProvider tabId="visible-plan" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe/></TabProvider>);
+    await waitFor(()=>expect(sseHarness.state.eventHandler).not.toBeNull());
+    act(()=>visible('visible-plan',sessionId,{proposalId:'plan-a',expectedRevision:1}));
+    emit('chat:task-orchestration',{sessionId,ledger:{revision:5,proposal:{id:'plan-a',revision:2,state:'awaiting_confirmation'}}});
+    fireEvent.click(screen.getByRole('button',{name:'send message'}));
+    await waitFor(()=>expect(tauriHarness.proxyFetch.mock.calls.some(([url])=>String(url).endsWith('/chat/send'))).toBe(true));
+    expect(payload().orchestrationPlanTarget).toEqual({proposalId:'plan-a',expectedRevision:1});
+  });
+  it('ignores another Tab or Session target and does not invent a target for ordinary chat',async()=>{
+    const sessionId='pending-isolated-plan';
+    render(<TabProvider tabId="plan-owner" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe/></TabProvider>);
+    await waitFor(()=>expect(sseHarness.state.eventHandler).not.toBeNull());
+    act(()=>{visible('other-tab',sessionId,{proposalId:'wrong-tab',expectedRevision:8});visible('plan-owner','other-session',{proposalId:'wrong-session',expectedRevision:9});});
+    fireEvent.click(screen.getByRole('button',{name:'send message'}));
+    await waitFor(()=>expect(tauriHarness.proxyFetch.mock.calls.some(([url])=>String(url).endsWith('/chat/send'))).toBe(true));
+    expect(payload().orchestrationPlanTarget).toBeUndefined();
+  });
+  it('clears the displayed target when the plan is no longer awaiting confirmation',async()=>{
+    const sessionId='pending-clear-plan';
+    render(<TabProvider tabId="clear-plan" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe/></TabProvider>);
+    await waitFor(()=>expect(sseHarness.state.eventHandler).not.toBeNull());
+    act(()=>{visible('clear-plan',sessionId,{proposalId:'plan-a',expectedRevision:1});visible('clear-plan',sessionId,null);});
+    fireEvent.click(screen.getByRole('button',{name:'send message'}));
+    await waitFor(()=>expect(tauriHarness.proxyFetch.mock.calls.some(([url])=>String(url).endsWith('/chat/send'))).toBe(true));
+    expect(payload().orchestrationPlanTarget).toBeUndefined();
+  });
+  it('does not reuse the prior target after an A/B/A Session cycle',async()=>{
+    const tree=(sessionId:string)=><TabProvider tabId="plan-cycle" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe/></TabProvider>;
+    const {rerender}=render(tree('pending-plan-a'));
+    await waitFor(()=>expect(readActivity().sessionId).toBe('pending-plan-a'));
+    act(()=>visible('plan-cycle','pending-plan-a',{proposalId:'old-plan-a',expectedRevision:1}));
+    rerender(tree('pending-plan-b'));
+    await waitFor(()=>expect(readActivity().sessionId).toBe('pending-plan-b'));
+    rerender(tree('pending-plan-a'));
+    await waitFor(()=>expect(readActivity().sessionId).toBe('pending-plan-a'));
+    act(()=>visible('plan-cycle','pending-plan-b',{proposalId:'late-b',expectedRevision:99}));
+    fireEvent.click(screen.getByRole('button',{name:'send message'}));
+    await waitFor(()=>expect(tauriHarness.proxyFetch.mock.calls.some(([url])=>String(url).endsWith('/chat/send'))).toBe(true));
+    expect(payload().orchestrationPlanTarget).toBeUndefined();
+  });
+
+});

@@ -1,3 +1,4 @@
+import { projectOrchestrationProgress } from '../shared/sessionTaskOrchestration';
 import { deriveSessionWorkProgress, workProgressSchema } from '../shared/sessionWorkProgress';
 import { z } from 'zod';
 import { getSessionEngine } from './session-engine';
@@ -51,7 +52,7 @@ export async function readSessionActivity(sessionId: string) {
   try {
     const data = await getSessionData(sessionId);
     if (data && !data.transcriptRecovery) return { sessionId, state: 'idle' as const,
-      progress: deriveSessionWorkProgress(data.messages, { live: false }) };
+      progress: projectOrchestrationProgress(deriveSessionWorkProgress(data.messages, { live: false }), metadata.taskOrchestration, data.messages) };
   } catch { /* Optional progress failure must not invent activity or clear a prior plan. */ }
   return { sessionId, state: 'idle' as const };
 }

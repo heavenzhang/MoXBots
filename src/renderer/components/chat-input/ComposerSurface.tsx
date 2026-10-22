@@ -27,7 +27,7 @@ export function ComposerToolbar(props: HTMLAttributes<HTMLDivElement>) {
   return (
     <div
       {...props}
-      className={`toolbar-menus flex min-w-0 flex-nowrap items-center px-3 pb-2 pt-1 ${props.className ?? ""}`}
+      className={`toolbar-menus flex min-w-0 flex-wrap items-center gap-y-1 px-3 pb-2 pt-1 ${props.className ?? ""}`}
       style={{ containerType: "inline-size", ...props.style }}
     />
   );

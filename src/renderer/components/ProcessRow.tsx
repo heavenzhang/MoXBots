@@ -40,6 +40,7 @@ import { processResultLabel } from '@/utils/processResults';
 import ProcessTiming from './ProcessTiming';
 import ToolAttachmentGallery from '@/components/tools/ToolAttachmentGallery';
 import type { ContentBlock } from '@/types/chat';
+import SessionTaskAssociation from './agent-status/SessionTaskAssociation';
 
 interface ProcessRowProps {
     block: ContentBlock;
@@ -406,6 +407,8 @@ const ProcessRow = memo(function ProcessRow({
                         }`} />
                 )}
             </button>
+
+            {toolAnchorId && <SessionTaskAssociation toolUseId={toolAnchorId} activationId={block.tool?.subagentLifecycle?.activation?.id} />}
 
             {/* Expanded Body — Pattern 3 §3.2.3 (Collapse = unmount).
                 Previously the body was always mounted under `gridTemplateRows: 0fr`

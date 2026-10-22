@@ -1348,7 +1348,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
 
   return (
     <>
-    <div ref={overlayRootRef} className={isLauncherMode
+    <div ref={overlayRootRef} data-chat-input-overlay={!isLauncherMode || undefined} className={isLauncherMode
       ? 'relative flex w-full justify-center'
       : 'pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center px-4 pb-4'
     }>
@@ -1565,7 +1565,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 `ml-auto` on the right group instead of `justify-between` so
                 the send button stays right-aligned even when the left strip
                 is removed from the flex flow. */}
-            <div className="flex items-center gap-1 min-w-0 flex-nowrap">
+            <div className="flex shrink-0 items-center gap-1 min-w-0 flex-nowrap">
               {/* Optional prefix (e.g., workspace selector in launcher mode) */}
               {toolbarPrefix}
 

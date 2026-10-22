@@ -817,6 +817,7 @@ function getCommandDownloadInfo(command: string): {
 }
 
 type SendMessagePayload = {
+  orchestrationPlanTarget?: { proposalId: string; expectedRevision: number };
   primaryContext?: import("../shared/agentMentions").DesktopPrimaryContext;
   agentMentions?: import("../shared/agentMentions").AgentMentionSnapshot[];
   clientRequestId?: string;
@@ -1474,6 +1475,11 @@ async function routeAdminApi(
   // Strip the prefix for matching
   const route = pathname.replace('/api/admin/', '');
   const sourceKind = caller.kind === 'external-cli' ? 'external-cli' : 'internal-session';
+  if (route === 'session/tasks') {
+    if (caller.kind !== 'internal') return { success: false, error: 'INTERNAL_SESSION_REQUIRED' };
+    const { handleSessionTaskCommand } = await import('./routes/session-task-orchestration');
+    return handleSessionTaskCommand(payload);
+  }
   if (route.startsWith('network/')) {
     const { handleNetworkCli } = await import('./network-cli');
     return handleNetworkCli(route.slice('network/'.length), payload, signal);
@@ -3139,8 +3145,10 @@ async function main() {
 
       if (pathname === '/chat/send' && request.method === 'POST') {
         let payload: SendMessagePayload;
+        let rawSendPayload: string;
         try {
-          payload = (await request.json()) as SendMessagePayload;
+          rawSendPayload = await request.text();
+          payload = JSON.parse(rawSendPayload) as SendMessagePayload;
         } catch {
           return jsonResponse(
             { success: false, error: 'Invalid JSON payload.' },
@@ -3285,6 +3293,13 @@ async function main() {
         }
 
         try {
+          if (payload.clientRequestId) {
+            const { verifySessionUserAction } = await import('./session-engine/user-action-proof');
+            if (verifySessionUserAction(request, runtimeSessionId, rawSendPayload)) {
+              const { recordSessionPlanHumanInput } = await import('./session-engine/task-orchestration');
+              await recordSessionPlanHumanInput(runtimeSessionId, payload.clientRequestId, text, payload.orchestrationPlanTarget);
+            }
+          }
           const providerLabel =
             typeof providerEnv === 'object'
               ? (providerEnv?.baseUrl ?? 'anthropic')

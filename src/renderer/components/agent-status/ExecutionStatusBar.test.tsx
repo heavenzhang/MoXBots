@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderWithTheme as render } from "@/test/renderWithTheme";
 import { i18n } from "@/i18n";
@@ -9,6 +9,7 @@ import {
   registerBackgroundTask,
 } from "@/utils/backgroundTaskStatus";
 import ExecutionStatusBar from "./ExecutionStatusBar";
+import { emptyTaskLedger } from "../../../shared/sessionTaskOrchestration";
 
 const tab = vi.hoisted(() => ({
   messages: [] as Message[],
@@ -19,6 +20,7 @@ const tab = vi.hoisted(() => ({
   streamingMessage: null,
   hasMoreBefore: false,
   apiGet: vi.fn(),
+  apiPost: vi.fn(),
   loadOlderMessages: vi.fn(),
 }));
 vi.mock("@/context/TabContext", () => ({ useTabStateOptional: () => tab }));
@@ -75,7 +77,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("zh-CN");
   clearAllBackgroundTaskStatuses();
   vi.clearAllMocks();
-  tab.apiGet.mockResolvedValue({
+  const logResponse = {
     success: true,
     task: {
       taskId: "shell-bg",
@@ -87,7 +89,9 @@ beforeEach(async () => {
       totalBytes: 15,
       updatedAt: 1000,
     },
-  });
+  };
+  tab.apiGet.mockImplementation((path: string) => Promise.resolve(path.includes("task-orchestration")
+    ? { success: true, sessionId: tab.sessionId, ledger: { ...emptyTaskLedger(), plan: tab.agentPlanTodos } } : logResponse));
   tab.sessionState = "running";
   tab.messages = [agentMessage()];
   tab.sessionId = "s1";
@@ -120,12 +124,12 @@ describe("unified execution status", () => {
     );
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
     expect(screen.queryByText(goal.objective)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /待办 1\/2/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /任务编排 0\/3/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
     expect(
-      screen.getByRole("button", { name: /子 Agent.*已回传 1/ }),
+      screen.getByRole("button", { name: /任务编排.*待验收 2/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/运行中 0|异常 0/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "暂停" }));
@@ -143,25 +147,24 @@ describe("unified execution status", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /目标执行中/ }));
     expect(screen.getByText(goal.objective)).toBeInTheDocument();
-    const todos = screen.getByRole("button", { name: /待办 1\/2/ });
+    const todos = screen.getByRole("button", { name: /任务编排 0\/3/ });
     fireEvent.click(todos);
     expect(
-      screen.getAllByRole("region", { name: /目标详情|待办详情|协作详情/ }),
+      screen.getAllByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
     ).toHaveLength(1);
     expect(screen.queryByText(goal.objective)).not.toBeInTheDocument();
     expect(screen.getByText("正在验证")).toBeInTheDocument();
-    expect(screen.queryByText("已完成工作")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "已完成 1 项" }));
+    expect(screen.getAllByText("待验收")).toHaveLength(2);
     expect(screen.getByText("已完成工作")).toBeInTheDocument();
     fireEvent.keyDown(
-      screen.getByRole("region", { name: /目标详情|待办详情|协作详情/ }),
+      screen.getByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
       { key: "Escape", isComposing: true },
     );
     expect(
-      screen.getByRole("region", { name: /目标详情|待办详情|协作详情/ }),
+      screen.getByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
     ).toBeInTheDocument();
     fireEvent.keyDown(
-      screen.getByRole("region", { name: /目标详情|待办详情|协作详情/ }),
+      screen.getByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
       { key: "Escape" },
     );
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
@@ -169,11 +172,12 @@ describe("unified execution status", () => {
   });
   it("opens the original subagent inspector callback through the shared panel", () => {
     render(<ExecutionStatusBar goal={goal} activity={activity} />);
-    fireEvent.click(screen.getByRole("button", { name: /子 Agent.*已回传 1/ }));
-    fireEvent.click(screen.getByRole("button", { name: /独立审阅/ }));
+    fireEvent.click(screen.getByRole("button", { name: /任务编排.*待验收 2/ }));
+    fireEvent.click(screen.getByText("执行记录（1 次）"));
+    fireEvent.click(screen.getByRole("button", { name: /1\. 独立审阅/ }));
     expect(activity.onSelectSubagent).toHaveBeenCalledWith("child");
     fireEvent.keyDown(
-      screen.getByRole("region", { name: /目标详情|待办详情|协作详情/ }),
+      screen.getByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
       { key: "Escape" },
     );
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
@@ -185,7 +189,8 @@ describe("unified execution status", () => {
     tab.hasMoreBefore = true;
     tab.loadOlderMessages.mockRejectedValue(new Error("offline"));
     render(<ExecutionStatusBar activity={activity} />);
-    fireEvent.click(screen.getByRole("button", { name: /子 Agent/ }));
+    fireEvent.click(screen.getByRole("button", { name: /任务编排/ }));
+    fireEvent.click(screen.getByRole("button", { name: "查看全部执行记录" }));
     fireEvent.click(screen.getByRole("button", { name: /整个会话/ }));
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: "载入更早记录" })),
@@ -225,7 +230,7 @@ describe("unified execution status", () => {
     fireEvent.click(screen.getByRole("button", { name: /目标已完成/ }));
     expect(
       within(
-        screen.getByRole("region", { name: /目标详情|待办详情|协作详情/ }),
+        screen.getByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
       ).getByText(/12.0K tokens/),
     ).toBeInTheDocument();
   });
@@ -233,7 +238,7 @@ describe("unified execution status", () => {
     const { rerender } = render(
       <ExecutionStatusBar goal={goal} activity={activity} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: /待办/ }));
+    fireEvent.click(screen.getByRole("button", { name: /任务编排/ }));
     tab.sessionId = "s2";
     rerender(<ExecutionStatusBar goal={goal} activity={activity} />);
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
@@ -252,7 +257,8 @@ describe("unified execution status", () => {
       "s1",
     );
     render(<ExecutionStatusBar activity={activity} />);
-    fireEvent.click(screen.getByRole("button", { name: /子 Agent.*运行中 1/ }));
+    fireEvent.click(screen.getByRole("button", { name: /任务编排/ }));
+    fireEvent.click(screen.getByRole("button", { name: "查看全部执行记录" }));
     await act(async () =>
       fireEvent.click(screen.getByRole("button", { name: /本地检查/ })),
     );
@@ -260,7 +266,7 @@ describe("unified execution status", () => {
     expect(await screen.findByText("日志已连接")).toBeInTheDocument();
     expect(tab.apiGet).toHaveBeenCalled();
   });
-  it("keeps completed-only idle history hidden after remount", () => {
+  it("retains returned native plan entries awaiting explicit acceptance after remount", () => {
     tab.messages = [];
     tab.sessionState = "idle";
     tab.agentPlanTodos = tab.agentPlanTodos.map((todo) => ({
@@ -268,7 +274,8 @@ describe("unified execution status", () => {
       status: "completed",
     }));
     const { container } = render(<ExecutionStatusBar activity={activity} />);
-    expect(container.querySelector("[data-execution-status]")).toBeNull();
+    expect(container.querySelector("[data-execution-status]")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /待验收 2/ })).toBeInTheDocument();
   });
   it("closes with Escape while focus is still on the summary trigger", () => {
     render(<ExecutionStatusBar goal={goal} />);
@@ -285,7 +292,53 @@ describe("unified execution status", () => {
       screen.getByRole("button", { name: /目标模式运行中/ }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("button", { name: /待办|子 Agent/ }),
+      screen.queryByRole("button", { name: /任务编排|子 Agent/ }),
     ).not.toBeInTheDocument();
+  });
+});
+
+function planOnly() {
+  tab.messages=[];tab.agentPlanTodos=[];tab.sessionState='idle';
+  const proposal={id:'proposal-1',sessionId:'s1',revision:1,policyVersion:'1',state:'awaiting_confirmation' as const,content:{objective:'先确认范围后修复导出',scope:'仅修改导出与必要回归',steps:[{id:'inspect',title:'核查接口'}],acceptanceCriteria:['核对结果']},changes:[]};
+  tab.apiGet.mockResolvedValue({success:true,planSupport:{supported:true,runtime:'builtin'},sessionId:'s1',ledger:{...emptyTaskLedger(),revision:1,proposal}});
+  return proposal;
+}
+describe('plan confirmation in the actual execution status composition',()=>{
+  it('shows a draft when formal tasks and agents do not exist; discussion delegates a draft without posting',async()=>{
+    planOnly();const discuss=vi.fn();
+    render(<ExecutionStatusBar activity={{...activity,onDiscussPlan:discuss}}/>);
+    await screen.findByRole('button',{name:'确认并开始'});
+    expect(screen.queryByRole('button',{name:/任务编排 0/})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button',{name:'继续讨论'}));
+    expect(discuss).toHaveBeenCalledWith({sessionId:'s1',proposalId:'proposal-1',expectedRevision:1},expect.stringContaining('先确认范围后修复导出'));
+    expect(tab.apiPost).not.toHaveBeenCalled();
+  });
+  it('renders confirmed only from an authoritative receipt and collapses the confirmed plan',async()=>{
+    const proposal=planOnly();
+    tab.apiPost.mockResolvedValue({success:true,planSupport:{supported:true,runtime:'builtin'},sessionId:'s1',ledger:{...emptyTaskLedger(),revision:2,proposal:{...proposal,state:'confirmed',confirmation:{source:'button',revision:1,evidenceId:'user-click',confirmedAt:'2026-10-22T01:00:00Z'}}}});
+    render(<ExecutionStatusBar activity={activity}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'确认并开始'}));
+    await screen.findByText('方案已确认');
+    expect(screen.queryByRole('button',{name:'确认并开始'})).not.toBeInTheDocument();
+    expect(screen.getByText('工作范围')).not.toBeVisible();
+  });
+  it('keeps a rejected POST retryable with the same requestId and preserves the proposal',async()=>{
+    planOnly();tab.apiPost.mockRejectedValue(new Error('offline'));
+    render(<ExecutionStatusBar activity={activity}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'确认并开始'}));
+    await screen.findByRole('alert');
+    fireEvent.click(screen.getByRole('button',{name:'确认并开始'}));
+    await waitFor(()=>expect(tab.apiPost).toHaveBeenCalledTimes(2));
+    expect(tab.apiPost.mock.calls[0][1].requestId).toBe(tab.apiPost.mock.calls[1][1].requestId);
+    expect(screen.queryByText('方案已确认')).not.toBeInTheDocument();
+  });
+  it('posts requested revision feedback and keeps it visibly awaiting a new proposal',async()=>{
+    const proposal=planOnly();tab.apiPost.mockResolvedValue({success:true,planSupport:{supported:true,runtime:'builtin'},sessionId:'s1',ledger:{...emptyTaskLedger(),revision:2,proposal:{...proposal,state:'revising',feedback:'仅先排查'}}});
+    render(<ExecutionStatusBar activity={activity}/>);
+    fireEvent.click(await screen.findByRole('button',{name:'调整方案'}));
+    fireEvent.change(screen.getByRole('textbox',{name:'希望调整哪些内容？'}),{target:{value:'仅先排查'}});
+    fireEvent.click(screen.getByRole('button',{name:'提交调整意见'}));
+    await screen.findByText('调整中 · 待重新确认');
+    expect(tab.apiPost).toHaveBeenCalledWith('/api/session/task-orchestration/plan',expect.objectContaining({kind:'request_revision',feedback:'仅先排查'}));
   });
 });

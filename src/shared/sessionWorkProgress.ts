@@ -6,7 +6,7 @@ export const progressTodoSchema = z.object({ key: z.string(), content: z.string(
 export type ProgressTodo = z.infer<typeof progressTodoSchema>;
 export const workProgressSchema = z.object({
   source: z.enum(['live', 'history']),
-  todoSource: z.enum(['tools', 'runtime', 'none']),
+  todoSource: z.enum(['tools', 'runtime', 'none', 'orchestration']),
   todos: z.array(progressTodoSchema).max(100),
   todoTotal: z.number().int().nonnegative(), todoCompleted: z.number().int().nonnegative(),
   agents: z.array(z.object({ id: z.string(), agentType: z.string(), description: z.string(),
@@ -29,6 +29,11 @@ function tools(messages: readonly ProgressMessage[]) {
     const b = object(block), tool = object(b?.tool);
     return message.role !== 'user' && b?.type === 'tool_use' && tool && typeof tool.name === 'string' ? [{ messageId: message.id, tool }] : [];
   }));
+}
+/** An explicit marker, never a title match or an array-position identity. */
+function explicitTaskTodo(todo: ProgressTodo): ProgressTodo {
+  const match = todo.content.match(/^\[task:([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\]\s*(.+)$/s);
+  return match ? { ...todo, key: match[1], content: match[2] } : todo;
 }
 
 /** Same ordered projection for Chat and board. A null native plan means no
@@ -56,7 +61,7 @@ export function deriveSessionTodos(messages: readonly ProgressMessage[], runtime
     source = 'tools';
   }
   if (runtimePlan !== null) { todos = runtimePlan.map(item => ({ ...item })); source = 'runtime'; }
-  return { todos, source };
+  return { todos: todos.map(explicitTaskTodo), source };
 }
 
 export type ActiveProgressAgent = { id: string; toolUseId?: string; description?: string; agentType?: string; startedAt?: number };

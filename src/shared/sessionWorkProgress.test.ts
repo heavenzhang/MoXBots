@@ -48,3 +48,9 @@ describe('shared chat/board progress truth', () => {
     expect(result).not.toHaveProperty('taskStatus');
   });
 });
+
+it('keeps explicit task identity across replacement TodoWrite tool IDs', () => {
+  const message = (toolId: string) => ({ id: 'message', role: 'assistant', content: [{ type: 'tool_use', tool: { id: toolId, name: 'TodoWrite', parsedInput: { todos: [{ content: '[task:stable-work] Verify delivery', activeForm: 'Verifying', status: 'in_progress' }] } } }] });
+  expect(deriveSessionTodos([message('old-write')]).todos[0]).toMatchObject({ key: 'stable-work', content: 'Verify delivery' });
+  expect(deriveSessionTodos([message('replacement-write')]).todos[0].key).toBe('stable-work');
+});

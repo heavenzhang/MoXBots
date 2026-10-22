@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, vi } from 'vitest';
 
+import { DSH_DELEGATION_CONFIRMATION_HOOK_ID } from './delegation-gate';
 import type { DshProductExtensionSource } from './extension-compiler';
 import {
   compileDshExtensionSnapshot,
@@ -85,7 +86,7 @@ describe('DSH declarative extension compiler', () => {
       return { name: name!, description: 'Fixture', contentSha256: sha256(content), path, scope: 'user' as const, sourceId: 'global' };
     });
     const plane = compileDshProductExtensionPlane(source({ skills }));
-    expect(plane.snapshot.components.map(component => component.id)).toEqual(['guidance', 'user-only']);
+    expect(plane.snapshot.components.map(component => component.id)).toEqual(['guidance', 'user-only', DSH_DELEGATION_CONFIRMATION_HOOK_ID]);
     expect(plane.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'guidance', code: 'dsh_skill_tool_guidance', state: 'applied' }),
       expect.objectContaining({ id: 'forked', code: 'dsh_skill_execution_context_unsupported', state: 'unsupported' }),
@@ -175,6 +176,7 @@ describe('DSH declarative extension compiler', () => {
       'mcp',
       'mcp',
       'host_tool',
+      'hook',
     ]);
     expect(plane.snapshot.resources).toEqual(expect.arrayContaining([
       expect.objectContaining({ kind: 'skill_document', content: skillContent }),
@@ -355,7 +357,7 @@ describe('DSH declarative extension compiler', () => {
       }],
       hostToolDispatcher: { descriptors: [], dispatch: vi.fn(), dispose: vi.fn() },
     }));
-    expect(degraded.snapshot.components).toEqual([]);
+    expect(degraded.snapshot.components.map(component => component.id)).toEqual([DSH_DELEGATION_CONFIRMATION_HOOK_ID]);
     expect(degraded.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'dsh_mcp_credential_revision_missing', state: 'unsupported' }),
       expect.objectContaining({ code: 'dsh_host_tool_schema_invalid', state: 'failed' }),
@@ -398,7 +400,7 @@ describe('DSH declarative extension compiler', () => {
       },
     }));
 
-    expect(plane.snapshot.components).toEqual([]);
+    expect(plane.snapshot.components.map(component => component.id)).toEqual([DSH_DELEGATION_CONFIRMATION_HOOK_ID]);
     expect(plane.hostToolBindings).toEqual([]);
     expect(plane.diagnostics).toContainEqual(expect.objectContaining({
       component: 'host_tools',
@@ -438,7 +440,7 @@ describe('DSH declarative extension compiler', () => {
       }],
     }));
 
-    expect(plane.snapshot.components).toEqual([]);
+    expect(plane.snapshot.components.map(component => component.id)).toEqual([DSH_DELEGATION_CONFIRMATION_HOOK_ID]);
     expect(plane.snapshot.resources).toEqual([]);
     expect(plane.expectedSkillNames).toEqual([]);
     expect(plane.diagnostics).toEqual(expect.arrayContaining([

@@ -547,13 +547,14 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     return handle;
   }
 
-  async sendMessage(process: RuntimeProcess, message: string, images?: ResolvedImagePayload[]): Promise<void> {
+  async sendMessage(process: RuntimeProcess, message: string, images?: ResolvedImagePayload[], options?: Parameters<AgentRuntime['sendMessage']>[3]): Promise<void> {
     const content = buildMessageContent(message, images);
     const userMsg = {
       type: 'user',
       message: { role: 'user', content },
       parent_tool_use_id: null,
     };
+    options?.beforeDispatch?.();
     await process.writeLine(JSON.stringify(userMsg));
   }
 

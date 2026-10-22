@@ -1,3 +1,7 @@
+import type { SessionPlanTurnScope } from '../session-engine/session-plan-policy';
+import type { DispatchGuardResult } from '../session-core/turn-queue';
+import { projectOrchestrationProgress } from '../../shared/sessionTaskOrchestration';
+import { assertSessionPlanRootDispatch, canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
 import { deriveSessionWorkProgress } from '../../shared/sessionWorkProgress';
 import { desktopContextOf } from '../../shared/agentMentions';
 import { runtimeProviderAnalytics } from '../session-core/turn-analytics';
@@ -424,6 +428,7 @@ import {
   isExternalTurnPromotionInFlight,
   markExternalSessionComplete,
   getExternalExecutionTurnId,
+  getExternalCurrentTurnIdentity,
   markExternalTurnComplete,
   markExternalTurnStarted,
   notifyExternalTurnOutcome,
@@ -681,11 +686,26 @@ function clearPendingExternalProcessConfigRestarts(): void {
   setManagedCodexExtensionRestartPending(false);
 }
 
-function pendingExternalProcessConfigRestartReasons(): string[] {
+/** Ownerless turns must not inherit the process's original Task owner. */
+function currentExternalPlanTurn(): SessionPlanTurnScope {
+  return { queueId: getExternalExecutionTurnId() ?? undefined, owner: getExternalCurrentTurnIdentity()?.owner };
+}
+
+/** Native Codex freezes tool availability at launch; only its lifecycle owner replaces it. */
+function externalSubagentDelegationRestartRequired(turn?: SessionPlanTurnScope | null): boolean {
+  const active = getExternalActivePair();
+  const sessionId = getExternalLifecycleSessionId();
+  return !!active && active.runtime.type === 'codex' && !active.process.exited && !!sessionId
+    && typeof active.process.subagentDelegationEnabledAtLaunch === 'boolean'
+    && active.process.subagentDelegationEnabledAtLaunch !== canSessionDelegateSubagents(sessionId, turn ?? currentExternalPlanTurn());
+}
+
+function pendingExternalProcessConfigRestartReasons(turn?: SessionPlanTurnScope | null): string[] {
   return [
     ...(pendingExternalProxyRestart ? ['proxy'] : []),
     ...(pendingExternalOfficialToolsRestart ? ['official-tools'] : []),
     ...(pendingExternalCapabilityRestart ? ['capabilities'] : []),
+    ...(externalSubagentDelegationRestartRequired(turn) ? ['subagent-delegation'] : []),
     ...(isManagedCodexExtensionRestartPending()
       ? ['managed-codex-extensions']
       : []),
@@ -699,12 +719,13 @@ function invalidateExternalMcpProjection(): void {
 
 function applyPendingExternalProcessConfigInvalidation(
   preservePromotion?: ExternalTurnPromotionToken | null,
+  delegationTurn?: SessionPlanTurnScope,
 ): Promise<void> {
   if (externalProcessConfigInvalidationInFlight) {
     return externalProcessConfigInvalidationInFlight;
   }
 
-  const reasons = pendingExternalProcessConfigRestartReasons();
+  const reasons = pendingExternalProcessConfigRestartReasons(delegationTurn);
   if (reasons.length === 0) return Promise.resolve();
   const proxyOriginalKey = pendingExternalProxyRestartOriginalKey;
 
@@ -1788,6 +1809,11 @@ function broadcastExternalSubagentLifecycle(
   parentToolUseId: string,
   lifecycle: SubagentLifecycle,
 ): void {
+  observeSessionTasksInBackground(getCurrentExternalBoundSessionId(), { attempts: [{
+    id: `${parentToolUseId}:${lifecycle.activation?.id ?? 'initial'}`, toolUseId: parentToolUseId,
+    agentId: lifecycle.agentId, nativeTaskId: lifecycle.taskId, title: lifecycle.description ?? parentToolUseId,
+    lifecycle, executionVerified: true,
+  }] });
   broadcast('chat:subagent-status', { parentToolUseId, lifecycle });
   recordRuntimeActivity();
 }
@@ -3634,8 +3660,8 @@ function persistExternalPartialAssistantProjection(
 export function getExternalWorkProgressSnapshot() {
   const messages = getExternalTranscriptSessionId() === getCurrentExternalBoundSessionId() ? getExternalSessionMessagesSnapshot() : [];
   const streaming = getExternalLiveAssistantMessage();
-  return deriveSessionWorkProgress(streaming ? [...messages.filter(message => message.id !== streaming.id), streaming] : messages,
-    { live: true, runtimePlan: getExternalAgentPlan() });
+  return projectOrchestrationProgress(deriveSessionWorkProgress(streaming ? [...messages.filter(message => message.id !== streaming.id), streaming] : messages,
+    { live: true, runtimePlan: getExternalAgentPlan() }), getSessionMetadata(getCurrentExternalBoundSessionId())?.taskOrchestration, messages);
 }
 
 export function getExternalLiveSessionSnapshot(targetSessionId: string): {
@@ -4502,6 +4528,9 @@ export async function startExternalSession(options: {
   metadataBirthPending?: boolean;
   /** Internal: false when a per-message snapshot should not overwrite desired last* state. */
   recordConfigState?: boolean;
+  beforeNativeDispatch?: () => void;
+  onNativeDispatchAcknowledged?: () => void;
+  onDispatchDeferred?: () => void;
   dispatchPromotion?: ExternalTurnPromotionToken;
   activityFacts?: SessionActivityTurnFacts;
   turnBinding?: ExternalTurnBindingInput;
@@ -4552,6 +4581,9 @@ async function _doStartExternalSession(options: {
   envPolicy?: import('../../shared/types/runtime').RuntimeEnvPolicy;
   metadataBirthPending?: boolean;
   recordConfigState?: boolean;
+  beforeNativeDispatch?: () => void;
+  onNativeDispatchAcknowledged?: () => void;
+  onDispatchDeferred?: () => void;
   dispatchPromotion?: ExternalTurnPromotionToken;
   activityFacts?: SessionActivityTurnFacts;
   turnBinding?: ExternalTurnBindingInput;
@@ -4849,7 +4881,7 @@ async function _doStartExternalSession(options: {
         options.turnBinding.onTerminal,
       );
     }
-    if (!messageOperation.context.asyncQuestionReply) {
+    if (!messageOperation.context.asyncQuestionReply && !options.beforeNativeDispatch) {
     notifyExternalMessageDispatchAccepted(
       messageOperation,
       options.sessionId,
@@ -5030,6 +5062,11 @@ async function _doStartExternalSession(options: {
         // Stop invalidate the promotion while initialize/resume is still
         // awaiting and before any runtime can consume the prompt.
         initialTurn: runtimeInitialTurn,
+        canDelegateSubagents: () => currentEventReceiver === receive
+          && getExternalRuntimeGeneration() === nativeGeneration
+          && getExternalLifecycleSessionId() === options.sessionId
+          && canSessionDelegateSubagents(options.sessionId,
+            currentExternalPlanTurn()),
         systemPromptAppend,
         ...(dshSystemContext === undefined
           ? {}
@@ -5211,6 +5248,11 @@ async function _doStartExternalSession(options: {
       });
       await dshProductTail;
     }
+    const beforeNativeDispatch = options.beforeNativeDispatch ? () => {
+      assertExternalTurnPromotionCurrent(options.dispatchPromotion ?? null);
+      options.beforeNativeDispatch!();
+      if (options.dispatchPromotion) finishExternalTurnPromotion(options.dispatchPromotion, { status: 'dispatched' });
+    } : undefined;
     let deferredInitialDispatched = false;
     if (deferInitialAdmission) {
       if (recoveredDshRootInFlight) {
@@ -5221,11 +5263,12 @@ async function _doStartExternalSession(options: {
         }
         if (options.dispatchPromotion)
           finishExternalTurnPromotion(options.dispatchPromotion);
+        options.onDispatchDeferred?.();
         enqueueExistingExternalMessageOperation({
           ...options.messageOperation,
           context: {
             ...options.messageOperation.context,
-            beforeDispatch: undefined,
+            beforeDispatch: options.messageOperation.context.beforeDispatch,
           },
           deferredDispatchAccepted: options.onDispatchAccepted,
         });
@@ -5238,7 +5281,7 @@ async function _doStartExternalSession(options: {
             'Deferred DSH input is missing its Product user identity',
           );
         }
-        if (options.dispatchPromotion) {
+        if (options.dispatchPromotion && !beforeNativeDispatch) {
           assertExternalTurnPromotionCurrent(options.dispatchPromotion);
           finishExternalTurnPromotion(options.dispatchPromotion, {
             status: 'dispatched',
@@ -5251,8 +5294,12 @@ async function _doStartExternalSession(options: {
           {
             clientUserMessageId,
             clientOperationId: options.messageOperation?.dshClientOperationId,
+            beforeDispatch: beforeNativeDispatch,
           },
         );
+        options.onNativeDispatchAcknowledged?.();
+        if (beforeNativeDispatch && options.messageOperation && !options.messageOperation.context.asyncQuestionReply)
+          notifyExternalMessageDispatchAccepted(options.messageOperation, options.sessionId, options.onDispatchAccepted);
         deferredInitialDispatched = true;
       }
     }
@@ -5263,7 +5310,7 @@ async function _doStartExternalSession(options: {
     ) {
       assertExternalTurnPromotionCurrent(options.dispatchPromotion);
       if (process.exited || getExternalActiveProcess() !== process) return;
-      finishExternalTurnPromotion(options.dispatchPromotion, {
+      if (!beforeNativeDispatch) finishExternalTurnPromotion(options.dispatchPromotion, {
         status: 'dispatched',
       });
       await runtime.sendMessage(
@@ -5274,8 +5321,12 @@ async function _doStartExternalSession(options: {
           clientUserMessageId:
             options.messageOperation?.userProjection.message.id,
           clientOperationId: options.messageOperation?.dshClientOperationId,
+          beforeDispatch: beforeNativeDispatch,
         },
       );
+      options.onNativeDispatchAcknowledged?.();
+      if (beforeNativeDispatch && options.messageOperation && !options.messageOperation.context.asyncQuestionReply)
+        notifyExternalMessageDispatchAccepted(options.messageOperation, options.sessionId, options.onDispatchAccepted);
       if (options.messageOperation && persistInitialQuestionReply) {
         await admitExternalAsyncQuestionReply(
           options.messageOperation,
@@ -5458,13 +5509,14 @@ function resolveTurnReasoningEffort(
 
 async function evaluateExternalDispatchGuard(
   guard: ExternalSendContext['beforeDispatch'],
-): Promise<{ accepted: true } | { accepted: false; error: string }> {
+): Promise<DispatchGuardResult> {
   if (!guard) return { accepted: true };
   try {
     const result = await guard();
     return result.accepted
-      ? { accepted: true }
+      ? result
       : {
+          ...result,
           accepted: false,
           error: result.error ?? result.code ?? 'Goal admission is stale',
         };
@@ -5626,6 +5678,11 @@ async function dispatchExternalMessageOperation(
   operation: ExternalMessageOperation,
   onDispatchAccepted: (() => void) | undefined,
 ): Promise<ExternalSendResult> {
+  const validatePlanAdmission = () => assertSessionPlanRootDispatch(operation.context.sessionId,
+    getExternalActivePair()?.runtime.type ?? getCurrentRuntimeType(),
+    { queueId: operation.context.queueId, owner: operation.context.turnOwner });
+  try { validatePlanAdmission(); }
+  catch (error) { return { queued: false, error: error instanceof Error ? error.message : 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE' }; }
   const hasInputImages = images && images.length > 0;
   if (hasInputImages && !context?.sessionId) {
     return { queued: false, error: '图片附件缺少会话上下文，无法发送' };
@@ -5686,11 +5743,13 @@ async function dispatchExternalMessageOperation(
   // The promotion is the pre-dispatch identity for guarded Task/Goal turns.
   // Bind it before any lifecycle/busy wait so an exact queueId stop can cancel
   // this pending send without stopping the unrelated turn currently running.
+  let cancellation: Promise<void> | undefined;
+  const cancelGuard = (): Promise<void> => cancellation ??= Promise.resolve().then(() => context?.beforeDispatch?.cancel?.());
   let dispatchPromotion = context?.beforeDispatch
     ? beginExternalTurnPromotion({
         queueId: context.queueId,
         owner: context.turnOwner,
-        cancelDispatch: context.beforeDispatch.cancel,
+        cancelDispatch: () => { void cancelGuard().catch(error => console.warn('[external-session] dispatch rollback failed:', String(error))); },
       })
     : null;
   if (context?.beforeDispatch && !dispatchPromotion) {
@@ -5699,8 +5758,9 @@ async function dispatchExternalMessageOperation(
       error: 'external_busy: another turn is being promoted',
     };
   }
-  const canceledBeforeDispatch = (): { queued: false } => {
+  const canceledBeforeDispatch = async (): Promise<{ queued: false }> => {
     if (dispatchPromotion) finishExternalTurnPromotion(dispatchPromotion);
+    await cancelGuard();
     return { queued: false };
   };
   const ensureInitialDispatchPromotion = (): boolean => {
@@ -5796,6 +5856,13 @@ async function dispatchExternalMessageOperation(
   );
   if (terminalObserverWait.canceled) return canceledBeforeDispatch();
 
+  let nativeBoundaryEntered = false;
+  let dispatchDeferred = false;
+  let commitRollback: Promise<void> | undefined;
+  const cancelKnownUnsentGuard = async (): Promise<void> => {
+    await commitRollback;
+    await cancelGuard();
+  };
   const guardWait = await awaitDuringExternalTurnPromotion(
     evaluateExternalDispatchGuard(context?.beforeDispatch),
     dispatchPromotion,
@@ -5804,12 +5871,38 @@ async function dispatchExternalMessageOperation(
   const guarded = guardWait.value;
   if (!guarded.accepted) {
     if (dispatchPromotion) finishExternalTurnPromotion(dispatchPromotion);
+    commitRollback = guarded.rollbackBeforeReject;
+    await cancelKnownUnsentGuard();
     return { queued: false, error: guarded.error };
   }
   if (dispatchPromotion && !isExternalTurnPromotionCurrent(dispatchPromotion)) {
     return canceledBeforeDispatch();
   }
 
+  const beforeNativeDispatch = () => {
+    validatePlanAdmission();
+    if (nativeBoundaryEntered) throw new Error('External operation already entered native dispatch');
+    const result = guarded.validateAtCommit?.() ?? { accepted: true };
+    if (!result.accepted || getExternalLifecycleSessionId() !== operation.context.sessionId) {
+      commitRollback = result.rollbackBeforeReject;
+      throw new Error(result.error ?? result.code ?? 'External dispatch lease is stale');
+    }
+    // No await may separate this callback from native root dispatch.
+    nativeBoundaryEntered = true;
+  };
+  const onNativeDispatchAcknowledged = (): void => {
+    if (!context?.beforeDispatch || nativeBoundaryEntered) return;
+    // Older native/compatibility sends can acknowledge after an early terminal
+    // without calling the new entry callback. A successful native send is
+    // consumption evidence; it can settle promotion, never a missing validator.
+    nativeBoundaryEntered = true;
+    // Retire pre-dispatch cancellation before failure cleanup can stop the
+    // process: this acknowledgement may already have caused native effects.
+    if (dispatchPromotion && isExternalTurnPromotionCurrent(dispatchPromotion))
+      finishExternalTurnPromotion(dispatchPromotion, { status: 'dispatched' });
+    if (guarded.validateAtCommit) throw new Error('Runtime acknowledged a root turn without its required final dispatch validator');
+  };
+  try {
   let runtimeText = text;
   let skillAdmission: ExternalSkillAdmission;
   try {
@@ -5873,10 +5966,10 @@ async function dispatchExternalMessageOperation(
   // that invalid prompt/env owner: retry invalidation before selecting Case 3.
   if (
     externalProcessConfigInvalidationInFlight ||
-    pendingExternalProcessConfigRestartReasons().length > 0
+    pendingExternalProcessConfigRestartReasons({ queueId: context?.queueId, owner: context?.turnOwner }).length > 0
   ) {
     try {
-      await applyPendingExternalProcessConfigInvalidation();
+      await applyPendingExternalProcessConfigInvalidation(dispatchPromotion, { queueId: context?.queueId, owner: context?.turnOwner });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (dispatchPromotion) finishExternalTurnPromotion(dispatchPromotion);
@@ -6006,6 +6099,9 @@ async function dispatchExternalMessageOperation(
         metadataBirthPending: context.metadataBirthPending,
         recordConfigState: !hasQueuedExternalConfigOperation(),
         dispatchPromotion: dispatchPromotion ?? undefined,
+        beforeNativeDispatch,
+        onNativeDispatchAcknowledged,
+        onDispatchDeferred: () => { dispatchDeferred = true; },
         activityFacts,
         turnBinding: context.queueId
           ? {
@@ -6093,6 +6189,9 @@ async function dispatchExternalMessageOperation(
         metadataBirthPending: context?.metadataBirthPending,
         recordConfigState: !hasQueuedExternalConfigOperation(),
         dispatchPromotion: dispatchPromotion ?? undefined,
+        beforeNativeDispatch,
+        onNativeDispatchAcknowledged,
+        onDispatchDeferred: () => { dispatchDeferred = true; },
         activityFacts,
         turnBinding: context?.queueId
           ? {
@@ -6210,10 +6309,10 @@ async function dispatchExternalMessageOperation(
     if (context?.queueId) {
       bindExternalTurn(context.queueId, context.turnOwner, context.onTerminal);
     }
-    if (dispatchPromotion) {
+    if (dispatchPromotion && !beforeNativeDispatch) {
       finishExternalTurnPromotion(dispatchPromotion, { status: 'dispatched' });
     }
-    if (!operation.context.asyncQuestionReply) {
+    if (!operation.context.asyncQuestionReply && !beforeNativeDispatch) {
     notifyExternalMessageDispatchAccepted(
       operation,
       getExternalLifecycleSessionId(),
@@ -6254,7 +6353,7 @@ async function dispatchExternalMessageOperation(
     if (activeProcess.exited || getExternalActiveProcess() !== activeProcess) {
       return { queued: !operation.context.asyncQuestionReply };
     }
-    runtimeDispatchStarted = true;
+    runtimeDispatchStarted = !beforeNativeDispatch;
     await activeRuntime.sendMessage(
       activeProcess,
       runtimeText,
@@ -6262,8 +6361,18 @@ async function dispatchExternalMessageOperation(
       {
         clientUserMessageId: userMsg.id,
         clientOperationId: operation.dshClientOperationId,
+        beforeDispatch: beforeNativeDispatch ? () => {
+          assertExternalTurnPromotionCurrent(dispatchPromotion);
+          if (activeProcess.exited || getExternalActiveProcess() !== activeProcess) throw new ExternalTurnPromotionCanceledError();
+          beforeNativeDispatch();
+          runtimeDispatchStarted = true;
+          if (dispatchPromotion) finishExternalTurnPromotion(dispatchPromotion, { status: 'dispatched' });
+        } : undefined,
       },
     );
+    onNativeDispatchAcknowledged();
+    if (!operation.context.asyncQuestionReply)
+      notifyExternalMessageDispatchAccepted(operation, operation.context.sessionId, onDispatchAccepted);
     if (operation.context.asyncQuestionReply) {
       await admitExternalAsyncQuestionReply(
         operation,
@@ -6279,7 +6388,7 @@ async function dispatchExternalMessageOperation(
     };
   } catch (err) {
     if (
-      !runtimeDispatchStarted &&
+      !runtimeDispatchStarted && !nativeBoundaryEntered &&
       turnAdmissionActivated &&
       (getExternalUserRequestedStop() ||
         getExternalActiveProcess() !== activeProcess)
@@ -6295,7 +6404,7 @@ async function dispatchExternalMessageOperation(
       return { queued: false };
     }
     const msg = err instanceof Error ? err.message : String(err);
-    if (runtimeDispatchStarted) {
+    if (runtimeDispatchStarted || nativeBoundaryEntered) {
       const stopped = await stopExternalSession({ reason: 'failure', preserveQueue: true });
       if (!stopped && hasExternalRuntimeProcess()) {
         if (dispatchPromotion) {
@@ -6335,6 +6444,11 @@ async function dispatchExternalMessageOperation(
     });
     return { queued: false, error: msg };
   }
+  } finally {
+    // Native callback entered means the RPC/stdin result may be uncertain: never release that claim.
+    if (context?.beforeDispatch && !nativeBoundaryEntered && !dispatchDeferred) await cancelKnownUnsentGuard();
+  }
+
 }
 
 type ExternalRealtimeSteerDispatch = {
@@ -6351,10 +6465,43 @@ async function steerExternalMessage(input: {
   generation: number;
 }): Promise<ExternalRealtimeSteerDispatch> {
   const userMsg = input.operation.userProjection.message;
+  let commitRollback: Promise<void> | undefined;
+  const rejectUnsent = async (error: unknown, rollback?: Promise<void>): Promise<ExternalRealtimeSteerDispatch> => {
+    await rollback;
+    await input.context.beforeDispatch?.cancel?.();
+    markExternalUserMessageRetracted(input.operation);
+    broadcast('queue:cancelled', { queueId: input.queueId });
+    return { result: { queued: false, error: error instanceof Error ? error.message : String(error) } };
+  };
+  const validateSession = () => {
+    if (!isCurrentExternalOperationGeneration(input.generation)
+      || getExternalLifecycleSessionId() !== input.context.sessionId)
+      throw new Error('External realtime input Session/generation changed');
+  };
+  try { validateSession(); } catch (error) { return rejectUnsent(error); }
   const active = getExternalActiveSteerPair();
   if (!active) {
     return deferRealtimeOperationToTurnBoundary(input);
   }
+
+  // Realtime input belongs to the active original native root, never the
+  // arriving Desktop/Inbox operation's optional owner or source text.
+  const turnScope = currentExternalPlanTurn();
+  const turnStartedAt = getExternalTurnStartTime();
+  const runtimeSessionId = getExternalRuntimeSessionId();
+  const validateRealtimeAdmission = () => {
+    validateSession();
+    const current = getExternalActivePair();
+    const owner = currentExternalPlanTurn();
+    if (active.process.exited || current?.process !== active.process || current.runtime !== active.runtime
+      || getExternalRuntimeSessionId() !== runtimeSessionId
+      || getExternalExecutionTurnId() !== turnScope.queueId
+      || getExternalTurnStartTime() !== turnStartedAt
+      || owner.owner?.kind !== turnScope.owner?.kind || owner.owner?.id !== turnScope.owner?.id)
+      throw new Error('External realtime input native turn owner changed');
+    assertSessionPlanRootDispatch(input.context.sessionId, active.runtime.type, turnScope);
+  };
+  try { validateRealtimeAdmission(); } catch (error) { return rejectUnsent(error); }
 
   let resolvedImages: ResolvedImagePayload[] | undefined;
   try {
@@ -6376,9 +6523,10 @@ async function steerExternalMessage(input: {
     input.context.beforeDispatch,
   );
   if (!guarded.accepted) {
-    broadcast('queue:cancelled', { queueId: input.queueId });
-    return { result: { queued: false, error: guarded.error } };
+    return rejectUnsent(guarded.error ?? 'External realtime input rejected', guarded.rollbackBeforeReject);
   }
+
+  try { validateRealtimeAdmission(); } catch (error) { return rejectUnsent(error, guarded.rollbackBeforeReject); }
 
   const steerOrigin =
     input.context.analyticsOrigin ??
@@ -6411,6 +6559,7 @@ async function steerExternalMessage(input: {
   }
   const admission = Promise.withResolvers<void>();
   let dshIntentPersisted = false;
+  let nativeBoundaryEntered = false;
   void admission.promise.catch(() => undefined);
   registerPendingRealtimeSteeredUserMessage({
     queueId: input.queueId,
@@ -6440,6 +6589,16 @@ async function steerExternalMessage(input: {
       resolvedImages && resolvedImages.length > 0 ? resolvedImages : undefined,
       {
         clientUserMessageId: userMsg.id,
+        beforeNativeDispatch: () => {
+          validateRealtimeAdmission();
+          if (nativeBoundaryEntered) throw new Error('External realtime input already entered native dispatch');
+          const lease = guarded?.validateAtCommit?.();
+          if (lease && !lease.accepted) {
+            commitRollback = lease.rollbackBeforeReject;
+            throw new Error(lease.error ?? lease.code ?? 'External realtime dispatch lease is stale');
+          }
+          nativeBoundaryEntered = true;
+        },
         ...(userMsg.runtimeOperationAnchor?.runtime === 'dsh'
           ? {
               clientOperationId:
@@ -6502,7 +6661,18 @@ async function steerExternalMessage(input: {
       return deferRealtimeOperationToTurnBoundary(input);
     }
     const message = err instanceof Error ? err.message : String(err);
-    if (dshIntentPersisted) {
+    if (!nativeBoundaryEntered) {
+      if (dshIntentPersisted) {
+        const anchor = userMsg.runtimeOperationAnchor!;
+        const settled = await settleDshInput({ sessionId: input.context.sessionId,
+          clientOperationId: anchor.clientOperationId, clientUserMessageId: userMsg.id, state: 'cancelled' });
+        if (!settled.success) return { result: { queued: true } };
+      }
+      await commitRollback;
+      await guarded.rollbackBeforeReject;
+      await input.context.beforeDispatch?.cancel?.();
+    }
+    if (dshIntentPersisted && nativeBoundaryEntered) {
       console.warn(
         '[external-session] DSH realtime input awaits native receipt reconciliation',
       );
@@ -10753,6 +10923,16 @@ function applyUnifiedEvent(event: UnifiedEvent): void {
     case 'tool_result': {
       const product = getExternalProductContent();
       const target = product?.tool(event.toolUseId);
+      if (!event.subAgent && !event.nativeSource?.parentToolUseId && target) {
+        const tool = product!.readTool(target);
+        const taskSessionId = getCurrentExternalBoundSessionId();
+        trackInFlightSave(confirmSessionTaskReviewFromRootTool(taskSessionId, {
+          isCurrent: () => getCurrentExternalBoundSessionId() === taskSessionId && getExternalExecutionTurnId() === eventExecutionTurnId,
+          name: typeof tool?.name === "string" ? tool.name : undefined,
+          id: event.toolUseId, input: tool?.parsedInput ?? tool?.inputJson ?? tool?.input, output: event.content,
+          root: true, isError: event.isError,
+        }));
+      }
       if (target) {
         product!.confirmText(target, 'result', event.content);
         product!.updateTool(
@@ -11271,6 +11451,7 @@ function applyUnifiedEvent(event: UnifiedEvent): void {
 
     case 'agent_plan_update': {
       setExternalAgentPlan(event.todos);
+      observeSessionTasksInBackground(getCurrentExternalBoundSessionId(), { plan: event.todos, planTurnId: getExternalExecutionTurnId() ?? undefined });
       broadcast('chat:agent-plan-update', {
         sessionId: getExternalLifecycleSessionId() || null,
         todos: event.todos,
