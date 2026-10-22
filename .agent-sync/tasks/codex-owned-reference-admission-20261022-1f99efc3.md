@@ -14,7 +14,7 @@ Parent: SALARY-RECOVERY-20261020. Canonical: https://github.com/heavenzhang/MoXB
 - [x] Reproduce owned-only directory selector failure through actual registry/source entry.
 - [x] Resolve unique full service/network with the existing valid owned binding/actor; reject ambiguous/retired/changed/disabled identities without selected fallback.
 - [x] Run risk-specific Rust regressions and necessary static checks; retain red/green evidence outside Git.
-- [ ] Commit and push feature; root independent review and sole publisher integration/native acceptance remain separate.
+- [x] Commit reviewable feature and preserve concurrent main; remote synchronization is verified by the handoff gate outside this record. Root independent review and sole publisher integration/native acceptance remain separate.
 
 ## Boundaries and ownership
 
@@ -30,7 +30,7 @@ Desktop deployment owner remains 01a12bc2-907a-7702-b6dd-788225c5dfe4. Frozen 0.
 - Static: git diff --check and Rust1.92 formatting of actor/new registry spans pass. Unrelated pre-existing formatting preserved. Full test library compiles; no formal App build/package.
 - Own target is APFS-cloned from this author's earlier memory-scan test cache; ignored test resource fixtures remain only in this isolated tree and are not staged. The legacy fixture now reads selected directly instead of view(), avoiding device-ID IO. An initial reused legacy helper read the already-existing non-secret myagents device-ID; its file metadata predates this test (2026-10-11), with no state write observed.
 - Three input SHA256 hashes match root assignment. Evidence: project-pointer `work/salary-recovery-20261020/owned-reference-admission-20261022/{red-behavior.log,red-test.patch,green-final.log,legacy-routing-control.log,static-checks.log,verification.json}`.
-- Main advanced during tests to3f820422d8b6bc68dd69285fe157bb33669aeefb (PR188 chat navigation); all four routing/actor/source/Calls source files match the original base byte for byte before our changes. Preserve that concurrent main via a normal merge before remote handoff.
+- Main advanced during tests to3f820422d8b6bc68dd69285fe157bb33669aeefb (PR188 chat navigation); all four routing/actor/source/Calls source files match the original base byte for byte before our changes. Normal merge preserved that concurrent main; only the appended shared-plan sections conflicted and both were retained. No task Rust/spec bytes changed in that merge.
 
 ## Delivery and acceptance
 
