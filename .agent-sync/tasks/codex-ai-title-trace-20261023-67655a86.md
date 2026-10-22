@@ -16,13 +16,13 @@ Close the observed acceptance gap in the already-merged AI summary title repair.
 - [x] Emit correlated request, actual SDK/runtime terminal and returned-title hash through existing Node UnifiedLogger; no raw prompt/title/error, credential, endpoint or workspace payload.
 - [x] Keep one inference call, original prompts, runtime/auth source, timeouts, cancellation, cleanup and manual-title CAS unchanged; forward external Product Session correlation only.
 - [x] Final39 affected synthetic tests, full TypeScript, scoped lint, classification and source review; dependency scan0errors/18existing warnings.
-- [ ] Explicit-file commit/push, exact remote head and handoff gate.
+- [x] Explicit-file implementation commit/push and exact remote head/handoff gate PASS; final documentation-only head is rechecked after its push.
 - [ ] Existing sole owner review/shared CI/main integration and next unfrozen desktop batch.
 - [ ] Updated actual-client same-artifact real Provider trace + auto/attempt metadata + native sidebar/tab/reopen acceptance.
 
 ## Completed
 
-Source implementation and focused regression coverage are prepared. The original codex/ai-title-20261022 head2df and its worktree remain clean. No shared CI/PR/build/sign/notary/install/GUI/model invocation has been performed by this lane. One agent handles this tightly coupled logging path; no delegated worker or external model is needed.
+Source implementation,39 affected tests and verification contract are committed and remotely handed off. The original codex/ai-title-20261022 head2df and its worktree remain clean. No shared CI/PR/build/sign/notary/install/GUI/model invocation has been performed by this lane. One agent handles this tightly coupled logging path; no delegated worker or external model is needed.
 
 ## Verification
 
@@ -34,8 +34,8 @@ Unit: desktop client/macOS-arm64 updater plus Sidecar. Sole CI/main/version/buil
 
 ## Blockers and unknowns
 
-New source is not yet remotely handed off, merged, released or real-tested. Existing private519.2 native title metadata/reopen claims cannot retroactively supply absent utility call/return evidence. Actual requested model and SDK-reported model IDs have different meanings; usage metadata is not billing proof. Diagnostic request alone does not prove inference or persistence; successful terminal, returned-title hash and actual Store/native state must agree. Result logs are best effort, so missing records remain an explicit evidence gap.
+Implementation source remote handoff passed; final documentation-only head is rechecked before owner dispatch. New source is not yet owner-integrated into main, released or real-tested. Existing private519.2 native title metadata/reopen claims cannot retroactively supply absent utility call/return evidence. Actual requested model and SDK-reported model IDs have different meanings; usage metadata is not billing proof. Diagnostic request alone does not prove inference or persistence; successful terminal, returned-title hash and actual Store/native state must agree. Result logs are best effort, so missing records remain an explicit evidence gap.
 
 ## Next step
 
-Finish the affected checks and source review, commit/push this isolated branch and hand its exact SHA to the existing owner. Continue the original task through remote main, owner formal release/update and real-client title acceptance; never treat synthetic trace events or an older artifact as completion.
+Hand the final remote SHA and retained checks to the existing owner for review/shared CI and the next unfrozen artifact. Continue the original task through remote main, owner formal release/update and real-client title acceptance; never treat synthetic trace events or an older artifact as completion.

@@ -14,7 +14,8 @@ No new SDK request, tool, persistence authority, route, setting, retry, timeout 
 - [x] Full TypeScript, scoped ESLint, test classification.
 - [x] Dependency boundary scan: zero errors, eighteen pre-existing warnings; new helper uses the existing logger-context leaf, not a second log writer.
 - [x] Source review: no added inference, no prompt/routing changes, retained cleanup and runtimeSource, and explicit Product Session forwarding. Initial integration expectation failure retained in local raw logs, then corrected to require the new correlation argument; all39 pass.
-- [ ] Exact remote handoff, owner review/shared CI and main integration.
+- [x] Implementation commit exact remote/handoff gate passed; final documentation-only head rechecked after push.
+- [ ] Owner review/shared CI and main integration.
 - [ ] Owner next unfrozen desktop version/artifact, formal publication and installation.
 - [ ] Real Provider/native acceptance on that updated artifact.
 

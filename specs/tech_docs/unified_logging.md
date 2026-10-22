@@ -268,9 +268,7 @@ HTTP client 的错误文本通常携带完整请求 URL。若协议把凭据放�
 
 推荐前缀固定为 `[record]`、`[recording]`、`[speech]`。面向用户的原始错误可以走既有产品返回契约，但写日志前必须投影为稳定 code/metadata，不能把路径或用户内容夹在 `format!("{error}")` 中。
 
-## 文件结构
-
-### 会话标题模型调用
+## 会话标题模型调用
 
 `title-generator.ts` 在既有 SDK/external utility 边界通过 `title-generation-trace.ts`
 输出低频 `[title-generation]` 语义记录，仍由 Node UnifiedLogger 单一持久化，
@@ -289,6 +287,8 @@ workspace 或原始错误。请求模型和 SDK 报告模型是不同证据，�
 `result` 只证明生成器返回，不证明人工命名 CAS 之后已落盘，仍须检查
 `titleSource=auto`、尝试记录及原生侧栏/标签和重开结果。取消后的迟到事件不能补写成功证明。
 日志为 best effort；缺失记录不能被截图、metadata 或合成测试替代，也不能追认为旧制品已有证据。
+
+## 文件结构
 
 ```
 ~/.myagents/
