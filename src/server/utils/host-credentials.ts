@@ -85,6 +85,18 @@ export function readHostSystemdCredential(name: string, maxBytes: number): Buffe
   } finally { closeSync(fd); }
 }
 
+/** Read-only catalog check. It neither opens systemd files nor grants execution. */
+export function hasConfiguredProviderCredential(value: string | undefined, providerId: string): boolean {
+  if (!value?.trim()) return false;
+  if (value.startsWith('host-provider-credential:')) return process.env.MYAGENTS_HOST_MODE === '1'
+    && isHostProviderId(providerId) && value === `host-provider-credential:${providerId}`;
+  if (value.startsWith(PREFIX)) return process.env.MYAGENTS_HOST_MODE === '1'
+    && /^[a-zA-Z0-9_-]{1,64}$/.test(value.slice(PREFIX.length))
+    && (process.env.MYAGENTS_HOST_CREDENTIAL_SOURCE !== 'supervisor-ipc'
+      || (providerId === 'moonshot-coding' && value === 'systemd-credential:kimi'));
+  return true;
+}
+
 /** Resolve a non-secret reference only at execution, never while loading config. */
 export function resolveHostProviderCredential(value: string | undefined): string | undefined {
   if (value?.startsWith('host-provider-credential:')) {

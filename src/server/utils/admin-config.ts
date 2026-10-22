@@ -24,11 +24,12 @@ import {
 } from 'fs';
 import { isAbsolute, resolve } from 'path';
 import { getHomeDirOrNull } from './platform';
-import { resolveHostProviderCredential, resolveHostCloudModelProvider } from './host-credentials';
+import { hasConfiguredProviderCredential, resolveHostProviderCredential, resolveHostCloudModelProvider } from './host-credentials';
 import { normalizeConfigMcpSelections, normalizeProjectMcpSelections } from '../../shared/mcpSelection';
 import { stripBom } from '../../shared/utils';
 import { resolveProviderForModel } from '../../shared/provider-model-routing';
 import { HOST_PROVIDER_LIMIT, isHostModelId, isHostProviderProfile, portableProfileToProvider } from '../../shared/hostProviderConfig';
+import type { ProviderHistoryEnv } from '../../shared/providerHistory';
 import { workspacePathsEqual } from '../../shared/workspacePath';
 import { promoteAgentMcpJsonToGlobal } from '../../shared/mcpConfig';
 import type { AppConfig, ManagedProviderCredential, ManagedProviderEndpoint, McpServerDefinition, PermissionMode, Provider, ProviderVerifyStatus, SubscriptionAuthPolicy } from '../../shared/config-types';
@@ -1201,7 +1202,15 @@ export function getProviderSelectionError(
   provider: ProviderRecord,
   config?: AdminAppConfig,
 ): string | null {
-  const c = config ?? loadConfig();
+  return providerSelectionError(provider, config ?? loadConfig(), 'execution');
+}
+
+/** Catalog readiness only: a configured reference is not an execution credential. */
+export function getProviderHistorySelectionError(provider: ProviderRecord, config?: AdminAppConfig): string | null {
+  return providerSelectionError(provider, config ?? loadConfig(), 'history');
+}
+
+function providerSelectionError(provider: ProviderRecord, c: AdminAppConfig, purpose: 'execution' | 'history'): string | null {
   if (!isProviderEnabled(provider)) {
     return `Provider '${provider.id}' is disabled.`;
   }
@@ -1216,7 +1225,9 @@ export function getProviderSelectionError(
       ? null
       : `Subscription provider '${provider.id}' is not verified. Verify its account before selecting it.`;
   }
-  return resolveProviderEnv(provider.id, c)
+  const available = purpose === 'execution' ? resolveProviderEnv(provider.id, c)
+    : resolveProviderHistoryEnv(provider.id, c) && hasConfiguredProviderCredential((c.providerApiKeys ?? {})[provider.id], provider.id);
+  return available
     ? null
     : `Provider '${provider.id}' has no usable credential. Configure its API key before selecting it.`;
 }
@@ -1347,11 +1358,31 @@ export function resolveProviderEnv(
   config?: AdminAppConfig,
   model?: string,
 ): ResolvedProviderEnv | undefined {
+  return resolveProviderEnvForPurpose(providerId, config, model, 'execution');
+}
+
+/** Non-secret comparison metadata; never suitable for Runtime execution. */
+export function resolveProviderHistoryEnv(providerId: string, config?: AdminAppConfig, model?: string): ProviderHistoryEnv | undefined {
+  return resolveProviderEnvForPurpose(providerId, config, model, 'history');
+}
+
+function providerHistoryProjection(env: ProviderHistoryEnv): ProviderHistoryEnv {
+  return { providerId: typeof env.providerId === 'string' ? env.providerId : undefined,
+    baseUrl: typeof env.baseUrl === 'string' ? env.baseUrl : undefined,
+    apiProtocol: env.apiProtocol === 'anthropic' || env.apiProtocol === 'openai' ? env.apiProtocol : undefined,
+    ...(typeof env.model === 'string' ? { model: env.model } : {}),
+    ...(env.endpointSource?.kind === 'cliproxy' && env.endpointSource.providerId === ANTIGRAVITY_SUBSCRIPTION_PROVIDER_ID
+      ? { endpointSource: { kind: 'cliproxy' as const, providerId: ANTIGRAVITY_SUBSCRIPTION_PROVIDER_ID } } : {}) };
+}
+
+function resolveProviderEnvForPurpose(providerId: string, config: AdminAppConfig | undefined, model: string | undefined, purpose: 'execution'): ResolvedProviderEnv | undefined;
+function resolveProviderEnvForPurpose(providerId: string, config: AdminAppConfig | undefined, model: string | undefined, purpose: 'history'): ProviderHistoryEnv | undefined;
+function resolveProviderEnvForPurpose(providerId: string, config: AdminAppConfig | undefined, model: string | undefined, purpose: 'execution' | 'history'): ResolvedProviderEnv | ProviderHistoryEnv | undefined {
   if (!providerId) return undefined;
 
   // This reserved namespace has a Session-only authority and never falls back
   // to a globally registered provider/key, including after expiry.
-  if (providerId.startsWith('cloud-session:')) return resolveHostCloudModelProvider(providerId, model);
+  if (providerId.startsWith('cloud-session:')) return purpose === 'execution' ? resolveHostCloudModelProvider(providerId, model) : undefined;
 
   const c = config ?? loadConfig();
   const registeredProvider = findEffectiveProvider(providerId, c);
@@ -1384,6 +1415,7 @@ export function resolveProviderEnv(
     if (providerId !== ANTIGRAVITY_SUBSCRIPTION_PROVIDER_ID
         || subscriptionAuth?.kind !== 'proxy-managed'
         || subscriptionAuth.proxy !== 'cliproxy') return undefined;
+    if (purpose === 'history') return { providerId, apiProtocol: 'anthropic', endpointSource: { kind: 'cliproxy', providerId } };
     return {
       providerId,
       providerName: typeof provider.name === 'string' ? provider.name : providerId,
@@ -1397,6 +1429,11 @@ export function resolveProviderEnv(
   if (isManagedOauth && providerId !== XAI_SUBSCRIPTION_PROVIDER_ID)
     return undefined;
 
+  const providerConfig = (provider.config ?? {}) as Record<string, unknown>;
+  if (purpose === 'history') return providerHistoryProjection({ providerId,
+    baseUrl: providerConfig.baseUrl ? String(providerConfig.baseUrl) : undefined,
+    apiProtocol: provider.apiProtocol as ProviderHistoryEnv['apiProtocol'] });
+
   // Get API key from config. PRD 0.2.9 — also reject whitespace-only keys
   // (Codex review): a value like `"  "` is truthy and would silently be
   // sent to the upstream as the Authorization header, producing an opaque
@@ -1407,7 +1444,6 @@ export function resolveProviderEnv(
   if (!isManagedOauth && (!apiKey || !apiKey.trim())) return undefined;
 
   // Extract provider config fields (same shape as frontend Chat.tsx builds)
-  const providerConfig = (provider.config ?? {}) as Record<string, unknown>;
   const result: ResolvedProviderEnv = {
     providerId,
     providerName:
@@ -1461,12 +1497,17 @@ export function materializeProviderRouteEnv(
   route: ProviderRoute | null | undefined,
   config?: AdminAppConfig,
 ): ResolvedProviderEnv | undefined {
+  return resolveProviderRouteEnv(route, config, resolveProviderEnv);
+}
+
+function resolveProviderRouteEnv<Env>(route: ProviderRoute | null | undefined, config: AdminAppConfig | undefined,
+  resolveEnv: (providerId: string, config?: AdminAppConfig, model?: string) => Env | undefined): Env | undefined {
   if (!isConcreteProviderRoute(route)) return undefined;
   if (route.kind === 'subscription') {
     const kind = resolveSubscriptionAuthKind(route.providerId, config);
     if (kind !== 'host-managed-oauth' && kind !== 'proxy-managed') return undefined;
   }
-  return resolveProviderEnv(route.providerId, config, route.model);
+  return resolveEnv(route.providerId, config, route.model);
 }
 
 /** Managed OAuth owns both the bearer and its destination. */
@@ -1893,6 +1934,24 @@ export function resolveWorkspaceConfig(
   sessionMeta?: SessionMetadata | null,
   options?: { includeMcp?: boolean; includeProviderEnv?: boolean },
 ): WorkspaceResolvedConfig {
+  return resolveWorkspaceConfigWithEnv(agentDir, sessionMeta, options, resolveProviderEnv, decodeProviderEnvSnapshot);
+}
+
+/** Resolve history through the same workspace/route authority without reading credentials. */
+export function resolveWorkspaceProviderHistoryEnv(agentDir: string, sessionMeta?: SessionMetadata | null): ProviderHistoryEnv | undefined {
+  return resolveWorkspaceConfigWithEnv(agentDir, sessionMeta, { includeMcp: false }, resolveProviderHistoryEnv,
+    (snapshot, providerId, config) => {
+      const decoded = decodeProviderEnvSnapshot(snapshot, providerId, config);
+      return decoded ? providerHistoryProjection(decoded) : undefined;
+    }).providerEnv;
+}
+
+function resolveWorkspaceConfigWithEnv<Env extends ProviderHistoryEnv>(
+  agentDir: string, sessionMeta: SessionMetadata | null | undefined,
+  options: { includeMcp?: boolean; includeProviderEnv?: boolean } | undefined,
+  resolveEnv: (providerId: string, config?: AdminAppConfig, model?: string) => Env | undefined,
+  decodeEnv: (snapshot: string | null | undefined, providerId: string | null | undefined, config?: AdminAppConfig) => Env | undefined,
+): Omit<WorkspaceResolvedConfig, 'providerEnv'> & { providerEnv: Env | undefined } {
   const config = loadConfig();
   // MCP resolution is the expensive part here (walks all agents, intersects
   // enable sets, builds McpServerDefinition from disk). Desktop Tab sessions
@@ -2003,7 +2062,7 @@ export function resolveWorkspaceConfig(
 
   // --- Resolve Provider ---
   // Priority: session.providerId → agent.providerId → config.defaultProviderId → persisted snapshot
-  let providerEnv: ResolvedProviderEnv | undefined;
+  let providerEnv: Env | undefined;
   let providerRoute: ProviderRoute | undefined;
   let providerId: string | undefined;
   const usesIntegratedProvider =
@@ -2014,9 +2073,9 @@ export function resolveWorkspaceConfig(
       ? providerRoute.providerId
       : sessionMeta?.providerId;
     providerEnv = !includeProviderEnv ? undefined : isConcreteProviderRoute(providerRoute)
-      ? materializeProviderRouteEnv(providerRoute, config)
+      ? resolveProviderRouteEnv(providerRoute, config, resolveEnv)
       : providerId
-        ? resolveProviderEnv(providerId, config, sessionMeta?.model)
+        ? resolveEnv(providerId, config, sessionMeta?.model)
         : undefined;
   } else if (usesIntegratedProvider) {
     providerId =
@@ -2030,7 +2089,7 @@ export function resolveWorkspaceConfig(
         providers: providersForRouteResolution(config),
       });
       providerRoute = isConcreteProviderRoute(route) ? route : undefined;
-      providerEnv = includeProviderEnv ? resolveProviderEnv(
+      providerEnv = includeProviderEnv ? resolveEnv(
         providerId,
         config,
         providerRoute?.model,
@@ -2042,7 +2101,7 @@ export function resolveWorkspaceConfig(
   // historical data may still decode providerEnvJson for back-compat.
   // decodeProviderEnvSnapshot still enforces the global disable gate.
   if (includeProviderEnv && sessionMeta?.providerEnvJson && !isConcreteProviderRoute(providerRoute)) {
-    const decoded = decodeProviderEnvSnapshot(
+    const decoded = decodeEnv(
       sessionMeta.providerEnvJson,
       providerId,
       config,
@@ -2050,7 +2109,7 @@ export function resolveWorkspaceConfig(
     if (decoded) providerEnv = decoded;
   } else if (includeProviderEnv && !snapshotOwnsConfig && !providerEnv && agent?.providerEnvJson) {
     // Backward-compat: legacy sessions without a snapshot fall back to agent's persisted env
-    const decoded = decodeProviderEnvSnapshot(
+    const decoded = decodeEnv(
       agent.providerEnvJson as string,
       providerId,
       config,
