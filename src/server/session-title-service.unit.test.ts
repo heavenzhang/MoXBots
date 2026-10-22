@@ -92,6 +92,63 @@ describe('first-turn task summary lifecycle', () => {
     });
   });
 
+  it('summarizes an admitted unfinished request, including when async stats still say zero', async () => {
+    const request = '【发生时间】2026年10月20日第一次出现\n【实际结果】报销审批提交时提示网络错误';
+    mocks.getSessionMetadata.mockReturnValue({ agentDir: '/workspace', stats: { messageCount: 0 } });
+    mocks.getSessionData.mockResolvedValue({ messages: [{ role: 'user', content: request }] });
+    mocks.generateTitleExternal.mockResolvedValue('报销审批提交失败排查');
+    await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    expect(mocks.generateTitleExternal).toHaveBeenCalledWith([{ user: request, assistant: '' }], 'codex', 'model', '/workspace', undefined);
+    expect(mocks.broadcast).toHaveBeenCalledWith('chat:session-title-changed', {
+      sessionId: 'session-1', title: '报销审批提交失败排查', titleSource: 'auto',
+    });
+  });
+
+  it('does not wait for or summarize a failed business response', async () => {
+    mocks.getSessionData.mockResolvedValue({ messages: [
+      { role: 'user', content: '报销审批提交时提示网络错误' },
+      { role: 'assistant', content: 'Error: 401 Unauthorized' },
+    ] });
+    await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    expect(mocks.generateTitleExternal.mock.calls[0][0]).toEqual([{ user: '报销审批提交时提示网络错误', assistant: '' }]);
+  });
+
+  it('keeps prepared sessions and automatic requests out of admission titling', async () => {
+    mocks.getSessionMetadata.mockReturnValue({ materializationState: 'prepared', stats: { messageCount: 1 } });
+    await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    expect(mocks.getSessionData).not.toHaveBeenCalled();
+    mocks.getSessionMetadata.mockReturnValue({ origin: { kind: 'automation', surface: 'unknown' }, stats: { messageCount: 1 } });
+    await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    expect(mocks.generateTitleExternal).not.toHaveBeenCalled();
+  });
+
+  it('deduplicates admission and successful-terminal triggers in flight', async () => {
+    let finish!: (title: string) => void;
+    mocks.generateTitleExternal.mockImplementation(() => new Promise<string>(resolve => { finish = resolve; }));
+    const pending = maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    await vi.waitFor(() => expect(mocks.generateTitleExternal).toHaveBeenCalledOnce());
+    await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model');
+    expect(mocks.generateTitleExternal).toHaveBeenCalledOnce();
+    finish('报销审批提交失败排查');
+    await pending;
+  });
+
+  it('preserves manual titles and the attempt budget at admission too', async () => {
+    for (const fields of [{ titleSource: 'user' }, { titleSource: 'auto' }, { titleGenAttempts: 10 }]) {
+      mocks.getSessionMetadata.mockReturnValue({ ...fields, stats: { messageCount: 1 } });
+      await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    }
+    expect(mocks.getSessionData).not.toHaveBeenCalled();
+    expect(mocks.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+
+  it('cannot overwrite a rename inside the metadata lock after admission generation', async () => {
+    mocks.updateSessionMetadata.mockImplementation(async (_id, patch, guard) => patch.title ? guard({ titleSource: 'user' }) : true);
+    await maybeGenerateTitleAfterTurn('session-1', 'codex', 'model', undefined, 'accepted-user');
+    expect(mocks.generateTitleExternal).toHaveBeenCalledOnce();
+    expect(mocks.broadcast).not.toHaveBeenCalled();
+  });
+
   it('does not overwrite a manual rename arriving during generation', async () => {
     mocks.generateTitleExternal.mockImplementation(async () => {
       mocks.getSessionMetadata.mockReturnValue({ titleSource: 'user' });

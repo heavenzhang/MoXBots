@@ -3,7 +3,7 @@
  * side-effects (#296).
  *
  * Why this exists: `agent-session.ts` / `external-session.ts` need to trigger
- * auto session titling after a successful turn, but the Title Service reaches
+ * auto session titling after request admission / a successful turn, but the Title Service reaches
  * `title-generator.ts`, which imports CLI/env/bridge helpers back from
  * `agent-session.ts`. A direct (even dynamic) import from the runtime files to
  * the service would therefore form an import cycle
@@ -11,7 +11,7 @@
  * dependency-cruiser rejects — bare `import('./x')` edges are still counted.
  *
  * Dependency inversion breaks it cleanly: the runtime files depend only on this
- * leaf (they call `firePostTurnTitleHook`); the service registers the
+ * leaf (they call the accepted-user or completed-turn hook); the service registers the
  * implementation at boot via `setPostTurnTitleHook`. This module imports nothing
  * at runtime (the type imports are erased — dep-cruiser runs with
  * tsPreCompilationDeps:false), so it sits outside every cycle.
@@ -24,11 +24,14 @@
 import type { RuntimeType } from '../shared/types/runtime';
 import type { ProviderEnv } from './provider-types';
 
+export type SessionTitleTrigger = 'accepted-user' | 'completed-turn';
+
 export type PostTurnTitleHook = (
   sessionId: string,
   runtime: RuntimeType,
   model: string | undefined,
   providerEnv?: ProviderEnv,
+  trigger?: SessionTitleTrigger,
 ) => void;
 
 let titleHook: PostTurnTitleHook | null = null;
@@ -37,6 +40,21 @@ let titleHook: PostTurnTitleHook | null = null;
  *  Title Service; later calls replace the slot (last writer wins). */
 export function setPostTurnTitleHook(hook: PostTurnTitleHook): void {
   titleHook = hook;
+}
+
+/** Reuse the title owner's single slot after user admission. The caller has
+ * already recorded the request; titling never waits for business completion. */
+export function fireAcceptedUserTitleHook(
+  sessionId: string,
+  runtime: RuntimeType,
+  model: string | undefined,
+  providerEnv?: ProviderEnv,
+): void {
+  try {
+    titleHook?.(sessionId, runtime, model, providerEnv, 'accepted-user');
+  } catch {
+    /* best-effort: title generation must never affect user admission */
+  }
 }
 
 /**

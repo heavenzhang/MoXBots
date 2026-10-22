@@ -1317,6 +1317,25 @@ function runInjectedTurn(harness: Harness, request: TestInjectedTurnRequest) {
 }
 
 describe('external SessionEngine with fake runtime', () => {
+  it('triggers the title owner at request admission while the runtime is still silent', async () => {
+    const harness = await createHarness([{ kind: 'silent' }]);
+    const { setPostTurnTitleHook } = await import('../turn-hooks');
+    const titleHook = vi.fn();
+    setPostTurnTitleHook(titleHook);
+    const sessionId = 'session-title-before-terminal';
+    const workspacePath = join(harness.home, 'workspace');
+    const sent = await harness.engine.sendDesktopMessage(
+      desktopRequest(sessionId, workspacePath, '【发生时间】2026年10月20日第一次出现\n【实际结果】报销审批网络错误'),
+    );
+    await expect(sent.dispatchAcceptance).resolves.toEqual({ accepted: true });
+    await waitFor(() => titleHook.mock.calls.length === 1, 'admission title hook');
+    // desktopRequest pins this model; live metadata is allowed to omit the
+    // execution snapshot's model and must not select the utility model.
+    expect(titleHook).toHaveBeenCalledWith(sessionId, 'codex', 'gpt-5-codex', undefined, 'accepted-user');
+    expect(broadcastEvents.some(event => event.event === 'chat:message-complete')).toBe(false);
+    expect((await harness.sessionStore.getSessionData(sessionId))?.messages).toHaveLength(1);
+  });
+
   it('renders a missing-multiSelect question and returns the selected answer to the runtime caller', async () => {
     const harness = await createHarness([], { runtimeType: 'dsh' });
     const sessionId = 'session-ask-normalization';

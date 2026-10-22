@@ -146,7 +146,7 @@ import {
   getActiveSessionTranscript,
   prepareSessionTranscriptMutation,
 } from '../SessionStore';
-import { firePostTurnTitleHook } from '../turn-hooks';
+import { fireAcceptedUserTitleHook, firePostTurnTitleHook } from '../turn-hooks';
 import {
   createMaterializedSessionMetadata,
   type SessionMaterializationScenario,
@@ -2192,6 +2192,11 @@ async function persistExternalUserMessageAdmission(params: {
             deliverExternalSessionBoundUser(params.sessionId, userProjection),
         };
   admitExternalTurnChannelDelivery(params.channelDelivery, userAdmission);
+  fireAcceptedUserTitleHook(
+    params.sessionId,
+    getCurrentRuntimeType(),
+    params.operation.runtimeConfig.model || undefined,
+  );
 }
 
 async function resumePendingDshRootOperation(
