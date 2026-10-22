@@ -39,7 +39,7 @@ All five exact reviewed sources are merged; the source branch is pushed. Root ma
 
 ## Blockers and unknowns
 
-Shared exact-head CI/main delivery is pending. Actual signed-native and dual-device acceptance, a new immutable candidate build and production delivery have not occurred for this batch. No claim of original business incident repair or complete real-provider recovery coverage.
+Shared exact-head CI39839893384 failed the theme architecture guard and original Host loopback. Root corrected the theme surface token and isolated unavailable Provider credentials with a RED/GREEN regression;20 focused checks and19 existing theme guard checks pass. The loopback then exposed the automatic-route owned snapshot versus remote frozen-observation conflict (supplierCalls1/REMOTE_SESSION_OWNER_CHANGED); the original model-policy owner is preparing its scoped source correction. No guard is removed and no automatic-mode preference is changed to evade the failure. Shared corrected exact-head CI/main delivery remains pending. Actual signed-native and dual-device acceptance, a new immutable candidate build and production delivery have not occurred for this batch. No claim of original business incident repair or complete real-provider recovery coverage.
 
 ## Current verification
 
@@ -47,4 +47,4 @@ All five exact sources normally merged. Root fixed the demonstrated390px classif
 
 ## Next step
 
-Push this exact combined head, run its single original PR CI, then normally merge only after required checks pass and verify remote containment/tested tree. Report exact source closure to the existing mobile owner for dedicated demoHost acceptance. App freeze/build/native/install/stable remain separately gated; do not mutate frozen519.1.
+Collect existing original PR194 CI39839893384 (exact remote68c5dcbb) and retain all failed raw. Local catalog/token fixes are committed without a new push/CI while the original model-policy owner closes the owned-snapshot handoff. Review/merge that exact source correction and affected negative cases, then push one corrected head for its original CI; normally merge only after required checks pass and verify remote containment/tested tree. Report exact source closure to the existing mobile owner for dedicated demoHost acceptance. App freeze/build/native/install/stable remain separately gated; do not mutate frozen519.1.
