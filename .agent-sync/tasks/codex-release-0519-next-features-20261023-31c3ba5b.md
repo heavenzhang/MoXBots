@@ -33,6 +33,14 @@ Host menu0ac9ca3f25d27046f9d718519da389427850e44a: sole mobile owner delivers3 N
 
 Root directly reviews/integrates; no new agents or external models. Existing author/independent tests are synthetic or isolated Store proofs as recorded, not native/real-provider or dual-device proof. UI changes only in source/isolated fixture. No business Stop, repeated tool action, data migration, copied QA credentials, source freeze replacement, deployment ownership takeover or outside-scope server deployment.
 
+## Completed
+
+All five exact reviewed sources are merged; the source branch is pushed. Root maintenance restoration, scoped reviews, narrow layout fix and combined312 checks are complete. Original author worktrees and frozen519.1 remain untouched.
+
+## Blockers and unknowns
+
+Shared exact-head CI/main delivery is pending. Actual signed-native and dual-device acceptance, a new immutable candidate build and production delivery have not occurred for this batch. No claim of original business incident repair or complete real-provider recovery coverage.
+
 ## Current verification
 
 All five exact sources normally merged. Root fixed the demonstrated390px classifier clipping with only grid/select width constraints; actual390/800 geometry passes. Combined312 checks passed (73DOM/149unit/90integration), type output clean/scoped lint0/classification0. See dev-docs/release-0519-next-20261023/acceptance.md. This evidence is source/isolated validation only.
