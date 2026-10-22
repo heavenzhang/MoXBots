@@ -55,6 +55,16 @@ it.each(['mobile.capabilities','mobile.models'] as const)('production Global com
 async function prepared(req:ReturnType<typeof request>){const result=await prepare({request:req});expect(result).toMatchObject({success:true});return (result as {data:{sessionId:string}}).data.sessionId}
 async function status(req:ReturnType<typeof request>){return (f.owner as ReturnType<typeof createRemoteReceiptOwner>).readMobile(req.agentId,req.operationId)}
 async function settled(req:ReturnType<typeof request>,expected='accepted'){await vi.waitFor(async()=>expect(await status(req)).toMatchObject({status:expected}))}
+it.each(['enqueue','dispatch'] as const)('retains a safe %s refusal in the durable receipt and does not replay it',async phase=>{
+ const req=request();await prepared(req);
+ const error='Provider "private-provider" is unavailable or missing an API key. secret-token';
+ f.send.mockResolvedValue(phase==='enqueue'?{success:false,error}:{success:true,dispatchAcceptance:Promise.resolve({accepted:false,error})});
+ await handle({request:req,generation:'gen'},'session');await settled(req,'rejected');
+ expect(await status(req)).toMatchObject({code:'REMOTE_PROVIDER_UNAVAILABLE'});
+ expect(JSON.stringify(await status(req))).not.toContain('secret-token');
+ expect(await handle({request:req,generation:'gen'},'session')).toMatchObject({data:{status:'rejected',code:'REMOTE_PROVIDER_UNAVAILABLE'}});
+ expect(f.send).toHaveBeenCalledTimes(1);
+});
 async function asset(bytes=Buffer.from('file bytes'),mimeType='text/plain'){
  const assetId=randomUUID(),root=join(f.home,'.myagents','remote-assets-v1'),scope='a'.repeat(64),upload=randomUUID();await mkdir(join(root,scope,upload),{recursive:true,mode:0o700});
  const sourcePath=join(root,scope,upload,'data');await writeFile(sourcePath,bytes,{mode:0o600});return {assetId,sourcePath,name:'附件.txt',mimeType,sizeBytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
