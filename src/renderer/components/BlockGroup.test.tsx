@@ -15,6 +15,49 @@ function tool(id: string, name = 'Read', patch: Record<string, unknown> = {}): C
 const details = () => screen.getByRole('button', { name: /展开结果与时间|收起结果与时间/ });
 
 describe('BlockGroup stage summaries and folding', () => {
+  it('does not reformat unchanged phases when a stream appends a different phase', () => {
+    const start = 1_800_000_000_000;
+    const blocks = Array.from({ length: 120 }, (_, i): ContentBlock => i % 2
+      ? tool(String(i), 'Bash', { executionTiming: { startedAt: start, finishedAt: start + 100, source: 'runtime' } })
+      : { id: `think-${i}`, type: 'thinking', isComplete: true, thinking: 'Completed analysis',
+        executionTiming: { startedAt: start, finishedAt: start + 100, source: 'observed' } });
+    const format = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+    try {
+      const { container, rerender } = render(<BlockGroup blocks={blocks} isStreaming />);
+      expect(format.mock.calls.length).toBeGreaterThanOrEqual(120);
+      format.mockClear();
+      rerender(<BlockGroup blocks={[...blocks, { ...blocks[0], id: 'next-think' }]} isStreaming />);
+      // The previous last row gains a divider; only it and the new row change.
+      expect(format.mock.calls.length).toBeLessThanOrEqual(2);
+      expect(container.querySelectorAll('[data-process-phase]')).toHaveLength(121);
+      const changed = [...blocks];
+      changed[5] = { ...blocks[5], tool: { ...blocks[5].tool!, isError: true } };
+      rerender(<BlockGroup blocks={changed} isStreaming />);
+      expect(container.querySelectorAll('[data-phase-outcome="failed"]')).toHaveLength(1);
+    } finally { format.mockRestore(); }
+  });
+
+  it('retains expanded rows and only invalidates changed rows within an existing phase', () => {
+    const start = 1_800_000_000_000;
+    const blocks = Array.from({ length: 30 }, (_, i) => tool(String(i), 'Read', {
+      executionTiming: { startedAt: start, finishedAt: start + 100, source: 'runtime' },
+    }));
+    const format = vi.spyOn(Date.prototype, 'toLocaleTimeString');
+    try {
+      const { container, rerender } = render(<BlockGroup blocks={blocks} isStreaming />);
+      fireEvent.click(details());
+      fireEvent.click(container.querySelector('[data-process-row] button')!);
+      format.mockClear();
+      const changed = [...blocks];
+      changed[15] = { ...blocks[15], tool: { ...blocks[15].tool!, isError: true, result: 'Changed failure' } };
+      rerender(<BlockGroup blocks={changed} isStreaming />);
+      expect(format.mock.calls.length).toBe(1);
+      expect(screen.getByText('OUTPUT_0')).toBeTruthy();
+      expect(screen.getByRole('button', { name: /Changed failure/ })).toBeTruthy();
+      expect(container.querySelectorAll('[data-process-row]')).toHaveLength(30);
+    } finally { format.mockRestore(); }
+  });
+
   it('defaults to a result summary with heavy tool bodies unmounted; can unfold and refold', () => {
     const blocks = Array.from({ length: 12 }, (_, i) => tool(String(i), 'Read', { parsedInput: { file_path: `/tmp/salary-source-${i}.ts` } }));
     const { container } = render(<BlockGroup blocks={blocks} />);

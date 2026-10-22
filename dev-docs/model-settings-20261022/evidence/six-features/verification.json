@@ -1,0 +1,64 @@
+{
+  "task": "MOXBOTS-MODEL-SETTINGS-20261022",
+  "at": "2026-10-22T02:37:48.470341+08:00",
+  "sourceBase": "85981a95b5c9a8e8736d680572e2813b1f7809fd",
+  "branch": "codex/model-settings-20261022",
+  "tests": {
+    "files": 21,
+    "passed": 414,
+    "failed": 0
+  },
+  "nativeSdkLoopback": {
+    "passed": 3,
+    "toolsPerRun": 1,
+    "paidCalls": 0
+  },
+  "browser": {
+    "groupsPassed": 9,
+    "pageErrors": 0,
+    "viewports": [
+      1440,
+      768,
+      390
+    ],
+    "independentReview": "passed"
+  },
+  "typecheck": "passed",
+  "changedEslint": "passed",
+  "dependencyCruiser": {
+    "errors": 0,
+    "existingWarnings": 18
+  },
+  "production": "not-released-by-development-chat",
+  "sourceFileSha256": {
+    "src/renderer/components/AutoRouteTag.tsx": "bfa2ec6572d3b63b0eb457f5b0d0f983c357aa97e24b2281c748c57db2f1bb70",
+    "src/renderer/components/Message.autoRoute.test.tsx": "7ae2d2a9795d69fc5c6cf7eaf40e80357da58fcd6c9e0cc04f69ac58b3799790",
+    "src/renderer/i18n/locales/en-US/app.json": "d86b9b9187380f8f4bc8061c34000d19f7c0b4cb5a1e0f4b62cc3c3315c54a62",
+    "src/renderer/i18n/locales/en-US/settings.json": "38ca92c1af37d84609f0c4793802bcfccbab53d453aca40ce6354236bbc203d8",
+    "src/renderer/i18n/locales/zh-CN/app.json": "48156a1856280c9c8abe6de7f23568df4548a2699bc11f9a68f9fdb22c12a789",
+    "src/renderer/i18n/locales/zh-CN/settings.json": "885b1f26b39bd0c57e6a8a7d540fac148595b0717f960f039fa12e71b1fc50d2",
+    "src/renderer/pages/Chat.tsx": "681830205a2efb219216c2649a2a8c3a03631cd9ff418943f2a483caf32f4538",
+    "src/renderer/pages/settings/AutoRoutingSettings.test.tsx": "5977e85fc01a6d72b087935893db9f896bf21cd4c5aa05c73e2a41c102093cd2",
+    "src/renderer/pages/settings/AutoRoutingSettings.tsx": "63d7ec89668ae25fdad237dbb657a0c7ffbcd18cd2fe21d04595e3137b6dd4c1",
+    "src/renderer/pages/settings/ModelFailoverSettings.test.tsx": "b0c05d1493258a1924b1fba82cdf2815745932dfa0d85a7b69cb8d8fa6c8306c",
+    "src/renderer/pages/settings/ModelFailoverSettings.tsx": "cfe4d87194a78e7b898aa8aa2ffb4a1ba54c79ee58be01e6a499c396d8f5d888",
+    "src/renderer/pages/settings/SettingsPage.tsx": "238d657359212139684d553933c728356a02a827c1ab898d3c16ce0f83f8c46f",
+    "src/server/agent-session.ts": "0cbbc8ada9ccea1736b4759b9d118e8dc6b850ad3ad0021111612f960db7a1ec",
+    "src/server/auto-route/admin.ts": "6d98b5e06ac27390637efc86eb5b2f43427c5e1029da6da62116549d30a32fe0",
+    "src/server/auto-route/admin.unit.test.ts": "2a262e8b8f373e890c1d763d06ea69551fa19665217b461c9668d5305ed4c5ad",
+    "src/server/auto-route/admission.ts": "43676b8e27309938f5173df4ff7d6df8d988132fc4aa6833eb635407911830c8",
+    "src/server/auto-route/admission.unit.test.ts": "6de2a69a49b96320e240833f114fd4e0e20a2d7036e87261e510f7398e4cfa5d",
+    "src/server/auto-route/catalog.ts": "c3490dd79553a93274cb745372a9816a56aefa078e09e376afb553c8b8c55fed",
+    "src/server/auto-route/policy.integration.test.ts": "08a39609f46b6bc1a65f7b0c0dd21ae4779be4c5550a05845421948a05fc57fe",
+    "src/server/auto-route/router.ts": "ddf0f116ed3dc37fd0d36e8c44813645cfdd4c2e11b7ae59458a1edf609a0172",
+    "src/server/auto-route/session-state.ts": "d4af1bf95012df196a095aafaf7f058fd4e43c831d585997e21f1fbefe23c322",
+    "src/server/builtin-session/model-failover.integration.test.ts": "12668085762702bb25d79633a25b2821358a00a97646008485bd87bbeafadaee",
+    "src/server/builtin-session/model-failover.ts": "a34de67b11a005f6522b1e43f20b588a4ace5892e70e728fa8c9a395cef9a18c",
+    "src/server/openai-bridge/model-failover.ts": "05a093b4b382fa57c69bb6517bbe2ff037e0d1ba0a4b678bce17af2cae099c9e",
+    "src/server/openai-bridge/model-failover.unit.test.ts": "751628b69c4385f8091562241c97a046b7dc779dca88e695a85f50b3b235061e",
+    "src/shared/autoRoute.test.ts": "862c718f7d3817590eef7afd9b9b2a545b826b1968a5c5921796f5d138870938",
+    "src/shared/autoRoute.ts": "8c1a723819de2db6710c2b2b334113fe06cfb5158c3332a3edd4105ddcfc29f2",
+    "src/shared/modelFailover.test.ts": "d01806bdd7c94b6ad46c48099975b0c947c5ff864caabaa87544d8f25fcbc159",
+    "src/shared/modelFailover.ts": "706329112290eb646ace96506605aa73cacbe95b40b4f46fb38d9f354c262b43"
+  }
+}

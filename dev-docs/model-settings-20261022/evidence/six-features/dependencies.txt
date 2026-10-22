@@ -1,0 +1,21 @@
+
+  warn no-orphans: src/shared/taskDiscussion.ts
+  warn no-orphans: src/shared/session-watch-protocol.ts
+  warn no-orphans: src/shared/executionTiming.ts
+  warn no-orphans: src/server/runtimes/product-extensions/contracts.ts
+  warn no-orphans: src/server/runtimes/managed-codex/extensions/contracts.ts
+  warn no-orphans: src/renderer/tab-workspace/contracts.ts
+  warn no-orphans: src/renderer/features/task-center/tabContract.ts
+  warn no-orphans: src/renderer/features/space/tabContract.ts
+  warn no-orphans: src/renderer/features/settings/tabContract.ts
+  warn no-orphans: src/renderer/features/settings/tabBinding.ts
+  warn no-orphans: src/renderer/features/record/tabContract.ts
+  warn no-orphans: src/renderer/features/project-board/tabContract.ts
+  warn no-orphans: src/renderer/features/launcher/tabContract.ts
+  warn no-orphans: src/renderer/features/chat/tabContract.ts
+  warn no-orphans: src/renderer/features/capabilities/tabContract.ts
+  warn no-orphans: src/renderer/features/agent-network/tabContract.ts
+  warn no-orphans: src/renderer/constants/chatSuggestions.ts
+  warn no-orphans: src/renderer/api/pickerPage.ts
+
+x 18 dependency violations (0 errors, 18 warnings). 2663 modules, 11105 dependencies cruised.

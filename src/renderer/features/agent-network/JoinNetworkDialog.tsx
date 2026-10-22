@@ -99,7 +99,9 @@ export function JoinNetworkDialog({
     return login.start(url, publicTlsCaFile);
   };
   const hasAttempt = attempt !== null;
-  const browserPending = ["awaiting_authorization", "receiving_grant"].includes(login.nativePhase);
+  const browserPending = ["awaiting_authorization", "receiving_grant"].includes(
+    login.nativePhase,
+  );
   const fixedServiceUrl = accountOnly && initialUrl.trim().length > 0;
   return (
     <OverlayBackdrop
@@ -163,36 +165,40 @@ export function JoinNetworkDialog({
               ))}
             </div>
           )}
-          <label
-            htmlFor="network-url"
-            className="mb-2 block text-sm font-medium"
-          >
-            {t("agentNetwork.serviceUrl")}
-          </label>
-          <input
-            ref={input}
-            id="network-url"
-            type="url"
-            autoComplete="url"
-            placeholder="https://your-network.example"
-            value={url}
-            disabled={busy || hasAttempt}
-            readOnly={fixedServiceUrl}
-            aria-describedby={
-              fixedServiceUrl ? "owned-login-fixed-service-url" : undefined
-            }
-            onChange={(e) => {
-              if (!fixedServiceUrl) setUrl(e.target.value);
-            }}
-            className="mb-4 w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-          />
-          {fixedServiceUrl && (
-            <p
-              id="owned-login-fixed-service-url"
-              className="-mt-3 mb-4 text-xs text-[var(--ink-muted)]"
-            >
-              {t("agentNetwork.ownedLogin.fixedServiceUrl")}
-            </p>
+          {!fixedServiceUrl && (
+            <>
+              <label
+                htmlFor="network-url"
+                className="mb-2 block text-sm font-medium"
+              >
+                {t("agentNetwork.serviceUrl")}
+              </label>
+              <input
+                ref={input}
+                id="network-url"
+                type="url"
+                autoComplete="url"
+                placeholder="https://your-network.example"
+                value={url}
+                disabled={busy || hasAttempt}
+                readOnly={fixedServiceUrl}
+                aria-describedby={
+                  fixedServiceUrl ? "owned-login-fixed-service-url" : undefined
+                }
+                onChange={(e) => {
+                  if (!fixedServiceUrl) setUrl(e.target.value);
+                }}
+                className="mb-4 w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+              />
+              {fixedServiceUrl && (
+                <p
+                  id="owned-login-fixed-service-url"
+                  className="-mt-3 mb-4 text-xs text-[var(--ink-muted)]"
+                >
+                  {t("agentNetwork.ownedLogin.fixedServiceUrl")}
+                </p>
+              )}
+            </>
           )}
           {mode === "key" && !accountOnly ? (
             <>
@@ -221,54 +227,61 @@ export function JoinNetworkDialog({
               <p className="text-xs leading-relaxed text-[var(--ink-muted)]">
                 {t("agentNetwork.ownedLogin.hint")}
               </p>
-              <details
-                className="mt-3 text-sm"
-                open={showAdvanced}
-                onToggle={(event) => setShowAdvanced(event.currentTarget.open)}
-              >
-                <summary className="cursor-pointer text-[var(--ink-muted)]">
-                  {t("agentNetwork.ownedLogin.advanced")}
-                </summary>
-                <label
-                  htmlFor="network-public-ca"
-                  className="mt-3 mb-2 block text-sm font-medium"
+              {!fixedServiceUrl && (
+                <details
+                  className="mt-3 text-sm"
+                  open={showAdvanced}
+                  onToggle={(event) =>
+                    setShowAdvanced(event.currentTarget.open)
+                  }
                 >
-                  {t("agentNetwork.ownedLogin.caFile")}
-                </label>
-                <input
-                  id="network-public-ca"
-                  type="text"
-                  autoComplete="off"
-                  placeholder="/path/to/test-ca.pem"
-                  value={publicTlsCaFile}
-                  disabled={busy || hasAttempt}
-                  onChange={(e) => setPublicTlsCaFile(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-                />
-                <p className="mt-2 text-xs leading-relaxed text-[var(--ink-muted)]">
-                  {t("agentNetwork.ownedLogin.caHint")}
-                </p>
-                {attempt && (
-                  <div className="mt-3">
-                    <p className="text-xs font-medium">
-                      {t("agentNetwork.ownedLogin.authorizationLink")}
-                    </p>
-                    <p className="mt-1 break-all text-xs text-[var(--ink-muted)]">
-                      {attempt.authorizationUrl}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => void login.check()}
-                      disabled={
-                        busy || login.checking || login.expired || login.stopped
-                      }
-                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      {t("agentNetwork.ownedLogin.check")}
-                    </button>
-                  </div>
-                )}
-              </details>
+                  <summary className="cursor-pointer text-[var(--ink-muted)]">
+                    {t("agentNetwork.ownedLogin.advanced")}
+                  </summary>
+                  <label
+                    htmlFor="network-public-ca"
+                    className="mt-3 mb-2 block text-sm font-medium"
+                  >
+                    {t("agentNetwork.ownedLogin.caFile")}
+                  </label>
+                  <input
+                    id="network-public-ca"
+                    type="text"
+                    autoComplete="off"
+                    placeholder="/path/to/test-ca.pem"
+                    value={publicTlsCaFile}
+                    disabled={busy || hasAttempt}
+                    onChange={(e) => setPublicTlsCaFile(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
+                  />
+                  <p className="mt-2 text-xs leading-relaxed text-[var(--ink-muted)]">
+                    {t("agentNetwork.ownedLogin.caHint")}
+                  </p>
+                  {attempt && (
+                    <div className="mt-3">
+                      <p className="text-xs font-medium">
+                        {t("agentNetwork.ownedLogin.authorizationLink")}
+                      </p>
+                      <p className="mt-1 break-all text-xs text-[var(--ink-muted)]">
+                        {attempt.authorizationUrl}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => void login.check()}
+                        disabled={
+                          busy ||
+                          login.checking ||
+                          login.expired ||
+                          login.stopped
+                        }
+                        className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+                      >
+                        {t("agentNetwork.ownedLogin.check")}
+                      </button>
+                    </div>
+                  )}
+                </details>
+              )}
               {attempt && (
                 <div className="mt-4 rounded-lg border border-[var(--line)] p-3">
                   <p className="text-sm font-medium">
@@ -284,7 +297,11 @@ export function JoinNetworkDialog({
                       role="status"
                     >
                       <LoaderIcon className="h-4 w-4 animate-spin" />
-                      {t("agentNetwork.ownedLogin.autoChecking")}
+                      {t(
+                        browserPending
+                          ? "agentNetwork.ownedLogin.autoChecking"
+                          : "agentNetwork.ownedLogin.completing",
+                      )}
                     </p>
                   )}
                   {!login.stopped && browserPending && (
@@ -296,18 +313,23 @@ export function JoinNetworkDialog({
                       })}
                     </p>
                   )}
-                  {browserPending && <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void login.reopen()}
-                      disabled={
-                        busy || login.checking || login.expired || login.stopped
-                      }
-                      className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
-                    >
-                      {t("agentNetwork.ownedLogin.openBrowser")}
-                    </button>
-                  </div>}
+                  {browserPending && !login.stopped && !login.expired && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void login.reopen()}
+                        disabled={
+                          busy ||
+                          login.checking ||
+                          login.expired ||
+                          login.stopped
+                        }
+                        className="min-w-0 whitespace-normal rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50"
+                      >
+                        {t("agentNetwork.ownedLogin.openBrowser")}
+                      </button>
+                    </div>
+                  )}
                   {login.canRetry && (
                     <button
                       type="button"

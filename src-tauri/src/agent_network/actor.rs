@@ -173,6 +173,32 @@ impl AgentNetwork {
         }
     }
 
+    /// Route only through the account actually bound to this actor. A directory
+    /// selector has no principal/connection ID, so UI selection is not authority.
+    pub(crate) fn ensure_owned_reference_binding(
+        &self,
+        record: &super::registry::StoredOwnedConnection,
+    ) -> Result<(), NetworkError> {
+        let Some(session @ NetworkAccountSession::Owned(account)) = &self.account else {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        };
+        if self.boundary.borrow().shutdown
+            || self.connection_id != record.id
+            || account.connection_id != record.id
+            || account.binding_id != record.binding_id
+            || account.device_id != record.device_id
+            || account.session_bound != record.session_bound
+            || account.session.principal_id != record.principal_id
+            || account.session.network_id != record.network_id
+            || record.network_id != record.descriptor.network_id
+            || account.public_tls_ca != record.public_tls_ca
+        {
+            return Err(NetworkError::new("ACCOUNT_BINDING_CHANGED"));
+        }
+        account.descriptor.ensure_same_trust(&record.descriptor)?;
+        session.ensure_current()
+    }
+
     pub(crate) fn new(
         connection_id: String,
         account: Option<NetworkAccountSession>,

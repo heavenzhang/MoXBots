@@ -6,8 +6,12 @@ const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>,
 vi.mock('../utils/admin-config', () => ({
   loadConfig: () => fixture.config,
   findEffectiveProvider: (id: string) => fixture.providers[id],
+  getAllEffectiveProviders: () => Object.values(fixture.providers),
+  getProviderSelectionError: () => null,
+  resolveSubscriptionAuthKind: () => undefined,
   materializeProviderRouteEnv: (route: { providerId: string }) => fixture.envs[route.providerId],
 }));
+vi.mock('../utils/model-capabilities', () => ({ lookupModelCapability: () => undefined, lookupProviderModelContextLength: () => undefined }));
 import { createSessionModelFailover, sessionApiFailoverEligible } from './model-failover';
 
 describe('Session API failover authority', () => {
@@ -20,7 +24,48 @@ describe('Session API failover authority', () => {
     };
     fixture.envs = { backup: { providerId: 'backup', baseUrl: 'http://backup.test', apiKey: 'fixture-backup' } };
   });
-  const request = () => new Request('http://127.0.0.1/bridge/test/v1/messages', { method: 'POST' });
+  const request = () => new Request('http://127.0.0.1/bridge/test/v1/messages', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'synthetic text' }], max_tokens: 10 }) });
+  it.each(['off', 'auto-disabled', 'cross-tier', 'image', 'context', 'tool-protocol'])('refuses a backup with a visible reason for %s while preserving primary retries', async reason => {
+    const settings = fixture.config.modelFailover as { enabled: boolean; mode?: string; allowCrossTier?: boolean; backup?: { providerId: string; modelId: string } };
+    if (reason === 'off') settings.mode = 'off';
+    if (reason === 'auto-disabled') { settings.mode = 'auto'; fixture.config.autoRouting = { enabled: false }; }
+    if (reason === 'cross-tier') fixture.providers.backup = { id: 'backup', type: 'api', models: [{ model: 'b', tier: 'fast' }] };
+    if (reason === 'context') fixture.providers.backup = { id: 'backup', type: 'api', models: [{ model: 'b', contextLength: 100 }] };
+    if (reason === 'tool-protocol') fixture.providers.backup = { id: 'backup', type: 'api', models: [{ model: 'b', supportedProtocols: ['openai:responses'] }] };
+    const unavailable = vi.fn();
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root', contextTokens: reason === 'context' ? 500 : undefined }),
+      isLive: () => true, onSwitch: switched, onUnavailable: unavailable, autoBackup: () => ({ providerId: 'backup', modelId: 'b' }) });
+    const req = reason === 'image' || reason === 'tool-protocol' ? new Request('http://127.0.0.1/test', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: reason === 'image' ? [{ type: 'image', source: { type: 'base64', data: 'synthetic' } }] : 'text' }], ...(reason === 'tool-protocol' ? { tools: [{ name: 'fixture_tool' }] } : {}) }) }) : request();
+    const execute = vi.fn(async target => new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }));
+    expect((await controller.run(req, { providerId: 'primary', model: 'a', baseUrl: primary.baseUrl! }, execute)).status).toBe(503);
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(switched).not.toHaveBeenCalled();
+    expect(unavailable).toHaveBeenCalledTimes(1);
+    expect(unavailable.mock.calls[0][0]).toBeTruthy();
+  });
+
+  it('permits an explicitly enabled cross-tier configured backup', async () => {
+    fixture.config.modelFailover = { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'backup', modelId: 'b' } };
+    fixture.providers.backup = { id: 'backup', type: 'api', models: [{ model: 'b', tier: 'fast' }] };
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root' }), isLive: () => true, onSwitch: switched });
+    expect((await controller.run(request(), { providerId: 'primary', model: 'a', baseUrl: primary.baseUrl! }, async target => new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }))).status).toBe(200);
+    expect(switched).toHaveBeenCalledOnce();
+  });
+
+  it.each(['chat_completions', 'responses'] as const)('checks the actual OpenAI %s output cap instead of discarded SDK max_tokens', async upstreamFormat => {
+    fixture.providers.backup = { id: 'backup', type: 'api', models: [{ model: 'b', contextLength: 64000 }] };
+    fixture.envs.backup = { providerId: 'backup', baseUrl: 'http://backup.test', apiKey: 'fixture-backup',
+      apiProtocol: 'openai', upstreamFormat, maxOutputTokens: 8000 };
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0], current: () => ({ env: primary, model: 'a', turnId: 'root', contextTokens: 4000 }),
+      isLive: () => true, onSwitch: switched });
+    const req = new Request('http://127.0.0.1/test', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'text' }], max_tokens: 128000 }) });
+    expect((await controller.run(req, { providerId: 'primary', baseUrl: primary.baseUrl! }, async target => new Response('{}', { status: target.providerId === 'primary' ? 503 : 200 }))).status).toBe(200);
+    expect(switched).toHaveBeenCalledOnce();
+  });
+
   it('uses current backup credentials, keeps the root scope across steering, and restores primary next turn', async () => {
     let source = 'root';
     const switched = vi.fn();

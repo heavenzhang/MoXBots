@@ -7,6 +7,28 @@ const SAFE_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED', 'EPIPE
 const label = (value?: string): string => value && /^[\w./: -]{1,160}$/.test(value) ? value : 'redacted';
 const object = (value: unknown): Record<string, unknown> => value && typeof value === 'object' ? value as Record<string, unknown> : {};
 
+/** Pre-header fetch facts only. No endpoint, provider, message, header or abort reason is serialized. */
+export function fetchFailureDiagnostic(error: unknown, local: {
+  headersTimedOut: boolean; downstreamAborted: boolean; controllerAborted: boolean;
+}): string {
+  const codes = new Set<string>(); const seen = new Set<unknown>(); let unknownCode = false;
+  const visit = (value: unknown, depth: number): void => {
+    if (!value || seen.has(value) || depth > 3 || seen.size >= 12) return;
+    seen.add(value);
+    const entry = object(value);
+    if (typeof entry.code === 'string') {
+      if (SAFE_CODES.has(entry.code)) codes.add(entry.code); else unknownCode = true;
+    }
+    visit(entry.cause, depth + 1);
+    if (Array.isArray(entry.errors)) for (const child of entry.errors.slice(0, 4)) visit(child, depth + 1);
+  };
+  try { visit(error, 0); } catch { unknownCode = true; }
+  return `[recovery-causal] ${JSON.stringify({ event: 'upstream_fetch_failed', codes: [...codes],
+    codeStatus: codes.size ? unknownCode ? 'known_and_unknown' : 'known' : unknownCode ? 'unknown' : 'absent',
+    localAbort: local.headersTimedOut ? local.downstreamAborted ? 'headers_and_downstream' : 'headers_timeout'
+      : local.downstreamAborted ? 'downstream' : local.controllerAborted ? 'unattributed_local_abort' : 'none' })}`;
+}
+
 /** Never serialize Error.message/stack, proxy URLs, bodies, request headers, or credential-bearing URLs. */
 export function transportDiagnostic(upstream: UpstreamConfig, details: {
   phase: 'response_headers' | 'response_body'; route?: 'direct' | 'proxy' | 'unresolved'; error?: unknown; status?: number; mappedStatus?: number;

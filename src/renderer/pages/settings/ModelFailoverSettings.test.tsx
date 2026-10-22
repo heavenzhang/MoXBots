@@ -13,27 +13,27 @@ const provider: Provider = {
 const backup = { providerId: provider.id, modelId: 'backup-model' };
 const keys = { [provider.id]: 'fixture-key' };
 
+async function chooseMode(label: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Failure recovery mode' }));
+  fireEvent.click(await screen.findByRole('button', { name: label }));
+}
+
 afterEach(cleanup);
 beforeEach(async () => { await i18n.changeLanguage('en-US'); });
 
 describe('backup model settings', () => {
-  it('defaults off and cannot enable without a selected backup', () => {
-    const update = vi.fn();
-    render(<ModelFailoverSettings value={undefined} providers={[provider]} apiKeys={keys} updateConfig={update} />);
-    const toggle = screen.getByRole('switch', { name: 'Enable automatic model failover' });
-    expect(toggle).toHaveAttribute('aria-checked', 'false');
-    expect(toggle).toBeDisabled();
-    fireEvent.click(toggle);
-    expect(update).not.toHaveBeenCalled();
-    expect(screen.getByText('Select a backup model before enabling automatic failover.')).toBeVisible();
+  it('defaults to same-tier automatic failover and keeps cross-tier selection off', () => {
+    render(<ModelFailoverSettings value={undefined} providers={[provider]} apiKeys={keys} updateConfig={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).toHaveTextContent('Follow automatic model selection');
+    expect(screen.getByRole('checkbox', { name: /different tier/ })).not.toBeChecked();
   });
 
-  it('selects exactly one provider/model through the config owner without enabling it', async () => {
+  it('selects exactly one provider/model through the config owner without enabling specified mode', async () => {
     const update = vi.fn().mockResolvedValue(undefined);
     render(<ModelFailoverSettings value={undefined} providers={[provider]} apiKeys={keys} updateConfig={update} />);
     fireEvent.click(screen.getByRole('button', { name: 'Backup provider and model' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Backup Provider · backup-model' }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, backup } }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, mode: 'auto', backup } }));
     expect(document.querySelector('select')).toBeNull();
   });
 
@@ -45,9 +45,8 @@ describe('backup model settings', () => {
       { ...provider, id: 'runtime', name: 'Runtime Provider', execution: { kind: 'runtime-backed', runtime: 'codex', source: 'managed-provider' } },
       { ...provider, id: 'cloud-session:fixture', name: 'Cloud Session Provider' },
     ];
-    render(<ModelFailoverSettings value={{ enabled: false, backup }} providers={[provider, ...excluded]} apiKeys={{ [provider.id]: '  ' }} updateConfig={update} />);
-    expect(screen.getByRole('switch')).toBeDisabled();
-    expect(screen.getByText(/Add this provider’s API key/)).toBeVisible();
+    render(<ModelFailoverSettings value={{ enabled: true, mode: 'specified', backup }} providers={[provider, ...excluded]} apiKeys={{ [provider.id]: '  ' }} updateConfig={update} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Backup Provider · Backup Model is missing an API key.');
     fireEvent.click(screen.getByRole('button', { name: 'Backup provider and model' }));
     expect(await screen.findByRole('button', { name: 'Backup Provider · backup-model' })).toBeVisible();
     for (const item of excluded) expect(screen.queryByRole('button', { name: `${item.name} · backup-model` })).not.toBeInTheDocument();
@@ -73,7 +72,7 @@ describe('backup model settings', () => {
     expect(choice).toHaveAccessibleDescription('Key configured');
     expect(choice).toHaveFocus();
     fireEvent.click(choice);
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, backup: { providerId: provider.id, modelId: 'other-id' } } }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, mode: 'auto', backup: { providerId: provider.id, modelId: 'other-id' } } }));
     expect(trigger).toHaveFocus();
     fireEvent.click(trigger);
     expect(screen.getByRole('searchbox')).toHaveValue('');
@@ -85,7 +84,7 @@ describe('backup model settings', () => {
   it('filters providers and keys without changing the saved selection or writing config', async () => {
     const update = vi.fn();
     const other = { ...provider, id: 'other-provider', name: 'Other Provider' };
-    render(<ModelFailoverSettings value={{ enabled: true, backup }} providers={[provider, other]} apiKeys={keys} updateConfig={update} />);
+    render(<ModelFailoverSettings value={{ enabled: true, mode: 'specified', backup }} providers={[provider, other]} apiKeys={keys} updateConfig={update} />);
     fireEvent.click(screen.getByRole('button', { name: 'Filter by provider' }));
     fireEvent.click(screen.getByRole('button', { name: 'Other Provider' }));
     const trigger = screen.getByRole('button', { name: 'Backup provider and model' });
@@ -101,53 +100,55 @@ describe('backup model settings', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('enables a ready backup and displays only the persisted state', async () => {
+  it('enables specified mode with a ready backup and displays only persisted mode', async () => {
     const update = vi.fn().mockResolvedValue(undefined);
     const { rerender } = render(<ModelFailoverSettings value={{ enabled: false, backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
-    fireEvent.click(screen.getByRole('switch'));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: true, backup } }));
-    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
-    rerender(<ModelFailoverSettings value={{ enabled: true, backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
-    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+    await chooseMode('Use specified backup');
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: true, mode: 'specified', backup } }));
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).toHaveTextContent('Follow automatic model selection');
+    rerender(<ModelFailoverSettings value={{ enabled: true, mode: 'specified', backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).toHaveTextContent('Use specified backup');
   });
 
-  it('shows an unavailable saved backup and permits disabling an enabled broken configuration', async () => {
+  it('shows an unavailable saved backup and permits turning switching off while preserving it', async () => {
     const update = vi.fn().mockResolvedValue(undefined);
     render(<ModelFailoverSettings value={{ enabled: true, backup }} providers={[]} apiKeys={keys} updateConfig={update} />);
     expect(screen.getByRole('button', { name: 'Backup provider and model' })).toHaveTextContent('Unavailable · backup-model');
-    expect(screen.getByText(/The saved backup is unavailable/)).toBeVisible();
-    expect(screen.getByRole('switch')).not.toBeDisabled();
-    fireEvent.click(screen.getByRole('switch'));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, backup } }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Provider is unavailable for failover.');
+    expect(screen.getByRole('checkbox', { name: /different tier/ })).not.toBeDisabled();
+    await chooseMode('Do not switch models');
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, mode: 'off', backup } }));
   });
 
-  it('disables failover when the selected backup is cleared', async () => {
+  it('clears the selected backup without silently changing the selected mode', async () => {
     const update = vi.fn().mockResolvedValue(undefined);
-    render(<ModelFailoverSettings value={{ enabled: true, backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
+    const { rerender } = render(<ModelFailoverSettings value={{ enabled: true, mode: 'specified', backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
     fireEvent.click(screen.getByRole('button', { name: 'Backup provider and model' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Select a backup model' }));
-    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false } }));
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: true, mode: 'specified' } }));
+    rerender(<ModelFailoverSettings value={{ enabled: true, mode: 'specified' }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('Choose a backup model before using specified mode.');
   });
 
-  it('keeps provider identity when two providers offer the same model and disables a keyless replacement', async () => {
+  it('keeps provider identity when two providers offer the same model, even while the replacement is keyless', async () => {
     const other = { ...provider, id: 'other-provider', name: 'Other Provider' };
     const update = vi.fn().mockResolvedValue(undefined);
-    render(<ModelFailoverSettings value={{ enabled: true, backup }} providers={[provider, other]} apiKeys={keys} updateConfig={update} />);
+    render(<ModelFailoverSettings value={{ enabled: true, mode: 'specified', backup }} providers={[provider, other]} apiKeys={keys} updateConfig={update} />);
     fireEvent.click(screen.getByRole('button', { name: 'Backup provider and model' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Other Provider · backup-model' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: {
-      enabled: false, backup: { providerId: 'other-provider', modelId: 'backup-model' },
+      enabled: true, mode: 'specified', backup: { providerId: 'other-provider', modelId: 'backup-model' },
     } }));
   });
 
   it('retains persisted settings after a save failure and allows retry', async () => {
     const update = vi.fn().mockRejectedValueOnce(new Error('disk write failed')).mockResolvedValue(undefined);
     render(<ModelFailoverSettings value={{ enabled: false, backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
-    fireEvent.click(screen.getByRole('switch'));
+    await chooseMode('Use specified backup');
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save. Your previous settings are unchanged. Try again.');
-    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false');
-    expect(screen.getByRole('switch')).not.toBeDisabled();
-    fireEvent.click(screen.getByRole('switch'));
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).toHaveTextContent('Follow automatic model selection');
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).not.toBeDisabled();
+    await chooseMode('Use specified backup');
     await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
   });
@@ -156,22 +157,53 @@ describe('backup model settings', () => {
     let finish: (() => void) | undefined;
     const update = vi.fn().mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
     render(<ModelFailoverSettings value={{ enabled: false, backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
-    fireEvent.click(screen.getByRole('switch'));
-    fireEvent.click(screen.getByRole('switch'));
-    expect(screen.getByRole('switch')).toBeDisabled();
+    await chooseMode('Use specified backup');
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Backup provider and model' })).toBeDisabled();
     expect(screen.getByRole('status')).toHaveTextContent('Saving…');
     expect(update).toHaveBeenCalledTimes(1);
     await act(async () => finish?.());
-    expect(screen.getByRole('switch')).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Failure recovery mode' })).not.toBeDisabled();
   });
 
   it('explains safety limits and supports the Chinese UI resource', async () => {
     await i18n.changeLanguage('zh-CN');
-    render(<ModelFailoverSettings value={undefined} providers={[]} apiKeys={{}} updateConfig={vi.fn()} />);
+    render(<ModelFailoverSettings value={{ enabled: true, mode: 'specified' }} providers={[]} apiKeys={{}} updateConfig={vi.fn()} />);
     fireEvent.click(screen.getByText('切换规则与适用范围'));
     expect(screen.getByText(/仅支持 Claude Agent SDK 运行环境的 API 模型；DSH、订阅模型和外部 CLI 暂不支持/)).toBeVisible();
     expect(screen.getByText(/保留进度并停止，避免自动重复执行操作/)).toBeVisible();
-    expect(screen.getByRole('switch', { name: '启用模型自动切换' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: '故障接管模式' })).toHaveTextContent('使用指定备用');
+  });
+
+  it('allows the auto mode to opt into cross-tier backups and retains that choice in off mode', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ModelFailoverSettings value={{ enabled: false, mode: 'auto', backup }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
+    const crossTier = screen.getByRole('checkbox', { name: /different tier/ });
+    expect(crossTier).not.toBeChecked();
+    fireEvent.click(crossTier);
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, mode: 'auto', backup, allowCrossTier: true } }));
+    rerender(<ModelFailoverSettings value={{ enabled: false, mode: 'off', backup, allowCrossTier: true }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
+    expect(screen.getByRole('checkbox', { name: /different tier/ })).toBeChecked();
+    expect(screen.getByRole('checkbox', { name: /different tier/ })).toBeDisabled();
+  });
+
+  it('allows choosing specified mode before configuration and links the blocked status to providers', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const openProviders = vi.fn();
+    const { rerender } = render(<ModelFailoverSettings value={undefined} providers={[]} apiKeys={{}} updateConfig={update} onOpenProviders={openProviders} />);
+    await chooseMode('Use specified backup');
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: true, mode: 'specified' } }));
+    rerender(<ModelFailoverSettings value={{ enabled: true, mode: 'specified' }} providers={[]} apiKeys={{}} updateConfig={update} onOpenProviders={openProviders} />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose a backup model before using specified mode.');
+    fireEvent.click(screen.getByRole('button', { name: 'Open model providers to fix this' }));
+    expect(openProviders).toHaveBeenCalledOnce();
+  });
+
+  it('shows the exact configured model and retains backup and cross-tier preference when changing mode', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    render(<ModelFailoverSettings value={{ enabled: true, mode: 'specified', backup, allowCrossTier: true }} providers={[provider]} apiKeys={keys} updateConfig={update} />);
+    expect(screen.getByText('Specified backup: Backup Provider · Backup Model')).toBeVisible();
+    await chooseMode('Do not switch models');
+    await waitFor(() => expect(update).toHaveBeenCalledWith({ modelFailover: { enabled: false, mode: 'off', backup, allowCrossTier: true } }));
   });
 });

@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -162,6 +163,12 @@ describe("Settings image-understanding enable flow", () => {
     };
     settingsMocks.refreshConfig.mockResolvedValue(undefined);
     settingsMocks.apiPostJson.mockImplementation(async (path: string) => {
+      if (path === "/api/admin/route/tiers") {
+        return {
+          success: true,
+          data: { enabled: true, classifier: null, tiers: { fast: [], balanced: [], strong: [] } },
+        };
+      }
       if (path === "/api/admin/vision/models") {
         return {
           success: true,
@@ -180,6 +187,47 @@ describe("Settings image-understanding enable flow", () => {
       }
       return { success: true, data: {} };
     });
+  });
+
+  it("opens one model policy page with the backup under collapsed advanced failure recovery", async () => {
+    await i18n.changeLanguage('en-US');
+    const user = userEvent.setup();
+    render(<ToastProvider><Settings mode="settings" initialSection="providers" isActive /></ToastProvider>);
+    expect(screen.queryByRole('region', { name: 'Auto model selection' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Backup model' })).not.toBeInTheDocument();
+    expect(settingsMocks.apiPostJson.mock.calls.some(([path]) => path === '/api/admin/route/tiers')).toBe(false);
+
+    await user.click(screen.getByRole('button', { name: 'Model policy' }));
+    expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
+    expect(within(screen.getByRole('region', { name: 'Auto model selection' }))
+      .getByText(/Global auto selection applies only to conversations still in auto mode/)).toBeVisible();
+    const recovery = screen.getByText('Failure recovery').closest('details')!;
+    expect(recovery).not.toHaveAttribute('open');
+    expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();
+    expect(settingsMocks.apiPostJson.mock.calls.some(([path]) => path === '/api/admin/route/tiers')).toBe(true);
+
+    await user.click(screen.getByText('Failure recovery'));
+    expect(recovery).toHaveAttribute('open');
+    expect(screen.getByRole('region', { name: 'Backup model' })).toBeVisible();
+    expect(screen.getByText(/Auto mode supplies a same-tier fallback when one is available/)).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
+    await user.click(screen.getByText('Failure recovery'));
+    expect(recovery).not.toHaveAttribute('open');
+    await user.click(screen.getByRole('button', { name: 'Model Providers' }));
+    expect(screen.queryByRole('region', { name: 'Auto model selection' })).not.toBeInTheDocument();
+    expect(screen.getByTitle('Manage')).toBeVisible();
+  });
+
+  it("keeps the legacy configured backup mode and identity visible in the collapsed recovery summary", async () => {
+    await i18n.changeLanguage('en-US');
+    settingsMocks.config.modelFailover = { enabled: true, backup: { providerId: 'vision-provider', modelId: 'vision-model' } };
+    render(<ToastProvider><Settings mode="settings" initialSection="model-policy" isActive /></ToastProvider>);
+    const recovery = screen.getByText('Failure recovery').closest('details')!;
+    expect(recovery).not.toHaveAttribute('open');
+    const summary = within(recovery.querySelector('summary')!);
+    expect(summary.getByText(/Specified backup/)).toBeVisible();
+    expect(summary.getByText(/Vision Provider · Vision Model/)).toBeVisible();
+    expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();
   });
 
   it("keeps a real provider model panel stable when Settings receives request logs (#582)", async () => {

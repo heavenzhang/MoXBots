@@ -22,7 +22,8 @@ export function handleRouteTiers(sessionMeta?: { providerId?: string | null; mod
     success: true,
     data: {
       enabled: isAutoRoutingEnabled(catalog.settings),
-      classifier: classifier ? { ...classifier, chosenBy: catalog.settings.classifier ? 'user' : 'auto' } : null,
+      classifier: classifier ? { ...classifier, chosenBy: catalog.settings.classifier ? 'user' : 'auto', available: catalog.entries.has(autoModelKey(classifier)),
+        ...(!catalog.entries.has(autoModelKey(classifier)) ? { unavailableReason: 'unavailable' } : {}) } : null,
       tiers: Object.fromEntries(AUTO_TIERS.map(tier => [tier, catalog.table[tier].map(entry => ({
         providerId: entry.providerId,
         model: entry.model,
@@ -66,7 +67,8 @@ export async function handleRouteExplain(
       ...(result.effort ? { effort: result.effort } : {}),
       reason: decision.reason,
       switches: decision.switches,
-      ...(decision.backup ? { backup: autoModelKey(decision.backup) } : {}),
+      ...(result.failover?.backup ? { backup: autoModelKey(result.failover.backup) } : {}),
+      ...(result.failover ? { failoverMode: result.failover.mode, backupUnavailableReason: result.failover.unavailableReason } : {}),
       ...(result.classifier ? { classifier: autoModelKey(result.classifier) } : {}),
       ...(result.classify && !result.classify.ok ? { classifierError: result.classify.error } : {}),
       classifierLatencyMs: result.classify?.latencyMs ?? 0,

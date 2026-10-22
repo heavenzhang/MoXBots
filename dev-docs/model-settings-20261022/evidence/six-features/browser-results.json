@@ -1,0 +1,18 @@
+{
+  "environment": "http://127.0.0.1:8924/model-settings-qa",
+  "role": "synthetic local configuration",
+  "revision": "working candidate for MOXBOTS-MODEL-SETTINGS-20261022; see acceptance.md commit",
+  "transport": "actual SettingsPage, synthetic localStorage/config/API; no real provider/native runtime",
+  "checks": [
+    "single entry; collapsed advanced controls; keyboard open/model choice; three modes; explicit cross-tier opt-in; mode/value independence; reload persistence",
+    "invalid classifier recovery and independent tier/order resets preserve unrelated settings",
+    "catalog error is visible; failover remains usable; Retry restores tiers",
+    "failed mode save retains original persisted value and visible error",
+    "invalid configured backup warns in collapsed summary and links to provider repair",
+    "1440x900 collapsed/expanded: readable tier layout, no horizontal page overflow",
+    "768x900 collapsed/expanded: readable tier layout, no horizontal page overflow",
+    "390x900 collapsed/expanded: readable tier layout, no horizontal page overflow",
+    "English page and all three navigation intents resolve correctly; no page errors"
+  ],
+  "errors": []
+}

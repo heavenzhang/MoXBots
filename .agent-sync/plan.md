@@ -1,10 +1,16 @@
-## MOXBOTS-LOGIN-RETURN-02 — 浏览器登录的可靠交付与原生提交
+## MOXBOTS-RECOVERY-CAUSAL-DIAGNOSTICS-20261022 — 下一未冻结批的安全补证
 
-用户反馈 Air 原设备网页登录后客户端不变，要求重构机制。任务 `.agent-sync/tasks/codex-login-transaction-02-d5dbc807.md`，设计 `dev-docs/login-transaction-02/design.md`。服务端 opt-in 可重取同一 session 并在 native 保存发布后 ACK；native 单飞后台 driver、阶段投影、staged 恢复及无 bearer 的提交回执；UI 卸载仅 detach，显式取消及真实身份边界仍生效。保留原账号/设备/凭据权限，不迁移数据库，不新增监听端口。
+仅补未来Query准入拒绝枚举、fetch本地错误码/abort类别及原native工具reserve/commit串行点的脱敏阶段；不改变安全条件、返回HTTP、ledger、Stop、重试/恢复权限或预算。任务 `.agent-sync/tasks/codex-recovery-causal-diagnostics-20261022-8df66bab.md`。从指定263起点核查后，因main仅有mobile build3变动而在新clean树FF actual7db通过start门；目标源字节一致。当前5168/source52/tag263/签名包保持冻结，原solepublisher01a12bc2-907a-7702-b6dd-788225c5dfe4继续现稳定晋级，不等待本任务。开发只交源分支与聚焦本地测试，下一未冻结批的统一CI/main/构建/原生验收由其选择。新增日志不是历史根因查明、业务完成或恢复授权。
 
-部署单元：desktop client（src-tauri/renderer），唯一 CI/发布负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；owned cloud auth（services/agentnet），唯一负责人 `01a12b99-7b38-78b1-831f-9c60257d386a`。沿用本计划既有归属及版本规则；开发会话不分配构建号或运行共享 CI/正式部署。云端 additive 接口先上线，客户端随后升级；两个单元可各自回滚，保留 legacy 契约及已有会话。精确 SHA/CI/版本/制品摘要由 owner 冻结后记录，后续源码进入下一批。
+## MOXBOTS-LOGIN-RETURN-02 — 标准 OAuth 登录与原 Air 验收
 
-当前：独立分支 `codex/login-transaction-02` 源码与本地验证已完成，正在精确 SHA 发布交接；真实 Air 构建号/日志未知（用户只读命令没有输出），单机或模拟测试不能替代 Air 登录和持久化验收。本批未变更生产，远端 main、统一 CI、两个单元发布和 Air 实验分别追踪。
+2026-10-22 用户明确保留 OAuth，按成熟标准流程收敛、减少自定义环节并简化登录。新任务记录 `.agent-sync/tasks/codex-login-oauth-standard-20261022-544dc4b5.md`；本分支从远端 main 263b1cf5 隔离开始。标准交付、UI、验证及主干发布状态以新记录为准。
+
+旧 replay/ACK 修复已 PR180 合入 main 2adf5c1d，云端已发布；516.5 为已签名候选，原 Air 登录/重开验收未完成。不能将旧候选或其他 Mac 在线视为本次完成。516.8 既有冻结批次不混入尚未提交的新范围。
+
+部署单元沿用：desktop client（src-tauri/renderer）及 combined CI/版本由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；owned cloud auth（services/agentnet）由 `01a12b99-7b38-78b1-831f-9c60257d386a` 唯一负责。云端兼容接口先发布，桌面后发布；保留旧 Host/手机/客户端接口及会话，独立回滚程序/客户端，不回滚原业务数据库或凭据。开发会话不触发共享 CI、正式构建或生产切换。
+
+完成必须同时具备源码/测试/main 远端核验、两单元发布/制品对应和原 Air 真正登录、正常退出重开状态保留。用户已同意新包就绪后按链接操作，真实 Air 验收仍待进行。
 
 ## MOXBOTS-AUTO-ROUTING-20261021 — 自动选模型 P0–P3
 
@@ -752,3 +758,37 @@ Owner01a12bc2 integrates human-authorized old entry removal plus exactblank/scro
 ## Mobile TestFlight and selected wireless phone — 2026-10-22
 
 MOXBOTS-MOBILE-TESTFLIGHT-20261022 remains within the existing sole mobile CI/build/sign/distribution/install/acceptance owner01a12b99-7b38-78b1-831f-9c60257d386a. Human in source chat01a1488b explicitly chose TestFlight via the existing Apple account, a usable invite for their second iPhone, then selected Kevin and requested fresh install with the new icon after personally deleting the old App. This transfers no desktop/updater or101 authority; source chat remains read-only preparation/review. Original mobile0.1.0/build2 retained unchanged; fresh development internal build3 is allocated for the explicitly selected Kevin, with the separate TestFlight upload build pending actual ASC inventory. Current batch preparing account/device/distribution gates and canonical launcher repair, not uploaded/installed/published. The launcher reuses the existing canonical blue M and its actual Expo-generated opaque1024px output has been viewed; final archive/home-screen still pending. Task .agent-sync/tasks/codex-mobile-testflight-20261022-2937e67c.md; gate details dev-docs/mobile-002/testflight-distribution-20261022.md. Small self-use invite only, no unrelated internal roles/email/marketing; missing Apple verification is handled precisely, not by account switching or invented metadata.
+
+
+## Deployment coordination — MOXBOTS-0517-LOGIN-RELEASE-20261022
+Human in login source chat01a15a5c prioritizes standard OAuth, simpler login, main/release and originalAir login plus Cmd-Q/reopen persistence. Existing Root01a12bc2 owns desktop/macOSarm64/updater and combinedCI/main; cloudauth/101 owner01a12b99 deploys additive compatibility first. Completed0.5.16/build516.8 is installed and stable published with immutable source52/main263/tagv0.5.16/TAR6bf. New0.5.17/build517.1 selects only standardOAuth bce+a313 repairs and release metadata on currentmain7db; existingPR186 is reused for the combined exacthead/fulloriginalCI/protectedmain. Other pending remote/model/diagnostic source stays next unfrozen scope; author-blocked orchestration6713 excluded. After017 distribution, keep the compatible newcloud when rolling desktop back to016; oldcloud programs lack the newOAuth routes, so a cloud rollback requires explicit client coordination/new-login outage handling. AuthDB/session/device/Keychain are never rolled back. OriginalAir acceptance cannot be replaced by Macmini or syntheticReady. Task .agent-sync/tasks/codex-release-0517-login-20261022-5c6cd87f.md; source evidence dev-docs/login-oauth-standard/acceptance.md.
+
+
+## Deployment coordination — MOXBOTS-0518-REMOTE-MODEL-DIAGNOSTICS-20261022
+
+Existing desktop/macOSarm64/updater and combinedCI/main/version owner remains Root01a12bc2-907a-7702-b6dd-788225c5dfe4. The next unfrozen batch reserves0.5.18/build518.1 on actualmainbd13 including standardOAuth017. Select remote28c/functional0c, model2f757 and bounded diagnosticb563 under their verified source requests; preserve original admission/permission/Stop/ledger authority. Integration branch codex/release-0518-remote-model-diagnostics-20261022, task .agent-sync/tasks/codex-release-0518-remote-model-diagnostics-20261022-cfad3364.md. Exclude author-blocked orchestration6713, uncommitted changes and independent mobile/Host/cloud/Windows deployments. Source integration/local combined gates may proceed while signed017's separate immutable candidate and originalAir login/publication gates finish; no overlapping App install or server pointer write. Exactsource CI/main, newartifact/tag, native dual-device/model-policy/causal observations, publication/install and rollback each remain separate states. Air window/version/principal/scope gates constrain real validation, not the source checkout. Source diagnostics do not retroactively prove historical502/409 cause or clear uncertain business evidence.
+
+## MOXBOTS-MODEL-SETTINGS-20261022 — 模型策略统一入口
+
+任务 `.agent-sync/tasks/codex-model-settings-20261022-37a8de35.md`，验收 `dev-docs/model-settings-20261022/`。统一入口 cdf33fd9 已提交，用户追加六项：空闲新轮次清旧备用、默认同档/显式跨档、三种模式、配置与运行时可用性、实际决策反馈、档位重试与独立恢复。前两项先复现再修复，六项最终414 tests/真实SDK本地回环3路径/合成UI9组及独立review通过；六项证据使用 evidence/six-features，旧unified截图仅证明入口。desktop唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4继续统筹CI/main/版本/构建/发布；开发会话通过验证后交接精确SHA和证据，不自行PR/共享CI/打包/日常App，不加入冻结批次。分别追踪源码/模拟/loopback/合成UI/原生/生产/主干。
+
+
+## MOXBOTS-0518-OWNED-REFERENCE-ADMISSION-20261022
+
+Parent SALARY-RECOVERY-20261020. Isolated feature codex/owned-reference-admission-20261022 starts from verified main c83b4c5b41a6a72f273c90aa7f1f768d916651ab. Repair only directory-selector lookup into the original valid owned connection, with full service/network uniqueness, exact account binding and generation checks; no selected fallback, new capability, retry, ledger or runtime mutation. Task `.agent-sync/tasks/codex-owned-reference-admission-20261022-1f99efc3.md` records targeted red/green and handoff. Frozen518.1/source4a92/artifacts remain unchanged. Desktop/macOS/updater and shared CI/main/release owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; root independent source review precedes publisher selection for the next unfrozen batch. Synthetic routing evidence is separate from originalAir executable identity, actual native source branch trace, remote permission/invoke and publication acceptance.
+
+
+## MOXBOTS-BLANK-20261022: long-session navigation delay follow-up
+
+User explicitly requests diagnosis/fix, remote main, existing desktop publisher release and original-long-session validation. Task `.agent-sync/tasks/codex-chat-switch-delay-20261022-20c722f5.md`, base c83b4c5b. Real MessageList/Virtuoso WebKit reproduces372-process-block update invalidation: unchanged phases plus whole-group count/inline row callbacks repeat1119 locale calls per append. Phase identity/lifecycle/boundary comparison, stable expansion handler and row-local boundary cut this to3–6; measured synthetic click1028ms→139ms, not native end-to-end proof. Existing historical WebContent attribution/whole delay remain uncertain. Exact source/local synthetic/CI/main/native/new release/installed/original-session gates remain separate. Same sole desktop/macOS/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 retains CI/build/version/sign/install/stable/rollback; source request goes into next unfrozen batch, never rewrites017/018 immutable artifacts. Do not stop/replay salary business, seize native UI, or treat fixture as original-session acceptance.
+
+
+## Desktop018 next immutable build518.2 — 2026-10-22
+
+Same sole desktop/macOSarm64/updater/combinedCI/main owner01a12bc2 reserves518.2 on normalmain3f820 containing navigation9c6/PR188 exact originalCI39704262515. Installed/accepted518.1/source4a92 stays immutable and unpublished. Next source includes reviewed committed owned-reference admission repair only after original-author handoff; actual same-service old invalid binding plus one valid actor must route without selected fallback, while two live principals/removal/trust/generation/feature-disable guards remain closed. No dirty copy or parallel writer. Task `.agent-sync/tasks/codex-release-0518-5182-navigation-admission-20261022-dcad0a6c.md`. Product0.5.18 remains; separate5182 source/CI/main/artifact/native/original-session/two-device/publication gates apply. No formalbuild/App/runtime/credential/Host/cloud/mobile/Windows mutation from this preparatory commit.
+
+MOXBOTS-0518-OWNED-REFERENCE-ADMISSION-20261022 publisher correction: the first3b9 candidate is not accepted for the observed two-history configuration. Current authority must be determined by exact valid actor/binding, not durable row count. Retain historical invalid rows; permit only one proven valid actor while unknown/changing/active-restore or two valid accounts remain blocked, with whole-scope post-guard identity/generation revalidation. Follow-up targeted red/green is in the existing task; source only, pending independent root review and sole publisher's reserved next unfrozen518.2. Prior518.1 remains immutable and real native/remote acceptance separate.
+
+## Mobile TestFlight build4 privacy repair — 2026-10-22
+
+Same sole mobile owner01a12b99 continues MOXBOTS-MOBILE-TESTFLIGHT-20261022 after actual Apple upload868ab268 FAILED/90683 (missing NSPhotoLibraryUsageDescription). Existing plugin gains only the selected-photo conversation-attachment purpose; PHPicker runtime/privacy authority is unchanged. Newimmutable0.1.0/build4 preserves rejected3 and originalXu2. Actualmainc8068493 integrated before source fix; type/lint/78policy and real generatedInfo checks pass, with exact CI/main/independent review/archive/sign/upload/AppleBeta/installable invite still separate. Shared combinedCI/main remains desktop01a12bc2, which explicitly returned CLI build/sign resources after5182; GUI lease and originalAir/Dex quiet-window remain independent. No dailyMac/101 mutation. Task and release record remain the original TestFlight paths.

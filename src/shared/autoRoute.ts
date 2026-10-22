@@ -14,6 +14,7 @@
 // downgrade while the prompt cache is warm. Only the engine is ported — there
 // is no rule language, the user sees three tiers.
 
+import type { ModelFailoverMode } from './modelFailover';
 import { normalizeReasoningEffort } from './reasoningEffort';
 
 export const AUTO_TIERS = ['fast', 'balanced', 'strong'] as const;
@@ -458,6 +459,8 @@ export interface AutoRouteDecisionInput {
   contextUsed?: number;
   /** Can this model run here (credential, same provider history, not cooling down)? */
   isUsable: (ref: AutoTierEntry) => boolean;
+  /** Only an explicit user preference permits failover to another tier. */
+  allowCrossTierBackup?: boolean;
 }
 
 export interface AutoRouteDecision {
@@ -512,7 +515,8 @@ export function decideAutoRoute(input: AutoRouteDecisionInput): AutoRouteDecisio
     }
   }
 
-  const backup = candidates.find(entry => autoModelKey(entry) !== autoModelKey(target));
+  const backup = candidates.find(entry => autoModelKey(entry) !== autoModelKey(target)
+    && (input.allowCrossTierBackup === true || entry.tier === target.tier));
   return {
     tier: target.tier,
     target,
@@ -524,12 +528,18 @@ export function decideAutoRoute(input: AutoRouteDecisionInput): AutoRouteDecisio
 
 /** Per-turn route record. Never carries the user's text. */
 export interface AutoRouteRecord {
-  tier: AutoTier;
+  tier?: AutoTier;
   providerId: string;
   model: string;
   effort?: string;
   reason: AutoRouteReason;
   classifierModel?: string;
+  /** Planned backup, not a claim that a switch has executed. */
+  backup?: AutoModelRef;
+  failoverMode?: ModelFailoverMode;
+  backupUnavailableReason?: 'off' | 'not-configured' | 'unavailable' | 'cross-tier' | 'no-candidate';
+  /** Failed initial classification kept the live model; no tier was established. */
+  unclassified?: boolean;
   latencyMs: number;
   at: string;
 }

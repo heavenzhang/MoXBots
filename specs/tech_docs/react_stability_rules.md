@@ -82,6 +82,8 @@ setup 必须每次显式恢复 `true`。即使生产入口暂未包 `StrictMode`
 
 Tab workspace 的 transition 必须经过 `useTabWorkspaceController`；不要直接 setter 破坏 identity-preserving update。优化前后用 React profiler 或有针对性的 render-count test 证明收益，避免为轻量组件增加 comparator 复杂度。
 
+过程消息按 immutable block identity 判定阶段是否变化。`buildProcessPhases` 每轮产生的新 entry 数组不表示整段历史都变化；`BlockGroup` 的阶段 comparator 同时比较 block、index、outcome、live 与末尾边界。行只接收自身是否有后续块，展开回调使用稳定 identity 并由触发行回传 block/index，避免每个 delta 改写所有行的 prop。追加、既有行失败/结果变化和已展开组分别由 `BlockGroup.test.tsx` 回归；`scripts/verify-chat-switch-delay.mjs [webkit|chromium] [--baseline]` 在真实 MessageList/Virtuoso 中用合成372块比较未变行计算量及切换响应。此测量不代替原生会话验收或追认历史延迟的全部原因。
+
 ## 外部状态同步
 
 Effect 与 API、文件、Sidecar 或 Tauri command 交互时：

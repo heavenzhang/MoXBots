@@ -15,7 +15,7 @@ vi.mock('./receipts',async()=>{
   const actual=await vi.importActual<typeof import('./receipts')>('./receipts');
   return {...actual,createRemoteReceiptOwner:()=>({begin:f.begin,read:f.read,finish:f.finish,adoptPrepared:f.adopt})};
 });
-import {handleDesktopRemoteSession,prepareDesktopRemoteSession} from './desktop';
+import {handleDesktopRemoteSession,prepareDesktopRemoteSession,resolveDesktopRemoteTarget} from './desktop';
 const agent={agentId:'agent',workspacePath:'/workspace',agent:{id:'agent',enabled:true,name:'Agent'},project:{id:'p',path:'/workspace'}};
 const mutation=()=>({kind:'send' as const,agentId:'agent',sessionId:'session',operationId:randomUUID(),text:'hi'});
 function receipt(request:ReturnType<typeof mutation>,status='processing'){return {kind:'receipt',agentId:request.agentId,operationId:request.operationId,sessionId:request.sessionId,status,code:null}}
@@ -32,10 +32,33 @@ beforeEach(()=>{
 });
 afterEach(()=>vi.unstubAllEnvs());
 async function settle(){await vi.waitFor(()=>expect(f.finish).toHaveBeenCalled())}
-it('refuses disabled Agent, cross-workspace session and obsolete envelope generation before admission',async()=>{
+it('reads history and admits explicit messages while proactive mode is off without enabling it',async()=>{
+  const passive={...agent,agent:{...agent.agent,enabled:false}};
+  f.registry.mockResolvedValue({agentProjections:[passive],diagnostics:[],config:{}});
+  f.list.mockReturnValue([{id:'session',title:'Existing history',lastActiveAt:'2026-10-21T00:00:00Z'}]);
+  expect(await handleDesktopRemoteSession({request:{kind:'list',agentId:'agent',limit:30},generation:'gen'},'global')).toMatchObject({success:true,data:{kind:'list',items:[{sessionId:'session',title:'Existing history'}]}});
+  expect(await resolveDesktopRemoteTarget('agent','session')).toMatchObject({identity:passive});
   const request=mutation();
-  f.registry.mockResolvedValueOnce({agentProjections:[{...agent,agent:{...agent.agent,enabled:false}}],diagnostics:[],config:{}});
-  expect(await handleDesktopRemoteSession({request,generation:'gen'},'session')).toMatchObject({code:'REMOTE_AGENT_UNAVAILABLE'});
+  expect(await handleDesktopRemoteSession({request,generation:'gen'},'session')).toMatchObject({success:true,data:{status:'processing'}});
+  await settle();
+  expect(f.send).toHaveBeenCalledOnce();
+  expect(passive.agent.enabled).toBe(false);
+});
+it.each([
+  {agentProjections:[],diagnostics:[],config:{}},
+  {agentProjections:[{...agent,project:undefined}],diagnostics:[],config:{}},
+  {agentProjections:[{...agent,project:{...agent.project,hidden:true}}],diagnostics:[],config:{}},
+  {agentProjections:[{...agent,project:{...agent.project,internal:true}}],diagnostics:[],config:{}},
+  {agentProjections:[{...agent,project:{...agent.project,archivedAt:'2026-10-21T00:00:00Z'}}],diagnostics:[],config:{}},
+  {agentProjections:[agent],diagnostics:[{agentIds:['agent']}],config:{}},
+])('rejects unavailable or ambiguous workspace identities before read or admission (%#)',async registry=>{
+  f.registry.mockResolvedValue(registry);
+  expect(await handleDesktopRemoteSession({request:{kind:'list',agentId:'agent',limit:30},generation:'gen'},'global')).toMatchObject({code:'REMOTE_AGENT_UNAVAILABLE'});
+  expect(await handleDesktopRemoteSession({request:mutation(),generation:'gen'},'session')).toMatchObject({code:'REMOTE_AGENT_UNAVAILABLE'});
+  expect(f.list).not.toHaveBeenCalled();expect(f.send).not.toHaveBeenCalled();expect(f.begin).not.toHaveBeenCalled();
+});
+it('refuses cross-workspace session and obsolete envelope generation before admission',async()=>{
+  const request=mutation();
   f.metadata.mockReturnValueOnce({id:'session',agentDir:'/other'});
   expect(await handleDesktopRemoteSession({request,generation:'gen'},'session')).toMatchObject({code:'REMOTE_SESSION_NOT_FOUND'});
   expect(await handleDesktopRemoteSession({request,generation:'old'},'session')).toMatchObject({code:'REMOTE_SESSION_OWNER_CHANGED'});
