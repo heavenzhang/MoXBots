@@ -2344,7 +2344,11 @@
     "backupEnabled": "已启用指定备用",
     "backupDisabled": "未启用指定备用",
     "failoverHint": "自动模式默认只在同档有可用候选时提供备用，跨档需要手动开启。手动固定模型或需要指定备用时，可在这里配置。",
-    "mode": { "auto": "跟随自动选模", "specified": "使用指定备用", "off": "不自动切换模型" },
+    "mode": {
+      "auto": "跟随自动选模",
+      "specified": "使用指定备用",
+      "off": "不自动切换模型"
+    },
     "backupInvalid": "指定备用不可用：{{reason}}"
   },
   "autoRouting": {
@@ -2376,13 +2380,88 @@
     "classifierNone": "判断模型：暂无可用模型",
     "classifierUnavailable": "已保存的判断模型 {{model}} 当前不可用",
     "restoreAutoClassifier": "恢复自动挑选判断模型",
-    "classifierAutoOption": "自动挑选",
+    "classifierAutoOption": "自动选择",
     "restoreDefaultTiers": "恢复自动分档",
     "restoreDefaultOrder": "恢复默认排序",
     "privacy": "判断时会把这条消息和上一轮对话的摘要发给判断模型，它和对话模型走同一个模型服务。",
     "saving": "正在保存…",
     "saveFailed": "保存失败，请重试。",
-    "saved": "已保存。"
+    "saved": "已保存。",
+    "nextTurn": "修改从下一轮生效",
+    "poolAutomatic": "候选池跟随供应商目录",
+    "poolManual": "候选池由手动管理",
+    "priorityHint": "每档内，当前选定且仍可用的模型保持第一顺位，其余按列表排列。配置就绪不代表已实测模型调用。",
+    "tierSummary": "各档可用模型数量",
+    "search": "搜索模型、名称或供应商",
+    "filter": "筛选候选模型",
+    "filters": {
+      "all": "全部活跃候选",
+      "paused": "已暂停",
+      "unavailable": "不可用"
+    },
+    "addModels": "添加模型",
+    "cancelAdd": "关闭添加面板",
+    "addHeading": "从供应商目录添加",
+    "addTier": "加入档位",
+    "addEmpty": "目录中没有候选池外的模型。可前往“模型供应商”添加模型或修复供应商。",
+    "addSelected": "添加所选 {{count}} 项",
+    "selectVisible": "选择当前可见项（{{count}}）",
+    "selected": "已选 {{count}} 项",
+    "pauseSelected": "暂停所选",
+    "resumeSelected": "恢复所选",
+    "removeSelected": "移出所选",
+    "selectModel": "选择 {{model}}",
+    "setTier": "设置 {{model}} 的档位",
+    "moveDown": "将 {{model}} 下移",
+    "pause": "暂停",
+    "resume": "恢复",
+    "remove": "移出",
+    "fixProvider": "修复供应商",
+    "source": "分档来源",
+    "paused": "已暂停自动候选",
+    "unavailable": "不可用",
+    "unavailableReasons": {
+      "provider-disabled": "供应商已停用",
+      "provider-unavailable": "供应商不可用",
+      "runtime-unsupported": "当前运行环境不支持",
+      "model-unavailable": "模型不可用",
+      "not-chat": "非对话模型"
+    },
+    "openProviders": "打开模型供应商",
+    "advanced": "高级分档与候选池设置",
+    "restorePool": "按目录恢复候选池",
+    "restorePoolHint": "此操作会重新纳入供应商目录中当前所有可用的对话模型，执行前需要确认。",
+    "backupNote": "{{model}} 移出自动候选后仍作为指定备用使用。",
+    "manageBackup": "管理备用模型",
+    "undo": "撤销",
+    "confirm": {
+      "exclude": {
+        "title": "移出自动候选？",
+        "message": "{{count}} 个模型将不再参与自动选择。供应商配置和手动选择模型仍保留；如判断模型指向其中之一，也会同时清除并恢复自动选择。"
+      },
+      "pause": {
+        "title": "暂停自动候选？",
+        "message": "{{count}} 个模型将不再参与自动选择。如判断模型指向其中之一，也会同时清除并恢复自动选择。"
+      },
+      "restore": {
+        "title": "恢复自动候选？",
+        "message": "{{count}} 个模型将重新启用自动选择。恢复整个目录可能纳入新出现的模型。"
+      },
+      "action": "确认"
+    },
+    "undoConflict": "此设置在保存后已发生变化，已跳过撤销。请刷新并检查当前值。",
+    "firstPriority": "优先使用",
+    "searchAdd": "搜索模型名称、供应商或 ID",
+    "noAddMatches": "目录中没有匹配的模型。",
+    "classifierAutoCompact": "判断模型：自动选择",
+    "classifierUserCompact": "判断模型：手动指定",
+    "sources": {
+      "override": "手动调整档位",
+      "catalog": "供应商目录",
+      "price": "目录价格信息",
+      "name": "模型名称",
+      "default": "默认档位"
+    }
   },
   "modelFailover": {
     "relationship": "自动模式默认提供同档备用，跨档需要手动开启。指定模式使用你选择的备用模型。关闭模型切换不会影响原模型有限次数的重试。",
@@ -2395,7 +2474,12 @@
     "keyMissing": "未配置密钥",
     "title": "备用模型",
     "enable": "故障接管模式",
-    "mode": { "label": "故障接管模式", "auto": "跟随自动选模", "specified": "使用指定备用", "off": "不自动切换模型" },
+    "mode": {
+      "label": "故障接管模式",
+      "auto": "跟随自动选模",
+      "specified": "使用指定备用",
+      "off": "不自动切换模型"
+    },
     "modeHint": "当前模式：{{mode}}。关闭模型切换不影响原模型有限次数的重试。",
     "allowCrossTier": "允许跨档选择备用（默认关闭）",
     "openProviders": "前往模型供应商修复",
