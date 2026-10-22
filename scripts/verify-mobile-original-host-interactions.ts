@@ -11,6 +11,7 @@ import {join,resolve} from 'node:path';
 import {createRequire} from 'node:module';
 import {build} from 'esbuild';
 import type {InternalManagementAuthority} from '../src/host/management-ipc';
+import {AUTO_ROUTE_CLASSIFIER_SYSTEM_PROMPT} from '../src/shared/autoRoute';
 
 const started=Date.now(), repository=resolve(import.meta.dirname,'..');
 const root=await mkdtemp(join(homedir(),'.mox-host-interactions-'));
@@ -19,7 +20,7 @@ const state=join(root,'state'),home=join(state,'home'),workspace=join(state,'wor
 const ipcDirectory=join(root,'ipc'),socketPath=join(ipcDirectory,'management.sock');
 const secret=randomBytes(32).toString('base64url');
 const children:ChildProcess[]=[];
-let diagnostics='',calls=0,hostPid:number|undefined,hostBirth:string|undefined;
+let diagnostics='',calls=0,classifierCalls=0,hostPid:number|undefined,hostBirth:string|undefined;
 const evidence:string[]=[];
 const descendants=new Map<number,{pid:number;ppid:number;pgid:number;birth:string;command:string}>();
 function record(event:string,value:unknown={}) {const line=JSON.stringify({event,...value as object}).split(secret).join('[redacted]');evidence.push(line);console.log(line);}
@@ -90,7 +91,22 @@ const supplier=httpServer(async(request,response)=>{
     for await(const part of request){size+=part.length;if(size>8*1024*1024)throw Error('FIXTURE_REQUEST_TOO_LARGE');chunks.push(Buffer.from(part));}
     if(request.url.includes('count_tokens')){response.writeHead(200,{'content-type':'application/json'}).end('{"input_tokens":100}');return;}
     if(request.headers['x-api-key']!==secret)throw Error('FIXTURE_PROVIDER_AUTH_MISMATCH');
-    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown};assert.equal(body.model,'original-host-model');
+    const body=JSON.parse(Buffer.concat(chunks).toString()) as {model:string;messages:unknown;system?:unknown;stream?:unknown;tools?:unknown};assert.equal(body.model,'original-host-model');
+    // The product's direct classifier shares this synthetic Provider/model but
+    // is not a native tool turn. It must not consume the phase's first tool use.
+    if(body.system===AUTO_ROUTE_CLASSIFIER_SYSTEM_PROMPT){
+      assert.notEqual(body.stream,true,'classifier must use its direct non-stream transport');
+      assert.equal(body.tools,undefined,'classifier request must not own tools');
+      classifierCalls++;
+      record('supplier-classifier-request',{phase,classifierCalls,streaming:body.stream===true,hasTools:body.tools!==undefined});
+      response.writeHead(200,{'content-type':'application/json'}).end(JSON.stringify({
+        id:`classifier-${classifierCalls}`,type:'message',role:'assistant',model:body.model,
+        content:[{type:'text',text:'2'}],stop_reason:'end_turn',stop_sequence:null,
+        usage:{input_tokens:100,output_tokens:1},
+      }));
+      return;
+    }
+    assert.equal(body.stream,true,'native interaction fixture requires a streaming SDK turn');
     calls++;captureProcesses();
     if(!issued.has(phase)){issued.add(phase);record('supplier-real-tool-use',{phase,tool:'Bash'});reply(response,{name:'Bash',id:`toolu_fixture_${phase}`,input:writeInput(phase)});}
     else if(phase==='allow'&&!readIssued){readIssued=true;record('supplier-real-tool-use',{phase,tool:'Read'});reply(response,{name:'Read',id:'toolu_fixture_read',input:{file_path:generated('allow')}});}
@@ -288,6 +304,8 @@ try{
   assert.equal(afterStop.code,'REMOTE_SESSION_INTERACTION_EXPIRED');assert.equal(await exists(generated('stop')),false);
   assert.equal(calls,callsAtStop);
   record('exact-stop-expires-real-pending-without-write');
+  assert(classifierCalls>0,'automatic routing must remain enabled in the interaction fixture');
+  record('classifier-and-native-tool-turns-kept-separate',{classifierCalls,nativeSupplierCalls:calls,issuedPhases:[...issued],readIssued});
   record('PASS',{elapsedMs:Date.now()-started,supplierCalls:calls,scope:'actual original Host/worker/SDK permissions, tool generation and artifact bytes; synthetic loopback supplier only'});
 }catch(error){record('FAIL',{error:error instanceof Error?error.message:'unknown',supplierCalls:calls,elapsedMs:Date.now()-started,privateFixture:root});process.exitCode=1;}
 finally{
