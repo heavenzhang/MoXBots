@@ -70,3 +70,11 @@
 发布负责人复审0ba已关闭前两项source finding，同时确认 `ORCH-REALTIME-PLAN-ADMISSION-03`：realtime mode使用独立steer路径，旧pending/revision/unknown方案及async preparation竞态仍能进入Codex turn/steer。新root输入fence不覆盖该入口。当前继任仅补这条路径的原owner/Session/generation fresh-check与实际RPC前同步validator；UI、公开能力范围和既有账本不改。不能把0ba的原通过矩阵当作03通过证据。最终独立原生验收仍由发布会话处理。
 
 03 final: 280 integration通过（240 mock native、39真实临时SessionStore、1 actual DSH adapter/synthetic host）及34 unit；后续const-only清理后14受影响定向、tsc/scoped lint通过，14是280子集。本地server/CLI build通过，renderer未改，不重复已完成的浏览器矩阵。5个新integration及实际Codex adapter validator先RED，修复后GREEN；首轮宽回归的1项失败定位并纠正fake adapter将同步validator放到延迟RPC ACK之后的错误时序，原晚ACK持久化断言保留并通过。主Agent复核实际源码边界及原owner，无native/Provider执行。完整可复现命令及失败说明见 `evidence/runtime-gate/realtime-03-review.md`。本轮不会解除签名/native/共享CI/主干门禁。
+
+## PR192 首次 CI 的夹具 lint 修复
+
+发布负责人已复审关闭01/02/03，并为exact6bcd创建PR192。首次CI39766160793的JS主job119782017279在完整lint失败：39项全部来自本任务入库的dev-docs原型/证据（any、CJS require、unused import）。此前只验证src的scoped lint未覆盖这些文件，这是验证范围缺口；未将失败标为无关或绕过门禁。
+
+继任只改dev-docs：明确原型状态/原组件props/输入附件与队列类型；两个独立证据脚本转ESM并同步引用，保留执行体与全部断言。补齐示例队列timestamp、队列附件名称及custom/project slash command形状。没有修改src、原生产组件、原生adapter、依赖、CI、eslint规则或ignore。完整npm lint（含deps0errors/18existing warnings与74docs）通过；独立临时tsconfig检查实际原型也通过。本地夹具构建及768高度六组合270浏览器断言通过（模拟边界，无业务/外网请求）。旧脚本2/2归一执行体一致、node语法检查通过。原CI失败与本地日志在 `/tmp/moxbots-orch-pr192-lint/`、`/tmp/moxbots-orch-realtime-03/ci192-javascript-failed.log`；完整lint取代了遗漏夹具的scoped-only证据，不能代替下一精确SHA的CI。
+
+本次修复由开发会话提交在隔离worktree；已有PR的push会触发共享CI，故由既有发布负责人统一接入/push和刷新PR192。主干/整库Rust/native/签名与生产验收仍未完成，冻结批次和已交付版本不变。

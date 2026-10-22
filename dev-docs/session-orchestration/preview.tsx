@@ -7,7 +7,7 @@ import { i18n } from '../../src/renderer/i18n';
 import '../../src/renderer/index.css';
 import ExecutionStatusBar from '../../src/renderer/components/agent-status/ExecutionStatusBar';
 import SubagentInspector from '../../src/renderer/components/agent-status/SubagentInspector';
-import { applySessionTaskAction as apply, emptyTaskLedger, mergeTaskObservations as observe, projectSessionTasks, type SessionTaskLedger } from '../../src/shared/sessionTaskOrchestration';
+import { applySessionTaskAction as apply, emptyTaskLedger, mergeTaskObservations as observe, type SessionTaskLedger } from '../../src/shared/sessionTaskOrchestration';
 import type { Message } from '../../src/renderer/types/chat';
 const start = Date.now() - 10000;
 const work = { id: 'child:run-1', toolUseId: 'child', agentId: 'reviewer', title: '核查接口权限并验证回归', executionVerified: true, lifecycle: { status: 'running' as const, startedAt: start, activation: { id: 'run-1', ordinal: 1, state: 'running' as const }, description: '核查接口权限并验证回归' } };

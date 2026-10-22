@@ -1,10 +1,12 @@
-const {chromium}=require('playwright');
-const fs=require('node:fs');
-const assert=require('node:assert/strict');
-const path=require('node:path');
-const out=__dirname;
+import { chromium } from 'playwright';
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const out=scriptDir;
 (async()=>{
- const browser=await chromium.launch({headless:true,executablePath:process.env.ORCH_CHROMIUM || '/Users/zhangshaohua/Library/Caches/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-mac-arm64/chrome-headless-shell'});
+ const browser=await chromium.launch({headless:true,...(process.env.ORCH_CHROMIUM ? { executablePath: process.env.ORCH_CHROMIUM } : {})});
  const results=[];
  try{for(const width of [1280,390,320])for(const dark of [false,true]){
   const p=await browser.newPage({viewport:{width,height:width===1280?900:844}}), errors=[];

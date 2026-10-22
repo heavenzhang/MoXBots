@@ -41,7 +41,7 @@
 
 视觉实看覆盖 1280 浅色执行、390 浅色 Inspector、320 深色执行、320 浅色断线与验收结果。窄屏任务名正常换行，状态保留，footer 自动换行，Inspector 四标签和关闭入口可读。深色最初截图处于主题颜色 150ms 过渡中，已等待过渡结束补拍；稳定色为 summary `rgb(207,197,186)` / surface `rgb(36,32,24)`，不以过渡帧误报最终对比度。
 
-独立证据：`evidence/independent-ui.cjs`、`evidence/independent-results.json`、`evidence/independent-{1280,390,320}-{light,dark}-{running,accepted,offline,inspector}.png`。`independent-1280-light-completion-debug.png` 和 `independent-320-dark-running-stable.png` 保留诊断原文，不作为新增测试场景计数。
+独立证据：`evidence/independent-ui.mjs`、`evidence/independent-results.json`、`evidence/independent-{1280,390,320}-{light,dark}-{running,accepted,offline,inspector}.png`。`independent-1280-light-completion-debug.png` 和 `independent-320-dark-running-stable.png` 保留诊断原文，不作为新增测试场景计数。
 
 ## 未验证边界
 
@@ -59,7 +59,7 @@ UI 接入包括 proposal 无正式任务时仍展示、收到同 Session 真实 
 - 48 项 pure/DOM（4 文件）通过；包括源卡片、实际 ExecutionStatusBar 组合、hook acknowledgment/迟到/重试及启动状态边界。
 - 全 TypeScript noEmit 已通过；分配 UI 的 ESLint 无错误，仅已有 baseline-browser-mapping 版本数据提示。
 - 新增 1280/390/320 × 浅深色共 6 组实际组件浏览器验收通过：未创建正式任务也显示草案；讨论保留已有草稿、聚焦、不 POST；调整断线保留文字、重试同 requestId；新版方案重新确认；确认后折叠；切换会话隔离；pending/claimed/error 提示。页面异常 0，横向溢出 0；320/390 输入框完整在 viewport 内。
-- 证据：`evidence/independent-plan-{tests,types,lint,browser}.log`、`independent-plan-results.json`、`independent-plan-ui.cjs`、`independent-plan-preview.{html,tsx}` 和矩阵截图。此处 API 是合成传输；草稿夹具与 Chat 回调一致，但未启动完整原生 Chat 或真实 Provider。
+- 证据：`evidence/independent-plan-{tests,types,lint,browser}.log`、`independent-plan-results.json`、`independent-plan-ui.mjs`、`independent-plan-preview.{html,tsx}` 和矩阵截图。此处 API 是合成传输；草稿夹具与 Chat 回调一致，但未启动完整原生 Chat 或真实 Provider。
 
 安全门禁审查发现原 localhost POST 不能证明人类按钮来源，随后按主负责人定义实现原生证明：Rust 进程内 OnceLock P256 私钥，Node 仅收到 SPKI 公钥；仅取得 Session Tab dispatch lease 的限定 POST 路径签名，绑定 hint、路径、原始 body SHA256、时间与 nonce；所有 caller supplied 证明头均剥离，global/analytics 不签名。私钥不出 Rust，不写盘，不记录签名。新模块 `src-tauri/src/session_user_action.rs` 使用仓库现有依赖，隔离最小 Cargo 实编译与 6 unit 通过。整库 targeted Cargo 独立执行仍在依赖编译，已按主负责人要求中断最初并行运行并以 `CARGO_BUILD_JOBS=2` 复用缓存继续，整库结果待单独记录。
 

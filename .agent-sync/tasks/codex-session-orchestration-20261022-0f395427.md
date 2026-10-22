@@ -89,3 +89,12 @@ Sole owner delta review on0ba closed source findings01/02 by explicit unsupporte
 - [ ] Commit/push exact successor; sole owner delta review, original sharedCI/main, then next unfrozen native/signed acceptance.
 
 UI and capability scope remain the reviewed0ba source. The 03 tests prove synthetic actual-adapter/Store boundaries, not signed/native readiness or Provider execution; main integration and release remain pending the designated owner.
+
+## PR192 exact-source CI follow-up
+
+Sole owner accepted6bcd source delta and closed all three findings, then createdPR192 and first CI39766160793. JavaScript job119782017279 failed complete lint with39errors in committed dev-docs fixtures, omitted by the earlier scoped-only lint. Preserve that failure; do not rerun an unchanged candidate or weaken lint.
+
+- [x] Repair only original prototype/ESM evidence files and references, with explicit types; no src/runtime/CI/ignore change.
+- [x] Full npm lint (deps0errors/18existing warnings,74doc links), independent fixture types, local fixture build and six-combination browser270 passed. Original worker script assertions retained with2/2 normalized behavior parity.
+- [ ] Sole owner incorporates exact local fix, pushes updated PR192 once and coordinates next exact-source CI/protected main; source branch and remote-main containment must be reverified.
+- [ ] Later unfrozen signed/native publication and real acceptance remain owner gates.
