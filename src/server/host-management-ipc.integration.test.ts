@@ -854,6 +854,24 @@ it.skipIf(process.getuid?.() === 0)(
       resources: { version: 1, revision: 0, roots: [{ rootId: 'workspaces' }], agents: [] },
     });
     expect(await sendRequest('host.inspect',{})).toMatchObject({kind:'extended-snapshot',provider:null,settings:null});
+    const localIdentity=JSON.parse(await readFile(join(state,'host-identity.json'),'utf8'));
+    const localDevice=localIdentity.hostId;
+    expect(typeof localDevice).toBe('string');
+    const ownerAuthority={connection:{serviceId:'service',networkId:'network',bootEpoch:'boot',connectionEpoch:'connection'},
+      peer:{serviceId:'service',environment:'production',networkId:'network',principalId:'peer-principal',deviceId:'peer-device',keyGeneration:1},
+      peerEpoch:'peer-epoch',local:{serviceId:'service',environment:'production',networkId:'network',principalId:'host-principal',deviceId:localDevice,keyGeneration:1},
+      accountBinding:'binding-1',managementBinding:'binding-1'};
+    const ownerRequest=async(operation:unknown)=>{
+      const requestId=randomUUID();peer.write(frame({kind:'internal-request',requestId,authority:ownerAuthority,operation}));
+      const result=await receive(peer);expect(result.requestId).toBe(requestId);return result.result;
+    };
+    const missingOwner={agentId:'missing-controlled-agent',sessionId:'missing-controlled-session'};
+    const oldOwner=await ownerRequest({kind:'assets.request',request:{version:1,kind:'list',...missingOwner,limit:1}});
+    expect(oldOwner).toEqual({kind:'error',code:'REMOTE_SESSION_AGENT_UNAVAILABLE'});
+    expect.soft(await ownerRequest({kind:'asset.owner.list',...missingOwner,limit:1,before:null})).toEqual(oldOwner);
+    const oldRead=await ownerRequest({kind:'assets.request',request:{version:1,kind:'read',...missingOwner,artifactId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',offset:0,maxBytes:24576}});
+    expect.soft(await ownerRequest({kind:'asset.owner.read',...missingOwner,sourceId:'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',offset:0,maxBytes:24576})).toEqual(oldRead);
+
     expect(await sendRequest('host.snapshot',{})).not.toHaveProperty('provider');
     // Use controlled fixture registry bytes, not an implicit remote enable.
     const remoteConfigPath=join(home,'.myagents','config.json');

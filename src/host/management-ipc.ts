@@ -5,7 +5,7 @@ import { dirname, isAbsolute, resolve } from "node:path";
 import { HostConfigError, HostManagementUpgradeRequired } from "./management";
 import { HostProviderCredentialError } from "./provider-credentials";
 import { remoteSessionRequestSchema } from '../shared/remoteSession';
-import { remoteAssetRequestSchema } from '../shared/remoteAssets';
+import { remoteAssetRequestSchema, type RemoteAssetRequest } from '../shared/remoteAssets';
 import { remoteMobileRequestSchema } from '../shared/remoteMobile';
 import { z } from 'zod';
 
@@ -50,11 +50,21 @@ const internalOperationSchema = z.discriminatedUnion('kind', [
   z.object({kind:z.literal('asset.stage.finish'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),assetId:z.string().uuid()}).strict(),
   z.object({kind:z.literal('assets.request'),request:remoteAssetRequestSchema}).strict(),
   z.object({kind:z.literal('mobile.request'),request:remoteMobileRequestSchema}).strict(),
-  z.object({kind:z.literal('asset.owner.list'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),limit:z.number().int().min(1).max(30),before:z.string().max(256).optional()}).strict(),
+  z.object({kind:z.literal('asset.owner.list'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),limit:z.number().int().min(1).max(30),before:z.string().min(1).max(256).refine(value=>Buffer.byteLength(value,'utf8')<=256).nullable().optional()}).strict(),
   z.object({kind:z.literal('asset.owner.read'),agentId:z.string().min(1).max(256),sessionId:z.string().min(1).max(99),sourceId:z.string().uuid(),offset:z.number().int().min(0).max(20*1024*1024),maxBytes:z.number().int().min(1).max(24*1024)}).strict(),
 ]);
 export type InternalManagementAuthority = z.infer<typeof internalAuthoritySchema>;
 export type InternalManagementOperation = z.infer<typeof internalOperationSchema>;
+/** Both private IPC spellings dispatch through the original Session artifact owner. */
+export function hostOwnerAssetRequest(operation: InternalManagementOperation): Extract<RemoteAssetRequest, {kind:'list'|'read'}> | null {
+  if(operation.kind==='assets.request')return operation.request.kind==='list'||operation.request.kind==='read'?operation.request:null;
+  if(operation.kind==='asset.owner.list')return {version:1,kind:'list',agentId:operation.agentId,
+    sessionId:operation.sessionId,limit:operation.limit,...(operation.before==null?{}:{before:operation.before})};
+  if(operation.kind==='asset.owner.read')return {version:1,kind:'read',agentId:operation.agentId,
+    sessionId:operation.sessionId,artifactId:operation.sourceId,offset:operation.offset,maxBytes:operation.maxBytes};
+  return null;
+}
+
 export function parseInternalManagementRequest(value:unknown, expectedDeviceId:string) {
   if(!plain(value)||!exactKeys(value,['kind','requestId','authority','operation'])||value.kind!=='internal-request'||typeof value.requestId!=='string'||!UUID.test(value.requestId))return null;
   const authority=internalAuthoritySchema.safeParse(value.authority),operation=internalOperationSchema.safeParse(value.operation);
