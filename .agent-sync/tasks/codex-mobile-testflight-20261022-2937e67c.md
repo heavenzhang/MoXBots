@@ -45,7 +45,7 @@ The desktop owner is finishing an in-flight native read-only check and will expl
 
 ## Next step
 
-Use the explicit GUI window to read the existing Xcode account/team capability and selected phone's official nearby-pairing state; return the window immediately. Continue ASC authentication/inventory independently where possible. Request only a concrete unresolved Apple verification or fact after inspecting existing configuration. Private receipts are in the project pointer output/mobile-testflight-20261022; credentials, device records and generated applications stay outside Git.
+Return the local-only diagnostic merge's exact head, parents and delta to desktop01a12bc2. Do not push or open another PR: the desktop owner explicitly retains the only FF push to existingPR190 and the one necessary diagnostic Linux CI. After the actual Linux stage/evidence and normal CI/main gates are accepted, the existing mobile owner resumes signing/upload and real Apple Build Uploads checks. Reviewer activation still requires the originalAir existing quiet-fact answer, real isolated App login/demo and no original-business/101 access. Keep original unsigned4/source63 immutable; do not rebuild it for this diagnostic-only integration.
 
 ## Fresh development build identity
 
@@ -78,3 +78,13 @@ The existing native config plugin now describes explicitly selected photos as co
 - [ ] New Apple Build Uploads completion, isolated reviewer real login/access checks, Beta review and actually installable small invitation.
 
 Root01a12b99 owns mobile build/sign/upload. Desktop01a12bc2 has explicitly returned build/sign/Apple CLI resources after5182; native GUI remains separately leased to its navigation reviewer, so this lane uses background ASC and CLI only. Cloud Dex window is not granted by that handback; originalAir operator confirmation is still required. DailyMac and101 identity/config remain excluded.
+
+## Local-only PR190 diagnostic integration — 2026-10-22
+
+PR190 original run39739522534 attempt1 failed its desktop credential-ledger child process: process_commit_helper returned CredentialUnavailable, parent real_process_commits_serialize_without_losing_routes reported round0/helper0 exit101.1793Rust cases passed,1failed,8ignored; overall8jobs succeeded and1conditional iOS job skipped. The full failed logSHA is2a5e49d6bddb59b66dea104a94d1acd0f964163cda407f0a15b0c483feb6f8d8. No unchanged rerun, signed/uploaded4 or main success is implied.
+
+The desktop main/CI owner explicitly reviewed diagnostic source4de5b15d406d0d0a81fa4abb86593d7888e7ccc6 and docs-only successorab7e7cf2fc77bfe3e19426fcbc0f4c2282157105 as PASS_SCOPED_DIAGNOSTIC_ONLY, then requested their normal merge into this original63d2230102919960f4406fad175411c81b86e62c branch. Both diagnostic commits and the original mobile history are preserved. Only credential_slots.rs changes runtime-source text: new output is cfg(test), I/O errors retain the same public variant, safety guards are unchanged, and the bounded200x4 diagnostic contention has no retry tolerance. Original Linux cause remains unresolved. Independent source review and25PASS/1ignored local module evidence are scoped diagnostics, not fullTauri/Linux or production acceptance.
+
+Before this merge, actual unsigned4/archive source63 passed primary and independent172file/size/SHA checks:200176749B, compact sorted manifest438b35da9a841fab0c0b70434d084e3d3abb935f7152a2156f2ee8c5847e2094, actual App0.1.0/4/originalbundle/min16.4/photo purpose, blueM compiled assets byte-equal the previously viewed artifact. Its complete new native source digest1b9ddd844da22122f1998cf35d87e600f1b9e23d18dfe1f2a83b4958d740a010 was recomputed after archive. The conservative scope includes desktop modules; do not relabel the archive with this later merge's source or infer whole-scope digest equality. No archive/binary was rebuilt or modified during integration. Actual Distribution signing/submitted IPA/Apple acceptance/Beta review/installable invitation remain open.
+
+This merge is deliberately LOCAL ONLY under the owner's exact handback. The mobile chat must stop before push/CI and provide exact head/parents/delta; desktop alone verifies and FF pushes the existingPR190. Original63 remote head, frozenbuild4, all published5182 artifacts, dailyMac client and101 identity/config remain unchanged by this handback. Private diagnostic and artifact evidence stays under pointer output/mobile-testflight-20261022 and output/testflight-20261022.
