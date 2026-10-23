@@ -19,7 +19,8 @@ REMOTE-UI-SMOOTH-20261024 continues REMOTE-UI-20261020: make observed remote out
 - [x] Focused unit/DOM regression: 41 cases in 7 files; affected ESLint, full TypeScript check, test classification and diff whitespace checks pass.
 - [x] Independent actual-component browser checks: Chromium and WebKit, 24 remote/ordinary cases in total; scroll/prepend/new output anchor, fold/draft, 390/800/1440 widths and light/dark. Synthetic transport labelled. Primary checked result JSON and representative narrow/wide screenshots.
 - [x] Source ready for review; independent reviewer accepted the final message-scoped tool-cache correction and targeted regression.
-- [ ] Exact branch commit/push and handoff gate (verified in private delivery receipt after execution); normal protected main/CI via existing publisher.
+- [x] Original source and continuity commits pushed; remote head 58902822efd551867d5f8a2563f515e3e925ba05 and handoff gate verified. The follow-up Chinese modification plan and execution mapping is in dev-docs/remote-session/smooth-20261024.md; publish its additional commit without rewriting history.
+- [ ] Normal protected main/CI via existing publisher, independently verified against remote main.
 - [ ] New immutable desktop artifact, target installation and real dual-device acceptance; do not promote synthetic evidence to real acceptance.
 
 ## Completed
@@ -46,4 +47,4 @@ Source checks have passed. Protected main/CI and new immutable release await the
 
 ## Next step
 
-Commit/push this reviewed branch, verify remote identity with the handoff gate, then request existing publisher exact-head CI/main/next unfrozen release. Evidence outside Git: WPS work/REMOTE-UI-20261020/smooth-20261024/. Actual main inclusion, CI, immutable release, installation and real dual-device acceptance each require separate evidence; local checks do not close those gates.
+The user requested a concrete modification plan and completed submission. Source implementation is already in ef863218efde92d06015df9a2bb456ac2ad5751f; the current follow-up documents rationale, file-level implementation, acceptance and release order in Chinese. Commit/push only these documentation changes, verify remote identity with the handoff gate, then update the existing publisher with the new exact head (product source unchanged). Evidence outside Git: WPS work/REMOTE-UI-20261020/smooth-20261024/. Actual main inclusion, CI, immutable release, installation and real dual-device acceptance each require separate evidence; local checks do not close those gates.
