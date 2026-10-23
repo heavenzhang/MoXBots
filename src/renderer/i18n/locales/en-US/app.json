@@ -330,7 +330,7 @@
     "pptRenderFailed": "Failed to render presentation"
   },
   "autoRoute": {
-    "backupCandidate": "Backup candidate: {{model}} (checked at execution)",
+    "backupCandidate": "Same-tier recovery candidate: {{model}} (checked at execution)",
     "backupReasons": {
       "off": "Automatic model switching is off",
       "not-configured": "Configured backup is missing",

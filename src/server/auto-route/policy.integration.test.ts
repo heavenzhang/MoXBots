@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppConfig } from '../../shared/config-types';
 
 const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>, providers: [] as unknown[], unavailableProvider: '' }));
 vi.mock('../utils/admin-config', () => ({
@@ -25,7 +24,7 @@ describe('effective model policy route plan', () => {
       { model: 'specified', tier: 'balanced' }, { model: 'cross', tier: 'fast' },
     ] }];
   });
-  const plan = async (modelFailover?: AppConfig['modelFailover']) => {
+  const plan = async (modelFailover?: unknown) => {
     fixture.config.modelFailover = modelFailover;
     return routeTurn({ text: 'synthetic', current: { providerId: 'p', model: 'primary' }, freshHistory: true }, {
       config: fixture.config,
@@ -42,25 +41,27 @@ describe('effective model policy route plan', () => {
     fixture.config.autoRouting = { pool: { 'unavailable/blocked': { enabled: true } } };
     await expect(plan()).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
   });
-  it('reports the specified candidate instead of the unused automatic candidate', async () => {
-    const result = await plan({ enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } });
-    expect(result?.decision.backup?.model).toBe('automatic');
-    expect(result?.failover).toEqual({ mode: 'specified', backup: { providerId: 'p', model: 'specified' } });
-  });
-  it('does not replace an invalid specified candidate with an automatic one', async () => {
-    expect((await plan({ enabled: true, mode: 'specified', backup: { providerId: 'deleted', modelId: 'missing' } }))?.failover)
-      .toEqual({ mode: 'specified', unavailableReason: 'unavailable' });
-  });
-  it('permits the specified cross-tier candidate only after explicit opt-in', async () => {
-    const settings = { enabled: true, mode: 'specified' as const, backup: { providerId: 'p', modelId: 'cross' } };
-    expect((await plan(settings))?.failover).toEqual({ mode: 'specified', unavailableReason: 'cross-tier' });
-    expect((await plan({ ...settings, allowCrossTier: true }))?.failover?.backup).toEqual({ providerId: 'p', model: 'cross' });
-  });
-  it('off revokes only the backup plan and retains automatic primary selection', async () => {
-    const result = await plan({ enabled: true, mode: 'off' });
+  it.each([
+    { enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } },
+    { enabled: true, mode: 'specified', backup: { providerId: 'deleted', modelId: 'missing' } },
+    { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'p', modelId: 'cross' } },
+    { enabled: true, mode: 'off' },
+    { enabled: true, backup: { providerId: 'p', modelId: 'cross' } },
+  ])('ignores retired backup configuration %j and selects the next same-tier pool member', async legacy => {
+    const result = await plan(legacy);
     expect(result?.decision.target.model).toBe('primary');
-    expect(result?.decision.backup).toBeUndefined();
-    expect(result?.failover).toEqual({ mode: 'off', unavailableReason: 'off' });
+    expect(result?.decision.backup).toMatchObject({ providerId: 'p', model: 'automatic', tier: 'balanced' });
+    expect(result).not.toHaveProperty('failover');
+    expect(fixture.config.modelFailover).toEqual(legacy);
+  });
+  it('skips a same-tier subscription candidate and chooses the next API candidate', async () => {
+    fixture.providers.unshift({ id: 'subscription', name: 'Subscription', type: 'subscription', config: {}, models: [{ model: 'subscription-model', tier: 'balanced' }] });
+    fixture.config.autoRouting = { tierOrder: { balanced: ['p/primary', 'subscription/subscription-model', 'p/automatic'] } };
+    expect((await plan())?.decision.backup).toMatchObject({ providerId: 'p', model: 'automatic' });
+  });
+  it('does not advertise API takeover for a subscription primary', async () => {
+    (fixture.providers[0] as { type: string }).type = 'subscription';
+    expect((await plan())?.decision.backup).toBeUndefined();
   });
   it('uses only active explicit members for primary and automatic backup', async () => {
     fixture.config.autoRouting = { pool: { 'p/primary': { enabled: false }, 'p/automatic': { enabled: true }, 'p/specified': { enabled: true } } };
@@ -88,10 +89,9 @@ describe('effective model policy route plan', () => {
     expect(result?.classifier).toBeUndefined();
     expect(result?.decision).toMatchObject({ target: { model: 'automatic' }, reason: 'unavailable-fallback' });
   });
-  it('keeps explicitly specified backup independent of automatic pool membership', async () => {
+  it('cannot use an out-of-pool legacy specified backup', async () => {
     fixture.config.autoRouting = { pool: { 'p/primary': { enabled: true } } };
     const result = await plan({ enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } });
-    expect(result?.failover?.backup?.model).toBe('specified');
     expect(result?.decision.backup).toBeUndefined();
   });
   it('retains unavailable saved membership and diagnoses excluded/new directory models', () => {

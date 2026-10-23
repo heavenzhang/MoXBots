@@ -933,8 +933,6 @@ export interface DshCollaborationSettings {
 }
 
 export interface AppConfig {
-  /** Optional builtin API-model failover. Main selection remains Session-owned. */
-  modelFailover?: import('./modelFailover').ModelFailoverSettings;
   /** Auto model routing. Absent = on with inferred tiers. */
   autoRouting?: import('./autoRoute').AutoRoutingSettings;
   // Default settings for new projects

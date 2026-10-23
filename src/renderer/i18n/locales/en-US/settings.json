@@ -2338,21 +2338,10 @@
   },
   "modelPolicy": {
     "title": "Model policy",
-    "description": "Choose how conversations select a model and continue when it becomes unavailable.",
-    "failover": "Failure recovery",
-    "advanced": "Advanced settings",
-    "backupEnabled": "Configured backup enabled",
-    "backupDisabled": "Configured backup off",
-    "failoverHint": "Auto mode supplies a same-tier fallback when one is available. Configure a backup here for a manually selected model or to override the automatic fallback.",
-    "mode": {
-      "auto": "Same-tier automatic",
-      "specified": "Specified backup",
-      "off": "No model switching"
-    },
-    "backupInvalid": "Specified backup unavailable: {{reason}}"
+    "description": "Choose automatic model selection and how it continues when a model is unavailable."
   },
   "autoRouting": {
-    "relationship": "Global auto selection applies only to conversations still in auto mode. Manually fixed models are left alone. The choice applies on the next turn; running tasks are not restarted. Auto mode supplies the next available same-tier model as a fallback when one exists.",
+    "relationship": "When a model is unavailable, the next compatible candidate in the same tier is tried after limited retries. Manually fixed sessions keep their model. Stop and action safety rules still apply.",
     "title": "Auto model selection",
     "description": "A small classifier reads each new message, then a model and reasoning effort are picked from the matching tier. Sessions where you picked a model by hand are left alone.",
     "enable": "Enable auto model selection",
@@ -2431,8 +2420,6 @@
     "advanced": "Advanced tier and pool controls",
     "restorePool": "Restore pool from directory",
     "restorePoolHint": "This will re-include every currently available chat model in the provider directory. Confirm before applying.",
-    "backupNote": "{{model}} remains the specified backup after removal from automatic candidates.",
-    "manageBackup": "Manage backup",
     "undo": "Undo",
     "confirm": {
       "exclude": {
@@ -2463,52 +2450,6 @@
       "default": "Default tier"
     },
     "classifierAutoOptionWithModel": "Automatic · {{model}}"
-  },
-  "modelFailover": {
-    "relationship": "Auto mode supplies the next available model in the same tier. A specified backup is used only in specified mode. Switching models does not affect retries on the original model.",
-    "providerFilter": "Filter by provider",
-    "allProviders": "All providers",
-    "keyOnly": "API key configured only",
-    "search": "Search model name or ID…",
-    "noMatches": "No matching models. Try another search or filter.",
-    "keyConfigured": "Key configured",
-    "keyMissing": "No API key",
-    "title": "Backup model",
-    "enable": "Backup mode",
-    "mode": {
-      "label": "Failure recovery mode",
-      "auto": "Follow automatic model selection",
-      "specified": "Use specified backup",
-      "off": "Do not switch models"
-    },
-    "modeHint": "Current mode: {{mode}}. Disabling model switching does not disable the original model’s limited retries.",
-    "allowCrossTier": "Allow a backup from a different tier (off by default)",
-    "openProviders": "Open model providers to fix this",
-    "selectedModel": "Specified backup: {{model}}",
-    "noSelectedModel": "No backup model selected.",
-    "status": {
-      "not-configured": "Choose a backup model before using specified mode.",
-      "provider-unavailable": "Provider is unavailable for failover.",
-      "model-unavailable": "Model {{model}} is unavailable.",
-      "missing-key": "{{model}} is missing an API key.",
-      "missing-endpoint": "{{model}} is missing an API endpoint.",
-      "ready": "{{model}} is configured. Session compatibility is checked before switching."
-    },
-    "description": "Keep the conversation’s selected model as primary. If it remains unavailable after retries, use one backup to continue the current turn when safe. The next turn starts with the primary model.",
-    "backup": "Backup provider and model",
-    "none": "Select a backup model",
-    "unavailable": "Unavailable",
-    "chooseHint": "Select a backup before using specified mode.",
-    "unavailableHint": "The saved backup is unavailable. Choose an enabled API provider and model. Automatic failover cannot use this backup.",
-    "keyHint": "Add this provider’s API key in the provider settings before enabling automatic failover.",
-    "readyHint": "The backup is configured. Model compatibility is checked before each switch.",
-    "empty": "Configure and enable an API provider in Model Providers to choose a backup.",
-    "details": "How switching works",
-    "scope": "Supports API models in the Claude Agent SDK runtime. DSH, subscription models and external CLI runtimes are not supported yet.",
-    "safety": "Completed work is preserved. If a response is interrupted after it has started reaching the agent, the turn stops with its progress preserved instead of automatically repeating actions.",
-    "compatibility": "The backup must support the conversation’s content and tools. If it is the same as the primary or is incompatible, no switch occurs. Authentication, billing and permission failures require attention.",
-    "saving": "Saving…",
-    "saveFailed": "Could not save. Your previous settings are unchanged. Try again."
   },
   "projectContext": {
     "title": "Project context in new chats",

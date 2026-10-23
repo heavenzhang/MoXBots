@@ -17,7 +17,7 @@ export interface AutoRouteCatalog {
   table: AutoTierTable;
   entries: Map<string, AutoRouteCatalogEntry>;
   /** Full eligible directory, independent of automatic-pool membership. Used
-   * only to diagnose tiers and honor explicitly configured manual backup. */
+   * only to revalidate the original primary tier after pool edits. */
   directoryTable?: AutoTierTable;
   models?: AutoRouteManagedModel[];
 }

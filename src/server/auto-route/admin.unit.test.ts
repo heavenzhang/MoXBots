@@ -17,14 +17,14 @@ describe('model policy diagnostics', () => {
       classifier: { providerId: 'p', model: 'deleted', chosenBy: 'user', available: false, unavailableReason: 'unavailable' },
     } });
   });
-  it.each(['specified', 'off'])('explains actual %s policy rather than the automatic backup candidate', async mode => {
+  it.each([false, true])('explains the sole same-tier candidate plan (available=%s)', async available => {
     fixture.result = { decision: { tier: 'balanced', target: { providerId: 'p', model: 'main' }, switches: false,
-      reason: 'classified', backup: { providerId: 'p', model: 'unused-auto' } }, latencyMs: 1,
-    failover: mode === 'specified' ? { mode, backup: { providerId: 'p', model: 'user-backup' } } : { mode, unavailableReason: 'off' } };
+      reason: 'classified', ...(available ? { backup: { providerId: 'p', model: 'next' } } : {}) }, latencyMs: 1 };
     const result = await handleRouteExplain({ prompt: 'synthetic' });
-    expect(result).toMatchObject({ success: true, data: { failoverMode: mode } });
+    expect(result.success).toBe(true);
     const data = result.data as Record<string, unknown>;
-    expect(data.backup).toBe(mode === 'specified' ? 'p/user-backup' : undefined);
-    if (mode === 'off') expect(data.backupUnavailableReason).toBe('off');
+    expect(data.backup).toBe(available ? 'p/next' : undefined);
+    expect(data.backupUnavailableReason).toBe(available ? undefined : 'no-candidate');
+    expect(data).not.toHaveProperty('failoverMode');
   });
 });

@@ -163,8 +163,7 @@ export async function applyAutoRouteAdmission(
       if (!currentRef) return fallback();
       deps.assertFallbackAllowed?.();
       return { providerId: currentRef.providerId, model: currentRef.model,
-        reason: 'classifier-failed', unclassified: true, failoverMode: result.failover?.mode,
-        ...(result.failover?.mode === 'off' ? { backupUnavailableReason: 'off' as const } : {}), latencyMs: result.latencyMs,
+        reason: 'classifier-failed', unclassified: true, latencyMs: result.latencyMs,
         at: new Date((deps.now ?? Date.now)()).toISOString() };
     }
 
@@ -227,8 +226,8 @@ export async function applyAutoRouteAdmission(
       model: target.model,
       ...(effort !== undefined ? { effort } : {}),
       reason: decision.reason,
-      ...(result.failover ? { failoverMode: result.failover.mode, backup: result.failover.backup,
-        backupUnavailableReason: result.failover.unavailableReason } : {}),
+      ...(decision.backup ? { backup: { providerId: decision.backup.providerId, model: decision.backup.model } }
+        : { backupUnavailableReason: 'no-candidate' as const }),
       ...(result.classifier ? { classifierModel: result.classifier.model } : {}),
       latencyMs: result.latencyMs,
       at: new Date((deps.now ?? Date.now)()).toISOString(),

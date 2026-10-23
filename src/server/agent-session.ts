@@ -14,7 +14,6 @@ import { SameTurnStreamContinuation } from './builtin-session/stream-continuatio
 import type { StreamRecoveryEvidence } from '../shared/streamRecovery';
 import type { AnthropicRequest } from './openai-bridge/types/anthropic';
 import { MODEL_RECOVERY_WINDOW_MS, validModelRecovery } from '../shared/modelRecovery';
-import { modelFailoverMode, type ModelFailoverSettings } from '../shared/modelFailover';
 import { archiveBuiltinSettledInterruption, archiveBuiltinContextRequest, loadBuiltinContextLedger, saveBuiltinContextLedger, updateBuiltinModelRecovery, getBuiltinModelRecovery } from './SessionStore';
 import { configureBuiltinTranscriptBinding } from './builtin-session/transcript';
 import { createHash, randomUUID } from 'crypto';
@@ -1754,11 +1753,10 @@ function recordStreamRecoveryEvidence(streamRecovery: StreamRecoveryEvidence): v
 
 
 function currentModelRecoveryRoute(): string {
-  const backup = loadAdminConfig().modelFailover as ModelFailoverSettings | undefined;
   return createHash('sha256').update(JSON.stringify([configState.currentProviderEnv?.providerId,
     configState.currentProviderEnv?.baseUrl, configState.currentModel,
     configState.currentProviderEnv?.apiProtocol, configState.currentProviderEnv?.upstreamFormat,
-    modelFailoverMode(backup), backup?.allowCrossTier === true, backup?.backup])).digest('hex');
+    'auto-pool-same-tier-v1'])).digest('hex');
 }
 
 const restoringModelRecoveryIds = new Set<string>();
@@ -2084,12 +2082,12 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           return providerId && model ? getAutoRouteBackup(productSessionId, { providerId, model }) : undefined;
         },
         onUnavailable: reason => {
-          appendModelPolicyDiagnostic(`本轮未切换备用模型：${reason}。保留当前执行进度，原模型恢复仍受现有重试和停止规则限制。`);
+          appendModelPolicyDiagnostic(`本轮未切换模型：${reason}。保留当前执行进度，原模型恢复仍受现有重试和停止规则限制。`);
         },
         onSwitch: (target, status) => {
           const provider = target.providerId ? findEffectiveProvider(target.providerId, loadAdminConfig()) : undefined;
           const modelName = (Array.isArray(provider?.models) ? provider.models : []).find(row => row.model === target.model)?.modelName ?? target.model;
-          const text = `主模型 ${configState.currentModel ?? ''} 暂时不可用（HTTP ${status}），已切换备用模型 ${provider?.name ?? target.providerId} · ${modelName}，沿用当前进度继续执行；本轮接管不会改写会话选定的主模型。`;
+          const text = `主模型 ${configState.currentModel ?? ''} 暂时不可用（HTTP ${status}），已切换同档候选 ${provider?.name ?? target.providerId} · ${modelName}，沿用当前进度继续执行；本轮接管不会改写会话选定的主模型。`;
           appendModelPolicyDiagnostic(text);
         },
       });
