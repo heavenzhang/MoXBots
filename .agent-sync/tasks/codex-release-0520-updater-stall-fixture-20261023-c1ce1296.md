@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/release-0520-updater-stall-fixture-20261023 -->
 <!-- git-project-sync-task:base=6c30c2f94f76589a9856c20bc368ec0ee5479678 -->
-<!-- git-project-sync-task:status=ready-for-integration -->
+<!-- git-project-sync-task:status=ready-for-review -->
 
 # Task: Hold the stalled updater test body until client timeout
 
