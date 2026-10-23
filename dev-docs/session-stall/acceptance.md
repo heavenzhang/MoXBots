@@ -52,6 +52,9 @@ budget is exhausted. This fix makes no additional paid model requests.
   are private task artifacts `ui-upper-history-dark.png` / `ui-narrow-light.png`.
   Run loopback Vite with no API proxy; URL is
   `/@fs/<checkout>/dev-docs/session-stall/fixture.html`.
+- Additional 54 recovery/continuation tests passed. Real SDK
+  `verify-stream-continuation-loopback.ts --stop` passed: upstream calls remain 2
+  after Stop, counter 1, one replay rejected. This is isolated fixture evidence.
 
 ## Delivery gates
 
@@ -71,6 +74,13 @@ is outside scope. Native acceptance must cover fragmented completion, primary
 wait/unavailable backup, Stop with no later request, restored waiting/paused,
 normal text and thinking-only error, using isolated fixtures and preserving live
 user work and uncertain ledgers. Paid-provider checks need separate valid budget.
+
+Source HEAD `3b1417f24eb50962cbbf283405c131f060598372` was pushed and passed the
+remote handoff gate. Exact CI/main/next-batch intake was sent to the publisher;
+acknowledgment and all release gates remain pending. The user then explicitly
+chose to preserve active work and defer maintenance in that publisher's chat.
+Read-only installed metadata still says 0.5.19/build519.2; there is no new artifact
+or digest for this task. Documentation receipts do not change tested source bytes.
 
 ## Execution record
 

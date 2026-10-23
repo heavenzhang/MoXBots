@@ -24,6 +24,8 @@ MB-SESSION-OUTPUT-20261024-02: formally fix both reported stalls and deliver thr
 - [x] Prior controlled SSE diagnosis: original 14/24 vs isolated loop fix 24/24. Three authorized real minimal requests passed; historical exact trigger remains unproven.
 - [x] New screenshot session: four ECONNRESET/502 failures before headers at 00:51:36; unavailable backup due tier policy; explicit Stop at 00:59:20. User changed model and resumed tool execution after 01:03, so preserve that active run.
 - [x] Existing sole desktop owner contacted through the user's explicit deployment coordination policy. Installed version observed 0.5.19/build519.2; owner is handling frozen 0.5.20 separately.
+- [x] All three fixes pushed as source HEAD 3b1417f24eb50962cbbf283405c131f060598372 (SSE 054e54dc7, outcome 0edd17e33); remote handoff PASS with clean worktree and no warnings. Exact source/CI/main/release request submitted to the existing publisher.
+- [x] Additional safety checks: 54 recovery/continuation tests PASS; real SDK stream-continuation `--stop` PASS with upstreamCalls remaining 2 after Stop, counter 1 and replay rejected. Existing read-only reconciliation commits 85b232b1b/10f1c1f44 are already ancestors of current remote main, verified rather than replayed.
 
 ## Verification
 
@@ -37,8 +39,8 @@ Desktop client and Sidecar are one deployment unit. Sole shared CI/build/install
 
 ## Blockers and unknowns
 
-Historical network fragments are unavailable. New-scene primary retries were confirmed in actual logs at 15/30/60/120 second waits; the defect was unclear/mutable UI, not absence of those attempts. Real upstream ECONNRESET remains an observed external failure, not a proven unique network root cause. Prior three-call paid authorization is exhausted; no extra paid calls. Native installed acceptance and remote main/CI remain separate open gates under the publisher.
+Historical network fragments are unavailable. New-scene primary retries were confirmed in actual logs at 15/30/60/120 second waits; the defect was unclear/mutable UI, not absence of those attempts. Real upstream ECONNRESET remains an observed external failure, not a proven unique network root cause. Prior three-call paid authorization is exhausted; no extra paid calls. Native installed acceptance and remote main/CI remain separate open gates under the publisher. The user's latest explicit choice in the publisher chat was to preserve current work and defer maintenance; do not exit or install the daily app. Read-only Info.plist still shows 0.5.19/build519.2. No new formal artifact/digest exists for this source.
 
 ## Next step
 
-Commit/push the reviewed source, pass remote handoff, submit exact SHA and verification to the existing sole publisher for shared CI/main integration and its next unfrozen release/native acceptance. Preserve the already frozen 0.5.20 artifact and active user Sessions.
+Publisher to acknowledge the queued exact-source handoff, coordinate PR/shared CI and remote-main integration, then select its next unfrozen release/native acceptance when a valid maintenance window exists. Source owner remains responsible for fixes and final verification; do not self-transfer publishing authority due to silence. Preserve frozen 0.5.20 and live Sessions. This documentation-only receipt does not change the tested source bytes at 3b1417f24eb50962cbbf283405c131f060598372.
