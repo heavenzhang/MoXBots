@@ -40,6 +40,10 @@ Repository https://github.com/heavenzhang/MoXBots.git; base fda7728fa11ee0b1138e
 
 Primary implements and owns integration/acceptance. Bounded non-implementing UI quality reviewer /root/smooth_ui_review (requested gpt-6-luna/medium) owns isolated headless browser evidence, no product writes or production actions. No external model calls: existing native-only task workflow, deterministic source/UI checks. Primary model switching and exact token/cost not exposed; do not estimate savings.
 
+## Blockers and unknowns
+
+Source checks have passed. Protected main/CI and new immutable release await the designated owner; frozen 520.1 excludes this patch. Owner reports the installed app must keep its active task running, so installation and GUI acceptance need a later explicit maintenance window. Air exact runtime/build/executable and a compatible target containing the separate 0dbc state-projection repair remain unverified. Network latency and real two-device smoothness are unknown until that authorized window; local synthetic UI evidence cannot substitute.
+
 ## Next step
 
 Commit/push this reviewed branch, verify remote identity with the handoff gate, then request existing publisher exact-head CI/main/next unfrozen release. Evidence outside Git: WPS work/REMOTE-UI-20261020/smooth-20261024/. Actual main inclusion, CI, immutable release, installation and real dual-device acceptance each require separate evidence; local checks do not close those gates.
