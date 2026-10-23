@@ -9,6 +9,7 @@ import { isSubagentContainerTool } from './tools/subagentActivity';
 import ProcessRow from './ProcessRow';
 import ProcessStatus from './ProcessStatus';
 import ProcessTiming from './ProcessTiming';
+import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 
 interface BlockGroupProps {
   blocks: ContentBlock[];
@@ -32,7 +33,8 @@ function samePhase(previous: ProcessPhaseCardProps, next: ProcessPhaseCardProps)
 
 const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollowingPhase }: ProcessPhaseCardProps) {
   const { t } = useTranslation('chat');
-  const [expanded, setExpanded] = useState(false);
+  const remoteContent = useRemoteConversationContent();
+  const [expanded, setExpanded] = useState(remoteContent);
   // File aggregation can reparent a completed row; keep user choices by event ID.
   const [rowExpansions, setRowExpansions] = useState<Record<string, boolean>>({});
   const detailsId = useId();

@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { ThemeRuntimeProvider } from '@/theme';
 import type { ContentBlock } from '@/types/chat';
 import BlockGroup from './BlockGroup';
+import { ConversationContentContext } from '@/context/ConversationContentContext';
 import { ChatRowLayoutProvider } from '@/context/ChatRowLayoutContext';
 
 const render = (ui: ReactElement) => renderDom(ui, { wrapper: ({ children }) =>
@@ -226,4 +227,22 @@ describe('BlockGroup stage summaries and folding', () => {
     expect(screen.getByText('OUTPUT_one')).toBeTruthy();
   });
 
+});
+
+it('shows remote result bodies immediately and preserves explicit folds through observation updates', () => {
+  const blocks = ['source-a', 'source-b'].map(id => tool(id, 'Read', { presentation: { kind: 'text', status: 'complete' } }));
+  const view = (items: ContentBlock[]) => <ConversationContentContext.Provider value="remote"><BlockGroup blocks={items} /></ConversationContentContext.Provider>;
+  const { container, rerender } = render(view(blocks));
+  expect(details()).toHaveAttribute('aria-expanded', 'true');
+  for (const id of ['source-a', 'source-b']) expect(screen.getAllByText(`OUTPUT_${id}`).length).toBeGreaterThan(0);
+  expect(container.querySelectorAll('[data-process-body-layout]')).toHaveLength(2);
+  fireEvent.click(container.querySelector('[data-process-row] button')!);
+  expect(container.querySelectorAll('[data-process-body-layout]')).toHaveLength(1);
+  const updated = [...blocks, tool('source-c', 'Read', { presentation: { kind: 'text', status: 'complete' } })];
+  rerender(view(updated));
+  expect(container.querySelectorAll('[data-process-body-layout]')).toHaveLength(2);
+  fireEvent.click(details());
+  rerender(view([...updated]));
+  expect(details()).toHaveAttribute('aria-expanded', 'false');
+  expect(container.querySelectorAll('[data-process-row]')).toHaveLength(0);
 });
