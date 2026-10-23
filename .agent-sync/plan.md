@@ -871,3 +871,8 @@ Current combined PR195 clarification: standaloneHost c065 production changes are
 ## PLAN-LIFECYCLE-20261023 — 方案执行与验收反馈
 
 用户要求补齐截图中已执行并验收后仍停留“计划草案/方案已确认”的体验。当前开发会话 `01a16926-e6a6-7012-b3e7-ed9a694c95ab` 在独立分支 `codex/plan-lifecycle-20261023` 实现原账本只读投影、精确方案版本/步骤汇总、完整状态与展开证据；独立 `plan_ui_review` 负责本地真实组件合成 UI 审阅。任务 `.agent-sync/tasks/codex-plan-lifecycle-20261023-ef960699.md`，验收 `dev-docs/plan-lifecycle-20261023/acceptance.md`。桌面/macOS/updater 与 combined CI/main 唯一负责会话仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，沿既有指定关系；该 owner 选择下一未冻结批次、分配版本、组织 CI/main/签名构建/发布/真实路径。当前 0.5.19/build519.2 源码/制品保持不可变，不包含本任务。代码、本地模拟/集成、独审、远端 main、签名包和真实用户验收分别追踪；无数据库/权限/接口变更。
+
+
+## MOXBOTS-0520-PLAN-LIFECYCLE-20261023 — Root integration batch
+
+Unchanged sole desktop/macOSarm64/updater and combinedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 accepts PLAN-LIFECYCLE source d3b87ce081e0b9caa1c35fee34eb97f9cd41bfd0, base mainD4. Assign0.5.20/build520.1 to nextbatch; includes exactproposal/revision/step state/review evidence UI only plus releaseversionmetadata. Titletrace9f365360 remains queuedseparately. Published5192 is immutable and remains rollback, no Host/mobile/cloud deployment. Source/local172+synthetic96 reviewed; single exactPRCI/main, signedartifact, nativeactualplan/Inspector/review/noReplay and local/formalpublication remain distinct pending gates. Existing normalmaintenance authorization applies only with freshcurrentowners/durable/fullschedule/backup; no businessreplay or credentials rollback.
