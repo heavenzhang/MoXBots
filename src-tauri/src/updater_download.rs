@@ -876,8 +876,21 @@ mod tests {
     #[tokio::test]
     async fn stalled_body_times_out_with_bounded_retry_and_preserves_file() {
         let (url, _, server) = server(3, move |_, _, stream| {
-            let _ = stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 32\r\nConnection: close\r\n\r\n1234567890123456");
-            thread::sleep(Duration::from_millis(60));
+            stream.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 32\r\nConnection: close\r\n\r\n1234567890123456").unwrap();
+            // A fixed server-side sleep can close the incomplete body before a
+            // loaded client polls its timeout, turning this into an EOF test.
+            // Retain the body until the client actually abandons the request;
+            // server() already bounds this read to one second.
+            let mut byte = [0];
+            match stream.read(&mut byte) {
+                Ok(0) => {}
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::ConnectionReset | std::io::ErrorKind::ConnectionAborted
+                    ) => {}
+                other => panic!("stalled body must remain open until client disconnect: {other:?}"),
+            }
         });
         let (artifact, _) = fixture(&url);
         let dir = TempDir::new().unwrap();
@@ -896,7 +909,10 @@ mod tests {
         assert_eq!(retries, 2);
         assert!(started.elapsed() < Duration::from_secs(1));
         assert!(regular(&dir.path().join(DATA_FILE)).unwrap().unwrap() > 0);
-        server.join().unwrap();
+        // Let the runtime drain the cancelled response while joining the server.
+        tokio::task::spawn_blocking(move || server.join().unwrap())
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
