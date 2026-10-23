@@ -132,6 +132,51 @@ describe('owned inference body liveness', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('drains comments and fragmented UTF-8 SSE records until a complete event is available', async () => {
+    const f = fixture();
+    const response = await f.run();
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    const bytes = encoder.encode('event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"雪🙂"}}\n\n');
+    const split = bytes.findIndex((value, index) => value === 0xf0 && bytes[index + 1] === 0x9f) + 2;
+    f.source.enqueue(encoder.encode(': keepalive\n\n'));
+    f.source.enqueue(bytes.slice(0, split));
+    f.source.enqueue(bytes.slice(split));
+    const delivered = await reader.read();
+    expect(decoder.decode(delivered.value)).toContain('雪🙂');
+    f.source.enqueue(frame('message_stop'));
+    const terminal = await reader.read();
+    expect(decoder.decode(terminal.value)).toContain('message_stop');
+    expect(f.recovery.complete).toHaveBeenCalledOnce();
+    await reader.cancel();
+  });
+
+  it('applies the body idle timeout while draining SSE comments with no complete events', async () => {
+    vi.useFakeTimers();
+    const f = fixture();
+    const consuming = (await f.run()).text();
+    f.source.enqueue(encoder.encode(': keepalive\n\n'));
+    await vi.advanceTimersByTimeAsync(130);
+    expect(await consuming).toContain('automatic_replay_blocked');
+    expect(f.cancel).toHaveBeenCalledOnce();
+    expect(f.recovery.interrupted).toHaveBeenCalledOnce();
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('cancels the upstream while a pull is draining a partial SSE record', async () => {
+    const f = fixture();
+    const response = await f.run();
+    const reader = response.body!.getReader();
+    f.source.enqueue(encoder.encode('event: content_block_delta\ndata: {"type":'));
+    const pending = reader.read();
+    await Promise.resolve();
+    await reader.cancel('consumer left');
+    await expect(pending).resolves.toMatchObject({ done: true });
+    expect(f.cancel).toHaveBeenCalledOnce();
+    expect(f.recovery.blocked).toHaveBeenCalledOnce();
+  });
+
   it('does not count downstream backpressure as a stalled upstream', async () => {
     vi.useFakeTimers();
     const f = fixture();

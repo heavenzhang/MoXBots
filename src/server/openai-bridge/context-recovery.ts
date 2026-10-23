@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto';
 import type { AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicToolResultBlock } from './types/anthropic';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
-import { modelStreamEventType } from './utils/model-stream-event';
+import { hasModelStreamProgress, parseModelStreamEvent } from './utils/model-stream-event';
 import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writer';
+import { ModelBodyIdleTimeoutError, ModelBodyReader } from './model-body-reader';
 import { QueryRequestGuard } from './request-lifetime';
 import type { StreamInterruptionCause, StreamInterruptionObserver } from './types/bridge';
 import { StreamDeliveryWitness } from './stream-delivery-witness';
@@ -926,6 +927,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       // Hold request admission until the consumer finishes. A partial stream seals the whole
       // turn, including changed fingerprints, so native SDK stream rescue cannot replay tools.
       const reader = response.body.getReader();
+      const bodyReader = new ModelBodyReader(reader, request.signal, live);
       const isSse = response.headers.get('content-type')?.includes('text/event-stream') === true;
       const parser = new SSEParser();
       const decoder = new TextDecoder();
@@ -974,7 +976,40 @@ export class ContextRecoveryController implements BridgeContextRecovery {
               output.error(new Error('Model request superseded or cancelled'));
               return;
             }
-            const next = await reader.read();
+            let next: ReadableStreamReadResult<Uint8Array>;
+            let frames = '';
+            // Keep one downstream pull alive across comments and partial records;
+            // every upstream wait still goes through the body idle watchdog.
+            while (true) {
+              next = isSse ? await bodyReader.read() : await reader.read();
+              if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
+              if (next.done || !isSse) break;
+              for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
+                const payload = parseModelStreamEvent(event);
+                if (payload && hasModelStreamProgress(payload)) bodyReader.markProgress();
+                if (payload && payload.type !== 'error') observeDelivery(event.data);
+                const type = payload?.type;
+                if (!type) continue;
+                if (type === 'error') {
+                  // Raw Anthropic errors have no translator. Use only their exact type,
+                  // never model/provider message text or synthetic diagnostic fields.
+                  try {
+                    const payload = JSON.parse(event.data) as { error?: { type?: unknown } };
+                    lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('provider_terminal', payload.error?.type));
+                  } catch { lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('protocol_validation')); }
+                  if (interruptionCause !== 'transport') lease.unknownDelivery();
+                  interruptStream(interruptionCause === 'transport');
+                  output.enqueue(encoder.encode(blockedFrame()));
+                  void reader.cancel().catch(() => undefined);
+                  finish(); output.close(); return;
+                }
+                frames += formatSSEFrame(event);
+                // message_stop is the protocol terminal; trailers and socket EOF
+                // cannot turn a completed inference into an interruption.
+                if (type === 'message_stop') { terminal = true; break; }
+              }
+              if (frames || terminal) break;
+            }
             if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
@@ -985,29 +1020,6 @@ export class ContextRecoveryController implements BridgeContextRecovery {
                 output.enqueue(encoder.encode(blockedFrame()));
               }
               finish(); output.close(); return;
-            }
-            let frames = '';
-            if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              if (modelStreamEventType(event) !== 'error') observeDelivery(event.data);
-              const type = modelStreamEventType(event);
-              if (!type) continue;
-              if (type === 'error') {
-                // Raw Anthropic errors have no translator. Use only their exact type,
-                // never model/provider message text or synthetic diagnostic fields.
-                try {
-                  const payload = JSON.parse(event.data) as { error?: { type?: unknown } };
-                  lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('provider_terminal', payload.error?.type));
-                } catch { lease.recordFailureDiagnostic(failureCandidate ?? streamFailure('protocol_validation')); }
-                if (interruptionCause !== 'transport') lease.unknownDelivery();
-                interruptStream(interruptionCause === 'transport');
-                output.enqueue(encoder.encode(blockedFrame()));
-                void reader.cancel().catch(() => undefined);
-                finish(); output.close(); return;
-              }
-              frames += formatSSEFrame(event);
-              // The protocol terminal ends this inference. Never parse provider trailers or
-              // wait for socket EOF; either can turn a completed response into a fake failure.
-              if (type === 'message_stop') { terminal = true; break; }
             }
             if (consumerCancelled || !live()) throw new Error('Model request superseded or cancelled');
             if (!isSse) output.enqueue(next.value);
@@ -1021,7 +1033,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
             }
           } catch (error) {
             if (!terminalQueued) {
-              const trusted = queryLive() && !consumerCancelled && interruptionCause === 'transport';
+              const trusted = queryLive() && !consumerCancelled && (interruptionCause === 'transport'
+                || (interruptionCause !== 'unproven' && error instanceof ModelBodyIdleTimeoutError));
               if (queryLive() && !consumerCancelled) lease.recordFailureDiagnostic(failureCandidate ?? streamFailure(trusted ? 'transport' : 'protocol_validation'));
               if (!trusted) lease.unknownDelivery();
               interruptStream(trusted);
