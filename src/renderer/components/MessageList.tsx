@@ -1,3 +1,4 @@
+import { resolveSystemStatus } from '@/utils/systemStatus';
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import {
   AlertIcon,
@@ -188,31 +189,6 @@ function isRowExpansion(reason: RowLayoutChangeReason): boolean {
   );
 }
 
-/** Resolve dynamic system status keys (e.g., api_retry:2:5 → human-readable) */
-function resolveSystemStatus(status: string, t: TFunction<'chat'>): string {
-  if (status === 'compacting' || status === 'rewinding') {
-    return t(`shell.messageList.systemStatus.${status}`);
-  }
-  // API retry: "api_retry:{attempt}:{maxAttempts}"
-  if (status.startsWith('api_retry:')) {
-    const parts = status.split(':');
-    const attempt = parts[1] || '1';
-    const max = parts[2] || '?';
-    return t('shell.messageList.systemStatus.apiRetry', { attempt, max });
-  }
-  if (status === 'model_recovery_paused') {
-    return t('shell.messageList.systemStatus.modelRecoveryPaused');
-  }
-  if (status.startsWith('model_recovery:')) {
-    const [, nextRetryAt, attempt] = status.split(':');
-    const seconds = Math.max(0, Math.ceil((Number(nextRetryAt) - Date.now()) / 1000));
-    return t('shell.messageList.systemStatus.modelRecoveryWaiting', {
-      seconds,
-      attempt: attempt || '1',
-    });
-  }
-  return status;
-}
 function getRandomStreamingMessage(t: TFunction<'chat'>): string {
   const index = Math.floor(Math.random() * STREAMING_MESSAGE_COUNT);
   return t(`shell.messageList.streaming.${index}`);

@@ -45,6 +45,7 @@ const waits: { phase: Phase; attempt: number; requestedDelayMs: number; nextRetr
 const results: { phase: Phase; subtype: string; sessionId: string }[] = [];
 const errors: unknown[] = [];
 const servers: Server[] = [];
+const fragmentedSse = process.argv.includes('--fragmented-sse');
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(done => { resolve = done; });
@@ -53,10 +54,10 @@ function deferred() {
 const checkpointReady = deferred();
 const checkpointReleased = deferred();
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-function message(res: ServerResponse, toolId?: string): void {
+async function message(res: ServerResponse, toolId?: string): Promise<void> {
   const text = 'Existing progress verified. Counter remains 1. Task complete.';
   res.writeHead(200, { 'content-type': 'text/event-stream' });
-  res.end(frame('message_start', { type: 'message_start', message: { id: `fixture-${phase}-${phaseCalls}`, type: 'message', role: 'assistant',
+  const stream = frame('message_start', { type: 'message_start', message: { id: `fixture-${phase}-${phaseCalls}`, type: 'message', role: 'assistant',
     model: 'primary-fixture', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 100, output_tokens: 0 } } })
     + frame('content_block_start', { type: 'content_block_start', index: 0,
       content_block: toolId ? { type: 'tool_use', id: toolId, name: 'mcp__counter__increment', input: {} } : { type: 'text', text: '' } })
@@ -64,7 +65,18 @@ function message(res: ServerResponse, toolId?: string): void {
       ? { type: 'input_json_delta', partial_json: '{}' } : { type: 'text_delta', text } })
     + frame('content_block_stop', { type: 'content_block_stop', index: 0 })
     + frame('message_delta', { type: 'message_delta', delta: { stop_reason: toolId ? 'tool_use' : 'end_turn', stop_sequence: null }, usage: { output_tokens: 20 } })
-    + frame('message_stop', { type: 'message_stop' }));
+    + frame('message_stop', { type: 'message_stop' });
+  if (fragmentedSse) {
+    // Force multiple pulls with no complete record through both real owners.
+    // Separate writes in time so HTTP cannot coalesce the entire reproduction.
+    res.write(': fixture keepalive\n\n');
+    const bytes = Buffer.from(stream);
+    for (let offset = 0; offset < bytes.length; offset += 31) {
+      await new Promise(resolve => setTimeout(resolve, 2));
+      res.write(bytes.subarray(offset, offset + 31));
+    }
+    res.end();
+  } else res.end(stream);
 }
 async function listen(server: Server): Promise<number> {
   servers.push(server);
@@ -80,7 +92,7 @@ const upstream = createServer((req, res) => {
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as AnthropicRequest;
     phaseCalls++;
     assert.equal(body.model, 'primary-fixture');
-    if (phase === 'initial' && phaseCalls === 1) { message(res, 'first-confirmed-action'); return; }
+    if (phase === 'initial' && phaseCalls === 1) { await message(res, 'first-confirmed-action'); return; }
     if (phase === 'checkpoint' || (phase === 'initial' && phaseCalls >= 2 && phaseCalls <= 5)) {
       assert.equal(counter, 1, 'outage begins only after the real MCP action succeeded');
       assert(JSON.stringify(body.messages).includes('first-confirmed-action'), 'failed inference retains completed action evidence');
@@ -88,10 +100,10 @@ const upstream = createServer((req, res) => {
       res.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'synthetic temporary outage' } }));
       return;
     }
-    if (phase === 'initial' && phaseCalls === 6) { message(res, 'new-id-same-action-after-wait'); return; }
-    if (phase === 'restart' && phaseCalls === 1) { message(res, 'new-id-same-action-after-restart'); return; }
+    if (phase === 'initial' && phaseCalls === 6) { await message(res, 'new-id-same-action-after-wait'); return; }
+    if (phase === 'restart' && phaseCalls === 1) { await message(res, 'new-id-same-action-after-restart'); return; }
     assert(phaseCalls <= (phase === 'initial' ? 7 : 2), 'fixture must not hide extra implicit model replay');
-    message(res);
+    await message(res);
   })().catch(error => { errors.push(error); res.destroy(); });
 });
 const upstreamPort = await listen(upstream);
@@ -286,7 +298,7 @@ try {
   assert.equal((await stat(ledgerPath)).mode & 0o777, 0o600);
   assert.equal((await stat(journalPath)).mode & 0o777, 0o600);
   const receipt = { passed: true, counter, denied, archives, gatewayCalls, waits, restoredAdmits, restoredAdmissionDelayMs, nativeSessionId,
-    nativeQueryRestart: true, realSdk: true, actualMcpCounter: true, isolatedHome: true, paidCalls: 0,
+    nativeQueryRestart: true, realSdk: true, actualMcpCounter: true, isolatedHome: true, paidCalls: 0, fragmentedSse,
     supplier: 'synthetic-loopback-only', persistence: 'private fixture writer; production SessionStore separately tested',
     clock: 'controlled; real 15000ms policy recorded, authorized waits compressed to 0ms',
     nativeTransport: transport, transportEvidence: 'configured production settings; not a 35-minute wall-clock soak', results };

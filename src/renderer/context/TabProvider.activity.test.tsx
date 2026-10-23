@@ -347,6 +347,26 @@ describe('Tab-owned query clock integration', () => {
     expect(screen.queryAllByRole('status').filter(element => element.tagName !== 'OUTPUT' && element.textContent?.includes(NATIVE_RESUME_BOUNDARY_MESSAGE))).toHaveLength(0);
   });
 
+  it.each(['chat:message-complete', 'chat:message-stopped', 'chat:message-error'])(
+    'retires durable recovery on %s without leaking it into the next SDK status', async terminal => {
+      let tab: ReturnType<typeof useTabState>;
+      function RecoveryProbe() {
+        const value = useTabState();
+        useEffect(() => { tab = value; }, [value]);
+        return null;
+      }
+      sseHarness.state.eventHandler = null;
+      render(<TabProvider tabId="recovery-terminal" agentDir="/tmp/workspace" sessionId="pending-recovery-terminal" claimSessionOpeningTransition={allowSessionOpening}><RecoveryProbe /></TabProvider>);
+      await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+      emit('chat:api-retry', { recovery: { status: 'waiting', nextRetryAt: Date.now() + 15_000, attempt: 1 } });
+      expect(tab!.systemStatus).toMatch(/^model_recovery:/);
+      emit(terminal, terminal === 'chat:message-error' ? { message: 'fixture error' } : {});
+      expect(tab!.systemStatus).toBeNull();
+      emit('chat:system-status', { status: 'compacting' });
+      expect(tab!.systemStatus).toBe('compacting');
+    },
+  );
+
   it('keeps query time through tool updates and pauses only for unresolved human requests', async () => {
     let now = 0;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
@@ -372,7 +392,15 @@ describe('Tab-owned query clock integration', () => {
     const nextRecoveryAt = Date.now() + 5_000;
     emit('chat:api-retry', { recovery: { status: 'waiting', nextRetryAt: nextRecoveryAt, attempt: 2 } });
     expect(tab!.systemStatus).toBe(`model_recovery:${nextRecoveryAt}:2`);
+    emit('chat:system-status', { status: 'compacting' });
+    emit('chat:system-status', { status: null });
+    emit('chat:api-retry', { attempt: 1, maxRetries: 3 });
+    emit('chat:api-retry', null);
+    expect(tab!.systemStatus).toBe(`model_recovery:${nextRecoveryAt}:2`);
     emit('chat:api-retry', { recovery: { status: 'paused', nextRetryAt: Date.now(), attempt: 2, reason: 'sensitive internal detail' } });
+    expect(tab!.systemStatus).toBe('model_recovery_paused');
+    emit('chat:system-status', { status: null });
+    emit('chat:api-retry', null);
     expect(tab!.systemStatus).toBe('model_recovery_paused');
     emit('chat:api-retry', { recovery: null });
     expect(tab!.systemStatus).toBeNull();
@@ -2895,6 +2923,35 @@ describe('TabProvider session activity ownership', () => {
     await waitFor(() => expect(readActivity().historyCount).toBe(1));
     expect(screen.getByTestId('history-content')).toHaveTextContent('current generation');
     expect(screen.getByTestId('history-content')).not.toHaveTextContent('stale generation');
+  });
+
+  it('restores durable recovery from the Session snapshot and preserves it through SDK receipts', async () => {
+    const nextRetryAt = Date.now() + 30_000;
+    tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({
+      success: true,
+      session: {
+        id: 'session-recovery-status', agentDir: '/tmp/workspace', title: 'Recovery',
+        createdAt: '2026-10-24T00:00:00.000Z', lastActiveAt: '2026-10-24T00:00:01.000Z',
+        runtime: 'builtin', messages: [], snapshotRevision: 0, liveSessionState: 'running',
+        hasMoreBefore: false,
+        modelRecovery: { status: 'waiting', nextRetryAt, attempt: 3 },
+      },
+    })));
+    let tab: ReturnType<typeof useTabState>;
+    function RecoveryProbe() {
+      const value = useTabState();
+      useEffect(() => { tab = value; }, [value]);
+      return null;
+    }
+    sseHarness.state.eventHandler = null;
+    render(<TabProvider tabId="recovery-restore" agentDir="/tmp/workspace" sessionId="session-recovery-status" claimSessionOpeningTransition={allowSessionOpening}><RecoveryProbe /></TabProvider>);
+    await waitFor(() => expect(tab!.systemStatus).toBe(`model_recovery:${nextRetryAt}:3`));
+    emit('chat:system-status', { status: null });
+    emit('chat:api-retry', null);
+    expect(tab!.systemStatus).toBe(`model_recovery:${nextRetryAt}:3`);
+    // The next real terminal still retires the restored state.
+    emit('chat:message-stopped', {});
+    expect(tab!.systemStatus).toBeNull();
   });
 
   it('restores a running session as active before any assistant chunk exists', async () => {

@@ -59,3 +59,17 @@ Focused bridge/Session owner tests cover storage and control races, Retry-After,
 ## Repeated HTTP rejection evidence
 
 A fully received non-success HTTP response is rejection evidence, not successful assistant delivery. After existing bridge retry/recovery policy settles, QueryRequestGuard can retain that response for the exact scope/fingerprint and return it when the native SDK repeats the input. The repeated response keeps the original HTTP status and cause but carries automatic_replay_blocked in its code/message, preserving the existing Goal/Session safety terminal instead of letting an outer scheduler redispatch a spent inference. This does not grant admission, contact a provider or replenish a retry budget. Each error body is bounded to16KiB/1s and each guard snapshot budget to1MiB; admission evidence is never evicted to make room. In-flight and cross-scope lookups return no evidence. A blocked scope may read only its own fenced terminal error; it still cannot acquire any inference/action admission. A declined/exhausted durable owner seals the lease and retains its original known HTTP rejection with the same safety terminal. Partial successful streams, cancellation and unknown error bodies never grant replay. The bridge logs final HTTP status without request/error bodies so a subsequent generic safety error cannot hide the first known rejection.
+## Renderer receipt and stream progress clarification (2026-10-24)
+
+Session model recovery owns its durable waiting/paused projection separately
+from transient SDK system/retry status. Its clear receipt is explicitly
+`chat:api-retry` with `{ recovery: null }`; a bare SDK null only clears the SDK
+retry indicator. Session reset/terminal handling retires both. The transcript
+footer and fixed composer share countdown/reconnecting wording and the existing
+Session/Goal Stop callback. Paused recovery does not disable sending a draft.
+
+Both bridge SSE owners must keep an outstanding pull reading through comments
+and incomplete records until a complete event, terminal, EOF, cancellation or
+bounded idle failure. No-data parser output is not downstream progress. This
+does not authorize tool replay or change recovery admission. Evidence and
+delivery gates: `dev-docs/session-stall/acceptance.md`.

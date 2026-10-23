@@ -1,4 +1,5 @@
 import { ComposerSurface, ComposerTextarea, ComposerToolbar, ComposerSendButton, useComposerAutoSize } from './ComposerSurface';
+import { ModelRecoveryNotice } from './ModelRecoveryNotice';
 import { APP_BUILD_PROFILE } from '@/../shared/appProfile';
 import { registerComposerUpdateOwner, restoreComposerUpdateDraft, type ComposerSnapshot } from '@/utils/composerUpdateCheckpoint';
 import { agentMentionToken, activeAgentSnapshots, type AgentMentionSnapshot, type QueryMentionContext } from '../../../shared/agentMentions';
@@ -1440,6 +1441,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
         )}
 
         <ComposerSurface joined={hasStatusBar}>
+          <ModelRecoveryNotice status={systemStatus} active={active} />
           {/* Clickable area for focus - covers input area but not toolbar */}
           <div
             className="cursor-text"
@@ -2337,7 +2339,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   through the existing Session/Goal Stop owner. Keep Stop visible
                   even when a restored wait has not yet set isLoading. Compaction
                   uses the same exact Session Stop owner; other system tasks stay disabled. */}
-              {systemStatus && !isInterruptibleSystemTask ? (
+              {systemStatus && systemStatus !== 'model_recovery_paused' && !isInterruptibleSystemTask ? (
                 // System task without an existing interruptible owner.
                 <button
                   type="button"

@@ -2051,7 +2051,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             const stopped = /stop|paused|cancel/i.test(recovery.reason ?? '');
             activeSessionStreamContinuation?.stop(stopped ? 'stopped' : 'storage_failed');
           }
-          broadcast('chat:api-retry', recovery ? { recovery } : null);
+          broadcast('chat:api-retry', { recovery });
         },
       });
       const appendModelPolicyDiagnostic = (text: string) => {

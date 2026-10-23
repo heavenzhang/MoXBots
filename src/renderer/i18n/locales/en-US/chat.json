@@ -1241,6 +1241,7 @@
         "rewinding": "Rewinding time. Please wait...",
         "apiRetry": "Retrying API request ({{attempt}}/{{max}})...",
         "modelRecoveryWaiting": "Waiting for the model to recover. Retrying in {{seconds}}s (attempt {{attempt}})",
+        "modelRecoveryConnecting": "Reconnecting to the model (attempt {{attempt}}). You can stop retrying.",
         "modelRecoveryPaused": "Automatic recovery is paused. Progress has been saved. Check your model or account settings before retrying."
       },
       "starting": "Starting AI... first launch may take a while.",

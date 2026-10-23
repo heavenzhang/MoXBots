@@ -1307,7 +1307,15 @@ export default function TabProvider({
     setAgentErrorUserMessageId(null);
     setAgentErrorState(value);
   }, []);
-  const [systemStatus, setSystemStatus] = useState<string | null>(null); // e.g., 'compacting'
+  const [sdkSystemStatus, setSdkSystemStatus] = useState<string | null>(null);
+  const [modelRecoveryStatus, setModelRecoveryStatus] = useState<string | null>(null);
+  // Recovery belongs to the Session, while SDK status/retry events are transient.
+  // A native retry receipt or compaction update cannot retire a durable wait.
+  const systemStatus = modelRecoveryStatus ?? sdkSystemStatus;
+  const setSystemStatus = useCallback((status: string | null) => {
+    setModelRecoveryStatus(null);
+    setSdkSystemStatus(status);
+  }, []);
   const [systemNotice, setSystemNotice] = useState<SystemNotice | null>(null);
   // PRD 0.2.32 — 归一化 context 用量快照（tab-scoped）。Set on chat:context-usage,
   // cleared on session switch / reset. 见 ContextUsageIndicator。
@@ -1822,6 +1830,7 @@ export default function TabProvider({
       tabId,
       setStreamingMessage,
       setAgentError,
+      setSystemStatus,
       clearInteractiveState,
       clearSessionActive,
       resetPaginationState,
@@ -2437,7 +2446,7 @@ export default function TabProvider({
         clearRuntimePlanTodos();
       });
     },
-    [moveStreamingToHistory, clearSessionActive, clearRuntimePlanTodos],
+    [moveStreamingToHistory, clearSessionActive, clearRuntimePlanTodos, setSystemStatus],
   );
 
   const shouldAcceptInteractiveEvent = useCallback(
@@ -3085,7 +3094,7 @@ export default function TabProvider({
             compactResult?: 'success' | 'failed';
             compactError?: string;
           } | null;
-          setSystemStatus(payload?.status ?? null);
+          setSdkSystemStatus(payload?.status ?? null);
           if (payload?.compactResult === 'success') {
             setSystemNotice({
               kind: 'compact',
@@ -3123,7 +3132,8 @@ export default function TabProvider({
 
         case 'chat:api-retry': {
           // SDK is retrying API call (rate limit or transient error)
-          // null payload = retry resolved, streaming resumed — clear status
+          // SDK null clears only its transient retry. The recovery owner uses
+          // an explicit { recovery: null } when its durable state is retired.
           const payload = data as {
             attempt?: number;
             maxRetries?: number;
@@ -3135,18 +3145,18 @@ export default function TabProvider({
               setSystemStatus(null);
               setAgentError(null);
             } else if (payload.recovery) {
-              setSystemStatus(payload.recovery.status === 'paused'
+              setModelRecoveryStatus(payload.recovery.status === 'paused'
                 ? 'model_recovery_paused'
                 : `model_recovery:${payload.recovery.nextRetryAt}:${payload.recovery.attempt}`);
             } else {
               const retryKey = `api_retry:${payload.attempt ?? 1}:${payload.maxRetries ?? '?'}`;
-              setSystemStatus(retryKey);
+              setSdkSystemStatus(retryKey);
             }
           } else {
             // Retry resolved — streaming resumed. Clear both the retry indicator
             // and any error banner from the failed attempt (e.g. api_retry's
             // informational .error field that was surfaced as agent-error).
-            setSystemStatus(null);
+            setSdkSystemStatus(null);
             setAgentError(null);
           }
           break;
@@ -5464,6 +5474,7 @@ export default function TabProvider({
       recoverStreamingUi,
       setStreamingMessage,
       setAgentError,
+      setSystemStatus,
       postJson,
       loadBornSessionMetadata,
       clearInteractiveState,
@@ -6569,7 +6580,7 @@ export default function TabProvider({
           setSystemStatus(null);
           const modelRecovery = response.session.modelRecovery;
           if (modelRecovery) {
-            setSystemStatus(modelRecovery.status === 'paused'
+            setModelRecoveryStatus(modelRecovery.status === 'paused'
               ? 'model_recovery_paused'
               : `model_recovery:${modelRecovery.nextRetryAt}:${modelRecovery.attempt}`);
           }

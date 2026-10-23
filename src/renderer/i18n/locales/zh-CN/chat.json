@@ -1241,6 +1241,7 @@
         "rewinding": "正在时间回溯中，请稍等…",
         "apiRetry": "API 请求重试中（第 {{attempt}}/{{max}} 次）…",
         "modelRecoveryWaiting": "等待模型恢复，{{seconds}}秒后重试（第{{attempt}}次）",
+        "modelRecoveryConnecting": "正在重新连接模型（第{{attempt}}次），可停止重试。",
         "modelRecoveryPaused": "自动恢复已暂停，进度已保留。请检查模型或账户配置后重试。"
       },
       "starting": "AI 启动中…（首次启动可能较慢）",

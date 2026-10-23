@@ -1,3 +1,12 @@
+## MB-SESSION-OUTPUT-20261024-02 — 流式卡住、恢复状态和空回答判定
+
+源与集成负责人 `01a16933-d3bd-7593-9d06-65a7c5e33d2f`，分支
+`codex/session-stall-20261024`，证据与验收门见
+`dev-docs/session-stall/acceptance.md`。桌面+Sidecar 的共享 CI、版本分配、
+构建、安装、发布与回滚仍唯一归属 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。
+本任务交其下一未冻结批，不覆盖既有 0.5.20 制品；保留活动会话和不确定工具账本，
+不追加付费探测，不盲目重放原任务。源码、本地联调、远端主干和安装验收分别记录。
+
 ## MOXBOTS-RECOVERY-CAUSAL-DIAGNOSTICS-20261022 — 下一未冻结批的安全补证
 
 仅补未来Query准入拒绝枚举、fetch本地错误码/abort类别及原native工具reserve/commit串行点的脱敏阶段；不改变安全条件、返回HTTP、ledger、Stop、重试/恢复权限或预算。任务 `.agent-sync/tasks/codex-recovery-causal-diagnostics-20261022-8df66bab.md`。从指定263起点核查后，因main仅有mobile build3变动而在新clean树FF actual7db通过start门；目标源字节一致。当前5168/source52/tag263/签名包保持冻结，原solepublisher01a12bc2-907a-7702-b6dd-788225c5dfe4继续现稳定晋级，不等待本任务。开发只交源分支与聚焦本地测试，下一未冻结批的统一CI/main/构建/原生验收由其选择。新增日志不是历史根因查明、业务完成或恢复授权。

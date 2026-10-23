@@ -2,7 +2,7 @@ import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createRef } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ImagePreviewProvider } from '@/context/ImagePreviewContext';
 import type { PermissionMode, Provider } from '@/config/types';
@@ -84,6 +84,7 @@ function renderInput(props: Partial<React.ComponentProps<typeof SimpleChatInput>
 }
 
 describe('SimpleChatInput send paths', () => {
+  afterEach(() => vi.useRealTimers());
   beforeEach(() => {
     vi.clearAllMocks();
     workspaceMocks.discovery.mockResolvedValue({ items: [], complete: true, networkStatus: 'connecting', authGeneration: 0, principalId: null, networkId: null });
@@ -129,6 +130,32 @@ describe('SimpleChatInput send paths', () => {
     expect(stop).toBeEnabled();
     fireEvent.click(stop);
     expect(onStop).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a live countdown inside the fixed composer and changes to reconnecting at the deadline', async () => {
+    await i18n.changeLanguage('zh-CN');
+    vi.useFakeTimers();
+    renderInput({ systemStatus: `model_recovery:${Date.now() + 2_000}:3` });
+    const notice = screen.getByRole('status');
+    expect(notice.closest('[data-composer-surface]')).not.toBeNull();
+    expect(notice).toHaveTextContent('2秒后重试（第3次）');
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(notice).toHaveTextContent('1秒后重试（第3次）');
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(notice).toHaveTextContent('正在重新连接模型（第3次）');
+    expect(notice).not.toHaveTextContent('0秒后');
+  });
+
+  it('keeps the draft sendable after recovery pauses', async () => {
+    await i18n.changeLanguage('zh-CN');
+    const onSend = renderInput({
+      runtime: 'builtin', providerAvailable: true, isLoading: false,
+      systemStatus: 'model_recovery_paused', value: '保留的输入',
+    });
+    expect(screen.getByRole('status')).toHaveTextContent('自动恢复已暂停');
+    expect(screen.queryByRole('button', { name: '停止重试' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^发送/ }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
   });
 
   it.each([true, false])('keeps compaction Stop available on the original owner (loading=%s)', async isLoading => {
