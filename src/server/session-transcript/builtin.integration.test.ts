@@ -2994,8 +2994,9 @@ it('keeps a recovered realtime root running when force races its native acknowle
   expect(state.sdkInputs).toHaveLength(2);
   expect(agent.getMessages().filter(row => row.role === 'user')).toHaveLength(2);
   await store.drainSessionTranscripts();
-  const stored = await store.getSessionData(meta.id);
-  expect(stored?.messages.filter(row => row.role === 'user').map(row => row.content))
+  const { readTranscriptFile } = await import('./file');
+  const stored = await readTranscriptFile(join(state.home, '.myagents', 'sessions-v2', `${meta.id}.jsonl`), meta.id);
+  expect([...stored.projection.messages.values()].filter(row => row.role === 'user').map(row => row.content))
     .toEqual(['initial synthetic input', 'recovered realtime input']);
 });
 

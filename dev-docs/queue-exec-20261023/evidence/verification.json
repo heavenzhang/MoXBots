@@ -7,7 +7,7 @@
     "unitAndQueueDom": 100,
     "targetedTabDom": 8,
     "total": 304,
-    "composition": "165 full transcript tests plus final recovered-root persistence rerun; 31 final interrupt tests; 100 unit/queue DOM; 8 Tab DOM"
+    "composition": "165 full transcript integration + 31 interrupt integration after canonical merge, 100 unit/queue DOM, 8 targeted Tab DOM"
   },
   "typecheck": "PASS",
   "targetedEslint": "PASS",
@@ -36,5 +36,8 @@
   },
   "mainDelivered": false,
   "published": false,
-  "rawSyntheticLogs": "/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/work/queue-exec-20261023"
+  "rawSyntheticLogs": "/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/work/queue-exec-20261023",
+  "canonicalReconciled": "6c30c2f94f76589a9856c20bc368ec0ee5479678",
+  "durableUserRows": "PASS: canonical V2 JSONL decoded from isolated temporary storage; each user input occurs once",
+  "classification": "PASS: 453 server test files"
 }
