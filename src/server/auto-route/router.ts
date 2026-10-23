@@ -16,8 +16,8 @@ import {
   type AutoTier,
   type AutoTierEntry,
 } from '../../shared/autoRoute';
-import type { AppConfig } from '../../shared/config-types';
-import { modelFailoverMode, type ModelFailoverSettings } from '../../shared/modelFailover';
+import { isModelFailoverProvider } from '../../shared/modelFailover';
+import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
 import { createConcreteProviderRoute } from '../../shared/providerRoute';
 import { reasoningEffortChoices } from '../../shared/reasoningEffort';
 import { canResumeAcrossBuiltinProviderHistory } from '../builtin-session/config';
@@ -98,8 +98,6 @@ export interface RouteTurnResult {
   classifier?: AutoModelRef;
   classify?: ClassifyOutcome;
   latencyMs: number;
-  failover?: { mode: 'auto' | 'specified' | 'off'; backup?: AutoModelRef;
-    unavailableReason?: 'off' | 'not-configured' | 'unavailable' | 'cross-tier' | 'no-candidate' };
 }
 
 /**
@@ -180,30 +178,27 @@ export async function routeTurn(
     now: now(),
     contextUsed: input.contextUsed,
     isUsable,
-    allowCrossTierBackup: (config as unknown as AppConfig).modelFailover?.allowCrossTier === true,
+    canRecover: (candidate, primary) => {
+      const eligibleEnv = (entry: AutoTierEntry) => {
+        const provider = catalog.entries.get(autoModelKey(entry))?.provider;
+        const env = envFor(entry);
+        return provider && isModelFailoverProvider(provider) && env && env !== 'subscription'
+          && env.apiKey?.trim() && env.baseUrl?.trim() && !env.credentialSource && !env.endpointSource ? env : undefined;
+      };
+      const primaryEnv = eligibleEnv(primary);
+      const candidateEnv = eligibleEnv(candidate);
+      return !!primaryEnv && !!candidateEnv && canResumeAcrossProviderBoundary(
+        { ...primaryEnv, model: primary.model }, { ...candidateEnv, model: candidate.model },
+      );
+    },
   });
   if (!decision) {
     if (managedPool) throw new AutoRoutePoolUnavailableError();
     return null;
   }
   if (managedPool && !currentEntry && decision.reason === 'classifier-failed') decision.reason = 'unavailable-fallback';
-  if (modelFailoverMode((config as unknown as AppConfig).modelFailover as ModelFailoverSettings | undefined) === 'off') delete decision.backup;
   const target = catalog.entries.get(autoModelKey(decision.target));
-  const settings = (config as unknown as AppConfig).modelFailover;
-  const mode = modelFailoverMode(settings);
-  const failover: NonNullable<RouteTurnResult['failover']> = { mode };
-  if (mode === 'off') failover.unavailableReason = 'off';
-  else if (mode === 'specified') {
-    const ref = settings?.backup ? { providerId: settings.backup.providerId, model: settings.backup.modelId } : undefined;
-    const entry = findAutoTierEntry(catalog.directoryTable ?? catalog.table, ref);
-    if (!ref) failover.unavailableReason = 'not-configured';
-    else if (!entry || !isUsable(entry) || autoModelKey(entry) === autoModelKey(decision.target)) failover.unavailableReason = 'unavailable';
-    else if (settings?.allowCrossTier !== true && entry.tier !== decision.target.tier) failover.unavailableReason = 'cross-tier';
-    else failover.backup = ref;
-  } else if (decision.backup) failover.backup = { providerId: decision.backup.providerId, model: decision.backup.model };
-  else failover.unavailableReason = 'no-candidate';
   return {
-    failover,
     decision,
     effort: autoRouteEffort(target, decision.tier),
     ...(classifierRef && classify ? { classifier: classifierRef } : {}),

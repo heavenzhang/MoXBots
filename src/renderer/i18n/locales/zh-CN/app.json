@@ -330,7 +330,7 @@
     "pptRenderFailed": "演示文稿渲染失败"
   },
   "autoRoute": {
-    "backupCandidate": "本轮备用候选：{{model}}（执行时复核）",
+    "backupCandidate": "本轮同档接管候选：{{model}}（执行时复核）",
     "backupReasons": {
       "off": "已关闭自动切换模型",
       "not-configured": "指定备用尚未配置",

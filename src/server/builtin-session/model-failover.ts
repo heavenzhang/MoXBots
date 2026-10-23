@@ -1,5 +1,5 @@
-import type { ModelFailoverSettings } from '../../shared/modelFailover';
-import { isModelFailoverProvider, modelFailoverMode } from '../../shared/modelFailover';
+import { isModelFailoverProvider } from '../../shared/modelFailover';
+import type { AutoRouteBackupRef } from '../auto-route/session-state';
 import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
 import { findAutoTierEntry, isAutoPoolEnabled, isAutoRoutingEnabled, parseAutoRoutingSettings } from '../../shared/autoRoute';
 import { buildAutoRouteCatalog } from '../auto-route/catalog';
@@ -26,23 +26,17 @@ export function createSessionModelFailover(options: {
   canRetry?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
   recovery?: InferenceRecoveryHooks;
-  /** Auto routing's next model in the turn's tier; used when no backup is configured. */
-  autoBackup?: () => NonNullable<ModelFailoverSettings['backup']> | undefined;
+  /** Sole candidate authority: auto routing's next model in this turn's tier. */
+  autoBackup?: () => AutoRouteBackupRef | undefined;
 }): ModelFailoverController {
-  type Ref = NonNullable<ModelFailoverSettings['backup']>;
+  type Ref = AutoRouteBackupRef;
   const sameRef = (a: Ref | undefined, b: Ref) => a?.providerId === b.providerId && a.modelId === b.modelId;
-  let unavailableReason = '没有可用的备用候选';
-  const pickRef = (settings: ModelFailoverSettings | undefined, config = loadConfig()): Ref | undefined => {
-    const mode = modelFailoverMode(settings);
-    if (mode === 'off') { unavailableReason = '已关闭自动切换模型'; return undefined; }
-    if (mode === 'specified') {
-      unavailableReason = '指定备用尚未配置或当前不可用';
-      return settings?.backup;
-    }
+  let unavailableReason = '当前档位没有可用的接管候选';
+  const pickRef = (config = loadConfig()): Ref | undefined => {
     if (!isAutoRoutingEnabled(parseAutoRoutingSettings((config as { autoRouting?: unknown }).autoRouting))) {
-      unavailableReason = '自动选模型已关闭，未使用旧自动备用'; return undefined;
+      unavailableReason = '自动选模型已关闭，本轮保持当前模型'; return undefined;
     }
-    unavailableReason = '本轮没有符合当前策略的自动备用';
+    unavailableReason = '当前档位没有可安全续接的启用候选';
     return options.autoBackup?.();
   };
   let root: { scope: string; primaryIdentity: string; backup?: Ref; reportedReason?: string } | undefined;
@@ -55,8 +49,7 @@ export function createSessionModelFailover(options: {
     const env = current.env;
     if (!options.isLive() || !sessionApiFailoverEligible(env)) return undefined;
     const config = loadConfig();
-    const settings = config.modelFailover as ModelFailoverSettings | undefined;
-    if (!sameRef(pickRef(settings, config), ref)) return undefined;
+    if (!sameRef(pickRef(config), ref)) return undefined;
     if (ref.providerId === env!.providerId && ref.modelId === current.model) { unavailableReason = '备用与当前主模型相同'; return undefined; }
     const provider = findEffectiveProvider(ref.providerId, config);
     if (!provider || !isModelFailoverProvider(provider) || !Array.isArray(provider.models)
@@ -71,14 +64,13 @@ export function createSessionModelFailover(options: {
       unavailableReason = '备用不能安全续接当前会话历史'; return undefined;
     }
     const catalog = buildAutoRouteCatalog(config);
-    if (modelFailoverMode(settings) === 'auto' && !isAutoPoolEnabled(catalog.settings, { providerId: ref.providerId, model: ref.modelId })) {
+    if (!isAutoPoolEnabled(catalog.settings, { providerId: ref.providerId, model: ref.modelId })) {
       unavailableReason = '自动备用已暂停或移出候选池'; return undefined;
     }
-    const directory = catalog.directoryTable ?? catalog.table;
-    const primaryTier = findAutoTierEntry(directory, { providerId: env!.providerId!, model: current.model });
-    const backupTier = findAutoTierEntry(modelFailoverMode(settings) === 'auto' ? catalog.table : directory, { providerId: ref.providerId, model: ref.modelId });
-    if (!backupTier || !primaryTier || (settings?.allowCrossTier !== true && primaryTier.tier !== backupTier.tier)) {
-      unavailableReason = settings?.allowCrossTier === true ? '无法确认主备模型的可用档位' : '未开启跨档接管，备用不在当前主模型档位'; return undefined;
+    const primaryTier = findAutoTierEntry(catalog.directoryTable ?? catalog.table, { providerId: env!.providerId!, model: current.model });
+    const backupTier = findAutoTierEntry(catalog.table, { providerId: ref.providerId, model: ref.modelId });
+    if (!backupTier || !primaryTier || primaryTier.tier !== backupTier.tier) {
+      unavailableReason = '候选池中没有符合当前档位的接管模型'; return undefined;
     }
     return {
       providerId: ref.providerId, model: ref.modelId, apiKey: backup.apiKey, baseUrl: backup.baseUrl,
@@ -121,7 +113,7 @@ export function createSessionModelFailover(options: {
       // must survive that change. Never re-pin a different backup mid-turn.
       if (root) return root.primaryIdentity === identity() ? root.scope : undefined;
       const current = options.current();
-      const ref = pickRef(loadConfig().modelFailover as ModelFailoverSettings | undefined);
+      const ref = pickRef();
       if (!current.turnId) return undefined;
       const backup = typeof ref?.providerId === 'string' && typeof ref.modelId === 'string' && resolveBackup(ref) ? { ...ref } : undefined;
       root = { scope: JSON.stringify([current.turnId, identity()]), primaryIdentity: identity(), backup };
