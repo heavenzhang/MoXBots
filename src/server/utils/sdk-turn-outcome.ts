@@ -22,6 +22,7 @@ export interface EmptySuccessfulSdkResultInput {
   terminalReason?: string | null;
   hasVisibleOutput: boolean;
   toolCount: number;
+  /** Kept for caller compatibility; usage tokens do not prove user-visible output. */
   outputTokens?: number | null;
 }
 
@@ -30,8 +31,7 @@ export function isEmptySuccessfulSdkResult(input: EmptySuccessfulSdkResultInput)
     && input.terminalReason === 'completed'
     && !input.hasVisibleOutput
     && input.toolCount === 0
-    && (input.result ?? '').trim() === ''
-    && (input.outputTokens ?? 0) === 0;
+    && (input.result ?? '').trim() === '';
 }
 
 export interface SuccessfulCompactControlTurnInput {

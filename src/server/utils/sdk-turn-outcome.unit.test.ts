@@ -107,6 +107,17 @@ describe('isEmptySuccessfulSdkResult', () => {
     })).toBe(false);
   });
 
+  it('detects a thinking-only completed result even when the SDK reports output tokens', () => {
+    expect(isEmptySuccessfulSdkResult({
+      isError: false,
+      result: '',
+      terminalReason: 'completed',
+      hasVisibleOutput: false,
+      toolCount: 0,
+      outputTokens: 24,
+    })).toBe(true);
+  });
+
   it('treats whitespace-only result text as empty', () => {
     expect(isEmptySuccessfulSdkResult({
       isError: false,
@@ -148,6 +159,17 @@ describe('isEmptySuccessfulSdkResult', () => {
       hasVisibleOutput: false,
       toolCount: 0,
       outputTokens: 0,
+    })).toBe(false);
+  });
+
+  it('does not reinterpret a user-stopped turn as a successful empty result', () => {
+    expect(isEmptySuccessfulSdkResult({
+      isError: false,
+      result: '',
+      terminalReason: 'aborted_streaming',
+      hasVisibleOutput: false,
+      toolCount: 0,
+      outputTokens: 24,
     })).toBe(false);
   });
 });
