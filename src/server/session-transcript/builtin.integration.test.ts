@@ -2935,6 +2935,70 @@ it('consumes recovered queued input and the next direct input after a capabiliti
 });
 
 
+it('keeps a recovered realtime root running when force races its native acknowledgement', async () => {
+  const platform = await import('../utils/platform');
+  vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
+  vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
+  vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
+  const workspace = join(state.home, 'recovered-realtime-root');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const send = (text: string) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, queueResponseModeOverride: 'realtime' });
+  let releaseFrame!: () => void;
+  const frameGate = new Promise<void>(resolve => { releaseFrame = resolve; });
+  let recoveredQueueId: string | undefined;
+  let restartAt = 0;
+  state.beforeFrame.mockImplementation(async () => {
+    if (state.query.mock.calls.length === 2) await frameGate;
+  });
+  state.beforeResult.mockImplementationOnce(async () => {
+    const skill = join(workspace, '.claude', 'skills', 'synthetic-restart');
+    await mkdir(skill, { recursive: true });
+    await writeFile(join(skill, 'SKILL.md'), '---\nname: synthetic-restart\ndescription: Isolated restart fixture\n---\nSynthetic instructions.\n');
+    agent.syncProjectUserConfig(workspace);
+    const turn = await import('../builtin-session/turn');
+    turn.setCurrentTurnStartTime(Date.now() - 60_000);
+    restartAt = Date.now();
+    const queued = await send('recovered realtime input');
+    expect(queued).toMatchObject({ queued: true });
+    recoveredQueueId = queued.queueId;
+  });
+  try {
+    await send('initial synthetic input');
+    await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(2));
+    const turn = await import('../builtin-session/turn');
+    const lifecycle = await import('../builtin-session/lifecycle');
+    const interrupt = vi.spyOn(lifecycle.getQuerySession()!, 'interrupt');
+    expect(turn.peekPendingOutputOwner()?.queueId).toBe(recoveredQueueId);
+    expect(agent.getAgentState().sessionState).toBe('running');
+    expect(turn.getCurrentTurnStartTime()).toBeGreaterThanOrEqual(restartAt);
+    expect(state.events.filter(([event, payload]) => event === 'queue:started'
+      && (payload as { queueId?: string }).queueId === recoveredQueueId)).toEqual([
+      ['queue:started', expect.objectContaining({ queueId: recoveredQueueId })],
+    ]);
+    expect(agent.getMessages().filter(row => row.role === 'user').map(row => row.content))
+      .toEqual(['initial synthetic input', 'recovered realtime input']);
+    await expect(agent.forceExecuteQueueItem(recoveredQueueId!)).resolves.toBe(true);
+    await expect(agent.forceExecuteQueueItem(recoveredQueueId!)).resolves.toBe(true);
+    expect(interrupt).not.toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(2);
+  } finally {
+    releaseFrame();
+  }
+  await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('complete');
+  expect(state.sdkInputs).toHaveLength(2);
+  expect(agent.getMessages().filter(row => row.role === 'user')).toHaveLength(2);
+  await store.drainSessionTranscripts();
+  const stored = await store.getSessionData(meta.id);
+  expect(stored?.messages.filter(row => row.role === 'user').map(row => row.content))
+    .toEqual(['initial synthetic input', 'recovered realtime input']);
+});
+
 it('rechecks background work after awaited materialization, before SDK yield', async () => {
   const workspace = join(state.home, 'commit-background-work');
   await mkdir(workspace);
