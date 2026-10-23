@@ -90,9 +90,10 @@ can be verified. Draft text and answers are not persisted by this feature.
 
 ## Observation and UI
 
-Opened Tabs synchronize bounded complete snapshots: about 1.5 seconds after the
-previous request finishes in the visible foreground, and about 5 seconds in the
-background. Focus/visibility return, activation, explicit refresh and connection
+Opened Tabs synchronize bounded complete snapshots: 300ms after the previous
+request finishes while a visible foreground Session is running, 1500ms when idle,
+waiting or terminal, and 5000ms in the background. Repeated read failures back off
+from 1500ms to at most 15000ms (background minimum 5000ms), resetting on success. Focus/visibility return, activation, explicit refresh and connection
 recovery wake observation immediately; wakeups during a read coalesce into one
 subsequent read. Restored remote Tabs mount immediately so their observation does
 not depend on first activation. This is not token streaming.
@@ -142,8 +143,13 @@ prepend captures its anchor immediately before the data commit. The shared
 then releases it on user scrolling/navigation, disclosure, session change, deleted
 anchor or presentation suspension. Empty/duplicate remote pages advance the
 cursor without registering a false prepend. Session/generation keys isolate
-remote geometry. Unchanged parsed snapshot rows retain identity so polling keeps
-user disclosure state.
+remote geometry. Fresh snapshot publication structurally shares unchanged JSON:
+identical message arrays/rows and completed tool records retain identity, including
+when the live row text changes. Presentation caches reuse those tool blocks so
+shared process rows avoid recomputing unchanged results. Successful unchanged reads
+retain a real last-sync timestamp within the displayed minute rather than
+broadcasting every fast poll through App; title/state/unread/error changes remain
+immediate. This keeps disclosure and scroll state with the original owners.
 
 `ConversationContentContext` marks remote observation content throughout the
 shared renderer. Canonical tool summaries bypass local file/result/protocol parsers;
