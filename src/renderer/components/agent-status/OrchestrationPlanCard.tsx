@@ -5,7 +5,9 @@ import {
   type SessionPlanProposal,
   type SessionPlanTarget,
 } from "../../../shared/sessionPlanConfirmation";
-import type { SessionTaskLedger, SessionTaskSnapshot } from "../../../shared/sessionTaskOrchestration";
+import type { SessionTaskLedger, SessionTaskSnapshot, SessionTaskView } from "../../../shared/sessionTaskOrchestration";
+import { projectSessionPlanExecution } from "../../../shared/sessionPlanExecution";
+import { PlanExecutionProgress } from "./PlanExecutionProgress";
 
 export interface PlanUserAction extends SessionPlanTarget {
   requestId: string;
@@ -15,6 +17,10 @@ export interface OrchestrationPlanCardProps {
   planSupport: SessionTaskSnapshot['planSupport'] | undefined;
   containerRef?: RefObject<HTMLElement | null>;
   startStatus?: SessionTaskLedger['planStart'];
+  tasks?: readonly SessionTaskView[];
+  stale?: boolean;
+  onRefresh?: () => void;
+  onInspect?: (toolUseId: string) => void;
   onConfirm: (action: PlanUserAction) => Promise<void>;
   onRequestRevision: (
     action: PlanUserAction & { feedback: string },
@@ -41,6 +47,10 @@ function PlanCard({
   startStatus,
   planSupport,
   containerRef,
+  tasks = [],
+  stale = false,
+  onRefresh,
+  onInspect,
 }: OrchestrationPlanCardProps) {
   const { t } = useTranslation("app");
   const titleId = useId();
@@ -99,6 +109,8 @@ function PlanCard({
     expectedRevision: proposal.revision,
   };
   const confirmed = isSessionPlanConfirmed(proposal);
+  const execution = projectSessionPlanExecution(proposal, tasks, startStatus);
+  const currentStart = startStatus?.proposalId === proposal.id && startStatus.revision === proposal.revision && startStatus.purpose !== 'revision' ? startStatus : undefined;
   const awaiting = proposal.state === "awaiting_confirmation";
   const supported = planSupport?.supported === true;
   const controlsDisabled = busy !== null || !awaiting || !supported;
@@ -142,8 +154,10 @@ function PlanCard({
     }
   }
 
-  const status = confirmed
-    ? t("orchestrationPlan.confirmed")
+  const status = stale
+    ? t('orchestration.syncPending')
+    : execution
+    ? t(`orchestrationPlan.executionPhase.${execution.phase}`)
     : proposal.state === "confirmed"
       ? t("orchestrationPlan.unverified")
       : proposal.state === "revising"
@@ -159,7 +173,7 @@ function PlanCard({
       <header className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <h3 id={titleId} className="text-sm font-semibold">
-            {t("orchestrationPlan.title")}
+            {t(confirmed ? "orchestrationPlan.executionTitle" : "orchestrationPlan.title")}
           </h3>
           <p className="mt-1 break-words text-xs text-[var(--ink-muted)]">
             {t("orchestrationPlan.version", { version: proposal.revision })}
@@ -167,7 +181,8 @@ function PlanCard({
         </div>
         <span
           role="status"
-          className={`rounded-full px-2 py-1 text-xs ${confirmed ? "bg-[var(--success-bg)] text-[var(--success)]" : "bg-[var(--paper-inset)] text-[var(--ink-secondary)]"}`}
+          aria-live="polite"
+          className={`rounded-full px-2 py-1 text-xs ${!stale && execution?.phase === 'completed' ? "bg-[var(--success-bg)] text-[var(--success)]" : stale || execution && ['failed', 'rework', 'interrupted', 'unknown', 'blocked'].includes(execution.phase) ? "bg-[var(--paper-inset)] text-[var(--warning)]" : "bg-[var(--paper-inset)] text-[var(--ink-secondary)]"}`}
         >
           {status}
         </span>
@@ -175,12 +190,13 @@ function PlanCard({
       <p className="mt-3 whitespace-pre-wrap break-words text-sm font-medium [overflow-wrap:anywhere]">
         {proposal.content.objective}
       </p>
-      {confirmed ? (
-        <p className="mt-2 text-xs text-[var(--ink-muted)]">
+      {confirmed && execution ? (
+        <p role={currentStart?.error && execution.phase !== 'completed' ? 'alert' : undefined} className="mt-2 text-xs text-[var(--ink-muted)]">
           {t(
-            proposal.confirmation?.source === "user_message"
+            execution.phase === 'confirmed' && proposal.confirmation?.source === "user_message"
               ? "orchestrationPlan.confirmedInChat"
-              : "orchestrationPlan.confirmedHint",
+              : currentStart?.error && execution.phase !== 'completed' ? 'orchestrationPlan.startUncertain'
+              : `orchestrationPlan.executionHint.${execution.phase}`,
           )}
         </p>
       ) : supported ? (
@@ -192,16 +208,15 @@ function PlanCard({
           )}
         </p>
       ) : null}
-      {!supported && (
+      {!supported && !confirmed && (
         <p className="mt-3 whitespace-pre-wrap break-words text-xs text-[var(--warning)]">
           {t(planSupport?.supported === false ? 'orchestrationPlan.unsupported' : 'orchestrationPlan.supportUnverified')}
         </p>
       )}
-      {confirmed && startStatus && startStatus.proposalId === proposal.id && startStatus.revision === proposal.revision && (
-        <p role={startStatus.error ? 'alert' : 'status'} className={`mt-3 rounded-lg p-3 text-xs ${startStatus.error ? 'bg-[var(--paper-inset)] text-[var(--warning)]' : 'bg-[var(--paper-inset)] text-[var(--ink-secondary)]'}`}>
-          {t(startStatus.error ? 'orchestrationPlan.startUncertain' : startStatus.state === 'pending' ? 'orchestrationPlan.startPending' : startStatus.state === 'claimed' ? 'orchestrationPlan.startClaimed' : 'orchestrationPlan.startDispatched')}
-        </p>
-      )}
+      {stale && <p className="mt-2 text-xs text-[var(--warning)]">
+        {t('orchestration.stale')} {onRefresh && <button type="button" onClick={onRefresh} className="compact-action rounded underline focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]">{t('orchestration.retry')}</button>}
+      </p>}
+      {execution && <PlanExecutionProgress execution={execution} onInspect={onInspect} />}
       {!confirmed && startStatus?.purpose === 'revision' && startStatus.proposalId === proposal.id && startStatus.revision === proposal.revision && (
         <p role={startStatus.error ? 'alert' : 'status'} className="mt-3 rounded-lg bg-[var(--paper-inset)] p-3 text-xs text-[var(--ink-secondary)]">
           {t(startStatus.error ? 'orchestrationPlan.revisionBlocked' : 'orchestrationPlan.revisionQueued')}

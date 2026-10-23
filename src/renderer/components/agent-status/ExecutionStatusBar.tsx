@@ -178,9 +178,10 @@ export default memo(function ExecutionStatusBar({
           planSupport={orchestration.planSupport}
           containerRef={activity?.containerRef}
           startStatus={orchestration.planStart}
+          tasks={orchestration.tasks} stale={orchestration.stale} onRefresh={orchestration.retry}
+          onInspect={activity?.onSelectSubagent}
           onConfirm={orchestration.confirmPlan} onRequestRevision={orchestration.requestPlanRevision}
           onDiscuss={target => activity?.onDiscussPlan?.(target, t("orchestrationPlan.discussionDraft", { objective: orchestration.proposal!.content.objective }))} />
-        {orchestration.stale && <p role="status" className="mt-1 text-xs text-[var(--warning)]">{t("orchestration.stale")} <button type="button" onClick={orchestration.retry} className="underline">{t("orchestration.retry")}</button></p>}
       </div>}
       {selectedTask && activity && (
         <BackgroundTaskDialog

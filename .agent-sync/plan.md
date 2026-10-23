@@ -867,3 +867,7 @@ Current combined PR195 clarification: standaloneHost c065 production changes are
 
 
 2026-10-23 Root PR195 ebf originalCI39862815312 collected8green/RustrecordingFAIL/iOSskip; WindowswatcherPASS. Next cfg(test) FakeSession first-real-push ack2s/no added sleep or retry, Ready/no-audio rules preserved; exact-source stub-sink100thread roundsPASS, not originalCIcause/nativecapture proof. SameRoot sharedCI/main; standaloneHost rollout stays originalmobile, desktop519.2 source54/TAR7624 staticimmutable/no rebuild. See current index-test task and release0519acceptance.
+
+## PLAN-LIFECYCLE-20261023 — 方案执行与验收反馈
+
+用户要求补齐截图中已执行并验收后仍停留“计划草案/方案已确认”的体验。当前开发会话 `01a16926-e6a6-7012-b3e7-ed9a694c95ab` 在独立分支 `codex/plan-lifecycle-20261023` 实现原账本只读投影、精确方案版本/步骤汇总、完整状态与展开证据；独立 `plan_ui_review` 负责本地真实组件合成 UI 审阅。任务 `.agent-sync/tasks/codex-plan-lifecycle-20261023-ef960699.md`，验收 `dev-docs/plan-lifecycle-20261023/acceptance.md`。桌面/macOS/updater 与 combined CI/main 唯一负责会话仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，沿既有指定关系；该 owner 选择下一未冻结批次、分配版本、组织 CI/main/签名构建/发布/真实路径。当前 0.5.19/build519.2 源码/制品保持不可变，不包含本任务。代码、本地模拟/集成、独审、远端 main、签名包和真实用户验收分别追踪；无数据库/权限/接口变更。

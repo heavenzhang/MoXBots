@@ -1,0 +1,770 @@
+[
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "待确认",
+    "expected": "待确认",
+    "badge": "待确认",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "方案已确认",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "启动 pending",
+    "expected": "等待启动",
+    "badge": "等待启动",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "启动 claimed",
+    "expected": "启动核对中",
+    "badge": "启动核对中",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "启动 dispatched",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "执行中",
+    "expected": "执行中",
+    "badge": "执行中",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "回传待验收",
+    "expected": "待主 Agent 验收",
+    "badge": "待主 Agent 验收",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "失败",
+    "expected": "执行失败",
+    "badge": "执行失败",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "返工",
+    "expected": "待返工",
+    "badge": "待返工",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "中断",
+    "expected": "执行已中断",
+    "badge": "执行已中断",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "阻塞",
+    "expected": "待执行",
+    "badge": "待执行",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "全部步骤受阻",
+    "expected": "执行受阻",
+    "badge": "执行受阻",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "未知",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "全部验收完成",
+    "expected": "已完成 · 验收通过",
+    "badge": "已完成 · 验收通过",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "旧版本迟到结果",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": false,
+    "scene": "断线恢复",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "待确认",
+    "expected": "待确认",
+    "badge": "待确认",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "方案已确认",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "启动 pending",
+    "expected": "等待启动",
+    "badge": "等待启动",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "启动 claimed",
+    "expected": "启动核对中",
+    "badge": "启动核对中",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "启动 dispatched",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "执行中",
+    "expected": "执行中",
+    "badge": "执行中",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "回传待验收",
+    "expected": "待主 Agent 验收",
+    "badge": "待主 Agent 验收",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "失败",
+    "expected": "执行失败",
+    "badge": "执行失败",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "返工",
+    "expected": "待返工",
+    "badge": "待返工",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "中断",
+    "expected": "执行已中断",
+    "badge": "执行已中断",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "阻塞",
+    "expected": "待执行",
+    "badge": "待执行",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "全部步骤受阻",
+    "expected": "执行受阻",
+    "badge": "执行受阻",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "未知",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "全部验收完成",
+    "expected": "已完成 · 验收通过",
+    "badge": "已完成 · 验收通过",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "旧版本迟到结果",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 1280,
+    "dark": true,
+    "scene": "断线恢复",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "待确认",
+    "expected": "待确认",
+    "badge": "待确认",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "方案已确认",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "启动 pending",
+    "expected": "等待启动",
+    "badge": "等待启动",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "启动 claimed",
+    "expected": "启动核对中",
+    "badge": "启动核对中",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "启动 dispatched",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "执行中",
+    "expected": "执行中",
+    "badge": "执行中",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "回传待验收",
+    "expected": "待主 Agent 验收",
+    "badge": "待主 Agent 验收",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "失败",
+    "expected": "执行失败",
+    "badge": "执行失败",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "返工",
+    "expected": "待返工",
+    "badge": "待返工",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "中断",
+    "expected": "执行已中断",
+    "badge": "执行已中断",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "阻塞",
+    "expected": "待执行",
+    "badge": "待执行",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "全部步骤受阻",
+    "expected": "执行受阻",
+    "badge": "执行受阻",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "未知",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "全部验收完成",
+    "expected": "已完成 · 验收通过",
+    "badge": "已完成 · 验收通过",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "旧版本迟到结果",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": false,
+    "scene": "断线恢复",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "待确认",
+    "expected": "待确认",
+    "badge": "待确认",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "方案已确认",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "启动 pending",
+    "expected": "等待启动",
+    "badge": "等待启动",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "启动 claimed",
+    "expected": "启动核对中",
+    "badge": "启动核对中",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "启动 dispatched",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "执行中",
+    "expected": "执行中",
+    "badge": "执行中",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "回传待验收",
+    "expected": "待主 Agent 验收",
+    "badge": "待主 Agent 验收",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "失败",
+    "expected": "执行失败",
+    "badge": "执行失败",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "返工",
+    "expected": "待返工",
+    "badge": "待返工",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "中断",
+    "expected": "执行已中断",
+    "badge": "执行已中断",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "阻塞",
+    "expected": "待执行",
+    "badge": "待执行",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "全部步骤受阻",
+    "expected": "执行受阻",
+    "badge": "执行受阻",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "未知",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "全部验收完成",
+    "expected": "已完成 · 验收通过",
+    "badge": "已完成 · 验收通过",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "旧版本迟到结果",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 390,
+    "dark": true,
+    "scene": "断线恢复",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "待确认",
+    "expected": "待确认",
+    "badge": "待确认",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "方案已确认",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "启动 pending",
+    "expected": "等待启动",
+    "badge": "等待启动",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "启动 claimed",
+    "expected": "启动核对中",
+    "badge": "启动核对中",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "启动 dispatched",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "执行中",
+    "expected": "执行中",
+    "badge": "执行中",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "回传待验收",
+    "expected": "待主 Agent 验收",
+    "badge": "待主 Agent 验收",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "失败",
+    "expected": "执行失败",
+    "badge": "执行失败",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "返工",
+    "expected": "待返工",
+    "badge": "待返工",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "中断",
+    "expected": "执行已中断",
+    "badge": "执行已中断",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "阻塞",
+    "expected": "待执行",
+    "badge": "待执行",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "全部步骤受阻",
+    "expected": "执行受阻",
+    "badge": "执行受阻",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "未知",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "全部验收完成",
+    "expected": "已完成 · 验收通过",
+    "badge": "已完成 · 验收通过",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "旧版本迟到结果",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": false,
+    "scene": "断线恢复",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "待确认",
+    "expected": "待确认",
+    "badge": "待确认",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "方案已确认",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "启动 pending",
+    "expected": "等待启动",
+    "badge": "等待启动",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "启动 claimed",
+    "expected": "启动核对中",
+    "badge": "启动核对中",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "启动 dispatched",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "执行中",
+    "expected": "执行中",
+    "badge": "执行中",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "回传待验收",
+    "expected": "待主 Agent 验收",
+    "badge": "待主 Agent 验收",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "失败",
+    "expected": "执行失败",
+    "badge": "执行失败",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "返工",
+    "expected": "待返工",
+    "badge": "待返工",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "中断",
+    "expected": "执行已中断",
+    "badge": "执行已中断",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "阻塞",
+    "expected": "待执行",
+    "badge": "待执行",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "全部步骤受阻",
+    "expected": "执行受阻",
+    "badge": "执行受阻",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "未知",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "全部验收完成",
+    "expected": "已完成 · 验收通过",
+    "badge": "已完成 · 验收通过",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "旧版本迟到结果",
+    "expected": "方案已确认",
+    "badge": "方案已确认",
+    "overflow": 0
+  },
+  {
+    "width": 320,
+    "dark": true,
+    "scene": "断线恢复",
+    "expected": "执行状态待核实",
+    "badge": "执行状态待核实",
+    "overflow": 0
+  }
+]
