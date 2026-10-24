@@ -1,0 +1,43 @@
+{
+  "base": "848e333455c7045534bf51a951a19b6945c6aa1a",
+  "codeHead": "1d03c82ea286d763bcac9971843910b7efb3f13b",
+  "checks": {
+    "src/server/openai-bridge": {
+      "baseObject": "527e64ab639bbd73b87a748bb7910e6085ebd3cc",
+      "candidateObject": "527e64ab639bbd73b87a748bb7910e6085ebd3cc",
+      "unchanged": true
+    },
+    "src-tauri/src/updater.rs": {
+      "baseObject": "b5bf1b874eeed1566b8df1165d8c8552fd490cbe",
+      "candidateObject": "b5bf1b874eeed1566b8df1165d8c8552fd490cbe",
+      "unchanged": true
+    },
+    "src-tauri/src/process_cmd.rs": {
+      "baseObject": "f659b42db54599c1c0b10777f347f74d29fe2487",
+      "candidateObject": "f659b42db54599c1c0b10777f347f74d29fe2487",
+      "unchanged": true
+    },
+    "src/renderer/pages/Settings.tsx": {
+      "baseObject": "32a72487b8c1398e5f6a8eb8af07be10a49e88aa",
+      "candidateObject": "32a72487b8c1398e5f6a8eb8af07be10a49e88aa",
+      "unchanged": true
+    },
+    "services/agentnet": {
+      "baseObject": "1540aa1755a101545133b05e21f990a1ffcc0c0f",
+      "candidateObject": "1540aa1755a101545133b05e21f990a1ffcc0c0f",
+      "unchanged": true
+    },
+    "agent-session durable Stop wrapper": {
+      "unchanged": true,
+      "sha256": "3db42d4bd15ca8ca74357e34fac4250298517f8787db2c0b1f32a156567eb70d"
+    },
+    "all renderer CSS": {
+      "unchanged": true
+    },
+    "src/renderer/components/global-sidebar": {
+      "baseObject": "53b35c7221764ed13cf9d1aea0f69cd92abfefcb",
+      "candidateObject": "53b35c7221764ed13cf9d1aea0f69cd92abfefcb",
+      "unchanged": true
+    }
+  }
+}

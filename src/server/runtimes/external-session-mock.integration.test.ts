@@ -6182,6 +6182,44 @@ describe('external SessionEngine with fake runtime', () => {
   });
 
 
+  it('resumes the same DSH IM session after a config recovery fence without replaying rejected input', async () => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'first reply' },
+      { kind: 'success', text: 'reply after recovery' },
+    ], { runtimeType: 'dsh' });
+    const sessionId = 'dsh-im-config-fence';
+    const workspacePath = join(harness.home, 'workspace');
+    const request = (message: string) => ({ message, requestId: message, sessionId, workspacePath,
+      scenario: { type: 'agent-channel' as const, platform: 'openclaw-weixin', sourceType: 'private' as const },
+      permissionMode: 'approval-required', model: 'deepseek-flash', metadataBirthPending: true });
+    const first = await harness.engine.enqueueImMessage(request('first'));
+    await first.dispatchAcceptance;
+    await harness.engine.waitIdle(2_000, 10);
+    vi.spyOn(harness.runtime, 'getConfigCapabilities').mockReturnValue({
+      model: 'live_session_rpc', permissionMode: 'next_turn_state', reasoningEffort: 'next_turn_state',
+    });
+    vi.spyOn(harness.runtime, 'setModel').mockImplementationOnce(async process => {
+      // ProcessHost owns the native code -> terminal event translation; its
+      // unit regression verifies this boundary. Exercise the real lifecycle
+      // owner here while a message-snapshot config call is still in flight.
+      process.kill();
+      const error = Object.assign(new Error('product-operation durability became uncertain'), { code: 'session_recovery_required' });
+      harness.runtime.emitForTest({ kind: 'session_complete', subtype: 'error', result: error.message });
+      throw error;
+    });
+    const rejected = await harness.engine.enqueueImMessage(request('rejected before dispatch'));
+    expect(rejected.success).toBe(false);
+    expect(harness.runtime.sentMessages).toEqual(['first']);
+    expect(harness.externalSession.hasExternalRuntimeProcess()).toBe(false);
+    const next = await harness.engine.enqueueImMessage(request('new input'));
+    expect(next.success).toBe(true);
+    await next.dispatchAcceptance;
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(harness.runtime.startSessionResumeIds).toEqual([undefined, 'fake-thread-1']);
+    expect(harness.runtime.sentMessages).toEqual(['first', 'new input']);
+    expect(harness.sessionStore.getSessionMetadata(sessionId)?.runtimeSessionId).toBe('fake-thread-1');
+  });
+
   it.each(['private', 'group'] as const)('offers /new only to private peers when DSH resume fails (%s)', async sourceType => {
     const harness = await createHarness([{ kind: 'success', text: 'old reply' }], { runtimeType: 'dsh' });
     const sessionId = 'dsh-im-resume-failed';
@@ -7765,6 +7803,8 @@ describe('external SessionEngine with fake runtime', () => {
       },
     );
     const sessionId = 'session-codex-reset-mutation-lease';
+    // Production bootstrap owns the Product binding before desktop sends.
+    await (await import('../session-engine/product-session-binding')).setCurrentProductSessionId(sessionId);
     const workspacePath = join(harness.home, 'workspace');
     const sent = await harness.engine.sendDesktopMessage(
       desktopRequest(sessionId, workspacePath, 'first question'),
@@ -7786,7 +7826,7 @@ describe('external SessionEngine with fake runtime', () => {
     )!;
     const indexedBefore =
       harness.sessionStore.getSessionsByAgentDir(workspacePath).length;
-    const reset = harness.engine.resetForNewDesktopSession(workspacePath);
+    const reset = harness.engine.transitionDesktopSession(workspacePath, { sourceSessionId: sessionId, targetSessionId: '4d2c043d-e1ac-432d-9d3a-7f1619842ac0', channelBound: false });
 
     try {
       await waitFor(

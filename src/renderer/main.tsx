@@ -22,6 +22,8 @@ import { initializeAppZoom } from './utils/appZoom';
 import { dispatchNativeHistoryCommand, type NativeHistoryCommand } from './utils/nativeHistoryCommands';
 import { listenWithCleanup } from './utils/tauriListen';
 
+import { attachMainRenderer } from './utils/mainRenderer';
+
 import './i18n';
 import './index.css';
 
@@ -208,7 +210,8 @@ if (tauriWindowLabel === 'fb-ball') {
       if (surface === 'title-utility') return import('./pages/ModelQaTitle');
       if (surface !== 'app') return import('./pages/ModelQaHome');
     }
-    return import('./App');
+    const [module, rendererAttachment] = await Promise.all([import('./App'), attachMainRenderer(tauriWindowLabel)]);
+    return { default: () => <module.default rendererAttachment={rendererAttachment} /> };
   });
   // Note: React.StrictMode removed to prevent double-rendering of SSE effects in development
   // StrictMode causes useEffect to run twice, which duplicates SSE events and thinking blocks

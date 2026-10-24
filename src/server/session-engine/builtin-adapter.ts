@@ -54,6 +54,7 @@ import {
   materializeCurrentSessionMetadataForPublishedReset,
   materializePendingDesktopSession as materializeBuiltinPendingDesktopSession,
   resetSession,
+  runSerializedSessionMutation,
   resetInteractionScenario,
   requireCurrentBuiltinSkill,
   rewindSession,
@@ -395,16 +396,17 @@ export function createBuiltinSessionEngine(): SessionEngine {
       };
     },
 
-    getStreamReplaySnapshot() {
+    getStreamReplaySnapshot(options) {
       const sessionId = getSessionId();
-      const liveSnapshot = getBuiltinLiveSessionSnapshot(sessionId);
+      const liveSnapshot = getBuiltinLiveSessionSnapshot(sessionId, options);
       const streamingId = getStreamingAssistantId();
-      const replayMessages = getMessages()
+      const replayMessages = options?.includeHistory === false ? [] : getMessages()
         .filter(message => !(streamingId && message.id === streamingId))
         .map(messageWireToReplayMessage);
       const systemInitInfo = getSystemInitInfo();
       return {
         sessionId,
+        snapshotRevision: liveSnapshot?.snapshotRevision ?? null,
         initState: { ...getAgentState(), queuedMessages: getQueueStatus() },
         replayMessages,
         liveStreamingMessage: liveSnapshot?.liveStreamingMessage
@@ -1143,31 +1145,30 @@ export function createBuiltinSessionEngine(): SessionEngine {
       return { success: true };
     },
 
-    async resetForNewDesktopSession() {
-      await resetSession();
-      // A successful reset publishes a durable Session, usable immediately by
-      // Task/Goal without requiring a first chat message to create metadata.
-      await materializeCurrentSessionMetadataForPublishedReset('desktop');
-      return { success: true, sessionId: getSessionId() };
-    },
-
-    async migrateBoundSurfaceSession(_workspacePath, options) {
-      const freeze = await freezeCurrentSessionMetadataForImDetach(undefined, {
-        allowMissingMetadata: options?.metadataBirthPending === true || options?.metadataIndexed === false,
+    async transitionDesktopSession(_workspacePath, options) {
+      // Source validation, freeze and reset share the existing Runtime mutation
+      // owner. A queued request cannot mutate a subsequently adopted identity.
+      return runSerializedSessionMutation(async () => {
+        if (getSessionId() !== options.sourceSessionId) {
+          return { success: false, sourceUnchanged: true as const, error: 'Session identity changed before new conversation' };
+        }
+        if (isSessionBusy()) {
+          return { success: false, sourceUnchanged: true as const, errorCode: 'session_busy' as const };
+        }
+        if (options.channelBound) {
+          const freeze = await freezeCurrentSessionMetadataForImDetach(undefined, {
+            allowMissingMetadata: options.metadataBirthPending === true || options.metadataIndexed === false,
+          });
+          if (!freeze.success) {
+            return { success: false, sourceUnchanged: true as const, error: freeze.error ?? 'Failed to freeze current Session before migration' };
+          }
+        }
+        await resetSession({ sessionId: options.targetSessionId });
+        // Rust publishes the new binding only after this durable write. On any
+        // failure it retires this writer before recovering the source identity.
+        await materializeCurrentSessionMetadataForPublishedReset(options.channelBound ? 'agent-channel' : 'desktop');
+        return { success: true, sessionId: options.targetSessionId };
       });
-      if (!freeze.success) {
-        return { success: false, error: freeze.error ?? 'Failed to freeze current Session before surface migration' };
-      }
-      await resetSession({ sessionId: options.targetSessionId });
-      // resetSession() is the identity commit point. Metadata publication is
-      // recoverable preparation; surfacing a failure after the commit would
-      // make Rust roll Router/manager back to A while this Runtime remains B.
-      try {
-        await materializeCurrentSessionMetadataForPublishedReset();
-      } catch (error) {
-        console.warn('[session-engine] Surface migration post-commit metadata publication deferred:', error);
-      }
-      return { success: true, sessionId: options.targetSessionId };
     },
   };
 }

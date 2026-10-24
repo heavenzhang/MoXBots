@@ -166,7 +166,9 @@ export default defineConfig(
   includeIgnoreFile(gitignorePath),
   {
     // Additional ignore patterns for build output and bundled resources
-    ignores: ['**/out/**', '**/dist/**', '**/.vite/**', '**/coverage/**', '**/.eslintcache', 'bundled-skills/**', '**/sdk-shim/**', 'mobile/app/**/android/build/**']
+    // Vendored Tauri includes upstream JS templates whose syntax is completed
+    // by Rust; preserve and verify their archive bytes instead of linting them.
+    ignores: ['**/out/**', '**/dist/**', '**/.vite/**', '**/coverage/**', '**/.eslintcache', 'bundled-skills/**', '**/sdk-shim/**', 'mobile/app/**/android/build/**', 'vendor/tauri/**']
   },
   js.configs.recommended,
   ...ts.configs.recommended,

@@ -370,6 +370,7 @@ vi.mock('../agent-session', async () => ({
   hasBuiltinActivityForUpdate: (await import('../builtin-session/lifecycle')).hasBuiltinActivityForUpdate,
   setUpdateRestartFrozen: (await import('../builtin-session/lifecycle')).setUpdateRestartFrozen,
   stopBuiltinSessionForUpdate: vi.fn(async () => undefined),
+  runSerializedSessionMutation: (await import('../builtin-session/lifecycle')).runSerializedSessionMutation,
   applyMcpOverrideAndAwaitReady: mocks.applyMcpOverrideAndAwaitReady,
   cancelImRequest: mocks.cancelBuiltinImRequest,
   cancelQueueItem: mocks.cancelQueueItem,
@@ -1000,6 +1001,22 @@ describe('session-engine selector and adapters', () => {
 
     expect(mocks.enqueueUserMessage.mock.calls[0]?.[11]).toMatchObject({ beforeDispatch });
     expect(result.dispatchAcceptance).toBe(dispatchAcceptance);
+  });
+
+  it.each(['builtin', 'external'] as const)('captures %s SSE state without materializing cold replay', kind => {
+    mocks.state.useExternal = kind === 'external';
+    const live = {
+      snapshotRevision: 19, inMemoryMessages: [],
+      liveStreamingMessage: { id: 'live', role: 'assistant', content: 'partial', timestamp: new Date(0).toISOString() },
+      liveSessionState: 'running', pendingInteractiveRequests: [],
+    };
+    mocks.getBuiltinLiveSessionSnapshot.mockReturnValue(live);
+    mocks.getExternalLiveSessionSnapshot.mockReturnValue(live);
+    const snapshot = getSessionEngine().getStreamReplaySnapshot({ includeHistory: false });
+    expect(snapshot).toMatchObject({ snapshotRevision: 19, replayMessages: [], liveStreamingMessage: { id: 'live', content: 'partial' } });
+    expect(mocks.getMessages).not.toHaveBeenCalled();
+    expect(kind === 'builtin' ? mocks.getBuiltinLiveSessionSnapshot : mocks.getExternalLiveSessionSnapshot)
+      .toHaveBeenCalledWith(expect.any(String), { includeHistory: false });
   });
 
   it('exposes builtin read and config surfaces without route-level helpers', async () => {
@@ -2936,7 +2953,7 @@ describe('session-engine selector and adapters', () => {
   });
 
   it('publishes builtin desktop reset metadata before reporting success', async () => {
-    await expect(getSessionEngine().resetForNewDesktopSession('/workspace')).resolves.toEqual({ success: true, sessionId: 'builtin-session' });
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', { sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', targetSessionId: 'new-desktop', channelBound: false })).resolves.toEqual({ success: true, sessionId: 'new-desktop' });
     expect(mocks.materializeCurrentSessionMetadataForPublishedReset).toHaveBeenCalledWith('desktop');
     expect(mocks.resetSession.mock.invocationCallOrder[0]).toBeLessThan(mocks.materializeCurrentSessionMetadataForPublishedReset.mock.invocationCallOrder[0]);
   });
@@ -2949,12 +2966,12 @@ describe('session-engine selector and adapters', () => {
     const active = vi.spyOn(storage, 'getActiveSessionTranscript').mockReturnValue({ writer: { flushForMutation } } as unknown as ReturnType<typeof storage.getActiveSessionTranscript>);
     try {
       let settled = false;
-      const reset = getSessionEngine().resetForNewDesktopSession('/workspace').finally(() => { settled = true; });
+      const reset = getSessionEngine().transitionDesktopSession('/workspace', { sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', targetSessionId: 'new-desktop', channelBound: false }).finally(() => { settled = true; });
       await vi.waitFor(() => expect(flushForMutation).toHaveBeenCalledOnce());
       expect(settled).toBe(false);
       release(succeeds);
       if (succeeds) await expect(reset).resolves.toMatchObject({ success: true });
-      else await expect(reset).rejects.toThrow('could not be published');
+      else await expect(reset).rejects.toThrow('Session metadata could not be published');
     } finally { active.mockRestore(); }
   });
 
@@ -2962,7 +2979,7 @@ describe('session-engine selector and adapters', () => {
     mocks.state.useExternal = true;
     mocks.state.externalActive = true;
 
-    const result = await getSessionEngine().resetForNewDesktopSession('/workspace');
+    const result = await getSessionEngine().transitionDesktopSession('/workspace', { sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', targetSessionId: 'new-desktop', channelBound: false });
 
     expect(result).toMatchObject({ success: true, sessionId: expect.any(String) });
     expect(mocks.state.sessionMetadata.get(result.sessionId!)).toMatchObject({ id: result.sessionId, configSnapshotAt: expect.any(String), model: mocks.getExternalSessionModel() });
@@ -2978,7 +2995,7 @@ describe('session-engine selector and adapters', () => {
     mocks.state.useExternal = true;
     mocks.state.externalProcessAlive = true;
 
-    const result = await getSessionEngine().resetForNewDesktopSession('/workspace');
+    const result = await getSessionEngine().transitionDesktopSession('/workspace', { sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', targetSessionId: 'new-desktop', channelBound: false });
 
     expect(result).toMatchObject({ success: true, sessionId: expect.any(String) });
     expect(mocks.awaitExternalSessionStarting).toHaveBeenCalledTimes(1);
@@ -2991,8 +3008,10 @@ describe('session-engine selector and adapters', () => {
     mocks.state.useExternal = true;
     mocks.state.externalConversationMutation = true;
 
-    await expect(getSessionEngine().resetForNewDesktopSession('/workspace')).resolves.toEqual({
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', { sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', targetSessionId: 'new-desktop', channelBound: false })).resolves.toEqual({
       success: false,
+      sourceUnchanged: true,
+      errorCode: 'session_busy',
       error: 'Wait for the current Session operation to finish',
     });
     expect(mocks.stopExternalSession).not.toHaveBeenCalled();
@@ -3001,7 +3020,8 @@ describe('session-engine selector and adapters', () => {
 
   it('freezes the current builtin Session before migrating the bound surface', async () => {
     const targetSessionId = '6d57334a-44d8-4fe1-a4f2-cd57fc8beb85';
-    const result = await getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    const result = await getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId,
     });
 
@@ -3027,7 +3047,8 @@ describe('session-engine selector and adapters', () => {
     mocks.getExternalSessionReasoningEffort.mockReturnValueOnce('medium');
 
     const targetSessionId = 'e8c1e529-8458-4361-a24a-02f5c278203e';
-    const result = await getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    const result = await getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId,
     });
 
@@ -3050,15 +3071,43 @@ describe('session-engine selector and adapters', () => {
     expect(mocks.restoreExternalSessionState).toHaveBeenCalledWith(targetSessionId, '/workspace', { type: 'desktop' });
   });
 
-  it('keeps a builtin surface migration committed when metadata publication fails', async () => {
+  it.each([false, true])('rejects a stale desktop source before any mutation (external=%s)', async external => {
+    mocks.state.useExternal = external;
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: 'stale-source', targetSessionId: 'next-session', channelBound: true,
+    })).resolves.toMatchObject({ success: false, sourceUnchanged: true, error: 'Session identity changed before new conversation' });
+    expect(mocks.resetSession).not.toHaveBeenCalled();
+    expect(mocks.freezeCurrentSessionMetadataForImDetach).not.toHaveBeenCalled();
+    expect(mocks.stopExternalSession).not.toHaveBeenCalled();
+    expect(mocks.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+
+  it('checks builtin source identity after queued lifecycle work has finished', async () => {
+    const { runSerializedSessionMutation } = await import('../builtin-session/lifecycle');
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const prior = runSerializedSessionMutation(() => gate);
+    const transition = getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: 'builtin-session', targetSessionId: 'next-session', channelBound: true,
+    });
+    mocks.getSessionId.mockReturnValueOnce('changed-while-waiting');
+    release();
+    await prior;
+    await expect(transition).resolves.toMatchObject({ success: false });
+    expect(mocks.resetSession).not.toHaveBeenCalled();
+    expect(mocks.freezeCurrentSessionMetadataForImDetach).not.toHaveBeenCalled();
+  });
+
+  it('does not acknowledge a builtin transition when metadata publication fails', async () => {
     mocks.materializeCurrentSessionMetadataForPublishedReset.mockRejectedValueOnce(
       new Error('metadata unavailable'),
     );
     const targetSessionId = 'e7a596bc-61d8-4adc-96af-02ee892c15ca';
 
-    await expect(getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId,
-    })).resolves.toEqual({ success: true, sessionId: targetSessionId });
+    })).rejects.toThrow('metadata unavailable');
 
     expect(mocks.resetSession).toHaveBeenCalledWith({ sessionId: targetSessionId });
   });
@@ -3068,7 +3117,8 @@ describe('session-engine selector and adapters', () => {
     mocks.state.externalProcessAlive = true;
 
     const targetSessionId = 'af131598-00c6-4b7b-b4fb-c039cb0f0496';
-    const result = await getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    const result = await getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId,
     });
 
@@ -3084,7 +3134,8 @@ describe('session-engine selector and adapters', () => {
     mocks.stopExternalSession.mockResolvedValueOnce(false);
 
     const targetSessionId = 'e64e373e-76c7-4be0-a537-0134949a1e18';
-    const result = await getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    const result = await getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId,
     });
 
@@ -3104,7 +3155,8 @@ describe('session-engine selector and adapters', () => {
     });
     const targetSessionId = 'f7cd3447-b444-46a6-94bb-d549bfdcd9bd';
 
-    await expect(getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId,
     })).resolves.toEqual({ success: true, sessionId: targetSessionId });
 
@@ -3115,15 +3167,36 @@ describe('session-engine selector and adapters', () => {
     mocks.state.useExternal = true;
     mocks.state.externalConversationMutation = true;
 
-    await expect(getSessionEngine().migrateBoundSurfaceSession('/workspace', {
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: mocks.state.useExternal ? 'external-session' : 'builtin-session', channelBound: true,
       targetSessionId: 'f7cd3447-b444-46a6-94bb-d549bfdcd9bd',
     })).resolves.toEqual({
       success: false,
+      sourceUnchanged: true,
+      errorCode: 'session_busy',
       error: 'Wait for the current Session operation to finish',
     });
     expect(mocks.updateSessionMetadata).not.toHaveBeenCalled();
     expect(mocks.stopExternalSession).not.toHaveBeenCalled();
     expect(mocks.restoreExternalSessionState).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('preserves work accepted after Rust sampled idle (external=%s)', async external => {
+    mocks.state.useExternal = external;
+    // Rust saw idle before sending this request; only the adapter sees the
+    // newly accepted work at its mutation boundary.
+    if (external) mocks.state.externalBusy = true;
+    else mocks.isSessionBusy.mockReturnValueOnce(true);
+    await expect(getSessionEngine().transitionDesktopSession('/workspace', {
+      sourceSessionId: external ? 'external-session' : 'builtin-session',
+      targetSessionId: 'next-session', channelBound: true,
+    })).resolves.toEqual({
+      success: false, sourceUnchanged: true, errorCode: 'session_busy',
+    });
+    expect(mocks.freezeCurrentSessionMetadataForImDetach).not.toHaveBeenCalled();
+    expect(mocks.resetSession).not.toHaveBeenCalled();
+    expect(mocks.updateSessionMetadata).not.toHaveBeenCalled();
+    expect(mocks.stopExternalSession).not.toHaveBeenCalled();
   });
 
   it('freezes the current external IM session through the engine facade', async () => {
@@ -3374,7 +3447,7 @@ describe('user-confirmed updater admission through the SessionEngine owner', () 
     await expect(restoreInitialExternalSessionAtSelector('idle', '/workspace')).rejects.toThrow('UPDATE_BUSY');
     await expect(retryLastExternalUserMessageAtSelector('user')).rejects.toThrow('UPDATE_BUSY');
     await expect(updateExternalRuntimeConfigAtSelector({ runtimeConfig: {} })).rejects.toThrow('UPDATE_BUSY');
-    await expect(engine.resetForNewDesktopSession('/workspace')).rejects.toThrow('UPDATE_BUSY');
+    await expect(engine.transitionDesktopSession('/workspace', { sourceSessionId: 'idle', targetSessionId: 'new', channelBound: false })).rejects.toThrow('UPDATE_BUSY');
     await expect(engine.retryMcpServer('server')).rejects.toThrow('UPDATE_BUSY');
     expect(mocks.prewarmExternalSession).not.toHaveBeenCalled();
   });

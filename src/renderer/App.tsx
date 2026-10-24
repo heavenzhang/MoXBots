@@ -106,12 +106,15 @@ import {
   recordingTabProjection,
   sameRecordingTabProjection,
 } from '@/features/record/tabProjection';
-import { createChatTabLifecycle } from '@/features/chat/tabLifecycle';
+import { createChatTabLifecycle, detachChatTabResources } from '@/features/chat/tabLifecycle';
+import { COLD_RENDERER_ATTACHMENT, type RendererAttachment } from '@/utils/mainRenderer';
 import { useRecordTabLifecycle } from '@/features/record/useRecordTabLifecycle';
 import { useTabCloseController } from '@/tab-workspace/useTabCloseController';
 import {
   serializeTabs,
   deserializeTabs,
+  buildRestoredTabs,
+  loadPendingRestoredTabs,
   saveOpenTabs,
   hydratePersistedState,
   planRestoreTabs,
@@ -373,7 +376,7 @@ export interface LaunchProjectAnalyticsContext {
   assistantEntry?: AssistantEntry;
 }
 
-export default function App() {
+export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: { rendererAttachment?: RendererAttachment } = {}) {
   const { t } = useTranslation('app');
   // Auto-update state (silent background updates)
   const {
@@ -462,6 +465,13 @@ export default function App() {
   const handleTabCapacityRejected = useCallback(() => {
     toastRef.current.info(t('appChrome.maxTabsReached'));
   }, [t]);
+
+  const [restoreCandidate] = useState(() => buildRestoredTabs());
+  const [pendingRestoreCandidate] = useState(() => loadPendingRestoredTabs());
+  const [tabPersistenceReady, setTabPersistenceReady] = useState(false);
+  const tabPersistenceReadyRef = useRef(false);
+  const restoreCandidateRef = useRef<ReturnType<typeof buildRestoredTabs>>(pendingRestoreCandidate);
+  const [nativeRestoreCount, setNativeRestoreCount] = useState(0);
 
   // Session-scoped pages, kept warm in a bounded FIFO cache.
   //
@@ -594,21 +604,22 @@ export default function App() {
 
   // Persist open Chat / Record tabs after every structural change (Issue #232).
   // a POST-COMMIT effect — it flushes shortly after each tabs/activeTabId change
-  // (not synchronously inside the mutation). The payload is tiny (≤MAX_TABS × 4
-  // fields), and we deliberately avoid `beforeunload` (unreliable in Tauri
+  // (not synchronously inside the mutation). Only whitelisted tab identity
+  // fields persist; we deliberately avoid `beforeunload` (unreliable in Tauri
   // WKWebView; update install + app quit both exit from the Rust side, not a
   // renderer unload handshake — see the hide/quit flush below and
   // handleRestartAndUpdate).
   useEffect(() => {
-    saveOpenTabs(tabs, activeTabId);
-  }, [tabs, activeTabId]);
+    if (tabPersistenceReady) saveOpenTabs(tabs, activeTabId, restoreCandidateRef.current);
+  }, [tabs, activeTabId, tabPersistenceReady]);
 
   // Synchronous flush of the latest tab state. Used to close the narrow window
   // where the process exits (update relaunch, Cmd+Q / Dock quit) in the same
   // frame as a structural change, before the post-commit effect above runs.
   const flushOpenTabsNow = useCallback(() => {
+    if (!tabPersistenceReadyRef.current) return;
     const snapshot = tabWorkspaceController.getSnapshot();
-    saveOpenTabs([...snapshot.tabs], snapshot.activeTabId);
+    saveOpenTabs([...snapshot.tabs], snapshot.activeTabId, restoreCandidateRef.current);
   }, [tabWorkspaceController]);
 
   // Flush on window hide / pagehide — the Tauri-appropriate quit signal (the
@@ -634,9 +645,17 @@ export default function App() {
   useEffect(() => {
     if (bootDecisionRef.current) return;
     bootDecisionRef.current = true;
+    if (rendererAttachment.replacement) {
+      restoreCandidateRef.current = pendingRestoreCandidate;
+      return; // the automatic recovery effect enables persistence after settlement
+    }
     void (async () => {
       await Promise.allSettled([loadAndClearOpenTabsDurable(), consumeCleanExitMarker()]);
-      if (APP_BUILD_PROFILE !== 'moxbot') return;
+      if (APP_BUILD_PROFILE !== 'moxbot') {
+        tabPersistenceReadyRef.current = true;
+        setTabPersistenceReady(true);
+        return;
+      }
       try {
         const handoff = await loadComposerUpdateHandoff(deserializeTabs);
         if (handoff) {
@@ -648,8 +667,10 @@ export default function App() {
         console.error('[App] Update draft handoff could not be read:', error);
         toastRef.current.error('更新草稿暂时无法恢复，原交接文件已保留。');
       }
+      tabPersistenceReadyRef.current = true;
+      setTabPersistenceReady(true);
     })();
-  }, []);
+  }, [pendingRestoreCandidate, rendererAttachment]);
 
   // Helper-overlay launches must hand `handleLaunchProject` a real, committed
   // active launcher tab. Activating before React commits the workspace snapshot
@@ -2764,12 +2785,8 @@ export default function App() {
   // candidates are validated through RecordStore before the shell commits them.
   // A deleted Record becomes the existing Record-list surface at the same Tab
   // position instead of creating an empty detail owner.
-  const restoreUpdateDraftPages = useCallback(async () => {
-    if (APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) return;
-    const candidate = updateDraftCandidateRef.current;
-    setPendingUpdateDraftPages(0);
-    updateDraftCandidateRef.current = null;
-    if (!candidate || candidate.tabs.length === 0) return;
+  const restoreTabs = useCallback(async (candidate: ReturnType<typeof buildRestoredTabs>) => {
+    if (!candidate || candidate.tabs.length === 0) return null;
 
     type ValidatedRestoreTarget =
       | {
@@ -2867,17 +2884,26 @@ export default function App() {
 
     if (APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) {
       validated.forEach(({ releaseTransition }) => releaseTransition?.());
-      updateDraftCandidateRef.current = candidate;
-      setPendingUpdateDraftPages(candidate.tabs.length);
-      return;
+      return candidate;
     }
-    if (validated.length === 0) return;
+    if (validated.length === 0) return candidate;
     const validTabs = validated.map(({ tab }) => tab);
     const validActiveTabId = validTabs.some(
       (tab) => tab.id === candidate.activeTabId,
     )
       ? candidate.activeTabId
       : null;
+    const remainingCandidate = () => {
+      const liveTabs = tabWorkspaceController.getSnapshot().tabs;
+      const remainingIds = new Set(validTabs.filter(tab => !liveTabs.some(live =>
+        live.id === tab.id ||
+        (tab.view === 'chat' && live.view === 'chat' && tab.sessionId === live.sessionId) ||
+        (tab.view === 'record' && live.view === 'record' && tab.recordId === live.recordId) ||
+        (tab.view === 'taskcenter' && live.view === 'taskcenter'),
+      )).map(tab => tab.id));
+      const remaining = candidate.tabs.filter(tab => remainingIds.has(tab.id));
+      return remaining.length ? { tabs: remaining, activeTabId: candidate.activeTabId } : null;
+    };
     let restoreResult:
       | ReturnType<typeof tabWorkspaceController.restoreWithPolicy>
       | undefined;
@@ -2901,7 +2927,7 @@ export default function App() {
       if (restoreBlockedByCapacity) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
       }
-      return;
+      return remainingCandidate();
     }
 
     const { addedTabs } = committedRestore;
@@ -2910,7 +2936,7 @@ export default function App() {
     validated.forEach(({ tab, releaseTransition }) => {
       if (!addedTabIds.has(tab.id)) releaseTransition?.();
     });
-    if (addedTargets.length === 0) return;
+    if (addedTargets.length === 0) return remainingCandidate();
     if (addedTargets.some((target) => target.kind === 'record-fallback')) {
       toastRef.current.info(t('appChrome.recordRestoreMissing'));
     }
@@ -2942,13 +2968,86 @@ export default function App() {
     );
     // Failed execution recovery leaves the restored Chat and its disk history
     // available. Each failed target exposes a retry on the same Tab.
+    return remainingCandidate();
   }, [materializeExistingSessionTab, t, tabWorkspaceController]);
+
+  const restoreUpdateDraftPages = useCallback(async () => {
+    if (APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) return;
+    const candidate = updateDraftCandidateRef.current;
+    setPendingUpdateDraftPages(0);
+    updateDraftCandidateRef.current = null;
+    const remaining = await restoreTabs(candidate);
+    if (remaining && APP_BUILD_PROFILE === 'moxbot' && isComposerUpdateCheckpointLocked()) {
+      updateDraftCandidateRef.current = remaining;
+      setPendingUpdateDraftPages(remaining.tabs.length);
+    }
+  }, [restoreTabs]);
 
   // Restore only the explicit draft handoff, through the existing validation,
   // Session admission and bounded page-cache paths. Never send restored input.
   useEffect(() => {
     if (pendingUpdateDraftPages > 0) void restoreUpdateDraftPages();
   }, [pendingUpdateDraftPages, restoreUpdateDraftPages]);
+
+  const restoreInProgressRef = useRef(false);
+  const handleRestoreLastSession = useCallback(async () => {
+    if (!tabPersistenceReadyRef.current || restoreInProgressRef.current) return;
+    const candidate = restoreCandidateRef.current;
+    if (!candidate) return;
+    restoreInProgressRef.current = true;
+    try {
+      const remaining = await restoreTabs(candidate);
+      // Capacity rejection or failed attachment leaves a retryable offer.
+      const pending = restoreCandidateRef.current;
+      if (pending) {
+        // Native recovery may have added other candidates during this await.
+        // Consume only this attempt's settled entries from the current offer;
+        // a user-dismissed offer stays dismissed.
+        const unsettledIds = new Set(remaining?.tabs.map(tab => tab.id));
+        const consumedIds = new Set(candidate.tabs.filter(tab => !unsettledIds.has(tab.id)).map(tab => tab.id));
+        const pendingTabs = pending.tabs.filter(tab => !consumedIds.has(tab.id));
+        restoreCandidateRef.current = pendingTabs.length ? { ...pending, tabs: pendingTabs } : null;
+        setNativeRestoreCount(pendingTabs.length);
+        flushOpenTabsNow();
+      }
+    } finally {
+      restoreInProgressRef.current = false;
+    }
+  }, [restoreTabs, flushOpenTabsNow]);
+
+  const nativeRecoveryStartedRef = useRef(false);
+  useEffect(() => {
+    if (!rendererAttachment.replacement || nativeRecoveryStartedRef.current || configLoading) return;
+    nativeRecoveryStartedRef.current = true;
+    void (async () => {
+      const remaining = await restoreTabs(restoreCandidate);
+      for (const owner of rendererAttachment.previousTabOwners) {
+        const retained = tabWorkspaceController.getSnapshot().tabs.some(tab =>
+          tab.view === 'chat' && tab.id === owner.tabId && tab.sessionId === owner.sessionId);
+        if (!retained) {
+          await detachChatTabResources({ id: owner.tabId, sessionId: owner.sessionId }, {
+            startBackgroundCompletion, stopSseProxy, releaseTabSession,
+            stopLegacyTabSidecar: stopTabSidecar,
+            log: (message, error) => console.error(message, error),
+          });
+        }
+      }
+      // Publish restore offers only after old-token retirement settles. A
+      // same-id retry must not race the old BackgroundCompletion/release await.
+      if (remaining) {
+        const pending = restoreCandidateRef.current;
+        const combined = serializeTabs(
+          [...remaining.tabs, ...(pending?.tabs ?? [])],
+          remaining.activeTabId ?? pending?.activeTabId ?? null,
+          Infinity,
+        );
+        restoreCandidateRef.current = combined ? hydratePersistedState(combined) : null;
+      }
+      tabPersistenceReadyRef.current = true;
+      setNativeRestoreCount(restoreCandidateRef.current?.tabs.length ?? 0);
+      setTabPersistenceReady(true);
+    })().catch(error => console.error('[App] Native Renderer recovery failed:', error));
+  }, [rendererAttachment, restoreCandidate, pendingRestoreCandidate, restoreTabs, configLoading, tabWorkspaceController]);
 
   /** Chat-local adapter: all history selections use the canonical new/jump/revive path. */
   const handleOpenChatHistorySession = useCallback(
@@ -2978,18 +3077,17 @@ export default function App() {
   );
 
   /**
-   * Handle "New Session" from Chat component.
-   * If AI is running, starts background completion on old session and creates new Sidecar.
-   * Returns true if handled (Chat should NOT call resetSession), false if AI is idle (Chat falls back to resetSession).
+   * Rust retained the source for active work, shared owners or a Channel.
+   * Prepare a distinct conversation before releasing this Tab's source owner.
    */
   const handleNewSession = useCallback(
-    async (tabId: string): Promise<boolean> => {
+    async (tabId: string, sourceSessionId: string): Promise<boolean> => {
       const currentTab = tabWorkspaceController
         .getSnapshot()
         .tabs.find((t) => t.id === tabId);
       if (
         currentTab?.view !== 'chat' ||
-        !currentTab.sessionId ||
+        currentTab.sessionId !== sourceSessionId ||
         !currentTab.agentDir
       ) {
         return false;
@@ -2997,34 +3095,9 @@ export default function App() {
 
       const oldSessionId = currentTab.sessionId;
 
-      // Check if AI is running → start background completion
-      const bgResult = await startBackgroundCompletion(oldSessionId);
-      if (!bgResult.started) {
-        // AI is idle → let Chat handle it via resetSession (more efficient, reuses Sidecar)
-        return false;
-      }
-
-      // AI is running → release old Sidecar (BG owner keeps it alive), create new one
-      console.log(
-        `[App] handleNewSession: AI running on ${oldSessionId}, background completion started`,
-      );
-
+      // Each birth needs its own slot, including when the source is pending.
+      const pendingSessionId = createPendingSessionId(`${tabId}-${crypto.randomUUID()}`);
       try {
-        await stopSseProxy(tabId);
-        await releaseTabSession(oldSessionId, tabId);
-
-        // PRD 0.2.19 cross-review fix (B4): mark the upcoming session_new as
-        // 'new_chat_button' provenance. handleNewSession is the AI-running variant
-        // of resetSession (user clicked "新对话" while AI was still streaming) —
-        // without this, chat:system-init would fall back to 'launcher_input' and
-        // silently misclassify all AI-running new-session opens.
-        setPendingSessionBirth(
-          tabId,
-          birthContextForSurface('new_chat_button'),
-        );
-
-        // Create new pending session with new Sidecar
-        const pendingSessionId = createPendingSessionId(tabId);
         await ensureSessionSidecar(
           pendingSessionId,
           currentTab.agentDir,
@@ -3036,6 +3109,22 @@ export default function App() {
             `Rust refused owner reconcile for session ${pendingSessionId} and tab ${tabId}`,
           );
         }
+        const sourceTab = tabWorkspaceController.getSnapshot().tabs.find(tab => tab.id === tabId);
+        if (sourceTab?.view !== 'chat' || sourceTab.sessionId !== oldSessionId) {
+          await releaseTabSession(pendingSessionId, tabId);
+          return false;
+        }
+        await stopSseProxy(tabId);
+
+        // PRD 0.2.19 cross-review fix (B4): mark the upcoming session_new as
+        // 'new_chat_button' provenance. handleNewSession is the AI-running variant
+        // of resetSession (user clicked "新对话" while AI was still streaming) —
+        // without this, chat:system-init would fall back to 'launcher_input' and
+        // silently misclassify all AI-running new-session opens.
+        setPendingSessionBirth(
+          tabId,
+          birthContextForSurface('new_chat_button'),
+        );
 
         // Update tab state → TabProvider will detect sessionId change and reconnect
         // Fresh sidecar for the new session → 'push' (overwrites any stale disposition)
@@ -3047,11 +3136,20 @@ export default function App() {
           initialMessage: undefined,
           sidecarConfigDisposition: 'push',
         }));
+        // Rust already retained source work/recovery with its background owner.
+        // Retire only this old Tab token after publishing the ready target;
+        // source lifecycle settlement must not delay use of the new conversation.
+        void releaseTabSession(oldSessionId, tabId).catch(error => {
+          console.warn('[App] Failed to release previous conversation Tab owner:', error);
+        });
         const fbResult = await migrateFloatingBallSessionBinding(
           oldSessionId,
           pendingSessionId,
-        );
-        if (fbResult.migrated) {
+        ).catch(error => {
+          console.warn('[App] Floating ball binding did not follow the new conversation:', error);
+          return null;
+        });
+        if (fbResult?.migrated) {
           console.log(
             `[App] Floating ball session binding migrated to pending session: ${oldSessionId} -> ${pendingSessionId}, notified=${fbResult.notified}`,
           );
@@ -3061,6 +3159,9 @@ export default function App() {
         );
         return true;
       } catch (error) {
+        await releaseTabSession(pendingSessionId, tabId).catch(cleanupError => {
+          console.warn('[App] Failed to release unadopted new conversation:', cleanupError);
+        });
         console.error('[App] handleNewSession failed:', error);
         throw error;
       }
@@ -5041,6 +5142,18 @@ export default function App() {
               className="relative flex-1 overflow-hidden"
               data-tab-content-workspace
             >
+              {rendererAttachment.replacement && nativeRestoreCount > 0 && (
+                <div className="absolute right-4 top-3 z-30 flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--paper)] px-3 py-2 shadow-sm">
+                  <button type="button" data-testid="restore-session" onClick={() => void handleRestoreLastSession()} className="text-sm text-[var(--accent)]">
+                    {t('appChrome.nativeRestoreRemaining', { count: nativeRestoreCount })}
+                  </button>
+                  <button type="button" aria-label={t('appChrome.nativeRestoreDismiss')} onClick={() => {
+                    restoreCandidateRef.current = null;
+                    setNativeRestoreCount(0);
+                    flushOpenTabsNow();
+                  }} className="text-sm text-[var(--ink-muted)]">×</button>
+                </div>
+              )}
               {tabs.map((tab) => (
                 <BuiltinTabSlot
                   key={tab.id}

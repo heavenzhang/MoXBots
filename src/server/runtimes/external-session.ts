@@ -3669,7 +3669,7 @@ export function getExternalWorkProgressSnapshot() {
     { live: true, runtimePlan: getExternalAgentPlan() }), getSessionMetadata(getCurrentExternalBoundSessionId())?.taskOrchestration, messages);
 }
 
-export function getExternalLiveSessionSnapshot(targetSessionId: string): {
+export function getExternalLiveSessionSnapshot(targetSessionId: string, options?: { includeHistory?: boolean }): {
   snapshotRevision: number;
   inMemoryMessages: SessionMessage[];
   liveStreamingMessage: SessionMessage | null;
@@ -3681,7 +3681,7 @@ export function getExternalLiveSessionSnapshot(targetSessionId: string): {
   flushPendingLiveEvents();
   const liveStreamingMessage = getExternalLiveAssistantMessage();
   let inMemoryMessages =
-    getExternalTranscriptSessionId() === targetSessionId
+    options?.includeHistory !== false && getExternalTranscriptSessionId() === targetSessionId
       ? getExternalSessionMessagesSnapshot()
       : [];
   if (getActiveSessionTranscript(targetSessionId) && liveStreamingMessage) {
@@ -3689,7 +3689,7 @@ export function getExternalLiveSessionSnapshot(targetSessionId: string): {
       (message) => message.id !== liveStreamingMessage.id,
     );
   }
-  for (const pending of getExternalPendingUserMessageProjections(
+  for (const pending of options?.includeHistory === false ? [] : getExternalPendingUserMessageProjections(
     targetSessionId,
   )) {
     if (!inMemoryMessages.some((message) => message.id === pending.id)) {

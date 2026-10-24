@@ -118,6 +118,8 @@
     "teamUnavailable": "协作空间已被开发者关闭"
   },
   "appChrome": {
+    "nativeRestoreRemaining": "恢复其余 {{count}} 个页面",
+    "nativeRestoreDismiss": "忽略本次页面恢复",
     "sessionConnectionLost": "连接已断开，请重试恢复连接。",
     "updateVerifyFailed": "无法验证更新（网络异常），请稍后重试",
     "updateExpiredRedownloading": "已下载的更新已过期，正在重新下载新版本...",
@@ -163,6 +165,7 @@
     "updateSignatureFailed": "更新包签名校验未通过。请重新检查更新，下载通过验证的更新包。"
   },
   "tabProvider": {
+    "reconnecting": "会话更新暂时中断，正在自动重连…",
     "sendUnconfirmed": "发送状态未确认，请先检查历史和队列再重试。",
     "compactSuccess": "上下文已压缩",
     "compactFailed": "上下文压缩失败",

@@ -945,3 +945,9 @@ Full522.2 intake closure: all originally listed source ancestors are integrated;
 ## MOXBOTS-0522-ALL-IMPROVEMENTS-20261025 — Root closed intake
 
 The human requested all listed unpackaged improvements. Same sole desktop/macOS-arm64/updater and combinedCI/main owner01a12bc2 selects0.5.22/build522.2. Base848 and all selected ancestors retained; previous narrower522.1 remains sealed/unpublished. New upstream stability adaptation announced without a final commit after intake closure is deferred. Root combined547 then final529 tests, TypeScript/scoped lint/classification/version3, actual production-component browser390/1440 and actualSDK synthetic ordinary/rework pass. Root corrected the recovered queued-root and input-before-card cross-feature surface once; RED/GREEN retained. No installed/realProvider/two-device result inferred. Precise CI/main, one new artifact and fresh maintenance/install/formal-channel remain distinct gates; original21rollback and unknown business/memory100 remain preserved.
+
+## MB-UPSTREAM-FIXES-20261025 — 八组上游稳定性适配
+
+用户2026-10-25明确授权八组修复、保留现有导航/模型管理/恢复机制，完成测试、主干交付并交既有负责人统一发布。任务记录 `.agent-sync/tasks/codex-upstream-fixes-20261025-39cb4c91.md`，范围/冲突/失败及组合证据 `dev-docs/upstream-fixes-20261025/acceptance.md`、`checks.json`。当前八组代码与本地验收完成：Node1387、Rust211（另1既有opt-in忽略）、script344（14平台skip）、类型/lint/dep边界、Web配置构建、独立审阅与隔离Chromium/WebKit/原生fixture通过；共享CI/main及远端核验待原owner协调。完整rustfmt暴露既有未修改文件风格差异，非项目CI门，不扩大为全仓格式化。
+
+部署单元继续：desktop/macOS/updater与combined CI/main由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；共用server的Host软件由 `01a12b99-7b38-78b1-831f-9c60257d386a` 选择独立下一未冻结批。本任务不新增publisher/公网/API或DB迁移、不分配App正式版本，不触碰已冻结App/IPA/Host、日常Mac或业务会话。无跨单元协议切换依赖，JS/native框架三套补丁须随同一新桌面制品交付；Host只选择其共用源码闭包，维持原身份/配置并独立回滚。内置Skill快照62是既有内容升级机制，不是App发行版本。各owner接收精确候选base/tree/head、测试及排除项后组织CI、制品、备份/回滚及真实路径验收；预登记/源码main与正式发布分开记录。

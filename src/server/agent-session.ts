@@ -182,7 +182,7 @@ import {
 import type { OfficialToolId } from '../shared/official-tools';
 import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, getActiveSessionTranscript, loadSessionTranscript } from './SessionStore';
 import { TranscriptPresentation } from './session-transcript/presentation';
-import { projectTranscriptToolInput, type TranscriptObject } from '../shared/sessionTranscript';
+import { projectTranscriptToolInput, toStoredTranscriptMessage, type TranscriptObject } from '../shared/sessionTranscript';
 import { fireAcceptedUserTitleHook, firePostTurnTitleHook } from './turn-hooks';
 import { createSessionMetadata, type SessionMetadata, type SessionMessage, type MessageAttachment, type SessionSource, type TurnAnalyticsSource } from './types/session';
 import { originFromTurnAttribution } from '../shared/session-origin';
@@ -324,6 +324,7 @@ export type {
 } from './builtin-session/types';
 import type { ProviderEnv } from './provider-types';
 export { stripPlaywrightResults } from './builtin-session/transcript-persistence';
+export { runSerializedSessionMutation } from './builtin-session/lifecycle';
 import { extractBackgroundTaskOutputPath } from './builtin-session/background-task-output';
 export { hasBuiltinActivityForUpdate, setUpdateRestartFrozen } from './builtin-session/lifecycle';
 import {
@@ -380,6 +381,7 @@ import {
   takeQueryBackgroundTasks,
   wakeGenerator as lifecycleWakeGenerator,
   waitForQueryExit,
+  isQueryAwaitingExit,
   waitForMessage as lifecycleWaitForMessage,
   type QueryMcpMutationResult,
   type BuiltinQueryAuthority,
@@ -3470,7 +3472,7 @@ function clearBuiltinQueryMcpOwner(query?: Query): void {
 
 /** Explicit retry uses the existing resume + startup-admission owner, even for unchanged config. */
 export function retryBuiltinMcpServer(serverId: string): McpRetryResult {
-  if (isSessionBusy() || hasQueryBackgroundTasks(lifecycleState.query) || getQueryMcpMutation()) {
+  if (isSessionBusy() || hasQueryBackgroundWork(lifecycleState.query) || getQueryMcpMutation()) {
     return { success: false, status: 409, errorCode: 'session_busy' };
   }
   const failed = builtinMcpEffectiveSnapshot?.servers.find(server => server.id === serverId);
@@ -4348,7 +4350,7 @@ function schedulePreWarm(delayMs = 500): void {
         promotedItemInFlight: queueState.promotedItemInFlight,
         turnInFlight: isTurnInFlight(),
         sdkCommandInFlight: getInFlightQueueId() !== null,
-        backgroundTasksActive: hasQueryBackgroundTasks(lifecycleState.query),
+        backgroundTasksActive: hasQueryBackgroundWork(lifecycleState.query),
       })) {
         // The terminal path owns this drain. Never let a previously armed
         // pre-warm timer abort an item between promotion and SDK yield.
@@ -7830,7 +7832,7 @@ function applyDeferredRestartIfNeeded(): void {
     promotedItemInFlight: queueState.promotedItemInFlight,
     turnInFlight: isTurnInFlight(),
     sdkCommandInFlight: getInFlightQueueId() !== null,
-    backgroundTasksActive: hasQueryBackgroundTasks(lifecycleState.query),
+    backgroundTasksActive: hasQueryBackgroundWork(lifecycleState.query),
   })) {
     return;
   }
@@ -8289,7 +8291,10 @@ export function getMessages(): MessageWire[] {
   return getBuiltinMessages();
 }
 
-export function getBuiltinLiveSessionSnapshot(targetSessionId: string): {
+export function getBuiltinLiveSessionSnapshot(
+  targetSessionId: string,
+  options?: { includeHistory?: boolean },
+): {
   snapshotRevision: number;
   inMemoryMessages: SessionMessage[];
   liveStreamingMessage: SessionMessage | null;
@@ -8299,10 +8304,23 @@ export function getBuiltinLiveSessionSnapshot(targetSessionId: string): {
   if (targetSessionId !== sessionId) return null;
   flushPendingLiveEvents();
   const streamingAssistantId = getStreamingAssistantId();
-  const messages = getBuiltinMessages().map(messageWireToSessionMessage);
-  const liveStreamingMessage = streamingAssistantId
+  // Stream attachment selects the live V2 row before projecting the transcript.
+  // Snapshot/history requests retain the existing complete projection path.
+  const messages = options?.includeHistory === false
+    ? [] : getBuiltinMessages().map(messageWireToSessionMessage);
+  let liveStreamingMessage = streamingAssistantId
     ? messages.find(message => message.id === streamingAssistantId) ?? null
     : null;
+  if (options?.includeHistory === false && streamingAssistantId) {
+    const product = getBuiltinProductContent();
+    if (product) {
+      const message = product.writer.projection.messages.get(streamingAssistantId);
+      liveStreamingMessage = message ? toStoredTranscriptMessage(message) : null;
+    } else {
+      const message = getBuiltinMessages().find(message => message.id === streamingAssistantId);
+      liveStreamingMessage = message ? messageWireToSessionMessage(message) : null;
+    }
+  }
   return structuredClone({
     snapshotRevision: getBuiltinLiveRevision(),
     inMemoryMessages: messages.filter(message => message.id !== streamingAssistantId),
@@ -10904,8 +10922,16 @@ async function interruptResponseWithoutRecovery(reason: CancelReason): Promise<b
       ...(getTurnAdmissionTicket() ? [getTurnAdmissionTicket()!.queueId] : []),
     ]);
     const wasRunning = sessionState === 'running';
+    const stoppedQuery = lifecycleState.query;
     const results = await Promise.all([...queueIds].map(queueId => cancelQueueItem(queueId)));
     const cancelled = results.some(result => result.status === 'cancelled');
+    // A rebuild-quarantined generator cannot consume another input. Retire only
+    // that exact Query, inside the existing durable recovery Stop wrapper.
+    // Healthy parked Queries and SDK-accepted future inputs stay untouched.
+    if (wasRunning && stoppedQuery && lifecycleState.query === stoppedQuery
+      && isQueryAwaitingExit(stoppedQuery) && getInFlightQueueId() === null && !isTurnInFlight()) {
+      abortPersistentSession();
+    }
     const quiescent = settleCancelledInputActivity();
     traceBuiltinInputProgress('stop-settled');
     const stopped = cancelled || (wasRunning && quiescent);
@@ -13245,7 +13271,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
 
     const retireRewoundQueryWhenQuiescent = (): void => {
       if (!deferredRewindResult || !rewindInputGate) return;
-      if (hasQueryBackgroundTasks(activeQuery)) return;
+      if (hasQueryBackgroundWork(activeQuery)) return;
       if (!rewindInputGate.retirement.signal.aborted) {
         console.log('[agent] rewind replacement result received; closing SDK input to publish durable native head');
         retireRewoundQueryInput(rewindInputGate);
@@ -13646,7 +13672,12 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       // its two terminal channels. A resumed task keeps task_id, not run_id.
       if (sdkMessage.type === 'system') {
         if (sdkMessage.subtype === 'background_tasks_changed') {
+          const wasWorking = hasQueryBackgroundWork(activeQuery);
           replaceQueryBackgroundActivity(activeQuery, sdkMessage.tasks);
+          if (wasWorking && !hasQueryBackgroundWork(activeQuery)) {
+            if (deferredRewindResult) retireRewoundQueryWhenQuiescent();
+            else applyDeferredRestartIfNeeded();
+          }
           if (!hasBuiltinBackgroundWork()) wakeSessionExecution(sessionId);
         }
         const taskMsg = sdkMessage as { subtype?: string; task_id?: string; run_id?: string;
@@ -14843,7 +14874,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       && rewindResumeAt
       && !lifecycleState.abortRequested
       && !builtinInterrupt.isInterrupting()
-      && !hasQueryBackgroundTasks(activeQuery)
+      && !hasQueryBackgroundWork(activeQuery)
       && isCurrentQueryAuthority(activeQueryAuthority)
     ) {
       // The streaming input ended and the SDK iterator returned normally, so

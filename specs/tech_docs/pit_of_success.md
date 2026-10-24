@@ -128,6 +128,8 @@
 
 `myagents-document-worker` 同样走 `process_cmd::new()` + `spawn_tree()`，但它是一 job 一进程的 App-owned 隔离边界，不属于 Sidecar。Manager 必须同时保留 `ChildTree`、stdin 和 active `(jobId, generation)`；4-byte big-endian length + JSON frame 上限 1 MiB，clean EOF 与截断 prefix/payload 必须分开处理，terminal identity 不匹配一律按协议失败。密码不进入 argv/env：只在 start frame 中出现，序列化/接收 buffer 写完即 zeroize。取消先发 exact generation frame，给 Worker 15 秒 cooperative settlement；App shutdown 使用 10 秒 cooperative settlement；超时后 force-stop retained tree，并最多再等 10 秒确认 exact tree 已退出。完整协议见 `document_processing.md`。
 
+macOS AppKit 的 Cmd+Q、应用菜单与 Dock Quit 必须经配对的 `vendor/tao` / `vendor/tauri-runtime-wry` 投影到现有可取消 `RunEvent::ExitRequested`，由同一 owner 执行确认、录音持久化及精确 ChildTree 清理。最终 `Exit` / `LoopDestroyed` 已不能承载确认或取消，不能再增设清理 owner 补偿缺失的退出请求。框架事件释放同时依赖 `vendor/tauri` 与 `scripts/patch-tauri-events.mjs`，升级和移除须配对验证；详见 `build_resource_preparation.md` 与各 vendor 的补丁说明。
+
 **例外（已内联处理或不适用）：**
 - `#[cfg(windows)]` 守卫内的系统工具命令（taskkill / powershell）
 - `commands.rs` / `workspace_files/system_open.rs` 的 OS opener（open / explorer / xdg-open）——用户可见的系统命令，无需隐藏

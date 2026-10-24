@@ -166,7 +166,7 @@ Builtin 中断请求由 `builtin-session/interrupt.ts` 在既有 Session 内按�
 
 普通 turn Stop 不等于关闭整个 Query。V1 / V2 都在逻辑结算点记录 terminal，持久化完成回调只发布捕获的记录，不写回当前 turn。SDK iterator 在该停止期间或停止 terminal 后退出时，Query catch 使用本 Query 生命周期内产生的停止记录，不能再把已停止回合改写为错误；启动时继承的旧记录不能抑制替代 Query 的启动失败；未接纳输入时只发布 Session 错误，不调用 turn 结算，未发送输入由既有队列 finalization 恢复或取消。新输入 / turn 接纳通过 `resetTurnUsage` 清除旧 terminal，真实后续失败继续按错误处理。Windows 无确定根因的 exit 1 只展示退出事实，stderr 尾巴保留在日志中，不作为面向用户的故障原因。
 
-SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动 deferred restart 必须等待该 Query 的 background-task registry 清空；显式 Stop、Reset、Session switch、应用退出和真实 Query crash 仍可终止。
+SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动 deferred restart 必须等待该 exact Query 的 SDK activity snapshot 中非 ambient 工作结束，不能等待仅用于任务展示的 edge registry 清空；activity 归零时重新裁决 deferred restart/rewind。显式 Stop 可通过既有 abort owner 退役正在等待重建的 exact Query；健康 parked Query 与 SDK 已接纳的后续输入保持原语义。MoXBots 的原恢复 Stop 持久化、任务预算与 continuation 授权仍由各自 owner 裁决。
 
 后台执行活跃性由 exact Query 的 SDK `background_tasks_changed.tasks` 整表替换，排除 `ambient`；Query replacement 时清空。它通过 SessionEngine live snapshot 的 `hasBackgroundWork` 提供给调度。不能从任务卡片或 start/terminal edge registry 推断：前台任务也可能发 start，前台转后台未必重发 start，ambient 监听也不应阻塞 Goal。
 
@@ -175,6 +175,14 @@ SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动
 MCP pre-warm 是 soft readiness observation，不是 AI turn 的 admission authority。未 connected、读取失败或观察超时不能拒绝业务 turn；真正的 MCP surface replacement 则是 Query-generation correctness fence，必须在 turn boundary 串行应用。
 
 准入 guard 只拥有新 turn 提交前的校验；同步转交到 active turn 后从 source item 释放。native 零模型轮次拒绝推导的 reload anchor 时，既有恢复路径重新递交同一已接纳输入，不能重新使用针对旧 interrupted turn 的 continuation guard，否则它会将自己的已提交新 root 判为 stale。尚未提交的输入、Stop/cancel、显式 Rewind/Fork 边界仍走原校验。
+
+#### 桌面新对话与 Renderer replacement
+
+桌面新对话由 Rust `cmd_new_desktop_session` 统一裁决：只读确认原 source identity、当前 Sidecar generation、精确 owner 与渠道绑定，然后通过 SessionEngine 的 `transitionDesktopSession` 在 Runtime mutation owner 内复核。原 source 忙碌、恢复或共享时，先准备独立 pending target，再发布新 Tab identity，最后异步释放原 Tab owner；原 background owner 保留旧任务及渠道绑定。明确未开始的拒绝不退役原 writer；已经开始但结果不确定的 mutation，必须确认原进程退出后才恢复或回滚绑定，不能重放未知操作。selector 继续使用 MoXBots 原 `withUpdateAdmission`，不放宽 Stop、ledger、恢复授权或原任务预算。
+
+新 conversation birth 只清该 Tab 的 transcript、stream、队列及交互展示；pending→real 物化与 same-session reconnect 不清已有历史。`MainRendererState` 区分冷启动和同一原生窗口的 WebContent replacement：挂载 Tab 前附着新 renderer token，退休旧 token 的 SSE 订阅，再提出未接纳页面恢复 offer，避免同 ID owner 释放竞态。MoXBots 冷启动仍为空 Launcher，显式更新草稿仍走原路径；replacement 附着失败保留原阅读 Tab 和重试入口。
+
+SSE attachment 的 `getBuiltinLiveSessionSnapshot(..., { includeHistory: false })` 只捕获 revision、实时行和交互状态；V2 在投影全部历史前选择 exact live row。完整历史由既有 REST snapshot/分页恢复及 generation fence 负责，避免重放全历史堵住数据面队列。仍被 surface 持有的订阅按有上限的退避继续重连，surface 关闭或换代可取消，不另设持久恢复 writer。
 
 ### 4.3 external Runtime
 

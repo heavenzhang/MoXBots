@@ -2447,6 +2447,23 @@ describe('myagents CLI Goal file inputs', () => {
 });
 
 describe('myagents CLI parseArgs', () => {
+  it.each(['models', 'model-names'])('keeps dry-run when --%s is missing its value', flag => {
+    const parsed = parseArgs(['model', 'add', `--${flag}`, '--dry-run']);
+    expect(parsed.flags.dryRun).toBe(true);
+    expect(validateInternalCliInvocation(parsed.positional, parsed.flags)).toMatchObject({
+      code: 'FLAG_VALUE_REQUIRED',
+    });
+  });
+
+  it('admits the advertised model properties and config-unset previews', () => {
+    const parsed = parseArgs(['model', 'add', '--id', 'provider', '--name', 'Provider',
+      '--base-url', 'https://provider.example.test', '--models', 'chat', '--model-names', 'Chat',
+      '--model-series', 'series', '--primary-model', 'chat', '--auth-type', 'api_key',
+      '--protocol', 'openai', '--upstream-format', 'responses', '--max-output-tokens', '4096', '--dry-run']);
+    expect(validateInternalCliInvocation(parsed.positional, parsed.flags)).toBeUndefined();
+    expect(validateDryRunSupport(['config', 'unset'], { dryRun: true })).toBeUndefined();
+  });
+
   it('normalizes file-only Goal flags to camelCase', () => {
     expect(parseArgs([
       'goal',
