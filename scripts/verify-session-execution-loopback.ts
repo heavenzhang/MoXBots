@@ -1353,7 +1353,7 @@ const upstream = createServer((req, res) => {
 const upstreamPort = await listen(upstream);
 
 try {
-  const { initializeAgent, setSessionProviderEnv, setSessionModel } =
+  const { initializeAgent, setSessionProviderEnv, setSessionModel, getSessionId } =
     await import("../src/server/agent-session");
   const store = (storeApi = await import("../src/server/SessionStore"));
   const taskOrchestration = await import(
@@ -1426,8 +1426,14 @@ try {
   const engine = getSessionEngine();
   engineForCleanup = engine;
   const born = await withHardDeadline(
-    engine.resetForNewDesktopSession(workspace),
-    "resetForNewDesktopSession",
+    engine.transitionDesktopSession(workspace, {
+      sourceSessionId: getSessionId(),
+      targetSessionId: randomUUID(),
+      channelBound: false,
+      metadataBirthPending: true,
+      metadataIndexed: false,
+    }),
+    "transitionDesktopSession",
   );
   assert(born.success && born.sessionId);
   sessionId = born.sessionId;

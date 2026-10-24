@@ -1160,47 +1160,64 @@ function desktopRequest(
 }
 
 describe('private execution reminders across external Runtime dispatch', () => {
-  it.each(['codex', 'claude-code', 'dsh'] as const)('keeps %s cold/warm Runtime hints outside Product user history', async runtimeType => {
-    const harness = await createHarness([{ kind: 'silent' }], { runtimeType });
+  it.each((['codex', 'claude-code', 'dsh'] as const).flatMap(runtimeType => [false, true].map(warm => ({ runtimeType, warm }))))('keeps $runtimeType/$warm native hints outside Product history and in DSH replay', async ({ runtimeType, warm }) => {
+    const warmDsh = warm && runtimeType === 'dsh';
+    const harness = await createHarness(warmDsh ? [{ kind: 'success', text: 'warmup complete' }, { kind: 'silent' }] : [{ kind: 'silent' }], { runtimeType });
     const workspacePath = join(harness.home, 'workspace');
     const { emptyTaskLedger, materializeExecutionTodos } = await import('../../shared/sessionTaskOrchestration');
-    for (const warm of [false, true]) {
-      if (warm) {
-        await harness.externalSession.stopExternalSession();
-        harness.runtime.sentMessages.length = 0;
-      }
-      const sessionId = `private-reminder-${runtimeType}-${warm}`;
-      const planId = `plan-${runtimeType}-${warm}`;
-      const ledger = emptyTaskLedger();
-      ledger.executionAdmission = { requestId: 'human', queueId: `queue-${planId}`, taskPlanId: planId };
-      materializeExecutionTodos(ledger, planId, ['Implement', 'Verify']);
-      await harness.sessionStore.saveSessionMetadata({
-        ...createSessionMetadata(workspacePath, { id: sessionId,
-          ...(runtimeType === 'dsh' ? { runtimeBinding: createDshBinding('darwin-arm64') } : { runtime: runtimeType }) }),
-        taskOrchestration: ledger,
-      });
-      if (warm) await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath, scenario: { type: 'desktop' } });
-      const text = 'Implement and verify the authorized artifact';
-      const reminder = `<system-reminder>[task:${ledger.tasks[0].id}] Implement</system-reminder>`;
-      const sent = await harness.engine.sendDesktopMessage({
-        ...desktopRequest(sessionId, workspacePath, text),
-        model: runtimeType === 'dsh' ? 'deepseek-flash' : runtimeType === 'claude-code' ? 'opus' : 'gpt-5-codex',
-        permissionMode: getMaxPermissionForRuntime(runtimeType),
-        queueId: ledger.executionAdmission.queueId, turnBoundaryOnly: true, runtimeReminder: reminder,
-      });
-      expect(sent.success).toBe(true);
-      await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
-      await waitFor(() => harness.runtime.sentMessages.length === 1, 'private native prompt');
-      expect(harness.runtime.sentMessages[0]).toBe(`${text}\n${reminder}`);
-      const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
-      expect(users.map(message => message.content)).toEqual([text]);
-      expect(harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.tasks.map(task => task.id)).toEqual(ledger.tasks.map(task => task.id));
-      if (runtimeType === 'dsh') {
-        const journal = harness.sessionStore.getSessionMetadata(sessionId)!.pendingDshRootOperation!;
-        const { replayDshProductInput } = await import('../session-engine/dsh-root-operation');
-        expect(replayDshProductInput(journal, users[0]).message).toBe(`${text}\n${reminder}`);
-      }
+    const sessionId = `private-reminder-${runtimeType}-${warm}`;
+    const planId = `plan-${runtimeType}-${warm}`;
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: 'human', queueId: `queue-${planId}`, taskPlanId: planId };
+    materializeExecutionTodos(ledger, planId, ['Implement', 'Verify']);
+    await harness.sessionStore.saveSessionMetadata(createSessionMetadata(workspacePath, { id: sessionId,
+      ...(runtimeType === 'dsh' ? { runtimeBinding: createDshBinding('darwin-arm64') } : { runtime: runtimeType }), taskOrchestration: ledger }));
+    const config = { model: runtimeType === 'dsh' ? 'deepseek-flash' : runtimeType === 'claude-code' ? 'opus' : 'gpt-5-codex', permissionMode: getMaxPermissionForRuntime(runtimeType) };
+    if (warmDsh) {
+      const seed = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, 'Warmup'), ...config });
+      await expect(seed.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+      await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+      harness.runtime.sentMessages.length = 0;
+    } else if (warm) await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath, scenario: { type: 'desktop' } });
+    const text = 'Implement and verify the authorized artifact';
+    const reminder = `<system-reminder>[task:${ledger.tasks[0].id}] Implement</system-reminder>`;
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, text), ...config,
+      queueId: ledger.executionAdmission.queueId, turnBoundaryOnly: true, runtimeReminder: reminder });
+    expect(sent.success).toBe(true);
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await waitFor(() => harness.runtime.sentMessages.length === 1, 'private native prompt');
+    expect(harness.runtime.sentMessages[0]).toBe(`${text}\n${reminder}`);
+    const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
+    expect(users.map(message => message.content)).toEqual(warmDsh ? ['Warmup', text] : [text]);
+    expect(harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.tasks.map(task => task.id)).toEqual(ledger.tasks.map(task => task.id));
+    if (runtimeType === 'dsh') {
+      const journal = harness.sessionStore.getSessionMetadata(sessionId)!.pendingDshRootOperation!;
+      const { replayDshProductInput } = await import('../session-engine/dsh-root-operation');
+      expect(replayDshProductInput(journal, users.at(-1)!).message).toBe(`${text}\n${reminder}`);
     }
+  });
+});
+
+describe('DSH realtime hint recovery review', () => {
+  it('journals the exact private native input before the realtime receipt', async () => {
+    const harness = await createHarness([{ kind: 'silent' }], { runtimeType: 'dsh', realtimeSteering: true });
+    const sessionId = 'review-dsh-hint';
+    const workspacePath = join(harness.home, 'workspace');
+    const initial = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, 'Original'), permissionMode: getMaxPermissionForRuntime('dsh') });
+    await initial.dispatchAcceptance;
+    const reminder = '<system-reminder>[task:review-followup] Verify</system-reminder>';
+    let observed: { message: string; operation: import('../types/session').PendingDshInput } | undefined;
+    harness.runtime.steerMessage = async (_process, message, _images, options) => {
+      options?.beforeNativeDispatch?.();
+      await options?.beforeDispatch?.({ clientOperationId: options.clientOperationId!, inputFingerprint: 'a'.repeat(64) });
+      observed = { message, operation: harness.sessionStore.getSessionMetadata(sessionId)!.pendingDshInputs![0] };
+    };
+    await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, 'Followup'), permissionMode: getMaxPermissionForRuntime('dsh'), runtimeReminder: reminder });
+    await waitFor(() => observed !== undefined, 'DSH realtime journal before receipt');
+    expect(observed!.message).toBe(`Followup\n${reminder}`);
+    const { replayDshProductInput } = await import('../session-engine/dsh-root-operation');
+    expect(replayDshProductInput(observed!.operation, observed!.operation.userMessage!).message).toBe(observed!.message);
+    expect(observed!.operation.userMessage!.content).toBe('Followup');
   });
 });
 

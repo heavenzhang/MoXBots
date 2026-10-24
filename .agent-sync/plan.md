@@ -962,3 +962,5 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 主人最新要求等相关开发聊天全部完成提交，再统一打最新0.5.23。Root01a12bc2继续唯一desktop/macOS-arm64/updater和combinedCI/main owner；不再打522.2，旧5221签名/Apple原件封存且不poll。保留Rootcc3e完整已选九项有效改进和测试修正，新增已完成upstream320aa（及Windows测试兼容eead）与Todo f982。开发聊天active只等待本owner CI/main，不是未完成writer，不形成互等。当前source base848，候选0.5.23/build523.1；版本/源码/CI/main/制品/本地/正式通道/真实Provider与双端分开追踪。
 
 同一源码合并唯一产品冲突：Todo指令必须继续走Runtime-only reminder，保留原始人类文本和输入先于卡片；同步原清单准入/稳定ID与根验收结算。Root先复现4个旧接口断言，再2个旧fresh分类fixture缺steps；修正测试输入和接口断言，不降低生产准入。保留所有原历史/草稿/Stop/预算/unknown；配对Tauri API与三套vendor、Skill62随同新制品，旧冷启动恢复入口仍移除，原生Renderer replacement的未恢复页面属于单独故障恢复路径。已发布/本地521.2保持回滚。新候选源码冻结/精确CI/main前不构建；必要finite native后同份制品安装/正常TLS发布，不重复历史全矩阵或发布独立Host/mobile/backend。
+
+523.1最终补接Todo2578可选private Runtime reminder与原DSH journal/fingerprint/replay；无提示旧哈希兼容，冷/暖/实时12与externalDSH292PASS，unitDOM10027PASS。SDK合成Todo/rework适配现有transitionDesktopSession并PASS；本地与正式通道仍521.2，523尚未构建。所有新增writer源码已完成，Root只收统一精确CI/main及一份新制品。

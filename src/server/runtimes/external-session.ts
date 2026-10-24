@@ -2137,6 +2137,7 @@ async function persistExternalUserMessageAdmission(params: {
         clientOperationId: string;
         runtimeSessionId: string;
         productImageSha256: readonly string[];
+        runtimeReminder?: string;
       }
     | undefined;
   if (getCurrentRuntimeType() === 'dsh') {
@@ -2150,6 +2151,7 @@ async function persistExternalUserMessageAdmission(params: {
     dshRootOperation = {
       clientOperationId: params.operation.dshClientOperationId,
       runtimeSessionId,
+      runtimeReminder: params.operation.context.runtimeReminder,
       productImageSha256: (params.runtimeImages ?? []).map((image) =>
         createHash('sha256')
           .update(Buffer.from(image.data, 'base64'))
@@ -2317,9 +2319,10 @@ async function resumePendingDshInputs(
         ...context,
         desktopQuery: input.userMessage.desktopQuery,
         asyncQuestionReply: input.userMessage.asyncQuestionReply,
+        runtimeReminder: input.runtimeReminder,
       };
       const operation = createExternalMessageOperation({
-        text: replay.message,
+        text: input.userMessage.content,
         images: replay.images,
         context: recoveredContext,
         runtimeConfig: captureExternalRuntimeConfigSnapshot(
@@ -2335,8 +2338,8 @@ async function resumePendingDshInputs(
         queueId: input.queueId,
         sessionId: context.sessionId,
         operation,
-        text: replay.message,
-        activityFacts: { inputText: replay.message },
+        text: input.userMessage.content,
+        activityFacts: { inputText: input.userMessage.content },
         channelDelivery: NO_CHANNEL_DELIVERY,
         userChannelProjection: { kind: 'skip' },
         admission: admission.promise,
@@ -6633,6 +6636,7 @@ async function steerExternalMessage(input: {
                       .digest('hex'),
                   ),
                   runtimeInputFingerprint: identity.inputFingerprint,
+                  runtimeReminder: input.context.runtimeReminder,
                 });
                 if (!intent.success) throw new Error(intent.error);
                 dshIntentPersisted = true;
