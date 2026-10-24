@@ -1,0 +1,25 @@
+{
+  "passed": true,
+  "afterRecovery": false,
+  "realSdk": true,
+  "upstream": "synthetic-loopback-only",
+  "paidCalls": 0,
+  "parentCompleted": true,
+  "taskStatus": "completed",
+  "counter": 1,
+  "parentCalls": 3,
+  "childCalls": 2,
+  "childCallsAfterParent": 2,
+  "events": [
+    {
+      "type": "parent-completed",
+      "background": true
+    },
+    {
+      "type": "task_notification",
+      "status": "completed",
+      "summary": "Background finished with count=1."
+    }
+  ],
+  "evidence": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-background-native-siwTPe"
+}

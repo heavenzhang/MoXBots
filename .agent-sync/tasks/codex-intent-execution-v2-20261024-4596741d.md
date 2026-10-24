@@ -19,7 +19,7 @@ MOXBOTS-INTENT-EXECUTION-20261024。用户授权先完成普通单 Agent 从意�
 - [x] 模型统一池有限候选链、真实调用健康/origin故障域和父总恢复时间；认证/权限/付费错误不盲切。
 - [x] 多 Agent 任务依赖/assignee/attempt/资源准入及共享预算；无独立可并行包则主 Agent 执行。unknown 不被迟到 ACK 解除。
 - [x] 61 个文件 1070 项相关回归、类型、lint/dependency/test分类、本地 server bundle 与边界验证；真实供应商另验。
-- [x] 原 builtin facade/SDK/hooks/CLI 的普通产物闭环合成供应商 native 验收：首轮只分析后自动新queue实际Write/Read并accept、后台包、受控失败后新queue返工完成；真实供应商/安装客户端另验。
+- [x] 原 builtin facade/SDK/hooks/CLI 的普通产物闭环合成供应商 native 验收：首轮只分析后自动新queue实际Write/Read并accept、后台包、受控失败后新queue返工完成、两个独立worker真正并发；均由主 Agent 独立复跑。真实供应商/安装客户端另验。
 - [ ] 固定最终 SHA、提交并推送工作分支，交原 owner 统一 CI/主干/0.5.21 构建与发布。
 - [ ] 真实账号/运行版本业务路径验收：一次“课程介绍网站”指令产生可打开的真实产物并验证导航；受控失败→返工；Stop和重启未知结果不重放。
 
@@ -40,9 +40,9 @@ MOXBOTS-INTENT-EXECUTION-20261024。用户授权先完成普通单 Agent 从意�
 
 代码：本批已实现。61 文件 1070 项相关 unit/integration/DOM 全部通过，TypeScript PASS，原 runtime-boundary 断言保留；test分类 PASS，dependency-cruiser 零错误/18原有orphan warnings，本地 server bundle PASS。改动文件 ESLint 与文档检查通过，见验收记录。独立 Sol high 最后源码审阅无新增明确 P1/P2；有限审阅不证明任意模型行为。
 
-原 SDK/native child + 私有 loopback 供应商/MCP counter 两项通过：故障接续 counter=1/P5/B1；Stop counter=1/P2/B0。普通完整闭环 native 单 Agent/后台包/返工已通过，两个独立 worker 并发仍在收口。UI 真实组件合成状态 1440/768/390 PASS，首发是 helper DOM 组合测试。没有访问日常 App 或重放原 MoX Curriculum 业务。
+原 SDK/native child + 私有 loopback 供应商/MCP counter 通过：故障接续 counter=1/P5/B1；Stop counter=1/P2/B0；多候选chain P5/A4/B1、switch2、counter1。普通完整闭环 native 默认/后台包/返工/双独立worker四模式均由主 Agent 独立复跑通过：输入一次，真实写读、CLI评审、不同queue、实际SessionStore completed；双worker峰值在途2，两个原生executionTaskId均verified/completed且claim settled。永久脱敏收据在验收文档 evidence/。UI 真实组件合成状态 1440/768/390 PASS，首发是 helper DOM 组合测试。没有访问日常 App 或重放原 MoX Curriculum 业务。
 
-远端工作分支：核心158ef11adbcdc503b442077af07edd621241da08已推送核对，最终后台预算修复与完整native验收脚本待本轮收口。远端 main/统一 CI：待原 owner；0.5.21版本/制品/发布/安装：未执行；真实模型/原生整体/生产用户验收：未完成。证据和真实验收清单：`dev-docs/intent-execution-20261024/acceptance.md`，合同 `specs/tech_docs/intent_execution.md`。上述各状态不可互相替代。
+远端工作分支：核心158ef11adbcdc503b442077af07edd621241da08、预算修复39f79cff9ae7898914b9360e33620878e737d36e已推送；本次提交追加完整native verifier/永久脱敏收据/交接记录。最终工作分支完整 SHA 与remote-handoff结果由开发会话在外部 `work/release-queue/MOXBOTS-INTENT-EXECUTION-20261024.json` 固定，避免在自身提交中循环引用HEAD。远端 main/统一 CI：待原 owner；0.5.21版本/制品/发布/安装：未执行；真实供应商/签名客户端整体/生产用户验收：未完成。证据和真实验收清单：`dev-docs/intent-execution-20261024/acceptance.md`，合同 `specs/tech_docs/intent_execution.md`。上述各状态不可互相替代。
 
 ## Next step
 

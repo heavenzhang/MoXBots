@@ -883,4 +883,4 @@ Unchanged sole desktop/macOSarm64/updater and combinedCI/main owner01a12bc2-907a
 
 桌面/macOS/updater、combined CI/main/正式版本/制品/发布唯一 owner 保持 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，沿原用户指定；本开发分支只提交推送和本地自查，不触发共享 CI/正式构建/安装。原独立备用清理 b2 的三个提交已作为依赖 cherry-pick 包含，旧窄请求由本完整批次覆盖，不单独发行。520.1 冻结字节不改、不改标号，已发布519.2保持回滚目标。用户原“保留当前任务运行，稍后维护”仍约束日常 App 操作，不能以闲置或新源码推定可重启/重放。
 
-本候选源码复用原 task ledger/queue/Query/SDK hooks，无新数据库或调度 owner；同档有限候选和父 deadline、任务包资源/依赖/native生命周期及 unknown 保留、首发归属和只读状态 UI 均已实现，61相关测试文件1070项PASS。原SDK合成供应商failover/Stop、组件合成浏览器与源码独审另列证据；普通完整native、真实Provider、精确CI/main、新签名包、安装和真实用户交付仍分开验收。Host共享代码如需实际运行升级，仍由原Host/mobile owner `01a12b99-7b38-78b1-831f-9c60257d386a` 选择独立批次，不视为桌面0.5.21已覆盖。
+本候选源码复用原 task ledger/queue/Query/SDK hooks，无新数据库或调度 owner；同档有限候选和父 deadline、任务包资源/依赖/native生命周期及 unknown 保留、首发归属和只读状态 UI 均已实现，61相关测试文件1070项PASS。主 Agent 独立实跑原 builtin facade/SDK hooks/生产CLI route/SessionStore 的单任务、后台包、fresh queue返工、双独立worker真正并发四模式，均一次输入并持久completed；真实SDK多候选chain P5/A4/B1/counter1、Stop与背景另有收据。以上上游均为本地合成，真实Provider、签名客户端、精确CI/main、新签名包、安装和真实用户交付仍分开验收。Host共享代码如需实际运行升级，仍由原Host/mobile owner `01a12b99-7b38-78b1-831f-9c60257d386a` 选择独立批次，不视为桌面0.5.21已覆盖。

@@ -2,7 +2,11 @@
   "passed": true,
   "environment": "http://127.0.0.1:8938/session-execution-ui",
   "transport": "real SessionExecutionStatus with synthetic fixture states; isolated local Vite, no daily app or backend writes",
-  "viewports": ["1440x1000", "768x1024", "390x844"],
+  "viewports": [
+    "1440x1000",
+    "768x1024",
+    "390x844"
+  ],
   "checks": [
     "status visible without horizontal overflow at all target widths",
     "completed state exposes proven acceptance coverage",

@@ -54,6 +54,9 @@ PATH=/opt/homebrew/opt/node@24/bin:$PATH node_modules/.bin/vitest run \
 - 默认模式：首轮真实 native terminal 仅分析，原执行 owner 自动进入不同 queue，真实 root Write/Read 后提交评审并持久 completed。原始输入一次、工具写读各一次、共两轮。
 - `--parallel`：一个实际 native background package 在父轮持久终态后写入，native completed 才将 claim settled；同范围重复 launch 没有获得第二 claim；原自动续跑执行 root Read、task review 和 execution review，持久 completed，共三轮。这项证明后台接线，不单独证明两个 worker 同时工作。
 - `--rework`：第一次实际写入/读取后提交 rework 并结束该轮，原自动 fresh queue 再写正确值并读取核验，随后 accept。持久 completed、reworks=1、原始输入一次；两轮写读使用不同真实 tool IDs。
+- `--two-workers`：实际注册两个独立文件包、启动两个原生后台 Agent；两个 child 请求同时到达、峰值在途为二。父轮持久终态后两个子 Agent 各写一个文件，两个不同 executionTaskId 的 native attempts 均 completed，两个 claim settled；原续跑根 Read 两文件、分别 task review 后 execution accept，持久 completed。动态登记/评审遇到 revision 变化时通过原 CLI 刷新，未放松 CAS。
+
+上述四模式由主 Agent 在最终生产源码 `39f79cff9ae7898914b9360e33620878e737d36e` 上独立复跑，全部退出零。脱敏永久收据为 [native-single](evidence/native-single.json)、[native-package](evidence/native-package.json)、[native-rework](evidence/native-rework.json)、[native-two-workers](evidence/native-two-workers.json)；真实 SDK 多候选收据为 [native-chain](evidence/native-chain.json)。各脚本使用私有 HOME 和有界清理；没有安装或操作日常 App。
 
 本地合成供应商的真实 SDK 回归无真实模型付费调用，配置推理端点仅 loopback；这不是公网抓包审计或真实供应商验收。脱敏原生收据保存在本目录 [evidence/](evidence/)，脚本失败时也保存私有失败收据再有界停止/清理，不清除未知失败事实后伪称通过。
 
@@ -66,7 +69,7 @@ PATH=/opt/homebrew/opt/node@24/bin:$PATH node_modules/.bin/vitest run \
 | 门禁 | 当前状态 | 完成标准 / 负责人 |
 |---|---|---|
 | 源码实现与离线回归 | 已实现并通过上述验证 | 开发会话固定并推送完整 SHA，handoff gate 核对 |
-| 普通闭环真实 SDK 合成供应商 | 单 Agent / 后台包 / 返工已通过；双 worker 收口中 | 原 builtin facade、SDK hooks、真实 Write/Read、CLI review、持久 completed；不能直接伪造 hook |
+| 普通闭环真实 SDK 合成供应商 | 单 Agent / 后台包 / 返工 / 两个独立并发 worker 已通过 | 原 builtin facade、SDK hooks、真实 Write/Read、CLI review、持久 completed；没有直接伪造 hook |
 | 远端 main 与统一 CI | 待原 owner 集成 | 同步最新 main、核对完整依赖、一次精确候选 CI、正常合入及远端包含证明 |
 | 0.5.21 制品与签名 | 未构建/未发布 | 原 owner 固定新 SHA/不可变 tag/制品摘要，沿原流水线，保持 520.1 不变 |
 | 真实普通聊天产物 | 未验收 | 在隔离测试身份/工作区输入一次“课程介绍网站”请求，实际产出可打开文件；浏览器验证内容、链接和必要适配，持久根评审覆盖全部条件 |

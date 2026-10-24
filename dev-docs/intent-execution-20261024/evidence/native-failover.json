@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "terminalTrailer": false,
+  "declinedRecovery": false,
+  "rejectedResponses": 0,
+  "upstreamRejection": false,
+  "streamFailure": false,
+  "stopDuringRetry": false,
+  "interruptRequested": false,
+  "interruptCompleted": false,
+  "nativeSessionId": "b86a4853-e9a1-4b4d-9663-609001e11b32",
+  "counter": 1,
+  "primaryCalls": 5,
+  "backupCalls": 1,
+  "switches": 1,
+  "restoredResult": true,
+  "realSdk": true,
+  "upstream": "synthetic-loopback-only",
+  "paidCalls": 0,
+  "evidence": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-failover-native-owlCFl"
+}

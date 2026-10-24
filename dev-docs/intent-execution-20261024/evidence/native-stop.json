@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "terminalTrailer": false,
+  "declinedRecovery": false,
+  "rejectedResponses": 0,
+  "upstreamRejection": false,
+  "streamFailure": false,
+  "stopDuringRetry": true,
+  "interruptRequested": true,
+  "interruptCompleted": true,
+  "nativeSessionId": "7bb4a731-b08e-4f58-9677-cd5f7a761cf9",
+  "counter": 1,
+  "primaryCalls": 2,
+  "backupCalls": 0,
+  "switches": 0,
+  "restoredResult": false,
+  "realSdk": true,
+  "upstream": "synthetic-loopback-only",
+  "paidCalls": 0,
+  "evidence": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-failover-native-d3nsGr"
+}
