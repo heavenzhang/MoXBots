@@ -517,6 +517,7 @@ const upstream = createServer((req, res) => {
       calls.push({ kind: "classify" });
       const text = JSON.stringify({
         kind: "execute",
+        continuationOf: null,
         objective: "Create and verify the requested artifact",
         scope: "Only the isolated workspace file named in the request",
         acceptanceCriteria: [

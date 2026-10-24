@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "sessionId": "dec3a830-f8eb-40a3-b4be-dde74a8885c0",
+  "executionId": "607890e5-24f1-4aaf-b767-fd5ca130ee16",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:63c2d2ae-bcf9-43da-b932-647406c39cf2",
+  "finalQueueId": "session-execution:6ac6ab1d-ef26-4a8e-98f1-ac428a40e638",
+  "executionTurns": 3,
+  "originalInputAdmissions": 1,
+  "realWriteToolUses": 2,
+  "realReadToolUses": 2,
+  "mode": "native-rework",
+  "reworks": 1,
+  "writeToolUseIds": [
+    "root-write-artifact-wrong",
+    "root-write-artifact-correct"
+  ],
+  "readToolUseIds": [
+    "root-read-artifact-wrong",
+    "root-read-artifact-correct"
+  ],
+  "reviewDecisions": [
+    "rework",
+    "accept"
+  ],
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "rework-first-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "rework-first-read",
+      "tool": "Read"
+    },
+    {
+      "kind": "rework-review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "rework-terminal"
+    },
+    {
+      "kind": "rework-next-queue-list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "rework-second-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "rework-second-read",
+      "tool": "Read"
+    },
+    {
+      "kind": "rework-accept-review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final"
+    }
+  ],
+  "elapsedMs": 2223,
+  "persistedEvidencePath": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-execution-evidence-A11LvA/receipt.json"
+}

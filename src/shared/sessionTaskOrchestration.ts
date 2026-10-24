@@ -93,7 +93,10 @@ export interface SessionPlanSupport {
   reason?: 'PLAN_RUNTIME_DELEGATION_UNAVAILABLE';
 }
 /** Runtime capability is a response projection, never part of the durable ledger/SSE. */
-export interface SessionTaskSnapshot { sessionId: string; ledger: SessionTaskLedger; tasks: SessionTaskView[]; planSupport: SessionPlanSupport }
+export type SessionExecutionRecoveryProjection = Pick<import('./modelRecovery').ModelRecoveryState,
+  'turnId' | 'status' | 'attempt' | 'lastStatus' | 'nextRetryAt'>;
+export interface SessionTaskSnapshot { sessionId: string; ledger: SessionTaskLedger; tasks: SessionTaskView[]; planSupport: SessionPlanSupport;
+  executionRecovery?: SessionExecutionRecoveryProjection }
 export type SessionTaskAction =
   | { kind: 'ensure'; taskId: string; title: string; blockedBy?: string[]; expectedRevision: number }
   | { kind: 'bind'; taskId: string; toolUseId: string; expectedRevision: number }

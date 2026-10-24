@@ -2037,7 +2037,13 @@
       "incomplete": "Incomplete",
       "completed": "Completed",
       "request": "Execution request",
-      "rounds": "Round {{current}}/{{max}}",
+      "turnCount": "Turns started: {{count}}",
+      "recovery": {
+        "waitingStatus": "Waiting for model recovery",
+        "pausedStatus": "Model recovery paused",
+        "waiting": "Model recovery is in progress (attempt {{attempt}}); another retry is expected",
+        "paused": "Automatic model recovery is paused ({{attempt}} attempts)"
+      },
       "acceptance": "Acceptance criteria",
       "proven": "Verified",
       "coverage": "Proven coverage: {{covered}}/{{total}}",

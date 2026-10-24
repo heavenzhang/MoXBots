@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { EXECUTION_LIMITS } from "./sessionExecution";
 import type { SessionTaskLedger } from "./sessionTaskOrchestration";
 
 export interface TaskResource {
@@ -67,7 +66,6 @@ export const TASK_DISPATCH_ERRORS = {
   executionUnavailable: "TASK_DISPATCH_EXECUTION_UNAVAILABLE",
   executionStopped: "TASK_DISPATCH_EXECUTION_NOT_ACTIVE",
   executionExpired: "TASK_DISPATCH_DEADLINE_EXCEEDED",
-  turnBudget: "TASK_DISPATCH_TURN_BUDGET_EXHAUSTED",
   taskNotFound: "TASK_DISPATCH_TASK_NOT_FOUND",
   dependenciesIncomplete: "TASK_DISPATCH_DEPENDENCIES_INCOMPLETE",
   packageUnavailable: "TASK_DISPATCH_PACKAGE_UNAVAILABLE",
@@ -205,8 +203,6 @@ export function admitTaskDispatch(
     return reject(TASK_DISPATCH_ERRORS.executionStopped);
   if (!Number.isFinite(input.now) || input.now > execution.deadlineAt)
     return reject(TASK_DISPATCH_ERRORS.executionExpired);
-  if (execution.turns >= EXECUTION_LIMITS.maxTurns)
-    return reject(TASK_DISPATCH_ERRORS.turnBudget);
 
   const task = ledger.tasks.find(
     (item) => item.id === input.taskId && !item.retired,

@@ -909,3 +909,10 @@ Root01a12bc2 accepts reviewed stability product389070b2/fulltip4273ea1f before a
 combined CI/main 唯一 owner 仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；由其选择下一
 未冻结批次、集成/CI、分配版本与制品摘要并复验。本聊天只提交推送开发分支和登记发布队列，
 不触发共享 CI、操作日常 App、改变现有冻结 521.2 或生产版本。
+
+
+## MOXBOTS-EXECUTION-CONTINUITY-20261024 — same-task continuation and actual waiting state
+
+User requested correction and source submission after recurring `1/8` reports. Same-task continuation preserves the original execution/budget/evidence, fixed eight-turn normal-work cap and fraction are removed, and exact-queue recovery replaces the active status. Existing native queue/ledger, Stop, unknown-outcome and budget guards remain authoritative. Source task: `.agent-sync/tasks/codex-execution-continuity-20261024-bb49ce85.md`; implementation and local/native-loopback evidence: `dev-docs/execution-continuity-20261024/acceptance.md`.
+
+Source owner is the current intent-execution chat; original main/shared-CI/desktop release owner remains `01a12bc2-907a-7702-b6dd-788225c5dfe4`. Local source/review validation is ready for intake; remote main inclusion, next immutable candidate, installed behavior and real business acceptance are separate owner gates. No version, shared CI, app install or live task replay is performed by this branch. Published v0.5.21/build521.2 is unchanged.

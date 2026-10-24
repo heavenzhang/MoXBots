@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  EXECUTION_LIMITS,
-  type SessionExecution,
-} from "../../../shared/sessionExecution";
-import type { SessionTaskLedger } from "../../../shared/sessionTaskOrchestration";
+import type { SessionExecution } from "../../../shared/sessionExecution";
+import type {
+  SessionExecutionRecoveryProjection,
+  SessionTaskLedger,
+} from "../../../shared/sessionTaskOrchestration";
 
 type Admission = SessionTaskLedger["executionAdmission"];
 type Props = {
   execution?: SessionExecution;
+  recovery?: SessionExecutionRecoveryProjection;
   admission?: Admission;
   unknown?: boolean;
 };
@@ -48,6 +49,7 @@ const reasonKeys: Record<string, string> = {
 /** Compact, read-only view of the durable single-session execution ledger. */
 export default function SessionExecutionStatus({
   execution,
+  recovery,
   admission,
   unknown = false,
 }: Props) {
@@ -65,10 +67,27 @@ export default function SessionExecutionStatus({
       ? t(`${root}.unconfirmed`)
       : unknown
         ? t(`${root}.unknown`)
-        : currentExecution
-          ? t(`${root}.${phaseKeys[currentExecution.phase]}`)
-          : "";
+        : undefined;
   const isCurrent = Boolean(currentExecution && !unknown);
+  const matchingRecovery =
+    isCurrent &&
+    currentExecution &&
+    recovery?.turnId === currentExecution.currentQueueId &&
+    (currentExecution.phase === "running" ||
+      currentExecution.phase === "rework")
+      ? recovery
+      : undefined;
+  const recoveryText = matchingRecovery
+    ? t(`${root}.recovery.${matchingRecovery.status}`, {
+        attempt: matchingRecovery.attempt,
+      })
+    : undefined;
+  const recoveryStatus = matchingRecovery
+    ? t(`${root}.recovery.${matchingRecovery.status}Status`)
+    : undefined;
+  const primaryStatus = status ?? recoveryStatus ?? (currentExecution
+    ? t(`${root}.${phaseKeys[currentExecution.phase]}`)
+    : "");
   const provenChecks =
     isCurrent && currentExecution?.phase === "completed"
       ? new Set(
@@ -98,17 +117,9 @@ export default function SessionExecutionStatus({
         className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
       >
         <span className="shrink-0 rounded-full bg-[var(--paper-hover)] px-2 py-1 font-medium">
-          {status}
+          {primaryStatus}
         </span>
         <span className="min-w-0 flex-1 truncate">{summary}</span>
-        {currentExecution && !unknown && (
-          <span className="shrink-0 tabular-nums text-[var(--ink-secondary)]">
-            {t(`${root}.rounds`, {
-              current: currentExecution.turns,
-              max: EXECUTION_LIMITS.maxTurns,
-            })}
-          </span>
-        )}
       </button>
       {open && (
         <div className="space-y-2 border-t border-[var(--line-subtle)] p-3 text-xs leading-5">
@@ -122,6 +133,14 @@ export default function SessionExecutionStatus({
                   {reasonText}
                 </p>
               )}
+              {recoveryText && (
+                <p className="break-words text-[var(--ink-secondary)] [overflow-wrap:anywhere]">
+                  {recoveryText}
+                </p>
+              )}
+              <div className="text-[var(--ink-secondary)]">
+                {t(`${root}.turnCount`, { count: currentExecution.turns })}
+              </div>
               <div>
                 <div className="font-medium">
                   {t(`${root}.acceptance`, { defaultValue: "验收条件" })}

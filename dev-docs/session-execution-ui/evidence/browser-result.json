@@ -8,7 +8,10 @@
     "390x844"
   ],
   "checks": [
-    "status visible without horizontal overflow at all target widths",
+    "waiting/paused recovery replaces the running header state without a duplicate recovery badge",
+    "long objective details wrap without horizontal or vertical clipping",
+    "recovery is shown only while execution is active and matches its current queue",
+    "terminal completed state takes precedence over stale recovery",
     "completed state exposes proven acceptance coverage",
     "classification failure is unconfirmed and continuation is not represented as active",
     "stale state is explicitly unknown",

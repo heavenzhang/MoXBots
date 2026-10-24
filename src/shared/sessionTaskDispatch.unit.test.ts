@@ -257,7 +257,7 @@ describe("session task dispatch policy", () => {
     );
   });
 
-  it("enforces execution state, shared turn/deadline budgets, launch and attempt limits", () => {
+  it("enforces execution state, deadline, launch and attempt limits without a root turn cap", () => {
     const stopped = makeLedger() as SessionTaskLedger & {
       execution: NonNullable<SessionTaskLedger["execution"]>;
     };
@@ -283,12 +283,10 @@ describe("session task dispatch policy", () => {
     const turns = makeLedger() as SessionTaskLedger & {
       execution: NonNullable<SessionTaskLedger["execution"]>;
     };
-    turns.execution = { ...turns.execution, turns: 8 } as NonNullable<
+    turns.execution = { ...turns.execution, turns: 24 } as NonNullable<
       SessionTaskLedger["execution"]
     >;
-    expect(() => admit(turns, "a", "turn-limit")).toThrow(
-      TASK_DISPATCH_ERRORS.turnBudget,
-    );
+    expect(() => admit(turns, "a", "past-eight-turns")).not.toThrow();
 
     const launches = makeLedger() as SessionTaskLedger & {
       delegationLaunches: number;
