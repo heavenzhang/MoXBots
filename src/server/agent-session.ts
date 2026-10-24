@@ -12891,7 +12891,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   stage: "failure",
                   isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
                 });
-                await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id);
+                await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id,
+                  { interrupted: failed.is_interrupt });
           return {};
         },
             ],

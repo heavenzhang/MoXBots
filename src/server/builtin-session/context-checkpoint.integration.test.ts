@@ -82,3 +82,45 @@ it('retains the real SessionStore ledger when a restored Session only reconciles
   expect(store.loadBuiltinContextLedger(id, id)).toEqual(ledger);
   expect(restored.canRetryInference()).toBe(false);
 });
+
+it('persists native error proofs privately without clearing an existing unknown action', async () => {
+  const snapshot = await store.loadSessionTranscript(id);
+  await store.appendSessionMessages(id, snapshot.cursor, [{ id: 'fixture-user', role: 'user',
+    content: 'Inspect the fixture.', timestamp: new Date().toISOString() }]);
+  const body: AnthropicRequest = { model: 'fixture', max_tokens: 64, stream: true,
+    messages: [{ role: 'user', content: 'Inspect the fixture.' }] };
+  const owner = { sessionId: id, sdkSessionId: id };
+  const options = { scope: () => 'fixture-turn', isActive: () => true, protectStreaming: true, recoveryOwner: owner,
+    backup: (request: AnthropicRequest, metadata: { digest: string; scope: string }) =>
+      store.archiveBuiltinContextRequest(id, request, metadata, () => true),
+    persistLedger: (ledger: unknown, guard?: () => boolean) => store.saveBuiltinContextLedger(id, id, ledger, () => true, guard) };
+  const context = new ContextRecoveryController(options);
+  context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => true });
+  await context.protectInference(body);
+  await context.authorizeTool('unknown_write', {});
+  const input = { command: 'inspect-fixture' };
+  const frame = (type: string, extra: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
+  const response = await context.run(new Request('http://127.0.0.1/fixture'), body, async () => new Response(
+    frame('message_start', { message: { id: 'fixture', type: 'message', role: 'assistant', content: [] } })
+    + frame('content_block_start', { index: 0, content_block: { type: 'tool_use', id: 'denied-tool', name: 'Bash', input: {} } })
+    + frame('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } })
+    + frame('content_block_stop', { index: 0 })
+    + frame('message_delta', { delta: { stop_reason: 'tool_use' } })
+    + frame('message_stop', {}), { headers: { 'content-type': 'text/event-stream' } }));
+  expect(response.status).toBe(200); await response.text();
+  const reason = await context.authorizeTool('Bash', input, 'denied-tool');
+  expect(reason).toContain('read-only');
+  const proofLedger = store.loadBuiltinContextLedger(id, id) as { uncertain: string[]; nativeErrors: unknown[] };
+  expect(proofLedger.nativeErrors).toHaveLength(1);
+  expect(proofLedger.uncertain).toHaveLength(1);
+  body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'denied-tool', name: 'Bash', input }] },
+    { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'denied-tool', is_error: true, content: `PreToolUse:Bash hook error: ${reason}` }] });
+  await store.getActiveSessionTranscript(id)?.revoke();
+  vi.resetModules(); store = await import('../SessionStore');
+  const persisted = store.loadBuiltinContextLedger(id, id);
+  expect(persisted).toEqual(proofLedger);
+  const restored = new ContextRecoveryController({ ...options, initialLedger: persisted });
+  await restored.protectInference(body, true);
+  expect(restored.beforeTool('Write', {})).toContain('read-only');
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(proofLedger);
+});
