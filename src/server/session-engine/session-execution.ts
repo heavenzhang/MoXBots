@@ -26,12 +26,20 @@ import {
   revokeSessionExecutionWake,
 } from "./session-execution-wake";
 import { projectSessionTasks } from "../../shared/sessionTaskOrchestration";
+import {
+  PLAN_MODE_HOST_INTERACTION_TOOLS,
+  PLAN_MODE_READONLY_TOOLS,
+} from "../utils/plan-mode-gate";
 
 export const EXECUTION_QUEUE_PREFIX = "session-execution:";
 const admissions = new Map<
   string,
-  { requestId: string; controller: AbortController }
+  Map<string, { controller: AbortController; committed: boolean }>
 >();
+const hasPendingInput = (sessionId: string) =>
+  [...(admissions.get(sessionId)?.values() ?? [])].some(
+    (row) => !row.committed,
+  );
 const dispatching = new Set<string>();
 const activeClaims = new Map<string, string>();
 const revoked = new Set<string>();
@@ -172,8 +180,16 @@ export async function pauseSessionExecution(
   if (!scopeCurrent()) return;
   revoked.add(sessionId);
   revokeSessionExecutionWake(sessionId);
-  admissions.get(sessionId)?.controller.abort();
-  admissions.delete(sessionId);
+  // A scoped cancellation must not revoke unrelated queued human inputs.
+  if (!expected) {
+    for (const admission of admissions.get(sessionId)?.values() ?? [])
+      admission.controller.abort();
+    admissions.delete(sessionId);
+  } else {
+    admissions.get(sessionId)?.get(expected.queueId)?.controller.abort();
+    admissions.get(sessionId)?.delete(expected.queueId);
+    if (!admissions.get(sessionId)?.size) admissions.delete(sessionId);
+  }
   activeClaims.delete(sessionId);
   liveTurns.delete(sessionId);
   if (!getSessionMetadata(sessionId)) return;
@@ -185,8 +201,10 @@ export async function pauseSessionExecution(
   });
 }
 
-function executionReminder(sessionId: string): string {
-  const execution = currentLedger(sessionId)?.execution;
+function executionReminder(
+  sessionId: string,
+  execution = currentLedger(sessionId)?.execution,
+): string {
   if (!execution) return "";
   return `\n<system-reminder>本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
@@ -224,18 +242,49 @@ export async function prepareSessionExecution(
   );
   if (proof?.bodyDigest !== hash(request.text)) return noChange;
   const queueId = EXECUTION_QUEUE_PREFIX + randomUUID();
+  const controller = new AbortController();
+  const admission = { controller, committed: false };
+  let sessionAdmissions = admissions.get(request.sessionId);
+  if (!sessionAdmissions) {
+    sessionAdmissions = new Map();
+    admissions.set(request.sessionId, sessionAdmissions);
+  }
+  sessionAdmissions.set(queueId, admission);
+  const removeAdmission = () => {
+    sessionAdmissions.delete(queueId);
+    if (
+      !sessionAdmissions.size &&
+      admissions.get(request.sessionId) === sessionAdmissions
+    )
+      admissions.delete(request.sessionId);
+  };
+  const current = () =>
+    admissions.get(request.sessionId)?.get(queueId) === admission &&
+    !controller.signal.aborted &&
+    (engine.getRuntimeIdentity().boundSessionId ??
+      engine.getRuntimeIdentity().sessionId) === request.sessionId;
   let duplicateQueue: string | undefined;
-  await mutateSessionTaskLedger(request.sessionId, (ledger) => {
-    const input = ledger.executionInputs?.find(
-      (input) => input.requestId === request.clientRequestId,
+  try {
+    await mutateSessionTaskLedger(
+      request.sessionId,
+      (ledger) => {
+        const input = ledger.executionInputs?.find(
+          (input) => input.requestId === request.clientRequestId,
+        );
+        if (!input || input.bodyDigest !== hash(request.text))
+          throw new Error("EXECUTION_INPUT_PROOF_CHANGED");
+        if (input.acceptedQueueId) duplicateQueue = input.acceptedQueueId;
+        else input.acceptedQueueId = queueId;
+        return ledger;
+      },
+      current,
     );
-    if (!input || input.bodyDigest !== hash(request.text))
-      throw new Error("EXECUTION_INPUT_PROOF_CHANGED");
-    if (input.acceptedQueueId) duplicateQueue = input.acceptedQueueId;
-    else input.acceptedQueueId = queueId;
-    return ledger;
-  });
-  if (duplicateQueue)
+  } catch (error) {
+    removeAdmission();
+    throw error;
+  }
+  if (duplicateQueue) {
+    removeAdmission();
     return {
       ...noChange,
       duplicate: {
@@ -246,19 +295,12 @@ export async function prepareSessionExecution(
           "EXECUTION_REQUEST_ALREADY_ADMITTED: 请查看原请求状态；同一请求不会重复执行。",
       },
     };
-  await pauseSessionExecution(request.sessionId, "new_user_input");
-  const controller = new AbortController();
-  const admission = { requestId: request.clientRequestId, controller };
-  admissions.set(request.sessionId, admission);
-  const current = () =>
-    admissions.get(request.sessionId) === admission &&
-    !controller.signal.aborted &&
-    (engine.getRuntimeIdentity().boundSessionId ??
-      engine.getRuntimeIdentity().sessionId) === request.sessionId;
+  }
   const intent = await classify(engine, request, controller.signal).catch(
     () => undefined,
   );
-  if (!current())
+  if (!current()) {
+    removeAdmission();
     return {
       request: {
         ...request,
@@ -269,81 +311,130 @@ export async function prepareSessionExecution(
       },
       admitted: noChange.admitted,
     };
-  await mutateSessionTaskLedger(
-    request.sessionId,
-    (ledger) => {
-      ledger.executionAdmission = {
-        requestId: request.clientRequestId!,
-        queueId,
-        ...(intent ? { intent } : { error: "INTENT_UNCONFIRMED" }),
-      };
-      if (intent?.kind === "execute" && engine.kind === "builtin") {
-        ledger.execution = createSessionExecution({
+  }
+  // Classification only stages intent. The existing native queue owns the
+  // transition: a pending human message must not revoke the live root/children.
+  const stagedExecution =
+    intent?.kind === "execute" && engine.kind === "builtin"
+      ? createSessionExecution({
           id: randomUUID(),
           requestId: request.clientRequestId!,
           originalInput: request.text.slice(0, 20000),
           intent,
           queueId,
           now: Date.now(),
-        });
-        ledger.executionEvidence = [];
-        ledger.executionReview = undefined;
-        ledger.delegationLaunches = 0;
-      }
-      return ledger;
-    },
-    current,
-  );
-  revoked.delete(request.sessionId);
-  const executionId =
-    currentLedger(request.sessionId)?.execution?.currentQueueId === queueId
-      ? currentLedger(request.sessionId)?.execution?.id
+        })
       : undefined;
-  if (executionId)
-    registerSessionExecutionWake(request.sessionId, () =>
-      continueSessionExecution(engine, request.sessionId),
-    );
+  const executionId = stagedExecution?.id;
   const prior = request.beforeDispatch;
   const check = () =>
-    current()
+    current() &&
+    (!admission.committed ||
+      currentLedger(request.sessionId)?.executionAdmission?.queueId === queueId)
       ? { accepted: true as const }
       : { accepted: false as const, error: "EXECUTION_INPUT_REVOKED" };
   const guard: DispatchGuard = async () => {
     if (!check().accepted) return check();
     const preceding = (await prior?.()) ?? { accepted: true };
     if (!preceding.accepted) return preceding;
+    if (!current()) return check();
+    if (!admission.committed) {
+      await mutateSessionTaskLedger(
+        request.sessionId,
+        (ledger) => {
+          ledger.executionAdmission = {
+            requestId: request.clientRequestId!,
+            queueId,
+            ...(intent ? { intent } : { error: "INTENT_UNCONFIRMED" }),
+          };
+          if (stagedExecution && intent) {
+            ledger.execution = createSessionExecution({
+              id: stagedExecution.id,
+              requestId: request.clientRequestId!,
+              originalInput: stagedExecution.originalInput,
+              intent,
+              queueId,
+              now: Date.now(),
+            });
+            ledger.executionEvidence = [];
+            ledger.executionReview = undefined;
+            ledger.delegationLaunches = 0;
+          } else if (ledger.execution && isActive(ledger.execution.phase)) {
+            ledger.execution = {
+              ...ledger.execution,
+              phase: "paused",
+              reason: "new_user_input",
+            };
+          }
+          return ledger;
+        },
+        current,
+      );
+    }
     return {
       ...preceding,
       validateAtCommit: () => {
         const before = preceding.validateAtCommit?.() ?? { accepted: true };
-        const committed = before.accepted ? check() : before;
-        if (committed.accepted) liveTurns.set(request.sessionId, queueId);
+        const committed =
+          before.accepted &&
+          currentLedger(request.sessionId)?.executionAdmission?.queueId !==
+            queueId
+            ? { accepted: false as const, error: "EXECUTION_INPUT_REVOKED" }
+            : before.accepted
+              ? check()
+              : before;
+        if (committed.accepted) {
+          admission.committed = true;
+          revoked.delete(request.sessionId);
+          activeClaims.delete(request.sessionId);
+          revokeSessionExecutionWake(request.sessionId);
+          if (executionId)
+            registerSessionExecutionWake(request.sessionId, () =>
+              continueSessionExecution(engine, request.sessionId),
+            );
+          liveTurns.set(request.sessionId, queueId);
+        }
         return committed;
       },
     };
   };
   const scope = { queueId, ...(executionId ? { executionId } : {}) };
+  const cancel = async (reason: string) => {
+    controller.abort();
+    removeAdmission();
+    // Before promotion this input owns no execution ledger to pause.
+    await pauseSessionExecution(request.sessionId, reason, scope);
+    // Removing the last pending input may release the old, already-settled
+    // root's continuation. Reuse its original gate (busy/queue/unknown writes).
+    await continueSessionExecution(engine, request.sessionId);
+  };
   guard.cancel = async () => {
-    await prior?.cancel?.();
-    await pauseSessionExecution(
-      request.sessionId,
-      "admission_cancelled",
-      scope,
-    );
+    const cancelled = cancel("admission_cancelled");
+    try {
+      await prior?.cancel?.();
+    } finally {
+      await cancelled;
+    }
   };
   return {
     request: {
       ...request,
       queueId,
+      // Each classified input has its own execution/permission scope. Native
+      // realtime delivery can precede consumption while the previous root's
+      // tools are still running; keep these scoped inputs at the turn boundary.
+      turnBoundaryOnly: true,
       beforeDispatch: guard,
       text:
         request.text +
-        (executionId ? executionReminder(request.sessionId) : ""),
+        (executionId
+          ? executionReminder(request.sessionId, stagedExecution)
+          : ""),
       // Keep the original visible user input; product instructions never become human evidence.
       desktopQuery: { ...request.desktopQuery, visibleText: request.text },
       onTerminal: async (outcome) => {
-        await request.onTerminal?.(outcome);
         try {
+          await request.onTerminal?.(outcome);
           if (executionId)
             await settleSessionExecutionTurn(
               engine,
@@ -355,35 +446,19 @@ export async function prepareSessionExecution(
         } finally {
           if (liveTurns.get(request.sessionId) === queueId)
             liveTurns.delete(request.sessionId);
-          if (admissions.get(request.sessionId) === admission)
-            admissions.delete(request.sessionId);
+          removeAdmission();
         }
       },
     },
     admitted: async (result) => {
-      if (!result.success)
-        await pauseSessionExecution(
-          request.sessionId,
-          result.error ?? "admission_rejected",
-          scope,
-        );
+      if (!result.success) await cancel(result.error ?? "admission_rejected");
       else if (result.dispatchAcceptance)
         void result.dispatchAcceptance
           .then(async (receipt) => {
             if (!receipt.accepted)
-              await pauseSessionExecution(
-                request.sessionId,
-                receipt.error ?? "dispatch_unconfirmed",
-                scope,
-              );
+              await cancel(receipt.error ?? "dispatch_unconfirmed");
           })
-          .catch(() =>
-            pauseSessionExecution(
-              request.sessionId,
-              "dispatch_unconfirmed",
-              scope,
-            ),
-          );
+          .catch(() => cancel("dispatch_unconfirmed"));
     },
   };
 }
@@ -430,9 +505,8 @@ export async function requestSessionExecutionReview(
 }
 
 const READ_TOOLS = new Set([
-  "Read",
-  "Grep",
-  "Glob",
+  ...PLAN_MODE_READONLY_TOOLS,
+  ...PLAN_MODE_HOST_INTERACTION_TOOLS,
   "WebFetch",
   "WebSearch",
   "TaskGet",
@@ -737,6 +811,7 @@ export async function continueSessionExecution(
     const live = engine.getLiveSessionState();
     return (
       !revoked.has(sessionId) &&
+      !hasPendingInput(sessionId) &&
       engine.getRuntimeIdentity().sessionId === sessionId &&
       execution?.id === initial.id &&
       isActive(execution.phase) &&

@@ -420,7 +420,36 @@ export class ModelFailoverController implements BridgeModelFailover {
         async pull(output) {
           try {
             if (!live()) throw new Error('Model request superseded or cancelled');
-            const next = await bodyReader.read();
+            let next: ReadableStreamReadResult<Uint8Array>;
+            let frames = '';
+            // Keep this downstream pull alive across comments and partial SSE records.
+            // Every upstream wait still uses the existing bounded body reader.
+            while (true) {
+              next = await bodyReader.read();
+              if (!live()) throw new Error('Model request superseded or cancelled');
+              if (next.done || !isSse) break;
+              for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
+                const payload = parseModelStreamEvent(event);
+                if (!payload) continue;
+                const { type } = payload;
+                if (hasModelStreamProgress(payload)) bodyReader.markProgress();
+                if (type === 'error') {
+                  attemptDiagnostic ??= streamFailure(attemptInterruption === 'transport' ? 'transport' : 'provider_terminal',
+                    (payload.error as { type?: unknown } | undefined)?.type);
+                  primary.onStreamInterruption?.(attemptInterruption === 'transport' ? 'transport' : 'unproven', attemptDiagnostic);
+                  if (!terminal && attemptInterruption === 'transport') await interruptRecovery('Model stream delivery transport failed', () => consumerCancelled);
+                  else await blockRecovery('Model stream reported an unproven provider/protocol error');
+                  if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
+                  commitFailure('protocol_validation');
+                  output.enqueue(encoder.encode(blockedFrame()));
+                  void reader.cancel().catch(() => undefined);
+                  finish(); output.close(); return;
+                }
+                frames += formatSSEFrame(event);
+                if (type === 'message_stop') { terminal = true; break; }
+              }
+              if (frames || terminal) break;
+            }
             if (!live()) throw new Error('Model request superseded or cancelled');
             if (next.done) {
               if (isSse && !terminalQueued) {
@@ -436,31 +465,6 @@ export class ModelFailoverController implements BridgeModelFailover {
                 await completeRecovery();
               }
               finish(); output.close(); return;
-            }
-            let frames = '';
-            if (isSse) for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
-              const payload = parseModelStreamEvent(event);
-              if (!payload) continue;
-              const { type } = payload;
-              if (hasModelStreamProgress(payload)) bodyReader.markProgress();
-              if (type === 'error') {
-                // Native Anthropic errors bypass the translators; use only their
-                // known error type if no trusted attempt diagnostic was supplied.
-                attemptDiagnostic ??= streamFailure(attemptInterruption === 'transport' ? 'transport' : 'provider_terminal',
-                  (payload.error as { type?: unknown } | undefined)?.type);
-                primary.onStreamInterruption?.(attemptInterruption === 'transport' ? 'transport' : 'unproven', attemptDiagnostic);
-                if (!terminal && attemptInterruption === 'transport') await interruptRecovery('Model stream delivery transport failed', () => consumerCancelled);
-                else await blockRecovery('Model stream reported an unproven provider/protocol error');
-                if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
-                commitFailure('protocol_validation');
-                output.enqueue(encoder.encode(blockedFrame()));
-                void reader.cancel().catch(() => undefined);
-                finish(); output.close(); return;
-              }
-              frames += formatSSEFrame(event);
-              // The protocol terminal ends this inference. Never parse provider trailers or
-              // wait for socket EOF; either can turn a completed response into a fake failure.
-              if (type === 'message_stop') { terminal = true; break; }
             }
             if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
             if (!isSse) { if (next.value.byteLength) bodyReader.markProgress(); output.enqueue(next.value); }

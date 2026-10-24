@@ -64,6 +64,31 @@ afterEach(async () => {
 });
 
 describe('context recovery over the existing bridge handler', () => {
+  it('drains fragmented UTF-8 records and comments through stacked recovery stream owners', async () => {
+    const source = 'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"雪🙂"}}\n\n'
+      + 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+    const bytes = Buffer.from(source, 'utf8');
+    const emoji = bytes.indexOf(Buffer.from('🙂'));
+    const upstream = await fixture(async (_body, res) => {
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (const chunk of [Buffer.from(': keepalive\n\n'), bytes.subarray(0, emoji + 2), bytes.subarray(emoji + 2, -1), bytes.subarray(-1)]) {
+        res.write(chunk);
+        await new Promise(resolve => setTimeout(resolve, 5));
+      }
+      res.end();
+    });
+    const context = new ContextRecoveryController({ scope: () => 'sse-fragment-turn', isActive: () => true,
+      backup: async () => '/archive/fixture.json', persistLedger: async () => {} });
+    const failover = new ModelFailoverController({ scope: () => 'sse-fragment-turn', isActive: () => true,
+      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0], bodyIdleTimeoutMs: 500 });
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'anthropic',
+      baseUrl: upstream.baseUrl, apiKey: 'fixture', contextRecovery: context, modelFailover: failover }) });
+    const body = { ...history(), stream: true };
+    const result = await (await handler(request(body))).text();
+    expect(result).toContain('雪🙂');
+    expect(result).toContain('message_stop');
+    expect(upstream.requests).toHaveLength(1);
+  });
   it('keeps a restored uncertain Session available for native reads without failover retries or business actions', async () => {
     const upstream = await fixture((_body, res) => {
       if (upstream.requests.length === 3) return json(res, { error: { message: 'fixture unavailable' } }, 503);

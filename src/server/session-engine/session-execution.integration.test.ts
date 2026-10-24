@@ -135,7 +135,12 @@ async function prepare(
     request,
     classify,
   );
-  if (prepared.request.queueId) currentQueueId = prepared.request.queueId;
+  if (prepared.request.queueId) {
+    const decision = await prepared.request.beforeDispatch!();
+    expect(decision.accepted).toBe(true);
+    expect(decision.validateAtCommit?.().accepted).toBe(true);
+    currentQueueId = prepared.request.queueId;
+  }
   return { ...prepared, classify };
 }
 
@@ -903,7 +908,7 @@ describe("durable Session execution owner", () => {
     expect(continuationRequests).toHaveLength(1);
   });
 
-  it("revokes dispatch after Stop or a new trusted user input", async () => {
+  it("revokes dispatch after Stop while preserving earlier queued input admission", async () => {
     const stopped = await prepare();
     const stopCheck = await stopped.request.beforeDispatch!();
     expect(stopCheck.validateAtCommit?.().accepted).toBe(true);
@@ -915,17 +920,20 @@ describe("durable Session execution owner", () => {
     const oldGuard = await steered.request.beforeDispatch!();
     expect(oldGuard.accepted).toBe(true);
     await proveHumanInput("human-3", "A third request from the user");
-    await executionOwner.prepareSessionExecution(
+    const third = await executionOwner.prepareSessionExecution(
       engine,
       {
-        ...steered.request,
-        text: "A third request from the user",
-        clientRequestId: "human-3",
-        queueId: undefined,
+        sessionId: id, workspacePath: "/synthetic-workspace",
+        scenario: { type: "desktop", surface: "chat" },
+        text: "A third request from the user", clientRequestId: "human-3",
       },
       vi.fn(async () => executeIntent),
     );
-    expect(oldGuard.validateAtCommit?.().accepted).toBe(false);
+    expect(oldGuard.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()?.requestId).toBe("human-2");
+    expect(currentExecution()?.currentQueueId).toBe(oldQueue);
+    const thirdGuard = await third.request.beforeDispatch!();
+    expect(thirdGuard.validateAtCommit?.().accepted).toBe(true);
     expect(currentExecution()?.requestId).toBe("human-3");
     expect(oldQueue).not.toBe(currentExecution()?.currentQueueId);
   });
@@ -1151,7 +1159,8 @@ describe("durable Session execution owner", () => {
       classify,
     );
     await started.promise;
-    expect(currentExecution()?.phase).toBe("paused");
+    expect(currentExecution()?.phase).toBe("running");
+    expect(executionOwner.sessionExecutionInferenceAllowed(id, oldContinuation.queueId)).toBe(true);
     await oldContinuation.onTerminal?.({
       status: "complete",
       text: "Old continuation finished during classification",
@@ -1159,8 +1168,11 @@ describe("durable Session execution owner", () => {
     });
     expect(continuationRequests).toHaveLength(1);
     classifyResult.resolve(executeIntent);
-    await newPreparation;
+    const prepared = await newPreparation;
     expect(continuationRequests).toHaveLength(1);
+    expect(currentExecution()?.requestId).toBe("human-1");
+    const guard = await prepared.request.beforeDispatch!();
+    expect(guard.validateAtCommit?.().accepted).toBe(true);
     expect(currentExecution()?.requestId).toBe("human-during-classification");
   });
 

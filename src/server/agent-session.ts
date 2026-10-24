@@ -12632,9 +12632,17 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   childClaim.executionId === scopedExecution.id
                     ? scopedExecution.currentQueueId
                     : getBuiltinCurrentTurnQueueId() ?? undefined;
+                const taskTurnIdentity = getBuiltinCurrentTurnIdentity();
+                const independentTurnIsCurrent = () => {
+                  if (!taskTurnIdentity || taskQueueId === scopedExecution?.currentQueueId) return true;
+                  const current = getBuiltinCurrentTurnIdentity();
+                  return current?.queueId === taskTurnIdentity.queueId &&
+                    current.owner.kind === taskTurnIdentity.owner.kind &&
+                    current.owner.id === taskTurnIdentity.owner.id;
+                };
                 const finalToolAuthority = () =>
                   isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
-                && !lifecycleState.abortRequested && sessionId === queryProductSessionId &&
+                && !lifecycleState.abortRequested && sessionId === queryProductSessionId && independentTurnIsCurrent() &&
                   !(
                     scopedExecution &&
                     scopedExecution.currentQueueId === taskQueueId &&
@@ -12698,13 +12706,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                 const taskDispatchDenial = await authorizeSessionTaskTool({
                   sessionId: queryProductSessionId,
                   queueId: taskQueueId,
+                  turnIdentity: taskTurnIdentity,
                   toolUseId: pre.tool_use_id,
                   name: pre.tool_name,
                   input: pre.tool_input,
                   agentId: pre.agent_id,
                   nativeLaunchToolUseId,
                   workspacePath: agentDir,
-                  isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
+                  isCurrent: finalToolAuthority,
                 });
                 if (taskDispatchDenial)
                   return {
