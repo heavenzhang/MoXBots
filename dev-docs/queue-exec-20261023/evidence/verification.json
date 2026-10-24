@@ -1,0 +1,43 @@
+{
+  "task": "MOXBOTS-QUEUE-EXEC-20261023",
+  "base": "d4a89cca58c2c7295560e8ced1d6f769f686bcbd",
+  "environment": "Node 24 / isolated synthetic SDK and loopback; no real Provider or original user session mutation",
+  "tests": {
+    "integration": 196,
+    "unitAndQueueDom": 100,
+    "targetedTabDom": 8,
+    "total": 304,
+    "composition": "165 full transcript integration + 31 interrupt integration after canonical merge, 100 unit/queue DOM, 8 targeted Tab DOM"
+  },
+  "typecheck": "PASS",
+  "targetedEslint": "PASS",
+  "serverBundle": "PASS",
+  "redBeforeFix": "FAIL_EXPECTED: root force incorrectly calls interrupt once",
+  "rootScenario": [
+    "capabilities restart queues realtime input",
+    "new Query admits recovered root",
+    "one queue:started and one persistent user row",
+    "new root resets previous 60s clock",
+    "two delayed force clicks call no interrupt",
+    "one SDK yield, then complete/idle without queue residue"
+  ],
+  "successorRegression": "included full builtin transcript suite, including force handoff and prior-root seal isolation",
+  "ui": {
+    "primaryOwner": true,
+    "independentReview": false,
+    "layoutChanged": false,
+    "domOnly": true,
+    "native": "UNVERIFIED_PENDING_RELEASE_OWNER"
+  },
+  "installedObserved": {
+    "version": "0.5.19",
+    "build": "519.2",
+    "containsRepair": false
+  },
+  "mainDelivered": false,
+  "published": false,
+  "rawSyntheticLogs": "/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/work/queue-exec-20261023",
+  "canonicalReconciled": "6c30c2f94f76589a9856c20bc368ec0ee5479678",
+  "durableUserRows": "PASS: canonical V2 JSONL decoded from isolated temporary storage; each user input occurs once",
+  "classification": "PASS: 453 server test files"
+}

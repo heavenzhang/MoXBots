@@ -884,3 +884,9 @@ Unchanged sole desktop/macOSarm64/updater and combinedCI/main owner01a12bc2-907a
 ## MOXBOTS-GOAL-CONFIG-RESTORE-20261021 — next unfrozen desktop intake
 
 Fix warm builtin Goal continuation to adopt the owning Session's current saved provider/model/reasoning at the original admission boundary. Preserve Goal/native identity, permission, compatibility, background work and Stop/claim fences; no provider auto-selection or old input replay. Task record `.agent-sync/tasks/codex-goal-config-restore-20261021-366d1666.md` distinguishes local regression evidence from actual native acceptance. Base is fetched remote main4206eb2ef; separately verify compatibility with frozen515.7/source915ff89a without editing that checkout. Existing sole desktop/updater CI/build/version/install/publish owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; this lane delivers local commits only for its next batch.515.7signing/install is independent and unchanged. Reconcile commits5a928679/b759372e are separate intake, not part of this task diff.
+
+
+
+## MOXBOTS-QUEUE-EXEC-20261023 — 恢复消息排队与执行时序
+
+本机23:18日志证明 SDK 已收首条恢复输入但仍显示排队，延迟 force 调用了 Stop，随后 aborted_streaming。开发分支 `codex/queue-exec-20261023` 将无前置 output-owner 的恢复输入交普通准入持久化和 queue:started；当前 root 的延迟 force 幂等，真正 successor 保留原中断晋级。任务 `.agent-sync/tasks/codex-queue-exec-20261023-743f9018.md`，证据 `dev-docs/queue-exec-20261023/acceptance.md`。沿用 desktop-macos-arm64-updater 与 combinedCI/main 唯一会话 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；下一未冻结批次交精确SHA，不改变已经固定的0.5.20/520.1候选或已发布519.2，不自行共享CI/正式构建/安装。最新已交main6c30c2f94f76589a9856c20bc368ec0ee5479678已正常并入开发分支。本地合成回归与持久化、CI/main、签名制品、原会话真实复验分别追踪；无业务重放或权限变化。

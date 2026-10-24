@@ -33,7 +33,7 @@ import { cancelImRequest, cancelQueueItem, forceExecuteQueueItem, getAgentState,
 import { broadcast } from '../sse';
 import { getQuerySession, resetLifecycleForTest, setQuerySession, waitForMessage, setSessionTerminationPromise, lifecycleState, setUpdateRestartFrozen } from '../builtin-session/lifecycle';
 import { beginPromotedItem, getInFlightQueueId, getMessageQueue, getPendingMidTurnQueue, getTurnAdmissionTicket, getTurnBoundaryQueue, isPromotedItemCanceled, pushMessage, pushPendingMidTurn, pushTurnBoundary, resetQueueForTest, setInFlightQueueItem, setTurnAdmissionTicket } from '../builtin-session/queue';
-import { resetTurnForTest, setCurrentTurnSourceItem, recordCurrentTurnCompletionTerminal, waitForCurrentTurnTerminalObserver } from '../builtin-session/turn';
+import { resetTurnForTest, setCurrentTurnSourceItem, recordCurrentTurnCompletionTerminal, waitForCurrentTurnTerminalObserver, pushPendingOutputOwner } from '../builtin-session/turn';
 import { resetTranscriptForTest } from '../builtin-session/transcript';
 import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 import type { MessageQueueItem } from '../builtin-session/types';
@@ -388,6 +388,27 @@ describe('builtin local input cancellation and force ownership (#648)', () => {
     await expect(forceExecuteQueueItem('native-owned')).rejects.toThrow();
     expect(getInFlightQueueId()).toBe('native-owned');
     expect(query.interrupt).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('does not interrupt an admitted root when a delayed force click arrives (SDK yield: %s)', async yielded => {
+    const query = retainedQuery();
+    const root = localInput('recovered-root', { wasQueued: true });
+    setCurrentTurnSourceItem(root);
+    captured.deps!.setStreamingMessage(true);
+    setInFlightQueueItem(root.id, { messageText: root.messageText, channelDelivery: NO_CHANNEL_DELIVERY });
+    if (yielded) pushPendingOutputOwner({ queueId: root.id, sourceItem: root, requestId: null,
+      assistantChannelDelivery: NO_CHANNEL_DELIVERY.assistant, channelSessionId: 'test' });
+    // The UI can still be rendering its previous queue:added event. A repeat
+    // click must be idempotent while native replay/assistant-start is pending.
+    const forcing = forceExecuteQueueItem(root.id);
+    expect(query.interrupt).not.toHaveBeenCalled();
+    await expect(forcing).resolves.toBe(true);
+    await expect(forceExecuteQueueItem(root.id)).resolves.toBe(true);
+    expect(query.interrupt).not.toHaveBeenCalled();
+    expect(query.close).not.toHaveBeenCalled();
+    expect(getInFlightQueueId()).toBe(root.id);
+    expect(getAgentState().sessionState).toBe('running');
+    expect(broadcast).not.toHaveBeenCalledWith('chat:message-stopped', expect.anything());
   });
 
   it('cancels the complete local snapshot alongside a desktop admission, preserving later input (#648 review)', async () => {

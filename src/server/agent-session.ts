@@ -11165,6 +11165,16 @@ export async function cancelQueuedTurnsByOwner(owner: TurnOwner): Promise<number
  */
 export async function forceExecuteQueueItem(queueId: string): Promise<boolean> {
   traceBuiltinInputProgress('force-requested');
+  // The FIFO head owns the executing native turn. A recovered queued input
+  // can already be that head while its replay/assistant-start receipt (and
+  // therefore the queue pill) is still pending. Force must never stop itself.
+  // currentTurnSourceItem can already point at a later realtime input, so it
+  // cannot distinguish this root from a genuine queued successor.
+  const outputOwner = peekPendingOutputOwner();
+  if (isTurnInFlight() && (outputOwner?.queueId === queueId
+    || (!outputOwner && getBuiltinCurrentTurnQueueId() === queueId))) {
+    return true;
+  }
   const location = findQueueLocation({
     messageIndex: getMessageQueue().findIndex(item => item.id === queueId),
     pendingMidTurnIndex: getPendingMidTurnQueue().findIndex(p => p.queueId === queueId),
@@ -15541,20 +15551,36 @@ async function* messageGenerator(
     // broadcasting would cause the frontend's seenIdsRef dedup to fail when
     // generator's local id differs from the one already in history.
     //
-    // wasQueued=true items take a different path: their transcriptState.messages[] push +
-    // queue:started broadcast happens later in handleQueuedCommandReplay()
-    // or when the next assistant turn starts, proving a boundary drain. Until
-    // then they live as an "in-flight" pill in the frontend queue panel.
+    // Queued successors wait for native consumption before surfacing. A
+    // recovered first input has no earlier output owner and takes ordinary
+    // admission instead; it must not wait for a mid-turn drain of itself.
     let traceTurnId = item.id;
     const traceSource = item.wasQueued ? 'queued' : 'direct';
-    if (!item.wasQueued) {
+    const startsRuntimeTurn = !item.wasQueued || peekPendingOutputOwner() === null;
+    if (startsRuntimeTurn) {
       resetTurnUsage();
       setCurrentTurnStartTime(Date.now());
       if (sessionId) beginTurnAbort(sessionId);
       const turnId = randomUUID().replace(/-/g, '').slice(0, 8);
       traceTurnId = turnId;
       setAmbientLogContext(sessionId, { turnId, sessionId });
-    } else if (getInFlightQueueId() === null) {
+    }
+    const admittedQueuedRoot = item.wasQueued && startsRuntimeTurn && item.inputSource !== 'inbox';
+    if (admittedQueuedRoot && !item.deferredUserSurface) {
+      // A rescued first input has no earlier native turn to drain it. Surface
+      // it through ordinary admission, just like a direct first input, rather
+      // than waiting indefinitely for a mid-turn consumption receipt.
+      item.deferredUserSurface = {
+        event: 'queue-started', queueId: item.id, channelDelivery: item.channelDelivery,
+        sessionBirthOrigin: item.sessionBirthOrigin,
+        message: {
+          id: allocateMessageId(), role: 'user', content: item.messageText,
+          desktopQuery: item.desktopQuery, timestamp: new Date().toISOString(),
+          attachments: item.attachments, metadata: item.metadata,
+        },
+      };
+    }
+    if (item.wasQueued && !admittedQueuedRoot && getInFlightQueueId() === null) {
       // (v0.2.12 Codex review fix #1) wasQueued item arrived without an
       // existing in-flight tracker. Two paths reach here:
       //   - Recovery: finally-block rescue moved a queueState.pendingMidTurnQueue item
@@ -15623,7 +15649,7 @@ async function* messageGenerator(
       }
     }
     releaseTurnAdmissionTicket(item.id);
-    if (item.deferVisibleAdmission) {
+    if (item.deferVisibleAdmission || startsRuntimeTurn) {
       setSessionState((lifecycleState.systemInitInfo || lifecycleState.sdkControlReady) ? 'running' : 'starting');
       item.deferVisibleAdmission = false;
     }
@@ -15696,6 +15722,7 @@ async function* messageGenerator(
         continue;
       }
       item.deferredUserSurface = undefined;
+      if (admittedQueuedRoot && getInFlightQueueId() === item.id) clearInFlightSlot();
     } else if (getCurrentProductSessionMetadata()?.materializationState === 'prepared') {
       const visibleText = resolveVisibleUserTurnText(item.messageText)?.trim();
       try {
