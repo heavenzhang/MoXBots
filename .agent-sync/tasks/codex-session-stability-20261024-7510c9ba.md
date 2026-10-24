@@ -57,3 +57,7 @@ Node v24.20.0。7文件157项基础回归、另13文件330项恢复/编排/Stop/
 正确行为回归17项，在原71871fc干净源码快照上15失败/2通过，在修复树17通过；25文件673项组合回归PASS。最终TypeScript无emit/无incremental、变更文件ESLint max-warnings=0、测试分类与diff检查PASS。独立复审提出未知child没有launch仍可继承owner的边界风险，已加入原native launch证明条件，补充正反例后复核无新确定缺陷。精确行为、真实验收范围与发布交接见dev-docs/session-stability-20261024/acceptance.md；原始日志和命令见工作区work/session-stability-20261024/repair-*。
 
 并发PR200修复first-input默认auto mode，与本次源文件不重叠；不得把旧候选包视为已含本任务。唯一发布owner核对两者并集并重新固定候选SHA，本任务不改版本号、不自行跑共享CI。当前版本元数据0.5.21，仅说明源码基线。
+
+## Native loopback acceptance
+
+现有verify-session-execution-loopback.ts四种模式（默认、--rework、--parallel、--two-workers）全部PASS。均使用实际SDK子进程、原builtin facade、真实SessionStore/task route及真实Write/Read/Bash工具，私有HOME/临时工作区、本机合成上游，paidCalls=0/publicNetwork=false。普通执行2轮completed，返工及后台模式3轮completed，原始输入接纳次数均1，两个worker最多同时在途2且原生attempt及根评审全部结算。脚本显式fullAgency，不能代替PR200默认权限首发修复或已安装客户端验收。原始日志及receipt.json保存在外部repair-native-*证据；没有修改脚本或产品代码。

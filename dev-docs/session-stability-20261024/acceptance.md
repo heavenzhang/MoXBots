@@ -20,11 +20,14 @@ Runtime: bundled Node v24.20.0. Unit/integration projects install their existing
 | New 17-case stability suite on clean archived base source | 15 fail, 2 pass (expected regression proof) |
 | Same stability suite on repaired source | 17 pass |
 | Related queue, execution, Task, Goal/owner, Plan, stream, recovery, failover, provider history and facade regression | 25 files, 673 tests pass |
+| Native installed SDK + original facade/SessionStore/task route, loopback model | 4 modes PASS: ordinary, rework, parallel child, two workers; no paid/public calls |
 | TypeScript no emit, no incremental cache | PASS |
 | ESLint changed source/test files, max warnings 0 | PASS |
 | Test classification | PASS, 458 server tests; 132 integration and 6 credentialed |
 | Whitespace/diff review | PASS |
 | Independent review | One SSE implementation worker also reviewed root changes read-only; missing child-launch proof was identified and tightened, then re-reviewed |
+
+Additional native acceptance used the existing `scripts/verify-session-execution-loopback.ts` with no flag, `--rework`, `--parallel` and `--two-workers`. All four reached persisted `completed` with exactly one original input admission. These launch the actual SDK child and real Write/Read/Bash tools against private scratch data: ordinary execution used two turns; rework and background modes used three turns; both concurrent workers settled their native attempts and root review. The fixtures explicitly use fullAgency, so they do not prove PR 200's default-permission first-send fix or authenticated client behavior.
 
 The new suite covers queued status/execute inputs, multiple pending inputs, cancellation/rejection/lost ACK, last-pending release, Stop, late old guard/cancel, promotion-time budget, native independent Task/Goal, unproven child and resource conflicts, host controls, and fragmented SSE. Existing execution tests now exercise admission before asserting active ledger state; obsolete assertions that preparing input must revoke the live root were replaced with the native-promotion contract.
 
