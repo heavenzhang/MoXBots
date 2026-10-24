@@ -33,6 +33,10 @@
 
 Root start gate在实际base185f且clean时已PASS。task-init工具第一次在pending merge、第二次在local implementation commit之后分别报告dirty/head_mismatch；均未生成文件、未改base或清理历史。此接续记录按同一工具公开模板/确定路径手写，保留正确base与schema，后续clean remote-handoff gate实核；不宣称这两次task-init通过。
 
+## First CI correction
+
+首次exact c962 PR199 CI40057820705 的 unit640files/7039tests只有旧提示词断言失败（7033pass/1fail/5skip）。原completed job120764601428 API日志已保留。源码有意取消明确行动必须先提案的限制，Root仅同步测试合同：保留Task/Cron/Goal原scope/permissions/可信用户输入及newscope确认，新增明确行动无需提案和讨论/新scope仍需确认两项回归。不恢复旧提示词、不改产品源；原73/type/lint/actualSDK证据仍对应完全相同产品字节，不重复执行。新head首次CI由同owner统一，旧run的失败/自动superseded终态如实保留，不冒称通过。
+
 ## Next step
 
 一次提交此continuity metadata，核精确root head，首次push/PR触发combined CI。正常merge前所有原CI门禁和远端base/tree重核，不能用作者本地native或旧CI替代。物理冻结/单build只在精确main闭包后；当前维护限制不妨碍CI/main和静态准备。
