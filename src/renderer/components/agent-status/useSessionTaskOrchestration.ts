@@ -2,7 +2,7 @@ import { createContext, createElement, useCallback, useContext, useEffect, useMe
 import { useTabStateOptional } from '@/context/TabContext';
 import { BACKGROUND_TASK_STATUS_EVENT } from '@/utils/backgroundTaskStatus';
 import { collectTaskAttempts, emptyTaskLedger, mergeTaskObservations, projectSessionTasks,
-  type SessionTaskLedger, type SessionTaskSnapshot } from '../../../shared/sessionTaskOrchestration';
+  type SessionTaskLedger, type SessionTaskSnapshot, type SessionExecutionRecoveryProjection } from '../../../shared/sessionTaskOrchestration';
 import type { ProgressTodo } from '../../../shared/sessionWorkProgress';
 import type { SessionPlanProposal } from '../../../shared/sessionPlanConfirmation';
 import type { PlanUserAction } from './OrchestrationPlanCard';
@@ -44,7 +44,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   if (scope.current.sessionId !== sessionId || scope.current.runtimeKey !== runtimeKey)
     scope.current = { sessionId, runtimeKey, epoch: scope.current.epoch + 1 };
   const [snapshot, setSnapshot] = useState<{ sessionId: string; ledger: PlanLedger;
-    planSupport?: SessionTaskSnapshot['planSupport']; runtimeKey: string } | null>(null);
+    planSupport?: SessionTaskSnapshot['planSupport']; executionRecovery?: SessionExecutionRecoveryProjection; runtimeKey: string } | null>(null);
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const planSupport = snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey
@@ -56,16 +56,20 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     let disposed = false;
     let timer: ReturnType<typeof setTimeout>;
     let busy = false;
-    const adopt = (value: { sessionId?: string; ledger?: PlanLedger; planSupport?: SessionTaskSnapshot['planSupport'] }, fromSnapshot = false) => {
+    const adopt = (value: { sessionId?: string; ledger?: PlanLedger; planSupport?: SessionTaskSnapshot['planSupport']; executionRecovery?: SessionExecutionRecoveryProjection }, fromSnapshot = false) => {
       if (disposed || currentRuntimeKey.current !== runtimeKey || value.sessionId !== sessionId || !value.ledger || !Number.isSafeInteger(value.ledger.revision)) return;
       const ledger = value.ledger;
       setSnapshot(prior => {
         const sameScope = prior?.sessionId === sessionId && prior.runtimeKey === runtimeKey;
         const support = fromSnapshot ? value.planSupport : sameScope ? prior.planSupport : undefined;
+        // The 2s snapshot owns recovery. Ledger-only SSE events may update the
+        // task projection but can neither synthesize nor erase model recovery.
+        const executionRecovery = fromSnapshot ? value.executionRecovery : sameScope ? prior.executionRecovery : undefined;
         const latestLedger = prior?.sessionId === sessionId && prior.ledger.revision > ledger.revision ? prior.ledger : ledger;
         return sameScope && JSON.stringify(prior.ledger) === JSON.stringify(latestLedger)
-          && JSON.stringify(prior.planSupport) === JSON.stringify(support) ? prior
-          : { sessionId, ledger: latestLedger, planSupport: support, runtimeKey };
+          && JSON.stringify(prior.planSupport) === JSON.stringify(support)
+          && JSON.stringify(prior.executionRecovery) === JSON.stringify(executionRecovery) ? prior
+          : { sessionId, ledger: latestLedger, planSupport: support, executionRecovery, runtimeKey };
       });
       if (fromSnapshot) setFailure(null);
     };
@@ -105,6 +109,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     const ledger = response.ledger;
     setSnapshot(prior => ({ sessionId, runtimeKey,
       ledger: prior?.sessionId === sessionId && prior.ledger.revision > ledger.revision ? prior.ledger : ledger,
+      executionRecovery: prior?.sessionId === sessionId && prior.runtimeKey === runtimeKey ? prior.executionRecovery : undefined,
       planSupport: response.planSupport }));
     setFailure(null);
   }, [apiPost, sessionId, runtimeKey]);
@@ -134,6 +139,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
       executionAdmission.requestId === snapshotExecution.requestId)
       ? snapshotExecution
       : undefined;
+  const executionRecovery = sameSessionSnapshot ? snapshot.executionRecovery : undefined;
   // A cached terminal projection is not current while the Session is loading or
   // its authoritative task snapshot has failed to refresh.
   const executionUnknown = Boolean(
@@ -159,6 +165,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   return { sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal,
     execution,
     executionAdmission,
+    executionRecovery,
     executionUnknown,
     planSupport, planStart, confirmPlan, requestPlanRevision, stale: failure?.sessionId === sessionId, retry: () => setRefresh(v => v + 1),
   };

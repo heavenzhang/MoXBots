@@ -121,6 +121,21 @@ async function prepare(
   requestId = "human-1",
   intent: ExecutionIntent | undefined = executeIntent,
 ) {
+  const prepared = await prepareUnpromoted(text, requestId, intent);
+  if (prepared.request.queueId) {
+    const decision = await prepared.request.beforeDispatch!();
+    expect(decision.accepted).toBe(true);
+    expect(decision.validateAtCommit?.().accepted).toBe(true);
+    currentQueueId = prepared.request.queueId;
+  }
+  return prepared;
+}
+
+async function prepareUnpromoted(
+  text = input,
+  requestId = "human-1",
+  intent: ExecutionIntent | undefined = executeIntent,
+) {
   await proveHumanInput(requestId, text);
   const request: DesktopMessageRequest = {
     text,
@@ -135,12 +150,6 @@ async function prepare(
     request,
     classify,
   );
-  if (prepared.request.queueId) {
-    const decision = await prepared.request.beforeDispatch!();
-    expect(decision.accepted).toBe(true);
-    expect(decision.validateAtCommit?.().accepted).toBe(true);
-    currentQueueId = prepared.request.queueId;
-  }
   return { ...prepared, classify };
 }
 
@@ -923,9 +932,11 @@ describe("durable Session execution owner", () => {
     const third = await executionOwner.prepareSessionExecution(
       engine,
       {
-        sessionId: id, workspacePath: "/synthetic-workspace",
+        sessionId: id,
+        workspacePath: "/synthetic-workspace",
         scenario: { type: "desktop", surface: "chat" },
-        text: "A third request from the user", clientRequestId: "human-3",
+        text: "A third request from the user",
+        clientRequestId: "human-3",
       },
       vi.fn(async () => executeIntent),
     );
@@ -1160,7 +1171,12 @@ describe("durable Session execution owner", () => {
     );
     await started.promise;
     expect(currentExecution()?.phase).toBe("running");
-    expect(executionOwner.sessionExecutionInferenceAllowed(id, oldContinuation.queueId)).toBe(true);
+    expect(
+      executionOwner.sessionExecutionInferenceAllowed(
+        id,
+        oldContinuation.queueId,
+      ),
+    ).toBe(true);
     await oldContinuation.onTerminal?.({
       status: "complete",
       text: "Old continuation finished during classification",
@@ -1258,6 +1274,640 @@ describe("durable Session execution owner", () => {
       requestId: "human-replacement",
       currentQueueId: replacementQueue,
     });
+  });
+
+  it("continues the same execution only after its real terminal and preserves its original scope, budgets, evidence, and task history", async () => {
+    const first = await prepare(input, "human-original-scope");
+    const firstQueue = first.request.queueId!;
+    const original = currentExecution()!;
+    await tool(firstQueue, {
+      id: "preserved-root-read",
+      name: "Read",
+      stage: "success",
+      output: "Original verified progress",
+    });
+    await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+      ledger.execution = {
+        ...ledger.execution!,
+        turns: 4,
+        reworks: 1,
+        noProgress: 1,
+        lastProgressDigest: "prior-successful-tool-digest",
+      };
+      ledger.taskPackages = [
+        {
+          taskId: "preserved-package",
+          executionId: original.id,
+          assignee: "Explore",
+          resources: [{ path: "artifact/", access: "write" }],
+          reason: "Original scoped work",
+        },
+      ];
+      ledger.delegationClaims = [
+        {
+          toolUseId: "preserved-launch",
+          taskId: "preserved-package",
+          executionId: original.id,
+          state: "settled",
+        },
+      ];
+      ledger.delegationLaunches = 4;
+      return ledger;
+    });
+    await executionOwner.pauseSessionExecution(id, "user_stopped");
+    await first.request.onTerminal?.({
+      status: "stopped",
+      text: "Stopped after recording the real turn result.",
+      assistantMessagePresent: true,
+    });
+    expect(currentExecution()).toMatchObject({
+      id: original.id,
+      phase: "paused",
+      reason: "user_stopped",
+      lastSettledQueueId: firstQueue,
+    });
+
+    const sameTaskIntent: ExecutionIntent = {
+      ...executeIntent,
+      objective:
+        "A classifier proposal that must not replace the original task",
+      acceptanceCriteria: ["A weaker replacement criterion"],
+      continuationOf: original.id,
+    };
+    const next = await prepareUnpromoted(
+      "Continue the same artifact work",
+      "human-same-task-continuation",
+      sameTaskIntent,
+    );
+    const promoted = await next.request.beforeDispatch!();
+    expect(promoted.accepted).toBe(true);
+    expect(promoted.validateAtCommit?.().accepted).toBe(true);
+    const continued = currentExecution()!;
+    expect(continued).toMatchObject({
+      id: original.id,
+      requestId: "human-same-task-continuation",
+      originalInput: original.originalInput,
+      intent: original.intent,
+      phase: "running",
+      startedAt: original.startedAt,
+      deadlineAt: original.deadlineAt,
+      turns: 5,
+      reworks: 1,
+      noProgress: 1,
+      lastProgressDigest: "prior-successful-tool-digest",
+      currentQueueId: next.request.queueId,
+    });
+    const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
+    expect(ledger.executionEvidence?.map((fact) => fact.id)).toContain(
+      "preserved-root-read",
+    );
+    expect(ledger.taskPackages).toEqual([
+      expect.objectContaining({ taskId: "preserved-package" }),
+    ]);
+    expect(ledger.delegationClaims).toEqual([
+      expect.objectContaining({
+        toolUseId: "preserved-launch",
+        state: "settled",
+      }),
+    ]);
+    expect(ledger.delegationLaunches).toBe(4);
+
+    // A second native guard for the same queue is an idempotent promotion.
+    const repeated = await next.request.beforeDispatch!();
+    expect(repeated.accepted).toBe(true);
+    expect(repeated.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()?.turns).toBe(5);
+
+    // Old queue cancellation and duplicate terminal delivery cannot pause or settle the new queue.
+    await first.request.beforeDispatch!.cancel?.();
+    await first.request.onTerminal?.({
+      status: "complete",
+      text: "Late duplicate callback for the old queue",
+      assistantMessagePresent: true,
+    });
+    expect(currentExecution()).toMatchObject({
+      id: original.id,
+      phase: "running",
+      currentQueueId: next.request.queueId,
+      turns: 5,
+    });
+  });
+
+  it("keeps multiple same-task inputs ordered behind the previous queue terminal", async () => {
+    const first = await prepare(input, "human-ordered-first");
+    const firstQueue = first.request.queueId!;
+    const executionId = currentExecution()!.id;
+    await executionOwner.pauseSessionExecution(id, "user_stopped");
+    await first.request.onTerminal?.({
+      status: "stopped",
+      text: "First queue terminal is persisted",
+      assistantMessagePresent: true,
+    });
+
+    const continuationIntent: ExecutionIntent = {
+      ...executeIntent,
+      continuationOf: executionId,
+    };
+    const earlier = await prepareUnpromoted(
+      "First follow-up input",
+      "human-ordered-A",
+      continuationIntent,
+    );
+    const later = await prepareUnpromoted(
+      "Second follow-up input",
+      "human-ordered-B",
+      continuationIntent,
+    );
+    const earlierGuard = await earlier.request.beforeDispatch!();
+    expect(earlierGuard.accepted).toBe(true);
+    expect(earlierGuard.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()).toMatchObject({
+      currentQueueId: earlier.request.queueId,
+      turns: 2,
+      lastSettledQueueId: firstQueue,
+    });
+    const prematureLater = await later.request.beforeDispatch!();
+    expect(prematureLater).toMatchObject({
+      accepted: false,
+      error: "EXECUTION_PREVIOUS_TURN_UNSETTLED",
+    });
+    expect(currentExecution()?.turns).toBe(2);
+
+    await earlier.request.onTerminal?.({
+      status: "complete",
+      text: "The earlier follow-up reached terminal first",
+      assistantMessagePresent: true,
+    });
+    const laterGuard = await later.request.beforeDispatch!();
+    expect(laterGuard.accepted).toBe(true);
+    expect(laterGuard.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()).toMatchObject({
+      currentQueueId: later.request.queueId,
+      turns: 3,
+      lastSettledQueueId: earlier.request.queueId,
+    });
+  });
+
+  it.each([
+    ["blocking background work", "BACKGROUND_WORK_ACTIVE"],
+    ["waiting for the user", "WAITING_FOR_USER"],
+    ["a pending interactive request", "WAITING_FOR_USER"],
+  ] as const)(
+    "rechecks %s synchronously after same-task continuation guard and on repeat",
+    async (blocker, expectedError) => {
+      const first = await prepare(input, `human-commit-gate-${blocker}`);
+      const firstQueue = first.request.queueId!;
+      const executionId = currentExecution()!.id;
+      await executionOwner.pauseSessionExecution(id, "user_stopped");
+      await first.request.onTerminal?.({
+        status: "stopped",
+        text: "Original queue reached a persisted terminal",
+        assistantMessagePresent: true,
+      });
+
+      const next = await prepareUnpromoted(
+        `Continue same task while ${blocker} may appear`,
+        `human-commit-gate-followup-${blocker}`,
+        { ...executeIntent, continuationOf: executionId },
+      );
+      const queueId = next.request.queueId!;
+      const admitted = await next.request.beforeDispatch!();
+      expect(admitted.accepted).toBe(true);
+      expect(currentExecution()).toMatchObject({
+        id: executionId,
+        currentQueueId: queueId,
+        turns: 2,
+      });
+
+      // A repeated native guard for this exact queue must be idempotent.
+      const repeated = await next.request.beforeDispatch!();
+      expect(repeated.accepted).toBe(true);
+      expect(currentExecution()?.turns).toBe(2);
+
+      const previousLiveState = engine.getLiveSessionState;
+      const previousReplay = engine.getStreamReplaySnapshot;
+      if (blocker === "blocking background work") {
+        engine.getLiveSessionState = () => ({
+          ...previousLiveState(),
+          backgroundWorkActive: true,
+          hasBackgroundWork: true,
+          backgroundWorkBlocksContinuation: true,
+        });
+      } else if (blocker === "waiting for the user") {
+        engine.getLiveSessionState = () => ({
+          ...previousLiveState(),
+          waitingForUser: true,
+        });
+      } else {
+        engine.getStreamReplaySnapshot = () => ({
+          ...previousReplay(),
+          pendingInteractiveRequests: [
+            {
+              type: "permission:request",
+              data: { requestId: "pending-approval" },
+            },
+          ],
+        });
+      }
+
+      expect(admitted.validateAtCommit?.()).toMatchObject({
+        accepted: false,
+        error: expectedError,
+      });
+      expect(repeated.validateAtCommit?.()).toMatchObject({
+        accepted: false,
+        error: expectedError,
+      });
+      expect(await next.request.beforeDispatch!()).toMatchObject({
+        accepted: false,
+        error: expectedError,
+      });
+      expect(currentExecution()).toMatchObject({
+        id: executionId,
+        currentQueueId: queueId,
+        turns: 2,
+      });
+      expect(firstQueue).not.toBe(queueId);
+      expect(continuationRequests).toHaveLength(0);
+    },
+  );
+
+  it.each([
+    ["deadline", "deadline_exceeded"],
+    ["no progress", "no_progress_limit_reached"],
+    ["rework", "rework_limit_reached"],
+  ])(
+    "does not reset an exhausted %s budget on same-task continuation",
+    async (budget, reason) => {
+      const first = await prepare(input, `human-budget-${budget}`);
+      const firstQueue = first.request.queueId!;
+      const execution = currentExecution()!;
+      await executionOwner.pauseSessionExecution(id, "user_stopped");
+      await first.request.onTerminal?.({
+        status: "stopped",
+        text: "Persist the original queue terminal",
+        assistantMessagePresent: true,
+      });
+      let guardedDeadline: number;
+      await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+        const current = ledger.execution!;
+        if (budget === "deadline") current.deadlineAt = Date.now() - 1;
+        if (budget === "no progress") current.noProgress = 2;
+        if (budget === "rework") current.reworks = 3;
+        guardedDeadline = current.deadlineAt;
+        return ledger;
+      });
+      const next = await prepareUnpromoted(
+        "Resume the same task without resetting its limits",
+        `human-budget-resume-${budget}`,
+        { ...executeIntent, continuationOf: execution.id },
+      );
+      const rejected = await next.request.beforeDispatch!();
+      expect(rejected).toMatchObject({ accepted: false, error: reason });
+      expect(currentExecution()).toMatchObject({
+        id: execution.id,
+        currentQueueId: firstQueue,
+        turns: 1,
+        deadlineAt: guardedDeadline!,
+        phase: "incomplete",
+        reason,
+      });
+      expect(continuationRequests).toHaveLength(0);
+    },
+  );
+
+  it.each(["pending-write", "unknown-claim"] as const)(
+    "does not resume same-task work with unresolved %s side effects",
+    async (unknownSource) => {
+      const first = await prepare(input, `human-unknown-${unknownSource}`);
+      const firstQueue = first.request.queueId!;
+      const executionId = currentExecution()!.id;
+      if (unknownSource === "pending-write") {
+        await tool(firstQueue, {
+          id: "continuation-unknown-write",
+          name: "Write",
+          stage: "start",
+        });
+      } else {
+        await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+          ledger.delegationClaims = [
+            ...(ledger.delegationClaims ?? []),
+            {
+              toolUseId: "unknown-continuation-claim",
+              taskId: "unknown-task",
+              executionId,
+              state: "unknown",
+            },
+          ];
+          return ledger;
+        });
+      }
+      await first.request.onTerminal?.({
+        status: "complete",
+        text: "The side effect is not proven settled",
+        assistantMessagePresent: true,
+      });
+      expect(currentExecution()).toMatchObject({
+        phase: "paused",
+        reason: "TOOL_OUTCOME_UNKNOWN",
+      });
+      const next = await prepareUnpromoted(
+        "Retry the same work despite unknown writes",
+        `human-unknown-resume-${unknownSource}`,
+        { ...executeIntent, continuationOf: executionId },
+      );
+      expect(await next.request.beforeDispatch!()).toMatchObject({
+        accepted: false,
+        error: "TOOL_OUTCOME_UNKNOWN",
+      });
+      expect(currentExecution()).toMatchObject({
+        id: executionId,
+        currentQueueId: firstQueue,
+        phase: "paused",
+        reason: "TOOL_OUTCOME_UNKNOWN",
+      });
+      expect(continuationRequests).toHaveLength(0);
+    },
+  );
+
+  it("allows a same-task retry after a known pre-dispatch cancel but keeps an unconfirmed dispatch blocked", async () => {
+    const original = await prepare(input, "human-known-cancel-source");
+    const originalQueue = original.request.queueId!;
+    const originalExecution = currentExecution()!;
+    await tool(originalQueue, {
+      id: "known-cancel-preserved-read",
+      name: "Read",
+      stage: "success",
+      output: "Evidence before the canceled continuation",
+    });
+    await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+      ledger.execution = {
+        ...ledger.execution!,
+        reworks: 1,
+        noProgress: 1,
+        lastProgressDigest: "known-cancel-prior-progress",
+      };
+      return ledger;
+    });
+    await executionOwner.pauseSessionExecution(id, "user_stopped");
+    await original.request.onTerminal?.({
+      status: "stopped",
+      text: "Original terminal persisted",
+      assistantMessagePresent: true,
+    });
+
+    const intent: ExecutionIntent = {
+      ...executeIntent,
+      continuationOf: originalExecution.id,
+    };
+    const h1 = await prepareUnpromoted(
+      "First continuation is canceled before dispatch",
+      "human-known-cancel-H1",
+      intent,
+    );
+    const h1Guard = await h1.request.beforeDispatch!();
+    expect(h1Guard.accepted).toBe(true);
+    expect(h1Guard.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()).toMatchObject({
+      id: originalExecution.id,
+      currentQueueId: h1.request.queueId,
+      turns: 2,
+    });
+
+    await h1.request.beforeDispatch!.cancel?.();
+    await h1.request.onTerminal?.({
+      status: "stopped",
+      text: "Native owner confirms H1 never dispatched",
+      assistantMessagePresent: true,
+    });
+    expect(currentExecution()).toMatchObject({
+      id: originalExecution.id,
+      phase: "paused",
+      reason: "stopped",
+      lastSettledQueueId: h1.request.queueId,
+    });
+
+    const h2 = await prepareUnpromoted(
+      "Retry the same task after the known cancellation",
+      "human-known-cancel-H2",
+      intent,
+    );
+    const h2Guard = await h2.request.beforeDispatch!();
+    expect(h2Guard.accepted).toBe(true);
+    expect(h2Guard.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()).toMatchObject({
+      id: originalExecution.id,
+      currentQueueId: h2.request.queueId,
+      originalInput: originalExecution.originalInput,
+      intent: originalExecution.intent,
+      startedAt: originalExecution.startedAt,
+      deadlineAt: originalExecution.deadlineAt,
+      turns: 3,
+      reworks: 1,
+      noProgress: 1,
+      lastProgressDigest: "known-cancel-prior-progress",
+    });
+    expect(
+      store
+        .getSessionMetadata(id)
+        ?.taskOrchestration?.executionEvidence?.map((fact) => fact.id),
+    ).toContain("known-cancel-preserved-read");
+
+    // A rejected/lost dispatch receipt is uncertain, unlike the proven pre-dispatch cancellation above.
+    await h2.admitted({
+      success: true,
+      queueId: h2.request.queueId,
+      dispatchAcceptance: Promise.resolve({
+        accepted: false,
+        error: "dispatch_unconfirmed",
+      }),
+    });
+    await vi.waitFor(() =>
+      expect(currentExecution()).toMatchObject({
+        phase: "paused",
+        reason: "dispatch_unconfirmed",
+      }),
+    );
+    const h3 = await prepareUnpromoted(
+      "Do not replay the unconfirmed H2 dispatch",
+      "human-known-cancel-H3",
+      intent,
+    );
+    expect(await h3.request.beforeDispatch!()).toMatchObject({
+      accepted: false,
+      error: "EXECUTION_PREVIOUS_TURN_UNSETTLED",
+    });
+    expect(currentExecution()).toMatchObject({
+      id: originalExecution.id,
+      currentQueueId: h2.request.queueId,
+      phase: "paused",
+      reason: "dispatch_unconfirmed",
+    });
+  });
+
+  it("does not treat transcript persistence failure as a resumable ordinary turn error", async () => {
+    const first = await prepare(input, "human-transcript-failure");
+    const firstQueue = first.request.queueId!;
+    const executionId = currentExecution()!.id;
+    await first.request.onTerminal?.({
+      status: "error",
+      code: "TRANSCRIPT_PERSISTENCE_FAILED",
+      text: "The terminal transcript could not be durably stored",
+      assistantMessagePresent: true,
+    });
+    expect(currentExecution()).toMatchObject({
+      id: executionId,
+      phase: "incomplete",
+      currentQueueId: firstQueue,
+      lastSettledQueueId: firstQueue,
+      reason: "EXECUTION_TURN_OUTCOME_UNKNOWN",
+    });
+    const next = await prepareUnpromoted(
+      "Continue after a transcript persistence failure",
+      "human-transcript-retry",
+      { ...executeIntent, continuationOf: executionId },
+    );
+    expect(await next.request.beforeDispatch!()).toMatchObject({
+      accepted: false,
+      error: "EXECUTION_TURN_OUTCOME_UNKNOWN",
+    });
+    expect(currentExecution()).toMatchObject({
+      id: executionId,
+      phase: "incomplete",
+      currentQueueId: firstQueue,
+      reason: "EXECUTION_TURN_OUTCOME_UNKNOWN",
+    });
+    expect(continuationRequests).toHaveLength(0);
+  });
+
+  it("rejects stale same-task continuation after a different task replaces it or the original completes", async () => {
+    const first = await prepare(input, "human-stale-source");
+    const firstQueue = first.request.queueId!;
+    const oldExecution = currentExecution()!;
+    await executionOwner.pauseSessionExecution(id, "user_stopped");
+    await first.request.onTerminal?.({
+      status: "stopped",
+      text: "Original task is terminal",
+      assistantMessagePresent: true,
+    });
+    const replacement = await prepare(
+      "Start a genuinely different deliverable",
+      "human-different-task",
+      executeIntent,
+    );
+    const replacementExecution = currentExecution()!;
+    expect(replacementExecution.id).not.toBe(oldExecution.id);
+    const stale = await prepareUnpromoted(
+      "Continue the old deliverable after replacement",
+      "human-stale-old-task",
+      { ...executeIntent, continuationOf: oldExecution.id },
+    );
+    expect(await stale.request.beforeDispatch!()).toMatchObject({
+      accepted: false,
+      error: "EXECUTION_CONTINUATION_CHANGED",
+    });
+    expect(currentExecution()).toMatchObject({
+      id: replacementExecution.id,
+      currentQueueId: replacement.request.queueId,
+      requestId: "human-different-task",
+    });
+    expect(firstQueue).not.toBe(replacement.request.queueId);
+
+    // A completed execution is immutable even when the classifier names its id.
+    const completed = await prepare(
+      "Complete a small task",
+      "human-complete-source",
+    );
+    const completedQueue = completed.request.queueId!;
+    const completedId = currentExecution()!.id;
+    await tool(completedQueue, {
+      id: "complete-source-read",
+      name: "Read",
+      stage: "success",
+      output: "All acceptance criteria are true",
+    });
+    await submitReview(completedQueue, {
+      decision: "accept",
+      summary: "Completed before stale continuation request",
+      checks: [
+        { criterion: 0, toolUseIds: ["complete-source-read"] },
+        { criterion: 1, toolUseIds: ["complete-source-read"] },
+      ],
+    });
+    await completed.request.onTerminal?.({
+      status: "complete",
+      text: "Completed",
+      assistantMessagePresent: true,
+    });
+    const afterCompletion = await prepareUnpromoted(
+      "Continue already completed work",
+      "human-stale-completed",
+      { ...executeIntent, continuationOf: completedId },
+    );
+    expect(await afterCompletion.request.beforeDispatch!()).toMatchObject({
+      accepted: false,
+      error: "EXECUTION_ALREADY_COMPLETED",
+    });
+    expect(currentExecution()).toMatchObject({
+      id: completedId,
+      phase: "completed",
+      lastSettledQueueId: completedQueue,
+    });
+  });
+});
+
+describe("intent classifier execution continuity contract", () => {
+  it("sends the current execution identity and requires an explicit continuationOf field", async () => {
+    const prepared = await prepare(input, "human-classifier-integration");
+    const execution = currentExecution()!;
+    let prompt = "";
+    let systemPrompt = "";
+    engine.runTextUtility = vi.fn(async (options) => {
+      prompt = options.prompt;
+      systemPrompt = options.systemPrompt;
+      return JSON.stringify({
+        ...executeIntent,
+        continuationOf: execution.id,
+      });
+    });
+    const request: DesktopMessageRequest = {
+      text: "Continue this deliverable",
+      clientRequestId: "classifier-probe",
+      sessionId: id,
+      workspacePath: "/synthetic-workspace",
+      scenario: { type: "desktop", surface: "chat" },
+    };
+    const intent = await executionOwner.classifySessionExecutionIntent(
+      engine,
+      request,
+      new AbortController().signal,
+    );
+    expect(intent?.continuationOf).toBe(execution.id);
+    expect(systemPrompt).toContain("Always include continuationOf");
+    expect(JSON.parse(prompt)).toMatchObject({
+      currentExecution: {
+        id: execution.id,
+        intent: execution.intent,
+        phase: execution.phase,
+      },
+      currentUserRequest: request.text,
+    });
+
+    engine.runTextUtility = vi.fn(async () => {
+      const { continuationOf: _relation, ...omitted } = {
+        ...executeIntent,
+        continuationOf: execution.id,
+      };
+      return JSON.stringify(omitted);
+    });
+    await expect(
+      executionOwner.classifySessionExecutionIntent(
+        engine,
+        request,
+        new AbortController().signal,
+      ),
+    ).resolves.toBeUndefined();
+    expect(prepared.request.queueId).toBe(execution.currentQueueId);
   });
 });
 

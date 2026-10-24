@@ -2035,7 +2035,13 @@
       "incomplete": "未完成",
       "completed": "已完成",
       "request": "执行请求",
-      "rounds": "第 {{current}}/{{max}} 轮",
+      "turnCount": "执行轮数：{{count}}",
+      "recovery": {
+        "waitingStatus": "等待模型恢复",
+        "pausedStatus": "模型恢复已暂停",
+        "waiting": "模型正在恢复，已尝试 {{attempt}} 次；预计稍后自动重试",
+        "paused": "模型自动恢复已暂停（已尝试 {{attempt}} 次）"
+      },
       "acceptance": "验收条件",
       "proven": "已验证",
       "coverage": "已证明覆盖 {{covered}}/{{total}} 项",

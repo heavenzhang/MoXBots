@@ -13,7 +13,7 @@ const running: SessionExecution = {
   originalInput: "完成导出改进",
   intent: {
     kind: "execute",
-    objective: "完成导出改进并检查真实行为",
+    objective: "完成导出改进并检查真实行为，确保窄屏下长目标内容仍完整可读。".repeat(4),
     scope: "本地隔离 UI fixture",
     acceptanceCriteria: ["导出文件包含全部字段", "失败后保留已填写内容"],
   },
@@ -40,7 +40,7 @@ const completed: SessionExecution = {
 };
 function Fixture() {
   const [state, setState] = useState<
-    "running" | "completed" | "unknown" | "classification"
+    "running" | "recovery-paused" | "completed" | "unknown" | "classification"
   >("running");
   const execution =
     state === "completed"
@@ -48,12 +48,17 @@ function Fixture() {
       : state === "classification"
         ? undefined
         : running;
+  const recovery = state === "recovery-paused"
+    ? { turnId: running.currentQueueId, status: "paused" as const, attempt: 2, lastStatus: 503, nextRetryAt: Date.now() + 15_000 }
+    : state === "running"
+      ? { turnId: running.currentQueueId, status: "waiting" as const, attempt: 1, lastStatus: 503, nextRetryAt: Date.now() + 15_000 }
+      : undefined;
   return (
     <ThemeRuntimeProvider selection={null} persistBootstrapSnapshot={false}>
       <main className="mx-auto min-h-screen max-w-3xl space-y-3 p-4">
         <h1 className="text-base font-semibold">执行状态 UI 本地隔离验收</h1>
         <div className="flex flex-wrap gap-2">
-          {(["running", "completed", "unknown", "classification"] as const).map(
+          {(["running", "recovery-paused", "completed", "unknown", "classification"] as const).map(
             (value) => (
               <button
                 key={value}
@@ -67,6 +72,7 @@ function Fixture() {
         </div>
         <SessionExecutionStatus
           execution={execution}
+          recovery={recovery}
           admission={
             state === "classification"
               ? {

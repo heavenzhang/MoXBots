@@ -335,7 +335,7 @@ describe('first desktop execution intent utility', () => {
     vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({
       ...catalog, settings: { classifier },
     });
-    const intent = JSON.stringify({ kind: 'execute', objective: 'Create a local page', scope: 'This workspace', acceptanceCriteria: ['Page exists'] });
+    const intent = JSON.stringify({ kind: 'execute', objective: 'Create a local page', scope: 'This workspace', acceptanceCriteria: ['Page exists'], continuationOf: null });
     const transport = vi.fn(async () => intent);
     vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
     const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
@@ -349,6 +349,7 @@ describe('first desktop execution intent utility', () => {
       expect(transport).not.toHaveBeenCalled();
     } else {
       expect(result?.kind).toBe('execute');
+      expect(result?.continuationOf).toBeNull();
       expect(transport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ classifier }));
     }
     expect(state.query).not.toHaveBeenCalled();

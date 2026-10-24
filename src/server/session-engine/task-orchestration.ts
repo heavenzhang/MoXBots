@@ -1,5 +1,5 @@
 import { parseTaskReviewCommand, sameTaskReview } from '../../shared/sessionTaskReviewCommand';
-import { getSessionData, getSessionMetadata, updateSessionMetadata } from '../SessionStore';
+import { getBuiltinModelRecovery, getSessionData, getSessionMetadata, updateSessionMetadata } from '../SessionStore';
 import { broadcast } from '../sse';
 import { applySessionTaskAction, collectTaskAttempts, emptyTaskLedger, mergeTaskObservations, projectSessionTasks,
   type SessionTaskAction, type SessionTaskAttempt, type SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
@@ -179,7 +179,11 @@ export async function readSessionTasks(engine: SessionEngine) {
       || native?.items.some(item => item.agentId === attempt.agentId && (item.native?.activity === 'running'
         || !item.native && item.status === 'running' && item.activation?.id === attempt.lifecycle.activation?.id)) || false,
   }) };
-  return { sessionId, ledger: confirmed, tasks: projectSessionTasks(confirmed, messages), messages, planSupport: readSessionPlanSupport(engine) };
+  const recovery = engine.kind === 'builtin' ? getBuiltinModelRecovery(sessionId) : undefined;
+  const executionRecovery = recovery && recovery.turnId === confirmed.execution?.currentQueueId
+    ? { turnId: recovery.turnId, status: recovery.status, attempt: recovery.attempt,
+        lastStatus: recovery.lastStatus, nextRetryAt: recovery.nextRetryAt } : undefined;
+  return { sessionId, ledger: confirmed, tasks: projectSessionTasks(confirmed, messages), messages, planSupport: readSessionPlanSupport(engine), executionRecovery };
 }
 
 export async function mutateSessionTasks(engine: SessionEngine, sessionId: string, action: SessionTaskAction) {
