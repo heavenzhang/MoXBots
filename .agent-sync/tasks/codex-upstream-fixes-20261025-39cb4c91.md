@@ -13,15 +13,15 @@
 
 ## Acceptance criteria
 
-- [ ] 输入恢复：ambient/display task 不永久阻止精确 Query 重建；真实后台活动仍阻挡，Stop 后新消息可接纳。
-- [ ] 新对话：旧会话忙碌、恢复或绑定渠道时独立新建；旧任务/历史/绑定保留，新消息不混入旧 projection。
-- [ ] WebView/SSE：重载恢复标签，快照/分页恢复不堵塞 SSE；保留 MoXBots 原恢复/ledger/Stop机制。
-- [ ] Native：配对 JS/Rust 事件释放与原生退出投影，既有精确进程组清理、升级重启和录音确认保持。
-- [ ] 滚动：旧索引事务让位于新滚动；小数尺寸保留，Chrome/WebKit必要回归。
-- [ ] Runtime：显式 Claude SDK 不被默认 DSH 替代；DSH 恢复失败退役对应代次，不重放不确定操作。
-- [ ] 记忆：已有自定义规则由初始化、维护脚本及任务提示共同尊重，不修改用户真实文件。
-- [ ] 渠道：停止再启用按候选配置校验；拒绝时不落盘。
-- [ ] 主 Agent 完整 diff 审查、关键 Node/Rust/DOM/隔离原生与页面检查通过；保留失败和证据。
+- [x] 输入恢复：ambient/display task 不永久阻止精确 Query 重建；真实后台活动仍阻挡，Stop 后新消息可接纳。
+- [x] 新对话：旧会话忙碌、恢复或绑定渠道时独立新建；旧任务/历史/绑定保留，新消息不混入旧 projection。
+- [x] WebView/SSE：重载恢复标签，快照/分页恢复不堵塞 SSE；保留 MoXBots 原恢复/ledger/Stop机制。
+- [x] Native：配对 JS/Rust 事件释放与原生退出投影，既有精确进程组清理、升级重启和录音确认保持。
+- [x] 滚动：旧索引事务让位于新滚动；小数尺寸保留，Chrome/WebKit必要回归。
+- [x] Runtime：显式 Claude SDK 不被默认 DSH 替代；DSH 恢复失败退役对应代次，不重放不确定操作。
+- [x] 记忆：已有自定义规则由初始化、维护脚本及任务提示共同尊重，不修改用户真实文件。
+- [x] 渠道：停止再启用按候选配置校验；拒绝时不落盘。
+- [x] 主 Agent 完整 diff 审查、关键 Node/Rust/DOM/隔离原生与页面检查通过；保留失败和证据。
 - [ ] 同步最新 main、遵守既有负责人 CI/主干流程、远端主干包含本任务；精确 SHA/证据交接并确认接收。
 
 ## Completed
@@ -33,11 +33,11 @@
 
 | 工作包 | Owner / 分支 | 状态 | 依赖与下一步 |
 | --- | --- | --- | --- |
-| 1 输入、6 Runtime、8 渠道、整体集成 | root / codex/upstream-fixes-20261025 | 实现中 | 源码/测试，等待工作包回执后集成 |
-| 2 新对话、3 重载/SSE | session_transitions / codex/upstream-transitions-20261025 | 实现中 | 独立树，agent-session/lifecycle 接口由 root 提供 |
-| 4 Native 退出/事件 | native_lifecycle / codex/upstream-native-20261025 | 实现中 | 配对 vendor 和隔离 fixture，Cargo jobs=2 串行重负载 |
-| 5 滚动、7 记忆 | scroll_memory / codex/upstream-scroll-memory-20261025 | 实现中 | 依赖补丁隔离验证，后续 Rust 测试等 Cargo 槽 |
-| 独立验收 | 后续复用非实现者工作 Agent | 待集成 | 固定合成页面和精确源码，不能代替真实 Provider/安装验收 |
+| 1 输入、6 Runtime、8 渠道、整体集成 | root / codex/upstream-fixes-20261025 | 本地验收完成 | 候选推送、原owner共享CI/main及远端核验 |
+| 2 新对话、3 重载/SSE | session_transitions / codex/upstream-transitions-20261025 | 已集成并修复Rust窄依赖 | Node/DOM和组合Rust通过，保留原owner门禁 |
+| 4 Native 退出/事件 | native_lifecycle / codex/upstream-native-20261025 | 已集成/验收 | 配对vendor/真实fixture通过；附必要Windows字节保护 |
+| 5 滚动、7 记忆 | scroll_memory / codex/upstream-scroll-memory-20261025 | 已集成/验收 | Chromium/WebKit、跨语言parity/Task/Skill62通过 |
+| 独立验收 | 复用非实现者工作 Agent | 已完成本地审阅 | 395项切换、67项DOM/7项滚动补丁独立复跑；不替代真实Provider/安装验收 |
 
 选择依据：三条工作线可用独立 worktree 隔离；原生及切换跨层风险使用 sol/high，确定性滚动/记忆使用 luna/medium。当前主 Agent 不声称切换模型。外部未调用：内置 Agent 直接操作现有 Git/原生测试现场，避免另建工具回调链。实际 token/费用未知，后续只报告实测。
 
@@ -54,6 +54,7 @@
 
 - `project-sync observe/start/task-init --remote https://github.com/heavenzhang/MoXBots.git`：PASS，基线见头部。
 - 检查证据位于 `dev-docs/upstream-fixes-20261025/`（本轮生成）。
+- 组合：Node1387、Rust211（1既有opt-in忽略）、script344（14平台skip）、类型、lint、Clippy redlines、dep边界、license/theme/Web构建、Chromium/WebKit和隔离原生fixture通过。失败、并发控制与全仓Rustfmt既有差异见acceptance；不得简化为所有检查或生产均已通过。
 
 ## Blockers and unknowns
 
@@ -62,4 +63,4 @@
 
 ## Next step
 
-- root 适配上游 `014747b48` 并对输入/Stop回归，集成 Runtime/渠道修复；跟踪三个工作包的提交和交叉接口。
+- 固定远端候选、同步最新main，向 `01a12bc2` 提交精确SHA/base/tree及证据，请其协调共享CI/main；本聊天跟踪到远端main确实包含成果，再向两单元正式交接。

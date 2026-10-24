@@ -1,0 +1,84 @@
+{
+  "task": "MB-UPSTREAM-FIXES-20261025",
+  "base": "848e333455c7045534bf51a951a19b6945c6aa1a",
+  "codeHead": "1d03c82ea286d763bcac9971843910b7efb3f13b",
+  "checks": {
+    "nodeBehavior": {
+      "passed": 1387,
+      "failed": 0,
+      "skipped": 0,
+      "files": 23
+    },
+    "buildScripts": {
+      "passed": 344,
+      "failed": 0,
+      "skipped": 14,
+      "testConcurrency": 2,
+      "cases": 358
+    },
+    "rustBehavior": {
+      "passed": 211,
+      "failed": 0,
+      "ignored": 1,
+      "ignoredReason": "existing opt-in prepared Cuse native smoke"
+    },
+    "typecheck": "passed",
+    "eslint": "passed",
+    "dependencyBoundaries": {
+      "errors": 0,
+      "existingNoOrphanWarnings": 18
+    },
+    "classification": "passed",
+    "webProductionConfigBuild": "passed",
+    "chromium1243": "passed",
+    "webkit": "passed",
+    "rustCompile": "passed",
+    "rustClippyRedlines": "passed",
+    "pairedNativeScripts": {
+      "passed": 33,
+      "failed": 0
+    },
+    "nativeQuitFixture": {
+      "passed": 6,
+      "failed": 0
+    },
+    "nativeEventFixture": "passed; all 9 checkpoints zero callback/descriptor/table and late delivery",
+    "agentDocs": "passed",
+    "fullRustfmt": {
+      "status": "notPassedPreexistingStyle",
+      "evidence": "199 reported hunks include unchanged src-tauri/build.rs; no formatting rewrite of unrelated source or vendor",
+      "ciGate": false
+    }
+  },
+  "failureBoundaries": [
+    "Before input repair: ambient and Stop regression failed; repaired 3/3 pass",
+    "First Rust compile: missing narrow port/visibility dependency; repaired before compile/tests",
+    "Default full build-script concurrency: two subprocess timeouts; unchanged assertions pass with concurrency 2",
+    "Earlier author Chromium footer timeout lacked geometry evidence; not attributed; current integrated Chromium/WebKit full passes"
+  ],
+  "logSha256": {
+    "input-before.log": "88ba72df7ca8b9d8fc6bec4b8c9994d43f0ae789c074fbce7bb36d5a3c8a6081",
+    "input-after.log": "71d7e7399d48567f5e30bef075cbfa71820de5e72f95b7c14573af98dc47deb2",
+    "combined-behavior.log": "c2d8e8c708f6df4009cca279ce06eead16284e6d9d3eb6cf3d5e765d5afe1b3c",
+    "combined-build-scripts.log": "94a4279a370c65d990fa92d753e54cab19b3b64e1f08099033a885ac1a76246d",
+    "combined-build-scripts-bounded.log": "e2c3367fd07755a0cbca8859cfc8da2f67542e84e90abb656f36f16b242d962f",
+    "combined-typecheck-final.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "combined-lint.log": "4b26e86573abb5abbed064058ad9ba1b377a4eadbd38d84469a6bcecf2160deb",
+    "combined-dependencies.log": "74447ee88aba9e008c39a63e152e444e53bc2112e88ffe1bb1614db81cebaca5",
+    "combined-classification.log": "573fbaf6c8891e3fd935cbedbbe52b8e93952de213fe05ba69311018b0ab4897",
+    "combined-web-build.log": "84b68d7545cd201ac4d51699b20c92f35a1af3e205f14069ee637dc3bcea99d0",
+    "combined-browser-chromium.log": "2a12b69b1554215f623f704bce8ee9481771ae92acf8de466e8a5ed69975beaa",
+    "combined-browser-webkit.log": "94241d3e8e220acb3d19e585d85101b64b6bb5708d3154ff5bac1947a079cb87",
+    "combined-rust-compile-final.log": "dcc5c47118abb524d3158b9f94e82aa0546b42b71afb152d40de20411b9fd711",
+    "combined-rust-tests.log": "fae2284621582016b2a38b87c9220114a14838c04bffe363c2b7e5173ba3f2b3",
+    "combined-rust-sidecar-regression.log": "e3878653903bc9069d36514f3eb83666a92a45f0bf2f289c62983e4f9ab7591d",
+    "combined-rust-clippy.log": "20ceb1610cf8ee305dbe94a88f274ab036ade10f6d55cf8e8ede997e0c9fc0e0",
+    "combined-native-script-platform-final.log": "74297f872485c88932bfbd340dcef4b9bc3564dbff3665238384cd48eb79792a",
+    "agent-docs.log": "0455c8d31d1bf7e1152cf05bf37f04d5fa4d6294159dd9b2659f5c5a7d885d0c",
+    "rust-format-check.log": "a714ac2918c87e09df5af1d699db8b583e16e92a256fb128c6fdc3129945dd3c"
+  },
+  "mainDelivery": "pending owner-coordinated CI/main and remote verification",
+  "deployment": "not performed; next unfrozen batch only",
+  "formalArtifact": null,
+  "formalVersionAllocatedByThisTask": false
+}

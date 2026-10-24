@@ -7,13 +7,13 @@
 | 组 | 实现与验证入口 | 当前结果 |
 | --- | --- | --- |
 | 输入恢复 | exact Query SDK activity、Stop quarantine；builtin transcript / query-activity / MCP observer | 原 main 复现 ambient、Stop 两项失败；适配后三项回归通过，原 durable recovery Stop wrapper 保留 |
-| 新对话隔离 | Rust lifecycle + SessionEngine mutation + TabProvider projection | Node/DOM组合通过；Rust编译发现两处窄接口依赖，修复提交待组合复核 |
+| 新对话隔离 | Rust lifecycle + SessionEngine mutation + TabProvider projection | Node/DOM及组合Rust通过；端口/可见性窄依赖已修复，source与lease回归通过 |
 | Renderer/SSE恢复 | main_renderer、Tab persistence、history-free live snapshot | Node/DOM/CLI与非实现者组合审阅通过；真实WebContent/Provider交既有发布负责人组织 |
 | 原生退出与事件 | 配对 vendor/JS 依赖 | 作者原生退出6/6、真实WKWebView九个压力检查点资源归零；上游原始vendor字节/许可保留 |
-| 滚动定位 | Virtuoso取消/小数几何 | 主 Agent集成树Chromium1243完整通过；作者WebKit完整通过，主 Agent组合WebKit复核中 |
-| Runtime选择/DSH退役 | runtime_identity、process-host | 19项DSH单测及合成外部Runtime集成通过；Rust测试待统一执行 |
-| 自定义记忆兼容 | memory_rules、managed Task prompt、bundled Skill | 脚本/renderer/Skill单测通过；Rust/TS内置Skill快照62，Rust parity及Task回归待统一执行 |
-| 渠道重新启用 | locked config候选enabled校验 | 移植及新增平台矩阵已接入；Rust回归待统一执行 |
+| 滚动定位 | Virtuoso取消/小数几何 | 主 Agent集成树Chromium1243、WebKit完整通过，独立依赖/DOM复核通过 |
+| Runtime选择/DSH退役 | runtime_identity、process-host | DSH单测、合成外部Runtime集成及Rust runtime identity矩阵通过 |
+| 自定义记忆兼容 | memory_rules、managed Task prompt、bundled Skill | 脚本/renderer/Skill及Rust parity/Task回归通过；Rust/TS内置Skill快照62 |
+| 渠道重新启用 | locked config候选enabled校验 | Rust新增平台矩阵、重复启停与拒绝不落盘回归通过 |
 
 ## 冲突与必要依赖
 
@@ -31,12 +31,15 @@
 - `combined-dependencies.log`：0错误、18项既有 no-orphans 警告；无抑制。
 - `combined-classification.log`：460 server tests分类通过。
 - `combined-web-build.log`：Web生产配置构建及license/theme校验通过；这是静态构建，未生成正式App制品或发布。
-- `combined-scripts.log`：初始组合脚本49/49；加入Windows字节保护后的完整 build-scripts复核另记录，不把两次重复项相加。
+- `combined-build-scripts-bounded.log`：全量43文件、344 PASS / 0 FAIL / 14平台专属SKIP（共358项），test-concurrency=2、断言不变。此前默认并发有两项子进程超时，失败日志保留；未改计时阈值或断言。配对框架及三套vendor真实Git autocrlf checkout定向33/33通过。
 - `combined-browser-chromium.log`：root集成树真实生产 MessageList/Markdown/controller/CSS，隔离Chromium1243全部滚动检查通过。证据临时目录 `myagents-scroll-verification-IGJ9q5`。
 - 原生作者证据：`../upstream-native-20261025/{acceptance.md,native-evidence.json,source-invariants.json}`。主 Agent核查原ExitRequested handler、原updater/process-tree owner未被替换。
+- `combined-browser-webkit.log`：root组合树完整WebKit通过，证据 `myagents-scroll-verification-WxuYba`；主 Agent已查看Chromium最终页面，生产组件状态行与正文无重叠，几何由脚本逐项断言。
+- Rust：固定1.92、offline/locked、jobs=2组合test编译通过；直接运行该二进制所发现的相关用例134 PASS / 1既有Cuse手动验收忽略，再补不重叠77项Sidecar回归全部通过，共 **211 PASS / 0 FAIL / 1 IGNORED**。`rust-selection.json` / `rust-sidecar-selection.json`保留精确选择和编译源码；Clippy项目redlines通过。
+- 完整 `cargo fmt -- --check` 发现199处既有风格差异，包含本任务未修改的build.rs；项目CI未把全仓格式列为门禁。本任务不改写无关源码或原始vendor。新增/移植Rust已由rustfmt解析，类型、行为、Clippy和非vendor差异检查通过。
 - 非作者审阅：`review-transitions.md`，独立395项Node/DOM通过，无阻断发现；scroll有独立67项DOM/7项依赖补丁复跑；输入恢复有独立exact Query/Stop静态审阅。
 
-原始命令日志在本目录忽略的 `evidence/`。作者各测试池存在重叠，只按该组合结果报告，不累计作者全部次数。Rust、完整script、最终远端main与交接状态将在收尾更新。
+原始命令日志在本目录忽略的 `evidence/`；小型结果与日志摘要在 `checks.json`，保留机制的Git对象核对在 `compatibility-proof.json`。作者各测试池存在重叠，只按该组合结果报告，不累计作者全部次数。当前本地验收完成，精确候选的共享CI、远端main核验和负责人正式接收仍待进行。
 
 ## 失败证据与边界
 
