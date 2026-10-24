@@ -893,3 +893,7 @@ Same sole desktop/macOS/updater and combined CI/main owner `01a12bc2-907a-7702-b
 ## MOXBOTS-0521 first-input correction
 
 Root01a12bc2 retains sole desktop/updater/sharedCI ownership. Signed521.1 exposed absent-modelMode strict-comparison failure in tool-free intent classification; preserve failure evidence and immutable521.1. Correct only default-mode policy reuse and meaningful real-adapter regression from main71871. New build521.2 is reserved after exact source/CI/main acceptance; no queued features, repeat521.1 build or changed external scope. Same corrected artifact must pass necessary native path then local install and owned stable promotion. Business remains paused without replay; blocked memory100 remains excluded from restoration.
+
+## MOXBOTS-0521 corrected521.2 combined freeze
+
+Root01a12bc2 accepts reviewed stability product389070b2/fulltip4273ea1f before any521.2 source/build freeze, together with normalmain95c6 (PR200 default-auto fix). Root combined448/type/lint pass; author673 and nativeSDK synthetic4 modes remain separately labelled. This corrects confirmed stream/admission/TaskGoal/host-gate defects within the current release, not unrelated queued features. Source521.2 is fixed only after the combined exact-head CI/main closure; one new immutable artifact, necessary signed-client realProvider path, local installation and stable distribution remain pending. No change to Host/mobile/cloud deployment ownership. Frozen521.1 remains failed/preserved, old519 rollback unchanged.

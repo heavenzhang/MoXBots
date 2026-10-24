@@ -18,6 +18,7 @@ import {
 } from "../../shared/sessionTaskDispatch";
 import { mutateSessionTaskLedger } from "./task-orchestration";
 import type { SessionEngine } from "./types";
+import type { TurnIdentity } from "../session-core/turn-queue";
 
 const terminalExecutionPhases = new Set(["paused", "incomplete", "completed"]);
 const activeClaimStates = new Set(["reserved", "running", "unknown"]);
@@ -393,9 +394,14 @@ function isTaskLedgerCli(name: string, input: unknown): boolean {
     return (
       typeof command === "string" && !/(?:^|\s)--data(?:\s|$)/.test(command)
     );
-  return ["ensure", "bind", "package", "review", "execution_review", "list"].includes(
-    String(parsed.kind),
-  );
+  return [
+    "ensure",
+    "bind",
+    "package",
+    "review",
+    "execution_review",
+    "list",
+  ].includes(String(parsed.kind));
 }
 
 function opaque(name: string): boolean {
@@ -408,6 +414,8 @@ function opaque(name: string): boolean {
 export async function authorizeSessionTaskTool(input: {
   sessionId: string;
   queueId?: string;
+  /** Captured from the original native turn, never model input or source labels. */
+  turnIdentity?: TurnIdentity | null;
   toolUseId: string;
   name: string;
   input: unknown;
@@ -421,7 +429,24 @@ export async function authorizeSessionTaskTool(input: {
   const execution = ledger?.execution;
   if (!execution) return undefined; // Preserve legacy non-execution runtime behavior.
   const queueId = input.queueId;
-  if (!queueId || queueId !== execution.currentQueueId || !input.isCurrent()) {
+  const independentOwner =
+    !!queueId &&
+    queueId !== execution.currentQueueId &&
+    !queueId.startsWith("session-execution:") &&
+    input.turnIdentity?.queueId === queueId &&
+    ["task", "goal"].includes(input.turnIdentity.owner.kind) &&
+    !!input.turnIdentity.owner.id &&
+    // A child needs the native Query's exact launch identity. A model-supplied
+    // agent id (or a missing task_started receipt) cannot inherit this bypass.
+    (!input.agentId || !!input.nativeLaunchToolUseId) &&
+    !ledger.delegationClaims?.some(
+      (claim) => claim.toolUseId === input.nativeLaunchToolUseId,
+    );
+  if (
+    !input.isCurrent() ||
+    !queueId ||
+    (queueId !== execution.currentQueueId && !independentOwner)
+  ) {
     if (executionActive(execution.phase))
       return message(
         SESSION_TASK_DISPATCH_ERRORS.staleTool,
@@ -429,11 +454,11 @@ export async function authorizeSessionTaskTool(input: {
       );
     return undefined;
   }
-  if (terminalExecutionPhases.has(execution.phase))
+  if (!independentOwner && terminalExecutionPhases.has(execution.phase))
     return message(SESSION_TASK_DISPATCH_ERRORS.staleTool, "行动已暂停或结束");
 
   const active = claims(ledger);
-  if (input.agentId) {
+  if (input.agentId && !independentOwner) {
     if (rootTools.has(input.name))
       return message(
         SESSION_TASK_DISPATCH_ERRORS.childNested,
@@ -529,6 +554,17 @@ export async function authorizeSessionTaskTool(input: {
   }
 
   if (rootTools.has(input.name)) {
+    // Independent Task/Goal admission (including proven native children) keeps
+    // its original delegation/permission policy, just as without an ordinary
+    // execution ledger. Ordinary packages cannot grant it extra permissions.
+    // It cannot acquire a package/claim from an unrelated ordinary execution.
+    if (independentOwner)
+      return active.length
+        ? message(
+            SESSION_TASK_DISPATCH_ERRORS.resourceConflict,
+            "仍有活动任务持有资源，请先核验其结果再启动其他执行",
+          )
+        : undefined;
     // Only native background runs expose the exact launch/task lifecycle needed
     // for identity-bound resources. A synchronous text return is not that proof.
     if (object(input.input)?.run_in_background !== true)

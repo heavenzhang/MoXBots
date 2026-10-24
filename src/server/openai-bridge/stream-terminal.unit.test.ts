@@ -79,11 +79,10 @@ describe.each(['failover', 'context', 'both'] as const)('%s terminal delivery', 
     const text = first.text();
     const rejected = expect(text).rejects.toThrow();
     abort.abort();
-    if (mode === 'context') upstream.controller.enqueue(enc.encode(terminal));
-    else {
-      expect(upstream.cancel).toHaveBeenCalledTimes(1);
-      expect(() => upstream.controller.enqueue(enc.encode(terminal))).toThrow();
-    }
+    // Both wrappers now release a pending upstream read on Stop. A late
+    // provider terminal cannot enter the closed transport or settle the turn.
+    expect(upstream.cancel).toHaveBeenCalledTimes(1);
+    expect(() => upstream.controller.enqueue(enc.encode(terminal))).toThrow();
     await rejected;
     const next = h.run(response([terminal]).source, 'next-distinct');
     expect((await next.response).status).toBe(499);
