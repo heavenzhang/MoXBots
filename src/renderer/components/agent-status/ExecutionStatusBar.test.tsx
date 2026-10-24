@@ -295,6 +295,100 @@ describe("unified execution status", () => {
       screen.queryByRole("button", { name: /任务编排|子 Agent/ }),
     ).not.toBeInTheDocument();
   });
+
+  it("shows session execution even when no Goal, todos or subagents exist", async () => {
+    tab.messages = [];
+    tab.agentPlanTodos = [];
+    tab.sessionState = "idle";
+    const execution = {
+      id: "execution-only",
+      requestId: "request-only",
+      originalInput: "修复导出",
+      intent: {
+        kind: "execute",
+        objective: "修复并核验导出",
+        scope: "导出功能",
+        acceptanceCriteria: ["文件字段齐全"],
+},
+      phase: "running",
+      startedAt: 10,
+      deadlineAt: 1_800_010,
+      turns: 1,
+      reworks: 0,
+      noProgress: 0,
+      currentQueueId: "q1",
+    };
+    tab.apiGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes("task-orchestration")
+          ? {
+              success: true,
+              sessionId: tab.sessionId,
+              ledger: { ...emptyTaskLedger(), execution },
+            }
+          : { success: true },
+      ),
+    );
+    render(<ExecutionStatusBar />);
+    expect(await screen.findByText("修复并核验导出")).toBeInTheDocument();
+    expect(screen.getByText("运行中")).toBeInTheDocument();
+    expect(screen.queryByText(/任务编排/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/目标模式/)).not.toBeInTheDocument();
+  });
+
+  it("does not project a prior completed execution under a newer unconfirmed request", async () => {
+    tab.messages = [];
+    tab.agentPlanTodos = [];
+    tab.sessionState = "idle";
+    const prior = {
+      id: "old-execution",
+      requestId: "old-request",
+      originalInput: "旧请求",
+      intent: {
+        kind: "execute",
+        objective: "旧请求已完成的目标",
+        scope: "旧范围",
+        acceptanceCriteria: ["旧条件"],
+      },
+      phase: "completed",
+      startedAt: 10,
+      deadlineAt: 1_800_010,
+      turns: 2,
+      reworks: 0,
+      noProgress: 0,
+      currentQueueId: "old-q",
+      assessment: {
+        decision: "accept",
+        summary: "旧请求已完成",
+        checks: [{ criterion: 0, toolUseIds: ["old-tool"] }],
+      },
+    };
+    tab.apiGet.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.includes("task-orchestration")
+          ? {
+              success: true,
+              sessionId: tab.sessionId,
+              ledger: {
+                ...emptyTaskLedger(),
+                execution: prior,
+                executionAdmission: {
+                  requestId: "new-request",
+                  queueId: "new-q",
+                  error: "INTENT_UNCONFIRMED",
+                },
+              },
+            }
+          : { success: true },
+      ),
+    );
+    render(<ExecutionStatusBar />);
+    expect(
+      await screen.findByText("执行意图未确认 · 自动续跑未启用"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("已完成")).not.toBeInTheDocument();
+    expect(screen.queryByText("旧请求已完成的目标")).not.toBeInTheDocument();
+  });
 });
 
 function planOnly() {

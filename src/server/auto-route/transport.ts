@@ -38,7 +38,16 @@ export interface ClassifierTransportDeps {
 function messagesBody(request: ClassifierTransportRequest): string {
   return JSON.stringify({
     model: request.classifier.model,
-    max_tokens: CLASSIFIER_MAX_TOKENS,
+    max_tokens:
+      request.maxTokens === undefined
+        ? CLASSIFIER_MAX_TOKENS
+        : Math.max(
+            16,
+            Math.min(
+              1536,
+              Math.trunc(request.maxTokens) || CLASSIFIER_MAX_TOKENS,
+            ),
+          ),
     temperature: 0,
     system: request.system,
     messages: [{ role: 'user', content: request.prompt }],

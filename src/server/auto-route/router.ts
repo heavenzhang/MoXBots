@@ -32,6 +32,8 @@ import { createAutoRouteClassifier, type AutoRouteClassifier, type ClassifyOutco
 
 import { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
 import { AutoRoutePoolUnavailableError } from './errors';
+import { getModelHealth, modelFailureDomain } from "./model-health";
+import type { ClassifierTransport } from './classifier';
 export { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
 
 /** Provider env the Session would run this model with; 'subscription' for SDK-native. */
@@ -54,10 +56,18 @@ export function autoRouteEffort(entry: AutoRouteCatalogEntry | undefined, tier: 
 }
 
 let sharedClassifier: AutoRouteClassifier | undefined;
+let sharedTransport: ClassifierTransport | undefined;
 
 /** Process-wide classifier with the real transport, created on first use. */
 export async function getAutoRouteClassifier(): Promise<AutoRouteClassifier> {
   if (sharedClassifier) return sharedClassifier;
+  sharedClassifier ??= createAutoRouteClassifier(await getAutoRouteTransport());
+  return sharedClassifier;
+}
+
+/** Same protocol/auth/proxy authority for tier and semantic intent utility calls. */
+export async function getAutoRouteTransport(): Promise<ClassifierTransport> {
+  if (sharedTransport) return sharedTransport;
   const [{ createClassifierTransport }, proxy, port, agentSession, titles] = await Promise.all([
     import('./transport'),
     import('../proxy-state'),
@@ -65,14 +75,14 @@ export async function getAutoRouteClassifier(): Promise<AutoRouteClassifier> {
     import('../agent-session'),
     import('../title-generator'),
   ]);
-  sharedClassifier ??= createAutoRouteClassifier(createClassifierTransport({
+  sharedTransport ??= createClassifierTransport({
     resolveEnv: (providerId, model) => resolveAutoRouteEnv({ providerId, model }),
     getProxyForProviderUrl: proxy.getProxyForProviderUrl,
     getSidecarPort: port.getSidecarPort,
     startOneShotBridge: (env, model, description) => agentSession.startOneShotBridge(env, model, description),
     generateUtilityText: (task, model, env) => titles.generateUtilityText(task, model, env),
-  }));
-  return sharedClassifier;
+  });
+  return sharedTransport;
 }
 
 export interface RouteTurnInput {
@@ -134,6 +144,12 @@ export async function routeTurn(
     if (input.accept && !input.accept(entry)) return false;
     const env = envFor(entry);
     if (!env) return false;
+    if (
+      env !== 'subscription' &&
+      env.baseUrl &&
+      getModelHealth({ baseUrl: env.baseUrl })?.coolingDown
+    )
+      return false;
     if (input.freshHistory) return true;
     // An existing conversation is checked even when the current model is
     // unknown (Session default): its env still fixes the history identity.
@@ -190,6 +206,21 @@ export async function routeTurn(
       return !!primaryEnv && !!candidateEnv && canResumeAcrossProviderBoundary(
         { ...primaryEnv, model: primary.model }, { ...candidateEnv, model: candidate.model },
       );
+    },
+    recoveryPriority: (candidate, primary) => {
+      const candidateEnv = envFor(candidate),
+        primaryEnv = envFor(primary);
+      if (
+        !candidateEnv ||
+        candidateEnv === 'subscription' ||
+        !primaryEnv ||
+        primaryEnv === 'subscription'
+      )
+        return 1;
+      return modelFailureDomain({ baseUrl: candidateEnv.baseUrl ?? "" }) ===
+        modelFailureDomain({ baseUrl: primaryEnv.baseUrl ?? "" })
+        ? 1
+        : 0;
     },
   });
   if (!decision) {

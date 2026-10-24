@@ -217,6 +217,10 @@ export async function applyAutoRouteAdmission(
     setAutoRouteSessionState(input.sessionId, {
       tier: decision.tier,
       primary: { providerId: target.providerId, model: target.model },
+      candidates: decision.candidates?.map((candidate) => ({
+        providerId: candidate.providerId,
+        modelId: candidate.model,
+      })),
       ...(decision.backup ? { backup: { providerId: decision.backup.providerId, modelId: decision.backup.model } } : {}),
     });
 
@@ -226,6 +230,10 @@ export async function applyAutoRouteAdmission(
       model: target.model,
       ...(effort !== undefined ? { effort } : {}),
       reason: decision.reason,
+      candidates: decision.candidates?.map((candidate) => ({
+        providerId: candidate.providerId,
+        model: candidate.model,
+      })),
       ...(decision.backup ? { backup: { providerId: decision.backup.providerId, model: decision.backup.model } }
         : { backupUnavailableReason: 'no-candidate' as const }),
       ...(result.classifier ? { classifierModel: result.classifier.model } : {}),

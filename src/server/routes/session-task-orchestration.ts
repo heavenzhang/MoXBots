@@ -2,6 +2,13 @@ import { z } from 'zod';
 import { getSessionEngine } from '../session-engine';
 import { actOnSessionPlan, readSessionPlanSupport, mutateSessionPlan, mutateSessionTasks, readSessionTasks } from '../session-engine/task-orchestration';
 import { verifySessionUserAction } from '../session-engine/user-action-proof';
+import { executionAssessmentSchema } from "../../shared/sessionExecution";
+import {
+  requestSessionExecutionReview,
+  reconcileSessionExecution,
+} from "../session-engine/session-execution";
+import { registerSessionTaskPackage } from "../session-engine/session-task-dispatch";
+import { taskPackageSchema } from "../../shared/sessionTaskDispatch";
 
 const identifier = z.string().min(1).max(256).refine(s => Array.from(s).every(char => char.charCodeAt(0) >= 32));
 const common = { taskId: identifier, expectedRevision: z.number().int().nonnegative().safe() };
@@ -24,7 +31,8 @@ const userAction = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('request_revision'), ...userTarget, feedback: z.string().trim().min(1).max(4000) }),
 ]);
 
-export async function handleSessionTaskCommand(payload: unknown): Promise<Record<string, unknown>> {
+export async function handleSessionTaskCommand(payload: unknown,
+): Promise<Record<string, unknown>> {
   const engine = getSessionEngine();
   try {
     const value = payload as { kind?: unknown; sessionId?: unknown } | null;
@@ -34,8 +42,38 @@ export async function handleSessionTaskCommand(payload: unknown): Promise<Record
     const { sessionId, ...input } = value;
     if (input.kind === 'list') {
       if (Object.keys(input).some(k => k !== 'kind')) throw new Error('TASK_INVALID_ACTION');
+      await reconcileSessionExecution(engine, sessionId as string);
       const { messages: _messages, ...snapshot } = await readSessionTasks(engine);
       return { success: true, ...snapshot };
+    }
+    if (input.kind === "execution_review") {
+      const review = z.strictObject({
+          kind: z.literal("execution_review"),
+          executionId: identifier,
+          queueId: identifier,
+          assessment: executionAssessmentSchema,
+        })
+        .parse(input);
+      return {
+        success: true,
+        ...(await requestSessionExecutionReview(engine, review)),
+      };
+    }
+    if (input.kind === "package") {
+      const command = z.strictObject({
+          kind: z.literal("package"),
+          expectedRevision: common.expectedRevision,
+          package: taskPackageSchema,
+        })
+        .parse(input);
+      return {
+        success: true,
+        sessionId,
+        ledger: await registerSessionTaskPackage(engine, {
+          ...command.package,
+          expectedRevision: command.expectedRevision,
+        }),
+      };
     }
     const planning = planCommand.safeParse(input);
     if (planning.success) return { success: true, ...await mutateSessionPlan(engine, sessionId as string, planning.data) };

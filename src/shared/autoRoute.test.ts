@@ -255,3 +255,30 @@ describe('explicit auto-routing candidate pool', () => {
     expect(result?.reason).toBe('unavailable-fallback');
   });
 });
+
+it("plans at most three compatible same-tier candidates without invoking them", () => {
+  const table = buildAutoTierTable(
+    ['a', 'b', "c", "d", "e", "f"].map((model) => ({
+      providerId: "fixture",
+      model,
+      catalogTier: 'balanced' as const,
+    })),
+    {},
+  );
+  const decision = decideAutoRoute({
+    table,
+    tier: 'balanced',
+    verdict: 'classified',
+    now: 0,
+    current: { providerId: "fixture", model: 'a' },
+    isUsable: () => true,
+    canRecover: (candidate) => candidate.model !== 'b',
+  });
+  expect(decision?.target.model).toBe('a');
+  expect(decision?.candidates?.map(row => row.model)).toEqual([
+    "c",
+    "d",
+    "e",
+  ]);
+  expect(decision?.backup).toEqual(decision?.candidates?.[0]);
+});

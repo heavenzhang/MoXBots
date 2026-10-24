@@ -158,6 +158,7 @@ import {
   type BuiltinProviderEnvPolicy,
 } from '@/api/persistInputOption';
 import { materializePendingSessionConfig } from '@/api/sessionMaterialize';
+import { ensureChatOwner as ensureChatOwnerTransaction, type ChatOwnerFlight } from './ensureChatOwner';
 import type { CronTask } from '@/types/cronTask';
 import type { SessionGoal, SessionGoalDraftConfig } from '@/types/sessionGoal';
 import { isTerminalGoalStatus } from '@/types/sessionGoal';
@@ -1602,6 +1603,27 @@ function ChatContent({
   messagesRef.current = messages;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
+  const chatOwnerMaterializationRef = useRef<ChatOwnerFlight | null>(null);
+  const chatOwnerAdoptedRef = useRef<{ pendingSessionId: string; owner: { sessionId: string; workspacePath?: string } } | null>(null);
+  // Keep this callback before launcher/Goal/send callbacks so their dependency
+  // arrays never observe a temporal-dead-zone binding.
+  const ensureChatOwner = useCallback((expectedSessionId = sessionId) => ensureChatOwnerTransaction({
+    expectedSessionId,
+    currentSessionId: sessionIdRef,
+    flight: chatOwnerMaterializationRef,
+    adopted: chatOwnerAdoptedRef,
+    isPendingSessionId,
+    workspacePath: agentDir,
+    materialize: (pendingSessionId) => materializePendingSessionConfig({
+      pendingSessionId,
+      tabId,
+      workspacePath: agentDir!,
+      snapshotPatch: {},
+      transport: { postCurrent: (body) => apiPost('/api/session/materialize', body) },
+    }),
+    adopt: (nextSessionId) => adoptMigratedSession(nextSessionId, { sidecarAlreadyMigrated: true }),
+    setSessionMeta,
+  }), [sessionId, agentDir, tabId, apiPost, adoptMigratedSession, setSessionMeta]);
 
   // Refs for one-time project settings sync (see effect after provider change effect)
   // For a launcher-handoff tab (has initialMessage), autoSend owns the INITIAL
@@ -2502,6 +2524,8 @@ function ChatContent({
         // TabProvider marks execution active when the message is admitted.
         scrollToBottom();
 
+        await ensureChatOwner(sessionId);
+
         // 5a. Cron handoff (PRD 0.2.7): if launcher staged a cron config, switch
         //     from the normal send path to startCronTask. This both creates the
         //     CronTask via Rust and triggers the first execution — same as if the
@@ -2652,39 +2676,14 @@ function ChatContent({
     sessionId,
     isConnected,
     initialMessageRuntimeReady,
+    ensureChatOwner,
   ]);
 
   const materializeScheduledOwner = useCallback(async () => {
-    if (!sessionId) throw new Error('Goal requires a session identity.');
-    if (!isPendingSessionId(sessionId))
-      return { sessionId, workspacePath: agentDir };
-    if (!agentDir)
-      throw new Error('Cannot materialize Goal without workspace path.');
-
-    const result = await materializePendingSessionConfig({
-      pendingSessionId: sessionId,
-      tabId,
-      workspacePath: agentDir,
-      snapshotPatch: {},
-      transport: {
-        postCurrent: (body) => apiPost('/api/session/materialize', body),
-      },
-    });
-    const adopted = await adoptMigratedSession(result.sessionId, {
-      sidecarAlreadyMigrated: true,
-    });
-    if (!adopted)
-      throw new Error(`Failed to adopt Goal session ${result.sessionId}.`);
-    setSessionMeta(result.metadata);
-    return { sessionId: result.sessionId, workspacePath: agentDir };
-  }, [
-    sessionId,
-    tabId,
-    agentDir,
-    apiPost,
-    adoptMigratedSession,
-    setSessionMeta,
-  ]);
+    const owner = await ensureChatOwner(sessionId);
+    if (!owner.workspacePath) throw new Error('Goal requires a workspace path.');
+    return { sessionId: owner.sessionId, workspacePath: owner.workspacePath };
+  }, [ensureChatOwner, sessionId]);
 
   // Cron task management hook
   const {
@@ -4955,6 +4954,7 @@ function ChatContent({
 
         // Keep the submitted composer until the HTTP admission receipt.
         // Use effective model/permission (runtime-aware) — not the builtin values
+        await ensureChatOwner(sessionId);
         const admitted = await sendMessage(
           draft?.title ? `${draft.title}\n\n${text}` : text,
           images,
@@ -5018,6 +5018,7 @@ function ChatContent({
       showPinnedProviderUnavailableToast,
       showSnapshotProviderIncompleteToast,
       t,
+      ensureChatOwner,
     ],
   );
 

@@ -1,5 +1,16 @@
 import { projectOrchestrationProgress } from '../shared/sessionTaskOrchestration';
 import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from './session-engine/task-orchestration';
+import {
+  observeSessionExecutionTool,
+  sessionExecutionToolDenial,
+  sessionExecutionDeadlineAt,
+  sessionExecutionInferenceAllowed,
+} from "./session-engine/session-execution";
+import {
+  authorizeSessionTaskTool,
+  settleSessionTaskDispatchTool,
+} from "./session-engine/session-task-dispatch";
+import { wakeSessionExecution } from "./session-engine/session-execution-wake";
 import { deriveSessionTodos, deriveSessionWorkProgress } from '../shared/sessionWorkProgress';
 import { bootstrapFromEnvironment as hostBotBootstrapFromEnvironment } from '../host/bot-session-bootstrap';
 import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../shared/appProfile';
@@ -40,7 +51,9 @@ import {
 import { createBridgeProgressContext, getBridgeProgressContext, registerBridge as registerBridgeInRegistry,
   unregisterBridge as unregisterBridgeInRegistry, type BridgeProgressContext, type UpstreamBridgeConfig } from './openai-bridge/bridge-registry';
 import { bareModelId, normalizeModelMode } from '../shared/autoRoute';
-import { getAutoRouteBackup } from './auto-route/session-state';
+import { getAutoRouteBackup,
+  getAutoRouteCandidates,
+} from './auto-route/session-state';
 import { createSessionModelFailover, sessionApiFailoverEligible } from './builtin-session/model-failover';
 import { getScriptDir } from './utils/runtime';
 import { getSidecarPort } from './session-core/sidecar-port';
@@ -319,6 +332,7 @@ import {
   snapshotSettledQueryBackground,
   getQueryMcpPrewarmOwner,
   hasQueryBackgroundTask,
+  getQueryBackgroundTask,
   hasQueryBackgroundTasks,
   readQueryBackgroundTasks,
   readQueryBackgroundTaskDetail,
@@ -2016,6 +2030,11 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           && (resolveBuiltinSdkSessionId(current) ?? productSessionId) === nativeHistoryId;
       };
       activeSessionModelRecovery = new SessionModelRecovery({
+        deadlineAt: () =>
+          sessionExecutionDeadlineAt(
+            productSessionId,
+            getBuiltinCurrentTurnQueueId(),
+          ),
         read: () => getBuiltinModelRecovery(productSessionId),
         current: () => {
           const source = currentExclusiveRecoverySource();
@@ -2023,7 +2042,11 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           return { sdkSessionId: nativeHistoryId, routeIdentity: currentModelRecoveryRoute(), turnId: source.id,
             goalId: source.turnOwner?.kind === 'goal' ? source.turnOwner.id : undefined };
         },
-        isLive: () => isCurrent() && !builtinInterrupt.isInterrupting(),
+        isLive: () => isCurrent() && !builtinInterrupt.isInterrupting() &&
+          sessionExecutionInferenceAllowed(
+            productSessionId,
+            getBuiltinCurrentTurnQueueId(),
+          ),
         prepare: async request => {
           if (!activeSessionContextRecovery) throw new Error('Action protection unavailable');
           await activeSessionContextRecovery.protectInference(await request.json());
@@ -2063,10 +2086,25 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         }
       };
       activeSessionModelFailover = createSessionModelFailover({
+        deadlineAt: () =>
+          sessionExecutionDeadlineAt(
+            productSessionId,
+            getBuiltinCurrentTurnQueueId(),
+          ),
         recovery: activeSessionModelRecovery,
-        isLive: isCurrent,
+        isLive: () =>
+          isCurrent() &&
+          sessionExecutionInferenceAllowed(
+            productSessionId,
+            getBuiltinCurrentTurnQueueId(),
+          ),
         canRetry: () => !builtinInterrupt.isInterrupting()
-          && activeSessionModelRecovery?.readState()?.status !== 'paused'
+          &&
+          sessionExecutionInferenceAllowed(
+            productSessionId,
+            getBuiltinCurrentTurnQueueId(),
+          ) &&
+          activeSessionModelRecovery?.readState()?.status !== 'paused'
           && activeSessionContextRecovery?.canRetryInference() !== false,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => {
@@ -2081,6 +2119,10 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           const model = configState.currentModel;
           return providerId && model ? getAutoRouteBackup(productSessionId, { providerId, model }) : undefined;
         },
+        autoCandidates: () =>
+          normalizeModelMode(getSessionMetadata(productSessionId)?.modelMode) === 'auto'
+            ? getAutoRouteCandidates(productSessionId)
+            : [],
         onUnavailable: reason => {
           appendModelPolicyDiagnostic(`本轮未切换模型：${reason}。保留当前执行进度，原模型恢复仍受现有重试和停止规则限制。`);
         },
@@ -4351,7 +4393,7 @@ export function getAgents(): Record<string, AgentDefinition> | null {
  * "未启用". The fix routes the permission gate through this single map.
  */
 const CONTEXT_INJECTED_BUILTIN_PREDICATES: Record<
-  typeof MYAGENTS_CONTEXT_INJECTED_MCP_IDS[number],
+  (typeof MYAGENTS_CONTEXT_INJECTED_MCP_IDS)[number],
   () => boolean
 > = {
   // Permission follows the map installed on the live Query, not a newer
@@ -8827,13 +8869,14 @@ export async function initializeAgent(
 /**
  * Switch to an existing session for resume functionality
  * This terminates the current session and prepares to resume from the target session
- * 
+ *
  * Key behavior:
  * - Preserves target sessionId so transcriptState.messages are saved to the same session
  * - Sets sessionRegistered only when the SDK can resume the target transcript
  * - Metadata-only sessions start fresh but keep the same session ID
  */
-export async function switchToSession(targetSessionId: string): Promise<boolean> {
+export async function switchToSession(targetSessionId: string,
+): Promise<boolean> {
   return runSerializedSessionMutation(async () => {
   console.log(`[agent] switchToSession: ${targetSessionId}`);
 
@@ -12561,7 +12604,66 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           hooks: [
             async (input: HookInput): Promise<HookJSONOutput> => {
               const pre = input as PreToolUseHookInput;
-              if ((pre.tool_name === 'Agent' || pre.tool_name === 'Task')
+                const nativeLaunchToolUseId = pre.agent_id
+                  ? getQueryBackgroundTask(activeQuery, pre.agent_id)?.toolUseId
+                  : undefined;
+                const taskLedger = getSessionMetadata(
+                  queryProductSessionId,
+                )?.taskOrchestration;
+                const scopedExecution = taskLedger?.execution;
+                const childClaim = nativeLaunchToolUseId
+                  ? taskLedger?.delegationClaims?.find(
+                      (claim) => claim.toolUseId === nativeLaunchToolUseId,
+                    )
+                  : undefined;
+                const taskQueueId =
+                  childClaim &&
+                  scopedExecution &&
+                  childClaim.executionId === scopedExecution.id
+                    ? scopedExecution.currentQueueId
+                    : getBuiltinCurrentTurnQueueId() ?? undefined;
+                const finalToolAuthority = () =>
+                  isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
+                && !lifecycleState.abortRequested && sessionId === queryProductSessionId &&
+                  !(
+                    scopedExecution &&
+                    scopedExecution.currentQueueId === taskQueueId &&
+                    (getSessionMetadata(queryProductSessionId)
+                      ?.taskOrchestration?.execution?.id !==
+                      scopedExecution.id ||
+                      getSessionMetadata(queryProductSessionId)
+                        ?.taskOrchestration?.execution?.currentQueueId !==
+                        taskQueueId)
+                  ) &&
+                  !sessionExecutionToolDenial(
+                    queryProductSessionId,
+                    taskQueueId,
+                    pre.tool_name,
+                    pre.tool_input,
+                  );
+                const staleToolDenial = () => ({
+                  hookSpecificOutput: {
+                    hookEventName: 'PreToolUse' as const,
+                    permissionDecision: 'deny' as const,
+                    permissionDecisionReason:
+                      "执行已停止或身份已变化，当前工具未获准执行。",
+                  },
+                });
+                const executionDenial = sessionExecutionToolDenial(
+                  queryProductSessionId,
+                  taskQueueId,
+                  pre.tool_name,
+                  pre.tool_input,
+                );
+                if (executionDenial)
+                  return {
+                    hookSpecificOutput: {
+                      hookEventName: 'PreToolUse' as const,
+                      permissionDecision: 'deny' as const,
+                      permissionDecisionReason: executionDenial,
+                    },
+                  };
+                if ((pre.tool_name === 'Agent' || pre.tool_name === 'Task')
                 && (!isCurrentQueryAuthority(activeQueryAuthority)
                   || getQueryGeneration() !== inputTrace.generation
                   || lifecycleState.abortRequested || sessionId !== queryProductSessionId
@@ -12583,7 +12685,49 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                 hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
                   permissionDecision: 'deny' as const, permissionDecisionReason: mcpCheck.reason },
               };
-              if (shouldHardDenyChannelInteractionTool(pre.tool_name, currentScenario)) {
+                const taskDispatchDenial = await authorizeSessionTaskTool({
+                  sessionId: queryProductSessionId,
+                  queueId: taskQueueId,
+                  toolUseId: pre.tool_use_id,
+                  name: pre.tool_name,
+                  input: pre.tool_input,
+                  agentId: pre.agent_id,
+                  nativeLaunchToolUseId,
+                  workspacePath: agentDir,
+                  isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
+                });
+                if (taskDispatchDenial)
+                  return {
+                    hookSpecificOutput: {
+                      hookEventName: 'PreToolUse' as const,
+                      permissionDecision: 'deny' as const,
+                      permissionDecisionReason: taskDispatchDenial,
+                    },
+                  };
+                await observeSessionExecutionTool(queryProductSessionId, {
+                  id: pre.tool_use_id,
+                  queueId: getBuiltinCurrentTurnQueueId() ?? undefined,
+                  name: pre.tool_name,
+                  input: pre.tool_input,
+                  root: !pre.agent_id,
+                  stage: 'start',
+                  isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
+                });
+                const evidenceBudgetDenial = sessionExecutionToolDenial(
+                  queryProductSessionId,
+                  taskQueueId,
+                  pre.tool_name,
+                  pre.tool_input,
+                );
+                if (evidenceBudgetDenial)
+                  return {
+                    hookSpecificOutput: {
+                      hookEventName: 'PreToolUse' as const,
+                      permissionDecision: 'deny' as const,
+                      permissionDecisionReason: evidenceBudgetDenial,
+                    },
+                  };
+                if (shouldHardDenyChannelInteractionTool(pre.tool_name, currentScenario)) {
                 const reason = pre.tool_name === 'AskUserQuestion'
                   ? channelInteractionDenyReason(currentScenario)
                   : '当前渠道不支持该交互式工具，请改用普通文本完成这一步。';
@@ -12600,10 +12744,12 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               // (see isPlanModeInEffect for the two desync windows this closes).
               const effectiveMode = isPlanModeInEffect(configState.currentPermissionMode, pre.permission_mode) ? 'plan' : configState.currentPermissionMode;
               if (!shouldBlockToolInPlanMode(pre.tool_name, effectiveMode)) {
-                return {}; // not plan mode, or a read-only / control-transfer tool → normal flow
+                  if (!finalToolAuthority()) return staleToolDenial();
+                  return {}; // not plan mode, or a read-only / control-transfer tool → normal flow
               }
               if (await isSessionPlanFileTool(pre.tool_name, pre.tool_input, agentDir, sessionId)) {
-                return {}; // SDK's normal plan-file permission check still runs.
+                  if (!finalToolAuthority()) return staleToolDenial();
+                  return {}; // SDK's normal plan-file permission check still runs.
               }
               console.log(`[permission] plan-mode hard gate denied: ${pre.tool_name} (local=${configState.currentPermissionMode}, hook=${pre.permission_mode ?? 'n/a'})`);
               return {
@@ -12615,14 +12761,41 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               };
             },
           ],
-        }],
+        },
+        ],
         PostToolUse: [{
           hooks: [
-            async (input: HookInput, _toolUseId: string | undefined, options: { signal: AbortSignal }): Promise<HookJSONOutput> => {
+            async (input: HookInput, _toolUseId: string | undefined, options: { signal: AbortSignal },
+              ): Promise<HookJSONOutput> => {
               const postInput = input as PostToolUseHookInput;
               if (isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation
                 && !lifecycleState.abortRequested && sessionId === queryProductSessionId) {
-                await confirmSessionTaskReviewFromRootTool(queryProductSessionId, { id: postInput.tool_use_id, name: postInput.tool_name,
+                  if (
+                    !postInput.agent_id &&
+                    ['Agent', 'Task'].includes(postInput.tool_name)
+                  ) {
+                    await settleSessionTaskDispatchTool(queryProductSessionId, {
+                      toolUseId: postInput.tool_use_id,
+                      success: true,
+                      // Only verified native lifecycle observations release a worker's resources.
+                      async: true,
+                      isCurrent: () =>
+                        isCurrentQueryAuthority(activeQueryAuthority) &&
+                        !lifecycleState.abortRequested &&
+                        sessionId === queryProductSessionId,
+                    });
+                  }
+                  await observeSessionExecutionTool(queryProductSessionId, {
+                    id: postInput.tool_use_id,
+                    queueId: getBuiltinCurrentTurnQueueId() ?? undefined,
+                    name: postInput.tool_name,
+                    input: postInput.tool_input,
+                    output: postInput.tool_response,
+                    root: !postInput.agent_id,
+                    stage: 'success',
+                    isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
+                  });
+                  await confirmSessionTaskReviewFromRootTool(queryProductSessionId, { id: postInput.tool_use_id, name: postInput.tool_name,
                   isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
                   input: postInput.tool_input, output: postInput.tool_response, root: !postInput.agent_id });
               }
@@ -12663,12 +12836,46 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               return { continue: true };
             },
           ],
-        }],
+        },
+        ],
         PostToolUseFailure: [{ hooks: [async (input: HookInput): Promise<HookJSONOutput> => {
           const failed = input as PostToolUseFailureHookInput;
-          await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id);
+                const failedLaunch =
+                  failed.agent_id &&
+                  !['Read', 'Grep', 'Glob', 'TaskGet', 'TaskList'].includes(
+                    failed.tool_name,
+                  )
+                    ? getQueryBackgroundTask(activeQuery, failed.agent_id)
+                        ?.toolUseId
+                    : ['Agent', 'Task'].includes(failed.tool_name)
+                      ? failed.tool_use_id
+                      : undefined;
+                if (failedLaunch)
+                  await settleSessionTaskDispatchTool(queryProductSessionId, {
+                    toolUseId: failedLaunch,
+                    success: false,
+                    async: true,
+                    isCurrent: () =>
+                      isCurrentQueryAuthority(activeQueryAuthority) &&
+                      !lifecycleState.abortRequested &&
+                      sessionId === queryProductSessionId,
+                  });
+                await observeSessionExecutionTool(queryProductSessionId, {
+                  id: failed.tool_use_id,
+                  queueId: getBuiltinCurrentTurnQueueId() ?? undefined,
+                  name: failed.tool_name,
+                  input: failed.tool_input,
+                  output: failed.error,
+                  root: !failed.agent_id,
+                  stage: "failure",
+                  isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
+                });
+                await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id);
           return {};
-        }] }],
+        },
+            ],
+          },
+        ],
         // PermissionRequest hook (issue #264): the ONLY permission decision point
         // for background (run_in_background) sub-agents. Runtime-verified: the SDK
         // never calls canUseTool for async sub-agents; it fires this hook with
@@ -13388,6 +13595,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       if (sdkMessage.type === 'system') {
         if (sdkMessage.subtype === 'background_tasks_changed') {
           replaceQueryBackgroundActivity(activeQuery, sdkMessage.tasks);
+          if (!hasBuiltinBackgroundWork()) wakeSessionExecution(sessionId);
         }
         const taskMsg = sdkMessage as { subtype?: string; task_id?: string; run_id?: string;
           tool_use_id?: string; description?: string; task_type?: string;
@@ -13402,11 +13610,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             runId: taskMsg.run_id,
           });
           if (recorded) {
-            if (taskMsg.tool_use_id && taskMsg.task_type !== 'local_bash') observeSessionTasksInBackground(sessionId, { attempts: [{
+            if (taskMsg.tool_use_id && taskMsg.task_type !== 'local_bash') observeSessionTasksInBackground(sessionId, {
+                nativeLifecycle: true,
+                attempts: [{
               id: `${taskMsg.tool_use_id}:${taskMsg.run_id ?? 'initial'}`, toolUseId: taskMsg.tool_use_id,
               title: taskMsg.description ?? taskMsg.task_id, executionVerified: true, runId: taskMsg.run_id, executionTaskId: taskMsg.task_id,
               lifecycle: { status: 'running', startedAt: Date.now() },
-            }] });
+            }],
+              });
             broadcast('chat:task-started', {
               sessionId,
               taskId: taskMsg.task_id,
@@ -13432,12 +13643,15 @@ async function startStreamingSession(preWarm = false): Promise<void> {
               outputPath: outputFile || undefined,
             });
             if (completion.broadcast) {
-              if (completion.info?.toolUseId && completion.info.agentType !== 'local_bash') observeSessionTasksInBackground(sessionId, { attempts: [{
+              if (completion.info?.toolUseId && completion.info.agentType !== 'local_bash') observeSessionTasksInBackground(sessionId, {
+                  nativeLifecycle: true,
+                  attempts: [{
                 id: `${completion.info.toolUseId}:${taskMsg.run_id ?? 'initial'}`, toolUseId: completion.info.toolUseId,
                 title: completion.info.description ?? taskMsg.description ?? taskMsg.task_id, executionVerified: true, runId: taskMsg.run_id, executionTaskId: taskMsg.task_id,
                 lifecycle: { status: status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : 'interrupted',
                   startedAt: completion.info.startedAt ?? 0, finishedAt: taskMsg.patch?.end_time ?? Date.now(), result: summary },
-              }] });
+              }],
+                });
               broadcast('chat:task-notification', {
                 sessionId,
                 taskId: taskMsg.task_id,
@@ -13451,6 +13665,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             // Liveness settlement belongs to the task run, not to whether this
             // event added display information to an existing notification.
             if (completion.becameQuiescent && lifecycleState.query === activeQuery) {
+              wakeSessionExecution(sessionId);
               if (deferredRewindResult) retireRewoundQueryWhenQuiescent();
               else applyDeferredRestartIfNeeded();
             }

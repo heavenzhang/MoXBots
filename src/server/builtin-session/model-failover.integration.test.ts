@@ -220,3 +220,110 @@ describe('Session API failover authority', () => {
     expect(switched).not.toHaveBeenCalled();
   });
 });
+
+describe("same-tier multi-candidate root", () => {
+  it("prefers an independent endpoint, preserves root through env switches and skips revoked pool members", async () => {
+    fixture.config = {
+      autoRouting: {
+        pool: {
+          "p/a": { enabled: true },
+          "b/b": { enabled: true },
+          "c/c": { enabled: true },
+          "d/d": { enabled: true },
+        },
+      },
+    };
+    fixture.providers = Object.fromEntries(
+      ["p", 'b', 'c', "d"].map((id) => [
+        id,
+        { id, type: 'api', models: [{ model: id === "p" ? 'a' : id }] },
+      ]),
+    );
+    fixture.envs = {
+      b: {
+        providerId: 'b',
+        baseUrl: "http://domain-main.test",
+        apiKey: "fixture",
+      },
+      c: {
+        providerId: 'c',
+        baseUrl: "http://independent-c.test",
+        apiKey: "fixture",
+      },
+      d: {
+        providerId: "d",
+        baseUrl: "http://independent-d.test",
+        apiKey: "fixture",
+      },
+    };
+    let current = {
+      env: {
+        providerId: "p",
+        baseUrl: "http://domain-main.test",
+        apiKey: "fixture",
+      } as ProviderEnv,
+      model: 'a',
+      turnId: "original-root",
+    };
+    const candidates = ['b', 'c', "d"].map((id) => ({
+      providerId: id,
+      modelId: id,
+    }));
+    const switched = vi.fn((target) => {
+      current = { ...current, env: { ...target }, model: target.model };
+    });
+    const controller = createController({
+      current: () => current,
+      isLive: () => true,
+      onSwitch: switched,
+      autoCandidates: () => candidates,
+      retryDelaysMs: [0, 0, 0],
+    });
+    const request = () =>
+      new Request("http://fixture.test", {
+        method: 'POST',
+        body: JSON.stringify({ messages: [] }),
+      });
+    const execute = vi.fn(async (target) => {
+      if (target.providerId === 'c')
+        (fixture.config.autoRouting as { pool: Record<string, unknown> }).pool[
+          "d/d"
+        ] = { enabled: false };
+      return Response.json(
+        {},
+        { status: target.providerId === 'b' ? 200 : 503 },
+      );
+    });
+    expect(
+      (
+        await controller.run(
+          request(),
+          { providerId: "p", model: 'a', baseUrl: current.env.baseUrl! },
+          execute,
+          'first',
+        )
+      ).status,
+    ).toBe(200);
+    expect(execute.mock.calls.map(([target]) => target.providerId)).toEqual([
+      "p",
+      "p",
+      "p",
+      "p",
+      'c',
+      'c',
+      'c',
+      'c',
+      'b',
+    ]);
+    expect(switched).toHaveBeenCalledTimes(2);
+    // A later tool round-trip retains this same root and elected identity.
+    const second = await controller.run(
+      request(),
+      { providerId: 'b', model: 'b', baseUrl: current.env.baseUrl! },
+      execute,
+      "second",
+    );
+    expect(second.status).toBe(200);
+    expect(execute.mock.calls.at(-1)![0].providerId).toBe('b');
+  });
+});

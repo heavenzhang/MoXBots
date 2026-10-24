@@ -21,6 +21,10 @@ import {
 } from "../runtimes/external-session";
 import { prepareDesktopQuery } from "./query-reminder";
 import { prepareContinuationAdmission } from './continuation-admission';
+import {
+  prepareSessionExecution,
+  pauseSessionExecution,
+} from "./session-execution";
 import { createBuiltinSessionEngine } from "./builtin-adapter";
 import { createExternalSessionEngine } from "./external-adapter";
 import { createDshSessionEngine } from "../integrated-runtimes/dsh/adapter";
@@ -76,7 +80,20 @@ function queryFacade(engine: SessionEngine): SessionEngine {
       withExecutionAdmission(async () => {
         const continuation = prepareContinuationAdmission(engine, request);
         if (continuation && !continuation.accepted) return continuation.result;
+        const execution = await prepareSessionExecution(engine, request);
+        if (execution.duplicate) return execution.duplicate;
         const prepared = await prepareDesktopQuery(request);
+        prepared.request = {
+          ...prepared.request,
+          queueId: execution.request.queueId,
+          beforeDispatch: execution.request.beforeDispatch,
+          onTerminal: execution.request.onTerminal,
+          desktopQuery:
+            prepared.request.desktopQuery ?? execution.request.desktopQuery,
+          text:
+            prepared.request.text +
+            execution.request.text.slice(request.text.length),
+        };
         // Query preparation may await discovery/config IO. Do not let an
         // obsolete click enter the queue while another source starts work.
         if (continuation?.accepted) {
@@ -85,6 +102,7 @@ function queryFacade(engine: SessionEngine): SessionEngine {
           prepared.request = { ...prepared.request, beforeDispatch: continuation.guard };
         }
         const result = await engine.sendDesktopMessage(prepared.request);
+        await execution.admitted(result);
         if (continuation?.accepted && result.success && result.dispatchAcceptance) {
           const receipt = await result.dispatchAcceptance;
           if (!receipt.accepted) return continuation.rejection(receipt.error);
@@ -142,7 +160,16 @@ function queryFacade(engine: SessionEngine): SessionEngine {
     cancelImRequest: (...args: Parameters<SessionEngine["cancelImRequest"]>) =>
       withUpdateAdmission(() => engine.cancelImRequest(...args)),
     stopTurn: (...args: Parameters<SessionEngine["stopTurn"]>) =>
-      withUpdateAdmission(() => engine.stopTurn(...args)),
+      withUpdateAdmission(async () => {
+        const sessionId = engine.getRuntimeIdentity().sessionId;
+        // Revoke synchronously, then stop the native owner without waiting for metadata IO.
+        const paused = sessionId
+          ? pauseSessionExecution(sessionId, "user_stopped")
+          : Promise.resolve();
+        const result = await engine.stopTurn(...args);
+        await paused;
+        return result;
+      }),
     stopOwnedTurn: (...args: Parameters<SessionEngine["stopOwnedTurn"]>) =>
       withUpdateAdmission(() => engine.stopOwnedTurn(...args)),
     cancelQueuedMessage: (

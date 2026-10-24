@@ -12,7 +12,7 @@ const retryDelaysMs = [0, 0, 0] as const;
 afterEach(() => vi.useRealTimers());
 
 describe('asynchronous backup admission', () => {
-  it.each(['Stop', 'end-turn', 'policy-revoked', 'retry-revoked'])('revalidates %s after request validation without a late switch', async reason => {
+  it.each(['Stop', 'end-turn', 'policy-revoked', 'retry-revoked'])('revalidates %s after request validation without a late switch', async (reason) => {
     let release!: () => void;
     let entered!: () => void;
     const started = new Promise<void>(resolve => { entered = resolve; });
@@ -21,8 +21,9 @@ describe('asynchronous backup admission', () => {
     let allowed = true;
     let safe = true;
     const switched = vi.fn();
-    const controller = new ModelFailoverController({ scope: () => 'root', resolveBackup: () => allowed ? backup : undefined,
-      onSwitch: switched, canRetry: () => safe, retryDelaysMs, validateBackup: async () => { entered(); await pending; return true; } });
+    const controller = new ModelFailoverController({ scope: () => 'root', resolveBackup: () => (allowed ? backup : undefined),
+      onSwitch: switched, canRetry: () => safe, retryDelaysMs, validateBackup: async () => { entered(); await pending; return true; },
+      });
     const execute = vi.fn(async () => transient());
     const run = controller.run(request(abort.signal), primary, execute);
     await started;
@@ -35,7 +36,8 @@ describe('asynchronous backup admission', () => {
     expect([499, 503]).toContain(response.status);
     expect(execute).toHaveBeenCalledTimes(4);
     expect(switched).not.toHaveBeenCalled();
-  });
+  },
+  );
 
   it('does not execute an already elected backup when retry authority is revoked during validation', async () => {
     let safe = true;
@@ -404,4 +406,211 @@ it('does not let a retired attempt label a later provider SSE error as transport
   expect(await response.text()).toContain('automatic_replay_blocked');
   expect(attempt).toBe(2); expect(interrupted).not.toHaveBeenCalled(); expect(blocked).toHaveBeenCalledOnce();
   expect(observed).toHaveBeenCalledExactlyOnceWith('unproven', { origin: 'provider_terminal', category: 'authentication' });
+});
+
+describe("bounded same-tier candidate chain", () => {
+  const targets = [
+    backup,
+    { ...backup, providerId: "c", model: "c", baseUrl: "http://c.invalid" },
+    { ...backup, providerId: "d", model: "d", baseUrl: "http://d.invalid" },
+  ];
+  function chain(
+    validateBackup?: (
+      request: Request,
+      target: UpstreamConfig,
+    ) => Promise<boolean>,
+  ) {
+    let index = 0;
+    const onSwitch = vi.fn();
+    return {
+      onSwitch,
+      controller: new ModelFailoverController({
+        scope: () => "chain",
+        retryDelaysMs,
+        resolveBackup: () => targets[index],
+        advanceCandidate: () => ++index < targets.length,
+        validateBackup,
+        onSwitch,
+      }),
+    };
+  }
+  it("exhausts P and B then succeeds on C with three retries per target", async () => {
+    const h = chain();
+    const execute = vi.fn(async (target: UpstreamConfig) =>
+      target.model === "c" ? Response.json({ ok: true }) : transient(),
+    );
+    const response = await h.controller.run(
+      request(),
+      primary,
+      execute,
+      "chain",
+    );
+    expect(response.status).toBe(200);
+    expect(execute.mock.calls.map(([target]) => target.model)).toEqual([
+      'main',
+      'main',
+      'main',
+      'main',
+      'backup',
+      'backup',
+      'backup',
+      'backup',
+      "c",
+    ]);
+    expect(h.onSwitch).toHaveBeenCalledTimes(2);
+  });
+  it("skips a revoked candidate before its first actual call", async () => {
+    const h = chain(async (_request, target) => target.model !== 'backup');
+    const execute = vi.fn(async (target: UpstreamConfig) => target === primary ? transient() : Response.json({ ok: true }));
+    expect((await h.controller.run(request(), primary, execute)).status).toBe(
+      200,
+    );
+    expect(execute.mock.calls.map(([target]) => target.model)).toEqual([
+      'main',
+      'main',
+      'main',
+      'main',
+      "c",
+    ]);
+  });
+  it("bounds all-bad chains to four total models", async () => {
+    const h = chain();
+    const execute = vi.fn(async () => transient());
+    expect((await h.controller.run(request(), primary, execute)).status).toBe(
+      503,
+    );
+    expect(execute).toHaveBeenCalledTimes(16);
+    expect(h.onSwitch).toHaveBeenCalledTimes(3);
+  });
+  it("does not replenish the absolute root deadline when advancing", async () => {
+    const h = chain();
+    let now = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const execute = vi.fn(async (target: UpstreamConfig) => {
+      if (target.model === 'backup') now = 30 * 60_000;
+      return transient();
+    });
+    expect((await h.controller.run(request(), primary, execute)).status).toBe(
+      503,
+    );
+    expect(execute).toHaveBeenCalledTimes(5);
+    expect(h.onSwitch).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+});
+
+it("caps a long owner wait to the original absolute deadline and never calls another target afterwards", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  const blocked = vi.fn(async () => {});
+  const recovery = {
+    complete: vi.fn(async () => {}),
+    blocked,
+    wait: vi.fn(async () => {
+      vi.setSystemTime(30 * 60_000 - 5);
+      return 60 * 60_000;
+    }),
+  };
+  const execute = vi.fn(async () => transient());
+  const controller = new ModelFailoverController({
+    scope: () => "long-deadline",
+    retryDelaysMs,
+    resolveBackup: () => undefined,
+    onSwitch: vi.fn(),
+    recovery,
+  });
+  const result = controller.run(request(), primary, execute);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(recovery.wait).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(5);
+  expect((await result).status).toBe(409);
+  expect(execute).toHaveBeenCalledTimes(4);
+  expect(blocked).toHaveBeenCalledTimes(1);
+});
+
+describe("parent execution recovery budget", () => {
+  it("gives a later logical root only the four minutes left by its parent", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    let scope = "first-root";
+    const recovery = {
+      wait: vi.fn(async () => 60 * 60_000),
+      complete: vi.fn(async () => {}),
+      blocked: vi.fn(async () => {}),
+    };
+    const execute = vi.fn(async () => transient())
+      .mockImplementationOnce(async () => Response.json({ ok: true }));
+    const controller = new ModelFailoverController({
+      scope: () => scope,
+      retryDelaysMs,
+      recovery,
+      deadlineAt: () => 30 * 60_000,
+      resolveBackup: () => undefined,
+      onSwitch: vi.fn(),
+    });
+    await (await controller.run(request(), primary, execute, 'first')).text();
+    scope = "later-root";
+    vi.setSystemTime(26 * 60_000);
+    const result = controller.run(request(), primary, execute, 'second');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(recovery.wait).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(4 * 60_000);
+    expect((await result).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(5);
+  });
+  it("cannot extend a same-root parent deadline after successful inference", async () => {
+    let now = 0;
+    let deadline = 100;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const execute = vi.fn(async () => Response.json({ ok: true }));
+    const controller = new ModelFailoverController({
+      scope: () => "fixed-root",
+      deadlineAt: () => deadline,
+      resolveBackup: () => undefined,
+      onSwitch: vi.fn(),
+    });
+    await (await controller.run(request(), primary, execute, 'first')).text();
+    deadline = 1_000;
+    now = 101;
+    expect(
+      (await controller.run(request(), primary, execute, 'second')).status,
+    ).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(1);
+    vi.restoreAllMocks();
+  });
+  it("rejects an expired parent before initial inference or recovery admission", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(100);
+    const admit = vi.fn(async () => undefined);
+    const wait = vi.fn(async () => undefined);
+    const execute = vi.fn(async () => transient());
+    const controller = new ModelFailoverController({
+      scope: () => "expired-root",
+      deadlineAt: () => 99,
+      resolveBackup: () => backup,
+      onSwitch: vi.fn(),
+      recovery: { admit, wait, complete: vi.fn(async () => {}) },
+    });
+    expect((await controller.run(request(), primary, execute)).status).toBe(
+      409,
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(admit).not.toHaveBeenCalled();
+    expect(wait).not.toHaveBeenCalled();
+  });
+  it("shortens a pending fast retry without sending after the parent deadline", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const execute = vi.fn(async () => transient());
+    const controller = new ModelFailoverController({
+      scope: () => "short-root",
+      deadlineAt: () => 10,
+      resolveBackup: () => backup,
+      onSwitch: vi.fn(),
+    });
+    const result = controller.run(request(), primary, execute);
+    await vi.advanceTimersByTimeAsync(10);
+    expect((await result).status).toBe(503);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
 });

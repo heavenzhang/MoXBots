@@ -108,11 +108,16 @@ import type {
 } from './types';
 import { decideBuiltinInjectedTurnResult } from '../session-core/turn-result-policy';
 import { applyAutoRouteAdmission, type AutoRoutableRequest } from '../auto-route/admission';
-import { buildAutoRouteCatalog, routeTurn } from '../auto-route/router';
+import { buildAutoRouteCatalog, routeTurn,
+  getAutoRouteTransport,
+} from '../auto-route/router';
 import { AutoRoutePoolUnavailableError } from '../auto-route/errors';
 import { trackServer } from '../analytics';
 import { modelSupportsModality } from '../utils/model-capabilities';
-import { findAutoTierEntry, isAutoRoutingEnabled, type AutoRouteRecord } from '../../shared/autoRoute';
+import { findAutoTierEntry, isAutoRoutingEnabled,
+  pickAutoClassifier,
+  type AutoRouteRecord,
+} from '../../shared/autoRoute';
 import type { DispatchGuard, TurnTerminalOutcome } from '../session-core/turn-queue';
 import {
   ensureRegisteredAgentSessionOrigin,
@@ -314,6 +319,40 @@ function messageWireToReplayMessage(message: MessageWire | SessionMessage): Sess
 export function createBuiltinSessionEngine(): SessionEngine {
   return {
     kind: 'builtin',
+
+    async runTextUtility(task) {
+      if (task.signal?.aborted) return null;
+      const model = getSessionModel(),
+        providerId = getSessionProviderId();
+      const current = model && providerId ? { providerId, model } : undefined;
+      const catalog = buildAutoRouteCatalog();
+      const classifier =
+        getSessionMetadata(getSessionId())?.modelMode === 'auto' &&
+        isAutoRoutingEnabled(catalog.settings)
+          ? pickAutoClassifier(catalog.table, catalog.settings, current)
+          : current;
+      if (!classifier) return null;
+      const transport = await getAutoRouteTransport();
+      if (task.signal?.aborted) return null;
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      task.signal?.addEventListener("abort", abort, { once: true });
+      const timer = setTimeout(abort, Math.min(task.timeoutMs ?? 8000, 8000));
+      try {
+        return await transport({
+          classifier,
+          system: task.systemPrompt,
+          prompt: task.prompt,
+          signal: controller.signal,
+          maxTokens: 1024,
+        });
+      } catch {
+        return null;
+      } finally {
+        clearTimeout(timer);
+        task.signal?.removeEventListener("abort", abort);
+      }
+    },
 
     isBusy() {
       return isSessionBusy();
