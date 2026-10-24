@@ -318,6 +318,45 @@ afterEach(async () => {
   await rm(state.home, { recursive: true, force: true });
 });
 
+describe('first desktop execution intent utility', () => {
+  it.each([undefined, 'auto', 'manual'] as const)('honors the product default for modelMode=%s before the first turn', async modelMode => {
+    const workspace = join(state.home, 'first-intent');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, {
+      runtime: 'builtin', ...(modelMode ? { modelMode } : {}),
+    });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    const config = await import('../builtin-session/config');
+    config.setModel(undefined);
+    config.setProviderEnv(undefined);
+    const router = await import('../auto-route/router');
+    const catalog = router.buildAutoRouteCatalog();
+    const classifier = { providerId: 'synthetic-provider', model: 'synthetic-classifier' };
+    vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({
+      ...catalog, settings: { classifier },
+    });
+    const intent = JSON.stringify({ kind: 'execute', objective: 'Create a local page', scope: 'This workspace', acceptanceCriteria: ['Page exists'] });
+    const transport = vi.fn(async () => intent);
+    vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
+    const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+    const { classifySessionExecutionIntent } = await import('../session-engine/session-execution');
+    const result = await classifySessionExecutionIntent(engine, {
+      sessionId: metadata.id, workspacePath: workspace,
+      scenario: { type: 'desktop' }, text: 'Create and verify a local page.',
+    }, new AbortController().signal);
+    if (modelMode === 'manual') {
+      expect(result).toBeUndefined();
+      expect(transport).not.toHaveBeenCalled();
+    } else {
+      expect(result?.kind).toBe('execute');
+      expect(transport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ classifier }));
+    }
+    expect(state.query).not.toHaveBeenCalled();
+    expect(agent.getMessages()).toHaveLength(0);
+    expect(store.getSessionMetadata(metadata.id)?.taskOrchestration?.execution).toBeUndefined();
+  });
+});
+
 describe('Goal continuation Session configuration admission', () => {
   async function warmGoal() {
     const workspace = join(state.home, 'goal-config');

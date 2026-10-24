@@ -117,6 +117,7 @@ import { trackServer } from '../analytics';
 import { modelSupportsModality } from '../utils/model-capabilities';
 import { findAutoTierEntry, isAutoRoutingEnabled,
   pickAutoClassifier,
+  normalizeModelMode,
   type AutoRouteRecord,
 } from '../../shared/autoRoute';
 import type { DispatchGuard, TurnTerminalOutcome } from '../session-core/turn-queue';
@@ -328,7 +329,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
       const current = model && providerId ? { providerId, model } : undefined;
       const catalog = buildAutoRouteCatalog();
       const classifier =
-        getSessionMetadata(getSessionId())?.modelMode === 'auto' &&
+        normalizeModelMode(getSessionMetadata(getSessionId())?.modelMode) === 'auto' &&
         isAutoRoutingEnabled(catalog.settings)
           ? pickAutoClassifier(catalog.table, catalog.settings, current)
           : current;
