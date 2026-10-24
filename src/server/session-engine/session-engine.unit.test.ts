@@ -2,6 +2,7 @@ import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseLeadingSystemReminder } from '../../shared/systemReminder';
 import type { ProjectContextSnapshot } from '../../shared/projectContext';
+import * as executionAdmission from './session-execution';
 const projectBackground = vi.hoisted(() => vi.fn<() => Promise<ProjectContextSnapshot | undefined>>(async () => undefined));
 vi.mock('./project-context', () => ({ optionalProjectContext: projectBackground }));
 const qaMode = vi.hoisted(() => ({ enabled: false }));
@@ -669,6 +670,37 @@ describe('session-engine selector and adapters', () => {
     mocks.state.useExternal = true;
     mocks.state.externalImContext = { senderId: 'external-sender' };
     expect(getSessionEngine().getActiveImBridgeTurnContext()).toEqual({ senderId: 'external-sender' });
+  });
+
+  it('carries classified input admission through query preparation to the native turn boundary', async () => {
+    const guard = vi.fn(async () => ({ accepted: true }));
+    const admitted = vi.fn(async () => {});
+    const spy = vi.spyOn(executionAdmission, 'prepareSessionExecution').mockImplementationOnce(async (_engine, request) => ({
+      request: { ...request, queueId: 'session-execution:staged', turnBoundaryOnly: true,
+        beforeDispatch: guard, text: request.text + '\nExecution reminder' }, admitted,
+    }));
+    try {
+      await getSessionEngine().sendDesktopMessage({ text: 'Do the work', clientRequestId: 'human',
+        sessionId: 'sid', workspacePath: '/workspace', scenario: desktopScenario });
+      expect(mocks.enqueueUserMessage.mock.calls[0]?.[11]).toMatchObject({
+        queueId: 'session-execution:staged', queueResponseModeOverride: 'turn', beforeDispatch: guard,
+      });
+      expect(mocks.enqueueUserMessage.mock.calls[0]?.[0]).toContain('Execution reminder');
+      expect(guard).toHaveBeenCalledTimes(1);
+      expect(admitted).toHaveBeenCalledWith(expect.objectContaining({ success: true }));
+    } finally { spy.mockRestore(); }
+  });
+
+  it('releases a pending execution admission when query preparation fails before enqueue', async () => {
+    const admitted = vi.fn(async () => {});
+    const spy = vi.spyOn(executionAdmission, 'prepareSessionExecution').mockImplementationOnce(async (_engine, request) => ({ request, admitted }));
+    projectBackground.mockRejectedValueOnce(new Error('Synthetic preparation failure'));
+    try {
+      await expect(getSessionEngine().sendDesktopMessage({ text: 'Do the work', clientRequestId: 'human',
+        sessionId: 'sid', workspacePath: '/workspace', scenario: desktopScenario })).rejects.toThrow('Synthetic preparation failure');
+      expect(admitted).toHaveBeenCalledWith({ success: false, error: 'EXECUTION_PREPARATION_FAILED' });
+      expect(mocks.enqueueUserMessage).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
   });
 
   it('routes desktop sends through builtin while preserving desktop metadata', async () => {

@@ -82,37 +82,43 @@ function queryFacade(engine: SessionEngine): SessionEngine {
         if (continuation && !continuation.accepted) return continuation.result;
         const execution = await prepareSessionExecution(engine, request);
         if (execution.duplicate) return execution.duplicate;
-        const prepared = await prepareDesktopQuery(request);
-        prepared.request = {
-          ...prepared.request,
-          queueId: execution.request.queueId,
-          beforeDispatch: execution.request.beforeDispatch,
-          onTerminal: execution.request.onTerminal,
-          desktopQuery:
-            prepared.request.desktopQuery ?? execution.request.desktopQuery,
-          text:
-            prepared.request.text +
-            execution.request.text.slice(request.text.length),
-        };
-        // Query preparation may await discovery/config IO. Do not let an
-        // obsolete click enter the queue while another source starts work.
-        if (continuation?.accepted) {
-          const rejected = continuation.revalidateEntry();
-          if (rejected) return rejected;
-          prepared.request = { ...prepared.request, beforeDispatch: continuation.guard };
+        try {
+          const prepared = await prepareDesktopQuery(request);
+          prepared.request = {
+            ...prepared.request,
+            queueId: execution.request.queueId,
+            turnBoundaryOnly: execution.request.turnBoundaryOnly,
+            beforeDispatch: execution.request.beforeDispatch,
+            onTerminal: execution.request.onTerminal,
+            desktopQuery:
+              prepared.request.desktopQuery ?? execution.request.desktopQuery,
+            text:
+              prepared.request.text +
+              execution.request.text.slice(request.text.length),
+          };
+          // Query preparation may await discovery/config IO. Do not let an
+          // obsolete click enter the queue while another source starts work.
+          if (continuation?.accepted) {
+            const rejected = continuation.revalidateEntry();
+            if (rejected) return rejected;
+            prepared.request = { ...prepared.request, beforeDispatch: continuation.guard };
+          }
+          const result = await engine.sendDesktopMessage(prepared.request);
+          await execution.admitted(result);
+          if (continuation?.accepted && result.success && result.dispatchAcceptance) {
+            const receipt = await result.dispatchAcceptance;
+            if (!receipt.accepted) return continuation.rejection(receipt.error);
+          }
+          return {
+            ...result,
+            ...(prepared.needsReselect
+              ? { agentMentionsNeedReselect: true }
+              : {}),
+          };
+        } catch (error) {
+          await execution.admitted({ success: false, error: "EXECUTION_PREPARATION_FAILED" });
+          throw error;
         }
-        const result = await engine.sendDesktopMessage(prepared.request);
-        await execution.admitted(result);
-        if (continuation?.accepted && result.success && result.dispatchAcceptance) {
-          const receipt = await result.dispatchAcceptance;
-          if (!receipt.accepted) return continuation.rejection(receipt.error);
-        }
-        return {
-          ...result,
-          ...(prepared.needsReselect
-            ? { agentMentionsNeedReselect: true }
-            : {}),
-        };
       }),
     enqueueImMessage: (request) =>
       withExecutionAdmission(() => engine.enqueueImMessage(request)),
