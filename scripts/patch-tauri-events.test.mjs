@@ -82,7 +82,11 @@ test('Windows Git checkout preserves every vendored upstream byte', () => {
       const upstream = JSON.parse(readFileSync(resolve(root, 'vendor', name, 'UPSTREAM_FILES.json'), 'utf8'));
       return Object.keys(upstream).map(file => `vendor/${name}/${file}`);
     });
-    const files = ['.gitattributes', ...vendorFiles];
+    const files = [
+      '.gitattributes', ...vendorFiles,
+      ...['tauri', 'tao', 'tauri-runtime-wry'].map(name => `vendor/${name}/UPSTREAM_FILES.json`),
+      'src-tauri/Cargo.toml', 'src-tauri/Cargo.lock', 'scripts/tauri-native-quit.test.mjs',
+    ];
     for (const file of files) {
       const destination = resolve(repository, file);
       mkdirSync(dirname(destination), { recursive: true });
@@ -95,6 +99,11 @@ test('Windows Git checkout preserves every vendored upstream byte', () => {
     for (const file of vendorFiles) {
       assert.equal(digest(readFileSync(resolve(checkout, file))), digest(readFileSync(resolve(root, file))), file);
     }
+    assert.ok(readFileSync(resolve(checkout, 'src-tauri/Cargo.lock'), 'utf8').includes('\r\n'));
+    // An independent test runner must not inherit its parent's child protocol.
+    const environment = { ...process.env };
+    delete environment.NODE_TEST_CONTEXT;
+    execFileSync(process.execPath, ['--test', resolve(checkout, 'scripts/tauri-native-quit.test.mjs')], { stdio: 'pipe', encoding: 'utf8', env: environment });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 test('app builds select the paired dependency and verify the npm patch', () => {
