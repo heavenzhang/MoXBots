@@ -153,15 +153,11 @@ function queryFacade(engine: SessionEngine): SessionEngine {
       withUpdateAdmission(() => engine.updateAgents(agents, options)),
     updateEnabledPluginIds: (ids) =>
       withUpdateAdmission(() => engine.updateEnabledPluginIds(ids)),
-    resetForNewDesktopSession: (path) =>
-      withUpdateAdmission(() => engine.resetForNewDesktopSession(path)),
+    transitionDesktopSession: (path, options) =>
+      withUpdateAdmission(() => engine.transitionDesktopSession(path, options)),
     materializePendingDesktopSession: (request) =>
       withUpdateAdmission(() =>
         engine.materializePendingDesktopSession(request),
-      ),
-    migrateBoundSurfaceSession: (path, options) =>
-      withUpdateAdmission(() =>
-        engine.migrateBoundSurfaceSession(path, options),
       ),
     cancelImRequest: (...args: Parameters<SessionEngine["cancelImRequest"]>) =>
       withUpdateAdmission(() => engine.cancelImRequest(...args)),

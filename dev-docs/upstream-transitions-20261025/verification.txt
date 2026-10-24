@@ -1,0 +1,52 @@
+MB-UPSTREAM-FIXES-20261025 / local verification
+Node: /opt/homebrew/opt/node@24/bin/node
+Root helper temporarily applied: 82bfef743a30b111f0b475ee643a89c9e897f584
+
+routes/admin/SSE/SessionEngine unit
+Raw local log: /tmp/mox-transitions-unit.log
+ ✓ |unit| src/server/routes/session-operations.unit.test.ts (17 tests) 11ms
+ ✓ |unit| src/renderer/context/desktopSessionTransition.test.ts (7 tests) 7ms
+ ✓ |unit| src/renderer/api/SseConnection.test.ts (20 tests) 305ms
+ ✓ |unit| src/server/routes/chat-stream.unit.test.ts (3 tests) 4ms
+ ✓ |unit| src/server/session-engine/session-engine.unit.test.ts (141 tests) 358ms
+ ✓ |unit| src/server/admin-api.unit.test.ts (187 tests) 9883ms
+ Test Files  6 passed (6)
+      Tests  375 passed (375)
+   Duration  10.46s (transform 1.69s, setup 408ms, collect 2.56s, tests 10.57s, environment 1ms, prepare 500ms)
+
+TabProvider / Companion DOM
+Raw local log: /tmp/mox-transitions-dom2.log
+ ✓ |dom| src/renderer/context/TabProvider.titleProjection.test.tsx (7 tests) 95ms
+ ✓ |dom| src/renderer/floating-ball/useFloatingSession.questions.test.tsx (10 tests) 667ms
+ ✓ |dom| src/renderer/context/TabProvider.activity.test.tsx (130 tests) 1524ms
+ Test Files  3 passed (3)
+      Tests  147 passed (147)
+   Duration  2.99s (transform 830ms, setup 680ms, collect 1.56s, tests 2.29s, environment 1.30s, prepare 174ms)
+
+extended unit + builtin/external synthetic integration
+Raw local log: /tmp/mox-transitions-more.log
+ ✓ |unit| src/renderer/context/sessionRestoreGuards.test.ts (31 tests) 3ms
+ ✓ |unit| src/renderer/context/desktopSessionTransition.test.ts (7 tests) 6ms
+ ✓ |unit| src/cli/myagents.unit.test.ts (169 tests) 66ms
+ ✓ |unit| src/renderer/api/SseConnection.test.ts (20 tests) 300ms
+ ✓ |unit| src/renderer/utils/tabPersistence.test.ts (37 tests) 6ms
+ ✓ |unit| src/server/session-engine/session-engine.unit.test.ts (141 tests) 395ms
+ ✓ |integration| src/server/session-transcript/builtin.integration.test.ts (167 tests) 47313ms
+ ✓ |integration| src/server/runtimes/external-session-mock.integration.test.ts (241 tests) 39159ms
+ Test Files  8 passed (8)
+      Tests  813 passed (813)
+   Duration  88.67s (transform 2.64s, setup 511ms, collect 2.91s, tests 87.25s, environment 1ms, prepare 441ms)
+
+final CLI and App regressions
+Raw local log: /tmp/mox-transitions-final-changes.log
+ ✓ |unit| src/cli/myagents.unit.test.ts (172 tests) 61ms
+ ✓ |dom| src/renderer/App.helperLaunch.test.tsx (97 tests) 4747ms
+ Test Files  2 passed (2)
+      Tests  269 passed (269)
+   Duration  6.38s (transform 891ms, setup 246ms, collect 1.16s, tests 4.81s, environment 190ms, prepare 238ms)
+
+TypeScript: tsc --noEmit exit 0 (with root helper)
+Affected ESLint: exit 0; no lint violations
+Dependency-cruiser: 0 errors, 18 no-orphans warnings; no suppression
+Rust: rustfmt +1.92.0 parsing only. Product Rust compile/tests delegated to root integrated tree.
+No shared CI / package / real account / production acceptance claimed.

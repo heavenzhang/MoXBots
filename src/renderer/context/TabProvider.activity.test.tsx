@@ -67,10 +67,13 @@ vi.mock('@/api/sessionClient', async importOriginal => ({
 
 const tauriHarness = vi.hoisted(() => ({
   proxyFetch: vi.fn(),
+  newDesktopSession: vi.fn(),
   ensureSessionSidecar: vi.fn(async () => undefined),
   isTauri: false,
   listeners: new Map<string, (event: { payload: unknown }) => void>(),
 }));
+
+vi.mock('@/api/sessionHandoverClient', () => ({ newDesktopSession: tauriHarness.newDesktopSession }));
 
 vi.mock('@/api/SseConnection', () => ({
   createSseConnection: () => sseHarness.connection,
@@ -108,6 +111,7 @@ vi.mock('@/utils/frontendLogger', () => ({
 }));
 
 vi.mock('@/api/tauriClient', () => ({
+  releaseTabSession: vi.fn(async () => false),
   getTabServerUrl: vi.fn(async () => 'http://127.0.0.1:1234'),
   sessionSidecarFetch: vi.fn(async (
     _sessionId: string,
@@ -523,6 +527,7 @@ describe('TabProvider session activity ownership', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     historyPreview.mockResolvedValue(null);
+    tauriHarness.newDesktopSession.mockReset();
     sseHarness.state.connected = false;
     sseHarness.state.generation = 1;
     sseHarness.state.eventHandler = null;
@@ -960,6 +965,29 @@ describe('TabProvider session activity ownership', () => {
       expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
     },
   );
+
+  it.each([true, false])('recovers a reconnect snapshot only after pending identity admission (%s)', async accepted => {
+    let accept!: (value: boolean) => void;
+    tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({ success: true, session: {
+      id: 'materialized-reconnect', agentDir: '/tmp/workspace', runtime: 'builtin', transcriptFormat: 2,
+      messages: [{ id: 'missed', role: 'assistant', content: 'completed before identity adoption', timestamp: new Date(0).toISOString() }],
+      snapshotRevision: 10, liveSessionState: 'idle',
+    } })));
+    render(<TabProvider tabId="pending-gap" agentDir="/tmp/workspace" sessionId="pending-gap"
+      onSessionIdChange={() => new Promise(resolve => { accept = resolve; })}
+      claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId: 'materialized-reconnect', snapshotRevision: 10, transcriptFormat: 2 });
+    emit('chat:system-init', { sessionId: 'materialized-reconnect', snapshotRevision: 10, info: { model: 'model' } });
+    expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
+    await act(async () => { accept(accepted); });
+    if (accepted) {
+      await waitFor(() => expect(screen.getByTestId('history-content')).toHaveTextContent('completed before identity adoption'));
+    } else {
+      expect(readActivity().sessionId).toBe('pending-gap');
+      expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
+    }
+  });
 
   it.each(['echo-first', 'canonical-first'] as const)('keeps local attachment previews with %s V2 admission', async order => {
     const sessionId = 'pending-v2-preview';
@@ -1825,6 +1853,7 @@ describe('TabProvider session activity ownership', () => {
   });
 
   it('keeps history and identity when reset is rejected', async () => {
+    tauriHarness.newDesktopSession.mockRejectedValue(new Error('reset rejected'));
     tauriHarness.proxyFetch.mockImplementation(async (url: string) => new Response(JSON.stringify(
       url.endsWith('/api/session-state') ? { sessionId: 'pending-reset-rejected', sessionState: 'idle', isBusy: false } : { success: false, error: 'reset rejected' }
     ), { status: 200 }));
@@ -1833,7 +1862,7 @@ describe('TabProvider session activity ownership', () => {
     emit('chat:message-replay', { replayKind: 'live-user-echo', sessionId: 'pending-reset-rejected', message: { id: 'retained-user', role: 'user', content: 'retain this', timestamp: new Date(0).toISOString() } });
     expect(readActivity().historyCount).toBe(1);
     fireEvent.click(screen.getByRole('button', { name: 'reset session' }));
-    await waitFor(() => expect(screen.getByTestId('agent-error')).toHaveTextContent('reset rejected'));
+    await waitFor(() => expect(screen.getByTestId('agent-error')).toHaveTextContent('新对话创建失败'));
     expect(readActivity().historyCount).toBe(1);
     expect(readActivity().sessionId).toBe('pending-reset-rejected');
   });
@@ -1869,21 +1898,20 @@ describe('TabProvider session activity ownership', () => {
     expect(readActivity()).toMatchObject({ sessionState: newer, isLoading: newerBusy });
   });
 
-  it('adopts the authoritative binding after a lost reset response', async () => {
-    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
-      if (url.endsWith('/chat/reset')) throw new Error('response lost');
-      return new Response(JSON.stringify({ sessionId: 'session-reset-committed', sessionState: 'idle', isBusy: false }), { status: 200 });
-    });
+  it('does not guess a new identity when the lifecycle command is rejected', async () => {
+    tauriHarness.newDesktopSession.mockRejectedValue(new Error('response lost'));
     const onSessionIdChange = vi.fn().mockResolvedValue(true);
     render(<TabProvider tabId="reset-lost" agentDir="/tmp/workspace" sessionId="pending-reset-lost" onSessionIdChange={onSessionIdChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
     await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
     fireEvent.click(screen.getByRole('button', { name: 'reset session' }));
-    await waitFor(() => expect(readActivity().sessionId).toBe('session-reset-committed'));
-    expect(onSessionIdChange).toHaveBeenCalledWith('session-reset-committed', { newConversation: true });
-    expect(tauriHarness.proxyFetch.mock.calls.filter(([url]) => url.endsWith('/chat/reset'))).toHaveLength(1);
+    await waitFor(() => expect(screen.getByTestId('agent-error')).toHaveTextContent('新对话创建失败'));
+    expect(readActivity().sessionId).toBe('pending-reset-lost');
+    expect(onSessionIdChange).not.toHaveBeenCalled();
+    expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
   });
 
   it('keeps the live SSE owner when reset upgrades a real session on the same sidecar', async () => {
+    tauriHarness.newDesktopSession.mockResolvedValue({ newSessionId: 'session-reset-b', createNewSidecar: false });
     let resolveSessionC!: (response: Response) => void;
     const sessionCResponse = new Promise<Response>((resolve) => {
       resolveSessionC = resolve;
@@ -1909,12 +1937,6 @@ describe('TabProvider session activity ownership', () => {
             liveStreamingMessage: null,
             hasMoreBefore: false,
           },
-        }), { status: 200 });
-      }
-      if (url.endsWith('/chat/reset') && init?.method === 'POST') {
-        return new Response(JSON.stringify({
-          success: true,
-          sessionId: 'session-reset-b',
         }), { status: 200 });
       }
       throw new Error(`Unexpected proxyFetch call: ${init?.method ?? 'GET'} ${url}`);
@@ -1954,7 +1976,7 @@ describe('TabProvider session activity ownership', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'reset session' }));
 
-    await waitFor(() => expect(onSessionIdChange).toHaveBeenCalledWith('session-reset-b', { newConversation: true }));
+    await waitFor(() => expect(onSessionIdChange).toHaveBeenCalledWith('session-reset-b', { sidecarAlreadyMigrated: true, newConversation: true }));
     await waitFor(() => expect(readActivity().sessionId).toBe('session-reset-b'));
     expect(sseHarness.connection.disconnect).not.toHaveBeenCalled();
     expect(sseHarness.connection.connect).not.toHaveBeenCalled();
@@ -2041,6 +2063,7 @@ describe('TabProvider session activity ownership', () => {
   });
 
   it('moves reset scope before parent adoption without letting connected status relabel it', async () => {
+    tauriHarness.newDesktopSession.mockResolvedValue({ newSessionId: 'session-reset-race-b', createNewSidecar: false });
     let resolveAdoption!: (accepted: boolean) => void;
     const adoption = new Promise<boolean>((resolve) => {
       resolveAdoption = resolve;
@@ -2062,12 +2085,6 @@ describe('TabProvider session activity ownership', () => {
             liveStreamingMessage: null,
             hasMoreBefore: false,
           },
-        }), { status: 200 });
-      }
-      if (url.endsWith('/chat/reset') && init?.method === 'POST') {
-        return new Response(JSON.stringify({
-          success: true,
-          sessionId: 'session-reset-race-b',
         }), { status: 200 });
       }
       if (url.endsWith('/chat/send') && init?.method === 'POST') {
@@ -2113,7 +2130,7 @@ describe('TabProvider session activity ownership', () => {
     sseHarness.connection.connect.mockClear();
     fireEvent.click(screen.getByRole('button', { name: 'reset session' }));
 
-    await waitFor(() => expect(onSessionIdChange).toHaveBeenCalledWith('session-reset-race-b', { newConversation: true }));
+    await waitFor(() => expect(onSessionIdChange).toHaveBeenCalledWith('session-reset-race-b', { sidecarAlreadyMigrated: true, newConversation: true }));
     expect(readActivity().sessionId).toBe('session-reset-race-b');
 
     act(() => {
@@ -2506,6 +2523,47 @@ describe('TabProvider session activity ownership', () => {
     expect(sseHarness.connection.connect).not.toHaveBeenCalled();
   });
 
+  it.each([
+    { boundary: 'migration', format: 1 }, { boundary: 'migration', format: 2 },
+    { boundary: 'reset', format: 1 }, { boundary: 'reset', format: 2 },
+  ])('recovers the first offline IM turn after $boundary (V$format)', async ({ boundary, format }) => {
+    tauriHarness.newDesktopSession.mockResolvedValue({ newSessionId: 'session-migrated-b', createNewSidecar: false });
+    let targetReads = 0;
+    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
+      const target = url.includes('/sessions/session-migrated-b?');
+      expect(url).toMatch(/\/sessions\/session-migrated-[ab]\?/);
+      if (target) targetReads++;
+      return new Response(JSON.stringify({ success: true, session: {
+        id: target ? 'session-migrated-b' : 'session-migrated-a',
+        agentDir: '/tmp/workspace', runtime: 'builtin',
+        ...(format === 2 ? { transcriptFormat: 2 } : {}),
+        snapshotRevision: target ? 10 : 0, liveSessionState: 'idle', hasMoreBefore: false,
+        messages: target ? [{ id: 'missed', role: 'assistant',
+          content: 'IM answer completed while disconnected', timestamp: new Date(0).toISOString() }] : [],
+      } }));
+    });
+    const onSessionIdChange = vi.fn(async (sessionId: string) => {
+      view.rerender(<TabProvider tabId="offline-birth" agentDir="/tmp/workspace" sessionId={sessionId}
+        onSessionIdChange={onSessionIdChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+      return true;
+    });
+    const view = render(<TabProvider tabId="offline-birth" agentDir="/tmp/workspace" sessionId="session-migrated-a"
+      onSessionIdChange={onSessionIdChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    await waitFor(() => expect(sseHarness.state.connected).toBe(true));
+    fireEvent.click(screen.getByRole('button', { name: boundary === 'migration' ? 'adopt migrated session' : 'reset session' }));
+    await waitFor(() => expect(readActivity().sessionId).toBe('session-migrated-b'));
+    // An empty newborn stays on the immediate live path.
+    emit('chat:init', { sessionId: 'session-migrated-b', snapshotRevision: 0, sessionState: 'idle' });
+    expect(targetReads).toBe(0);
+    // No live echo or transcript operation reaches the Tab before reconnection.
+    act(() => { sseHarness.state.generation = 2; sseHarness.state.statusHandler?.('connected'); });
+    emit('chat:init', { sessionId: 'session-migrated-b', snapshotRevision: 10, sessionState: 'idle' });
+    emit('chat:system-init', { sessionId: 'session-migrated-b', snapshotRevision: 10, info: { model: 'model' } });
+    await waitFor(() => expect(screen.getByTestId('history-content')).toHaveTextContent('IM answer completed while disconnected'));
+    expect(targetReads).toBe(1);
+  });
+
   it('replaces the SSE subscription for an ordinary real-session switch', async () => {
     tauriHarness.proxyFetch.mockImplementation(async (url: string, init?: RequestInit) => {
       const match = url.match(/\/sessions\/(session-switch-[ab])\?/);
@@ -2561,6 +2619,59 @@ describe('TabProvider session activity ownership', () => {
     await waitFor(() => expect(sseHarness.connection.connect).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(readActivity().sessionId).toBe('session-switch-b'));
   });
+
+  it.each(['session-retained', 'pending-retained'])(
+    'starts a clean projection when replacing %s with a separate pending conversation',
+    async source => {
+      tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({
+        success: true,
+        session: {
+          id: source, agentDir: '/tmp/workspace', title: 'Old conversation',
+          messages: [], snapshotRevision: 0, liveSessionState: 'idle', hasMoreBefore: false,
+        },
+      })));
+      let state!: ReturnType<typeof useTabState>;
+      function Capture() {
+        const current = useTabState();
+        useEffect(() => { state = current; }, [current]);
+        return <Probe />;
+      }
+      const onTitleChange = vi.fn();
+      const content = (id: string) => (
+        <TabProvider tabId="separate-birth" agentDir="/tmp/workspace" sessionId={id}
+          onTitleChange={onTitleChange} claimSessionOpeningTransition={allowSessionOpening}>
+          <Capture />
+        </TabProvider>
+      );
+      const view = render(content(source));
+      await waitFor(() => expect(state.isConnected && !state.isSessionLoading).toBe(true));
+      act(() => state.setMessages([
+        { id: '1', role: 'user', content: 'old user', timestamp: new Date(0) },
+        { id: '2', role: 'assistant', content: 'old answer', timestamp: new Date(0) },
+      ]));
+      emit('chat:status', { sessionState: 'running' });
+      expect(readActivity().historyCount).toBe(2);
+
+      view.rerender(content('pending-separate-birth'));
+      await waitFor(() => expect(state.sessionId).toBe('pending-separate-birth'));
+      expect(readActivity().historyCount).toBe(0);
+      expect(readStreamingContent()).toBeNull();
+      expect(readActivity().isLoading).toBe(false);
+      expect(onTitleChange).toHaveBeenLastCalledWith('New Chat');
+
+      // New Sessions reuse transcript-local IDs; they must not match old rows.
+      emit('chat:init', { sessionId: 'pending-separate-birth', transcriptFormat: 2, sessionState: 'idle' });
+      for (const [id, role, content] of [['1', 'user', 'new user'], ['2', 'assistant', 'new answer']]) {
+        emit('chat:transcript-operation', {
+          sessionId: 'pending-separate-birth',
+          operation: { kind: 'message-create', message: { id, role, content, timestamp: new Date(1).toISOString() } },
+        });
+      }
+      expect(screen.getByTestId('history-content')).toHaveTextContent('new user');
+      expect(screen.getByTestId('history-content')).not.toHaveTextContent('old');
+      expect(readStreamingContent()).toBe('new answer');
+    },
+  );
 
   it('clears runtime tool metadata when switching to another session', async () => {
     const view = render(
@@ -2944,6 +3055,31 @@ describe('TabProvider session activity ownership', () => {
     expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(1);
   });
 
+  it.each([1, 2])('recovers an idle reconnect gap through the paginated snapshot (V%s)', async format => {
+    let reads = 0;
+    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
+      expect(url).toContain('/sessions/session-idle-gap?');
+      reads++;
+      return new Response(JSON.stringify({ success: true, session: {
+        id: 'session-idle-gap', agentDir: '/tmp/workspace', runtime: 'builtin',
+        ...(format === 2 ? { transcriptFormat: 2 } : {}),
+        snapshotRevision: reads === 1 ? 2 : 5,
+        liveSessionState: 'idle', hasMoreBefore: true,
+        messages: [{ id: 'first', role: 'user', content: 'question', timestamp: new Date(0).toISOString() },
+          ...(reads === 1 ? [] : [{ id: 'missed', role: 'assistant', content: 'answer completed while disconnected', timestamp: new Date(1).toISOString() }])],
+      } }));
+    });
+    render(<TabProvider tabId="idle-gap" agentDir="/tmp/workspace" sessionId="session-idle-gap" claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(readActivity().historyCount).toBe(1));
+    act(() => { sseHarness.state.generation = 2; sseHarness.state.statusHandler?.('connected'); });
+    // No subsequent live event will expose this gap: the turn already ended.
+    emit('chat:init', { sessionId: 'session-idle-gap', snapshotRevision: 5, sessionState: 'idle' });
+    await waitFor(() => expect(readActivity().historyCount).toBe(2));
+    expect(reads).toBe(2);
+    expect(screen.getByTestId('history-content')).toHaveTextContent('answer completed while disconnected');
+    expect(screen.getByTestId('session-loading')).toHaveTextContent('false');
+  });
+
   it('continues a stable reconnect without REST reload or loading chrome', async () => {
     let sessionGetCount = 0;
     tauriHarness.proxyFetch.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -2988,6 +3124,7 @@ describe('TabProvider session activity ownership', () => {
       sseHarness.state.generation = 2;
       sseHarness.state.statusHandler?.('connected');
     });
+    emit('chat:init', { sessionId: 'session-recovery', snapshotRevision: 2, sessionState: 'idle' });
     emit('chat:message-replay', {
       replayKind: 'live-user-echo',
       sessionId: 'session-recovery',

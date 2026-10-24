@@ -98,6 +98,7 @@ mod updater_download;
 pub mod utils;
 pub mod wake_lock;
 mod webview_policy;
+mod main_renderer;
 pub mod workspace_files;
 mod workspace_path;
 
@@ -465,6 +466,7 @@ pub fn run() {
         .manage(sidecar_state)
         .manage(agent_network_state)
         .manage(sse_proxy_state)
+        .manage(main_renderer::MainRendererState::default())
         .manage(proxy_spill_state)
         .manage(im_bot_state)
         .manage(agent_state)
@@ -484,6 +486,7 @@ pub fn run() {
         .manage(std::sync::Arc::new(workspace_files::watcher::WorkspaceWatchers::default()))
         // SearchEngine will be added as managed state in .setup()
         .invoke_handler(tauri::generate_handler![
+            main_renderer::cmd_attach_main_renderer,
             // Legacy commands (backward compatibility)
             commands::cmd_start_sidecar,
             commands::cmd_stop_sidecar,
@@ -693,7 +696,7 @@ pub fn run() {
             im::commands::cmd_all_agents_status,
             im::commands::cmd_update_agent_config,
             // Session ↔ channel surface handover (PRD 0.2.14)
-            im::handover::cmd_session_new_with_surface_migration,
+            sidecar::session_lifecycle::cmd_new_desktop_session,
             im::handover::cmd_handover_session_to_channel,
             // WeCom QR code commands (public API, not plugin gateway)
             commands::cmd_wecom_qr_generate,
