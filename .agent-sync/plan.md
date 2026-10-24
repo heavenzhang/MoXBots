@@ -955,3 +955,10 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 ## MB-TODO-BEFORE-EXEC-20261025 — 执行前预建并同步清单
 
 按用户明确要求，多步骤任务在原队列实际派发前持久化同一 To Do List，执行事件和原生工具同步稳定 ID；已授权任务不新增确认，讨论方案保留原确认。任务 `.agent-sync/tasks/codex-todo-before-execution-20261025-e66ac125.md`，证据 `dev-docs/todo-before-execution-20261025/acceptance.md`。源码/本地磁盘集成/真实SDK合成上游、CI/main、签名制品和真实Provider/客户端分别追踪。部署单元 desktop builtin client/共享Session进度；combined CI/main/版本/正式发布继续由唯一会话 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。当前开发分支不触发共享CI、不操作日常App或冻结制品；正式精确SHA完成后交下一未冻结批次。
+
+
+## MOXBOTS-0523-ALL-THREADS-20261025 — unified completed-source release
+
+主人最新要求等相关开发聊天全部完成提交，再统一打最新0.5.23。Root01a12bc2继续唯一desktop/macOS-arm64/updater和combinedCI/main owner；不再打522.2，旧5221签名/Apple原件封存且不poll。保留Rootcc3e完整已选九项有效改进和测试修正，新增已完成upstream320aa（及Windows测试兼容eead）与Todo f982。开发聊天active只等待本owner CI/main，不是未完成writer，不形成互等。当前source base848，候选0.5.23/build523.1；版本/源码/CI/main/制品/本地/正式通道/真实Provider与双端分开追踪。
+
+同一源码合并唯一产品冲突：Todo指令必须继续走Runtime-only reminder，保留原始人类文本和输入先于卡片；同步原清单准入/稳定ID与根验收结算。Root先复现4个旧接口断言，再2个旧fresh分类fixture缺steps；修正测试输入和接口断言，不降低生产准入。保留所有原历史/草稿/Stop/预算/unknown；配对Tauri API与三套vendor、Skill62随同新制品，旧冷启动恢复入口仍移除，原生Renderer replacement的未恢复页面属于单独故障恢复路径。已发布/本地521.2保持回滚。新候选源码冻结/精确CI/main前不构建；必要finite native后同份制品安装/正常TLS发布，不重复历史全矩阵或发布独立Host/mobile/backend。

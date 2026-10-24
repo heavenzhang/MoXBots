@@ -1968,7 +1968,9 @@ describe("To Do List before native execution", () => {
     expect(ledger().executionEvidence ?? []).toHaveLength(0);
     await pending.request.beforeDispatch!();
     expect(ledger().tasks.map(task => task.id)).toEqual(ids);
-    expect(pending.request.text).toContain(`[task:${ids[0]}]`);
+    expect(pending.request.text).toBe(input);
+    expect(pending.request.surfaceUserBeforeDispatch).toBe(true);
+    expect(pending.request.runtimeReminder).toContain(`[task:${ids[0]}]`);
     expect(pending.request.desktopQuery?.visibleText).toBe(input);
   });
 
@@ -2020,7 +2022,9 @@ describe("To Do List before native execution", () => {
     const prepared = await prepare(input, `external-${runtime}`, intent);
     expect(currentExecution()).toBeUndefined();
     expect(ledger().tasks.map(task => task.title)).toEqual(steps);
-    expect(prepared.request.text).toContain("TodoWrite/TaskCreate/update_plan");
+    expect(prepared.request.text).toBe(input);
+    expect(prepared.request.surfaceUserBeforeDispatch).toBe(true);
+    expect(prepared.request.runtimeReminder).toContain("TodoWrite/TaskCreate/update_plan");
     expect(ledger().proposal).toBeUndefined();
     await prepared.request.onTerminal?.({ status: "complete", text: "Native runtime returned", assistantMessagePresent: true });
     expect(continuationRequests).toHaveLength(0);
