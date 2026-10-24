@@ -1244,6 +1244,23 @@
         "modelRecoveryPaused": "Automatic recovery is paused. Progress has been saved. Check your model or account settings before retrying."
       },
       "starting": "Starting AI... first launch may take a while.",
+      "activity": {
+        "waitingModel": "Waiting for the model…",
+        "answering": "Writing the response…",
+        "reading": "Reading {{target}}",
+        "updating": "Updating {{target}}",
+        "searching": "Searching {{target}}",
+        "executing": "Running: {{target}}",
+        "command": "Running a command; expand its activity record for details",
+        "delegating": "Subtask running: {{target}}",
+        "waitingTask": "Waiting for task output: {{target}}",
+        "parallel": "{{action}} · {{count}} active",
+        "waitingPermission": "Waiting for your permission for {{target}}; see the request above",
+        "waitingAnswer": "Waiting for your input; see the question above",
+        "waitingPlan": "Waiting for plan approval; see the plan above",
+        "stopping": "Stopping the current task…",
+        "turnElapsed": "This turn: {{elapsed}}"
+      },
       "loadingHistory": "Loading chat history...",
       "waitingForInteraction": "Waiting for your response",
       "streaming": {
@@ -1427,6 +1444,7 @@
       "plan": "Task progress returned",
       "delegate": "Collaboration result returned",
       "needsAttention": "Some results need attention",
+      "moreMilestones": "{{count}} more",
       "returned": "{{count}} results returned",
       "progress": "Succeeded {{completed}}/{{total}}",
       "updates": "{{count}} updates",

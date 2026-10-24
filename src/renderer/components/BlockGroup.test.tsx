@@ -4,6 +4,7 @@ import type { ReactElement } from 'react';
 import { ThemeRuntimeProvider } from '@/theme';
 import type { ContentBlock } from '@/types/chat';
 import BlockGroup from './BlockGroup';
+import { ConversationContentContext } from '@/context/ConversationContentContext';
 import { ChatRowLayoutProvider } from '@/context/ChatRowLayoutContext';
 
 const render = (ui: ReactElement) => renderDom(ui, { wrapper: ({ children }) =>
@@ -63,7 +64,7 @@ describe('BlockGroup stage summaries and folding', () => {
     const { container } = render(<BlockGroup blocks={blocks} />);
     expect(container.querySelectorAll('[data-process-row]')).toHaveLength(0);
     expect(screen.getByText('成功返回 12/12')).toBeTruthy();
-    expect(screen.getByText('已返回 12 项结果')).toBeTruthy();
+    expect(screen.getByText('已读取 salary-source-0.ts · 已读取 salary-source-1.ts · 另有 10 项')).toBeTruthy();
     expect(screen.queryByText('OUTPUT_0')).toBeNull();
     fireEvent.click(details());
     expect(container.querySelectorAll('[data-process-row]')).toHaveLength(12);
@@ -185,6 +186,19 @@ describe('BlockGroup stage summaries and folding', () => {
     expect(container.querySelectorAll('[data-process-timing]')).toHaveLength(1);
   });
 
+  it('keeps a compact concrete milestone line with full text available as its title', () => {
+    const blocks = [
+      tool('a', 'Read', { parsedInput: { file_path: '/tmp/first-source.ts' } }),
+      tool('b', 'Read', { parsedInput: { file_path: '/tmp/second-source.ts' } }),
+      tool('c', 'Read', { parsedInput: { file_path: '/tmp/third-source.ts' } }),
+    ];
+    const { container } = render(<BlockGroup blocks={blocks} />);
+    const milestone = container.querySelector('[data-phase-result]');
+    expect(milestone).toHaveTextContent('已读取 first-source.ts · 已读取 second-source.ts · 另有 1 项');
+    expect(milestone).toHaveClass('truncate');
+    expect(milestone).toHaveAttribute('title', milestone?.textContent ?? '');
+  });
+
   it('does not offer an empty result or empty reasoning disclosure', () => {
     const { container } = render(<BlockGroup blocks={[
       tool('empty', 'Read', { result: '  ' }),
@@ -226,4 +240,22 @@ describe('BlockGroup stage summaries and folding', () => {
     expect(screen.getByText('OUTPUT_one')).toBeTruthy();
   });
 
+});
+
+it('shows remote result bodies immediately and preserves explicit folds through observation updates', () => {
+  const blocks = ['source-a', 'source-b'].map(id => tool(id, 'Read', { presentation: { kind: 'text', status: 'complete' } }));
+  const view = (items: ContentBlock[]) => <ConversationContentContext.Provider value="remote"><BlockGroup blocks={items} /></ConversationContentContext.Provider>;
+  const { container, rerender } = render(view(blocks));
+  expect(details()).toHaveAttribute('aria-expanded', 'true');
+  for (const id of ['source-a', 'source-b']) expect(screen.getAllByText(`OUTPUT_${id}`).length).toBeGreaterThan(0);
+  expect(container.querySelectorAll('[data-process-body-layout]')).toHaveLength(2);
+  fireEvent.click(container.querySelector('[data-process-row] button')!);
+  expect(container.querySelectorAll('[data-process-body-layout]')).toHaveLength(1);
+  const updated = [...blocks, tool('source-c', 'Read', { presentation: { kind: 'text', status: 'complete' } })];
+  rerender(view(updated));
+  expect(container.querySelectorAll('[data-process-body-layout]')).toHaveLength(2);
+  fireEvent.click(details());
+  rerender(view([...updated]));
+  expect(details()).toHaveAttribute('aria-expanded', 'false');
+  expect(container.querySelectorAll('[data-process-row]')).toHaveLength(0);
 });

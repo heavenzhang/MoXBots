@@ -9,6 +9,7 @@ import { isSubagentContainerTool } from './tools/subagentActivity';
 import ProcessRow from './ProcessRow';
 import ProcessStatus from './ProcessStatus';
 import ProcessTiming from './ProcessTiming';
+import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 
 interface BlockGroupProps {
   blocks: ContentBlock[];
@@ -32,7 +33,8 @@ function samePhase(previous: ProcessPhaseCardProps, next: ProcessPhaseCardProps)
 
 const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollowingPhase }: ProcessPhaseCardProps) {
   const { t } = useTranslation('chat');
-  const [expanded, setExpanded] = useState(false);
+  const remoteContent = useRemoteConversationContent();
+  const [expanded, setExpanded] = useState(remoteContent);
   // File aggregation can reparent a completed row; keep user choices by event ID.
   const [rowExpansions, setRowExpansions] = useState<Record<string, boolean>>({});
   const detailsId = useId();
@@ -73,7 +75,7 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
           {counts.unknown > 0 && <span className="text-xs text-[var(--ink-secondary)]">{t('process.summary.unknown', { count: counts.unknown })}</span>}
           {!expanded && !hasImportant && <span className="ml-auto"><ProcessTiming blocks={phase.entries.map(entry => entry.block)} running={false} /></span>}
         </span>
-        {!expanded && !hasImportant && <span data-phase-result className="mt-0.5 block break-words text-sm text-[var(--ink-secondary)]">{result}</span>}
+        {!expanded && !hasImportant && <span data-phase-result title={result} className="mt-0.5 block truncate text-sm text-[var(--ink-secondary)]">{result}</span>}
       </span>
       {!expanded && !hasImportant && <span className="mt-0.5"><ProcessStatus outcome={outcome} compact={outcome === 'succeeded'} /></span>}
     </button>}

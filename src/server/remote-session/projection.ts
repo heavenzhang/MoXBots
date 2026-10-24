@@ -37,28 +37,86 @@ export function projectRemoteInteractions(items: SessionEnginePendingInteractive
       questions:questions.slice(0,6).map(q=>{const obj=record(q);return {answerKey:clipped(obj.id||obj.question,512),question:clipped(obj.question,512),options:(Array.isArray(obj.options)?obj.options:[]).slice(0,8).map(v=>clipped(record(v).label,256)),multiSelect:obj.multiSelect===true}})}];
   });
 }
-export function projectRemoteMessage(message: SessionMessage): RemoteMessage | null {
-  const projected=projectSessionTextMessage(message);
-  const tools:RemoteMessage['tools']=[];
-  let toolTruncated=false;
-  if(message.role==='assistant'&&message.content.trim().startsWith('[')&&message.content.includes('"type"')) {
-    const blocks:unknown=JSON.parse(message.content);
-    if(Array.isArray(blocks))for(const value of blocks){
-      const block=record(value);
-      if(block.type==='tool_use'&&typeof block.id==='string'){
-        const tool=record(block.tool);
-        // Decode before clipping: a clipped JSON envelope cannot be unwrapped by
-        // the controller. Keep the strict wire bounds and raw inputs on target.
-        const result=unwrapSdkResult(display(tool.result ?? block.result ?? ''));
-        toolTruncated ||= result.length>2000;
-        tools.push({id:block.id,name:clipped(block.name||tool.name||'工具调用',160),status:tool.isError===true||tool.status==='error'?'error':tool.status==='running'?'running':'complete',summary:result.length>2000?`${result.slice(0,1998)}\n…`:result});
-      }
+const MESSAGE_BYTES = 24 * 1024;
+
+/** Split display text, not serialized envelopes. The same source position gets
+ * the same ID on every read; before-pagination can reach every continuation.
+ * Both UTF-16 schema bounds and escaped UTF-8 transport bytes must fit. */
+function textParts(text: string, maxCharacters: number): string[] {
+  if (!text) return [''];
+  const parts: string[] = [];
+  let offset = 0;
+  while (offset < text.length) {
+    let low = 1, high = Math.min(maxCharacters, text.length - offset);
+    while (low < high) {
+      const middle = Math.ceil((low + high) / 2);
+      if (Buffer.byteLength(JSON.stringify(text.slice(offset, offset + middle))) <= MESSAGE_BYTES - 1024) low = middle;
+      else high = middle - 1;
     }
+    let end = offset + low;
+    if (maxCharacters === 16000 && end < text.length) {
+      const paragraph = text.lastIndexOf('\n\n', end - 2);
+      if (paragraph > offset + low / 2) end = paragraph + 2;
+    }
+    // Never break an emoji into two invalid surrogate halves.
+    if (end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1])) end--;
+    parts.push(text.slice(offset, end));
+    offset = end;
   }
-  if(!projected&&!tools.length)return null;
-  const content=projected?.content||'';
-  if(message.role!=='user'&&message.role!=='assistant')return null;
-  return {id:message.id,role:message.role,timestamp:message.timestamp,content:content.slice(0,16000),truncated:content.length>16000||tools.length>10||toolTruncated,tools:tools.slice(0,10)};
+  return parts;
+}
+
+/** Pure read projection over the original Session transcript. Existing wire
+ * limits bound each fragment, not the amount of history a user may read. */
+export function projectRemoteMessages(message: SessionMessage): RemoteMessage[] {
+  const projected = projectSessionTextMessage(message); // validates structured text / hides reminders
+  if (message.role !== 'user' && message.role !== 'assistant') return [];
+  const role = message.role;
+  const fragments: RemoteMessage[] = [];
+  let current: RemoteMessage | undefined;
+  const fragmentId = (key: string) => `remote-content-${createHash('sha256').update(JSON.stringify([message.id, key])).digest('hex')}`;
+  const begin = (key: string, content = '') => {
+    if (current) fragments.push(current);
+    current = { id: !fragments.length ? message.id : fragmentId(key), role,
+      timestamp: message.timestamp, content, truncated: false, tools: [] };
+  };
+  const appendText = (text: string, key: string) => {
+    textParts(text, 16000).forEach((part, index) => begin(`${key}:${index}`, part));
+  };
+  if (role === 'assistant' && message.content.trim().startsWith('[') && message.content.includes('"type"')) {
+    const blocks: unknown[] = JSON.parse(message.content);
+    blocks.forEach((value, blockIndex) => {
+      const block = record(value), tool = record(block.tool);
+      if (block.type === 'text' && typeof block.text === 'string' && block.text) {
+        appendText(block.text, `text:${blockIndex}`);
+      } else if (block.type === 'tool_use' && (typeof block.id === 'string' || typeof tool.id === 'string')) {
+        const toolId = typeof block.id === 'string' ? block.id : tool.id as string;
+        // Decode once before splitting. Raw inputs, hidden thinking and local
+        // attachment/permission metadata never enter the observation contract.
+        const result = unwrapSdkResult(display(tool.result ?? block.result ?? ''));
+        const parts = textParts(result, 2000);
+        parts.forEach((summary, index) => {
+          const key = `tool:${blockIndex}:${index}`;
+          const suffix = index ? ` · ${index + 1}` : '';
+          const part: RemoteMessage['tools'][number] = {
+            id: index === 0 ? toolId : fragmentId(key),
+            name: clipped(block.name || tool.name || '工具调用', 160 - suffix.length) + suffix,
+            status: tool.isError === true || tool.status === 'error' ? 'error'
+              : tool.status === 'running' ? 'running' : 'complete',
+            summary,
+          };
+          // Continuations are individual rows, not additional completed calls
+          // in a phase count. Keep subsequent real calls out of that last row.
+          if (parts.length > 1 || !current || current.tools.length === 10
+            || Buffer.byteLength(JSON.stringify({ ...current, tools: [...current.tools, part] })) > MESSAGE_BYTES) begin(key);
+          current!.tools.push(part);
+        });
+        if (parts.length > 1) { fragments.push(current!); current = undefined; }
+      }
+    });
+  } else if (projected) appendText(projected.content, 'text');
+  if (current) fragments.push(current);
+  return fragments;
 }
 
 /** One whole snapshot is projected from the original Session owner. UI applies
@@ -70,7 +128,7 @@ export async function buildRemoteSnapshot(agentId: string, sessionId: string, ge
   if(!stored||stored.transcriptRecovery==='unavailable')throw new RemoteSessionError('REMOTE_HISTORY_UNAVAILABLE');
   const engine=getSessionEngine(),overlay=engine.getLiveSessionOverlay(sessionId);
   const live=overlay.isActive&&engine.getCurrentSessionContext().sessionId===sessionId;
-  const messages=mergeSessionMessagesByIdentity(live&&stored.transcriptFormat===2?[]:stored.messages,live?overlay.inMemoryMessages:undefined,live?overlay.liveStreamingMessage:undefined).map(projectRemoteMessage).filter((m):m is RemoteMessage=>m!==null);
+  const messages=mergeSessionMessagesByIdentity(live&&stored.transcriptFormat===2?[]:stored.messages,live?overlay.inMemoryMessages:undefined,live?overlay.liveStreamingMessage:undefined).flatMap(projectRemoteMessages);
   let end=messages.length;
   if(before){end=messages.findIndex(m=>m.id===before);if(end<0)throw new RemoteSessionError('REMOTE_HISTORY_ANCHOR_CHANGED')}
   let start=Math.max(0,end-limit);

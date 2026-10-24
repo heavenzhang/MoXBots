@@ -549,6 +549,8 @@ export function createBuiltinSessionEngine(): SessionEngine {
         {
           fromDesktopChatSend: true,
           desktopQuery: request.desktopQuery,
+          runtimeReminder: request.runtimeReminder,
+          surfaceUserBeforeDispatch: request.surfaceUserBeforeDispatch,
           sessionBirthOrigin: request.birthOrigin,
           queueId: request.queueId,
           turnOwner: request.turnOwner,

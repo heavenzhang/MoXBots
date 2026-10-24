@@ -6,16 +6,17 @@ import type { ContentBlock, ToolUseSimple } from '@/types/chat';
 import type { FilePatchDisplayDescriptor } from '../../shared/toolDisplay/filePatch';
 
 const fileActionMocks = vi.hoisted(() => ({
+  contextAvailable: true,
   openFileTarget: vi.fn(),
   openFileTargetMenu: vi.fn(),
 }));
 
 vi.mock('@/context/FileActionContext', () => ({
-  useFileAction: () => ({
+  useFileAction: () => fileActionMocks.contextAvailable ? ({
     workspacePath: '/workspace',
     openFileTarget: fileActionMocks.openFileTarget,
     openFileTargetMenu: fileActionMocks.openFileTargetMenu,
-  }),
+  }) : null,
 }));
 
 import { TurnFileEditSummary } from './TurnFileEditSummary';
@@ -66,6 +67,7 @@ function change(
 describe('TurnFileEditSummary', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
+    fileActionMocks.contextAvailable = true;
     fileActionMocks.openFileTargetMenu.mockImplementation((
       _x: number,
       _y: number,
@@ -89,23 +91,68 @@ describe('TurnFileEditSummary', () => {
     );
 
     const trigger = screen.getByRole('button', { name: /本轮编辑 2 个文件/ });
+    expect(trigger).toHaveAttribute('aria-label', '本轮编辑 2 个文件');
+    expect(trigger).toHaveAttribute('title', '本轮编辑 2 个文件');
+    expect(screen.getByText('2 个文件')).toHaveClass('hidden', '@max-[340px]/turn-files:inline');
+    expect(screen.getByText('本轮编辑 2 个文件')).toHaveClass('@max-[340px]/turn-files:hidden');
     expect(trigger).toHaveTextContent('+10');
     expect(trigger).toHaveTextContent('−1');
 
     fireEvent.click(trigger);
 
-    expect(screen.getByRole('dialog', { name: '本轮文件编辑' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '已修改: src/a.ts' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '已新增: src/new.ts' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: '本轮文件编辑' });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '已修改: src/a.ts' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: '已新增: src/new.ts' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '更多操作: a.ts' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '更多操作: new.ts' })).toBeInTheDocument();
-    const dialog = screen.getByRole('dialog', { name: '本轮文件编辑' });
     expect(dialog).not.toHaveTextContent('src/');
     expect(within(dialog).queryByText('M')).not.toBeInTheDocument();
     expect(within(dialog).queryByText('A')).not.toBeInTheDocument();
     expect(within(dialog).getByText('+2')).toHaveClass('text-[var(--success)]');
     expect(within(dialog).getByText('−1')).toHaveClass('text-[var(--error)]');
     expect(within(dialog).getByText('+8')).toHaveClass('text-[var(--success)]');
+  });
+
+  it('opens the first two successful structured file results directly from the inline row', () => {
+    render(
+      <TurnFileEditSummary
+        content={contentWithChanges([
+          change('src/first-file.ts', 'update', 2, 1),
+          change('src/second-file.ts', 'add', 8, 0),
+          change('src/third-file.ts', 'update', 1, 0),
+        ])}
+      />,
+    );
+
+    const first = screen.getByRole('button', { name: '已修改: src/first-file.ts' });
+    const second = screen.getByRole('button', { name: '已新增: src/second-file.ts' });
+    expect(first.parentElement?.parentElement).toHaveClass('@container/turn-files');
+    expect(second).toHaveClass('@max-[340px]/turn-files:hidden');
+    expect(first).toHaveAttribute('title', 'src/first-file.ts');
+    expect(second).toHaveAttribute('title', 'src/second-file.ts');
+    expect(screen.queryByRole('button', { name: '已修改: src/third-file.ts' })).toBeNull();
+
+    fireEvent.click(first);
+    expect(fileActionMocks.openFileTarget).toHaveBeenCalledWith(
+      { scope: 'workspace', path: 'src/first-file.ts' },
+      { displayPath: 'src/first-file.ts' },
+    );
+    expect(fileActionMocks.openFileTargetMenu).not.toHaveBeenCalled();
+  });
+
+  it('disables inline access for deleted files and when file actions are unavailable', () => {
+    const { rerender } = render(
+      <TurnFileEditSummary content={contentWithChanges([change('src/gone.ts', 'delete', 0, 2)])} />,
+    );
+    expect(screen.getByRole('button', { name: '已删除: src/gone.ts' })).toBeDisabled();
+
+    fileActionMocks.contextAvailable = false;
+    rerender(
+      <TurnFileEditSummary content={contentWithChanges([change('/tmp/unknown.ts', 'update', 1, 0)])} />,
+    );
+    expect(screen.getByRole('button', { name: '已修改: /tmp/unknown.ts' })).toBeDisabled();
+    expect(fileActionMocks.openFileTarget).not.toHaveBeenCalled();
   });
 
   it('closes before delegating a file row to the existing preview action', () => {
@@ -115,7 +162,7 @@ describe('TurnFileEditSummary', () => {
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: /本轮编辑 1 个文件/ }));
-    fireEvent.click(screen.getByRole('button', { name: '已修改: src/a.ts' }));
+    fireEvent.click(within(screen.getByRole('dialog', { name: '本轮文件编辑' })).getByRole('button', { name: '已修改: src/a.ts' }));
 
     expect(screen.queryByRole('dialog', { name: '本轮文件编辑' })).not.toBeInTheDocument();
     expect(fileActionMocks.openFileTarget).toHaveBeenCalledWith(
@@ -132,7 +179,7 @@ describe('TurnFileEditSummary', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /本轮编辑 1 个文件/ }));
 
-    expect(screen.getByRole('button', { name: '已删除: src/gone.ts' })).toBeDisabled();
+    expect(within(screen.getByRole('dialog', { name: '本轮文件编辑' })).getByRole('button', { name: '已删除: src/gone.ts' })).toBeDisabled();
     expect(screen.getByRole('button', { name: '更多操作: gone.ts' })).toBeDisabled();
   });
 
@@ -144,7 +191,7 @@ describe('TurnFileEditSummary', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /本轮编辑 1 个文件/ }));
 
-    const row = screen.getByRole('button', { name: '已重命名: src/a.ts → tests/a.ts' });
+    const row = within(screen.getByRole('dialog', { name: '本轮文件编辑' })).getByRole('button', { name: '已重命名: src/a.ts → tests/a.ts' });
     expect(row).toHaveTextContent('a.ts');
     expect(row).not.toHaveTextContent('→');
     expect(screen.getByRole('dialog', { name: '本轮文件编辑' })).not.toHaveTextContent(/src|tests/);
@@ -194,7 +241,7 @@ describe('TurnFileEditSummary', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /本轮编辑 1 个文件/ }));
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: '已修改: src/a.ts' }), {
+    fireEvent.contextMenu(within(screen.getByRole('dialog', { name: '本轮文件编辑' })).getByRole('button', { name: '已修改: src/a.ts' }), {
       clientX: 48,
       clientY: 96,
     });

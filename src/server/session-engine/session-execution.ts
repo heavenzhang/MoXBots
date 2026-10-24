@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { getSessionData, getSessionMetadata } from "../SessionStore";
 import { APP_CLI_NAME } from "../../shared/appProfile";
+import { escapeSystemReminderText } from "../../shared/systemReminder";
 import {
   createSessionExecution,
   canContinueSessionExecution,
@@ -275,15 +276,16 @@ export async function pauseSessionExecution(
 function executionReminder(
   sessionId: string,
   execution = currentLedger(sessionId)?.execution,
+  continuationText?: string,
 ): string {
   if (!execution) return "";
-  return `\n<system-reminder>本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
+  return `<system-reminder><SESSION_EXECUTION>${continuationText ? `${escapeSystemReminderText(continuationText)}\n` : ""}本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
 读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
 accept 需要覆盖全部验收条件，并指向本次执行真实且最新的验证结果；Todo完成、分析文本和子Agent自报不算证据。
 评审提交成功后，给出简明交付说明（实际产物位置、检查结果或具体阻断）并结束当前回复。accept/rework 都由本轮持久化终态结算；不要在同一轮等待完成状态或反复提交相同评审。rework 的修复由下一轮自动接续。
-需要业务判断或缺权限则 needs_user/blocked。不得扩大原始授权、重复未知写入或自动创建 Goal。遇到停止立即停下。</system-reminder>`;
+需要业务判断或缺权限则 needs_user/blocked。不得扩大原始授权、重复未知写入或自动创建 Goal。遇到停止立即停下。</SESSION_EXECUTION></system-reminder>`;
 }
 
 /** This admission is reached only for a verified human desktop input, never source labels or model prose. */
@@ -572,11 +574,11 @@ export async function prepareSessionExecution(
       // tools are still running; keep these scoped inputs at the turn boundary.
       turnBoundaryOnly: true,
       beforeDispatch: guard,
-      text:
-        request.text +
-        (executionId
-          ? executionReminder(request.sessionId, stagedExecution)
-          : ""),
+      // User text is immutable. Only the Runtime receives product instructions.
+      runtimeReminder: executionId
+        ? executionReminder(request.sessionId, stagedExecution)
+        : undefined,
+      surfaceUserBeforeDispatch: true,
       // Keep the original visible user input; product instructions never become human evidence.
       desktopQuery: { ...request.desktopQuery, visibleText: request.text },
       onTerminal: async (outcome) => {
@@ -1043,17 +1045,14 @@ export async function continueSessionExecution(
       sessionId,
       workspacePath: engine.getCurrentSessionContext().workspacePath!,
       scenario: { type: "desktop", surface: "chat" },
-      text:
-        text +
-        executionReminder(sessionId).replaceAll(
-          initial.currentQueueId,
-          continuation.queueId,
-        ),
+      // Automatic continuation is a hidden product event, never a new human query.
+      text: executionReminder(
+        sessionId,
+        { ...initial, currentQueueId: continuation.queueId },
+        text,
+      ),
       desktopQuery: {
-        visibleText:
-          initial.phase === "rework"
-            ? "继续修复并重新验收当前任务。"
-            : "继续完成当前任务并检查交付结果。",
+        visibleText: "",
       },
       // Ordinary execution stays on the original desktop owner. A scheduled
       // Task owner would incorrectly disable ordinary inference recovery.

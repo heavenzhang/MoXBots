@@ -107,7 +107,7 @@ export async function handleNetworkTargetPrecheck(
   }
 }
 
-/** This projection is for the three read operations only. Network invocation
+/** This projection is for read operations only. Network invocation
  * permission has already been checked by Rust; local ownership is rechecked
  * here immediately before using the original business handlers. */
 export async function handleNetworkTargetRead(
@@ -174,7 +174,10 @@ export async function handleNetworkTargetRead(
         };
       result = response.data;
     } else if (operation.method === 'session.state') {
-      result = await readSessionActivity(operation.params.localSessionId);
+      const activity = await readSessionActivity(operation.params.localSessionId);
+      // Local progress/execution details are not part of this closed wire DTO.
+      // Keep them with their local owner instead of widening the protocol.
+      result = { sessionId: activity.sessionId, state: activity.state };
     } else {
       const response = await handleSessionGet({
         sessionId: operation.params.localSessionId,

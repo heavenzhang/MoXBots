@@ -51,6 +51,10 @@ export type DesktopMessageRequest = {
   continueFromTurnId?: string;
   asyncQuestionReply?: AsyncQuestionReply;
   text: string;
+  /** Product instructions for the Runtime only; never part of user history. */
+  runtimeReminder?: string;
+  /** Verified human input may be recorded before its execution/card guard. */
+  surfaceUserBeforeDispatch?: boolean;
   images?: ImagePayload[];
   /** Product mode for builtin sessions; runtime-native mode for external sessions. */
   permissionMode?: string;

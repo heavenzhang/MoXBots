@@ -1,7 +1,7 @@
 import { remoteAccountState } from "./accountFence";
 import { remoteAdmissionErrorKey } from "./admissionError";
-import { remoteActivityKey } from "./observation";
-import { useRemoteSessionPolling } from "./useRemoteSessionPolling";
+import { useRemoteSessionPolling, type RemotePollingActivity } from "./useRemoteSessionPolling";
+import { shareEqualJson } from "../../../shared/shareEqualJson";
 import { useEffectEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PlusIcon, RefreshIcon, StopIcon } from "@/components/icons";
@@ -144,11 +144,17 @@ function RemoteSessionContent({
     title: tab.title, state: tab.sessionId ? "idle" : "draft", sync: "loading", lastSyncedAt: null, hasUnread: false,
   });
   const observationRef = useRef(observation);
-  const activityRef = useRef<string | null>(null);
   function reportObservation(patch: Partial<RemoteSessionObservation>) {
     if (!mounted.current || !remoteAccountMatches(locator)) return;
     const next = { ...observationRef.current, ...patch };
     if (readingRef.current) next.hasUnread = false;
+    const previous = observationRef.current;
+    // The UI displays minute precision. Retain a real successful-read timestamp
+    // within that minute rather than broadcasting every unchanged fast poll to App.
+    if (previous.title === next.title && previous.state === next.state && previous.sync === next.sync &&
+        previous.hasUnread === next.hasUnread &&
+        (previous.lastSyncedAt === null ? null : Math.floor(previous.lastSyncedAt / 60000)) ===
+        (next.lastSyncedAt === null ? null : Math.floor(next.lastSyncedAt / 60000))) return;
     observationRef.current = next;
     setObservation(next);
     binding.onObservation?.(tab.id, locator.authGeneration, next);
@@ -265,22 +271,20 @@ function RemoteSessionContent({
       setBefore(next.nextBefore);
       setHasOlder(next.hasMoreBefore);
     }
-    const stable = {
+    const sameGeneration = previous?.generation === next.generation;
+    const messages = reconcileRemoteMessages(next.messages, previous && sameGeneration ? previous.messages : []);
+    const stable = previous && sameGeneration ? shareEqualJson(previous, {
       ...next,
-      messages: reconcileRemoteMessages(next.messages, [
-        ...olderRef.current,
-        ...(previous?.messages ?? []),
-      ]),
-    };
-    const activity = remoteActivityKey(next);
-    const changed = activityRef.current !== null && activityRef.current !== activity;
-    activityRef.current = activity;
+      messages,
+    }) : { ...next, messages };
+    const changed = previous !== null &&
+      (previous.messages !== stable.messages || previous.interactions !== stable.interactions);
     snapshotRef.current = stable;
     setSnapshot(stable);
     reportObservation({ title: next.title, state: next.terminal ?? next.state, sync: "current",
       lastSyncedAt: Date.now(), hasUnread: observationRef.current.hasUnread || changed });
   }
-  const synchronize = async (cancelled: () => boolean) => {
+  const synchronize = async (cancelled: () => boolean): Promise<RemotePollingActivity | void> => {
     if (busyRef.current) return;
     try {
       if (!capableRef.current) {
@@ -328,11 +332,15 @@ function RemoteSessionContent({
           reportObservation({ sync: "current", lastSyncedAt: Date.now() });
         }
       }
-      if (!cancelled() && alive()) setError(mutationError.current);
+      if (!cancelled() && alive()) {
+        setError(mutationError.current);
+        return snapshotRef.current?.state === "running" && !snapshotRef.current.terminal ? "running" : "idle";
+      }
     } catch (failure) {
       if (!cancelled() && alive()) {
         setError(remoteErrorCode(failure));
         reportObservation({ sync: "error" });
+        return "error";
       }
     } finally {
       if (!cancelled() && alive()) setLoading(false);
