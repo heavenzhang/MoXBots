@@ -124,6 +124,32 @@ function ClockOwner({
 describe('MessageList footer status positioning', () => {
   afterEach(() => vi.useRealTimers());
 
+  it('shows the live action, then model wait, without reusing a stale history tool', () => {
+    const active: MessageType = { id: 'live-action', role: 'assistant', timestamp: new Date(), content: [
+      { type: 'tool_use', tool: { id: 'read-action', name: 'Read', input: { file_path: '/workspace/current.ts' }, streamIndex: 0, isLoading: true } },
+    ] };
+    const props = createBaseProps({ isLoading: true, sessionState: 'running', streamingMessage: active });
+    const { rerender } = render(<MessageList {...props} />);
+    const row = document.querySelector('[data-chat-status-row]');
+    expect(row).toHaveTextContent('正在读取 current.ts');
+    rerender(<MessageList {...props} messages={[active]} streamingMessage={null} />);
+    expect(document.querySelector('[data-chat-status-row]')).toBe(row);
+    expect(row).toHaveTextContent('等待模型响应');
+    expect(row).not.toHaveTextContent('current.ts');
+  });
+
+  it('prioritizes permission and runtime recovery over a still-loading tool', () => {
+    const props = createBaseProps({ isLoading: true, systemStatus: 'api_retry:2:5',
+      pendingPermission: { requestId: 'permission', toolName: 'Bash', input: '{}' }, onPermissionDecision: vi.fn() });
+    const { rerender } = render(<MessageList {...props} />);
+    expect(document.querySelector('[data-chat-status-row]')).toHaveTextContent('等待你授权 Bash');
+    expect(document.querySelector('[data-chat-status-row] svg')).toBeNull();
+    rerender(<MessageList {...props} pendingPermission={null} />);
+    expect(document.querySelector('[data-chat-status-row]')).toHaveTextContent('第 2/5 次');
+    rerender(<MessageList {...props} pendingPermission={null} systemStatus={null} sessionState="stopping" />);
+    expect(document.querySelector('[data-chat-status-row]')).toHaveTextContent('正在停止当前任务');
+  });
+
   it.each(['tab', 'window'])('stops footer polling while the %s is hidden, even when the query ends there', (surface) => {
     vi.useFakeTimers();
     const startedAt = Date.now();
@@ -362,7 +388,7 @@ describe('MessageList footer status positioning', () => {
       '[data-chat-waiting-for-interaction]',
     );
     expect(status).toBeInTheDocument();
-    expect(status).toHaveTextContent('等待你的选择');
+    expect(status).toHaveTextContent('等待你补充信息');
     expect(status?.querySelector('.animate-spin')).not.toBeInTheDocument();
   });
 

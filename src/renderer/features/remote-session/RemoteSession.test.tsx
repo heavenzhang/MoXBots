@@ -719,15 +719,12 @@ it('shows tool results through shared disclosure as canonical text without local
   render(<RemoteSession tab={{ ...tab, sessionId:'s', targetScope:scope }} isActive binding={binding} />);
   await waitFor(() => expect(document.querySelectorAll('[data-process-row]')).toHaveLength(3));
   const read = document.querySelector('[data-message-id="message"] button[aria-expanded]') as HTMLButtonElement;
-  expect(read.getAttribute('aria-expanded')).toBe('false');
-  expect(document.querySelector('pre')).toBeNull();
-  fireEvent.click(read);
   expect(read.getAttribute('aria-expanded')).toBe('true');
   expect(document.querySelector('pre')?.textContent).toBe('first line\nsecond line');
   expect(screen.queryByText('filePath', {exact:false})).toBeNull();
   expect(screen.queryByRole('link')).toBeNull();
   fireEvent.click(read);
-  expect(document.querySelector('pre')).toBeNull();
+  expect(read.closest('[data-process-row]')?.querySelector('pre')).toBeNull();
   expect(document.querySelectorAll('[data-process-row="running"]')).toHaveLength(1);
   expect(document.querySelectorAll('[data-process-row="failed"]')).toHaveLength(1);
   expect(mocks.request.mock.calls.every(call=>['capabilities','get'].includes(call[2].kind))).toBe(true);

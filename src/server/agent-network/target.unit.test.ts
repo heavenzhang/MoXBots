@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   get: vi.fn(),
   history: vi.fn(),
+  activity: vi.fn(),
 }));
 vi.mock("../utils/agent-workspace-identity", () => ({
   resolvePersistedAgentWorkspaceRegistry: mocks.registry,
@@ -21,6 +22,11 @@ vi.mock("../admin-api", () => ({
   handleSessionList: mocks.list,
   handleSessionGet: mocks.get,
 }));
+vi.mock("../session-observation", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../session-observation")>(),
+  readSessionActivity: mocks.activity,
+}));
+import { deriveSessionWorkProgress } from "../../shared/sessionWorkProgress";
 import {
   handleNetworkTargetPrecheck,
   handleNetworkTargetRead,
@@ -58,6 +64,40 @@ describe("network reads use original identity/history owners and closed projecti
       await handleNetworkTargetPrecheck({ localAgentId: "agent" }),
     ).toMatchObject({ success: false, code: "AGENT_NOT_AVAILABLE" });
     expect(mocks.show).not.toHaveBeenCalled();
+  });
+  it.each(["idle", "running", "waiting_user_action"] as const)(
+    "projects %s activity without leaking local progress or invalidating the closed wire schema",
+    async (state) => {
+      mocks.activity.mockResolvedValue({
+        sessionId: "session",
+        state,
+        progress: {
+          ...deriveSessionWorkProgress([], { live: false }),
+          todos: [{ key: "local", content: "Private local task", activeForm: "Working", status: "in_progress" }],
+          todoTotal: 1,
+        },
+        ...(state === "running" ? {
+          execution: { startedAt: "2026-10-24T00:00:00.000Z", elapsedMs: 1234 },
+        } : {}),
+      });
+      expect(await handleNetworkTargetRead({
+        method: "session.state",
+        params: { localAgentId: "agent", localSessionId: "session" },
+      })).toEqual({
+        success: true,
+        data: { method: "session.state", result: { sessionId: "session", state } },
+      });
+      expect(mocks.activity).toHaveBeenCalledWith("session");
+    },
+  );
+  it("checks Session ownership before reading activity and still rejects invalid wire states", async () => {
+    const request = { method: "session.state", params: { localAgentId: "agent", localSessionId: "session" } };
+    mocks.metadata.mockReturnValue({ id: "session", agentDir: "/other" });
+    expect(await handleNetworkTargetRead(request)).toMatchObject({ success: false, code: "SESSION_NOT_FOUND" });
+    expect(mocks.activity).not.toHaveBeenCalled();
+    mocks.metadata.mockReturnValue({ id: "session", agentDir: "/owned" });
+    mocks.activity.mockResolvedValue({ sessionId: "session", state: "invented-state" });
+    expect(await handleNetworkTargetRead(request)).toMatchObject({ success: false, code: "TARGET_PROJECTION_INVALID" });
   });
   it("show projects documented defaults and excludes local paths and arbitrary runtime credentials", async () => {
     mocks.show.mockResolvedValue({

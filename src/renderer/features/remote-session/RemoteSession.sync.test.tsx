@@ -2,12 +2,15 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { RemoteSnapshot } from '../../../shared/remoteSession';
 import type { RemoteSessionTab } from './tabContract';
-const mocks = vi.hoisted(() => ({ request: vi.fn(), current: { state: 'ready', principalId: 'p', networkId: 'n', authGeneration: 4 } }));
+const mocks = vi.hoisted(() => ({ request: vi.fn(), present: vi.fn(), current: { state: 'ready', principalId: 'p', networkId: 'n', authGeneration: 4 } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/features/agent-network/store', () => ({ useAgentNetworkRegistry: () => ({ connections: [{ id: 'owned:test', snapshot: mocks.current }] }) }));
 vi.mock('@/api/remoteSession', () => ({ remoteSessionRequest: mocks.request, remoteErrorCode: (e: {code: string}) => e.code,
   remoteAccountMatches: (l: {authGeneration: number}) => mocks.current.principalId === 'p' && mocks.current.authGeneration === l.authGeneration }));
-vi.mock('./RemoteConversation', () => ({ RemoteConversation: ({source}: {source: {id: string; content: string}[]}) => <div>{source.map(m => <p key={m.id}>{m.content}</p>)}</div> }));
+vi.mock('./RemoteConversation', () => ({ RemoteConversation: ({source}: {source: {id: string; content: string}[]}) => {
+  mocks.present(source);
+  return <div>{source.map(m => <p key={m.id}>{m.content}</p>)}</div>;
+} }));
 vi.mock('@/config/useConfigData', () => ({ useConfigData: () => ({config:{}}) }));
 vi.mock('@/hooks/useUpdateEditorAdmission', () => ({ useUpdateEditorAdmission: () => {} }));
 import RemoteSession from './RemoteSession';
@@ -19,6 +22,7 @@ let snapshot: RemoteSnapshot;
 let binding: {onOpen: ReturnType<typeof vi.fn>; onBound: ReturnType<typeof vi.fn>; onObservation: ReturnType<typeof vi.fn>};
 beforeEach(() => {
   vi.useFakeTimers(); localStorage.clear(); clearRemoteDrafts();
+  mocks.present.mockClear();
   Object.assign(mocks.current, { state: 'ready', principalId: 'p', authGeneration: 4 });
   snapshot = { kind: 'snapshot', agentId: 'a', sessionId: 's', generation: 'g', turnId: 'turn', revision: '1', title: 'Remote title', state: 'running', runtime: 'builtin', model: null, terminal: null,
     messages: [{ id: 'm', role: 'assistant', content: 'Initial text', timestamp: '', truncated: false, tools: [] }], interactions: [], hasMoreBefore: false, nextBefore: null };
@@ -26,6 +30,28 @@ beforeEach(() => {
   mocks.request.mockReset().mockImplementation(async (_l, _s, req) => ({scope, data: req.kind === 'capabilities' ? {kind: 'capabilities'} : structuredClone(snapshot)}));
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
+it('fast running reads retain timeline identity and do not broadcast unchanged polls to App', async () => {
+  vi.setSystemTime(new Date('2026-10-24T01:00:00Z'));
+  render(<RemoteSession tab={tab} isActive binding={binding} />); await act(async () => {});
+  const source = mocks.present.mock.lastCall![0];
+  const observations = binding.onObservation.mock.calls.length;
+  const reads = mocks.request.mock.calls.length;
+  await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+  expect(mocks.request.mock.calls.length - reads).toBe(20);
+  expect(mocks.present.mock.lastCall![0]).toBe(source);
+  expect(binding.onObservation).toHaveBeenCalledTimes(observations);
+  snapshot.messages[0].content += ' fresh output'; snapshot.revision = '2';
+  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  expect(screen.getByText('Initial text fresh output')).toBeInTheDocument();
+  expect(mocks.present.mock.lastCall![0]).not.toBe(source);
+  snapshot.state = 'idle';
+  await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+  const idleReads = mocks.request.mock.calls.length;
+  await act(async () => { await vi.advanceTimersByTimeAsync(1499); });
+  expect(mocks.request).toHaveBeenCalledTimes(idleReads);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(mocks.request).toHaveBeenCalledTimes(idleReads + 1);
+});
 it('updates an existing message in the background, marks unread, and clears it on return', async () => {
   const view = render(<RemoteSession tab={tab} isActive binding={binding} />); await act(async () => {});
   expect(screen.getByText('Initial text')).toBeInTheDocument();
