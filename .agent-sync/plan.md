@@ -880,3 +880,7 @@ Unchanged sole desktop/macOSarm64/updater and combinedCI/main owner01a12bc2-907a
 ## REMOTE-UI-SMOOTH-20261024 — 远程显示流畅度
 
 用户要求远程会话更接近本地体验。沿现有快照 transport 和普通会话渲染/滚动 owner，执行中前台轮询完成后等待从 1500ms 缩短到 300ms，空闲 1500ms、后台 5000ms；读取失败有界退避。稳定未变化消息数组与工具块，避免无变化刷新触发 App 侧栏广播。没有新协议、执行 owner 或模拟流式文本。任务 `.agent-sync/tasks/codex-remote-ui-smooth-20261024-f70665b4.md`；验收 `dev-docs/remote-session/smooth-20261024.md`。41 项本地测试、类型/lint/分类、独立 Chromium/WebKit 24 组合成交互检查通过；主干/共享 CI/正式包/安装/真实双端验收分别待证据。原目标状态投影 0dbc 修复由原作者推进，不在这里重复；既有真实测试操作不得重放。desktop 单元 main/CI/版本/构建/发布/安装继续由唯一负责人 01a12bc2-907a-7702-b6dd-788225c5dfe4 处理下一未冻结批，冻结 520.1 不混入新源码。
+
+## MOXBOTS-GOAL-CONFIG-RESTORE-20261021 — next unfrozen desktop intake
+
+Fix warm builtin Goal continuation to adopt the owning Session's current saved provider/model/reasoning at the original admission boundary. Preserve Goal/native identity, permission, compatibility, background work and Stop/claim fences; no provider auto-selection or old input replay. Task record `.agent-sync/tasks/codex-goal-config-restore-20261021-366d1666.md` distinguishes local regression evidence from actual native acceptance. Base is fetched remote main4206eb2ef; separately verify compatibility with frozen515.7/source915ff89a without editing that checkout. Existing sole desktop/updater CI/build/version/install/publish owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; this lane delivers local commits only for its next batch.515.7signing/install is independent and unchanged. Reconcile commits5a928679/b759372e are separate intake, not part of this task diff.
