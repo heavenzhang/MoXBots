@@ -34,3 +34,7 @@ CI/main/static/native/install/stable delivery pending for final combined head. P
 ## Next step
 
 Push final combined head, create one original CI run and normal merge, then freeze immutable521.2/source/target. No further source intake after freeze. Reuse passed unchanged evidence and run only necessary remaining native paths before sameartifact install/publication.
+
+## Original combined CI correction
+
+Original attempt1 CI40087192968 failed unit stream-terminal context Stop because the test enqueued after the newly cancelled transport. Strengthen the test to the same immediate cancellation/late-data/no-next-inference contract as failover/both. Production code remains byte-identical to ab60. Focused terminal/liveness tests and test-file ESLint pass; new exact verification head required. Original logs/control retained, no blind rerun or build.
