@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { renderWithTheme as render } from "@/test/renderWithTheme";
 import { i18n } from "@/i18n";
 import type { SessionExecution } from "../../../shared/sessionExecution";
+import type { SessionExecutionRecoveryProjection } from "../../../shared/sessionTaskOrchestration";
 import SessionExecutionStatus from "./SessionExecutionStatus";
 
 const base: SessionExecution = {
@@ -29,11 +30,13 @@ beforeEach(async () => {
 });
 
 describe("SessionExecutionStatus", () => {
-  it("shows current execution with its objective, phase and bounded round", () => {
+  it("shows current execution without implying a fixed turn limit", () => {
     render(<SessionExecutionStatus execution={base} />);
     expect(screen.getByText("运行中")).toBeInTheDocument();
     expect(screen.getByText("整理并核验导出流程")).toBeInTheDocument();
-    expect(screen.getByText("第 2/8 轮")).toBeInTheDocument();
+    expect(screen.queryByText(/\/8/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("执行轮数：2")).toBeInTheDocument();
   });
 
   it("updates the visible phase when the authoritative projection changes", () => {
@@ -214,6 +217,45 @@ describe("SessionExecutionStatus", () => {
     expect(
       screen.queryByText("PRIVATE_INTERNAL_REASON"),
     ).not.toBeInTheDocument();
+  });
+
+  it("shows model recovery only for the execution's current queue", () => {
+    const recovery: SessionExecutionRecoveryProjection = {
+      turnId: base.currentQueueId, status: "waiting", attempt: 2,
+      lastStatus: 503, nextRetryAt: 200,
+    };
+    const { rerender } = render(<SessionExecutionStatus execution={base} recovery={recovery} />);
+    expect(screen.getByRole("button").textContent).toContain("等待模型恢复");
+    expect(screen.queryByText("运行中")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("模型正在恢复，已尝试 2 次；预计稍后自动重试")).toBeInTheDocument();
+    rerender(<SessionExecutionStatus execution={base} recovery={{ ...recovery, turnId: "older-queue" }} />);
+    expect(screen.getByText("运行中")).toBeInTheDocument();
+    expect(screen.queryByText(/模型正在恢复/)).not.toBeInTheDocument();
+  });
+
+  it("uses paused recovery as the primary state, without a running badge", () => {
+    const recovery: SessionExecutionRecoveryProjection = {
+      turnId: base.currentQueueId, status: "paused", attempt: 3,
+      lastStatus: 503, nextRetryAt: 200,
+    };
+    render(<SessionExecutionStatus execution={base} recovery={recovery} />);
+    expect(screen.getByRole("button").textContent).toContain("模型恢复已暂停");
+    expect(screen.queryByText("运行中")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByText("模型自动恢复已暂停（已尝试 3 次）")).toBeInTheDocument();
+  });
+
+  it.each(["paused", "completed", "incomplete"] as const)("does not let model recovery override terminal or paused %s state", (phase) => {
+    const recovery: SessionExecutionRecoveryProjection = {
+      turnId: base.currentQueueId, status: "paused", attempt: 3,
+      lastStatus: 503, nextRetryAt: 200,
+    };
+    render(<SessionExecutionStatus execution={{ ...base, phase }} recovery={recovery} />);
+    const statusLabel = phase === "paused" ? "已暂停" : phase === "completed" ? "已完成" : "未完成";
+    expect(screen.getByRole("button").textContent).toContain(statusLabel);
+    expect(screen.queryByText("模型恢复已暂停")).not.toBeInTheDocument();
+    expect(screen.queryByText(/模型自动恢复已暂停/)).not.toBeInTheDocument();
   });
 
   it("does not render when there is no execution or admission failure", () => {

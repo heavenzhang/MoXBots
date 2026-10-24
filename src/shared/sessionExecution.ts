@@ -9,9 +9,17 @@ export const executionIntentSchema = z
     objective: boundedText(4000),
     scope: boundedText(4000),
     acceptanceCriteria: z.array(boundedText(2000)).max(20),
+    /** Exact current task, only for a trusted human request to continue its scope. */
+    continuationOf: idSchema.nullish(),
   })
   .strict()
   .superRefine((intent, ctx) => {
+    if (intent.continuationOf && intent.kind !== "execute")
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["continuationOf"],
+        message: "Only execute intent can continue a task",
+      });
     if (intent.kind === "execute" && intent.acceptanceCriteria.length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -89,7 +97,6 @@ export type ExecutionAssessment = z.infer<typeof executionAssessmentSchema>;
 export type SessionExecution = z.infer<typeof sessionExecutionSchema>;
 
 export const EXECUTION_LIMITS = {
-  maxTurns: 8,
   maxReworks: 3,
   maxNoProgress: 2,
   maxDurationMs: 30 * 60_000,
@@ -219,7 +226,7 @@ export function settleSessionExecution(
     };
   }
   // A verified acceptance from the already-admitted final turn settles the
-  // objective; turn/rework limits only prevent starting another turn.
+  // objective; rework limits only prevent starting another turn.
   if (
     terminal.now < state.deadlineAt &&
     acceptedAssessmentIsProven(state, terminal)
@@ -233,8 +240,6 @@ export function settleSessionExecution(
   }
   if (terminal.now >= state.deadlineAt)
     return { ...next, phase: "incomplete", reason: "deadline_exceeded" };
-  if (state.turns >= EXECUTION_LIMITS.maxTurns)
-    return { ...next, phase: "incomplete", reason: "turn_limit_reached" };
   if (next.noProgress >= EXECUTION_LIMITS.maxNoProgress)
     return {
       ...next,
@@ -271,7 +276,6 @@ export function canContinueSessionExecution(
     state.intent.kind === "execute" &&
     ["awaiting_review", "rework", "running"].includes(state.phase) &&
     now < state.deadlineAt &&
-    state.turns < EXECUTION_LIMITS.maxTurns &&
     state.reworks < EXECUTION_LIMITS.maxReworks &&
     state.noProgress < EXECUTION_LIMITS.maxNoProgress &&
     state.lastSettledQueueId === state.currentQueueId &&

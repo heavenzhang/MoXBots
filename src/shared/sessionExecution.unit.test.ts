@@ -240,7 +240,12 @@ describe("session execution schema and policy", () => {
     ).toBe("awaiting_review");
   });
 
-  it("pauses on Stop and enters incomplete at turn, no-progress, rework, and deadline limits", () => {
+  it("pauses on Stop and enforces no-progress, rework, and deadline limits without a turn cap", () => {
+    const progressing = settleSessionExecution(
+      { ...initial(), turns: 24 },
+      terminal({ assessment: undefined }),
+    );
+    expect(canContinueSessionExecution(progressing, 2001)).toBe(true);
     expect(
       settleSessionExecution(initial(), terminal({ status: "stopped" })).phase,
     ).toBe("paused");
@@ -249,13 +254,13 @@ describe("session execution schema and policy", () => {
     ).toBe("incomplete");
     expect(
       settleSessionExecution(
-        { ...initial(), turns: EXECUTION_LIMITS.maxTurns },
+        { ...initial(), turns: 24 },
         terminal({ assessment: undefined }),
       ).reason,
-    ).toBe("turn_limit_reached");
+    ).toBe("assessment_required");
     expect(
       settleSessionExecution(
-        { ...initial(), turns: EXECUTION_LIMITS.maxTurns },
+        { ...initial(), turns: 24 },
         terminal({ assessment: accepted }),
       ).phase,
     ).toBe("completed");

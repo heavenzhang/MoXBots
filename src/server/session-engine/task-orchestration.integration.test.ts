@@ -432,3 +432,32 @@ describe('Runtime plan support capability', () => {
     expect(bound.ledger.bindings.launch).toBe('native-work');
   });
 });
+
+
+it('projects only the current builtin queue recovery without mutating the task ledger or exposing route identity', async () => {
+  const { createSessionExecution } = await import('../../shared/sessionExecution');
+  const execution = createSessionExecution({ id: 'continuity-execution', requestId: 'human-request',
+    originalInput: 'Continue the controlled artifact', queueId: 'current-execution-queue', now: Date.now(),
+    intent: { kind: 'execute', objective: 'Controlled artifact', scope: 'Synthetic workspace', acceptanceCriteria: ['Artifact verified'] } });
+  await owner.mutateSessionTaskLedger(id, ledger => ({ ...ledger, execution }));
+  const now = Date.now();
+  const recovery = { version: 1 as const, id: 'controlled-recovery', sdkSessionId: id,
+    routeIdentity: 'synthetic-private-route', turnId: execution.currentQueueId, status: 'waiting' as const,
+    attempt: 4, startedAt: now, nextRetryAt: now + 15000, deadlineAt: now + 60000, lastStatus: 408 };
+  await store.updateSessionMetadata(id, { modelRecovery: recovery });
+  const waiting = await owner.readSessionTasks(engine);
+  expect(waiting.executionRecovery).toEqual({ turnId: execution.currentQueueId, status: 'waiting',
+    attempt: 4, nextRetryAt: recovery.nextRetryAt, lastStatus: 408 });
+  expect(waiting.ledger).not.toHaveProperty('executionRecovery');
+  expect(waiting.executionRecovery).not.toHaveProperty('routeIdentity');
+  expect(waiting.executionRecovery).not.toHaveProperty('sdkSessionId');
+  await store.updateSessionMetadata(id, { modelRecovery: { ...recovery, status: 'paused', attempt: 5 } });
+  const paused = await owner.readSessionTasks(engine);
+  expect(paused.ledger.revision).toBe(waiting.ledger.revision);
+  expect(paused.executionRecovery).toMatchObject({ status: 'paused', attempt: 5 });
+  await store.updateSessionMetadata(id, { modelRecovery: { ...recovery, turnId: 'old-queue' } });
+  expect((await owner.readSessionTasks(engine)).executionRecovery).toBeUndefined();
+  await store.updateSessionMetadata(id, { modelRecovery: recovery });
+  Object.assign(engine, { kind: 'external' });
+  expect((await owner.readSessionTasks(engine)).executionRecovery).toBeUndefined();
+});

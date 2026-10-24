@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyTaskLedger, type SessionTaskLedger } from '../../../shared/sessionTaskOrchestration';
+import type { SessionExecutionRecoveryProjection } from '../../../shared/sessionTaskOrchestration';
 import { useSessionTaskOrchestration } from './useSessionTaskOrchestration';
 const tab = vi.hoisted(() => ({ tabId: 'tab-1', sessionId: 's1', isSessionLoading: false, messages: [], streamingMessage: null, sessionRuntime: null as string | null, sessionRuntimeSessionId: 's1', sessionRuntimeSource: null, apiGet: vi.fn(), apiPost: vi.fn() }));
 vi.mock('@/context/TabContext', () => ({ useTabStateOptional: () => tab }));
@@ -13,6 +14,31 @@ const event = (value: SessionTaskLedger, sessionId = 's1') => window.dispatchEve
 beforeEach(() => { vi.clearAllMocks(); tab.sessionId = 's1'; tab.sessionRuntime = null; tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1) }); });
 afterEach(() => vi.useRealTimers());
 describe('Session task snapshot and event reconciliation', () => {
+  it('updates the independent recovery projection when ledger revision is unchanged and ignores SSE recovery', async () => {
+    const waiting: SessionExecutionRecoveryProjection = { turnId: 'queue-1', status: 'waiting', attempt: 1, lastStatus: 503, nextRetryAt: 100 };
+    const paused: SessionExecutionRecoveryProjection = { ...waiting, status: 'paused', attempt: 2 };
+    tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1), executionRecovery: waiting });
+    const { result } = renderHook(() => useSessionTaskOrchestration(plan));
+    await waitFor(() => expect(result.current.executionRecovery).toEqual(waiting));
+    act(() => window.dispatchEvent(new CustomEvent('session-task-orchestration', { detail: { sessionId: 's1', ledger: ledger(1), executionRecovery: paused } })));
+    expect(result.current.executionRecovery).toEqual(waiting);
+    tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1), executionRecovery: paused });
+    act(() => result.current.retry());
+    await waitFor(() => expect(result.current.executionRecovery).toEqual(paused));
+  });
+
+  it('keeps recovery scoped and reports it unknown after snapshot failure', async () => {
+    const recovery: SessionExecutionRecoveryProjection = { turnId: 'queue-1', status: 'waiting', attempt: 1, lastStatus: 503, nextRetryAt: 100 };
+    tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1), executionRecovery: recovery });
+    const { result, rerender } = renderHook(() => useSessionTaskOrchestration(plan));
+    await waitFor(() => expect(result.current.executionRecovery).toEqual(recovery));
+    tab.sessionId = 's2';
+    tab.apiGet.mockRejectedValue(new Error('offline'));
+    rerender();
+    await waitFor(() => expect(result.current.executionRecovery).toBeUndefined());
+    await waitFor(() => expect(result.current.executionUnknown).toBe(true));
+  });
+
   it('updates acceptance immediately from an event without any message/plan mutation', async () => {
     const { result } = renderHook(() => useSessionTaskOrchestration(plan));
     await waitFor(() => expect(result.current.tasks).toHaveLength(1));

@@ -181,6 +181,7 @@ export default memo(function ExecutionStatusBar({
     <>
       <SessionExecutionStatus
         execution={orchestration.execution}
+        recovery={orchestration.executionRecovery}
         admission={orchestration.executionAdmission}
         unknown={orchestration.executionUnknown}
       />
