@@ -1,15 +1,99 @@
 import assert from 'node:assert/strict';
 import { execFileSync, fork } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync, symlinkSync, lstatSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { build } from 'esbuild';
 import { dshBuildDefines } from '../integrated-runtimes/dsh-build-selection.mjs';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
+import { stageHostImageRuntime } from './image-runtime.mjs';
+import { verifyHostImageRuntime } from './verify-image-runtime.mjs';
+import { validateRuntimeBinary } from '../npm-runtime-validation.mjs';
 
 const node24 = process.env.MYAGENTS_HOST_TEST_NODE || process.execPath;
 const root = resolve(import.meta.dirname, '../..');
+
+test('Host includes image resources before manifest/archive and verifies the installed native runtime', () => {
+  const source = readFileSync(join(root, 'scripts/host/build.mjs'), 'utf8');
+  const stage = source.indexOf('await stageHostImageRuntime(resources)');
+  assert.ok(stage >= 0 && stage < source.indexOf('await walk(releaseRoot)'));
+  assert.match(source, /execFileSync\(nodeDestination, \[join\(root, 'scripts\/host\/verify-image-runtime\.mjs'\), resources\]/);
+  const acceptance = readFileSync(join(root, 'scripts/host/systemd-acceptance.py'), 'utf8');
+  assert.match(acceptance, /resources \/ "nodejs\/bin\/node"/);
+  assert.match(acceptance, /installed-node-image-encode-decode-resize/);
+});
+
+test('Host stages Linux x64 as independent regular files, including npm bin links', async t => {
+  const temp = mkdtempSync(join(tmpdir(), 'host-image-stage-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const prepared = join(temp, 'prepared');
+  const resources = join(temp, 'resources');
+  const binary = join(prepared, 'node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node');
+  const library = join(prepared, 'node_modules/@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.8');
+  // Target-header fixture only; real ELF loading/PNG processing is a separate test.
+  const elf = Buffer.alloc(64);
+  elf.write('7f454c46', 0, 'hex'); elf[4] = 2; elf[5] = 1; elf.writeUInt16LE(62, 18);
+  for (const path of [binary, library]) { mkdirSync(dirname(path), { recursive: true }); writeFileSync(path, elf); }
+  const executable = join(prepared, 'node_modules/semver/bin/semver.js');
+  mkdirSync(dirname(executable), { recursive: true });
+  writeFileSync(executable, '#!/usr/bin/env node\n', { mode: 0o755 });
+  mkdirSync(join(prepared, 'node_modules/.bin'));
+  symlinkSync('../semver/bin/semver.js', join(prepared, 'node_modules/.bin/semver'));
+  const destination = await stageHostImageRuntime(resources, { prepare: async (os, cpu) => {
+    assert.equal(os, 'linux'); assert.equal(cpu, 'x64'); return { root: prepared };
+  }, validate: (path, os, cpu) => {
+    // Structural target fixture must not be dlopen'ed on a Linux test runner.
+    assert.equal(os, 'linux'); assert.equal(cpu, 'x64');
+    validateRuntimeBinary(join(path, 'node_modules/@img/sharp-linux-x64/lib/sharp-linux-x64.node'), os, cpu);
+    validateRuntimeBinary(join(path, 'node_modules/@img/sharp-libvips-linux-x64/lib/libvips-cpp.so.8'), os, cpu);
+  } });
+  const copied = join(destination, 'node_modules/.bin/semver');
+  assert.equal(lstatSync(copied).isSymbolicLink(), false);
+  assert.equal(statSync(copied).mode & 0o777, 0o755);
+  assert.equal(statSync(copied).nlink, 1);
+  assert.notEqual(statSync(copied).ino, statSync(executable).ino);
+  assert.deepEqual(readFileSync(copied), readFileSync(executable));
+  writeFileSync(copied, 'changed release copy');
+  assert.equal(readFileSync(executable, 'utf8'), '#!/usr/bin/env node\n');
+  await assert.rejects(stageHostImageRuntime(resources, { prepare: async () => ({ root: prepared }) }), /exist/i);
+});
+
+test('missing or unavailable image payload fails without developer-dependency fallback', async t => {
+  const temp = mkdtempSync(join(tmpdir(), 'host-image-failure-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  await assert.rejects(stageHostImageRuntime(temp, { prepare: async () => { throw new Error('locked resource unavailable'); } }), /locked resource unavailable/);
+  await assert.rejects(verifyHostImageRuntime(temp), /Cannot find module/);
+});
+
+test('Host runtime projection rejects escaping links and directory cycles', async t => {
+  const temp = mkdtempSync(join(tmpdir(), 'host-image-links-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const prepared = join(temp, 'prepared');
+  mkdirSync(prepared);
+  writeFileSync(join(temp, 'outside'), 'must not be packaged');
+  const link = join(prepared, 'link');
+  symlinkSync('../outside', link);
+  const prepare = async () => ({ root: prepared });
+  await assert.rejects(stageHostImageRuntime(join(temp, 'escape'), { prepare }), /escapes prepared root/);
+  rmSync(link); symlinkSync('.', link, 'dir');
+  await assert.rejects(stageHostImageRuntime(join(temp, 'cycle'), { prepare }), /directory cycle/);
+});
+
+test('image smoke executes native PNG encode, decode and resize without credentials or a model', async t => {
+  const temp = mkdtempSync(join(tmpdir(), 'host-image-native-'));
+  t.after(() => rmSync(temp, { recursive: true, force: true }));
+  const runtime = join(temp, 'sharp-runtime');
+  mkdirSync(runtime);
+  symlinkSync(join(root, 'node_modules'), join(runtime, 'node_modules'), 'dir');
+  const sharp = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).dependencies.sharp;
+  writeFileSync(join(runtime, 'package.json'), JSON.stringify({ dependencies: { sharp } }));
+  const result = await verifyHostImageRuntime(temp);
+  assert.equal(result.sharp, sharp);
+  assert.equal(result.format, 'png');
+  assert.equal(result.width, 16); assert.equal(result.height, 12);
+  assert.ok(result.inputBytes > 8 && result.outputBytes > 8);
+});
 
 test('Host build, bootstrap and installers agree on the two closed profile namespaces', () => {
   const buildSource = readFileSync(join(root, 'scripts/host/build.mjs'), 'utf8');

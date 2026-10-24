@@ -9,6 +9,7 @@ import { build } from 'esbuild';
 import { downloadBuildResource } from '../build-resource-download.mjs';
 import { dshBuildDefines } from '../integrated-runtimes/dsh-build-selection.mjs';
 import { renderBootstrap, sha256File } from './bootstrap.mjs';
+import { stageHostImageRuntime } from './image-runtime.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const profile = process.env.MYAGENTS_HOST_PROFILE ?? 'myagents-test';
@@ -72,6 +73,9 @@ const releaseRoot = join(temp, selectedProfile.root, 'releases', releaseId);
 const resources = join(releaseRoot, 'resources');
 mkdirSync(resources, { recursive: true });
 try {
+  // Image attachments use a native dependency at runtime; esbuild alone cannot
+  // supply it. Prepare the target's original locked closure for both profiles.
+  await stageHostImageRuntime(resources);
   for (const [entry, target] of [
     ['src/host/main.ts', 'host-main.mjs'],
     ['src/server/host-session-worker.ts', 'host-session-worker.mjs'],
@@ -134,6 +138,10 @@ try {
   copyFileSync(sdkSource, sdkDestination);
   chmodSync(sdkDestination, statSync(sdkSource).mode & 0o755);
 
+  if (process.platform === 'linux' && process.arch === 'x64') {
+    execFileSync(nodeDestination, [join(root, 'scripts/host/verify-image-runtime.mjs'), resources], { stdio: 'inherit' });
+  }
+
   const cli = join(releaseRoot, `bin/${selectedProfile.cli}`);
   mkdirSync(dirname(cli), { recursive: true });
   const prefix = `/opt/${selectedProfile.root}`;
@@ -153,8 +161,9 @@ try {
   await walk(releaseRoot);
   const manifest = {
     schemaVersion: 1, profile, releaseId, target: 'linux-x64-glibc', sourceCommit: commit, sourceDirty: dirty,
-    versions: { node: nodeVersion, claudeAgentSdk: sdkVersion, app: packageJson.version },
-    pinnedResources: { nodeArchiveSha256, claudeSdkPackageIntegrity: lockedSdk.integrity },
+    versions: { node: nodeVersion, claudeAgentSdk: sdkVersion, sharp: packageJson.dependencies.sharp, app: packageJson.version },
+    pinnedResources: { nodeArchiveSha256, claudeSdkPackageIntegrity: lockedSdk.integrity,
+      sharpRuntimeLockSha256: await sha256(join(resources, 'sharp-runtime/package-lock.json')) },
     files,
     signing: { status: 'unsigned-test-package', note: 'SHA-256 checksums provide integrity only; this package has no publisher signature.' },
   };

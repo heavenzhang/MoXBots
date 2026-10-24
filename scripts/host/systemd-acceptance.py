@@ -240,6 +240,12 @@ def accept(args):
                     "--network-source-commit", args.source_commit, "--owned-instance", ORIGIN]
             step("fresh-systemd-install", lambda: install("fresh", base))
             doctor()
+            def image_runtime():
+                resources = pathlib.Path("/opt/moxbot-host-test/current/resources")
+                result = run([str(resources / "nodejs/bin/node"),
+                              str(source / "scripts/host/verify-image-runtime.mjs"), str(resources)], timeout=30)
+                return json.loads(result.stdout)
+            step("installed-node-image-encode-decode-resize", image_runtime)
             # Use the existing local writer to create real, disabled configuration.
             # No provider key is supplied and no Session/model is started.
             configuration = {"expectedRevision": 0, "providerId": "moonshot-coding",
