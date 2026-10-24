@@ -50,6 +50,14 @@ A stopped native tool can leave a durable write-ahead reservation without a comm
 
 This exception does not admit automatic availability recovery, same-turn stream continuation, a restored context projection, corrupt ledgers, stale owners or canceled requests. Inference retry and failover remain fenced. Local archive, persistence and owner failures return their bounded owner-authored reason rather than being mislabeled as model transport failures; arbitrary thrown text is never forwarded.
 
+### Settled native errors
+
+A normal Bash process failure is distinct from an unknown tool outcome. The original live Query can settle its own reservation only when the SDK `PostToolUseFailure` pairs with the exact streamed native ID, canonical input and pending admission, explicitly reports `is_interrupt=false`, and returns the native `Exit code N` prefix for a normal nonzero exit below 128 (excluding timeout code 124). MCP errors, missing receipts, signals, cancellation, another pending admission of the same command and older uncertain actions retain their existing fence. A failed command can have made partial changes; its receipt never certifies rollback or permits its automatic replay during recovery. The model must inspect the preserved output and use a corrected command.
+
+The same controller records its own `PreToolUse` denial as not dispatched. These proofs are private, bounded `nativeErrors` entries in the existing SessionStore ledger, scoped by Product/native history, Query generation, turn, native ID and action hash. Bash receipts additionally bind the exact error-result digest. Subsequent native history must pair with that receipt; merely printing an exit code or the guard marker grants no authority. Denial proofs never remove an older uncertain entry. Persistence failure or a changed settlement owner fails closed. The common 2048-entry cap and settled-interruption digest include these proofs.
+
+Existing ledgers without such receipts are not automatically cleared or upgraded from error text. Their native history and action evidence must be preserved and reconciled through the original owner. This fix prevents new poisoning; publication alone does not establish that a previously blocked business Session has recovered.
+
 ## Verification
 
 Focused bridge/Session owner tests cover storage and control races, Retry-After, canceled/expired re-admission, partial SSE, and success cleanup. SessionStore integration uses actual private archives/ledger/index and forces index publication failure after Stop. Builtin execution integration checks stop during explicit resume CAS and refuses missing native history. UI uses the production MessageList/GoalStatusBar with synthetic state transitions.
