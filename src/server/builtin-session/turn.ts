@@ -558,12 +558,19 @@ export function notifyCurrentTurnTerminalOutcome(
   finalization: Promise<unknown> = Promise.resolve(),
 ): void {
   const item = currentTurnSourceItem;
+  let durableOutcome = outcome;
   const finalized = finalization
     .catch((error) => {
       console.error('[agent] turn finalization failed before terminal observer:', error);
+      durableOutcome = {
+        ...outcome,
+        status: 'error',
+        code: 'TRANSCRIPT_PERSISTENCE_FAILED',
+        error: 'Turn persistence failed; execution outcome requires review.',
+      };
     });
   terminalObserverBarrier = Promise.all([terminalObserverBarrier, finalized])
-    .then(() => item?.onTerminal ? notifyTurnItemTerminal(item, outcome) : undefined);
+    .then(() => item?.onTerminal ? notifyTurnItemTerminal(item, durableOutcome) : undefined);
 }
 
 export function notifyCurrentTurnTerminal(

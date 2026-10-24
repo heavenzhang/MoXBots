@@ -28,7 +28,10 @@ export interface InferenceRecoveryHooks {
   interrupted?(request: Request): Promise<boolean>;
 }
 
-type Root = { scope: string; backup?: boolean; retired?: boolean };
+type Root = { scope: string; backup?: boolean; retired?: boolean
+  electedIdentity?: string;
+  deadline: number;
+};
 
 /** Query-token owned; never re-enqueues input or invokes tools. */
 export class ModelFailoverController implements BridgeModelFailover {
@@ -45,7 +48,13 @@ export class ModelFailoverController implements BridgeModelFailover {
     scope: () => string | undefined;
     resolveBackup: () => UpstreamConfig | undefined;
     onSwitch: (target: UpstreamConfig, status: number) => void;
-    /** Admission-only validation against the original request; never sends inference. */
+      /** Advances only within the original admission snapshot, at most three targets. */
+      advanceCandidate?: () => boolean;
+      onObservation?: (
+        target: UpstreamConfig,
+        outcome: "success" | "failure",
+      ) => void;
+      /** Admission-only validation against the original request; never sends inference. */
     validateBackup?: (request: Request, target: UpstreamConfig) => Promise<boolean>;
     onBackupUnavailable?: () => void;
     onTurnEnd?: () => void;
@@ -59,8 +68,11 @@ export class ModelFailoverController implements BridgeModelFailover {
     retryDelaysMs?: readonly [number, number, number];
     /** Active read-idle bound; does not replenish the existing retry/replay authority. */
     bodyIdleTimeoutMs?: number;
-    recovery?: InferenceRecoveryHooks;
-  }) {}
+      /** Original execution deadline; may only shorten a root recovery budget. */
+      deadlineAt?: () => number | undefined;
+      recovery?: InferenceRecoveryHooks;
+  },
+  ) {}
 
   /**
    * True when a pre-header failure could still be retried or switched right
@@ -70,8 +82,10 @@ export class ModelFailoverController implements BridgeModelFailover {
    */
   fastRecoveryAuthorized(): boolean {
     const scope = this.options.scope();
-    return !!scope && scope !== this.retiredScope && this.options.isActive?.() !== false
-      && this.options.canRetry?.() !== false;
+    return (
+      !!scope && scope !== this.retiredScope && this.options.isActive?.() !== false
+      && this.options.canRetry?.() !== false
+    );
   }
 
   endTurn(): void {
@@ -85,19 +99,34 @@ export class ModelFailoverController implements BridgeModelFailover {
   }
 
   async run(request: Request, primary: UpstreamConfig,
-    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: StreamInterruptionObserver) => Promise<Response>, requestKey?: string): Promise<Response> {
-    const requestIdentity = this.options.requestIdentity?.();
+    execute: (target: UpstreamConfig, onModelProgress?: () => boolean, onStreamInterruption?: StreamInterruptionObserver) => Promise<Response>, requestKey?: string,
+  ): Promise<Response> {
+    let requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive?.() !== false
       && this.options.requestIdentity?.() === requestIdentity;
     if (!queryLive()) return cancelled();
     const candidateScope = this.options.scope();
     const scope = candidateScope && candidateScope !== this.retiredScope ? candidateScope : undefined;
-    if (scope && scope !== this.state?.scope) this.state = { scope };
+    if (scope && scope !== this.state?.scope) this.state = { scope, deadline: Date.now() + 30 * 60_000 };
     const state = scope ? this.state : undefined;
+    let requestDeadline = state?.deadline ?? Infinity;
+    const withinDeadline = () => {
+      const parent = this.options.deadlineAt?.();
+      if (typeof parent === "number" && Number.isFinite(parent))
+        requestDeadline = Math.min(requestDeadline, parent);
+      if (state) {
+        state.deadline = Math.min(state.deadline, requestDeadline);
+        requestDeadline = state.deadline;
+      }
+      return Date.now() < requestDeadline;
+    };
+    if (!withinDeadline()) return replayBlocked();
     const ambiguous = !scope || this.options.canSwitch?.() === false;
     const fingerprint = requestKey ?? `unfingerprinted-${++this.sequence}`;
     const lease = this.guard.begin(scope, fingerprint, ambiguous);
-    if (!lease) return this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked(this.guard.failureDiagnostic(scope));
+    if (!lease) return (
+        this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked(this.guard.failureDiagnostic(scope))
+      );
     // Only root-owned recovery may change provider. Ordinary primary inference and
     // its bounded pre-delivery retries remain valid across a parent turn boundary.
     // A request admitted with ambiguous ownership cannot acquire a foreground root
@@ -112,8 +141,10 @@ export class ModelFailoverController implements BridgeModelFailover {
     let attemptInterruption: StreamInterruptionCause | undefined;
     let attemptDiagnostic: StreamFailureDiagnostic | undefined;
     let progressBodyReader: ModelBodyReader | undefined;
+    let observedTarget = primary;
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
+      observedTarget = target;
       const attempt = ++activeAttempt;
       attemptInterruption = undefined;
       attemptDiagnostic = undefined;
@@ -150,11 +181,13 @@ export class ModelFailoverController implements BridgeModelFailover {
       await recovery.complete(request);
       recoverySettled = true;
     };
-    const interruptRecovery = async (reason: string, isConsumerCancelled: () => boolean) => {
+    const interruptRecovery = async (reason: string, isConsumerCancelled: () => boolean,
+    ) => {
       if (!interruptionAttempted && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
         interruptionAttempted = true;
         try {
-          if (await recovery?.interrupted?.(request) && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
+          if (
+            (await recovery?.interrupted?.(request)) && !recoverySettled && !isConsumerCancelled() && recoveryLive()) {
             // The old lease remains sealed. The original owner alone may
             // admit a different native continuation under its durable chain.
             recoverySettled = true;
@@ -168,33 +201,67 @@ export class ModelFailoverController implements BridgeModelFailover {
     const validateRecoveryResume = async () => {
       const allowed = recovery?.validateResume ? await recovery.validateResume(request) : true;
       if (!recoveryLive()) return false;
-      if (allowed !== true) {
+      if (allowed !== true || !withinDeadline()) {
         await blockRecovery('Model recovery deadline or durable owner no longer permits inference');
         throw new Error('Model recovery resume was not authorized');
       }
       return true;
     };
-    const resolveBackup = async (): Promise<UpstreamConfig | undefined> => {
-      const target = recoveryLive() ? this.options.resolveBackup() : undefined;
-      if (!target) return undefined;
-      if (this.options.validateBackup && !await this.options.validateBackup(request, target)) return undefined;
-      if (!recoveryLive()) return undefined;
-      // Config/credentials may change while request validation awaits its body.
-      const latest = this.options.resolveBackup();
-      return latest && latest.providerId === target.providerId && latest.model === target.model
-        && latest.baseUrl === target.baseUrl ? latest : undefined;
+    const waitRecovery = async (delay: number): Promise<boolean> => {
+      const allowed = await waitForRequestRetry(
+        Math.min(delay, Math.max(0, requestDeadline - Date.now())),
+        request.signal,
+        () => recoveryLive() && withinDeadline(),
+      );
+      if (!allowed && live() && rootLive() && !withinDeadline())
+        await blockRecovery("Parent execution deadline expired");
+      return allowed;
     };
-    const runTarget = async (backup: boolean, onAdmitted?: (target: UpstreamConfig) => void): Promise<Response> => {
-      const retryLive = () => live() && this.options.canRetry?.() !== false && (!backup || rootLive());
+    const advanceCandidate = () =>
+      recoveryLive() &&
+      withinDeadline() &&
+      this.options.advanceCandidate?.() === true;
+    const resolveBackup = async (
+      allowAdvance = true,
+    ): Promise<UpstreamConfig | undefined> => {
+      // Invalid/withdrawn candidates never cause an actual call. The snapshot
+      // cannot grow while asynchronous content and credential checks run.
+      for (let skipped = 0; skipped < 3; skipped++) {
+        const target = recoveryLive() && withinDeadline()
+            ? this.options.resolveBackup() : undefined;
+      if (
+          target &&
+          (!this.options.validateBackup ||
+            (await this.options.validateBackup(request, target)))
+        ) {
+          if (!recoveryLive() || !withinDeadline()) return undefined;
+          const latest = this.options.resolveBackup();
+          if (
+            latest && latest.providerId === target.providerId && latest.model === target.model
+        && latest.baseUrl === target.baseUrl
+          )
+            return latest;
+        }
+        if (!allowAdvance || !advanceCandidate()) return undefined;
+    }
+      return undefined;
+    };
+    const runTarget = async (backup: boolean, onAdmitted?: (target: UpstreamConfig) => void,
+    ): Promise<Response> => {
+      const retryLive = () => live() && this.options.canRetry?.() !== false &&
+        withinDeadline() &&
+        (!backup || rootLive());
       // Four attempts per inference/provider: initial call plus three safe retries.
       // An SDK replay enters the admission guard instead of acquiring another budget.
       for (let attempt = 0; ; attempt++) {
         if (!live()) return cancelled();
+        if (!withinDeadline()) return replayBlocked();
         if (restoredWaiting) {
-          if (!await validateRecoveryResume()) return rootLive() ? replayBlocked() : cancelled();
+          if (!(await validateRecoveryResume()))
+            return rootLive() ? replayBlocked() : cancelled();
           if (!recoveryLive()) return cancelled();
         }
-        const target = backup ? await resolveBackup() : primary;
+        const target = backup ? await resolveBackup(false) : primary;
         if (!live()) return cancelled();
         if (!target || (backup && !recoveryLive())) return unavailableBackup();
         if (attempt === 0) onAdmitted?.(target);
@@ -203,12 +270,17 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (!live()) { cancelResponse(response); return cancelled(); }
         const inspected = await inspectFailure(response);
         if (!live()) { cancelResponse(inspected.response); return cancelled(); }
+        if (inspected.recoverable)
+          this.options.onObservation?.(target, "failure");
         if (!inspected.recoverable || restoredWaiting || attempt >= delays.length || !retryLive()) return inspected.response;
         // A provider's longer cooldown must pass the durable waiting boundary,
         // rather than being violated by this request's non-persistent fast loop.
         const retryAfterMs = parseRetryAfter(inspected.response.headers.get('retry-after'));
         if (recovery && rootLive() && retryAfterMs !== undefined && retryAfterMs > delays[attempt]) return inspected.response;
-        const retry = await waitForRequestRetry(delays[attempt], request.signal, retryLive);
+        const retry = await waitForRequestRetry(
+          Math.min(delays[attempt], Math.max(0, requestDeadline - Date.now())),
+          request.signal, retryLive,
+        );
         if (!retry) {
           if (!live()) { cancelResponse(inspected.response); return cancelled(); }
           return inspected.response;
@@ -224,7 +296,8 @@ export class ModelFailoverController implements BridgeModelFailover {
           restoredWaiting = true;
           hasDurableRecovery = true;
           if (!Number.isFinite(pending.delayMs) || pending.delayMs < 0) throw new Error('Invalid recovery admission wait');
-          if (!await waitForRequestRetry(pending.delayMs, request.signal, recoveryLive)) return cancelled();
+          if (!(await waitRecovery(pending.delayMs)))
+            return withinDeadline() ? cancelled() : replayBlocked();
           if (!recoveryLive()) return cancelled();
         }
       }
@@ -232,40 +305,52 @@ export class ModelFailoverController implements BridgeModelFailover {
       if (!live()) { cancelResponse(response); return cancelled(); }
       // The exhausted primary response remains a real upstream error when background
       // ownership is ambiguous or no backup is configured; do not manufacture a 499.
-      if (!usingBackup && rootLive() && this.options.canRetry?.() !== false) {
+      for (
+        let candidate = 0;
+        candidate < 3 && recoveryLive() && withinDeadline();
+        candidate++
+      ) {
         const inspected = await inspectFailure(response);
         response = inspected.response;
-        if (!live()) { cancelResponse(response); return cancelled(); }
-        if (inspected.recoverable && rootLive()) {
-          if (state!.backup) {
-            usingBackup = true;
-            cancelResponse(response);
-            response = await runTarget(true);
-          } else {
-            const backup = await resolveBackup();
+        if (!inspected.recoverable || !recoveryLive() || !withinDeadline())
+          break;
+        // A failed elected target may advance, but never return to the primary.
+        if (usingBackup && !advanceCandidate()) break;
+        const backup = await resolveBackup();
             if (!live()) { cancelResponse(response); return cancelled(); }
-            if (backup && recoveryLive()) {
-              usingBackup = true;
-              const status = response.status;
-              cancelResponse(response);
-              response = await runTarget(true, admitted => {
-                state!.backup = true;
-                this.options.onSwitch(admitted, status);
-              });
-            } else if (rootLive()) {
+            if (!backup || !recoveryLive()) {
+          if (rootLive()) {
               try { this.options.onBackupUnavailable?.(); } catch { /* diagnostics do not alter recovery */ }
             }
-          }
+          break;
         }
+        usingBackup = true;
+              const status = response.status;
+              cancelResponse(response);
+              response = await runTarget(true, (admitted) => {
+                state!.backup = true;
+          const electedIdentity = JSON.stringify([
+            admitted.providerId,
+            admitted.model,
+            admitted.baseUrl,
+          ]);
+          if (state!.electedIdentity !== electedIdentity) {
+            state!.electedIdentity = electedIdentity;
+            this.options.onSwitch(admitted, status);
+              }
+          // Only this controller's validated in-place switch may refresh the
+          // per-request route fence. External changes still cancel old work.
+          requestIdentity = this.options.requestIdentity?.(); });
       }
       if (!live()) { cancelResponse(response); return cancelled(); }
       // Exhaust the existing primary/backup policy first. Long recovery retains
       // this exact admission lease and never replenishes either fast-retry budget.
-      while (recovery && recoveryLive() && !response.ok) {
+      while (recovery && recoveryLive() && withinDeadline() && !response.ok) {
         const inspected = await inspectFailure(response);
         response = inspected.response;
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
         if (!inspected.recoverable) break;
+        this.options.onObservation?.(observedTarget, "failure");
         const delay = await recovery.wait(request, { status: response.status, attempt: inferenceAttempts,
           retryAfterMs: parseRetryAfter(response.headers.get('retry-after')), usingBackup });
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
@@ -273,14 +358,14 @@ export class ModelFailoverController implements BridgeModelFailover {
         hasDurableRecovery = true;
         // Invalid durable-hook results must never create a hot/unbounded loop.
         if (!Number.isFinite(delay) || delay < 0) throw new Error('Invalid recovery wait');
-        if (!await waitForRequestRetry(delay, request.signal, recoveryLive)) { cancelResponse(response); return cancelled(); }
+        if (!(await waitRecovery(delay))) { cancelResponse(response); return withinDeadline() ? cancelled() : replayBlocked(); }
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
-        if (!await validateRecoveryResume()) {
+        if (!(await validateRecoveryResume())) {
           cancelResponse(response);
           return rootLive() ? replayBlocked() : cancelled();
         }
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
-        const target = usingBackup ? await resolveBackup() : primary;
+        const target = usingBackup ? await resolveBackup(false) : primary;
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
         if (!target) { cancelResponse(response); response = unavailableBackup(); break; }
         cancelResponse(response);
@@ -298,7 +383,9 @@ export class ModelFailoverController implements BridgeModelFailover {
           if (!queryLive()) return cancelled();
           lease.block();
           finish();
-          return this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked();
+          return (
+            this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked()
+          );
         }
         return await lease.reject(response);
       }
@@ -323,6 +410,9 @@ export class ModelFailoverController implements BridgeModelFailover {
       const parser = new SSEParser();
       const decoder = new TextDecoder();
       const encoder = new TextEncoder();
+      const completedTarget = observedTarget;
+      const observeSuccess = () =>
+        this.options.onObservation?.(completedTarget, "success");
       let terminal = false;
       let terminalQueued = false;
       let consumerCancelled = false;
@@ -341,7 +431,10 @@ export class ModelFailoverController implements BridgeModelFailover {
                 if (consumerCancelled || !queryLive()) throw new Error('Model request superseded or cancelled');
                 commitFailure('unproven_eof');
                 output.enqueue(encoder.encode(blockedFrame()));
-              } else await completeRecovery();
+              } else {
+                observeSuccess();
+                await completeRecovery();
+              }
               finish(); output.close(); return;
             }
             let frames = '';
@@ -377,6 +470,7 @@ export class ModelFailoverController implements BridgeModelFailover {
             // IO without erasing a checkpoint for an unobserved message_stop.
             if (terminal) {
               terminalQueued = true;
+              observeSuccess();
               await completeRecovery();
               void reader.cancel().catch(() => undefined);
               finish();

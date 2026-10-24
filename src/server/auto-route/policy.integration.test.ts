@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AppConfig } from '../../shared/config-types';
 
-const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>, providers: [] as unknown[], unavailableProvider: '' }));
+const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>, providers: [] as unknown[], unavailableProvider: '',
+  endpoints: {} as Record<string, string>,
+}));
 vi.mock('../utils/admin-config', () => ({
   loadConfig: () => fixture.config,
   getAllEffectiveProviders: () => fixture.providers,
@@ -10,22 +11,25 @@ vi.mock('../utils/admin-config', () => ({
     return null;
   },
   resolveSubscriptionAuthKind: () => undefined,
-  materializeProviderRouteEnv: (ref: { providerId: string }) => ({ providerId: ref.providerId, apiKey: 'synthetic', baseUrl: 'http://fixture.invalid' }),
+  materializeProviderRouteEnv: (ref: { providerId: string }) => ({ providerId: ref.providerId, apiKey: 'synthetic', baseUrl: fixture.endpoints[ref.providerId] ?? 'http://fixture.invalid',
+  }),
 }));
 vi.mock('../utils/model-capabilities', () => ({ lookupModelCapability: () => undefined, lookupProviderModelContextLength: () => undefined }));
 import { routeTurn, buildAutoRouteCatalog } from './router';
 import { AutoRoutePoolUnavailableError } from './errors';
+import { getModelHealth, observeModelHealth } from "./model-health";
 
 describe('effective model policy route plan', () => {
   beforeEach(() => {
     fixture.config = {};
+    fixture.endpoints = {};
     fixture.unavailableProvider = '';
     fixture.providers = [{ id: 'p', name: 'Fixture', type: 'api', config: {}, models: [
       { model: 'primary', tier: 'balanced' }, { model: 'automatic', tier: 'balanced' },
       { model: 'specified', tier: 'balanced' }, { model: 'cross', tier: 'fast' },
     ] }];
   });
-  const plan = async (modelFailover?: AppConfig['modelFailover']) => {
+  const plan = async (modelFailover?: unknown) => {
     fixture.config.modelFailover = modelFailover;
     return routeTurn({ text: 'synthetic', current: { providerId: 'p', model: 'primary' }, freshHistory: true }, {
       config: fixture.config,
@@ -42,25 +46,27 @@ describe('effective model policy route plan', () => {
     fixture.config.autoRouting = { pool: { 'unavailable/blocked': { enabled: true } } };
     await expect(plan()).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
   });
-  it('reports the specified candidate instead of the unused automatic candidate', async () => {
-    const result = await plan({ enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } });
-    expect(result?.decision.backup?.model).toBe('automatic');
-    expect(result?.failover).toEqual({ mode: 'specified', backup: { providerId: 'p', model: 'specified' } });
-  });
-  it('does not replace an invalid specified candidate with an automatic one', async () => {
-    expect((await plan({ enabled: true, mode: 'specified', backup: { providerId: 'deleted', modelId: 'missing' } }))?.failover)
-      .toEqual({ mode: 'specified', unavailableReason: 'unavailable' });
-  });
-  it('permits the specified cross-tier candidate only after explicit opt-in', async () => {
-    const settings = { enabled: true, mode: 'specified' as const, backup: { providerId: 'p', modelId: 'cross' } };
-    expect((await plan(settings))?.failover).toEqual({ mode: 'specified', unavailableReason: 'cross-tier' });
-    expect((await plan({ ...settings, allowCrossTier: true }))?.failover?.backup).toEqual({ providerId: 'p', model: 'cross' });
-  });
-  it('off revokes only the backup plan and retains automatic primary selection', async () => {
-    const result = await plan({ enabled: true, mode: 'off' });
+  it.each([
+    { enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } },
+    { enabled: true, mode: 'specified', backup: { providerId: 'deleted', modelId: 'missing' } },
+    { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'p', modelId: 'cross' } },
+    { enabled: true, mode: 'off' },
+    { enabled: true, backup: { providerId: 'p', modelId: 'cross' } },
+  ])('ignores retired backup configuration %j and selects the next same-tier pool member', async legacy => {
+    const result = await plan(legacy);
     expect(result?.decision.target.model).toBe('primary');
-    expect(result?.decision.backup).toBeUndefined();
-    expect(result?.failover).toEqual({ mode: 'off', unavailableReason: 'off' });
+    expect(result?.decision.backup).toMatchObject({ providerId: 'p', model: 'automatic', tier: 'balanced' });
+    expect(result).not.toHaveProperty('failover');
+    expect(fixture.config.modelFailover).toEqual(legacy);
+  });
+  it('skips a same-tier subscription candidate and chooses the next API candidate', async () => {
+    fixture.providers.unshift({ id: 'subscription', name: 'Subscription', type: 'subscription', config: {}, models: [{ model: 'subscription-model', tier: 'balanced' }] });
+    fixture.config.autoRouting = { tierOrder: { balanced: ['p/primary', 'subscription/subscription-model', 'p/automatic'] } };
+    expect((await plan())?.decision.backup).toMatchObject({ providerId: 'p', model: 'automatic' });
+  });
+  it('does not advertise API takeover for a subscription primary', async () => {
+    (fixture.providers[0] as { type: string }).type = 'subscription';
+    expect((await plan())?.decision.backup).toBeUndefined();
   });
   it('uses only active explicit members for primary and automatic backup', async () => {
     fixture.config.autoRouting = { pool: { 'p/primary': { enabled: false }, 'p/automatic': { enabled: true }, 'p/specified': { enabled: true } } };
@@ -88,10 +94,9 @@ describe('effective model policy route plan', () => {
     expect(result?.classifier).toBeUndefined();
     expect(result?.decision).toMatchObject({ target: { model: 'automatic' }, reason: 'unavailable-fallback' });
   });
-  it('keeps explicitly specified backup independent of automatic pool membership', async () => {
+  it('cannot use an out-of-pool legacy specified backup', async () => {
     fixture.config.autoRouting = { pool: { 'p/primary': { enabled: true } } };
     const result = await plan({ enabled: true, mode: 'specified', backup: { providerId: 'p', modelId: 'specified' } });
-    expect(result?.failover?.backup?.model).toBe('specified');
     expect(result?.decision.backup).toBeUndefined();
   });
   it('retains unavailable saved membership and diagnoses excluded/new directory models', () => {
@@ -112,4 +117,120 @@ describe('effective model policy route plan', () => {
     expect(catalog.entries.size).toBe(0);
   });
 
+  it("prioritizes the fourth independent-origin candidate before the three-candidate cap", async () => {
+    const refs = ['primary', "same1", "same2", "same3", "independent"];
+    fixture.providers = refs.map((id) => ({
+      id,
+      name: id,
+      type: 'api',
+      config: {},
+      models: [{ model: id, tier: 'balanced' }],
+    }));
+    fixture.endpoints = Object.fromEntries(
+      refs.map((id) => [
+        id,
+        id === "independent"
+          ? "https://independent-fourth.test/v1"
+          : `https://shared-fourth.test/${id}/v1`,
+      ]),
+    );
+    fixture.config.autoRouting = {
+      pool: Object.fromEntries(
+        refs.map((id) => [`${id}/${id}`, { enabled: true }]),
+      ),
+      tierOrder: { balanced: refs.map((id) => `${id}/${id}`) },
+    };
+    const result = await routeTurn(
+      {
+        text: 'synthetic',
+        current: { providerId: 'primary', model: 'primary' },
+        freshHistory: true,
+      },
+      {
+        config: fixture.config,
+        classifier: {
+          classify: vi.fn(async () => ({
+            ok: true as const,
+            tier: 'balanced' as const,
+            latencyMs: 0,
+            cached: false,
+          })),
+          lastFailure: () => undefined,
+          reset: vi.fn(),
+        },
+      },
+    );
+    expect(result?.decision.target.providerId).toBe('primary');
+    expect(result?.decision.candidates?.map((ref) => ref.providerId)).toEqual([
+      "independent",
+      "same1",
+      "same2",
+    ]);
+    expect(result?.decision.backup?.providerId).toBe("independent");
+    // Planning has made no real model call and cannot create health evidence.
+    expect(
+      getModelHealth({ baseUrl: fixture.endpoints.independent }),
+    ).toBeUndefined();
+  });
+
+  it("excludes every path on an observed failed origin and routes to its fourth independent peer until cooldown expires", async () => {
+    const clock = vi.spyOn(Date, "now").mockReturnValue(100_000);
+    try {
+      const refs = ['primary', "same1", "same2", "same3", "independent"];
+      fixture.providers = refs.map((id) => ({
+        id,
+        name: id,
+        type: 'api',
+        config: {},
+        models: [{ model: id, tier: 'balanced' }],
+      }));
+      fixture.endpoints = Object.fromEntries(
+        refs.map((id) => [
+          id,
+          id === "independent"
+            ? "https://independent-observed.test/v1"
+            : `https://shared-observed.test/${id}/v1`,
+        ]),
+      );
+      fixture.config.autoRouting = {
+        pool: Object.fromEntries(
+          refs.map((id) => [`${id}/${id}`, { enabled: true }]),
+        ),
+        tierOrder: { balanced: refs.map((id) => `${id}/${id}`) },
+      };
+      observeModelHealth({ baseUrl: fixture.endpoints.primary }, "failure");
+      const route = () =>
+        routeTurn(
+          {
+            text: 'synthetic',
+            current: { providerId: 'primary', model: 'primary' },
+            freshHistory: true,
+          },
+          {
+            config: fixture.config,
+            classifier: {
+              classify: vi.fn(async () => ({
+                ok: true as const,
+                tier: 'balanced' as const,
+                latencyMs: 0,
+                cached: false,
+              })),
+              lastFailure: () => undefined,
+              reset: vi.fn(),
+            },
+          },
+        );
+      expect((await route())?.decision.target.providerId).toBe("independent");
+      expect(
+        getModelHealth({ baseUrl: fixture.endpoints.same3 }),
+      ).toMatchObject({ coolingDown: true, outcome: "failure" });
+      clock.mockReturnValue(130_000);
+      expect((await route())?.decision.target.providerId).toBe('primary');
+      expect(
+        getModelHealth({ baseUrl: fixture.endpoints.same3 }),
+      ).toMatchObject({ coolingDown: false, outcome: "failure" });
+    } finally {
+      clock.mockRestore();
+    }
+  });
 });

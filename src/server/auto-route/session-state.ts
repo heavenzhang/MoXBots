@@ -12,15 +12,24 @@ interface AutoRouteSessionState {
   /** The candidate is valid only for the primary chosen by this admission. */
   primary?: { providerId: string; model: string };
   backup?: AutoRouteBackupRef;
+  candidates?: AutoRouteBackupRef[];
 }
 
 const states = new Map<string, AutoRouteSessionState>();
 const MAX_SESSIONS = 256;
 
-export function setAutoRouteSessionState(sessionId: string, state: AutoRouteSessionState | undefined): void {
+export function setAutoRouteSessionState(sessionId: string, state: AutoRouteSessionState | undefined,
+): void {
   states.delete(sessionId);
   if (!state) return;
-  states.set(sessionId, state);
+  states.set(sessionId, {
+    ...state,
+    ...(state.primary ? { primary: { ...state.primary } } : {}),
+    ...(state.backup ? { backup: { ...state.backup } } : {}),
+    ...(state.candidates
+      ? { candidates: state.candidates.slice(0, 3).map((ref) => ({ ...ref })) }
+      : {}),
+  });
   // Insertion order is recency; drop the oldest beyond the cap.
   while (states.size > MAX_SESSIONS) {
     const oldest = states.keys().next().value;
@@ -38,4 +47,19 @@ export function getAutoRouteBackup(sessionId: string, primary?: { providerId: st
   const state = states.get(sessionId);
   if (primary && (state?.primary?.providerId !== primary.providerId || state.primary.model !== primary.model)) return undefined;
   return state?.backup;
+}
+
+/** Immutable admission plan, capped independently of later catalog expansion. */
+export function getAutoRouteCandidates(
+  sessionId: string,
+  primary?: { providerId: string; model: string },
+): AutoRouteBackupRef[] {
+  const state = states.get(sessionId);
+  if (
+    primary && (state?.primary?.providerId !== primary.providerId || state.primary.model !== primary.model)
+  )
+    return [];
+  return (state?.candidates ?? (state?.backup ? [state.backup] : []))
+    .slice(0, 3)
+    .map((ref) => ({ ...ref }));
 }

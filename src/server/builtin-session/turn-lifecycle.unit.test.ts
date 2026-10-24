@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendMessage, resetTranscriptForTest, transcriptState } from './transcript';
 import {
   accumulateCurrentTurnUsage,
+  getCurrentTurnQueueId,
   getLastSessionCompletionTerminal,
   appendCurrentTurnTextBlock,
   markAssistantMessageError,
   markCurrentTurnHasOutput,
+  notifyCurrentTurnTerminalOutcome,
   peekPendingOutputOwner,
   popPendingOutputOwner,
   pushPendingOutputOwner,
@@ -537,6 +539,49 @@ describe('turn-lifecycle owner', () => {
     }
   });
 
+
+  it('reports failed finalization to the original queue observer instead of model success', async () => {
+    const finalization = deferred();
+    const originalTerminal = vi.fn();
+    const successorTerminal = vi.fn();
+    const source = (id: string, onTerminal: typeof originalTerminal) => ({
+      id, message: { role: 'user' as const, content: id }, messageText: id,
+      wasQueued: false, resolve: vi.fn(), onTerminal, channelDelivery: NO_CHANNEL_DELIVERY,
+    });
+    const modelSuccess = { status: 'complete' as const, text: 'artifact verified', assistantMessagePresent: true };
+    const persistenceError = new Error('durable write failed');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      setCurrentTurnSourceItem(source('original-queue', originalTerminal));
+      notifyCurrentTurnTerminalOutcome(modelSuccess, finalization.promise);
+      const observerSettled = vi.fn();
+      const barrier = waitForCurrentTurnTerminalObserver().then(observerSettled);
+      setCurrentTurnSourceItem(source('successor-queue', successorTerminal));
+
+      await Promise.resolve();
+      expect(originalTerminal).not.toHaveBeenCalled();
+      expect(successorTerminal).not.toHaveBeenCalled();
+      expect(observerSettled).not.toHaveBeenCalled();
+
+      finalization.reject(persistenceError);
+      await barrier;
+
+      expect(originalTerminal).toHaveBeenCalledExactlyOnceWith({
+        ...modelSuccess,
+        status: 'error',
+        code: 'TRANSCRIPT_PERSISTENCE_FAILED',
+        error: 'Turn persistence failed; execution outcome requires review.',
+      });
+      expect(successorTerminal).not.toHaveBeenCalled();
+      expect(getCurrentTurnQueueId()).toBe('successor-queue');
+      expect(modelSuccess.status).toBe('complete');
+      expect(errorSpy).toHaveBeenCalledWith(
+        '[agent] turn finalization failed before terminal observer:', persistenceError,
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
 
   it('does not title a completed turn when turn-end persistence fails', async () => {
     const { deps, broadcasts } = makeDeps({

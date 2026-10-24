@@ -1,0 +1,192 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "sessionId": "04f6f2f7-1e61-464f-974c-7ed4866c0de9",
+  "executionId": "75003cfe-e54e-42af-a153-750bb295dcb7",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:b48ef782-1cd5-403d-84be-c83c8819a042",
+  "finalQueueId": "session-execution:202026f8-0454-4cb8-abde-9e254a590251",
+  "executionTurns": 3,
+  "originalInputAdmissions": 1,
+  "realWriteToolUses": 2,
+  "realReadToolUses": 2,
+  "mode": "native-two-background-workers",
+  "maxWorkersInFlight": 2,
+  "workerAttempts": [
+    {
+      "id": "root-launch-background-alpha:0mvlsxe3g-b4a62e80",
+      "toolUseId": "root-launch-background-alpha",
+      "title": "[task:task-alpha] Write alpha proof",
+      "executionVerified": true,
+      "runId": "0mvlsxe3g-b4a62e80",
+      "executionTaskId": "a3cc604f9cf9c454e",
+      "lifecycle": {
+        "status": "completed",
+        "startedAt": 1792810239389,
+        "finishedAt": 1792810239855,
+        "result": ""
+      }
+    },
+    {
+      "id": "root-launch-background-beta:0mvlsxedn-7c3186c4",
+      "toolUseId": "root-launch-background-beta",
+      "title": "[task:task-beta] Write beta proof",
+      "executionVerified": true,
+      "runId": "0mvlsxedn-7c3186c4",
+      "executionTaskId": "a0b95382af36d7e80",
+      "lifecycle": {
+        "status": "completed",
+        "startedAt": 1792810239755,
+        "finishedAt": 1792810239846,
+        "result": ""
+      }
+    }
+  ],
+  "delegationLaunches": 2,
+  "delegationClaims": [
+    {
+      "toolUseId": "root-launch-background-alpha",
+      "taskId": "task-alpha",
+      "executionId": "75003cfe-e54e-42af-a153-750bb295dcb7",
+      "state": "settled"
+    },
+    {
+      "toolUseId": "root-launch-background-beta",
+      "taskId": "task-beta",
+      "executionId": "75003cfe-e54e-42af-a153-750bb295dcb7",
+      "state": "settled"
+    }
+  ],
+  "taskPackages": [
+    {
+      "taskId": "task-alpha",
+      "executionId": "75003cfe-e54e-42af-a153-750bb295dcb7",
+      "assignee": "background-alpha",
+      "resources": [
+        {
+          "path": "alpha-proof.txt",
+          "access": "write"
+        }
+      ],
+      "reason": "Write the isolated alpha proof file."
+    },
+    {
+      "taskId": "task-beta",
+      "executionId": "75003cfe-e54e-42af-a153-750bb295dcb7",
+      "assignee": "background-beta",
+      "resources": [
+        {
+          "path": "beta-proof.txt",
+          "access": "write"
+        }
+      ],
+      "reason": "Write the isolated beta proof file."
+    }
+  ],
+  "nativeReviewCount": 2,
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list-before-workers",
+      "tool": "Bash"
+    },
+    {
+      "kind": "ensure-task-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "package-task-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "launch-alpha",
+      "tool": "Agent"
+    },
+    {
+      "kind": "child-alpha-arrived"
+    },
+    {
+      "kind": "list-alpha-running",
+      "tool": "Bash"
+    },
+    {
+      "kind": "ensure-task-beta",
+      "tool": "Bash"
+    },
+    {
+      "kind": "package-task-beta",
+      "tool": "Bash"
+    },
+    {
+      "kind": "launch-beta",
+      "tool": "Agent"
+    },
+    {
+      "kind": "child-beta-arrived"
+    },
+    {
+      "kind": "root-ends-with-two-workers-running"
+    },
+    {
+      "kind": "child-beta-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "child-alpha-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "list-after-workers",
+      "tool": "Bash"
+    },
+    {
+      "kind": "root-read-alpha",
+      "tool": "Read"
+    },
+    {
+      "kind": "root-read-beta",
+      "tool": "Read"
+    },
+    {
+      "kind": "list-before-worker-reviews",
+      "tool": "Bash"
+    },
+    {
+      "kind": "review-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "list-after-review-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "review-beta",
+      "tool": "Bash"
+    },
+    {
+      "kind": "review-two-workers-execution",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final-two-workers"
+    }
+  ],
+  "elapsedMs": 4893,
+  "persistedEvidencePath": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-execution-evidence-GOqTNA/receipt.json"
+}

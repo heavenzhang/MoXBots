@@ -22,6 +22,47 @@ export interface SessionTaskRecord { id: string; title: string; blockedBy: strin
 export interface SessionTaskReview { taskId: string; attemptId: string; decision: 'accept' | 'reject'; evidence: string; rootToolUseId?: string }
 export interface SessionTaskLedger {
   revision: number;
+  /** Original human ingress and bounded ordinary execution, owned by this ledger. */
+  executionInputs?: {
+    requestId: string;
+    bodyDigest: string
+    acceptedQueueId?: string;
+  }[];
+  execution?: import("./sessionExecution").SessionExecution;
+  executionAdmission?: {
+    requestId: string;
+    queueId: string;
+    intent?: import("./sessionExecution").ExecutionIntent;
+    error?: string
+  };
+  executionEvidence?: {
+    id: string;
+    queueId: string;
+    name: string;
+    digest: string;
+    successful: boolean;
+    startOrder?: number;
+    /** Original native scope at PreToolUse, and the unchanged scope at success. */
+    verificationEpochAtStart?: string;
+    verificationEpoch?: string;
+    observationOrder: number;
+    mutating: boolean;
+    pending?: boolean;
+  }[];
+  executionReview?: {
+    id: string;
+    queueId: string;
+    assessment: import("./sessionExecution").ExecutionAssessment;
+    committedBy?: string;
+  };
+  taskPackages?: import("./sessionTaskDispatch").SessionTaskPackage[];
+  delegationClaims?: {
+    toolUseId: string;
+    taskId: string;
+    executionId: string;
+    state: "reserved" | 'running' | "settled" | 'unknown';
+  }[];
+  delegationLaunches?: number;
   tasks: SessionTaskRecord[];
   bindings: Record<string, string>;
   currentTools?: Record<string, string>;
@@ -155,7 +196,8 @@ export function mergeTaskObservations(ledger: SessionTaskLedger, attempts: reado
   return next;
 }
 
-export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonly ProgressMessage[] = []): SessionTaskView[] {
+export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonly ProgressMessage[] = [],
+): SessionTaskView[] {
   const tasks = new Map<string, SessionTaskView>();
   const todos = deriveSessionTodos(messages, ledger.plan ?? null).todos;
   for (const todo of todos) {
@@ -184,6 +226,13 @@ export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonl
       : task.review ? task.review.decision === 'accept' ? 'completed' : 'rework' : 'awaiting_review';
   }
   for (const task of tasks.values()) {
+    const claim = ledger.delegationClaims?.findLast(
+      (claim) =>
+        claim.taskId === task.id &&
+        claim.toolUseId === ledger.currentTools?.[task.id],
+    );
+    if (claim && claim.state !== "settled")
+      task.phase = claim.state === 'unknown' ? 'unknown' : 'running';
     if (ledger.pendingTaskIds?.includes(task.id) || task.phase === 'pending' && task.blockedBy.some(id => tasks.get(id)?.phase !== 'completed')) task.phase = 'blocked';
   }
   return [...tasks.values()].filter(task => !task.retired);
@@ -203,7 +252,8 @@ export function currentTaskAttempt(attempts: readonly SessionTaskAttempt[], tool
   return attempts.filter(a => !toolUseId || a.toolUseId === toolUseId).sort(compareTaskAttempts).at(-1);
 }
 
-export function applySessionTaskAction(ledger: SessionTaskLedger, action: SessionTaskAction, messages: readonly ProgressMessage[] = []): SessionTaskLedger {
+export function applySessionTaskAction(ledger: SessionTaskLedger, action: SessionTaskAction, messages: readonly ProgressMessage[] = [],
+): SessionTaskLedger {
   const duplicateReview = action.kind === 'review' && ledger.reviews.find(r => r.taskId === action.taskId && r.attemptId === action.attemptId && r.decision === action.decision && r.evidence === action.evidence);
   if (duplicateReview && action.kind === 'review' && (currentTaskAttempt(projectSessionTasks(ledger, messages).find(t => t.id === action.taskId)?.attempts ?? [], ledger.currentTools?.[action.taskId])?.id ?? projectSessionTasks(ledger, messages).find(t => t.id === action.taskId)?.reviewAttemptId ?? 'main') === action.attemptId) return ledger;
   if (action.expectedRevision !== ledger.revision) throw new Error('TASK_REVISION_CONFLICT');
@@ -226,6 +276,15 @@ export function applySessionTaskAction(ledger: SessionTaskLedger, action: Sessio
       next.currentTools = { ...next.currentTools, [action.taskId]: action.toolUseId };
     } else {
       const latest = currentTaskAttempt(task.attempts, next.currentTools?.[task.id]);
+      if (
+        next.delegationClaims?.some(
+          (claim) =>
+            claim.taskId === task.id &&
+            claim.toolUseId === next.currentTools?.[task.id] &&
+            claim.state !== "settled",
+        )
+      )
+        throw new Error("TASK_NATIVE_EXECUTION_UNCONFIRMED");
       if (task.id.startsWith('codex-snapshot-')) throw new Error('TASK_STABLE_ID_REQUIRED');
       if ((latest?.id ?? task.reviewAttemptId ?? 'main') !== action.attemptId) throw new Error('TASK_ATTEMPT_CHANGED');
       if (latest?.lifecycle.status === 'running') throw new Error('TASK_STILL_RUNNING');

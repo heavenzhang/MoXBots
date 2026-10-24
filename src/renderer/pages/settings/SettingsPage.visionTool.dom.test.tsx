@@ -189,7 +189,7 @@ describe("Settings image-understanding enable flow", () => {
     });
   });
 
-  it("opens one model policy page with the backup under collapsed advanced failure recovery", async () => {
+  it("opens one model policy page with automatic candidate-pool recovery", async () => {
     await i18n.changeLanguage('en-US');
     const user = userEvent.setup();
     render(<ToastProvider><Settings mode="settings" initialSection="providers" isActive /></ToastProvider>);
@@ -203,33 +203,24 @@ describe("Settings image-understanding enable flow", () => {
       .getByText(/Sessions where you picked a model by hand are left alone/)).toBeVisible();
     expect(within(screen.getByRole('region', { name: 'Auto model selection' }))
       .getByText(/Changes take effect next turn/)).toBeVisible();
-    const recovery = screen.getByText('Failure recovery').closest('details')!;
-    expect(recovery).not.toHaveAttribute('open');
-    expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();
+    expect(screen.queryByText('Failure recovery')).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Backup model' })).not.toBeInTheDocument();
+    expect(screen.getByText(/next compatible candidate in the same tier/i)).toBeVisible();
     expect(settingsMocks.apiPostJson.mock.calls.some(([path]) => path === '/api/admin/route/tiers')).toBe(true);
 
-    await user.click(screen.getByText('Failure recovery'));
-    expect(recovery).toHaveAttribute('open');
-    expect(screen.getByRole('region', { name: 'Backup model' })).toBeVisible();
-    expect(screen.getByText(/Auto mode supplies a same-tier fallback when one is available/)).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Auto model selection' })).toBeVisible();
-    await user.click(screen.getByText('Failure recovery'));
-    expect(recovery).not.toHaveAttribute('open');
     await user.click(screen.getByRole('button', { name: 'Model Providers' }));
     expect(screen.queryByRole('region', { name: 'Auto model selection' })).not.toBeInTheDocument();
     expect(screen.getByTitle('Manage')).toBeVisible();
   });
 
-  it("keeps the legacy configured backup mode and identity visible in the collapsed recovery summary", async () => {
+  it("ignores legacy modelFailover config and exposes no specified-backup or cross-tier controls", async () => {
     await i18n.changeLanguage('en-US');
-    settingsMocks.config.modelFailover = { enabled: true, backup: { providerId: 'vision-provider', modelId: 'vision-model' } };
+    (settingsMocks.config as AppConfig & { modelFailover: unknown }).modelFailover = { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'vision-provider', modelId: 'vision-model' } };
     render(<ToastProvider><Settings mode="settings" initialSection="model-policy" isActive /></ToastProvider>);
-    const recovery = screen.getByText('Failure recovery').closest('details')!;
-    expect(recovery).not.toHaveAttribute('open');
-    const summary = within(recovery.querySelector('summary')!);
-    expect(summary.getByText(/Specified backup/)).toBeVisible();
-    expect(summary.getByText(/Vision Provider · Vision Model/)).toBeVisible();
-    expect(screen.getByRole('region', { name: 'Backup model', hidden: true })).not.toBeVisible();
+    expect(await screen.findByRole('region', { name: 'Auto model selection' })).toBeVisible();
+    expect(screen.queryByText('Failure recovery')).not.toBeInTheDocument();
+    expect(screen.queryByText(/Specified backup|Use specified backup|Allow a backup from a different tier/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/cross-tier/i)).not.toBeInTheDocument();
   });
 
   it("keeps a real provider model panel stable when Settings receives request logs (#582)", async () => {

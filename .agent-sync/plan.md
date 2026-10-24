@@ -876,3 +876,16 @@ Current combined PR195 clarification: standaloneHost c065 production changes are
 ## MOXBOTS-0520-PLAN-LIFECYCLE-20261023 — Root integration batch
 
 Unchanged sole desktop/macOSarm64/updater and combinedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 accepts PLAN-LIFECYCLE source d3b87ce081e0b9caa1c35fee34eb97f9cd41bfd0, base mainD4. Assign0.5.20/build520.1 to nextbatch; includes exactproposal/revision/step state/review evidence UI only plus releaseversionmetadata. Titletrace9f365360 remains queuedseparately. Published5192 is immutable and remains rollback, no Host/mobile/cloud deployment. Source/local172+synthetic96 reviewed; single exactPRCI/main, signedartifact, nativeactualplan/Inspector/review/noReplay and local/formalpublication remain distinct pending gates. Existing normalmaintenance authorization applies only with freshcurrentowners/durable/fullschedule/backup; no businessreplay or credentials rollback.
+
+## MOXBOTS-INTENT-EXECUTION-20261024 — unified 0.5.21 intake
+
+用户指定先补全普通单 Agent 意图→实际执行→根证据验收→失败返工→有限持续推进，再完善统一模型与有约束并行，整批进入下一未冻结 0.5.21 并真实验收。新增 MoX Curriculum 截图的“多次分析、尚无可确认结果”是本任务回归，不重放其业务指令。开发会话 `01a169af-d5f7-7203-bf88-ff4c8364e8bf`，分支 `codex/intent-execution-v2-20261024`，任务 `.agent-sync/tasks/codex-intent-execution-v2-20261024-4596741d.md`，规范 `specs/tech_docs/intent_execution.md`，验收 `dev-docs/intent-execution-20261024/acceptance.md`。
+
+桌面/macOS/updater、combined CI/main/正式版本/制品/发布唯一 owner 保持 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，沿原用户指定；本开发分支只提交推送和本地自查，不触发共享 CI/正式构建/安装。原独立备用清理 b2 的三个提交已作为依赖 cherry-pick 包含，旧窄请求由本完整批次覆盖，不单独发行。520.1 冻结字节不改、不改标号，已发布519.2保持回滚目标。用户原“保留当前任务运行，稍后维护”仍约束日常 App 操作，不能以闲置或新源码推定可重启/重放。
+
+本候选源码复用原 task ledger/queue/Query/SDK hooks，无新数据库或调度 owner；同档有限候选和父 deadline、任务包资源/依赖/native生命周期及 unknown 保留、首发归属和只读状态 UI 均已实现，61相关测试文件1070项PASS。主 Agent 独立实跑原 builtin facade/SDK hooks/生产CLI route/SessionStore 的单任务、后台包、fresh queue返工、双独立worker真正并发四模式，均一次输入并持久completed；真实SDK多候选chain P5/A4/B1/counter1、Stop与背景另有收据。以上上游均为本地合成，真实Provider、签名客户端、精确CI/main、新签名包、安装和真实用户交付仍分开验收。Host共享代码如需实际运行升级，仍由原Host/mobile owner `01a12b99-7b38-78b1-831f-9c60257d386a` 选择独立批次，不视为桌面0.5.21已覆盖。
+
+
+## MOXBOTS-0521-UNIFIED-BATCH-20261024 — Root integration
+
+Same sole desktop/macOS/updater and combined CI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` integrates final intent source ca49 from basefda with actualmain185f (Host PR198 preserved). Root reproduced and fixes premature accept while native work is active, plus stale Read across background completion: original native Query/background watermark binds Pre/Post/terminal; actual successful Read remains distinct from evidence eligibility.73 affected checks, type/lint and actual SDK synthetic default/background modes pass; original1070/native4/chain/Stop evidence retained. Unified0.5.21/build521.1 is reserved; no interim cleanup release or frozen5201 relabel. ExactCI/main/staticartifact gates pending; signed App/actual Provider/website/rework/Stop/restart/installation/stable remain separate. Human deferred maintenance stays effective, including precise settings/sidebar restoration and blocked memory100 preservation. Source acceptance `dev-docs/release-0521-unified-20261024/acceptance.md`. Host/mobile/cloud/Windows deployment and other unreviewed intakes are excluded.

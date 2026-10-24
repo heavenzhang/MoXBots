@@ -35,6 +35,8 @@ export interface SessionModelRecoveryOptions {
   onState?: (state: ModelRecoveryState | null) => void;
   onInterrupted?: () => void;
   now?: () => number;
+  /** Parent execution budget, never a replacement recovery window. */
+  deadlineAt?: () => number | undefined;
 }
 
 function sameCheckpoint(left: ModelRecoveryState, right: ModelRecoveryState): boolean {
@@ -55,6 +57,7 @@ function sameCheckpoint(left: ModelRecoveryState, right: ModelRecoveryState): bo
 /** Query-scoped, durable backoff for an inference request. It never re-enqueues a Session turn. */
 export class SessionModelRecovery implements InferenceRecoveryHooks {
   private readonly now: () => number;
+  private deadlineCeiling = Infinity;
   private epoch = 0;
   private readonly liveProofAuthority = randomUUID();
   private liveReceipt: SettledInterruptionReceipt | undefined;
@@ -85,13 +88,24 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     }
   }
 
+  private boundDeadline(deadline: number): number {
+    const parent = this.options.deadlineAt?.();
+    if (typeof parent === "number" && Number.isFinite(parent))
+      this.deadlineCeiling = Math.min(this.deadlineCeiling, Math.floor(parent));
+    return Math.min(deadline, this.deadlineCeiling);
+  }
+
   isWaiting(): boolean {
     const state = this.localState;
-    return this.options.isLive()
+    return (
+      this.options.isLive()
       && !!state
       && state.status === 'waiting'
-      && state.nextRetryAt > this.now()
-      && this.matchesCurrent(state, false);
+      &&
+      this.now() < this.boundDeadline(state.deadlineAt) &&
+      state.nextRetryAt > this.now()
+      && this.matchesCurrent(state, false)
+    );
   }
 
   readState(): ModelRecoveryState | undefined {
@@ -101,6 +115,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   /** Begin a separately admitted turn after its owner has cleared persisted recovery state. */
   resetForNewTurn(): void {
     this.epoch += 1;
+    this.deadlineCeiling = Infinity;
     this.localState = undefined;
     this.liveReceipt = undefined;
     this.liveProofReleased = false;
@@ -132,7 +147,8 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     }
   }
 
-  private async admitInner(request: Request): Promise<{ delayMs: number } | undefined> {
+  private async admitInner(request: Request,
+  ): Promise<{ delayMs: number } | undefined> {
     if (!this.requestLive(request) || !this.options.isLive()) throw new Error('Inference recovery owner is no longer live');
     let stored: ModelRecoveryState | undefined;
     try {
@@ -142,7 +158,11 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     } catch (error) {
       throw error instanceof Error ? error : new Error('Cannot read persisted model recovery state');
     }
-    if (!stored) return undefined;
+    if (!stored) {
+      if (this.now() >= this.boundDeadline(Infinity))
+        throw new Error("Parent execution deadline expired");
+      return undefined;
+    }
     if (stored.liveProof && (!this.hasLiveProof(stored) || !this.liveProofReleased)) {
       await this.pause('Recovery requires the original live Query proof', stored);
       throw new Error('Recovery requires the original live Query proof; preserved progress needs explicit continuation');
@@ -153,7 +173,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       await this.pause('Model recovery identity mismatch', stored);
       throw new Error('Persisted model recovery belongs to a different native history or route');
     }
-    if (this.now() >= stored.deadlineAt) {
+    if (this.now() >= this.boundDeadline(stored.deadlineAt)) {
       await this.pause('Model recovery window expired', stored);
       throw new Error('Model recovery window expired');
     }
@@ -166,7 +186,11 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       this.boundRequest = undefined;
       throw new Error('Model recovery Session identity is unavailable');
     }
-    const rebound: ModelRecoveryState = { ...stored, turnId: current.turnId };
+    const reboundDeadline = this.boundDeadline(stored.deadlineAt);
+    const rebound: ModelRecoveryState = { ...stored, turnId: current.turnId,
+      deadlineAt: reboundDeadline,
+      nextRetryAt: Math.min(stored.nextRetryAt, reboundDeadline),
+    };
     this.pending = rebound;
     this.pendingExpected = stored;
     const live = () => this.epoch === epoch && this.requestLive(request) && this.options.isLive()
@@ -187,7 +211,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       this.persistedExpected = rebound;
       this.requestRecoveryIds.set(request, rebound.id);
       this.notify(rebound);
-      if (this.now() >= rebound.deadlineAt) {
+      if (this.now() >= this.boundDeadline(rebound.deadlineAt)) {
         await this.pause('Model recovery window expired', rebound);
         throw new Error('Model recovery window expired');
       }
@@ -216,7 +240,8 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     }
   }
 
-  private async waitInner(request: Request, failure: InferenceRecoveryFailure): Promise<number | undefined> {
+  private async waitInner(request: Request, failure: InferenceRecoveryFailure,
+  ): Promise<number | undefined> {
     if (!this.requestLive(request)) return undefined;
     const current = this.options.current();
     if (!current || !this.options.isLive()) return undefined;
@@ -253,7 +278,10 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     const epoch = this.epoch;
     const existing = stored;
     const startedAt = existing?.startedAt ?? this.now();
-    const deadlineAt = existing?.deadlineAt ?? startedAt + MODEL_RECOVERY_WINDOW_MS;
+    const deadlineAt = this.boundDeadline(
+      existing?.deadlineAt ?? startedAt + MODEL_RECOVERY_WINDOW_MS,
+    );
+    if (!existing && this.now() >= deadlineAt) return undefined;
     // Bridge attempt counts upstream calls (and may jump at failover); this
     // checkpoint counts durable wait rounds only and survives process restart.
     const attempt = (existing?.attempt ?? 0) + 1;
@@ -276,7 +304,8 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     this.pending = candidate;
     this.pendingExpected = existing;
     const live = () => this.epoch === epoch && this.requestLive(request)
-      && this.options.isLive() && this.matchesCurrent(candidate, false);
+      && this.options.isLive() && this.matchesCurrent(candidate, false) &&
+      this.now() < this.boundDeadline(candidate.deadlineAt);
     if (this.now() >= deadlineAt) {
       await this.pause('Model recovery window expired', candidate);
       return undefined;
@@ -303,13 +332,14 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     }
 
     const delay = modelRecoveryDelay(attempt, Math.max(0, failure.retryAfterMs ?? 0));
-    const remaining = deadlineAt - this.now();
+    candidate.deadlineAt = this.boundDeadline(candidate.deadlineAt);
+    const remaining = candidate.deadlineAt - this.now();
     if (delay <= 0 || delay > remaining) {
       await this.pause('Model recovery window expired', candidate);
       return undefined;
     }
     candidate.nextRetryAt = this.now() + delay;
-    if (candidate.nextRetryAt > deadlineAt) candidate.nextRetryAt = deadlineAt;
+    if (candidate.nextRetryAt > candidate.deadlineAt) candidate.nextRetryAt = candidate.deadlineAt;
     if (!live()) {
       this.pending = undefined;
       this.pendingExpected = undefined;
@@ -335,7 +365,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     this.persistedExpected = candidate;
     this.requestRecoveryIds.set(request, candidate.id);
     this.notify(candidate);
-    if (this.now() >= candidate.deadlineAt) {
+    if (this.now() >= this.boundDeadline(candidate.deadlineAt)) {
       await this.pause('Model recovery window expired', candidate);
       return undefined;
     }
@@ -347,6 +377,9 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   /** No synthetic HTTP request: only the native result owner can mint this live-only receipt. */
   async armSettledInterruption(): Promise<boolean> {
     this.settledFailure = 'live_proof_unavailable';
+    if (this.now() >= this.boundDeadline(Infinity)) {
+        this.settledFailure = 'budget_exhausted'; return false;
+      }
     if (this.waitInProgress || this.completing || this.boundRequest || !this.options.isLive()
       || !this.options.prepareSettledInterruption) { this.settledFailure = 'checkpoint_owned'; return false; }
     const owner = this.options.current();
@@ -365,7 +398,9 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       const receipt = await this.options.prepareSettledInterruption();
       if (!receipt || !receipt.isCurrent() || this.epoch !== epoch || !this.options.isLive()) return false;
       const startedAt = Math.min(stored?.startedAt ?? receipt.interruptedAt, receipt.interruptedAt);
-      const deadlineAt = Math.min(stored?.deadlineAt ?? Infinity, startedAt + MODEL_RECOVERY_WINDOW_MS);
+      const deadlineAt = this.boundDeadline(
+        Math.min(stored?.deadlineAt ?? Infinity, startedAt + MODEL_RECOVERY_WINDOW_MS),
+      );
       const attempt = (stored?.attempt ?? 0) + 1;
       const nextRetryAt = this.now() + modelRecoveryDelay(attempt);
       if (!Number.isSafeInteger(startedAt) || startedAt > this.now() || nextRetryAt >= deadlineAt) {
@@ -375,7 +410,8 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
         status: 'waiting', ...owner, startedAt, deadlineAt, nextRetryAt, attempt, lastStatus: 502,
         liveProof: { kind: 'settled-stream', authority: this.liveProofAuthority, receiptId: receipt.id } };
       const live = () => this.epoch === epoch && this.options.isLive() && receipt.isCurrent()
-        && this.matchesCurrent(candidate, false) && !this.boundRequest && !this.completing;
+        && this.matchesCurrent(candidate, false) && !this.boundRequest && !this.completing &&
+        this.now() < this.boundDeadline(candidate.deadlineAt);
       this.pending = candidate; this.pendingExpected = stored;
       if (!live()) return false;
       this.settledFailure = 'storage_or_cas_failed';
@@ -410,7 +446,7 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     if (!state || state.kind !== 'stream' || state.status !== 'waiting'
       || !this.hasLiveProof(state) || (state.liveProof && !this.liveProofReleased && !this.liveReceipt?.isCurrent())
       || !this.options.isLive() || !this.matchesCurrent(state, false)
-      || this.now() >= state.deadlineAt || this.now() < state.nextRetryAt) return false;
+      || this.now() >= this.boundDeadline(state.deadlineAt) || this.now() < state.nextRetryAt) return false;
     try {
       const stored = this.options.read();
       if (!stored || !validModelRecovery(stored) || !sameCheckpoint(state, stored)) return false;
@@ -495,26 +531,52 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
 
   /** Revalidate ownership and the persisted deadline immediately before inference resumes. */
   async validateResume(request: Request): Promise<boolean> {
-    const state = this.localState;
+    let state = this.localState;
     const epoch = this.boundEpoch;
     if (!state || state.status !== 'waiting' || this.boundRequest !== request
       || epoch === undefined || epoch !== this.epoch || !this.requestLive(request)
       || !this.options.isLive() || this.requestRecoveryIds.get(request) !== state.id
       || !this.matchesCurrent(state, false)) return false;
-    if (this.now() >= state.deadlineAt) {
+    if (this.now() >= this.boundDeadline(state.deadlineAt)) {
       await this.pause('Model recovery window expired', state);
       return false;
     }
     try {
       const stored = this.options.read() as unknown;
-      return validModelRecovery(stored) && stored.status === 'waiting'
+      if (validModelRecovery(stored) && sameCheckpoint(stored, state)) {
+        const deadlineAt = this.boundDeadline(state.deadlineAt);
+        if (deadlineAt < state.deadlineAt) {
+          const prior = state;
+          const tightened = {
+            ...state,
+            deadlineAt,
+            nextRetryAt: Math.min(state.nextRetryAt, deadlineAt),
+          };
+          const live = () =>
+            this.epoch === epoch &&
+            this.localState === prior &&
+            this.boundRequest === request &&
+            this.requestLive(request) &&
+            this.options.isLive() &&
+            this.matchesCurrent(prior, false) &&
+            this.now() < this.boundDeadline(deadlineAt);
+          if (!(await this.options.write(tightened, prior, live)) || !live())
+            return false;
+          this.localState = tightened;
+          this.persistedExpected = tightened;
+          state = tightened;
+          this.notify(tightened);
+          return this.now() < this.boundDeadline(deadlineAt);
+        }
+      }
+      return (
+        validModelRecovery(stored) && stored.status === 'waiting'
         && sameCheckpoint(stored, state) && this.epoch === epoch
         && this.boundRequest === request && this.requestLive(request)
         && this.options.isLive() && this.matchesCurrent(state, false)
-        && this.now() < state.deadlineAt;
-    } catch {
-      return false;
-    }
+        && this.now() < this.boundDeadline(state.deadlineAt)
+      );
+    } catch { return false; }
   }
 
   async blocked(request: Request, reason: string): Promise<void> {
@@ -528,7 +590,8 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
   }
 
   /** Revokes in-flight prepare/write authority synchronously before durable pause. */
-  pause(reason: string, source = this.pending ?? this.localState): Promise<boolean> {
+  pause(reason: string, source = this.pending ?? this.localState,
+  ): Promise<boolean> {
     const key = source ? JSON.stringify([
       source.id, source.sdkSessionId, source.routeIdentity, source.turnId, source.attempt,
     ]) : undefined;
@@ -550,8 +613,10 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
       // checkpoint that must be independently stoppable.
       return Promise.resolve(true);
     }
+    const bounded = this.boundDeadline(source.deadlineAt);
     const paused: ModelRecoveryState = {
       ...source,
+      ...(bounded > source.startedAt ? { deadlineAt: bounded } : {}),
       status: 'paused',
       nextRetryAt: source.startedAt,
       reason,

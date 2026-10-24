@@ -22,6 +22,7 @@ import { useSubagentViews } from "./useSubagentViews";
 import { useAgentStatusState } from "./useAgentStatusState";
 import SubagentActivityPanel from "./SubagentActivityPanel";
 import SessionTaskPanel from "./SessionTaskPanel";
+import SessionExecutionStatus from "./SessionExecutionStatus";
 import { useSessionTaskOrchestration } from "./useSessionTaskOrchestration";
 import { OrchestrationPlanCard } from "./OrchestrationPlanCard";
 import type { SessionPlanTarget } from "../../../shared/sessionPlanConfirmation";
@@ -93,6 +94,9 @@ export default memo(function ExecutionStatusBar({
       })
     : [];
   const agents = activity ? views : [];
+  const hasExecution = Boolean(
+    orchestration.execution || orchestration.executionAdmission?.error,
+  );
   const hasAgents = Boolean(
     activity && (agents.length || background.length || tab?.hasMoreBefore),
   );
@@ -169,10 +173,17 @@ export default memo(function ExecutionStatusBar({
       />
     </button>
   );
-  if (tab?.isSessionLoading && !goal) return null;
-  if (!goal && !hasTodos && !hasAgents && !selectedTask && !orchestration.proposal) return null;
+  if (tab?.isSessionLoading && !goal && !hasExecution) return null;
+  if (!goal && !hasTodos && !hasAgents && !selectedTask && !orchestration.proposal &&
+    !hasExecution
+  ) return null;
   return (
     <>
+      <SessionExecutionStatus
+        execution={orchestration.execution}
+        admission={orchestration.executionAdmission}
+        unknown={orchestration.executionUnknown}
+      />
       {orchestration.proposal && <div className="mb-2 min-w-0">
         <OrchestrationPlanCard proposal={orchestration.proposal}
           planSupport={orchestration.planSupport}

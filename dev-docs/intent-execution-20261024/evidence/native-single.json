@@ -1,0 +1,53 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "sessionId": "6e130b2d-1c2f-4a9f-8477-ecd540af2a0c",
+  "executionId": "44344225-59e1-44db-bf9d-15d95892f6c0",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:d3d9625e-790a-4016-8003-24f8dc226143",
+  "finalQueueId": "session-execution:8e784b93-6845-4e41-b2f5-774dbc700b2f",
+  "executionTurns": 2,
+  "originalInputAdmissions": 1,
+  "realWriteToolUses": 1,
+  "realReadToolUses": 1,
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "write",
+      "tool": "Write"
+    },
+    {
+      "kind": "read",
+      "tool": "Read"
+    },
+    {
+      "kind": "review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final"
+    }
+  ],
+  "elapsedMs": 3236,
+  "persistedEvidencePath": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-execution-evidence-TaHSb5/receipt.json"
+}

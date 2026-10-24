@@ -2,7 +2,8 @@ import { APP_CLI_NAME } from './appProfile';
 import type { SessionTaskAction } from './sessionTaskOrchestration';
 
 /** Deliberately accepts only one direct CLI invocation, never a shell program. */
-export function parseTaskReviewCommand(input: unknown): Extract<SessionTaskAction, { kind: 'review' }> | undefined {
+export function parseSessionTaskCommand(input: unknown,
+): Record<string, unknown> | undefined {
   if (typeof input === 'string') { try { input = JSON.parse(input); } catch { return undefined; } }
   if (!input || typeof input !== 'object') return undefined;
   const value = input as Record<string, unknown>;
@@ -30,7 +31,16 @@ export function parseTaskReviewCommand(input: unknown): Extract<SessionTaskActio
     if (tokens[i] !== '--data' || data !== undefined || !tokens[i + 1]) return undefined;
     try { data = JSON.parse(tokens[++i]); } catch { return undefined; }
   }
+  if (data === undefined) return { kind: "list" };
   if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  return data as Record<string, unknown>;
+}
+
+export function parseTaskReviewCommand(
+  input: unknown,
+): Extract<SessionTaskAction, { kind: 'review' }> | undefined {
+  const data = parseSessionTaskCommand(input);
+  if (!data) return undefined;
   const action = data as Extract<SessionTaskAction, { kind: 'review' }>;
   if (action.kind !== 'review' || typeof action.taskId !== 'string' || typeof action.attemptId !== 'string'
     || !['accept', 'reject'].includes(action.decision) || typeof action.evidence !== 'string'
