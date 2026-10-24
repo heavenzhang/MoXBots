@@ -897,3 +897,15 @@ Root01a12bc2 retains sole desktop/updater/sharedCI ownership. Signed521.1 expose
 ## MOXBOTS-0521 corrected521.2 combined freeze
 
 Root01a12bc2 accepts reviewed stability product389070b2/fulltip4273ea1f before any521.2 source/build freeze, together with normalmain95c6 (PR200 default-auto fix). Root combined448/type/lint pass; author673 and nativeSDK synthetic4 modes remain separately labelled. This corrects confirmed stream/admission/TaskGoal/host-gate defects within the current release, not unrelated queued features. Source521.2 is fixed only after the combined exact-head CI/main closure; one new immutable artifact, necessary signed-client realProvider path, local installation and stable distribution remain pending. No change to Host/mobile/cloud deployment ownership. Frozen521.1 remains failed/preserved, old519 rollback unchanged.
+## MOXBOTS-BROWSER-GEOMETRY-20261024 — 主界面缩放后的浏览器偏移
+
+当前开发/UI质量负责会话 `01a16dd4-692c-7e41-8d15-ff80619785b9` 在隔离分支
+`codex/browser-zoom-geometry-20261024` 修复 DOM CSS 像素到原生子 WebView 逻辑像素的换算。
+沿用 appZoom 成功应用值与 BrowserPanel 原几何协调器，创建、连续缩放与重置同一路径；
+无新状态 owner、依赖、协议或迁移。57 项定向回归、类型/lint、Web 构建及实际隔离 WKWebView
+18 组缩放/窗口尺寸验证通过；签名 App 真实路径未验收，不视为正式包已修复。
+任务 `.agent-sync/tasks/codex-browser-zoom-geometry-20261024-7fe10e9d.md`，证据
+`dev-docs/browser-geometry-20261024/acceptance.md`。桌面/macOS-arm64/updater 与
+combined CI/main 唯一 owner 仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；由其选择下一
+未冻结批次、集成/CI、分配版本与制品摘要并复验。本聊天只提交推送开发分支和登记发布队列，
+不触发共享 CI、操作日常 App、改变现有冻结 521.2 或生产版本。

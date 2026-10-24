@@ -20,6 +20,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import BrowserPanel from './BrowserPanel';
 import type { BrowserBounds } from './browserConstants';
 
+let nativeAppZoom = 1;
+vi.mock('@/utils/appZoom', () => ({ getNativeAppZoom: () => nativeAppZoom }));
+
 const invokeMock = vi.fn<(cmd: string, args?: unknown) => Promise<unknown>>(async () => undefined);
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (cmd: string, args?: unknown) => invokeMock(cmd, args),
@@ -105,6 +108,7 @@ function renderPanel() {
 }
 
 beforeEach(() => {
+  nativeAppZoom = 1;
   rafCallbacks = new Map();
   rafIdCounter = 0;
   vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
@@ -130,6 +134,34 @@ afterEach(() => {
 });
 
 describe('BrowserPanel geometry reconciler (#339)', () => {
+  it('creates the child view in native logical pixels when the main UI is zoomed', async () => {
+    nativeAppZoom = 1.5;
+    containerRect = { x: 600, y: 80, width: 584, height: 780 };
+    render(<BrowserPanel {...panelProps({ browserAlive: false })} />);
+    await flushFrame();
+    expect(createCalls()).toHaveLength(1);
+    expect(createCalls()[0]).toMatchObject({
+      bounds: { x: 900, y: 120, width: 876, height: 1170 },
+    });
+  });
+
+  it('tracks native zoom changes and reset without another render or rect movement', async () => {
+    containerRect = { x: 600, y: 80, width: 584, height: 780 };
+    renderPanel();
+    await flushFrame();
+    nativeAppZoom = 1.5;
+    await flushFrame();
+    expect(resizeCalls()).toHaveLength(2);
+    expect(resizeCalls()[1]).toMatchObject({
+      bounds: { x: 900, y: 120, width: 876, height: 1170 },
+    });
+    nativeAppZoom = 1;
+    await flushFrame();
+    expect(resizeCalls()[2]).toMatchObject({ bounds: containerRect });
+    await flushFrame();
+    expect(resizeCalls()).toHaveLength(3);
+  });
+
   it('does not create the native webview from split-transition sliver bounds', async () => {
     containerRect = { x: 1223, y: 80, width: 165, height: 662 };
     const view = render(<BrowserPanel {...panelProps({ browserAlive: false, isSplitTransitioning: true })} />);

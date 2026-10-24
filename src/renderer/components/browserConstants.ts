@@ -53,14 +53,17 @@ export function hasUsableBrowserBounds(width: number, height: number): boolean {
   );
 }
 
-export function toUsableBrowserBounds(rect: BrowserBounds): BrowserBounds | null {
+export function toUsableBrowserBounds(rect: BrowserBounds, nativeZoom = 1): BrowserBounds | null {
+  if (!Number.isFinite(nativeZoom) || nativeZoom <= 0) return null;
   if (!Number.isFinite(rect.x) || !Number.isFinite(rect.y)) return null;
   if (!hasUsableBrowserBounds(rect.width, rect.height)) return null;
+  // getBoundingClientRect is in main-WebView CSS pixels. Tauri's child WebView
+  // APIs take OS logical pixels, independently of that WebView's page zoom.
   return {
-    x: rect.x,
-    y: rect.y,
-    width: rect.width,
-    height: rect.height,
+    x: rect.x * nativeZoom,
+    y: rect.y * nativeZoom,
+    width: rect.width * nativeZoom,
+    height: rect.height * nativeZoom,
   };
 }
 
