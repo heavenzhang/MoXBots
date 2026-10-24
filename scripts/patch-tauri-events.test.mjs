@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { test } from 'node:test';
-import { patchTauriEvents } from './patch-tauri-events.mjs';
+import { patchTauriEvents, repairVendoredTauri } from './patch-tauri-events.mjs';
 
 const root = resolve(import.meta.dirname, '..');
 const installed = resolve(root, 'node_modules/@tauri-apps/api');
@@ -43,6 +44,58 @@ test('vendored Rust change is restricted to its documented event generator', () 
   for (const [file, sha] of Object.entries(upstream)) {
     assert.equal(digest(readFileSync(resolve(directory, file))), file === repair.nativeFile ? repair.nativeSha256 : sha, file);
   }
+});
+test('old Windows CRLF checkout is restored only when every source byte is verified', () => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'myagents-tauri-vendor-'));
+  try {
+    const upstream = JSON.parse(readFileSync(resolve(root, 'vendor/tauri/UPSTREAM_FILES.json'), 'utf8'));
+    for (const name of Object.keys(upstream)) {
+      const destination = resolve(directory, name);
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(resolve(root, 'vendor/tauri', name), destination);
+    }
+    const native = resolve(directory, repair.nativeFile);
+    const cargo = resolve(directory, 'Cargo.toml');
+    const convert = file => writeFileSync(file, readFileSync(file, 'utf8').replaceAll('\n', '\r\n'));
+    convert(native);
+    convert(cargo);
+    assert.throws(() => repairVendoredTauri(directory, true), /CRLF conversion/);
+    repairVendoredTauri(directory);
+    repairVendoredTauri(directory, true);
+    assert.equal(digest(readFileSync(native)), repair.nativeSha256);
+    assert.equal(digest(readFileSync(cargo)), upstream['Cargo.toml']);
+
+    convert(native);
+    writeFileSync(cargo, 'unrelated local edit');
+    assert.throws(() => repairVendoredTauri(directory), /Unexpected vendored Tauri bytes: Cargo.toml/);
+    assert.notEqual(digest(readFileSync(native)), repair.nativeSha256, 'failure must not partially restore files');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+test('Windows Git checkout preserves every vendored upstream byte', () => {
+  const directory = mkdtempSync(resolve(tmpdir(), 'myagents-tauri-checkout-'));
+  try {
+    const repository = resolve(directory, 'repo');
+    const checkout = resolve(directory, 'checkout');
+    mkdirSync(repository);
+    mkdirSync(checkout);
+    const vendorFiles = ['tauri', 'tao', 'tauri-runtime-wry'].flatMap(name => {
+      const upstream = JSON.parse(readFileSync(resolve(root, 'vendor', name, 'UPSTREAM_FILES.json'), 'utf8'));
+      return Object.keys(upstream).map(file => `vendor/${name}/${file}`);
+    });
+    const files = ['.gitattributes', ...vendorFiles];
+    for (const file of files) {
+      const destination = resolve(repository, file);
+      mkdirSync(dirname(destination), { recursive: true });
+      copyFileSync(resolve(root, file), destination);
+    }
+    const git = (...args) => execFileSync('git', args, { cwd: repository, stdio: 'pipe' });
+    git('init', '--quiet');
+    git('-c', 'core.autocrlf=false', 'add', '--', ...files);
+    git('-c', 'core.autocrlf=true', 'checkout-index', '--all', `--prefix=${checkout.replaceAll('\\', '/')}/`);
+    for (const file of vendorFiles) {
+      assert.equal(digest(readFileSync(resolve(checkout, file))), digest(readFileSync(resolve(root, file))), file);
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 test('app builds select the paired dependency and verify the npm patch', () => {
   const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));

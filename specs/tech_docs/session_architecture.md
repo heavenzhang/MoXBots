@@ -174,6 +174,14 @@ MCP pre-warm 是 soft readiness observation，不是 AI turn 的 admission autho
 
 准入 guard 只拥有新 turn 提交前的校验；同步转交到 active turn 后从 source item 释放。native 零模型轮次拒绝推导的 reload anchor 时，既有恢复路径重新递交同一已接纳输入，不能重新使用针对旧 interrupted turn 的 continuation guard，否则它会将自己的已提交新 root 判为 stale。尚未提交的输入、Stop/cancel、显式 Rewind/Fork 边界仍走原校验。
 
+#### 桌面新对话与 Renderer replacement
+
+桌面新对话由 Rust `cmd_new_desktop_session` 统一裁决：只读确认原 source identity、当前 Sidecar generation、精确 owner 与渠道绑定，然后通过 SessionEngine 的 `transitionDesktopSession` 在 Runtime mutation owner 内复核。原 source 忙碌、恢复或共享时，先准备独立 pending target，再发布新 Tab identity，最后异步释放原 Tab owner；原 background owner 保留旧任务及渠道绑定。明确未开始的拒绝不退役原 writer；已经开始但结果不确定的 mutation，必须确认原进程退出后才恢复或回滚绑定，不能重放未知操作。selector 继续使用 MoXBots 原 `withUpdateAdmission`，不放宽 Stop、ledger、恢复授权或原任务预算。
+
+新 conversation birth 只清该 Tab 的 transcript、stream、队列及交互展示；pending→real 物化与 same-session reconnect 不清已有历史。`MainRendererState` 区分冷启动和同一原生窗口的 WebContent replacement：挂载 Tab 前附着新 renderer token，退休旧 token 的 SSE 订阅，再提出未接纳页面恢复 offer，避免同 ID owner 释放竞态。MoXBots 冷启动仍为空 Launcher，显式更新草稿仍走原路径；replacement 附着失败保留原阅读 Tab 和重试入口。
+
+SSE attachment 的 `getBuiltinLiveSessionSnapshot(..., { includeHistory: false })` 只捕获 revision、实时行和交互状态；V2 在投影全部历史前选择 exact live row。完整历史由既有 REST snapshot/分页恢复及 generation fence 负责，避免重放全历史堵住数据面队列。仍被 surface 持有的订阅按有上限的退避继续重连，surface 关闭或换代可取消，不另设持久恢复 writer。
+
 ### 4.3 external Runtime
 
 外部 Runtime 的当前 session、process/transport、operation queue、config state、transcript cursor 与 terminal result 分别由 `src/server/runtimes/external-session/` 下的 owners 管理，对外通过 `external-session.ts` facade 暴露。

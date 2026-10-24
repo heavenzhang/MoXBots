@@ -137,6 +137,8 @@ Drawer 的正文／评论阅读区独占评论导航滚动：通知定位、回�
 
 memory update、memory evolution、Agent heartbeat 等内部定时工作也写入带 `managedKind` 的隐藏 Task，由同一个 Task scheduler 执行。普通 Task Center 列表默认过滤 managed Task，但 Session/history/audit 保留。`memory_auto_update_batch` 是遍历多个候选存量 Session 的调度器，本身不拥有持久 Session binding：Task row 使用现有 schema 的非固定绑定形态 `runMode=new-session` 且不写 `preselectedSessionId`，但该 `managedKind` 明确绕过 Session Engine，不会为调度器新建 Session；实际运行时才在 queue authority 下逐个绑定存量 Session 并发送 Memory Update query。历史 single-session 行由配置 reconcile 原位归一。Memory Gardener / Molt 才是实际创建新 Session 执行 Skill 的独立 managed Task。
 
+记忆规则初始化只检查 `.claude/rules/` 直接 regular Markdown 文件名（大小写不敏感、包含 `memory`）。发现已有规则即跳过整套默认 SOUL/USER/MEMORY 文件；不读取用户正文、不跟随符号链接。Gardener/Molt/Update 同样按实际文件清单维护，而非强制默认三份。受管 Gardener/Molt 在既有 Task control 锁内、尚无未结 execution 时原位刷新旧 `task.md`，保留 Task 身份、计划与历史；失败不派发旧指令。内置 Skill 快照通过 Rust/TS 同步版本 62 收敛，让已安装 61 的用户收到新规则；这不是 App 发行版本号。
+
 Memory batch 的候选历史扫描包含阻塞文件 IO 和 transcript 重放，必须在 `spawn_blocking` 中使用本轮工作区及配置快照，不能占住 native 管理 API 共用的异步 executor。工作区互斥同时覆盖 handler 与尚未完成的扫描；取消 handler 不允许第二批与存活扫描重叠。扫描结果返回后重新校验原 Task/queue authority，Stop 已生效时不绑定或派发候选；扫描异常只报告失败并释放临时工作区互斥，不释放 Task claim、不判定任何业务工具完成。
 
 Evo configure 的 runtime/config 是完整目标配置，不是 Task PATCH：指定 runtime 却未指定 config 时，以 `{}` 显式替换旧配置；取消 runtime override 时清除两者。普通 Task PATCH 的省略字段仍表示保留。已有 Gardener / Molt 在 Task control guard 内重读、校验合并后的执行路由，再停止和原位更新；校验失败不先停任务。这样从 Codex managed-provider 切回 builtin 或同 runtime 移除配置时，不会继承不兼容配置，也不会丢失 Task ID 和历史记录。
