@@ -150,6 +150,40 @@ async function launch(taskId: string, launchId = `launch-${taskId}`) {
 }
 
 describe("session task dispatch server boundary", () => {
+  it("admits root package bookkeeping during background work without admitting opaque shell or child control writes", async () => {
+    expect(await launch("a")).toBeUndefined();
+    const ledger = store.getSessionMetadata(sessionId)!.taskOrchestration!;
+    const data = {
+      kind: "package",
+      expectedRevision: ledger.revision,
+      package: {
+        taskId: "b",
+        executionId,
+        assignee: "Explore",
+        resources: [{ path: "src/b/", access: "write" }],
+        reason: "Prepare independent work while the first task runs",
+      },
+    };
+    const command = `myagents session tasks --json --data '${JSON.stringify(data)}'`;
+    expect(await tool("Bash", { command })).toBeUndefined();
+    await register("b", "src/b/", "write", "Explore");
+    expect(
+      store.getSessionMetadata(sessionId)?.taskOrchestration?.taskPackages,
+    ).toEqual(
+      expect.arrayContaining([expect.objectContaining({ taskId: "b" })]),
+    );
+    expect(
+      await tool("Bash", { command: `${command}; touch unexpected` }),
+    ).toContain("SESSION_TASK_OPAQUE_TOOL_DURING_DELEGATION");
+    expect(
+      await tool(
+        "Bash",
+        { command },
+        { agentId: "child-a", launchId: "launch-a" },
+      ),
+    ).toContain("SESSION_TASK_CHILD_TOOL_DENIED");
+  });
+
   it("persists exact packages and uses the shared dependency, concurrency, and resource policy", async () => {
     await expect(register("missing", "src/missing/")).rejects.toThrow(
       "SESSION_TASK_PACKAGE_TASK_NOT_ENSURED",

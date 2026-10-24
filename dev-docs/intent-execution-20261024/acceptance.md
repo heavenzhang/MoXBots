@@ -20,7 +20,7 @@
 
 ## 本地验证
 
-在 Node 24 下，61 个相关 unit/integration/DOM 文件共 **1061 项通过**：SessionEngine/准入/原队列/Task/Goal/native lifecycle、builtin recovery、auto-route、bridge failover、共享执行/包策略及状态栏/首发 helper。扩大回归首次发现一项 runtime-boundary 源码检查失败；排除无关全文件格式改动后，原检查及完整 1061 项均通过，没有削弱断言。
+在 Node 24 下，61 个相关 unit/integration/DOM 文件共 **1070 项通过**：SessionEngine/准入/原队列/Task/Goal/native lifecycle、builtin recovery、auto-route、bridge failover、共享执行/包策略及状态栏/首发 helper。扩大回归首次发现一项 runtime-boundary 源码检查失败；排除无关全文件格式改动后，原检查及完整 1070 项均通过，没有削弱断言。
 
 复现命令：
 
@@ -37,7 +37,7 @@ PATH=/opt/homebrew/opt/node@24/bin:$PATH node_modules/.bin/vitest run \
   src/renderer/pages/Chat.ownerMaterialization.test.tsx src/renderer/i18n/resourceParity.test.ts
 ```
 
-完整日志在本机 `/tmp/moxbots-intent-final-tests.txt`；临时日志不是仓库交接凭据，owner 可按上述命令重现受影响范围。类型检查通过。test classification 通过。dependency-cruiser 为零错误、18 个原有 orphan 警告。ESLint 与本地 server bundle 另行收口记录，不替代统一 CI 或正式制品。
+完整日志在本机 `/tmp/moxbots-intent-final-tests.txt`；临时日志不是仓库交接凭据，owner 可按上述命令重现受影响范围。类型检查通过。test classification 通过。dependency-cruiser 为零错误、18 个原有 orphan 警告。改动文件 ESLint、文档检查与本地 server bundle 均通过，不替代统一 CI 或正式制品。
 
 新增重要行为回归：一次请求失败后 fresh queue 返工并以修改后根 Read 验收；重复/历史请求不重派；相同事实不虚增进展；旧读取与并发读取不证明新写入；证据上限不淘汰未知动作；无 UI 轮询的 native completed 唤醒；failed → success ACK → native completed 仍 unknown；根只读核查不解除写锁；父 deadline 不能在新轮/换模型/等待中刷新；前三共享 origin 时第四个独立 origin 在候选截断前优先。
 
@@ -45,7 +45,17 @@ PATH=/opt/homebrew/opt/node@24/bin:$PATH node_modules/.bin/vitest run \
 
 `scripts/verify-model-failover-loopback.ts` 使用安装 SDK/native child、私有 scratch HOME、loopback 供应商和本地 MCP counter，未访问真实模型或日常会话。普通模式通过：`counter=1 / primaryCalls=5 / backupCalls=1 / switches=1 / restoredResult=true`；说明已经完成的工具结果被携带接续，工具没有因该故障重放。Stop 模式通过：`counter=1 / primaryCalls=2 / backupCalls=0 / switches=0 / interruptCompleted=true`。
 
+`--chain` 新回归由主 Agent 独立复跑通过：同一次真实 SDK Query 中，已成功执行 counter 后，P503 四次、候选 A503 四次，再由候选 B 成功。计数 `P5/A4/B1/switches2/counter1`，B 收到 `count=1` 历史。这证明多候选 controller 与 native SDK 的接续/防重放配合；候选为脚本固定合成 snapshot，实际池成员/故障域策略由 router/health 集成回归覆盖，不能合称真实供应商验收。
+
 本机原始日志：`/tmp/moxbots-intent-final-native-failover.txt`、`/tmp/moxbots-intent-final-native-stop.txt`；普通模式 evidence scratch 为 `/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-failover-native-owlCFl`。这些是 native transport/恢复验证，不能据此推定普通任务完整闭环、真实模型或发行包验收已经完成。
+
+新增 `scripts/verify-session-execution-loopback.ts` 使用原 builtin facade、SDK hooks、SessionStore 和生产 task CLI handler。私有 CLI shim 只负责经 loopback 将 SDK Bash 的实际命令转到该 handler；没有替换工具 hooks 或直接伪造终态。可信输入在 harness 通过原 record 入口登记，尚未覆盖 Rust 对真实桌面输入的签名链。
+
+- 默认模式：首轮真实 native terminal 仅分析，原执行 owner 自动进入不同 queue，真实 root Write/Read 后提交评审并持久 completed。原始输入一次、工具写读各一次、共两轮。
+- `--parallel`：一个实际 native background package 在父轮持久终态后写入，native completed 才将 claim settled；同范围重复 launch 没有获得第二 claim；原自动续跑执行 root Read、task review 和 execution review，持久 completed，共三轮。这项证明后台接线，不单独证明两个 worker 同时工作。
+- `--rework`：第一次实际写入/读取后提交 rework 并结束该轮，原自动 fresh queue 再写正确值并读取核验，随后 accept。持久 completed、reworks=1、原始输入一次；两轮写读使用不同真实 tool IDs。
+
+本地合成供应商的真实 SDK 回归无真实模型付费调用，配置推理端点仅 loopback；这不是公网抓包审计或真实供应商验收。脱敏原生收据保存在本目录 [evidence/](evidence/)，脚本失败时也保存私有失败收据再有界停止/清理，不清除未知失败事实后伪称通过。
 
 ### UI
 
@@ -56,7 +66,7 @@ PATH=/opt/homebrew/opt/node@24/bin:$PATH node_modules/.bin/vitest run \
 | 门禁 | 当前状态 | 完成标准 / 负责人 |
 |---|---|---|
 | 源码实现与离线回归 | 已实现并通过上述验证 | 开发会话固定并推送完整 SHA，handoff gate 核对 |
-| 普通闭环真实 SDK 合成供应商 | 待收口 | 原 builtin facade、SDK hooks、真实 Write/Read、CLI review、持久 completed；不能直接伪造 hook |
+| 普通闭环真实 SDK 合成供应商 | 单 Agent / 后台包 / 返工已通过；双 worker 收口中 | 原 builtin facade、SDK hooks、真实 Write/Read、CLI review、持久 completed；不能直接伪造 hook |
 | 远端 main 与统一 CI | 待原 owner 集成 | 同步最新 main、核对完整依赖、一次精确候选 CI、正常合入及远端包含证明 |
 | 0.5.21 制品与签名 | 未构建/未发布 | 原 owner 固定新 SHA/不可变 tag/制品摘要，沿原流水线，保持 520.1 不变 |
 | 真实普通聊天产物 | 未验收 | 在隔离测试身份/工作区输入一次“课程介绍网站”请求，实际产出可打开文件；浏览器验证内容、链接和必要适配，持久根评审覆盖全部条件 |

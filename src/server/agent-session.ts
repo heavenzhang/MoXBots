@@ -2034,6 +2034,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           sessionExecutionDeadlineAt(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query),
           ),
         read: () => getBuiltinModelRecovery(productSessionId),
         current: () => {
@@ -2046,6 +2047,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           sessionExecutionInferenceAllowed(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query),
           ),
         prepare: async request => {
           if (!activeSessionContextRecovery) throw new Error('Action protection unavailable');
@@ -2090,6 +2092,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           sessionExecutionDeadlineAt(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query),
           ),
         recovery: activeSessionModelRecovery,
         isLive: () =>
@@ -2097,12 +2100,14 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           sessionExecutionInferenceAllowed(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query),
           ),
         canRetry: () => !builtinInterrupt.isInterrupting()
           &&
           sessionExecutionInferenceAllowed(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query),
           ) &&
           activeSessionModelRecovery?.readState()?.status !== 'paused'
           && activeSessionContextRecovery?.canRetryInference() !== false,

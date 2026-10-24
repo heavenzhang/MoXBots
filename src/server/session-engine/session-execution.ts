@@ -44,28 +44,70 @@ const currentLedger = (id: string) => getSessionMetadata(id)?.taskOrchestration;
 const isActive = (phase: string) =>
   !["completed", "incomplete", "paused"].includes(phase);
 
-/** The original inference owner shares this task's absolute deadline. */
+type NativeInferenceBackground = readonly { toolUseId?: string }[];
+
+/** No request agent id exists at this layer: mixed/unproven task scopes fail closed. */
+function inferenceBudget(
+  sessionId: string,
+  queueId: string | null | undefined,
+  background: NativeInferenceBackground,
+) {
+  const ledger = currentLedger(sessionId);
+  const execution = ledger?.execution;
+  const matches = background.map((row) =>
+    row.toolUseId
+      ? (ledger?.delegationClaims?.filter(
+          (claim) => claim.toolUseId === row.toolUseId,
+        ) ?? [])
+      : [],
+  );
+  const taskBound = matches.some((claims) => claims.length > 0);
+  // Missing task_started identity is not evidence of legacy ownership while
+  // a managed launch may still own this Query's background inference.
+  const managedProofRequired =
+    background.length > 0 &&
+    (taskBound ||
+      ledger?.delegationClaims?.some((claim) =>
+        ["reserved", "running", "unknown"].includes(claim.state),
+      ));
+  if (
+    managedProofRequired &&
+    (!execution ||
+      matches.some(
+        (claims) =>
+          claims.length !== 1 ||
+          claims[0].executionId !== execution.id ||
+          !["reserved", "running"].includes(claims[0].state),
+      ))
+  ) {
+    return { deadlineAt: 0, allowed: false };
+  }
+  if (execution && (execution.currentQueueId === queueId || taskBound)) {
+    return {
+      deadlineAt: execution.deadlineAt,
+      allowed:
+        !revoked.has(sessionId) &&
+        isActive(execution.phase) &&
+        Date.now() < execution.deadlineAt,
+    };
+  }
+  return { deadlineAt: undefined, allowed: true };
+}
+
+/** Root queue or precisely bound native children share the original execution budget. */
 export function sessionExecutionDeadlineAt(
   sessionId: string,
   queueId: string | null | undefined,
+  background: NativeInferenceBackground = [],
 ): number | undefined {
-  const execution = currentLedger(sessionId)?.execution;
-  return execution && execution.currentQueueId === queueId
-    ? execution.deadlineAt
-    : undefined;
+  return inferenceBudget(sessionId, queueId, background).deadlineAt;
 }
 export function sessionExecutionInferenceAllowed(
   sessionId: string,
   queueId: string | null | undefined,
+  background: NativeInferenceBackground = [],
 ): boolean {
-  const execution = currentLedger(sessionId)?.execution;
-  return (
-    !execution ||
-    execution.currentQueueId !== queueId ||
-    (!revoked.has(sessionId) &&
-      isActive(execution.phase) &&
-      Date.now() < execution.deadlineAt)
-  );
+  return inferenceBudget(sessionId, queueId, background).allowed;
 }
 
 const INTENT_SYSTEM = `Classify the user's current request. Return only JSON:
@@ -84,12 +126,10 @@ export async function classifySessionExecutionIntent(
   signal: AbortSignal,
 ): Promise<ExecutionIntent | undefined> {
   const data = await getSessionData(request.sessionId);
-  const context = (data?.messages ?? [])
-    .slice(-4)
-    .map((m) => ({
-      role: m.role,
-      text: (m.desktopQuery?.visibleText ?? m.content).slice(0, 2000),
-    }));
+  const context = (data?.messages ?? []).slice(-4).map((m) => ({
+    role: m.role,
+    text: (m.desktopQuery?.visibleText ?? m.content).slice(0, 2000),
+  }));
   const prompt = JSON.stringify({
     priorContext: context,
     currentUserRequest: request.text.slice(0, 20000),
@@ -152,7 +192,9 @@ function executionReminder(sessionId: string): string {
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
 读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
-accept 需要覆盖全部验收条件，并指向本次执行真实且最新的验证结果；Todo完成、分析文本和子Agent自报不算证据。需要业务判断或缺权限则 needs_user/blocked。不得扩大原始授权、重复未知写入或自动创建 Goal。遇到停止立即停下。</system-reminder>`;
+accept 需要覆盖全部验收条件，并指向本次执行真实且最新的验证结果；Todo完成、分析文本和子Agent自报不算证据。
+评审提交成功后，给出简明交付说明（实际产物位置、检查结果或具体阻断）并结束当前回复。accept/rework 都由本轮持久化终态结算；不要在同一轮等待完成状态或反复提交相同评审。rework 的修复由下一轮自动接续。
+需要业务判断或缺权限则 needs_user/blocked。不得扩大原始授权、重复未知写入或自动创建 Goal。遇到停止立即停下。</system-reminder>`;
 }
 
 /** This admission is reached only for a verified human desktop input, never source labels or model prose. */
@@ -382,6 +424,8 @@ export async function requestSessionExecutionReview(
     ledger,
     executionReviewReceipt: receipt,
     pendingMainAgentReview: true,
+    settlement: "native_turn_terminal" as const,
+    nextAction: "finish_current_reply" as const,
   };
 }
 

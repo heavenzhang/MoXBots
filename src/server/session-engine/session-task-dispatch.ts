@@ -393,7 +393,7 @@ function isTaskLedgerCli(name: string, input: unknown): boolean {
     return (
       typeof command === "string" && !/(?:^|\s)--data(?:\s|$)/.test(command)
     );
-  return ["ensure", "bind", "review", "execution_review", "list"].includes(
+  return ["ensure", "bind", "package", "review", "execution_review", "list"].includes(
     String(parsed.kind),
   );
 }

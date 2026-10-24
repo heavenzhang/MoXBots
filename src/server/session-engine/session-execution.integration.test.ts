@@ -841,7 +841,7 @@ describe("durable Session execution owner", () => {
       });
     }
 
-    const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
+    let ledger = store.getSessionMetadata(id)!.taskOrchestration!;
     expect(ledger.delegationLaunches).toBe(6);
     expect(
       ledger.delegationClaims?.filter((claim) => claim.state === "settled"),
@@ -1058,4 +1058,251 @@ describe("durable Session execution owner", () => {
       currentQueueId: replacementQueue,
     });
   });
+});
+
+describe("native background inference execution budget", () => {
+  async function boundChild() {
+    await prepare();
+    const execution = currentExecution()!;
+    await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+      ledger.delegationClaims = [
+        {
+          toolUseId: "native-launch-exact",
+          taskId: "task-child",
+          executionId: execution.id,
+          state: "running",
+        },
+      ];
+      return ledger;
+    });
+    const native = await import("../builtin-session/lifecycle");
+    const query = {} as NonNullable<
+      Parameters<typeof native.setQuerySession>[0]
+    >;
+    native.setQuerySession(query);
+    expect(
+      native.recordQueryBackgroundTask(query, "native-child", {
+        toolUseId: "native-launch-exact",
+        runId: "native-run-1",
+      }),
+    ).toBe(true);
+    const rows = () => native.readQueryBackgroundTasks(query);
+    return { execution, native, query, rows };
+  }
+
+  it("keeps the exact original deadline after the root ends and blocks background retry at expiry", async () => {
+    const h = await boundChild();
+    const clock = vi
+      .spyOn(Date, "now")
+      .mockReturnValue(h.execution.deadlineAt - 1);
+    try {
+      expect(
+        executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
+      ).toBe(h.execution.deadlineAt);
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+      ).toBe(true);
+      const { ModelFailoverController } = await import(
+        "../openai-bridge/model-failover"
+      );
+      const execute = vi.fn(async () => {
+        clock.mockReturnValue(h.execution.deadlineAt);
+        return Response.json(
+          { error: { message: "overloaded" } },
+          { status: 503 },
+        );
+      });
+      const controller = new ModelFailoverController({
+        scope: () => undefined,
+        retryDelaysMs: [0, 0, 0],
+        deadlineAt: () =>
+          executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
+        isActive: () =>
+          executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+        resolveBackup: () => undefined,
+        onSwitch: vi.fn(),
+      });
+      const request = () => new Request("http://fixture.invalid/messages");
+      expect(
+        (
+          await controller.run(
+            request(),
+            { providerId: "fixture", baseUrl: "http://fixture.invalid" },
+            execute,
+            "child-first",
+          )
+        ).status,
+      ).toBe(499);
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+      ).toBe(false);
+      await controller.run(
+        request(),
+        { providerId: "fixture", baseUrl: "http://fixture.invalid" },
+        execute,
+        "child-next",
+      );
+      expect(execute).toHaveBeenCalledTimes(1);
+    } finally {
+      h.native.clearQuerySession();
+      clock.mockRestore();
+    }
+  });
+
+  it("revokes a precisely bound native child when its parent is stopped without a current root", async () => {
+    const h = await boundChild();
+    try {
+      await executionOwner.pauseSessionExecution(id, "user_stop");
+      expect(
+        executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
+      ).toBe(h.execution.deadlineAt);
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+      ).toBe(false);
+    } finally {
+      h.native.clearQuerySession();
+    }
+  });
+
+  it("does not attach an old native child to a new human execution or its newer root queue", async () => {
+    const h = await boundChild();
+    try {
+      await prepare("Create a different artifact now", "human-new-execution");
+      expect(currentExecution()!.id).not.toBe(h.execution.id);
+      for (const queue of [null, currentExecution()!.currentQueueId]) {
+        expect(
+          executionOwner.sessionExecutionInferenceAllowed(id, queue, h.rows()),
+        ).toBe(false);
+        expect(
+          executionOwner.sessionExecutionDeadlineAt(id, queue, h.rows()),
+        ).toBe(0);
+      }
+    } finally {
+      h.native.clearQuerySession();
+    }
+  });
+
+  it("does not authorize mixed or no-longer-live delegated claims under a proven sibling", async () => {
+    const h = await boundChild();
+    try {
+      h.native.recordQueryBackgroundTask(h.query, "unattributed-child", {
+        toolUseId: "unknown-launch",
+        runId: "native-run-2",
+      });
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+      ).toBe(false);
+      h.native.completeQueryBackgroundTask(h.query, "unattributed-child", {
+        runId: "native-run-2",
+        authoritative: true,
+        status: "completed",
+      });
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+      ).toBe(true);
+      await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+        ledger.delegationClaims![0].state = "unknown";
+        return ledger;
+      });
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+      ).toBe(false);
+      h.native.completeQueryBackgroundTask(h.query, "native-child", {
+        runId: "native-run-1",
+        authoritative: true,
+        status: "completed",
+      });
+      expect(h.rows()).toEqual([]);
+      // Historical unknown claims alone do not revoke a genuine current root.
+      expect(
+        executionOwner.sessionExecutionInferenceAllowed(
+          id,
+          currentExecution()!.currentQueueId,
+          h.rows(),
+        ),
+      ).toBe(true);
+      expect(
+        executionOwner.sessionExecutionDeadlineAt(
+          id,
+          currentExecution()!.currentQueueId,
+          h.rows(),
+        ),
+      ).toBe(h.execution.deadlineAt);
+    } finally {
+      h.native.clearQuerySession();
+    }
+  });
+
+  it.each(["reserved", "running", "unknown"] as const)(
+    "does not treat missing or unmatched native task_started identity as legacy with a %s managed claim",
+    async (claimState) => {
+      const h = await boundChild();
+      try {
+        h.native.completeQueryBackgroundTask(h.query, "native-child", {
+          runId: "native-run-1",
+          authoritative: true,
+          status: "completed",
+        });
+        await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+          ledger.delegationClaims![0].state = claimState;
+          return ledger;
+        });
+        for (const toolUseId of [undefined, "unmatched-launch"]) {
+          const runId = toolUseId ? "missing-run-2" : "missing-run-1";
+          const taskId = toolUseId
+            ? "unmatched-native-child"
+            : "missing-identity-native-child";
+          expect(
+            h.native.recordQueryBackgroundTask(h.query, taskId, {
+              runId,
+              ...(toolUseId ? { toolUseId } : {}),
+            }),
+          ).toBe(true);
+          for (const queue of [null, h.execution.currentQueueId]) {
+            expect(
+              executionOwner.sessionExecutionInferenceAllowed(
+                id,
+                queue,
+                h.rows(),
+              ),
+            ).toBe(false);
+            expect(
+              executionOwner.sessionExecutionDeadlineAt(id, queue, h.rows()),
+            ).toBe(0);
+          }
+          h.native.completeQueryBackgroundTask(h.query, taskId, {
+            runId,
+            authoritative: true,
+            status: "completed",
+          });
+        }
+        expect(h.rows()).toEqual([]);
+        expect(
+          executionOwner.sessionExecutionInferenceAllowed(
+            id,
+            h.execution.currentQueueId,
+            h.rows(),
+          ),
+        ).toBe(true);
+        // A legacy native background run is allowed only after managed claims
+        // have genuinely settled; unknown/reserved claims cannot be downgraded.
+        await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
+          ledger.delegationClaims![0].state = "settled";
+          return ledger;
+        });
+        h.native.recordQueryBackgroundTask(h.query, "legacy-child", {
+          runId: "legacy-run",
+        });
+        expect(
+          executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
+        ).toBe(true);
+        expect(
+          executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
+        ).toBeUndefined();
+      } finally {
+        h.native.clearQuerySession();
+      }
+    },
+  );
 });
