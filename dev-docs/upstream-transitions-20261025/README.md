@@ -70,3 +70,16 @@ Initial DOM failures exposed a missing toast hook and upstream cold-launch/faile
 3. Preserve this package’s selector update-freeze wrapper when integrating other packages’ shared adapter/test edits. No package.json or shared specification changes made by this worker.
 4. Product Rust test filters after all package dependencies are paired: `main_renderer::tests`, `sse_proxy::tests`, `im::handover::tests`, `im::agent_channel::tests::private_chat_and_commands_preserve_platform_admission`, `sidecar::session_lifecycle::session_lifecycle_tests`, `sidecar::manager`, `keyed_lifecycle`. Use pinned Rust 1.92 and `CARGO_BUILD_JOBS=2`; apply the native worker’s fixture/cache environment if required. These tests were not executed in this worktree.
 5. This establishes source and synthetic behavior only. Native WebView reload, real accounts/permissions, real Provider replies, packaged desktop/Linux Host behavior, mainline and production acceptance remain separate root-owned gates.
+
+## Integrated Rust compile follow-up
+
+Root’s first combined Rust compile identified two missing cross-module prerequisites: `session_has_exact_owner` was still `pub(super)`, and Router’s surface migration still accepted only three arguments. The failure log belongs to root evidence at `dev-docs/upstream-fixes-20261025/evidence/combined-rust-compile.log` in the integration worktree.
+
+The narrow prerequisite from upstream `3c16fc83edca103742dc6004707f4a62948e800e` is now included:
+
+- Expose only the existing read-only exact-owner query at crate scope. This does not expose mutation or bypass lifecycle admission.
+- Add `channel_sidecar_port` to Router migration. Project the Manager-proven port, including zero for a dormant Channel lease, instead of inheriting a stale Router endpoint. The handover caller retains its exact Agent-owner check.
+- Preserve the fork’s strict Tab + Agent owner migration gate. A dormant or shared source can still take the existing separate-birth path; no broader owner admission was imported.
+- Add port-cache/lease combinations `(0,0)`, `(32001,0)`, `(0,32002)`, `(32001,32002)` with exact rollback checks, and a migrated attached-lease idle-collection test that retains the Tab and target binding. Existing stale-binding refusal test is updated to the explicit port contract.
+
+Verification of this follow-up: pinned Rust 1.92 rustfmt parsed both changed modules without file-wide formatting; `git diff --check` passed. No Cargo was run while root owns the shared native target. Root must rerun combined compilation and `im::router::tests::surface_`, `im::handover::tests`, plus the lifecycle tests already listed above before declaring native validation passed.

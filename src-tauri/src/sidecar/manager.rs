@@ -2320,7 +2320,9 @@ impl SidecarManager {
             )
     }
 
-    pub(super) fn session_has_exact_owner(&self, session_id: &str, owner: &SidecarOwner) -> bool {
+    /// Read-only lease query shared by Sidecar lifecycle and IM handover.
+    /// Callers still obtain their mutation admission through the lifecycle owner.
+    pub(crate) fn session_has_exact_owner(&self, session_id: &str, owner: &SidecarOwner) -> bool {
         self.session_owners(session_id)
             .any(|candidate| candidate == owner)
     }

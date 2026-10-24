@@ -35,6 +35,10 @@ Integrate selected upstream independent conversation and renderer/SSE recovery f
 - Native Rust compile, WebView replacement, real Provider/user paths and packaged/production acceptance remain unverified.
 - Local only — not synchronized to remote, as explicitly scoped. Desktop deployment ownership is unchanged; no version allocated.
 
+## Rust integration follow-up
+
+Root’s combined compile exposed the missing crate visibility and explicit Channel lease-port prerequisites. Added the narrow Router/manager boundary from upstream `3c16fc83edca103742dc6004707f4a62948e800e`, including port/rollback and idle collection tests. Exact-owner admission remains strict; no broad permission/owner policy change. Rustfmt parser and diff whitespace checks pass; root’s Cargo compile and new tests remain pending to avoid shared-target contention.
+
 ## Next step
 
 Root reviews and integrates this branch with its helper and the other package commits, resolves the small shared lib.rs/test edits, then runs the listed Rust filters and final merged acceptance.

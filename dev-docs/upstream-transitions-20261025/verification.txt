@@ -50,3 +50,11 @@ Affected ESLint: exit 0; no lint violations
 Dependency-cruiser: 0 errors, 18 no-orphans warnings; no suppression
 Rust: rustfmt +1.92.0 parsing only. Product Rust compile/tests delegated to root integrated tree.
 No shared CI / package / real account / production acceptance claimed.
+
+Rust integration follow-up:
+- root first compile: E0624 exact-owner visibility + E0061 missing Router lease-port interface
+- narrow source dependency: 3c16fc83edca103742dc6004707f4a62948e800e
+- rustfmt +1.92.0 --edition 2021 --emit stdout --config skip_children=true router.rs manager.rs: exit 0
+- git diff --check: exit 0
+- new Rust regression cases: port-cache/lease matrix + attached-lease idle release preserving Tab and binding
+- Cargo compile/tests: pending root shared native target; no local Cargo invocation
