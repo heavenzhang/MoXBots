@@ -101,7 +101,9 @@ const deadline = setTimeout(() => void browser?.close(), 120000);
 try {
   await server.listen();
   browser = await (engine === 'webkit' ? webkit : chromium).launch({
-    headless: true, ignoreDefaultArgs: ['--hide-scrollbars'], ...(engine === 'chrome' ? { channel: 'chrome' } : {}),
+    headless: true, ignoreDefaultArgs: ['--hide-scrollbars'],
+    ...(engine !== 'webkit' && process.env.MOXBOTS_SCROLL_CHROMIUM_PATH ? { executablePath: process.env.MOXBOTS_SCROLL_CHROMIUM_PATH } : {}),
+    ...(engine === 'chrome' ? { channel: 'chrome' } : {}),
   });
   page = await browser.newPage({ viewport: { width: 1000, height: 800 },
     recordVideo: { dir: output, size: { width: 1000, height: 800 } } });
@@ -396,13 +398,28 @@ try {
   // gap=0 also holds for the previous committed range while the new tall row
   // is still being admitted. Measure shrink only after the test's 250 actual
   // paragraphs are mounted and measured at the tail, not that stale extent.
-  await page.waitForFunction(() => {
-    const row = document.querySelector('[data-message-id="stream"]');
-    const state = window.audit.snapshot();
-    return row?.querySelectorAll('p').length === 250
-      && row.getBoundingClientRect().height > 4000
-      && state.anchor === 'stream' && Math.abs(state.gap) <= 1;
-  }, null, { timeout: 5000 });
+  try {
+    await page.waitForFunction(() => {
+      const row = document.querySelector('[data-message-id="stream"]');
+      const state = window.audit.snapshot();
+      return row?.querySelectorAll('p').length === 250
+        && row.getBoundingClientRect().height > 4000
+        && state.anchor === 'stream' && Math.abs(state.gap) <= 1;
+    }, null, { timeout: 5000 });
+  } catch (error) {
+    const tailDiagnostic = await page.evaluate(() => {
+      const row = document.querySelector('[data-message-id="stream"]');
+      return {
+        rowPresent: Boolean(row), paragraphs: row?.querySelectorAll('p').length ?? null,
+        rowHeight: row?.getBoundingClientRect().height ?? null,
+        rowTextLength: row?.textContent?.length ?? null,
+        rowHtml: row?.innerHTML.slice(0, 800) ?? null,
+        state: window.audit.snapshot(),
+      };
+    });
+    await writeFile(resolve(output, 'tail-shrink-timeout.json'), JSON.stringify(tailDiagnostic, null, 2));
+    throw new Error(`Chromium tail shrink probe timed out: ${JSON.stringify(tailDiagnostic)}`, { cause: error });
+  }
   const grownTail = await bottom('grownTail');
   await page.evaluate(() => window.audit.replace('Short tail after shrink.'));
   await page.waitForTimeout(500);

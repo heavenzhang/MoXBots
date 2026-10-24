@@ -13,17 +13,19 @@ Port scroll ownership/fractional geometry and custom memory compatibility fixes 
 
 - [x] Scroll ownership, cancellation, fractional geometry, and targeted renderer tests pass.
 - [x] Synthetic custom-memory discovery tests pass across Rust/script filename rules.
+- [x] Rust/TypeScript system-skill snapshot version is raised to 62 so installed v61 copies receive changed bundled memory skills; this is not an App version allocation.
+- [x] Rust cross-language memory filename parity regression is added against the shared JSON fixture.
 - [ ] Rust tests pass after the parent releases Cargo capacity.
 - [x] Changes and verification evidence are recorded at `dev-docs/upstream-scroll-memory-20261025/acceptance.md`.
-- [ ] Local commit created; no push/PR/CI/release in this assignment.
+- [x] Initial local package commit created; follow-up commit pending for parity regression, system-skill snapshot bump, and Chromium verification. No push/PR/CI/release in this assignment.
 
 ## Completed
 
-Applied the four assigned upstream references only to this package's owned files. Adapted patch integration to preserve local assertions and used a private `react-virtuoso@4.18.3` package instance for browser verification. Shared `package.json`, `package-lock.json`, and specifications were not changed; integration owner should add `scripts/memory-skills.test.mjs` to the test script.
+Applied the four assigned upstream references only to this package's owned files. Adapted patch integration to preserve local assertions and used a private `react-virtuoso@4.18.3` package instance for browser verification. Raised the synchronized system-skill snapshot to 62; the installed-directory fast path checks presence only, so an unchanged v61 stamp would skip changed/new Skill content. Shared `package.json`, `package-lock.json`, and specifications were not changed; integration owner should add `scripts/memory-skills.test.mjs` to the test script.
 
 ## Verification
 
-See `dev-docs/upstream-scroll-memory-20261025/acceptance.md` for commands, results, browser evidence directories, private package SHA, initial misrouted browser evidence, and current Cargo constraint.
+See `dev-docs/upstream-scroll-memory-20261025/acceptance.md` for commands, results, browser evidence directories, private package SHA, initial misrouted browser evidence, Chromium timeout evidence and diagnostic limit, and current Cargo constraint.
 
 ## Blockers and unknowns
 
