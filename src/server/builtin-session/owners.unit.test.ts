@@ -17,6 +17,7 @@ import {
   isCurrentQueryAuthority,
   acknowledgeQueryBackgroundWork,
   getQueryBackgroundContinuationSnapshot,
+  getQueryExecutionVerificationEpoch,
   getQueryMcpMutation,
   getQueryMcpPrewarmOwner,
   getSessionMutationBarrier,
@@ -1005,6 +1006,40 @@ describe('builtin-session owners', () => {
 
 describe('result-boundary background proof', () => {
   beforeEach(() => resetLifecycleForTest());
+  it('keeps explicit ambient task_started without run_id out of verification activity', () => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    recordQueryBackgroundTask(query, 'watcher', { agentType: 'monitor', ambient: true });
+    expect(getQueryExecutionVerificationEpoch()).toEqual(expect.any(String));
+    replaceQueryBackgroundActivity(query, [{ task_id: 'watcher', task_type: 'monitor', description: '', ambient: true }]);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(false);
+    expect(getQueryExecutionVerificationEpoch()).toEqual(expect.any(String));
+  });
+  it('never exempts an unknown writer without run_id when its level later disappears', () => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    recordQueryBackgroundTask(query, 'writer', { agentType: 'local_bash' });
+    replaceQueryBackgroundActivity(query, []);
+    expect(getQueryBackgroundContinuationSnapshot().blocksContinuation).toBe(false);
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+  });
+  it('binds verification to a quiescent native incarnation and authoritative background completion', () => {
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    const before = getQueryExecutionVerificationEpoch();
+    expect(before).toEqual(expect.any(String));
+    replaceQueryBackgroundActivity(query, [{ task_id: 'writer', run_id: 'run-1', task_type: 'agent', description: '' }]);
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+    replaceQueryBackgroundActivity(query, []);
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+    completeQueryBackgroundTask(query, 'writer', { runId: 'run-1', status: 'completed', authoritative: true });
+    const after = getQueryExecutionVerificationEpoch();
+    expect(after).toEqual(expect.any(String));
+    expect(after).not.toBe(before);
+    setQuerySessionWithAuthority({} as typeof query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    expect(getQueryExecutionVerificationEpoch()).not.toBe(after);
+  });
   it('requires exact authoritative terminal even when a level-only run disappears', () => {
     const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
     const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });

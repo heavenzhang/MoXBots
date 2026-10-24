@@ -442,6 +442,8 @@ export interface SessionEngine {
   isBusy(): boolean;
   getRuntimeIdentity(): SessionEngineRuntimeIdentity;
   getLiveSessionState(): SessionEngineLiveState;
+  /** Runtime-owned quiescent Query/background watermark; absent is unproven. */
+  getExecutionVerificationEpoch?(): string | undefined;
   getWorkProgressSnapshot?(): import("../../shared/sessionWorkProgress").SessionWorkProgress;
   getLatestAssistantResult(): Promise<SessionEngineLatestResult>;
   getBackgroundTaskDetail?(toolUseId: string): Promise<import('../../shared/types/background-task').BackgroundTaskDetailResult>;

@@ -2338,21 +2338,10 @@
   },
   "modelPolicy": {
     "title": "模型策略",
-    "description": "设置日常对话如何选择模型，以及模型不可用时的接管方式。",
-    "failover": "故障接管",
-    "advanced": "高级设置",
-    "backupEnabled": "已启用指定备用",
-    "backupDisabled": "未启用指定备用",
-    "failoverHint": "自动模式默认只在同档有可用候选时提供备用，跨档需要手动开启。手动固定模型或需要指定备用时，可在这里配置。",
-    "mode": {
-      "auto": "跟随自动选模",
-      "specified": "使用指定备用",
-      "off": "不自动切换模型"
-    },
-    "backupInvalid": "指定备用不可用：{{reason}}"
+    "description": "配置自动选模，以及模型不可用时如何继续。"
   },
   "autoRouting": {
-    "relationship": "全局自动选模只影响仍处于自动模式的会话，手动固定模型不会被覆盖。策略从下一轮生效，不会重启进行中的任务。自动模式默认只在同档有候选时提供备用。",
+    "relationship": "模型在有限次数重试后仍不可用时，会尝试同档候选池中的下一个兼容模型。手动固定会话保持原模型，Stop 和操作安全规则仍然有效。",
     "title": "自动选模型",
     "description": "每条新消息先由判断模型看难度，再从对应档位里选模型和推理强度。手动选了具体模型的会话不受影响。",
     "enable": "启用自动选模型",
@@ -2431,8 +2420,6 @@
     "advanced": "高级分档与候选池设置",
     "restorePool": "按目录恢复候选池",
     "restorePoolHint": "此操作会重新纳入供应商目录中当前所有可用的对话模型，执行前需要确认。",
-    "backupNote": "{{model}} 移出自动候选后仍作为指定备用使用。",
-    "manageBackup": "管理备用模型",
     "undo": "撤销",
     "confirm": {
       "exclude": {
@@ -2463,52 +2450,6 @@
       "default": "默认档位"
     },
     "classifierAutoOptionWithModel": "自动选择 · {{model}}"
-  },
-  "modelFailover": {
-    "relationship": "自动模式默认提供同档备用，跨档需要手动开启。指定模式使用你选择的备用模型。关闭模型切换不会影响原模型有限次数的重试。",
-    "providerFilter": "筛选供应商",
-    "allProviders": "全部供应商",
-    "keyOnly": "仅显示已配置密钥",
-    "search": "搜索模型名称或 ID…",
-    "noMatches": "没有匹配的模型，请调整搜索或筛选条件。",
-    "keyConfigured": "已配置密钥",
-    "keyMissing": "未配置密钥",
-    "title": "备用模型",
-    "enable": "故障接管模式",
-    "mode": {
-      "label": "故障接管模式",
-      "auto": "跟随自动选模",
-      "specified": "使用指定备用",
-      "off": "不自动切换模型"
-    },
-    "modeHint": "当前模式：{{mode}}。关闭模型切换不影响原模型有限次数的重试。",
-    "allowCrossTier": "允许跨档选择备用（默认关闭）",
-    "openProviders": "前往模型供应商修复",
-    "selectedModel": "指定备用：{{model}}",
-    "noSelectedModel": "尚未选择备用模型。",
-    "status": {
-      "not-configured": "指定模式需要先选择备用模型。",
-      "provider-unavailable": "供应商不可用于故障接管。",
-      "model-unavailable": "模型 {{model}} 当前不可用。",
-      "missing-key": "{{model}} 缺少 API Key。",
-      "missing-endpoint": "{{model}} 缺少 API 地址。",
-      "ready": "{{model}} 配置已就绪；实际会话切换前仍会检查兼容性。"
-    },
-    "description": "当前会话选定的模型作为主模型。重试后仍不可用时，在可安全续接的情况下由一个备用模型继续本轮；下一轮恢复使用主模型。",
-    "backup": "备用供应商与模型",
-    "none": "选择备用模型",
-    "unavailable": "不可用",
-    "chooseHint": "指定模式需要先选择备用模型。",
-    "unavailableHint": "已保存的备用模型不可用，请重新选择已启用的 API 供应商与模型。当前备用无法接管。",
-    "keyHint": "请先在供应商设置中填写该供应商的 API Key，再启用自动切换。",
-    "readyHint": "备用模型已配置，切换前还会检查模型兼容性。",
-    "empty": "请先到“模型供应商”配置并启用 API 供应商，再选择备用模型。",
-    "details": "切换规则与适用范围",
-    "scope": "仅支持 Claude Agent SDK 运行环境的 API 模型；DSH、订阅模型和外部 CLI 暂不支持。",
-    "safety": "保留已完成的工作。如果模型响应已开始交给智能体后发生中断，本轮会保留进度并停止，避免自动重复执行操作。",
-    "compatibility": "备用模型必须支持当前会话内容与工具；与主模型相同或不兼容时不会切换。认证、余额及权限问题需要单独处理。",
-    "saving": "正在保存…",
-    "saveFailed": "保存失败，原有设置未变更，请重试。"
   },
   "projectContext": {
     "title": "新会话自动带入项目背景",

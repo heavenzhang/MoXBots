@@ -71,10 +71,12 @@ describe('auto routing candidate pool settings', () => {
 
   it('uses a pure modifier against the latest settings when toggling global automatic selection', async () => {
     const modify = vi.fn(async (modifier: (current: Settings) => Settings) => {
-      const latest = { classifier: { providerId: 'p', model: 'claude-opus-5-5' }, tierOverrides: { 'p/claude-haiku-5-5': 'balanced' as const } };
-      const first = modifier(latest); const second = modifier(latest);
+      const legacyModelFailover = { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'q', modelId: 'legacy-model' } };
+      const latest = { autoRouting: { classifier: { providerId: 'p', model: 'claude-opus-5-5' }, tierOverrides: { 'p/claude-haiku-5-5': 'balanced' as const } }, modelFailover: legacyModelFailover };
+      const first = modifier(latest.autoRouting); const second = modifier(latest.autoRouting);
       expect(first).toEqual(second);
-      expect(first).toEqual({ ...latest, enabled: false });
+      expect(first).toEqual({ ...latest.autoRouting, enabled: false });
+      expect({ ...latest, autoRouting: first }.modelFailover).toEqual(legacyModelFailover);
     });
     renderCard({ modifySettings: modify, value: undefined });
     fireEvent.click(await screen.findByRole('button', { name: 'Add models' }));
@@ -135,10 +137,23 @@ describe('auto routing candidate pool settings', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it('shows that a specified backup survives automatic-pool removal', async () => {
-    renderCard({ specifiedBackup: { providerId: 'q', model: 'new-chat' }, onOpenProviders: vi.fn() });
-    expect(await screen.findByText(/remains the specified backup after removal/i)).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Manage backup' })).toBeVisible();
+  it('keeps legacy failover config outside candidate-pool updates', async () => {
+    const update = vi.fn().mockResolvedValue(undefined);
+    const legacyModelFailover = { enabled: true, mode: 'specified', allowCrossTier: true, backup: { providerId: 'q', modelId: 'legacy-model' } };
+    const modify = vi.fn(async (modifier: (current: Settings) => Settings) => {
+      const latest = { autoRouting: {}, modelFailover: legacyModelFailover };
+      const updated = { ...latest, autoRouting: modifier(latest.autoRouting) };
+      expect(updated.modelFailover).toEqual(legacyModelFailover);
+      expect(updated.autoRouting.pool?.['q/new-chat']).toEqual({ enabled: true });
+    });
+    renderCard({ updateConfig: update, value: undefined, modifySettings: modify });
+    expect(await screen.findByRole('region', { name: 'Auto model selection' })).toBeVisible();
+    expect(screen.queryByText(/specified backup after removal/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Add models' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: /New Chat.*new-chat/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 selected' }));
+    await waitFor(() => expect(modify).toHaveBeenCalledTimes(1));
+    expect(update).not.toHaveBeenCalled();
   });
 
   it('reorders the rendered effective tier list and marks its first priority', async () => {

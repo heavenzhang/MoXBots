@@ -16,8 +16,8 @@ import {
   type AutoTier,
   type AutoTierEntry,
 } from '../../shared/autoRoute';
-import type { AppConfig } from '../../shared/config-types';
-import { modelFailoverMode, type ModelFailoverSettings } from '../../shared/modelFailover';
+import { isModelFailoverProvider } from '../../shared/modelFailover';
+import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
 import { createConcreteProviderRoute } from '../../shared/providerRoute';
 import { reasoningEffortChoices } from '../../shared/reasoningEffort';
 import { canResumeAcrossBuiltinProviderHistory } from '../builtin-session/config';
@@ -32,6 +32,8 @@ import { createAutoRouteClassifier, type AutoRouteClassifier, type ClassifyOutco
 
 import { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
 import { AutoRoutePoolUnavailableError } from './errors';
+import { getModelHealth, modelFailureDomain } from "./model-health";
+import type { ClassifierTransport } from './classifier';
 export { buildAutoRouteCatalog, type AutoRouteCatalog, type AutoRouteCatalogEntry } from './catalog';
 
 /** Provider env the Session would run this model with; 'subscription' for SDK-native. */
@@ -54,10 +56,18 @@ export function autoRouteEffort(entry: AutoRouteCatalogEntry | undefined, tier: 
 }
 
 let sharedClassifier: AutoRouteClassifier | undefined;
+let sharedTransport: ClassifierTransport | undefined;
 
 /** Process-wide classifier with the real transport, created on first use. */
 export async function getAutoRouteClassifier(): Promise<AutoRouteClassifier> {
   if (sharedClassifier) return sharedClassifier;
+  sharedClassifier ??= createAutoRouteClassifier(await getAutoRouteTransport());
+  return sharedClassifier;
+}
+
+/** Same protocol/auth/proxy authority for tier and semantic intent utility calls. */
+export async function getAutoRouteTransport(): Promise<ClassifierTransport> {
+  if (sharedTransport) return sharedTransport;
   const [{ createClassifierTransport }, proxy, port, agentSession, titles] = await Promise.all([
     import('./transport'),
     import('../proxy-state'),
@@ -65,14 +75,14 @@ export async function getAutoRouteClassifier(): Promise<AutoRouteClassifier> {
     import('../agent-session'),
     import('../title-generator'),
   ]);
-  sharedClassifier ??= createAutoRouteClassifier(createClassifierTransport({
+  sharedTransport ??= createClassifierTransport({
     resolveEnv: (providerId, model) => resolveAutoRouteEnv({ providerId, model }),
     getProxyForProviderUrl: proxy.getProxyForProviderUrl,
     getSidecarPort: port.getSidecarPort,
     startOneShotBridge: (env, model, description) => agentSession.startOneShotBridge(env, model, description),
     generateUtilityText: (task, model, env) => titles.generateUtilityText(task, model, env),
-  }));
-  return sharedClassifier;
+  });
+  return sharedTransport;
 }
 
 export interface RouteTurnInput {
@@ -98,8 +108,6 @@ export interface RouteTurnResult {
   classifier?: AutoModelRef;
   classify?: ClassifyOutcome;
   latencyMs: number;
-  failover?: { mode: 'auto' | 'specified' | 'off'; backup?: AutoModelRef;
-    unavailableReason?: 'off' | 'not-configured' | 'unavailable' | 'cross-tier' | 'no-candidate' };
 }
 
 /**
@@ -136,6 +144,12 @@ export async function routeTurn(
     if (input.accept && !input.accept(entry)) return false;
     const env = envFor(entry);
     if (!env) return false;
+    if (
+      env !== 'subscription' &&
+      env.baseUrl &&
+      getModelHealth({ baseUrl: env.baseUrl })?.coolingDown
+    )
+      return false;
     if (input.freshHistory) return true;
     // An existing conversation is checked even when the current model is
     // unknown (Session default): its env still fixes the history identity.
@@ -180,30 +194,42 @@ export async function routeTurn(
     now: now(),
     contextUsed: input.contextUsed,
     isUsable,
-    allowCrossTierBackup: (config as unknown as AppConfig).modelFailover?.allowCrossTier === true,
+    canRecover: (candidate, primary) => {
+      const eligibleEnv = (entry: AutoTierEntry) => {
+        const provider = catalog.entries.get(autoModelKey(entry))?.provider;
+        const env = envFor(entry);
+        return provider && isModelFailoverProvider(provider) && env && env !== 'subscription'
+          && env.apiKey?.trim() && env.baseUrl?.trim() && !env.credentialSource && !env.endpointSource ? env : undefined;
+      };
+      const primaryEnv = eligibleEnv(primary);
+      const candidateEnv = eligibleEnv(candidate);
+      return !!primaryEnv && !!candidateEnv && canResumeAcrossProviderBoundary(
+        { ...primaryEnv, model: primary.model }, { ...candidateEnv, model: candidate.model },
+      );
+    },
+    recoveryPriority: (candidate, primary) => {
+      const candidateEnv = envFor(candidate),
+        primaryEnv = envFor(primary);
+      if (
+        !candidateEnv ||
+        candidateEnv === 'subscription' ||
+        !primaryEnv ||
+        primaryEnv === 'subscription'
+      )
+        return 1;
+      return modelFailureDomain({ baseUrl: candidateEnv.baseUrl ?? "" }) ===
+        modelFailureDomain({ baseUrl: primaryEnv.baseUrl ?? "" })
+        ? 1
+        : 0;
+    },
   });
   if (!decision) {
     if (managedPool) throw new AutoRoutePoolUnavailableError();
     return null;
   }
   if (managedPool && !currentEntry && decision.reason === 'classifier-failed') decision.reason = 'unavailable-fallback';
-  if (modelFailoverMode((config as unknown as AppConfig).modelFailover as ModelFailoverSettings | undefined) === 'off') delete decision.backup;
   const target = catalog.entries.get(autoModelKey(decision.target));
-  const settings = (config as unknown as AppConfig).modelFailover;
-  const mode = modelFailoverMode(settings);
-  const failover: NonNullable<RouteTurnResult['failover']> = { mode };
-  if (mode === 'off') failover.unavailableReason = 'off';
-  else if (mode === 'specified') {
-    const ref = settings?.backup ? { providerId: settings.backup.providerId, model: settings.backup.modelId } : undefined;
-    const entry = findAutoTierEntry(catalog.directoryTable ?? catalog.table, ref);
-    if (!ref) failover.unavailableReason = 'not-configured';
-    else if (!entry || !isUsable(entry) || autoModelKey(entry) === autoModelKey(decision.target)) failover.unavailableReason = 'unavailable';
-    else if (settings?.allowCrossTier !== true && entry.tier !== decision.target.tier) failover.unavailableReason = 'cross-tier';
-    else failover.backup = ref;
-  } else if (decision.backup) failover.backup = { providerId: decision.backup.providerId, model: decision.backup.model };
-  else failover.unavailableReason = 'no-candidate';
   return {
-    failover,
     decision,
     effort: autoRouteEffort(target, decision.tier),
     ...(classifierRef && classify ? { classifier: classifierRef } : {}),

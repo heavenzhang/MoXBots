@@ -11,10 +11,29 @@ import { confirmSessionPlan, createSessionPlan, isSessionPlanConfirmed, requestS
   type SessionPlanContent, type SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import type { DispatchGuard } from '../session-core/turn-queue';
 import { canDelegateForSessionPlan, sessionPlanSupport, SESSION_PLAN_QUEUE_PREFIX, type SessionPlanTurnScope } from './session-plan-policy';
+import { wakeSessionExecution } from "./session-execution-wake";
 
 /** Original native owners call this synchronously at their dispatch boundary. */
-export function canSessionDelegateSubagents(sessionId: string, turn?: SessionPlanTurnScope | null): boolean {
-  return canDelegateForSessionPlan(sessionId, getSessionMetadata(sessionId)?.taskOrchestration, turn, activePlanClaims.get(sessionId));
+export function canSessionDelegateSubagents(sessionId: string, turn?: SessionPlanTurnScope | null,
+): boolean {
+  const ledger = getSessionMetadata(sessionId)?.taskOrchestration;
+  const execution = ledger?.execution;
+  // A new explicit human action owns an internal execution plan. An unrelated
+  // draft does not create a second confirmation requirement for that action.
+  if (
+    execution &&
+    execution.currentQueueId === turn?.queueId &&
+    execution.deadlineAt > Date.now() &&
+    ['running', "rework"].includes(execution.phase) &&
+    ledger?.executionAdmission?.requestId === execution.requestId &&
+    ledger.executionAdmission.intent?.kind === "execute"
+  )
+    return true;
+  return canDelegateForSessionPlan(
+    sessionId,
+    ledger,
+    turn, activePlanClaims.get(sessionId),
+  );
 }
 
 /** Ephemeral live owner capability: do not write it into metadata or SSE. */
@@ -63,15 +82,57 @@ async function publish(sessionId: string, prior: SessionTaskLedger, next: Sessio
   return next;
 }
 
+/** Reuse the original ledger's serialized CAS for ordinary execution facts. */
+export function mutateSessionTaskLedger(
+  sessionId: string,
+  mutation: (prior: SessionTaskLedger) => SessionTaskLedger,
+  isCurrent: () => boolean = () => true,
+): Promise<SessionTaskLedger> {
+  return serialize(sessionId, async () => {
+    if (!getSessionMetadata(sessionId))
+      throw new Error('TASK_SESSION_NOT_FOUND');
+    const prior =
+      getSessionMetadata(sessionId)!.taskOrchestration ?? emptyTaskLedger();
+    if (!isCurrent()) throw new Error('TASK_SESSION_CHANGED');
+    const next = mutation(structuredClone(prior));
+    if (JSON.stringify(next) === JSON.stringify(prior)) return prior;
+    next.revision = prior.revision + 1;
+    return publish(sessionId, prior, next, isCurrent);
+  });
+}
+
 /** Called by original execution owners, not by a new scheduler or model. */
-export function observeSessionTasks(sessionId: string, observation: { attempts?: readonly SessionTaskAttempt[]; plan?: readonly ProgressTodo[]; planTurnId?: string }): Promise<SessionTaskLedger> {
+export function observeSessionTasks(sessionId: string, observation: { attempts?: readonly SessionTaskAttempt[]; plan?: readonly ProgressTodo[]; planTurnId?: string
+    nativeLifecycle?: boolean;
+  },
+): Promise<SessionTaskLedger> {
   return serialize(sessionId, async () => {
     for (let retry = 0; retry < 3; retry++) {
       const metadata = getSessionMetadata(sessionId);
       if (!metadata) throw new Error('TASK_SESSION_NOT_FOUND');
       const prior = metadata.taskOrchestration ?? emptyTaskLedger();
-      try { return await publish(sessionId, prior, mergeTaskObservations(prior, observation.attempts ?? [], observation.plan, observation.planTurnId)); }
-      catch (error) { if (!(error instanceof Error) || error.message !== 'TASK_PERSISTENCE_CONFLICT' || retry === 2) throw error; }
+      try {
+        const next = mergeTaskObservations(prior, observation.attempts ?? [], observation.plan, observation.planTurnId);
+        for (const claim of observation.nativeLifecycle
+          ? (next.delegationClaims ?? [])
+          : []) {
+          if (claim.state === "settled" || claim.state === 'unknown') continue;
+          const attempt = observation.attempts?.findLast(
+            (attempt) => attempt.toolUseId === claim.toolUseId,
+          );
+          if (
+            attempt?.executionVerified &&
+            attempt.lifecycle.status !== 'running'
+          ) {
+            claim.state =
+              attempt.lifecycle.status === "completed" ? "settled" : 'unknown';
+            if (next.revision === prior.revision) next.revision++;
+          }
+        }
+        const published = await publish(sessionId, prior, next);
+        wakeSessionExecution(sessionId);
+        return published;
+      } catch (error) { if (!(error instanceof Error) || error.message !== 'TASK_PERSISTENCE_CONFLICT' || retry === 2) throw error; }
     }
     throw new Error('TASK_PERSISTENCE_CONFLICT');
   });
@@ -207,7 +268,25 @@ function confirmFromUserMessage(ledger: SessionTaskLedger, target: SessionPlanTa
 
 /** Called only after Rust's signature has proved the original desktop ingress. */
 export async function recordSessionPlanHumanInput(sessionId: string, requestId: string, text: string,
-  target?: { proposalId: string; expectedRevision: number }): Promise<void> {
+  target?: { proposalId: string; expectedRevision: number },
+): Promise<void> {
+  // Truly lazy legacy births have no metadata yet. Do not break their original
+  // input admission or create a second Session writer to enable continuation.
+  if (!getSessionMetadata(sessionId)) return;
+  await mutateSessionTaskLedger(sessionId, (ledger) => {
+    const bodyDigest = createHash('sha256').update(text).digest('hex');
+    const prior = ledger.executionInputs?.find(
+      input => input.requestId === requestId,
+    );
+    if (prior && prior.bodyDigest !== bodyDigest)
+      throw new Error("EXECUTION_INPUT_CONFLICT");
+    if (!prior)
+      ledger.executionInputs = [
+        ...(ledger.executionInputs ?? []),
+        { requestId, bodyDigest },
+      ].slice(-128);
+    return ledger;
+  });
   if (!target || !isExplicitHumanConfirmation(text)) return;
   await serialize(sessionId, async () => {
     const prior = getSessionMetadata(sessionId)?.taskOrchestration;

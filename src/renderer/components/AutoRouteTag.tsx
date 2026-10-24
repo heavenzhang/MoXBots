@@ -29,7 +29,14 @@ export function AutoRouteTag({ record }: { record: AutoRouteRecord }) {
     ...(!record.tier || record.unclassified ? [] : [t(`autoRoute.tiers.${record.tier}`)]),
     t(`autoRoute.reasons.${record.reason}`),
     t('autoRoute.latency', { ms: Math.max(0, Math.round(record.latencyMs)) }),
-    ...(record.backup ? [t('autoRoute.backupCandidate', { model: actions?.modelLabel({ ...record, ...record.backup }) ?? record.backup.model })] : []),
+    ...(record.candidates?.length
+      ? record.candidates
+      : record.backup ? [record.backup]
+        : []
+    ).map((candidate) =>
+      t('autoRoute.backupCandidate', { model: actions?.modelLabel({ ...record, ...candidate }) ?? candidate.model,
+      }),
+    ),
     ...(record.backupUnavailableReason ? [t(`autoRoute.backupReasons.${record.backupUnavailableReason}`)] : []),
   ].join(' · ');
 

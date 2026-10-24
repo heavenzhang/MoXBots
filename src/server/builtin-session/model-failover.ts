@@ -1,5 +1,10 @@
-import type { ModelFailoverSettings } from '../../shared/modelFailover';
-import { isModelFailoverProvider, modelFailoverMode } from '../../shared/modelFailover';
+import { isModelFailoverProvider } from '../../shared/modelFailover';
+import {
+  getModelHealth,
+  modelFailureDomain,
+  observeModelHealth,
+} from "../auto-route/model-health";
+import type { AutoRouteBackupRef } from '../auto-route/session-state';
 import { canResumeAcrossProviderBoundary } from '../../shared/providerHistory';
 import { findAutoTierEntry, isAutoPoolEnabled, isAutoRoutingEnabled, parseAutoRoutingSettings } from '../../shared/autoRoute';
 import { buildAutoRouteCatalog } from '../auto-route/catalog';
@@ -26,37 +31,45 @@ export function createSessionModelFailover(options: {
   canRetry?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
   recovery?: InferenceRecoveryHooks;
-  /** Auto routing's next model in the turn's tier; used when no backup is configured. */
-  autoBackup?: () => NonNullable<ModelFailoverSettings['backup']> | undefined;
+  deadlineAt?: () => number | undefined;
+  /** Sole candidate authority: auto routing's next model in this turn's tier. */
+  autoBackup?: () => AutoRouteBackupRef | undefined;
+  autoCandidates?: () => readonly AutoRouteBackupRef[];
 }): ModelFailoverController {
-  type Ref = NonNullable<ModelFailoverSettings['backup']>;
+  type Ref = AutoRouteBackupRef;
   const sameRef = (a: Ref | undefined, b: Ref) => a?.providerId === b.providerId && a.modelId === b.modelId;
-  let unavailableReason = '没有可用的备用候选';
-  const pickRef = (settings: ModelFailoverSettings | undefined, config = loadConfig()): Ref | undefined => {
-    const mode = modelFailoverMode(settings);
-    if (mode === 'off') { unavailableReason = '已关闭自动切换模型'; return undefined; }
-    if (mode === 'specified') {
-      unavailableReason = '指定备用尚未配置或当前不可用';
-      return settings?.backup;
-    }
+  let unavailableReason = '当前档位没有可用的接管候选';
+  const pickRef = (config = loadConfig()): Ref | undefined => {
     if (!isAutoRoutingEnabled(parseAutoRoutingSettings((config as { autoRouting?: unknown }).autoRouting))) {
-      unavailableReason = '自动选模型已关闭，未使用旧自动备用'; return undefined;
+      unavailableReason = '自动选模型已关闭，本轮保持当前模型'; return undefined;
     }
-    unavailableReason = '本轮没有符合当前策略的自动备用';
+    unavailableReason = '当前档位没有可安全续接的启用候选';
     return options.autoBackup?.();
   };
-  let root: { scope: string; primaryIdentity: string; backup?: Ref; reportedReason?: string } | undefined;
+  let root:
+    | { scope: string;
+        effectiveIdentity: string;
+        primary: ReturnType<typeof options.current>;
+        candidates: Ref[];
+        index: number;
+        reportedReason?: string
+      } | undefined;
   const identity = () => {
     const { env, model } = options.current();
     return JSON.stringify([env?.providerId, env?.baseUrl, model]);
   };
   const resolveBackup = (ref: Ref): UpstreamConfig | undefined => {
-    const current = options.current();
+    const current = root?.primary ?? options.current();
     const env = current.env;
     if (!options.isLive() || !sessionApiFailoverEligible(env)) return undefined;
     const config = loadConfig();
-    const settings = config.modelFailover as ModelFailoverSettings | undefined;
-    if (!sameRef(pickRef(settings, config), ref)) return undefined;
+    if (!isAutoRoutingEnabled(parseAutoRoutingSettings((config as { autoRouting?: unknown }).autoRouting))) {
+      unavailableReason = '自动选模型已关闭，本轮保持当前模型'; return undefined;
+    }
+    const planned =
+      options.autoCandidates?.() ??
+      (options.autoBackup?.() ? [options.autoBackup!()!] : []);
+    if (!planned.some((row) => sameRef(row, ref))) return undefined;
     if (ref.providerId === env!.providerId && ref.modelId === current.model) { unavailableReason = '备用与当前主模型相同'; return undefined; }
     const provider = findEffectiveProvider(ref.providerId, config);
     if (!provider || !isModelFailoverProvider(provider) || !Array.isArray(provider.models)
@@ -71,14 +84,13 @@ export function createSessionModelFailover(options: {
       unavailableReason = '备用不能安全续接当前会话历史'; return undefined;
     }
     const catalog = buildAutoRouteCatalog(config);
-    if (modelFailoverMode(settings) === 'auto' && !isAutoPoolEnabled(catalog.settings, { providerId: ref.providerId, model: ref.modelId })) {
+    if (!isAutoPoolEnabled(catalog.settings, { providerId: ref.providerId, model: ref.modelId })) {
       unavailableReason = '自动备用已暂停或移出候选池'; return undefined;
     }
-    const directory = catalog.directoryTable ?? catalog.table;
-    const primaryTier = findAutoTierEntry(directory, { providerId: env!.providerId!, model: current.model });
-    const backupTier = findAutoTierEntry(modelFailoverMode(settings) === 'auto' ? catalog.table : directory, { providerId: ref.providerId, model: ref.modelId });
-    if (!backupTier || !primaryTier || (settings?.allowCrossTier !== true && primaryTier.tier !== backupTier.tier)) {
-      unavailableReason = settings?.allowCrossTier === true ? '无法确认主备模型的可用档位' : '未开启跨档接管，备用不在当前主模型档位'; return undefined;
+    const primaryTier = findAutoTierEntry(catalog.directoryTable ?? catalog.table, { providerId: env!.providerId!, model: current.model });
+    const backupTier = findAutoTierEntry(catalog.table, { providerId: ref.providerId, model: ref.modelId });
+    if (!backupTier || !primaryTier || primaryTier.tier !== backupTier.tier) {
+      unavailableReason = '候选池中没有符合当前档位的接管模型'; return undefined;
     }
     return {
       providerId: ref.providerId, model: ref.modelId, apiKey: backup.apiKey, baseUrl: backup.baseUrl,
@@ -119,15 +131,55 @@ export function createSessionModelFailover(options: {
       if (!options.isLive()) return undefined;
       // Recovery eligibility can disappear; an established root's replay guard
       // must survive that change. Never re-pin a different backup mid-turn.
-      if (root) return root.primaryIdentity === identity() ? root.scope : undefined;
+      if (root) return root.effectiveIdentity === identity() ? root.scope : undefined;
       const current = options.current();
-      const ref = pickRef(loadConfig().modelFailover as ModelFailoverSettings | undefined);
+      const ref = pickRef();
       if (!current.turnId) return undefined;
-      const backup = typeof ref?.providerId === 'string' && typeof ref.modelId === 'string' && resolveBackup(ref) ? { ...ref } : undefined;
-      root = { scope: JSON.stringify([current.turnId, identity()]), primaryIdentity: identity(), backup };
+      const refs = options.autoCandidates?.() ?? (ref ? [ref] : []);
+      const candidates = refs
+        .filter(
+          (row, index) =>
+            typeof row?.providerId === 'string' && typeof row.modelId === 'string' &&
+            refs.findIndex((other) => sameRef(other, row)) === index,
+        )
+        .slice(0, 3)
+        .map((row) => ({ ...row }));
+      root = { scope: JSON.stringify([current.turnId, identity()]),
+        effectiveIdentity: identity(),
+        primary: {
+          ...current,
+          env: current.env ? { ...current.env } : undefined,
+        },
+        candidates,
+        index: 0,
+      };
+      // Prefer independently observed endpoints without expanding the admission plan.
+      const mainDomain = modelFailureDomain({
+        baseUrl: current.env?.baseUrl ?? "",
+      });
+      root.candidates.sort((a, b) => {
+        const score = (ref: Ref) => {
+          const target = resolveBackup(ref);
+          return !target
+            ? 3
+            : getModelHealth(target)?.coolingDown
+              ? 2
+              : modelFailureDomain(target) === mainDomain
+                ? 1
+                : 0;
+        };
+        return score(a) - score(b);
+      });
       return root.scope;
     },
-    resolveBackup: () => root?.backup ? resolveBackup(root.backup) : undefined,
+    resolveBackup: () => root && root.candidates[root.index]
+        ? resolveBackup(root.candidates[root.index]) : undefined,
+    advanceCandidate: () => {
+      if (!root || root.index + 1 >= root.candidates.length) return false;
+      root.index++;
+      return true;
+    },
+    onObservation: (target, outcome) => observeModelHealth(target, outcome),
     validateBackup: async (request, target) => {
       const needs = await requestNeeds(request);
       if (!needs) { unavailableReason = '无法确认本轮请求的内容要求'; return false; }
@@ -168,9 +220,13 @@ export function createSessionModelFailover(options: {
     canRetry: options.canRetry,
     retryDelaysMs: options.retryDelaysMs,
     recovery: options.recovery,
+    deadlineAt: options.deadlineAt,
     isActive: options.isLive,
     requestIdentity: identity,
-    onSwitch: options.onSwitch,
+    onSwitch: (target, status) => {
+      options.onSwitch(target, status);
+      if (root) root.effectiveIdentity = identity();
+    },
     onTurnEnd: () => { root = undefined; },
   });
 }

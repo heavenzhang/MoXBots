@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "environment": "http://127.0.0.1:8937/unified-routing-qa?section=model-policy",
+  "transport": "real SettingsPage, synthetic configuration and route tiers; no native/provider/production acceptance",
+  "checks": [
+    "legacy backup/cross-tier/off controls absent",
+    "automatic selection toggles and survives reload",
+    "unknown legacy config preserved without becoming controls",
+    "visible settings card without horizontal page overflow at 1440x1000",
+    "visible settings card without horizontal page overflow at 768x1024",
+    "visible settings card without horizontal page overflow at 390x844",
+    "failed save retains prior visible state with error feedback"
+  ],
+  "errors": []
+}

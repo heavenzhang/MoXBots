@@ -70,6 +70,7 @@ export type QueryBackgroundTaskInfo = {
   runId?: string;
   outputPath?: string;
   command?: string;
+  ambient?: boolean;
 };
 
 type QueryBackgroundTask = {
@@ -332,7 +333,7 @@ export function recordQueryBackgroundTask(
     queryBackgroundTasks.set(query, tasks);
   }
   queryBackgroundRevision++;
-  rememberBackgroundRun(query, taskId, info.runId);
+  if (info.ambient !== true) rememberBackgroundRun(query, taskId, info.runId);
   const previous = tasks.get(taskId);
   const order = previous ? compareBackgroundTaskRuns(info.runId, previous.info.runId) : 1;
   if (order < 0) return false;
@@ -343,6 +344,7 @@ export function recordQueryBackgroundTask(
     if (info.startedAt !== undefined && previous.info.startedAt === undefined) previous.info.startedAt = info.startedAt;
     if (info.outputPath !== undefined) previous.info.outputPath = info.outputPath;
     if (info.command !== undefined) previous.info.command = info.command;
+    if (info.ambient !== undefined) previous.info.ambient = info.ambient;
   } else {
     tasks.set(taskId, { info, active: true });
   }
@@ -493,6 +495,23 @@ export function getQueryBackgroundContinuationSnapshot(): BackgroundContinuation
     querySession ? queryBackgroundTasksLevel : [],
     isCurrentQueryAuthority(getCurrentQueryAuthority()) ? queryBackgroundAcknowledgements : [],
   );
+}
+
+/** Read verification is valid only within one unchanged, quiescent native scope. */
+export function getQueryExecutionVerificationEpoch(): string | undefined {
+  const snapshot = getQueryBackgroundContinuationSnapshot();
+  if (!querySession || !queryInstanceId
+    || !isCurrentQueryAuthority(getCurrentQueryAuthority())
+    || backgroundProofHistory.get(querySession)?.disabled
+    || snapshot.blocksContinuation !== false) return undefined;
+  const exempt = new Set([...snapshot.acknowledged, ...queryBackgroundTasksLevel.filter(task => task.ambient === true)]
+    .map(backgroundTaskRunKey));
+  const history = backgroundProofHistory.get(querySession);
+  if ([...(history?.runs.values() ?? [])].some(run => !run.terminal && !exempt.has(backgroundTaskRunKey(run)))
+    || [...(queryBackgroundTasks.get(querySession)?.entries() ?? [])].some(([taskId, task]) =>
+      task.info.ambient !== true && !exempt.has(backgroundTaskRunKey({ taskId, runId: task.info.runId }))
+      && (task.active || task.authoritativeTerminal !== true || !task.info.runId))) return undefined;
+  return `${queryInstanceId}:${queryBackgroundRevision}`;
 }
 
 /** Result-boundary proof. Notifications/ACKs never substitute for an SDK state-machine terminal. */

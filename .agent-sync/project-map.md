@@ -66,9 +66,13 @@ User chose https://140.143.183.232/ directly. Preserve the current static design
 
 `services/agentnet/community-web/`、`src/community_http.rs`、`src/community_store.rs`（后两者相对服务目录）提供同源、需登录的话题/回复；`admin-web`同后台管理置顶、锁定与隐藏。使用现有AuthStore/AdminConfig及固定`/community` OIDC回跳，社区不使用上游Space账号/API，不迁移上游内容。合同及备份/回滚见`services/agentnet/COMMUNITY.md`。桌面导航经`utils/ownedCloud.ts`只取已配置owned issuer。MoXBots介绍由`i18n/moxbotsCopy.ts`及build profile拥有；内部兼容标识和许可/版权不全局替换。
 
-## 内置 API 主备模型
+## 内置 API 模型同档恢复
 
-`src/shared/modelFailover.ts`/`AppConfig.modelFailover`定义非秘密配置；设置组件`ModelFailoverSettings`复用原writer。`src/server/builtin-session/model-failover.ts`从原catalog/credential resolver选择兼容备用，`openai-bridge/model-failover.ts`在既有Query token上做有限HTTP恢复和防重放；原turn-lifecycle释放root。合同`specs/tech_docs/model_failover.md`，验收`dev-docs/model-failover-001-acceptance.md`。不新增Session/工具执行/持久化owner。
+`AppConfig.autoRouting` 是自动选模及接管候选的唯一策略配置；设置页只维护原候选池、分档和档内顺序。独立 `ModelFailoverSettings` 和指定/off/跨档模式已删除，旧 `modelFailover` 配置不参与运行决策。`builtin-session/model-failover.ts` 复核同档 API 有限候选链的池成员、凭据、history 与真实请求能力；`openai-bridge/model-failover.ts` 保留原 Query/root 的有限 HTTP 恢复和防重放。候选截断前优先独立 origin，健康记录仅来自真实调用，父执行 deadline 不刷新。合同 `specs/tech_docs/model_failover.md`，原清理验收 `dev-docs/unified-routing-20261024/acceptance.md`。
+
+## 普通聊天意图执行闭环
+
+`src/server/session-engine/session-execution.ts` 将可信桌面输入的分类、产物证据、根评审、有限返工和 continuation 接入原 task ledger 与 builtin queue。`session-task-dispatch.ts` 约束原生后台任务包的依赖、资源和共享预算，只有真实 native lifecycle 释放 claim，未知结果不重放。Chat 首发复用原 pending-session materialization；状态栏只读投影账本。合同 `specs/tech_docs/intent_execution.md`，任务 `.agent-sync/tasks/codex-intent-execution-v2-20261024-4596741d.md`，验收 `dev-docs/intent-execution-20261024/acceptance.md`。目前为统一 0.5.21 候选源码；外部 runtime 普通闭环、任意跨供应商 worker、原生发行和真实业务路径不能由策略测试或评审建议文档推定完成。统一 CI/main/桌面发布沿原 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`。
 
 ## 项目背景自动接续
 

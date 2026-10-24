@@ -63,7 +63,7 @@ describe('Message — auto route tag', () => {
 
   it('describes a candidate without claiming a switch and hides tier preference after failed classification', () => {
     const { unmount } = render(<Message message={userMsg({ ...record, backup: { providerId: 'q', model: 'backup' } })} />);
-    expect(screen.getByText('自动 · claude-opus-5-5 · 推理 high').getAttribute('aria-label')).toContain('备用候选');
+    expect(screen.getByText('自动 · claude-opus-5-5 · 推理 high').getAttribute('aria-label')).toContain('同档接管候选');
     unmount();
     render(<AutoRouteTagContext.Provider value={{ modelLabel: row => row.model, onPreferModel: vi.fn() }}>
       <Message message={userMsg({ ...record, reason: 'classifier-failed', unclassified: true, backupUnavailableReason: 'no-candidate' })} />

@@ -1,26 +1,26 @@
 # 内置 API 模型自动接管
 
-任务 MOXBOTS-MODEL-FAILOVER-001。参考 [OpenClaw model failover](https://docs.openclaw.ai/concepts/model-failover) 的主备候选、有限重试、本轮接管和可见提示；实现遵守 MoXBots 自己的 Session/Query/配置 authority，不移植另一套会话 owner。
+自动选模型统一拥有模型选择与同档故障接管候选。实现遵守原 Session/Query/配置 authority，有限重试、停止和动作防重放仍由原控制器负责。
 
 ## 用户行为
 
-设置 → 模型策略 → 故障接管（高级，默认折叠）。自动选模型为主设置；故障接管支持“跟随自动选模”“使用指定备用”“不自动切换模型”。默认跟随自动，只在同档有可用候选时接管；自动与指定备用均须显式开启跨档才允许越档。指定模式失效时不暗自改用自动备用；关闭切换仍保留原模型有限重试及Stop/动作guard。配置摘要区分已就绪与失效原因，实际发送前仍检查兼容性。
+设置 → 模型策略仅维护自动选模型、候选池、分档和档内顺序。自动会话遇到可恢复故障并完成有限重试后，沿本轮固定的有限兼容同档候选链继续；无候选时保留原模型有限恢复。没有独立的指定备用、关闭备用或跨档接管设置。手动固定模型的会话不产生自动接管候选。
 
-会话desired主模型不被临时接管改写；同轮固定备用身份，下一轮恢复主模型。空闲新轮次在分类前清除旧自动备用，manual/null/分类失败/异常/CAS冲突不能沿用；busy/工具往返保留当前轮次。自动候选绑定实际primary且Session须仍auto。模式、跨档、模型及凭据在异步校验后重新读取，停止/权限撤销优先，不重启任务。
+会话 desired 主模型不被临时接管改写；同轮固定候选身份，下一轮重新走自动路由。空闲新轮次在分类前清除旧候选，manual/null/分类失败/异常/CAS 冲突不能沿用；busy/工具往返保留当前轮次。候选绑定实际 primary 且 Session 须仍 auto。池成员、档位、模型及凭据在异步校验后重新读取，停止/权限撤销优先。
 
 支持内置 Claude Agent SDK 的普通 API 模型，包含 Anthropic Messages、OpenAI Chat Completions、OpenAI Responses。主备必须经过既有 providerHistory policy（含精确 model isolation）；与主模型同一对、被禁用/删除或缺凭据的备用不参与。订阅/OAuth、专属 cloud-session grant、DSH 与外部 CLI 保持原执行 authority，不借 API 配置切换。已存在 SDK 后台任务时不发起新接管，因为公共 Query token 不能证明请求归属哪个 root。普通 API 模型即使未配置备用，也经同一 Query 的有限推理重试控制器；后台推理仍可对未交付的临时故障有限重试主模型。能否切备或缩减历史在请求接纳时固定，后台列表随后归零不能把旧后台请求升级成前台恢复 owner；动态撤销门禁仍持续生效。
 
 ## Owner 与执行位置
 
-### 自动候选池与显式备用的范围
+### 唯一自动候选池
 
 `AppConfig.autoRouting.pool` 缺省时兼容旧目录自动管理；存在时是用户维护的精确成员名单，键为原 `providerId/model`，值的 `enabled:false` 表示暂停，空对象表示无候选。目录新增、禁用或删除不能扩大显式名单；失效保存成员在管理页保留原因和修复入口。配置仍由原 ConfigProvider/atomicModifyConfig 在锁内重读后执行纯变换，保留其他设置及未知扩展字段。
 
-自动选模、自动判断模型和跟随自动的备用使用启用且配置可用的成员。显式空池或没有兼容候选时，空闲自动新轮次返回可恢复错误，不能沿用已移出的当前模型；手动固定会话和进行中的轮次不因此重启或阻断。自动备用在切换前再次读取最新成员资格，暂停或移出会撤销候选。指定备用独立于自动池，仍按完整有效目录和原历史/协议/凭据/档位门禁检查，移出自动池不等于删除指定备用。
+自动选模、判断模型和故障接管使用启用且配置可用的池成员。显式空池或没有兼容候选时，空闲自动新轮次返回可恢复错误，不能沿用已移出的当前模型；手动固定会话和进行中的轮次不因此重启或阻断。故障候选从实际 primary 所在档按顺序选择，双方须为普通 API 路由、具备普通 API 凭据并通过 providerHistory；订阅/托管/scoped 路由被跳过，继续寻找下一同档候选。切换前再次读取最新成员资格，暂停或移出会撤销候选。实际请求的图像、工具协议、上下文和输出预算仍在执行时复核，route explain/聊天标签只说明候选，不保证真实请求能切换。
 
-维护页显示完整模型身份、分档来源、档内优先级和配置就绪状态，后者不声称真实调用成功。暂停/移出已指定的判断模型时明确说明并恢复自动判断；指定备用引用保留并提供故障接管设置入口。所有自动选择策略沿用原会话/Query owner，下一新轮次生效。
+维护页显示完整模型身份、分档来源、档内优先级和配置就绪状态，后者不声称真实调用成功。暂停/移出已指定的判断模型时明确说明并恢复自动判断。所有自动选择策略沿用原会话/Query owner，下一新轮次生效。
 
-- config.json 是 desired 配置唯一权威；`AppConfig.modelFailover` 包含可选mode（auto/specified/off）、可选allowCrossTier、旧enabled投影及备用providerId/modelId，无密钥。无mode时旧enabled=true映射specified，否则auto，显式mode优先。Renderer 使用原 updateConfig/atomicModifyConfig，保留并发其它字段。
+- config.json 是 desired 配置唯一权威；只有 `AppConfig.autoRouting` 参与选择。旧磁盘 `modelFailover` 字段可以作为未知扩展保留，运行时与设置页不读取它的 enabled/mode/backup/allowCrossTier，不能再覆盖候选池或恢复跨档权限。不修改正在运行的旧客户端配置。原 ConfigProvider/atomicModifyConfig writer 保留并发其他字段。
 - Session 仍拥有选定主模型。`builtin-session/model-failover.ts` 从原 effective catalog/credential resolver materialize 备用，不能把临时接管写成用户主模型。
 - 每个 Query 的既有 `/bridge/<token>/v1/messages` registry entry 拥有一个 controller。退役 token 隔离旧 Query，控制器 exact state 防止旧请求修改后续轮次；root 采用首次请求的稳定 scope，人工 steering 不重开预算。原 turn-lifecycle 终态清理仅释放该 root 的新接管/缩减权限，不撤销 Query 中已经接纳的合法请求。Query/token/Session/route 与 request abort 决定单次请求有效性；父 turn 的完成或 idle 不构成 Query 退役。每次请求捕获自己的 route fence，合法同 Query 切模型后的新请求重新捕获当前 route，旧 route 的迟到输出仍被拒绝。
 - 原生 SDK transcript 继续拥有执行上下文，原 SessionStore 继续拥有产品历史。SDK 接到的仍是同一次推理请求的响应；应用不重新 enqueue 用户指令，不创建 fresh native session，不回退历史、不执行任何工具。
@@ -28,7 +28,11 @@
 
 ## 故障与预算
 
-可恢复错误仅 HTTP 408/429/500/502/503/504/529，以及桥接层映射的连接失败/headers timeout。每个推理请求在尚未交付任何成功响应时，主模型首调失败后最多再重试三次，退避为 250/750/1500 毫秒，等待可被 request abort、Query/route 退役或原有 Stop interrupt owner 中止；仍失败且原 root 有效、无后台歧义并配置了合法备用时，才切换到一个备用。备用请求同样最多首调加三次安全重试；后续该轮推理使用同一备用身份，凭据每次重新读取，失败不回切主模型。一次 SDK 重发不能获得新恢复预算。已知不确定工具结果或恢复 ledger 阻断时，不自动重试推理。headers 上限 30 秒。错误正文读取上限 1 秒/16 KiB，截断、损坏或超限保留上游 HTTP 状态并停止自动恢复。
+可恢复错误仅 HTTP 408/429/500/502/503/504/529，以及桥接层映射的连接失败/headers timeout。每个推理请求在尚未交付任何成功响应时，当前模型首调失败后最多再重试三次，退避为 250/750/1500 毫秒，等待可被 request abort、Query/route 退役或原有 Stop interrupt owner 中止。仍失败且原 root 有效、无后台歧义时，尝试本轮固定的下一个合法同档候选。主模型外最多三个候选，各自最多四次未交付尝试；全部不可用时快速候选链最多十六次有限尝试，之后的原持久恢复仍受同一总 deadline 约束，不能刷新候选链反复切换。成功切换后的后续推理保持实际模型，失败可向后继续，不能回切已失败身份。凭据和当前池成员资格每次重新读取。SDK 重发不能获得新恢复预算。
+
+候选链截断前优先不同 origin 的故障域；同一 origin 的不同路径共享故障记录，路径差异不能证明独立供应商。只有真实请求结果更新进程内有界健康记录（最多 256 个 origin，失败冷却三十秒），不发探测流量、不写入配置、不声称永久健康。新轮路由避让正在冷却的 origin；冷却到期恢复候选资格，完整响应消费成功才记录成功。独立故障域优先不越过用户池成员、同档、history 和能力限制。
+
+已知不确定工具结果或恢复 ledger 阻断时，不自动重试推理。原 root 的恢复窗口仍有绝对三十分钟上限；普通意图执行闭环传入父 execution 的 deadline，之后所有 continuation 的有效窗口只能缩短，不能在新一轮、长等待或切换模型时重新计时。不能容纳下一次等待/请求时直接保留现场并终止自动推进。headers 上限三十秒。错误正文读取上限一秒/16 KiB，截断、损坏或超限保留上游 HTTP 状态并停止自动恢复。
 
 认证、权限、余额/付费额度、参数/上下文/模型错误和策略拒绝不切换。429 的结构化 billing code 与明确欠费消息复用既有错误分类。工具错误不是模型服务错误。可见 HTTP 200 文本不被猜测成故障；不按回答质量自动换模型。
 
@@ -56,3 +60,7 @@ SSE 已向 Runtime 交付后如断流、error event 或 EOF 缺 message_stop，�
 `onStreamInterruption(cause, diagnostic?)` 的第二参只承载受限origin/category枚举；原cause时机/次数及transport/unproven许可判断不变。provider code仅通过严格allowlist映射到固定类别，未知code/message/body/header均不保留。MF候选与attempt/response绑定，授权retry/backup成功或旧attempt退休后不落Query槽；Context候选只在最终下游error/EOF边界提交。两层都沿现有request取消及owner守卫，诊断不是恢复authority。
 
 exactscope首次失败只存在现有有界QueryRequestGuard admission row，不新增map、revision、持久化、checkpoint字段或cold恢复。相同scope后续blocked409与原blockedSSE附加固定中文首因，既有SDK terminal错误转发显示给原Session；不同显式root即便fingerprint相同也不继承。原HTTP状态/blocked headers和所有防重放/Stop/预算/receipt约束保持。诊断只说明故障来源类别，不表示原任务成功或允许重试。
+
+## 从独立备用策略升级
+
+`currentModelRecoveryRoute()` 用 `auto-pool-same-tier-v1` 标识统一策略，不再把旧备用配置放入恢复身份。旧版本保存的等待 checkpoint 身份不匹配时沿原门禁暂停，保留进度；不会在新策略下自动重放旧任务。历史 transcript 中的 failoverMode/不可用原因仍可展示，不能恢复为当前配置。

@@ -10,7 +10,7 @@ const failure = (attempt = 1, extra: Partial<{ status: number; retryAfterMs: num
   ...extra,
 });
 
-function harness() {
+function harness(deadlineAt?: () => number | undefined) {
   let now = 10_000;
   let state: ModelRecoveryState | undefined;
   let current: { sdkSessionId: string; routeIdentity: string; turnId: string; goalId?: string } | undefined = {
@@ -34,7 +34,8 @@ function harness() {
     isLive: () => live,
     prepare,
     now: () => now,
-  });
+      deadlineAt,
+    });
   return {
     create,
     prepare,
@@ -637,5 +638,77 @@ describe('SessionModelRecovery', () => {
     expect(h.read()).toMatchObject({ kind: 'stream', status: 'paused', reason: 'stop before task terminal persisted' });
     await expect(recovery.finishStreamTurn()).resolves.toBe(false);
     expect(recovery.releaseStreamBinding()).toBe(false);
+  });
+});
+
+describe("shared parent execution deadline", () => {
+  it("leaves only four minutes after a new logical turn consumed twenty-six", async () => {
+    const parentDeadline = 10_000 + 30 * 60_000;
+    const h = harness(() => parentDeadline);
+    h.setNow(10_000 + 26 * 60_000);
+    const recovery = h.create();
+    expect(await recovery.wait(request(), failure())).toBe(15_000);
+    expect(h.read()!.deadlineAt).toBe(parentDeadline);
+    expect(h.read()!.deadlineAt - h.read()!.startedAt).toBe(4 * 60_000);
+  });
+  it("tightens persisted deadlines and never extends them when the parent moves later", async () => {
+    let parentDeadline = 70_000;
+    const h = harness(() => parentDeadline);
+    const recovery = h.create();
+    const req = request();
+    await recovery.wait(req, failure());
+    expect(h.read()!.deadlineAt).toBe(70_000);
+    parentDeadline = 50_000;
+    expect(await recovery.validateResume(req)).toBe(true);
+    expect(h.read()!.deadlineAt).toBe(50_000);
+    parentDeadline = 900_000;
+    expect(await recovery.validateResume(req)).toBe(true);
+    expect(h.read()!.deadlineAt).toBe(50_000);
+    h.setNow(50_000);
+    expect(await recovery.validateResume(req)).toBe(false);
+    expect(h.read()!.status).toBe('paused');
+  });
+  it("does not prepare, wait or mint a stream receipt after the parent expired", async () => {
+    const h = harness(() => 9_999);
+    const recovery = h.create();
+    expect(await recovery.wait(request(), failure())).toBeUndefined();
+    expect(await recovery.armSettledInterruption()).toBe(false);
+    expect(h.prepare).not.toHaveBeenCalled();
+    expect(h.write).not.toHaveBeenCalled();
+    await expect(recovery.admit(request())).rejects.toThrow(
+      "Parent execution deadline expired",
+    );
+  });
+  it("tightens a restored checkpoint and clips nextRetryAt to its parent deadline", async () => {
+    const h = harness();
+    await h.create().wait(request(), failure());
+    const saved = h.read()!;
+    const recovery = new SessionModelRecovery({
+      read: h.read,
+      write: h.write,
+      current: () => ({
+        sdkSessionId: saved.sdkSessionId,
+        routeIdentity: saved.routeIdentity,
+        turnId: saved.turnId,
+        goalId: saved.goalId,
+      }),
+      isLive: () => true,
+      prepare: h.prepare,
+      now: () => 10_000,
+      deadlineAt: () => 20_000,
+    });
+    expect(await recovery.admit(request())).toEqual({ delayMs: 10_000 });
+    expect(h.read()).toMatchObject({ deadlineAt: 20_000, nextRetryAt: 20_000 });
+  });
+});
+
+it("gives stream checkpoints the same parent deadline as ordinary recovery", async () => {
+  const h = harness(() => 70_000);
+  const recovery = h.create();
+  expect(await recovery.interrupted(request())).toBe(true);
+  expect(h.read()).toMatchObject({
+    kind: 'stream',
+    deadlineAt: 70_000,
+    nextRetryAt: 25_000,
   });
 });

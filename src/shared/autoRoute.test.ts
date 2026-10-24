@@ -155,14 +155,13 @@ describe('decideAutoRoute', () => {
   const usable = () => true;
   const now = 10_000_000;
 
-  it('keeps failover in the actual target tier unless cross-tier backup was explicitly enabled', () => {
+  it('keeps fault recovery in the actual target tier', () => {
     const table = buildAutoTierTable([
       { providerId: 'p', model: 'only-balanced', catalogTier: 'balanced' },
       { providerId: 'p', model: 'only-fast', catalogTier: 'fast' },
     ]);
     const input = { table, tier: 'balanced' as const, verdict: 'classified' as const, now, isUsable: usable };
     expect(decideAutoRoute(input)?.backup).toBeUndefined();
-    expect(decideAutoRoute({ ...input, allowCrossTierBackup: true })?.backup?.tier).toBe('fast');
   });
 
   it('switches to the first model of the requested tier with the next as backup', () => {
@@ -255,4 +254,31 @@ describe('explicit auto-routing candidate pool', () => {
     expect(result?.target.model).toBe('claude-sonnet-5-5');
     expect(result?.reason).toBe('unavailable-fallback');
   });
+});
+
+it("plans at most three compatible same-tier candidates without invoking them", () => {
+  const table = buildAutoTierTable(
+    ['a', 'b', "c", "d", "e", "f"].map((model) => ({
+      providerId: "fixture",
+      model,
+      catalogTier: 'balanced' as const,
+    })),
+    {},
+  );
+  const decision = decideAutoRoute({
+    table,
+    tier: 'balanced',
+    verdict: 'classified',
+    now: 0,
+    current: { providerId: "fixture", model: 'a' },
+    isUsable: () => true,
+    canRecover: (candidate) => candidate.model !== 'b',
+  });
+  expect(decision?.target.model).toBe('a');
+  expect(decision?.candidates?.map(row => row.model)).toEqual([
+    "c",
+    "d",
+    "e",
+  ]);
+  expect(decision?.backup).toEqual(decision?.candidates?.[0]);
 });

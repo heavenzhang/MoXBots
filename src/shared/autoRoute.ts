@@ -14,11 +14,10 @@
 // downgrade while the prompt cache is warm. Only the engine is ported — there
 // is no rule language, the user sees three tiers.
 
-import type { ModelFailoverMode } from './modelFailover';
 import { normalizeReasoningEffort } from './reasoningEffort';
 
 export const AUTO_TIERS = ['fast', 'balanced', 'strong'] as const;
-export type AutoTier = typeof AUTO_TIERS[number];
+export type AutoTier = (typeof AUTO_TIERS)[number];
 export type ModelMode = 'auto' | 'manual';
 
 export function isAutoTier(value: unknown): value is AutoTier {
@@ -127,23 +126,25 @@ const TIER_EFFORT: Record<AutoTier, string> = { fast: 'low', balanced: 'medium',
  * Closest supported effort to the tier's target (Magpie `fitLevel`). Unknown
  * choices mean the model exposes no effort knob: send nothing.
  */
-export function fitEffort(tier: AutoTier, choices: readonly string[] | null | undefined): string | undefined {
+export function fitEffort(tier: AutoTier, choices: readonly string[] | null | undefined,
+): string | undefined {
   const supported = (choices ?? [])
     .map(choice => normalizeReasoningEffort(choice))
     .filter((choice): choice is string => !!choice && (EFFORT_SCALE as readonly string[]).includes(choice));
   if (supported.length === 0) return undefined;
   const target = TIER_EFFORT[tier];
   if (supported.includes(target)) return target;
-  const at = EFFORT_SCALE.indexOf(target as typeof EFFORT_SCALE[number]);
+  const at = EFFORT_SCALE.indexOf(target as (typeof EFFORT_SCALE)[number]);
   let best = supported[0];
   let bestDistance = Number.POSITIVE_INFINITY;
   for (const choice of supported) {
-    const distance = Math.abs(EFFORT_SCALE.indexOf(choice as typeof EFFORT_SCALE[number]) - at);
+    const distance = Math.abs(EFFORT_SCALE.indexOf(choice as (typeof EFFORT_SCALE)[number]) - at,
+    );
     // Ties go up for the strong tier and down otherwise.
     const tieWins = distance === bestDistance
       && (tier === 'strong'
-        ? EFFORT_SCALE.indexOf(choice as typeof EFFORT_SCALE[number]) > EFFORT_SCALE.indexOf(best as typeof EFFORT_SCALE[number])
-        : EFFORT_SCALE.indexOf(choice as typeof EFFORT_SCALE[number]) < EFFORT_SCALE.indexOf(best as typeof EFFORT_SCALE[number]));
+        ? EFFORT_SCALE.indexOf(choice as (typeof EFFORT_SCALE)[number]) > EFFORT_SCALE.indexOf(best as (typeof EFFORT_SCALE)[number])
+        : EFFORT_SCALE.indexOf(choice as (typeof EFFORT_SCALE)[number]) < EFFORT_SCALE.indexOf(best as (typeof EFFORT_SCALE)[number]));
     if (distance < bestDistance || tieWins) {
       best = choice;
       bestDistance = distance;
@@ -487,15 +488,22 @@ export interface AutoRouteDecisionInput {
   contextUsed?: number;
   /** Can this model run here (credential, same provider history, not cooling down)? */
   isUsable: (ref: AutoTierEntry) => boolean;
-  /** Only an explicit user preference permits failover to another tier. */
-  allowCrossTierBackup?: boolean;
+  /** Recovery has stricter execution/history requirements than initial routing. */
+  canRecover?: (candidate: AutoTierEntry, primary: AutoTierEntry) => boolean;
+  /** Stable ranking before the bounded snapshot, e.g. independent failure domains first. */
+  recoveryPriority?: (
+    candidate: AutoTierEntry,
+    primary: AutoTierEntry,
+  ) => number;
 }
 
 export interface AutoRouteDecision {
-  tier: AutoTier;
+  tier: AutoTier
   target: AutoTierEntry;
   /** Next usable model to fail over to, if any. */
   backup?: AutoTierEntry;
+  /** Planned same-tier recovery chain; never evidence of an actual invocation. */
+  candidates?: AutoTierEntry[];
   reason: AutoRouteReason;
   /** True when target differs from the current model. */
   switches: boolean;
@@ -508,7 +516,8 @@ const TIER_INDEX: Record<AutoTier, number> = { fast: 0, balanced: 1, strong: 2 }
  * a warm cache never moves down, and context pressure only moves to a larger
  * window. Returns null when no model is usable at all.
  */
-export function decideAutoRoute(input: AutoRouteDecisionInput): AutoRouteDecision | null {
+export function decideAutoRoute(input: AutoRouteDecisionInput,
+): AutoRouteDecision | null {
   const currentEntry = findAutoTierEntry(input.table, input.current);
   const currentUsable = currentEntry ? input.isUsable(currentEntry) : false;
   const requested: AutoTier = input.tier ?? currentEntry?.tier ?? 'balanced';
@@ -546,12 +555,22 @@ export function decideAutoRoute(input: AutoRouteDecisionInput): AutoRouteDecisio
     }
   }
 
-  const backup = candidates.find(entry => autoModelKey(entry) !== autoModelKey(target)
-    && (input.allowCrossTierBackup === true || entry.tier === target.tier));
+  const recoveryCandidates = candidates.filter(
+      entry => autoModelKey(entry) !== autoModelKey(target)
+    && entry.tier === target.tier && input.canRecover?.(entry, target) !== false,
+    )
+    .sort(
+      (a, b) =>
+        (input.recoveryPriority?.(a, target) ?? 0) -
+        (input.recoveryPriority?.(b, target) ?? 0),
+    )
+    .slice(0, 3);
+  const backup = recoveryCandidates[0];
   return {
     tier: target.tier,
     target,
     ...(backup ? { backup } : {}),
+    candidates: recoveryCandidates,
     reason,
     switches: !input.current || autoModelKey(input.current) !== autoModelKey(target),
   };
@@ -567,7 +586,10 @@ export interface AutoRouteRecord {
   classifierModel?: string;
   /** Planned backup, not a claim that a switch has executed. */
   backup?: AutoModelRef;
-  failoverMode?: ModelFailoverMode;
+  /** Ordered planned pool candidates; these are not completed model calls. */
+  candidates?: AutoModelRef[];
+  /** Historical transcript metadata only; no longer a runtime setting. */
+  failoverMode?: 'auto' | 'specified' | 'off';
   backupUnavailableReason?: 'off' | 'not-configured' | 'unavailable' | 'cross-tier' | 'no-candidate';
   /** Failed initial classification kept the live model; no tier was established. */
   unclassified?: boolean;

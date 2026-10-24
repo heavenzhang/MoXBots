@@ -35,6 +35,8 @@ export interface ClassifierTransportRequest {
   system: string;
   prompt: string;
   signal: AbortSignal;
+  /** Optional bounded structured utility output; tier classifier keeps its tiny default. */
+  maxTokens?: number;
 }
 
 /** Returns the model's raw answer text, or throws ClassifierTransportError. */

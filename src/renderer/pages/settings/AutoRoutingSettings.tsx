@@ -38,7 +38,7 @@ export interface AutoRouteTiersView {
 type Filter = 'all' | AutoTier | 'paused' | 'unavailable';
 
 /** Settings card for automatic routing and its explicitly managed candidate pool. */
-export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNames, modifySettings, onOpenProviders, specifiedBackup }: {
+export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNames, modifySettings, onOpenProviders }: {
   value: unknown;
   updateConfig: (patch: Partial<AppConfig>) => Promise<void>;
   /** Reads effective tier and complete model directory. */
@@ -47,7 +47,6 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
   /** Applies a pure modifier to the latest settings under the config writer lock. */
   modifySettings?: (modify: AutoRoutingModifier) => Promise<void>;
   onOpenProviders?: (providerId?: string) => void;
-  specifiedBackup?: AutoModelRef;
 }) {
   const { t } = useTranslation('settings');
   const hintId = useId();
@@ -116,7 +115,6 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
   const classifier = view?.classifier ?? null;
   const classifierKey = settings.classifier ? autoModelKey(settings.classifier) : '';
   const classifierUnavailable = Boolean(settings.classifier && (!allKeys.has(classifierKey) || !classifier || classifier.available === false || autoModelKey(classifier) !== classifierKey));
-  const backupModel = specifiedBackup && catalog.find(model => autoModelKey(model) === autoModelKey(specifiedBackup));
 
   const name = (model: AutoModelRef & { modelName?: string; providerName?: string }) => model.modelName?.trim() || model.model;
   const provider = (model: AutoModelRef & { providerName?: string }) => model.providerName || providerNames?.[model.providerId] || model.providerId;
@@ -247,6 +245,7 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
       <div className="min-w-0">
         <h3 className="text-base font-medium text-[var(--ink)]">{t('autoRouting.title')}</h3>
         <p id={hintId} className="mt-1.5 text-sm text-[var(--ink-muted)]">{t('autoRouting.description')}</p>
+        <p className="mt-1 text-xs text-[var(--ink-muted)]">{t('autoRouting.relationship')}</p>
         <p className="mt-1 text-xs text-[var(--ink-muted)]">{t('autoRouting.nextTurn')} · {settings.pool === undefined ? t('autoRouting.poolAutomatic') : t('autoRouting.poolManual')}</p>
       </div>
       <button type="button" role="switch" aria-label={t('autoRouting.enable')} aria-checked={enabled} aria-describedby={hintId} disabled={busy || loading || loadFailed}
@@ -266,10 +265,6 @@ export function AutoRoutingSettings({ value, updateConfig, loadTiers, providerNa
     {loading && <p role="status" className="mt-4 text-xs text-[var(--ink-muted)]">{t('autoRouting.loading')}</p>}
     {loadFailed && <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-[var(--error)]"><p role="alert">{t('autoRouting.loadFailed')}</p><button className="min-h-8 px-2 underline" type="button" onClick={() => void refresh()}>{t('autoRouting.retry')}</button></div>}
     {view && !loadFailed && <>
-      {specifiedBackup && <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-[var(--paper-inset)] p-3 text-xs text-[var(--ink-secondary)]" id="automatic-pool-backup-note">
-        <span className="min-w-0 break-words">{t('autoRouting.backupNote', { model: backupModel ? label(backupModel) : `${specifiedBackup.providerId} · ${specifiedBackup.model}` })}</span>
-        <button type="button" className="min-h-8 shrink-0 px-2 text-[var(--accent)] underline" onClick={() => document.getElementById('model-failover-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{t('autoRouting.manageBackup')}</button>
-      </div>}
       {settings.classifier && classifierUnavailable && <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-[var(--error)]"><p role="alert">{t('autoRouting.classifierUnavailable', { model: label(settings.classifier) })}</p><button type="button" disabled={!canManage} className="min-h-8 px-2 underline" onClick={() => savePatch({}, ['classifier'])}>{t('autoRouting.restoreAutoClassifier')}</button></div>}
 
       <div className="mt-4 grid grid-cols-3 gap-2" aria-label={t('autoRouting.tierSummary')}>

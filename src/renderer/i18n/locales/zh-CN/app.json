@@ -330,7 +330,7 @@
     "pptRenderFailed": "演示文稿渲染失败"
   },
   "autoRoute": {
-    "backupCandidate": "本轮备用候选：{{model}}（执行时复核）",
+    "backupCandidate": "本轮同档接管候选：{{model}}（执行时复核）",
     "backupReasons": {
       "off": "已关闭自动切换模型",
       "not-configured": "指定备用尚未配置",
@@ -2024,7 +2024,48 @@
     "agents": "协作详情",
     "running": "运行中 {{count}}",
     "returned": "已回传 {{count}}",
-    "failed": "异常 {{count}}"
+    "failed": "异常 {{count}}",
+    "execution": {
+      "unknown": "执行状态暂不可确认",
+      "unconfirmed": "执行意图未确认 · 自动续跑未启用",
+      "running": "运行中",
+      "awaitingReview": "待验收",
+      "rework": "返工中",
+      "paused": "已暂停",
+      "incomplete": "未完成",
+      "completed": "已完成",
+      "request": "执行请求",
+      "rounds": "第 {{current}}/{{max}} 轮",
+      "acceptance": "验收条件",
+      "proven": "已验证",
+      "coverage": "已证明覆盖 {{covered}}/{{total}} 项",
+      "unknownHint": "正在同步当前会话的执行快照；暂不显示验收结论。",
+      "admissionHint": "当前请求没有得到可确认的执行意图，因此不会自动续跑。",
+      "reasons": {
+        "stopped": "本轮执行已停止",
+        "assessmentRequired": "等待验收结论",
+        "evidenceIncomplete": "验收证据尚未覆盖全部条件",
+        "deadlineExceeded": "执行时限已到，尚未完成验收",
+        "turnLimitReached": "已达到执行轮数上限",
+        "noProgressLimitReached": "连续几轮没有确认到进展",
+        "reworkLimitReached": "已达到返工次数上限",
+        "turnError": "执行过程中遇到问题",
+        "userStopped": "用户停止了执行",
+        "newUserInput": "收到新的用户请求，当前执行已暂停",
+        "toolOutcomeUnknown": "工具结果未能确认，自动续跑已暂停",
+        "waitingForUser": "正在等待用户输入",
+        "backgroundWorkActive": "仍有后台任务运行，完成后再继续",
+        "executionDispatchOutcomeUnknown": "下一轮是否已派发无法确认，执行已暂停",
+        "executionTurnOutcomeUnknown": "下一轮结果无法确认，执行已暂停",
+        "evidenceLimitReached": "已达到验证证据上限",
+        "continuationAdmissionBusy": "会话正忙，暂时无法安全续跑",
+        "continuationNotAdmitted": "续跑请求未能进入执行队列",
+        "continuationCancelledBeforeDispatch": "续跑在派发前已取消",
+        "admissionCancelled": "续跑请求已取消",
+        "dispatchUnconfirmed": "续跑派发尚未确认",
+        "unconfirmed": "当前执行遇到阻碍，详情尚未确认"
+      }
+    }
   },
   "subagentView": {
     "title": "子 Agent",

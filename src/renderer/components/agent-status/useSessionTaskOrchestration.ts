@@ -28,7 +28,7 @@ export function useSessionTaskOrchestration(fallbackPlan: readonly ProgressTodo[
 }
 
 /** Durable snapshot plus immediate event-driven transcript projection. */
-function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled = true) {
+function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled = true,) {
   const tab = useTabStateOptional();
   const sessionId = tab?.sessionId ?? null;
   const apiGet = tab?.apiGet;
@@ -118,6 +118,29 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     return projectSessionTasks(current, tab?.messages ?? []);
   }, [enabled, snapshot, sessionId, tab?.messages, tab?.streamingMessage?.id, fallbackPlan]);
   const proposal = snapshot?.sessionId === sessionId && snapshot.ledger.proposal?.sessionId === sessionId ? snapshot.ledger.proposal : undefined;
+  const sameSessionSnapshot =
+    snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey;
+  const executionAdmission = sameSessionSnapshot
+    ? snapshot.ledger.executionAdmission
+    : undefined;
+  const snapshotExecution = sameSessionSnapshot
+    ? snapshot.ledger.execution
+    : undefined;
+  // A newer admission owns the current request. Never project the prior
+  // request's terminal phase under a newly classified user turn.
+  const execution =
+    snapshotExecution &&
+    (!executionAdmission ||
+      executionAdmission.requestId === snapshotExecution.requestId)
+      ? snapshotExecution
+      : undefined;
+  // A cached terminal projection is not current while the Session is loading or
+  // its authoritative task snapshot has failed to refresh.
+  const executionUnknown = Boolean(
+    tab?.isSessionLoading ||
+      failure?.sessionId === sessionId ||
+      !sameSessionSnapshot,
+  );
   // Publish only after this proposal has committed to the UI. Ingress must
   // bind a user's reply to the displayed revision, never the latest SSE head.
   useEffect(() => {
@@ -133,5 +156,10 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   }, [enabled, tab?.tabId, sessionId, tab?.isSessionLoading, planSupport?.supported, proposal?.id, proposal?.revision, proposal?.state]);
   const planStart = proposal && snapshot?.ledger.planStart?.proposalId === proposal.id && snapshot.ledger.planStart.revision === proposal.revision ? snapshot.ledger.planStart : undefined;
   const canRetryReview = tab?.sessionState === 'idle' && !tab.isLoading && !tab.queuedMessages?.length;
-  return { sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal, planSupport, planStart, confirmPlan, requestPlanRevision, stale: failure?.sessionId === sessionId, retry: () => setRefresh(v => v + 1) };
+  return { sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal,
+    execution,
+    executionAdmission,
+    executionUnknown,
+    planSupport, planStart, confirmPlan, requestPlanRevision, stale: failure?.sessionId === sessionId, retry: () => setRefresh(v => v + 1),
+  };
 }

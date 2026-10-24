@@ -10,6 +10,8 @@ import { SessionModelRecovery } from '../src/server/builtin-session/model-recove
 import { ContextRecoveryController } from '../src/server/openai-bridge/context-recovery';
 import { ModelFailoverController } from '../src/server/openai-bridge/model-failover';
 
+const chain = process.argv.includes('--chain');
+assert(!chain || process.argv.slice(2).every(flag => flag === '--chain'), '--chain cannot be combined with another mode');
 const terminalTrailer = process.argv.includes('--terminal-trailer');
 const declinedRecovery = process.argv.includes('--declined-recovery');
 const upstreamRejection = declinedRecovery || process.argv.includes('--upstream-rejection');
@@ -27,6 +29,7 @@ let rejectedResponses = 0;
 let counter = 0;
 let primaryCalls = 0;
 let backupCalls = 0;
+const candidateCalls = { a: 0, b: 0 };
 let switches = 0;
 let restoredResult = false;
 let nativeSessionId: string | undefined;
@@ -62,10 +65,19 @@ const upstream = createServer(async (req, res) => {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
   const body = JSON.parse(Buffer.concat(chunks).toString());
-  if (req.url?.startsWith('/backup/')) {
+  if (req.url?.startsWith('/backup')) {
     backupCalls++;
     restoredResult = JSON.stringify(body.messages).includes('count=1');
     assert(restoredResult, 'backup must receive the completed tool result');
+    if (chain) {
+      const candidate = req.url.startsWith('/backup-a/') ? 'a' : 'b';
+      candidateCalls[candidate]++;
+      if (candidate === 'a') {
+        res.writeHead(503, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'fixture candidate outage' } }));
+        return;
+      }
+    }
     message(res, false);
   } else {
     primaryCalls++;
@@ -95,10 +107,19 @@ await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
 const upstreamAddress = upstream.address();
 if (!upstreamAddress || typeof upstreamAddress === 'string') throw new Error('No fixture port');
 const base = `http://127.0.0.1:${upstreamAddress.port}`;
+// Fixed Query-local candidate snapshot; no settings or actual provider pool.
+const candidates = (chain ? ['a', 'b'] : ['backup']).map(id => ({ providerId: chain ? `backup-${id}` : 'backup',
+  baseUrl: `${base}/${chain ? `backup-${id}` : 'backup'}`, apiProtocol: 'anthropic' as const,
+  model: chain ? `backup-${id}-fixture` : 'backup-fixture', apiKey: 'fixture-backup' }));
+let candidateIndex = 0;
 const failover = new ModelFailoverController({ scope: () => 'native-root',
   // Product Stop marks its existing interrupt owner before awaiting SDK transport cancellation.
   canRetry: () => !stopFence,
-  resolveBackup: () => upstreamRejection ? undefined : ({ providerId: 'backup', baseUrl: `${base}/backup`, apiProtocol: 'anthropic', model: 'backup-fixture', apiKey: 'fixture-backup' }),
+  resolveBackup: () => upstreamRejection ? undefined : candidates[candidateIndex],
+  advanceCandidate: chain ? () => {
+    if (candidateIndex + 1 >= candidates.length) return false;
+    candidateIndex++; return true;
+  } : undefined,
   onSwitch: () => { switches++; },
   recovery: declinedRecovery ? new SessionModelRecovery({ read: () => undefined, current: () => undefined,
     isLive: () => true, prepare: async () => {}, write: async () => true }) : undefined });
@@ -163,8 +184,9 @@ try {
   } catch (error) { nativeFailed = true; if (!streamFailure && !stopDuringRetry && !upstreamRejection) throw error; } finally { if (stopDuringRetry && interruptTask) await interruptTask; run.close(); }
   assert.equal(counter, 1);
   assert.equal(primaryCalls, streamFailure || stopDuringRetry ? 2 : 5); // first tool, then initial availability failure plus three retries
-  assert.equal(backupCalls, streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
-  assert.equal(switches, streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
+  assert.equal(backupCalls, chain ? 5 : streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
+  if (chain) assert.deepEqual(candidateCalls, { a: 4, b: 1 });
+  assert.equal(switches, chain ? 2 : streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
   if (stopDuringRetry) { assert(interruptRequested); assert(interruptCompleted); assert.equal(interruptFailures.length, 0); }
   else if (upstreamRejection) {
     const terminal = nativeTerminalText(results);
@@ -175,7 +197,7 @@ try {
   }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, terminalTrailer, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, chain, candidateCalls, terminalTrailer, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

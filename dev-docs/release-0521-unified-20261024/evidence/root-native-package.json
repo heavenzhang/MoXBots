@@ -1,0 +1,124 @@
+{
+  "receipt": {
+    "passed": true,
+    "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+    "upstream": "127.0.0.1 synthetic fixture only",
+    "paidCalls": 0,
+    "publicNetwork": false,
+    "nativeSdk": true,
+    "originalBuiltinFacade": true,
+    "sessionStore": true,
+    "productionTaskRoute": true,
+    "sessionId": "b23419d2-be58-4a32-9bf0-9003422789cd",
+    "executionId": "024b618a-bcc4-47b8-a38e-d99465797188",
+    "phase": "completed",
+    "initialTerminalStatus": "complete",
+    "originalQueueId": "session-execution:47bcd092-9174-453c-b398-e6e12080f117",
+    "finalQueueId": "session-execution:db9ab817-b636-4fb5-b5d2-5d567b35f4f5",
+    "executionTurns": 3,
+    "originalInputAdmissions": 1,
+    "realWriteToolUses": 1,
+    "realReadToolUses": 1,
+    "toolCalls": [
+      {
+        "kind": "classify"
+      },
+      {
+        "kind": "title-utility"
+      },
+      {
+        "kind": "analysis-only-native-turn"
+      },
+      {
+        "kind": "list-before-package",
+        "tool": "Bash"
+      },
+      {
+        "kind": "task-ensure",
+        "tool": "Bash"
+      },
+      {
+        "kind": "task-package",
+        "tool": "Bash"
+      },
+      {
+        "kind": "agent-launch",
+        "tool": "Agent"
+      },
+      {
+        "kind": "conflicting-launch",
+        "tool": "Agent"
+      },
+      {
+        "kind": "root-ends-with-child-running"
+      },
+      {
+        "kind": "child-write",
+        "tool": "Write"
+      },
+      {
+        "kind": "list-after-child",
+        "tool": "Bash"
+      },
+      {
+        "kind": "root-read-child",
+        "tool": "Read"
+      },
+      {
+        "kind": "list-before-task-review",
+        "tool": "Bash"
+      },
+      {
+        "kind": "task-review",
+        "tool": "Bash"
+      },
+      {
+        "kind": "review",
+        "tool": "Bash"
+      },
+      {
+        "kind": "final"
+      }
+    ],
+    "elapsedMs": 2516,
+    "persistedEvidencePath": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-execution-evidence-wZFxEq/receipt.json",
+    "mode": "native-background-task-package",
+    "childWriteObservedAfterParentTerminal": true,
+    "conflictingLaunchAttempted": true,
+    "nativeTaskAttempt": {
+      "id": "root-launch-background-task:0mvltrq7t-846cc8ef",
+      "toolUseId": "root-launch-background-task",
+      "title": "[task:native-write-task] Write the scoped proof artifact",
+      "executionVerified": true,
+      "runId": "0mvltrq7t-846cc8ef",
+      "executionTaskId": "a8dd81586cbbbab11",
+      "lifecycle": {
+        "status": "completed",
+        "startedAt": 1792811654780,
+        "finishedAt": 1792811654880,
+        "result": ""
+      }
+    },
+    "delegationLaunches": 1,
+    "delegationClaims": [
+      {
+        "toolUseId": "root-launch-background-task",
+        "taskId": "native-write-task",
+        "executionId": "024b618a-bcc4-47b8-a38e-d99465797188",
+        "state": "settled"
+      }
+    ]
+  },
+  "sourceFiles": {
+    "src/server/agent-session.ts": "66e8d63bac612c01178e79cd59c7269b7d292669080a5aa23477eff93e26be16",
+    "src/server/builtin-session/lifecycle.ts": "130b7ec777f883d354102d71188e17b73a526e43ed48cbe379259cbee23e1db8",
+    "src/server/session-engine/session-execution.ts": "82aa6047af2d14241b9873bee5ac144162f9048c4bfcc3465b3c91ff16d8b107",
+    "src/server/session-engine/builtin-adapter.ts": "0667364aaa569999e4a0f60a8e3eaf0f4c284808d4df3532635dd7b437be7b4e",
+    "src/server/session-engine/selector.ts": "5db21904380fa932f5f8c0184ac16d0d9d38dfbe176f870f6db8b449adaa7372",
+    "src/server/session-engine/session-task-dispatch.ts": "6ee404d78bf726baa7d2f5b7ab3b28e70783a2470e7641dcaaf4371d3b5c821a",
+    "src/shared/sessionTaskOrchestration.ts": "50beaf8a193751954fa2503591844ce961c8f298446135e60b9a1134c473e117",
+    "scripts/verify-session-execution-loopback.ts": "b20f9cb7c794b1dd172cdc9d0d8f0ecf101a1a1085f197baff4ecb579e9a70e8"
+  },
+  "rawSha256": "ecf90e517dba8e0e1a62930665f513a1a62209e06486fe61d9a3ded79c4da944",
+  "scope": "actual SDK synthetic loopback only; no signed App/real Provider/user business"
+}
