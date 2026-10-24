@@ -1,8 +1,8 @@
 import type { SessionPlanTurnScope } from '../session-engine/session-plan-policy';
 import type { DispatchGuardResult } from '../session-core/turn-queue';
 import { projectOrchestrationProgress } from '../../shared/sessionTaskOrchestration';
-import { assertSessionPlanRootDispatch, canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
-import { deriveSessionWorkProgress } from '../../shared/sessionWorkProgress';
+import { assertSessionPlanRootDispatch, canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasks, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
+import { deriveSessionTodos, deriveSessionWorkProgress } from '../../shared/sessionWorkProgress';
 import { desktopContextOf } from '../../shared/agentMentions';
 import { runtimeProviderAnalytics } from '../session-core/turn-analytics';
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
@@ -2137,6 +2137,7 @@ async function persistExternalUserMessageAdmission(params: {
         clientOperationId: string;
         runtimeSessionId: string;
         productImageSha256: readonly string[];
+        runtimeReminder?: string;
       }
     | undefined;
   if (getCurrentRuntimeType() === 'dsh') {
@@ -2150,6 +2151,7 @@ async function persistExternalUserMessageAdmission(params: {
     dshRootOperation = {
       clientOperationId: params.operation.dshClientOperationId,
       runtimeSessionId,
+      runtimeReminder: params.operation.context.runtimeReminder,
       productImageSha256: (params.runtimeImages ?? []).map((image) =>
         createHash('sha256')
           .update(Buffer.from(image.data, 'base64'))
@@ -2317,9 +2319,10 @@ async function resumePendingDshInputs(
         ...context,
         desktopQuery: input.userMessage.desktopQuery,
         asyncQuestionReply: input.userMessage.asyncQuestionReply,
+        runtimeReminder: input.runtimeReminder,
       };
       const operation = createExternalMessageOperation({
-        text: replay.message,
+        text: input.userMessage.content,
         images: replay.images,
         context: recoveredContext,
         runtimeConfig: captureExternalRuntimeConfigSnapshot(
@@ -2335,8 +2338,8 @@ async function resumePendingDshInputs(
         queueId: input.queueId,
         sessionId: context.sessionId,
         operation,
-        text: replay.message,
-        activityFacts: { inputText: replay.message },
+        text: input.userMessage.content,
+        activityFacts: { inputText: input.userMessage.content },
         channelDelivery: NO_CHANNEL_DELIVERY,
         userChannelProjection: { kind: 'skip' },
         admission: admission.promise,
@@ -3669,7 +3672,7 @@ export function getExternalWorkProgressSnapshot() {
     { live: true, runtimePlan: getExternalAgentPlan() }), getSessionMetadata(getCurrentExternalBoundSessionId())?.taskOrchestration, messages);
 }
 
-export function getExternalLiveSessionSnapshot(targetSessionId: string): {
+export function getExternalLiveSessionSnapshot(targetSessionId: string, options?: { includeHistory?: boolean }): {
   snapshotRevision: number;
   inMemoryMessages: SessionMessage[];
   liveStreamingMessage: SessionMessage | null;
@@ -3681,7 +3684,7 @@ export function getExternalLiveSessionSnapshot(targetSessionId: string): {
   flushPendingLiveEvents();
   const liveStreamingMessage = getExternalLiveAssistantMessage();
   let inMemoryMessages =
-    getExternalTranscriptSessionId() === targetSessionId
+    options?.includeHistory !== false && getExternalTranscriptSessionId() === targetSessionId
       ? getExternalSessionMessagesSnapshot()
       : [];
   if (getActiveSessionTranscript(targetSessionId) && liveStreamingMessage) {
@@ -3689,7 +3692,7 @@ export function getExternalLiveSessionSnapshot(targetSessionId: string): {
       (message) => message.id !== liveStreamingMessage.id,
     );
   }
-  for (const pending of getExternalPendingUserMessageProjections(
+  for (const pending of options?.includeHistory === false ? [] : getExternalPendingUserMessageProjections(
     targetSessionId,
   )) {
     if (!inMemoryMessages.some((message) => message.id === pending.id)) {
@@ -5966,6 +5969,10 @@ async function dispatchExternalMessageOperation(
     }
   }
 
+  // Command expansion owns runtimeText; append product instructions afterward
+  // so cold, resumed and warm native sends receive the same private reminder.
+  if (context?.runtimeReminder) runtimeText += `\n${context.runtimeReminder}`;
+
   // A previous config change may have reached a terminal boundary while the
   // old process could not be stopped. Never let a later send silently reuse
   // that invalid prompt/env owner: retry invalidation before selecting Case 3.
@@ -6590,7 +6597,7 @@ async function steerExternalMessage(input: {
   try {
     await active.runtime.steerMessage(
       active.process,
-      input.text,
+      input.context.runtimeReminder ? `${input.text}\n${input.context.runtimeReminder}` : input.text,
       resolvedImages && resolvedImages.length > 0 ? resolvedImages : undefined,
       {
         clientUserMessageId: userMsg.id,
@@ -6629,6 +6636,7 @@ async function steerExternalMessage(input: {
                       .digest('hex'),
                   ),
                   runtimeInputFingerprint: identity.inputFingerprint,
+                  runtimeReminder: input.context.runtimeReminder,
                 });
                 if (!intent.success) throw new Error(intent.error);
                 dshIntentPersisted = true;
@@ -10968,6 +10976,20 @@ function applyUnifiedEvent(event: UnifiedEvent): void {
         ? pendingInput.then(() => dispatchExternalToolResult(event))
         : dispatchExternalToolResult(event);
       trackInFlightSave(dispatched);
+      // Claude Code publishes Task tools rather than agent_plan_update. Commit
+      // successful root bookkeeping through the same queue-scoped observer.
+      const planTool = target && product?.readTool(target);
+      if (!event.isError && !event.subAgent && !event.nativeSource?.parentToolUseId && !target?.subagentToolId
+        && planTool && ['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'].includes(String(planTool.name))) {
+        const planSessionId = getCurrentExternalBoundSessionId();
+        trackInFlightSave(Promise.resolve(dispatched).then(async () => {
+          if (getCurrentExternalBoundSessionId() !== planSessionId || getExternalExecutionTurnId() !== eventExecutionTurnId) return;
+          const messages = getExternalSessionMessagesSnapshot();
+          const streaming = getExternalLiveAssistantMessage();
+          const plan = deriveSessionTodos(streaming ? [...messages.filter(message => message.id !== streaming.id), streaming] : messages);
+          if (plan.source !== 'none') await observeSessionTasks(planSessionId, { plan: plan.todos, planTurnId: eventExecutionTurnId });
+        }));
+      }
       break;
     }
 

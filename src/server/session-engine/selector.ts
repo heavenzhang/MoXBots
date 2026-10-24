@@ -90,11 +90,10 @@ function queryFacade(engine: SessionEngine): SessionEngine {
             turnBoundaryOnly: execution.request.turnBoundaryOnly,
             beforeDispatch: execution.request.beforeDispatch,
             onTerminal: execution.request.onTerminal,
+            runtimeReminder: execution.request.runtimeReminder,
+            surfaceUserBeforeDispatch: execution.request.surfaceUserBeforeDispatch,
             desktopQuery:
               prepared.request.desktopQuery ?? execution.request.desktopQuery,
-            text:
-              prepared.request.text +
-              execution.request.text.slice(request.text.length),
           };
           // Query preparation may await discovery/config IO. Do not let an
           // obsolete click enter the queue while another source starts work.
@@ -153,15 +152,11 @@ function queryFacade(engine: SessionEngine): SessionEngine {
       withUpdateAdmission(() => engine.updateAgents(agents, options)),
     updateEnabledPluginIds: (ids) =>
       withUpdateAdmission(() => engine.updateEnabledPluginIds(ids)),
-    resetForNewDesktopSession: (path) =>
-      withUpdateAdmission(() => engine.resetForNewDesktopSession(path)),
+    transitionDesktopSession: (path, options) =>
+      withUpdateAdmission(() => engine.transitionDesktopSession(path, options)),
     materializePendingDesktopSession: (request) =>
       withUpdateAdmission(() =>
         engine.materializePendingDesktopSession(request),
-      ),
-    migrateBoundSurfaceSession: (path, options) =>
-      withUpdateAdmission(() =>
-        engine.migrateBoundSurfaceSession(path, options),
       ),
     cancelImRequest: (...args: Parameters<SessionEngine["cancelImRequest"]>) =>
       withUpdateAdmission(() => engine.cancelImRequest(...args)),

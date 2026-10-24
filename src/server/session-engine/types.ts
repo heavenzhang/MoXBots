@@ -51,6 +51,10 @@ export type DesktopMessageRequest = {
   continueFromTurnId?: string;
   asyncQuestionReply?: AsyncQuestionReply;
   text: string;
+  /** Product instructions for the Runtime only; never part of user history. */
+  runtimeReminder?: string;
+  /** Verified human input may be recorded before its execution/card guard. */
+  surfaceUserBeforeDispatch?: boolean;
   images?: ImagePayload[];
   /** Product mode for builtin sessions; runtime-native mode for external sessions. */
   permissionMode?: string;
@@ -320,6 +324,7 @@ export type SessionEngineReplayMessage = Omit<SessionMessage, 'content' | 'attac
 
 export type SessionEngineStreamReplaySnapshot = {
   sessionId: string;
+  snapshotRevision: number | null;
   initState: Record<string, unknown>;
   replayMessages: SessionEngineReplayMessage[];
   liveStreamingMessage?: SessionEngineReplayMessage | null;
@@ -452,7 +457,7 @@ export interface SessionEngine {
    * tasks so continuation may run beside them. Unsupported runtimes omit it.
    */
   acknowledgeBackgroundWork?(tasks: readonly BackgroundWorkAcknowledgementRequest[], allow: boolean): BackgroundWorkAcknowledgementResult;
-  getStreamReplaySnapshot(): SessionEngineStreamReplaySnapshot;
+  getStreamReplaySnapshot(options?: { includeHistory?: boolean }): SessionEngineStreamReplaySnapshot;
   getSessionConfigSnapshot(): SessionEngineConfigSnapshot;
   inspectRuntime?(runtime: RuntimeType): Promise<import('../../shared/types/runtime').RuntimeInspection | null>;
   getCurrentSessionContext(): SessionEngineCurrentContext;
@@ -542,13 +547,14 @@ export interface SessionEngine {
   updateDesktopInteractionScenario(
     scenario: Extract<InteractionScenario, { type: 'desktop' }>,
   ): Promise<{ success: boolean; skipped?: string; error?: string }>;
-  resetForNewDesktopSession(workspacePath: string): Promise<{ success: boolean; sessionId?: string; error?: string }>;
-  migrateBoundSurfaceSession(
+  transitionDesktopSession(
     workspacePath: string,
     options: {
+      sourceSessionId: string;
       targetSessionId: string;
+      channelBound: boolean;
       metadataBirthPending?: boolean;
       metadataIndexed?: boolean;
     },
-  ): Promise<{ success: boolean; sessionId?: string; error?: string }>;
+  ): Promise<{ success: boolean; sessionId?: string; error?: string; sourceUnchanged?: true; errorCode?: 'session_busy' }>;
 }

@@ -46,6 +46,7 @@ import { useChatScrollDebugProbe } from '@/hooks/useChatScrollDebugProbe';
 import { useChatFollowMotion } from '@/hooks/useChatFollowMotion';
 import { resolveChatBottomSpacerPx } from '@/utils/chatBottomSpacer';
 import type { MainWindowPresentation } from '@/utils/mainWindowPresentation';
+import { currentActivity } from '@/utils/currentActivity';
 
 function formatElapsedTime(totalSeconds: number, t: TFunction<'chat'>): string {
   const hours = Math.floor(totalSeconds / 3600);
@@ -149,7 +150,6 @@ interface MessageActionContext {
   hasRetry: boolean;
 }
 
-const STREAMING_MESSAGE_COUNT = 20;
 const noopRowLayoutChanged = (
   _messageId: string,
   _reason: RowLayoutChangeReason,
@@ -213,17 +213,15 @@ function resolveSystemStatus(status: string, t: TFunction<'chat'>): string {
   }
   return status;
 }
-function getRandomStreamingMessage(t: TFunction<'chat'>): string {
-  const index = Math.floor(Math.random() * STREAMING_MESSAGE_COUNT);
-  return t(`shell.messageList.streaming.${index}`);
-}
 
 const StatusTimer = memo(function StatusTimer({
   message: messageSource,
   getElapsedSeconds,
+  activityMessage,
 }: {
   message: string | (() => string);
   getElapsedSeconds: () => number;
+  activityMessage?: MessageType | null;
 }) {
   const { t } = useTranslation('chat');
   const canPresent = useContext(MessageListPresentationContext);
@@ -246,11 +244,13 @@ const StatusTimer = memo(function StatusTimer({
   );
   void timerSnapshot;
   const elapsedSeconds = getElapsedSeconds();
-  const message = typeof messageSource === 'function' ? messageSource() : messageSource;
+  const message = typeof messageSource === 'function' ? messageSource()
+    : messageSource || currentActivity(activityMessage ?? null, t);
   const isModelRecovery = messageSource instanceof Function;
   const elapsedText =
     !isModelRecovery && elapsedSeconds > 0 ? formatElapsedTime(elapsedSeconds, t) : null;
-  const displayText = isModelRecovery ? resolveSystemStatus(message, t) : elapsedText ? `${message} (${elapsedText})` : message;
+  const displayText = isModelRecovery ? resolveSystemStatus(message, t) : elapsedText
+    ? `${message} · ${t('shell.messageList.activity.turnElapsed', { elapsed: elapsedText })}` : message;
   return (
     <div
       data-chat-status-row=""
@@ -351,6 +351,7 @@ type FooterProps = {
   waitingForInteraction: boolean;
   statusMessage: string;
   statusMessageForTimer: string | (() => string);
+  activityMessage?: MessageType | null;
   getQueryElapsedSeconds: () => number;
   systemNotice?: SystemNotice | null;
   onDismissSystemNotice?: () => void;
@@ -360,6 +361,11 @@ type FooterProps = {
 interface MessageListContext extends MessageActionContext {
   headerContent?: React.ReactNode;
   footer: FooterProps;
+  streamingMessage: MessageType | null;
+  isLoading: boolean;
+  exitPlanModeAnchorId: string | null;
+  exitPlanModeSlot?: React.ReactNode;
+  layoutByMessageId?: ReadonlyMap<string, RowLayoutContract>;
 }
 
 const VirtuosoFooter = memo(function VirtuosoFooter({
@@ -374,6 +380,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
   waitingForInteraction,
   statusMessage,
   statusMessageForTimer,
+  activityMessage,
   getQueryElapsedSeconds,
   systemNotice,
   onDismissSystemNotice,
@@ -410,6 +417,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
           <StatusTimer
             message={statusMessageForTimer}
             getElapsedSeconds={getQueryElapsedSeconds}
+            activityMessage={activityMessage}
           />
         ))}
       {!showStatus && systemNotice && (
@@ -548,12 +556,6 @@ const MessageList = memo(function MessageList({
       ? heightEstimateSeed
       : undefined;
 
-  const streamingStatusMessage = useMemo(
-    () => getRandomStreamingMessage(t),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [messages.length, t],
-  );
-
   // ExitPlanMode
   const exitPlanModeAnchorId = useMemo(() => {
     if (!pendingExitPlanMode) return null;
@@ -585,19 +587,21 @@ const MessageList = memo(function MessageList({
       (pendingExitPlanMode && pendingExitPlanMode.resolved === undefined),
   );
   const showStatus = waitingForInteraction || isLoading || !!systemStatus;
-  // (issue #174) During 'starting' the SDK subprocess is alive but hasn't
-  // sent system_init — the random "苦思冥想中…" line would falsely imply the
-  // model is already thinking. Surface a startup-specific hint instead.
-  // systemStatus (e.g. compacting / api_retry) still wins because it carries
-  // a more specific signal that overrides both starting and the generic
-  // thinking line.
+  // Original interaction/runtime owners have priority over the live-message
+  // projection. A completed historical block is never current work evidence.
   const statusMessage = waitingForInteraction
-    ? t('shell.messageList.waitingForInteraction')
+    ? pendingPermission
+      ? t('shell.messageList.activity.waitingPermission', { target: pendingPermission.toolName })
+      : pendingAskUserQuestion
+        ? t('shell.messageList.activity.waitingAnswer')
+        : t('shell.messageList.activity.waitingPlan')
     : systemStatus
       ? resolveSystemStatus(systemStatus, t)
       : sessionState === 'starting'
         ? t('shell.messageList.starting')
-        : streamingStatusMessage;
+        : sessionState === 'stopping'
+          ? t('shell.messageList.activity.stopping')
+          : '';
   const statusMessageForTimer = useMemo(
     () => systemStatus?.startsWith('model_recovery:') || systemStatus === 'model_recovery_paused'
       ? () => resolveSystemStatus(systemStatus, t)
@@ -645,34 +649,28 @@ const MessageList = memo(function MessageList({
   });
 
   // ── Refs for stable callbacks — avoid recreating itemContent/Footer on every render ──
-  const streamingMessageRef = useRef(streamingMessage);
-  streamingMessageRef.current = streamingMessage;
-  const isLoadingRef = useRef(isLoading);
-  isLoadingRef.current = isLoading;
-  const exitPlanModeAnchorIdRef = useRef(exitPlanModeAnchorId);
-  exitPlanModeAnchorIdRef.current = exitPlanModeAnchorId;
-  const exitPlanModeSlotRef = useRef(exitPlanModeSlot);
-  exitPlanModeSlotRef.current = exitPlanModeSlot;
   const onRetryRef = useRef(onRetry);
   useLayoutEffect(() => { onRetryRef.current = onRetry; }, [onRetry]);
   // Virtual history rows and Message are memoized. Pass a stable forwarding
   // callback so a later model/effort selection is read at click time.
   const handleRetry = useCallback((messageId: string) => onRetryRef.current?.(messageId), []);
-  const layoutByMessageIdRef = useRef(layoutByMessageId);
-  layoutByMessageIdRef.current = layoutByMessageId;
   const onRowLayoutChangedRef = useRef(
     onRowLayoutChanged ?? noopRowLayoutChanged,
   );
-  onRowLayoutChangedRef.current = onRowLayoutChanged ?? noopRowLayoutChanged;
   const isItemMeasurementActiveRef = useRef(canLayoutVirtualList);
-  isItemMeasurementActiveRef.current = canLayoutVirtualList;
+  useLayoutEffect(() => {
+    onRowLayoutChangedRef.current = onRowLayoutChanged ?? noopRowLayoutChanged;
+    isItemMeasurementActiveRef.current = canLayoutVirtualList;
+  }, [onRowLayoutChanged, canLayoutVirtualList]);
   const measureVisibleItemSize = useCallback<SizeFunction>((element, field) => {
     const knownSize = Number(element.dataset.knownSize);
     if (!isItemMeasurementActiveRef.current) {
       if (Number.isFinite(knownSize) && knownSize > 0) return knownSize;
     }
     const rectField = field === 'offsetWidth' ? 'width' : 'height';
-    const measuredSize = Math.round(element.getBoundingClientRect()[rectField]);
+    // Preserve layout precision: rounding each row accumulates into a wrong
+    // index target. Virtuoso quantizes only the final scroll extent.
+    const measuredSize = element.getBoundingClientRect()[rectField];
     // A mounted row always has positive layout size. Some WebViews can briefly report
     // zero while updating a long virtualized list; feeding that transient geometry into
     // Virtuoso corrupts its size model and can move the viewport far from the anchor.
@@ -728,8 +726,10 @@ const MessageList = memo(function MessageList({
     // frame; measureVisibleItemSize also fences any already-queued Virtuoso callback
     // to its last known size so hidden geometry cannot poison the size cache.
     cancelPendingLargeRowShrink();
-    setIsLargeRowShrinking(false);
   }, [cancelPendingLargeRowShrink, canLayoutVirtualList]);
+  // Reset only this component's transient state on presentation loss. Doing
+  // this conditionally during render avoids an effect-driven extra commit.
+  if (!canLayoutVirtualList && isLargeRowShrinking) setIsLargeRowShrinking(false);
   useEffect(() => cancelPendingLargeRowShrink, [cancelPendingLargeRowShrink]);
   // Pagination guard: don't load an older page off stale range math while hidden —
   // Virtuoso can fire startReached from corrupted offsets when our subtree's layout
@@ -770,9 +770,9 @@ const MessageList = memo(function MessageList({
       function MessageListItem(
         index: number,
         message: MessageType,
-        actionContext: MessageActionContext,
+        actionContext: MessageListContext,
       ) {
-        const sm = streamingMessageRef.current;
+        const sm = actionContext.streamingMessage;
         const isStreamingMsg = !!sm && message === sm;
         const nativeOperations =
           actionContext.conversationOperations !== 'builtin';
@@ -802,17 +802,17 @@ const MessageList = memo(function MessageList({
               <Message
                 message={message}
                 citationSources={actionContext.citationSources.get(citationScope(message))}
-                isLoading={isStreamingMsg && isLoadingRef.current}
+                isLoading={isStreamingMsg && actionContext.isLoading}
                 onRewind={canRewind ? actionContext.onRewind : undefined}
                 onRetry={actionContext.hasRetry ? handleRetry : undefined}
                 onFork={canFork ? actionContext.onFork : undefined}
                 exitPlanModeSlot={
-                  message.id === exitPlanModeAnchorIdRef.current
-                    ? exitPlanModeSlotRef.current
+                  message.id === actionContext.exitPlanModeAnchorId
+                    ? actionContext.exitPlanModeSlot
                     : undefined
                 }
                 initialUserCollapsed={
-                  layoutByMessageIdRef.current?.get(message.id)
+                  actionContext.layoutByMessageId?.get(message.id)
                     ?.likelyUserCollapsed === true
                 }
               />
@@ -834,6 +834,11 @@ const MessageList = memo(function MessageList({
     () => ({
       ...messageActionContext,
       headerContent,
+      streamingMessage,
+      isLoading,
+      exitPlanModeAnchorId,
+      exitPlanModeSlot,
+      layoutByMessageId,
       footer: {
         footerContent,
         composerPlacement,
@@ -846,6 +851,7 @@ const MessageList = memo(function MessageList({
         waitingForInteraction,
         statusMessage,
         statusMessageForTimer,
+        activityMessage: streamingMessage,
         getQueryElapsedSeconds,
         systemNotice,
         onDismissSystemNotice,
@@ -857,6 +863,10 @@ const MessageList = memo(function MessageList({
       headerContent,
       footerContent,
       composerPlacement,
+      isLoading,
+      exitPlanModeAnchorId,
+      exitPlanModeSlot,
+      layoutByMessageId,
       pendingPermission,
       onPermissionDecision,
       pendingAskUserQuestion,
@@ -866,6 +876,7 @@ const MessageList = memo(function MessageList({
       waitingForInteraction,
       statusMessage,
       statusMessageForTimer,
+      streamingMessage,
       getQueryElapsedSeconds,
       systemNotice,
       onDismissSystemNotice,
@@ -895,27 +906,42 @@ const MessageList = memo(function MessageList({
   // snapshot under React 19 concurrency, which a later hidden render could then hand
   // to Virtuoso — exactly the post-hide measurement we're preventing. A committed
   // layout effect guarantees the snapshot is always a real, measured-while-visible state.
-  const frozenDataRef = useRef<{
-    data: readonly MessageType[];
-    firstItemIndex: number | undefined;
-    heightEstimateSeed?: number[];
-    context: MessageListContext;
-  }>({
-    data: canLayoutVirtualList ? messages : EMPTY_MESSAGES,
-    firstItemIndex: canLayoutVirtualList ? firstItemIndex : undefined,
-    heightEstimateSeed: canLayoutVirtualList
-      ? liveHeightEstimateSeed
-      : undefined,
-    context: listContext,
+  const [committedSnapshot] = useState(() => {
+    let snapshot: {
+      data: readonly MessageType[];
+      firstItemIndex: number | undefined;
+      heightEstimateSeed?: number[];
+      context: MessageListContext;
+    } = {
+      data: canLayoutVirtualList ? messages : EMPTY_MESSAGES,
+      firstItemIndex: canLayoutVirtualList ? firstItemIndex : undefined,
+      heightEstimateSeed: canLayoutVirtualList
+        ? liveHeightEstimateSeed
+        : undefined,
+      context: listContext,
+    };
+    const listeners = new Set<() => void>();
+    return {
+      getSnapshot: () => snapshot,
+      subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
+      publish: (next: typeof snapshot) => {
+        if (snapshot.data === next.data && snapshot.firstItemIndex === next.firstItemIndex
+          && snapshot.heightEstimateSeed === next.heightEstimateSeed && snapshot.context === next.context) return;
+        snapshot = next;
+        listeners.forEach(listener => listener());
+      },
+    };
   });
+  const frozenData = useSyncExternalStore(committedSnapshot.subscribe, committedSnapshot.getSnapshot);
   useLayoutEffect(() => {
     if (canLayoutVirtualList) {
-      frozenDataRef.current = {
+      const next = {
         data: messages,
         firstItemIndex,
         heightEstimateSeed: liveHeightEstimateSeed,
         context: listContext,
       };
+      committedSnapshot.publish(next);
     }
   }, [
     canLayoutVirtualList,
@@ -923,19 +949,20 @@ const MessageList = memo(function MessageList({
     firstItemIndex,
     liveHeightEstimateSeed,
     listContext,
+    committedSnapshot,
   ]);
   const virtuosoData = canLayoutVirtualList
     ? messages
-    : frozenDataRef.current.data;
+    : frozenData.data;
   const virtuosoFirstItemIndex = canLayoutVirtualList
     ? firstItemIndex
-    : frozenDataRef.current.firstItemIndex;
+    : frozenData.firstItemIndex;
   const virtuosoHeightEstimateSeed = canLayoutVirtualList
     ? liveHeightEstimateSeed
-    : frozenDataRef.current.heightEstimateSeed;
+    : frozenData.heightEstimateSeed;
   const virtuosoContext = canLayoutVirtualList
     ? listContext
-    : frozenDataRef.current.context;
+    : frozenData.context;
   const debugProbe = useChatScrollDebugProbe({
     sessionId,
     scroller: debugScroller,

@@ -10,9 +10,21 @@
 
 分类使用当前运行时的 tool-free utility，最多八秒，输出受 schema 约束的 `answer/plan/execute/control`、目标、范围和验收条件。用户明确要求行动时采用 execute；只讨论、先给方案、不开发仍采用 plan。原始用户文本单独保留为 visibleText，执行提醒不伪装成人类输入。分类失败记录 `INTENT_UNCONFIRMED`，不获得自动续跑资格。此版本普通行动闭环仅接入 builtin；外部 CLI 与 DSH 不因分类结果获得这套自动续跑能力。
 
+真人原话与执行上下文分开：facade 不向 `text` 追加执行提醒，builtin adapter 通过仅运行时的 `runtimeReminder` 将产品指令作为独立文本块送入 SDK。原 transcript、用户回声与队列预览保留用户正文。经原文摘要验证的输入允许在执行 guard 前先由原 user surface 持久化并推送，再由原 guard 创建/接续账本卡片；排队输入在晋级时遵守同一顺序。该标记不向 Goal/基础设施隐形准入开放，也不绕过 Stop、取消或最终 dispatch commit。准入被拒绝或停止时保留真实用户发言，但不会送入 SDK。自动接续使用纯隐藏 `SESSION_EXECUTION` 系统提醒，不生成新的可见人类发言。
+
 执行意图不扩大权限。原权限请求、AskUserQuestion、停止、配置撤销、工具权限与所有业务 owner 继续裁决动作。明确答复/讨论/控制的当前 builtin 队列只放行只读及适用的方案记账，不能启动写入或子 Agent。
 
 首发 Chat 在发送前通过既有 pending-session materialization/adoption 建立归属；同一 pending 的并发建立复用同一 promise，失败保留输入。已建立归属的会话不重建；Goal 首发复用该结果。
+
+## 实际执行前的 To Do List
+
+新 execute 分类必须返回原授权范围内的有序 `steps`；单个动作保留一个步骤，不人为拆成多步骤。读取 legacy intent 时此字段可缺失。至少两个步骤时，原 native `beforeDispatch` 在同一 metadata CAS 内先写入正式 `tasks/plan`，再允许原队列进入 Runtime。列表不依赖模型先自发调用 Todo 工具，也不创建 proposal 或伪造人类确认。真正只讨论方案的请求仍保留原确认流程。
+
+`executionAdmission.taskPlanId` 和 `task.workPlanId` 仅标识同一列表，不构成新的执行权限或 scheduler。Server 分配稳定 `[task:work:<planId>:step-N]`，首步随原队列启动进入运行中；模型读取现有清单，用原生 TodoWrite/TaskCreate/update_plan 及同一标记持续同步。TaskCreate 返回的原生 ID 只用于原生 TaskUpdate。明确新增的细分任务先通过原 `ensure` 登记，同步仍保留缺省步骤；不得按标题猜关联。分类为单步的请求仍可沿原生工具建立后来发现的待办。
+
+native producer 以当前原 queue 身份提交更新，先规范化精确 marker 再合并。DSH 原生 task ID 与产品 ID 不同，外置 Claude Code 的成功根 Todo/Task 结果也接入原观察者。未标记、旧 queue、整段历史 GET 和迟到事件不能覆盖当前清单；新目标保留旧记录但隔离展示。同一 builtin execution 的人工/自动接续复用任务身份和进度，不重新确认或重置预算。外部 Runtime 的列表预建及同步不赋予 builtin 的自动续跑能力。
+
+原生 completed 仍只进入待验收；子 Agent 仍须对应 attempt 的根验收。builtin 的整体验收在成功根证据及真实持久化终态通过后，可以同时结清本次原清单中的主 Agent 步骤；不能通过 Todo 完成、失败/未知工具或未结清的后台任务提前完成。Task 工具仅记进度，不作为业务写入或验证证据。
 
 ## 持久状态与续跑
 

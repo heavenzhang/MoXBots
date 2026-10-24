@@ -120,10 +120,9 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
         ]);
         if (outcome === 'closed') return { done: true, value: undefined };
         backgroundTaskPending = false;
-        return { done: false, value: {
-          type: 'system', subtype: 'task_notification', task_id: `background-${turn}`,
-          status: 'completed', summary: 'done', output_file: '',
-        } };
+        pending.push({ type: 'system', subtype: 'task_notification', task_id: `background-${turn}`,
+          status: 'completed', summary: 'done', output_file: '' });
+        return { done: false, value: { type: 'system', subtype: 'background_tasks_changed', tasks: [] } };
       }
       if (state.exitWithoutResult && turn > 0) {
         if (state.throwAfterInputEnd) throw new Error('Claude Code process exited with code 1. stderr: [claude-code:unrecognized_model]');
@@ -229,7 +228,9 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
         pending.splice(pending.length - 1, 0, {
           type: 'system', subtype: 'task_started', task_id: `background-${turn}`,
           tool_use_id: `background-tool-${turn}`, description: 'background test task', task_type: 'agent',
-        });
+        }, { type: 'system', subtype: 'background_tasks_changed', tasks: [
+          { task_id: `background-${turn}`, task_type: 'local_agent', description: 'background test task' },
+        ] });
         backgroundTaskPending = true;
       }
       if (state.exitWithoutResult) pending.pop();
@@ -335,7 +336,7 @@ describe('first desktop execution intent utility', () => {
     vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({
       ...catalog, settings: { classifier },
     });
-    const intent = JSON.stringify({ kind: 'execute', objective: 'Create a local page', scope: 'This workspace', acceptanceCriteria: ['Page exists'], continuationOf: null });
+    const intent = JSON.stringify({ kind: 'execute', objective: 'Create a local page', scope: 'This workspace', acceptanceCriteria: ['Page exists'], steps: ['Create the page', 'Verify the page'], continuationOf: null });
     const transport = vi.fn(async () => intent);
     vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
     const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
@@ -350,6 +351,7 @@ describe('first desktop execution intent utility', () => {
     } else {
       expect(result?.kind).toBe('execute');
       expect(result?.continuationOf).toBeNull();
+      expect(result?.steps).toEqual(['Create the page', 'Verify the page']);
       expect(transport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ classifier }));
     }
     expect(state.query).not.toHaveBeenCalled();
@@ -1072,9 +1074,9 @@ describe('builtin V2 execution independent of product storage', () => {
     if (mode === 'failed') state.failProductIo = true;
     if (mode === 'delayed') state.publicationGate = new Promise<void>(resolve => { releaseWrite = resolve; });
     let settled = false;
-    const reset = createBuiltinSessionEngine().resetForNewDesktopSession(workspace).finally(() => { settled = true; });
+    const reset = createBuiltinSessionEngine().transitionDesktopSession(workspace, { sourceSessionId: agent.getSessionId(), targetSessionId: '4d2c043d-e1ac-432d-9d3a-7f1619842ac0', channelBound: false }).finally(() => { settled = true; });
     if (mode === 'failed') {
-      await expect(reset).rejects.toThrow('could not be published');
+      await expect(reset).rejects.toThrow();
       return;
     }
     if (mode === 'delayed') {
@@ -2975,6 +2977,115 @@ it('consumes recovered queued input and the next direct input after a capabiliti
 });
 
 
+it.each([false, true])('keeps a recovered realtime root running when force races its native acknowledgement (earlyHuman=%s)', async earlyHuman => {
+  const platform = await import('../utils/platform');
+  vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
+  vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
+  vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
+  const workspace = join(state.home, 'recovered-realtime-root');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const send = (text: string) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, queueResponseModeOverride: 'realtime',
+      surfaceUserBeforeDispatch: earlyHuman,
+      beforeDispatch: earlyHuman ? async () => {
+        expect(agent.getMessages().filter(row => row.role === 'user').at(-1)?.content).toBe(text);
+        const stored = [...store.getActiveSessionTranscript(meta.id)!.writer.projection.messages.values()];
+        expect(stored.filter(row => row.role === 'user').at(-1)?.content).toBe(text);
+        return { accepted: true };
+      } : undefined });
+  let releaseFrame!: () => void;
+  const frameGate = new Promise<void>(resolve => { releaseFrame = resolve; });
+  let recoveredQueueId: string | undefined;
+  let restartAt = 0;
+  state.beforeFrame.mockImplementation(async () => {
+    if (state.query.mock.calls.length === 2) await frameGate;
+  });
+  state.beforeResult.mockImplementationOnce(async () => {
+    const skill = join(workspace, '.claude', 'skills', 'synthetic-restart');
+    await mkdir(skill, { recursive: true });
+    await writeFile(join(skill, 'SKILL.md'), '---\nname: synthetic-restart\ndescription: Isolated restart fixture\n---\nSynthetic instructions.\n');
+    agent.syncProjectUserConfig(workspace);
+    const turn = await import('../builtin-session/turn');
+    turn.setCurrentTurnStartTime(Date.now() - 60_000);
+    restartAt = Date.now();
+    const queued = await send('recovered realtime input');
+    expect(queued).toMatchObject({ queued: true });
+    recoveredQueueId = queued.queueId;
+  });
+  try {
+    await send('initial synthetic input');
+    await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(2));
+    const turn = await import('../builtin-session/turn');
+    const lifecycle = await import('../builtin-session/lifecycle');
+    const interrupt = vi.spyOn(lifecycle.getQuerySession()!, 'interrupt');
+    expect(turn.peekPendingOutputOwner()?.queueId).toBe(recoveredQueueId);
+    expect(agent.getAgentState().sessionState).toBe('running');
+    expect(turn.getCurrentTurnStartTime()).toBeGreaterThanOrEqual(restartAt);
+    expect(state.events.filter(([event, payload]) => event === 'queue:started'
+      && (payload as { queueId?: string }).queueId === recoveredQueueId)).toEqual([
+      ['queue:started', expect.objectContaining({ queueId: recoveredQueueId })],
+    ]);
+    expect(agent.getMessages().filter(row => row.role === 'user').map(row => row.content))
+      .toEqual(['initial synthetic input', 'recovered realtime input']);
+    await expect(agent.forceExecuteQueueItem(recoveredQueueId!)).resolves.toBe(true);
+    await expect(agent.forceExecuteQueueItem(recoveredQueueId!)).resolves.toBe(true);
+    expect(interrupt).not.toHaveBeenCalled();
+    expect(state.sdkInputs).toHaveLength(2);
+  } finally {
+    releaseFrame();
+  }
+  await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledTimes(2));
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  expect(agent.getBuiltinSessionCompletionTerminal()?.status).toBe('complete');
+  expect(state.sdkInputs).toHaveLength(2);
+  expect(agent.getMessages().filter(row => row.role === 'user')).toHaveLength(2);
+  await store.drainSessionTranscripts();
+  const { readTranscriptFile } = await import('./file');
+  const stored = await readTranscriptFile(join(state.home, '.myagents', 'sessions-v2', `${meta.id}.jsonl`), meta.id);
+  expect([...stored.projection.messages.values()].filter(row => row.role === 'user').map(row => row.content))
+    .toEqual(['initial synthetic input', 'recovered realtime input']);
+});
+
+it.each(['direct', 'queued', 'rejected'] as const)('records human input before its execution guard without persisting runtime context (%s)', async mode => {
+  const workspace = join(state.home, 'input-card-order');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const original = '继续执行';
+  const reminder = '<system-reminder><SESSION_EXECUTION>Private execution context</SESSION_EXECUTION></system-reminder>';
+  const terminal = vi.fn();
+  const guard = vi.fn(async () => {
+    const user = agent.getMessages().filter(row => row.role === 'user').at(-1);
+    expect(user?.content).toBe(original);
+    const stored = [...store.getActiveSessionTranscript(meta.id)!.writer.projection.messages.values()];
+    expect(stored.filter(row => row.role === 'user').at(-1)?.content).toBe(original);
+    const visibleEvent = state.events.find(([name, data]) =>
+      (name === 'chat:message-replay' && (data as { message?: { content?: string } }).message?.content === original)
+      || (name === 'queue:started' && (data as { userMessage?: { content?: string } }).userMessage?.content === original));
+    expect(visibleEvent).toBeDefined();
+    return mode === 'rejected' ? { accepted: false, error: 'fixture-blocked' } : { accepted: true };
+  });
+  const send = () => agent.enqueueUserMessage(original, [], undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY,
+      beforeDispatch: guard, surfaceUserBeforeDispatch: true, runtimeReminder: reminder,
+      queueResponseModeOverride: 'turn', onTerminal: terminal });
+  if (mode === 'queued') {
+    state.beforeResult.mockImplementationOnce(async () => { expect(await send()).toMatchObject({ queued: true }); });
+    await agent.enqueueUserMessage('Previous request', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY });
+  } else await send();
+  await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+  expect(guard).toHaveBeenCalledOnce();
+  expect(agent.getMessages().filter(row => row.role === 'user' && row.content === original)).toHaveLength(1);
+  expect(JSON.stringify(agent.getMessages())).not.toContain('Private execution context');
+  if (mode === 'rejected') expect(state.sdkInputs).toHaveLength(0);
+  else expect(JSON.stringify(state.sdkInputs)).toContain('Private execution context');
+});
+
 it('rechecks background work after awaited materialization, before SDK yield', async () => {
   const workspace = join(state.home, 'commit-background-work');
   await mkdir(workspace);
@@ -3050,7 +3161,7 @@ it.each(['success', 'late-completion', 'double-click'])('checks explicit continu
   }
 });
 
-it('acknowledges Stop of promoted local input without yielding it to the SDK (#648)', async () => {
+it.each([false, true])('acknowledges Stop of promoted local input without yielding it to the SDK (#648; early-human=%s)', async surfaceUserBeforeDispatch => {
   const platform = await import('../utils/platform');
   vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
   vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
@@ -3066,7 +3177,7 @@ it('acknowledges Stop of promoted local input without yielding it to the SDK (#6
   const beforeDispatch = Object.assign(vi.fn(() => gate), { cancel: vi.fn(async () => { release({ accepted: true }); }) });
   const terminal = vi.fn();
   const send = agent.enqueueUserMessage('cancelled synthetic input', [], undefined, undefined, undefined, undefined,
-    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, beforeDispatch, onTerminal: terminal });
+    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, beforeDispatch, onTerminal: terminal, surfaceUserBeforeDispatch });
   await vi.waitFor(() => expect(beforeDispatch).toHaveBeenCalledOnce());
   await expect(agent.interruptCurrentResponse()).resolves.toBe(true);
   await send;
@@ -3076,6 +3187,8 @@ it('acknowledges Stop of promoted local input without yielding it to the SDK (#6
   expect(state.query).toHaveBeenCalledOnce();
   expect(terminal).toHaveBeenCalledOnce();
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
+  expect(agent.getMessages().filter(row => row.role === 'user' && row.content === 'cancelled synthetic input'))
+    .toHaveLength(surfaceUserBeforeDispatch ? 1 : 0);
 });
 
 
@@ -3636,4 +3749,85 @@ describe('builtin known-unsent dispatch rollback', () => {
     await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
     expect(state.sdkInputs).toHaveLength(0);
   });
+});
+
+
+it.each(['ambient', 'stop'] as const)('recovers capability rebuild input with %s background ownership (#676)', async mode => {
+  const workspace = join(state.home, 'rebuild-owner');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const lifecycle = await import('../builtin-session/lifecycle');
+  const queue = await import('../builtin-session/queue');
+  const config = await import('../builtin-session/config');
+  const send = (text: string) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, queueResponseModeOverride: 'turn' });
+  await send('old conversation');
+  await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  const oldQuery = lifecycle.getQuerySession()!;
+  lifecycle.recordQueryBackgroundTask(oldQuery, 'long-lived-task', { description: 'task display record' });
+  lifecycle.replaceQueryBackgroundActivity(oldQuery, [{
+    task_id: 'long-lived-task', task_type: 'local_agent', description: 'current activity', ambient: mode === 'ambient',
+  }]);
+  // Change capabilities after enqueue's check, at the same pre-yield seam as
+  // the reported provider-ready -> rebuild quarantine.
+  state.beforeTurn.mockImplementationOnce(async () => {
+    const skill = join(workspace, '.claude', 'skills', 'changed');
+    await mkdir(skill, { recursive: true });
+    await writeFile(join(skill, 'SKILL.md'), '---\nname: changed\ndescription: fixture\n---\nSynthetic.\n');
+  });
+  const input = await send('rebuild input');
+  if (mode === 'stop') {
+    await vi.waitFor(() => {
+      expect(config.hasDeferredRestart()).toBe(true);
+      expect(queue.getMessageQueue().some(item => item.id === input.queueId)).toBe(true);
+      expect(lifecycle.hasMessageResolver()).toBe(false);
+    });
+    await expect(agent.interruptCurrentResponse()).resolves.toBe(true);
+    await send('after stop');
+  }
+  await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(2));
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  expect(state.query).toHaveBeenCalledTimes(2);
+  expect(lifecycle.getQuerySession()).not.toBe(oldQuery);
+  expect(state.query.mock.calls[1][0].options.resume).toBe(meta.id);
+  expect(agent.getMessages().filter(row => row.role === 'user').map(row => row.content))
+    .toEqual(mode === 'stop' ? ['old conversation', 'rebuild input', 'after stop'] : ['old conversation', 'rebuild input']);
+  expect(JSON.stringify(state.sdkInputs[1])).toContain(mode === 'stop' ? 'after stop' : 'rebuild input');
+  if (mode === 'stop') expect(JSON.stringify(state.sdkInputs[1])).not.toContain('rebuild input');
+});
+
+
+it('releases a deferred rebuild when the SDK background snapshot becomes empty (#676)', async () => {
+  const workspace = join(state.home, 'background-rebuild');
+  await mkdir(workspace);
+  const meta = await store.createSession(workspace, { runtime: 'builtin' });
+  state.independentInputPump = true;
+  state.backgroundTask = true;
+  state.backgroundTaskGate = new Promise<void>(resolve => { releaseWrite = resolve; });
+  await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
+  const send = (text: string) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, queueResponseModeOverride: 'turn' });
+  await send('start background work');
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  await vi.waitFor(() => expect(state.beforeResult).toHaveBeenCalledOnce());
+  const lifecycle = await import('../builtin-session/lifecycle');
+  const queue = await import('../builtin-session/queue');
+  state.beforeTurn.mockImplementationOnce(async () => {
+    const skill = join(workspace, '.claude', 'skills', 'changed');
+    await mkdir(skill, { recursive: true });
+    await writeFile(join(skill, 'SKILL.md'), '---\nname: changed\ndescription: fixture\n---\nSynthetic.\n');
+  });
+  const pending = await send('queued behind real background work');
+  await vi.waitFor(() => expect(queue.getMessageQueue().some(item => item.id === pending.queueId)).toBe(true));
+  expect(lifecycle.hasQueryBackgroundWork()).toBe(true);
+  expect(state.sdkInputs).toHaveLength(1);
+  state.backgroundTask = false;
+  releaseWrite!(); releaseWrite = undefined;
+  await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(2));
+  await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+  expect(state.query).toHaveBeenCalledTimes(2);
+  expect(state.query.mock.calls[1][0].options.resume).toBe(meta.id);
 });

@@ -1159,7 +1159,145 @@ function desktopRequest(
   };
 }
 
+describe('private execution reminders across external Runtime dispatch', () => {
+  it.each((['codex', 'claude-code', 'dsh'] as const).flatMap(runtimeType => [false, true].map(warm => ({ runtimeType, warm }))))('keeps $runtimeType/$warm native hints outside Product history and in DSH replay', async ({ runtimeType, warm }) => {
+    const warmDsh = warm && runtimeType === 'dsh';
+    const harness = await createHarness(warmDsh ? [{ kind: 'success', text: 'warmup complete' }, { kind: 'silent' }] : [{ kind: 'silent' }], { runtimeType });
+    const workspacePath = join(harness.home, 'workspace');
+    const { emptyTaskLedger, materializeExecutionTodos } = await import('../../shared/sessionTaskOrchestration');
+    const sessionId = `private-reminder-${runtimeType}-${warm}`;
+    const planId = `plan-${runtimeType}-${warm}`;
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: 'human', queueId: `queue-${planId}`, taskPlanId: planId };
+    materializeExecutionTodos(ledger, planId, ['Implement', 'Verify']);
+    await harness.sessionStore.saveSessionMetadata(createSessionMetadata(workspacePath, { id: sessionId,
+      ...(runtimeType === 'dsh' ? { runtimeBinding: createDshBinding('darwin-arm64') } : { runtime: runtimeType }), taskOrchestration: ledger }));
+    const config = { model: runtimeType === 'dsh' ? 'deepseek-flash' : runtimeType === 'claude-code' ? 'opus' : 'gpt-5-codex', permissionMode: getMaxPermissionForRuntime(runtimeType) };
+    if (warmDsh) {
+      const seed = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, 'Warmup'), ...config });
+      await expect(seed.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+      await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+      harness.runtime.sentMessages.length = 0;
+    } else if (warm) await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath, scenario: { type: 'desktop' } });
+    const text = 'Implement and verify the authorized artifact';
+    const reminder = `<system-reminder>[task:${ledger.tasks[0].id}] Implement</system-reminder>`;
+    const sent = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, text), ...config,
+      queueId: ledger.executionAdmission.queueId, turnBoundaryOnly: true, runtimeReminder: reminder });
+    expect(sent.success).toBe(true);
+    await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    await waitFor(() => harness.runtime.sentMessages.length === 1, 'private native prompt');
+    expect(harness.runtime.sentMessages[0]).toBe(`${text}\n${reminder}`);
+    const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
+    expect(users.map(message => message.content)).toEqual(warmDsh ? ['Warmup', text] : [text]);
+    expect(harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.tasks.map(task => task.id)).toEqual(ledger.tasks.map(task => task.id));
+    if (runtimeType === 'dsh') {
+      const journal = harness.sessionStore.getSessionMetadata(sessionId)!.pendingDshRootOperation!;
+      const { replayDshProductInput } = await import('../session-engine/dsh-root-operation');
+      expect(replayDshProductInput(journal, users.at(-1)!).message).toBe(`${text}\n${reminder}`);
+    }
+  });
+});
+
+describe('DSH realtime hint recovery review', () => {
+  it('journals the exact private native input before the realtime receipt', async () => {
+    const harness = await createHarness([{ kind: 'silent' }], { runtimeType: 'dsh', realtimeSteering: true });
+    const sessionId = 'review-dsh-hint';
+    const workspacePath = join(harness.home, 'workspace');
+    const initial = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, 'Original'), permissionMode: getMaxPermissionForRuntime('dsh') });
+    await initial.dispatchAcceptance;
+    const reminder = '<system-reminder>[task:review-followup] Verify</system-reminder>';
+    let observed: { message: string; operation: import('../types/session').PendingDshInput } | undefined;
+    harness.runtime.steerMessage = async (_process, message, _images, options) => {
+      options?.beforeNativeDispatch?.();
+      await options?.beforeDispatch?.({ clientOperationId: options.clientOperationId!, inputFingerprint: 'a'.repeat(64) });
+      observed = { message, operation: harness.sessionStore.getSessionMetadata(sessionId)!.pendingDshInputs![0] };
+    };
+    await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspacePath, 'Followup'), permissionMode: getMaxPermissionForRuntime('dsh'), runtimeReminder: reminder });
+    await waitFor(() => observed !== undefined, 'DSH realtime journal before receipt');
+    expect(observed!.message).toBe(`Followup\n${reminder}`);
+    const { replayDshProductInput } = await import('../session-engine/dsh-root-operation');
+    expect(replayDshProductInput(observed!.operation, observed!.operation.userMessage!).message).toBe(observed!.message);
+    expect(observed!.operation.userMessage!.content).toBe('Followup');
+  });
+});
+
 describe('Runtime turn analytics', () => {
+  it.each([
+    { runtimeType: 'codex', runtimeSource: 'system-cli' },
+    { runtimeType: 'codex', runtimeSource: 'managed-provider' },
+    { runtimeType: 'claude-code', runtimeSource: 'system-cli' },
+    { runtimeType: 'dsh', runtimeSource: 'integrated' },
+  ] as const)('keeps private task reminders in native inputs for initial and subsequent $runtimeType/$runtimeSource sends', async identity => {
+    const harness = await createHarness([{ kind: 'success', text: 'first completed' }, { kind: 'success', text: 'second completed' }], identity);
+    const sessionId = `native-reminder-${identity.runtimeType}-${identity.runtimeSource}`;
+    const workspace = join(harness.home, 'workspace');
+    // Managed Codex's normal desktop owner establishes the workspace before
+    // compiling its native command/extension snapshot.
+    if (identity.runtimeSource === 'managed-provider') {
+      await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' }, model: 'gpt-5-codex' });
+      await waitFor(() => harness.externalSession.hasExternalRuntimeProcess(), 'managed desktop workspace prewarm');
+    }
+    for (const ordinal of [1, 2]) {
+      const text = `Visible user input ${ordinal}`;
+      const reminder = `<system-reminder>[task:server-plan-step-${ordinal}] Keep this exact task identity.</system-reminder>`;
+      const sent = await harness.engine.sendDesktopMessage({
+        ...desktopRequest(sessionId, workspace, text),
+        permissionMode: getMaxPermissionForRuntime(identity.runtimeType),
+        model: identity.runtimeType === 'claude-code' ? 'opus' : identity.runtimeType === 'dsh' ? 'deepseek-flash' : 'gpt-5-codex',
+        ...(identity.runtimeType === 'dsh' ? { providerRoute: { kind: 'provider' as const, providerId: 'deepseek', model: 'deepseek-flash' } } : {}),
+        runtimeReminder: reminder,
+      });
+      expect(sent.success).toBe(true);
+      await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+      await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+      expect(harness.runtime.sentMessages.at(-1)).toBe(`${text}\n${reminder}`);
+    }
+    const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
+    expect(users.map(message => message.content)).toEqual(['Visible user input 1', 'Visible user input 2']);
+    expect(JSON.stringify(users)).not.toContain('server-plan-step');
+  });
+
+  it('keeps realtime private reminders out of the human projection', async () => {
+    const harness = await createHarness([{ kind: 'silent' }], { realtimeSteering: true });
+    const sessionId = 'native-steer-reminder';
+    const workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'Original input'));
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    const reminder = '<system-reminder>[task:server-plan-steer] Preserve the original scope.</system-reminder>';
+    await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'Visible follow-up'), runtimeReminder: reminder });
+    await waitFor(() => harness.runtime.steeredMessages.length === 1, 'native steer with private task reminder');
+    const native = harness.runtime.steeredMessages[0];
+    expect(native.message).toBe(`Visible follow-up\n${reminder}`);
+    harness.runtime.emitUserMessageAccepted(native.clientUserMessageId);
+    await waitFor(async () => (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user').length === 2, 'visible steer persistence');
+    const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
+    expect(users.map(message => message.content)).toEqual(['Original input', 'Visible follow-up']);
+    expect(JSON.stringify(users)).not.toContain('server-plan-steer');
+  });
+
+  it('synchronizes precreated Claude Code steps from successful root Todo results', async () => {
+    const harness = await createHarness([{ kind: 'silent' }], { runtimeType: 'claude-code' });
+    const sessionId = 'claude-code-precreated-todos';
+    const started = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, join(harness.home, 'workspace'), 'Implement and verify'), permissionMode: getMaxPermissionForRuntime('claude-code'), model: 'opus' });
+    expect(started.success).toBe(true);
+    await expect(started.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    const queueId = harness.engine.getExecutionTurnId!()!;
+    const { emptyTaskLedger, materializeExecutionTodos, projectSessionTasks } = await import('../../shared/sessionTaskOrchestration');
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: 'human', queueId, taskPlanId: 'native-cc-plan' };
+    materializeExecutionTodos(ledger, 'native-cc-plan', ['Implement', 'Verify']);
+    await harness.sessionStore.updateSessionMetadata(sessionId, { taskOrchestration: ledger });
+    const input = { todos: ledger.plan!.map((todo, index) => ({ content: `[task:${todo.key}] ${todo.content}`, activeForm: todo.content, status: index === 0 ? 'completed' : 'in_progress' })) };
+    harness.runtime.emitForTest({ kind: 'tool_use_start', toolUseId: 'root-todo', toolName: 'TodoWrite', input });
+    harness.runtime.emitForTest({ kind: 'tool_use_stop', toolUseId: 'root-todo', input });
+    harness.runtime.emitForTest({ kind: 'tool_result', toolUseId: 'root-todo', content: JSON.stringify({ newTodos: input.todos }) });
+    await waitFor(() => harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.plan?.[0].status === 'completed', 'root native Todo persisted');
+    const updated = harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration!;
+    expect(projectSessionTasks(updated).map(task => task.phase)).toEqual(['awaiting_review', 'running']);
+    expect(updated.proposal).toBeUndefined();
+    expect(harness.externalSession.getExternalWorkProgressSnapshot()).toMatchObject({ todoTotal: 2, todoCompleted: 0 });
+  });
+
   it('carries the DSH desktop Provider through native startup, birth and config adoption', async () => {
     const harness = await createHarness([{ kind: 'success', text: 'selected Provider answer' }], {
       runtimeType: 'dsh', runtimeSource: 'integrated',
@@ -6182,6 +6320,44 @@ describe('external SessionEngine with fake runtime', () => {
   });
 
 
+  it('resumes the same DSH IM session after a config recovery fence without replaying rejected input', async () => {
+    const harness = await createHarness([
+      { kind: 'success', text: 'first reply' },
+      { kind: 'success', text: 'reply after recovery' },
+    ], { runtimeType: 'dsh' });
+    const sessionId = 'dsh-im-config-fence';
+    const workspacePath = join(harness.home, 'workspace');
+    const request = (message: string) => ({ message, requestId: message, sessionId, workspacePath,
+      scenario: { type: 'agent-channel' as const, platform: 'openclaw-weixin', sourceType: 'private' as const },
+      permissionMode: 'approval-required', model: 'deepseek-flash', metadataBirthPending: true });
+    const first = await harness.engine.enqueueImMessage(request('first'));
+    await first.dispatchAcceptance;
+    await harness.engine.waitIdle(2_000, 10);
+    vi.spyOn(harness.runtime, 'getConfigCapabilities').mockReturnValue({
+      model: 'live_session_rpc', permissionMode: 'next_turn_state', reasoningEffort: 'next_turn_state',
+    });
+    vi.spyOn(harness.runtime, 'setModel').mockImplementationOnce(async process => {
+      // ProcessHost owns the native code -> terminal event translation; its
+      // unit regression verifies this boundary. Exercise the real lifecycle
+      // owner here while a message-snapshot config call is still in flight.
+      process.kill();
+      const error = Object.assign(new Error('product-operation durability became uncertain'), { code: 'session_recovery_required' });
+      harness.runtime.emitForTest({ kind: 'session_complete', subtype: 'error', result: error.message });
+      throw error;
+    });
+    const rejected = await harness.engine.enqueueImMessage(request('rejected before dispatch'));
+    expect(rejected.success).toBe(false);
+    expect(harness.runtime.sentMessages).toEqual(['first']);
+    expect(harness.externalSession.hasExternalRuntimeProcess()).toBe(false);
+    const next = await harness.engine.enqueueImMessage(request('new input'));
+    expect(next.success).toBe(true);
+    await next.dispatchAcceptance;
+    await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+    expect(harness.runtime.startSessionResumeIds).toEqual([undefined, 'fake-thread-1']);
+    expect(harness.runtime.sentMessages).toEqual(['first', 'new input']);
+    expect(harness.sessionStore.getSessionMetadata(sessionId)?.runtimeSessionId).toBe('fake-thread-1');
+  });
+
   it.each(['private', 'group'] as const)('offers /new only to private peers when DSH resume fails (%s)', async sourceType => {
     const harness = await createHarness([{ kind: 'success', text: 'old reply' }], { runtimeType: 'dsh' });
     const sessionId = 'dsh-im-resume-failed';
@@ -7765,6 +7941,8 @@ describe('external SessionEngine with fake runtime', () => {
       },
     );
     const sessionId = 'session-codex-reset-mutation-lease';
+    // Production bootstrap owns the Product binding before desktop sends.
+    await (await import('../session-engine/product-session-binding')).setCurrentProductSessionId(sessionId);
     const workspacePath = join(harness.home, 'workspace');
     const sent = await harness.engine.sendDesktopMessage(
       desktopRequest(sessionId, workspacePath, 'first question'),
@@ -7786,7 +7964,7 @@ describe('external SessionEngine with fake runtime', () => {
     )!;
     const indexedBefore =
       harness.sessionStore.getSessionsByAgentDir(workspacePath).length;
-    const reset = harness.engine.resetForNewDesktopSession(workspacePath);
+    const reset = harness.engine.transitionDesktopSession(workspacePath, { sourceSessionId: sessionId, targetSessionId: '4d2c043d-e1ac-432d-9d3a-7f1619842ac0', channelBound: false });
 
     try {
       await waitFor(

@@ -21,6 +21,9 @@ const deadlineMs = 45_000;
 const parallelMode = process.argv.includes("--parallel");
 const reworkMode = process.argv.includes("--rework");
 const twoWorkersMode = process.argv.includes("--two-workers");
+const todoPlanMode = process.argv.includes("--todo-plan");
+let planPrecedesNative = false;
+let nativePlanUpdatesVerified = false;
 if ([parallelMode, reworkMode, twoWorkersMode].filter(Boolean).length > 1)
   throw new Error(
     "--parallel, --rework, and --two-workers are mutually exclusive",
@@ -111,10 +114,11 @@ const childToolResults: string[] = [];
 const errors: string[] = [];
 let storeApi: typeof import("../src/server/SessionStore") | undefined;
 let engineForCleanup:
-  | { stopTurn: (options?: { wholeSession?: boolean }) => Promise<unknown> }
+  | { stopTurn: (options?: { wholeSession?: boolean }) => Promise<unknown>; getLiveSessionState?: () => unknown }
   | undefined;
 let runSucceeded = false;
 let fixtureFatalError: string | undefined;
+const backgroundDiagnostics: unknown[] = [];
 
 async function saveFailureReceipt(error: unknown): Promise<void> {
   const raw = storeApi?.getSessionMetadata(sessionId)?.taskOrchestration as
@@ -209,6 +213,8 @@ async function saveFailureReceipt(error: unknown): Promise<void> {
     delegationLaunches: raw?.delegationLaunches,
     taskPackages: raw?.taskPackages,
     attempts: raw?.attempts,
+    liveSessionState: engineForCleanup?.getLiveSessionState?.(),
+    backgroundDiagnostics,
   };
   await writeFile(
     join(evidenceDir, "failure-receipt.json"),
@@ -227,6 +233,8 @@ const humanText = twoWorkersMode
       : `Create ${join(workspace, "loopback-proof.txt")} containing exactly "native-loopback-complete", then read it back and verify it.`;
 const requestId = randomUUID();
 let sessionId = "";
+const inputCardOrder: string[] = [];
+let closeEventObserver: (() => void) | undefined;
 let reviewUsed = false;
 let reviewDecision: "accept" | "rework" | undefined;
 let reviewRouteFailure: string | undefined;
@@ -523,6 +531,7 @@ const upstream = createServer((req, res) => {
         acceptanceCriteria: [
           "The requested file contains the exact requested text and a root Read verifies it.",
         ],
+        steps: ["Create the requested artifact", "Verify its contents"],
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ content: [{ type: "text", text }] }));
@@ -540,6 +549,7 @@ const upstream = createServer((req, res) => {
       return;
     }
     nativeTurnCount++;
+    if (twoWorkersMode) backgroundDiagnostics.push({ nativeTurnCount, live: engineForCleanup?.getLiveSessionState?.() });
     if ((reworkMode || twoWorkersMode) && reviewRouteFailure) {
       calls.push({ kind: "review-route-failed" });
       anthropicReply(res, {
@@ -549,6 +559,10 @@ const upstream = createServer((req, res) => {
       return;
     }
     if (nativeTurnCount === 1) {
+      const ledger = storeApi?.getSessionMetadata(sessionId)?.taskOrchestration;
+      assert.equal(ledger?.tasks.filter(task => task.workPlanId === ledger.execution?.id).length, 2);
+      assert.equal(ledger?.proposal, undefined);
+      planPrecedesNative = true;
       calls.push({ kind: "analysis-only-native-turn" });
       anthropicReply(res, {
         type: "text",
@@ -1225,6 +1239,35 @@ const upstream = createServer((req, res) => {
       });
       return;
     }
+    if (todoPlanMode) {
+      const ledger = storeApi!.getSessionMetadata(sessionId)!.taskOrchestration!;
+      const todos = ledger.tasks.filter(task => task.workPlanId === ledger.execution!.id);
+      const actions = [
+        { kind: "todo-create-1", name: "TaskCreate", input: { subject: `[task:${todos[0].id}] ${todos[0].title}` } },
+        { kind: "todo-create-2", name: "TaskCreate", input: { subject: `[task:${todos[1].id}] ${todos[1].title}` } },
+        { kind: "todo-start-1", name: "TaskUpdate", input: { taskId: "1", status: "in_progress" } },
+        ...(calls.some(call => call.kind === "write") ? [
+          { kind: "todo-finish-1", name: "TaskUpdate", input: { taskId: "1", status: "completed" } },
+          { kind: "todo-start-2", name: "TaskUpdate", input: { taskId: "2", status: "in_progress" } },
+        ] : []),
+        ...(calls.some(call => call.kind === "read") ? [
+          { kind: "todo-finish-2", name: "TaskUpdate", input: { taskId: "2", status: "completed" } },
+        ] : []),
+      ];
+      const action = actions.find(action => !calls.some(call => call.kind === action.kind));
+      if (action) {
+        assert((body.tools as { name: string }[]).some(tool => tool.name === action.name), `${action.name} must be a real native SDK tool`);
+        calls.push({ kind: action.kind, tool: action.name });
+        anthropicReply(res, { type: "tool_use", id: `root-${action.kind}`, name: action.name, input: action.input });
+        return;
+      }
+      if (calls.some(call => call.kind === "todo-start-2") && !calls.some(call => call.kind === "read")) {
+        const snapshot = await taskHandler({ sessionId, kind: "list" });
+        const tasks = snapshot.tasks as { id: string; phase: string }[];
+        assert.deepEqual(todos.map(todo => tasks.find(task => task.id === todo.id)?.phase), ["awaiting_review", "running"]);
+        nativePlanUpdatesVerified = true;
+      }
+    }
     const hasReviewReceipt = reviewUsed;
     if (!calls.some((call) => call.tool === "Write")) {
       calls.push({ kind: "write", tool: "Write" });
@@ -1310,7 +1353,7 @@ const upstream = createServer((req, res) => {
 const upstreamPort = await listen(upstream);
 
 try {
-  const { initializeAgent, setSessionProviderEnv, setSessionModel } =
+  const { initializeAgent, setSessionProviderEnv, setSessionModel, getSessionId } =
     await import("../src/server/agent-session");
   const store = (storeApi = await import("../src/server/SessionStore"));
   const taskOrchestration = await import(
@@ -1319,6 +1362,23 @@ try {
   const { getSessionEngine } = await import(
     "../src/server/session-engine/selector"
   );
+  // Observe the production broadcast seam without a second Session owner.
+  const { createSseClient } = await import("../src/server/sse");
+  const { isLiveRevisionEnvelope } = await import("../src/shared/liveRevision");
+  const observer = createSseClient(() => {});
+  closeEventObserver = () => observer.client.close();
+  observer.client.send = (event, data) => {
+    const payload = (isLiveRevisionEnvelope(data) ? data.payload : data) as { sessionId?: string; message?: { content?: string; metadata?: { clientRequestId?: string } }; ledger?: { execution?: unknown } };
+    const eventSession = isLiveRevisionEnvelope(data) ? data.sessionId : payload.sessionId;
+    if (eventSession !== sessionId) return;
+    if (event === "chat:message-replay" && payload.message?.metadata?.clientRequestId === requestId) {
+      assert.equal(payload.message.content, humanText, "live user echo must contain only the original input");
+      inputCardOrder.push("user-input");
+    }
+    if (event === "chat:task-orchestration" && payload.ledger?.execution && !inputCardOrder.includes("execution-card")) {
+      inputCardOrder.push("execution-card");
+    }
+  };
   ({ handleSessionTaskCommand: taskHandler } = await import(
     "../src/server/routes/session-task-orchestration"
   ));
@@ -1366,8 +1426,14 @@ try {
   const engine = getSessionEngine();
   engineForCleanup = engine;
   const born = await withHardDeadline(
-    engine.resetForNewDesktopSession(workspace),
-    "resetForNewDesktopSession",
+    engine.transitionDesktopSession(workspace, {
+      sourceSessionId: getSessionId(),
+      targetSessionId: randomUUID(),
+      channelBound: false,
+      metadataBirthPending: true,
+      metadataIndexed: false,
+    }),
+    "transitionDesktopSession",
   );
   assert(born.success && born.sessionId);
   sessionId = born.sessionId;
@@ -1479,6 +1545,14 @@ try {
   const execution =
     store.getSessionMetadata(sessionId)?.taskOrchestration?.execution;
   assert.equal(execution?.phase, "completed");
+  assert(planPrecedesNative, "the To Do List must exist before the first native model turn");
+  if (todoPlanMode) {
+    assert(nativePlanUpdatesVerified, "real native TaskCreate/TaskUpdate results must update the original ledger before verification");
+    const snapshot = await taskHandler({ sessionId, kind: "list" });
+    const tasks = snapshot.tasks as { phase: string }[];
+    assert.equal(tasks.length, 2);
+    assert(tasks.every(task => task.phase === "completed"), "root terminal acceptance must settle the same native To Do List");
+  }
   assert(
     admitted.queueId?.startsWith("session-execution:"),
     "the original facade send must own its execution queue",
@@ -1643,6 +1717,16 @@ try {
     1,
     "the original human input proof must persist once",
   );
+  assert.deepEqual(inputCardOrder.slice(0, 2), ["user-input", "execution-card"], "raw input must be pushed before its execution card");
+  const transcript = await store.getSessionData(sessionId);
+  const humanMessages = transcript?.messages.filter(message => message.metadata?.clientRequestId === requestId) ?? [];
+  assert.equal(humanMessages.length, 1, "raw input must persist exactly once");
+  assert.equal(humanMessages[0]?.content, humanText, "canonical user history must not contain execution instructions");
+  const { parseLeadingSystemReminder } = await import("../src/shared/systemReminder");
+  const { isHumanUserMessage } = await import("../src/server/utils/session-message-preview");
+  const automaticInputs = transcript?.messages.filter(message => message.role === "user" && message.metadata?.clientRequestId !== requestId) ?? [];
+  assert(automaticInputs.length > 0, "native automatic continuation must be exercised");
+  assert(automaticInputs.every(message => parseLeadingSystemReminder(message.content).visibleText === "" && !isHumanUserMessage(message)), "automatic context must not become visible human history");
   const writeCalls = calls.filter((call) => call.tool === "Write");
   const readCalls = calls.filter((call) => call.tool === "Read");
   const writeUses = writeCalls.length;
@@ -1787,6 +1871,8 @@ try {
     originalBuiltinFacade: true,
     sessionStore: true,
     productionTaskRoute: true,
+    planPrecedesNative,
+    ...(todoPlanMode ? { mode: "native-todo-plan", nativePlanUpdatesVerified } : {}),
     sessionId,
     executionId: execution?.id,
     phase: execution?.phase,
@@ -1796,6 +1882,10 @@ try {
     executionTurns: execution?.turns,
     continuationState: execution?.continuation?.state,
     originalInputAdmissions: inputAdmissions,
+    inputBeforeExecutionCard: true,
+    originalUserMessageCount: humanMessages.length,
+    originalUserContentUnchanged: true,
+    automaticContextHidden: true,
     realWriteToolUses: writeUses,
     realReadToolUses: readUses,
     ...(reworkMode
@@ -1866,6 +1956,7 @@ try {
   throw error;
 } finally {
   clearTimeout(hardDeadlineTimer);
+  closeEventObserver?.();
   if (!runSucceeded && engineForCleanup) {
     try {
       await boundedCleanup(

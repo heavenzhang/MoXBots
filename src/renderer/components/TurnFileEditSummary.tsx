@@ -38,6 +38,9 @@ export function TurnFileEditSummary({ content }: { content: Message['content'] }
   const capsuleLabel = t('message.turnFileEdits.summary', {
     count: summary.files.length,
   });
+  const shortCapsuleLabel = t('message.turnFileEdits.shortSummary', {
+    count: summary.files.length,
+  });
   const showTotals = summary.allStatsReliable
     && (summary.totalAdded > 0 || summary.totalRemoved > 0);
   const cancelFileMenu = () => {
@@ -54,30 +57,58 @@ export function TurnFileEditSummary({ content }: { content: Message['content'] }
 
   return (
     <>
-      <Tip label={capsuleLabel} disabled={open}>
-        <button
-          ref={anchorRef}
-          type="button"
-          className="flex h-7 max-w-full items-center gap-1.5 rounded-full px-2 text-sm text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)]"
-          aria-expanded={open}
-          aria-controls={popoverId}
-          onClick={() => {
-            if (open) cancelFileMenu();
-            setOpen((current) => !current);
-          }}
-        >
-          <FileEditIcon className="h-3.5 w-3.5 shrink-0" />
-          <span className="truncate">{capsuleLabel}</span>
-          {showTotals && (
-            <span className="shrink-0 font-mono text-xs text-[var(--ink-muted)]/80">
-              {t('message.turnFileEdits.accumulated')}{' '}
-              <span className="text-[var(--success)]">+{summary.totalAdded}</span>
-              {' '}
-              <span className="text-[var(--error)]">−{summary.totalRemoved}</span>
-            </span>
-          )}
-        </button>
-      </Tip>
+      <div className="@container/turn-files flex min-w-0 max-w-full flex-1 items-center gap-1 overflow-hidden">
+        <Tip label={capsuleLabel} disabled={open} className="min-w-0 flex-1">
+          <button
+            ref={anchorRef}
+            type="button"
+            className="flex h-7 w-full min-w-0 items-center gap-1.5 rounded-full px-2 text-sm text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)]"
+            aria-label={capsuleLabel}
+            title={capsuleLabel}
+            aria-expanded={open}
+            aria-controls={popoverId}
+            onClick={() => {
+              if (open) cancelFileMenu();
+              setOpen((current) => !current);
+            }}
+          >
+            <FileEditIcon className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate @max-[340px]/turn-files:hidden">{capsuleLabel}</span>
+            <span className="hidden truncate @max-[340px]/turn-files:inline">{shortCapsuleLabel}</span>
+            {showTotals && (
+              <span className="shrink-0 font-mono text-xs text-[var(--ink-muted)]/80 @max-[340px]/turn-files:hidden">
+                {t('message.turnFileEdits.accumulated')}{' '}
+                <span className="text-[var(--success)]">+{summary.totalAdded}</span>
+                {' '}
+                <span className="text-[var(--error)]">−{summary.totalRemoved}</span>
+              </span>
+            )}
+          </button>
+        </Tip>
+        <div className="flex min-w-0 flex-1 items-center gap-1" aria-label={t('message.turnFileEdits.title')}>
+          {summary.files.slice(0, 2).map((file, index) => (
+            <button
+              key={file.identityPath}
+              type="button"
+              disabled={file.status === 'deleted' || !fileAction}
+              className={`flex h-7 min-w-0 flex-1 items-center gap-1 rounded-md px-1 text-xs text-[var(--ink-secondary)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-border)]/30 disabled:cursor-default disabled:opacity-50 ${index > 0 ? '@max-[340px]/turn-files:hidden' : ''}`}
+              aria-label={`${t(`message.turnFileEdits.status.${file.status}`)}: ${file.displayPath}`}
+              title={file.displayPath}
+              onClick={() => {
+                if (file.status === 'deleted' || !fileAction) return;
+                const target = resolveFileActionTarget(
+                  file.displayPath,
+                  fileAction.workspacePath,
+                ) ?? file.actionTarget;
+                fileAction.openFileTarget(target, { displayPath: file.displayPath });
+              }}
+            >
+              <FileIcon name={basenameOf(file.displayPath)} size="dense" />
+              <span className="min-w-0 flex-1 truncate">{basenameOf(file.displayPath)}</span>
+            </button>
+          ))}
+        </div>
+      </div>
       <Popover
         open={open}
         onClose={closeAndRestoreFocus}

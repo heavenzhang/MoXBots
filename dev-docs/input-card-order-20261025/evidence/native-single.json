@@ -1,0 +1,57 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "sessionId": "13c7c5f2-43a8-40cc-9d8e-55898d42b91a",
+  "executionId": "9c04dd8c-3549-46f9-af7a-4bfe3556ba0a",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:cd247068-bc1d-49b8-8534-4bce31f2e7d7",
+  "finalQueueId": "session-execution:c8519c07-8868-42b9-b25e-a5a763e7d9c7",
+  "executionTurns": 2,
+  "originalInputAdmissions": 1,
+  "inputBeforeExecutionCard": true,
+  "originalUserMessageCount": 1,
+  "originalUserContentUnchanged": true,
+  "automaticContextHidden": true,
+  "realWriteToolUses": 1,
+  "realReadToolUses": 1,
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "write",
+      "tool": "Write"
+    },
+    {
+      "kind": "read",
+      "tool": "Read"
+    },
+    {
+      "kind": "review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final"
+    }
+  ],
+  "elapsedMs": 2620,
+  "persistedEvidencePath": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/moxbots-execution-evidence-75DTVM/receipt.json"
+}

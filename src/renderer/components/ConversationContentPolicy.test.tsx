@@ -49,12 +49,20 @@ it("uses ordinary message/process UI while remote text cannot enable local cards
       name: /导出|Export|重试|Retry|重新生成|Fork|分支|文件操作/i,
     }),
   ).toBeNull();
-  fireEvent.click(
-    document.querySelector("[data-process-row] button[aria-expanded]")!,
-  );
-  expect(document.querySelector("pre")?.textContent).toBe(
-    '{"content":"JSON document","filePath":"/local/file"}',
-  );
+  const disclosure = document.querySelector(
+    "[data-process-row] button[aria-expanded]",
+  )!;
+  const output = '{"content":"JSON document","filePath":"/local/file"}';
+  // Remote results are visible by default. Both disclosure states retain the
+  // same text-only policy instead of turning JSON paths into local actions.
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+  expect(document.querySelector("pre")?.textContent).toBe(output);
+  fireEvent.click(disclosure);
+  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+  expect(document.querySelector("pre")).toBeNull();
+  fireEvent.click(disclosure);
+  expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+  expect(document.querySelector("pre")?.textContent).toBe(output);
   expect(document.querySelector("a,img,iframe")).toBeNull();
 });
 it("canonical tool text never dispatches a local cron or file renderer", () => {

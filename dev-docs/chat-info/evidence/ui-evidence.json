@@ -1,0 +1,99 @@
+{
+  "environment": "production MessageList/Message/BlockGroup/TurnFileEditSummary/FileActionProvider, synthetic events/native transport",
+  "errors": [],
+  "checks": [
+    {
+      "state": "command",
+      "status": "正在执行：验证修复、权限隔离与失败回滚，保留原始业务数据 · 本轮已用 38秒",
+      "height": 30
+    },
+    {
+      "state": "wait",
+      "status": "正在等待任务返回：独立审阅：会话恢复与权限边界 · 本轮已用 38秒",
+      "height": 30
+    },
+    {
+      "state": "model",
+      "status": "等待模型响应… · 本轮已用 38秒",
+      "height": 30
+    },
+    {
+      "state": "compacting",
+      "status": "会话内容过长，智能总结中… · 本轮已用 38秒",
+      "height": 30
+    },
+    {
+      "state": "recovery",
+      "status": "等待模型恢复，15秒后重试（第2次）",
+      "height": 30
+    },
+    {
+      "state": "stopping",
+      "status": "正在停止当前任务… · 本轮已用 38秒",
+      "height": 30
+    },
+    {
+      "state": "permission",
+      "status": "等待你授权 Bash，请查看上方请求"
+    },
+    {
+      "state": "question",
+      "status": "等待你补充信息，请查看上方问题"
+    },
+    {
+      "state": "plan",
+      "status": "等待你确认计划，请查看上方方案"
+    },
+    {
+      "milestone": "已读取 SessionRecovery.ts · 已读取 PermissionGuard.ts",
+      "keyboardExpandCollapse": true
+    },
+    {
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "geometry": {
+        "viewport": 768,
+        "page": 768,
+        "actions": [
+          {
+            "text": "变更结果成功返回 3/3时间未记录整段跨度未记录已更新 01-验收报告-会话恢复与权限隔离.md · 已更新 very-long-secondary-result-name-for-layout-validation.md · 另有 1 项已返回结果",
+            "width": 705
+          },
+          {
+            "text": "01-验收报告-会话恢复与权限隔离.md",
+            "width": 144.25
+          }
+        ]
+      }
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "geometry": {
+        "viewport": 390,
+        "page": 390,
+        "actions": [
+          {
+            "text": "变更结果成功返回 3/3时间未记录整段跨度未记录已更新 01-验收报告-会话恢复与权限隔离.md · 已更新 very-long-secondary-result-name-for-layout-validation.md · 另有 1 项已返回结果",
+            "width": 327
+          },
+          {
+            "text": "01-验收报告-会话恢复与权限隔离.md",
+            "width": 103.5
+          }
+        ]
+      }
+    },
+    {
+      "directFileNativeReadAndPreview": true,
+      "fullListThirdFile": true,
+      "noExtraStatusHeight": true,
+      "darkEnglishNarrow": true,
+      "draftPreserved": true
+    }
+  ]
+}

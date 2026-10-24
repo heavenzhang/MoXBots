@@ -1,0 +1,123 @@
+{
+  "sourceHashes": {
+    "src/renderer/components/MessageList.tsx": "5301db02220821bee71a1f4955509a76a8270543486debfe60fc99252e607ed4",
+    "src/renderer/components/BlockGroup.tsx": "cd29181915876144f5401efa09f5191c908bc692468d377f8096f0bd5e416306",
+    "src/renderer/components/TurnFileEditSummary.tsx": "fcf4d856170c7d0d314d00a19e4b2e1255449fba66e9806080682930746b050f",
+    "src/renderer/utils/currentActivity.ts": "bc1bcb6844ae8dd5b643b7055f556d4ec135458d1c79129abc0e2e87a44b28a7",
+    "src/renderer/utils/processResults.ts": "8bb3a9b6f7aebc9181bdd46f2aeae9802549c93874d1ad5f4624825a68cb19f1",
+    "src/renderer/i18n/locales/zh-CN/app.json": "29fa551bc24ab463bc1f4a171b124f97b4b5f56d3c1744b7db53b27bff203bf8",
+    "src/renderer/i18n/locales/en-US/app.json": "73e85562b7c6f28d51d65b0f5407e6e9274a1a96c15833dff240aafaa5a7c2cd"
+  },
+  "environment": "loopback actual renderer with synthetic event/native transport; native/provider not accepted",
+  "checks": [
+    {
+      "state": "read",
+      "text": "正在读取 CurrentCheck.ts · 本轮已用 38秒"
+    },
+    {
+      "state": "command",
+      "text": "正在执行：验证修复、权限隔离与失败回滚，保留原始业务数据 · 本轮已用 38秒"
+    },
+    {
+      "state": "wait",
+      "text": "正在等待任务返回：独立审阅：会话恢复与权限边界 · 本轮已用 38秒"
+    },
+    {
+      "state": "model",
+      "text": "等待模型响应… · 本轮已用 38秒"
+    },
+    {
+      "state": "permission",
+      "text": "等待你授权 Bash，请查看上方请求"
+    },
+    {
+      "state": "question",
+      "text": "等待你补充信息，请查看上方问题"
+    },
+    {
+      "state": "plan",
+      "text": "等待你确认计划，请查看上方方案"
+    },
+    {
+      "state": "compacting",
+      "text": "会话内容过长，智能总结中… · 本轮已用 38秒"
+    },
+    {
+      "state": "recovery",
+      "text": "等待模型恢复，15秒后重试（第2次）"
+    },
+    {
+      "state": "stopping",
+      "text": "正在停止当前任务… · 本轮已用 38秒"
+    },
+    {
+      "geometry": {
+        "width": 1440,
+        "scrollWidth": 1440,
+        "scrollerHeight": 793
+      }
+    },
+    {
+      "geometry": {
+        "width": 768,
+        "scrollWidth": 768,
+        "scrollerHeight": 917
+      }
+    },
+    {
+      "geometry": {
+        "width": 390,
+        "scrollWidth": 390,
+        "scrollerHeight": 711.609375
+      }
+    },
+    {
+      "keyboardPhaseToggle": true
+    },
+    {
+      "directFileWidth390": 103.5
+    },
+    {
+      "previewTransport": [
+        {
+          "cmd": "cmd_workspace_check_paths",
+          "args": {
+            "workspace": "/fixture",
+            "paths": [
+              "reports/01-验收报告-会话恢复与权限隔离.md"
+            ]
+          }
+        },
+        {
+          "cmd": "cmd_workspace_read_preview",
+          "args": {
+            "workspace": "/fixture",
+            "path": "reports/01-验收报告-会话恢复与权限隔离.md"
+          }
+        }
+      ]
+    },
+    {
+      "fullListAccess": true
+    }
+  ],
+  "errors": [],
+  "warnings": [
+    "Each child in a list should have a unique \"key\" prop.%s%s See https://react.dev/link/warning-keys for more information. \n\nCheck the render method of `fr`. "
+  ],
+  "acceptedSourceHashes": {
+    "src/renderer/components/MessageList.tsx": "5301db02220821bee71a1f4955509a76a8270543486debfe60fc99252e607ed4",
+    "src/renderer/components/BlockGroup.tsx": "cd29181915876144f5401efa09f5191c908bc692468d377f8096f0bd5e416306",
+    "src/renderer/components/TurnFileEditSummary.tsx": "853dbed1a82ed94c72c385c22b5cc3d09c129f3082b67ce25e940c1d6e4d51be",
+    "src/renderer/utils/currentActivity.ts": "bc1bcb6844ae8dd5b643b7055f556d4ec135458d1c79129abc0e2e87a44b28a7",
+    "src/renderer/utils/processResults.ts": "8bb3a9b6f7aebc9181bdd46f2aeae9802549c93874d1ad5f4624825a68cb19f1",
+    "src/renderer/i18n/locales/zh-CN/app.json": "611a4666590ef8339ac636ad38881040d5c1d9279dfa01791bea824535432df4",
+    "src/renderer/i18n/locales/en-US/app.json": "1ab044d297de98ad124acc28331f27b18828f13b0b2efe3b720ddefdc5063332"
+  },
+  "affectedRetest": "responsive-refresh.json",
+  "changedSinceMainRun": [
+    "src/renderer/components/TurnFileEditSummary.tsx",
+    "src/renderer/i18n/locales/zh-CN/app.json",
+    "src/renderer/i18n/locales/en-US/app.json"
+  ]
+}

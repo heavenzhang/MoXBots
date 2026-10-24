@@ -11,6 +11,14 @@
 
 ## 新增与修改脚本必须遵循的原则
 
+### 配对的 Tauri 框架补丁
+
+`scripts/patch-tauri-events.mjs` 对固定 `@tauri-apps/api 2.11.1` 的 ESM/CJS 事件入口应用精确字节补丁，与 `vendor/tauri` 的原生事件生成器配对；版本、原始/结果摘要及 native 对应文件不一致时拒绝构建。`postinstall` 准备依赖，开发、Web 构建及类型检查的前置 hook 只核验。不要修改共享 npm/Cargo 缓存，使用工作树私有依赖副本。
+
+原生 macOS 退出还需要 `vendor/tao` 与 `vendor/tauri-runtime-wry` 的配对事件投影。各 vendor 的 `UPSTREAM_FILES.json`、许可证及 `MYAGENTS_PATCH.md` 保留来源和撤除条件；原始模板/空白不清洗。依赖升级或撤除任何一半前，复核另一半并运行 `node --test scripts/patch-tauri-events.test.mjs scripts/tauri-event-lifecycle.test.mjs scripts/tauri-native-quit.test.mjs`，以及 macOS 隔离 `npm run test:native:tauri-events` / `npm run test:native:quit`。独立 fixture 通过不代表产品录音、更新或真实会话验收通过。
+
+### 公共资源准备原则
+
 1. **入口负责组织流程，资源 helper 负责资源是否可用。** setup 与 build 必须复用同一资源准备入口；平台脚本不得另写版本、缓存命中或补下载逻辑。平台入口须能补齐其声明负责的资源，不能依赖过去运行过另一个入口；直接调用底层工具的前置条件须在指南中明确。
 2. **每项事实只有明确的权威来源。** 资源版本、目标架构、摘要与发布策略来自既有 lock、manifest 或配置。锁定版本与跟随 latest 是两种明确策略，不能因缓存或网络失败偷偷切换；新增资源必须先说明采用哪一种。
 3. **按本次构建目标准备，区分 host 与 target。** 主机能力用于判断能否运行构建工具，目标参数用于选择交付资源。双架构和交叉构建不得沿用上次 staging 的架构；架构无关的业务产物在一次构建中只生成一次。

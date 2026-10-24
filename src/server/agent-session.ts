@@ -182,7 +182,7 @@ import {
 import type { OfficialToolId } from '../shared/official-tools';
 import { prepareSessionTranscriptMutation, activateSessionTranscript, claimPreparedSessionForTurnAdmission, commitPreparedSessionForFirstUserTurn, migratePendingSessionIdentity, resolvePendingConversationMutation, saveSessionMetadata, publishForkSession, assertCompleteSessionForkSource, updateSessionTitleFromMessage, updateSessionMetadata, updateSessionMetadataForBinding, getSessionMetadata, getActiveSessionTranscript, loadSessionTranscript } from './SessionStore';
 import { TranscriptPresentation } from './session-transcript/presentation';
-import { projectTranscriptToolInput, type TranscriptObject } from '../shared/sessionTranscript';
+import { projectTranscriptToolInput, toStoredTranscriptMessage, type TranscriptObject } from '../shared/sessionTranscript';
 import { fireAcceptedUserTitleHook, firePostTurnTitleHook } from './turn-hooks';
 import { createSessionMetadata, type SessionMetadata, type SessionMessage, type MessageAttachment, type SessionSource, type TurnAnalyticsSource } from './types/session';
 import { originFromTurnAttribution } from '../shared/session-origin';
@@ -324,6 +324,7 @@ export type {
 } from './builtin-session/types';
 import type { ProviderEnv } from './provider-types';
 export { stripPlaywrightResults } from './builtin-session/transcript-persistence';
+export { runSerializedSessionMutation } from './builtin-session/lifecycle';
 import { extractBackgroundTaskOutputPath } from './builtin-session/background-task-output';
 export { hasBuiltinActivityForUpdate, setUpdateRestartFrozen } from './builtin-session/lifecycle';
 import {
@@ -380,6 +381,7 @@ import {
   takeQueryBackgroundTasks,
   wakeGenerator as lifecycleWakeGenerator,
   waitForQueryExit,
+  isQueryAwaitingExit,
   waitForMessage as lifecycleWaitForMessage,
   type QueryMcpMutationResult,
   type BuiltinQueryAuthority,
@@ -2476,6 +2478,18 @@ function promoteNextFromPending(): void {
   wakeGenerator(pending.sourceItem);
 }
 
+function recoveredQueuedUserSurface(item: MessageQueueItem): DeferredUserSurface {
+  return {
+    event: 'queue-started', queueId: item.id, channelDelivery: item.channelDelivery,
+    sessionBirthOrigin: item.sessionBirthOrigin,
+    message: {
+      id: allocateMessageId(), role: 'user', content: item.messageText,
+      desktopQuery: item.desktopQuery, timestamp: new Date().toISOString(),
+      attachments: item.attachments, metadata: item.metadata,
+    },
+  };
+}
+
 function startNextTurnQueuedItem(
   reason: 'complete' | 'stopped' | 'error' | 'recovery',
   options?: { forceQueueId?: string; allowRealtimePending?: boolean },
@@ -3458,7 +3472,7 @@ function clearBuiltinQueryMcpOwner(query?: Query): void {
 
 /** Explicit retry uses the existing resume + startup-admission owner, even for unchanged config. */
 export function retryBuiltinMcpServer(serverId: string): McpRetryResult {
-  if (isSessionBusy() || hasQueryBackgroundTasks(lifecycleState.query) || getQueryMcpMutation()) {
+  if (isSessionBusy() || hasQueryBackgroundWork(lifecycleState.query) || getQueryMcpMutation()) {
     return { success: false, status: 409, errorCode: 'session_busy' };
   }
   const failed = builtinMcpEffectiveSnapshot?.servers.find(server => server.id === serverId);
@@ -4336,7 +4350,7 @@ function schedulePreWarm(delayMs = 500): void {
         promotedItemInFlight: queueState.promotedItemInFlight,
         turnInFlight: isTurnInFlight(),
         sdkCommandInFlight: getInFlightQueueId() !== null,
-        backgroundTasksActive: hasQueryBackgroundTasks(lifecycleState.query),
+        backgroundTasksActive: hasQueryBackgroundWork(lifecycleState.query),
       })) {
         // The terminal path owns this drain. Never let a previously armed
         // pre-warm timer abort an item between promotion and SDK yield.
@@ -7818,7 +7832,7 @@ function applyDeferredRestartIfNeeded(): void {
     promotedItemInFlight: queueState.promotedItemInFlight,
     turnInFlight: isTurnInFlight(),
     sdkCommandInFlight: getInFlightQueueId() !== null,
-    backgroundTasksActive: hasQueryBackgroundTasks(lifecycleState.query),
+    backgroundTasksActive: hasQueryBackgroundWork(lifecycleState.query),
   })) {
     return;
   }
@@ -8201,7 +8215,7 @@ function observeBuiltinTaskPlanResult(toolUseId: string): void {
     && block.tool?.id === toolUseId && !block.tool.isError && ['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'].includes(block.tool.name)));
   if (!isPlanResult) return;
   const plan = deriveSessionTodos(messages);
-  if (plan.source !== 'none') observeSessionTasksInBackground(getSessionId(), { plan: plan.todos, planTurnId: getBuiltinProductContent()?.currentTurn?.id });
+  if (plan.source !== 'none') observeSessionTasksInBackground(getSessionId(), { plan: plan.todos, planTurnId: getBuiltinCurrentTurnQueueId() ?? undefined });
 }
 
 export function getBuiltinExecutionStartedAt(): string | undefined {
@@ -8277,7 +8291,10 @@ export function getMessages(): MessageWire[] {
   return getBuiltinMessages();
 }
 
-export function getBuiltinLiveSessionSnapshot(targetSessionId: string): {
+export function getBuiltinLiveSessionSnapshot(
+  targetSessionId: string,
+  options?: { includeHistory?: boolean },
+): {
   snapshotRevision: number;
   inMemoryMessages: SessionMessage[];
   liveStreamingMessage: SessionMessage | null;
@@ -8287,10 +8304,23 @@ export function getBuiltinLiveSessionSnapshot(targetSessionId: string): {
   if (targetSessionId !== sessionId) return null;
   flushPendingLiveEvents();
   const streamingAssistantId = getStreamingAssistantId();
-  const messages = getBuiltinMessages().map(messageWireToSessionMessage);
-  const liveStreamingMessage = streamingAssistantId
+  // Stream attachment selects the live V2 row before projecting the transcript.
+  // Snapshot/history requests retain the existing complete projection path.
+  const messages = options?.includeHistory === false
+    ? [] : getBuiltinMessages().map(messageWireToSessionMessage);
+  let liveStreamingMessage = streamingAssistantId
     ? messages.find(message => message.id === streamingAssistantId) ?? null
     : null;
+  if (options?.includeHistory === false && streamingAssistantId) {
+    const product = getBuiltinProductContent();
+    if (product) {
+      const message = product.writer.projection.messages.get(streamingAssistantId);
+      liveStreamingMessage = message ? toStoredTranscriptMessage(message) : null;
+    } else {
+      const message = getBuiltinMessages().find(message => message.id === streamingAssistantId);
+      liveStreamingMessage = message ? messageWireToSessionMessage(message) : null;
+    }
+  }
   return structuredClone({
     snapshotRevision: getBuiltinLiveRevision(),
     inMemoryMessages: messages.filter(message => message.id !== streamingAssistantId),
@@ -9444,6 +9474,9 @@ export async function enqueueUserMessage(
   analyticsOrigin?: SessionOrigin,
   options?: {
     fromDesktopChatSend?: boolean;
+    /** Runtime-only product context, separate from persisted user text. */
+    runtimeReminder?: string;
+    surfaceUserBeforeDispatch?: boolean;
     desktopQuery?: import("../shared/agentMentions").DesktopQueryDraft;
     queueId?: string;
     turnOwner?: TurnOwner;
@@ -10269,6 +10302,9 @@ export async function enqueueUserMessage(
   }
 
   // Add text content if present (may include @reference suffix from fallback)
+  if (options?.runtimeReminder) {
+    contentBlocks.push({ type: 'text', text: options.runtimeReminder });
+  }
   if (effectiveText) {
     contentBlocks.push({ type: 'text', text: effectiveText });
   }
@@ -10316,6 +10352,7 @@ export async function enqueueUserMessage(
       turnOwner: options?.turnOwner,
       onTerminal: admissionCallbacks.onTerminal,
       beforeDispatch: options?.beforeDispatch,
+      surfaceUserBeforeDispatch: options?.surfaceUserBeforeDispatch,
       channelDelivery,
       deferredSessionMetadata,
       deferVisibleAdmission,
@@ -10474,7 +10511,8 @@ export async function enqueueUserMessage(
     mirrorImages: resolvedImagesToMirrorImages(resolvedImages),
     channelDelivery,
   };
-  if (!options?.beforeDispatch) {
+  const surfaceBeforeDispatch = options?.surfaceUserBeforeDispatch && !deferVisibleAdmission;
+  if (!options?.beforeDispatch || surfaceBeforeDispatch) {
     try {
       await surfaceBuiltinUserMessage(directUserSurface, 'pre-admission');
     } catch (error) {
@@ -10511,7 +10549,7 @@ export async function enqueueUserMessage(
     beforeDispatch: options?.beforeDispatch,
     channelDelivery,
     deferredSessionMetadata,
-    deferredUserSurface: options?.beforeDispatch ? directUserSurface : undefined,
+    deferredUserSurface: options?.beforeDispatch && !surfaceBeforeDispatch ? directUserSurface : undefined,
     deferVisibleAdmission,
     settleDispatchAcceptance: admissionCallbacks.settleDispatchAcceptance,
   };
@@ -10884,8 +10922,16 @@ async function interruptResponseWithoutRecovery(reason: CancelReason): Promise<b
       ...(getTurnAdmissionTicket() ? [getTurnAdmissionTicket()!.queueId] : []),
     ]);
     const wasRunning = sessionState === 'running';
+    const stoppedQuery = lifecycleState.query;
     const results = await Promise.all([...queueIds].map(queueId => cancelQueueItem(queueId)));
     const cancelled = results.some(result => result.status === 'cancelled');
+    // A rebuild-quarantined generator cannot consume another input. Retire only
+    // that exact Query, inside the existing durable recovery Stop wrapper.
+    // Healthy parked Queries and SDK-accepted future inputs stay untouched.
+    if (wasRunning && stoppedQuery && lifecycleState.query === stoppedQuery
+      && isQueryAwaitingExit(stoppedQuery) && getInFlightQueueId() === null && !isTurnInFlight()) {
+      abortPersistentSession();
+    }
     const quiescent = settleCancelledInputActivity();
     traceBuiltinInputProgress('stop-settled');
     const stopped = cancelled || (wasRunning && quiescent);
@@ -11165,6 +11211,16 @@ export async function cancelQueuedTurnsByOwner(owner: TurnOwner): Promise<number
  */
 export async function forceExecuteQueueItem(queueId: string): Promise<boolean> {
   traceBuiltinInputProgress('force-requested');
+  // The FIFO head owns the executing native turn. A recovered queued input
+  // can already be that head while its replay/assistant-start receipt (and
+  // therefore the queue pill) is still pending. Force must never stop itself.
+  // currentTurnSourceItem can already point at a later realtime input, so it
+  // cannot distinguish this root from a genuine queued successor.
+  const outputOwner = peekPendingOutputOwner();
+  if (isTurnInFlight() && (outputOwner?.queueId === queueId
+    || (!outputOwner && getBuiltinCurrentTurnQueueId() === queueId))) {
+    return true;
+  }
   const location = findQueueLocation({
     messageIndex: getMessageQueue().findIndex(item => item.id === queueId),
     pendingMidTurnIndex: getPendingMidTurnQueue().findIndex(p => p.queueId === queueId),
@@ -13215,7 +13271,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
 
     const retireRewoundQueryWhenQuiescent = (): void => {
       if (!deferredRewindResult || !rewindInputGate) return;
-      if (hasQueryBackgroundTasks(activeQuery)) return;
+      if (hasQueryBackgroundWork(activeQuery)) return;
       if (!rewindInputGate.retirement.signal.aborted) {
         console.log('[agent] rewind replacement result received; closing SDK input to publish durable native head');
         retireRewoundQueryInput(rewindInputGate);
@@ -13616,7 +13672,12 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       // its two terminal channels. A resumed task keeps task_id, not run_id.
       if (sdkMessage.type === 'system') {
         if (sdkMessage.subtype === 'background_tasks_changed') {
+          const wasWorking = hasQueryBackgroundWork(activeQuery);
           replaceQueryBackgroundActivity(activeQuery, sdkMessage.tasks);
+          if (wasWorking && !hasQueryBackgroundWork(activeQuery)) {
+            if (deferredRewindResult) retireRewoundQueryWhenQuiescent();
+            else applyDeferredRestartIfNeeded();
+          }
           if (!hasBuiltinBackgroundWork()) wakeSessionExecution(sessionId);
         }
         const taskMsg = sdkMessage as { subtype?: string; task_id?: string; run_id?: string;
@@ -14813,7 +14874,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       && rewindResumeAt
       && !lifecycleState.abortRequested
       && !builtinInterrupt.isInterrupting()
-      && !hasQueryBackgroundTasks(activeQuery)
+      && !hasQueryBackgroundWork(activeQuery)
       && isCurrentQueryAuthority(activeQueryAuthority)
     ) {
       // The streaming input ended and the SDK iterator returned normally, so
@@ -15425,6 +15486,33 @@ async function* messageGenerator(
     }
 
     traceBuiltinInputProgress('admission-wait', inputTrace);
+    let humanSurfacedBeforeDispatch = false;
+    if (item.surfaceUserBeforeDispatch && !item.deferVisibleAdmission
+      && item.wasQueued && !peekPendingOutputOwner() && item.inputSource !== 'inbox'
+      && !item.deferredUserSurface) {
+      // A rescued FIFO root has no predecessor that can attach its surface.
+      // Stage the same surface before its card guard, not again after admission.
+      item.deferredUserSurface = recoveredQueuedUserSurface(item);
+    }
+    // A real human message must precede the execution card created by its
+    // guard. Infrastructure/Goal admissions retain their invisible fence.
+    if (item.surfaceUserBeforeDispatch && !item.deferVisibleAdmission && item.deferredUserSurface) {
+      const surface = item.deferredUserSurface;
+      try {
+        await surfaceBuiltinUserMessage(surface, 'pre-admission');
+        item.deferredUserSurface = undefined;
+        humanSurfacedBeforeDispatch = true;
+      } catch (error) {
+        item.deferredUserSurface = undefined;
+        await rollbackFailedBuiltinUserSurface(surface.message.id);
+        await rejectPromotedMessageBeforeDispatch(item, {
+          accepted: false,
+          error: reportBuiltinAdmissionPersistenceFailure(item.id, item.requestId, error),
+          rollbackBeforeReject: Promise.resolve(item.beforeDispatch?.cancel?.()),
+        });
+        continue;
+      }
+    }
     let guardResult: DispatchGuardResult | undefined;
     if (item.beforeDispatch) {
       try {
@@ -15541,20 +15629,28 @@ async function* messageGenerator(
     // broadcasting would cause the frontend's seenIdsRef dedup to fail when
     // generator's local id differs from the one already in history.
     //
-    // wasQueued=true items take a different path: their transcriptState.messages[] push +
-    // queue:started broadcast happens later in handleQueuedCommandReplay()
-    // or when the next assistant turn starts, proving a boundary drain. Until
-    // then they live as an "in-flight" pill in the frontend queue panel.
+    // Queued successors wait for native consumption before surfacing. A
+    // recovered first input has no earlier output owner and takes ordinary
+    // admission instead; it must not wait for a mid-turn drain of itself.
     let traceTurnId = item.id;
     const traceSource = item.wasQueued ? 'queued' : 'direct';
-    if (!item.wasQueued) {
+    const startsRuntimeTurn = !item.wasQueued || peekPendingOutputOwner() === null;
+    if (startsRuntimeTurn) {
       resetTurnUsage();
       setCurrentTurnStartTime(Date.now());
       if (sessionId) beginTurnAbort(sessionId);
       const turnId = randomUUID().replace(/-/g, '').slice(0, 8);
       traceTurnId = turnId;
       setAmbientLogContext(sessionId, { turnId, sessionId });
-    } else if (getInFlightQueueId() === null) {
+    }
+    const admittedQueuedRoot = item.wasQueued && startsRuntimeTurn && item.inputSource !== 'inbox';
+    if (admittedQueuedRoot && !item.deferredUserSurface && !humanSurfacedBeforeDispatch) {
+      // A rescued first input has no earlier native turn to drain it. Surface
+      // it through ordinary admission, just like a direct first input, rather
+      // than waiting indefinitely for a mid-turn consumption receipt.
+      item.deferredUserSurface = recoveredQueuedUserSurface(item);
+    }
+    if (item.wasQueued && !admittedQueuedRoot && getInFlightQueueId() === null) {
       // (v0.2.12 Codex review fix #1) wasQueued item arrived without an
       // existing in-flight tracker. Two paths reach here:
       //   - Recovery: finally-block rescue moved a queueState.pendingMidTurnQueue item
@@ -15623,7 +15719,7 @@ async function* messageGenerator(
       }
     }
     releaseTurnAdmissionTicket(item.id);
-    if (item.deferVisibleAdmission) {
+    if (item.deferVisibleAdmission || startsRuntimeTurn) {
       setSessionState((lifecycleState.systemInitInfo || lifecycleState.sdkControlReady) ? 'running' : 'starting');
       item.deferVisibleAdmission = false;
     }
@@ -15710,6 +15806,7 @@ async function* messageGenerator(
       }
       admissionActivityMerged = admissionActivityAt !== undefined;
     }
+    if (admittedQueuedRoot && getInFlightQueueId() === item.id) clearInFlightSlot();
     if (admissionActivityAt && !admissionActivityMerged) {
       try {
         await persistMessagesToStorage(getMessageCount(), admissionActivityAt);
