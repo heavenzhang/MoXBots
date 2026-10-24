@@ -471,6 +471,7 @@ export function createExternalSessionEngine(): SessionEngine {
           clientRequestId: request.clientRequestId,
           asyncQuestionReply: request.asyncQuestionReply,
           desktopQuery: request.desktopQuery,
+          runtimeReminder: request.runtimeReminder,
           workspacePath: request.workspacePath,
           scenario: request.scenario,
           analyticsSource: request.analyticsSource,

@@ -43,3 +43,7 @@
 提交推送精确源码及验证证据，交原owner统一CI/main集成并在远端核验，再由同owner选择下一未冻结发行批次。
 
 最后展示修正已追加50项投影/DOM与真实SDK列表同步复核，隐藏原生activeForm中的内部ID标记，未改变任务身份或权限。
+
+## Combined external transport supplement
+
+0.5.23 组合审查发现原生私有 runtimeReminder 仅 builtin 接线完整；本分支补齐 external adapter/context 到 cold/resume/warm/realtime native input 的传递，原始用户消息保持原文。247 项原 external owner 回归通过，修正夹具类型后新增 5 项再验证通过，TypeScript/ESLint通过，独立只读复审无新增明确缺陷。证据见 acceptance.md 及 evidence/external-private-reminder.json。已通过的全量 unit+DOM 964 文件 / 9922 项属于补丁前源码；CI/main和签名客户端验收仍由原唯一owner负责。
