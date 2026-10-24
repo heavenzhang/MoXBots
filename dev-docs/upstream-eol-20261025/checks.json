@@ -1,0 +1,15 @@
+{
+  "sourceParent": "320aa3178307b6cf59f971696fc46a64df593459",
+  "checks": {
+    "pairedScriptsPassed": 33,
+    "lint": "PASS",
+    "redBeforeLockNormalization": 1,
+    "realGitCheckoutAutocrlf": true,
+    "actualWindowsOs": false
+  },
+  "logSha256": {
+    "red.log": "691a3622502befe948c5f882d55e96158f2bc4aed059bfdae93cccd724cbfa6f",
+    "green.log": "22bb16c663accc16d072635a68f9659f2805257fc8f3349058f5d99294f604af",
+    "lint.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

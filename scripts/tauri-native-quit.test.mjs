@@ -23,7 +23,7 @@ for (const [name, expected] of [
 
 test('Cargo selects both native projection crates with the event lifetime patch', () => {
   const cargo = read('src-tauri/Cargo.toml').split('[patch.crates-io]')[1];
-  const lock = read('src-tauri/Cargo.lock');
+  const lock = read('src-tauri/Cargo.lock').replaceAll('\r\n', '\n');
   for (const [name, version] of [['tauri', '2.11.2'], ['tao', '0.35.3'], ['tauri-runtime-wry', '2.11.4']]) {
     assert.ok(cargo.includes(`${name} = { path = "../vendor/${name}" }`));
     const block = lock.split(`name = "${name}"\n`)[1]?.split('[[package]]')[0];
