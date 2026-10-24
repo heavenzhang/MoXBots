@@ -18,7 +18,7 @@ export interface SessionTaskAttempt {
   /** Explicit root launch metadata, never a fuzzy title association. */
   taskIdHint?: string;
 }
-export interface SessionTaskRecord { id: string; title: string; blockedBy: string[]; mainAttempt?: number; proposalId?: string; proposalRevision?: number; retired?: boolean }
+export interface SessionTaskRecord { id: string; title: string; blockedBy: string[]; mainAttempt?: number; proposalId?: string; proposalRevision?: number; retired?: boolean; workPlanId?: string }
 export interface SessionTaskReview { taskId: string; attemptId: string; decision: 'accept' | 'reject'; evidence: string; rootToolUseId?: string }
 export interface SessionTaskLedger {
   revision: number;
@@ -33,6 +33,8 @@ export interface SessionTaskLedger {
     requestId: string;
     queueId: string;
     intent?: import("./sessionExecution").ExecutionIntent;
+    /** Presentation identity only; never a proposal confirmation or execution grant. */
+    taskPlanId?: string;
     error?: string
   };
   executionEvidence?: {
@@ -103,6 +105,22 @@ export type SessionTaskAction =
   | { kind: 'review'; taskId: string; attemptId: string; decision: 'accept' | 'reject'; evidence: string; expectedRevision: number };
 
 export function emptyTaskLedger(): SessionTaskLedger { return { revision: 0, tasks: [], bindings: {}, attempts: [], reviews: [] }; }
+
+export function executionTodoSteps(planId: string, steps: readonly string[]): ProgressTodo[] {
+  return steps.length < 2 ? [] : steps.map((content, index) => ({
+    key: `work:${planId}:step-${index + 1}`, content, activeForm: content,
+    status: index === 0 ? 'in_progress' : 'pending',
+  }));
+}
+
+/** Called inside the original native admission CAS, before the first tool can run. */
+export function materializeExecutionTodos(ledger: SessionTaskLedger, planId: string, steps: readonly string[]): void {
+  if (ledger.tasks.some(task => task.workPlanId === planId)) return;
+  const todos = executionTodoSteps(planId, steps);
+  ledger.tasks.push(...todos.map(todo => ({ id: todo.key, title: todo.content, blockedBy: [], workPlanId: planId })));
+  ledger.plan = todos;
+  ledger.planTurnId = ledger.executionAdmission?.queueId;
+}
 const obj = (v: unknown): Record<string, unknown> | undefined => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : undefined;
 const str = (v: unknown): string | undefined => typeof v === 'string' && v.length > 0 ? v : undefined;
 function json(v: unknown): Record<string, unknown> | undefined { try { return typeof v === 'string' ? obj(JSON.parse(v)) : obj(v); } catch { return undefined; } }
@@ -174,20 +192,36 @@ export function mergeTaskObservations(ledger: SessionTaskLedger, attempts: reado
   // child-authored markers and parallel reuse cannot steal a current attempt.
   for (const attempt of next.attempts) {
     const task = next.tasks.find(task => task.id === attempt.taskIdHint && !task.retired);
-    if (!task || next.bindings[attempt.toolUseId] || next.pendingTaskIds?.includes(task.id) || !next.proposal
-      || !isSessionPlanConfirmed(next.proposal) || task.proposalId !== next.proposal.id || task.proposalRevision !== next.proposal.revision
-      || attempt.lifecycle.startedAt < Date.parse(next.proposal.confirmation!.confirmedAt)) continue;
+    if (!task || next.bindings[attempt.toolUseId] || next.pendingTaskIds?.includes(task.id)) continue;
+    const internal = !!task.workPlanId && task.workPlanId === next.executionAdmission?.taskPlanId && attempt.executionVerified !== false;
+    const confirmed = next.proposal && isSessionPlanConfirmed(next.proposal) && task.proposalId === next.proposal.id
+      && task.proposalRevision === next.proposal.revision && attempt.lifecycle.startedAt >= Date.parse(next.proposal.confirmation!.confirmedAt);
+    if (!internal && !confirmed) continue;
     const active = currentTaskAttempt(next.attempts.filter(item => next.bindings[item.toolUseId] === task.id), next.currentTools?.[task.id]);
     if (active?.lifecycle.status === 'running' && active.executionVerified !== false && active.toolUseId !== attempt.toolUseId) continue;
     next.bindings[attempt.toolUseId] = task.id;
     if (!active || compareTaskAttempts(active, attempt) <= 0) next.currentTools = { ...next.currentTools, [task.id]: attempt.toolUseId };
+  }
+  const planId = ledger.executionAdmission?.taskPlanId;
+  if (plan !== undefined && planId) {
+    // DSH carries the stable marker in subject while key remains its native ID.
+    plan = deriveSessionTodos([], plan).todos;
+    const queueId = ledger.execution?.id === planId ? ledger.execution.currentQueueId : ledger.executionAdmission?.queueId;
+    // Only the native producer for the current queue may update precreated steps.
+    // Whole-history snapshots and omitted/foreign keys cannot erase the plan.
+    if (!planTurnId || planTurnId !== queueId || ledger.execution?.id === planId && ledger.execution.phase === 'completed') plan = undefined;
+    else {
+      const updates = new Map(plan.filter(todo => next.tasks.some(task => task.workPlanId === planId && task.id === todo.key)).map(todo => [todo.key, todo]));
+      const existing = ledger.plan ?? [];
+      plan = [...existing.map(todo => updates.get(todo.key) ?? todo), ...[...updates.values()].filter(todo => !existing.some(prior => prior.key === todo.key))];
+    }
   }
   if (plan !== undefined) {
     for (const task of next.tasks) {
       const incoming = plan.find(todo => todo.key === task.id);
       const prior = ledger.plan?.find(todo => todo.key === task.id);
       const reviewed = ledger.reviews.some(review => review.taskId === task.id);
-      if (incoming?.status === 'in_progress' && (prior?.status !== 'in_progress' || !!planTurnId && planTurnId !== ledger.planTurnId) && reviewed) {
+      if (incoming?.status === 'in_progress' && (prior?.status !== 'in_progress' || !task.workPlanId && !!planTurnId && planTurnId !== ledger.planTurnId) && reviewed) {
         task.mainAttempt = (task.mainAttempt ?? 0) + 1;
         next.currentTools = { ...next.currentTools, [task.id]: '@main' };
       }
@@ -210,6 +244,8 @@ export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonl
   for (const task of ledger.tasks) { const native = tasks.get(task.id); tasks.set(task.id, { ...task, source: 'task', phase: native?.phase ?? 'pending', activeForm: native?.activeForm, attempts: [] }); }
   for (const attempt of ledger.attempts) {
     const id = ledger.bindings[attempt.toolUseId] ?? `agent:${attempt.toolUseId}`;
+    if (ledger.executionAdmission?.taskPlanId && !ledger.tasks.some(task => task.id === id && task.workPlanId === ledger.executionAdmission?.taskPlanId)
+      && !ledger.delegationClaims?.some(claim => claim.toolUseId === attempt.toolUseId && claim.executionId === ledger.executionAdmission?.taskPlanId)) continue;
     if (!tasks.has(id)) tasks.set(id, { id, title: attempt.title, blockedBy: [], attempts: [], phase: 'unknown', source: 'agent' });
     tasks.get(id)!.attempts.push(attempt);
   }
@@ -238,7 +274,7 @@ export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonl
       task.phase = claim.state === 'unknown' ? 'unknown' : 'running';
     if (ledger.pendingTaskIds?.includes(task.id) || task.phase === 'pending' && task.blockedBy.some(id => tasks.get(id)?.phase !== 'completed')) task.phase = 'blocked';
   }
-  return [...tasks.values()].filter(task => !task.retired);
+  return [...tasks.values()].filter(task => !task.retired && (!task.workPlanId || task.workPlanId === ledger.executionAdmission?.taskPlanId));
 }
 
 /** One task has one current execution attempt. Parallel work uses explicit subtasks. */
@@ -263,7 +299,8 @@ export function applySessionTaskAction(ledger: SessionTaskLedger, action: Sessio
   const next = structuredClone(ledger);
   const views = projectSessionTasks(next, messages);
   if (action.kind === 'ensure') {
-    if (!next.tasks.some(t => t.id === action.taskId)) next.tasks.push({ id: action.taskId, title: action.title, blockedBy: action.blockedBy ?? [] });
+    if (!next.tasks.some(t => t.id === action.taskId)) next.tasks.push({ id: action.taskId, title: action.title, blockedBy: action.blockedBy ?? [],
+      ...(next.executionAdmission?.taskPlanId ? { workPlanId: next.executionAdmission.taskPlanId } : {}) });
   } else {
     const task = views.find(t => t.id === action.taskId);
     if (!task) throw new Error('TASK_NOT_FOUND');

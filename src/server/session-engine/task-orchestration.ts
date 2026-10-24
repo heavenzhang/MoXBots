@@ -165,7 +165,9 @@ export async function readSessionTasks(engine: SessionEngine) {
   const live = engine.getLiveSessionState();
   const toolPlan = deriveSessionTodos(messages);
   const ledger = await observeSessionTasks(sessionId, { attempts: collectTaskAttempts(messages, overlay.liveStreamingMessage?.id),
-    ...(engine.kind === 'builtin' && toolPlan.source !== 'none' ? { plan: toolPlan.todos } : {}) });
+    // Native result events own active execution-plan updates. Re-reading the
+    // entire transcript must not reapply a previous queue's Todo snapshot.
+    ...(engine.kind === 'builtin' && toolPlan.source !== 'none' && !getSessionMetadata(sessionId)?.taskOrchestration?.executionAdmission?.taskPlanId ? { plan: toolPlan.todos } : {}) });
   const currentToolIds = new Set(collectTaskAttempts(overlay.liveStreamingMessage ? [overlay.liveStreamingMessage] : [], overlay.liveStreamingMessage?.id).map(a => a.toolUseId));
   const native = engine.getRuntimeIdentity().runtime === 'dsh' && engine.listAgentWork
     ? await engine.listAgentWork().catch(() => null) : null;

@@ -16,6 +16,16 @@
 
 首发 Chat 在发送前通过既有 pending-session materialization/adoption 建立归属；同一 pending 的并发建立复用同一 promise，失败保留输入。已建立归属的会话不重建；Goal 首发复用该结果。
 
+## 实际执行前的 To Do List
+
+新 execute 分类必须返回原授权范围内的有序 `steps`；单个动作保留一个步骤，不人为拆成多步骤。读取 legacy intent 时此字段可缺失。至少两个步骤时，原 native `beforeDispatch` 在同一 metadata CAS 内先写入正式 `tasks/plan`，再允许原队列进入 Runtime。列表不依赖模型先自发调用 Todo 工具，也不创建 proposal 或伪造人类确认。真正只讨论方案的请求仍保留原确认流程。
+
+`executionAdmission.taskPlanId` 和 `task.workPlanId` 仅标识同一列表，不构成新的执行权限或 scheduler。Server 分配稳定 `[task:work:<planId>:step-N]`，首步随原队列启动进入运行中；模型读取现有清单，用原生 TodoWrite/TaskCreate/update_plan 及同一标记持续同步。TaskCreate 返回的原生 ID 只用于原生 TaskUpdate。明确新增的细分任务先通过原 `ensure` 登记，同步仍保留缺省步骤；不得按标题猜关联。分类为单步的请求仍可沿原生工具建立后来发现的待办。
+
+native producer 以当前原 queue 身份提交更新，先规范化精确 marker 再合并。DSH 原生 task ID 与产品 ID 不同，外置 Claude Code 的成功根 Todo/Task 结果也接入原观察者。未标记、旧 queue、整段历史 GET 和迟到事件不能覆盖当前清单；新目标保留旧记录但隔离展示。同一 builtin execution 的人工/自动接续复用任务身份和进度，不重新确认或重置预算。外部 Runtime 的列表预建及同步不赋予 builtin 的自动续跑能力。
+
+原生 completed 仍只进入待验收；子 Agent 仍须对应 attempt 的根验收。builtin 的整体验收在成功根证据及真实持久化终态通过后，可以同时结清本次原清单中的主 Agent 步骤；不能通过 Todo 完成、失败/未知工具或未结清的后台任务提前完成。Task 工具仅记进度，不作为业务写入或验证证据。
+
 ## 持久状态与续跑
 
 `execution` 位于现有 task ledger，包含原请求、意图、阶段、绝对 deadline、轮数、返工数、无进展数、当前 queue 和唯一 continuation。状态为 running、awaiting_review、rework、paused、incomplete、completed。

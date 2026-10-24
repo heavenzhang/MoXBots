@@ -1896,6 +1896,7 @@ describe("intent classifier execution continuity contract", () => {
       systemPrompt = options.systemPrompt;
       return JSON.stringify({
         ...executeIntent,
+        steps: ["Create artifact", "Verify artifact"],
         continuationOf: execution.id,
       });
     });
@@ -1912,6 +1913,7 @@ describe("intent classifier execution continuity contract", () => {
       new AbortController().signal,
     );
     expect(intent?.continuationOf).toBe(execution.id);
+    expect(intent?.steps).toEqual(["Create artifact", "Verify artifact"]);
     expect(systemPrompt).toContain("Always include continuationOf");
     expect(JSON.parse(prompt)).toMatchObject({
       currentExecution: {
@@ -1936,7 +1938,126 @@ describe("intent classifier execution continuity contract", () => {
         new AbortController().signal,
       ),
     ).resolves.toBeUndefined();
+    engine.runTextUtility = vi.fn(async () => JSON.stringify({ ...executeIntent, continuationOf: null }));
+    await expect(executionOwner.classifySessionExecutionIntent(engine, request, new AbortController().signal)).resolves.toBeUndefined();
     expect(prepared.request.queueId).toBe(execution.currentQueueId);
+  });
+});
+
+describe("To Do List before native execution", () => {
+  const steps = ["Inspect the workspace", "Create the artifact", "Verify the result"];
+  const intent = { ...executeIntent, steps };
+  const ledger = () => store.getSessionMetadata(id)!.taskOrchestration!;
+  async function tasks() {
+    engine.getLiveSessionOverlay = () => ({ isActive: true, inMemoryMessages: [] });
+    return (await taskOwner.readSessionTasks(engine)).tasks;
+  }
+
+  it("persists the full list at original dispatch admission, with no proposal or extra human confirmation", async () => {
+    const pending = await prepareUnpromoted(input, "human-steps", intent);
+    expect(ledger().tasks).toHaveLength(0);
+    const guard = await pending.request.beforeDispatch!();
+    expect(guard.accepted).toBe(true);
+    const ids = ledger().tasks.map(task => task.id);
+    expect(ledger().tasks.map(task => task.title)).toEqual(steps);
+    expect(ledger().proposal).toBeUndefined();
+    expect(ledger().plan?.map(todo => todo.status)).toEqual(["in_progress", "pending", "pending"]);
+    expect(guard.validateAtCommit?.().accepted).toBe(true);
+    currentQueueId = pending.request.queueId!;
+    expect((await tasks()).map(task => task.id)).toEqual(ids);
+    expect(ledger().executionEvidence ?? []).toHaveLength(0);
+    await pending.request.beforeDispatch!();
+    expect(ledger().tasks.map(task => task.id)).toEqual(ids);
+    expect(pending.request.text).toContain(`[task:${ids[0]}]`);
+    expect(pending.request.desktopQuery?.visibleText).toBe(input);
+  });
+
+  it("updates exact current native step IDs while preserving absent steps and rejecting stale/history snapshots", async () => {
+    const prepared = await prepare(input, "human-step-events", intent);
+    const first = ledger().plan![0];
+    const second = ledger().plan![1];
+    await taskOwner.observeSessionTasks(id, { plan: [{ ...first, status: "completed" }, { ...second, status: "in_progress" }], planTurnId: prepared.request.queueId });
+    expect((await tasks()).map(task => task.phase)).toEqual(["awaiting_review", "running", "pending"]);
+    const prior = structuredClone(ledger().plan);
+    for (const planTurnId of [undefined, "old-queue"]) {
+      await taskOwner.observeSessionTasks(id, { plan: [{ ...first, status: "pending" }, { key: "foreign", content: "Old list", activeForm: "", status: "completed" }], planTurnId });
+      expect(ledger().plan).toEqual(prior);
+    }
+    expect(ledger().reviews).toHaveLength(0);
+  });
+
+  it("keeps the same IDs, progress and original budget on a trusted continuation", async () => {
+    const first = await prepare(input, "first-plan", intent);
+    const original = structuredClone(currentExecution()!);
+    const originalPlan = structuredClone(ledger().plan!);
+    engine.isBusy = () => true;
+    await first.request.onTerminal?.({ status: "complete", text: "Need to continue", assistantMessagePresent: true });
+    await prepare("Continue this task", "continued-plan", { ...intent, steps: ["Do not replace", "The original steps"], continuationOf: original.id });
+    expect(currentExecution()).toMatchObject({ id: original.id, deadlineAt: original.deadlineAt, startedAt: original.startedAt });
+    expect(ledger().plan).toEqual(originalPlan);
+    expect(ledger().tasks).toHaveLength(steps.length);
+  });
+
+  it("isolates a new goal from old task events without clearing unknown native resources", async () => {
+    const first = await prepare(input, "old-plan", intent);
+    const oldPlan = structuredClone(ledger().plan!);
+    const oldId = currentExecution()!.id;
+    await taskOwner.mutateSessionTaskLedger(id, value => {
+      value.delegationClaims = [{ toolUseId: "old-unknown", executionId: oldId, taskId: "old-native-task", state: "unknown" }];
+      return value;
+    });
+    const next = await prepare("Create a different artifact", "new-plan", { ...intent, steps: ["New inspection", "New verification"] });
+    const freshPlan = structuredClone(ledger().plan!);
+    expect((await tasks()).map(task => task.title)).toEqual(["New inspection", "New verification"]);
+    await taskOwner.observeSessionTasks(id, { plan: oldPlan, planTurnId: first.request.queueId });
+    expect(ledger().plan).toEqual(freshPlan);
+    expect(ledger().delegationClaims?.[0].state).toBe("unknown");
+    expect(next.request.queueId).not.toBe(first.request.queueId);
+  });
+
+  it.each(["dsh", "codex", "claude-code"])("precreates the list for %s without granting builtin automatic continuation", async runtime => {
+    engine = { ...engine, kind: "external", getRuntimeIdentity: () => ({ sessionId: id, runtime }) } as SessionEngine;
+    const prepared = await prepare(input, `external-${runtime}`, intent);
+    expect(currentExecution()).toBeUndefined();
+    expect(ledger().tasks.map(task => task.title)).toEqual(steps);
+    expect(prepared.request.text).toContain("TodoWrite/TaskCreate/update_plan");
+    expect(ledger().proposal).toBeUndefined();
+    await prepared.request.onTerminal?.({ status: "complete", text: "Native runtime returned", assistantMessagePresent: true });
+    expect(continuationRequests).toHaveLength(0);
+  });
+
+  it("does not create a formal task list for discussion or an artificial list for a single action", async () => {
+    await prepare("Discuss only", "discussion", planIntent);
+    expect(ledger().tasks).toHaveLength(0);
+    await prepare("Read this file", "single-action", { ...executeIntent, steps: ["Read the file"] });
+    expect(ledger().tasks).toHaveLength(0);
+  });
+
+  it("still accepts native steps discovered after a single-action classification", async () => {
+    const prepared = await prepare("Read this file", "single-discovers-steps", { ...executeIntent, steps: ["Read the file"] });
+    expect(ledger().executionAdmission?.taskPlanId).toBeUndefined();
+    await taskOwner.observeSessionTasks(id, { plan: [
+      { key: "discovered-one", content: "Inspect references", activeForm: "Inspecting", status: "completed" },
+      { key: "discovered-two", content: "Check reference contents", activeForm: "Checking", status: "in_progress" },
+    ], planTurnId: prepared.request.queueId });
+    expect((await tasks()).map(task => task.phase)).toEqual(["awaiting_review", "running"]);
+  });
+
+  it("settles main steps only with proven root acceptance at the durable terminal", async () => {
+    const prepared = await prepare(input, "reviewed-list", intent);
+    const queue = prepared.request.queueId!;
+    await tool(queue, { id: "actual-write", name: "Write", stage: "success", output: "Artifact saved" });
+    await tool(queue, { id: "verify-list", name: "Read", stage: "success", output: "Verified artifact contents" });
+    await tool(queue, { id: "update-list", name: "TaskUpdate", stage: "success", input: { taskId: "native-id", status: "completed" }, output: { success: true } });
+    expect(ledger().executionEvidence?.some(fact => fact.id === "update-list")).toBe(false);
+    await taskOwner.observeSessionTasks(id, { plan: ledger().plan!.map(todo => ({ ...todo, status: "completed" })), planTurnId: queue });
+    expect((await tasks()).every(task => task.phase === "awaiting_review")).toBe(true);
+    await submitReview(queue, { decision: "accept", summary: "Independently verified the final artifact", checks: executeIntent.acceptanceCriteria.map((_, criterion) => ({ criterion, toolUseIds: ["verify-list"] })) });
+    expect((await tasks()).some(task => task.phase === "completed")).toBe(false);
+    await prepared.request.onTerminal?.({ status: "complete", text: "Delivered", assistantMessagePresent: true });
+    expect(currentExecution()?.phase).toBe("completed");
+    expect((await tasks()).every(task => task.phase === "completed")).toBe(true);
+    expect(ledger().reviews.every(review => !!review.rootToolUseId)).toBe(true);
   });
 });
 

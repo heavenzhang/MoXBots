@@ -9,6 +9,8 @@ export const executionIntentSchema = z
     objective: boundedText(4000),
     scope: boundedText(4000),
     acceptanceCriteria: z.array(boundedText(2000)).max(20),
+    /** Optional when reading legacy executions; fresh execute classifications require steps. */
+    steps: z.array(boundedText(2000)).max(20).optional(),
     /** Exact current task, only for a trusted human request to continue its scope. */
     continuationOf: idSchema.nullish(),
   })
