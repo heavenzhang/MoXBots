@@ -19,14 +19,18 @@
 - [x] 四项产品修复已写入隔离工作树，原审查探针转为期望正常行为的回归。
 - [x] 补齐排队多输入、取消、Stop、晚到回执、作用域伪造与共享资源保护验收。
 - [x] 组合回归、TypeScript与差异审查通过。
-- [ ] 提交本任务、推送工作分支并交付精确SHA给桌面唯一owner。
+- [x] 提交本任务、推送工作分支并交付精确SHA给桌面唯一owner。
 - [ ] main合入、共享CI、候选构建、发布及真实用户路径：由原owner统一执行和回传证据。
 
-## Original read-only review
+## Completed
+
+四项源代码修复、17项稳定性验收和25文件673项组合回归完成，代码已推送任务分支并交给既有owner。下面保留修复前评估过程，修复验收见文末Repair acceptance。
 
 基线main 71871fc57ee2c4f29b63931dc29654520aa3f6aa（PR199/0.5.21源）。git observe/start/task-init PASS。先前原实现未改、审查探针明确断言异常行为；修复阶段将其改名为session-stability.integration.test.ts并转为正确行为回归。独立报告及原始日志保存在用户工作区 work/session-stability-20261024/。
 
-## Original review verification
+## Verification
+
+当前修复验证：673项PASS，TypeScript/ESLint/classification/diff PASS，详见Repair acceptance与dev-docs/session-stability-20261024/acceptance.md。下文487+9为修复前历史记录。
 
 Node v24.20.0。7文件157项基础回归、另13文件330项恢复/编排/Stop/路由回归全部PASS，互不重复，共20文件487项。新增审查探针9项PASS，刻画主干分片流停顿、新输入在promotion前撤权/覆盖、独立Task/Goal被旧execution门禁拦截、host交互误拒。TypeScript --noEmit --incremental false PASS。
 
@@ -38,7 +42,7 @@ Node v24.20.0。7文件157项基础回归、另13文件330项恢复/编排/Stop/
 
 ## Next step
 
-提交本任务精确文件、推送codex/session-stability-20261024并通过handoff gate；将精确SHA及dev-docs/session-stability-20261024/acceptance.md交给既有owner。其同步main，组合并发PR200，统一审查/CI/主干集成/候选版本/发布并回传真实路径证据。未获单元移交，不自行接管共享CI、构建或日常App。
+代码已提交推送并向owner交付精确SHA及dev-docs/session-stability-20261024/acceptance.md，补正任务记录后核实handoff gate。owner同步main，组合并发PR200，统一审查/CI/主干集成/候选版本/发布并回传真实路径证据。未获单元移交，不自行接管共享CI、构建或日常App。
 
 ## Repair execution log
 
