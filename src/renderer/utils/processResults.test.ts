@@ -16,8 +16,27 @@ describe('result-first execution projection', () => {
   });
   it('reports unique files, never the last edit as a phase total or an invented net diff', () => {
     const phase = buildProcessPhases([edit('a', '/a.ts'), edit('b', '/a.ts')], false)[0];
-    expect(processPhaseResult(phase, t)).toBe('process.result.files:{"count":1}');
+    expect(processPhaseResult(phase, t)).toBe('process.result.file:{"target":"a.ts"}');
     expect(processPhaseResult(phase, t)).not.toMatch(/[+−-]\d/);
+  });
+  it('shows up to two concrete file milestones and a count for the remaining distinct files', () => {
+    const phase = buildProcessPhases([
+      edit('a', '/src/a.ts'), edit('b', '/src/b.ts'), edit('c', '/src/c.ts'), edit('d', '/src/d.ts'),
+    ], false)[0];
+    expect(processPhaseResult(phase, t)).toBe(
+      'process.result.file:{"target":"a.ts"} · process.result.file:{"target":"b.ts"} · process.result.moreMilestones:{"count":2}',
+    );
+  });
+  it('keeps returned check output factual and does not synthesize successful checks', () => {
+    const blocks = [
+      { type: 'tool_use', tool: { id: 'check1', name: 'Bash', input: {}, parsedInput: { command: 'npm test' }, result: '8 passed', resultMeta: { exitCode: 0 }, streamIndex: 0 } } as ContentBlock,
+      { type: 'tool_use', tool: { id: 'check2', name: 'Bash', input: {}, parsedInput: { command: 'npm run typecheck' }, result: 'TypeScript clean', resultMeta: { exitCode: 0 }, streamIndex: 1 } } as ContentBlock,
+      { type: 'tool_use', tool: { id: 'check3', name: 'Bash', input: {}, parsedInput: { command: 'npx vitest' }, result: '6 passed', resultMeta: { exitCode: 0 }, streamIndex: 2 } } as ContentBlock,
+    ];
+    const phase = buildProcessPhases(blocks, false)[0];
+    expect(processPhaseResult(phase, t)).toBe(
+      '8 passed · TypeScript clean · process.result.moreMilestones:{"count":1}',
+    );
   });
   it('does not hide a live result behind earlier successful changes', () => {
     const phase = buildProcessPhases([edit('a', '/a.ts'), edit('b', '/a.ts', { isLoading: true, result: undefined })], true)[0];

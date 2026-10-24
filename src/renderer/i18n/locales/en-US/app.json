@@ -374,6 +374,7 @@
       "rewind": "Rewind"
     },
     "turnFileEdits": {
+      "shortSummary": "{{count}} files",
       "summary": "Edited {{count}} file(s) this turn",
       "title": "Files edited this turn",
       "edited": "Edited",

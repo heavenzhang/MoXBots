@@ -63,7 +63,7 @@ describe('BlockGroup stage summaries and folding', () => {
     const { container } = render(<BlockGroup blocks={blocks} />);
     expect(container.querySelectorAll('[data-process-row]')).toHaveLength(0);
     expect(screen.getByText('成功返回 12/12')).toBeTruthy();
-    expect(screen.getByText('已返回 12 项结果')).toBeTruthy();
+    expect(screen.getByText('已读取 salary-source-0.ts · 已读取 salary-source-1.ts · 另有 10 项')).toBeTruthy();
     expect(screen.queryByText('OUTPUT_0')).toBeNull();
     fireEvent.click(details());
     expect(container.querySelectorAll('[data-process-row]')).toHaveLength(12);
@@ -183,6 +183,19 @@ describe('BlockGroup stage summaries and folding', () => {
     expect(row).toHaveAttribute('aria-expanded', 'true');
     expect(container.querySelectorAll('[data-process-row]')).toHaveLength(1);
     expect(container.querySelectorAll('[data-process-timing]')).toHaveLength(1);
+  });
+
+  it('keeps a compact concrete milestone line with full text available as its title', () => {
+    const blocks = [
+      tool('a', 'Read', { parsedInput: { file_path: '/tmp/first-source.ts' } }),
+      tool('b', 'Read', { parsedInput: { file_path: '/tmp/second-source.ts' } }),
+      tool('c', 'Read', { parsedInput: { file_path: '/tmp/third-source.ts' } }),
+    ];
+    const { container } = render(<BlockGroup blocks={blocks} />);
+    const milestone = container.querySelector('[data-phase-result]');
+    expect(milestone).toHaveTextContent('已读取 first-source.ts · 已读取 second-source.ts · 另有 1 项');
+    expect(milestone).toHaveClass('truncate');
+    expect(milestone).toHaveAttribute('title', milestone?.textContent ?? '');
   });
 
   it('does not offer an empty result or empty reasoning disclosure', () => {
