@@ -24,6 +24,18 @@ function userMsg(
 }
 
 describe('Message — user bubble spacing', () => {
+  it('renders and copies only the real input while automatic execution context stays hidden', async () => {
+    const { container } = render(<>
+      <Message message={userMsg('继续执行')} />
+      <Message message={userMsg('<system-reminder><SESSION_EXECUTION>Private execution context</SESSION_EXECUTION></system-reminder>', { id: 'automatic-continuation' })} />
+    </>);
+    expect(container.querySelectorAll('article')).toHaveLength(1);
+    expect(container.querySelector('article')).toHaveTextContent('继续执行');
+    expect(container).not.toHaveTextContent('Private execution context');
+    fireEvent.click(screen.getByRole('button', { name: /^复制$/ }));
+    await waitFor(() => expect(copyPlainText).toHaveBeenLastCalledWith('继续执行'));
+  });
+
   it('keeps copy and rewind bound to the user message in the floating action bar', async () => {
     const onRewind = vi.fn();
     render(<Message message={userMsg('保留原始换行\n**重点内容**')} onRewind={onRewind} />);

@@ -227,6 +227,8 @@ const humanText = twoWorkersMode
       : `Create ${join(workspace, "loopback-proof.txt")} containing exactly "native-loopback-complete", then read it back and verify it.`;
 const requestId = randomUUID();
 let sessionId = "";
+const inputCardOrder: string[] = [];
+let closeEventObserver: (() => void) | undefined;
 let reviewUsed = false;
 let reviewDecision: "accept" | "rework" | undefined;
 let reviewRouteFailure: string | undefined;
@@ -1319,6 +1321,23 @@ try {
   const { getSessionEngine } = await import(
     "../src/server/session-engine/selector"
   );
+  // Observe the production broadcast seam without a second Session owner.
+  const { createSseClient } = await import("../src/server/sse");
+  const { isLiveRevisionEnvelope } = await import("../src/shared/liveRevision");
+  const observer = createSseClient(() => {});
+  closeEventObserver = () => observer.client.close();
+  observer.client.send = (event, data) => {
+    const payload = (isLiveRevisionEnvelope(data) ? data.payload : data) as { sessionId?: string; message?: { content?: string; metadata?: { clientRequestId?: string } }; ledger?: { execution?: unknown } };
+    const eventSession = isLiveRevisionEnvelope(data) ? data.sessionId : payload.sessionId;
+    if (eventSession !== sessionId) return;
+    if (event === "chat:message-replay" && payload.message?.metadata?.clientRequestId === requestId) {
+      assert.equal(payload.message.content, humanText, "live user echo must contain only the original input");
+      inputCardOrder.push("user-input");
+    }
+    if (event === "chat:task-orchestration" && payload.ledger?.execution && !inputCardOrder.includes("execution-card")) {
+      inputCardOrder.push("execution-card");
+    }
+  };
   ({ handleSessionTaskCommand: taskHandler } = await import(
     "../src/server/routes/session-task-orchestration"
   ));
@@ -1643,6 +1662,16 @@ try {
     1,
     "the original human input proof must persist once",
   );
+  assert.deepEqual(inputCardOrder.slice(0, 2), ["user-input", "execution-card"], "raw input must be pushed before its execution card");
+  const transcript = await store.getSessionData(sessionId);
+  const humanMessages = transcript?.messages.filter(message => message.metadata?.clientRequestId === requestId) ?? [];
+  assert.equal(humanMessages.length, 1, "raw input must persist exactly once");
+  assert.equal(humanMessages[0]?.content, humanText, "canonical user history must not contain execution instructions");
+  const { parseLeadingSystemReminder } = await import("../src/shared/systemReminder");
+  const { isHumanUserMessage } = await import("../src/server/utils/session-message-preview");
+  const automaticInputs = transcript?.messages.filter(message => message.role === "user" && message.metadata?.clientRequestId !== requestId) ?? [];
+  assert(automaticInputs.length > 0, "native automatic continuation must be exercised");
+  assert(automaticInputs.every(message => parseLeadingSystemReminder(message.content).visibleText === "" && !isHumanUserMessage(message)), "automatic context must not become visible human history");
   const writeCalls = calls.filter((call) => call.tool === "Write");
   const readCalls = calls.filter((call) => call.tool === "Read");
   const writeUses = writeCalls.length;
@@ -1796,6 +1825,10 @@ try {
     executionTurns: execution?.turns,
     continuationState: execution?.continuation?.state,
     originalInputAdmissions: inputAdmissions,
+    inputBeforeExecutionCard: true,
+    originalUserMessageCount: humanMessages.length,
+    originalUserContentUnchanged: true,
+    automaticContextHidden: true,
     realWriteToolUses: writeUses,
     realReadToolUses: readUses,
     ...(reworkMode
@@ -1866,6 +1899,7 @@ try {
   throw error;
 } finally {
   clearTimeout(hardDeadlineTimer);
+  closeEventObserver?.();
   if (!runSucceeded && engineForCleanup) {
     try {
       await boundedCleanup(

@@ -10,6 +10,8 @@
 
 分类使用当前运行时的 tool-free utility，最多八秒，输出受 schema 约束的 `answer/plan/execute/control`、目标、范围和验收条件。用户明确要求行动时采用 execute；只讨论、先给方案、不开发仍采用 plan。原始用户文本单独保留为 visibleText，执行提醒不伪装成人类输入。分类失败记录 `INTENT_UNCONFIRMED`，不获得自动续跑资格。此版本普通行动闭环仅接入 builtin；外部 CLI 与 DSH 不因分类结果获得这套自动续跑能力。
 
+真人原话与执行上下文分开：facade 不向 `text` 追加执行提醒，builtin adapter 通过仅运行时的 `runtimeReminder` 将产品指令作为独立文本块送入 SDK。原 transcript、用户回声与队列预览保留用户正文。经原文摘要验证的输入允许在执行 guard 前先由原 user surface 持久化并推送，再由原 guard 创建/接续账本卡片；排队输入在晋级时遵守同一顺序。该标记不向 Goal/基础设施隐形准入开放，也不绕过 Stop、取消或最终 dispatch commit。准入被拒绝或停止时保留真实用户发言，但不会送入 SDK。自动接续使用纯隐藏 `SESSION_EXECUTION` 系统提醒，不生成新的可见人类发言。
+
 执行意图不扩大权限。原权限请求、AskUserQuestion、停止、配置撤销、工具权限与所有业务 owner 继续裁决动作。明确答复/讨论/控制的当前 builtin 队列只放行只读及适用的方案记账，不能启动写入或子 Agent。
 
 首发 Chat 在发送前通过既有 pending-session materialization/adoption 建立归属；同一 pending 的并发建立复用同一 promise，失败保留输入。已建立归属的会话不重建；Goal 首发复用该结果。
