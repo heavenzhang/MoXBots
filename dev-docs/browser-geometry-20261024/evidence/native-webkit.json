@@ -1,0 +1,585 @@
+{
+  "cases": [
+    {
+      "corrected": {
+        "height": 840,
+        "width": 576,
+        "x": 864,
+        "y": 60
+      },
+      "css": {
+        "height": 1120,
+        "width": 768,
+        "x": 1152,
+        "y": 80
+      },
+      "expected": {
+        "height": 840,
+        "width": 576,
+        "x": 864,
+        "y": 60
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 288,
+      "viewport": {
+        "dpr": 1.5,
+        "height": 1200,
+        "width": 1920
+      },
+      "zoom": 0.75
+    },
+    {
+      "corrected": {
+        "height": 836,
+        "width": 576,
+        "x": 864,
+        "y": 64
+      },
+      "css": {
+        "height": 1045,
+        "width": 720,
+        "x": 1080,
+        "y": 80
+      },
+      "expected": {
+        "height": 836,
+        "width": 576,
+        "x": 864,
+        "y": 64
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 216,
+      "viewport": {
+        "dpr": 1.600000023841858,
+        "height": 1125,
+        "width": 1800
+      },
+      "zoom": 0.8
+    },
+    {
+      "corrected": {
+        "height": 828.0000549316406,
+        "width": 576,
+        "x": 864.0000549316406,
+        "y": 72
+      },
+      "css": {
+        "height": 920.0000610351562,
+        "width": 640,
+        "x": 960.0000610351562,
+        "y": 80
+      },
+      "expected": {
+        "height": 828,
+        "width": 576,
+        "x": 864,
+        "y": 72
+      },
+      "maxErrorLogicalPx": 5.493164064773737e-05,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 96.00006103515625,
+      "viewport": {
+        "dpr": 1.7999999523162842,
+        "height": 1000,
+        "width": 1600
+      },
+      "zoom": 0.9
+    },
+    {
+      "corrected": {
+        "height": 820,
+        "width": 576,
+        "x": 864,
+        "y": 80
+      },
+      "css": {
+        "height": 820,
+        "width": 576,
+        "x": 864,
+        "y": 80
+      },
+      "expected": {
+        "height": 820,
+        "width": 576,
+        "x": 864,
+        "y": 80
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 0,
+      "viewport": {
+        "dpr": 2,
+        "height": 900,
+        "width": 1440
+      },
+      "zoom": 1
+    },
+    {
+      "corrected": {
+        "height": 811.9999389648439,
+        "width": 575.9999877929688,
+        "x": 863.9999816894532,
+        "y": 88
+      },
+      "css": {
+        "height": 738.1817626953125,
+        "width": 523.6363525390625,
+        "x": 785.4545288085938,
+        "y": 80
+      },
+      "expected": {
+        "height": 812,
+        "width": 576,
+        "x": 864,
+        "y": 88
+      },
+      "maxErrorLogicalPx": 6.103515613631316e-05,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 78.54547119140625,
+      "viewport": {
+        "dpr": 2.200000047683716,
+        "height": 818,
+        "width": 1309
+      },
+      "zoom": 1.1
+    },
+    {
+      "corrected": {
+        "height": 800,
+        "width": 576.0000228881836,
+        "x": 864.0000152587891,
+        "y": 100
+      },
+      "css": {
+        "height": 640,
+        "width": 460.8000183105469,
+        "x": 691.2000122070312,
+        "y": 80
+      },
+      "expected": {
+        "height": 800,
+        "width": 576,
+        "x": 864,
+        "y": 100
+      },
+      "maxErrorLogicalPx": 2.288818359375e-05,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 172.79998779296875,
+      "viewport": {
+        "dpr": 2.5,
+        "height": 720,
+        "width": 1152
+      },
+      "zoom": 1.25
+    },
+    {
+      "corrected": {
+        "height": 780,
+        "width": 576,
+        "x": 864,
+        "y": 120
+      },
+      "css": {
+        "height": 520,
+        "width": 384,
+        "x": 576,
+        "y": 80
+      },
+      "expected": {
+        "height": 780,
+        "width": 576,
+        "x": 864,
+        "y": 120
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 288,
+      "viewport": {
+        "dpr": 3,
+        "height": 600,
+        "width": 960
+      },
+      "zoom": 1.5
+    },
+    {
+      "corrected": {
+        "height": 760.0000381469727,
+        "width": 576.0000457763672,
+        "x": 864.0000152587891,
+        "y": 140
+      },
+      "css": {
+        "height": 434.2857360839844,
+        "width": 329.14288330078125,
+        "x": 493.71429443359375,
+        "y": 80
+      },
+      "expected": {
+        "height": 760,
+        "width": 576,
+        "x": 864,
+        "y": 140
+      },
+      "maxErrorLogicalPx": 4.57763671875e-05,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 370.28570556640625,
+      "viewport": {
+        "dpr": 3.5,
+        "height": 514,
+        "width": 822
+      },
+      "zoom": 1.75
+    },
+    {
+      "corrected": {
+        "height": 740,
+        "width": 576,
+        "x": 864,
+        "y": 160
+      },
+      "css": {
+        "height": 370,
+        "width": 288,
+        "x": 432,
+        "y": 80
+      },
+      "expected": {
+        "height": 740,
+        "width": 576,
+        "x": 864,
+        "y": 160
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 900,
+        "width": 1440
+      },
+      "oldMaxErrorLogicalPx": 432,
+      "viewport": {
+        "dpr": 4,
+        "height": 450,
+        "width": 720
+      },
+      "zoom": 2
+    },
+    {
+      "corrected": {
+        "height": 660,
+        "width": 392.00001525878906,
+        "x": 588,
+        "y": 60
+      },
+      "css": {
+        "height": 880,
+        "width": 522.6666870117188,
+        "x": 784,
+        "y": 80
+      },
+      "expected": {
+        "height": 660,
+        "width": 392,
+        "x": 588,
+        "y": 60
+      },
+      "maxErrorLogicalPx": 1.52587890625e-05,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 220,
+      "viewport": {
+        "dpr": 1.5,
+        "height": 960,
+        "width": 1306
+      },
+      "zoom": 0.75
+    },
+    {
+      "corrected": {
+        "height": 656,
+        "width": 392,
+        "x": 588,
+        "y": 64
+      },
+      "css": {
+        "height": 820,
+        "width": 490,
+        "x": 735,
+        "y": 80
+      },
+      "expected": {
+        "height": 656,
+        "width": 392,
+        "x": 588,
+        "y": 64
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 164,
+      "viewport": {
+        "dpr": 1.600000023841858,
+        "height": 900,
+        "width": 1225
+      },
+      "zoom": 0.8
+    },
+    {
+      "corrected": {
+        "height": 648.0000549316406,
+        "width": 392.00001525878906,
+        "x": 588.0000366210937,
+        "y": 72
+      },
+      "css": {
+        "height": 720.0000610351562,
+        "width": 435.5555725097656,
+        "x": 653.3333740234375,
+        "y": 80
+      },
+      "expected": {
+        "height": 648,
+        "width": 392,
+        "x": 588,
+        "y": 72
+      },
+      "maxErrorLogicalPx": 5.493164064773737e-05,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 72.00006103515625,
+      "viewport": {
+        "dpr": 1.7999999523162842,
+        "height": 800,
+        "width": 1088
+      },
+      "zoom": 0.9
+    },
+    {
+      "corrected": {
+        "height": 640,
+        "width": 392,
+        "x": 588,
+        "y": 80
+      },
+      "css": {
+        "height": 640,
+        "width": 392,
+        "x": 588,
+        "y": 80
+      },
+      "expected": {
+        "height": 640,
+        "width": 392,
+        "x": 588,
+        "y": 80
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 0,
+      "viewport": {
+        "dpr": 2,
+        "height": 720,
+        "width": 980
+      },
+      "zoom": 1
+    },
+    {
+      "corrected": {
+        "height": 631.9999511718751,
+        "width": 391.99997863769534,
+        "x": 587.9999511718751,
+        "y": 88
+      },
+      "css": {
+        "height": 574.54541015625,
+        "width": 356.3636169433594,
+        "x": 534.54541015625,
+        "y": 80
+      },
+      "expected": {
+        "height": 632,
+        "width": 392,
+        "x": 588,
+        "y": 88
+      },
+      "maxErrorLogicalPx": 4.88281249317879e-05,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 57.45458984375,
+      "viewport": {
+        "dpr": 2.200000047683716,
+        "height": 654,
+        "width": 890
+      },
+      "zoom": 1.1
+    },
+    {
+      "corrected": {
+        "height": 620,
+        "width": 392.00000762939453,
+        "x": 587.9999923706055,
+        "y": 100
+      },
+      "css": {
+        "height": 496,
+        "width": 313.6000061035156,
+        "x": 470.3999938964844,
+        "y": 80
+      },
+      "expected": {
+        "height": 620,
+        "width": 392,
+        "x": 588,
+        "y": 100
+      },
+      "maxErrorLogicalPx": 7.62939453125e-06,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 124,
+      "viewport": {
+        "dpr": 2.5,
+        "height": 576,
+        "width": 784
+      },
+      "zoom": 1.25
+    },
+    {
+      "corrected": {
+        "height": 600,
+        "width": 392.00001525878906,
+        "x": 588,
+        "y": 120
+      },
+      "css": {
+        "height": 400,
+        "width": 261.3333435058594,
+        "x": 392,
+        "y": 80
+      },
+      "expected": {
+        "height": 600,
+        "width": 392,
+        "x": 588,
+        "y": 120
+      },
+      "maxErrorLogicalPx": 1.52587890625e-05,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 200,
+      "viewport": {
+        "dpr": 3,
+        "height": 480,
+        "width": 653
+      },
+      "zoom": 1.5
+    },
+    {
+      "corrected": {
+        "height": 580.0000305175781,
+        "width": 392.00002670288086,
+        "x": 588,
+        "y": 140
+      },
+      "css": {
+        "height": 331.4285888671875,
+        "width": 224.00001525878906,
+        "x": 336,
+        "y": 80
+      },
+      "expected": {
+        "height": 580,
+        "width": 392,
+        "x": 588,
+        "y": 140
+      },
+      "maxErrorLogicalPx": 3.0517578125e-05,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 252,
+      "viewport": {
+        "dpr": 3.5,
+        "height": 411,
+        "width": 560
+      },
+      "zoom": 1.75
+    },
+    {
+      "corrected": {
+        "height": 560,
+        "width": 392,
+        "x": 588,
+        "y": 160
+      },
+      "css": {
+        "height": 280,
+        "width": 196,
+        "x": 294,
+        "y": 80
+      },
+      "expected": {
+        "height": 560,
+        "width": 392,
+        "x": 588,
+        "y": 160
+      },
+      "maxErrorLogicalPx": 0,
+      "nativeSize": {
+        "height": 720,
+        "width": 980
+      },
+      "oldMaxErrorLogicalPx": 294,
+      "viewport": {
+        "dpr": 4,
+        "height": 360,
+        "width": 490
+      },
+      "zoom": 2
+    }
+  ],
+  "kind": "isolated-native-WKWebView",
+  "passed": true,
+  "signedAppAcceptance": false,
+  "sourceSha256": "c2d04ea9690f486ef987014bd3b4b2e096dae63dcea9e0df005223b5dc6e4b0e",
+  "probeSha256": "cc0c8cade146a2734cc2fc83b552a1e647aa576d766877b99d40e0e830de807f"
+}

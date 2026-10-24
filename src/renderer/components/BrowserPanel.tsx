@@ -26,6 +26,7 @@ import {
   CloseIcon,
 } from '@/components/icons';
 import { openExternal } from '@/utils/openExternal';
+import { getNativeAppZoom } from '@/utils/appZoom';
 import {
   BROWSER_BLANK_URL,
   shouldSyncBrowserBounds,
@@ -173,7 +174,7 @@ export default function BrowserPanel({
   const readUsableBounds = useCallback((): BrowserBounds | null => {
     const el = containerRef.current;
     if (!el) return null;
-    return toUsableBrowserBounds(el.getBoundingClientRect());
+    return toUsableBrowserBounds(el.getBoundingClientRect(), getNativeAppZoom());
   }, []);
 
   const runNavigation = useCallback(async (command: string, args?: Record<string, unknown>) => {

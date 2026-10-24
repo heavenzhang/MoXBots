@@ -54,6 +54,19 @@ describe('hasUsableBrowserBounds', () => {
 });
 
 describe('browser bounds identity', () => {
+  it.each([0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2])(
+    'maps all four coordinates from CSS to OS logical pixels at zoom %s', (zoom) => {
+      const rect = { x: 900, y: 80, width: 584, height: 780 };
+      expect(toUsableBrowserBounds(rect, zoom)).toEqual({
+        x: 900 * zoom, y: 80 * zoom, width: 584 * zoom, height: 780 * zoom,
+      });
+    },
+  );
+
+  it.each([0, -1, NaN, Infinity])('rejects invalid native zoom %s', (zoom) => {
+    expect(toUsableBrowserBounds({ x: 900, y: 80, width: 584, height: 780 }, zoom)).toBeNull();
+  });
+
   it('rejects non-finite origins even when size is usable', () => {
     expect(toUsableBrowserBounds({ x: NaN, y: 80, width: 688, height: 662 })).toBeNull();
     expect(toUsableBrowserBounds({ x: 699, y: Infinity, width: 688, height: 662 })).toBeNull();

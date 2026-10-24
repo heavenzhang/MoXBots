@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isTauri } from '@tauri-apps/api/core';
-import { createAppZoomController } from './appZoom';
+import { createAppZoomController, getNativeAppZoom, initializeAppZoom } from './appZoom';
 
 const { setZoom } = vi.hoisted(() => ({ setZoom: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn(() => true) }));
@@ -16,6 +16,25 @@ beforeEach(() => {
 });
 
 describe('main-window interface zoom', () => {
+  it('exposes only settled native zoom for child-view geometry, including restore and reset', async () => {
+    localStorage.setItem('myagents:ui-zoom', '1.5');
+    let finishZoom!: () => void;
+    setZoom.mockImplementationOnce(() => new Promise<void>((resolve) => { finishZoom = resolve; }));
+    const zoom = initializeAppZoom();
+    expect(getNativeAppZoom()).toBe(1);
+    await Promise.resolve();
+    expect(getNativeAppZoom()).toBe(1);
+    finishZoom();
+    await zoom.ready;
+    expect(getNativeAppZoom()).toBe(1.5);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setZoom.mockRejectedValueOnce(new Error('native zoom unavailable'));
+    await zoom.change('in');
+    expect(getNativeAppZoom()).toBe(1.5);
+    await zoom.change('reset');
+    expect(getNativeAppZoom()).toBe(1);
+  });
+
   it('serializes rapid key presses and restores the successfully applied size on reopening', async () => {
     const zoom = createAppZoomController();
     const changes = [zoom.change('in'), zoom.change('in'), zoom.change('out')];
@@ -66,7 +85,9 @@ describe('main-window interface zoom', () => {
     const resize = vi.fn();
     window.addEventListener('resize', resize);
     try {
-      await createAppZoomController().change('in');
+      const zoom = createAppZoomController();
+      await zoom.change('in');
+      expect(zoom.getNativeScale()).toBe(1);
       expect(document.documentElement.style.zoom).toBe('1.1');
       expect(document.documentElement.style.getPropertyValue('--app-viewport-height')).toBe(`${100 / 1.1}vh`);
       expect(resize).toHaveBeenCalledOnce();

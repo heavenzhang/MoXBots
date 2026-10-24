@@ -6,8 +6,8 @@ const LEVELS = [0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
 const STORAGE_KEY = 'myagents:ui-zoom';
 
 // Window-local view preference, like tab persistence; never writes config.json.
-// Native page zoom keeps viewport units, fixed overlays and pointer coordinates
-// in the same coordinate system, including editors with pixel-based typography.
+// DOM layout/pointer coordinates share CSS pixels. Native child WebView bounds
+// use OS logical pixels instead and must include the successfully applied zoom.
 export function createAppZoomController() {
   let desired = 1;
   try {
@@ -45,6 +45,9 @@ export function createAppZoomController() {
   const ready = desired === 1 ? pending : apply(desired);
   return {
     ready,
+    // CSS zoom already appears in getBoundingClientRect() in browser development.
+    // Desktop page zoom does not; do not include the display's Retina/DPI scale.
+    getNativeScale: () => isTauri() ? applied : 1,
     change(action: AppZoomAction): Promise<void> {
       const index = LEVELS.indexOf(desired);
       const next = action === 'reset' ? 1
@@ -57,6 +60,11 @@ export function createAppZoomController() {
 }
 
 let controller: ReturnType<typeof createAppZoomController> | undefined;
+
+/** Convert main-window CSS geometry to the OS logical space of child WebViews. */
+export function getNativeAppZoom(): number {
+  return controller?.getNativeScale() ?? 1;
+}
 
 /** Called only by the main window, never the fixed-size floating ball windows. */
 export function initializeAppZoom() {
