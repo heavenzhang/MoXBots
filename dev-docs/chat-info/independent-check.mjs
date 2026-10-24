@@ -27,7 +27,7 @@ await context.addInitScript(() => {
 });
 
 const page=await context.newPage();page.setDefaultTimeout(7000);const errors=[];const warnings=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')warnings.push(m.text())});await page.goto('http://127.0.0.1:8918/chat-info-qa');await page.getByLabel('验收状态').waitFor();await page.waitForTimeout(700);const checks=[];
-const status=page.locator('[data-chat-status-row]');const chat=page.locator('[data-qa-chat]');
+const status=page.locator('[data-chat-status-row]');
 const chatHeight=await page.locator('[data-virtuoso-scroller]').evaluate(e=>e.getBoundingClientRect().height);assert.ok(chatHeight>300,'Actual chat scroller must have usable height');
 await page.getByLabel('验收草稿').fill('独立验收保留草稿');
 for(const [state,re] of [['read',/读取 CurrentCheck.ts/],['command',/验证修复、权限隔离/],['wait',/等待任务返回/],['model',/等待模型响应/],['permission',/等待你授权 Bash/],['question',/等待你补充信息/],['plan',/等待你确认计划/],['compacting',/总结|压缩/],['recovery',/等待模型恢复.*第2次/],['stopping',/正在停止/]]){await page.getByLabel('验收状态').selectOption(state);await page.waitForTimeout(100);assert.equal(await status.count(),1);assert.match(await status.innerText(),re);assert.equal(await status.evaluate(e=>e.getBoundingClientRect().height),30);if(['permission','question','plan'].includes(state))assert.equal(await status.locator('.animate-spin').count(),0);checks.push({state,text:await status.innerText()});}
