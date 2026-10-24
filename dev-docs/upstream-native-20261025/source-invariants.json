@@ -1,0 +1,52 @@
+{
+  "base": "848e333455c7045534bf51a951a19b6945c6aa1a",
+  "preserved_product_owners": {
+    "src-tauri/src/updater.rs": {
+      "unchanged": true,
+      "sha256": "5b347dfc6b96315171e5ca679d5ab839b4e51414eb629e6f367bfe819921728e"
+    },
+    "src-tauri/src/process_cmd.rs": {
+      "unchanged": true,
+      "sha256": "9e1289ca8e785dd59c86c8da7d2c21d677d17716799a2da470abc7d3024b2933"
+    },
+    "src-tauri/src/sidecar.rs": {
+      "unchanged": true,
+      "sha256": "fc9fb7a91271e48bf98fd5caa4bd9ab62b312c2c3333eaf0bbf1f431299f5f08"
+    },
+    "src-tauri/src/app_dirs.rs": {
+      "unchanged": true,
+      "sha256": "c65344a48c9304692888c74877232f196550133738bf4195c5e0446f68e7edb7"
+    },
+    "exit_requested_handler": {
+      "unchanged": true,
+      "sha256": "6ac36ac21423b37eb2389176b6c15ab113b80958178614d493965cfd561d742c"
+    }
+  },
+  "vendor_provenance": {
+    "tauri": {
+      "version": "2.11.2",
+      "archive_sha256": "437404997acf375d85f1177afa7e11bb971f274ed6a7b83a2a3e339015f4cc28",
+      "manifest_matches_archive": true,
+      "modified_upstream_files": [
+        "src/event/mod.rs"
+      ]
+    },
+    "tao": {
+      "version": "0.35.3",
+      "archive_sha256": "d1c93047acf68669466a34690ac58cca7010bd1b201e1ec86f1fd0a75d3dd4a9",
+      "manifest_matches_archive": true,
+      "modified_upstream_files": [
+        "src/event.rs",
+        "src/platform_impl/macos/app_delegate.rs"
+      ]
+    },
+    "tauri-runtime-wry": {
+      "version": "2.11.4",
+      "archive_sha256": "4e6fac707727b7a2f48e4ded90976324267371073edbb415ffb73bb0458d203f",
+      "manifest_matches_archive": true,
+      "modified_upstream_files": [
+        "src/lib.rs"
+      ]
+    }
+  }
+}

@@ -1,0 +1,205 @@
+{
+  "quit_reference": {
+    "artifacts": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/myagents-native-quit-18ROJu",
+    "cases": [
+      {
+        "expected": [
+          null
+        ],
+        "mode": "native",
+        "requests": [],
+        "success": false
+      },
+      {
+        "expected": [
+          null,
+          null,
+          0
+        ],
+        "mode": "cancel-confirm",
+        "requests": [],
+        "success": false
+      },
+      {
+        "mode": "native-reentrant",
+        "success": false,
+        "status": null,
+        "signal": "SIGKILL",
+        "error": "spawnSync /Users/zhangshaohua/Documents/Codex/2026-10-25/moxbots-upstream-native/src-tauri/target/debug/myagents-native-quit-smoke ETIMEDOUT"
+      },
+      {
+        "expected": [
+          null
+        ],
+        "mode": "last-window",
+        "requests": [
+          null
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          0
+        ],
+        "mode": "explicit",
+        "requests": [
+          0
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          2147483647
+        ],
+        "mode": "restart",
+        "requests": [
+          2147483647
+        ],
+        "success": true
+      }
+    ]
+  },
+  "quit_patched": {
+    "artifacts": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/myagents-native-quit-bzz1ty",
+    "cases": [
+      {
+        "expected": [
+          null
+        ],
+        "mode": "native",
+        "requests": [
+          null
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          null,
+          null,
+          0
+        ],
+        "mode": "cancel-confirm",
+        "requests": [
+          null,
+          null,
+          0
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          null
+        ],
+        "mode": "native-reentrant",
+        "requests": [
+          null
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          null
+        ],
+        "mode": "last-window",
+        "requests": [
+          null
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          0
+        ],
+        "mode": "explicit",
+        "requests": [
+          0
+        ],
+        "success": true
+      },
+      {
+        "expected": [
+          2147483647
+        ],
+        "mode": "restart",
+        "requests": [
+          2147483647
+        ],
+        "success": true
+      }
+    ]
+  },
+  "events": {
+    "artifacts": "/var/folders/34/45h5k_sd5z134tmnzl7499n00000gn/T/myagents-native-events-SGXJlA",
+    "result": {
+      "failures": [],
+      "late": 0,
+      "onceCalls": 100,
+      "samples": [
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "10000 sequential cancellations",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "10000 burst cancellations",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "1000 distinct event names",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "100 registration rejections",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "100 once completions and repeated cleanup",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "1000 actual helper aborts during registration",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "Window target",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "Webview target",
+          "tables": 0
+        },
+        {
+          "callbacks": 0,
+          "descriptors": 0,
+          "failures": [],
+          "phase": "WebviewWindow target",
+          "tables": 0
+        }
+      ],
+      "success": true
+    }
+  }
+}
