@@ -2337,6 +2337,7 @@ export async function beginDshRootOperation(input: {
     clientOperationId: string;
     userMessage: SessionMessage;
     productImageSha256: readonly string[];
+    runtimeReminder?: string;
 }): Promise<DshMutationStoreResult<PendingDshRootOperation>> {
     ensureStorageDir();
     try {
@@ -2374,10 +2375,12 @@ export async function beginDshRootOperation(input: {
                 clientUserMessageId: input.userMessage.id,
                 sourceRuntimeSessionId: input.runtimeSessionId,
                 productImageSha256: [...input.productImageSha256],
+                ...(input.runtimeReminder ? { runtimeReminder: input.runtimeReminder } : {}),
                 productInputFingerprint: fingerprintDshProductInput(
                     input.userMessage,
                     input.clientOperationId,
                     input.productImageSha256,
+                    input.runtimeReminder,
                 ),
             };
             return withSessionsLock(async () => {
@@ -2423,6 +2426,7 @@ export async function beginDshInput(input: {
     userMessage: SessionMessage;
     productImageSha256: readonly string[];
     runtimeInputFingerprint: string;
+    runtimeReminder?: string;
 }): Promise<DshMutationStoreResult<PendingDshInput>> {
     ensureStorageDir();
     try {
@@ -2430,7 +2434,8 @@ export async function beginDshInput(input: {
             schemaVersion: 1, clientOperationId: input.clientOperationId, clientUserMessageId: input.userMessage.id,
             sourceRuntimeSessionId: input.runtimeSessionId, queueId: input.queueId, userMessage: structuredClone(input.userMessage),
             productImageSha256: [...input.productImageSha256],
-            productInputFingerprint: fingerprintDshProductInput(input.userMessage, input.clientOperationId, input.productImageSha256),
+            ...(input.runtimeReminder ? { runtimeReminder: input.runtimeReminder } : {}),
+            productInputFingerprint: fingerprintDshProductInput(input.userMessage, input.clientOperationId, input.productImageSha256, input.runtimeReminder),
             runtimeInputFingerprint: input.runtimeInputFingerprint, delivery: 'realtime', state: 'pending',
         };
         if (![input.clientOperationId, input.queueId, input.userMessage.id].every(validDshOperationIdentifier)

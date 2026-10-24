@@ -8,6 +8,7 @@ type DshProductInputSnapshot = Readonly<{
   clientOperationId: string;
   clientUserMessageId: string;
   content: string;
+  runtimeReminder?: string;
   images: readonly Readonly<{
     id: string;
     name: string;
@@ -55,6 +56,7 @@ function productInputSnapshot(
   message: SessionMessage,
   clientOperationId: string,
   imageSha256: readonly string[],
+  runtimeReminder?: string,
 ): DshProductInputSnapshot {
   if (
     message.role !== 'user'
@@ -67,11 +69,15 @@ function productInputSnapshot(
   ) {
     throw new Error('DSH root operation requires one identified non-empty Product user message');
   }
+  if (runtimeReminder !== undefined && (typeof runtimeReminder !== 'string' || Buffer.byteLength(runtimeReminder, 'utf8') > 512 * 1024)) {
+    throw new Error('DSH private Runtime reminder exceeds its admission bound');
+  }
   return Object.freeze({
     schemaVersion: 1,
     clientOperationId,
     clientUserMessageId: message.id,
     content: message.content,
+    ...(runtimeReminder ? { runtimeReminder } : {}),
     images: userImages(message, imageSha256),
   });
 }
@@ -80,9 +86,10 @@ export function fingerprintDshProductInput(
   message: SessionMessage,
   clientOperationId: string,
   imageSha256: readonly string[],
+  runtimeReminder?: string,
 ): string {
   return createHash('sha256')
-    .update(JSON.stringify(productInputSnapshot(message, clientOperationId, imageSha256)))
+    .update(JSON.stringify(productInputSnapshot(message, clientOperationId, imageSha256, runtimeReminder)))
     .digest('hex');
 }
 
@@ -99,6 +106,7 @@ export function assertDshProductInputMatches(
       message,
       operation.clientOperationId,
       operation.productImageSha256,
+      operation.runtimeReminder,
     )
       !== operation.productInputFingerprint
   ) {
@@ -119,7 +127,7 @@ export function replayDshProductInput(operation: PendingDshRootOperation, messag
     relativePath: image.relativePath,
   }));
   return Object.freeze({
-    message: message.content,
+    message: operation.runtimeReminder ? `${message.content}\n${operation.runtimeReminder}` : message.content,
     images: images.length > 0 ? images : undefined,
   });
 }

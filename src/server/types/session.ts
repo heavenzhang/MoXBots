@@ -235,6 +235,8 @@ export interface DshProjectionCursor {
 }
 
 export interface PendingDshRootOperation {
+  /** Private Runtime-only instructions, bound to this original admission; never a human row. */
+  runtimeReminder?: string;
   /** V2 may lose an uncommitted body tail; the execution journal retains its exact input. */
   userMessage?: SessionMessage;
   /** Explicit birth proof permits recovery of an unpublished first V2 file only. */

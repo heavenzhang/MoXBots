@@ -192,6 +192,7 @@ export async function persistExternalUserMessageAppend(
     clientOperationId: string;
     runtimeSessionId: string;
     productImageSha256: readonly string[];
+    runtimeReminder?: string;
   },
 ): Promise<{ lastMessagePreview?: string }> {
   const active = getActiveSessionTranscript(sessionId);
@@ -232,6 +233,7 @@ export async function persistExternalUserMessageAppend(
       clientOperationId: dshRootOperation.clientOperationId,
       userMessage: rootUser,
       productImageSha256: dshRootOperation.productImageSha256,
+      runtimeReminder: dshRootOperation.runtimeReminder,
     });
     if (!begun.success) throw new Error(`${failureContext}: ${begun.error}`);
   }
