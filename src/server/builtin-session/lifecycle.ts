@@ -445,8 +445,8 @@ export function replaceQueryBackgroundActivity(
   );
 }
 
-export function hasQueryBackgroundWork(): boolean {
-  return querySession !== null
+export function hasQueryBackgroundWork(query: Query | null = querySession): boolean {
+  return query !== null && querySession === query
     && queryBackgroundTasksLevel.some(task => task.ambient !== true);
 }
 
@@ -765,6 +765,11 @@ export function requestAbort(): void {
 export function waitForQueryExit(query: Query): Promise<void> {
   if (abortRequested || querySession !== query) return Promise.resolve();
   return new Promise(resolve => { queryExitWaiters.add({ query, resolve }); });
+}
+
+/** Whether this exact Query's input is quarantined until replacement. */
+export function isQueryAwaitingExit(query: Query): boolean {
+  return [...queryExitWaiters].some(waiter => waiter.query === query);
 }
 
 export function clearAbortFlag(): void {

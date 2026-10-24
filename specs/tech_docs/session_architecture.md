@@ -164,7 +164,7 @@ Builtin 中断请求由 `builtin-session/interrupt.ts` 在既有 Session 内按�
 
 普通 turn Stop 不等于关闭整个 Query。V1 / V2 都在逻辑结算点记录 terminal，持久化完成回调只发布捕获的记录，不写回当前 turn。SDK iterator 在该停止期间或停止 terminal 后退出时，Query catch 使用本 Query 生命周期内产生的停止记录，不能再把已停止回合改写为错误；启动时继承的旧记录不能抑制替代 Query 的启动失败；未接纳输入时只发布 Session 错误，不调用 turn 结算，未发送输入由既有队列 finalization 恢复或取消。新输入 / turn 接纳通过 `resetTurnUsage` 清除旧 terminal，真实后续失败继续按错误处理。Windows 无确定根因的 exit 1 只展示退出事实，stderr 尾巴保留在日志中，不作为面向用户的故障原因。
 
-SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动 deferred restart 必须等待该 Query 的 background-task registry 清空；显式 Stop、Reset、Session switch、应用退出和真实 Query crash 仍可终止。
+SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动 deferred restart 必须等待该 exact Query 的 SDK activity snapshot 中非 ambient 工作结束，不能等待仅用于任务展示的 edge registry 清空；activity 归零时重新裁决 deferred restart/rewind。显式 Stop 可通过既有 abort owner 退役正在等待重建的 exact Query；健康 parked Query 与 SDK 已接纳的后续输入保持原语义。MoXBots 的原恢复 Stop 持久化、任务预算与 continuation 授权仍由各自 owner 裁决。
 
 后台执行活跃性由 exact Query 的 SDK `background_tasks_changed.tasks` 整表替换，排除 `ambient`；Query replacement 时清空。它通过 SessionEngine live snapshot 的 `hasBackgroundWork` 提供给调度。不能从任务卡片或 start/terminal edge registry 推断：前台任务也可能发 start，前台转后台未必重发 start，ambient 监听也不应阻塞 Goal。
 
