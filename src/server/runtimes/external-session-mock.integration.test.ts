@@ -1160,6 +1160,59 @@ function desktopRequest(
 }
 
 describe('Runtime turn analytics', () => {
+  it.each([
+    { runtimeType: 'codex', runtimeSource: 'system-cli' },
+    { runtimeType: 'codex', runtimeSource: 'managed-provider' },
+    { runtimeType: 'claude-code', runtimeSource: 'system-cli' },
+    { runtimeType: 'dsh', runtimeSource: 'integrated' },
+  ] as const)('keeps private task reminders in native inputs for initial and subsequent $runtimeType/$runtimeSource sends', async identity => {
+    const harness = await createHarness([{ kind: 'success', text: 'first completed' }, { kind: 'success', text: 'second completed' }], identity);
+    const sessionId = `native-reminder-${identity.runtimeType}-${identity.runtimeSource}`;
+    const workspace = join(harness.home, 'workspace');
+    // Managed Codex's normal desktop owner establishes the workspace before
+    // compiling its native command/extension snapshot.
+    if (identity.runtimeSource === 'managed-provider') {
+      await harness.externalSession.prewarmExternalSession({ sessionId, workspacePath: workspace, scenario: { type: 'desktop' }, model: 'gpt-5-codex' });
+      await waitFor(() => harness.externalSession.hasExternalRuntimeProcess(), 'managed desktop workspace prewarm');
+    }
+    for (const ordinal of [1, 2]) {
+      const text = `Visible user input ${ordinal}`;
+      const reminder = `<system-reminder>[task:server-plan-step-${ordinal}] Keep this exact task identity.</system-reminder>`;
+      const sent = await harness.engine.sendDesktopMessage({
+        ...desktopRequest(sessionId, workspace, text),
+        permissionMode: getMaxPermissionForRuntime(identity.runtimeType),
+        model: identity.runtimeType === 'claude-code' ? 'opus' : identity.runtimeType === 'dsh' ? 'deepseek-flash' : 'gpt-5-codex',
+        ...(identity.runtimeType === 'dsh' ? { providerRoute: { kind: 'provider' as const, providerId: 'deepseek', model: 'deepseek-flash' } } : {}),
+        runtimeReminder: reminder,
+      });
+      expect(sent.success).toBe(true);
+      await expect(sent.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+      await expect(harness.engine.waitIdle(2_000, 10)).resolves.toBe(true);
+      expect(harness.runtime.sentMessages.at(-1)).toBe(`${text}\n${reminder}`);
+    }
+    const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
+    expect(users.map(message => message.content)).toEqual(['Visible user input 1', 'Visible user input 2']);
+    expect(JSON.stringify(users)).not.toContain('server-plan-step');
+  });
+
+  it('keeps realtime private reminders out of the human projection', async () => {
+    const harness = await createHarness([{ kind: 'silent' }], { realtimeSteering: true });
+    const sessionId = 'native-steer-reminder';
+    const workspace = join(harness.home, 'workspace');
+    const first = await harness.engine.sendDesktopMessage(desktopRequest(sessionId, workspace, 'Original input'));
+    await expect(first.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    const reminder = '<system-reminder>[task:server-plan-steer] Preserve the original scope.</system-reminder>';
+    await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, workspace, 'Visible follow-up'), runtimeReminder: reminder });
+    await waitFor(() => harness.runtime.steeredMessages.length === 1, 'native steer with private task reminder');
+    const native = harness.runtime.steeredMessages[0];
+    expect(native.message).toBe(`Visible follow-up\n${reminder}`);
+    harness.runtime.emitUserMessageAccepted(native.clientUserMessageId);
+    await waitFor(async () => (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user').length === 2, 'visible steer persistence');
+    const users = (await harness.sessionStore.getSessionData(sessionId))!.messages.filter(message => message.role === 'user');
+    expect(users.map(message => message.content)).toEqual(['Original input', 'Visible follow-up']);
+    expect(JSON.stringify(users)).not.toContain('server-plan-steer');
+  });
+
   it('synchronizes precreated Claude Code steps from successful root Todo results', async () => {
     const harness = await createHarness([{ kind: 'silent' }], { runtimeType: 'claude-code' });
     const sessionId = 'claude-code-precreated-todos';

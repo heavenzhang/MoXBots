@@ -1,0 +1,38 @@
+{
+  "task": "MB-TODO-BEFORE-EXEC-20261025",
+  "purpose": "Supplement combined private runtimeReminder transport for external adapters",
+  "fullExternal": {
+    "passed": 247,
+    "durationSeconds": 45.6,
+    "fixtureTypeOnlyCorrectionAfterRun": true
+  },
+  "finalAffected": {
+    "passed": 5
+  },
+  "typecheck": "PASS",
+  "eslint": "PASS",
+  "review": "Independent read-only worker: no new confirmed defect",
+  "productionOrRealProvider": false,
+  "logs": {
+    "externalFull": {
+      "path": "/tmp/mb-todo-private-full-external.log",
+      "sha256": "a107674753863df1ec4980011d01a29a611ffe1f6ea805d64c61cce03bf873ff",
+      "bytes": 1447117
+    },
+    "privateReminderFinal": {
+      "path": "/tmp/mb-todo-private-native-final.log",
+      "sha256": "5970ba898aaa6f96a0bbcc3e39ef0eb8e7c70ae2f26555c514fd3846cf6a847c",
+      "bytes": 36624
+    },
+    "typecheck": {
+      "path": "/tmp/mb-todo-private-typecheck.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "eslint": {
+      "path": "/tmp/mb-todo-private-lint.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    }
+  }
+}

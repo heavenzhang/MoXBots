@@ -36,3 +36,9 @@
 额外双worker首轮在原保护门禁BACKGROUND_WORK_ACTIVE下45秒超时。保留原日志hash及未定归因：两个claim和root评审已结清，不等于原生replace-level背景静默。加实际live状态诊断后原断言通过，未修改848e3334基线的对照也通过，均观察真实并发峰值2、不同native执行身份和根Read/Review。未修改background owner或降低原断言；该次时序现象作为发布owner需关注的观察项，不能宣称已找出并修复其根因。见 evidence/parallel-observation.json 和对应原生收据。
 
 最终主Agent审阅修正原生TaskCreate默认activeForm回显内部任务标记，保留稳定ID但展示正常步骤名称。追加50项受影响纯投影/DOM回归、ESLint与真实SDK --todo-plan通过（3340ms）。该修正不改步骤、权限或验收语义。
+
+## 0.5.23 组合审查补充
+
+组合分支把内部清单指令分离为 `runtimeReminder`，但外部 adapter 未继续传递，导致外部原生模型缺少稳定任务 ID 和更新指令。开发分支补齐现有请求/context/原生冷启动、恢复、后续发送和实时 steer；原始 operation.text、用户消息及可见投影保持原文。无新 owner/调度器；DSH 继续校验实际 native inputFingerprint。owner 合并类型时只保留单一可选 runtimeReminder 字段及其原有 surfaceUserBeforeDispatch 字段。
+
+实际 fake runtime/原 external owner 回归 247 项通过（45.60秒），新增 5 项覆盖 Codex CLI、Managed Codex、Claude Code、DSH 的首次/后续输入和实时追加，断言原生收到精确 task ID 且持久用户原文不含内部指令。最终类型检查发现夹具 prewarm 使用不存在的参数，删除该无效参数后新增 5 项复核及 TypeScript、ESLint 均通过；独立只读复审未发现新增明确缺陷。见 evidence/external-private-reminder.json。原 964 文件 / 9922 项 unit+DOM 全量回归属于补丁前已推送源码，不声称在补丁后重跑。

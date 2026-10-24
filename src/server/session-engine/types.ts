@@ -51,6 +51,8 @@ export type DesktopMessageRequest = {
   continueFromTurnId?: string;
   asyncQuestionReply?: AsyncQuestionReply;
   text: string;
+  /** Product instructions for native input only, never the visible human text. */
+  runtimeReminder?: string;
   images?: ImagePayload[];
   /** Product mode for builtin sessions; runtime-native mode for external sessions. */
   permissionMode?: string;

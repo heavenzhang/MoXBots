@@ -5966,6 +5966,10 @@ async function dispatchExternalMessageOperation(
     }
   }
 
+  // Command expansion owns runtimeText; append product instructions afterward
+  // so cold, resumed and warm native sends receive the same private reminder.
+  if (context?.runtimeReminder) runtimeText += `\n${context.runtimeReminder}`;
+
   // A previous config change may have reached a terminal boundary while the
   // old process could not be stopped. Never let a later send silently reuse
   // that invalid prompt/env owner: retry invalidation before selecting Case 3.
@@ -6590,7 +6594,7 @@ async function steerExternalMessage(input: {
   try {
     await active.runtime.steerMessage(
       active.process,
-      input.text,
+      input.context.runtimeReminder ? `${input.text}\n${input.context.runtimeReminder}` : input.text,
       resolvedImages && resolvedImages.length > 0 ? resolvedImages : undefined,
       {
         clientUserMessageId: userMsg.id,
