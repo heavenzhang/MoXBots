@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applySessionTaskAction as apply, collectTaskAttempts, currentTaskAttempt, emptyTaskLedger,
+import { applySessionTaskAction as apply, collectTaskAttempts, currentTaskAttempt, emptyTaskLedger, materializeExecutionTodos,
   mergeTaskObservations as observe, projectSessionTasks as project, type SessionTaskAttempt, type SessionTaskLedger } from './sessionTaskOrchestration';
 
 function attempt(tool = 'a', ordinal = 1, status: SessionTaskAttempt['lifecycle']['status'] = 'running', start = ordinal): SessionTaskAttempt {
@@ -136,6 +136,38 @@ describe('session task execution and acceptance', () => {
       expect(found.executionVerified).toBe(false);
       expect(project(observe(emptyTaskLedger(), [found]))[0].phase).toBe('unknown');
     }
+  });
+});
+
+describe('precreated execution To Do List', () => {
+  function planned() {
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: 'human', queueId: 'queue', taskPlanId: 'current' };
+    materializeExecutionTodos(ledger, 'current', ['Implement', 'Verify']);
+    return ledger;
+  }
+  it('allows an explicitly ensured refinement to use the same native progress stream', () => {
+    let ledger = planned();
+    ledger = apply(ledger, { kind: 'ensure', taskId: 'refinement', title: 'Check compatibility', expectedRevision: ledger.revision });
+    ledger = observe(ledger, [], [{ key: 'refinement', content: 'Check compatibility', activeForm: 'Checking', status: 'in_progress' }], 'queue');
+    expect(project(ledger).map(task => task.phase)).toEqual(['running', 'pending', 'running']);
+  });
+  it('normalizes the exact DSH subject marker before filtering native step IDs', () => {
+    const ledger = planned();
+    const first = ledger.tasks[0];
+    const updated = observe(ledger, [], [{ key: 'native-dsh-id', content: `[task:${first.id}] ${first.title}`, activeForm: 'Working', status: 'completed' }], 'queue');
+    expect(project(updated).map(task => task.phase)).toEqual(['awaiting_review', 'pending']);
+    expect(project(updated)[0].id).toBe(first.id);
+  });
+  it('binds an exact current root launch marker and keeps a native return awaiting root acceptance', () => {
+    const ledger = planned();
+    const first = ledger.tasks[0].id;
+    const current = { ...attempt('current', 1, 'completed'), taskIdHint: first };
+    const observed = observe(ledger, [current, attempt('old-unbound', 1, 'completed')]);
+    expect(observed.bindings.current).toBe(first);
+    expect(project(observed)).toHaveLength(2);
+    expect(project(observed)[0].phase).toBe('awaiting_review');
+    expect(project(observed)[0].attempts).toHaveLength(1);
   });
 });
 

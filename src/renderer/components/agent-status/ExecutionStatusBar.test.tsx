@@ -9,7 +9,7 @@ import {
   registerBackgroundTask,
 } from "@/utils/backgroundTaskStatus";
 import ExecutionStatusBar from "./ExecutionStatusBar";
-import { emptyTaskLedger } from "../../../shared/sessionTaskOrchestration";
+import { emptyTaskLedger, materializeExecutionTodos, mergeTaskObservations } from "../../../shared/sessionTaskOrchestration";
 
 const tab = vi.hoisted(() => ({
   messages: [] as Message[],
@@ -109,6 +109,25 @@ beforeEach(async () => {
 });
 
 describe("unified execution status", () => {
+  it("shows precreated steps before any tool message and synchronizes native progress without a confirmation card", async () => {
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: "human", queueId: "queue", taskPlanId: "plan" };
+    materializeExecutionTodos(ledger, "plan", ["核对资料", "完成修改", "验证结果"]);
+    tab.messages = [];
+    tab.agentPlanTodos = [];
+    tab.apiGet.mockResolvedValue({ success: true, sessionId: tab.sessionId, ledger });
+    render(<ExecutionStatusBar activity={activity} />);
+    const trigger = await screen.findByRole("button", { name: /任务编排 0\/3/ });
+    fireEvent.click(trigger);
+    expect(screen.getByText("核对资料")).toBeInTheDocument();
+    expect(screen.getByText("完成修改")).toBeInTheDocument();
+    expect(screen.getByText("验证结果")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /确认方案|确认执行/ })).not.toBeInTheDocument();
+    const updated = mergeTaskObservations(ledger, [], ledger.plan!.map((todo, index) => ({ ...todo, status: index === 0 ? "completed" : index === 1 ? "in_progress" : "pending" })), "queue");
+    act(() => window.dispatchEvent(new CustomEvent("session-task-orchestration", { detail: { sessionId: tab.sessionId, ledger: updated } })));
+    expect(await screen.findByRole("button", { name: /任务编排 0\/3.*待验收 1/ })).toBeInTheDocument();
+    expect(tab.apiPost).not.toHaveBeenCalled();
+  });
   it("starts collapsed with all three summaries and one external pause", () => {
     const pause = vi.fn();
     const { container } = render(

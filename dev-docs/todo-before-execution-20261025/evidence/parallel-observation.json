@@ -1,0 +1,13 @@
+{
+  "task": "MB-TODO-BEFORE-EXEC-20261025",
+  "firstExtraTwoWorkerRun": "FAILED_BOUNDED_TIMEOUT",
+  "reason": "BACKGROUND_WORK_ACTIVE",
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "rootCause": "unknown; task claims and reviews do not own native replace-level background state",
+  "safetyGate": "Preserved; no premature completed and no replay",
+  "followup": "Added live background diagnostics; diagnostic run and untouched 848e3334 baseline both passed with original assertions. No product change to the background owner or lowered assertions. Original failure retained for release-owner review.",
+  "rawLocalLog": "/tmp/mb-todo-two-workers-initial-failure.log",
+  "rawLogSha256": "fc00ec1b9750b383a8e2b0aed25c3d849d0e53607881d897303254346cc36870",
+  "diagnosticReceipt": "native-two-workers.json",
+  "baselineReceipt": "baseline-two-workers.json"
+}

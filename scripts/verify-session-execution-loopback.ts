@@ -21,6 +21,9 @@ const deadlineMs = 45_000;
 const parallelMode = process.argv.includes("--parallel");
 const reworkMode = process.argv.includes("--rework");
 const twoWorkersMode = process.argv.includes("--two-workers");
+const todoPlanMode = process.argv.includes("--todo-plan");
+let planPrecedesNative = false;
+let nativePlanUpdatesVerified = false;
 if ([parallelMode, reworkMode, twoWorkersMode].filter(Boolean).length > 1)
   throw new Error(
     "--parallel, --rework, and --two-workers are mutually exclusive",
@@ -111,10 +114,11 @@ const childToolResults: string[] = [];
 const errors: string[] = [];
 let storeApi: typeof import("../src/server/SessionStore") | undefined;
 let engineForCleanup:
-  | { stopTurn: (options?: { wholeSession?: boolean }) => Promise<unknown> }
+  | { stopTurn: (options?: { wholeSession?: boolean }) => Promise<unknown>; getLiveSessionState?: () => unknown }
   | undefined;
 let runSucceeded = false;
 let fixtureFatalError: string | undefined;
+const backgroundDiagnostics: unknown[] = [];
 
 async function saveFailureReceipt(error: unknown): Promise<void> {
   const raw = storeApi?.getSessionMetadata(sessionId)?.taskOrchestration as
@@ -209,6 +213,8 @@ async function saveFailureReceipt(error: unknown): Promise<void> {
     delegationLaunches: raw?.delegationLaunches,
     taskPackages: raw?.taskPackages,
     attempts: raw?.attempts,
+    liveSessionState: engineForCleanup?.getLiveSessionState?.(),
+    backgroundDiagnostics,
   };
   await writeFile(
     join(evidenceDir, "failure-receipt.json"),
@@ -523,6 +529,7 @@ const upstream = createServer((req, res) => {
         acceptanceCriteria: [
           "The requested file contains the exact requested text and a root Read verifies it.",
         ],
+        steps: ["Create the requested artifact", "Verify its contents"],
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ content: [{ type: "text", text }] }));
@@ -540,6 +547,7 @@ const upstream = createServer((req, res) => {
       return;
     }
     nativeTurnCount++;
+    if (twoWorkersMode) backgroundDiagnostics.push({ nativeTurnCount, live: engineForCleanup?.getLiveSessionState?.() });
     if ((reworkMode || twoWorkersMode) && reviewRouteFailure) {
       calls.push({ kind: "review-route-failed" });
       anthropicReply(res, {
@@ -549,6 +557,10 @@ const upstream = createServer((req, res) => {
       return;
     }
     if (nativeTurnCount === 1) {
+      const ledger = storeApi?.getSessionMetadata(sessionId)?.taskOrchestration;
+      assert.equal(ledger?.tasks.filter(task => task.workPlanId === ledger.execution?.id).length, 2);
+      assert.equal(ledger?.proposal, undefined);
+      planPrecedesNative = true;
       calls.push({ kind: "analysis-only-native-turn" });
       anthropicReply(res, {
         type: "text",
@@ -1225,6 +1237,35 @@ const upstream = createServer((req, res) => {
       });
       return;
     }
+    if (todoPlanMode) {
+      const ledger = storeApi!.getSessionMetadata(sessionId)!.taskOrchestration!;
+      const todos = ledger.tasks.filter(task => task.workPlanId === ledger.execution!.id);
+      const actions = [
+        { kind: "todo-create-1", name: "TaskCreate", input: { subject: `[task:${todos[0].id}] ${todos[0].title}` } },
+        { kind: "todo-create-2", name: "TaskCreate", input: { subject: `[task:${todos[1].id}] ${todos[1].title}` } },
+        { kind: "todo-start-1", name: "TaskUpdate", input: { taskId: "1", status: "in_progress" } },
+        ...(calls.some(call => call.kind === "write") ? [
+          { kind: "todo-finish-1", name: "TaskUpdate", input: { taskId: "1", status: "completed" } },
+          { kind: "todo-start-2", name: "TaskUpdate", input: { taskId: "2", status: "in_progress" } },
+        ] : []),
+        ...(calls.some(call => call.kind === "read") ? [
+          { kind: "todo-finish-2", name: "TaskUpdate", input: { taskId: "2", status: "completed" } },
+        ] : []),
+      ];
+      const action = actions.find(action => !calls.some(call => call.kind === action.kind));
+      if (action) {
+        assert((body.tools as { name: string }[]).some(tool => tool.name === action.name), `${action.name} must be a real native SDK tool`);
+        calls.push({ kind: action.kind, tool: action.name });
+        anthropicReply(res, { type: "tool_use", id: `root-${action.kind}`, name: action.name, input: action.input });
+        return;
+      }
+      if (calls.some(call => call.kind === "todo-start-2") && !calls.some(call => call.kind === "read")) {
+        const snapshot = await taskHandler({ sessionId, kind: "list" });
+        const tasks = snapshot.tasks as { id: string; phase: string }[];
+        assert.deepEqual(todos.map(todo => tasks.find(task => task.id === todo.id)?.phase), ["awaiting_review", "running"]);
+        nativePlanUpdatesVerified = true;
+      }
+    }
     const hasReviewReceipt = reviewUsed;
     if (!calls.some((call) => call.tool === "Write")) {
       calls.push({ kind: "write", tool: "Write" });
@@ -1479,6 +1520,14 @@ try {
   const execution =
     store.getSessionMetadata(sessionId)?.taskOrchestration?.execution;
   assert.equal(execution?.phase, "completed");
+  assert(planPrecedesNative, "the To Do List must exist before the first native model turn");
+  if (todoPlanMode) {
+    assert(nativePlanUpdatesVerified, "real native TaskCreate/TaskUpdate results must update the original ledger before verification");
+    const snapshot = await taskHandler({ sessionId, kind: "list" });
+    const tasks = snapshot.tasks as { phase: string }[];
+    assert.equal(tasks.length, 2);
+    assert(tasks.every(task => task.phase === "completed"), "root terminal acceptance must settle the same native To Do List");
+  }
   assert(
     admitted.queueId?.startsWith("session-execution:"),
     "the original facade send must own its execution queue",
@@ -1787,6 +1836,8 @@ try {
     originalBuiltinFacade: true,
     sessionStore: true,
     productionTaskRoute: true,
+    planPrecedesNative,
+    ...(todoPlanMode ? { mode: "native-todo-plan", nativePlanUpdatesVerified } : {}),
     sessionId,
     executionId: execution?.id,
     phase: execution?.phase,

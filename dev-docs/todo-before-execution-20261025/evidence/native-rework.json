@@ -1,0 +1,86 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "planPrecedesNative": true,
+  "sessionId": "b487fab2-7a14-478e-bb82-733a9186927c",
+  "executionId": "fff603db-e993-4c4b-8314-60df687c0831",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:e83f73c4-f6fb-4503-bb27-688914db680f",
+  "finalQueueId": "session-execution:241c4363-8278-4d88-8dee-7293adbaac71",
+  "executionTurns": 3,
+  "originalInputAdmissions": 1,
+  "realWriteToolUses": 2,
+  "realReadToolUses": 2,
+  "mode": "native-rework",
+  "reworks": 1,
+  "writeToolUseIds": [
+    "root-write-artifact-wrong",
+    "root-write-artifact-correct"
+  ],
+  "readToolUseIds": [
+    "root-read-artifact-wrong",
+    "root-read-artifact-correct"
+  ],
+  "reviewDecisions": [
+    "rework",
+    "accept"
+  ],
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "rework-first-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "rework-first-read",
+      "tool": "Read"
+    },
+    {
+      "kind": "rework-review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "rework-terminal"
+    },
+    {
+      "kind": "rework-next-queue-list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "rework-second-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "rework-second-read",
+      "tool": "Read"
+    },
+    {
+      "kind": "rework-accept-review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final"
+    }
+  ],
+  "elapsedMs": 2385
+}

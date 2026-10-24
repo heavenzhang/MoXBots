@@ -1,0 +1,79 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "planPrecedesNative": true,
+  "mode": "native-todo-plan",
+  "nativePlanUpdatesVerified": true,
+  "sessionId": "f7f10e89-f5ef-4d39-9b68-713262616905",
+  "executionId": "927e2372-62a6-40f6-a328-ae382e7e64a2",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:291b6503-a415-4554-b6fb-391f02445b79",
+  "finalQueueId": "session-execution:05ab59f5-71bc-40b0-abdd-91600e8465eb",
+  "executionTurns": 2,
+  "originalInputAdmissions": 1,
+  "realWriteToolUses": 1,
+  "realReadToolUses": 1,
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list",
+      "tool": "Bash"
+    },
+    {
+      "kind": "todo-create-1",
+      "tool": "TaskCreate"
+    },
+    {
+      "kind": "todo-create-2",
+      "tool": "TaskCreate"
+    },
+    {
+      "kind": "todo-start-1",
+      "tool": "TaskUpdate"
+    },
+    {
+      "kind": "write",
+      "tool": "Write"
+    },
+    {
+      "kind": "todo-finish-1",
+      "tool": "TaskUpdate"
+    },
+    {
+      "kind": "todo-start-2",
+      "tool": "TaskUpdate"
+    },
+    {
+      "kind": "read",
+      "tool": "Read"
+    },
+    {
+      "kind": "todo-finish-2",
+      "tool": "TaskUpdate"
+    },
+    {
+      "kind": "review",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final"
+    }
+  ],
+  "elapsedMs": 3750
+}

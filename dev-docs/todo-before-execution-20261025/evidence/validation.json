@@ -1,0 +1,47 @@
+{
+  "task": "MB-TODO-BEFORE-EXEC-20261025",
+  "base": "848e333455c7045534bf51a951a19b6945c6aa1a",
+  "tests": {
+    "files": 10,
+    "passed": 428,
+    "failed": 0,
+    "durationSeconds": 44.76,
+    "scope": "unit/DOM/SessionStore integration and external runtime mock owner"
+  },
+  "checks": {
+    "typecheck": {
+      "status": "PASS",
+      "logSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "lint": {
+      "status": "PASS",
+      "logSha256": "4b26e86573abb5abbed064058ad9ba1b377a4eadbd38d84469a6bcecf2160deb"
+    },
+    "classification": {
+      "status": "PASS",
+      "logSha256": "82c768cae7586ae51500ab5b7d903a76371429a7bd716292be510fedbd18b3b0"
+    },
+    "deps": {
+      "status": "PASS",
+      "logSha256": "00772c950abecc7f1863770ee5efc9d343b40ee69f8fdb3c363bf6356a25b302",
+      "existingOrphanWarnings": 18
+    },
+    "docs": {
+      "status": "PASS",
+      "logSha256": "0455c8d31d1bf7e1152cf05bf37f04d5fa4d6294159dd9b2659f5c5a7d885d0c"
+    },
+    "build": {
+      "status": "PASS",
+      "logSha256": "a3241ecd2a5cd3548f24edbfc6c590dcf3d14cc2a70e532d66e94572c656e146"
+    }
+  },
+  "native": {
+    "todoPlan": "PASS",
+    "rework": "PASS",
+    "twoWorkersDiagnostic": "PASS",
+    "baselineTwoWorkers": "PASS"
+  },
+  "realProvider": false,
+  "signedClient": false,
+  "published": false
+}

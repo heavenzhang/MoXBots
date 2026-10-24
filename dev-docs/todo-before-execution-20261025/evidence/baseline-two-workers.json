@@ -1,0 +1,191 @@
+{
+  "passed": true,
+  "evidenceClass": "synthetic-upstream-native-sdk-product-session-loopback",
+  "upstream": "127.0.0.1 synthetic fixture only",
+  "paidCalls": 0,
+  "publicNetwork": false,
+  "nativeSdk": true,
+  "originalBuiltinFacade": true,
+  "sessionStore": true,
+  "productionTaskRoute": true,
+  "sessionId": "359027a7-0cee-4641-8b33-a8b54a640cfc",
+  "executionId": "e99d6052-b91d-4721-9f75-110cb4c146a6",
+  "phase": "completed",
+  "initialTerminalStatus": "complete",
+  "originalQueueId": "session-execution:640a30bd-fb83-4576-8322-56384f9963af",
+  "finalQueueId": "session-execution:f41946fb-84c2-42c9-b58a-b84529ad83d6",
+  "executionTurns": 3,
+  "originalInputAdmissions": 1,
+  "realWriteToolUses": 2,
+  "realReadToolUses": 2,
+  "mode": "native-two-background-workers",
+  "maxWorkersInFlight": 2,
+  "workerAttempts": [
+    {
+      "id": "root-launch-background-alpha:0mvmomqoi-a5405597",
+      "toolUseId": "root-launch-background-alpha",
+      "title": "[task:task-alpha] Write alpha proof",
+      "executionVerified": true,
+      "runId": "0mvmomqoi-a5405597",
+      "executionTaskId": "ac38d634e34ea0317",
+      "lifecycle": {
+        "status": "completed",
+        "startedAt": 1792863490196,
+        "finishedAt": 1792863490672,
+        "result": ""
+      }
+    },
+    {
+      "id": "root-launch-background-beta:0mvmomqz4-7a717057",
+      "toolUseId": "root-launch-background-beta",
+      "title": "[task:task-beta] Write beta proof",
+      "executionVerified": true,
+      "runId": "0mvmomqz4-7a717057",
+      "executionTaskId": "aca630f514d58be2e",
+      "lifecycle": {
+        "status": "completed",
+        "startedAt": 1792863490577,
+        "finishedAt": 1792863490660,
+        "result": ""
+      }
+    }
+  ],
+  "delegationLaunches": 2,
+  "delegationClaims": [
+    {
+      "toolUseId": "root-launch-background-alpha",
+      "taskId": "task-alpha",
+      "executionId": "e99d6052-b91d-4721-9f75-110cb4c146a6",
+      "state": "settled"
+    },
+    {
+      "toolUseId": "root-launch-background-beta",
+      "taskId": "task-beta",
+      "executionId": "e99d6052-b91d-4721-9f75-110cb4c146a6",
+      "state": "settled"
+    }
+  ],
+  "taskPackages": [
+    {
+      "taskId": "task-alpha",
+      "executionId": "e99d6052-b91d-4721-9f75-110cb4c146a6",
+      "assignee": "background-alpha",
+      "resources": [
+        {
+          "path": "alpha-proof.txt",
+          "access": "write"
+        }
+      ],
+      "reason": "Write the isolated alpha proof file."
+    },
+    {
+      "taskId": "task-beta",
+      "executionId": "e99d6052-b91d-4721-9f75-110cb4c146a6",
+      "assignee": "background-beta",
+      "resources": [
+        {
+          "path": "beta-proof.txt",
+          "access": "write"
+        }
+      ],
+      "reason": "Write the isolated beta proof file."
+    }
+  ],
+  "nativeReviewCount": 2,
+  "toolCalls": [
+    {
+      "kind": "classify"
+    },
+    {
+      "kind": "title-utility"
+    },
+    {
+      "kind": "analysis-only-native-turn"
+    },
+    {
+      "kind": "list-before-workers",
+      "tool": "Bash"
+    },
+    {
+      "kind": "ensure-task-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "package-task-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "launch-alpha",
+      "tool": "Agent"
+    },
+    {
+      "kind": "child-alpha-arrived"
+    },
+    {
+      "kind": "list-alpha-running",
+      "tool": "Bash"
+    },
+    {
+      "kind": "ensure-task-beta",
+      "tool": "Bash"
+    },
+    {
+      "kind": "package-task-beta",
+      "tool": "Bash"
+    },
+    {
+      "kind": "launch-beta",
+      "tool": "Agent"
+    },
+    {
+      "kind": "child-beta-arrived"
+    },
+    {
+      "kind": "root-ends-with-two-workers-running"
+    },
+    {
+      "kind": "child-beta-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "child-alpha-write",
+      "tool": "Write"
+    },
+    {
+      "kind": "list-after-workers",
+      "tool": "Bash"
+    },
+    {
+      "kind": "root-read-alpha",
+      "tool": "Read"
+    },
+    {
+      "kind": "root-read-beta",
+      "tool": "Read"
+    },
+    {
+      "kind": "list-before-worker-reviews",
+      "tool": "Bash"
+    },
+    {
+      "kind": "review-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "list-after-review-alpha",
+      "tool": "Bash"
+    },
+    {
+      "kind": "review-beta",
+      "tool": "Bash"
+    },
+    {
+      "kind": "review-two-workers-execution",
+      "tool": "Bash"
+    },
+    {
+      "kind": "final-two-workers"
+    }
+  ],
+  "elapsedMs": 4304
+}

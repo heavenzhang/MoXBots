@@ -1,8 +1,8 @@
 import type { SessionPlanTurnScope } from '../session-engine/session-plan-policy';
 import type { DispatchGuardResult } from '../session-core/turn-queue';
 import { projectOrchestrationProgress } from '../../shared/sessionTaskOrchestration';
-import { assertSessionPlanRootDispatch, canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
-import { deriveSessionWorkProgress } from '../../shared/sessionWorkProgress';
+import { assertSessionPlanRootDispatch, canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasks, observeSessionTasksInBackground } from '../session-engine/task-orchestration';
+import { deriveSessionTodos, deriveSessionWorkProgress } from '../../shared/sessionWorkProgress';
 import { desktopContextOf } from '../../shared/agentMentions';
 import { runtimeProviderAnalytics } from '../session-core/turn-analytics';
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
@@ -10968,6 +10968,20 @@ function applyUnifiedEvent(event: UnifiedEvent): void {
         ? pendingInput.then(() => dispatchExternalToolResult(event))
         : dispatchExternalToolResult(event);
       trackInFlightSave(dispatched);
+      // Claude Code publishes Task tools rather than agent_plan_update. Commit
+      // successful root bookkeeping through the same queue-scoped observer.
+      const planTool = target && product?.readTool(target);
+      if (!event.isError && !event.subAgent && !event.nativeSource?.parentToolUseId && !target?.subagentToolId
+        && planTool && ['TodoWrite', 'TaskCreate', 'TaskUpdate', 'TaskGet', 'TaskList'].includes(String(planTool.name))) {
+        const planSessionId = getCurrentExternalBoundSessionId();
+        trackInFlightSave(Promise.resolve(dispatched).then(async () => {
+          if (getCurrentExternalBoundSessionId() !== planSessionId || getExternalExecutionTurnId() !== eventExecutionTurnId) return;
+          const messages = getExternalSessionMessagesSnapshot();
+          const streaming = getExternalLiveAssistantMessage();
+          const plan = deriveSessionTodos(streaming ? [...messages.filter(message => message.id !== streaming.id), streaming] : messages);
+          if (plan.source !== 'none') await observeSessionTasks(planSessionId, { plan: plan.todos, planTurnId: eventExecutionTurnId });
+        }));
+      }
       break;
     }
 

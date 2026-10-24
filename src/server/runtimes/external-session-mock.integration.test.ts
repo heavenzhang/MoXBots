@@ -1160,6 +1160,29 @@ function desktopRequest(
 }
 
 describe('Runtime turn analytics', () => {
+  it('synchronizes precreated Claude Code steps from successful root Todo results', async () => {
+    const harness = await createHarness([{ kind: 'silent' }], { runtimeType: 'claude-code' });
+    const sessionId = 'claude-code-precreated-todos';
+    const started = await harness.engine.sendDesktopMessage({ ...desktopRequest(sessionId, join(harness.home, 'workspace'), 'Implement and verify'), permissionMode: getMaxPermissionForRuntime('claude-code'), model: 'opus' });
+    expect(started.success).toBe(true);
+    await expect(started.dispatchAcceptance).resolves.toMatchObject({ accepted: true });
+    const queueId = harness.engine.getExecutionTurnId!()!;
+    const { emptyTaskLedger, materializeExecutionTodos, projectSessionTasks } = await import('../../shared/sessionTaskOrchestration');
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: 'human', queueId, taskPlanId: 'native-cc-plan' };
+    materializeExecutionTodos(ledger, 'native-cc-plan', ['Implement', 'Verify']);
+    await harness.sessionStore.updateSessionMetadata(sessionId, { taskOrchestration: ledger });
+    const input = { todos: ledger.plan!.map((todo, index) => ({ content: `[task:${todo.key}] ${todo.content}`, activeForm: todo.content, status: index === 0 ? 'completed' : 'in_progress' })) };
+    harness.runtime.emitForTest({ kind: 'tool_use_start', toolUseId: 'root-todo', toolName: 'TodoWrite', input });
+    harness.runtime.emitForTest({ kind: 'tool_use_stop', toolUseId: 'root-todo', input });
+    harness.runtime.emitForTest({ kind: 'tool_result', toolUseId: 'root-todo', content: JSON.stringify({ newTodos: input.todos }) });
+    await waitFor(() => harness.sessionStore.getSessionMetadata(sessionId)?.taskOrchestration?.plan?.[0].status === 'completed', 'root native Todo persisted');
+    const updated = harness.sessionStore.getSessionMetadata(sessionId)!.taskOrchestration!;
+    expect(projectSessionTasks(updated).map(task => task.phase)).toEqual(['awaiting_review', 'running']);
+    expect(updated.proposal).toBeUndefined();
+    expect(harness.externalSession.getExternalWorkProgressSnapshot()).toMatchObject({ todoTotal: 2, todoCompleted: 0 });
+  });
+
   it('carries the DSH desktop Provider through native startup, birth and config adoption', async () => {
     const harness = await createHarness([{ kind: 'success', text: 'selected Provider answer' }], {
       runtimeType: 'dsh', runtimeSource: 'integrated',
