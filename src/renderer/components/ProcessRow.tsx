@@ -230,11 +230,11 @@ const ProcessRow = memo(function ProcessRow({
         )));
 
     // 派生展开状态（无 useEffect，避免无限循环）
-    // thinking 与 tool 块都默认折叠，只由用户手动点击展开。
+    // 本地 thinking/tool 默认折叠。远程只读结果直接显示；用户选择优先于默认值。
     // thinking 块刻意不再随 streaming 自动展开、完成后自动收起——那个"展开→收起"
     // 会在流式时让页面上下跳动，体验差。折叠态仍通过 "思考中… (Xs)" 标签 + active
     // 指示实时反馈思考进行中（见 isThinkingActive / mainLabel），不影响可感知性。
-    const isExpanded = expandedOverride ?? userToggled ?? false;
+    const isExpanded = expandedOverride ?? userToggled ?? (remoteContent && !isThinking && hasContent);
 
     // Handle user click
     const handleToggle = () => {
@@ -322,7 +322,7 @@ const ProcessRow = memo(function ProcessRow({
 
     if (resultFirst) {
         mainLabel = resultLabel ?? processResultLabel({ block, index, outcome }, t);
-        subLabel = '';
+        subLabel = remoteContent ? block.tool?.name ?? '' : '';
     }
 
     // PRD 0.2.17 Agent Status Panel：当本 row 是 Task/Agent 工具时挂 data-tool-id 锚点。

@@ -124,14 +124,29 @@ source labels use identifiers until current metadata is available. A page contai
 30 messages and the Session result body is at most 48 KiB, leaving envelope room
 under the existing 64 KiB transport limit. Oversized or unreadable projections
 fail explicitly. Native thinking and raw tool inputs are not message projections.
-Tool summaries reuse the shared local SDK text parser **before** applying the
-2,000-character wire limit. Omitted tool output sets the message truncation
-notice and ends with an ellipsis. The controller treats summaries as canonical
-plain text and never decodes them again (a JSON file may itself contain fields
-such as `content` or `stdout`). Tool rows use the shared disclosure and bounded
-result container without local workspace/file actions. This projection fix
-requires an updated target; an older target may still send clipped JSON. No raw
-tool input, protocol extension, runtime or approval authority is added.
+Tool output reuses the shared local SDK text parser **before** splitting it
+into canonical plain-text fragments; the controller never decodes those fragments
+again (a JSON file can itself contain `content` or `stdout`). Existing bounds
+remain 16,000 UTF-16 code units of text, 2,000 per tool fragment and ten tools per
+wire row. These are fragment limits, not whole-message truncation limits: the
+original Session read projection retains every visible text/tool block in source
+order, emits continuation rows with stable source-derived IDs, and uses the
+existing `get`/`before` pagination to reach all fragments. Each row also fits a
+24 KiB serialized UTF-8 budget so a single long Chinese result cannot exceed the
+48 KiB page by itself. Surrogate pairs are not split; prose prefers paragraph
+boundaries. Continuations of one tool use individually numbered rows rather than
+inflating a phase's completed-call count. Very long Markdown constructs spanning
+a fragment boundary retain all text but may render as separate Markdown sections.
+
+Remote result groups and their bounded plain-text bodies start expanded, retain
+explicit user folds through ordinary snapshot updates, and show tool identity
+beside the result label. Local conversation defaults remain with the normal
+renderer. Raw tool input, native thinking, local file actions, attachments and
+executable metadata remain outside this projection. There are no new wire fields,
+request kinds or execution authority. The target needs the updated read projection
+to supply previously clipped content; a viewer alone cannot recover output
+already discarded by an older target. Older target truncation notices remain
+supported; source and installed dual-device acceptance are separate gates.
 
 The renderer shares the normal conversation pipeline: `RemoteConversation` projects
 immutable remote messages into `MessageList → Message → BlockGroup → ProcessRow →
