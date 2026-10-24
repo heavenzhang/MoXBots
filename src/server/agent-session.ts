@@ -2476,6 +2476,18 @@ function promoteNextFromPending(): void {
   wakeGenerator(pending.sourceItem);
 }
 
+function recoveredQueuedUserSurface(item: MessageQueueItem): DeferredUserSurface {
+  return {
+    event: 'queue-started', queueId: item.id, channelDelivery: item.channelDelivery,
+    sessionBirthOrigin: item.sessionBirthOrigin,
+    message: {
+      id: allocateMessageId(), role: 'user', content: item.messageText,
+      desktopQuery: item.desktopQuery, timestamp: new Date().toISOString(),
+      attachments: item.attachments, metadata: item.metadata,
+    },
+  };
+}
+
 function startNextTurnQueuedItem(
   reason: 'complete' | 'stopped' | 'error' | 'recovery',
   options?: { forceQueueId?: string; allowRealtimePending?: boolean },
@@ -9444,6 +9456,9 @@ export async function enqueueUserMessage(
   analyticsOrigin?: SessionOrigin,
   options?: {
     fromDesktopChatSend?: boolean;
+    /** Runtime-only product context, separate from persisted user text. */
+    runtimeReminder?: string;
+    surfaceUserBeforeDispatch?: boolean;
     desktopQuery?: import("../shared/agentMentions").DesktopQueryDraft;
     queueId?: string;
     turnOwner?: TurnOwner;
@@ -10269,6 +10284,9 @@ export async function enqueueUserMessage(
   }
 
   // Add text content if present (may include @reference suffix from fallback)
+  if (options?.runtimeReminder) {
+    contentBlocks.push({ type: 'text', text: options.runtimeReminder });
+  }
   if (effectiveText) {
     contentBlocks.push({ type: 'text', text: effectiveText });
   }
@@ -10316,6 +10334,7 @@ export async function enqueueUserMessage(
       turnOwner: options?.turnOwner,
       onTerminal: admissionCallbacks.onTerminal,
       beforeDispatch: options?.beforeDispatch,
+      surfaceUserBeforeDispatch: options?.surfaceUserBeforeDispatch,
       channelDelivery,
       deferredSessionMetadata,
       deferVisibleAdmission,
@@ -10474,7 +10493,8 @@ export async function enqueueUserMessage(
     mirrorImages: resolvedImagesToMirrorImages(resolvedImages),
     channelDelivery,
   };
-  if (!options?.beforeDispatch) {
+  const surfaceBeforeDispatch = options?.surfaceUserBeforeDispatch && !deferVisibleAdmission;
+  if (!options?.beforeDispatch || surfaceBeforeDispatch) {
     try {
       await surfaceBuiltinUserMessage(directUserSurface, 'pre-admission');
     } catch (error) {
@@ -10511,7 +10531,7 @@ export async function enqueueUserMessage(
     beforeDispatch: options?.beforeDispatch,
     channelDelivery,
     deferredSessionMetadata,
-    deferredUserSurface: options?.beforeDispatch ? directUserSurface : undefined,
+    deferredUserSurface: options?.beforeDispatch && !surfaceBeforeDispatch ? directUserSurface : undefined,
     deferVisibleAdmission,
     settleDispatchAcceptance: admissionCallbacks.settleDispatchAcceptance,
   };
@@ -15435,6 +15455,33 @@ async function* messageGenerator(
     }
 
     traceBuiltinInputProgress('admission-wait', inputTrace);
+    let humanSurfacedBeforeDispatch = false;
+    if (item.surfaceUserBeforeDispatch && !item.deferVisibleAdmission
+      && item.wasQueued && !peekPendingOutputOwner() && item.inputSource !== 'inbox'
+      && !item.deferredUserSurface) {
+      // A rescued FIFO root has no predecessor that can attach its surface.
+      // Stage the same surface before its card guard, not again after admission.
+      item.deferredUserSurface = recoveredQueuedUserSurface(item);
+    }
+    // A real human message must precede the execution card created by its
+    // guard. Infrastructure/Goal admissions retain their invisible fence.
+    if (item.surfaceUserBeforeDispatch && !item.deferVisibleAdmission && item.deferredUserSurface) {
+      const surface = item.deferredUserSurface;
+      try {
+        await surfaceBuiltinUserMessage(surface, 'pre-admission');
+        item.deferredUserSurface = undefined;
+        humanSurfacedBeforeDispatch = true;
+      } catch (error) {
+        item.deferredUserSurface = undefined;
+        await rollbackFailedBuiltinUserSurface(surface.message.id);
+        await rejectPromotedMessageBeforeDispatch(item, {
+          accepted: false,
+          error: reportBuiltinAdmissionPersistenceFailure(item.id, item.requestId, error),
+          rollbackBeforeReject: Promise.resolve(item.beforeDispatch?.cancel?.()),
+        });
+        continue;
+      }
+    }
     let guardResult: DispatchGuardResult | undefined;
     if (item.beforeDispatch) {
       try {
@@ -15566,19 +15613,11 @@ async function* messageGenerator(
       setAmbientLogContext(sessionId, { turnId, sessionId });
     }
     const admittedQueuedRoot = item.wasQueued && startsRuntimeTurn && item.inputSource !== 'inbox';
-    if (admittedQueuedRoot && !item.deferredUserSurface) {
+    if (admittedQueuedRoot && !item.deferredUserSurface && !humanSurfacedBeforeDispatch) {
       // A rescued first input has no earlier native turn to drain it. Surface
       // it through ordinary admission, just like a direct first input, rather
       // than waiting indefinitely for a mid-turn consumption receipt.
-      item.deferredUserSurface = {
-        event: 'queue-started', queueId: item.id, channelDelivery: item.channelDelivery,
-        sessionBirthOrigin: item.sessionBirthOrigin,
-        message: {
-          id: allocateMessageId(), role: 'user', content: item.messageText,
-          desktopQuery: item.desktopQuery, timestamp: new Date().toISOString(),
-          attachments: item.attachments, metadata: item.metadata,
-        },
-      };
+      item.deferredUserSurface = recoveredQueuedUserSurface(item);
     }
     if (item.wasQueued && !admittedQueuedRoot && getInFlightQueueId() === null) {
       // (v0.2.12 Codex review fix #1) wasQueued item arrived without an
@@ -15722,7 +15761,6 @@ async function* messageGenerator(
         continue;
       }
       item.deferredUserSurface = undefined;
-      if (admittedQueuedRoot && getInFlightQueueId() === item.id) clearInFlightSlot();
     } else if (getCurrentProductSessionMetadata()?.materializationState === 'prepared') {
       const visibleText = resolveVisibleUserTurnText(item.messageText)?.trim();
       try {
@@ -15737,6 +15775,7 @@ async function* messageGenerator(
       }
       admissionActivityMerged = admissionActivityAt !== undefined;
     }
+    if (admittedQueuedRoot && getInFlightQueueId() === item.id) clearInFlightSlot();
     if (admissionActivityAt && !admissionActivityMerged) {
       try {
         await persistMessagesToStorage(getMessageCount(), admissionActivityAt);

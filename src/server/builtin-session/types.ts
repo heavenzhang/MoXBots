@@ -156,6 +156,8 @@ export type MessageQueueItem = {
   turnOwner?: TurnOwner;
   onTerminal?: TurnTerminalObserver;
   beforeDispatch?: DispatchGuard;
+  /** Genuine human input is surfaced before its execution/card guard. */
+  surfaceUserBeforeDispatch?: boolean;
   channelDelivery: TurnChannelDelivery;
   /** SessionStore work held until the runtime admission commit for guarded turns. */
   deferredSessionMetadata?: {

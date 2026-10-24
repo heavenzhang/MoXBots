@@ -1,6 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseLeadingSystemReminder } from "../../shared/systemReminder";
+import { isHumanUserMessage } from "../utils/session-message-preview";
 import type { DesktopMessageRequest, SessionEngine } from "./types";
 import type {
   ExecutionAssessment,
@@ -250,6 +252,33 @@ async function waitForContinuation(
 }
 
 describe("durable Session execution owner", () => {
+  it("keeps the exact human input separate from runtime context and defers the card until dispatch", async () => {
+    const original = "继续执行";
+    const prepared = await prepareUnpromoted(original);
+    expect(prepared.request.text).toBe(original);
+    expect(prepared.request.desktopQuery?.visibleText).toBe(original);
+    expect(prepared.request.surfaceUserBeforeDispatch).toBe(true);
+    expect(prepared.request.runtimeReminder).toContain("execution_review");
+    expect(currentExecution()).toBeUndefined();
+    const accepted = await prepared.request.beforeDispatch!();
+    expect(accepted.accepted).toBe(true);
+    expect(currentExecution()?.originalInput).toBe(original);
+    expect(prepared.request.text).toBe(original);
+  });
+
+  it("keeps automatic continuation context out of visible and human conversation history", async () => {
+    const prepared = await prepare();
+    await prepared.request.onTerminal?.({ status: "complete", text: "Analysis only", assistantMessagePresent: true });
+    const continuation = continuationRequests[0]!;
+    expect(continuation).toBeDefined();
+    const parsed = parseLeadingSystemReminder(continuation.text);
+    expect(parsed.kind).toBe("SESSION_EXECUTION");
+    expect(parsed.visibleText).toBe("");
+    expect(parsed.body).toContain(input);
+    expect(continuation.desktopQuery?.visibleText).toBe("");
+    expect(isHumanUserMessage({ content: continuation.text })).toBe(false);
+  });
+
   it.each(["read-started-busy", "background-completed-after-read"])(
     "rejects stale Read evidence across native background settlement: %s",
     async (timing) => {
