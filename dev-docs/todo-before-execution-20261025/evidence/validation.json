@@ -43,5 +43,13 @@
   },
   "realProvider": false,
   "signedClient": false,
-  "published": false
+  "published": false,
+  "followup": {
+    "change": "Strip stable task markers from native activeForm display only",
+    "focusedFiles": 3,
+    "focusedPassed": 50,
+    "focusedFailed": 0,
+    "eslint": "PASS",
+    "nativeTodoPlan": "PASS"
+  }
 }

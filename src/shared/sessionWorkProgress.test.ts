@@ -53,4 +53,8 @@ it('keeps explicit task identity across replacement TodoWrite tool IDs', () => {
   const message = (toolId: string) => ({ id: 'message', role: 'assistant', content: [{ type: 'tool_use', tool: { id: toolId, name: 'TodoWrite', parsedInput: { todos: [{ content: '[task:stable-work] Verify delivery', activeForm: 'Verifying', status: 'in_progress' }] } } }] });
   expect(deriveSessionTodos([message('old-write')]).todos[0]).toMatchObject({ key: 'stable-work', content: 'Verify delivery' });
   expect(deriveSessionTodos([message('replacement-write')]).todos[0].key).toBe('stable-work');
+  const native = [{ name: 'TaskCreate', parsedInput: { subject: '[task:stable-work] Verify delivery' }, result: JSON.stringify({ task: { id: 'native-1' } }) },
+    { name: 'TaskUpdate', parsedInput: { taskId: 'native-1', status: 'in_progress' }, result: JSON.stringify({ success: true }) }];
+  const nativeMessages = [{ id: 'native', role: 'assistant', content: native.map(tool => ({ type: 'tool_use', tool })) }];
+  expect(deriveSessionTodos(nativeMessages).todos[0]).toMatchObject({ key: 'stable-work', content: 'Verify delivery', activeForm: 'Verify delivery', status: 'in_progress' });
 });

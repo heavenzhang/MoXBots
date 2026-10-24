@@ -33,7 +33,10 @@ function tools(messages: readonly ProgressMessage[]) {
 /** An explicit marker, never a title match or an array-position identity. */
 function explicitTaskTodo(todo: ProgressTodo): ProgressTodo {
   const match = todo.content.match(/^\[task:([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\]\s*(.+)$/s);
-  return match ? { ...todo, key: match[1], content: match[2] } : todo;
+  // Native TaskCreate may default activeForm to its marked subject. Preserve
+  // the stable identity without exposing its bookkeeping marker in the UI.
+  return match ? { ...todo, key: match[1], content: match[2],
+    activeForm: todo.activeForm.replace(/^\[task:[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\]\s*/, '') } : todo;
 }
 
 /** Same ordered projection for Chat and board. A null native plan means no

@@ -34,3 +34,5 @@
 10个unit/DOM/integration文件428项全部通过，44.76秒；TypeScript、改动文件ESLint、test分类、dependency-cruiser（零error、18项既有orphan warning）、文档链接及server bundle通过。CLI/SDK实际单Agent列表更新及返工通过。新增外置CC用例首轮夹具使用了Codex权限名，已改用原getMaxPermissionForRuntime及既有opus夹具配置，实际external owner回归通过；未通过降低产品权限或mock观察者修复。
 
 额外双worker首轮在原保护门禁BACKGROUND_WORK_ACTIVE下45秒超时。保留原日志hash及未定归因：两个claim和root评审已结清，不等于原生replace-level背景静默。加实际live状态诊断后原断言通过，未修改848e3334基线的对照也通过，均观察真实并发峰值2、不同native执行身份和根Read/Review。未修改background owner或降低原断言；该次时序现象作为发布owner需关注的观察项，不能宣称已找出并修复其根因。见 evidence/parallel-observation.json 和对应原生收据。
+
+最终主Agent审阅修正原生TaskCreate默认activeForm回显内部任务标记，保留稳定ID但展示正常步骤名称。追加50项受影响纯投影/DOM回归、ESLint与真实SDK --todo-plan通过（3340ms）。该修正不改步骤、权限或验收语义。

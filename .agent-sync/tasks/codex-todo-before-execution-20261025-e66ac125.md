@@ -28,7 +28,7 @@
 
 ## Verification and stage states
 
-代码：已实现。模拟/本地真实磁盘集成：428项unit/DOM/integration全通过；类型/lint/依赖/分类/文档与server bundle通过。真实SDK合成供应商Todo/返工及双worker诊断回归通过；双worker首轮原门禁超时的未定时序观察及原始证据保留于验收记录。真实 Provider/签名客户端：待原发布 owner。生产验收：待统一发布。Git提交/主干交付：待完成。版本/制品摘要/发布批次由原 owner 分配，本开发会话不占正式版本。
+代码：已实现。模拟/本地真实磁盘集成：428项unit/DOM/integration全通过；类型/lint/依赖/分类/文档与server bundle通过。真实SDK合成供应商Todo/返工及双worker诊断回归通过；双worker首轮原门禁超时的未定时序观察及原始证据保留于验收记录。真实 Provider/签名客户端：待原发布 owner。生产验收：待统一发布。Git提交：已提交并推送工作分支，handoff gate PASS。主干交付：待原owner统一CI/合入。版本/制品摘要/发布批次由原 owner 分配，本开发会话不占正式版本。
 
 ## Execution record
 
@@ -41,3 +41,5 @@
 ## Next step
 
 提交推送精确源码及验证证据，交原owner统一CI/main集成并在远端核验，再由同owner选择下一未冻结发行批次。
+
+最后展示修正已追加50项投影/DOM与真实SDK列表同步复核，隐藏原生activeForm中的内部ID标记，未改变任务身份或权限。
