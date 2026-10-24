@@ -20,7 +20,7 @@ describe('exact Query rebuild activity', () => {
     setQuerySession(query);
     recordQueryBackgroundTask(query, 'watcher', { ambient: true });
     replaceQueryBackgroundActivity(query, [
-      { task_id: 'watcher', task_type: 'local_bash', ambient: true },
+      { task_id: 'watcher', task_type: 'local_bash', description: 'fixture watcher', ambient: true },
     ]);
     expect(hasQueryBackgroundTasks(query)).toBe(true);
     expect(hasQueryBackgroundWork(query)).toBe(false);
@@ -32,7 +32,7 @@ describe('exact Query rebuild activity', () => {
     setQuerySession(retired);
     setQuerySession(current);
     replaceQueryBackgroundActivity(current, [
-      { task_id: 'current-work', task_type: 'local_agent', run_id: 'run-1' },
+      { task_id: 'current-work', task_type: 'local_agent', description: 'fixture work', run_id: 'run-1' },
     ]);
     expect(hasQueryBackgroundWork(retired)).toBe(false);
     expect(hasQueryBackgroundWork(current)).toBe(true);
