@@ -633,10 +633,9 @@ Release record dev-docs/releases/moxbots-0.5.15.md; branch codex/release-0515-20
 
 Same desktop/updater owner01a12bc2-907a-7702-b6dd-788225c5dfe4 and explicit015ONLINE+local delivery. First signed015build515.1 passed sourceCI/main/Apple but failed actual native startup (duplicate React Hook dispatcher), so it is sealed/unpublished; online013 and installed014 unchanged. Branchcodex/release-0515-renderer-20261020 fixes React/react-dom singleton resolution and adds real production-built linked-dependency Hook regression. Newbundle515.2 avoids same-build artifact reuse. Laterunselectedsource remains deferred. ExactCI/main/newartifact/native/stable015/local gates still required; no independent component deployment.
 
+## Mobile core conversation checkpoint — 2026-10-21
 
-## MOXBOTS-CHAT-INFO-20261020-01 — 对话信息第一批
-
-用户要求具体当前动作、关键节点进展、明确等待原因、直接成果入口且不占对话空间。仅renderer，复用原30pxFooter、transcript过程分组、文件操作/预览；窄容器一个文件与短清单入口，宽容器最多两个。最终146项定向回归、类型/scopedlint、实际三尺寸/明暗/中英文/键盘/文件预览、独立17组与窄标签复验通过。原有随机文案suppression移除后同时修复MessageList render refs/已提交可见快照读取，隐藏冻结与timer回归保持。证据dev-docs/chat-info/acceptance.md，任务.agent-sync/tasks/codex-chat-info-20261020-a322def5.md。代码/main/共享CI以远端交付回执为准；真实provider/native/production未验。桌面/updater仍唯一publisher01a12bc2-907a-7702-b6dd-788225c5dfe4统一接收下一适当未冻结批次，无新版本分配、不改已冻结候选，其他部署单元不受影响。
+MOXBOTS-IPHONE-ACCEPTANCE-20261019 continues in existing branch/task. Added matching-snapshot send guard/read-only retry, earlier-message pagination with stable reading view and live authority separation, recovered-read notice cleanup, folded read-only tool results. Source integrated current main4206eb2ef;73policy/type/lint plus core90-message and rich-text responsive browser checks PASS. Physical original TARGET_RECEIPT_INVALID remains separately unclosed; no daily Mac workaround. Registered mobile CI/build/version/install owner01a12bc2 was asked to confirm batch/delegate execution; no parallel formalCI/build/install. Root01a12b99 owns implementation/physical evidence; current index/renderer/history QA files remain its exclusive writing scope until handoff. Independent visual work uses isolated pure components; no device or shared writer takeover.
 
 Full MOBILE-002 backlog remains separately open: login/consent/recovery; original Session approvals/late-generation rejection; actual system picker/Host complete bytes and result return; speech after current core batch per direct human deferral; real APNs/FCM background and cold-start delivery. Original chat's private handoff is retained outside Git, not authorization to alter original101/dailyMac/account or new credentials/providers. Local code, synthetic tests, remote main, immutable candidate and actual phone acceptance are distinct gates.
 
@@ -877,15 +876,64 @@ Current combined PR195 clarification: standaloneHost c065 production changes are
 ## MOXBOTS-0520-PLAN-LIFECYCLE-20261023 — Root integration batch
 
 Unchanged sole desktop/macOSarm64/updater and combinedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 accepts PLAN-LIFECYCLE source d3b87ce081e0b9caa1c35fee34eb97f9cd41bfd0, base mainD4. Assign0.5.20/build520.1 to nextbatch; includes exactproposal/revision/step state/review evidence UI only plus releaseversionmetadata. Titletrace9f365360 remains queuedseparately. Published5192 is immutable and remains rollback, no Host/mobile/cloud deployment. Source/local172+synthetic96 reviewed; single exactPRCI/main, signedartifact, nativeactualplan/Inspector/review/noReplay and local/formalpublication remain distinct pending gates. Existing normalmaintenance authorization applies only with freshcurrentowners/durable/fullschedule/backup; no businessreplay or credentials rollback.
+
+## MOXBOTS-INTENT-EXECUTION-20261024 — unified 0.5.21 intake
+
+用户指定先补全普通单 Agent 意图→实际执行→根证据验收→失败返工→有限持续推进，再完善统一模型与有约束并行，整批进入下一未冻结 0.5.21 并真实验收。新增 MoX Curriculum 截图的“多次分析、尚无可确认结果”是本任务回归，不重放其业务指令。开发会话 `01a169af-d5f7-7203-bf88-ff4c8364e8bf`，分支 `codex/intent-execution-v2-20261024`，任务 `.agent-sync/tasks/codex-intent-execution-v2-20261024-4596741d.md`，规范 `specs/tech_docs/intent_execution.md`，验收 `dev-docs/intent-execution-20261024/acceptance.md`。
+
+桌面/macOS/updater、combined CI/main/正式版本/制品/发布唯一 owner 保持 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，沿原用户指定；本开发分支只提交推送和本地自查，不触发共享 CI/正式构建/安装。原独立备用清理 b2 的三个提交已作为依赖 cherry-pick 包含，旧窄请求由本完整批次覆盖，不单独发行。520.1 冻结字节不改、不改标号，已发布519.2保持回滚目标。用户原“保留当前任务运行，稍后维护”仍约束日常 App 操作，不能以闲置或新源码推定可重启/重放。
+
+本候选源码复用原 task ledger/queue/Query/SDK hooks，无新数据库或调度 owner；同档有限候选和父 deadline、任务包资源/依赖/native生命周期及 unknown 保留、首发归属和只读状态 UI 均已实现，61相关测试文件1070项PASS。主 Agent 独立实跑原 builtin facade/SDK hooks/生产CLI route/SessionStore 的单任务、后台包、fresh queue返工、双独立worker真正并发四模式，均一次输入并持久completed；真实SDK多候选chain P5/A4/B1/counter1、Stop与背景另有收据。以上上游均为本地合成，真实Provider、签名客户端、精确CI/main、新签名包、安装和真实用户交付仍分开验收。Host共享代码如需实际运行升级，仍由原Host/mobile owner `01a12b99-7b38-78b1-831f-9c60257d386a` 选择独立批次，不视为桌面0.5.21已覆盖。
+
+
+## MOXBOTS-0521-UNIFIED-BATCH-20261024 — Root integration
+
+Same sole desktop/macOS/updater and combined CI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` integrates final intent source ca49 from basefda with actualmain185f (Host PR198 preserved). Root reproduced and fixes premature accept while native work is active, plus stale Read across background completion: original native Query/background watermark binds Pre/Post/terminal; actual successful Read remains distinct from evidence eligibility.73 affected checks, type/lint and actual SDK synthetic default/background modes pass; original1070/native4/chain/Stop evidence retained. Unified0.5.21/build521.1 is reserved; no interim cleanup release or frozen5201 relabel. ExactCI/main/staticartifact gates pending; signed App/actual Provider/website/rework/Stop/restart/installation/stable remain separate. Human deferred maintenance stays effective, including precise settings/sidebar restoration and blocked memory100 preservation. Source acceptance `dev-docs/release-0521-unified-20261024/acceptance.md`. Host/mobile/cloud/Windows deployment and other unreviewed intakes are excluded.
+
+## MOXBOTS-0521 first-input correction
+
+Root01a12bc2 retains sole desktop/updater/sharedCI ownership. Signed521.1 exposed absent-modelMode strict-comparison failure in tool-free intent classification; preserve failure evidence and immutable521.1. Correct only default-mode policy reuse and meaningful real-adapter regression from main71871. New build521.2 is reserved after exact source/CI/main acceptance; no queued features, repeat521.1 build or changed external scope. Same corrected artifact must pass necessary native path then local install and owned stable promotion. Business remains paused without replay; blocked memory100 remains excluded from restoration.
+
+## MOXBOTS-0521 corrected521.2 combined freeze
+
+Root01a12bc2 accepts reviewed stability product389070b2/fulltip4273ea1f before any521.2 source/build freeze, together with normalmain95c6 (PR200 default-auto fix). Root combined448/type/lint pass; author673 and nativeSDK synthetic4 modes remain separately labelled. This corrects confirmed stream/admission/TaskGoal/host-gate defects within the current release, not unrelated queued features. Source521.2 is fixed only after the combined exact-head CI/main closure; one new immutable artifact, necessary signed-client realProvider path, local installation and stable distribution remain pending. No change to Host/mobile/cloud deployment ownership. Frozen521.1 remains failed/preserved, old519 rollback unchanged.
+## MOXBOTS-BROWSER-GEOMETRY-20261024 — 主界面缩放后的浏览器偏移
+
+当前开发/UI质量负责会话 `01a16dd4-692c-7e41-8d15-ff80619785b9` 在隔离分支
+`codex/browser-zoom-geometry-20261024` 修复 DOM CSS 像素到原生子 WebView 逻辑像素的换算。
+沿用 appZoom 成功应用值与 BrowserPanel 原几何协调器，创建、连续缩放与重置同一路径；
+无新状态 owner、依赖、协议或迁移。57 项定向回归、类型/lint、Web 构建及实际隔离 WKWebView
+18 组缩放/窗口尺寸验证通过；签名 App 真实路径未验收，不视为正式包已修复。
+任务 `.agent-sync/tasks/codex-browser-zoom-geometry-20261024-7fe10e9d.md`，证据
+`dev-docs/browser-geometry-20261024/acceptance.md`。桌面/macOS-arm64/updater 与
+combined CI/main 唯一 owner 仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；由其选择下一
+未冻结批次、集成/CI、分配版本与制品摘要并复验。本聊天只提交推送开发分支和登记发布队列，
+不触发共享 CI、操作日常 App、改变现有冻结 521.2 或生产版本。
+
+
+## MOXBOTS-EXECUTION-CONTINUITY-20261024 — same-task continuation and actual waiting state
+
+User requested correction and source submission after recurring `1/8` reports. Same-task continuation preserves the original execution/budget/evidence, fixed eight-turn normal-work cap and fraction are removed, and exact-queue recovery replaces the active status. Existing native queue/ledger, Stop, unknown-outcome and budget guards remain authoritative. Source task: `.agent-sync/tasks/codex-execution-continuity-20261024-bb49ce85.md`; implementation and local/native-loopback evidence: `dev-docs/execution-continuity-20261024/acceptance.md`.
+
+Source owner is the current intent-execution chat; original main/shared-CI/desktop release owner remains `01a12bc2-907a-7702-b6dd-788225c5dfe4`. Local source/review validation is ready for intake; remote main inclusion, next immutable candidate, installed behavior and real business acceptance are separate owner gates. No version, shared CI, app install or live task replay is performed by this branch. Published v0.5.21/build521.2 is unchanged.
+
+
+## MOXBOTS-0522-REPLAY-CONTINUITY-20261024 — Root selected batch
+
+Existing sole desktop/macOS/updater and combined CI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 allocates immutable0.5.22/build522.1. PR203 native tool-error recovery a066 is normally merged at5c50ef69 after originalCI40106365556 nine success/conditional iOSskip; tested/main trees equal. This still-unfrozen batch additionally selects execution continuity7eba7a80 after exact source review and combined risk tests, and inherits browser geometry1252 already onmain. All other queued feature branches remain excluded. Published521.2/source81ec/TARfa05/tagv0.5.21 remains immutable rollback.
+
+Use existing SessionStore/native queue/ledger, preserve original execution budgets/evidence and unknown-write/Stop guards; no second owner or scheduler. Exact-source PR/CI/main, signed artifact, finite affected native/realProvider, local same-artifact installation and owned stable-channel publication remain separate. Original blocked historical Session6c46df7d remains unresolved and is never auto-cleared or replayed by this patch. Normalnice0/jobs4; fixed Reader remains unchanged. No current UI maintenance window is inferred from old idle evidence; no Host/mobile/backend/website deployment. Root taskcodex-release-0522-replay-5221-20261024-025bc190.md records the gates and next action.
+
+## MOXBOTS-CHAT-INFO-20261020-01 — 对话信息第一批
+
+用户要求具体当前动作、关键节点进展、明确等待原因、直接成果入口且不占对话空间。仅renderer，复用原30pxFooter、transcript过程分组、文件操作/预览；窄容器一个文件与短清单入口，宽容器最多两个。最终146项定向回归、类型/scopedlint、实际三尺寸/明暗/中英文/键盘/文件预览、独立17组与窄标签复验通过。原有随机文案suppression移除后同时修复MessageList render refs/已提交可见快照读取，隐藏冻结与timer回归保持。证据dev-docs/chat-info/acceptance.md，任务.agent-sync/tasks/codex-chat-info-20261020-a322def5.md。代码/main/共享CI以远端交付回执为准；真实provider/native/production未验。桌面/updater仍唯一publisher01a12bc2-907a-7702-b6dd-788225c5dfe4统一接收下一适当未冻结批次，无新版本分配、不改已冻结候选，其他部署单元不受影响。
+
+Full MOBILE-002 backlog remains separately open: login/consent/recovery; original Session approvals/late-generation rejection; actual system picker/Host complete bytes and result return; speech after current core batch per direct human deferral; real APNs/FCM background and cold-start delivery. Original chat's private handoff is retained outside Git, not authorization to alter original101/dailyMac/account or new credentials/providers. Local code, synthetic tests, remote main, immutable candidate and actual phone acceptance are distinct gates.
+
+
 ## REMOTE-UI-SMOOTH-20261024 — 远程显示流畅度
 
 用户要求远程会话更接近本地体验。沿现有快照 transport 和普通会话渲染/滚动 owner，执行中前台轮询完成后等待从 1500ms 缩短到 300ms，空闲 1500ms、后台 5000ms；读取失败有界退避。稳定未变化消息数组与工具块，避免无变化刷新触发 App 侧栏广播。没有新协议、执行 owner 或模拟流式文本。任务 `.agent-sync/tasks/codex-remote-ui-smooth-20261024-f70665b4.md`；验收 `dev-docs/remote-session/smooth-20261024.md`。41 项本地测试、类型/lint/分类、独立 Chromium/WebKit 24 组合成交互检查通过；主干/共享 CI/正式包/安装/真实双端验收分别待证据。原目标状态投影 0dbc 修复由原作者推进，不在这里重复；既有真实测试操作不得重放。desktop 单元 main/CI/版本/构建/发布/安装继续由唯一负责人 01a12bc2-907a-7702-b6dd-788225c5dfe4 处理下一未冻结批，冻结 520.1 不混入新源码。
-
-## MOXBOTS-GOAL-CONFIG-RESTORE-20261021 — next unfrozen desktop intake
-
-Fix warm builtin Goal continuation to adopt the owning Session's current saved provider/model/reasoning at the original admission boundary. Preserve Goal/native identity, permission, compatibility, background work and Stop/claim fences; no provider auto-selection or old input replay. Task record `.agent-sync/tasks/codex-goal-config-restore-20261021-366d1666.md` distinguishes local regression evidence from actual native acceptance. Base is fetched remote main4206eb2ef; separately verify compatibility with frozen515.7/source915ff89a without editing that checkout. Existing sole desktop/updater CI/build/version/install/publish owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; this lane delivers local commits only for its next batch.515.7signing/install is independent and unchanged. Reconcile commits5a928679/b759372e are separate intake, not part of this task diff.
-
-
 
 ## MOXBOTS-QUEUE-EXEC-20261023 — 恢复消息排队与执行时序
 
@@ -893,3 +941,7 @@ Fix warm builtin Goal continuation to adopt the owning Session's current saved p
 
 
 Full522.2 intake closure: all originally listed source ancestors are integrated; Goal285 was already shipped equivalently and adds no product delta. Root also accepts final related input/card-order bbcf2043983233b1b1aa38e4a1ebd07229454178 before freeze, preserving raw human text and hidden runtime instructions. New combined recovered-root/early-human regression exposed a pre-card staging gap; Root fixed it with the existing deferred surface and post-admission inflight cleanup, no second writer or repeated input. Further arrivals enter the next batch. Initial42suites547 and type/version3PASS, then final affected gates/CI/native/artifact remain distinct.
+
+## MOXBOTS-0522-ALL-IMPROVEMENTS-20261025 — Root closed intake
+
+The human requested all listed unpackaged improvements. Same sole desktop/macOS-arm64/updater and combinedCI/main owner01a12bc2 selects0.5.22/build522.2. Base848 and all selected ancestors retained; previous narrower522.1 remains sealed/unpublished. New upstream stability adaptation announced without a final commit after intake closure is deferred. Root combined547 then final529 tests, TypeScript/scoped lint/classification/version3, actual production-component browser390/1440 and actualSDK synthetic ordinary/rework pass. Root corrected the recovered queued-root and input-before-card cross-feature surface once; RED/GREEN retained. No installed/realProvider/two-device result inferred. Precise CI/main, one new artifact and fresh maintenance/install/formal-channel remain distinct gates; original21rollback and unknown business/memory100 remain preserved.
