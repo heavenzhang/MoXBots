@@ -26,7 +26,7 @@
 
 ## Verification
 
-- 代码/模拟验证：263集成、149单元、35DOM通过；tsc、lint、分类和diff通过。验收 `dev-docs/request-499-handoff/acceptance.md`。
+- 代码/模拟验证：263基础集成、149单元、35DOM通过；构建前追加内部重试继承标记回归，先红后绿，相关10项通过；tsc、lint、分类和diff通过。验收 `dev-docs/request-499-handoff/acceptance.md`。
 - 真实 SDK/Provider/原生安装验收：待构建负责人组织；本地回归不替代真实路径。
 - 当前 Agent 直接实现与集成；增加1名只读独立审查，因取消/准入竞态需非实现者复核，未发现阻断问题。小范围UI由主Agent负责1280/390真实组件页面验收；未调用外部模型。
 
