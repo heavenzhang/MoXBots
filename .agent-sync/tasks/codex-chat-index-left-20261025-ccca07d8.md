@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/chat-index-left-20261025 -->
 <!-- git-project-sync-task:base=c5fd489b56d2eb2f19923d9dddc5cb6097cd439f -->
-<!-- git-project-sync-task:status=ready-for-integration -->
+<!-- git-project-sync-task:status=ready-for-review -->
 
 # Task: MOXBOTS-CHAT-INDEX-20261025 左侧会话索引及隐藏聊天滚动条
 
@@ -15,7 +15,7 @@
 - [x] 左侧索引；无常驻滚动条；长索引最后一项可达。
 - [x] 点击、键盘进入/退出、虚拟化消息定位、正文手动滚动与自动跟随回归通过。
 - [x] 实际组件 Chromium/WebKit 渲染、长列表与窄窗/200% 等效布局验证。
-- [ ] 提交并推送任务分支，远端 handoff 门通过。
+- [x] 实现提交并推送任务分支；最终同步结果通过独立 `handoff` 门核对。
 - [ ] 唯一 CI/发布会话完成共享 CI、main 集成与远端包含核验。
 - [ ] 下一未冻结桌面制品及真实客户端路径复验。
 
