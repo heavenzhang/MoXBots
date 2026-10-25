@@ -26,10 +26,12 @@ import { mobileTheme } from '../mobileTheme';
 import { conversationStyles } from '../conversationStyles';
 import { ComposerPopover } from '../ComposerPopover';
 import { conversationStatus } from '../sessionPresentation';
+import { SnapshotReadTracker, snapshotReadStatus } from '../snapshotRead';
 
 const C = { ...mobileTheme, paper: mobileTheme.white, green: mobileTheme.primary, greenWash: mobileTheme.wash, amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
 type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found' | 'unknown';
+const initialViewOwner: ViewOwner = { epoch: 0, screen: 'login', targetId: null, agentId: null, sessionId: null };
 type Notice = { source?: 'snapshot'; tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
 function notificationOpenNotice(code: string): NonNullable<Notice> {
   const registrationRequired = code === 'MOBILE_NOTIFICATIONS_DISABLED' || code === 'MOBILE_NOTIFICATION_REGISTRATION_REQUIRED';
@@ -169,7 +171,9 @@ function AppBody() {
   const transcriptMetricsRef = useRef({ y: 0, height: 0 });
   const prependPositionRef = useRef<{ epoch: number; y: number; height: number } | null>(null);
   const targetRef = useRef<Target | null>(null);
-  const ownerRef = useRef<ViewOwner>({ epoch: 0, screen: 'login', targetId: null, agentId: null, sessionId: null });
+  const ownerRef = useRef<ViewOwner>(initialViewOwner);
+  const [snapshotReadTracker] = useState(() => new SnapshotReadTracker(initialViewOwner));
+  const [snapshotRead, setSnapshotRead] = useState(() => snapshotReadTracker.current());
   const activeDraftKeyRef = useRef<string | null>(null);
   const speechDraftKeyRef = useRef<string | null>(null);
   const loadingEpochRef = useRef(0);
@@ -279,6 +283,7 @@ function AppBody() {
     setHistoryLoading(false); setHistoryError(null);
     prependPositionRef.current = null;
     ownerRef.current = { epoch: ownerRef.current.epoch + 1, screen: nextScreen, targetId: nextTarget?.targetId ?? null, agentId: nextTarget?.agentId ?? null, sessionId };
+    setSnapshotRead(snapshotReadTracker.reset(ownerRef.current));
     activeDraftKeyRef.current = key;
     setRequestedSessionId(sessionId);
     setOwnerEpoch(ownerRef.current.epoch);
@@ -299,7 +304,7 @@ function AppBody() {
       setDraft('');
     }
     return ownerRef.current;
-  }, [releaseAttachmentJob]);
+  }, [releaseAttachmentJob, snapshotReadTracker]);
   const saveDraftFor = useCallback((key: string | null, ownerEpoch: number | null, value: string) => {
     if (ownerEpoch === null) return;
     draftPersistenceRef.current?.edit(key, ownerEpoch, value);
@@ -312,8 +317,34 @@ function AppBody() {
     if (previous?.expanded && !reading.expanded) setHistoryError('会话记录已变化，请重新加载更早记录。');
     transcriptRef.current = reading; setTranscript(reading);
     snapshotRef.current = value; setSnapshot(value);
+    setSnapshotRead(snapshotReadTracker.accept(ownerRef.current));
     setNotice((prior) => prior?.source === 'snapshot' ? null : prior);
-  }, []);
+  }, [snapshotReadTracker]);
+  const readSnapshot = useCallback(async (owner: ViewOwner, selected: Target, eligible: () => boolean = () => true) => {
+    if (!owner.sessionId || !viewStillOwned(owner, ownerRef.current) || !eligible()) return;
+    const flight = snapshotReadTracker.begin(owner);
+    if (!flight) return;
+    setSnapshotRead(snapshotReadTracker.current());
+    setNotice((prior) => prior?.source === 'snapshot' ? null : prior);
+    const finish = (status: 'idle' | 'error' | 'success') => {
+      if (!snapshotReadTracker.finish(flight, ownerRef.current, status)) return false;
+      setSnapshotRead(snapshotReadTracker.current());
+      return true;
+    };
+    try {
+      const reply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId,
+        request: { kind: 'get', agentId: selected.agentId, sessionId: owner.sessionId, limit: 30 } }));
+      if (!eligible()) { finish('idle'); return; }
+      if (reply.kind !== 'snapshot' || reply.agentId !== owner.agentId || reply.sessionId !== owner.sessionId) {
+        if (finish('error')) showSnapshotFailure(reply.kind === 'error' ? reply.code : 'SESSION_SNAPSHOT_REPLY_INVALID');
+        return;
+      }
+      if (finish('success')) commitSnapshot(reply);
+    } catch (error) {
+      if (!eligible()) { finish('idle'); return; }
+      if (finish('error')) showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED');
+    }
+  }, [commitSnapshot, showSnapshotFailure, snapshotReadTracker]);
   const onComposerInputLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
     const width = Math.max(0, event.nativeEvent.layout.width);
     setComposerTextWidth((current) => Math.abs(current - width) > 1 ? width : current);
@@ -576,16 +607,7 @@ function AppBody() {
     } else if (refreshedOwner.screen === 'sessions') setSessions([]);
     if (selectedTarget?.online && refreshedOwner.screen === 'chat' && refreshedOwner.sessionId) {
       if (!requestIsCurrent()) return;
-      try {
-        const snapshotReply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selectedTarget.targetId, request: { kind: 'get', agentId: selectedTarget.agentId, sessionId: refreshedOwner.sessionId, limit: 30 } }));
-        if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) {
-          if (snapshotReply.kind === 'error') showSnapshotFailure(snapshotReply.code);
-          else if (snapshotReply.kind !== 'snapshot' || snapshotReply.agentId !== refreshedOwner.agentId || snapshotReply.sessionId !== refreshedOwner.sessionId) showSnapshotFailure('SESSION_SNAPSHOT_REPLY_INVALID');
-          else commitSnapshot(snapshotReply);
-        }
-      } catch (error) {
-        if (requestIsCurrent() && viewStillOwned(refreshedOwner, ownerRef.current)) showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED');
-      }
+      await readSnapshot(refreshedOwner, selectedTarget, requestIsCurrent);
     }
     if (!requestIsCurrent()) return;
     const journal = await requestNative({ version: 1, kind: 'operations.pending' });
@@ -596,7 +618,7 @@ function AppBody() {
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
-  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, routeFocusGate, showSnapshotFailure]);
+  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, readSnapshot, routeFocusGate]);
 
   useEffect(() => notificationOpens.subscribe(() => {
     if (routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE', 'error'); });
@@ -698,30 +720,14 @@ function AppBody() {
     if (!selected) return;
     const owner = moveOwner('chat', selected, row.sessionId);
     setNotice(null);
-    let result;
-    try { result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId, request: { kind: 'get', agentId: selected.agentId, sessionId: row.sessionId, limit: 30 } })); }
-    catch (error) { if (viewStillOwned(owner, ownerRef.current)) showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED'); return; }
-    if (!viewStillOwned(owner, ownerRef.current)) return;
-    if (result.kind === 'error') { showSnapshotFailure(result.code); return; }
-    if (result.kind !== 'snapshot' || result.agentId !== selected.agentId || result.sessionId !== row.sessionId) { showSnapshotFailure('SESSION_SNAPSHOT_REPLY_INVALID'); return; }
-    commitIfViewOwned(owner, ownerRef.current, result, commitSnapshot);
-  }, [moveOwner, commitSnapshot, showSnapshotFailure, target]);
+    await readSnapshot(owner, selected);
+  }, [moveOwner, readSnapshot, target]);
 
   const retrySnapshot = useCallback(async () => {
     const owner = ownerRef.current, selected = targetRef.current;
     if (!selected?.online || !owner.sessionId || owner.screen !== 'chat') return;
-    try {
-      const reply = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId,
-        request: { kind: 'get', agentId: selected.agentId, sessionId: owner.sessionId, limit: 30 } }));
-      if (!viewStillOwned(owner, ownerRef.current)) return;
-      if (reply.kind !== 'snapshot' || reply.agentId !== owner.agentId || reply.sessionId !== owner.sessionId) {
-        showSnapshotFailure(reply.kind === 'error' ? reply.code : 'SESSION_SNAPSHOT_REPLY_INVALID'); return;
-      }
-      commitSnapshot(reply);
-    } catch (error) {
-      if (viewStillOwned(owner, ownerRef.current)) showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED');
-    }
-  }, [commitSnapshot, showSnapshotFailure]);
+    await readSnapshot(owner, selected);
+  }, [readSnapshot]);
 
   const loadEarlier = useCallback(async () => {
     const owner = ownerRef.current, selected = targetRef.current, captured = transcriptRef.current;
@@ -776,12 +782,12 @@ function AppBody() {
           showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED');
         }
       }
-    }, () => routeActiveRef.current && AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && historyFlightRef.current === null && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
+    }, () => routeActiveRef.current && AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && historyFlightRef.current === null && !snapshotReadTracker.pending(pollOwner) && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
     const interval = setInterval(() => {
       void poll.tick();
     }, 1500);
     return () => { clearInterval(interval); poll.stop(); };
-  }, [commitSnapshot, ownerEpoch, showSnapshotFailure, screen, snapshot?.sessionId, snapshotPollGate, target?.targetId]);
+  }, [commitSnapshot, ownerEpoch, showSnapshotFailure, screen, snapshot?.sessionId, snapshotPollGate, snapshotReadTracker, target?.targetId]);
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
@@ -1333,6 +1339,7 @@ function AppBody() {
   };
   const sendAvailability = sendProtocol(mobileMode, draft.trim(), selectedModelId, attachments.map((item) => ({ state: item.upload?.state ?? (item.errorCode ? 'error' : 'uploading'), assetId: item.upload?.assetId ?? null })));
   const awaitingSnapshot = screen === 'chat' && requestedSessionId !== null && (snapshot?.sessionId !== requestedSessionId || snapshot?.agentId !== target?.agentId);
+  const snapshotStatus = snapshotReadStatus(snapshotRead, { epoch: ownerEpoch, screen, targetId: target?.targetId ?? null, agentId: target?.agentId ?? null, sessionId: requestedSessionId });
   const canSubmit = !awaitingSnapshot && sendAvailability !== 'blocked' && !!target?.online && !sending && !blocksMutation;
   const chatPendingReceipt = screen === 'chat' ? pending.find((item) => item.status !== 'prepared'
     && item.targetId === target?.targetId && item.agentId === (snapshot?.agentId ?? target?.agentId)
@@ -1410,7 +1417,7 @@ function AppBody() {
     {screen === 'chat' && <View style={styles.fill}>
       <View accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.chatToolbar}>
         <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { moveOwner('sessions', targetRef.current, null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
-        <View style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'} · {awaitingSnapshot ? (loading ? '读取中' : '待读取') : conversationStatus(snapshot?.state, target?.online)}</Text></View>
+        <View style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'} · {awaitingSnapshot ? (snapshotStatus === 'pending' ? '读取中' : '待读取') : conversationStatus(snapshot?.state, target?.online)}</Text></View>
         <Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!snapshot?.sessionId || awaitingSnapshot} accessibilityState={{ disabled: !snapshot?.sessionId || awaitingSnapshot }} onPress={openArtifacts} style={[styles.toolbarAction, (!snapshot?.sessionId || awaitingSnapshot) && { opacity: 0.35 }]}><FileText size={20} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
@@ -1441,7 +1448,7 @@ function AppBody() {
             scrollRef.current?.scrollTo({ y: Math.max(0, prepend.y + height - prepend.height), animated: false });
           } else if (followTranscriptRef.current) scrollRef.current?.scrollToEnd({ animated: false });
         }}>
-        {awaitingSnapshot && <EmptyState title={loading ? '正在读取会话…' : '会话暂时无法打开'} detail="读取成功前不会发送消息或新建会话，原会话草稿会保留。" action={!loading && target?.online ? '重试读取会话' : undefined} onAction={() => void run('snapshot', retrySnapshot)}/>}
+        {awaitingSnapshot && <EmptyState title={snapshotStatus === 'pending' ? '正在读取会话…' : snapshotStatus === 'error' ? '会话暂时无法打开' : target?.online ? '会话待读取' : '等待设备连接'} detail="读取成功前不会发送消息或新建会话，原会话草稿会保留。" action={snapshotStatus !== 'pending' && target?.online ? '重试读取会话' : undefined} onAction={() => void run('snapshot', retrySnapshot)}/>}
         {transcript?.hasMoreBefore && <Pressable accessibilityRole="button" accessibilityLabel="加载更早记录" disabled={historyLoading || !target?.online} onPress={() => void loadEarlier()} style={styles.historyLoad}><Text style={styles.pendingLink}>{historyLoading ? '正在加载更早记录…' : '加载更早记录'}</Text></Pressable>}
         {historyError && <Text accessibilityRole="alert" style={styles.historyError}>{historyError}</Text>}
         {!snapshot && !awaitingSnapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
