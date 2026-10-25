@@ -1,0 +1,1046 @@
+{
+  "initial": {
+    "top": 6136,
+    "height": 6776,
+    "viewport": 640,
+    "gap": 0,
+    "follow": "force",
+    "statusY": 394,
+    "statusH": 30,
+    "anchor": "h23",
+    "anchorY": -41.875
+  },
+  "initialGeometry": {
+    "rows": [
+      {
+        "index": 11,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 12,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 13,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 14,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 15,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 16,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 17,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 18,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 19,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 20,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 21,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 22,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 23,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 24,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 25,
+        "known": 46.390625,
+        "actual": 46.390625
+      }
+    ],
+    "footerHeight": 246,
+    "naturalEnd": 6776,
+    "projectedEnd": 6776,
+    "scrollHeight": 6776,
+    "endPadding": 0.796875
+  },
+  "streamed": {
+    "top": 6942,
+    "height": 7582,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 394,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -459.1875
+  },
+  "streamedGeometry": {
+    "rows": [
+      {
+        "index": 16,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 17,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 18,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 19,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 20,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 21,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 22,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 23,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 24,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 25,
+        "known": 852.453125,
+        "actual": 852.453125
+      }
+    ],
+    "footerHeight": 246,
+    "naturalEnd": 7582,
+    "projectedEnd": 7582,
+    "scrollHeight": 7582,
+    "endPadding": 0.734375
+  },
+  "motion": {
+    "before": {
+      "top": 6942,
+      "height": 7582,
+      "viewport": 640,
+      "gap": 0,
+      "follow": true,
+      "statusY": 394,
+      "statusH": 30,
+      "anchor": "stream",
+      "anchorY": -459.1875
+    },
+    "frames": [
+      {
+        "top": 6942,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 59,
+        "follow": true,
+        "statusY": 452.78125,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -459.1875
+      },
+      {
+        "top": 6943,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 58,
+        "follow": true,
+        "statusY": 452,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -460.1875
+      },
+      {
+        "top": 6950,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 51,
+        "follow": true,
+        "statusY": 445,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -467.1875
+      },
+      {
+        "top": 6962,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 39,
+        "follow": true,
+        "statusY": 433,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -479.1875
+      },
+      {
+        "top": 6972,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 29,
+        "follow": true,
+        "statusY": 423,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -489.1875
+      },
+      {
+        "top": 6981,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 20,
+        "follow": true,
+        "statusY": 414,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -498.1875
+      },
+      {
+        "top": 6987,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 14,
+        "follow": true,
+        "statusY": 408,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -504.1875
+      },
+      {
+        "top": 6992,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 9,
+        "follow": true,
+        "statusY": 403,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -509.1875
+      },
+      {
+        "top": 6995,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 6,
+        "follow": true,
+        "statusY": 400,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -512.1875
+      },
+      {
+        "top": 6997,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 4,
+        "follow": true,
+        "statusY": 398,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -514.1875
+      },
+      {
+        "top": 6999,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 2,
+        "follow": true,
+        "statusY": 396,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -516.1875
+      },
+      {
+        "top": 7000,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 1,
+        "follow": true,
+        "statusY": 395,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -517.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      },
+      {
+        "top": 7001,
+        "height": 7641,
+        "viewport": 640,
+        "gap": 0,
+        "follow": true,
+        "statusY": 394,
+        "statusH": 30,
+        "anchor": "stream",
+        "anchorY": -518.1875
+      }
+    ]
+  },
+  "burstSettled": {
+    "top": 7001,
+    "height": 7641,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 394,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -518.1875
+  },
+  "rapidSettled": {
+    "top": 7359,
+    "height": 7999,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 394,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -876.1875
+  },
+  "motionCancelled": {
+    "top": 7337,
+    "height": 8058,
+    "viewport": 640,
+    "gap": 81,
+    "follow": false,
+    "statusY": 475,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -854.1875
+  },
+  "reducedMotion": {
+    "top": 7476,
+    "height": 8116,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 394,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -993.1875
+  },
+  "reading": {
+    "top": 7116,
+    "height": 8407,
+    "viewport": 640,
+    "gap": 651,
+    "follow": false,
+    "statusY": 1045,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -633.1875
+  },
+  "readingResize": {
+    "top": 7116,
+    "height": 8491,
+    "viewport": 520,
+    "gap": 855,
+    "follow": false,
+    "statusY": 1045,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -633.1875
+  },
+  "near": {
+    "top": 7951,
+    "height": 8841,
+    "viewport": 520,
+    "gap": 370,
+    "follow": false,
+    "statusY": 560,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1468.1875
+  },
+  "manualReturn": {
+    "top": 8321,
+    "height": 8841,
+    "viewport": 520,
+    "gap": 0,
+    "follow": true,
+    "statusY": 190,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1838.1875
+  },
+  "composerGrowth": {
+    "top": 8361,
+    "height": 8881,
+    "viewport": 520,
+    "gap": 0,
+    "follow": true,
+    "statusY": 150,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1878.1875
+  },
+  "permissionGrowth": {
+    "top": 8579,
+    "height": 9099,
+    "viewport": 520,
+    "gap": 0,
+    "follow": true,
+    "statusY": 150,
+    "statusH": 30,
+    "anchorY": null
+  },
+  "viewportShrink": {
+    "top": 8441,
+    "height": 8881,
+    "viewport": 440,
+    "gap": 0,
+    "follow": true,
+    "statusY": 70,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1958.1875
+  },
+  "immediateCancel": {
+    "top": 8341,
+    "height": 9016,
+    "viewport": 440,
+    "gap": 235,
+    "follow": false,
+    "statusY": 305,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1858.1875
+  },
+  "navigation": {
+    "top": 7964,
+    "height": 9172,
+    "viewport": 440,
+    "gap": 768,
+    "follow": false,
+    "statusY": 838,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1481.1875
+  },
+  "downwardCancel": {
+    "top": 7595,
+    "height": 9284,
+    "viewport": 440,
+    "gap": 1249,
+    "follow": false,
+    "statusY": 1319,
+    "statusH": 30,
+    "anchor": "stream",
+    "anchorY": -1112.1875
+  },
+  "terminal": {
+    "top": 8850,
+    "height": 9290,
+    "viewport": 440,
+    "gap": 0,
+    "follow": true,
+    "anchor": "stream",
+    "anchorY": -2367.1875
+  },
+  "mountedSearch": {
+    "top": 6285,
+    "height": 9508,
+    "viewport": 440,
+    "gap": 2783,
+    "follow": false,
+    "statusY": 2853,
+    "statusH": 30,
+    "anchor": "h23",
+    "anchorY": -190.875
+  },
+  "disclosure": {
+    "top": 6218,
+    "height": 8054,
+    "viewport": 640,
+    "gap": 1196,
+    "follow": false,
+    "statusY": 1590,
+    "statusH": 30,
+    "anchor": "h23",
+    "anchorY": -123.875
+  },
+  "grownTail": {
+    "top": 15203,
+    "height": 15843,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "anchor": "stream",
+    "anchorY": -8720.1875
+  },
+  "shrunkTail": {
+    "top": 6142,
+    "height": 6782,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "anchor": "h23",
+    "anchorY": -47.875
+  },
+  "shrunkTailGeometry": {
+    "rows": [
+      {
+        "index": 12,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 13,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 14,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 15,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 16,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 17,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 18,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 19,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 20,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 21,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 22,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 23,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 24,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 25,
+        "known": 82.390625,
+        "actual": 82.390625
+      }
+    ],
+    "footerHeight": 216,
+    "naturalEnd": 6782,
+    "projectedEnd": 6782,
+    "scrollHeight": 6782,
+    "endPadding": 0.796875
+  },
+  "fractionalFooter": {
+    "top": 6136,
+    "height": 6776,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 393.625,
+    "statusH": 30,
+    "anchor": "h23",
+    "anchorY": -41.875
+  },
+  "fractionalFooterGeometry": {
+    "rows": [
+      {
+        "index": 11,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 12,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 13,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 14,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 15,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 16,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 17,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 18,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 19,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 20,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 21,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 22,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 23,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 24,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 25,
+        "known": 46.390625,
+        "actual": 46.390625
+      }
+    ],
+    "footerHeight": 246.375,
+    "naturalEnd": 6776,
+    "projectedEnd": 6776,
+    "scrollHeight": 6776,
+    "endPadding": 0.421875
+  },
+  "fractionalGrowth": {
+    "top": 6450,
+    "height": 7090,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 393.625,
+    "statusH": 30,
+    "anchor": "h24",
+    "anchorY": -161.53125
+  },
+  "fractionalGrowthGeometry": {
+    "rows": [
+      {
+        "index": 13,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 14,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 15,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 16,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 17,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 18,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 19,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 20,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 21,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 22,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 23,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 24,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 25,
+        "known": 359.859375,
+        "actual": 359.859375
+      }
+    ],
+    "footerHeight": 246.375,
+    "naturalEnd": 7090,
+    "projectedEnd": 7090,
+    "scrollHeight": 7090,
+    "endPadding": 0.953125
+  },
+  "fractionalShrink": {
+    "top": 6136,
+    "height": 6776,
+    "viewport": 640,
+    "gap": 0,
+    "follow": true,
+    "statusY": 393.625,
+    "statusH": 30,
+    "anchor": "h23",
+    "anchorY": -41.875
+  },
+  "fractionalShrinkGeometry": {
+    "rows": [
+      {
+        "index": 11,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 12,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 13,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 14,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 15,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 16,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 17,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 18,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 19,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 20,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 21,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 22,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 23,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 24,
+        "known": 194.34375,
+        "actual": 194.34375
+      },
+      {
+        "index": 25,
+        "known": 46.390625,
+        "actual": 46.390625
+      }
+    ],
+    "footerHeight": 246.375,
+    "naturalEnd": 6776,
+    "projectedEnd": 6776,
+    "scrollHeight": 6776,
+    "endPadding": 0.421875
+  }
+}

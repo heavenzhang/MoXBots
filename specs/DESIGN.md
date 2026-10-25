@@ -240,6 +240,7 @@ App Shell 使用“全局侧栏 + 当前会话页面”的导航模型，完整�
 - 页面只有一个主滚动 owner；固定 Header、吸底 Composer 和内部预览需要明确各自边界。
 - 左侧资源、中央对话、右侧工作区可以独立滚动，但不能建立重叠 DOM scroller。
 - 普通 WebView 使用平台原生滚动条和 `scrollbar-gutter: stable`；不全局自绘窄滚动条或透明 thumb。
+- 聊天正文和左侧会话索引按产品约定隐藏可见滚动条（局部 `chat-scroll-surface`），保留原生滚动、虚拟列表和键盘定位；其他区域继续沿用平台策略。
 - 侧栏、Tab、Drawer、Sheet 的显隐不得造成内容宽度反复抖动。
 
 ## 7. 动效

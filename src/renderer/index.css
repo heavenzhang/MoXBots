@@ -8,6 +8,16 @@
    ThemeProvider manages the class based on user preference (light/dark/system). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* Chat transcript + query index only: keep native scrolling without two visible
+   tracks. Other surfaces retain their platform scrollbar and gutter policy. */
+.chat-scroll-surface {
+  scrollbar-width: none;
+}
+
+.chat-scroll-surface::-webkit-scrollbar {
+  display: none;
+}
+
 /* Tailwind owns utility generation at build time while Theme packages own all
    runtime visual values. Keep this bridge value-free: `inline` makes every
    generated utility (including hover/dark variants) read the active Theme's

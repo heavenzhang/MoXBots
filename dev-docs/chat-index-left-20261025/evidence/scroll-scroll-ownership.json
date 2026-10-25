@@ -1,0 +1,2204 @@
+{
+  "auto": {
+    "trace": [
+      {
+        "kind": "index",
+        "at": 10507.399999976158,
+        "args": [
+          "%creact-virtuoso: %c%s %o",
+          "color: #0253b3; font-weight: bold",
+          "color: initial",
+          "scrolling from index to",
+          {
+            "behavior": "auto",
+            "index": 25,
+            "top": 6135.203125
+          }
+        ]
+      },
+      {
+        "kind": "native",
+        "at": 10513.199999988079,
+        "args": [
+          {
+            "top": 6195,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6136
+      },
+      {
+        "kind": "native",
+        "at": 10526.199999988079,
+        "args": [
+          {
+            "top": 6253,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6194
+      },
+      {
+        "kind": "native",
+        "at": 10542.5,
+        "args": [
+          {
+            "top": 6312,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6253
+      },
+      {
+        "kind": "native",
+        "at": 10558.699999988079,
+        "args": [
+          {
+            "top": 6371,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6312
+      },
+      {
+        "kind": "native",
+        "at": 10576.599999964237,
+        "args": [
+          {
+            "top": 6430,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6371
+      },
+      {
+        "kind": "native",
+        "at": 10591.699999988079,
+        "args": [
+          {
+            "top": 6489,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6430
+      },
+      {
+        "kind": "native",
+        "at": 10608,
+        "args": [
+          {
+            "top": 6547,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6488
+      },
+      {
+        "kind": "native",
+        "at": 10625.300000011921,
+        "args": [
+          {
+            "top": 6606,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6547
+      },
+      {
+        "kind": "native",
+        "at": 10641.5,
+        "args": [
+          {
+            "top": 6665,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6606
+      },
+      {
+        "kind": "native",
+        "at": 10658,
+        "args": [
+          {
+            "top": 6724,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6665
+      },
+      {
+        "kind": "native",
+        "at": 10676.699999988079,
+        "args": [
+          {
+            "top": 6783,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6724
+      },
+      {
+        "kind": "native",
+        "at": 10691.699999988079,
+        "args": [
+          {
+            "top": 6841,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6782
+      },
+      {
+        "kind": "native",
+        "at": 10708.399999976158,
+        "args": [
+          {
+            "top": 6900,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6841
+      },
+      {
+        "kind": "native",
+        "at": 10724.199999988079,
+        "args": [
+          {
+            "top": 6959,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6900
+      },
+      {
+        "kind": "native",
+        "at": 10743.199999988079,
+        "args": [
+          {
+            "top": 7018,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6959
+      },
+      {
+        "kind": "native",
+        "at": 10765.599999964237,
+        "args": [
+          {
+            "top": 7076,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7017
+      },
+      {
+        "kind": "native",
+        "at": 10776.599999964237,
+        "args": [
+          {
+            "top": 7135,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7076
+      },
+      {
+        "kind": "native",
+        "at": 10793.899999976158,
+        "args": [
+          {
+            "top": 7194,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7135
+      },
+      {
+        "kind": "native",
+        "at": 10808.099999964237,
+        "args": [
+          {
+            "top": 7253,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7194
+      },
+      {
+        "kind": "native",
+        "at": 10825.899999976158,
+        "args": [
+          {
+            "top": 7312,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7253
+      },
+      {
+        "kind": "native",
+        "at": 10843,
+        "args": [
+          {
+            "top": 7370,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7311
+      },
+      {
+        "kind": "native",
+        "at": 10858.800000011921,
+        "args": [
+          {
+            "top": 7429,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7370
+      },
+      {
+        "kind": "native",
+        "at": 10875.300000011921,
+        "args": [
+          {
+            "top": 7488,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7429
+      },
+      {
+        "kind": "native",
+        "at": 10891.899999976158,
+        "args": [
+          {
+            "top": 7547,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7488
+      },
+      {
+        "kind": "native",
+        "at": 10908.599999964237,
+        "args": [
+          {
+            "top": 7605,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7546
+      },
+      {
+        "kind": "native",
+        "at": 10925.599999964237,
+        "args": [
+          {
+            "top": 7664,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7605
+      },
+      {
+        "kind": "native",
+        "at": 10941.399999976158,
+        "args": [
+          {
+            "top": 7723,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7664
+      },
+      {
+        "kind": "native",
+        "at": 10958.800000011921,
+        "args": [
+          {
+            "top": 7782,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7723
+      },
+      {
+        "kind": "native",
+        "at": 10974.599999964237,
+        "args": [
+          {
+            "top": 7841,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7782
+      },
+      {
+        "kind": "native",
+        "at": 10991.199999988079,
+        "args": [
+          {
+            "top": 7899,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7840
+      },
+      {
+        "kind": "native",
+        "at": 11009.5,
+        "args": [
+          {
+            "top": 7958,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7899
+      },
+      {
+        "kind": "native",
+        "at": 11023.300000011921,
+        "args": [
+          {
+            "top": 8017,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7958
+      },
+      {
+        "kind": "native",
+        "at": 11040.199999988079,
+        "args": [
+          {
+            "top": 8076,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8017
+      },
+      {
+        "kind": "native",
+        "at": 11057.199999988079,
+        "args": [
+          {
+            "top": 8134,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8075
+      },
+      {
+        "kind": "native",
+        "at": 11072.800000011921,
+        "args": [
+          {
+            "top": 8193,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8134
+      },
+      {
+        "kind": "native",
+        "at": 11088.899999976158,
+        "args": [
+          {
+            "top": 8252,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8193
+      },
+      {
+        "kind": "native",
+        "at": 11105,
+        "args": [
+          {
+            "top": 8311,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8252
+      },
+      {
+        "kind": "native",
+        "at": 11121.899999976158,
+        "args": [
+          {
+            "top": 8370,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8311
+      },
+      {
+        "kind": "native",
+        "at": 11139.399999976158,
+        "args": [
+          {
+            "top": 8428,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8369
+      },
+      {
+        "kind": "native",
+        "at": 11155.300000011921,
+        "args": [
+          {
+            "top": 8487,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8428
+      },
+      {
+        "kind": "native",
+        "at": 11171.599999964237,
+        "args": [
+          {
+            "top": 8546,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8487
+      },
+      {
+        "kind": "native",
+        "at": 11189.699999988079,
+        "args": [
+          {
+            "top": 8605,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8546
+      },
+      {
+        "kind": "native",
+        "at": 11206.399999976158,
+        "args": [
+          {
+            "top": 8664,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8605
+      },
+      {
+        "kind": "native",
+        "at": 11223,
+        "args": [
+          {
+            "top": 8722,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8663
+      },
+      {
+        "kind": "native",
+        "at": 11239.800000011921,
+        "args": [
+          {
+            "top": 8781,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8722
+      },
+      {
+        "kind": "native",
+        "at": 11256.399999976158,
+        "args": [
+          {
+            "top": 8840,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8781
+      },
+      {
+        "kind": "native",
+        "at": 11272.599999964237,
+        "args": [
+          {
+            "top": 8899,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8840
+      },
+      {
+        "kind": "native",
+        "at": 11290.199999988079,
+        "args": [
+          {
+            "top": 8957,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8898
+      },
+      {
+        "kind": "native",
+        "at": 11306.699999988079,
+        "args": [
+          {
+            "top": 9016,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8957
+      },
+      {
+        "kind": "native",
+        "at": 11323.699999988079,
+        "args": [
+          {
+            "top": 9075,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9016
+      },
+      {
+        "kind": "native",
+        "at": 11338.800000011921,
+        "args": [
+          {
+            "top": 9134,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9075
+      },
+      {
+        "kind": "native",
+        "at": 11355.699999988079,
+        "args": [
+          {
+            "top": 9193,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9134
+      },
+      {
+        "kind": "native",
+        "at": 11371.899999976158,
+        "args": [
+          {
+            "top": 9251,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9192
+      },
+      {
+        "kind": "native",
+        "at": 11389.699999988079,
+        "args": [
+          {
+            "top": 9310,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9251
+      },
+      {
+        "kind": "native",
+        "at": 11405.399999976158,
+        "args": [
+          {
+            "top": 9369,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9310
+      },
+      {
+        "kind": "native",
+        "at": 11423.699999988079,
+        "args": [
+          {
+            "top": 9428,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9369
+      },
+      {
+        "kind": "native",
+        "at": 11439.5,
+        "args": [
+          {
+            "top": 9486,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9427
+      },
+      {
+        "kind": "native",
+        "at": 11455.800000011921,
+        "args": [
+          {
+            "top": 9545,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9486
+      },
+      {
+        "kind": "native",
+        "at": 11473.599999964237,
+        "args": [
+          {
+            "top": 9604,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9545
+      },
+      {
+        "kind": "native",
+        "at": 11490,
+        "args": [
+          {
+            "top": 9663,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9604
+      },
+      {
+        "kind": "native",
+        "at": 11506.800000011921,
+        "args": [
+          {
+            "top": 9722,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9663
+      },
+      {
+        "kind": "native",
+        "at": 11523.399999976158,
+        "args": [
+          {
+            "top": 9780,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9721
+      },
+      {
+        "kind": "native",
+        "at": 11540.599999964237,
+        "args": [
+          {
+            "top": 9839,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9780
+      },
+      {
+        "kind": "native",
+        "at": 11559.399999976158,
+        "args": [
+          {
+            "top": 9898,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9839
+      },
+      {
+        "kind": "native",
+        "at": 11603.300000011921,
+        "args": [
+          {
+            "top": 9957,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9898
+      },
+      {
+        "kind": "native",
+        "at": 11613.699999988079,
+        "args": [
+          {
+            "top": 10015,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9956
+      },
+      {
+        "kind": "native",
+        "at": 11631.899999976158,
+        "args": [
+          {
+            "top": 10074,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10015
+      },
+      {
+        "kind": "native",
+        "at": 11639.199999988079,
+        "args": [
+          {
+            "top": 10133,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10074
+      },
+      {
+        "kind": "native",
+        "at": 11655.5,
+        "args": [
+          {
+            "top": 10192,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10133
+      },
+      {
+        "kind": "native",
+        "at": 11672.399999976158,
+        "args": [
+          {
+            "top": 10251,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10192
+      },
+      {
+        "kind": "native",
+        "at": 11689.300000011921,
+        "args": [
+          {
+            "top": 10309,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10250
+      },
+      {
+        "kind": "native",
+        "at": 11705.699999988079,
+        "args": [
+          {
+            "top": 10368,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10309
+      },
+      {
+        "kind": "native",
+        "at": 11723.699999988079,
+        "args": [
+          {
+            "top": 10427,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10368
+      },
+      {
+        "kind": "native",
+        "at": 11739.899999976158,
+        "args": [
+          {
+            "top": 10486,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10427
+      },
+      {
+        "kind": "native",
+        "at": 11755.800000011921,
+        "args": [
+          {
+            "top": 10545,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10486
+      },
+      {
+        "kind": "native",
+        "at": 11773.199999988079,
+        "args": [
+          {
+            "top": 10603,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10544
+      },
+      {
+        "kind": "native",
+        "at": 11790.099999964237,
+        "args": [
+          {
+            "top": 10662,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10603
+      },
+      {
+        "kind": "native",
+        "at": 11806.399999976158,
+        "args": [
+          {
+            "top": 10721,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10662
+      },
+      {
+        "kind": "native",
+        "at": 11823.399999976158,
+        "args": [
+          {
+            "top": 10780,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10721
+      },
+      {
+        "kind": "native",
+        "at": 11840.399999976158,
+        "args": [
+          {
+            "top": 10838,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10779
+      },
+      {
+        "kind": "native",
+        "at": 11857.199999988079,
+        "args": [
+          {
+            "top": 10897,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10838
+      },
+      {
+        "kind": "native",
+        "at": 11871.399999976158,
+        "args": [
+          {
+            "top": 10956,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10897
+      },
+      {
+        "kind": "native",
+        "at": 11887.399999976158,
+        "args": [
+          {
+            "top": 11015,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10956
+      },
+      {
+        "kind": "native",
+        "at": 11904.300000011921,
+        "args": [
+          {
+            "top": 11074,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11015
+      },
+      {
+        "kind": "native",
+        "at": 11922.199999988079,
+        "args": [
+          {
+            "top": 11132,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11073
+      },
+      {
+        "kind": "native",
+        "at": 11939.099999964237,
+        "args": [
+          {
+            "top": 11191,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11132
+      },
+      {
+        "kind": "native",
+        "at": 11955.899999976158,
+        "args": [
+          {
+            "top": 11250,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11191
+      },
+      {
+        "kind": "native",
+        "at": 11973.099999964237,
+        "args": [
+          {
+            "top": 11309,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11250
+      },
+      {
+        "kind": "native",
+        "at": 11990,
+        "args": [
+          {
+            "top": 11367,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11308
+      },
+      {
+        "kind": "native",
+        "at": 12005.800000011921,
+        "args": [
+          {
+            "top": 11426,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11367
+      }
+    ],
+    "state": {
+      "top": 11426,
+      "height": 12066,
+      "viewport": 640,
+      "gap": 0,
+      "follow": true,
+      "statusY": 394,
+      "statusH": 30,
+      "anchor": "stream",
+      "anchorY": -4943.1875
+    }
+  },
+  "smooth": {
+    "trace": [
+      {
+        "kind": "index",
+        "at": 1759.9000000357628,
+        "args": [
+          "%creact-virtuoso: %c%s %o",
+          "color: #0253b3; font-weight: bold",
+          "color: initial",
+          "scrolling from index to",
+          {
+            "behavior": "smooth",
+            "index": 25,
+            "top": 6135.203125
+          }
+        ]
+      },
+      {
+        "kind": "native",
+        "at": 1764.4000000357628,
+        "args": [
+          {
+            "top": 6195,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6136
+      },
+      {
+        "kind": "native",
+        "at": 1776.9000000357628,
+        "args": [
+          {
+            "top": 6253,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6194
+      },
+      {
+        "kind": "native",
+        "at": 1791.7000000476837,
+        "args": [
+          {
+            "top": 6312,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6253
+      },
+      {
+        "kind": "native",
+        "at": 1808.7000000476837,
+        "args": [
+          {
+            "top": 6371,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6312
+      },
+      {
+        "kind": "native",
+        "at": 1825.800000011921,
+        "args": [
+          {
+            "top": 6430,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6371
+      },
+      {
+        "kind": "native",
+        "at": 1842,
+        "args": [
+          {
+            "top": 6489,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6430
+      },
+      {
+        "kind": "native",
+        "at": 1857.800000011921,
+        "args": [
+          {
+            "top": 6547,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6488
+      },
+      {
+        "kind": "native",
+        "at": 1876.1000000238419,
+        "args": [
+          {
+            "top": 6606,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6547
+      },
+      {
+        "kind": "native",
+        "at": 1892,
+        "args": [
+          {
+            "top": 6665,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6606
+      },
+      {
+        "kind": "native",
+        "at": 1907.800000011921,
+        "args": [
+          {
+            "top": 6724,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6665
+      },
+      {
+        "kind": "native",
+        "at": 1925.7000000476837,
+        "args": [
+          {
+            "top": 6783,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6724
+      },
+      {
+        "kind": "native",
+        "at": 1941.9000000357628,
+        "args": [
+          {
+            "top": 6841,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6782
+      },
+      {
+        "kind": "native",
+        "at": 1957.9000000357628,
+        "args": [
+          {
+            "top": 6900,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6841
+      },
+      {
+        "kind": "native",
+        "at": 1974.4000000357628,
+        "args": [
+          {
+            "top": 6959,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6900
+      },
+      {
+        "kind": "native",
+        "at": 1993.1000000238419,
+        "args": [
+          {
+            "top": 7018,
+            "behavior": "auto"
+          }
+        ],
+        "before": 6959
+      },
+      {
+        "kind": "native",
+        "at": 2008.7000000476837,
+        "args": [
+          {
+            "top": 7076,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7017
+      },
+      {
+        "kind": "native",
+        "at": 2025.4000000357628,
+        "args": [
+          {
+            "top": 7135,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7076
+      },
+      {
+        "kind": "native",
+        "at": 2042.6000000238419,
+        "args": [
+          {
+            "top": 7194,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7135
+      },
+      {
+        "kind": "native",
+        "at": 2058.2000000476837,
+        "args": [
+          {
+            "top": 7253,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7194
+      },
+      {
+        "kind": "native",
+        "at": 2075.100000023842,
+        "args": [
+          {
+            "top": 7312,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7253
+      },
+      {
+        "kind": "native",
+        "at": 2092.7000000476837,
+        "args": [
+          {
+            "top": 7370,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7311
+      },
+      {
+        "kind": "native",
+        "at": 2108.600000023842,
+        "args": [
+          {
+            "top": 7429,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7370
+      },
+      {
+        "kind": "native",
+        "at": 2124.800000011921,
+        "args": [
+          {
+            "top": 7488,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7429
+      },
+      {
+        "kind": "native",
+        "at": 2142,
+        "args": [
+          {
+            "top": 7547,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7488
+      },
+      {
+        "kind": "native",
+        "at": 2159.2000000476837,
+        "args": [
+          {
+            "top": 7605,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7546
+      },
+      {
+        "kind": "native",
+        "at": 2175.7000000476837,
+        "args": [
+          {
+            "top": 7664,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7605
+      },
+      {
+        "kind": "native",
+        "at": 2191.900000035763,
+        "args": [
+          {
+            "top": 7723,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7664
+      },
+      {
+        "kind": "native",
+        "at": 2208.600000023842,
+        "args": [
+          {
+            "top": 7782,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7723
+      },
+      {
+        "kind": "native",
+        "at": 2225.100000023842,
+        "args": [
+          {
+            "top": 7841,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7782
+      },
+      {
+        "kind": "native",
+        "at": 2241.800000011921,
+        "args": [
+          {
+            "top": 7899,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7840
+      },
+      {
+        "kind": "native",
+        "at": 2259.800000011921,
+        "args": [
+          {
+            "top": 7958,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7899
+      },
+      {
+        "kind": "native",
+        "at": 2273.100000023842,
+        "args": [
+          {
+            "top": 8017,
+            "behavior": "auto"
+          }
+        ],
+        "before": 7958
+      },
+      {
+        "kind": "native",
+        "at": 2290.900000035763,
+        "args": [
+          {
+            "top": 8076,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8017
+      },
+      {
+        "kind": "native",
+        "at": 2306.7000000476837,
+        "args": [
+          {
+            "top": 8134,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8075
+      },
+      {
+        "kind": "native",
+        "at": 2323,
+        "args": [
+          {
+            "top": 8193,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8134
+      },
+      {
+        "kind": "native",
+        "at": 2339.2000000476837,
+        "args": [
+          {
+            "top": 8252,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8193
+      },
+      {
+        "kind": "native",
+        "at": 2355.900000035763,
+        "args": [
+          {
+            "top": 8311,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8252
+      },
+      {
+        "kind": "native",
+        "at": 2372.2000000476837,
+        "args": [
+          {
+            "top": 8370,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8311
+      },
+      {
+        "kind": "native",
+        "at": 2390.400000035763,
+        "args": [
+          {
+            "top": 8428,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8369
+      },
+      {
+        "kind": "native",
+        "at": 2406.400000035763,
+        "args": [
+          {
+            "top": 8487,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8428
+      },
+      {
+        "kind": "native",
+        "at": 2423.300000011921,
+        "args": [
+          {
+            "top": 8546,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8487
+      },
+      {
+        "kind": "native",
+        "at": 2439.100000023842,
+        "args": [
+          {
+            "top": 8605,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8546
+      },
+      {
+        "kind": "native",
+        "at": 2457.100000023842,
+        "args": [
+          {
+            "top": 8664,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8605
+      },
+      {
+        "kind": "native",
+        "at": 2473.300000011921,
+        "args": [
+          {
+            "top": 8722,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8663
+      },
+      {
+        "kind": "native",
+        "at": 2490.300000011921,
+        "args": [
+          {
+            "top": 8781,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8722
+      },
+      {
+        "kind": "native",
+        "at": 2506.300000011921,
+        "args": [
+          {
+            "top": 8840,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8781
+      },
+      {
+        "kind": "native",
+        "at": 2524.300000011921,
+        "args": [
+          {
+            "top": 8899,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8840
+      },
+      {
+        "kind": "native",
+        "at": 2540.7000000476837,
+        "args": [
+          {
+            "top": 8957,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8898
+      },
+      {
+        "kind": "native",
+        "at": 2556.400000035763,
+        "args": [
+          {
+            "top": 9016,
+            "behavior": "auto"
+          }
+        ],
+        "before": 8957
+      },
+      {
+        "kind": "native",
+        "at": 2574.300000011921,
+        "args": [
+          {
+            "top": 9075,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9016
+      },
+      {
+        "kind": "native",
+        "at": 2589.2000000476837,
+        "args": [
+          {
+            "top": 9134,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9075
+      },
+      {
+        "kind": "native",
+        "at": 2606,
+        "args": [
+          {
+            "top": 9193,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9134
+      },
+      {
+        "kind": "native",
+        "at": 2622.5,
+        "args": [
+          {
+            "top": 9251,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9192
+      },
+      {
+        "kind": "native",
+        "at": 2639.600000023842,
+        "args": [
+          {
+            "top": 9310,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9251
+      },
+      {
+        "kind": "native",
+        "at": 2655.400000035763,
+        "args": [
+          {
+            "top": 9369,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9310
+      },
+      {
+        "kind": "native",
+        "at": 2674.2000000476837,
+        "args": [
+          {
+            "top": 9428,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9369
+      },
+      {
+        "kind": "native",
+        "at": 2690.600000023842,
+        "args": [
+          {
+            "top": 9486,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9427
+      },
+      {
+        "kind": "native",
+        "at": 2707.100000023842,
+        "args": [
+          {
+            "top": 9545,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9486
+      },
+      {
+        "kind": "native",
+        "at": 2723.300000011921,
+        "args": [
+          {
+            "top": 9604,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9545
+      },
+      {
+        "kind": "native",
+        "at": 2739.900000035763,
+        "args": [
+          {
+            "top": 9663,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9604
+      },
+      {
+        "kind": "native",
+        "at": 2757.5,
+        "args": [
+          {
+            "top": 9722,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9663
+      },
+      {
+        "kind": "native",
+        "at": 2772.900000035763,
+        "args": [
+          {
+            "top": 9780,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9721
+      },
+      {
+        "kind": "native",
+        "at": 2790.600000023842,
+        "args": [
+          {
+            "top": 9839,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9780
+      },
+      {
+        "kind": "native",
+        "at": 2806.5,
+        "args": [
+          {
+            "top": 9898,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9839
+      },
+      {
+        "kind": "native",
+        "at": 2824,
+        "args": [
+          {
+            "top": 9957,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9898
+      },
+      {
+        "kind": "native",
+        "at": 2840.900000035763,
+        "args": [
+          {
+            "top": 10015,
+            "behavior": "auto"
+          }
+        ],
+        "before": 9956
+      },
+      {
+        "kind": "native",
+        "at": 2855.900000035763,
+        "args": [
+          {
+            "top": 10074,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10015
+      },
+      {
+        "kind": "native",
+        "at": 2872.7000000476837,
+        "args": [
+          {
+            "top": 10133,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10074
+      },
+      {
+        "kind": "native",
+        "at": 2889.7000000476837,
+        "args": [
+          {
+            "top": 10192,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10133
+      },
+      {
+        "kind": "native",
+        "at": 2906.2000000476837,
+        "args": [
+          {
+            "top": 10251,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10192
+      },
+      {
+        "kind": "native",
+        "at": 2923.400000035763,
+        "args": [
+          {
+            "top": 10309,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10250
+      },
+      {
+        "kind": "native",
+        "at": 2940.300000011921,
+        "args": [
+          {
+            "top": 10368,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10309
+      },
+      {
+        "kind": "native",
+        "at": 2957,
+        "args": [
+          {
+            "top": 10427,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10368
+      },
+      {
+        "kind": "native",
+        "at": 2973.2000000476837,
+        "args": [
+          {
+            "top": 10486,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10427
+      },
+      {
+        "kind": "native",
+        "at": 2990.5,
+        "args": [
+          {
+            "top": 10545,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10486
+      },
+      {
+        "kind": "native",
+        "at": 3007.100000023842,
+        "args": [
+          {
+            "top": 10603,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10544
+      },
+      {
+        "kind": "native",
+        "at": 3024,
+        "args": [
+          {
+            "top": 10662,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10603
+      },
+      {
+        "kind": "native",
+        "at": 3040.300000011921,
+        "args": [
+          {
+            "top": 10721,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10662
+      },
+      {
+        "kind": "native",
+        "at": 3057.400000035763,
+        "args": [
+          {
+            "top": 10780,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10721
+      },
+      {
+        "kind": "native",
+        "at": 3073.800000011921,
+        "args": [
+          {
+            "top": 10838,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10779
+      },
+      {
+        "kind": "native",
+        "at": 3090.800000011921,
+        "args": [
+          {
+            "top": 10897,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10838
+      },
+      {
+        "kind": "native",
+        "at": 3107.300000011921,
+        "args": [
+          {
+            "top": 10956,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10897
+      },
+      {
+        "kind": "native",
+        "at": 3122.300000011921,
+        "args": [
+          {
+            "top": 11015,
+            "behavior": "auto"
+          }
+        ],
+        "before": 10956
+      },
+      {
+        "kind": "native",
+        "at": 3140.400000035763,
+        "args": [
+          {
+            "top": 11074,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11015
+      },
+      {
+        "kind": "native",
+        "at": 3155.800000011921,
+        "args": [
+          {
+            "top": 11132,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11073
+      },
+      {
+        "kind": "native",
+        "at": 3172.5,
+        "args": [
+          {
+            "top": 11191,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11132
+      },
+      {
+        "kind": "native",
+        "at": 3189.600000023842,
+        "args": [
+          {
+            "top": 11250,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11191
+      },
+      {
+        "kind": "native",
+        "at": 3206,
+        "args": [
+          {
+            "top": 11309,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11250
+      },
+      {
+        "kind": "native",
+        "at": 3223.100000023842,
+        "args": [
+          {
+            "top": 11367,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11308
+      },
+      {
+        "kind": "native",
+        "at": 3240.400000035763,
+        "args": [
+          {
+            "top": 11426,
+            "behavior": "auto"
+          }
+        ],
+        "before": 11367
+      }
+    ],
+    "state": {
+      "top": 11426,
+      "height": 12066,
+      "viewport": 640,
+      "gap": 0,
+      "follow": true,
+      "statusY": 394,
+      "statusH": 30,
+      "anchor": "stream",
+      "anchorY": -4943.1875
+    }
+  },
+  "suspend": {
+    "boundaryAt": 1820.8999999761581,
+    "trace": [
+      {
+        "kind": "index",
+        "at": 1783.7999999523163,
+        "args": [
+          "%creact-virtuoso: %c%s %o",
+          "color: #0253b3; font-weight: bold",
+          "color: initial",
+          "scrolling from index to",
+          {
+            "behavior": "smooth",
+            "index": 4,
+            "top": 1368
+          }
+        ]
+      },
+      {
+        "kind": "native",
+        "at": 1784.0999999642372,
+        "args": [
+          {
+            "behavior": "smooth",
+            "top": 1368
+          }
+        ],
+        "before": 6136
+      }
+    ],
+    "state": {
+      "top": 6127,
+      "height": 6900,
+      "viewport": 640,
+      "gap": 133,
+      "follow": false,
+      "statusY": 403,
+      "statusH": 30,
+      "anchor": "h23",
+      "anchorY": -32.875
+    }
+  },
+  "session": {
+    "boundaryAt": 2010,
+    "trace": [
+      {
+        "kind": "index",
+        "at": 1965,
+        "args": [
+          "%creact-virtuoso: %c%s %o",
+          "color: #0253b3; font-weight: bold",
+          "color: initial",
+          "scrolling from index to",
+          {
+            "behavior": "smooth",
+            "index": 4,
+            "top": 1368
+          }
+        ]
+      },
+      {
+        "kind": "native",
+        "at": 1965.199999988079,
+        "args": [
+          {
+            "behavior": "smooth",
+            "top": 1368
+          }
+        ],
+        "before": 6136
+      }
+    ],
+    "state": {
+      "top": 0,
+      "height": 640,
+      "viewport": 640,
+      "gap": 0,
+      "follow": false,
+      "statusY": 0,
+      "statusH": 30,
+      "anchorY": null
+    }
+  },
+  "sameOffset": {
+    "top": 4509,
+    "frames": [
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509,
+      4509
+    ],
+    "trace": [
+      {
+        "kind": "index",
+        "at": 2316.399999976158,
+        "args": [
+          "%creact-virtuoso: %c%s %o",
+          "color: #0253b3; font-weight: bold",
+          "color: initial",
+          "scrolling from index to",
+          {
+            "behavior": "smooth",
+            "index": 4,
+            "top": 777.375
+          }
+        ]
+      },
+      {
+        "kind": "native",
+        "at": 2316.399999976158,
+        "args": [
+          {
+            "behavior": "smooth",
+            "top": 778
+          }
+        ],
+        "before": 4511
+      },
+      {
+        "kind": "native",
+        "at": 2348.399999976158,
+        "args": [
+          {
+            "top": 4509,
+            "behavior": "auto"
+          }
+        ],
+        "before": 4509
+      }
+    ]
+  }
+}
