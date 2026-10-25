@@ -976,3 +976,5 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 ## MOXBOTS-0524-499-BRAND-20261026 — 下一未冻结紧急修复批
 
 用户在499来源聊天明确要求“马上修复 并打一个新包，更换本地”。Root01a12bc2保留唯一desktop/macOS-arm64/updater及combinedCI/main归属，计划0.5.24/build524.1；接收品牌8ea与待交499/Stop投影修复，等499精确已提交SHA后一次组合CI/正式构建。不在缺修复时替换本地，不抄routing未提交内容，不改变冻结23制品/标签。Root任务`.agent-sync/tasks/codex-release-0524-499-brand-20261026-52db85a0.md`。原业务/未知ledger不重放，fresh正常维护/一致备份后安装与有限受影响原生验证；真实Provider、源码、制品、本地与线上各自记录。无Host/cloud/mobile范围扩大，无新子Agent或新监控。
+
+524 intake complete: brand8ea + chat-index4e2f4a26 + repair499b0effca6已按精确远端正常合并，无产品冲突；Root263 integration/193 unit/66 DOM/12资源CLI版本、tsc/scopedlint均PASS，原作者真实SDK loopback无付费证明另存。0.5.24/524.1版本统一，下一步固定组合SHA一次共享CI。签名包/native/真实Provider/本地/正式通道尚待，不重建已交付23、不复制routing WIP。
