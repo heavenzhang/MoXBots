@@ -1,4 +1,4 @@
-import { render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import QueryNavigator from './QueryNavigator';
 import type { Message } from '../../types/chat';
@@ -34,7 +34,7 @@ describe('QueryNavigator', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps the rail clear of the native message scrollbar gutter', () => {
+  it('keeps the query rail on the left, separate from the message scrollbar edge', () => {
     const scrollContainerRef = { current: document.createElement('div') };
 
     const { container } = render(
@@ -49,8 +49,64 @@ describe('QueryNavigator', () => {
       />,
     );
 
-    expect(container.firstElementChild).toHaveClass('right-4');
-    expect(container.firstElementChild).not.toHaveClass('right-0');
+    expect(container.firstElementChild).toHaveClass('left-2');
+    expect(container.firstElementChild).not.toHaveClass('right-4');
+  });
+
+  const questions = () => [
+    userMessage('u1', 'First question'),
+    userMessage('u2', 'Second question'),
+    userMessage('u3', 'Third question'),
+  ];
+
+  it('lets keyboard users enter the index, navigate a virtualized query and exit with Escape', () => {
+    const navigate = vi.fn();
+    const { getByRole, getByText } = render(
+      <QueryNavigator messages={questions()} scrollContainerRef={{ current: document.createElement('div') }}
+        pauseAutoScroll={vi.fn()} onNavigateToQuery={navigate} />,
+    );
+    const panel = getByRole('navigation');
+    expect(panel).toHaveAttribute('tabindex', '0');
+    expect(getByText('Third question').closest('button')).toHaveAttribute('tabindex', '-1');
+    act(() => panel.focus());
+    const lastQuery = getByRole('button', { name: 'Third question' });
+    expect(lastQuery).toHaveAttribute('tabindex', '0');
+    act(() => lastQuery.focus());
+    fireEvent.click(lastQuery);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('u3');
+    fireEvent.keyDown(lastQuery, { key: 'Escape' });
+    expect(panel).toHaveFocus();
+    expect(lastQuery).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('keeps the focused index open when the pointer leaves and closes after keyboard focus leaves', () => {
+    const { getByRole, getByText } = render(
+      <QueryNavigator messages={questions()} scrollContainerRef={{ current: document.createElement('div') }}
+        pauseAutoScroll={vi.fn()} />,
+    );
+    const panel = getByRole('navigation');
+    act(() => panel.focus());
+    fireEvent.mouseLeave(panel);
+    expect(getByRole('button', { name: 'First question' })).toHaveAttribute('tabindex', '0');
+    act(() => panel.blur());
+    expect(getByText('First question').closest('button')).toHaveAttribute('tabindex', '-1');
+  });
+
+  it('preserves fallback navigation and pauses automatic following before scrolling', () => {
+    const target = document.createElement('div');
+    target.dataset.messageId = 'u2';
+    target.scrollIntoView = vi.fn();
+    const scroller = document.createElement('div');
+    scroller.append(target);
+    const pause = vi.fn();
+    const { getByRole } = render(
+      <QueryNavigator messages={questions()} scrollContainerRef={{ current: scroller }} pauseAutoScroll={pause} />,
+    );
+    fireEvent.mouseEnter(getByRole('navigation'));
+    fireEvent.click(getByRole('button', { name: 'Second question' }));
+    expect(pause).toHaveBeenCalledOnce();
+    expect(target.scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'start' });
+    expect(pause.mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(target.scrollIntoView).mock.invocationCallOrder[0]);
   });
 
   it('does not count task notifications toward the navigator threshold', () => {

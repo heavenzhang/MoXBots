@@ -1,0 +1,177 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 900,
+      "height": 600,
+      "zoom": 1,
+      "layout": {
+        "viewport": [
+          900,
+          600
+        ],
+        "visible": true,
+        "rect": {
+          "left": 8,
+          "right": 29.03125,
+          "top": 153.40625,
+          "bottom": 394.59375
+        },
+        "inputTop": 504,
+        "inputBottom": 578,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "height": 900,
+      "zoom": 2,
+      "layout": {
+        "viewport": [
+          720,
+          450
+        ],
+        "visible": false,
+        "rect": {
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0
+        },
+        "inputTop": 354,
+        "inputBottom": 428,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "height": 844,
+      "zoom": 1,
+      "layout": {
+        "viewport": [
+          390,
+          844
+        ],
+        "visible": false,
+        "rect": {
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0
+        },
+        "inputTop": 748,
+        "inputBottom": 822,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "engine": "chromium",
+      "geometry": {
+        "left": 8,
+        "width": 286.96875,
+        "height": 421.1875,
+        "listHeight": 419,
+        "listScrollHeight": 2744,
+        "indexScrollbar": "none",
+        "transcriptScrollbar": "none"
+      },
+      "interactions": [
+        "transcript wheel",
+        "index wheel isolated",
+        "virtualized first/last navigation",
+        "keyboard entry/Escape",
+        "draft retained"
+      ],
+      "errors": []
+    },
+    {
+      "engine": "webkit",
+      "width": 900,
+      "height": 600,
+      "zoom": 1,
+      "layout": {
+        "viewport": [
+          900,
+          600
+        ],
+        "visible": true,
+        "rect": {
+          "left": 8,
+          "right": 28.4375,
+          "top": 153.40625,
+          "bottom": 394.625
+        },
+        "inputTop": 504.046875,
+        "inputBottom": 578.046875,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "height": 900,
+      "zoom": 2,
+      "layout": {
+        "viewport": [
+          720,
+          450
+        ],
+        "visible": false,
+        "rect": {
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0
+        },
+        "inputTop": 354.046875,
+        "inputBottom": 428.046875,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "height": 844,
+      "zoom": 1,
+      "layout": {
+        "viewport": [
+          390,
+          844
+        ],
+        "visible": false,
+        "rect": {
+          "left": 0,
+          "right": 0,
+          "top": 0,
+          "bottom": 0
+        },
+        "inputTop": 748.03125,
+        "inputBottom": 822.03125,
+        "horizontalOverflow": false
+      }
+    },
+    {
+      "engine": "webkit",
+      "geometry": {
+        "left": 8,
+        "width": 287.8125,
+        "height": 421.21875,
+        "listHeight": 419,
+        "listScrollHeight": 2744,
+        "indexScrollbar": "none",
+        "transcriptScrollbar": "none"
+      },
+      "interactions": [
+        "transcript wheel",
+        "index wheel isolated",
+        "virtualized first/last navigation",
+        "keyboard entry/Escape",
+        "draft retained"
+      ],
+      "errors": []
+    }
+  ]
+}

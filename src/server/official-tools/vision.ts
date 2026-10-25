@@ -1,4 +1,4 @@
-import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../../shared/appProfile';
+import { APP_CLI_NAME, APP_DATA_DIR_NAME, APP_DISPLAY_NAME } from '../../shared/appProfile';
 import { isUpdaterQaBuild } from '../../shared/updaterQa';
 import { randomUUID } from 'crypto';
 import { basename, extname, isAbsolute, relative, resolve, win32 } from 'path';
@@ -41,7 +41,7 @@ const DEFAULT_VISION_PROMPT = [
 ].join(' ');
 
 const SYSTEM_PROMPT = [
-  'You are MyAgents Vision Helper.',
+  `You are ${APP_DISPLAY_NAME} Vision Helper.`,
   'Your job is to inspect the provided images and produce precise textual observations for another AI agent.',
   'Do not invent details. If something is unclear, say so.',
 ].join('\n');
@@ -102,7 +102,7 @@ Usage:
   ${APP_CLI_NAME} vision analyze --image @myagents_files/screenshot.png --prompt "Read the error message"
   ${APP_CLI_NAME} vision readme
 
-The tool only accepts local image paths inside the current MyAgents workspace.
+The tool only accepts local image paths inside the current ${APP_DISPLAY_NAME} workspace.
 Use @myagents_files/... paths when the conversation shows attached images as
 workspace references. URLs are not supported.
 
@@ -117,7 +117,7 @@ export async function analyzeImages(input: VisionAnalyzeInput): Promise<VisionAn
   const workspacePath = input.workspacePath?.trim();
   if (!workspacePath) {
     throw new VisionToolError('No current workspace is available for image path resolution.', 400, {
-      message: 'Run this command from an active MyAgents session with a workspace.',
+      message: `Run this command from an active ${APP_DISPLAY_NAME} session with a workspace.`,
     });
   }
   const enabledIds = getEffectiveOfficialToolIdsForSession(

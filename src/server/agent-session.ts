@@ -1738,6 +1738,27 @@ let activeSessionContextRecovery: ContextRecoveryController | undefined;
 let activeSessionModelRecovery: SessionModelRecovery | undefined;
 let activeSessionStreamContinuation: SameTurnStreamContinuation | undefined;
 let streamInferenceGeneration = 0;
+
+/** Retire only the paused inference chain; the action ledger and Stop fence remain intact. */
+async function resumePausedModelRecoveryForInput(productSessionId: string,
+  expected: NonNullable<SessionMetadata['modelRecovery']>, current: () => boolean): Promise<boolean> {
+  const recovery = activeSessionModelRecovery;
+  if (recovery && !await recovery.waitForPause()) return false;
+  const live = () => sessionId === productSessionId && !lifecycleState.abortRequested
+    && activeSessionModelRecovery === recovery && current();
+  if (!live()) return false;
+  const cleared = await updateSessionMetadata(productSessionId, { modelRecovery: undefined }, metadata =>
+    live() && metadata.modelRecovery?.id === expected.id
+    && metadata.modelRecovery.sdkSessionId === expected.sdkSessionId
+    && metadata.modelRecovery.routeIdentity === expected.routeIdentity
+    && getBuiltinModelRecovery(metadata.id)?.status === 'paused'
+    && metadata.modelRecovery.turnId === expected.turnId
+    && metadata.modelRecovery.attempt === expected.attempt);
+  if (!cleared || !live()) return false;
+  recovery?.resetForNewTurn();
+  return true;
+}
+
 function currentBridgeExecutionSource(): MessageQueueItem | undefined {
   // Native output still belongs to FIFO A when realtime stdin has accepted B.
   // First inputs enter this FIFO before yield; same-turn continuations retain
@@ -9721,16 +9742,10 @@ export async function enqueueUserMessage(
     reasoningEffort = resolved.reasoningEffort ?? 'default';
   }
   if (recoveryToResume) {
-    const cleared = await updateSessionMetadata(recoveryAdmissionSessionId, { modelRecovery: undefined }, current =>
-      sessionId === recoveryAdmissionSessionId && !admissionTicket?.canceled && !lifecycleState.abortRequested
-      && (!restoreGoalConfig || goalConfigIsCurrent())
-      && current.modelRecovery?.id === recoveryToResume.id && getBuiltinModelRecovery(current.id)?.status === 'paused'
-      && current.modelRecovery.turnId === recoveryToResume.turnId
-      && current.modelRecovery.attempt === recoveryToResume.attempt);
-    if (!cleared || admissionTicket?.canceled || sessionId !== recoveryAdmissionSessionId || lifecycleState.abortRequested) {
+    if (!await resumePausedModelRecoveryForInput(recoveryAdmissionSessionId, recoveryToResume,
+      () => !admissionTicket?.canceled && (!restoreGoalConfig || goalConfigIsCurrent()))) {
       return { queued: false, error: 'Recovery resume was stopped or superseded before dispatch' };
     }
-    activeSessionModelRecovery?.resetForNewTurn();
   }
   if (!hasInitialPrompt && !canLazyMaterializeForThisMessage() && !getCurrentProductSessionMetadata()) {
     throw new Error(`[agent] refusing first message for unindexed existing session ${sessionId}; session metadata disappeared before first user turn`);
@@ -10349,6 +10364,7 @@ export async function enqueueUserMessage(
       providerAnalytics: turnProviderAnalytics,
       inboxMeta,
       inputSource: options?.inputSource,
+      fromDesktopChatSend: options?.fromDesktopChatSend,
       turnOwner: options?.turnOwner,
       onTerminal: admissionCallbacks.onTerminal,
       beforeDispatch: options?.beforeDispatch,
@@ -10544,6 +10560,7 @@ export async function enqueueUserMessage(
     providerAnalytics: turnProviderAnalytics,
     inboxMeta,
     inputSource: options?.inputSource,
+    fromDesktopChatSend: options?.fromDesktopChatSend,
     turnOwner: options?.turnOwner,
     onTerminal: admissionCallbacks.onTerminal,
     beforeDispatch: options?.beforeDispatch,
@@ -15534,6 +15551,25 @@ async function* messageGenerator(
           error: 'Queue item was cancelled',
           rollbackBeforeReject: Promise.resolve(item.beforeDispatch?.cancel?.()),
         });
+        continue;
+      }
+    }
+    // A human input may have queued while A was still waiting, before Force
+    // paused A. Its enqueue-time snapshot cannot authorize B's later dispatch.
+    // Recheck at the original generator admission, after A's native terminal
+    // and B's domain guard; canceled inputs and automatic reminders cannot
+    // retire the old recovery chain.
+    const pausedRecovery = activeSessionModelRecovery?.readState();
+    if (item.fromDesktopChatSend && !item.transientProviderRetry && !item.streamContinuation
+      && !isTurnInFlight() && pausedRecovery?.status === 'paused') {
+      const admissionSessionId = sessionId;
+      const current = () => !isPromotedItemCanceled(item.id)
+        && (!inputTrace || getQueryGeneration() === inputTrace.generation)
+        && !builtinInterrupt.isInterrupting();
+      if (!await resumePausedModelRecoveryForInput(admissionSessionId, pausedRecovery, current)) {
+        await rejectPromotedMessageBeforeDispatch(item, { accepted: false,
+          error: 'Recovery resume was stopped or superseded before dispatch',
+          rollbackBeforeReject: Promise.resolve(item.beforeDispatch?.cancel?.()) });
         continue;
       }
     }

@@ -1,3 +1,4 @@
+import { APP_DISPLAY_NAME } from '../../shared/appProfile';
 import {
   SESSION_EVENT_TAG,
   SYSTEM_REMINDER_CLOSE,
@@ -218,24 +219,24 @@ function renderOpenTag(event: RenderableSessionEvent): string {
 function summaryForEvent(event: RenderableSessionEvent): string {
   switch (event.type) {
     case 'network.return_unavailable':
-      return 'MyAgents could not deliver the remote result after connection recovery ended. This notification does not determine whether the remote task succeeded or failed.';
+      return `${APP_DISPLAY_NAME} could not deliver the remote result after connection recovery ended. This notification does not determine whether the remote task succeeded or failed.`;
     case 'send.request':
       if (event.sourceKind === 'external-cli') {
-        return 'An authenticated local program sent this session a one-way request through MyAgents. There is no source Session and no automatic result delivery.';
+        return `An authenticated local program sent this session a one-way request through ${APP_DISPLAY_NAME}. There is no source Session and no automatic result delivery.`;
       }
       return event.sourceNotification === 'none'
-        ? "Another MyAgents session sent this session a one-way request or notification. The source session will not automatically receive this turn's final result."
-        : "Another MyAgents session sent this session a request. Work on it normally in this session. When this turn finishes, MyAgents will automatically deliver this turn's final result back to the source session.";
+        ? `Another ${APP_DISPLAY_NAME} session sent this session a one-way request or notification. The source session will not automatically receive this turn's final result.`
+        : `Another ${APP_DISPLAY_NAME} session sent this session a request. Work on it normally in this session. When this turn finishes, ${APP_DISPLAY_NAME} will automatically deliver this turn's final result back to the source session.`;
     case 'send.result':
       return event.status === 'error'
-        ? 'MyAgents attempted to deliver the final result of the target session turn triggered by your previous `session send` request, but that turn did not complete successfully.'
-        : 'MyAgents automatically delivered the final result of the target session turn triggered by your previous `session send` request.';
+        ? `${APP_DISPLAY_NAME} attempted to deliver the final result of the target session turn triggered by your previous \`session send\` request, but that turn did not complete successfully.`
+        : `${APP_DISPLAY_NAME} automatically delivered the final result of the target session turn triggered by your previous \`session send\` request.`;
     case 'watch.already_idle':
       return 'The target session was already idle when this watch was registered, so no long-running watcher was created.';
     case 'watch.completed':
       return 'The watched target session has finished the turn that was active when this watch was registered.';
     case 'watch.error':
-      return 'MyAgents could not confirm normal completion for the watched target session.';
+      return `${APP_DISPLAY_NAME} could not confirm normal completion for the watched target session.`;
   }
 }
 

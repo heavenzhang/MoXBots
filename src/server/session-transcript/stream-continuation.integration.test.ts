@@ -289,17 +289,32 @@ describe('production original-turn stream continuation with synthetic SDK protoc
     state.delay = 150;
     await initialize();
     const terminal = vi.fn<(outcome: TurnTerminalOutcome) => void>();
-    await agent.enqueueUserMessage('Original bounded task', undefined, undefined, undefined,
-      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-      { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: true, onTerminal: terminal });
-    const sessionId = agent.getSessionId()!;
-    await vi.waitFor(() => expect(store.getBuiltinModelRecovery(sessionId)?.kind).toBe('stream'));
+    const { SameTurnStreamContinuation } = await import('../builtin-session/stream-continuation');
+    const schedule = SameTurnStreamContinuation.prototype.schedule;
     const now = Date.now.bind(Date);
-    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + 31 * 60_000);
+    let slept = false;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now() + (slept ? 31 * 60_000 : 0));
+    // A persisted stream checkpoint can precede the gateway response. Jump
+    // only after the native result arms its timer, so the fixture cannot turn
+    // the still-active first HTTP response into an unrelated local 499.
+    vi.spyOn(SameTurnStreamContinuation.prototype, 'schedule').mockImplementation(function (
+      this: import('../builtin-session/stream-continuation').SameTurnStreamContinuation,
+    ) {
+      const armed = schedule.call(this);
+      if (armed) slept = true;
+      return armed;
+    });
     try {
+      await agent.enqueueUserMessage('Original bounded task', undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: true, onTerminal: terminal });
+      const sessionId = agent.getSessionId()!;
       await vi.waitFor(() => expect(terminal).toHaveBeenCalledTimes(1), { timeout: 1_000 });
+      expect(slept).toBe(true);
+      expect(state.faults).toEqual([]);
       expect(terminal.mock.calls[0][0]).toMatchObject({ status: 'error', code: 'automatic_replay_blocked' });
       expect(state.inputs).toHaveLength(1);
+      expect(upstreamRequests).toBe(1);
       expect(store.getBuiltinModelRecovery(sessionId)?.status).toBe('paused');
     } finally { clock.mockRestore(); }
   });

@@ -1,4 +1,4 @@
-import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../shared/appProfile';
+import { APP_CLI_NAME, APP_DATA_DIR_NAME, APP_DISPLAY_NAME } from '../shared/appProfile';
 import { nextAgentNetworkExposureRevision } from "../shared/config-types";
 import { MODEL_ADD_OPTIONS_HELP } from '../shared/modelAddOptions';
 import { resolveAgentConfigMutation, mutationForAgentModelSelection, type AgentModelSelection } from '../shared/agentConfigMutation';
@@ -759,12 +759,12 @@ export async function handleMcpTest(payload: {
           sessionScoped: true,
           hostGeneration: capability.hostGeneration,
         },
-        hint: 'MyAgents Browser Host is ready for the current Product Session. __browser_host__ is an internal projection marker, not a PATH executable.',
+        hint: `${APP_DISPLAY_NAME} Browser Host is ready for the current Product Session. __browser_host__ is an internal projection marker, not a PATH executable.`,
       };
     } catch (error) {
       return {
         success: false,
-        error: `MyAgents Browser Host is unavailable for the current Product Session: ${error instanceof Error ? error.message : String(error)}`,
+        error: `${APP_DISPLAY_NAME} Browser Host is unavailable for the current Product Session: ${error instanceof Error ? error.message : String(error)}`,
         data: {
           id,
           type: 'application-host',
@@ -774,7 +774,7 @@ export async function handleMcpTest(payload: {
         recoveryHint: {
           recoveryCommand: `${APP_CLI_NAME} mcp test myagents-browser`,
           message:
-            'Run this check from an active MyAgents Agent Session after the application Browser Host is ready.',
+            `Run this check from an active ${APP_DISPLAY_NAME} Agent Session after the application Browser Host is ready.`,
         },
       };
     }
@@ -1239,7 +1239,7 @@ async function notifyAppConfigChanged(
   if (result.ok !== true) {
     const label = section === 'model' ? 'Model' : 'MCP';
     throw new Error(
-      `${label} configuration was saved, but app-wide refresh failed after ${action} '${id}': ${String(result.error ?? 'unknown Management API error')}. Restart MyAgents or retry the command to refresh every open window.`,
+      `${label} configuration was saved, but app-wide refresh failed after ${action} '${id}': ${String(result.error ?? 'unknown Management API error')}. Restart ${APP_DISPLAY_NAME} or retry the command to refresh every open window.`,
     );
   }
 }
@@ -1366,17 +1366,17 @@ export async function handleModelVerify(payload: {
         return {
           success: false,
           code: 'SUBSCRIPTION_AUTH_OWNER_REQUIRED',
-          error: `Provider '${id}' is authenticated by its external runtime, not by a MyAgents API key.`,
+          error: `Provider '${id}' is authenticated by its external runtime, not by a ${APP_DISPLAY_NAME} API key.`,
           recoveryHint: {
             message:
-              'Open Settings → Model Providers → Codex (订阅), then complete the MyAgents-managed login there.',
+              `Open Settings → Model Providers → Codex (订阅), then complete the ${APP_DISPLAY_NAME}-managed login there.`,
           },
         };
       }
       return {
         success: false,
         code: 'SUBSCRIPTION_AUTH_OWNER_REQUIRED',
-        error: `Provider '${id}' uses a host-managed subscription login, not a MyAgents API key.`,
+        error: `Provider '${id}' uses a host-managed subscription login, not a ${APP_DISPLAY_NAME} API key.`,
         recoveryHint: {
           recoveryCommand: `${APP_CLI_NAME} model list --json`,
           message:
@@ -1853,7 +1853,7 @@ export async function handleAgentResolveConflict(payload: {
         { timeoutMs: AGENT_LIFECYCLE_LOOPBACK_TIMEOUT_MS });
       if (stopped.ok !== true) throw new Error(String(stopped.error ?? 'Could not stop the Agent. No ownership changes were applied.'));
     });
-    return { success: true, hint: 'Workspace ownership repaired. Restart MyAgents before continuing existing sessions.' };
+    return { success: true, hint: `Workspace ownership repaired. Restart ${APP_DISPLAY_NAME} before continuing existing sessions.` };
   } catch (error) {
     return agentWorkspaceIdentityFailure(error);
   }
@@ -3154,7 +3154,7 @@ Commands:
   cancel <job-id>            Cancel one queued or running job
   list                       List this Session's recent jobs
 
-Session ID and Workspace are bound automatically by MyAgents. Never pass or infer caller scope.
+Session ID and Workspace are bound automatically by ${APP_DISPLAY_NAME}. Never pass or infer caller scope.
 Run ${APP_CLI_NAME} speech <command> --help for the exact contract.`,
   'speech/transcribe': `${APP_CLI_NAME} speech transcribe --file <input> — Submit one attachment transcription
 
@@ -3171,7 +3171,7 @@ OPTIONS
   --json                   Emit one machine-readable JSON document
 
 IDENTITY / PATH SAFETY
-  Caller scope is injected by MyAgents and cannot be overridden. Links, special files, directories, and URLs are rejected. The source and output must remain inside the authoritative Workspace.
+  Caller scope is injected by ${APP_DISPLAY_NAME} and cannot be overridden. Links, special files, directories, and URLs are rejected. The source and output must remain inside the authoritative Workspace.
 
 FIXED LIMITS
   One file, at most 4 GiB and 8 hours. Supported containers/codecs are probed from file content. Runtime deadline is max(30 minutes, twice the media duration).
@@ -3419,7 +3419,7 @@ Commands:
   analyze                  Analyze one or more local workspace image paths
 
 Options for 'analyze':
-  --image <path>           Image path inside the current MyAgents workspace (repeatable)
+  --image <path>           Image path inside the current ${APP_DISPLAY_NAME} workspace (repeatable)
   --prompt-file <path>     Workspace-relative text file with the inspection request
   --prompt '<text>'        Short literal request authored by the agent
   --json                   Output machine-readable JSON
@@ -3490,7 +3490,7 @@ See '${APP_CLI_NAME} task readme' for the canonical automation + exit flow.`,
 
   goal: `${APP_CLI_NAME} goal — Manage the current session Goal Mode
 
-Goal Mode turns the current MyAgents session into a long-running objective. MyAgents
+Goal Mode turns the current ${APP_DISPLAY_NAME} session into a long-running objective. ${APP_DISPLAY_NAME}
 keeps starting the next turn with the current session context until the Goal is
 complete, blocked, or canceled by the user.
 
@@ -3677,7 +3677,7 @@ WHEN TO CALL
 EFFECT
   Refreshes memberships from Cloud and returns id, slug, name, spaceKind, and role.
 REQUIRED CONTEXT
-  A signed-in MyAgents Space session. This discovery command needs no --space.
+  A signed-in ${APP_DISPLAY_NAME} Space session. This discovery command needs no --space.
 OPTIONS
   --json  Return {items:[{id,slug,name,spaceKind,role}]} for reliable selection.
 ACTOR AND PERMISSIONS
@@ -4103,7 +4103,7 @@ Commands:
                                   Validate a Trigger without running it
   trigger test <taskId> [--checkpoint-file <json>] [--expect quiet|activate]
   trigger test --spec-file <json> --workspacePath <abs> [--checkpoint-file <json>]
-                                  Really run the command, but do not commit MyAgents
+                                  Really run the command, but do not commit ${APP_DISPLAY_NAME}
                                   state, create an event, or activate AI
   reset-checkpoint <taskId>       Clear the platform-managed Detector checkpoint
   archive <taskId>                User-only recoverable long-lived archive state
@@ -4179,7 +4179,7 @@ Options for 'create-attached':
   --sourceClaimId <id>    Space Issue claim id
   --sourceSpaceId <id>    Space id
   --sourceDeliveryId <id> Issue delivery id
-  Must run inside a MyAgents AI session; current session id comes from
+  Must run inside a ${APP_DISPLAY_NAME} AI session; current session id comes from
   MYAGENTS_SESSION_ID and is not guessed by the CLI.
 
 Options for 'update' <taskId>:
@@ -4202,7 +4202,7 @@ Options for 'update' <taskId>:
 Detector safety:
   --trigger-file / --spec-file are regular non-symlink UTF-8 JSON files.
   Command args remain a JSON array and are never shell-split. trigger test is
-  a real process execution: MyAgents does not commit checkpoint/event state or
+  a real process execution: ${APP_DISPLAY_NAME} does not commit checkpoint/event state or
   activate AI, but the script's own external side effects still happen.
   check-now uses the persisted checkpoint and commits the normal outcome.
 
@@ -4288,7 +4288,7 @@ Related:
   'task/create-attached': taskLeafHelp({
     usage:
       `${APP_CLI_NAME} task create-attached --name <name> --sourceIssueId <id> — Attach current Session work`,
-    when: 'Only for a claimed Space Issue already executing in the current MyAgents Session.',
+    when: `Only for a claimed Space Issue already executing in the current ${APP_DISPLAY_NAME} Session.`,
     effect:
       'Creates a Running attached-session Task linked to the Space Issue and current canonical Session.',
     options:
@@ -4506,14 +4506,14 @@ Related:
 
   'task/trigger/test': taskLeafHelp({
     usage:
-      `${APP_CLI_NAME} task trigger test <taskId>|--spec-file <json> — Execute a Detector without committing MyAgents state`,
+      `${APP_CLI_NAME} task trigger test <taskId>|--spec-file <json> — Execute a Detector without committing ${APP_DISPLAY_NAME} state`,
     when: 'During fixture validation or diagnosis before a real check-now.',
     effect:
-      'Really executes the command using a snapshot/fixture checkpoint but does not commit MyAgents checkpoint, health, events, or AI activation.',
+      `Really executes the command using a snapshot/fixture checkpoint but does not commit ${APP_DISPLAY_NAME} checkpoint, health, events, or AI activation.`,
     options:
       '  <taskId>             Test the persisted Trigger\n  --spec-file <path>   Or test an unpersisted Trigger with --workspacePath\n  --checkpoint-file    Optional checkpoint value JSON object or null, without revision/value wrapper\n  --expect quiet|activate',
     mutation:
-      'No MyAgents state or AI mutation. Script file/network/database side effects are real and are not rolled back.',
+      `No ${APP_DISPLAY_NAME} state or AI mutation. Script file/network/database side effects are real and are not rolled back.`,
     output: 'Structured quiet/activate result or harness failure diagnostics.',
     example:
       `${APP_CLI_NAME} task trigger test --spec-file trigger.test.json --workspacePath /abs/workspace --expect quiet --json`,
@@ -4638,7 +4638,7 @@ Published scripts may continue to use list/create. New Agent workflows use
 Use to render inline charts / SVG / dashboards in desktop Chat replies.
 IM bot sessions don't render widgets.`,
 
-  skill: `${APP_CLI_NAME} skill — Manage MyAgents skills (user skills live under ~/${APP_DATA_DIR_NAME}/skills/)
+  skill: `${APP_CLI_NAME} skill — Manage ${APP_DISPLAY_NAME} skills (user skills live under ~/${APP_DATA_DIR_NAME}/skills/)
 
 Commands:
   list [--verbose]           List skills; include normal admission details with --verbose [--workspace <path>]
@@ -5032,7 +5032,7 @@ OUTPUT
   correlates with the later send.result requestEventId. No completion is implied.
 
 IDENTITY / PERMISSIONS
-  Must be called from a real MyAgents Session. The target Agent owns runtime,
+  Must be called from a real ${APP_DISPLAY_NAME} Session. The target Agent owns runtime,
   model, permission, provider, MCP, plugin, and tool defaults; caller overrides
   are rejected.
 
@@ -5245,9 +5245,9 @@ function resolveSpeechAdminCaller(): SpeechAdminCaller | AdminResponse {
       success: false,
       code: 'SPEECH_SESSION_REQUIRED',
       error:
-        'Speech recognition requires an active MyAgents Session with an authoritative Workspace.',
+        `Speech recognition requires an active ${APP_DISPLAY_NAME} Session with an authoritative Workspace.`,
       suggestion:
-        'Run the command from the MyAgents chat Session that should own the job.',
+        `Run the command from the ${APP_DISPLAY_NAME} chat Session that should own the job.`,
       suggestedCommand: `${APP_CLI_NAME} speech --help`,
     };
   }
@@ -5652,7 +5652,7 @@ function currentGoalContext(): {
     return {
       workspacePath: sessionContext.workspacePath ?? defaultCronWorkspace(),
       error:
-        'No current session. Run this command from inside a MyAgents AI session.',
+        `No current session. Run this command from inside a ${APP_DISPLAY_NAME} AI session.`,
     };
   }
   return {
@@ -6173,7 +6173,7 @@ export async function handleTaskCreateAttached(
     return {
       success: false,
       error:
-        'currentSessionId is required; run this command from inside a MyAgents AI session',
+        `currentSessionId is required; run this command from inside a ${APP_DISPLAY_NAME} AI session`,
     };
   }
   const resp = await managementApi(
@@ -6795,7 +6795,7 @@ CANONICAL COMMANDS
   runs <taskId> [--limit N]         Read recent AI execution history
   run-now <taskId>                  Bypass Detector; does not change schedule/checkpoint
   check-now <taskId>                Real Detector check; commits state and may activate AI
-  trigger validate/test ...         Validate without committing MyAgents state
+  trigger validate/test ...         Validate without committing ${APP_DISPLAY_NAME} state
   reset-checkpoint <taskId>         Clear only platform-managed Detector checkpoint
   rerun <taskId>                    Re-dispatch a terminal Task
   exit --reason <text>              End the current eligible scheduled Task from inside it
@@ -6836,12 +6836,12 @@ LIFECYCLE
   after run; Cron waits for the next wall-clock tick; scheduled waits for dispatchAt.
 
 SAFETY
-  Never use system cron/crontab/at/launchctl/schtasks for a MyAgents Task.
+  Never use system cron/crontab/at/launchctl/schtasks for a ${APP_DISPLAY_NAME} Task.
   The App must remain online. Archive is recoverable; delete is not and has no
   undelete/retention promise. Delete does not remove user workspace scripts.
   AI callers obtain confirmation in conversation before task delete/remove.
   Existing explicit authorization suffices; the CLI does not open a UI dialog.
-  trigger test runs the external command for real; only MyAgents state is not
+  trigger test runs the external command for real; only ${APP_DISPLAY_NAME} state is not
   committed, so isolate fixtures and external side effects.`;
 
 const README_CRON = `${APP_CLI_NAME} cron — Compatibility scheduled-task commands
@@ -6854,11 +6854,11 @@ NOTE
 WHAT
   Create, list, stop, and delete scheduled AI tasks (cron / interval / one-shot).
   Inspect one task with the canonical '${APP_CLI_NAME} task get <taskId>' command.
-  Tasks run inside MyAgents regardless of which runtime the current chat uses.
+  Tasks run inside ${APP_DISPLAY_NAME} regardless of which runtime the current chat uses.
   A task can deliver results to an IM channel.
 
 TIME SEMANTICS
-  MyAgents stores execution facts as absolute instants (UTC internally), but
+  ${APP_DISPLAY_NAME} stores execution facts as absolute instants (UTC internally), but
   recurring wall-clock schedules are defined by cron expression + IANA timezone.
 
   For recurring "every day at 09:00" style tasks, the default create path is:
@@ -6985,9 +6985,9 @@ EXIT FROM INSIDE A TASK
   to mark the task complete and stop future executions.
 
 DO NOT
-  Use system cron / crontab / at / launchctl — they can't see MyAgents state.
+  Use system cron / crontab / at / launchctl — they can't see ${APP_DISPLAY_NAME} state.
   Only the \`${APP_CLI_NAME} task\` canonical surface or compatible \`${APP_CLI_NAME} cron\`
-  commands can create tasks inside MyAgents.`;
+  commands can create tasks inside ${APP_DISPLAY_NAME}.`;
 
 const README_IM = `${APP_CLI_NAME} im — IM Bot capabilities
 
@@ -7033,7 +7033,7 @@ EXAMPLES
 const README_WIDGET = `${APP_CLI_NAME} widget — Generative UI widget design guidelines
 
 WHAT
-  Returns the MyAgents widget design system (color palette, component specs, layout rules) and the output format you MUST use to embed an interactive widget in a chat reply. Widgets render inline in the conversation — charts, SVG diagrams, interactive explainers, dashboards.
+  Returns the ${APP_DISPLAY_NAME} widget design system (color palette, component specs, layout rules) and the output format you MUST use to embed an interactive widget in a chat reply. Widgets render inline in the conversation — charts, SVG diagrams, interactive explainers, dashboards.
 
 WHEN TO CALL
   Before outputting your first <generative-ui-widget> tag in a desktop chat reply. Reach for a widget whenever ${WIDGET_TRIGGER_GUIDANCE}
@@ -7170,7 +7170,7 @@ export async function handleSpaceIssueCreate(
   return spaceManagementResponse(
     '/api/space/issue-create',
     payload,
-    'Issue created in MyAgents Space.',
+    `Issue created in ${APP_DISPLAY_NAME} Space.`,
   );
 }
 
@@ -7180,7 +7180,7 @@ export async function handleSpaceIssueUpdate(
   return spaceManagementResponse(
     '/api/space/issue-update',
     payload,
-    'Issue updated in MyAgents Space. Re-read it before the next stateful action.',
+    `Issue updated in ${APP_DISPLAY_NAME} Space. Re-read it before the next stateful action.`,
   );
 }
 
@@ -7202,7 +7202,7 @@ export async function handleSpaceIssueComment(
   return spaceManagementResponse(
     '/api/space/issue-comment',
     payload,
-    'Comment posted to MyAgents Space.',
+    `Comment posted to ${APP_DISPLAY_NAME} Space.`,
   );
 }
 

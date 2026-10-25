@@ -3444,7 +3444,7 @@ it('drops the old native result after a Query replacement across settled-arm awa
   }
 });
 
-async function startRealtimeBridgeFixture({ successor = true, closeOnInterrupt = false, failSetup = false } = {}) {
+async function startRealtimeBridgeFixture({ successor = true, closeOnInterrupt = false, failSetup = false, desktop = false } = {}) {
   const recoveryModule = await import('../builtin-session/model-recovery');
   type Recovery = InstanceType<typeof recoveryModule.SessionModelRecovery>;
   const recoveries = new Set<Recovery>();
@@ -3494,9 +3494,10 @@ async function startRealtimeBridgeFixture({ successor = true, closeOnInterrupt =
   await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
   await agent.setSessionProviderEnv({ providerId: 'steering-fixture', baseUrl: 'http://fixture.invalid', apiKey: 'fixture-only', apiProtocol: 'openai' });
   await agent.setSessionModel('fixture-model');
-  const send = (text: string) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
+  const send = (text: string, human = desktop) => agent.enqueueUserMessage(text, [], undefined, undefined, undefined, undefined,
     undefined, undefined, undefined, undefined, undefined,
-    { channelDelivery: NO_CHANNEL_DELIVERY, queueResponseModeOverride: 'realtime' });
+    { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: human,
+      queueResponseModeOverride: desktop ? 'turn' : 'realtime' });
   const assistant = (text: string) => ({ type: 'assistant', session_id: metadata.id,
     parent_tool_use_id: null, uuid: randomUUID(), message: { id: randomUUID(), role: 'assistant', model: 'fixture-model',
       content: [{ type: 'text', text }], usage: { input_tokens: 1, output_tokens: 1 } } });
@@ -3548,6 +3549,85 @@ async function startRealtimeBridgeFixture({ successor = true, closeOnInterrupt =
       return recovery;
     } };
 }
+
+it.each(['normal', 'pending-pause', 'stop-during-resume', 'cancel-during-resume', 'automatic', 'inherited-desktop-retry'] as const)(
+  'admits only a live human successor after force pauses the predecessor recovery (%s)', async mode => {
+  const { getRecovery, received, emit, send, oldRequest, base, bridge, token, body } =
+    await startRealtimeBridgeFixture({ successor: false, desktop: true });
+  const recovery = getRecovery();
+  expect(await recovery.wait(oldRequest, { status: 503, attempt: 4, usingBackup: false })).toBeGreaterThan(0);
+  const checkpoint = store.getBuiltinModelRecovery(agent.getSessionId()!)!;
+  const b = await send('Explicit successor B', mode !== 'automatic');
+  expect(received).toHaveLength(1);
+  if (mode === 'inherited-desktop-retry') {
+    // The hidden provider-text retry clones its original source, including
+    // desktop ingress. That inherited flag is not a new human instruction.
+    const { getTurnBoundaryQueue } = await import('../builtin-session/queue');
+    getTurnBoundaryQueue().find(item => item.queueId === b.queueId)!.sourceItem!.transientProviderRetry = {
+      rootQueueId: checkpoint.turnId, attempt: 1,
+    };
+  }
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let blocked = false;
+  if (mode === 'pending-pause') {
+    const write = store.updateBuiltinModelRecovery;
+    vi.spyOn(store, 'updateBuiltinModelRecovery').mockImplementation(async (...args) => {
+      if (args[2]?.status === 'paused') { blocked = true; await gate; }
+      return write(...args);
+    });
+  } else if (mode === 'stop-during-resume' || mode === 'cancel-during-resume') {
+    const write = store.updateSessionMetadata;
+    vi.spyOn(store, 'updateSessionMetadata').mockImplementation(async (...args) => {
+      if ('modelRecovery' in args[1] && args[1].modelRecovery === undefined) { blocked = true; await gate; }
+      return write(...args);
+    });
+  }
+  const forcing = agent.forceExecuteQueueItem(b.queueId!);
+  emit({ type: 'result', session_id: agent.getSessionId()!, uuid: randomUUID(), subtype: 'error_during_execution',
+    is_error: true, terminal_reason: 'aborted_streaming', errors: ['Request interrupted by user'],
+    duration_ms: 1, duration_api_ms: 1, num_turns: 1, total_cost_usd: 0,
+    usage: { input_tokens: 1, output_tokens: 1 }, permission_denials: [] });
+  try {
+    if (mode === 'pending-pause' || mode === 'stop-during-resume' || mode === 'cancel-during-resume') {
+      await vi.waitFor(() => expect(blocked).toBe(true));
+      expect(received).toHaveLength(1);
+      if (mode === 'stop-during-resume') await agent.interruptCurrentResponse();
+      if (mode === 'cancel-during-resume')
+        expect(await agent.cancelQueueItem(b.queueId!)).toMatchObject({ status: 'cancelled' });
+    }
+  } finally { release(); }
+  await forcing;
+  if (mode === 'stop-during-resume' || mode === 'cancel-during-resume') {
+    await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+    expect(received).toHaveLength(1);
+    expect(store.getBuiltinModelRecovery(agent.getSessionId()!)?.status).toBe('paused');
+    return;
+  }
+  await vi.waitFor(() => expect(received).toHaveLength(2));
+  const requestBody = body('Explicit successor B');
+  const request = new Request(`${base}/v1/messages`, { method: 'POST', body: JSON.stringify(requestBody) });
+  const config = (await bridge.lookupBridge(token, request))!;
+  const execute = vi.fn(async () => new Response('{"role":"assistant","content":[{"type":"text","text":"B completed"}]}',
+    { headers: { 'content-type': 'application/json' } }));
+  const response = await config.contextRecovery!.run(request, { ...requestBody, stream: false }, execute);
+  if (mode === 'automatic' || mode === 'inherited-desktop-retry') {
+    expect(response.status).toBe(499);
+    expect(execute).not.toHaveBeenCalled();
+    expect(store.getBuiltinModelRecovery(agent.getSessionId()!)?.status).toBe('paused');
+    return;
+  }
+  expect(response.status).toBe(200);
+  expect(await response.text()).toContain('B completed');
+  expect(execute).toHaveBeenCalledOnce();
+  expect(store.getBuiltinModelRecovery(agent.getSessionId()!)).toBeUndefined();
+  expect(recovery.readState()).toBeUndefined();
+  // The old chain remains durably stopped; clearing a new turn's checkpoint
+  // must not remove its immutable Stop fence or replay the old input.
+  const fence = join(state.home, '.myagents', 'context-recovery', agent.getSessionId()!, `stopped-${checkpoint.id}.json`);
+  expect(JSON.parse(await readFile(fence, 'utf8'))).toMatchObject({ recoveryId: checkpoint.id, sdkSessionId: checkpoint.sdkSessionId });
+  expect(received.map(row => row.uuid)).toEqual([checkpoint.turnId, b.queueId]);
+});
 
 it.each(['before', 'after'] as const)('keeps a force-steered native successor outside the cancelled predecessor bridge lease (A lease %s B yield)', async timing => {
   const { received, turn, base, bridge, token, body, oldRequest, config, emit, send } = await startRealtimeBridgeFixture({ successor: false });

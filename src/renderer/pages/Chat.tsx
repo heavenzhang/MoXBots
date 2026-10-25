@@ -6840,7 +6840,7 @@ function ChatContent({
               onClose={() => setShowLogs(false)}
             />
 
-            {/* Query Navigator — floating right-side panel for quick session navigation */}
+            {/* Query Navigator — left rail for quick session navigation */}
             <QueryNavigator
               messages={chatScrollModel.data}
               scrollContainerRef={

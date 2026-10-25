@@ -24,7 +24,7 @@ import {
 } from '../shared/externalCliCapabilities';
 import { networkAddress } from '../shared/agentNetworkRouting';
 import { REMOTE_DEADLINES } from '@myagents/agent-network-protocol';
-import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../shared/appProfile';
+import { APP_CLI_NAME, APP_DATA_DIR_NAME, APP_DISPLAY_NAME } from '../shared/appProfile';
 import { INTERNAL_CLI_FLAGS } from './internalCliFlags';
 
 // ---------------------------------------------------------------------------
@@ -405,7 +405,7 @@ function requirePositional(
 // Help text
 // ---------------------------------------------------------------------------
 
-export const TOP_HELP = `${APP_CLI_NAME} — MyAgents product capabilities CLI
+export const TOP_HELP = `${APP_CLI_NAME} — ${APP_DISPLAY_NAME} product capabilities CLI
 
 Usage: ${APP_CLI_NAME} <command> [options]
 
@@ -507,7 +507,7 @@ Examples:
   ${APP_CLI_NAME} task rerun <taskId>
   ${APP_CLI_NAME} task trigger validate --spec-file trigger.json
   ${APP_CLI_NAME} task trigger test <taskId> --expect quiet|activate
-    # Test does not commit MyAgents checkpoint/Activation state, but the local
+    # Test does not commit ${APP_DISPLAY_NAME} checkpoint/Activation state, but the local
     # command really runs and its own external side effects are not rolled back.
   ${APP_CLI_NAME} task check-now <taskId>
   ${APP_CLI_NAME} task reset-checkpoint <taskId>
@@ -544,12 +544,12 @@ Run '${APP_CLI_NAME} <command> --help' for details on a specific command.`;
 export function publicCliHelp(positional: string[]): string | undefined {
   const group = positional[0];
   if (!group) {
-    return `${APP_CLI_NAME} — MyAgents local external CLI
+    return `${APP_CLI_NAME} — ${APP_DISPLAY_NAME} local external CLI
 
 Usage: ${APP_CLI_NAME} <public-command> [options]
 
 Public commands:
-${EXTERNAL_CLI_PUBLIC_COMMANDS.map((command) => `  ${APP_CLI_NAME} ${command}`).join('\n')}\n\nExternal use requires the MyAgents app to be running, External Calls enabled in Settings, and MYAGENTS_API_TOKEN set.`;
+${EXTERNAL_CLI_PUBLIC_COMMANDS.map((command) => `  ${APP_CLI_NAME} ${command}`).join('\n')}\n\nExternal use requires the ${APP_DISPLAY_NAME} app to be running, External Calls enabled in Settings, and MYAGENTS_API_TOKEN set.`;
   }
   const publicGroups = new Set([
     'status',
@@ -578,7 +578,7 @@ ${EXTERNAL_CLI_PUBLIC_COMMANDS.map((command) => `  ${APP_CLI_NAME} ${command}`).
     const matching = EXTERNAL_CLI_PUBLIC_COMMANDS.filter(
       (command) => command === group || command.startsWith(`${group} `),
     );
-    return `${group} — public external CLI commands\n\n${matching.map((command) => `  ${APP_CLI_NAME} ${command}`).join('\n')}\n\nExternal use requires the MyAgents app to be running, External Calls enabled in Settings, and MYAGENTS_API_TOKEN set.`;
+    return `${group} — public external CLI commands\n\n${matching.map((command) => `  ${APP_CLI_NAME} ${command}`).join('\n')}\n\nExternal use requires the ${APP_DISPLAY_NAME} app to be running, External Calls enabled in Settings, and MYAGENTS_API_TOKEN set.`;
   }
   return undefined;
 }
@@ -647,7 +647,7 @@ export async function callApi(
       const text = await resp.text();
       if (resp.ok && isSessionMutationRoute(route)) {
         return sessionAdmissionUnconfirmedResult(
-          `MyAgents returned an unreadable admission acknowledgement (HTTP ${resp.status}).`,
+          `${APP_DISPLAY_NAME} returned an unreadable admission acknowledgement (HTTP ${resp.status}).`,
         );
       }
       return adminHttpErrorResult(
@@ -680,7 +680,7 @@ export async function callApi(
     if (!transportFailure && !responseDecodeFailure) throw err;
     if (!preConnectFailure && isSessionMutationRoute(route)) {
       return sessionAdmissionUnconfirmedResult(
-        'The request may have reached MyAgents, but its admission acknowledgement was not received.',
+        `The request may have reached ${APP_DISPLAY_NAME}, but its admission acknowledgement was not received.`,
       );
     }
     if (!preConnectFailure) {
@@ -690,16 +690,16 @@ export async function callApi(
         error: timedOut
           ? route === 'model/verify'
             ? 'Provider verification did not return within the request deadline.'
-            : 'MyAgents did not return a response within the request deadline.'
-          : 'The MyAgents request failed before a readable response was received.',
-        suggestion: 'Check MyAgents status and the operation result before retrying; the request may still have completed.',
+            : `${APP_DISPLAY_NAME} did not return a response within the request deadline.`
+          : `The ${APP_DISPLAY_NAME} request failed before a readable response was received.`,
+        suggestion: `Check ${APP_DISPLAY_NAME} status and the operation result before retrying; the request may still have completed.`,
       };
     }
     return {
       success: false,
       code: 'MYAGENTS_UNAVAILABLE',
-      error: 'Cannot connect to the MyAgents app.',
-      suggestion: 'Start MyAgents and retry the same command.',
+      error: `Cannot connect to the ${APP_DISPLAY_NAME} app.`,
+      suggestion: `Start ${APP_DISPLAY_NAME} and retry the same command.`,
     };
   }
 }
@@ -733,7 +733,7 @@ export function validateSessionMutationAcknowledgement(
     return typeof result.code === 'string' && typeof result.error === 'string'
       ? result
       : sessionAdmissionUnconfirmedResult(
-        'MyAgents returned an incomplete admission failure acknowledgement.',
+        `${APP_DISPLAY_NAME} returned an incomplete admission failure acknowledgement.`,
         sessionMutationReceipt(result),
       );
   }
@@ -750,7 +750,7 @@ export function validateSessionMutationAcknowledgement(
   return valid
     ? result
     : sessionAdmissionUnconfirmedResult(
-      'MyAgents returned an incomplete admission success acknowledgement.',
+      `${APP_DISPLAY_NAME} returned an incomplete admission success acknowledgement.`,
       sessionMutationReceipt(result),
     );
 }
@@ -828,7 +828,7 @@ export function adminHttpErrorResult(
       success: false,
       code: 'SESSION_SIDECAR_REQUIRED',
       error: 'Reload requires a Session Sidecar; the current Global Sidecar does not own session runtime state.',
-      suggestion: 'Run the command from an active MyAgents chat session, or open its help for details.',
+      suggestion: `Run the command from an active ${APP_DISPLAY_NAME} chat session, or open its help for details.`,
       suggestedCommand: `${APP_CLI_NAME} reload --help`,
     };
   }
@@ -1349,9 +1349,9 @@ export function printResult(
     console.log(`  message: ${String(result.messageId ?? '(unknown)')}`);
     console.log('  state:   accepted; target is running asynchronously');
     if (result.replyBack === false) {
-      console.log('  result:  one-way; MyAgents will not push the target turn result back here.');
+      console.log(`  result:  one-way; ${APP_DISPLAY_NAME} will not push the target turn result back here.`);
     } else {
-      console.log('  result:  MyAgents will push the target turn result back as a <myagents-session-event type="send.result"> block.');
+      console.log(`  result:  ${APP_DISPLAY_NAME} will push the target turn result back as a <myagents-session-event type="send.result"> block.`);
     }
     console.log(`  follow-up: ${APP_CLI_NAME} session send ${String(result.sessionId ?? '<sessionId>')} -p "<prompt>"`);
     console.log('  observation: start/send already return the result automatically; use watch for separately observed work.');
@@ -1403,9 +1403,9 @@ export function printResult(
     const messageId = result.messageId ? ` ${result.messageId}` : '';
     console.log(`\u2713 session send delivered${messageId}`);
     if (result.replyBack === false) {
-      console.log('  notification: one-way; MyAgents will not push the target turn result back here.');
+      console.log(`  notification: one-way; ${APP_DISPLAY_NAME} will not push the target turn result back here.`);
     } else {
-      console.log('  notification: MyAgents will push the target turn result back as a <myagents-session-event type="send.result"> block.');
+      console.log(`  notification: ${APP_DISPLAY_NAME} will push the target turn result back as a <myagents-session-event type="send.result"> block.`);
     }
     return;
   }
@@ -1432,7 +1432,7 @@ export function printResult(
     console.log(`\u2713 session watch ${result.coalesced ? 'already registered' : 'registered'} ${result.watchId ?? ''}`.trim());
     console.log(`  target: ${result.targetSessionId ?? '(unknown)'}`);
     console.log(`  state:  ${result.targetStateAtRegistration ?? 'unknown'}`);
-    console.log('  result: MyAgents will push a <myagents-session-event type="watch.completed"> block when the target finishes.');
+    console.log(`  result: ${APP_DISPLAY_NAME} will push a <myagents-session-event type="watch.completed"> block when the target finishes.`);
     return;
   }
   if (group === 'help') {
@@ -1506,7 +1506,7 @@ export function printResult(
     const reason = (tested.reason as Record<string, unknown> | undefined) ?? {};
     const event = (tested.event as Record<string, unknown> | undefined) ?? null;
     const handoff = (tested.handoff as Record<string, unknown> | undefined) ?? null;
-    console.log('\u2713 Detector test completed (MyAgents state was not committed)');
+    console.log(`\u2713 Detector test completed (${APP_DISPLAY_NAME} state was not committed)`);
     console.log(`  decision: ${String(tested.decision ?? 'unknown')}`);
     console.log(`  reason:   ${String(reason.code ?? 'unknown')} · ${String(reason.message ?? '')}`);
     if (event) {
@@ -3286,11 +3286,11 @@ async function main(): Promise<void> {
     if (jsonMode) {
       return exitAgentCliError(flags, {
         code: routeError,
-        error: 'The MyAgents CLI Session route is missing or invalid.',
-        suggestion: 'Run this command from an active MyAgents Session or start the app and retry.',
+        error: `The ${APP_DISPLAY_NAME} CLI Session route is missing or invalid.`,
+        suggestion: `Run this command from an active ${APP_DISPLAY_NAME} Session or start the app and retry.`,
       }, 3);
     }
-    console.error(`Error: ${routeError}. Retry from the active MyAgents Session or start the app.`);
+    console.error(`Error: ${routeError}. Retry from the active ${APP_DISPLAY_NAME} Session or start the app.`);
     process.exit(3);
   }
   BASE = `http://127.0.0.1:${PORT}/api/admin`;
@@ -3577,7 +3577,7 @@ export function validateCliCommand(
       error: `Unknown command group: ${group}`,
       suggestion: isRetiredDocumentDraft
         ? 'Use the published local document conversion command group.'
-        : 'List the commands supported by this MyAgents build.',
+        : `List the commands supported by this ${APP_DISPLAY_NAME} build.`,
       suggestedCommand: isRetiredDocumentDraft ? `${APP_CLI_NAME} anydoc --help` : `${APP_CLI_NAME} --help`,
     };
   }
@@ -4381,8 +4381,8 @@ async function claimSpaceIssueWithAttachedTask(
     return exitSpaceInputError(
       flags,
       'SESSION_REQUIRED',
-      'space issue claim --create-attached requires an active MyAgents Session.',
-      'Run this command inside the MyAgents AI Session that will own the attached Task.',
+      `space issue claim --create-attached requires an active ${APP_DISPLAY_NAME} Session.`,
+      `Run this command inside the ${APP_DISPLAY_NAME} AI Session that will own the attached Task.`,
     );
   }
 
@@ -6258,7 +6258,7 @@ export function buildRequestBody(
           ? flags.currentSessionId.trim()
           : process.env.MYAGENTS_SESSION_ID;
       if (!currentSessionId) {
-        console.error('Error: task create-attached requires MYAGENTS_SESSION_ID. Run it from inside a MyAgents AI session.');
+        console.error(`Error: task create-attached requires MYAGENTS_SESSION_ID. Run it from inside a ${APP_DISPLAY_NAME} AI session.`);
         process.exit(2);
       }
       const source = (flags.source as string | undefined) ?? 'space-issue';
@@ -6884,7 +6884,7 @@ function resolvePreselectedSessionId(
     return exitAgentCliError(flags, {
       code: 'TASK_SESSION_REQUIRED',
       error: '--preselectedSessionId requires current or a Session id.',
-      suggestion: `Pass \`--preselectedSessionId current\` inside a MyAgents Session, or use an id from \`${APP_CLI_NAME} session list --agent <agentId> --json\`.`,
+      suggestion: `Pass \`--preselectedSessionId current\` inside a ${APP_DISPLAY_NAME} Session, or use an id from \`${APP_CLI_NAME} session list --agent <agentId> --json\`.`,
       suggestedCommand: `${APP_CLI_NAME} session list --agent <agentId> --json`,
     });
   }
@@ -6895,7 +6895,7 @@ function resolvePreselectedSessionId(
   return exitAgentCliError(flags, {
     code: 'CURRENT_SESSION_UNAVAILABLE',
     error: '--preselectedSessionId current requires MYAGENTS_SESSION_ID.',
-    suggestion: `Run this command inside a MyAgents Session, or pass an explicit id from \`${APP_CLI_NAME} session list --agent <agentId> --json\`.`,
+    suggestion: `Run this command inside a ${APP_DISPLAY_NAME} Session, or pass an explicit id from \`${APP_CLI_NAME} session list --agent <agentId> --json\`.`,
     suggestedCommand: `${APP_CLI_NAME} session list --agent <agentId> --json`,
   });
 }
@@ -6917,7 +6917,7 @@ function validateTaskSessionBinding(
     exitAgentCliError(flags, {
       code: 'TASK_SESSION_REQUIRED',
       error: '--runMode single-session requires --preselectedSessionId current|<session-id>.',
-      suggestion: `Use \`current\` inside MyAgents, or choose a materialized id from \`${APP_CLI_NAME} session list --agent <agentId> --json\`.`,
+      suggestion: `Use \`current\` inside ${APP_DISPLAY_NAME}, or choose a materialized id from \`${APP_CLI_NAME} session list --agent <agentId> --json\`.`,
       suggestedCommand: `${APP_CLI_NAME} session list --agent <agentId> --json`,
     });
   }

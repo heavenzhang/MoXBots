@@ -1,4 +1,4 @@
-import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../../shared/appProfile';
+import { APP_CLI_NAME, APP_DATA_DIR_NAME, APP_DISPLAY_NAME } from '../../shared/appProfile';
 /**
  * CLI 工具注册表（PRD 0.2.36 cli_first_tool_registry）。
  *
@@ -340,7 +340,7 @@ export function buildUserToolsSectionText(tools: ReadonlyArray<{ name: string; d
     ? `\n\n…and ${overflow} more registered tool(s) — run \`${APP_CLI_NAME} tool list\` to see all.`
     : '';
   return `<myagents-user-tools>
-The user has registered the following CLI tools in MyAgents. They are on PATH —
+The user has registered the following CLI tools in ${APP_DISPLAY_NAME}. They are on PATH —
 invoke them directly from your shell tool. Before first use in a session, run
 \`<tool> readme\` for the full usage doc; \`<tool> --help\` shows arguments.
 Pass --json for machine-readable output. Non-zero exit = failure; stderr carries

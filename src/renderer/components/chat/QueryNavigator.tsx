@@ -1,8 +1,8 @@
-// Query Navigator — floating right-side panel for quick session query navigation
-// Unified row design: dashes are always visible in the same position.
-// On hover, text labels slide in from the right — dashes stay anchored.
+// Query Navigator — left-side rail, expanded on hover or keyboard focus.
+// The original scroll owner and virtualized navigation remain unchanged.
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Message } from '../../types/chat';
 import { parseLeadingSystemReminder } from '../../../shared/systemReminder';
 
@@ -52,9 +52,10 @@ export default function QueryNavigator({
   pauseAutoScroll,
   onNavigateToQuery,
 }: QueryNavigatorProps) {
+  const { t } = useTranslation('chat');
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeIndexRaw, setActiveIndex] = useState(-1);
-  const listRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const activeItemRef = useRef<HTMLButtonElement>(null);
 
   // Extract real user queries (filter out system injections)
@@ -187,14 +188,30 @@ export default function QueryNavigator({
 
   return (
     <div
-      className="absolute right-4 top-0 bottom-0 z-30 hidden md:flex items-center pointer-events-none"
+      className="absolute left-2 top-3 bottom-3 z-30 hidden md:flex items-center pointer-events-none"
     >
-      {/* Single unified container — dashes always anchored right, text slides in */}
+      {/* Dashes stay anchored left while labels expand toward the conversation. */}
       <div
-        aria-hidden={!isExpanded}
+        ref={panelRef}
+        role="navigation"
+        aria-label={t('queryNavigator.label')}
+        tabIndex={0}
         onMouseEnter={() => setIsExpanded(true)}
-        onMouseLeave={() => setIsExpanded(false)}
-        className={`pointer-events-auto relative max-h-[60vh] overflow-hidden transition-[width,background-color,border-color,box-shadow] duration-200 ${
+        onMouseLeave={() => {
+          if (!panelRef.current?.contains(document.activeElement)) setIsExpanded(false);
+        }}
+        onFocus={() => setIsExpanded(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setIsExpanded(false);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && isExpanded) {
+            event.stopPropagation();
+            event.currentTarget.focus();
+            setIsExpanded(false);
+          }
+        }}
+        className={`pointer-events-auto relative flex max-h-[60%] flex-col overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] transition-[width,background-color,border-color,box-shadow] duration-200 motion-reduce:transition-none ${
           isExpanded
             ? 'w-72 rounded-xl border border-[var(--line)] shadow-lg'
             : 'w-5 border border-transparent'
@@ -213,10 +230,10 @@ export default function QueryNavigator({
           style={{ background: 'linear-gradient(to bottom, var(--paper-elevated), var(--paper-elevated-a0))' }}
         />
 
-        {/* Scrollable list — each row: [text (conditional)] + [dash (always)] */}
+        {/* Native scrolling remains available without a second visible scrollbar. */}
         <div
-          ref={listRef}
-          className="overflow-y-auto max-h-[60vh] py-3"
+          aria-hidden={!isExpanded}
+          className="chat-scroll-surface min-h-0 overflow-y-auto overscroll-contain py-3"
         >
           {queries.map((q, i) => {
             const isActive = i === activeIndex;
@@ -225,14 +242,24 @@ export default function QueryNavigator({
                 key={q.id}
                 ref={isActive ? activeItemRef : undefined}
                 type="button"
+                title={q.text}
+                aria-current={isActive ? 'location' : undefined}
                 tabIndex={isExpanded ? 0 : -1}
                 onClick={() => isExpanded && handleQueryClick(q.id)}
-                className={`flex w-full items-center gap-1.5 py-[5px] text-left transition-colors ${
+                className={`flex w-full flex-shrink-0 items-center gap-2 py-[5px] text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[var(--accent)] ${
                   isExpanded
-                    ? `px-3 cursor-pointer rounded-lg ${isActive ? 'bg-[var(--hover-bg)]' : 'hover:bg-[var(--hover-bg)]'}`
-                    : 'px-0 cursor-default justify-end'
+                    ? `pl-1.5 pr-3 cursor-pointer rounded-lg ${isActive ? 'bg-[var(--hover-bg)]' : 'hover:bg-[var(--hover-bg)]'}`
+                    : 'pl-1.5 cursor-default'
                 }`}
               >
+                <span
+                  aria-hidden="true"
+                  className={`flex-shrink-0 rounded-full transition-all duration-150 ${
+                    isActive
+                      ? 'w-[10px] h-[3px] bg-[var(--accent)]'
+                      : `w-[8px] h-[2px] bg-[var(--ink-faint)] ${isExpanded ? '' : 'opacity-40'}`
+                  }`}
+                />
                 {/* Query text — only visible when expanded */}
                 <span
                   className={`flex-1 truncate text-sm leading-6 transition-opacity duration-200 ${
@@ -242,16 +269,6 @@ export default function QueryNavigator({
                   {q.text}
                 </span>
 
-                {/* Dash — always visible, same position */}
-                <span
-                  className={`flex-shrink-0 rounded-full transition-all duration-150 ${
-                    isActive
-                      ? 'w-[10px] h-[3px] bg-[var(--accent)]'
-                      : isExpanded
-                        ? 'w-[8px] h-[2px] bg-[var(--ink-faint)]'
-                        : 'w-[8px] h-[2px] bg-[var(--ink-faint)] opacity-40'
-                  } ${isExpanded ? 'mr-1' : 'mr-1.5'}`}
-                />
               </button>
             );
           })}

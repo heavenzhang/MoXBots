@@ -152,6 +152,8 @@ export type MessageQueueItem = {
   sessionBirthOrigin?: SessionOrigin;
   providerAnalytics?: TurnProviderAnalytics;
   inputSource?: 'inbox';
+  /** Original ingress authority, retained while a desktop input waits in the queue. */
+  fromDesktopChatSend?: boolean;
   inboxMeta?: InboxTurnMeta;
   turnOwner?: TurnOwner;
   onTerminal?: TurnTerminalObserver;

@@ -1,3 +1,9 @@
+## MOXBOTS-499-20261025 — 排队真人输入恢复交接与停止状态
+
+用户明确要求马上修复、打新包并更换本地。任务 `.agent-sync/tasks/codex-request-499-handoff-20261025-d8c1de19.md`；验收 `dev-docs/request-499-handoff/acceptance.md`。沿原generator/SessionStore恢复CAS处理Force后新输入被旧paused拦成499，保留action ledger/Stop fence/预算；历史主计划状态按真实根活动投影，停止显示已中断。263集成、149单元、35DOM及类型/lint/实际组件1280/390页面已通过，独立代码审查无阻断。
+
+部署单元desktop builtin client继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责共享CI、版本、构建、备份/本地替换与复验。该负责人已接收紧急下一未冻结批请求，源码交接后统一冻结候选；本开发会话不另开正式构建/安装。main、CI、制品、安装与真实Provider验收以该批次证据更新，不清理原业务账本或重放历史操作。
+
 ## MOXBOTS-RECOVERY-CAUSAL-DIAGNOSTICS-20261022 — 下一未冻结批的安全补证
 
 仅补未来Query准入拒绝枚举、fetch本地错误码/abort类别及原native工具reserve/commit串行点的脱敏阶段；不改变安全条件、返回HTTP、ledger、Stop、重试/恢复权限或预算。任务 `.agent-sync/tasks/codex-recovery-causal-diagnostics-20261022-8df66bab.md`。从指定263起点核查后，因main仅有mobile build3变动而在新clean树FF actual7db通过start门；目标源字节一致。当前5168/source52/tag263/签名包保持冻结，原solepublisher01a12bc2-907a-7702-b6dd-788225c5dfe4继续现稳定晋级，不等待本任务。开发只交源分支与聚焦本地测试，下一未冻结批的统一CI/main/构建/原生验收由其选择。新增日志不是历史根因查明、业务完成或恢复授权。
@@ -957,10 +963,24 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 按用户明确要求，多步骤任务在原队列实际派发前持久化同一 To Do List，执行事件和原生工具同步稳定 ID；已授权任务不新增确认，讨论方案保留原确认。任务 `.agent-sync/tasks/codex-todo-before-execution-20261025-e66ac125.md`，证据 `dev-docs/todo-before-execution-20261025/acceptance.md`。源码/本地磁盘集成/真实SDK合成上游、CI/main、签名制品和真实Provider/客户端分别追踪。部署单元 desktop builtin client/共享Session进度；combined CI/main/版本/正式发布继续由唯一会话 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。当前开发分支不触发共享CI、不操作日常App或冻结制品；正式精确SHA完成后交下一未冻结批次。
 
 
-## MOXBOTS-0523-ALL-THREADS-20261025 — unified completed-source release
+## MOXBOTS-0523-ALL-THREADS-20261025 — delivered
 
-主人最新要求等相关开发聊天全部完成提交，再统一打最新0.5.23。Root01a12bc2继续唯一desktop/macOS-arm64/updater和combinedCI/main owner；不再打522.2，旧5221签名/Apple原件封存且不poll。保留Rootcc3e完整已选九项有效改进和测试修正，新增已完成upstream320aa（及Windows测试兼容eead）与Todo f982。开发聊天active只等待本owner CI/main，不是未完成writer，不形成互等。当前source base848，候选0.5.23/build523.1；版本/源码/CI/main/制品/本地/正式通道/真实Provider与双端分开追踪。
+0.5.23/build523.1已完成本地Applications安装及正式更新通道发布。受测9c104fd3e5f256b0d88bb3e67949da0f5c1defb6，普通PR206/mainc5fd489b56d2eb2f19923d9dddc5cb6097cd439f，原CI40123195499与main40124544381均成功。不可变v0.5.23对象d2be5a29a494f6b788a0d74b82d98e33e46397ce指向c5fd；TAR301705060B/SHA4d26b0922d3fa554a357190a81b6c48b5f353b8aae3b92ba9f2b5d14b6557255，原Apple1ecc3e4b-e691-4fc4-979d-b464c8999f77 Accepted。一次完整正常TLS外部GET/生产签名、stable23及Range/隐藏路径复核成功，自己ownedlock已释放；21与更旧回滚原件保持。
 
-同一源码合并唯一产品冲突：Todo指令必须继续走Runtime-only reminder，保留原始人类文本和输入先于卡片；同步原清单准入/稳定ID与根验收结算。Root先复现4个旧接口断言，再2个旧fresh分类fixture缺steps；修正测试输入和接口断言，不降低生产准入。保留所有原历史/草稿/Stop/预算/unknown；配对Tauri API与三套vendor、Skill62随同新制品，旧冷启动恢复入口仍移除，原生Renderer replacement的未恢复页面属于单独故障恢复路径。已发布/本地521.2保持回滚。新候选源码冻结/精确CI/main前不构建；必要finite native后同份制品安装/正常TLS发布，不重复历史全矩阵或发布独立Host/mobile/backend。
+该批完整unitDOM10027、builtin252、externalDSH292、scripts344+14平台skip及类型/lint通过；实际有限原生Write1/Read1、新对话、暖owner预建任务ID/进度、排队晋级后Stop持久暂停及正常退出/重开已核。105原history JSONL前缀、原草稿文件及全部20Agent/非Agent配置恢复精确，memory100暂停例外保持。冷分类未确认、Haiku utility温度兼容、全部任务评审完成与AUTO2/双端不冒称通过；新源码另批处理。旧522候选封存，不再重建/公证/下载本版。详见dev-docs/releases/0.5.23-delivery.md。
 
-523.1最终补接Todo2578可选private Runtime reminder与原DSH journal/fingerprint/replay；无提示旧哈希兼容，冷/暖/实时12与externalDSH292PASS，unitDOM10027PASS。SDK合成Todo/rework适配现有transitionDesktopSession并PASS；本地与正式通道仍521.2，523尚未构建。所有新增writer源码已完成，Root只收统一精确CI/main及一份新制品。
+## MB-BRAND-PROMPTS-20261025 — 模型身份与产品说明
+
+用户明确授权修正旧品牌称呼。普通/外部/DSH身份、Task/Goal/Cron/浮窗reminder、能力发现、辅助图片模型及CLI文案统一读取既有APP_DISPLAY_NAME；内置帮助沿原品牌适配，并补宠物YAML/Python提示词。命令/Skill/协议/许可和用户原文保持，历史与恢复ledger不改。开发会话01a17383-d8ec-7d91-9a6f-64a684ac665c，任务`.agent-sync/tasks/codex-brand-prompts-20261025-58c950db.md`，证据`dev-docs/brand-prompts-20261025/acceptance.md`。554项unit、9项资源/CLI bundle回归及类型/lint/边界/本地实际profile bundle与probe通过；共享CI/main、签名包、安装和真实Provider分开追踪。desktop/macOS/updater及combined CI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，由其选下一未冻结批次和版本。无云/Host/mobile部署请求、不触发共享CI、不改冻结制品或日常App。
+
+## MOXBOTS-0524-499-BRAND-20261026 — 下一未冻结紧急修复批
+
+用户在499来源聊天明确要求“马上修复 并打一个新包，更换本地”。Root01a12bc2保留唯一desktop/macOS-arm64/updater及combinedCI/main归属，计划0.5.24/build524.1；接收品牌8ea与待交499/Stop投影修复，等499精确已提交SHA后一次组合CI/正式构建。不在缺修复时替换本地，不抄routing未提交内容，不改变冻结23制品/标签。Root任务`.agent-sync/tasks/codex-release-0524-499-brand-20261026-52db85a0.md`。原业务/未知ledger不重放，fresh正常维护/一致备份后安装与有限受影响原生验证；真实Provider、源码、制品、本地与线上各自记录。无Host/cloud/mobile范围扩大，无新子Agent或新监控。
+
+524 intake complete: brand8ea + chat-index4e2f4a26 + repair499b0effca6已按精确远端正常合并，无产品冲突；Root263 integration/193 unit/66 DOM/12资源CLI版本、tsc/scopedlint均PASS，原作者真实SDK loopback无付费证明另存。0.5.24/524.1版本统一，下一步固定组合SHA一次共享CI。签名包/native/真实Provider/本地/正式通道尚待，不重建已交付23、不复制routing WIP。
+
+524原CI40211747558主检查7181通过/2失败，Root确认旧gutter/CLI文案测试契约未随新产品策略同步；修正局部隐藏检查（其他owner stable保留）和moxbot绝对启动器示例，7项针对性回归通过。原0607及其CI/未执行helper保留，更新源码后只触发对应新候选CI；未构建或操作App。
+
+524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
+
+524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。

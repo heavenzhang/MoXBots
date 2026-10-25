@@ -51,6 +51,18 @@ function rootTool(receipt: string, root = true) {
   return { id: 'root-review-tool', name: 'Bash', root, input: { command: `myagents session tasks --json --data '${JSON.stringify(intent?.action)}'` }, output: JSON.stringify({ success: true, taskReviewReceipt: receipt }) };
 }
 describe('durable Session task owner', () => {
+  it('does not publish historical root plan progress as live execution after Stop', async () => {
+    const current = store.getSessionMetadata(id)!.taskOrchestration!;
+    await store.updateSessionMetadata(id, { taskOrchestration: { ...current,
+      plan: [{ key: 'work', content: 'Verify change', activeForm: 'Verifying change', status: 'in_progress' }] } });
+    engine.getLiveSessionState = () => ({ sessionState: 'idle', isBusy: false });
+    const stopped = await owner.readSessionTasks(engine);
+    expect(stopped.tasks.find(task => task.id === 'work')?.phase).toBe('interrupted');
+    expect(stopped.ledger.plan?.[0].status).toBe('in_progress');
+    engine.getLiveSessionState = () => ({ sessionState: 'running', isBusy: true });
+    expect((await owner.readSessionTasks(engine)).tasks.find(task => task.id === 'work')?.phase).toBe('running');
+  });
+
   it('keeps a CLI review pending until the trusted root tool completion', async () => {
     const pending = await prepareReview();
     expect(pending.pendingMainAgentReview).toBe(true);

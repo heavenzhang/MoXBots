@@ -1,4 +1,4 @@
-import { APP_CLI_NAME, APP_DATA_DIR_NAME } from '../shared/appProfile';
+import { APP_CLI_NAME, APP_DATA_DIR_NAME, APP_DISPLAY_NAME } from '../shared/appProfile';
 /**
  * Unified system prompt assembly for MyAgents.
  *
@@ -37,20 +37,20 @@ export type InteractionScenario =
 // of which CLI is driving it.
 function getRuntimeDisplayName(runtime: RuntimeType | undefined): string {
   switch (runtime) {
-    case 'dsh':         return 'MyAgents integrated DeepSeek Harness';
+    case 'dsh':         return `${APP_DISPLAY_NAME} integrated DeepSeek Harness`;
     case 'claude-code': return 'Anthropic Claude Code CLI';
     case 'codex':       return 'OpenAI Codex CLI';
     case 'builtin':
     default:
-      return 'MyAgents 内置 Claude Agent SDK';
+      return `${APP_DISPLAY_NAME} 内置 Claude Agent SDK`;
   }
 }
 
 // ===== Inline templates =====
 
 const TMPL_BASE_IDENTITY = `<myagents-identity>
-你正运行在 MyAgents —— 一款通用的桌面端 AI Agent 应用中。用户通过 MyAgents 调用你,
-MyAgents 负责会话管理、工具权限、定时任务、IM Bot 集成、工作区文件访问等能力,
+你正运行在 ${APP_DISPLAY_NAME} —— 一款通用的桌面端 AI Agent 应用中。用户通过 ${APP_DISPLAY_NAME} 调用你,
+${APP_DISPLAY_NAME} 负责会话管理、工具权限、定时任务、IM Bot 集成、工作区文件访问等能力,
 你则负责理解和执行用户的请求。
 
 当前执行 Runtime: {{runtimeName}}
@@ -60,7 +60,7 @@ MyAgents 负责会话管理、工具权限、定时任务、IM Bot 集成、工�
 </myagents-identity>`;
 
 const TMPL_CHANNEL_DESKTOP = `<myagents-interaction-channel>
-用户正通过 MyAgents 桌面客户端与你对话。
+用户正通过 ${APP_DISPLAY_NAME} 桌面客户端与你对话。
 </myagents-interaction-channel>`;
 
 const TMPL_CHANNEL_IM = `<myagents-interaction-channel>
@@ -79,15 +79,15 @@ When you receive one, follow its instructions.
 </myagents-heartbeat-instructions>`;
 
 const TMPL_REGISTERED_AGENT = `<myagents-registered-agent-instructions space-id="{{spaceId}}" registered-agent-id="{{registeredAgentId}}">
-你正作为绑定到当前 Session 的 MyAgents Registered Agent 处理 Space Issue 事件。每次事件会在隐藏消息中给出 <registered-agent-context>、用户配置的 <registered-agent-instruction>、系统 <operating-guidance> 与本次 <deliveries>。
+你正作为绑定到当前 Session 的 ${APP_DISPLAY_NAME} Registered Agent 处理 Space Issue 事件。每次事件会在隐藏消息中给出 <registered-agent-context>、用户配置的 <registered-agent-instruction>、系统 <operating-guidance> 与本次 <deliveries>。
 
-把 Registered Agent instruction 作为长期目标意图，在当前 Issue 事实、权限与安全规则内选择行动；它不授予额外权限，也不要求每个 Issue 采取相同动作。可用结果包括不再行动、只评论或更新、claim 责任、继续已有工作，以及在真正完成后 complete。Delivery 运输确认由 MyAgents 自动完成，不存在由你调用的 ignore、handled 或 acknowledge 动作。
+把 Registered Agent instruction 作为长期目标意图，在当前 Issue 事实、权限与安全规则内选择行动；它不授予额外权限，也不要求每个 Issue 采取相同动作。可用结果包括不再行动、只评论或更新、claim 责任、继续已有工作，以及在真正完成后 complete。Delivery 运输确认由 ${APP_DISPLAY_NAME} 自动完成，不存在由你调用的 ignore、handled 或 acknowledge 动作。
 
-身份以事件中的精确 Space ID 与 Registered Agent ID 为准；workspace 只是执行环境，不能用来猜测或切换 Agent 身份。行动前通过 myagents CLI 读取当前 Issue；本次 Delivery 元数据只解释唤醒原因，不是当前状态的第二真相源。
+身份以事件中的精确 Space ID 与 Registered Agent ID 为准；workspace 只是执行环境，不能用来猜测或切换 Agent 身份。行动前通过 ${APP_CLI_NAME} CLI 读取当前 Issue；本次 Delivery 元数据只解释唤醒原因，不是当前状态的第二真相源。
 </myagents-registered-agent-instructions>`;
 
 const TMPL_FLOATING_BALL = `<myagents-floating-ball-instructions>
-You are talking with the user through the MyAgents desktop floating window.
+You are talking with the user through the ${APP_DISPLAY_NAME} desktop floating window.
 
 This is a lightweight, immediate, desktop-adjacent entry point. The user can easily attach a desktop screenshot or selected text from the app/window they are looking at.
 
@@ -139,7 +139,7 @@ export interface SystemPromptOptions {
    * an experimental feature gate.
    */
   userCliToolsEnabled?: boolean;
-  /** Effective MyAgents official CLI tools enabled for this session. */
+  /** Effective product-owned official CLI tools enabled for this session. */
   enabledOfficialToolIds?: readonly OfficialToolId[];
   /** 请外援: the Session is builtin, auto routing is on, and another tier
    *  model can be asked for help. Resolved by the caller from the effective
@@ -166,9 +166,9 @@ export interface DshSystemContextSnapshot {
   contexts?: DshHostPromptContext[];
 }
 
-const DSH_PRODUCT_IDENTITY = 'You are the active agent in MyAgents, a general-purpose desktop AI agent application. MyAgents owns the session UI, workspace binding, permissions, automations, channels, and product integrations. Use only capabilities that are actually present in this session. When current date or time matters, obtain it with an available tool rather than relying on prompt metadata.';
+const DSH_PRODUCT_IDENTITY = `You are the active agent in ${APP_DISPLAY_NAME}, a general-purpose desktop AI agent application. ${APP_DISPLAY_NAME} owns the session UI, workspace binding, permissions, automations, channels, and product integrations. Use only capabilities that are actually present in this session. When current date or time matters, obtain it with an available tool rather than relying on prompt metadata.`;
 
-const DSH_CAPABILITY_ROUTING = 'MyAgents capabilities are progressively disclosed. Use the available tool schemas and capability context to select a Skill, tool, or CLI entry point. Load detailed help only when needed. Mentioning a capability does not grant permission to execute it.';
+const DSH_CAPABILITY_ROUTING = `${APP_DISPLAY_NAME} capabilities are progressively disclosed. Use the available tool schemas and capability context to select a Skill, tool, or CLI entry point. Load detailed help only when needed. Mentioning a capability does not grant permission to execute it.`;
 
 function buildProductSessionPrompt(scenario: InteractionScenario, options?: SystemPromptOptions): string {
   const parts: string[] = [];

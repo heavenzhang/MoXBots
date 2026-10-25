@@ -1,6 +1,8 @@
-# MyAgents — Desktop AI Agent
+# MoXBots — Desktop AI Agent
 
 内置 Claude Agent SDK 与 DSH，并支持外部 Runtime 的桌面端通用 Agent 产品。开源（AGPL-3.0-only）并提供单独商业授权；使用 Conventional Commits；不得提交密钥、令牌或用户隐私数据。
+
+面向用户和模型的产品身份使用 MoXBots；兼容命令、Skill 名称、协议标识和第三方归属按代码保留。
 
 ## 这份自动加载文档的职责
 
@@ -37,7 +39,7 @@
 | `src-tauri/media-worker/`、`src-tauri/media-worker-protocol/` | 独立 Rust 音频推理 Worker 与共享 wire protocol；单 workload / generation 计算，不拥有队列或持久化 |
 | `src-tauri/src/agent_network/`、`src/server/agent-network/` | 跨设备 Agent 网络客户端：Rust App 持有设备身份、连接与 TLS，Node 侧只适配进既有 Inbox / SessionEngine；公共中转/自部署属于 `MyAgents-Agenthub`，官方组合属于私有 `MyAgents_AgentNet` |
 | `vendor/agent-network-protocol/`、`src-tauri/agent-network-protocol/` | 固定版本的 Agent 网络协议包及其 Rust 投影；协议源码不在本仓库，只能按 `agent_network.md` 更新 vendored 包 |
-| `bundled-agents/myagents_helper/` | 内置 MA 小助理 |
+| `bundled-agents/myagents_helper/` | 内置 MoXBots 小助理 |
 | `bundled-workspaces/` | 随 App 发布的只读工作区模板源码；复制出的用户工作区不由此目录升级覆盖 |
 | `specs/` | 当前架构、设计规范、模块技术文档与构建指南 |
 

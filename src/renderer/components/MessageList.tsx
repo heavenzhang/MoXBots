@@ -1059,10 +1059,9 @@ const MessageList = memo(function MessageList({
         skipAnimationFrameInResizeObserver={
           !canLayoutVirtualList || !isLargeRowShrinking
         }
-        className="h-full"
+        className="h-full chat-scroll-surface"
         style={{
           overscrollBehavior: 'none',
-          scrollbarGutter: 'stable',
           overflowAnchor: 'none',
         }}
         components={VIRTUOSO_COMPONENTS}

@@ -1,4 +1,4 @@
-import { APP_CLI_NAME } from '../shared/appProfile';
+import { APP_CLI_NAME, APP_DISPLAY_NAME } from '../shared/appProfile';
 import { timingSafeEqual } from 'node:crypto';
 
 import {
@@ -73,7 +73,7 @@ export async function admitAdminRequest(
       response: {
         success: false,
         code: 'EXTERNAL_CLI_CAPABILITY_NOT_OPEN',
-        error: `The command route '${route}' is available only inside MyAgents.`,
+        error: `The command route '${route}' is available only inside ${APP_DISPLAY_NAME}.`,
         suggestion:
           `Use \`${APP_CLI_NAME} --help\` to list the public external commands.`,
       },
@@ -89,7 +89,7 @@ export async function admitAdminRequest(
         code: 'EXTERNAL_CLI_TOKEN_REQUIRED',
         error: 'External CLI access requires MYAGENTS_API_TOKEN.',
         suggestion:
-          'Enable External Calls in MyAgents Settings and export the token.',
+          `Enable External Calls in ${APP_DISPLAY_NAME} Settings and export the token.`,
       },
     };
   }
@@ -101,7 +101,7 @@ export async function admitAdminRequest(
       response: {
         success: false,
         code: 'EXTERNAL_CLI_HOST_NOT_READY',
-        error: 'The MyAgents Host identity is not ready.',
+        error: `The ${APP_DISPLAY_NAME} Host identity is not ready.`,
       },
     };
   }
@@ -115,7 +115,7 @@ export async function admitAdminRequest(
       response: {
         success: false,
         code: 'EXTERNAL_CLI_POLICY_UNAVAILABLE',
-        error: 'The MyAgents external access policy is unavailable.',
+        error: `The ${APP_DISPLAY_NAME} external access policy is unavailable.`,
       },
     };
   }
@@ -128,11 +128,11 @@ export async function admitAdminRequest(
         success: false,
         code: disabled ? 'EXTERNAL_CLI_DISABLED' : 'EXTERNAL_CLI_TOKEN_INVALID',
         error: disabled
-          ? 'MyAgents CLI external access is disabled.'
+          ? `${APP_DISPLAY_NAME} CLI external access is disabled.`
           : 'MYAGENTS_API_TOKEN is invalid or has been reset.',
         suggestion: disabled
-          ? 'Enable External Calls in MyAgents Settings.'
-          : 'Copy the current token from MyAgents Settings and retry.',
+          ? `Enable External Calls in ${APP_DISPLAY_NAME} Settings.`
+          : `Copy the current token from ${APP_DISPLAY_NAME} Settings and retry.`,
       },
     };
   }
