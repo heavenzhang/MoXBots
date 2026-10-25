@@ -15560,7 +15560,8 @@ async function* messageGenerator(
     // and B's domain guard; canceled inputs and automatic reminders cannot
     // retire the old recovery chain.
     const pausedRecovery = activeSessionModelRecovery?.readState();
-    if (item.fromDesktopChatSend && !isTurnInFlight() && pausedRecovery?.status === 'paused') {
+    if (item.fromDesktopChatSend && !item.transientProviderRetry && !item.streamContinuation
+      && !isTurnInFlight() && pausedRecovery?.status === 'paused') {
       const admissionSessionId = sessionId;
       const current = () => !isPromotedItemCanceled(item.id)
         && (!inputTrace || getQueryGeneration() === inputTrace.generation)

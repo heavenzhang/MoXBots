@@ -13,7 +13,7 @@ To Do 的 in_progress 是历史计划进度。新增可选 rootActivity 投影�
 ## 验证
 
 - [x] 先红：新回归在未修复代码上收到499而非200。原始日志 `/tmp/moxbots-499-red.log`。
-- [x] 五种新交接回归：正常、暂停落盘等待、恢复CAS期间Stop、恢复CAS期间取消、自动输入不获得恢复权限。
+- [x] 六种新交接回归：正常、暂停落盘等待、恢复CAS期间Stop、恢复CAS期间取消、自动输入不获得恢复权限，以及隐藏重试继承desktop标记仍不能清暂停。
 - [x] 集成4文件263项通过：builtin transcript、interrupt、model recovery、task orchestration。
 - [x] 单元5文件149项通过：model recovery、interrupt、task projection、bridge recovery、turn queue。
 - [x] DOM2文件35项通过：真实hook及ExecutionStatusBar的运行→停止→新请求、返回待验收、Escape和原交互回归。
@@ -22,6 +22,10 @@ To Do 的 in_progress 是历史计划进度。新增可选 rootActivity 投影�
 - [x] 实际浏览器页面：生产ExecutionStatusBar/TabContext/task projection，1280与390宽度，运行→停止→新请求、待验收保留、Escape、无水平溢出/JS异常。主Agent检查截图，视觉与交互通过；页面使用合成状态，不是原生/真实Provider验收。
 - [ ] 远端main、精确候选共享CI。
 - [ ] 签名新包、备份/替换日常客户端、安装版本与源码对应、真实SDK/Provider路径。
+
+## 构建前补充：内部重试继承标记
+
+`scheduleTransientProviderTextRetry` 使用 `{...source}` 复制原输入，会继承 `fromDesktopChatSend`。补充回归先红确认该内部重试可以错误清paused并返回200；在原generator条件中明确排除 `transientProviderRetry` 和 `streamContinuation` 后保持499、不发上游、不清暂停。6种接续case、原CAS Stop和3种scheduler provenance共10项定向回归通过，tsc/lint通过；独立审查复核无阻断。既有263项基础集成、149单元、35DOM仍为先前基线证据，最终精确候选由发布负责人重核CI。不能用旧候选SHA替代本补充。
 
 ## 复现命令与证据
 

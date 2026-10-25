@@ -3550,7 +3550,7 @@ async function startRealtimeBridgeFixture({ successor = true, closeOnInterrupt =
     } };
 }
 
-it.each(['normal', 'pending-pause', 'stop-during-resume', 'cancel-during-resume', 'automatic'] as const)(
+it.each(['normal', 'pending-pause', 'stop-during-resume', 'cancel-during-resume', 'automatic', 'inherited-desktop-retry'] as const)(
   'admits only a live human successor after force pauses the predecessor recovery (%s)', async mode => {
   const { getRecovery, received, emit, send, oldRequest, base, bridge, token, body } =
     await startRealtimeBridgeFixture({ successor: false, desktop: true });
@@ -3559,6 +3559,14 @@ it.each(['normal', 'pending-pause', 'stop-during-resume', 'cancel-during-resume'
   const checkpoint = store.getBuiltinModelRecovery(agent.getSessionId()!)!;
   const b = await send('Explicit successor B', mode !== 'automatic');
   expect(received).toHaveLength(1);
+  if (mode === 'inherited-desktop-retry') {
+    // The hidden provider-text retry clones its original source, including
+    // desktop ingress. That inherited flag is not a new human instruction.
+    const { getTurnBoundaryQueue } = await import('../builtin-session/queue');
+    getTurnBoundaryQueue().find(item => item.queueId === b.queueId)!.sourceItem!.transientProviderRetry = {
+      rootQueueId: checkpoint.turnId, attempt: 1,
+    };
+  }
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   let blocked = false;
@@ -3603,7 +3611,7 @@ it.each(['normal', 'pending-pause', 'stop-during-resume', 'cancel-during-resume'
   const execute = vi.fn(async () => new Response('{"role":"assistant","content":[{"type":"text","text":"B completed"}]}',
     { headers: { 'content-type': 'application/json' } }));
   const response = await config.contextRecovery!.run(request, { ...requestBody, stream: false }, execute);
-  if (mode === 'automatic') {
+  if (mode === 'automatic' || mode === 'inherited-desktop-retry') {
     expect(response.status).toBe(499);
     expect(execute).not.toHaveBeenCalled();
     expect(store.getBuiltinModelRecovery(agent.getSessionId()!)?.status).toBe('paused');
