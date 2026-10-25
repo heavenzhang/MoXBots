@@ -65,7 +65,7 @@ PowerShell：
 $env:MYAGENTS_API_TOKEN = "<token>"
 ```
 
-下文用 `<CLI>` 代表交接 Prompt 给出的绝对路径。实际执行时替换它，并按当前 shell 安全引用路径：POSIX 可用 `"/absolute/path/myagents" ...`，PowerShell 可用 `& "C:\\...\\myagents.cmd" ...`。
+下文用 `<CLI>` 代表交接 Prompt 给出的绝对路径。实际执行时替换它，并按当前 shell 安全引用路径：POSIX 可用 `"/absolute/path/moxbot" ...`，PowerShell 可用 `& "C:\\...\\moxbot.cmd" ...`。
 
 ### 先用帮助发现，再调用
 

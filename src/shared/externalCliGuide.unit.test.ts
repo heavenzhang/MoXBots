@@ -17,7 +17,7 @@ const publicCommands = EXTERNAL_CLI_PUBLIC_CAPABILITIES.map(
   ({ command }) => command,
 );
 
-describe('external MyAgents CLI guide', () => {
+describe('external MoXBots CLI guide', () => {
   it('never demonstrates an invocation outside the public allowlist', () => {
     for (const invocation of documentedInvocations) {
       if (invocation === '--help') continue;
@@ -55,6 +55,8 @@ describe('external MyAgents CLI guide', () => {
   it('requires the absolute launcher and external token environment variable', () => {
     expect(guide).toContain('CLI 绝对路径');
     expect(guide).toContain('MYAGENTS_API_TOKEN');
-    expect(guide).toContain('PATH 不保证能发现 `myagents`');
+    expect(guide).toContain('PATH 不保证能发现 `moxbot`');
+    expect(guide).toContain('/absolute/path/moxbot');
+    expect(guide).toContain('moxbot.cmd');
   });
 });

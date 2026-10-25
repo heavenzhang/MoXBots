@@ -23,18 +23,26 @@ describe('native scrollbar policy', () => {
     expect(floatingStyles).not.toContain('.fbw-convo::-webkit-scrollbar');
   });
 
-  it('keeps native theme projection and stable classic-scrollbar fallbacks', () => {
+  it('keeps native theme projection and stable classic-scrollbar fallbacks outside chat', () => {
     expect(source('src/renderer/theme/ThemeRuntime.tsx')).toContain(
       'root.style.colorScheme = resolvedTheme.resolvedColorScheme',
     );
 
     for (const scrollOwner of [
       'src/renderer/components/global-sidebar/GlobalSidebar.tsx',
-      'src/renderer/components/MessageList.tsx',
       'src/renderer/components/workspace-tree/WorkspaceTreeViewport.tsx',
       'src/renderer/components/AgentCapabilitiesPanel.tsx',
     ]) {
       expect(source(scrollOwner), scrollOwner).toMatch(/scrollbarGutter:\s*['"]stable['"]/);
     }
   });
+
+  it('limits the hidden-scrollbar exception to the existing chat scroll surfaces', () => {
+    const styles = source('src/renderer/index.css');
+    expect(styles).toMatch(/\.chat-scroll-surface\s*\{\s*scrollbar-width:\s*none;\s*\}/);
+    expect(styles).toMatch(/\.chat-scroll-surface::-webkit-scrollbar\s*\{\s*display:\s*none;\s*\}/);
+    expect(source('src/renderer/components/MessageList.tsx')).toContain('className="h-full chat-scroll-surface"');
+    expect(source('src/renderer/components/chat/QueryNavigator.tsx')).toContain('chat-scroll-surface min-h-0 overflow-y-auto');
+  });
+
 });
