@@ -1,3 +1,9 @@
+## MOXBOTS-499-20261025 — 排队真人输入恢复交接与停止状态
+
+用户明确要求马上修复、打新包并更换本地。任务 `.agent-sync/tasks/codex-request-499-handoff-20261025-d8c1de19.md`；验收 `dev-docs/request-499-handoff/acceptance.md`。沿原generator/SessionStore恢复CAS处理Force后新输入被旧paused拦成499，保留action ledger/Stop fence/预算；历史主计划状态按真实根活动投影，停止显示已中断。263集成、149单元、35DOM及类型/lint/实际组件1280/390页面已通过，独立代码审查无阻断。
+
+部署单元desktop builtin client继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责共享CI、版本、构建、备份/本地替换与复验。该负责人已接收紧急下一未冻结批请求，源码交接后统一冻结候选；本开发会话不另开正式构建/安装。main、CI、制品、安装与真实Provider验收以该批次证据更新，不清理原业务账本或重放历史操作。
+
 ## MOXBOTS-RECOVERY-CAUSAL-DIAGNOSTICS-20261022 — 下一未冻结批的安全补证
 
 仅补未来Query准入拒绝枚举、fetch本地错误码/abort类别及原native工具reserve/commit串行点的脱敏阶段；不改变安全条件、返回HTTP、ledger、Stop、重试/恢复权限或预算。任务 `.agent-sync/tasks/codex-recovery-causal-diagnostics-20261022-8df66bab.md`。从指定263起点核查后，因main仅有mobile build3变动而在新clean树FF actual7db通过start门；目标源字节一致。当前5168/source52/tag263/签名包保持冻结，原solepublisher01a12bc2-907a-7702-b6dd-788225c5dfe4继续现稳定晋级，不等待本任务。开发只交源分支与聚焦本地测试，下一未冻结批的统一CI/main/构建/原生验收由其选择。新增日志不是历史根因查明、业务完成或恢复授权。

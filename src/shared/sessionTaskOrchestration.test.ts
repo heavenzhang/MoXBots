@@ -14,6 +14,18 @@ function review(ledger: SessionTaskLedger, decision: 'accept' | 'reject' = 'acce
 function view(ledger: SessionTaskLedger) { return project(ledger).find(t => t.id === 'work')!; }
 
 describe('session task execution and acceptance', () => {
+  it('projects main-plan activity from the root without changing native attempts or acceptance', () => {
+    const plan = observe(emptyTaskLedger(), [], [{ key: 'p', content: 'Verify change', activeForm: 'Verifying change', status: 'in_progress' }]);
+    expect(project(plan, [], 'running')[0].phase).toBe('running');
+    expect(project(plan, [], 'idle')[0].phase).toBe('interrupted');
+    expect(project(plan, [], 'unknown')[0].phase).toBe('unknown');
+    expect(plan.plan?.[0].status).toBe('in_progress');
+    const accepted = apply(plan, { kind: 'review', taskId: 'p', attemptId: 'main', decision: 'accept', evidence: 'Verified', expectedRevision: plan.revision });
+    expect(project(accepted, [], 'idle')[0].phase).toBe('completed');
+    const child = bind(observe(task(), [attempt()]));
+    expect(project(child, [], 'idle').find(item => item.id === 'work')?.phase).toBe('running');
+  });
+
   it('advances bound execution from events without another task update; return is not acceptance', () => {
     let state = bind(observe(task(), [attempt()]));
     expect(view(state).phase).toBe('running');
