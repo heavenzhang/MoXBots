@@ -1,4 +1,4 @@
-import { APP_CLI_NAME } from '../shared/appProfile';
+import { APP_CLI_NAME, APP_DISPLAY_NAME } from '../shared/appProfile';
 /**
  * CLI-backed capability hints injected into the system prompt.
  *
@@ -37,7 +37,7 @@ import {
 // them conditionally per scenario in `buildCliToolsAppend` below.
 
 const SECTION_TASK_AUTOMATION = `<myagents-cli-task-automation>
-MyAgents represents every future, scheduled, recurring, or conditionally
+${APP_DISPLAY_NAME} represents every future, scheduled, recurring, or conditionally
 activated automation as one Task. Use the required system skill
 \`myagents-task-automation\` whenever the user asks for anything like:
 
@@ -54,7 +54,7 @@ current command surface and \`${APP_CLI_NAME} task --help\` for exact flags. Pas
 remain compatible but are not the Agent-facing workflow.
 
 Do not use system cron/crontab/at/launchctl/schtasks; those commands cannot see
-MyAgents Task, Session, Runtime, notification, or Detector state.
+${APP_DISPLAY_NAME} Task, Session, Runtime, notification, or Detector state.
 </myagents-cli-task-automation>`;
 
 const SECTION_TASK_EXIT = `<myagents-cli-task-exit>
@@ -70,7 +70,7 @@ out of transient errors; retry instead.
 </myagents-cli-task-exit>`;
 
 const SECTION_GOAL = `<myagents-cli-goal>
-MyAgents Goal Mode lets the current MyAgents session keep working toward one
+${APP_DISPLAY_NAME} Goal Mode lets the current ${APP_DISPLAY_NAME} session keep working toward one
 long-running objective across turns. Use it only when the User explicitly asks
 to start / enter / use Goal Mode, Goal Loop, 目标模式, 设立目标, or to keep a
 goal running continuously until completion.
@@ -114,7 +114,7 @@ Full docs and supported formats: run \`${APP_CLI_NAME} im readme\`.
 </myagents-cli-im-media>`;
 
 const SECTION_RECORD = `<myagents-cli-record>
-The user can ask you to save a passing idea or note into MyAgents Records.
+The user can ask you to save a passing idea or note into ${APP_DISPLAY_NAME} Records.
 Create a text Record only when the user explicitly asks to save specific
 content for later, e.g. "记一下", "帮我记", "记下来", "note this down",
 or "save this for later".
@@ -131,7 +131,7 @@ For listing Records, tags, and other options:
 </myagents-cli-record>`;
 
 const SECTION_VISION = `<myagents-cli-vision>
-If the active model/runtime cannot see images, use MyAgents' image-understanding
+If the active model/runtime cannot see images, use ${APP_DISPLAY_NAME}' image-understanding
 helper instead of guessing. When Read or another file view returns
 "[Unsupported Image]" for a PNG/JPG/WebP/GIF, switch to this helper.
 
@@ -169,7 +169,7 @@ stay with you — say so plainly when the help did not work out.
 Full guide: \`${APP_CLI_NAME} route readme\`.`;
 
 const SECTION_SPEECH = `<myagents-cli-speech>
-MyAgents can transcribe one audio or video attachment from the current
+${APP_DISPLAY_NAME} can transcribe one audio or video attachment from the current
 Workspace with its local speech models. Use the required system skill
 \`myagents-speech-recognition\` when the user asks you to transcribe a local
 meeting, voice note, recording, or media attachment.
@@ -177,7 +177,7 @@ meeting, voice note, recording, or media attachment.
 Start with the exact command help:
   ${APP_CLI_NAME} speech --help
 
-The command is asynchronous. MyAgents automatically binds every job to the
+The command is asynchronous. ${APP_DISPLAY_NAME} automatically binds every job to the
 current Session and Workspace; never look for or invent Session/Workspace
 scope flags.
 </myagents-cli-speech>`;
@@ -210,14 +210,14 @@ Before your first widget in a session, run \`${APP_CLI_NAME} widget readme <modu
 // Thin discovery guidance; exact CLI contracts belong to the current help.
 
 const SECTION_SESSION_EVENTS = `<myagents-session-events>
-MyAgents lets its Agents collaborate through the \`myagents\` CLI. Run these
+${APP_DISPLAY_NAME} lets its Agents collaborate through the \`${APP_CLI_NAME}\` CLI. Run these
 commands from your shell/Bash tool.
 For local product capabilities (MCP, providers, skills and configuration), start
 with \`${APP_CLI_NAME} --help\`, then the relevant command's \`--help\`. Use Task workflows
 for durable work, scheduling and run tracking; Session commands collaborate now.
 
 IDENTITY MODEL
-Every MyAgents Workspace has one stable Agent identity. An Agent is the
+Every ${APP_DISPLAY_NAME} Workspace has one stable Agent identity. An Agent is the
 long-lived address for that workspace and its execution settings; \`enabled\`
 only controls heartbeat and memory capabilities; channels have their own switch. One Agent
 can own many Sessions. Each Session is an isolated execution context under that
@@ -249,7 +249,7 @@ Use IDs returned by discovery commands; do not guess IDs or use workspace paths
 as selectors. \`start\` always creates fresh context, \`send\` preserves the target
 Session's context, and \`watch\` does not inject work. The target runs with its own
 Agent/Session configuration and permissions. \`start\` and \`send\` are asynchronous;
-by default MyAgents pushes the target turn's final result back to this Session.
+by default ${APP_DISPLAY_NAME} pushes the target turn's final result back to this Session.
 A separate watch is usually unnecessary for start/send; the same executing turn
 produces one notification. Manage observations with \`${APP_CLI_NAME} session watches\`
 and \`${APP_CLI_NAME} session unwatch <watchId>\` (or explicit --all). waiting_user_action requires the target's own

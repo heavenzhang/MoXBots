@@ -1,3 +1,4 @@
+import { APP_DISPLAY_NAME } from './appProfile';
 export const IMAGE_UNDERSTANDING_TOOL_ID = 'image-understanding' as const;
 export const SPEECH_RECOGNITION_TOOL_ID = 'speech-recognition' as const;
 
@@ -53,7 +54,7 @@ export const OFFICIAL_TOOLS: readonly OfficialToolDefinition[] = [
   {
     id: SPEECH_RECOGNITION_TOOL_ID,
     name: '语音识别',
-    description: '使用 MyAgents 的本地语音模型转写当前工作区内的音频或视频附件。',
+    description: `使用 ${APP_DISPLAY_NAME} 的本地语音模型转写当前工作区内的音频或视频附件。`,
     badge: 'CLI',
     cliGroup: 'speech',
     requiresConfig: false,

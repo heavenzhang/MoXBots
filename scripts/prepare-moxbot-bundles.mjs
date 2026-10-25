@@ -9,7 +9,7 @@ const COMMANDS = 'agent|anydoc|cc-plugin|config|cron|diagnose|goal|im|mcp|model|
 const CLI = new RegExp(`\\bmyagents(?=[ \\t]+(?:(?:${COMMANDS})\\b|--[a-z]|<[a-z]))`, 'g');
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
-/** Transform only application-authored guides and the one audited HOME fallback. */
+/** Transform application-authored guides/prompts and the one audited HOME fallback. */
 export function transformMoxbotResource(relative, bytes) {
   // Cuse is a separately signed/hashed vendor package. Preserve its inventory.
   if (relative.startsWith('bundled-skills/cuse/') || /(?:^|\/)(?:LICENSE|NOTICE|THIRD_PARTY_NOTICES)(?:\.[^/]+)?$/i.test(relative)) return bytes;
@@ -33,6 +33,9 @@ export function transformMoxbotResource(relative, bytes) {
   }
   if (/\.(?:[cm]?js|ts|sh|py)$/i.test(relative) && /\.myagents/.test(text)) {
     throw new Error(`Unaudited application-home reference in resource script: ${relative}`);
+  }
+  if (relative.startsWith('bundled-skills/hatch-pet/') && /\.(?:py|yaml)$/i.test(relative)) {
+    return Buffer.from(text.replace(/(?<![A-Za-z0-9_-])MyAgents(?![A-Za-z0-9_-])/g, 'MoXBots'));
   }
   return bytes;
 }

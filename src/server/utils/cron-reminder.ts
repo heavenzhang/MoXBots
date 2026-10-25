@@ -1,4 +1,4 @@
-import { APP_CLI_NAME } from '../../shared/appProfile';
+import { APP_CLI_NAME, APP_DISPLAY_NAME } from '../../shared/appProfile';
 import type { TaskActivationPayload } from '../../shared/types/task';
 
 export type CronScheduleKind = 'at' | 'every' | 'cron';
@@ -68,7 +68,7 @@ function activationEventLines(activation: TaskActivationPayload | undefined): st
 
 export function buildCronTaskReminder(input: CronReminderInput): string {
   const lines = [
-    'You are running inside a MyAgents scheduled task execution.',
+    `You are running inside a ${APP_DISPLAY_NAME} scheduled task execution.`,
     'The user-visible text after this reminder is the task prompt for this execution.',
     '',
     ...[
@@ -96,7 +96,7 @@ export function buildCronTaskReminder(input: CronReminderInput): string {
   if (input.aiCanExit) {
     lines.push(
       '',
-      'If this MyAgents scheduled task goal is complete and future executions should stop, run:',
+      `If this ${APP_DISPLAY_NAME} scheduled task goal is complete and future executions should stop, run:`,
       `  ${APP_CLI_NAME} task exit --reason "<brief reason>"`,
       '',
       'The command is bound to the current cron execution context; do not pass a task id.',

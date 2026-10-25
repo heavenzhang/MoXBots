@@ -38,6 +38,23 @@ test('helper uses owned cloud feedback and preserves internal skill names', () =
   assert.doesNotMatch(output, /hAcKlyc\/MyAgents|登录 MyAgents Space/);
 });
 
+test('pet metadata and generated image prompts use the shipped product name', () => {
+  for (const relative of [
+    'bundled-skills/hatch-pet/agents/openai.yaml',
+    'bundled-skills/hatch-pet/scripts/prepare_pet_run.py',
+  ]) {
+    const source = readFileSync(new URL(relative, repo));
+    const output = transformMoxbotResource(relative, source).toString();
+    assert.match(output, /MoXBots/);
+    assert.doesNotMatch(output, /MyAgents/);
+  }
+  const protocol = Buffer.from('MyAgents/Codex MYAGENTS_HOME X-MyAgents-Session myagents-pet');
+  assert.equal(
+    transformMoxbotResource('bundled-skills/hatch-pet/scripts/probe.py', protocol).toString(),
+    'MoXBots/Codex MYAGENTS_HOME X-MyAgents-Session myagents-pet',
+  );
+});
+
 test('changes only the audited shell home fallback and refuses unknown script roots', () => {
   const source = Buffer.from('${MYAGENTS_NPM_GLOBAL_PREFIX:-$HOME/.myagents/npm-global}');
   assert.equal(transformMoxbotResource('bundled-skills/download-anything/scripts/install-toolkit.sh', source).toString(), '${MYAGENTS_NPM_GLOBAL_PREFIX:-$HOME/.moxbot/npm-global}');

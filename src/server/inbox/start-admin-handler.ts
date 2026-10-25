@@ -1,4 +1,4 @@
-import { APP_CLI_NAME } from '../../shared/appProfile';
+import { APP_CLI_NAME, APP_DISPLAY_NAME } from '../../shared/appProfile';
 import { isProjectArchived, isProjectVisibleToUser } from '../../shared/config-types';
 import { cancellableFetch } from '../utils/cancellation';
 import { managementRequestHeaders } from '../utils/management-api-client';
@@ -74,7 +74,7 @@ export async function handleAdminSessionStart(
         accepted: false,
         error: {
           code: 'caller_session_required',
-          message: 'session start must run from an initialized MyAgents Session',
+          message: `session start must run from an initialized ${APP_DISPLAY_NAME} Session`,
         },
       },
     };

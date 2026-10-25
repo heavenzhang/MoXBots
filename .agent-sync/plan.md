@@ -964,3 +964,7 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 同一源码合并唯一产品冲突：Todo指令必须继续走Runtime-only reminder，保留原始人类文本和输入先于卡片；同步原清单准入/稳定ID与根验收结算。Root先复现4个旧接口断言，再2个旧fresh分类fixture缺steps；修正测试输入和接口断言，不降低生产准入。保留所有原历史/草稿/Stop/预算/unknown；配对Tauri API与三套vendor、Skill62随同新制品，旧冷启动恢复入口仍移除，原生Renderer replacement的未恢复页面属于单独故障恢复路径。已发布/本地521.2保持回滚。新候选源码冻结/精确CI/main前不构建；必要finite native后同份制品安装/正常TLS发布，不重复历史全矩阵或发布独立Host/mobile/backend。
 
 523.1最终补接Todo2578可选private Runtime reminder与原DSH journal/fingerprint/replay；无提示旧哈希兼容，冷/暖/实时12与externalDSH292PASS，unitDOM10027PASS。SDK合成Todo/rework适配现有transitionDesktopSession并PASS；本地与正式通道仍521.2，523尚未构建。所有新增writer源码已完成，Root只收统一精确CI/main及一份新制品。
+
+## MB-BRAND-PROMPTS-20261025 — 模型身份与产品说明
+
+用户明确授权修正旧品牌称呼。普通/外部/DSH身份、Task/Goal/Cron/浮窗reminder、能力发现、辅助图片模型及CLI文案统一读取既有APP_DISPLAY_NAME；内置帮助沿原品牌适配，并补宠物YAML/Python提示词。命令/Skill/协议/许可和用户原文保持，历史与恢复ledger不改。开发会话01a17383-d8ec-7d91-9a6f-64a684ac665c，任务`.agent-sync/tasks/codex-brand-prompts-20261025-58c950db.md`，证据`dev-docs/brand-prompts-20261025/acceptance.md`。554项unit、9项资源/CLI bundle回归及类型/lint/边界/本地实际profile bundle与probe通过；共享CI/main、签名包、安装和真实Provider分开追踪。desktop/macOS/updater及combined CI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，由其选下一未冻结批次和版本。无云/Host/mobile部署请求、不触发共享CI、不改冻结制品或日常App。

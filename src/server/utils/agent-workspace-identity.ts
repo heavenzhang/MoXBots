@@ -1,3 +1,4 @@
+import { APP_DISPLAY_NAME } from '../../shared/appProfile';
 import {
   AgentWorkspaceIdentityError,
   buildAgentForProject,
@@ -165,7 +166,7 @@ function validateWorkspaceForRegistration(rawPath: string, admitPinnedWorkspace?
   ) {
     throw new WorkspaceAgentRegistrationError(
       'WORKSPACE_PATH_UNSAFE',
-      'Filesystem roots and the MyAgents private data directory cannot be registered as Agent workspaces.',
+      `Filesystem roots and the ${APP_DISPLAY_NAME} private data directory cannot be registered as Agent workspaces.`,
     );
   }
   return normalized;
@@ -246,7 +247,7 @@ async function registerWorkspaceAgentInIntent(
     if (matches.length > 1) {
       throw new WorkspaceAgentRegistrationError(
         'DUPLICATE_PROJECT_WORKSPACE',
-        'Multiple Projects resolve to the requested workspace; repair the conflict in MyAgents before retrying.',
+        `Multiple Projects resolve to the requested workspace; repair the conflict in ${APP_DISPLAY_NAME} before retrying.`,
         { projectIds: matches.map((project) => project.id) },
       );
     }
@@ -270,7 +271,7 @@ async function registerWorkspaceAgentInIntent(
       ) {
         throw new WorkspaceAgentRegistrationError(
           'WORKSPACE_ARCHIVED',
-          'This workspace is archived. Unarchive it in MyAgents before retrying.',
+          `This workspace is archived. Unarchive it in ${APP_DISPLAY_NAME} before retrying.`,
           { projectId: existing.id, agentId: existing.agentId },
         );
       }
@@ -484,7 +485,7 @@ export async function resolvePersistedAgentWorkspaceConflict(
       // a valid user choice. Ordinary identity reconciliation can finish materialization.
       await broadcastAppConfigChanged({ section: 'agent-identity', action: 'repair-deferred' });
       throw new WorkspaceAgentRegistrationError('AGENT_MATERIALIZATION_DEFERRED',
-        'Workspace ownership was saved, but independent configurations are not confirmed. Refresh or restart MyAgents to finish recovery.',
+        `Workspace ownership was saved, but independent configurations are not confirmed. Refresh or restart ${APP_DISPLAY_NAME} to finish recovery.`,
         { cause: error instanceof Error ? error.message : String(error) });
     }
     await broadcastAppConfigChanged({ section: 'agent-identity', action: 'resolve-conflict' });
