@@ -81,7 +81,8 @@ beforeEach(async () => {
     getExecutionTurnId: () => currentQueueId,
     getExecutionVerificationEpoch: () => "native-query-1:0",
     getLiveSessionState: () => ({
-      sessionState: "idle",
+      isBusy: engine.isBusy(),
+      sessionState: engine.isBusy() ? "running" : "idle",
       waitingForUser: false,
       backgroundWorkActive: false,
       hasBackgroundWork: false,
@@ -1976,6 +1977,7 @@ describe("To Do List before native execution", () => {
 
   it("updates exact current native step IDs while preserving absent steps and rejecting stale/history snapshots", async () => {
     const prepared = await prepare(input, "human-step-events", intent);
+    engine.isBusy = () => true;
     const first = ledger().plan![0];
     const second = ledger().plan![1];
     await taskOwner.observeSessionTasks(id, { plan: [{ ...first, status: "completed" }, { ...second, status: "in_progress" }], planTurnId: prepared.request.queueId });
@@ -1986,6 +1988,8 @@ describe("To Do List before native execution", () => {
       expect(ledger().plan).toEqual(prior);
     }
     expect(ledger().reviews).toHaveLength(0);
+    engine.isBusy = () => false;
+    expect((await tasks()).map(task => task.phase)).toEqual(["awaiting_review", "interrupted", "pending"]);
   });
 
   it("keeps the same IDs, progress and original budget on a trusted continuation", async () => {
@@ -2039,12 +2043,15 @@ describe("To Do List before native execution", () => {
 
   it("still accepts native steps discovered after a single-action classification", async () => {
     const prepared = await prepare("Read this file", "single-discovers-steps", { ...executeIntent, steps: ["Read the file"] });
+    engine.isBusy = () => true;
     expect(ledger().executionAdmission?.taskPlanId).toBeUndefined();
     await taskOwner.observeSessionTasks(id, { plan: [
       { key: "discovered-one", content: "Inspect references", activeForm: "Inspecting", status: "completed" },
       { key: "discovered-two", content: "Check reference contents", activeForm: "Checking", status: "in_progress" },
     ], planTurnId: prepared.request.queueId });
     expect((await tasks()).map(task => task.phase)).toEqual(["awaiting_review", "running"]);
+    engine.isBusy = () => false;
+    expect((await tasks()).map(task => task.phase)).toEqual(["awaiting_review", "interrupted"]);
   });
 
   it("settles main steps only with proven root acceptance at the durable terminal", async () => {
