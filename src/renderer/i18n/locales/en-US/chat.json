@@ -1,4 +1,7 @@
 {
+  "queryNavigator": {
+    "label": "Conversation index"
+  },
   "transcriptSave": {
     "warning": "Chat history cannot be saved right now. You can keep chatting; unsaved content may be lost when you close the app.",
     "recovered": "Chat history saving has resumed."

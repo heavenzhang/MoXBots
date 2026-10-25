@@ -1,0 +1,8 @@
+{
+  "src/renderer/components/chat/QueryNavigator.tsx": "6eb9a6b94b1417b30933323ec95db1d6b06a3ae28903a8bc178115389762d6e5",
+  "src/renderer/components/MessageList.tsx": "836c4b6c3ebff9035cb1ec17f74340b4e404adae2db6cca7a99fc03328c5238a",
+  "src/renderer/index.css": "4ac3fffaae6764f259ec8947062a69625a84f92d2c1b97f2eb66f4d90bfb8e45",
+  "src/renderer/pages/Chat.tsx": "082afd10a41f1f0970d7a4855190e52bdf83fa07623586007d48047cd27c9293",
+  "dev-docs/chat-index-left-20261025/browser-check.mjs": "dc36e8e2be406d1fc3c710f45d3c6825ef21451d7baaabe1773b438490e66972",
+  "dev-docs/chat-index-left-20261025/fixture.tsx": "fff3fb78cfd1d41115c11e9e53fee52a00cec230110828173b2e8a55dfe6af83"
+}
