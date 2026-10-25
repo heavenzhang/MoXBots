@@ -16,6 +16,7 @@ const tab = vi.hoisted(() => ({
   agentPlanTodos: [] as AgentStatusTodoSnapshot[],
   sessionId: "s1",
   sessionState: "running",
+  isLoading: true,
   isSessionLoading: false,
   streamingMessage: null,
   hasMoreBefore: false,
@@ -93,6 +94,7 @@ beforeEach(async () => {
   tab.apiGet.mockImplementation((path: string) => Promise.resolve(path.includes("task-orchestration")
     ? { success: true, sessionId: tab.sessionId, ledger: { ...emptyTaskLedger(), plan: tab.agentPlanTodos } } : logResponse));
   tab.sessionState = "running";
+  tab.isLoading = true;
   tab.messages = [agentMessage()];
   tab.sessionId = "s1";
   tab.isSessionLoading = false;
@@ -109,6 +111,21 @@ beforeEach(async () => {
 });
 
 describe("unified execution status", () => {
+  it("shows a stopped main task as interrupted while keeping returned work awaiting review", async () => {
+    tab.messages = [];
+    const { rerender } = render(<ExecutionStatusBar activity={activity} />);
+    const trigger = await screen.findByRole('button', { name: /任务编排.*执行中 1/ });
+    fireEvent.click(trigger);
+    expect(screen.getByText('正在验证')).toBeInTheDocument();
+    tab.sessionState = 'idle'; tab.isLoading = false;
+    rerender(<ExecutionStatusBar activity={activity} />);
+    fireEvent.click(await screen.findByRole('button', { name: /任务编排 0\/2/ }));
+    expect(screen.getByText('已中断')).toBeInTheDocument();
+    expect(screen.getAllByText('待验收').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: /任务编排.*执行中/ })).not.toBeInTheDocument();
+    expect(screen.getByText('当前工作')).toBeInTheDocument();
+  });
+
   it("shows precreated steps before any tool message and synchronizes native progress without a confirmation card", async () => {
     const ledger = emptyTaskLedger();
     ledger.executionAdmission = { requestId: "human", queueId: "queue", taskPlanId: "plan" };

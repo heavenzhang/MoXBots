@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyTaskLedger, type SessionTaskLedger } from '../../../shared/sessionTaskOrchestration';
 import type { SessionExecutionRecoveryProjection } from '../../../shared/sessionTaskOrchestration';
 import { useSessionTaskOrchestration } from './useSessionTaskOrchestration';
-const tab = vi.hoisted(() => ({ tabId: 'tab-1', sessionId: 's1', isSessionLoading: false, messages: [], streamingMessage: null, sessionRuntime: null as string | null, sessionRuntimeSessionId: 's1', sessionRuntimeSource: null, apiGet: vi.fn(), apiPost: vi.fn() }));
+const tab = vi.hoisted(() => ({ tabId: 'tab-1', sessionId: 's1', isSessionLoading: false, isLoading: false, sessionState: 'idle', messages: [], streamingMessage: null, sessionRuntime: null as string | null, sessionRuntimeSessionId: 's1', sessionRuntimeSource: null, apiGet: vi.fn(), apiPost: vi.fn() }));
 vi.mock('@/context/TabContext', () => ({ useTabStateOptional: () => tab }));
 const plan: [] = [];
 const supported = { supported: true, runtime: 'builtin' };
@@ -11,9 +11,27 @@ const ledger = (revision: number, accepted = false): SessionTaskLedger => ({ ...
   tasks: [{ id: 'work', title: 'Task from snapshot', blockedBy: [] }],
   reviews: accepted ? [{ taskId: 'work', attemptId: 'main', decision: 'accept', evidence: 'Verified' }] : [] });
 const event = (value: SessionTaskLedger, sessionId = 's1') => window.dispatchEvent(new CustomEvent('session-task-orchestration', { detail: { sessionId, ledger: value } }));
-beforeEach(() => { vi.clearAllMocks(); tab.sessionId = 's1'; tab.sessionRuntime = null; tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1) }); });
+beforeEach(() => { vi.clearAllMocks(); tab.sessionId = 's1'; tab.sessionRuntime = null; tab.isLoading = false; tab.sessionState = 'idle'; tab.isSessionLoading = false; tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1) }); });
 afterEach(() => vi.useRealTimers());
 describe('Session task snapshot and event reconciliation', () => {
+  it('settles historical main-plan activity on Stop without changing progress or acceptance', async () => {
+    const saved = { ...emptyTaskLedger(), revision: 1, plan: [
+      { key: 'work', content: 'Verify the change', activeForm: 'Verifying the change', status: 'in_progress' as const },
+      { key: 'done', content: 'Change returned for review', activeForm: 'Change returned for review', status: 'completed' as const },
+    ] };
+    tab.isLoading = true; tab.sessionState = 'running';
+    tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: saved });
+    const { result, rerender } = renderHook(() => useSessionTaskOrchestration(plan));
+    await waitFor(() => expect(result.current.tasks[0]?.phase).toBe('running'));
+    tab.isLoading = false; tab.sessionState = 'idle'; rerender();
+    expect(result.current.tasks.map(task => task.phase)).toEqual(['interrupted', 'awaiting_review']);
+    expect(saved.plan[0].status).toBe('in_progress');
+    tab.isSessionLoading = true; rerender();
+    expect(result.current.tasks[0].phase).toBe('unknown');
+    tab.isSessionLoading = false; tab.isLoading = true; tab.sessionState = 'running'; rerender();
+    expect(result.current.tasks[0].phase).toBe('running');
+  });
+
   it('updates the independent recovery projection when ledger revision is unchanged and ignores SSE recovery', async () => {
     const waiting: SessionExecutionRecoveryProjection = { turnId: 'queue-1', status: 'waiting', attempt: 1, lastStatus: 503, nextRetryAt: 100 };
     const paused: SessionExecutionRecoveryProjection = { ...waiting, status: 'paused', attempt: 2 };

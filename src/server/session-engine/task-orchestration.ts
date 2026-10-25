@@ -185,7 +185,9 @@ export async function readSessionTasks(engine: SessionEngine) {
   const executionRecovery = recovery && recovery.turnId === confirmed.execution?.currentQueueId
     ? { turnId: recovery.turnId, status: recovery.status, attempt: recovery.attempt,
         lastStatus: recovery.lastStatus, nextRetryAt: recovery.nextRetryAt } : undefined;
-  return { sessionId, ledger: confirmed, tasks: projectSessionTasks(confirmed, messages), messages, planSupport: readSessionPlanSupport(engine), executionRecovery };
+  return { sessionId, ledger: confirmed, tasks: projectSessionTasks(confirmed, messages,
+    live.isBusy ? 'running' : live.sessionState === 'idle' ? 'idle' : 'unknown'),
+    messages, planSupport: readSessionPlanSupport(engine), executionRecovery };
 }
 
 export async function mutateSessionTasks(engine: SessionEngine, sessionId: string, action: SessionTaskAction) {

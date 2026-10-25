@@ -234,6 +234,7 @@ export function mergeTaskObservations(ledger: SessionTaskLedger, attempts: reado
 }
 
 export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonly ProgressMessage[] = [],
+  rootActivity?: 'running' | 'idle' | 'unknown',
 ): SessionTaskView[] {
   const tasks = new Map<string, SessionTaskView>();
   const todos = deriveSessionTodos(messages, ledger.plan ?? null).todos;
@@ -272,6 +273,11 @@ export function projectSessionTasks(ledger: SessionTaskLedger, messages: readonl
     );
     if (claim && claim.state !== "settled")
       task.phase = claim.state === 'unknown' ? 'unknown' : 'running';
+    // TodoWrite records plan progress, not a live native execution receipt.
+    // Preserve its history/reviews, while a settled root cannot remain running
+    // solely because its last plan snapshot said in_progress.
+    if (rootActivity && task.phase === 'running' && !task.attempts.length && (!claim || claim.state === 'settled'))
+      task.phase = rootActivity === 'idle' ? 'interrupted' : rootActivity === 'unknown' ? 'unknown' : 'running';
     if (ledger.pendingTaskIds?.includes(task.id) || task.phase === 'pending' && task.blockedBy.some(id => tasks.get(id)?.phase !== 'completed')) task.phase = 'blocked';
   }
   return [...tasks.values()].filter(task => !task.retired && (!task.workPlanId || task.workPlanId === ledger.executionAdmission?.taskPlanId));

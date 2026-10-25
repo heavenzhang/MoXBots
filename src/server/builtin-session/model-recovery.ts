@@ -112,6 +112,11 @@ export class SessionModelRecovery implements InferenceRecoveryHooks {
     return this.localState;
   }
 
+  /** A new input must not clear the checkpoint ahead of its owner's durable Stop. */
+  waitForPause(): Promise<boolean> {
+    return this.pauseInFlight?.promise ?? Promise.resolve(true);
+  }
+
   /** Begin a separately admitted turn after its owner has cleared persisted recovery state. */
   resetForNewTurn(): void {
     this.epoch += 1;

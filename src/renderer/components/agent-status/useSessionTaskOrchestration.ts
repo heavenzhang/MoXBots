@@ -120,8 +120,11 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     const ledger = snapshot?.sessionId === sessionId ? snapshot.ledger : emptyTaskLedger();
     const current = mergeTaskObservations(ledger, collectTaskAttempts(tab?.messages ?? [], tab?.streamingMessage?.id),
       snapshot?.sessionId !== sessionId && fallbackPlan.length > 0 ? fallbackPlan : undefined);
-    return projectSessionTasks(current, tab?.messages ?? []);
-  }, [enabled, snapshot, sessionId, tab?.messages, tab?.streamingMessage?.id, fallbackPlan]);
+    const rootActivity = tab?.isSessionLoading || failure?.sessionId === sessionId ? 'unknown'
+      : tab?.sessionState === 'idle' ? 'idle' : tab?.isLoading ? 'running' : 'unknown';
+    return projectSessionTasks(current, tab?.messages ?? [], rootActivity);
+  }, [enabled, snapshot, sessionId, tab?.messages, tab?.streamingMessage?.id, fallbackPlan,
+    tab?.isSessionLoading, tab?.isLoading, tab?.sessionState, failure]);
   const proposal = snapshot?.sessionId === sessionId && snapshot.ledger.proposal?.sessionId === sessionId ? snapshot.ledger.proposal : undefined;
   const sameSessionSnapshot =
     snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey;

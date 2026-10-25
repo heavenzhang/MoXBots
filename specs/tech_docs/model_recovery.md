@@ -36,6 +36,10 @@ The stream recovery chain is retained across subsequent successful inference/too
 
 Server-owned `Message.streamRecovery` evidence is preserved by the existing transcript details codec. The collapsed quality reference reports observed interruptions, admitted continuations, protected completed actions, recovery status and elapsed observation span. Missing legacy evidence is not displayed as zero or success. This is recovery evidence, not content quality scoring or proof of business-side exactly-once delivery. Verification and remaining native/provider gates are recorded in `dev-docs/stream-continuation/acceptance.md`.
 
+### Queued human input after Force
+
+A desktop input retains its original ingress authority while waiting. If its predecessor is paused only after enqueue, the generator rechecks at the real admission seam, after the predecessor native terminal and the successor domain guard. It joins the existing durable pause before the original SessionStore CAS can retire that exact paused inference checkpoint; Product/native/route/checkpoint, controller, Query generation and queue cancellation must still match. The action ledger and immutable old Stop fence remain. Automatic reminders cannot perform this transition, and cancellation during the CAS leaves the old chain stopped. The normal execution and Goal guards still own task budgets.
+
 ## Cold restoration
 
 Opening/restoring the original Session loads its native identity, exact route and original action ledger. Only a verified waiting intent can automatically enqueue a bounded continuation reminder, never the original user input or a prior tool call. The new Query rebinds that same chain and honors the original next-attempt time and deadline before any provider call; it starts with the user's selected primary route and does not reacquire a short-retry budget. A stop fence, expired window, missing native history, pending rewind/mutation, mismatched route or uncertain ledger requires explicit resolution. A new explicit user instruction can retire a paused intent through the original cancelable admission/CAS, creating a new recovery epoch.
