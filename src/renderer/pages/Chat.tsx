@@ -4950,7 +4950,8 @@ function ChatContent({
           // and all streaming blocks arrive live.
         }
 
-        // Keep the submitted composer until the HTTP admission receipt.
+        // Return the admission result so the composer can recover a rejected
+        // submission without keeping sent text in the editable next draft.
         // Use effective model/permission (runtime-aware) — not the builtin values
         await ensureChatOwner(sessionId);
         const admitted = await sendMessage(
