@@ -1,8 +1,8 @@
 # Composer 状态栏独立 UI/代码审查
 
-审查日期：2026-10-27  
-仓库：`/Users/zhangshaohua/Documents/Codex/2026-10-27/moxbots-composer-status`  
-审查基线：`caab6ab648b434bee17930f90c4df4de87564bba`；当前分支 `codex/composer-status-20261027`，本次审查只读现有未提交修改。  
+审查日期：2026-10-27
+仓库：`/Users/zhangshaohua/Documents/Codex/2026-10-27/moxbots-composer-status`
+审查基线：`caab6ab648b434bee17930f90c4df4de87564bba`；当前分支 `codex/composer-status-20261027`，本次审查只读现有未提交修改。
 边界：未改产品源码、未提交、未调用共享 CI、未部署、未操作日常客户端。输出仅为本文件。
 
 ## 结论
