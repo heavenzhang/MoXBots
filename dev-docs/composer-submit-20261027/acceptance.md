@@ -28,8 +28,8 @@ MOXBOTS_QA_CHROMIUM=/path/to/chrome-headless-shell MOXBOTS_QA_WEBKIT=/path/to/pw
 
 ## 交付与执行
 
-- base main `caab6ab648b434bee17930f90c4df4de87564bba`；分支`codex/composer-submit-20261027`；权威仓库`https://github.com/heavenzhang/MoXBots.git`。既有绑定URL已从原用户明确回复核实，未更换目的地。
+- base main `caab6ab648b434bee17930f90c4df4de87564bba`；交付分支`codex/composer-submit-delivery-20261027`；权威仓库`https://github.com/heavenzhang/MoXBots.git`。既有绑定URL已从原用户明确回复核实，未更换目的地。
 - desktop/macOS/updater及combinedCI/main原唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；按用户“其他会话向对应单元负责会话提交CI或发布请求”的现行规则交精确SHA，不触发第二套CI/发布。
 - 发布请求：将本修复纳入下一未冻结候选，先合主干并核实远端，按有效维护窗口/备份回滚纪律发布及复验。无接口/配置/数据迁移，不影响cloud/Host/mobile单元；保持0.5.24及其tag/制品不可变。
 - 当前Agent实现并验收，0子Agent；选择依据：局部发送状态耦合，拆分会重复上下文；无模型升级/回退，不调用外部原因：单Agent足以完成此有界修复。模型切换和费用未测量。主审不是独立审阅，原owner后续审阅另计。
-- 经验：将“编辑草稿已释放”和“发送已接纳”分别验证，异步结果使用编辑代次及会话scope限定。初次git start/task-init在编辑后执行因dirty拒绝；自有修改完整保留，提交后再跑clean gate，未绕过/伪报。浏览器初次缺预期revision，使用已有引擎；一次附件selector误用alt已改为实际可访问名称后复验通过。
+- 经验：将“编辑草稿已释放”和“发送已接纳”分别验证，异步结果使用编辑代次及会话scope限定。初次git start/task-init在编辑后执行因dirty拒绝；自有修改完整保留，保留原实现提交，另从原base创建干净交付工作树，start/task-init均PASS后cherry-pick自有成果，源码摘要逐项一致；未绕过/伪报。浏览器初次缺预期revision，使用已有引擎；一次附件selector误用alt已改为实际可访问名称后复验通过。

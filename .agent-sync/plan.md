@@ -984,3 +984,7 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
+
+## MOXBOT-COMPOSER-20261027 — 已发送内容即时退出输入框
+
+SimpleChatInput在提交时同步释放正文/附件/查询上下文，拒绝/异常仅恢复原会话未编辑的草稿；下一稿、主动删空、附件和IME保持，原admission及防重不变。任务`.agent-sync/tasks/codex-composer-submit-delivery-20261027-c24f4826.md`，验收`dev-docs/composer-submit-20261027/acceptance.md`。236项定向DOM/全量tsc/lint/分类、Chromium与WebKit三个宽度共6组实际渲染通过；主Agent自审，独审/共享CI/main/签名客户端/真实Provider分开追踪。desktop/macOS/updater及combinedCI/main仍交唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4下一未冻结批次；不动已发布0.5.24、日常客户端或其他单元。
