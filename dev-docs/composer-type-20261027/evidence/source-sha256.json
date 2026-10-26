@@ -1,0 +1,6 @@
+{
+  "src/renderer/components/chat-input/ComposerSurface.tsx": "d5c893dd9980732ac1baf7c75b9f196f83820bba28b970859ce39a537a50a99e",
+  "src/renderer/components/chat-input/SimpleChatInput.tsx": "61fed789e4a16a168f813834a5d138dee58c395ec499d934b02b4ebc1a9ac647",
+  "src/renderer/index.css": "154618ff300cca49a430be9c90a7c9d686404c4999654eabf8633fe1007eb7d8",
+  "specs/DESIGN.md": "4b77e48d574168e3fd5b31922ec4b1654523007515fa906fe49832effc9e05fe"
+}

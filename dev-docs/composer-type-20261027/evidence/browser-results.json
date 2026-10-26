@@ -1,0 +1,221 @@
+{
+  "scope": "offline production components; synthetic callbacks; not native/provider acceptance",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "appearance": "dark",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 52,
+        "ghostWidth": 734,
+        "inputWidth": 734,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 734,
+        "scrollWidth": 734,
+        "height": 234,
+        "scrollHeight": 572
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "appearance": "light",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 52,
+        "ghostWidth": 734,
+        "inputWidth": 734,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 734,
+        "scrollWidth": 734,
+        "height": 234,
+        "scrollHeight": 572
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "chromium",
+      "width": 900,
+      "appearance": "dark",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 52,
+        "ghostWidth": 734,
+        "inputWidth": 734,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 734,
+        "scrollWidth": 734,
+        "height": 234,
+        "scrollHeight": 572
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "appearance": "light",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 78,
+        "ghostWidth": 324,
+        "inputWidth": 324,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 324,
+        "scrollWidth": 324,
+        "height": 234,
+        "scrollHeight": 1300
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "appearance": "dark",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 52,
+        "ghostWidth": 734,
+        "inputWidth": 734,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 734,
+        "scrollWidth": 734,
+        "height": 234,
+        "scrollHeight": 572
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "appearance": "light",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 52,
+        "ghostWidth": 734,
+        "inputWidth": 734,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 734,
+        "scrollWidth": 734,
+        "height": 234,
+        "scrollHeight": 572
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "webkit",
+      "width": 900,
+      "appearance": "dark",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 52,
+        "ghostWidth": 734,
+        "inputWidth": 734,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 734,
+        "scrollWidth": 734,
+        "height": 234,
+        "scrollHeight": 572
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "appearance": "light",
+      "typography": {
+        "ghostFont": "14px",
+        "ghostLine": "26px",
+        "inputFont": "14px",
+        "inputLine": "26px",
+        "hintFont": "12px",
+        "ghostHeight": 78,
+        "ghostWidth": 324,
+        "inputWidth": 324,
+        "placeholderFont": "14px"
+      },
+      "geometry": {
+        "width": 324,
+        "scrollWidth": 324,
+        "height": 234,
+        "scrollHeight": 1300
+      },
+      "suggestionAccept": true,
+      "suggestionDismiss": true,
+      "mainSend": true,
+      "textSend": true,
+      "noPageOverflow": true
+    }
+  ]
+}

@@ -984,3 +984,8 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
+
+
+## MB-COMPOSER-TYPE-20261027 — 输入区字号
+
+输入正文、占位符及灰色建议16px降为14px，沿用26px测量行高；工具栏14px和提示12px维持，设计约定同步。84项既有输入/IME/建议/发送回归、全量类型及定向lint通过；实际生产组件Chromium/WebKit宽窄与明暗8组渲染/换行/建议接受取消/发送通过，作者自验。任务`.agent-sync/tasks/codex-composer-type-20261027.md`，证据`dev-docs/composer-type-20261027/acceptance.md`。代码与本地/模拟通过；CI/main、正式版本/制品、安装发布和真实原生路径仍由既有唯一desktop/macOS-arm64/updater及combinedCI/main会话01a12bc2-907a-7702-b6dd-788225c5dfe4选择下一未冻结批次，本聊天不另启共享CI或改日常App。

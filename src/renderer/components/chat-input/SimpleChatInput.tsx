@@ -1486,7 +1486,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
           <div ref={textareaWrapperRef} className="relative px-4 pt-3">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)]">
             {visibleSuggestion && (
-              <div aria-hidden="true" data-testid="next-prompt-ghost" onMouseDown={event => { event.preventDefault(); textareaRef.current?.focus(); }} className="pointer-events-auto relative z-[1] col-start-1 row-start-1 min-w-0 whitespace-pre-wrap break-words text-base leading-relaxed text-[var(--ink-muted)]" style={{ maxHeight: `${LINE_HEIGHT * MAX_LINES}px`, overflowX: 'hidden', overflowY: 'auto', overscrollBehaviorY: 'contain' }}>
+              <div aria-hidden="true" data-testid="next-prompt-ghost" onMouseDown={event => { event.preventDefault(); textareaRef.current?.focus(); }} className="pointer-events-auto relative z-[1] col-start-1 row-start-1 min-w-0 whitespace-pre-wrap break-words text-sm text-[var(--ink-muted)]" style={{ lineHeight: `${LINE_HEIGHT}px`, maxHeight: `${LINE_HEIGHT * MAX_LINES}px`, overflowX: 'hidden', overflowY: 'auto', overscrollBehaviorY: 'contain' }}>
                 {visibleSuggestion}
               </div>
             )}
