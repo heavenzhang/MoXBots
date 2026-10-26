@@ -8,6 +8,26 @@
 目标：将 Composer 上方执行/任务双叠框合并为一条紧凑无外框摘要，共用互斥详情区，待验收入口直接打开任务详情。
 范围：ExecutionStatusBar、SessionExecutionStatus、本地化、对应规范和验证。不改 Session ledger、准入、调度、权限或原始用户文本。其他聊天正在修改 Composer 字号，避开其文件。
 
+## Objective
+
+输入区上方只保留一条紧凑执行/任务摘要，交互与实现范围见本记录目标及验收文档。
+
+## Acceptance criteria
+
+默认摘要32px、只有一个详情区；任务验收入口可达；Enter/Escape和历史焦点闭环；未知与旧请求不会冒充完成。保留草稿、原回调和账本authority。
+
+## Completed
+
+统一摘要、执行嵌入详情、中英短文案、固定待验收入口和历史焦点修复已完成；独立审阅通过，无未关闭产品缺陷。
+
+## Verification
+
+66项DOM与42组Chromium/WebKit合成实际组件场景、tsc、定向lint、分类、Web构建及8主题测试PASS。详细结果与源码摘要在dev-docs/composer-status-20261027/。
+
+## Blockers and unknowns
+
+现有唯一owner仍负责combined CI/main/签名包/安装/发布，尚无本任务主干与生产回执。本聊天不触发共享CI，不重启日常App；真实签名WebView与用户路径待下一未冻结批。
+
 ## To Do List
 
 - [x] 核实仓库、main caab6ab648b434bee17930f90c4df4de87564bba、原工作区干净与独立分支；start gate PASS。
