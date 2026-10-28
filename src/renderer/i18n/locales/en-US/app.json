@@ -2172,12 +2172,36 @@
       "failed": "Review request was not submitted. Retry; results and acceptance remain unchanged.",
       "requestBoundary": "The main Agent checks the completion criteria before marking tasks complete.",
       "reviewPrompt": "Review these returned results:\n{{entries}}\nCheck only the listed attempts against the completion criteria and record evidence. Accept after checking, or record why rework is needed. Do not rerun accepted tasks or treat tool permission as acceptance.",
-      "reworkPrompt": "Please check rework feedback for these results:\n{{entries}}\nReason for rework: ",
+      "reworkPrompt": "Please check execution of these tasks and address any problems:\n{{entries}}\nAdditional feedback:",
       "accepted": "Main Agent accepted {{count}} results",
       "retryReview": "Request review again",
       "historical": "Historical attempt {{count}}",
       "attemptHistory": "{{count}} execution records",
       "acceptedCount": "{{count}} accepted"
+    },
+    "collaboration": {
+      "title": "Agent collaboration",
+      "mainTasks": "Main agent tasks: {{count}}",
+      "verifiedProgress": "Accepted {{completed}}/{{total}}",
+      "reviewable": "Ready for review: {{count}}",
+      "failedCount": "Failed {{count}}",
+      "interruptedCount": "Interrupted {{count}}",
+      "unknownCount": "Unconfirmed {{count}}",
+      "viewError": "View error",
+      "viewProgress": "View progress",
+      "feedback": "Add feedback",
+      "planBlocked": "Plan mode blocked this dispatch. The subagent did not start.",
+      "dispatchRejected": "The subagent dispatch was rejected and did not execute successfully.",
+      "failureNext": "The main agent needs to address the failure before execution and acceptance can continue.",
+      "rawError": "Show original error",
+      "hint": {
+        "failed": "Execution failed. The main agent needs to check the cause.",
+        "interrupted": "Execution was interrupted. Check existing results before continuing.",
+        "unknown": "The execution result is unconfirmed. Check the execution records.",
+        "rework": "The main agent requested changes after review."
+      },
+      "historicalReview": "Historical acceptance (current execution incomplete)",
+      "viewExecution": "View execution"
     }
   },
   "orchestrationPlan": {

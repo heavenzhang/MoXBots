@@ -141,7 +141,7 @@ describe("unified execution status", () => {
     tab.sessionState = "idle";
     tab.isLoading = false;
     rerender(<ExecutionStatusBar activity={activity} />);
-    fireEvent.click(await screen.findByRole("button", { name: /任务 0\/2/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /任务.*已验收 0\/2/ }));
     expect(screen.getByText("已中断")).toBeInTheDocument();
     expect(screen.getAllByText("待验收").length).toBeGreaterThan(0);
     expect(
@@ -170,7 +170,7 @@ describe("unified execution status", () => {
       ledger,
     });
     render(<ExecutionStatusBar activity={activity} />);
-    const trigger = await screen.findByRole("button", { name: /任务 0\/3/ });
+    const trigger = await screen.findByRole("button", { name: /任务.*已验收 0\/3/ });
     fireEvent.click(trigger);
     expect(screen.getByText("核对资料")).toBeInTheDocument();
     expect(screen.getByText("完成修改")).toBeInTheDocument();
@@ -215,7 +215,7 @@ describe("unified execution status", () => {
     );
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
     expect(screen.queryByText(goal.objective)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /任务 0\/3/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /任务.*已验收 0\/3/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -238,7 +238,7 @@ describe("unified execution status", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /目标执行中/ }));
     expect(screen.getByText(goal.objective)).toBeInTheDocument();
-    const todos = screen.getByRole("button", { name: /任务 0\/3/ });
+    const todos = screen.getByRole("button", { name: /任务.*已验收 0\/3/ });
     fireEvent.click(todos);
     expect(
       screen.getAllByRole("region", { name: /目标详情|任务详情|协作详情/ }),
@@ -359,7 +359,7 @@ describe("unified execution status", () => {
   });
   it("keeps keyboard focus inside collaboration history and returns Escape to the summary", () => {
     render(<ExecutionStatusBar activity={activity} />);
-    const trigger = screen.getByRole("button", { name: /任务 0\/3/ });
+    const trigger = screen.getByRole("button", { name: /任务.*已验收 0\/3/ });
     fireEvent.click(trigger);
     const history = screen.getByRole("button", { name: "查看全部执行记录" });
     history.focus();
@@ -560,7 +560,7 @@ describe("plan confirmation in the actual execution status composition", () => {
     );
     await screen.findByRole("button", { name: "确认并开始" });
     expect(
-      screen.queryByRole("button", { name: /任务 0/ }),
+      screen.queryByRole("button", { name: /任务.*已验收 0/ }),
     ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "继续讨论" }));
     expect(discuss).toHaveBeenCalledWith(

@@ -1,0 +1,19 @@
+{
+  "dev-docs/multiagent-ux-20261028/preview.html": "6bd168b0d50e8aa2ab85d42424b66b117fe0ad1b988070536ee0525bc14c92c9",
+  "dev-docs/multiagent-ux-20261028/preview.tsx": "3cf6420f73664efad67a046d2995c47ddce973f32e958396b6502ff57c5e7622",
+  "src/renderer/components/agent-status/ExecutionStatusBar.tsx": "268a183201b7b2d2305995bfdab700f05bea44d8e68485e6aa7bf5339987705d",
+  "src/renderer/components/agent-status/SessionTaskActionsContext.ts": "9eb31f28e13fa6835d54d64f3cd91ebd84c6cae7a657c7e30ce3bd39b93cc4f4",
+  "src/renderer/components/agent-status/SessionTaskAssociation.tsx": "51c4119552f863812d1c0c16442b150e6c946c809303529d3dab7aba61880ed7",
+  "src/renderer/components/agent-status/SessionTaskPanel.tsx": "f754f144e0311dcd28bd3dad039dd679b5338bcf17373e47a6406060fa9c977c",
+  "src/renderer/components/agent-status/SessionTaskResultRow.tsx": "a540a2df71b51dc12a4f9aeed930c0b791514675aa9aa82bddc667cc8616aaeb",
+  "src/renderer/components/agent-status/SessionTaskResults.tsx": "8fc0fce5716122497c9a5f4363a514c37b53b2af894f0594ee591f88d869c852",
+  "src/renderer/components/agent-status/SubagentActivityPanel.tsx": "6a0bc941796182abbe3f969eff84c69044296293b82fee81cd3c985236d18cff",
+  "src/renderer/components/agent-status/SubagentInspector.tsx": "a61cc25c492dcfb309ad8ca592e58416bc21a1bd7d9d459b6975300f927b30fc",
+  "src/renderer/components/agent-status/subagentOutcome.ts": "b1c9dcf9cc11ef212f06a888c394de2d9b3869e7c57108f0bff6d3602409119a",
+  "src/renderer/components/agent-status/subagentViewModel.ts": "f227f62f07948bd6fd3ada0d07bd4650d429b61f1eed9a8ab1cdb6c766e5b4d9",
+  "src/renderer/i18n/locales/en-US/app.json": "d0ff848dcbd578244c9e406e7a0363e325c89c2e80ee3b6624f8e70659060df0",
+  "src/renderer/i18n/locales/zh-CN/app.json": "e75b0b12a6b97970aa8edebc47e351b396d5b0ae53ee0c59cdee2cc0b2caed4f",
+  "src/renderer/pages/Chat.tsx": "5920af7c899c2d11a85dcf0331d548c8b325621788313fa4563e76ffabf296d5",
+  "src/shared/sessionTaskOrchestration.ts": "f05182f4ae36971a413f6bef0881cdc09078df503ae2b28544417c558c8e8518",
+  "src/shared/subagentDispatchFailure.ts": "390f0b5ea355abc052b54980da767760a4bcd9a2c78f1d0c5814eadc70166a96"
+}

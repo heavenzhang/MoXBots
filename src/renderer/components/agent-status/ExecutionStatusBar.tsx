@@ -165,6 +165,10 @@ export default memo(function ExecutionStatusBar({
   const awaitingReview = tasks.filter(
     (task) => task.phase === "awaiting_review",
   ).length;
+  const failed = tasks.filter((task) => task.phase === "failed").length;
+  const interrupted = tasks.filter((task) => task.phase === "interrupted").length;
+  const unknown = tasks.filter((task) => task.phase === "unknown").length;
+  const currentAgents = agents.filter((agent) => agent.currentTurn || agent.status === "running");
   const toggle = (next: Detail) =>
     setDisclosure(
       shown && next === detail ? null : { sessionId, detail: next },
@@ -303,10 +307,14 @@ export default memo(function ExecutionStatusBar({
                   "todos",
                   <span className="whitespace-nowrap tabular-nums">
                     {tasks.length > 0
-                      ? `${t("executionStatus.tasks")} ${completed}/${tasks.length}`
+                      ? `${t("executionStatus.tasks")} · ${t("orchestration.collaboration.verifiedProgress", { completed, total: tasks.length })}`
                       : t("executionStatus.collaboration")}
                     {running > 0 &&
                       ` · ${t("orchestration.running", { count: running })}`}
+                    {failed > 0 && <span className="text-[var(--error)]"> · {t("orchestration.collaboration.failedCount", { count: failed })}</span>}
+                    {interrupted > 0 && <span className="text-[var(--warning)]"> · {t("orchestration.collaboration.interruptedCount", { count: interrupted })}</span>}
+                    {unknown > 0 && <span className="text-[var(--warning)]"> · {t("orchestration.collaboration.unknownCount", { count: unknown })}</span>}
+                    {!tasks.length && currentAgents.some((agent) => agent.status === "failed") && <span className="text-[var(--error)]"> · {t("orchestration.collaboration.failedCount", { count: currentAgents.filter((agent) => agent.status === "failed").length })}</span>}
                     {orchestration.stale &&
                       ` · ${t("orchestration.syncPending")}`}
                   </span>,

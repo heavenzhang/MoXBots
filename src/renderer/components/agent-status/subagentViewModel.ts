@@ -3,6 +3,7 @@ import { isSubagentContainerTool } from '@/components/tools/subagentActivity';
 import { parseBackgroundTaskNotificationMessage, type BackgroundTaskNotificationRecord } from '@/utils/backgroundTaskStatus';
 import { compareBackgroundTaskRuns } from '../../../shared/backgroundTaskRun';
 import { getInputStringProp, resolveToolInputRecord } from '../../../shared/toolDisplay/filePatch';
+import { isSubagentDispatchFailure } from '../../../shared/subagentDispatchFailure';
 
 export interface SubagentView {
   id: string;
@@ -54,12 +55,6 @@ function isLaunchReceipt(tool: ToolUseSimple, result: Record<string, unknown> | 
   return result?.status === 'async_launched' || result?.status === 'pending'
     || (!terminalStatus(result?.status) && (!!result?.outputFile || !!result?.output_file))
     || /(?:async|background) agent launched|agent launched successfully/i.test(tool.result ?? '');
-}
-
-function isRejectedAttempt(result: string | undefined): boolean {
-  // Some old persisted tools dropped isError. Match runtime error prefixes,
-  // never arbitrary words inside a successful review report.
-  return /^(?:Error:\s*)?(?:PreToolUse:(?:Agent|Task) hook error\b|Agent type[^\n]{0,160}(?:not found|does not exist)\b|Unknown agent type\b)/i.test(result?.trim() ?? '');
 }
 
 function reportText(tool: ToolUseSimple, result: Record<string, unknown> | undefined): string | undefined {
@@ -115,9 +110,10 @@ export function collectSubagentViews(messages: Message[], currentMessageId?: str
       const notification = candidate && (!receiptRunId || compareBackgroundTaskRuns(candidate.runId, receiptRunId) >= 0)
         ? candidate : undefined;
       const report = reportText(tool, result) ?? (lifecycle ? undefined : text(notification?.summary));
+      const rejectedBeforeExecution = !lifecycle && !notification?.status && isSubagentDispatchFailure(tool.result);
       let status: SubagentView['status'] = lifecycle?.status
         ?? terminalStatus(notification?.status)
-        ?? (tool.isStopped ? 'interrupted' : tool.isError || tool.isFailed || isRejectedAttempt(tool.result) ? 'failed' : undefined)
+        ?? (tool.isStopped ? 'interrupted' : tool.isError || tool.isFailed || isSubagentDispatchFailure(tool.result) ? 'failed' : undefined)
         // Codex spawn completion acknowledges creation, not child completion.
         ?? (tool.name === 'CollabAgent' ? undefined : terminalStatus(result?.status))
         ?? (tool.name === 'CollabAgent' || isLaunchReceipt(tool, result) ? undefined : terminalStatus(tool.resultMeta?.status))
@@ -145,9 +141,9 @@ export function collectSubagentViews(messages: Message[], currentMessageId?: str
         model: text(lifecycle?.model) ?? text(result?.resolvedModel),
         prompt,
         result: report,
-        startedAt: lifecycle?.timingVerified === false ? undefined
+        startedAt: rejectedBeforeExecution || lifecycle?.timingVerified === false ? undefined
           : lifecycle?.startedAt ?? tool.executionTiming?.startedAt ?? tool.taskStartTime,
-        finishedAt: lifecycle?.timingVerified === false ? undefined
+        finishedAt: rejectedBeforeExecution || lifecycle?.timingVerified === false ? undefined
           : lifecycle?.finishedAt ?? (tool.name === 'CollabAgent' || isLaunchReceipt(tool, result) ? undefined : tool.executionTiming?.finishedAt),
         lastActivityAt: lifecycle?.lastActivityAt ?? tool.executionTiming?.lastActivityAt,
         parentAgentId: lifecycle?.tree?.parentAgentId ?? parentAgentId,

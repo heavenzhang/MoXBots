@@ -26,6 +26,14 @@ beforeEach(() => {
 });
 
 describe('in-chat subagent visibility', () => {
+  it('explains plan-mode rejection in the list and inspector while preserving the raw error', () => {
+    harness.messages = [fixture('rejected', { result: 'PreToolUse:Agent hook error: 当前处于 Plan（规划）模式，禁止派发 Agent。' })];
+    render(<SubagentInspector toolId="rejected-tool" overlay={false} onClose={() => undefined} onJumpToTool={() => undefined} />);
+    expect(screen.getByText('规划模式拦截了本次派发，子 Agent 未开始执行。')).toBeVisible();
+    expect(screen.queryByText(/报告回传不等于/)).toBeNull();
+    fireEvent.click(screen.getByText('展开原始错误'));
+    expect(screen.getByText(/PreToolUse:Agent hook error/)).toBeVisible();
+  });
   it('keeps historical access after completion and switches between current turn and history', () => {
     const select = vi.fn(); render(<SubagentActivityPanel onSelect={select} />);
     fireEvent.click(screen.getByRole('button', { name: /子 Agent.*已回传 1/ }));

@@ -127,6 +127,16 @@ describe('collectSubagentViews', () => {
     expect(views.map(view => view.status)).toEqual(['failed', 'failed', 'completed']);
   });
 
+  it('does not present the rejected dispatch duration as child execution time', () => {
+    const [view] = collectSubagentViews([assistant('a', [tool({
+      result: 'PreToolUse:Agent hook error: blocked in Plan mode', taskStartTime: 1000,
+      executionTiming: { source: 'runtime', startedAt: 1000, finishedAt: 1001 },
+    })])]);
+    expect(view.status).toBe('failed');
+    expect(view.startedAt).toBeUndefined();
+    expect(view.finishedAt).toBeUndefined();
+  });
+
   it('uses result prompt and description only as fallbacks for incomplete historical input', () => {
     const [view] = collectSubagentViews([assistant('a', [tool({ input: { prompt: '', description: '' },
       result: JSON.stringify({ status: 'completed', prompt: 'Recovered request', description: 'Recovered title' }),
