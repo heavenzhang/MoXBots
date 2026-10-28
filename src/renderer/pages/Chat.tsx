@@ -1,3 +1,5 @@
+import { RecoveryActionReview } from '../components/RecoveryActionReview';
+import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
 import { SessionTaskOrchestrationProvider, useSessionTaskOrchestrationContext } from '@/components/agent-status/useSessionTaskOrchestration';
 import { SessionTaskActionsContext, type TaskReviewTarget } from '@/components/agent-status/SessionTaskActionsContext';
 import SessionTaskResults from '@/components/agent-status/SessionTaskResults';
@@ -6832,6 +6834,15 @@ function ChatContent({
                   </div>
                 );
               })()}
+            {currentRuntime === 'builtin' && sessionId && (
+              <RecoveryActionReview
+                key={sessionId}
+                sessionId={sessionId}
+                disabled={isLoading || forkPending}
+                inspect={() => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH)}
+                reconcile={request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request)}
+              />
+            )}
             {/* Unified Logs Panel - fullscreen modal displaying logs */}
             <UnifiedLogsPanel
               tabId={tabId}

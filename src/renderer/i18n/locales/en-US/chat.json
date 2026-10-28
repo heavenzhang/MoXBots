@@ -1518,5 +1518,24 @@
       },
       "recoveryScope": "Shows server-recorded recovery observations and protected actions only. It does not guarantee exactly-once business execution. The observed span is not model latency."
     }
+  },
+  "recoveryReview": {
+    "open": "Review operation outcomes",
+    "loading": "Reviewing…",
+    "title": "Operations awaiting review",
+    "close": "Collapse",
+    "changed": "The session is busy, evidence changed, or this version cannot review it. Refresh when the session is idle.",
+    "boundary": "Only native task queries with matching evidence can be marked as query-only. Other operations remain protected. Review never replays or automatically continues a task.",
+    "empty": "No operations currently await review. This does not mean the business task is complete.",
+    "taskQuery": "Task query · {{tool}}",
+    "unverified": "Outcome unverified",
+    "technical": "Show operation fingerprint",
+    "resolve": "Confirm query-only and save",
+    "resolved": "Saved {{count}} query review records.",
+    "reasons": {
+      "builtin_task_query": "The native tool and input fingerprint match a task query. This does not prove the query succeeded.",
+      "external_receipt_required": "An original execution or business receipt is required. This review cannot settle the operation.",
+      "native_evidence_missing": "Insufficient native evidence. Protection remains in place."
+    }
   }
 }

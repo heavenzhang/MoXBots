@@ -19,6 +19,8 @@ import { buildTurnProviderAnalytics } from './session-core/turn-analytics';
 import { selectBuiltinRewindBoundary } from './session-core/builtin-rewind-boundary';
 import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
+import type { RecoveryActionRequest, RecoveryActionSnapshot } from '../shared/recoveryReconciliation';
+import { inspectRecoveryActions, reconcileRecoveryAction, type RecoveryReviewDependencies } from './builtin-session/recovery-reconciliation';
 import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
 import { SessionModelRecovery, settledStreamFailureMessage } from './builtin-session/model-recovery';
 import { SameTurnStreamContinuation } from './builtin-session/stream-continuation';
@@ -10648,6 +10650,55 @@ export async function getHistoricalSessionMessages(
     ...(offset !== undefined ? { offset } : {}),
   });
   return historicalMessages;
+}
+
+const recoveryReviewAuthority = randomUUID();
+function recoveryReviewOwner() {
+  const metadata = getCurrentProductSessionMetadata();
+  if (!sessionId || !metadata || metadata.id !== sessionId || metadata.pendingConversationMutation
+    || metadata.runtime && metadata.runtime !== 'builtin' || metadata.sdkResumeSessionAt
+    || isSessionBusy() || hasBuiltinBackgroundWork() || getCurrentTurnIdentity()
+    || lifecycleState.processing || lifecycleState.preWarming || getQueryMcpMutation()
+    || activeSessionModelRecovery?.readState()?.status === 'waiting' || metadata.modelRecovery?.status === 'waiting') {
+    throw new Error('recovery_review_busy_or_owner_changed');
+  }
+  return { sessionId, sdkSessionId: resolveBuiltinSdkSessionId(metadata) ?? sessionId,
+    epoch: watchdogAutoResumeEpoch, reviewAuthority: recoveryReviewAuthority, bridge: activeSessionBridgeToken, queryGeneration: getQueryGeneration(), dir: agentDir };
+}
+async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies> {
+  const captured = recoveryReviewOwner();
+  const controller = activeSessionContextRecovery;
+  await controller?.flushForReadonlyReview();
+  const owner = { sessionId: captured.sessionId, sdkSessionId: captured.sdkSessionId,
+    epoch: captured.epoch, reviewAuthority: captured.reviewAuthority };
+  const isCurrent = () => {
+    try { return activeSessionContextRecovery === controller && JSON.stringify(recoveryReviewOwner()) === JSON.stringify(captured); }
+    catch { return false; }
+  };
+  return { owner, isCurrent,
+    load: () => loadBuiltinContextLedger(owner.sessionId, owner.sdkSessionId),
+    readNative: async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([
+          getHistoricalSessionMessages(owner.sdkSessionId, agentDir || undefined, 50_001),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('recovery_review_native_timeout')), 5000); }),
+        ]);
+      } finally { clearTimeout(timer); }
+    },
+    save: (ledger, digest, current) => {
+      const receipt = (ledger as { readonlyTasks: import('./openai-bridge/context-recovery').ReadonlyTaskResolution[] }).readonlyTasks.at(-1)!;
+      return saveBuiltinContextLedger(owner.sessionId, owner.sdkSessionId, ledger, isCurrent,
+        () => current() && (!controller || controller.canAdoptReadonlyTaskResolution(receipt)), digest);
+    },
+    adopt: receipt => activeSessionContextRecovery?.adoptReadonlyTaskResolution(receipt),
+  };
+}
+export function inspectBuiltinRecoveryActions(): Promise<RecoveryActionSnapshot> {
+  return runSerializedSessionMutation(async () => inspectRecoveryActions(await recoveryReviewDependencies()));
+}
+export function reconcileBuiltinRecoveryAction(request: RecoveryActionRequest): Promise<RecoveryActionSnapshot> {
+  return runSerializedSessionMutation(async () => reconcileRecoveryAction(request, await recoveryReviewDependencies()));
 }
 
 /**

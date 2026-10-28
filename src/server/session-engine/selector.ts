@@ -76,6 +76,8 @@ async function withExecutionAdmission<T>(operation: () => Promise<T>): Promise<T
 function queryFacade(engine: SessionEngine): SessionEngine {
   return {
     ...engine,
+    ...(engine.reconcileRecoveryAction ? { reconcileRecoveryAction: (request: import('../../shared/recoveryReconciliation').RecoveryActionRequest) =>
+      withUpdateAdmission(() => engine.reconcileRecoveryAction!(request)) } : {}),
     sendDesktopMessage: (request) =>
       withExecutionAdmission(async () => {
         const continuation = prepareContinuationAdmission(engine, request);

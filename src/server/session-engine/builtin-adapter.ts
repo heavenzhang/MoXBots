@@ -20,6 +20,8 @@ import {
   getBuiltinWorkProgressSnapshot,
   getBuiltinExecutionVerificationEpoch,
   getBuiltinBackgroundTaskDetail,
+  inspectBuiltinRecoveryActions,
+  reconcileBuiltinRecoveryAction,
   getBuiltinLiveSessionSnapshot,
   getBuiltinSessionCompletionTerminal,
   getCurrentMcpServers,
@@ -370,6 +372,8 @@ export function createBuiltinSessionEngine(): SessionEngine {
     },
 
     publishTranscriptSaveStatus(status) { publishBuiltinTranscriptSaveStatus(status); },
+    inspectRecoveryActions: inspectBuiltinRecoveryActions,
+    reconcileRecoveryAction: reconcileBuiltinRecoveryAction,
     getBackgroundTaskDetail(toolUseId) { return getBuiltinBackgroundTaskDetail(toolUseId); },
     acknowledgeBackgroundWork(tasks, allow) { return acknowledgeBuiltinBackgroundWork(tasks, allow); },
     getWorkProgressSnapshot() { return getBuiltinWorkProgressSnapshot(); },

@@ -127,3 +127,51 @@ it.each([true, false])('persists native error proofs without clearing existing u
   expect(restored.beforeTool('Write', {})).toContain('read-only');
   expect(store.loadBuiltinContextLedger(id, id)).toEqual(proofLedger);
 });
+
+it('persists a query-only review through Store reload, preserves raw unknowns and rejects stale CAS', async () => {
+  const transcript = await store.loadSessionTranscript(id);
+  expect((await store.appendSessionMessages(id, transcript.cursor, [{ id: 'review-fixture', role: 'user',
+    content: 'Review synthetic task query', timestamp: new Date().toISOString() }])).ok).toBe(true);
+  const { inspectRecoveryActions, reconcileRecoveryAction, recoveryLedgerDigest } = await import('./recovery-reconciliation');
+  const { recoveryActionHash } = await import('../openai-bridge/context-recovery');
+  const taskHash = recoveryActionHash('TaskGet', {});
+  const mutationHash = recoveryActionHash('Bash', { command: 'fixture-write' });
+  const ledger = { version: 1, completed: [], uncertain: [taskHash, mutationHash], denied: [], blocked: false, projectionActive: false };
+  await store.saveBuiltinContextLedger(id, id, ledger, () => true);
+  const deps = { owner: { sessionId: id, sdkSessionId: id, epoch: 1, reviewAuthority: 'fixture-review' },
+    isCurrent: () => true, load: () => store.loadBuiltinContextLedger(id, id),
+    readNative: async () => [{ type: 'assistant', uuid: 'native-use', session_id: id,
+      message: { content: [{ type: 'tool_use', id: 'task-read', name: 'TaskGet', input: {} }] } }],
+    save: (next: unknown, expected: string, live: () => boolean) => store.saveBuiltinContextLedger(id, id, next, live, undefined, expected),
+    adopt: () => {},
+  };
+  const first = await inspectRecoveryActions(deps);
+  const reviewed = await reconcileRecoveryAction({ ...deps.owner, ledgerDigest: first.ledgerDigest, actionHash: taskHash }, deps);
+  expect(reviewed.resolvedCount).toBe(1);
+  const persisted = store.loadBuiltinContextLedger(id, id) as { uncertain: string[]; readonlyTasks?: unknown[] };
+  expect(persisted.uncertain).toEqual(ledger.uncertain);
+  expect(persisted.readonlyTasks).toHaveLength(1);
+  await expect(store.saveBuiltinContextLedger(id, id, ledger, () => true, undefined, first.ledgerDigest)).rejects.toThrow('ledger changed');
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(persisted);
+  await expect(store.saveBuiltinContextLedger(id, id, ledger, () => true, () => false, recoveryLedgerDigest(persisted))).rejects.toThrow('owner changed');
+  await store.getActiveSessionTranscript(id)?.revoke();
+  vi.resetModules(); store = await import('../SessionStore');
+  const options = { initialLedger: store.loadBuiltinContextLedger(id, id), recoveryOwner: deps.owner,
+    scope: () => 'new-turn', isActive: () => true, protectStreaming: true, backup: async () => 'fixture',
+    persistLedger: (value: unknown) => store.saveBuiltinContextLedger(id, id, value, () => true) };
+  const restored = new ContextRecoveryController(options);
+  expect(restored.inspectActionLedger().uncertainCount).toBe(1);
+  const request: AnthropicRequest = { model: 'fixture', max_tokens: 64, stream: true,
+    messages: [{ role: 'assistant', content: [{ type: 'tool_use', id: 'task-read', name: 'TaskGet', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'task-read', is_error: true, content: 'invalid input' }] },
+      { role: 'user', content: 'Explicit read-only follow-up' }] };
+  await restored.protectInference(request, true);
+  expect(restored.beforeTool('TaskGet', {})).toBeUndefined();
+  expect(restored.beforeTool('Write', { file_path: '/fixture' })).toContain('read-only');
+  expect(restored.canRetryInference()).toBe(false);
+  expect((store.loadBuiltinContextLedger(id, id) as { readonlyTasks?: unknown[] }).readonlyTasks).toEqual(persisted.readonlyTasks);
+  // A legacy reader ignores the new receipt field; original uncertainty survives rollback.
+  const { readonlyTasks: _audit, ...legacy } = store.loadBuiltinContextLedger(id, id) as Record<string, unknown>;
+  const rollback = new ContextRecoveryController({ ...options, initialLedger: legacy });
+  expect(rollback.inspectActionLedger().uncertainCount).toBe(2);
+});

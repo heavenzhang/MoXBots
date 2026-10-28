@@ -134,6 +134,40 @@ export function recoveryActionHash(name: string, input: unknown): string {
   return digest({ name, input });
 }
 
+/** Narrow native builtin contract: never classify shell/MCP/SQL text as read-only. */
+export function isBuiltinTaskQuery(name: unknown, input: unknown): boolean {
+  if (!record(input)) return false;
+  const keys = Object.keys(input);
+  if (name === 'TaskList') return keys.length === 0;
+  // Missing taskId fails native validation; it still cannot mutate a task.
+  return name === 'TaskGet' && keys.every(key => key === 'taskId')
+    && (keys.length === 0 || typeof input.taskId === 'string' && input.taskId.length <= 512);
+}
+
+export interface ReadonlyTaskResolution {
+  version: 1;
+  kind: 'builtin-task-query-reviewed';
+  sessionId: string;
+  sdkSessionId: string;
+  actionHash: string;
+  toolName: 'TaskGet' | 'TaskList';
+  input: Record<string, unknown>;
+  sourceUseUuid: string;
+  toolUseId: string;
+  ledgerBeforeDigest: string;
+  reviewedAt: string;
+}
+
+export function validReadonlyTaskResolution(value: unknown, owner?: { sessionId: string; sdkSessionId: string }): value is ReadonlyTaskResolution {
+  if (!record(value) || value.version !== 1 || value.kind !== 'builtin-task-query-reviewed'
+    || !owner || value.sessionId !== owner.sessionId || value.sdkSessionId !== owner.sdkSessionId
+    || !isBuiltinTaskQuery(value.toolName, value.input)
+    || value.actionHash !== recoveryActionHash(value.toolName as string, value.input)
+    || typeof value.ledgerBeforeDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.ledgerBeforeDigest)
+    || typeof value.reviewedAt !== 'string' || !Number.isFinite(Date.parse(value.reviewedAt))) return false;
+  return [value.toolUseId, value.sourceUseUuid].every(id => typeof id === 'string' && id.length > 0 && id.length <= 512);
+}
+
 function nativeErrorKey(actionHash: string, toolUseId: string): string {
   return digest({ kind: 'native-error', actionHash, toolUseId });
 }
@@ -177,7 +211,7 @@ function validateImage(block: Record<string, unknown>): boolean {
 
 /** Validate the whole history before omitting anything, including untouched tail blocks. */
 function analyze(body: AnthropicRequest, denied: ReadonlySet<string>, proof: ReadonlyMap<string, Evidence>,
-  noDispatch: ReadonlyMap<string, NoDispatchEvidence>, nativeErrors: ReadonlyMap<string, NativeErrorEvidence>): Analysis | undefined {
+  noDispatch: ReadonlyMap<string, NoDispatchEvidence>, nativeErrors: ReadonlyMap<string, NativeErrorEvidence>, readonlyTasks: ReadonlyMap<string, ReadonlyTaskResolution>): Analysis | undefined {
   if (!Array.isArray(body.messages)) return undefined;
   const uses = new Map<string, { name: string; input: unknown; matched: boolean }>();
   const completed = new Map<string, Evidence>();
@@ -229,7 +263,7 @@ function analyze(body: AnthropicRequest, denied: ReadonlySet<string>, proof: Rea
                 || (content.type === 'image' && !validateImage(content))) return undefined;
             }
           }
-          if (!READ_ONLY_TOOLS.has(use.name)) {
+          if (!READ_ONLY_TOOLS.has(use.name) && !readonlyTasks.has(recoveryActionHash(use.name, use.input))) {
             const key = recoveryActionHash(use.name, use.input);
             if (block.is_error) {
               const nativeError = nativeErrors.get(nativeErrorKey(key, block.tool_use_id));
@@ -352,6 +386,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private nativeProofsDisabled = false;
   private nativeEvidenceOwner: { sessionId: string; sdkSessionId: string; queryGeneration: number; isCurrent: () => boolean } | undefined;
   private uncertainLedger = new Set<string>();
+  private readonlyTasks = new Map<string, ReadonlyTaskResolution>();
   private deniedLedger = new Set<string>();
   private ledgerBlocked = false;
   // Write-ahead arming alone does not forbid intentional normal-turn repeats.
@@ -372,6 +407,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       blocked: this.ledgerBlocked,
       nativeErrorReceiptCount: this.nativeErrors.size,
       noDispatchReceiptCount: this.noDispatchLedger.size,
+      readonlyTaskReceiptCount: this.readonlyTasks.size,
       uncertainActions: [...this.uncertainLedger].sort().map(actionId => ({
         actionId, completedEvidenceAlsoPresent: this.completedLedger.has(actionId),
       })),
@@ -406,7 +442,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     // completed-action denial durably even if the engine exits before advance.
     this.streamArmedOnly = false;
     const nativeRevision = this.nativeRevision;
-    const ledgerDigest = () => digest({ completed: [...this.completedLedger], uncertain: [...this.uncertainLedger], nativeErrors: [...this.nativeErrors],
+    const ledgerDigest = () => digest({ completed: [...this.completedLedger], uncertain: [...this.uncertainLedger], nativeErrors: [...this.nativeErrors], readonlyTasks: [...this.readonlyTasks],
       denied: [...this.deniedLedger], noDispatch: [...this.noDispatchLedger], blocked: this.ledgerBlocked,
       projectionActive: this.projectionActive, streamArmedOnly: this.streamArmedOnly });
     const ledger = ledgerDigest();
@@ -444,6 +480,29 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.state = undefined;
   }
 
+  async flushForReadonlyReview(): Promise<void> {
+    await this.persistenceTail;
+    if (this.ledgerBlocked || this.state?.inFlight.size || this.state?.recovering) {
+      throw new Error('context_recovery_required: Recovery review is not idle');
+    }
+  }
+
+  canAdoptReadonlyTaskResolution(receipt: ReadonlyTaskResolution): boolean {
+    return validReadonlyTaskResolution(receipt, this.options.recoveryOwner) && !this.state?.inFlight.size
+      && !this.state?.recovering && !this.ledgerBlocked && this.uncertainLedger.has(receipt.actionHash);
+  }
+
+  /** After an idle, CAS-protected Store commit only. Never resets any Query/Stop/retry fence. */
+  adoptReadonlyTaskResolution(receipt: ReadonlyTaskResolution): void {
+    if (!this.canAdoptReadonlyTaskResolution(receipt)) {
+      throw new Error('context_recovery_required: Readonly review cannot be adopted');
+    }
+    this.readonlyTasks.set(receipt.actionHash, structuredClone(receipt));
+    this.uncertainLedger.delete(receipt.actionHash);
+    this.state?.uncertain.delete(receipt.actionHash);
+    // reconciliationOnly is deliberately retained until an explicit fresh turn.
+  }
+
   /** Used only for pre-delivery inference retries, never tool execution. */
   canRetryInference(): boolean {
     const state = this.current();
@@ -457,7 +516,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     if (this.state?.inFlight.size) throw new Error('context_recovery_required: Cannot restore during active inference.');
     this.projectionActive = true;
     this.actionProtectionActive = true;
-    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors);
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks);
     if (!analysis || typeof archive !== 'string' || !archive.trim() || archive.length > 4096 || /[\r\n]/.test(archive)
       || createHash('sha256').update(JSON.stringify(body)).digest('hex') !== sourceDigest) {
       this.ledgerBlocked = true;
@@ -477,7 +536,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       || this.ledgerBlocked || state.blocked || this.requestGuard.isBlocked(state.scope)) {
       throw new RecoveryPreparationError('The inference has no exclusive recovery authority.');
     }
-    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors);
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks);
     const safeHistory = !!analysis && analysis.uncertain.size === 0 && state.uncertain.size === 0;
     if (prearm && (!safeHistory || !this.canRetryInference()) && !state.attempted && !this.projectionActive) {
       // An explicit ordinary inference is not recovery. Legacy failed/unpaired
@@ -528,7 +587,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       || this.ledgerBlocked || this.uncertainLedger.size !== 0 || state.uncertain.size !== 0) {
       throw new Error('automatic_replay_blocked: The failed stream has no safe continuation authority.');
     }
-    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors);
+    const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks);
     if (!analysis || analysis.uncertain.size !== 0) {
       throw new Error('automatic_replay_blocked: Native continuation contains unknown or uncertain tool outcomes.');
     }
@@ -614,7 +673,16 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.projectionActive = value.projectionActive !== false;
     this.completedLedger = new Map(value.completed as [string, Evidence][]);
     this.noDispatchLedger = new Map((value.noDispatch ?? []) as [string, NoDispatchEvidence][]);
-    this.uncertainLedger = new Set(value.uncertain as string[]);
+    if (value.readonlyTasks !== undefined) {
+      if (!Array.isArray(value.readonlyTasks) || value.readonlyTasks.length > MAX_LEDGER_ENTRIES
+        || !value.readonlyTasks.every(item => validReadonlyTaskResolution(item, this.options.recoveryOwner)
+          && (value.uncertain as string[]).includes(item.actionHash))
+        || new Set(value.readonlyTasks.map(item => item.actionHash)).size !== value.readonlyTasks.length) {
+        throw new Error('context_recovery_required: Invalid readonly task receipts');
+      }
+      this.readonlyTasks = new Map(value.readonlyTasks.map(item => [item.actionHash, item]));
+    }
+    this.uncertainLedger = new Set((value.uncertain as string[]).filter(key => !this.readonlyTasks.has(key)));
     this.deniedLedger = new Set(value.denied as string[]);
     if (value.streamArmedOnly !== undefined && typeof value.streamArmedOnly !== 'boolean') throw new Error('context_recovery_required: Invalid stream protection marker');
     this.streamArmedOnly = value.streamArmedOnly === true;
@@ -627,9 +695,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       if (this.ledgerBlocked) throw new Error('Recovery ledger is blocked');
       if (stillCurrent && !stillCurrent()) throw new Error('Recovery owner changed before evidence commit');
       await this.options.persistLedger!({ version: 1, completed: [...this.completedLedger],
-        uncertain: [...this.uncertainLedger], denied: [...this.deniedLedger], blocked: this.ledgerBlocked,
+        uncertain: [...new Set([...this.uncertainLedger, ...this.readonlyTasks.keys()])], denied: [...this.deniedLedger], blocked: this.ledgerBlocked,
         projectionActive: this.projectionActive, streamArmedOnly: this.streamArmedOnly,
-        noDispatch: [...this.noDispatchLedger], nativeErrors: [...this.nativeErrors] }, stillCurrent);
+        noDispatch: [...this.noDispatchLedger], nativeErrors: [...this.nativeErrors],
+        ...(this.readonlyTasks.size ? { readonlyTasks: [...this.readonlyTasks.values()] } : {}) }, stillCurrent);
     });
     this.persistenceTail = commit.catch(() => { this.ledgerBlocked = true; });
     try { await commit; }
@@ -712,7 +781,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       this.traceNativeAction('reserve_denied', toolUseId, emission?.actionHash);
       return denied;
     }
-    if (READ_ONLY_TOOLS.has(name) || !this.actionProtectionActive) {
+    if (READ_ONLY_TOOLS.has(name) || this.readonlyTasks.has(recoveryActionHash(name, input)) || !this.actionProtectionActive) {
       this.traceNativeAction('reserve_not_required', toolUseId, emission?.actionHash);
       return undefined;
     }
@@ -808,17 +877,17 @@ export class ContextRecoveryController implements BridgeContextRecovery {
 
   private mergeLedger(completed: ReadonlyMap<string, Evidence>, uncertain: ReadonlySet<string>): boolean {
     const completedKeys = new Set([...this.completedLedger.keys(), ...completed.keys()]);
-    const uncertainKeys = new Set([...this.uncertainLedger, ...uncertain]);
+    const uncertainKeys = new Set([...this.uncertainLedger, ...uncertain, ...this.readonlyTasks.keys()]);
     if (completedKeys.size + uncertainKeys.size + this.noDispatchLedger.size + this.nativeErrors.size > MAX_LEDGER_ENTRIES) {
       this.ledgerBlocked = true; return false;
     }
     for (const [key, value] of completed) this.completedLedger.set(key, value);
-    for (const key of uncertain) this.uncertainLedger.add(key);
+    for (const key of uncertain) if (!this.readonlyTasks.has(key)) this.uncertainLedger.add(key);
     return true;
   }
 
   private ledgerEntryCount(): number {
-    return this.completedLedger.size + this.uncertainLedger.size + this.noDispatchLedger.size + this.nativeErrors.size;
+    return this.completedLedger.size + this.uncertainLedger.size + this.readonlyTasks.size + this.noDispatchLedger.size + this.nativeErrors.size;
   }
 
   private current(): State | undefined {
@@ -842,7 +911,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   beforeTool(name: string, input: unknown): string | undefined {
-    if (READ_ONLY_TOOLS.has(name)) return undefined;
+    if (READ_ONLY_TOOLS.has(name) || this.readonlyTasks.has(recoveryActionHash(name, input))) return undefined;
     const state = this.toolState();
     if (!state) return this.actionProtectionActive || this.ledgerBlocked
       ? 'automatic_replay_blocked: Context recovery belongs to a retired or unbound turn; this action cannot run.' : undefined;
@@ -875,7 +944,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   recordToolResult(name: string, input: unknown, result: unknown, failed = false): void {
-    if (READ_ONLY_TOOLS.has(name) || !this.options.isActive()) return;
+    if (READ_ONLY_TOOLS.has(name) || this.readonlyTasks.has(recoveryActionHash(name, input)) || !this.options.isActive()) return;
     // Background outcomes remain Query evidence after their parent foreground ends.
     const state = this.toolState();
     if (!state) return;
@@ -935,7 +1004,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return required('This turn already has a delivered, concurrent or failed model request. Automatic replay is blocked.');
     }
     state.inFlight.add(fingerprint);
-    const retryAnalysis = analyze(body, state.denied, state.completed, this.noDispatchLedger, this.nativeErrors);
+    const retryAnalysis = analyze(body, state.denied, state.completed, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks);
     const retryFence = {};
     if (!retryAnalysis || retryAnalysis.uncertain.size || state.uncertain.size) this.requestRetryFences.add(retryFence);
     let deliveryFinished = false;
@@ -963,7 +1032,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const stop = (message: string) => { state.blocked = true; state.streamInterrupted = false; lease.block(); return required(message); };
     const prepare = async (initial: boolean): Promise<AnthropicRequest | Response> => {
       if (!recoveryLive()) return required('The foreground recovery owner ended. Existing requests were preserved.');
-      const analysis = analyze(body, state.denied, state.completed, this.noDispatchLedger, this.nativeErrors);
+      const analysis = analyze(body, state.denied, state.completed, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks);
       if (!analysis || analysis.uncertain.size || state.uncertain.size) {
         return stop('History contains unknown, unpaired or uncertain tool actions. Progress was preserved; automatic recovery stopped.');
       }

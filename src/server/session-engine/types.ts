@@ -440,6 +440,8 @@ export type ConversationOperationErrorCode =
   | 'restore_failed';
 
 export interface SessionEngine {
+  inspectRecoveryActions?(): Promise<import('../../shared/recoveryReconciliation').RecoveryActionSnapshot>;
+  reconcileRecoveryAction?(request: import('../../shared/recoveryReconciliation').RecoveryActionRequest): Promise<import('../../shared/recoveryReconciliation').RecoveryActionSnapshot>;
   /** Optional runtime-owned, tool-free auxiliary generation; never enqueues a turn. */
   runTextUtility?(task: import('../runtimes/types').RuntimeTextUtilityTask): Promise<string | null>;
   publishTranscriptSaveStatus(status: import('../../shared/sessionTranscript').TranscriptSaveStatus): void;
