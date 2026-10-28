@@ -1,4 +1,4 @@
-# MoXBots 0.5.25 / 525.1 统一批次
+# MoXBots 0.5.25 / 525.2 统一迁移批次
 
 Root沿既有发布安装授权，将当前五项桌面改动收齐后统一集成。新制品不复用0.5.23或0.5.24身份。
 
@@ -26,3 +26,17 @@ Root沿既有发布安装授权，将当前五项桌面改动收齐后统一集�
 ## CI版本锁文件更正
 
 首个精确head6cc2606d/CI40713529495的Cargo门因Cargo.toml已升0.5.25、两份自有package的Cargo.lock仍0.5.24而拒绝`--locked`。原失败log保留，未降低或移除locked。Root只同步myagents和myagents-document-worker两项package版本，不改任何依赖解析；该元数据修复使用新精确SHA/CI，不能把原失败当通过。产品源与已过718项/类型/组件路径不变，无正式App重建或重复公证。
+
+## 新origin候选修订（2026-10-29）
+
+原525.1/source45a9与其CI回执保留；四次macos-15未取得runner、零step容量取消，其他8success/iOS条件skip不误标全绿。未构建、公证或安装过525.1。主人新授权所有云/官网/更新地址迁101，并明确旧数据测试、允许新测试DB/云身份；不是旧账号自动迁移，也不重置本地设备key。
+
+手机PR209/head608d已独立CI40727018158 attempt1九success/iOS条件skip，正常merge775da22c196b5c72277469c3c1a357d360f030e6/tree129d与受测树相同，远端verified。该当前main已正常合入本批；不能把新全树冒称等于旧45a。
+
+在原分支顺序融合main775、desktop endpointf142和cloud39ee（product3a038），仅共享plan追加冲突，按精确共同前缀+双方追加保留，无产品冲突。新构建号525.2，旧tag/正式版本不可变，待固定新SHA/精确CI；不沿用旧CI覆盖新源。其余后来LOGIN/reliability任务不混入。
+
+官网与下载使用101/moxbots/及/moxbots/download/，更新仍/updates/，默认ownedAPI101；updater原公钥/权限保持。cloud限定/moxbots/admin重用原认证、OAuth返回路径固定allowlist+原state、初始化nativepassword显式开关；shared101AI4S现有根路由不由Root操作。云单元owned-agentnet workflow与部署继续原owner01a12b99，本聊天只combinedCI/main及desktop/updater，不能重复触发ownedworkflow。原作者212service/6bootstrap和Root源审、既有独立review分别留证；真实Dex及新云生产/登录未因本地检查通过。
+
+原718桌面改进源/测试与有限CUA路径未改字节，无需重跑旧矩阵；新增endpoint联合路径按4profile/3publisher+types/lint/classification复核，云代码与已审源逐字节比较，不重复author全套service。构建前必须核MOXBOTS_OWNED_SERVICE_URL没有旧140/QA环境覆盖。待新候选静态门、有效维护/备份、受影响实际newcloudlogin/updater/本地路径及同份制品101正式通道。
+
+新迁移组合delta检查实际完成：4profile、3publisher（临时fixture真实签名/归档）、6bootstrap、全量tsc/scopedlint/classification/cloud fmt/adminJS/diff均exit0。原cloud fmt-check.log为最初格式失败原件，不能当PASS；本组合新fmt实际exit0另存。既有独审reviewer-cloud101-3a038abc-admin-oauth-native-source-review-20261029.json静态PASS无P0/P1，当前combined服务文件hash逐项与独审完全相同。两项非阻断边界保留：legacy部署须转发新错误返回alias；同IP路径挂载不是浏览器origin隔离。真实Dex/新101路由/手机/登录仍由原owner独立验证，Root未调用其owned workflow或服务器。
