@@ -472,17 +472,9 @@ export default function OwnedAccountEntry({
             pendingAttemptId.current = null;
             completedAttempt.current = true;
             acceptNetworkRegistry(next);
-            const match = next.connections.find(
-              (connection) =>
-                connection.id === next.selected &&
-                !connection.official &&
-                !connection.removing &&
-                canonicalOwnedIssuer(connection.url) === serviceUrl,
-            );
-            if (match) {
-              const selected = await selectNetworkConnection(match.id);
-              if (loginEpochIsCurrent(epoch)) acceptNetworkRegistry(selected);
-            }
+            // The native commit has already persisted the chosen connection.
+            // A second config write can fail after authentication succeeded or
+            // overwrite a newer user selection. Observe the committed receipt.
             return "authenticated";
           }}
         />

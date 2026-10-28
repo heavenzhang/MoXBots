@@ -139,6 +139,10 @@ Root owns integration, packaging, installation and acceptance. Exact 6ac native 
 
 # Development Plan
 
+## MOXBOTS-LOGIN-REGRESSION-20261028
+
+修复登录初始化超时误用网络目录提示、已提交登录追加选择写入、启动账号首读失败后不恢复。原 OAuth/PKCE、native commit、Keychain 与设备身份 owner 保持原合同；Renderer 仅投影。任务 `.agent-sync/tasks/codex-login-regression-20261028-30c8068c.md`，验收 `dev-docs/login-regression-20261028/acceptance.md`。148 项定向回归、tsc/lint/分类、IAB 宽窄实际组件路径及有限独立源码/截图复核通过；共享 CI/main、签名包和真实设备登录/退出重开另验。desktop/macOS/updater 及 combined CI/main 继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责，下一未冻结批次接收精确提交；不插入已冻结 0.5.25，不自行触发共享 CI、安装或扩大云/Host/mobile 范围。
+
 ## MB-SESSION-RECOVERY-20261023 — 停止后的原会话只读核对
 
 停止请求可以留下已 reserve、未 commit 的未知工具结果；最新 main 的 strict ledger 会拒绝新的普通输入，且本地准备错误被误报为 transport failure。本任务保留原 Session/native history/ledger，让新的未投影输入只做 Read/Grep/Glob，拒绝业务工具、自动 retry/failover 和未知动作重放。任务 `.agent-sync/tasks/codex-session-readonly-recovery-20261023-a084d0f0.md`，证据 `dev-docs/session-readonly-recovery-20261023.md`。代码/本地/模拟验证、CI/main、正式包、原会话恢复分别追踪；唯一桌面 CI/部署 owner 仍为 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。本轮进入下一未冻结批次，不改已冻结 519.1、现运行 518.2、云或业务状态；没有单独触发共享 CI 或跨聊天消息。

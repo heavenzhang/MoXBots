@@ -69,10 +69,20 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
   };
   const isCurrent = (generation: number) =>
     alive.current && epoch.current === generation && !cancelled.current;
-  const failureText = (failure: unknown) =>
-    failure instanceof Error
+  const failureText = (failure: unknown) => {
+    const code = failure && typeof failure === "object" && "code" in failure
+      ? String(failure.code)
+      : "";
+    // Starting sign-in has no connector retry loop and says nothing about
+    // device presence. Keep login transport failures in their own context.
+    if (code === "NETWORK_CONNECTION_TIMEOUT")
+      return latest.current.t("agentNetwork.ownedLogin.serviceTimeout");
+    if (["OWNED_ACCOUNT_UNAVAILABLE", "NETWORK_TRANSPORT_FAILED"].includes(code))
+      return latest.current.t("agentNetwork.ownedLogin.serviceUnavailable");
+    return failure instanceof Error
       ? failure.message
       : latest.current.t(`agentNetwork.errors.${networkErrorKey(failure)}`);
+  };
   const hasReceivedGrant = () =>
     ["verifying_identity", "saving_session"].includes(nativePhaseRef.current);
   const expired = () =>

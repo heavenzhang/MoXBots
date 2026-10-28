@@ -253,8 +253,8 @@ it("uses the configured product issuer even when another owned instance is selec
       undefined,
     ),
   );
-  await waitFor(() => expect(mocks.select).toHaveBeenCalledWith("owned-a"));
-  expect(mocks.accept).toHaveBeenCalledWith(authenticated);
+  await waitFor(() => expect(mocks.accept).toHaveBeenCalledWith(authenticated));
+  expect(mocks.select).not.toHaveBeenCalled();
 });
 
 it("shows an unauthenticated product account when only an isolated QA account exists", async () => {
@@ -535,6 +535,23 @@ it("keeps native reauthentication errors visible without silently creating a new
   expect(await screen.findByText("REVISION_CONFLICT")).toBeInTheDocument();
   expect(mocks.start).not.toHaveBeenCalled();
   expect(mocks.open).not.toHaveBeenCalled();
+});
+
+it("accepts a committed sign-in without a second selection write or changing the native selection", async () => {
+  const saved = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
+  mocks.registry = saved;
+  const authenticated = makeRegistry({ state: "authenticated", principalId: "principal-existing", expiresAt: 1_900_000_000 });
+  mocks.poll.mockResolvedValue({ status: "authenticated", registry: authenticated });
+  mocks.select.mockRejectedValue(new Error("NETWORK_CONFIG_WRITE_FAILED"));
+  render(<OwnedAccountEntry expanded />);
+  accountAction("登录 MoXBots");
+  fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
+  await screen.findByText("等待浏览器登录");
+  fireEvent(window, new Event("focus"));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(mocks.accept).toHaveBeenCalledWith(authenticated);
+  expect(mocks.select).not.toHaveBeenCalled();
+  expect(mocks.cancel).not.toHaveBeenCalled();
 });
 
 it("does not start a saved account login without its native registry revision", async () => {

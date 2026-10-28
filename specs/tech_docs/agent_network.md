@@ -94,6 +94,8 @@ Renderer 只发送闭集 `list/detail/create/reply` intent 和非秘密 `connect
 
 登录弹窗 `useOwnedLoginFlow` 只观察原 native driver 的本地阶段并自动关闭，focus 补查也只查询本地已验证结果，不驱动认证网络。固定实例界面隐藏 URL、CA 高级设置、授权链接和手动检查，提供单一浏览器登录入口及必要错误恢复；自托管网络设置保留。认证必须在发起登录的本机浏览器完成，普通网页登录不代表授权另一台设备。code 交换结果未知明确重登，不重复兑换；已收到 grant 的会话检查和持久化失败可重试同一内存结果。未完成事务不跨应用重启恢复，已提交会话仍经既有 Keychain/config 恢复。
 
+账号入口收到 native 已提交 registry 即完成登录展示，不追加连接选择写入；登录期间的新选择由原 registry commit 裁决。App store 首读失败以有上限的退避重读本地 registry，focus 使用同一串行读取，teardown 拒绝迟到结果；该同步不重新授权或写凭据。初始化登录请求失败没有自动重试，不能套用网络连接器的“自动重连/设备状态未知”提示；免登录重开仅适用于仍有效的已保存会话。回归及真实设备边界见 `dev-docs/login-regression-20261028/acceptance.md`。
+
 旧 `/auth/login/start/poll/ack/cancel` 契约保留给旧桌面、Host、手机和 Web 入口，响应 shape 不变；新 OAuth 事务拒绝旧端点消费或撤销。旧桌面 `browserReturnPath: "/desktop"` 仍由原PKCE事务绑定，固定 `moxbot://login/complete` 仅激活窗口/唤醒检查，不携带凭据或认证授权。新流程可在未注册 scheme 时通过 loopback 完成结果交付。
 
 `owned_account_desktop.rs` 在首次恢复时从 OS 凭据库读取并验证完整实例、设备、principal、连接、binding、CA 和有效期。Owned 连接使用登录响应实际绑定的独立 device ID；identity、admission、discovery、来源和本机标记均使用同一 ID，官方/legacy 保持安装级 ID。浏览器首次以临时 ID 识别账号，完整查询同账号候选登记；已有登记时精确注销临时会话，并显式再次授权旧 ID，校验同一 principal；查询失败/不完整或多候选歧义均不新建身份。

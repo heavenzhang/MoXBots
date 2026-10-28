@@ -110,6 +110,31 @@ export function acceptNetworkRegistry(next: NetworkRegistry) {
 }
 export function startAgentNetworkStore(): () => void {
   const abort = new AbortController();
+  let reading = false;
+  let failures = 0;
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  const refresh = async () => {
+    if (abort.signal.aborted || reading) return;
+    if (retry) clearTimeout(retry);
+    retry = undefined;
+    reading = true;
+    try {
+      const value = await networkConnections();
+      if (!abort.signal.aborted) acceptNetworkRegistry(value);
+      failures = 0;
+    } catch {
+      if (abort.signal.aborted) return;
+      if (registry === initial)
+        accept({ ...initialSnapshot, state: "unavailable" });
+      // Retry only this local read. Native remains the sole credential and
+      // login owner; a delayed startup must not require another sign-in.
+      const delay = Math.min(15_000, 1000 * 2 ** Math.min(failures++, 4));
+      retry = setTimeout(() => { void refresh(); }, delay);
+    } finally {
+      reading = false;
+    }
+  };
+  const onFocus = () => { void refresh(); };
   void (async () => {
     try {
       const first = await listenWithCleanup<NetworkSnapshot>(
@@ -126,8 +151,8 @@ export function startAgentNetworkStore(): () => void {
       if (abort.signal.aborted) return;
       if (!first.isRegistered() || !second.isRegistered())
         throw Error("NETWORK_LISTENER_UNAVAILABLE");
-      const value = await networkConnections();
-      if (!abort.signal.aborted) acceptNetworkRegistry(value);
+      if (typeof window !== "undefined") window.addEventListener("focus", onFocus);
+      await refresh();
     } catch {
       if (!abort.signal.aborted && registry === initial)
         accept({ ...initialSnapshot, state: "unavailable" });
@@ -135,6 +160,8 @@ export function startAgentNetworkStore(): () => void {
   })();
   return () => {
     abort.abort();
+    if (retry) clearTimeout(retry);
+    if (typeof window !== "undefined") window.removeEventListener("focus", onFocus);
     drafts.clear();
     clearRemoteDrafts();
     clearAllHostManagementState();

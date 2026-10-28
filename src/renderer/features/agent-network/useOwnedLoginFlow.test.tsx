@@ -88,6 +88,18 @@ const tick = async (ms = 2000) => {
     await vi.advanceTimersByTimeAsync(ms);
   });
 };
+it("reports a startup timeout as a sign-in service failure without claiming an automatic retry", async () => {
+  const { result, actions } = setup({
+    onOwnedStart: vi.fn().mockRejectedValue({ code: "NETWORK_CONNECTION_TIMEOUT", retryable: true }),
+  });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  expect(result.current.error).toBe("连接登录服务超时，请检查网络后重试。");
+  expect(result.current.attempt).toBeNull();
+  await tick(30_000);
+  expect(actions.onOwnedStart).toHaveBeenCalledOnce();
+  expect(actions.onOwnedPoll).not.toHaveBeenCalled();
+  expect(actions.onOwnedOpen).not.toHaveBeenCalled();
+});
 it("opens the browser once, polls automatically and closes on authenticated without manual checking", async () => {
   const poll = vi
     .fn()

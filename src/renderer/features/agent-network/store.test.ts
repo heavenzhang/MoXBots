@@ -52,10 +52,56 @@ afterEach(() => {
   stop?.();
   stop = undefined;
   vi.clearAllMocks();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 const flush = async () => {
   for (let i = 0; i < 6; i++) await Promise.resolve();
 };
+it("recovers the saved registry after a failed startup read without restarting or duplicating subscriptions", async () => {
+  vi.useFakeTimers();
+  mocks.listen.mockResolvedValue({ isRegistered: () => true });
+  mocks.read.mockRejectedValueOnce(new Error("startup unavailable"))
+    .mockResolvedValueOnce(registry([{ ...base, authGeneration: 7, revision: 7 }]));
+  stop = startAgentNetworkStore();
+  await flush();
+  expect(mocks.read).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(mocks.read).toHaveBeenCalledTimes(2);
+  expect(currentNetworkGeneration()).toBe(7);
+  expect(mocks.listen).toHaveBeenCalledTimes(2);
+  stop();
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(mocks.read).toHaveBeenCalledTimes(2);
+});
+it("does not publish a delayed startup retry after the store stops", async () => {
+  vi.useFakeTimers();
+  mocks.listen.mockResolvedValue({ isRegistered: () => true });
+  mocks.read.mockRejectedValue(new Error("startup unavailable"));
+  stop = startAgentNetworkStore();
+  await flush();
+  stop();
+  await vi.advanceTimersByTimeAsync(30_000);
+  expect(mocks.read).toHaveBeenCalledOnce();
+});
+it("refreshes saved account state on focus with one read in flight and ignores completion after teardown", async () => {
+  const window = new EventTarget();
+  vi.stubGlobal("window", window);
+  let finish!: (value: NetworkRegistry) => void;
+  mocks.listen.mockResolvedValue({ isRegistered: () => true });
+  mocks.read.mockResolvedValueOnce(registry([base])).mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  stop = startAgentNetworkStore();
+  await flush();
+  window.dispatchEvent(new Event("focus"));
+  window.dispatchEvent(new Event("focus"));
+  expect(mocks.read).toHaveBeenCalledTimes(2);
+  stop();
+  finish(registry([{ ...base, authGeneration: 9, revision: 9 }]));
+  await flush();
+  expect(currentNetworkGeneration()).toBe(0);
+  window.dispatchEvent(new Event("focus"));
+  expect(mocks.read).toHaveBeenCalledTimes(2);
+});
 describe("App network projection", () => {
   it("subscribes to both streams before reading, then fences a late old snapshot per connection", async () => {
     let resolve!: (v: NetworkRegistry) => void;
