@@ -3,6 +3,7 @@ import { newDesktopSession } from '@/api/sessionHandoverClient';
 import { releaseTabSession } from '@/api/tauriClient';
 import { transitionDesktopSession } from './desktopSessionTransition';
 import { LOG_SESSION_HEADER } from '../../shared/types/log';
+import { continuationForTurn } from '../../shared/sessionContinuation';
 import { messageCompletionParams } from '@/analytics/conversation';
 import { normalizeAskUserQuestionInput, type AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import {
@@ -2581,7 +2582,15 @@ export default function TabProvider({
             )
               setStreamingMessage(null);
             for (const id of removed) seenIdsRef.current.delete(id);
-          } else if (operation.kind !== 'turn-update') {
+          } else if (operation.kind === 'turn-update') {
+            const lastUser = historyMessagesRef.current.findLast(row => row.role === 'user'
+              && !row.id.startsWith('task-notification-'));
+            if (lastUser && lastUser.id === operation.turn.rootUserMessageId) {
+              const continuation = continuationForTurn(operation.turn, lastUser.id);
+              setSessionMeta(current => current?.id === payload.sessionId
+                ? { ...current, continuation } : current);
+            }
+          } else {
             updateDisplayedMessages((message) =>
               applyTranscriptDisplayOperation(message, operation),
             );

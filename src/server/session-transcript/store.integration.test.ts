@@ -89,6 +89,22 @@ describe('SessionStore V2 ownership and compatibility', () => {
     await expect(store.flushSessionTranscriptsForUpdate()).resolves.toBeUndefined();
   });
 
+  it('persists the failed-turn continuation with its partial results across a cold read', async () => {
+    const { metadata, active } = await create();
+    active.writer.observe({ kind: 'message-create', message: { id: 'u1', role: 'user', content: 'Original task', timestamp: 't' } });
+    active.writer.observe({ kind: 'message-create', message: { id: 'partial', role: 'assistant', content: 'Completed step 1', timestamp: 't', turnId: 'turn1', transcriptState: 'interrupted', sdkUuid: 'native-partial' } });
+    active.writer.observe({ kind: 'turn-update', turn: { id: 'turn1', rootUserMessageId: 'u1', startedAt: 't', status: 'error' } });
+    await store.flushSessionTranscriptsForUpdate();
+    await active.revoke();
+    vi.resetModules(); store = await import('../SessionStore');
+    const recovered = await store.getSessionData(metadata.id);
+    expect(recovered?.continuation).toEqual({ turnId: 'turn1', rootUserMessageId: 'u1', status: 'error' });
+    expect(recovered?.messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'u1', content: 'Original task' }),
+      expect.objectContaining({ id: 'partial', content: 'Completed step 1', sdkUuid: 'native-partial' }),
+    ]));
+  });
+
   it('does not create product directories during cold identity and empty transcript reads', async () => {
     testState.failSyncStorage = true;
     expect(store.getAllSessionMetadata()).toEqual([]);

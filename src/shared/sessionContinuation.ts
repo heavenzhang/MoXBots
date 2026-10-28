@@ -1,27 +1,32 @@
-import type { TranscriptProjection } from './sessionTranscript';
+import type { TranscriptProjection, TranscriptTurn } from './sessionTranscript';
 
-/** Display-only projection of stopped/interrupted conversation work. Runtime
+/** Display-only projection of unfinished terminal conversation work. Runtime
  * and workflow owners still decide whether a new continuation can execute. */
 export interface SessionContinuation {
   turnId: string;
   rootUserMessageId: string;
-  status: 'running' | 'stopped' | 'interrupted';
+  status: 'running' | 'stopped' | 'interrupted' | 'error';
 }
 
-export const SESSION_CONTINUATION_PROMPT = '请接着完成上一项尚未完成的任务，沿用本会话的目标、上下文和已有进度。先核对当前代码、文件、执行结果和已完成步骤，再从未完成处继续；不要从头重跑，不要重复已完成的写入、发送或发布。遇到尚未解决的权限或信息缺口时，明确指出。';
+export const SESSION_CONTINUATION_PROMPT = '请接着完成上一项尚未完成的任务，沿用本会话的目标、上下文和已有进度。先核对现有任务清单、代码、文件、工具结果和已完成步骤，再从最后一个已确认完成步骤之后继续；不要从头重跑，不要重新创建清单或重置已完成步骤，不要重复已完成的写入、发送或发布。对执行结果不明的操作，先只读核查实际状态；未确认前不要重复执行，无法核实时说明阻断。遇到尚未解决的权限或信息缺口时，明确指出。';
 
 export function deriveSessionContinuation(projection: TranscriptProjection): SessionContinuation | undefined {
   const messages = [...projection.messages.values()];
   const lastUser = messages.filter(message => message.role === 'user'
     && !message.id.startsWith('task-notification-')).at(-1);
   if (!lastUser) return undefined;
-  const lastTurn = [...projection.turns.values()].at(-1);
+  return continuationForTurn([...projection.turns.values()].at(-1), lastUser.id);
+}
+
+/** A canonical terminal event may update the display before list metadata is
+ * flushed. It must still belong to the latest real user input. */
+export function continuationForTurn(lastTurn: TranscriptTurn | undefined, lastUserMessageId: string): SessionContinuation | undefined {
   if (!lastTurn || lastTurn.origin === 'collaboration'
-    || lastTurn.rootUserMessageId !== lastUser.id
-    || !['stopped', 'interrupted'].includes(lastTurn.status)) return undefined;
+    || lastTurn.rootUserMessageId !== lastUserMessageId
+    || !['stopped', 'interrupted', 'error'].includes(lastTurn.status)) return undefined;
   return {
     turnId: lastTurn.id,
-    rootUserMessageId: lastUser.id,
+    rootUserMessageId: lastUserMessageId,
     status: lastTurn.status as SessionContinuation['status'],
   };
 }

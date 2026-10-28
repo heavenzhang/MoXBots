@@ -1,0 +1,19 @@
+{
+  "specs/tech_docs/session_architecture.md": "cb3d155e3b97087f7e8ec191e795672a9aedd3acef85884a5d37e7f73803e853",
+  "src/renderer/components/ErrorRecoveryAction.test.tsx": "114faf0ed7b545a7bd5432569136a66ff93fc0a2e8b84a1468c2c13d6262e689",
+  "src/renderer/components/ErrorRecoveryAction.tsx": "b7625ea354b6fd4c88494928a5e6f0622583aff315e7890d581d9a341dd49f3c",
+  "src/renderer/components/SessionContinuationBanner.test.tsx": "e151d3a7bb64ac8d3b49671f3b656ad92d4b6dba1bec316219000fc3ca72fcd8",
+  "src/renderer/components/SessionContinuationBanner.tsx": "b9ff2f5257667b28dbe2809cacdcf0334f05741fdcce317240cab4a78ced4500",
+  "src/renderer/context/TabProvider.activity.test.tsx": "e21003d2d588ee629ee1b6fcb4ae14d48c0837970b2c50d5fe2aeb13d286e38a",
+  "src/renderer/context/TabProvider.tsx": "b545cd837002ac36a016f2d2b33206d507640dfcaa3f9278c58c037567035d33",
+  "src/renderer/i18n/locales/en-US/chat.json": "7653fd6ffb7f3ab50de56925261cdc6b28a597966c0b454e6c1683d0e2d871e2",
+  "src/renderer/i18n/locales/zh-CN/chat.json": "834cfe3038130593933e82d1a5427d827a85628e54b7f2270160895babf147aa",
+  "src/renderer/pages/Chat.tsx": "ce67897f28c618402da0d45932ba749b09660387d27c1334b4ba63c7c23d01a8",
+  "src/renderer/pages/errorMessageResend.test.ts": "3116a439ca76c5b8b1f08a73d05816ff17f3c062c597fc5fc1b6ca1275007d73",
+  "src/renderer/pages/errorMessageResend.ts": "cd1d050a8bf22fe3b8a1af405db421f0fc5b0abac9c8233848a68d511fc62281",
+  "src/server/session-engine/continuation-admission.unit.test.ts": "f7efcce2bd19cbc3712bac771543bf02f5b877dcfe8fe7c38adbf1d2d5828b48",
+  "src/server/session-transcript/builtin.integration.test.ts": "06423c012aada3611b00686111f6ee852967b295dec967775df283c1bdb5db10",
+  "src/server/session-transcript/store.integration.test.ts": "915000ab7a1c1a5eefa42c2b87f7305625aed769c2df8199a1be33e37a862563",
+  "src/shared/sessionContinuation.test.ts": "cc8619a79a7f649ea53b18b62d63069954cbcd5a87826de8007b2219889b4f81",
+  "src/shared/sessionContinuation.ts": "899de9c679d74d5be658b00c2fa8e06846fb0c20ecd8e42684609c5f01e03678"
+}

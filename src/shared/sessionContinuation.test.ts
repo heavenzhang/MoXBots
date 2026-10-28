@@ -9,10 +9,10 @@ function fixture(status: TranscriptTurn['status']) {
   return projection;
 }
 describe('persisted conversation continuation', () => {
-  it.each(['stopped', 'interrupted'] as const)('projects exact %s work without replaying input', status => {
+  it.each(['stopped', 'interrupted', 'error'] as const)('projects exact %s work without replaying input', status => {
     expect(deriveSessionContinuation(fixture(status))).toEqual({ turnId: 'turn1', rootUserMessageId: 'u1', status });
   });
-  it.each(['running', 'complete', 'error'] as const)('does not offer active, completed or unresolved-error %s work as resumable', status => {
+  it.each(['running', 'complete'] as const)('does not offer active or completed %s work as resumable', status => {
     expect(deriveSessionContinuation(fixture(status))).toBeUndefined();
   });
   it('rejects legacy running metadata even when the original root matches', () => {
