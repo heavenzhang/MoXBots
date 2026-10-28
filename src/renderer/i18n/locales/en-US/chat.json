@@ -1007,7 +1007,14 @@
       "title": "AI call failed: ",
       "imageTooLargePrefix": "The tool screenshot exceeds the model limit. ",
       "rewindAction": "Rewind to before this turn",
-      "resend": "Resend"
+      "resend": "Resend",
+      "continue": "Continue task",
+      "inspect": "Check status",
+      "recovering": "Checking…",
+      "continueHint": "Keep existing context and results, and continue from confirmed progress. Verify uncertain operations first.",
+      "inspectHint": "Refresh conversation history and queue to check execution. This does not resend the task.",
+      "resendHint": "This request was not admitted. Send the original message and attachments again.",
+      "inspected": "Conversation history and queue refreshed. Check the results before repeating any uncertain operation."
     },
     "diagnostics": {
       "askHelper": "Ask helper to diagnose"

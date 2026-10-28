@@ -3116,19 +3116,20 @@ it('rechecks background work after awaited materialization, before SDK yield', a
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
 });
 
-it.each(['success', 'late-completion', 'double-click'])('checks explicit continuation at the actual builtin commit boundary (%s)', async mode => {
+it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].map(mode => ({ status, mode }))))('checks explicit $status continuation at the actual builtin commit boundary ($mode)', async ({ status, mode }) => {
   const platform = await import('../utils/platform');
   vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
   vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
   vi.spyOn(platform, 'getHomeDirOrNull').mockReturnValue(state.home);
   const workspace = join(state.home, 'continuation-workspace');
-  await mkdir(workspace);
+  await mkdir(workspace, { recursive: true });
   const meta = await store.createSession(workspace, { runtime: 'builtin' });
   state.independentInputPump = true;
   await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
   const active = store.getActiveSessionTranscript(meta.id)!;
   active.writer.observe({ kind: 'message-create', message: { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't' } });
-  active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status: 'interrupted' } });
+  active.writer.observe({ kind: 'message-create', message: { id: 'partial-result', role: 'assistant', content: 'Saved tool result', timestamp: 't', turnId: 'old-turn', transcriptState: 'interrupted', sdkUuid: 'native-partial' } });
+  active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status } });
   await active.writer.flush();
   if (mode === 'late-completion') {
     const claim = store.claimPreparedSessionForTurnAdmission;
@@ -3139,7 +3140,8 @@ it.each(['success', 'late-completion', 'double-click'])('checks explicit continu
     });
   }
   const engine = (await import('../session-engine/selector')).getSessionEngine();
-  const send = () => engine.sendDesktopMessage({ text: 'Explicit continuation',
+  const { SESSION_CONTINUATION_PROMPT } = await import('../../shared/sessionContinuation');
+  const send = () => engine.sendDesktopMessage({ text: SESSION_CONTINUATION_PROMPT,
     continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
     scenario: { type: 'desktop' } });
   const results = await Promise.all(mode === 'double-click' ? [send(), send()] : [send()]);
@@ -3152,7 +3154,9 @@ it.each(['success', 'late-completion', 'double-click'])('checks explicit continu
     expect(result.success).toBe(true);
     expect(results.filter(receipt => receipt.success)).toHaveLength(1);
     await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(1));
-    expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task', 'Explicit continuation']);
+    expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task', SESSION_CONTINUATION_PROMPT]);
+    expect(active.writer.projection.messages.get('partial-result')).toMatchObject({ content: 'Saved tool result', sdkUuid: 'native-partial' });
+    expect(JSON.stringify(state.sdkInputs[0])).toContain(SESSION_CONTINUATION_PROMPT);
     const repeated = await engine.sendDesktopMessage({ text: 'Explicit continuation',
       continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
       scenario: { type: 'desktop' } });

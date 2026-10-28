@@ -74,10 +74,20 @@ describe('canonical continuation admission', () => {
     });
   });
 
-  it.each(['complete', 'error', 'running'] as const)('rejects a canonical %s turn despite stale displayed metadata', status => {
+  it.each(['complete', 'running'] as const)('rejects a canonical %s turn despite stale displayed metadata', status => {
     const { engine, request, projection } = fixture();
     projection.turns.get('turn1')!.status = status;
     expect(prepareContinuationAdmission(engine, request)).toMatchObject({ accepted: false, result: { code: 'SESSION_CONTINUATION_STALE' } });
+  });
+
+  it('allows explicit continuation of a failed turn while retaining the same commit checks', async () => {
+    const { engine, request, projection } = fixture();
+    projection.turns.get('turn1')!.status = 'error';
+    const decision = admitted(engine, request);
+    const guard = await decision.guard();
+    expect(guard.validateAtCommit?.()).toMatchObject({ accepted: true });
+    projection.turns.get('turn1')!.status = 'complete';
+    expect(guard.validateAtCommit?.()).toMatchObject({ accepted: false, code: 'SESSION_CONTINUATION_STALE' });
   });
 
   it('rejects a replaced transcript owner and a changed root input', () => {

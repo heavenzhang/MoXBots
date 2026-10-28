@@ -1,0 +1,85 @@
+{
+  "environment": "isolated real product components; synthetic state and action receipts; no real Provider or native client",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1280,
+      "status": "PASS",
+      "checks": [
+        "no-auto-execution",
+        "continue-exact-turn",
+        "no-original-replay",
+        "double-click",
+        "draft-preserved",
+        "uncertain-inspect-only",
+        "keyboard",
+        "definitive-resend",
+        "busy",
+        "recovery-failure",
+        "completed-no-continue",
+        "no-horizontal-overflow",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "status": "PASS",
+      "checks": [
+        "no-auto-execution",
+        "continue-exact-turn",
+        "no-original-replay",
+        "double-click",
+        "draft-preserved",
+        "uncertain-inspect-only",
+        "keyboard",
+        "definitive-resend",
+        "busy",
+        "recovery-failure",
+        "completed-no-continue",
+        "no-horizontal-overflow",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 1280,
+      "status": "PASS",
+      "checks": [
+        "no-auto-execution",
+        "continue-exact-turn",
+        "no-original-replay",
+        "double-click",
+        "draft-preserved",
+        "uncertain-inspect-only",
+        "keyboard",
+        "definitive-resend",
+        "busy",
+        "recovery-failure",
+        "completed-no-continue",
+        "no-horizontal-overflow",
+        "no-page-errors"
+      ]
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "status": "PASS",
+      "checks": [
+        "no-auto-execution",
+        "continue-exact-turn",
+        "no-original-replay",
+        "double-click",
+        "draft-preserved",
+        "uncertain-inspect-only",
+        "keyboard",
+        "definitive-resend",
+        "busy",
+        "recovery-failure",
+        "completed-no-continue",
+        "no-horizontal-overflow",
+        "no-page-errors"
+      ]
+    }
+  ]
+}

@@ -1007,7 +1007,14 @@
       "title": "AI 调用失败：",
       "imageTooLargePrefix": "工具截图超过模型处理限制，",
       "rewindAction": "点击时间回溯到之前",
-      "resend": "重新发送"
+      "resend": "重新发送",
+      "continue": "继续执行",
+      "inspect": "核查状态",
+      "recovering": "处理中…",
+      "continueHint": "保留上下文和已有结果，从已确认的进度继续。结果不明的操作先核查。",
+      "inspectHint": "刷新会话记录与队列，核查是否已经执行；不会重发任务。",
+      "resendHint": "此请求尚未被接收，重新发送原消息与附件。",
+      "inspected": "已刷新会话记录与队列。请核对执行结果；未确认的操作不要重复执行。"
     },
     "diagnostics": {
       "askHelper": "小助理诊断"

@@ -1,6 +1,7 @@
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
 import { deriveSessionTodos } from '../../shared/sessionWorkProgress';
-import { projectErrorMessageResend } from '../pages/errorMessageResend';
+import { projectErrorRecovery } from '../pages/errorMessageResend';
+import { SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StrictMode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -153,6 +154,7 @@ function Probe() {
     streamingMessage,
     systemInitInfo,
     sessionMeta,
+    setSessionMeta,
     sessionRuntimeSessionId,
     mcpEffectiveSnapshot,
     queuedMessages,
@@ -189,6 +191,8 @@ function Probe() {
         id: sessionMeta.id,
         runtime: sessionMeta.runtime,
       } : null)}</output>
+      <output data-testid="continuation">{JSON.stringify(sessionMeta?.continuation ?? null)}</output>
+      <button type="button" onClick={() => setSessionMeta({ id: sessionId!, agentDir: '/tmp/workspace', title: 'test', createdAt: '', lastActiveAt: '' })}>seed metadata</button>
       <output data-testid="live-runtime-session-id">{sessionRuntimeSessionId ?? ''}</output>
       <output data-testid="mcp-runtime-generation">{mcpEffectiveSnapshot?.runtimeGeneration ?? ''}</output>
       <output data-testid="streaming-content">{JSON.stringify(streamingMessage?.content ?? null)}</output>
@@ -220,12 +224,10 @@ function Probe() {
         if (failed) void sendMessage('hello', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, failed.id);
       }}>resend failed message</button>
       <button type="button" onClick={() => {
-        const original = historyMessages.find(message => message.id === 'admitted-error-user');
-        const resend = original && projectErrorMessageResend(original, historyMessages);
-        if (resend) void sendMessage(resend.text, resend.images, undefined, undefined, undefined, undefined,
-          undefined, undefined, resend.context.requiredSystemSkill, resend.asyncQuestionReply,
-          resend.context.agentMentions, resend.context.primaryContext, resend.retryFailedMessageId);
-      }}>resend admitted error</button>
+        const recovery = projectErrorRecovery(historyMessages, agentErrorUserMessageId, sessionMeta?.continuation);
+        if (recovery?.kind === 'continue') void sendMessage(SESSION_CONTINUATION_PROMPT, undefined, undefined, undefined,
+          undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, recovery.turnId);
+      }}>continue admitted error</button>
       <button type="button" onClick={() => void resetSession()}>reset session</button>
       <button type="button" onClick={() => void stopResponse()}>stop response</button>
       <button type="button" onClick={() => {
@@ -859,27 +861,46 @@ describe('TabProvider session activity ownership', () => {
     expect(JSON.parse(screen.getByTestId('history-delivery').textContent!)).toEqual([null]);
   });
 
-  it('resends an admitted provider failure without retracting earlier messages or invoking native rewind', async () => {
+  it('continues an admitted provider failure from live canonical terminal events without replaying the original prompt', async () => {
     const sessionId = 'pending-admitted-error';
     tauriHarness.proxyFetch.mockResolvedValue(new Response(JSON.stringify({ success: true })));
     render(<TabProvider tabId="admitted-error" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
     await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
     emit('chat:init', { sessionId, transcriptFormat: 2, sessionState: 'idle' });
+    fireEvent.click(screen.getByRole('button', { name: 'seed metadata' }));
     for (const message of [
       { id: 'admitted-error-user', role: 'user', content: 'original request', sdkUuid: 'native-user' },
       { id: 'partial-work', role: 'assistant', content: 'partial tool work already performed', sdkUuid: 'native-assistant' },
     ]) emit('chat:transcript-operation', { sessionId, operation: { kind: 'message-create', message: { ...message, timestamp: new Date(0).toISOString() } } });
+    emit('chat:transcript-operation', { sessionId, operation: { kind: 'turn-update', turn: { id: 'failed-turn', rootUserMessageId: 'admitted-error-user', status: 'error', startedAt: 't' } } });
+    expect(JSON.parse(screen.getByTestId('continuation').textContent!)).toEqual({ turnId: 'failed-turn', rootUserMessageId: 'admitted-error-user', status: 'error' });
     emit('chat:agent-error', { message: 'API Error: 499 Model request superseded or cancelled', userMessageId: 'admitted-error-user' });
-    fireEvent.click(screen.getByRole('button', { name: 'resend admitted error' }));
+    fireEvent.click(screen.getByRole('button', { name: 'continue admitted error' }));
     await waitFor(() => expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(1));
     const [url, options] = tauriHarness.proxyFetch.mock.calls[0];
     expect(String(url)).toMatch(/\/chat\/send$/);
-    expect(JSON.parse(String(options?.body))).toMatchObject({ text: 'original request', sessionId });
+    expect(JSON.parse(String(options?.body))).toMatchObject({ text: SESSION_CONTINUATION_PROMPT, sessionId, continueFromTurnId: 'failed-turn' });
     expect(JSON.parse(screen.getByTestId('history-content').textContent!)).toEqual([
-      'original request', 'partial tool work already performed', 'original request',
+      'original request', 'partial tool work already performed', SESSION_CONTINUATION_PROMPT,
     ]);
     expect(JSON.parse(screen.getByTestId('history-identities').textContent!).slice(0, 2).map((message: { id: string }) => message.id))
       .toEqual(['admitted-error-user', 'partial-work']);
+  });
+
+  it('ignores an old turn terminal after a newer user input, and clears continuation when work completes', async () => {
+    const sessionId = 'pending-error-projection';
+    render(<TabProvider tabId="error-projection" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId, transcriptFormat: 2, sessionState: 'idle' });
+    fireEvent.click(screen.getByRole('button', { name: 'seed metadata' }));
+    for (const id of ['older', 'newer']) emit('chat:transcript-operation', { sessionId, operation: { kind: 'message-create', message: { id, role: 'user', content: id, timestamp: 't' } } });
+    const terminal = (id: string, root: string, status: string) => emit('chat:transcript-operation', { sessionId, operation: { kind: 'turn-update', turn: { id, rootUserMessageId: root, status, startedAt: 't' } } });
+    terminal('new-turn', 'newer', 'error');
+    terminal('old-turn', 'older', 'complete');
+    expect(JSON.parse(screen.getByTestId('continuation').textContent!)).toMatchObject({ turnId: 'new-turn' });
+    terminal('new-turn', 'newer', 'complete');
+    expect(screen.getByTestId('continuation')).toHaveTextContent('null');
+    expect(tauriHarness.proxyFetch).not.toHaveBeenCalled();
   });
 
   it('shows a send immediately in the existing queue while the Runtime is starting', async () => {

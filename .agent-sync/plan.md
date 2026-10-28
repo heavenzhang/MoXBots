@@ -984,3 +984,8 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
+
+
+## MB-ERROR-CONTINUE-20261028 — 错误后保留进度继续
+
+用户确认按未接收重发、已执行部分继续、结果不明先核查修改错误横幅。沿原SessionContinuation/SessionEngine精确turn准入增加error terminal候选，保留native/product历史、工具结果及任务清单；明确未接收才可重发原文。任务`.agent-sync/tasks/codex-error-continue-20261028-fe2464aa.md`；验收`dev-docs/error-continue-20261028/acceptance.md`。392项定向单元/DOM/磁盘与SDK合成集成、tsc/lint/分类及Chromium/WebKit四组合实际组件交互通过，独立只读源审无阻断；main、共享CI、签名制品、安装和真实Provider分阶段待证据。desktop/macOS/updater及combinedCI/main继续由唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4组织下一未冻结批次；不动已发布0.5.24、原业务、恢复ledger/Stop/预算或其他部署单元。
