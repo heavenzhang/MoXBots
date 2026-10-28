@@ -2024,6 +2024,9 @@
     "revokeContinuation": "Block future continuation again"
   },
   "executionStatus": {
+    "tasks": "Tasks",
+    "collaboration": "Activity",
+    "executionDetails": "Execution details",
     "summary": "Execution status",
     "goal": "Goal details",
     "todos": "Task orchestration details",
@@ -2032,6 +2035,8 @@
     "returned": "Returned {{count}}",
     "failed": "Issues {{count}}",
     "execution": {
+      "unconfirmedShort": "Execution unconfirmed",
+      "unknownShort": "Syncing status",
       "unknown": "Execution status is unknown",
       "unconfirmed": "Execution intent unconfirmed · automatic continuation is off",
       "running": "Running",

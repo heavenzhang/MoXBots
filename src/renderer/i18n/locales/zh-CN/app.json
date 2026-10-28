@@ -2022,14 +2022,19 @@
     "continuationFailed": "未能确认操作结果，请刷新查看当前状态。"
   },
   "executionStatus": {
+    "tasks": "任务",
+    "collaboration": "协作",
+    "executionDetails": "执行详情",
     "summary": "执行状态",
     "goal": "目标详情",
-    "todos": "任务编排详情",
+    "todos": "任务详情",
     "agents": "协作详情",
     "running": "运行中 {{count}}",
     "returned": "已回传 {{count}}",
     "failed": "异常 {{count}}",
     "execution": {
+      "unconfirmedShort": "执行未确认",
+      "unknownShort": "状态待同步",
       "unknown": "执行状态暂不可确认",
       "unconfirmed": "执行意图未确认 · 自动续跑未启用",
       "running": "运行中",

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionExecution } from "../../../shared/sessionExecution";
 import type {
@@ -7,7 +6,7 @@ import type {
 } from "../../../shared/sessionTaskOrchestration";
 
 type Admission = SessionTaskLedger["executionAdmission"];
-type Props = {
+export type SessionExecutionStatusProps = {
   execution?: SessionExecution;
   recovery?: SessionExecutionRecoveryProjection;
   admission?: Admission;
@@ -46,15 +45,14 @@ const reasonKeys: Record<string, string> = {
   dispatch_unconfirmed: "dispatchUnconfirmed",
 };
 
-/** Compact, read-only view of the durable single-session execution ledger. */
-export default function SessionExecutionStatus({
+/** Read-only presentation of the current request; never adopts an older execution. */
+export function useSessionExecutionPresentation({
   execution,
   recovery,
   admission,
   unknown = false,
-}: Props) {
+}: SessionExecutionStatusProps) {
   const { t } = useTranslation("app");
-  const [open, setOpen] = useState(false);
   const currentExecution =
     execution && (!admission || admission.requestId === execution.requestId)
       ? execution
@@ -64,9 +62,9 @@ export default function SessionExecutionStatus({
   const root = "executionStatus.execution";
   const status =
     !currentExecution && admission?.error
-      ? t(`${root}.unconfirmed`)
+      ? t(`${root}.unconfirmedShort`)
       : unknown
-        ? t(`${root}.unknown`)
+        ? t(`${root}.unknownShort`)
         : undefined;
   const isCurrent = Boolean(currentExecution && !unknown);
   const matchingRecovery =
@@ -85,9 +83,10 @@ export default function SessionExecutionStatus({
   const recoveryStatus = matchingRecovery
     ? t(`${root}.recovery.${matchingRecovery.status}Status`)
     : undefined;
-  const primaryStatus = status ?? recoveryStatus ?? (currentExecution
-    ? t(`${root}.${phaseKeys[currentExecution.phase]}`)
-    : "");
+  const primaryStatus =
+    status ??
+    recoveryStatus ??
+    (currentExecution ? t(`${root}.${phaseKeys[currentExecution.phase]}`) : "");
   const provenChecks =
     isCurrent && currentExecution?.phase === "completed"
       ? new Set(
@@ -104,86 +103,94 @@ export default function SessionExecutionStatus({
         )
       : undefined);
 
+  return {
+    currentExecution,
+    primaryStatus,
+    summary,
+    reasonText,
+    recoveryText,
+    provenChecks,
+    attention: Boolean(
+      status ||
+        matchingRecovery ||
+        currentExecution?.phase === "incomplete" ||
+        currentExecution?.phase === "rework",
+    ),
+  };
+}
+
+/** Details are mounted inside ExecutionStatusBar's sole disclosure region. */
+export default function SessionExecutionDetails(
+  props: SessionExecutionStatusProps,
+) {
+  const { t } = useTranslation("app");
+  const presentation = useSessionExecutionPresentation(props);
+  if (!presentation) return null;
+  const { currentExecution, summary, reasonText, recoveryText, provenChecks } =
+    presentation;
+  const { unknown, admission } = props;
+  const root = "executionStatus.execution";
   return (
-    <section
-      data-session-execution-status
-      className="mb-2 min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] text-[var(--ink)]"
-      aria-label={t("executionStatus.summary")}
-    >
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-        className="flex min-h-10 w-full min-w-0 items-center gap-2 px-3 py-2 text-left text-xs hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
-      >
-        <span className="shrink-0 rounded-full bg-[var(--paper-hover)] px-2 py-1 font-medium">
-          {primaryStatus}
-        </span>
-        <span className="min-w-0 flex-1 truncate">{summary}</span>
-      </button>
-      {open && (
-        <div className="space-y-2 border-t border-[var(--line-subtle)] p-3 text-xs leading-5">
-          <div className="break-words font-medium [overflow-wrap:anywhere]">
-            {summary}
+    <div className="space-y-2 p-3 text-xs leading-5">
+      <div className="break-words font-medium [overflow-wrap:anywhere]">
+        {summary}
+      </div>
+      {!unknown && currentExecution && (
+        <>
+          {reasonText && (
+            <p className="break-words text-[var(--ink-secondary)] [overflow-wrap:anywhere]">
+              {reasonText}
+            </p>
+          )}
+          {recoveryText && (
+            <p className="break-words text-[var(--ink-secondary)] [overflow-wrap:anywhere]">
+              {recoveryText}
+            </p>
+          )}
+          <div className="text-[var(--ink-secondary)]">
+            {t(`${root}.turnCount`, { count: currentExecution.turns })}
           </div>
-          {!unknown && currentExecution && (
-            <>
-              {reasonText && (
-                <p className="break-words text-[var(--ink-secondary)] [overflow-wrap:anywhere]">
-                  {reasonText}
-                </p>
+          <div>
+            <div className="font-medium">
+              {t(`${root}.acceptance`, { defaultValue: "验收条件" })}
+            </div>
+            <ul className="mt-1 list-inside list-disc space-y-1 text-[var(--ink-secondary)]">
+              {currentExecution.intent.acceptanceCriteria.map(
+                (criterion, index) => (
+                  <li
+                    key={`${index}-${criterion}`}
+                    className="break-words [overflow-wrap:anywhere]"
+                  >
+                    {criterion}
+                    {currentExecution.phase === "completed" &&
+                    currentExecution.assessment?.checks.some(
+                      (check) => check.criterion === index,
+                    )
+                      ? ` · ${t(`${root}.proven`)}`
+                      : ""}
+                  </li>
+                ),
               )}
-              {recoveryText && (
-                <p className="break-words text-[var(--ink-secondary)] [overflow-wrap:anywhere]">
-                  {recoveryText}
-                </p>
-              )}
-              <div className="text-[var(--ink-secondary)]">
-                {t(`${root}.turnCount`, { count: currentExecution.turns })}
-              </div>
-              <div>
-                <div className="font-medium">
-                  {t(`${root}.acceptance`, { defaultValue: "验收条件" })}
-                </div>
-                <ul className="mt-1 list-inside list-disc space-y-1 text-[var(--ink-secondary)]">
-                  {currentExecution.intent.acceptanceCriteria.map(
-                    (criterion, index) => (
-                      <li
-                        key={`${index}-${criterion}`}
-                        className="break-words [overflow-wrap:anywhere]"
-                      >
-                        {criterion}
-                        {currentExecution.phase === "completed" &&
-                        currentExecution.assessment?.checks.some(
-                          (check) => check.criterion === index,
-                        )
-                          ? ` · ${t(`${root}.proven`)}`
-                          : ""}
-                      </li>
-                    ),
-                  )}
-                </ul>
-                <div className="mt-1 text-[var(--ink-secondary)]">
-                  {t(`${root}.coverage`, {
-                    covered: provenChecks,
-                    total: currentExecution.intent.acceptanceCriteria.length,
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-          {unknown && currentExecution && (
-            <p className="text-[var(--ink-secondary)]">
-              {t(`${root}.unknownHint`)}
-            </p>
-          )}
-          {admission?.error && (
-            <p className="text-[var(--ink-secondary)]">
-              {t(`${root}.admissionHint`)}
-            </p>
-          )}
-        </div>
+            </ul>
+            <div className="mt-1 text-[var(--ink-secondary)]">
+              {t(`${root}.coverage`, {
+                covered: provenChecks,
+                total: currentExecution.intent.acceptanceCriteria.length,
+              })}
+            </div>
+          </div>
+        </>
       )}
-    </section>
+      {unknown && currentExecution && (
+        <p className="text-[var(--ink-secondary)]">
+          {t(`${root}.unknownHint`)}
+        </p>
+      )}
+      {admission?.error && (
+        <p className="text-[var(--ink-secondary)]">
+          {t(`${root}.admissionHint`)}
+        </p>
+      )}
+    </div>
   );
 }

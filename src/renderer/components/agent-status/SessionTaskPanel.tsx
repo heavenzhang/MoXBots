@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { SessionTaskView } from '../../../shared/sessionTaskOrchestration';
 
 export default function SessionTaskPanel({ tasks, stale, onRetry, onSelectAgent, onHistory }: {
-  tasks: readonly SessionTaskView[]; stale: boolean; onRetry: () => void; onSelectAgent: (id: string) => void; onHistory: () => void;
+  tasks: readonly SessionTaskView[]; stale: boolean; onRetry: () => void; onSelectAgent: (id: string) => void; onHistory?: () => void;
 }) {
   const { t } = useTranslation('app');
   const active = tasks.filter(task => task.phase !== 'completed');
@@ -33,7 +33,7 @@ export default function SessionTaskPanel({ tasks, stale, onRetry, onSelectAgent,
     </details>}
     <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 text-xs text-[var(--ink-muted)]">
       <span>{t('orchestration.reviewBoundary')}</span>
-      <button type="button" onClick={onHistory} className="min-h-8 shrink-0 text-[var(--accent)]">{t('orchestration.executionHistory')}</button>
+      {onHistory && <button type="button" onClick={onHistory} className="min-h-8 shrink-0 text-[var(--accent)]">{t('orchestration.executionHistory')}</button>}
     </div>
   </section>;
 }

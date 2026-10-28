@@ -1,0 +1,296 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "engine": "chromium",
+      "case": "mutual disclosure, direct review, draft/focus retained, Enter/Escape, session switch",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 320,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 320,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 390,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 390,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 768,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 768,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 1440,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 1440,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state running",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state rework",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state paused",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state incomplete",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state completed",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state recovery",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state long",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "execution state unknown",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "goal coexistence and single pause/resume callbacks",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "history navigation keeps focus; Escape returns to stable summary",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "English labels",
+      "passed": true
+    },
+    {
+      "engine": "chromium",
+      "case": "empty state hides bar",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "mutual disclosure, direct review, draft/focus retained, Enter/Escape, session switch",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 320,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 320,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 390,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 390,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 768,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 768,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 1440,
+      "theme": "dark",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "compact, responsive, visible review, keyboard reachability",
+      "width": 1440,
+      "theme": "light",
+      "height": 32,
+      "border": "0px",
+      "pageOverflow": false,
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state running",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state rework",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state paused",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state incomplete",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state completed",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state recovery",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state long",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "execution state unknown",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "goal coexistence and single pause/resume callbacks",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "history navigation keeps focus; Escape returns to stable summary",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "English labels",
+      "passed": true
+    },
+    {
+      "engine": "webkit",
+      "case": "empty state hides bar",
+      "passed": true
+    }
+  ],
+  "errors": []
+}
