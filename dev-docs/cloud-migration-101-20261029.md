@@ -41,3 +41,17 @@ New data root: `/var/lib/moxbots-cloud101`; static root: `/srv/moxbots-cloud101`
 Service Rust tests:212 passed,0 failed,8 ignored. Bootstrap tests:6 passed. `cargo clippy --locked --all-targets -- -D warnings`, rustfmt, admin JS syntax and diff checks passed. Fixed mount/state/security regression is included. Existing real-Dex workflow must validate the exact new source and produce Linux binary provenance before publication.
 
 At this checkpoint only the official Dex2.46 image has been pulled on101. No cloud/static route, old Host configuration, daily Mac client or running unrelated service has been changed. Production, immutable packages, phone paths and main delivery remain pending.
+
+## WebSocket proxy header invariant
+
+Ubuntu's `/etc/nginx/proxy_params` already supplies `X-Forwarded-Proto $scheme`. Do not also set that header in `/v1/`: the relay rejects any duplicate header before authentication. The101 TLS location retains the existing include and these upgrade directives:
+
+```nginx
+include /etc/nginx/proxy_params;
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
+proxy_buffering off;
+```
+
+A valid anonymous HTTP/1.1 WebSocket handshake with subprotocol `myagents-agent-network.v1` must reach the authentication preflight401;400 is not readiness. Then verify an actual authenticated WSS/Node Ready path. The2026-10-29 one-header correction and11-route regression are recorded in the companion acceptance document. Retain the shared maintenance locks, exact latest snippet SHA CAS, backup and ownership-checked rollback; do not rerun historical deployment scripts against the current snippet.

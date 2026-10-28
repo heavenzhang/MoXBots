@@ -236,6 +236,138 @@ impl RemoteAssetRequest {
             _ => None,
         }
     }
+    /// The management request ID and device scope are checked by the transport;
+    /// this binds the payload to the selected Agent, transfer and read range.
+    pub fn matches_result(&self, result: &RemoteAssetResult) -> bool {
+        if self.validate().is_err() || result.validate().is_err() {
+            return false;
+        }
+        match (self, result) {
+            (_, RemoteAssetResult::Error { .. }) => true,
+            (
+                Self::Capabilities { agent_id, .. },
+                RemoteAssetResult::Capabilities { agent_id: got, .. },
+            ) => agent_id == got,
+            (
+                Self::UploadBegin {
+                    agent_id,
+                    upload_id,
+                    size_bytes,
+                    ..
+                },
+                RemoteAssetResult::Upload {
+                    agent_id: got,
+                    upload_id: id,
+                    total_bytes,
+                    state,
+                    ..
+                },
+            ) => {
+                agent_id == got
+                    && upload_id == id
+                    && size_bytes == total_bytes
+                    && *state != UploadState::Cancelled
+            }
+            (
+                Self::UploadChunk {
+                    agent_id,
+                    upload_id,
+                    offset,
+                    data_base64,
+                    ..
+                },
+                RemoteAssetResult::Upload {
+                    agent_id: got,
+                    upload_id: id,
+                    received_bytes,
+                    state,
+                    ..
+                },
+            ) => {
+                agent_id == got
+                    && upload_id == id
+                    && *state != UploadState::Cancelled
+                    && asset_base64_len(data_base64)
+                        .is_some_and(|len| *received_bytes >= *offset + len as u64)
+            }
+            (
+                Self::UploadStatus {
+                    agent_id,
+                    upload_id,
+                    ..
+                },
+                RemoteAssetResult::Upload {
+                    agent_id: got,
+                    upload_id: id,
+                    ..
+                },
+            ) => agent_id == got && upload_id == id,
+            (
+                Self::UploadCancel {
+                    agent_id,
+                    upload_id,
+                    ..
+                },
+                RemoteAssetResult::Upload {
+                    agent_id: got,
+                    upload_id: id,
+                    state,
+                    ..
+                },
+            ) => agent_id == got && upload_id == id && *state == UploadState::Cancelled,
+            (
+                Self::UploadFinish {
+                    agent_id,
+                    upload_id,
+                    ..
+                },
+                RemoteAssetResult::Asset {
+                    agent_id: got,
+                    upload_id: id,
+                    ..
+                },
+            ) => agent_id == got && upload_id == id,
+            (
+                Self::List {
+                    agent_id,
+                    session_id,
+                    limit,
+                    ..
+                },
+                RemoteAssetResult::List {
+                    agent_id: got,
+                    session_id: sid,
+                    items,
+                    ..
+                },
+            ) => agent_id == got && session_id == sid && items.len() <= usize::from(*limit),
+            (
+                Self::Read {
+                    agent_id,
+                    session_id,
+                    artifact_id,
+                    offset,
+                    max_bytes,
+                    ..
+                },
+                RemoteAssetResult::Chunk {
+                    agent_id: got,
+                    session_id: sid,
+                    artifact_id: id,
+                    offset: start,
+                    data_base64,
+                    ..
+                },
+            ) => {
+                agent_id == got
+                    && session_id == sid
+                    && artifact_id == id
+                    && offset == start
+                    && asset_base64_len(data_base64).is_some_and(|len| len <= *max_bytes as usize)
+            }
+            _ => false,
+        }
+    }
     pub fn validate(&self) -> Result<(), CodecError> {
         let ok = self.version() == 1
             && agent(self.agent_id())

@@ -1,4 +1,6 @@
-<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:source-digest=30d0f8eae5bba30a834949602895d52728142091f1761730194f6566fc16d624 -->
+<!-- git-project-sync-task:id=7280d13c-1a3b-43de-a96e-a8606780f9b0 -->
+<!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/cloud-migration101-20261029 -->
 <!-- git-project-sync-task:base=caab6ab648b434bee17930f90c4df4de87564bba -->
 <!-- git-project-sync-task:status=in-progress -->
@@ -32,6 +34,8 @@ Fixed admin mount, closed callback allowlist and explicit bootstrap option are c
 
 ## Verification
 
+- Source digest: `30d0f8eae5bba30a834949602895d52728142091f1761730194f6566fc16d624`; Actual101 duplicate-proxy-header repro and minimal fix: public401 plus authenticated WSS Ready and11route regression PASS. Controller regression red HOST_MANAGEMENT_RESPONSE_INVALID then green. Protocol31 and strictclippy PASS; headless225 PASS2existingignored; mobilecore42 PASS; scopedrustfmt anddiffcheck PASS. Headless strictclippy fails unchanged connector.rs handle_management_events 8/7 arguments; no suppression. Main/sharedCI/exactpatchedLinuxartifact and physicalphone/file/TestFlight remain pending solepublisher.
+
 Runbook: `dev-docs/cloud-migration-101-20261029.md`. Private receipts are under the project pointer's `output/cloud-migration-101-20261029/`; credentials, private keys, databases, logs and binaries are excluded from Git.
 
 Initial full service test run retained its single old-link assertion failure; assertion now matches the intended alternate fallback and rejects the old AI4S admin link. Full rerun passed. The task-init gate was attempted after source edits and correctly reported dirty worktree; this record preserves the same verified base without destructive cleanup. A clean remote handoff gate must be checked after commit/push.
@@ -51,3 +55,18 @@ Hand exact source to existing reviewers/CI owner, stage fresh private auth files
 ## Deployment and phone checkpoint 2026-10-29
 
 See `dev-docs/cloud-migration-101-20261029-acceptance.md`. Linux producer39ee13cc7 passed dedicated CI40734899841 including realDex and is running on101. Mobile producer1a6593d4d is frozen and actually installed; later receipt-only commits do not replace its artifact identity. Website33files published under /moxbots with all download entries preparing. Human explicitly deferred disabled Work browser UI. Originalmain/combinedCI/desktop/updater owner handles protected integration and new signed desktop artifact; no finished-main or TestFlight claim.
+
+## MOXBOTS-MOBILE-REPLY-MATCH-20261029
+
+Actual isolated101 QA found two distinct faults after the human confirmed phone login. The `/v1/` proxy duplicated `X-Forwarded-Proto`; removing only that duplicate changed public WebSocket preflight400 to expected401 and the saved-account QA Host reached real WSS/Node Ready. Original101 identity/configuration and existing services remain preserved. A separate same-account controlled peer then passed scoped Host inspection and legacy Session capabilities, while both mobile and asset capability calls failed with `HOST_MANAGEMENT_RESPONSE_INVALID`. The shared controller's response matcher has no branches for those two existing protocol families.
+
+- [x] Preserve actual failed/positive wire evidence and fetch current main775da22c before source changes.
+- [x] Add a regression that reproduces legal extension responses being rejected.
+- [x] Add strict method/request/result correlation for mobile and asset DTOs; retain device, request, Agent, operation, Session and transfer bounds.
+- [x] Run protocol31, headless225 (2 existing ignored), mobile core42 regressions and protocol strict clippy. Retain the existing headless strict-clippy eight-argument warning as an open baseline failure; no exemption added.
+- [ ] Commit/push exact scoped source and hand off to the existing sole CI/main publisher; do not replace its frozen desktop candidate or trigger shared CI here.
+- [ ] Obtain exact patched artifact, verify real wire send/history/upload/download and coordinate physical iPhone acceptance after reconnect. TestFlight and voice boundaries remain separate.
+
+Private evidence/controlled fixtures: project pointer `output/cloud-migration-101-20261029/qa-host/`. New QA Host/controller identities belong only to the approved isolated test environment. No original Host identity, key or configuration is copied into them; no external model inference is authorized by the controlled fixture.
+
+Scope clarification: this repair affects the headless/desktop acceptance controller. The existing mobile/core reply matcher was verified separately and its42 tests pass. Do not infer the same fault in the installed phone or reinstall it only for this repair. The phone already has human-confirmed build6 login.
