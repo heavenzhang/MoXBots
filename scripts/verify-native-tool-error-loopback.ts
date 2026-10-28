@@ -19,6 +19,8 @@ let denied = 0;
 let terminal = false;
 const nativeFailures: unknown[] = [];
 const emptyError = process.argv.includes('--empty-error');
+const backgroundAtFailure = process.argv.includes('--background-at-failure');
+let backgroundActive = false;
 const failingInput = { command: emptyError ? "printf 'once\n' >> attempts.txt; exit 1"
   : "printf 'once\n' >> attempts.txt; printf 'expected fixture failure\n' >&2; exit 1", description: 'Run a failing local check' };
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -31,7 +33,14 @@ const upstream = createServer((req, res) => {
     assert(step < 5, 'Unexpected inference replay');
     if (step === 1) {
       assert.deepEqual(ledger?.uncertain, [], 'normal Bash failure must settle before the next model call');
+      if (backgroundAtFailure) await assert.rejects(context.protectInference(body), /exclusive recovery authority/);
+      backgroundActive = false;
       await context.protectInference(body); // Actual recovery guard, forcing an exact-command replay attempt.
+    }
+    if (step === 2 && backgroundAtFailure) {
+      assert.deepEqual(ledger?.uncertain, [], 'a denied tool must not poison the ledger while recovery is fenced');
+      assert.equal(ledger?.nativeErrors.length, 2);
+      backgroundActive = false;
     }
     const tool = step < 2 ? { id: `failure-${step}`, name: 'Bash', input: failingInput }
       : step === 2 ? { id: 'corrected-write', name: 'Write', input: { file_path: join(scratch, 'corrected.txt'), content: 'corrected' } }
@@ -75,6 +84,7 @@ const native = query({ prompt: 'Run the local check, correct the fixture and ver
   hooks: {
     PreToolUse: [{ hooks: [async input => {
       if (input.hook_event_name !== 'PreToolUse') return {};
+      if (backgroundAtFailure && input.tool_name === 'Bash' && calls <= 2) backgroundActive = true;
       const reason = await context.authorizeTool(input.tool_name, input.tool_input, input.tool_use_id);
       if (!reason) return {};
       denied++;
@@ -104,7 +114,7 @@ try {
     if (event.type === 'system' && event.subtype === 'init') {
       const owner = { sessionId: 'fixture-product', sdkSessionId: event.session_id };
       context = new ContextRecoveryController({ scope: () => 'fixture-turn', isActive: () => !abort.signal.aborted,
-        protectStreaming: true, recoveryOwner: owner,
+        protectStreaming: true, recoveryOwner: owner, canRecover: () => !backgroundActive,
         backup: async (body, metadata) => {
           const path = join(scratch, `${metadata.digest}.json`);
           await writeFile(path, JSON.stringify(body), { mode: 0o600 }); return path;
@@ -126,6 +136,7 @@ try {
   assert.deepEqual(ledger?.uncertain, []);
   assert.equal(ledger?.nativeErrors.length, 2);
   console.log(JSON.stringify({ status: 'PASS', scratch, calls, denied, counter: 1, nativeFailures, unknown: ledger?.uncertain.length,
+    backgroundRecoveryGateFixture: backgroundAtFailure, actualBackgroundAgent: false,
     actualSdkNativeAndShell: true, syntheticModel: true, productionStore: false, installedClient: false }));
 } finally {
   clearTimeout(timer);

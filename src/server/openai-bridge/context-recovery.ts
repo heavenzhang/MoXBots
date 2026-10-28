@@ -130,7 +130,7 @@ function digest(value: unknown, ignoreCache = false): string {
   return createHash('sha256').update(canonical(value, ignoreCache)).digest('hex');
 }
 
-function toolKey(name: string, input: unknown): string {
+export function recoveryActionHash(name: string, input: unknown): string {
   return digest({ name, input });
 }
 
@@ -230,7 +230,7 @@ function analyze(body: AnthropicRequest, denied: ReadonlySet<string>, proof: Rea
             }
           }
           if (!READ_ONLY_TOOLS.has(use.name)) {
-            const key = toolKey(use.name, use.input);
+            const key = recoveryActionHash(use.name, use.input);
             if (block.is_error) {
               const nativeError = nativeErrors.get(nativeErrorKey(key, block.tool_use_id));
               if (nativeError?.toolName === use.name && (nativeError.reason === 'pre-tool-denied'
@@ -363,6 +363,20 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private readonly toolOwners = new Map<string, { scope: string | undefined; fingerprint: string; actionHash?: string }>();
   private readonly nativeAdmissions = new Map<string, { scope: string | undefined; pending: boolean; actionHash: string; uncertainAtStart: boolean }>();
   private settledReceipt: { receipt: SettledInterruptionReceipt; fingerprints: readonly string[] } | undefined;
+
+  /** Redacted inspection only. This snapshot cannot grant recovery or settle actions. */
+  inspectActionLedger() {
+    return {
+      completedCount: this.completedLedger.size,
+      uncertainCount: this.uncertainLedger.size,
+      blocked: this.ledgerBlocked,
+      nativeErrorReceiptCount: this.nativeErrors.size,
+      noDispatchReceiptCount: this.noDispatchLedger.size,
+      uncertainActions: [...this.uncertainLedger].sort().map(actionId => ({
+        actionId, completedEvidenceAlsoPresent: this.completedLedger.has(actionId),
+      })),
+    };
+  }
 
   /** Diagnostic only: never turns an ordinary error into a recovery candidate. */
   settledInterruptionFailure(): string | undefined {
@@ -654,8 +668,11 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const scope = this.options.scope();
     const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
     const emission = toolUseId ? this.toolOwners.get(toolUseId) : undefined;
-    const key = toolKey(name, input);
-    if (!owner?.isCurrent() || !toolUseId || !scope || !this.options.isActive() || this.options.canRecover?.() === false
+    const key = recoveryActionHash(name, input);
+    // Outcome recording belongs to the exact live tool admission. Background work
+    // can revoke inference retry/continuation without invalidating this receipt.
+    // Requiring canRecover here turns known exits/denials into durable unknowns.
+    if (!owner?.isCurrent() || !toolUseId || !scope || !this.options.isActive()
       || this.ledgerBlocked || this.nativeProofsDisabled || !admission?.pending
       || admission.actionHash !== key || admission.scope !== scope || emission?.scope !== scope || emission.actionHash !== key
       || (reason === 'bash-exited' && (admission.uncertainAtStart
@@ -680,7 +697,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.traceNativeAction('reserve_enter', toolUseId, toolUseId ? this.toolOwners.get(toolUseId)?.actionHash : undefined);
     this.nativeRevision++;
     const emission = toolUseId ? this.toolOwners.get(toolUseId) : undefined;
-    if (!toolUseId || !emission || emission.actionHash !== toolKey(name, input) || this.nativeAdmissions.has(toolUseId) || this.nativeAdmissions.size >= MAX_LEDGER_ENTRIES) this.unboundNativeAdmission = true;
+    if (!toolUseId || !emission || emission.actionHash !== recoveryActionHash(name, input) || this.nativeAdmissions.has(toolUseId) || this.nativeAdmissions.size >= MAX_LEDGER_ENTRIES) this.unboundNativeAdmission = true;
     else this.nativeAdmissions.set(toolUseId, { scope: emission.scope, pending: true, actionHash: emission.actionHash!, uncertainAtStart: this.uncertainLedger.has(emission.actionHash!) });
     if (toolUseId) {
       if (this.observedToolUseIds.size >= MAX_LEDGER_ENTRIES) this.nativeProofsDisabled = true;
@@ -704,7 +721,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       this.traceNativeAction('reserve_denied', toolUseId, emission?.actionHash);
       return 'automatic_replay_blocked: Recovery Query is no longer current.';
     }
-    const key = toolKey(name, input);
+    const key = recoveryActionHash(name, input);
     state.uncertain.add(key);
     this.uncertainLedger.add(key);
     try { await this.persist(); }
@@ -726,10 +743,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       const owner = this.nativeEvidenceOwner;
       const scope = this.options.scope();
       const exitCode = failed && name === 'Bash' ? settledBashExit(result, nativeFailure?.interrupted) : undefined;
-      const settled = failed && ((toolUseId && this.nativeErrors.has(nativeErrorKey(toolKey(name, input), toolUseId)))
+      const settled = failed && ((toolUseId && this.nativeErrors.has(nativeErrorKey(recoveryActionHash(name, input), toolUseId)))
         || (exitCode !== undefined && this.recordNativeError(name, input, toolUseId, 'bash-exited', result, exitCode)));
       if (!settled) this.recordToolResult(name, input, result, failed);
-      actionHash = toolKey(name, input);
+      actionHash = recoveryActionHash(name, input);
       const evidence = this.completedLedger.get(actionHash);
       if (!failed && evidence && this.options.persistLedger && !evidence.archive) {
         // Post-recovery successes may have no original request archive yet. Their
@@ -744,7 +761,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         throw new RecoveryPreparationError('Native error settlement owner changed during persistence.');
       }
       const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
-      if (admission && admission.actionHash === toolKey(name, input) && admission.pending) admission.pending = false;
+      if (admission && admission.actionHash === recoveryActionHash(name, input) && admission.pending) admission.pending = false;
       else this.unboundNativeAdmission = true;
       this.nativeRevision++;
       this.traceNativeAction('commit_complete', toolUseId, actionHash, failed);
@@ -768,7 +785,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     if (!reason) return false;
     const scope = this.options.scope();
     if (!scope || !sourceScope || sourceScope !== scope) return false;
-    const key = toolKey(name, input);
+    const key = recoveryActionHash(name, input);
     const proofKey = noDispatchKey(key, toolUseId);
     if (!this.noDispatchLedger.has(proofKey)
       && this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES) return false;
@@ -842,7 +859,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return 'automatic_replay_blocked: An earlier tool outcome is uncertain. Only Read, Grep and Glob are allowed for read-only reconciliation; business actions remain blocked.';
     }
     if (!state.attempted && (!this.actionProtectionActive || this.streamArmedOnly)) return undefined;
-    const key = toolKey(name, input);
+    const key = recoveryActionHash(name, input);
     if (state.uncertain.has(key)) return 'automatic_replay_blocked: The earlier action has an uncertain outcome. Automatic repetition is blocked; verify it read-only.';
     if ([...this.nativeErrors.values()].some(item => item.reason === 'bash-exited' && item.actionHash === key)) {
       return 'automatic_replay_blocked: The earlier command exited with an error. Preserve its output and use a corrected command; automatic repetition is blocked.';
@@ -862,7 +879,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     // Background outcomes remain Query evidence after their parent foreground ends.
     const state = this.toolState();
     if (!state) return;
-    const key = toolKey(name, input);
+    const key = recoveryActionHash(name, input);
     if (failed) {
       if (!(state.denied.has(key) && state.completed.get(key)?.archive
         && canonical(result).includes('automatic_replay_blocked:'))) {
@@ -1039,7 +1056,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
           const { id, name, input } = emission.completedTool;
           const owner = this.toolOwners.get(id);
           this.nativeRevision++;
-          if (owner?.fingerprint === fingerprint && !owner.actionHash) owner.actionHash = toolKey(name, input);
+          if (owner?.fingerprint === fingerprint && !owner.actionHash) owner.actionHash = recoveryActionHash(name, input);
           else this.unboundNativeAdmission = true;
         }
         if (Object.hasOwn(emission, 'toolUseId')) {

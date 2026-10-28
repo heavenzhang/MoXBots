@@ -20,6 +20,12 @@ Private files: `<app-data>/context-recovery/<product-session>/`: SHA256 request 
 
 This is exact tool/input replay protection, not distributed exactly-once delivery: semantically equivalent operations with changed arguments require business-system idempotency keys and receipts. A tool must report its real success/failure; an ambiguous result is never proof of success. Downgrading to an older binary that lacks these gates requires pausing affected Goals and preserving/exporting their checkpoints first. Do not let the old version automatically continue recovered business work.
 
+## Recording outcomes while recovery is unavailable
+
+An exact live native tool admission remains the authority for its result even while background work revokes automatic inference recovery. Native error receipts require the same Query/Session owner, scope, emitted tool ID, input hash and pending admission; they do not require `canRecover`. Stop, stale ownership, missing evidence, timeout/signal exits, historical unknowns, concurrent identical admissions and failed persistence remain protected. Recording the result does not grant retries, failover or stream continuation; those entry points retain their existing background and deadline gates.
+
+For historical triage, `node --import tsx/esm scripts/inspect-recovery-ledger.ts --ledger FILE --native-history FILE` reads explicit, consistent private snapshots. It verifies the envelope digest and production ledger schema, then emits bounded redacted per-action leads without commands, result text or custom tool names. Physical native history is not proof of the selected branch or business outcome: success/error records, duplicate native IDs and missing evidence all remain diagnostic. The command never writes a ledger, dispatches a tool, restores a Query, or authorizes execution. Keep the report and source snapshots private; do not commit business histories. The report is preparation for evidence-based reconciliation, not a historical repair endpoint.
+
 ## Settled background stream continuation
 
 Task MOXBOTS-SETTLED-STREAM-CONTINUE-20261021 adds a narrow result-boundary path through the existing SameTurnStreamContinuation and SessionModelRecovery. It neither replays an HTTP request nor creates another queue, waiter, recovery owner or budget. The original root/native Session/route/Goal remain unchanged; a one-use marker in the last native user input retires all old-root fingerprints and opens a distinct inference namespace. Completed action hashes remain denied.

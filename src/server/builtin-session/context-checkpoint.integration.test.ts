@@ -83,14 +83,15 @@ it('retains the real SessionStore ledger when a restored Session only reconciles
   expect(restored.canRetryInference()).toBe(false);
 });
 
-it('persists native error proofs privately without clearing an existing unknown action', async () => {
+it.each([true, false])('persists native error proofs without clearing existing unknowns when recovery allowed=%s', async recoveryAllowed => {
   const snapshot = await store.loadSessionTranscript(id);
   await store.appendSessionMessages(id, snapshot.cursor, [{ id: 'fixture-user', role: 'user',
     content: 'Inspect the fixture.', timestamp: new Date().toISOString() }]);
   const body: AnthropicRequest = { model: 'fixture', max_tokens: 64, stream: true,
     messages: [{ role: 'user', content: 'Inspect the fixture.' }] };
   const owner = { sessionId: id, sdkSessionId: id };
-  const options = { scope: () => 'fixture-turn', isActive: () => true, protectStreaming: true, recoveryOwner: owner,
+  let canRecover = true;
+  const options = { scope: () => 'fixture-turn', isActive: () => true, protectStreaming: true, canRecover: () => canRecover, recoveryOwner: owner,
     backup: (request: AnthropicRequest, metadata: { digest: string; scope: string }) =>
       store.archiveBuiltinContextRequest(id, request, metadata, () => true),
     persistLedger: (ledger: unknown, guard?: () => boolean) => store.saveBuiltinContextLedger(id, id, ledger, () => true, guard) };
@@ -108,6 +109,7 @@ it('persists native error proofs privately without clearing an existing unknown 
     + frame('message_delta', { delta: { stop_reason: 'tool_use' } })
     + frame('message_stop', {}), { headers: { 'content-type': 'text/event-stream' } }));
   expect(response.status).toBe(200); await response.text();
+  canRecover = recoveryAllowed;
   const reason = await context.authorizeTool('Bash', input, 'denied-tool');
   expect(reason).toContain('read-only');
   const proofLedger = store.loadBuiltinContextLedger(id, id) as { uncertain: string[]; nativeErrors: unknown[] };
@@ -119,6 +121,7 @@ it('persists native error proofs privately without clearing an existing unknown 
   vi.resetModules(); store = await import('../SessionStore');
   const persisted = store.loadBuiltinContextLedger(id, id);
   expect(persisted).toEqual(proofLedger);
+  canRecover = true;
   const restored = new ContextRecoveryController({ ...options, initialLedger: persisted });
   await restored.protectInference(body, true);
   expect(restored.beforeTool('Write', {})).toContain('read-only');
