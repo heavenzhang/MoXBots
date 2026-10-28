@@ -1013,3 +1013,11 @@ SimpleChatInput在提交时同步释放正文/附件/查询上下文，拒绝/�
 收取源：输入提交fdade88b7、紧凑状态580e39360、输入字号71f1f3c7、错误安全续接07fef8d2、多Agent3a62a12d（产品3ef4cf8b）。Root已审源码与作者证据，当前融合32px单disclosure/focus/右侧验收入口和明确已验收/失败/未知语义，非整文件覆盖。任务 `.agent-sync/tasks/codex-release-0525-combined-20261028-d9d90149.md`。组合验证、CI/main、制品、本地和发布分别待回执，不以本地作者模拟证据替代真实验收。
 
 无Host/backend/mobile/Windows/网站部署、未提交routing混入或业务重放。独立模型恢复真实故障矩阵仍按原准入确认，不冒称已通过；本批只做受影响相称回归。原生维护需fresh owner/备份/回滚门，不切MoxBot master、不触发blocked memory100。
+
+## MB-MOBILE-BUILD5-MAIN-20261029 — 手机build5源码主干交付
+
+人类2026-10-29要求手机到可用版本并安装iPhone，既有mobile owner01a12b99-7b38-78b1-831f-9c60257d386a继续独立手机实际附件/签名/安装/TestFlight；sharedCI/main仍唯一Root01a12bc2-907a-7702-b6dd-788225c5dfe4。Root只交主干源码，不执行手机或日常Mac/101部署。
+
+固定手机producer40a30926d237ea0eb84261a5f6d6d59ef9097e66（maincaab+同字节原5c3d/d108snapshot修复+0.1.0/build5及记录），一次相称CI/main，不拆build4再build5；原手机制品不覆盖。Root隔离分支codex/mobile-build5-main-20261029，仅补齐任务标准章节和CI/main归属记录，产品/mobile子树与40a完全相同。任务.agent-sync/tasks/codex-mobile-build5-main-20261029-4939c867.md。原84policy/模拟UI不关闭真实iPhone、登录、native附件Read/下载预览或外部TestFlight。
+
+当前独立desktop0.5.25/525.1源码45a9冻结不变，手机来源不加入其制品。两PR共享main变更串行，合并前核最新main及独立目录/接口兼容；若手机先合，不能假称整个main树等于desktop45a9，要精确记录独立mobile delta与component closure，遵守原requiredCI而不绕保护。各单元保持原唯一部署会话与不可变版本/制品映射。
