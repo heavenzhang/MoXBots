@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=30d0f8eae5bba30a834949602895d52728142091f1761730194f6566fc16d624 -->
+<!-- git-project-sync-task:source-digest=d8747ab482e96102789ad313b167ab2b2e90de7ce4342fb5736876348cfbd3fc -->
 <!-- git-project-sync-task:id=7280d13c-1a3b-43de-a96e-a8606780f9b0 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/cloud-migration101-20261029 -->
@@ -33,6 +33,8 @@ Cloud/website/mobile publication:01a12b99-7b38-78b1-831f-9c60257d386a. Existing 
 Fixed admin mount, closed callback allowlist and explicit bootstrap option are committed with regression coverage. Server switch and release acceptance remain open.
 
 ## Verification
+
+- Source digest: `d8747ab482e96102789ad313b167ab2b2e90de7ce4342fb5736876348cfbd3fc`; Actual authenticated legacy Session2 terminalcomplete/user+assistant persisted; old-history read preserved activeowner; quiet release and coldread returned exactsame messages with nullgeneration. Original11hashes and Host/NginxPIDs preserved. No product/source/artifact change beyond receipt; implementationf99f4591 unchanged. Main/newcontrollerartifact/physicalphone/assets/TestFlight pending owner/device/browser gates.
 
 - Source digest: `30d0f8eae5bba30a834949602895d52728142091f1761730194f6566fc16d624`; Actual101 duplicate-proxy-header repro and minimal fix: public401 plus authenticated WSS Ready and11route regression PASS. Controller regression red HOST_MANAGEMENT_RESPONSE_INVALID then green. Protocol31 and strictclippy PASS; headless225 PASS2existingignored; mobilecore42 PASS; scopedrustfmt anddiffcheck PASS. Headless strictclippy fails unchanged connector.rs handle_management_events 8/7 arguments; no suppression. Main/sharedCI/exactpatchedLinuxartifact and physicalphone/file/TestFlight remain pending solepublisher.
 
@@ -70,3 +72,5 @@ Actual isolated101 QA found two distinct faults after the human confirmed phone 
 Private evidence/controlled fixtures: project pointer `output/cloud-migration-101-20261029/qa-host/`. New QA Host/controller identities belong only to the approved isolated test environment. No original Host identity, key or configuration is copied into them; no external model inference is authorized by the controlled fixture.
 
 Scope clarification: this repair affects the headless/desktop acceptance controller. The existing mobile/core reply matcher was verified separately and its42 tests pass. Do not infer the same fault in the installed phone or reinstall it only for this repair. The phone already has human-confirmed build6 login.
+
+Controlled legacy Session follow-up: actual encrypted request/reply terminalcomplete and two persisted messages passed. Reading old history preserved the other active owner; after a quiet owner release, cold reading the completed Session returned byte-equivalent messages without worker adoption. This is controlled localhost-supplier evidence, not external inference or phone UI. Source repair remains f99f4591e823f033815e586d0b01c6460941fcc9; a later receipt-only commit must not be mistaken for a new binary producer. Private source/test/runtime evidence and the exact next patched-controller procedure are saved under the existing qa-host plan.
