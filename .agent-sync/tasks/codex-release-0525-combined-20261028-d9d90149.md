@@ -22,11 +22,11 @@
 
 - [x] fresh remote main caab6ab6、五个源分支完整SHA和干净工作树；源码及作者既有证据由Root审阅。
 - [x] 单一隔离工作树/分支，从精确main通过Git同步start/task-init门禁。
-- [ ] 融合状态栏布局与multi-Agent计数/语义，组合验证。
+- [x] 融合状态栏布局与multi-Agent计数/语义；718项/26文件、tsc/scopedlint/classification及Root CUA1280/390实际组件检查通过。
 
 ## Verification
 
-当前仅源审与输入身份通过，无新正式build/CI/App维护。小范围作者DOM/浏览器和Root源审不替代本批组合结果或生产验收。每步原始日志/owned control在WPS work/release-next-20261028/owner。
+Root组合源码与有限实际组件验证通过；718项26files、全量类型、全部本批TS/TSX局部lint及测试分类通过。尚无新正式build/CI/App维护。小范围作者DOM/浏览器和Root源审不替代本批组合结果或生产验收。每步原始日志/owned control在WPS work/release-next-20261028/owner。
 
 ## Blockers and unknowns
 

@@ -1005,3 +1005,11 @@ SimpleChatInput在提交时同步释放正文/附件/查询上下文，拒绝/�
 ## MB-ERROR-CONTINUE-20261028 — 错误后保留进度继续
 
 用户确认按未接收重发、已执行部分继续、结果不明先核查修改错误横幅。沿原SessionContinuation/SessionEngine精确turn准入增加error terminal候选，保留native/product历史、工具结果及任务清单；明确未接收才可重发原文。任务`.agent-sync/tasks/codex-error-continue-20261028-fe2464aa.md`；验收`dev-docs/error-continue-20261028/acceptance.md`。392项定向单元/DOM/磁盘与SDK合成集成、tsc/lint/分类及Chromium/WebKit四组合实际组件交互通过，独立只读源审无阻断；main、共享CI、签名制品、安装和真实Provider分阶段待证据。desktop/macOS/updater及combinedCI/main继续由唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4组织下一未冻结批次；不动已发布0.5.24、原业务、恢复ledger/Stop/预算或其他部署单元。
+
+## MOXBOTS-NEXT-RELEASE-20261028 — 统一0.5.25候选
+
+主人要求等当前桌面开发会话完成后统一打最新包。Root `01a12bc2-907a-7702-b6dd-788225c5dfe4` 继续是 desktop/macOS-arm64/updater 与 combined CI/main 唯一负责人；未转移其他部署单元。版本规划0.5.25/525.1，已发布0.5.23、0.5.24及tag/归档不覆盖。隔离集成分支 `codex/release-0525-combined-20261028`，基线 main caab6ab6。
+
+收取源：输入提交fdade88b7、紧凑状态580e39360、输入字号71f1f3c7、错误安全续接07fef8d2、多Agent3a62a12d（产品3ef4cf8b）。Root已审源码与作者证据，当前融合32px单disclosure/focus/右侧验收入口和明确已验收/失败/未知语义，非整文件覆盖。任务 `.agent-sync/tasks/codex-release-0525-combined-20261028-d9d90149.md`。组合验证、CI/main、制品、本地和发布分别待回执，不以本地作者模拟证据替代真实验收。
+
+无Host/backend/mobile/Windows/网站部署、未提交routing混入或业务重放。独立模型恢复真实故障矩阵仍按原准入确认，不冒称已通过；本批只做受影响相称回归。原生维护需fresh owner/备份/回滚门，不切MoxBot master、不触发blocked memory100。
