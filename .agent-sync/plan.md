@@ -1021,3 +1021,7 @@ SimpleChatInput在提交时同步释放正文/附件/查询上下文，拒绝/�
 固定手机producer40a30926d237ea0eb84261a5f6d6d59ef9097e66（maincaab+同字节原5c3d/d108snapshot修复+0.1.0/build5及记录），一次相称CI/main，不拆build4再build5；原手机制品不覆盖。Root隔离分支codex/mobile-build5-main-20261029，仅补齐任务标准章节和CI/main归属记录，产品/mobile子树与40a完全相同。任务.agent-sync/tasks/codex-mobile-build5-main-20261029-4939c867.md。原84policy/模拟UI不关闭真实iPhone、登录、native附件Read/下载预览或外部TestFlight。
 
 当前独立desktop0.5.25/525.1源码45a9冻结不变，手机来源不加入其制品。两PR共享main变更串行，合并前核最新main及独立目录/接口兼容；若手机先合，不能假称整个main树等于desktop45a9，要精确记录独立mobile delta与component closure，遵守原requiredCI而不绕保护。各单元保持原唯一部署会话与不可变版本/制品映射。
+
+## MOXBOTS-CLOUD-MIGRATION-101-20261029 — desktop/updater source
+
+Human authorizes101 cloud/web/update migration and fresh test data/identity. Root01a12bc2 remains desktop/updater/sharedCI/main owner, cloud/website/mobile01a12b99. Isolated branchcodex/desktop-endpoints101-20261029 fromactualcaab changes APP_WEBSITE_URL to101/moxbots/, updater reserved/updates and owned defaultorigin101; retains updaterkey, oldlocaldeviceidentity/history and alltrustguards. Scope and test evidence dev-docs/cloud-migration-101/desktop-updater.md, taskeaafdd78. Existing5251/source45a frozen untouched; current208/209 CI independent, migration source waits for reviewed combined cloudsource/newcandidateCI. No101server/Nginx/TLS/dailyApp action. Newcloud ordinarylogin/newtrust needed, oldaccounts not automatically migrated.
