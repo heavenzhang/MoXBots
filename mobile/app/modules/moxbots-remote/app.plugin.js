@@ -60,7 +60,7 @@ allprojects {
     entry.modResults.NSPhotoLibraryUsageDescription = '用于将你主动选择的照片添加为会话附件。';
     entry.modResults.NSMicrophoneUsageDescription = '用于录制你主动发起的语音输入。';
     entry.modResults.NSSpeechRecognitionUsageDescription = '将语音转换为可编辑的消息草稿。';
-    entry.modResults.MoxBotsServiceOrigin = 'https://140.143.183.232';
+    entry.modResults.MoxBotsServiceOrigin = 'https://101.42.11.29';
     return entry;
   });
   return withAndroidManifest(config, (entry) => {
@@ -81,8 +81,8 @@ allprojects {
     const metadata = application['meta-data'] ?? [];
     const key = 'com.moxbots.mobile.SERVICE_ORIGIN';
     const existing = metadata.find((item) => item.$?.['android:name'] === key);
-    if (existing) existing.$['android:value'] = 'https://140.143.183.232';
-    else metadata.push({ $: { 'android:name': key, 'android:value': 'https://140.143.183.232' } });
+    if (existing) existing.$['android:value'] = 'https://101.42.11.29';
+    else metadata.push({ $: { 'android:name': key, 'android:value': 'https://101.42.11.29' } });
     application['meta-data'] = metadata;
     const providers = application.provider ?? [];
     const providerName = 'com.moxbots.mobile.remote.NativeArtifactProvider';

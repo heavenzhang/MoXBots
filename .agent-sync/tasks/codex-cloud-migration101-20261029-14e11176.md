@@ -40,6 +40,10 @@ Initial full service test run retained its single old-link assertion failure; as
 
 Exact-source Linux CI artifact, independent review, remote main and actual server/phone acceptance remain pending. No missing old backup blocks the explicitly authorized fresh instance.
 
+## Mobile101 next immutable build
+
+iOS/Android generated service origin and native fallbacks now point to101. The existing origin-scoped credential owners remain unchanged; old140 account records are not rewritten into new trust. iOS build6 is reserved for this new immutable artifact; build5 remains untouched. Initial pre-main-sync mobile policy78, typecheck and lint passed. Final current-main84/other tests, native archive, install and actual phone acceptance remain separate.
+
 ## Next step
 
 Hand exact source to existing reviewers/CI owner, stage fresh private auth files on101, then publish only verified components. No production path or public website was switched at this checkpoint.
