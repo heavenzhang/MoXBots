@@ -21,7 +21,7 @@ Cloud/website/mobile publication:01a12b99-7b38-78b1-831f-9c60257d386a. Existing 
 - [x] Add explicit local-password bootstrap opt-in for the existing confidential OIDC client, retaining browser consent.
 - [x] Local service tests212 passed/0 failed/8 ignored; private bootstrap tests6 passed; strict clippy, rustfmt, JS syntax and diff checks passed.
 - [ ] Independent source review, exact-source Linux CI artifact and remote main containment.
-- [ ] Fresh private101 cloud/Dex deployment with backup, ownership checks and rollback; protect all unrelated routes.
+- [x] Fresh private101 cloud/Dex deployed with normal TLS, backup/ownership rollback and protected unrelated routes.
 - [ ] Real login, new instance trust, device/Bots Ready, renewal and recovery; no old-identity recovery claim.
 - [ ] New immutable desktop/mobile builds and updater endpoint; same original updater signing key, normal TLS and full downloads/signature checks.
 - [ ] Real phone history, image/file/download acceptance and TestFlight distribution; voice deferred.
@@ -42,8 +42,12 @@ Exact-source Linux CI artifact, independent review, remote main and actual serve
 
 ## Mobile101 next immutable build
 
-iOS/Android generated service origin and native fallbacks now point to101. The existing origin-scoped credential owners remain unchanged; old140 account records are not rewritten into new trust. iOS build6 is reserved for this new immutable artifact; build5 remains untouched. Initial pre-main-sync mobile policy78, typecheck and lint passed. Final current-main84/other tests, native archive, install and actual phone acceptance remain separate.
+iOS/Android generated service origin and native fallbacks now point to101. The existing origin-scoped credential owners remain unchanged; old140 account records are not rewritten into new trust. iOS build6 is reserved for this new immutable artifact; build5 remains untouched. Initial pre-main-sync mobile policy78 passed. After merging775da22c main,84policy/typecheck/lint and actual Expo platform declarations passed. Both native slices/archive, original development signing/profile, CRC239 and strict signature passed. Kevin iPhone actual0.1.0/6 install/readback/launch passed; the human confirmed Kevin entered the Sessionlist. Message/file/HostReady paths and TestFlight remain separate.
 
 ## Next step
 
 Hand exact source to existing reviewers/CI owner, stage fresh private auth files on101, then publish only verified components. No production path or public website was switched at this checkpoint.
+
+## Deployment and phone checkpoint 2026-10-29
+
+See `dev-docs/cloud-migration-101-20261029-acceptance.md`. Linux producer39ee13cc7 passed dedicated CI40734899841 including realDex and is running on101. Mobile producer1a6593d4d is frozen and actually installed; later receipt-only commits do not replace its artifact identity. Website33files published under /moxbots with all download entries preparing. Human explicitly deferred disabled Work browser UI. Originalmain/combinedCI/desktop/updater owner handles protected integration and new signed desktop artifact; no finished-main or TestFlight claim.
