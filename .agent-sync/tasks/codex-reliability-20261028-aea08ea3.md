@@ -11,6 +11,10 @@
 
 ## Acceptance criteria
 
+- [x] 第四阶段上游冷却约束覆盖后台/无持久owner，原始拒绝与SDK防重发保留。
+- [x] 21文件490tests、实际SDK counter=1、真实HTTP冷却头与重复请求核验。
+- [ ] 第四阶段原desktop owner源审/shared CI/main/签名客户端和真实Provider验收。
+
 - [x] 第三阶段精确原生执行身份与持久回执，同参数并发/迟到回调/Stop不误清未知。
 - [x] 18文件453测试，真实SDK部分写入counter=1及成功回执写盘失败后的重载保护。
 - [ ] 第三阶段原desktop owner源审/shared CI/main/正式制品与真实路径。
@@ -27,6 +31,8 @@
 - [ ] 后续源审与主干/共享CI/新制品/真实Provider及已安装客户端验收。
 
 ## Completed
+
+第四阶段见 `dev-docs/reliability-20261028/phase-four.md`。修复长Retry-After在后台或无持久owner时被短退避忽略的请求放大；保留原候选/持久等待authority，无权限时返回原错误和冷却头。增加冷却延后与原生commit_unmatched受限诊断，关闭/异常observer不影响权限。7项基线失败；修复后21文件490项通过，实际SDK故意重复仍仅1次失败上游调用、counter=1。类型/lint/分类/依赖边界通过。
 
 第三阶段完成，见 `dev-docs/reliability-20261028/phase-three.md`。每次原生操作独立UUID和Query epoch，Post成功/失败只结清精确原生准入。复用原Controller/Store，旧未知和同参数并发分别保留；可持久诊断但不授予冷启动重放或业务成功。修改前8项回归失败，修复后完整定向453项通过；实际SDK正常及写盘失败两种受控验证通过。类型、lint、分类通过，依赖0errors/18既有warnings。本阶段无UI变更。
 
@@ -48,6 +54,6 @@ desktop/macOS-arm64/updater及combinedCI/main唯一owner仍01a12bc2-907a-7702-b6
 
 ## Next step
 
-第三阶段精确提交连同phase2 347b5759、phase1 b453b94依赖，交既有desktop owner下一未冻结批次统一源审、共享CI与main整合。当前main已前进到775da22c196b5c72277469c3c1a357d360f030e6（mobile build5），恢复生产代码无重叠，owner合入时仍须同步最新main验证。不可混入已冻结0.5.25/525.1。
+第四阶段精确提交依赖phase3 f57f2783402fab7291646064501de0c7d07c9093，连同phase2 347b5759、phase1 b453b94依赖，交既有desktop owner下一未冻结批次统一源审、共享CI与main整合。当前main已前进到775da22c196b5c72277469c3c1a357d360f030e6（mobile build5），恢复生产代码无重叠，owner合入时仍须同步最新main验证。不可混入已冻结0.5.25/525.1。
 
 继续专项的业务回执对账、冷启动可恢复状态和真实Provider/网络故障矩阵；先保留可验证的操作身份，再按外部真实结果逐项结清。历史薪资62项和AI配置22项未获得业务结清证明。前两阶段owner已接收下批排队、源审尚未完成；本阶段代码交付不等于主干/发布/业务恢复。

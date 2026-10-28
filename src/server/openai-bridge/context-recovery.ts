@@ -846,6 +846,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         if (failed && !denied && !admission?.attempt) this.recordToolResult(name, input, result, true);
         if (failed && !admission?.attempt) await this.persist();
         this.unboundNativeAdmission = true;
+        this.traceNativeAction('commit_unmatched', toolUseId, key, failed);
         return;
       }
       const attempt = admission.attempt;

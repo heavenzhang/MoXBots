@@ -80,14 +80,16 @@ describe('non-authoritative recovery causal observations', () => {
       const onDiagnostic = mode === 'disabled' ? false as const : (event: RecoveryCausalDiagnostic) => {
         events.push(event); if (mode === 'throws') throw new Error(secret);
       };
-      const controller = new ContextRecoveryController({ scope: () => 'root', isActive: () => true,
+      const owner = { sessionId: 'product', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true };
+      const controller = new ContextRecoveryController({ scope: () => 'root', isActive: () => true, recoveryOwner: owner,
         backup: async () => 'unused', persistLedger: async value => { if (fail) throw new Error(secret); writes.push(value); }, onDiagnostic });
+      controller.bindNoDispatchOwner(owner);
       await controller.protectInference({ model: 'fixture', max_tokens: 1, messages: [{ role: 'user', content: 'fixed' }] });
       const input = { command: secret };
       expect(await controller.authorizeTool('Bash', input, secret)).toBeUndefined();
       fail = true;
       const failed = await controller.commitToolResult('Bash', input, secret, false, secret).then(() => 'unexpected', error => (error as Error).message);
-      outcomes.push({ writes, failed });
+      outcomes.push({ writeCount: writes.length, failed });
       if (mode !== 'disabled') {
         expect(events.map(row => 'phase' in row ? row.phase : undefined)).toEqual(['reserve_enter', 'reserve_complete', 'commit_enter', 'commit_failed']);
         expect(events.every(row => (row as { persistence: string }).persistence === 'active')).toBe(true);
@@ -100,7 +102,7 @@ describe('non-authoritative recovery causal observations', () => {
     expect(outcomes[0].failed).toContain('Recovery ledger could not be committed');
   });
 
-  it.each([false, true])('marks successful native result hooks with active/noop persistence (failed=%s)', async failed => {
+  it.each([false, true])('labels unmatched native callbacks without claiming a completed receipt (failed=%s)', async failed => {
     for (const active of [false, true]) {
       const events: unknown[] = [];
       const controller = new ContextRecoveryController({ scope: () => 'root', isActive: () => true,
@@ -109,7 +111,7 @@ describe('non-authoritative recovery causal observations', () => {
       await controller.commitToolResult('Bash', { command: secret }, secret, failed, secret);
       expect(events).toEqual([
         expect.objectContaining({ phase: 'commit_enter', persistence: active ? 'active' : 'inactive', hook: failed ? 'post_tool_use_failure' : 'post_tool_use' }),
-        expect.objectContaining({ phase: 'commit_complete', persistence: active ? 'active' : 'inactive', hook: failed ? 'post_tool_use_failure' : 'post_tool_use' }),
+        expect.objectContaining({ phase: 'commit_unmatched', persistence: active ? 'active' : 'inactive', hook: failed ? 'post_tool_use_failure' : 'post_tool_use' }),
       ]);
       expect(JSON.stringify(events)).not.toContain(secret);
     }
@@ -118,8 +120,10 @@ describe('non-authoritative recovery causal observations', () => {
   it('does not log a completed native phase before its original persistence acknowledgement', async () => {
     const events: RecoveryCausalDiagnostic[] = []; let blocked = false; let release!: () => void;
     let gate = Promise.resolve();
-    const controller = new ContextRecoveryController({ scope: () => 'root', isActive: () => true,
+    const owner = { sessionId: 'product', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true };
+    const controller = new ContextRecoveryController({ scope: () => 'root', isActive: () => true, recoveryOwner: owner,
       backup: async () => 'unused', persistLedger: async () => { if (blocked) await gate; }, onDiagnostic: event => events.push(event) });
+    controller.bindNoDispatchOwner(owner);
     await controller.protectInference({ model: 'fixture', max_tokens: 1, messages: [{ role: 'user', content: 'fixed' }] });
     for (const phase of ['reserve', 'commit']) {
       events.length = 0; blocked = true; gate = new Promise(resolve => { release = resolve; });
