@@ -76,6 +76,12 @@ impl AdminService {
             .route("/admin/app.js", get(js))
             .route("/admin/styles.css", get(css))
             .route("/admin/feedback.js", get(feedback_js))
+            // A fixed alternative mount lets this service share an origin with
+            // an existing site's /admin without rewriting that site's routes.
+            .route("/moxbots/admin", get(mounted_admin_page))
+            .route("/moxbots/admin/app.js", get(js))
+            .route("/moxbots/admin/styles.css", get(css))
+            .route("/moxbots/admin/feedback.js", get(feedback_js))
             .route("/api/admin/bootstrap", get(bootstrap))
             .route("/api/admin/bots", post(create))
             .route("/api/admin/bots/{id}", patch(configure))
@@ -93,6 +99,12 @@ impl AdminService {
 async fn admin_page() -> Response {
     asset(
         include_str!("../admin-web/index.html"),
+        "text/html; charset=utf-8",
+    )
+}
+async fn mounted_admin_page() -> Response {
+    asset(
+        include_str!("../admin-web/index.html").replace("\"/admin", "\"/moxbots/admin"),
         "text/html; charset=utf-8",
     )
 }
@@ -114,7 +126,7 @@ async fn feedback_js() -> Response {
         "text/javascript; charset=utf-8",
     )
 }
-fn asset(s: &'static str, kind: &'static str) -> Response {
+fn asset(s: impl IntoResponse, kind: &'static str) -> Response {
     let mut r = s.into_response();
     r.headers_mut()
         .insert(header::CONTENT_TYPE, HeaderValue::from_static(kind));
@@ -777,6 +789,45 @@ pub(crate) mod tests {
         )
         .await
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn alternate_admin_mount_keeps_assets_and_api_authorization() {
+        let (service, _auth, _dir, _principal, _token, _, _ordinary) = setup();
+        let app = service.router();
+        let page = call(app.clone(), "GET", "/moxbots/admin", None, None).await;
+        assert_eq!(page.status(), StatusCode::OK);
+        assert_eq!(page.headers()[header::CACHE_CONTROL], "no-store");
+        let body = axum::body::to_bytes(page.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        let html = std::str::from_utf8(&body).unwrap();
+        assert!(html.contains("href=\"/moxbots/admin\""));
+        for name in ["app.js", "styles.css", "feedback.js"] {
+            assert!(html.contains(&format!("/moxbots/admin/{name}")));
+            let response = call(
+                app.clone(),
+                "GET",
+                &format!("/moxbots/admin/{name}"),
+                None,
+                None,
+            )
+            .await;
+            assert_eq!(response.status(), StatusCode::OK);
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        }
+        let denied = call(app.clone(), "GET", "/api/admin/bootstrap", None, None).await;
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        let legacy = call(app, "GET", "/admin", None, None).await;
+        assert_eq!(legacy.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(legacy.into_body(), 64 * 1024)
+            .await
+            .unwrap();
+        assert!(
+            std::str::from_utf8(&body)
+                .unwrap()
+                .contains("href=\"/admin\"")
+        );
     }
 
     #[tokio::test]

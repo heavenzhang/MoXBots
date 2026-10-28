@@ -746,6 +746,7 @@ async fn start(
     let browser_return_path = match (req.browser_return, req.browser_return_path.as_deref()) {
         (false, None) => None,
         (true, None | Some("/admin")) => Some("/admin"),
+        (true, Some("/moxbots/admin")) => Some("/moxbots/admin"),
         (true, Some("/feedback")) => Some("/feedback"),
         (true, Some("/community")) => Some("/community"),
         (true, Some("/desktop")) => Some("/desktop"),
@@ -910,6 +911,8 @@ fn browser_return_response(path: &'static str, success: bool) -> axum::response:
         ).into_response();
     }
     let target = match (path, success) {
+        ("/moxbots/admin", true) => "/moxbots/admin?login=complete",
+        ("/moxbots/admin", false) => "/moxbots/admin?login=failed",
         ("/community", true) => "/community?login=complete",
         ("/community", false) => "/community?login=failed",
         ("/feedback", true) => "/feedback?login=complete",
@@ -2009,7 +2012,8 @@ mod tests {
             .await
             .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
-        assert!(text.contains("登录未完成") && text.contains("href=\"/admin\""));
+        assert!(text.contains("登录未完成") && text.contains("href=\"/moxbots/admin\""));
+        assert!(!text.contains("href=\"/admin\""));
         let ordinary: StartRequest = serde_json::from_value(serde_json::json!({
             "deviceId":"22222222-2222-4222-8222-222222222222", "pkceChallenge":"unused"
         }))
@@ -2162,6 +2166,61 @@ mod tests {
             .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("登录未完成") && !text.contains("<script>"));
+    }
+
+    #[tokio::test]
+    async fn alternate_admin_return_is_allowlisted_and_bound_to_original_state() {
+        let (app, _dir) = test_app();
+        let request = |path: &str| StartRequest {
+            device_id: TEST_DEVICE.into(),
+            pkce_challenge: URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes())),
+            browser_return: true,
+            browser_return_path: Some(path.into()),
+            replayable_result: false,
+        };
+        for path in [
+            "/moxbots/admin/",
+            "/moxbots/admin?x=y",
+            "//evil.test/moxbots/admin",
+            "/moxbots/other",
+        ] {
+            assert!(matches!(
+                start(State(app.clone()), Json(request(path))).await,
+                Err(ApiError::BadRequest)
+            ));
+        }
+        let (_, _, Json(started)) = start(State(app.clone()), Json(request("/moxbots/admin")))
+            .await
+            .unwrap();
+        let url = Url::parse(&started.authorization_url).unwrap();
+        let state = url
+            .query_pairs()
+            .find(|(k, _)| k == "state")
+            .unwrap()
+            .1
+            .into_owned();
+        assert_eq!(
+            callback_browser_return_path(
+                &app,
+                &format!("/auth/callback?state={state}&browserReturnPath=/admin")
+                    .parse()
+                    .unwrap()
+            ),
+            Some("/moxbots/admin")
+        );
+        assert_eq!(
+            callback_browser_return_path(&app, &"/auth/callback?state=unknown".parse().unwrap()),
+            None
+        );
+        for (success, target) in [
+            (true, "/moxbots/admin?login=complete"),
+            (false, "/moxbots/admin?login=failed"),
+        ] {
+            let response = browser_return_response("/moxbots/admin", success);
+            assert_eq!(response.status(), StatusCode::SEE_OTHER);
+            assert_eq!(response.headers()[header::LOCATION], target);
+            assert_eq!(response.headers()[header::CACHE_CONTROL], "no-store");
+        }
     }
 
     #[tokio::test]
