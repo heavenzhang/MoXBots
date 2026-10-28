@@ -984,3 +984,11 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
+
+## MB-MOBILE-BUILD5-MAIN-20261029 — 手机build5源码主干交付
+
+人类2026-10-29要求手机到可用版本并安装iPhone，既有mobile owner01a12b99-7b38-78b1-831f-9c60257d386a继续独立手机实际附件/签名/安装/TestFlight；sharedCI/main仍唯一Root01a12bc2-907a-7702-b6dd-788225c5dfe4。Root只交主干源码，不执行手机或日常Mac/101部署。
+
+固定手机producer40a30926d237ea0eb84261a5f6d6d59ef9097e66（maincaab+同字节原5c3d/d108snapshot修复+0.1.0/build5及记录），一次相称CI/main，不拆build4再build5；原手机制品不覆盖。Root隔离分支codex/mobile-build5-main-20261029，仅补齐任务标准章节和CI/main归属记录，产品/mobile子树与40a完全相同。任务.agent-sync/tasks/codex-mobile-build5-main-20261029-4939c867.md。原84policy/模拟UI不关闭真实iPhone、登录、native附件Read/下载预览或外部TestFlight。
+
+当前独立desktop0.5.25/525.1源码45a9冻结不变，手机来源不加入其制品。两PR共享main变更串行，合并前核最新main及独立目录/接口兼容；若手机先合，不能假称整个main树等于desktop45a9，要精确记录独立mobile delta与component closure，遵守原requiredCI而不绕保护。各单元保持原唯一部署会话与不可变版本/制品映射。

@@ -12,8 +12,8 @@ Root01a12bc2-907a-7702-b6dd-788225c5dfe4按既有shared CI/main唯一归属，�
 
 ## Acceptance criteria
 
-- [ ] 原snapshot tracker/owner/错误重试三源测试同5c3d精确字节，buildNumber5包含，不先合4再增一轮CI。
-- [ ] 修正交接任务标准章节，精确source/Root candidate只差记录，Git gate和远端分支可核。
+- [x] 原snapshot tracker/owner/错误重试三源测试同5c3d精确字节，buildNumber5包含，不先合4再增一轮CI。
+- [x] 原交接章节已补齐；Root candidate与40a仅差主干交付记录，mobile子树逐字节相同，Git远端门禁随后单独记录。
 - [ ] 相称精确共享CI、正常PR/main与远端SHA/tree核验完成。
 - [ ] 向原mobile owner留可读取主干回执；iPhone/native附件与真实安装仍由其原任务分别验收，不虚报完成。
 
