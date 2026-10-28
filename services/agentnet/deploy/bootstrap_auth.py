@@ -74,7 +74,9 @@ def write_private(path, data):
 
 
 def prepare(output, issuer, callback, email, username, password, *, tls=None,
-            hasher=bcrypt_hash):
+            hasher=bcrypt_hash, native_password=False):
+    if not isinstance(native_password, bool):
+        raise ValueError("native password selection must be explicit")
     issuer = https_url(issuer)
     callback = https_url(callback)
     if (not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", email)
@@ -103,6 +105,10 @@ def prepare(output, issuer, callback, email, username, password, *, tls=None,
         "staticClients": [{"id": "myagents-agentnet", "name": "MoXBots",
                            "secret": client_secret, "redirectURIs": [callback]}],
     }
+    if native_password:
+        # Only the existing confidential service client holds this grant's
+        # secret. Public clients still authenticate through the Rust owner.
+        config["oauth2"]["passwordConnector"] = "local"
     mounts = ["./dex.json:/etc/dex/config.json:ro", "./dex-state:/var/dex", "./web:/etc/dex/web:ro"]
     if tls:
         mounts.extend(["./tls.crt:/etc/dex/tls.crt:ro", "./tls.key:/etc/dex/tls.key:ro"])
@@ -147,6 +153,8 @@ def main():
     parser.add_argument("--password-file")
     parser.add_argument("--tls-cert")
     parser.add_argument("--tls-key")
+    parser.add_argument("--native-password", action="store_true",
+                        help="Enable the local-password connector for the confidential service client")
     args = parser.parse_args()
     try:
         if bool(args.tls_cert) != bool(args.tls_key):
@@ -155,7 +163,7 @@ def main():
                     if args.password_file else getpass.getpass("Initial account password: "))
         tls = (read_private(args.tls_cert), read_private(args.tls_key)) if args.tls_cert else None
         prepare(args.output, args.issuer, args.callback, args.email, args.username,
-                password, tls=tls)
+                password, tls=tls, native_password=args.native_password)
         print("Private authentication bundle prepared; no service has been started.")
     except (ValueError, OSError, subprocess.SubprocessError, UnicodeError):
         # Input errors may contain credentials/paths; do not print their objects.
