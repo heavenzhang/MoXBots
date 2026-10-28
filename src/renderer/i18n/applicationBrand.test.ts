@@ -31,6 +31,6 @@ describe('application branding across profiles', () => {
       // Product navigation must not rename the upstream connection identity.
       expect(i18n.t('app:agentNetwork.networkName', { lng })).toBe(originalNetwork);
     }
-    expect(APP_WEBSITE_URL).toBe(profile === 'moxbot' ? 'https://140.143.183.232/' : 'https://myagents.io');
+    expect(APP_WEBSITE_URL).toBe(profile === 'moxbot' ? 'https://101.42.11.29/moxbots/' : 'https://myagents.io');
   });
 });

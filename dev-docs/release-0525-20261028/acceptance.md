@@ -40,3 +40,9 @@ Root沿既有发布安装授权，将当前五项桌面改动收齐后统一集�
 原718桌面改进源/测试与有限CUA路径未改字节，无需重跑旧矩阵；新增endpoint联合路径按4profile/3publisher+types/lint/classification复核，云代码与已审源逐字节比较，不重复author全套service。构建前必须核MOXBOTS_OWNED_SERVICE_URL没有旧140/QA环境覆盖。待新候选静态门、有效维护/备份、受影响实际newcloudlogin/updater/本地路径及同份制品101正式通道。
 
 新迁移组合delta检查实际完成：4profile、3publisher（临时fixture真实签名/归档）、6bootstrap、全量tsc/scopedlint/classification/cloud fmt/adminJS/diff均exit0。原cloud fmt-check.log为最初格式失败原件，不能当PASS；本组合新fmt实际exit0另存。既有独审reviewer-cloud101-3a038abc-admin-oauth-native-source-review-20261029.json静态PASS无P0/P1，当前combined服务文件hash逐项与独审完全相同。两项非阻断边界保留：legacy部署须转发新错误返回alias；同IP路径挂载不是浏览器origin隔离。真实Dex/新101路由/手机/登录仍由原owner独立验证，Root未调用其owned workflow或服务器。
+
+## 迁移测试预期补齐（r4，产品源不变）
+
+cc21精确CI40737168337的nodejob122988715791在unit阶段7218pass/1fail/5skip；失败是原applicationBrand测试仍要求140官网。Root漏同步该已有断言，原日志保留ci-r3-node-failure-original.log。进一步精确旧URL检索发现compiled profile integration也有同一真实默认地址断言，在CI进入integration前一起修正为已授权101/moxbots/。未改产品代码、信任、防重或任何执行条件，其他mock/任意URL组件fixture不全局改写。
+
+仅复核三份受影响profile/branding/compiled persistence隔离测试与两份测试lint，全部exit0；没有重跑旧718矩阵或正式构建。新精确SHA必须重新接受既有PR检查，不能把cc21原失败冒称成功，也不手工重跑原head。原始r3冻结与结果保留，新r4仍build525.2（从未构建），业务/云部署无变更。

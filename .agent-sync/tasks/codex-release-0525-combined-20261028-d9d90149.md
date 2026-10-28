@@ -45,3 +45,7 @@ Root组合源码与有限实际组件验证通过；718项26files、全量类型
 - [ ] 精确新候选CI/main与签名native/new101发布待完成。
 
 迁移职责和端点约定见dev-docs/cloud-migration-101/desktop-updater.md及dev-docs/cloud-migration-101-20261029.md；新测试identity走正常认证，旧localidentity/history/draft不清除，不宣称旧issuer兼容。
+
+## r4 test-expectation correction
+
+Exactcc21CI node unit failed only originalapplicationBrand old140 expectation (7218passed/1failed/5skipped). Correct that assertion and matching compiledprofile integration expectation to authorized101/moxbots/. Product source unchanged; three relevant profile/branding/integration suites and targeted testlint exit0. Preserve oldfailedCI/rawlog and sourcefreeze-r3; newhead CI required, no blindrerun of oldhead or fixture mocks/global oldURL rewrite.
