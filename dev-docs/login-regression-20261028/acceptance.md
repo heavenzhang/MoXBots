@@ -12,9 +12,21 @@
 
 ## 可核实的现场与限制
 
-2026-10-28 23:25 本机原生日志对公开实例发现 GET 记录 connection/timeout、耗时约 5002 ms。随后默认配置与禁用代理的只读 HTTPS 探测均在 TLS 建立前超时。这是本机连通性证据，不能证明云端宕机，也不能自动归因到尚未确认的截图设备。未读取原始 token、修改账号或清理任何保存槽。
+2026-10-28 23:25 本机原生日志对公开实例发现 GET 记录 connection/timeout、耗时约 5002 ms。随后默认配置与禁用代理的只读 HTTPS 探测均在 TLS 建立前超时。这是本机连通性证据，不能证明云端宕机，也不能自动归因到现已由用户确认的当前 Mac。未读取原始 token、修改账号或清理任何保存槽。
 
-历史 Air 的网页登录返回及 Cmd-Q 重开验收未闭合；本次仍需受影响设备、实际版本、登录返回和退出重开证据。截图不能证明凭据未保存，本轮没有通过扩大 TTL、禁用校验或清空旧身份来掩盖问题。
+用户于 2026-10-29 明确确认截图及退出重开异常发生在当前 Mac。历史 Air 验收边界保留为历史，本次以当前 Mac 的实际版本、登录返回和退出重开证据为准。截图不能证明凭据未保存，本轮没有通过扩大 TTL、禁用校验或清空旧身份来掩盖问题。
+
+## 当前 Mac 的后续只读核对（2026-10-29）
+
+用户已确认当前 Mac。复用本机已经启用的 `externalCliAccess` 及其原凭据，调用安装版只读 `moxbot network status --json`：当前选中的 Owned 连接返回 `disconnected / OWNED_SESSION_INVALID`，账号投影为 `signInRequired`，`expiresAt=null`。没有修改开关、权限、账号或凭据，也没有执行 login/restore。
+
+该错误证明本机恢复校验判定会话无效，但校验同时检查过期、token 格式和账号/network 范围；`expiresAt=null` 表示没有可用 actor metadata，不能证明原 token 到期时间。不能将其误报为已证实“凭据丢失”或“token 已过期”。另一条旧 Owned 连接也为无效，隔离 QA 连接的凭据需要授权；这些连接未移除或混用。官方 Space 的重认证错误与当前 Owned 账号分别记录。
+
+同次公开实例 HTTPS 直连仍在 TLS 握手前约 5 秒超时。使用原已知 SSH 配置进行单次只读云端会话时间核对时，远端关闭 22 端口连接；SQL/服务本地 TLS 探测脚本未执行。未改变服务、网络、信任或备份。暂时无法核定当前服务会话的实际 expiresAt/revokedAt，也不能认定云端宕机。
+
+独立只读源码核查确认桌面存在账号会话续期缺口：`transport.rs` 定义 `/v1/session/renew`，但 `src-tauri/src` 无调用方；调用链仅接入 headless。桌面 `OwnedSession` 保持登录时 expiry，恢复和使用时均校验该 expiry。`identity.rs` 的 peer leaf 证书续期不会更新账号 access token/expiry。由此可确认：若会话到期，前三项 Renderer 修复无法让它自动续期；本轮不能宣布完整登录问题已修复。实际本机会话是否因此失效仍待证据。
+
+原生修复需沿现有 Owned account/registry/credential owner 接入受控续期，核对服务端 candidate/sessionHandle 与轮换幂等语义；先安全持久化候选，再处理未知响应与冷启动恢复，提交后同步内存会话、expiry guard 和 registry。必须验证并发登录/退出/账号切换、离线临期、原活动回程、轮换后崩溃与重启、不重复业务操作；仅添加 timer、扩大 TTL 或跳过校验均不足以关闭此项。当前没有实现该原生修复，不将前三处改动冒称已包含它。
 
 ## 验证
 
