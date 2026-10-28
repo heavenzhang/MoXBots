@@ -73,7 +73,7 @@
   --text-xs--line-height: 1.45;
   --text-sm: 14px; /* ui/dense: 按钮、菜单、树节点、tab、工具卡、控制台、Markdown 表格 */
   --text-sm--line-height: 1.5;
-  --text-base: 16px; /* prose: AI 正文、用户气泡、输入框、widget body */
+  --text-base: 16px; /* prose: AI 正文、用户气泡、widget body；输入框使用 text-sm */
   --text-base--line-height: 1.7;
   --text-lg: 18px; /* Markdown H3、弹窗标题 */
   --text-lg--line-height: 1.5;

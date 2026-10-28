@@ -991,3 +991,7 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 来源会话 `01a182e1-5143-7d32-9f23-f89f636c5e39`，任务 `.agent-sync/tasks/codex-multiagent-ux-20261028-4c7ef004.md`，验收 `dev-docs/multiagent-ux-20261028/acceptance.md`。在原ledger/Runtime上修正raw派发拒绝与旧completed误判，主聊天明确子Agent状态/原因并分离主Agent步骤；反馈和验收目标保持精确session/attempt，未知不重放。113项unit/DOM与65项服务边界/磁盘集成、本地类型/lint/构建通过；非实现者实际UI矩阵及最终源码复核、主负责人最终标签/关键路径复验分开记录。无真实Provider/原生/生产验收声明。
 
 既有 desktop/macOS-arm64/updater 与 combined CI/main 负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 在MOXBOTS-NEXT-RELEASE-20261028跟踪本源码，接收精确远端分支 `codex/multiagent-ux-20261028` 后统一审阅/集成/CI/未冻结批次。开发不新建PR触发共享CI、不分配正式版本或操作日常App。与composer-status580同改状态栏/任务面板/语言文件，整合需保留其新布局与focus及本任务真实状态字段，不互相覆盖。
+
+## MB-COMPOSER-TYPE-20261027 — 输入区字号
+
+输入正文、占位符及灰色建议16px降为14px，沿用26px测量行高；工具栏14px和提示12px维持，设计约定同步。84项既有输入/IME/建议/发送回归、全量类型及定向lint通过；实际生产组件Chromium/WebKit宽窄与明暗8组渲染/换行/建议接受取消/发送通过，作者自验。任务`.agent-sync/tasks/codex-composer-type-20261027.md`，证据`dev-docs/composer-type-20261027/acceptance.md`。代码与本地/模拟通过；CI/main、正式版本/制品、安装发布和真实原生路径仍由既有唯一desktop/macOS-arm64/updater及combinedCI/main会话01a12bc2-907a-7702-b6dd-788225c5dfe4选择下一未冻结批次，本聊天不另启共享CI或改日常App。

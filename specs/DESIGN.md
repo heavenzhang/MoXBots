@@ -77,7 +77,7 @@ MyAgents 是以长时间阅读、持续协作和多任务切换为核心的桌�
 |---|---|---|---|
 | meta | `text-xs` | 12px / 1.45 | 时间、badge、计数、描述、hint、分类头 |
 | ui | `text-sm` | 14px / 1.5 | 按钮、菜单、Tab、树节点、紧凑卡片、Markdown 表格 |
-| prose | `text-base` | 16px / 1.7 | AI 正文、用户消息、输入正文、Widget body |
+| prose | `text-base` | 16px / 1.7 | AI 正文、用户消息、Widget body |
 | display | `text-lg/xl/2xl` | 18/20/22px | 弹窗标题与 Markdown H3/H2/H1 |
 | stat | `text-3xl` | 28px / 1.2 | 数据大数字和页面大标题 |
 | brand | `text-brand` | 56px / 1.1 | Launcher 品牌展示 |
@@ -85,8 +85,8 @@ MyAgents 是以长时间阅读、持续协作和多任务切换为核心的桌�
 约束：
 
 - 新场景先归入现有档位，禁止新增 `text-[Npx]` 孤立字阶。
-- AI 与文档 Markdown 正文默认使用「标准字号」14px / 1.6；「大字号」为 16px / 1.7，随设置切换，保留用户已保存的选择。聊天输入框仍使用 26px 整数行高以稳定自适应测量。
-- 紧凑 Task/Record 流可使用 14px 正文，但不能反向降低 Launcher 和 Chat 的正文档位。
+- AI 与文档 Markdown 正文默认使用「标准字号」14px / 1.6；「大字号」为 16px / 1.7，随设置切换，保留用户已保存的选择。聊天输入正文、占位符与建议统一使用 `text-sm`（14px），并显式保持 26px 整数行高以稳定自适应测量；工具栏维持14px，辅助提示维持12px。
+- 紧凑 Task/Record 流可使用 14px 正文，但不能反向降低 Launcher 展示和 Chat 消息的正文档位。
 - 按钮和菜单正文统一为 14px，时间、状态、hint 统一为 12px。
 - Markdown 标准字号 H1/H2/H3 为 20/18/16px，H4–H6 为 14px；大字号依次为 22/20/18px、H4–H6 为 16px。标题用层级和间距表达，不依赖过重字重。
 - 模型供应商卡片标题统一 `text-lg font-semibold`（18px / 27px、600），包括订阅、API、自定义供应商；保留单行省略。
