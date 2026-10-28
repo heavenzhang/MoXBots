@@ -22,7 +22,7 @@ export default function SessionTaskPanel({ tasks, stale, onRetry, onSelectAgent,
         </button>
       </li>)}</ul>
     </details> : <p className="mt-1 text-xs text-[var(--ink-muted)]">{t('orchestration.mainAgent')}</p>}
-    {task.review && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--ink-secondary)] [overflow-wrap:anywhere]">{t('orchestration.reviewEvidence')}: {task.review.evidence}</p>}
+    {task.review && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--ink-secondary)] [overflow-wrap:anywhere]">{t(task.review.decision === 'accept' && task.phase !== 'completed' ? 'orchestration.collaboration.historicalReview' : 'orchestration.reviewEvidence')}: {task.review.evidence}</p>}
   </li>;
   return <section aria-label={t('orchestration.title')} className="px-3 py-2">
     {stale && <p role="status" className="mb-2 text-xs text-[var(--warning)]">{t('orchestration.stale')} <button type="button" onClick={onRetry} className="underline">{t('orchestration.retry')}</button></p>}

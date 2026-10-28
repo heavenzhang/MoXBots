@@ -119,7 +119,7 @@ describe("unified execution status", () => {
     expect(screen.getByText('正在验证')).toBeInTheDocument();
     tab.sessionState = 'idle'; tab.isLoading = false;
     rerender(<ExecutionStatusBar activity={activity} />);
-    fireEvent.click(await screen.findByRole('button', { name: /任务编排 0\/2/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /任务编排.*已验收 0\/2/ }));
     expect(screen.getByText('已中断')).toBeInTheDocument();
     expect(screen.getAllByText('待验收').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /任务编排.*执行中/ })).not.toBeInTheDocument();
@@ -134,7 +134,7 @@ describe("unified execution status", () => {
     tab.agentPlanTodos = [];
     tab.apiGet.mockResolvedValue({ success: true, sessionId: tab.sessionId, ledger });
     render(<ExecutionStatusBar activity={activity} />);
-    const trigger = await screen.findByRole("button", { name: /任务编排 0\/3/ });
+    const trigger = await screen.findByRole("button", { name: /任务编排.*已验收 0\/3/ });
     fireEvent.click(trigger);
     expect(screen.getByText("核对资料")).toBeInTheDocument();
     expect(screen.getByText("完成修改")).toBeInTheDocument();
@@ -142,7 +142,7 @@ describe("unified execution status", () => {
     expect(screen.queryByRole("button", { name: /确认方案|确认执行/ })).not.toBeInTheDocument();
     const updated = mergeTaskObservations(ledger, [], ledger.plan!.map((todo, index) => ({ ...todo, status: index === 0 ? "completed" : index === 1 ? "in_progress" : "pending" })), "queue");
     act(() => window.dispatchEvent(new CustomEvent("session-task-orchestration", { detail: { sessionId: tab.sessionId, ledger: updated } })));
-    expect(await screen.findByRole("button", { name: /任务编排 0\/3.*待验收 1/ })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /任务编排.*已验收 0\/3.*待验收 1/ })).toBeInTheDocument();
     expect(tab.apiPost).not.toHaveBeenCalled();
   });
   it("starts collapsed with all three summaries and one external pause", () => {
@@ -160,7 +160,7 @@ describe("unified execution status", () => {
     );
     expect(screen.queryByRole("region")).not.toBeInTheDocument();
     expect(screen.queryByText(goal.objective)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /任务编排 0\/3/ })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: /任务编排.*已验收 0\/3/ })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -183,7 +183,7 @@ describe("unified execution status", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /目标执行中/ }));
     expect(screen.getByText(goal.objective)).toBeInTheDocument();
-    const todos = screen.getByRole("button", { name: /任务编排 0\/3/ });
+    const todos = screen.getByRole("button", { name: /任务编排.*已验收 0\/3/ });
     fireEvent.click(todos);
     expect(
       screen.getAllByRole("region", { name: /目标详情|任务编排详情|协作详情/ }),
@@ -438,7 +438,7 @@ describe('plan confirmation in the actual execution status composition',()=>{
     planOnly();const discuss=vi.fn();
     render(<ExecutionStatusBar activity={{...activity,onDiscussPlan:discuss}}/>);
     await screen.findByRole('button',{name:'确认并开始'});
-    expect(screen.queryByRole('button',{name:/任务编排 0/})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button',{name:/任务编排.*已验收 0/})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button',{name:'继续讨论'}));
     expect(discuss).toHaveBeenCalledWith({sessionId:'s1',proposalId:'proposal-1',expectedRevision:1},expect.stringContaining('先确认范围后修复导出'));
     expect(tab.apiPost).not.toHaveBeenCalled();

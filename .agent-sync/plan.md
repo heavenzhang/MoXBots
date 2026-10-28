@@ -984,3 +984,10 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
+
+
+## MOXBOTS-MULTIAGENT-UX-20261028 — 子 Agent 状态与协作交互
+
+来源会话 `01a182e1-5143-7d32-9f23-f89f636c5e39`，任务 `.agent-sync/tasks/codex-multiagent-ux-20261028-4c7ef004.md`，验收 `dev-docs/multiagent-ux-20261028/acceptance.md`。在原ledger/Runtime上修正raw派发拒绝与旧completed误判，主聊天明确子Agent状态/原因并分离主Agent步骤；反馈和验收目标保持精确session/attempt，未知不重放。113项unit/DOM与65项服务边界/磁盘集成、本地类型/lint/构建通过；非实现者实际UI矩阵及最终源码复核、主负责人最终标签/关键路径复验分开记录。无真实Provider/原生/生产验收声明。
+
+既有 desktop/macOS-arm64/updater 与 combined CI/main 负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 在MOXBOTS-NEXT-RELEASE-20261028跟踪本源码，接收精确远端分支 `codex/multiagent-ux-20261028` 后统一审阅/集成/CI/未冻结批次。开发不新建PR触发共享CI、不分配正式版本或操作日常App。与composer-status580同改状态栏/任务面板/语言文件，整合需保留其新布局与focus及本任务真实状态字段，不互相覆盖。
