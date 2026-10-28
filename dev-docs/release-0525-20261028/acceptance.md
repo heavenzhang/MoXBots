@@ -22,3 +22,7 @@ Root沿既有发布安装授权，将当前五项桌面改动收齐后统一集�
 - 视口已reset，自有IAB tab关闭，自有5295 loopback预览正常终止。测试未触碰原生业务App、真实Provider、用户Chrome、账号或配置。此结果不能替代签名native/真实Provider矩阵。
 
 尚待精确CI/main及同一签名制品安装和正式更新通道；未提前宣称交付。
+
+## CI版本锁文件更正
+
+首个精确head6cc2606d/CI40713529495的Cargo门因Cargo.toml已升0.5.25、两份自有package的Cargo.lock仍0.5.24而拒绝`--locked`。原失败log保留，未降低或移除locked。Root只同步myagents和myagents-document-worker两项package版本，不改任何依赖解析；该元数据修复使用新精确SHA/CI，不能把原失败当通过。产品源与已过718项/类型/组件路径不变，无正式App重建或重复公证。
