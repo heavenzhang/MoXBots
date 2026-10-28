@@ -171,7 +171,40 @@ it('persists a query-only review through Store reload, preserves raw unknowns an
   expect(restored.canRetryInference()).toBe(false);
   expect((store.loadBuiltinContextLedger(id, id) as { readonlyTasks?: unknown[] }).readonlyTasks).toEqual(persisted.readonlyTasks);
   // A legacy reader ignores the new receipt field; original uncertainty survives rollback.
-  const { readonlyTasks: _audit, ...legacy } = store.loadBuiltinContextLedger(id, id) as Record<string, unknown>;
+  const { readonlyTasks: _audit, operationAttempts: _attempts, ...legacy } = store.loadBuiltinContextLedger(id, id) as Record<string, unknown>;
   const rollback = new ContextRecoveryController({ ...options, initialLedger: legacy });
   expect(rollback.inspectActionLedger().uncertainCount).toBe(2);
+});
+
+it('persists per-attempt outcomes for identical actions and preserves an unfinished peer across Store restart', async () => {
+  const transcript = await store.loadSessionTranscript(id);
+  expect((await store.appendSessionMessages(id, transcript.cursor, [{ id: 'attempt-fixture', role: 'user',
+    content: 'Controlled journal test', timestamp: new Date().toISOString() }])).ok).toBe(true);
+  const owner = { sessionId: id, sdkSessionId: id };
+  const options = { scope: () => 'fixture-attempt-turn', isActive: () => true, recoveryOwner: owner,
+    backup: (request: AnthropicRequest, metadata: { digest: string; scope: string }) =>
+      store.archiveBuiltinContextRequest(id, request, metadata, () => true),
+    persistLedger: (ledger: unknown, guard?: () => boolean) => store.saveBuiltinContextLedger(id, id, ledger, () => true, guard) };
+  // Streaming write-ahead protection, without enabling recovery/replay of a normal explicit call.
+  const controller = new ContextRecoveryController({ ...options, protectStreaming: true });
+  controller.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => true });
+  const body: AnthropicRequest = { model: 'fixture', max_tokens: 64, stream: true, messages: [{ role: 'user', content: 'fixture' }] };
+  await (await controller.run(new Request('http://127.0.0.1/fixture'), body, async () => new Response(
+    'event: message_stop\ndata: {"type":"message_stop"}\n\n', { headers: { 'content-type': 'text/event-stream' } }))).text();
+  const input = { record: 'same' };
+  expect(await controller.authorizeTool('fixture_write', input, 'attempt-a')).toBeUndefined();
+  expect(await controller.authorizeTool('fixture_write', input, 'attempt-b')).toBeUndefined();
+  await controller.commitToolResult('fixture_write', input, { receipt: 'a' }, false, 'attempt-a');
+  const disk = store.loadBuiltinContextLedger(id, id);
+  expect(controller.inspectActionLedger().operationAttempts.map(a => a.status)).toEqual(['returned', 'reserved']);
+  await store.getActiveSessionTranscript(id)?.revoke();
+  vi.resetModules(); store = await import('../SessionStore');
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(disk);
+  const restored = new ContextRecoveryController({ ...options, initialLedger: store.loadBuiltinContextLedger(id, id) });
+  restored.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => true });
+  await restored.commitToolResult('fixture_write', input, { receipt: 'old late b' }, false, 'attempt-b');
+  expect(restored.inspectActionLedger().uncertainCount).toBe(1);
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(disk);
+  await restored.protectInference(body, true);
+  expect(restored.beforeTool('fixture_write', input)).toContain('read-only');
 });

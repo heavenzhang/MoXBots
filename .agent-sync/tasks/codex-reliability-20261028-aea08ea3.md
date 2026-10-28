@@ -11,6 +11,10 @@
 
 ## Acceptance criteria
 
+- [x] 第三阶段精确原生执行身份与持久回执，同参数并发/迟到回调/Stop不误清未知。
+- [x] 18文件453测试，真实SDK部分写入counter=1及成功回执写盘失败后的重载保护。
+- [ ] 第三阶段原desktop owner源审/shared CI/main/正式制品与真实路径。
+
 - [x] 第二阶段原生任务查询逐项核对入口、原生签名权限、Session空闲归属与Store锁内CAS。
 - [x] 查询审计回执持久化，原始未知保留；回退/冷加载不获得历史写入重放权限。
 - [x] 429项定向回归、7项原生签名测试、真实SDK查询历史和隔离组件浏览器验收。
@@ -23,6 +27,8 @@
 - [ ] 后续源审与主干/共享CI/新制品/真实Provider及已安装客户端验收。
 
 ## Completed
+
+第三阶段完成，见 `dev-docs/reliability-20261028/phase-three.md`。每次原生操作独立UUID和Query epoch，Post成功/失败只结清精确原生准入。复用原Controller/Store，旧未知和同参数并发分别保留；可持久诊断但不授予冷启动重放或业务成功。修改前8项回归失败，修复后完整定向453项通过；实际SDK正常及写盘失败两种受控验证通过。类型、lint、分类通过，依赖0errors/18既有warnings。本阶段无UI变更。
 
 第二阶段完成受限查询结清与可见核对入口，详见 dev-docs/reliability-20261028/phase-two.md。只支持原生TaskGet/TaskList严格参数与原hash，不解析Bash/SQL、不放行历史写入。复用Rust P256 user-action proof、SessionEngine/SessionStore和原恢复控制器；原始uncertain保留，readonlyTasks仅保存受限查询审计。没有清除业务未知或自动启动任务。
 
@@ -42,6 +48,6 @@ desktop/macOS-arm64/updater及combinedCI/main唯一owner仍01a12bc2-907a-7702-b6
 
 ## Next step
 
-将第二阶段追加精确SHA交既有owner，依赖首批b453b94；不能混入当前冻结0.5.25/525.1。下一阶段处理真实执行/业务回执、持久步骤与冷启动/迟到结果；62/22历史未知仍需原始证据，不能凭本阶段解除。分支源码交付与真实发布严格分开。
+第三阶段精确提交连同phase2 347b5759、phase1 b453b94依赖，交既有desktop owner下一未冻结批次统一源审、共享CI与main整合。当前main已前进到775da22c196b5c72277469c3c1a357d360f030e6（mobile build5），恢复生产代码无重叠，owner合入时仍须同步最新main验证。不可混入已冻结0.5.25/525.1。
 
-将本批精确远端提交交现有桌面owner统一源审/CI/main与后续制品；接着基于原生与业务回执设计逐项结清入口，保持历史未知不被参数哈希或文本成功消息自动覆盖。整个专项未完成，不能用本批通过替代全量稳定性验收。
+继续专项的业务回执对账、冷启动可恢复状态和真实Provider/网络故障矩阵；先保留可验证的操作身份，再按外部真实结果逐项结清。历史薪资62项和AI配置22项未获得业务结清证明。前两阶段owner已接收下批排队、源审尚未完成；本阶段代码交付不等于主干/发布/业务恢复。

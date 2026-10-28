@@ -197,7 +197,7 @@ describe('native tool error settlement', () => {
     await h.controller.authorizeTool('Bash', command, 'shell-b');
     await h.controller.commitToolResult('Bash', command, failure, true, 'shell-a', { interrupted: false });
     expect(h.ledger().uncertain).toHaveLength(1);
-    expect(h.ledger().nativeErrors).toEqual([]);
+    expect(h.ledger().nativeErrors).toHaveLength(1); // exact attempt A is known; B remains pending
   });
 
   it.each(['Stop', 'turn change'])('rejects a late settlement after %s during persistence', async change => {

@@ -7,18 +7,22 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { ContextRecoveryController } from '../src/server/openai-bridge/context-recovery';
 import { createBridgeHandler } from '../src/server/openai-bridge/handler';
+import type { NativeOperationJournalData } from '../src/server/openai-bridge/native-operation-journal';
 import type { AnthropicRequest } from '../src/server/openai-bridge/types/anthropic';
 
 const scratch = await mkdtemp(join(tmpdir(), 'mox-native-tool-errors-'));
 const abort = new AbortController();
 const timer = setTimeout(() => abort.abort(), 60_000);
 let context: ContextRecoveryController;
-let ledger: { uncertain: string[]; nativeErrors: unknown[] } | undefined;
+let ledger: { uncertain: string[]; nativeErrors: unknown[]; operationAttempts: NativeOperationJournalData } | undefined;
 let calls = 0;
 let denied = 0;
 let terminal = false;
 const nativeFailures: unknown[] = [];
 const emptyError = process.argv.includes('--empty-error');
+const failSuccessPersist = process.argv.includes('--fail-success-persist');
+let nativeOwner: { sessionId: string; sdkSessionId: string };
+let injectedPersistFailure = false;
 const backgroundAtFailure = process.argv.includes('--background-at-failure');
 let backgroundActive = false;
 const failingInput = { command: emptyError ? "printf 'once\n' >> attempts.txt; exit 1"
@@ -110,34 +114,56 @@ const native = query({ prompt: 'Run the local check, correct the fixture and ver
   },
 } });
 try {
-  for await (const event of native) {
-    if (event.type === 'system' && event.subtype === 'init') {
-      const owner = { sessionId: 'fixture-product', sdkSessionId: event.session_id };
-      context = new ContextRecoveryController({ scope: () => 'fixture-turn', isActive: () => !abort.signal.aborted,
-        protectStreaming: true, recoveryOwner: owner, canRecover: () => !backgroundActive,
-        backup: async (body, metadata) => {
-          const path = join(scratch, `${metadata.digest}.json`);
-          await writeFile(path, JSON.stringify(body), { mode: 0o600 }); return path;
-        },
-        persistLedger: async value => {
-          ledger = structuredClone(value) as typeof ledger;
-          await writeFile(join(scratch, 'ledger.json'), JSON.stringify(value), { mode: 0o600 });
-        },
-      });
-      context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => !abort.signal.aborted });
+  try {
+    for await (const event of native) {
+      if (event.type === 'system' && event.subtype === 'init') {
+        const owner = { sessionId: 'fixture-product', sdkSessionId: event.session_id };
+        nativeOwner = owner;
+        context = new ContextRecoveryController({ scope: () => 'fixture-turn', isActive: () => !abort.signal.aborted,
+          protectStreaming: true, recoveryOwner: owner, canRecover: () => !backgroundActive,
+          backup: async (body, metadata) => {
+            const path = join(scratch, `${metadata.digest}.json`);
+            await writeFile(path, JSON.stringify(body), { mode: 0o600 }); return path;
+          },
+          persistLedger: async value => {
+            const candidate = value as NonNullable<typeof ledger>;
+            if (failSuccessPersist && candidate.operationAttempts.entries.some(a => a.toolUseId === 'corrected-write' && a.status === 'returned')) {
+              injectedPersistFailure = true; throw new Error('fixture disk full after actual Write');
+            }
+            ledger = structuredClone(value) as typeof ledger;
+            await writeFile(join(scratch, 'ledger.json'), JSON.stringify(value), { mode: 0o600 });
+          },
+        });
+        context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => !abort.signal.aborted });
+      }
+      if (event.type === 'result') { terminal = failSuccessPersist ? event.is_error : !event.is_error; assert(terminal, event.subtype); }
     }
-    if (event.type === 'result') { terminal = !event.is_error; assert(terminal, event.subtype); }
+  } catch (error) {
+    // SDK 0.3.296 throws its terminal API failure instead of yielding a result event.
+    assert(failSuccessPersist && injectedPersistFailure && context.inspectActionLedger().blocked);
+    assert(error instanceof Error && error.message.includes('409 context_recovery_required'));
+    terminal = true;
   }
   assert(terminal);
-  assert.equal(calls, 5);
+  assert.equal(calls, failSuccessPersist ? 3 : 5);
   assert.equal(denied, 1);
   assert.equal(await readFile(join(scratch, 'attempts.txt'), 'utf8'), 'once\n', 'failed command must never replay its partial write');
-  assert.equal(await readFile(join(scratch, 'verified.txt'), 'utf8'), 'verified');
-  assert.deepEqual(ledger?.uncertain, []);
+  assert.equal(await readFile(join(scratch, 'corrected.txt'), 'utf8'), 'corrected');
+  if (!failSuccessPersist) assert.equal(await readFile(join(scratch, 'verified.txt'), 'utf8'), 'verified');
+  assert.equal(injectedPersistFailure, failSuccessPersist);
+  assert.equal(ledger?.uncertain.length, failSuccessPersist ? 1 : 0);
   assert.equal(ledger?.nativeErrors.length, 2);
+  const persisted = JSON.parse(await readFile(join(scratch, 'ledger.json'), 'utf8'));
+  const restored = new ContextRecoveryController({ scope: () => 'cold-query', isActive: () => true,
+    recoveryOwner: nativeOwner!, initialLedger: persisted, backup: async () => 'unused', persistLedger: async () => {} });
+  assert.deepEqual(restored.inspectActionLedger().operationAttempts.map(a => a.status),
+    failSuccessPersist ? ['returned', 'reserved'] : ['returned', 'returned', 'returned']);
+  assert.equal(restored.inspectActionLedger().uncertainCount, failSuccessPersist ? 1 : 0);
+  assert.match(restored.beforeTool('Write', { file_path: join(scratch, 'corrected.txt'), content: 'corrected' }) ?? '',
+    failSuccessPersist ? /uncertain/ : /already completed/);
   console.log(JSON.stringify({ status: 'PASS', scratch, calls, denied, counter: 1, nativeFailures, unknown: ledger?.uncertain.length,
     backgroundRecoveryGateFixture: backgroundAtFailure, actualBackgroundAgent: false,
-    actualSdkNativeAndShell: true, syntheticModel: true, productionStore: false, installedClient: false }));
+    actualSdkNativeAndShell: true, failedSuccessReceiptPersistence: failSuccessPersist, journalReload: true, operationAttempts: restored.inspectActionLedger().operationAttempts, syntheticModel: true, productionStore: false, installedClient: false }));
 } finally {
   clearTimeout(timer);
   native.close();
