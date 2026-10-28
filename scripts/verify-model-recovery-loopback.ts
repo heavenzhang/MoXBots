@@ -2,6 +2,7 @@
  * Private journal persistence is a fixture writer, not production SessionStore acceptance.
  * A controlled clock records the real 15s policy but compresses permitted transport waits to 0ms.
  */
+import { randomUUID } from 'node:crypto';
 import { strict as assert } from 'node:assert';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { mkdtemp, writeFile, readFile, rename, stat } from 'node:fs/promises';
@@ -30,6 +31,8 @@ type Phase = 'initial' | 'checkpoint' | 'restart';
 let phase: Phase = 'initial';
 let active = true;
 let scope = 'original-goal-turn';
+const fixtureNativeId = randomUUID();
+let queryGeneration = 0;
 let nativeSessionId: string | undefined;
 let clock = Date.now();
 let counter = 0;
@@ -99,7 +102,9 @@ let context: ContextRecoveryController;
 let modelRecovery: SessionModelRecovery;
 let failover: ModelFailoverController;
 async function createControllers(initialLedger?: unknown): Promise<void> {
-  context = new ContextRecoveryController({ scope: () => scope, isActive: () => active, initialLedger,
+  const generation = ++queryGeneration;
+  const owner = { sessionId: 'fixture-product', sdkSessionId: fixtureNativeId };
+  context = new ContextRecoveryController({ scope: () => scope, isActive: () => active, initialLedger, recoveryOwner: owner, protectStreaming: true,
     persistLedger: async ledger => { await writeFile(ledgerPath, JSON.stringify(ledger), { mode: 0o600 }); },
     backup: async (body, metadata) => {
       archives++;
@@ -108,6 +113,7 @@ async function createControllers(initialLedger?: unknown): Promise<void> {
       return path;
     },
   });
+  context.bindNoDispatchOwner({ ...owner, queryGeneration: generation, isCurrent: () => active && queryGeneration === generation });
   const queryContext = context;
   modelRecovery = new SessionModelRecovery({ read: () => journal,
     write: async (next, expected, live) => {
@@ -202,19 +208,19 @@ const counterServer = createSdkMcpServer({ name: 'counter', version: '1.0.0', to
 ] });
 async function run(prompt: string, stopAtCheckpoint = false): Promise<void> {
   const native = query({ prompt, options: {
-    cwd: scratch, model: 'primary-fixture', settingSources: [], tools: [], resume: nativeSessionId,
+    cwd: scratch, model: 'primary-fixture', settingSources: [], tools: [], ...(nativeSessionId ? { resume: nativeSessionId } : { sessionId: fixtureNativeId }),
     mcpServers: { counter: counterServer }, allowedTools: ['mcp__counter__increment'],
     permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true,
     hooks: {
       PreToolUse: [{ hooks: [async input => {
         if (input.hook_event_name !== 'PreToolUse') return {};
-        const reason = await context.authorizeTool(input.tool_name, input.tool_input);
+        const reason = await context.authorizeTool(input.tool_name, input.tool_input, input.tool_use_id);
         if (!reason) return {};
         denied++;
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } };
       }] }],
       PostToolUse: [{ hooks: [async input => {
-        if (input.hook_event_name === 'PostToolUse') await context.commitToolResult(input.tool_name, input.tool_input, input.tool_response);
+        if (input.hook_event_name === 'PostToolUse') await context.commitToolResult(input.tool_name, input.tool_input, input.tool_response, false, input.tool_use_id);
         return {};
       }] }],
     },
@@ -237,6 +243,7 @@ async function run(prompt: string, stopAtCheckpoint = false): Promise<void> {
     for await (const event of native) {
       if (event.type === 'system' && event.subtype === 'init') {
         if (nativeSessionId) assert.equal(event.session_id, nativeSessionId, 'native history must retain its original Session ID');
+        assert.equal(event.session_id, fixtureNativeId);
         nativeSessionId = event.session_id;
         console.log(JSON.stringify({ event: 'native-init', phase, nativeSessionId }));
       }

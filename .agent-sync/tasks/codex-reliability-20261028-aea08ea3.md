@@ -11,6 +11,10 @@
 
 ## Acceptance criteria
 
+- [x] 第五阶段实际SDK组合故障100/100，十种场景各十轮，counter全部为1。
+- [x] 两次断流保持原deadline，第二次等待Stop无后续调用；原生Query重建保留历史。
+- [ ] 第五阶段原desktop owner源审/main/shared CI/签名客户端和真实Provider验收。
+
 - [x] 第四阶段上游冷却约束覆盖后台/无持久owner，原始拒绝与SDK防重发保留。
 - [x] 21文件490tests、实际SDK counter=1、真实HTTP冷却头与重复请求核验。
 - [ ] 第四阶段原desktop owner源审/shared CI/main/签名客户端和真实Provider验收。
@@ -32,6 +36,8 @@
 
 ## Completed
 
+第五阶段见 `dev-docs/reliability-20261028/phase-five.md`。修正旧smoke缺失的精确native owner/tool ID；新增有界100次矩阵与连续断流/Stop验证。生产src相对phase4无变化。真实SDK和合成上游通过，时钟压缩，Goal/持久writer是夹具；不能替代真实客户端、Provider或断电验收。类型/lint通过，原490项保留为前阶段证据、本阶段未重跑。
+
 第四阶段见 `dev-docs/reliability-20261028/phase-four.md`。修复长Retry-After在后台或无持久owner时被短退避忽略的请求放大；保留原候选/持久等待authority，无权限时返回原错误和冷却头。增加冷却延后与原生commit_unmatched受限诊断，关闭/异常observer不影响权限。7项基线失败；修复后21文件490项通过，实际SDK故意重复仍仅1次失败上游调用、counter=1。类型/lint/分类/依赖边界通过。
 
 第三阶段完成，见 `dev-docs/reliability-20261028/phase-three.md`。每次原生操作独立UUID和Query epoch，Post成功/失败只结清精确原生准入。复用原Controller/Store，旧未知和同参数并发分别保留；可持久诊断但不授予冷启动重放或业务成功。修改前8项回归失败，修复后完整定向453项通过；实际SDK正常及写盘失败两种受控验证通过。类型、lint、分类通过，依赖0errors/18既有warnings。本阶段无UI变更。
@@ -48,12 +54,12 @@
 
 ## Blockers and unknowns
 
-desktop/macOS-arm64/updater及combinedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4。当前0.5.25/525.1候选已冻结，本批待后续未冻结批次。未清除或重放业务历史、未替换日常App、未操作Host/cloud/mobile生产。未知记录的外部结果、跨重启续跑及完整原生矩阵尚未验收。
+desktop/macOS-arm64/updater及combinedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4。当前0.5.25/525.2/r3候选已冻结，source cc21d4c925ee41b37a79aeb4ef4266db6a4ae104，本批待后续未冻结批次。未清除或重放业务历史、未替换日常App、未操作Host/cloud/mobile生产。未知记录的外部结果、生产进程/整机冷启动及真实Provider矩阵尚未验收；隔离SDK Query重建和100次组合矩阵已通过。
 
 单Agent直接开发，无子Agent或外部模型调用；真实Token/费用未测量。现有Git链路偶发TLS失败，使用已配置的本地代理在命令级完成核实，不改变全局Git或应用配置。
 
 ## Next step
 
-第四阶段精确提交依赖phase3 f57f2783402fab7291646064501de0c7d07c9093，连同phase2 347b5759、phase1 b453b94依赖，交既有desktop owner下一未冻结批次统一源审、共享CI与main整合。当前main已前进到775da22c196b5c72277469c3c1a357d360f030e6（mobile build5），恢复生产代码无重叠，owner合入时仍须同步最新main验证。不可混入已冻结0.5.25/525.1。
+第五阶段精确提交依赖phase4 8cfe7b00815bbc1721a5e0d262e51ced1b7867d4，phase3 f57f2783402fab7291646064501de0c7d07c9093，连同phase2 347b5759、phase1 b453b94依赖，交既有desktop owner下一未冻结批次统一源审、共享CI与main整合。当前main已前进到775da22c196b5c72277469c3c1a357d360f030e6（mobile build5），恢复生产代码无重叠，owner合入时仍须同步最新main验证。不可混入已冻结0.5.25/525.2/r3。
 
 继续专项的业务回执对账、冷启动可恢复状态和真实Provider/网络故障矩阵；先保留可验证的操作身份，再按外部真实结果逐项结清。历史薪资62项和AI配置22项未获得业务结清证明。前两阶段owner已接收下批排队、源审尚未完成；本阶段代码交付不等于主干/发布/业务恢复。
