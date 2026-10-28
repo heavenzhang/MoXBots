@@ -23,7 +23,7 @@ use zeroize::Zeroizing;
 const OFFICIAL: &str = "official";
 fn owned_service_url() -> Option<&'static str> {
     if crate::app_dirs::IS_MOXBOT {
-        Some(option_env!("MOXBOTS_OWNED_SERVICE_URL").unwrap_or("https://140.143.183.232"))
+        Some(option_env!("MOXBOTS_OWNED_SERVICE_URL").unwrap_or("https://101.42.11.29"))
     } else {
         None
     }

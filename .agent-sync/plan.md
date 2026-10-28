@@ -984,3 +984,7 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 524构建前接受499补充3a61366c：明确排除继承desktop标记的hidden retry/streamContinuation，Root10项实际接续/Stop/cancel回归PASS；原beec候选不构建。下一步固定合并补充后的精确候选，同PR207原CI协调；headless renewal失败不豁免，相关文件未改，实际原因待确定。
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
+
+## MOXBOTS-CLOUD-MIGRATION-101-20261029 — desktop/updater source
+
+Human authorizes101 cloud/web/update migration and fresh test data/identity. Root01a12bc2 remains desktop/updater/sharedCI/main owner, cloud/website/mobile01a12b99. Isolated branchcodex/desktop-endpoints101-20261029 fromactualcaab changes APP_WEBSITE_URL to101/moxbots/, updater reserved/updates and owned defaultorigin101; retains updaterkey, oldlocaldeviceidentity/history and alltrustguards. Scope and test evidence dev-docs/cloud-migration-101/desktop-updater.md, taskeaafdd78. Existing5251/source45a frozen untouched; current208/209 CI independent, migration source waits for reviewed combined cloudsource/newcandidateCI. No101server/Nginx/TLS/dailyApp action. Newcloud ordinarylogin/newtrust needed, oldaccounts not automatically migrated.
