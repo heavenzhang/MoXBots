@@ -988,3 +988,11 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 ## MOXBOTS-CLOUD-MIGRATION-101-20261029
 
 Human explicitly authorizes moving MoXBots cloud/website/update endpoints to101.42.11.29 and replacing old test-only cloud databases/signing authority with a fresh instance. Preserve old140 storage, original101 Host local identity/keys/config, all coexisting AI4S routes/data/TLS and daily Mac client. New MoXBots UI uses /moxbots/ and /moxbots/admin with existing API paths and loopback service18081/Dex15556; no new public ports. Cloud/website/mobile owner01a12b99-7b38-78b1-831f-9c60257d386a; existing desktop/updater/combined CI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 retained. Fresh trust requires explicit binding; old installs keep140 until new immutable artifacts. Original updater signing key is separate and preserved. Scope/checklist/evidence: `.agent-sync/tasks/codex-cloud-migration101-20261029-14e11176.md` and `dev-docs/cloud-migration-101-20261029.md`. Local service212/0/8ignored, bootstrap6, strictclippy/fmt/syntax pass; main, Linux artifact, deployment and real acceptance remain open.
+
+## MB-MOBILE-BUILD5-MAIN-20261029 — 手机build5源码主干交付
+
+人类2026-10-29要求手机到可用版本并安装iPhone，既有mobile owner01a12b99-7b38-78b1-831f-9c60257d386a继续独立手机实际附件/签名/安装/TestFlight；sharedCI/main仍唯一Root01a12bc2-907a-7702-b6dd-788225c5dfe4。Root只交主干源码，不执行手机或日常Mac/101部署。
+
+固定手机producer40a30926d237ea0eb84261a5f6d6d59ef9097e66（maincaab+同字节原5c3d/d108snapshot修复+0.1.0/build5及记录），一次相称CI/main，不拆build4再build5；原手机制品不覆盖。Root隔离分支codex/mobile-build5-main-20261029，仅补齐任务标准章节和CI/main归属记录，产品/mobile子树与40a完全相同。任务.agent-sync/tasks/codex-mobile-build5-main-20261029-4939c867.md。原84policy/模拟UI不关闭真实iPhone、登录、native附件Read/下载预览或外部TestFlight。
+
+当前独立desktop0.5.25/525.1源码45a9冻结不变，手机来源不加入其制品。两PR共享main变更串行，合并前核最新main及独立目录/接口兼容；若手机先合，不能假称整个main树等于desktop45a9，要精确记录独立mobile delta与component closure，遵守原requiredCI而不绕保护。各单元保持原唯一部署会话与不可变版本/制品映射。
