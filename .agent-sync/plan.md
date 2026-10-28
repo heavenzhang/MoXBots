@@ -985,6 +985,7 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
 
+<<<<<<< HEAD
 
 ## MOXBOTS-MULTIAGENT-UX-20261028 — 子 Agent 状态与协作交互
 
@@ -995,3 +996,8 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 ## MB-COMPOSER-TYPE-20261027 — 输入区字号
 
 输入正文、占位符及灰色建议16px降为14px，沿用26px测量行高；工具栏14px和提示12px维持，设计约定同步。84项既有输入/IME/建议/发送回归、全量类型及定向lint通过；实际生产组件Chromium/WebKit宽窄与明暗8组渲染/换行/建议接受取消/发送通过，作者自验。任务`.agent-sync/tasks/codex-composer-type-20261027.md`，证据`dev-docs/composer-type-20261027/acceptance.md`。代码与本地/模拟通过；CI/main、正式版本/制品、安装发布和真实原生路径仍由既有唯一desktop/macOS-arm64/updater及combinedCI/main会话01a12bc2-907a-7702-b6dd-788225c5dfe4选择下一未冻结批次，本聊天不另启共享CI或改日常App。
+=======
+## MOXBOT-COMPOSER-20261027 — 已发送内容即时退出输入框
+
+SimpleChatInput在提交时同步释放正文/附件/查询上下文，拒绝/异常仅恢复原会话未编辑的草稿；下一稿、主动删空、附件和IME保持，原admission及防重不变。任务`.agent-sync/tasks/codex-composer-submit-delivery-20261027-c24f4826.md`，验收`dev-docs/composer-submit-20261027/acceptance.md`。236项定向DOM/全量tsc/lint/分类、Chromium与WebKit三个宽度共6组实际渲染通过；主Agent自审，独审/共享CI/main/签名客户端/真实Provider分开追踪。desktop/macOS/updater及combinedCI/main仍交唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4下一未冻结批次；不动已发布0.5.24、日常客户端或其他单元。
+>>>>>>> fdade88b7abc15020c1dc42e892378447180f22b

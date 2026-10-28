@@ -6031,8 +6031,8 @@ export default function TabProvider({
         setPendingDesktopMessages(previous => [...previous, pendingMessage]);
       }
 
-      // Project immediately, but retain the composer until the HTTP admission
-      // receipt. Queue admission still does not prove dispatch or persistence.
+      // Project immediately; the composer has already released its submitted
+      // draft. Queue admission still does not prove dispatch or persistence.
       // Desktop is the ONLY caller that should trigger provider switches per-message.
       // When no providerEnv is given (subscription mode), send 'subscription' explicitly
       // so enqueueUserMessage knows this is an intentional switch, not "I don't know".
