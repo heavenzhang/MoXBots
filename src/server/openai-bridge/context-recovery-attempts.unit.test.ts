@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
 import { ContextRecoveryController, recoveryActionHash } from './context-recovery';
 import type { NativeOperationJournalData } from './native-operation-journal';
@@ -72,6 +73,51 @@ it('persists distinct admissions and returned receipts across a controller resta
   // A rollback reader ignoring the optional extension still sees the pending hash.
   const { operationAttempts: _journal, ...oldLedger } = disk;
   expect(fixture(oldLedger).controller.inspectActionLedger().uncertainCount).toBe(1);
+});
+
+async function saturatedSettledLedger() {
+  const h = fixture(); await h.emit(['seed']);
+  expect(await h.controller.authorizeTool('Bash', input, 'seed')).toBeUndefined();
+  await h.controller.commitToolResult('Bash', input, 'returned', false, 'seed');
+  const disk = structuredClone(h.saved());
+  const entry = disk.operationAttempts.entries[0]!;
+  disk.operationAttempts.entries = Array.from({ length: 2048 }, (_, i) => ({
+    ...entry, id: randomUUID(), toolUseId: `settled-${i}`,
+  }));
+  return disk;
+}
+
+it('admits a cold new Query after settled history fills without allowing retired identities or late receipts to settle new work', async () => {
+  const h = fixture(await saturatedSettledLedger());
+  await h.emit(['new-work']);
+  expect(await h.controller.authorizeTool('Bash', input, 'new-work')).toBeUndefined();
+  const disk = structuredClone(h.saved());
+  expect(disk.operationAttempts.version).toBe(2);
+  expect(disk.operationAttempts.entries).toHaveLength(2048);
+  expect(disk.operationAttempts.entries.at(-1)?.status).toBe('reserved');
+  expect(disk.uncertain).toEqual([recoveryActionHash('Bash', input)]);
+  const cold = fixture(disk);
+  await cold.emit(['settled-0']);
+  expect(await cold.controller.authorizeTool('Bash', input, 'settled-0')).toContain('read-only reconciliation');
+  await cold.controller.commitToolResult('Bash', input, 'late retired receipt', false, 'settled-0');
+  expect(cold.controller.inspectActionLedger().uncertainCount).toBe(1);
+  await h.controller.commitToolResult('Bash', input, 'exact new receipt', false, 'new-work');
+  expect(h.saved().uncertain).toEqual([]);
+  expect(h.saved().operationAttempts.entries.at(-1)?.status).toBe('returned');
+  const settled = fixture(h.saved()); await settled.emit(['settled-0']);
+  expect(await settled.controller.authorizeTool('Bash', input, 'settled-0')).toContain('already reserved');
+});
+
+it('does not dispatch after compacted reservation persistence fails or change the last durable journal', async () => {
+  const disk = await saturatedSettledLedger();
+  const h = fixture(disk); await h.emit(['new-work']);
+  const beforeFailure = structuredClone(h.saved());
+  h.options.persistLedger = async () => { throw new Error('disk full'); };
+  expect(await h.controller.authorizeTool('Bash', input, 'new-work')).toContain('execution stopped');
+  expect(h.saved()).toEqual(beforeFailure);
+  expect(h.controller.inspectActionLedger().blocked).toBe(true);
+  const cold = fixture(disk); await cold.emit(['settled-0']);
+  expect(await cold.controller.authorizeTool('Bash', input, 'settled-0')).toContain('already reserved');
 });
 it('does not accept a callback after rebinding an equal generation to a new native epoch', async () => {
   const h = fixture(); await h.emit(['a']); await h.controller.authorizeTool('Bash', input, 'a');

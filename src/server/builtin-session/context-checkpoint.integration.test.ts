@@ -1,9 +1,10 @@
 import { mkdtemp, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ContextRecoveryController } from '../openai-bridge/context-recovery';
+import { ContextRecoveryController, recoveryActionHash } from '../openai-bridge/context-recovery';
+import { NativeOperationJournal, type NativeOperationJournalData } from '../openai-bridge/native-operation-journal';
 import type { AnthropicRequest } from '../openai-bridge/types/anthropic';
 
 const state = vi.hoisted(() => ({ home: '' }));
@@ -207,4 +208,46 @@ it('persists per-attempt outcomes for identical actions and preserves an unfinis
   expect(store.loadBuiltinContextLedger(id, id)).toEqual(disk);
   await restored.protectInference(body, true);
   expect(restored.beforeTool('fixture_write', input)).toContain('read-only');
+});
+
+it('persists compacted settled identities and a new pending reservation through the real Store cold path', async () => {
+  const transcript = await store.loadSessionTranscript(id);
+  expect((await store.appendSessionMessages(id, transcript.cursor, [{ id: 'retention-fixture', role: 'user',
+    content: 'Controlled settled-query rollover', timestamp: new Date().toISOString() }])).ok).toBe(true);
+  const owner = { sessionId: id, sdkSessionId: id };
+  const input = { fixture: 'settled-query-rollover' };
+  const actionHash = recoveryActionHash('fixture_write', input);
+  const journal = new NativeOperationJournal();
+  const queryEpoch = randomUUID();
+  for (let i = 0; i < 2048; i++) {
+    const attempt = journal.reserve({ ...owner, queryEpoch, queryGeneration: 1, scope: 'old-turn',
+      toolUseId: `old-${i}`, toolName: 'fixture_write', actionHash });
+    journal.complete(attempt, 'success', 'a'.repeat(64));
+  }
+  await store.saveBuiltinContextLedger(id, id, { version: 1, completed: [], uncertain: [], denied: [], blocked: false,
+    projectionActive: false, streamArmedOnly: true, operationAttempts: journal.serialize() }, () => true);
+  await store.getActiveSessionTranscript(id)?.revoke();
+  vi.resetModules(); store = await import('../SessionStore');
+  const options = { recoveryOwner: owner, scope: () => 'new-turn', isActive: () => true,
+    backup: async () => 'fixture', initialLedger: store.loadBuiltinContextLedger(id, id),
+    persistLedger: (ledger: unknown, guard?: () => boolean) => store.saveBuiltinContextLedger(id, id, ledger, () => true, guard) };
+  const controller = new ContextRecoveryController(options);
+  controller.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => true });
+  expect(await controller.authorizeTool('fixture_write', input, 'new-work')).toBeUndefined();
+  const saved = store.loadBuiltinContextLedger(id, id) as { uncertain: string[]; operationAttempts: NativeOperationJournalData };
+  expect(saved.uncertain).toEqual([actionHash]);
+  expect(saved.operationAttempts.version).toBe(2);
+  expect(saved.operationAttempts.retired?.hashes).toEqual([createHash('sha256').update('old-0').digest('hex')]);
+  expect(saved.operationAttempts.entries).toHaveLength(2048);
+  expect(saved.operationAttempts.entries.at(-1)?.status).toBe('reserved');
+  await store.getActiveSessionTranscript(id)?.revoke();
+  vi.resetModules(); store = await import('../SessionStore');
+  const disk = store.loadBuiltinContextLedger(id, id);
+  expect(disk).toEqual(saved);
+  const cold = new ContextRecoveryController({ ...options, initialLedger: disk });
+  cold.bindNoDispatchOwner({ ...owner, queryGeneration: 3, isCurrent: () => true });
+  expect(await cold.authorizeTool('fixture_write', input, 'old-0')).toContain('already reserved');
+  await cold.commitToolResult('fixture_write', input, 'late success', false, 'new-work');
+  expect(cold.inspectActionLedger().uncertainCount).toBe(1);
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(saved);
 });

@@ -1,6 +1,6 @@
 import { safeStreamFailure, streamFailure, streamFailureMessage, type StreamFailureDiagnostic } from './stream-failure-diagnostic';
 import { createHash, randomUUID } from 'node:crypto';
-import { NativeOperationJournal, type NativeOperationAttempt } from './native-operation-journal';
+import { NativeOperationJournal, NativeOperationJournalCapacityError, type NativeOperationAttempt } from './native-operation-journal';
 import type { AnthropicContentBlock, AnthropicMessage, AnthropicRequest, AnthropicToolResultBlock } from './types/anthropic';
 import { readBoundedErrorBody } from './read-error-body';
 import { SSEParser } from './utils/sse-parser';
@@ -807,7 +807,14 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         const attempt = this.operations.reserve({ sessionId: owner.sessionId, sdkSessionId: owner.sdkSessionId,
           queryEpoch: this.nativeQueryEpoch, queryGeneration: owner.queryGeneration, scope: scope ?? `native-query:${this.nativeQueryEpoch}`, toolUseId, toolName: name, actionHash: key });
         this.nativeAdmissions.set(toolUseId, { scope, pending: true, actionHash: key, owner, queryEpoch: this.nativeQueryEpoch, attempt });
-      } catch { return 'automatic_replay_blocked: Native operation reservation identity or capacity is unavailable.'; }
+      } catch (error) {
+        if (error instanceof NativeOperationJournalCapacityError) {
+          return error.kind === 'query'
+            ? 'context_recovery_required: This Query has reached its safe operation capacity. Existing operation records remain protected; inspect the Session before continuing.'
+            : 'context_recovery_required: This Session has reached its safe operation history capacity. Existing records are retained; inspect the Session and start a new Session only for independent new work.';
+        }
+        return 'automatic_replay_blocked: Native operation reservation identity or capacity is unavailable.';
+      }
     } else this.operations.markLegacy(key);
     state.uncertain.add(key);
     this.uncertainLedger.add(key);
