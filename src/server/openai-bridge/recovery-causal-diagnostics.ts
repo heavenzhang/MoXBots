@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 export type AdmissionRejectionReason = 'registry_exhausted' | 'blocked_exact_scope' | 'blocked_ambiguous_scope'
   | 'duplicate_exact_key' | 'duplicate_ambiguous_fingerprint' | 'registry_capacity';
 export type NativeActionPhase = 'reserve_enter' | 'reserve_complete' | 'reserve_not_required' | 'reserve_denied'
-  | 'reserve_failed' | 'commit_enter' | 'commit_complete' | 'commit_failed';
+  | 'reserve_failed' | 'commit_enter' | 'commit_complete' | 'commit_failed' | 'commit_unmatched';
 export type RecoveryCausalDiagnostic =
+  | { event: 'inference_retry_deferred'; reason: 'provider_cooldown'; status: number; attempt: number;
+      retryAfterMs: number; usingBackup: boolean; durableOwnerAvailable: boolean }
   | { event: 'inference_admission_rejected'; owner: 'context' | 'model_failover'; reason: AdmissionRejectionReason }
   | { event: 'native_action_gate_rejected'; reason: 'state_blocked' | 'ledger_blocked' | 'request_guard_blocked' }
   | { event: 'native_action'; phase: NativeActionPhase; toolIdDigest: string; actionDigest: string;

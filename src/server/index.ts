@@ -727,6 +727,7 @@ import { goalOrchestrator } from './session-engine';
 import { createTaskDispatchGuard } from './session-engine/task-turn-orchestrator';
 import { handleSessionEngineQueueRoute } from './routes/session-engine-queue';
 import { handleSessionEngineRuntimeRoute } from './routes/session-engine-runtime';
+import { handleRecoveryReconciliationRoute } from './routes/recovery-reconciliation';
 import { handleSessionReadRoute } from './routes/session-read';
 import { handlePromptSuggestionRoute } from './routes/prompt-suggestion';
 import { handleChatStreamRoute } from './routes/chat-stream';
@@ -3070,6 +3071,8 @@ async function main() {
       }
 
       // Read historical session messages from SDK's persisted session files (v0.2.59+)
+      const recoveryReviewResponse = await handleRecoveryReconciliationRoute(pathname, request);
+      if (recoveryReviewResponse) return recoveryReviewResponse;
       const promptSuggestionResponse = await handlePromptSuggestionRoute(pathname, request);
       if (promptSuggestionResponse) return promptSuggestionResponse;
 

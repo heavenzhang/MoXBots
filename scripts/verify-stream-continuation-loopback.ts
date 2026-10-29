@@ -2,6 +2,7 @@
  * --goal uses a synthetic fixed Goal owner, not the production Rust scheduler.
  * --stop stops during durable waiting. Real 15s policy is recorded; clock is compressed.
  */
+import { randomUUID } from 'node:crypto';
 import { strict as assert } from 'node:assert';
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { mkdtemp, writeFile, readFile, rename, stat } from 'node:fs/promises';
@@ -14,9 +15,11 @@ import { ModelFailoverController } from '../src/server/openai-bridge/model-failo
 import { SessionModelRecovery } from '../src/server/builtin-session/model-recovery';
 import { SameTurnStreamContinuation } from '../src/server/builtin-session/stream-continuation';
 import type { AnthropicRequest } from '../src/server/openai-bridge/types/anthropic';
-import { MODEL_RECOVERY_WINDOW_MS, validModelRecovery, type ModelRecoveryState } from '../src/shared/modelRecovery';
+import { MODEL_RECOVERY_WINDOW_MS, modelRecoveryDelay, validModelRecovery, type ModelRecoveryState } from '../src/shared/modelRecovery';
 import type { StreamRecoveryEvidence } from '../src/shared/streamRecovery';
 
+const interruptions = process.argv.includes('--twice') ? 2 : 1;
+const fixtureNativeId = randomUUID();
 const goal = process.argv.includes('--goal');
 const stop = process.argv.includes('--stop');
 const sdkVersion = JSON.parse(await readFile(new URL('../node_modules/@anthropic-ai/claude-agent-sdk/package.json', import.meta.url), 'utf8')).version as string;
@@ -43,6 +46,7 @@ let finalTerminalCallbacks = 0;
 let nativeSessionId: string | undefined;
 let journal: ModelRecoveryState | undefined;
 let initialCheckpoint: ModelRecoveryState | undefined;
+let latestCheckpoint: ModelRecoveryState | undefined;
 let partialObserved = false;
 let observedText = '';
 let replayRejections = 0;
@@ -91,23 +95,24 @@ const upstream = createServer((req, res) => {
     const body = JSON.parse(Buffer.concat(chunks).toString('utf8')) as AnthropicRequest;
     upstreamBodies.push(body);
     assert(active, 'no supplier call is allowed after Stop');
-    assert(upstreamBodies.length <= 4, 'bounded fixture cannot hide automatic replay');
+    assert(upstreamBodies.length <= 2 + interruptions * 2, 'bounded fixture cannot hide automatic replay');
     assert.equal(body.model, 'primary-fixture');
     if (upstreamBodies.length === 1) { reply(res, 'confirmed-first-action'); return; }
     assert.equal(counter, 1, 'partial stream follows a real completed MCP action');
     assert(JSON.stringify(body.messages).includes('confirmed-first-action'));
-    if (upstreamBodies.length === 2) { reply(res, undefined, true); return; }
-    assert.equal(generation, 1, 'continuation uses a fresh bridge namespace');
+    if (upstreamBodies.length === 2 || (interruptions === 2 && upstreamBodies.length === 4)) { reply(res, undefined, true); return; }
+    assert.equal(generation, Math.floor((upstreamBodies.length - 1) / 2), 'continuation uses a fresh bridge namespace');
     assert(JSON.stringify(body.messages).includes('mox-stream-continuation:'), 'supplier sees marker-authorized native history');
     assert(body.messages.some(message => message.role === 'user' && Array.isArray(message.content)
       && message.content.some(block => block.type === 'tool_result' && block.tool_use_id === 'confirmed-first-action')), 'completed tool result remains in native history');
-    if (upstreamBodies.length === 3) { reply(res, 'new-id-same-action'); return; }
+    if (upstreamBodies.length % 2 === 1) { reply(res, `new-id-same-action-${generation}`); return; }
     reply(res);
   })().catch(error => { errors.push(String(error)); res.destroy(); });
 });
 const upstreamPort = await listen(upstream);
 const scope = () => `${rootId}:inference-generation-${generation}`;
-const context = new ContextRecoveryController({ scope, isActive: () => active, protectStreaming: true,
+const owner = { sessionId: 'fixture-product', sdkSessionId: fixtureNativeId };
+const context = new ContextRecoveryController({ scope, isActive: () => active, protectStreaming: true, recoveryOwner: owner,
   persistLedger: async ledger => { await writeFile(ledgerPath, JSON.stringify(ledger), { mode: 0o600 }); },
   backup: async (body, metadata) => {
     const path = join(scratch, `native-request-${metadata.digest}.json`);
@@ -115,6 +120,7 @@ const context = new ContextRecoveryController({ scope, isActive: () => active, p
     return path;
   },
 });
+context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => active });
 const modelRecovery = new SessionModelRecovery({ read: () => journal,
   write: async (next, expected, live) => {
     if (!live() || JSON.stringify(journal) !== JSON.stringify(expected)) return false;
@@ -138,7 +144,7 @@ const failover = new ModelFailoverController({ scope, isActive: () => active,
         assert(initialCheckpoint && journal);
         assert.equal(journal.deadlineAt, initialCheckpoint.deadlineAt, 'continuation cannot renew the durable budget');
         assert.equal(journal.startedAt, initialCheckpoint.startedAt);
-        assert.equal(journal.attempt, initialCheckpoint.attempt);
+        assert.equal(journal.attempt, latestCheckpoint!.attempt);
         assert.equal(journal.turnId, rootId);
         return { delayMs: 0 };
       }
@@ -150,8 +156,12 @@ const failover = new ModelFailoverController({ scope, isActive: () => active,
       const allowed = await modelRecovery.interrupted(request);
       if (allowed) {
         assert(journal && validModelRecovery(journal));
-        initialCheckpoint = structuredClone(journal);
-        assert.equal(journal.nextRetryAt - clock, 15_000, 'record actual first wait policy');
+        initialCheckpoint ??= structuredClone(journal);
+        latestCheckpoint = structuredClone(journal);
+        assert.equal(journal.id, initialCheckpoint.id, 'repeated interruptions retain the same recovery chain');
+        assert.equal(journal.deadlineAt, initialCheckpoint.deadlineAt);
+        assert.equal(journal.attempt, waits.length + 1);
+        assert.equal(journal.nextRetryAt - clock, modelRecoveryDelay(journal.attempt), 'record actual first wait policy');
         assert.deepEqual(JSON.parse(await readFile(journalPath, 'utf8')).modelRecovery, journal);
         waits.push({ policyDelayMs: journal.nextRetryAt - clock, startedAt: journal.startedAt, deadlineAt: journal.deadlineAt });
         continuation.interrupted();
@@ -208,18 +218,18 @@ const counterServer = createSdkMcpServer({ name: 'counter', version: '1.0.0', to
 ] });
 const deadline = setTimeout(() => abort.abort('fixture exceeded 90 second bound'), 90_000);
 pushInput(original);
-const native = query({ prompt: inputs(), options: { cwd: scratch, model: 'primary-fixture', settingSources: [], tools: [],
+const native = query({ prompt: inputs(), options: { sessionId: fixtureNativeId, cwd: scratch, model: 'primary-fixture', settingSources: [], tools: [],
   mcpServers: { counter: counterServer }, allowedTools: ['mcp__counter__increment'], persistSession: true, includePartialMessages: true,
   permissionMode: 'bypassPermissions', allowDangerouslySkipPermissions: true, abortController: abort, maxTurns: 8,
   hooks: {
     PreToolUse: [{ hooks: [async input => {
       if (input.hook_event_name !== 'PreToolUse') return {};
-      const reason = await context.authorizeTool(input.tool_name, input.tool_input);
+      const reason = await context.authorizeTool(input.tool_name, input.tool_input, input.tool_use_id);
       if (!reason) return {};
       denied++; return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: reason } };
     }] }],
     PostToolUse: [{ hooks: [async input => {
-      if (input.hook_event_name === 'PostToolUse') await context.commitToolResult(input.tool_name, input.tool_input, input.tool_response);
+      if (input.hook_event_name === 'PostToolUse') await context.commitToolResult(input.tool_name, input.tool_input, input.tool_response, false, input.tool_use_id);
       return {};
     }] }],
   },
@@ -236,6 +246,7 @@ try {
   for await (const event of native) {
     if (event.type === 'system' && event.subtype === 'init') {
       if (nativeSessionId) assert.equal(event.session_id, nativeSessionId);
+      assert.equal(event.session_id, fixtureNativeId);
       nativeSessionId = event.session_id;
       console.log(JSON.stringify({ event: 'native-init', mode: stop ? 'stop' : goal ? 'goal' : 'ordinary', nativeSessionId }));
     }
@@ -248,9 +259,10 @@ try {
     sdkResults.push(`${event.subtype}:${event.is_error ? 'error' : 'ok'}`);
     if (event.is_error || event.subtype !== 'success') {
       assert(journal && initialCheckpoint, 'native error result must follow a durable stream checkpoint');
-      clock = stop ? journal.nextRetryAt - 25 : journal.nextRetryAt;
+      const stopNow = stop && waits.length === interruptions;
+      clock = stopNow ? journal.nextRetryAt - 25 : journal.nextRetryAt;
       assert(continuation.schedule(), 'only original native result boundary schedules continuation');
-      if (stop) {
+      if (stopNow) {
         continuation.stop(); await modelRecovery.pause('synthetic user Stop during durable wait');
         stoppedUpstreamCalls = upstreamBodies.length; active = false;
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -261,7 +273,7 @@ try {
     }
     assert(journal && initialCheckpoint);
     assert.equal(journal.deadlineAt, initialCheckpoint.deadlineAt);
-    assert.equal(journal.attempt, initialCheckpoint.attempt);
+    assert.equal(journal.attempt, latestCheckpoint!.attempt);
     assert(await modelRecovery.finishStreamTurn()); continuation.finish(); finalTerminalCallbacks++;
     finishInputs(); break;
   }
@@ -271,29 +283,33 @@ try {
   assert(initialCheckpoint && validModelRecovery(initialCheckpoint));
   assert.equal(initialCheckpoint.turnId, rootId);
   assert.equal(initialCheckpoint.goalId, goal ? 'synthetic-fixed-goal-owner' : undefined);
-  assert.equal(waits.length, 1);
+  assert.equal(waits.length, interruptions);
+  const durableActions = JSON.parse(await readFile(ledgerPath, 'utf8'));
+  assert.equal(durableActions.operationAttempts.entries.length, 1);
+  assert.equal(durableActions.operationAttempts.entries[0].status, 'returned');
+  assert.equal(durableActions.uncertain.length, 0);
   if (stop) {
-    assert.equal(generation, 0); assert.equal(upstreamBodies.length, 2); assert.equal(suppliedInputs.length, 1);
+    assert.equal(generation, interruptions - 1); assert.equal(upstreamBodies.length, interruptions * 2); assert.equal(suppliedInputs.length, interruptions);
     assert.equal(finalTerminalCallbacks, 0); assert.equal(journal?.status, 'paused');
-    assert.equal(evidence.at(-1)?.status, 'stopped'); assert.equal(evidence.at(-1)?.continuations, 0);
+    assert.equal(evidence.at(-1)?.status, 'stopped'); assert.equal(evidence.at(-1)?.continuations, interruptions - 1);
   } else {
-    assert.equal(generation, 1); assert.equal(upstreamBodies.length, 4); assert.equal(denied, 1);
-    assert.equal(suppliedInputs.length, 2); assert.equal(suppliedInputs.filter(input => input === original).length, 1);
+    assert.equal(generation, interruptions); assert.equal(upstreamBodies.length, 2 + interruptions * 2); assert.equal(denied, interruptions);
+    assert.equal(suppliedInputs.length, interruptions + 1); assert.equal(suppliedInputs.filter(input => input === original).length, 1);
     assert(suppliedInputs[1].includes('mox-stream-continuation:')); assert(!suppliedInputs[1].includes(original));
     assert.equal(finalTerminalCallbacks, 1); assert.equal(sdkResults.at(-1), 'success:ok'); assert.equal(journal, undefined);
-    assert.deepEqual(evidence.at(-1), { ...evidence.at(-1), version: 1, interruptions: 1, continuations: 1, protectedActions: 1, status: 'completed' });
+    assert.deepEqual(evidence.at(-1), { ...evidence.at(-1), version: 1, interruptions, continuations: interruptions, protectedActions: 1, status: 'completed' });
   }
   await writeFile(join(scratch, 'observed-stream-text.txt'), observedText, { mode: 0o600 });
   assert((await readFile(join(scratch, 'observed-stream-text.txt'), 'utf8')).includes(partial));
   assert.equal((await stat(ledgerPath)).mode & 0o777, 0o600); assert.equal((await stat(journalPath)).mode & 0o777, 0o600);
   assert.deepEqual(errors, []);
-  const receipt = { passed: true, mode: stop ? 'stop' : goal ? 'synthetic Goal owner' : 'ordinary original owner', rootId, nativeSessionId,
+  const receipt = { passed: true, interruptions, operationAttemptCount: 1, mode: stop ? 'stop' : goal ? 'synthetic Goal owner' : 'ordinary original owner', rootId, nativeSessionId,
     counter, denied, upstreamCalls: upstreamBodies.length, inputCount: suppliedInputs.length, finalTerminalCallbacks, sdkResults, evidence, waits,
     partialObserved, partialEvidence: 'delivered SDK stream deltas saved; partial assistant was not retained in native continuation wire history',
     generation, stoppedUpstreamCalls, gatewayCalls, replayRejections, sdkVersion, realSdk: true, actualMcpCounter: true, isolatedHome: true, paidCalls: 0,
     supplier: 'synthetic loopback; clean EOF after delivered text without message_stop',
     persistence: 'private fixture writer, not production SessionStore acceptance',
-    clock: 'controlled; real 15000ms policy recorded, permitted waits compressed to 0ms (Stop timer to 25ms)',
+    clock: 'controlled; real policy delays recorded, permitted waits compressed to 0ms (Stop timer to 25ms)',
     goalBoundary: 'fixed synthetic owner only, not production Rust Goal acceptance' };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2), { mode: 0o600 });
   console.log(JSON.stringify({ ...receipt, artifactDirectory: scratch }));

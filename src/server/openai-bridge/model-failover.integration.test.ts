@@ -102,6 +102,24 @@ afterEach(async () => {
 });
 
 describe('model failover over real loopback HTTP', () => {
+  it.each(['foreground-without-wait', 'background'])('preserves a real 429 cooldown and prevents SDK amplification (%s)', async mode => {
+    const provider = await fixture((_req, res) => {
+      res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '60' });
+      res.end(JSON.stringify({ error: { type: 'rate_limit_error', message: 'fixture cooldown' } }));
+    });
+    const config = target(provider, 'anthropic');
+    const controller = new ModelFailoverController({ scope: () => mode === 'background' ? undefined : 'root',
+      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const first = await handler(request());
+    expect(first.status).toBe(429); expect(first.headers.get('retry-after')).toBe('60');
+    expect(await first.text()).toContain('fixture cooldown');
+    expect(provider.requests).toHaveLength(1);
+    const repeated = await handler(request());
+    expect(repeated.status).toBe(429); expect(await repeated.text()).toContain('automatic_replay_blocked');
+    expect(provider.requests).toHaveLength(1);
+  });
+
   it('honors the real upstream Retry-After before any fast repeat of the same provider', async () => {
     const waiting = deferred();
     const committed = deferred();

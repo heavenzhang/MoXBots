@@ -329,6 +329,16 @@ fn response_matches(request: &ManagementRequest, result: &ResponseResult) -> boo
     use myagents_host_management_protocol::{Owner, ProviderConfigReceipt, ResourceReceipt};
     match (request.method, &request.params, result) {
         (
+            ManagementMethod::RemoteMobile,
+            RequestParams::RemoteMobile { remote_mobile },
+            ResponseResult::RemoteMobile { data },
+        ) => return remote_mobile.matches_result(data),
+        (
+            ManagementMethod::RemoteAssets,
+            RequestParams::RemoteAssets { remote_assets },
+            ResponseResult::RemoteAssets { data },
+        ) => return remote_assets.matches_result(data),
+        (
             ManagementMethod::RemoteSession,
             RequestParams::RemoteSession(p),
             ResponseResult::RemoteSession { data },
@@ -363,7 +373,7 @@ fn response_matches(request: &ManagementRequest, result: &ResponseResult) -> boo
                     *mutation_id == p.mutation_id
                 }
                 ProviderConfigReceipt::NotFound { .. } => false,
-            }
+            };
         }
         (
             ManagementMethod::CredentialProviderSet,
@@ -388,7 +398,7 @@ fn response_matches(request: &ManagementRequest, result: &ResponseResult) -> boo
                 } => *mutation_id == p.mutation_id && settings.provider_id == p.provider_id,
                 ProviderConfigReceipt::Conflict { mutation_id, .. }
                 | ProviderConfigReceipt::NotFound { mutation_id } => *mutation_id == p.mutation_id,
-            }
+            };
         }
         (
             ManagementMethod::ReceiptProviderGet,
@@ -401,7 +411,7 @@ fn response_matches(request: &ManagementRequest, result: &ResponseResult) -> boo
             ResponseResult::ResourceReceipt(r),
         ) => {
             return !matches!(r, ResourceReceipt::NotFound { .. })
-                && mutation_matches(r, p.mutation_id)
+                && mutation_matches(r, p.mutation_id);
         }
         (_, _, ResponseResult::Error { .. }) => return true,
         (
@@ -922,7 +932,7 @@ async fn execute_inner(
                             return Err(NetworkError::new("HOST_MANAGEMENT_CHANNEL_CLOSED"));
                         }
                         ServerMessage::Changed { .. } => {
-                            return Err(NetworkError::new("HOST_MANAGEMENT_POLICY_CHANGED"))
+                            return Err(NetworkError::new("HOST_MANAGEMENT_POLICY_CHANGED"));
                         }
                         ServerMessage::Error { code, .. } => {
                             if envelope.control_id == open_control && code == "CHANNEL_PAIR_EXISTS"
@@ -1110,6 +1120,75 @@ mod tests {
             method: ManagementMethod::HostSnapshot,
             params: RequestParams::Snapshot(myagents_host_management_protocol::SnapshotParams {}),
         }
+    }
+    #[test]
+    fn mobile_asset_response_events_accept_the_matching_extension_reply() {
+        use myagents_host_management_protocol::{
+            RemoteAssetRequest, RemoteAssetResult, RemoteMobileRequest, RemoteMobileResult,
+        };
+        let id = CanonicalUuid::new(uuid::Uuid::new_v4());
+        let mut r = request();
+        r.method = ManagementMethod::RemoteMobile;
+        r.params = RequestParams::RemoteMobile {
+            remote_mobile: RemoteMobileRequest::Capabilities {
+                version: 1,
+                agent_id: "qa-agent".into(),
+            },
+        };
+        let result = ResponseResult::RemoteMobile {
+            data: RemoteMobileResult::Capabilities {
+                version: 1,
+                agent_id: "qa-agent".into(),
+                attachments: true,
+                model_selection: true,
+                next_suggestions: true,
+                max_assets: 8,
+            },
+        };
+        let (_, response) = consume(
+            vec![ManagementEvent::Response {
+                request_id: id,
+                result,
+            }],
+            &r,
+            id,
+            true,
+        )
+        .unwrap();
+        assert!(matches!(
+            response,
+            Some(ResponseResult::RemoteMobile { .. })
+        ));
+
+        r.method = ManagementMethod::RemoteAssets;
+        r.params = RequestParams::RemoteAssets {
+            remote_assets: RemoteAssetRequest::Capabilities {
+                version: 1,
+                agent_id: "qa-agent".into(),
+            },
+        };
+        let result = ResponseResult::RemoteAssets {
+            data: RemoteAssetResult::Capabilities {
+                version: 1,
+                agent_id: "qa-agent".into(),
+                max_bytes: 20 * 1024 * 1024,
+                max_chunk_bytes: 24 * 1024,
+            },
+        };
+        let (_, response) = consume(
+            vec![ManagementEvent::Response {
+                request_id: id,
+                result,
+            }],
+            &r,
+            id,
+            true,
+        )
+        .unwrap();
+        assert!(matches!(
+            response,
+            Some(ResponseResult::RemoteAssets { .. })
+        ));
     }
     #[test]
     fn writes_require_the_inspected_target_and_reject_its_replacement() {

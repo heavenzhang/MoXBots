@@ -7,18 +7,24 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { ContextRecoveryController } from '../src/server/openai-bridge/context-recovery';
 import { createBridgeHandler } from '../src/server/openai-bridge/handler';
+import type { NativeOperationJournalData } from '../src/server/openai-bridge/native-operation-journal';
 import type { AnthropicRequest } from '../src/server/openai-bridge/types/anthropic';
 
 const scratch = await mkdtemp(join(tmpdir(), 'mox-native-tool-errors-'));
 const abort = new AbortController();
 const timer = setTimeout(() => abort.abort(), 60_000);
 let context: ContextRecoveryController;
-let ledger: { uncertain: string[]; nativeErrors: unknown[] } | undefined;
+let ledger: { uncertain: string[]; nativeErrors: unknown[]; operationAttempts: NativeOperationJournalData } | undefined;
 let calls = 0;
 let denied = 0;
 let terminal = false;
 const nativeFailures: unknown[] = [];
 const emptyError = process.argv.includes('--empty-error');
+const failSuccessPersist = process.argv.includes('--fail-success-persist');
+let nativeOwner: { sessionId: string; sdkSessionId: string };
+let injectedPersistFailure = false;
+const backgroundAtFailure = process.argv.includes('--background-at-failure');
+let backgroundActive = false;
 const failingInput = { command: emptyError ? "printf 'once\n' >> attempts.txt; exit 1"
   : "printf 'once\n' >> attempts.txt; printf 'expected fixture failure\n' >&2; exit 1", description: 'Run a failing local check' };
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -31,7 +37,14 @@ const upstream = createServer((req, res) => {
     assert(step < 5, 'Unexpected inference replay');
     if (step === 1) {
       assert.deepEqual(ledger?.uncertain, [], 'normal Bash failure must settle before the next model call');
+      if (backgroundAtFailure) await assert.rejects(context.protectInference(body), /exclusive recovery authority/);
+      backgroundActive = false;
       await context.protectInference(body); // Actual recovery guard, forcing an exact-command replay attempt.
+    }
+    if (step === 2 && backgroundAtFailure) {
+      assert.deepEqual(ledger?.uncertain, [], 'a denied tool must not poison the ledger while recovery is fenced');
+      assert.equal(ledger?.nativeErrors.length, 2);
+      backgroundActive = false;
     }
     const tool = step < 2 ? { id: `failure-${step}`, name: 'Bash', input: failingInput }
       : step === 2 ? { id: 'corrected-write', name: 'Write', input: { file_path: join(scratch, 'corrected.txt'), content: 'corrected' } }
@@ -75,6 +88,7 @@ const native = query({ prompt: 'Run the local check, correct the fixture and ver
   hooks: {
     PreToolUse: [{ hooks: [async input => {
       if (input.hook_event_name !== 'PreToolUse') return {};
+      if (backgroundAtFailure && input.tool_name === 'Bash' && calls <= 2) backgroundActive = true;
       const reason = await context.authorizeTool(input.tool_name, input.tool_input, input.tool_use_id);
       if (!reason) return {};
       denied++;
@@ -100,33 +114,56 @@ const native = query({ prompt: 'Run the local check, correct the fixture and ver
   },
 } });
 try {
-  for await (const event of native) {
-    if (event.type === 'system' && event.subtype === 'init') {
-      const owner = { sessionId: 'fixture-product', sdkSessionId: event.session_id };
-      context = new ContextRecoveryController({ scope: () => 'fixture-turn', isActive: () => !abort.signal.aborted,
-        protectStreaming: true, recoveryOwner: owner,
-        backup: async (body, metadata) => {
-          const path = join(scratch, `${metadata.digest}.json`);
-          await writeFile(path, JSON.stringify(body), { mode: 0o600 }); return path;
-        },
-        persistLedger: async value => {
-          ledger = structuredClone(value) as typeof ledger;
-          await writeFile(join(scratch, 'ledger.json'), JSON.stringify(value), { mode: 0o600 });
-        },
-      });
-      context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => !abort.signal.aborted });
+  try {
+    for await (const event of native) {
+      if (event.type === 'system' && event.subtype === 'init') {
+        const owner = { sessionId: 'fixture-product', sdkSessionId: event.session_id };
+        nativeOwner = owner;
+        context = new ContextRecoveryController({ scope: () => 'fixture-turn', isActive: () => !abort.signal.aborted,
+          protectStreaming: true, recoveryOwner: owner, canRecover: () => !backgroundActive,
+          backup: async (body, metadata) => {
+            const path = join(scratch, `${metadata.digest}.json`);
+            await writeFile(path, JSON.stringify(body), { mode: 0o600 }); return path;
+          },
+          persistLedger: async value => {
+            const candidate = value as NonNullable<typeof ledger>;
+            if (failSuccessPersist && candidate.operationAttempts.entries.some(a => a.toolUseId === 'corrected-write' && a.status === 'returned')) {
+              injectedPersistFailure = true; throw new Error('fixture disk full after actual Write');
+            }
+            ledger = structuredClone(value) as typeof ledger;
+            await writeFile(join(scratch, 'ledger.json'), JSON.stringify(value), { mode: 0o600 });
+          },
+        });
+        context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => !abort.signal.aborted });
+      }
+      if (event.type === 'result') { terminal = failSuccessPersist ? event.is_error : !event.is_error; assert(terminal, event.subtype); }
     }
-    if (event.type === 'result') { terminal = !event.is_error; assert(terminal, event.subtype); }
+  } catch (error) {
+    // SDK 0.3.296 throws its terminal API failure instead of yielding a result event.
+    assert(failSuccessPersist && injectedPersistFailure && context.inspectActionLedger().blocked);
+    assert(error instanceof Error && error.message.includes('409 context_recovery_required'));
+    terminal = true;
   }
   assert(terminal);
-  assert.equal(calls, 5);
+  assert.equal(calls, failSuccessPersist ? 3 : 5);
   assert.equal(denied, 1);
   assert.equal(await readFile(join(scratch, 'attempts.txt'), 'utf8'), 'once\n', 'failed command must never replay its partial write');
-  assert.equal(await readFile(join(scratch, 'verified.txt'), 'utf8'), 'verified');
-  assert.deepEqual(ledger?.uncertain, []);
+  assert.equal(await readFile(join(scratch, 'corrected.txt'), 'utf8'), 'corrected');
+  if (!failSuccessPersist) assert.equal(await readFile(join(scratch, 'verified.txt'), 'utf8'), 'verified');
+  assert.equal(injectedPersistFailure, failSuccessPersist);
+  assert.equal(ledger?.uncertain.length, failSuccessPersist ? 1 : 0);
   assert.equal(ledger?.nativeErrors.length, 2);
+  const persisted = JSON.parse(await readFile(join(scratch, 'ledger.json'), 'utf8'));
+  const restored = new ContextRecoveryController({ scope: () => 'cold-query', isActive: () => true,
+    recoveryOwner: nativeOwner!, initialLedger: persisted, backup: async () => 'unused', persistLedger: async () => {} });
+  assert.deepEqual(restored.inspectActionLedger().operationAttempts.map(a => a.status),
+    failSuccessPersist ? ['returned', 'reserved'] : ['returned', 'returned', 'returned']);
+  assert.equal(restored.inspectActionLedger().uncertainCount, failSuccessPersist ? 1 : 0);
+  assert.match(restored.beforeTool('Write', { file_path: join(scratch, 'corrected.txt'), content: 'corrected' }) ?? '',
+    failSuccessPersist ? /uncertain/ : /already completed/);
   console.log(JSON.stringify({ status: 'PASS', scratch, calls, denied, counter: 1, nativeFailures, unknown: ledger?.uncertain.length,
-    actualSdkNativeAndShell: true, syntheticModel: true, productionStore: false, installedClient: false }));
+    backgroundRecoveryGateFixture: backgroundAtFailure, actualBackgroundAgent: false,
+    actualSdkNativeAndShell: true, failedSuccessReceiptPersistence: failSuccessPersist, journalReload: true, operationAttempts: restored.inspectActionLedger().operationAttempts, syntheticModel: true, productionStore: false, installedClient: false }));
 } finally {
   clearTimeout(timer);
   native.close();

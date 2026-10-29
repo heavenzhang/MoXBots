@@ -10,7 +10,7 @@ export function verifySessionUserAction(request: Request, sessionId: string, bod
     const bytes = Buffer.from(encoded, 'base64');
     const proof = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
     const path = new URL(request.url).pathname;
-    if (request.method !== 'POST' || !['/api/session/task-orchestration/plan', '/chat/send'].includes(path)
+    if (request.method !== 'POST' || !['/api/session/task-orchestration/plan', '/chat/send', '/api/session/recovery/reconcile'].includes(path)
       || Object.keys(proof).sort().join(',') !== 'bodySha256,nonce,path,sessionId,timestampMs,version'
       || proof.version !== 1 || proof.sessionId !== sessionId || proof.path !== path
       || typeof proof.timestampMs !== 'number' || !Number.isSafeInteger(proof.timestampMs)

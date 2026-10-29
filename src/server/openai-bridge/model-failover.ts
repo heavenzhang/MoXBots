@@ -273,10 +273,16 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (inspected.recoverable)
           this.options.onObservation?.(target, "failure");
         if (!inspected.recoverable || restoredWaiting || attempt >= delays.length || !retryLive()) return inspected.response;
-        // A provider's longer cooldown must pass the durable waiting boundary,
-        // rather than being violated by this request's non-persistent fast loop.
+        // A provider cooldown applies even without a durable foreground owner.
+        // Return the rejection to the existing candidate/wait policy; background
+        // or unmanaged waits must not turn it into rapid repeated calls.
         const retryAfterMs = parseRetryAfter(inspected.response.headers.get('retry-after'));
-        if (recovery && rootLive() && retryAfterMs !== undefined && retryAfterMs > delays[attempt]) return inspected.response;
+        if (retryAfterMs !== undefined && retryAfterMs > delays[attempt]) {
+          observeRecoveryDiagnostic({ event: 'inference_retry_deferred', reason: 'provider_cooldown',
+            status: inspected.response.status, attempt: attempt + 1, retryAfterMs,
+            usingBackup: backup, durableOwnerAvailable: !!recovery && rootLive() }, this.options.onDiagnostic);
+          return inspected.response;
+        }
         const retry = await waitForRequestRetry(
           Math.min(delays[attempt], Math.max(0, requestDeadline - Date.now())),
           request.signal, retryLive,

@@ -91,7 +91,8 @@ function harness(primary: Fixture, backup: Fixture) {
     canSwitch: () => owner.recoveryAllowed, resolveBackup: () => upstream(backup, 'backup'),
     canRetry: () => context.canRetryInference(),
     onSwitch: target => { switches.push(target.providerId); }, retryDelaysMs: [0, 0, 0] });
-  const context = new ContextRecoveryController({ scope: () => owner.scope, isActive,
+  const nativeOwner = { sessionId: 'fixture-product', sdkSessionId: 'fixture-native' };
+  const context = new ContextRecoveryController({ scope: () => owner.scope, isActive, recoveryOwner: nativeOwner,
     requestIdentity: () => owner.route,
     persistLedger: async ledger => { ledgers.push(structuredClone(ledger) as typeof ledgers[number]); },
     canRecover: () => owner.recoveryAllowed, backup: async (_body, info) => {
@@ -99,6 +100,7 @@ function harness(primary: Fixture, backup: Fixture) {
     } });
   registerBridge(queryToken, () => ({ ...upstream(primary), apiKey: 'loopback-fixture-key', model: owner.route, modelAliases: undefined,
     contextRecovery: context, modelFailover: failover }), 'isolated background lifecycle fixture');
+  context.bindNoDispatchOwner({ ...nativeOwner, queryGeneration: 1, isCurrent: isActive });
   const handler = createBridgeHandler({ getUpstreamConfig: async req => {
     const token = new URL(req.url).pathname.split('/')[2];
     const config = await lookupBridge(token, req);
@@ -560,10 +562,10 @@ describe('Query-owned background inference through both recovery controllers', (
     const next = await h.handler(request('', { messages: backgroundHistory }));
     expect(next.status).toBe(200);
     expect((await next.json()).content).toEqual([newTool]);
-    expect(await h.context.authorizeTool(newTool.name, newTool.input)).toBeUndefined();
+    expect(await h.context.authorizeTool(newTool.name, newTool.input, newTool.id)).toBeUndefined();
     expect(h.ledgers.at(-1)?.uncertain).toHaveLength(1); // Durable reservation precedes the actual action.
     counter += newTool.input.delta;
-    await h.context.commitToolResult(newTool.name, newTool.input, `counter=${counter}`);
+    await h.context.commitToolResult(newTool.name, newTool.input, `counter=${counter}`, false, newTool.id);
     expect(h.ledgers.at(-1)?.uncertain).toEqual([]);
     expect(h.ledgers.at(-1)?.completed).toHaveLength(2);
     backgroundHistory.push({ role: 'assistant', content: [newTool] },

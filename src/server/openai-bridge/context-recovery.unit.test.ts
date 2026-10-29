@@ -118,9 +118,9 @@ describe('bounded inference context recovery', () => {
     const controller = new ContextRecoveryController({ scope: () => 'session-1:turn-4', isActive: () => true,
       recoveryOwner: { sessionId: 'session-1', sdkSessionId: 'sdk-1' }, initialLedger: ledger,
       backup: async () => '/archive/request.json', persistLedger: async value => { persisted = value; } });
-    await expect(controller.commitToolResult('mutating_tool', { id: 'new' }, 'success'))
-      .rejects.toThrow('Recovery ledger could not be committed');
-    expect(persisted).toBeUndefined();
+    controller.bindNoDispatchOwner({ sessionId: 'session-1', sdkSessionId: 'sdk-1', queryGeneration: 7, isCurrent: () => true });
+    expect(await controller.authorizeTool('mutating_tool', { id: 'new' }, 'new-operation')).toContain('capacity');
+    expect((persisted as { completed: unknown[] }).completed).toEqual([]);
   });
 
   it('persists exact SDK-bound no-dispatch proof only for schema-invalid calls never admitted by PreToolUse', async () => {
@@ -843,19 +843,23 @@ describe('bounded inference context recovery', () => {
   it('durably reserves new actions, restores completed results, and blocks uncertain crash outcomes', async () => {
     let saved: unknown;
     const persistLedger = vi.fn(async value => { saved = structuredClone(value); });
-    const create = (initialLedger?: unknown) => new ContextRecoveryController({
-      scope: () => 'new-turn-same-goal', isActive: () => true,
-      backup: async () => '/private/immutable-request.json', persistLedger, initialLedger,
-    });
+    const owner = { sessionId: 'product', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true };
+    const create = (initialLedger?: unknown) => {
+      const result = new ContextRecoveryController({
+        scope: () => 'new-turn-same-goal', isActive: () => true, recoveryOwner: owner,
+        backup: async () => '/private/immutable-request.json', persistLedger, initialLedger,
+      });
+      result.bindNoDispatchOwner(owner); return result;
+    };
     const controller = create();
     let calls = 0;
     await (await controller.run(req(), history(), async () => ++calls === 1 ? overflow() : ok())).text();
     expect(persistLedger).toHaveBeenCalledTimes(1);
-    expect(await controller.authorizeTool('write_record', { id: 'new' })).toBeUndefined();
+    expect(await controller.authorizeTool('write_record', { id: 'new' }, 'new-operation')).toBeUndefined();
     // Crash before a result: the next Query must refuse to repeat the action.
     const crashed = create(saved);
     expect(await crashed.authorizeTool('write_record', { id: 'new' })).toContain('uncertain');
-    await controller.commitToolResult('write_record', { id: 'new' }, 'saved exactly once');
+    await controller.commitToolResult('write_record', { id: 'new' }, 'saved exactly once', false, 'new-operation');
     const restarted = create(saved);
     expect(await restarted.authorizeTool('write_record', { id: 'new' })).toContain('already completed');
     expect(await restarted.authorizeTool('increment_counter', { delta: 1, account: 'test' })).toContain('already completed');
@@ -863,13 +867,15 @@ describe('bounded inference context recovery', () => {
   });
 
   it('continues after denying a duplicate of a newly committed post-recovery action', async () => {
-    const controller = new ContextRecoveryController({ scope: () => 'same-goal', isActive: () => true,
+    const owner = { sessionId: 'product', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true };
+    const controller = new ContextRecoveryController({ scope: () => 'same-goal', isActive: () => true, recoveryOwner: owner,
       backup: async () => '/private/request.json', persistLedger: async () => {} });
+    controller.bindNoDispatchOwner(owner);
     let calls = 0;
     await (await controller.run(req(), history(), async () => ++calls === 1 ? overflow() : ok())).text();
     const input = { id: 'new-record' };
-    expect(await controller.authorizeTool('write_record', input)).toBeUndefined();
-    await controller.commitToolResult('write_record', input, 'committed');
+    expect(await controller.authorizeTool('write_record', input, 'new-write')).toBeUndefined();
+    await controller.commitToolResult('write_record', input, 'committed', false, 'new-write');
     const denial = await controller.authorizeTool('write_record', input);
     expect(denial).toContain('already completed');
     const compacted: AnthropicRequest = { model: 'fixture-model', max_tokens: 128, messages: [

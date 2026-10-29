@@ -142,7 +142,7 @@ export function loadBuiltinContextLedger(sessionId: string, sdkSessionId: string
 }
 
 export async function saveBuiltinContextLedger(sessionId: string, sdkSessionId: string,
-    ledger: unknown, isCurrent: () => boolean, additionalGuard?: () => boolean): Promise<void> {
+    ledger: unknown, isCurrent: () => boolean, additionalGuard?: () => boolean, expectedDigest?: string): Promise<void> {
     const path = builtinRecoveryPath(sessionId, sdkSessionId);
     const live = () => isCurrent() && (additionalGuard?.() ?? true);
     if (!live()) throw new Error('context_recovery_required: Recovery owner changed');
@@ -151,6 +151,12 @@ export async function saveBuiltinContextLedger(sessionId: string, sdkSessionId: 
         const owner = getSessionMetadata(sessionId);
         if (!live() || !owner || (resolveBuiltinSdkSessionId(owner) ?? owner.id) !== sdkSessionId) {
             throw new Error('context_recovery_required: Recovery owner changed');
+        }
+        if (expectedDigest !== undefined) {
+            const previous = loadBuiltinContextLedger(sessionId, sdkSessionId);
+            if (previous === undefined || createHash('sha256').update(JSON.stringify(previous)).digest('hex') !== expectedDigest) {
+                throw new Error('context_recovery_required: Recovery ledger changed');
+            }
         }
         const data = JSON.stringify({ version: 1, sessionId, sdkSessionId, ledger,
             digest: createHash('sha256').update(JSON.stringify(ledger)).digest('hex') });

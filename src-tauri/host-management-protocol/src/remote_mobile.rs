@@ -158,6 +158,52 @@ impl RemoteMobileRequest {
     pub fn mutation(&self) -> bool {
         matches!(self, Self::Start { .. } | Self::Send { .. })
     }
+    /// Correlate an already scoped reply without accepting another Agent or operation.
+    pub fn matches_result(&self, result: &RemoteMobileResult) -> bool {
+        if self.validate().is_err() || result.validate().is_err() {
+            return false;
+        }
+        match (self, result) {
+            (_, RemoteMobileResult::Error { .. }) => true,
+            (
+                Self::Capabilities { agent_id, .. },
+                RemoteMobileResult::Capabilities { agent_id: got, .. },
+            )
+            | (Self::Models { agent_id, .. }, RemoteMobileResult::Models { agent_id: got, .. }) => {
+                agent_id == got
+            }
+            (
+                Self::Suggestions {
+                    agent_id,
+                    session_id,
+                    revision,
+                    ..
+                },
+                RemoteMobileResult::Suggestions {
+                    agent_id: got,
+                    session_id: sid,
+                    revision: rev,
+                    ..
+                },
+            ) => agent_id == got && session_id == sid && revision == rev,
+            (
+                Self::Start { .. } | Self::Send { .. } | Self::Receipt { .. },
+                RemoteMobileResult::Receipt {
+                    agent_id,
+                    operation_id,
+                    session_id,
+                    ..
+                },
+            ) => {
+                self.agent_id() == agent_id
+                    && self.operation_id() == Some(*operation_id)
+                    && self
+                        .session_id()
+                        .is_none_or(|sid| session_id.as_deref() == Some(sid))
+            }
+            _ => false,
+        }
+    }
     pub fn validate(&self) -> Result<(), CodecError> {
         let version = match self {
             Self::Capabilities { version, .. }

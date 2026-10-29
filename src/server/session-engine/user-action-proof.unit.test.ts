@@ -9,7 +9,7 @@ function request(body = '{"sessionId":"s1"}', overrides: Record<string, unknown>
 }
 afterEach(() => vi.unstubAllEnvs());
 describe('native desktop user-action proof', () => {
-  it.each(['/api/session/task-orchestration/plan', '/chat/send'])('verifies the exact Rust-compatible P256 DER signature for %s', path => {
+  it.each(['/api/session/task-orchestration/plan', '/chat/send', '/api/session/recovery/reconcile'])('verifies the exact Rust-compatible P256 DER signature for %s', path => {
     expect(verifySessionUserAction(request(undefined, {}, path), 's1', '{"sessionId":"s1"}')).toBe(true);
   });
   it.each([{ sessionId: 's2' }, { path: '/chat/send' }, { bodySha256: 'changed' }, { timestampMs: Date.now() - 61_000 }, { timestampMs: Date.now() + 61_000 }, { version: 2 }, { nonce: 'fake' }, { source: 'human' }])('rejects altered or stale authority %j', override => {

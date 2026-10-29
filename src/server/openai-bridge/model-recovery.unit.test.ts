@@ -33,12 +33,12 @@ describe('durable inference waiting on the original Query lease', () => {
     expect(recovery.wait.mock.calls[0][1]).toMatchObject({ attempt: 2, retryAfterMs: 60_000, usingBackup: true });
   });
 
-  it.each(['no hooks', 'background'] as const)('retains the original bounded Retry-After behavior for %s', async mode => {
+  it.each(['no hooks', 'background'] as const)('retains the upstream cooldown without unauthorized long waiting for %s', async mode => {
     const recovery = hooks();
     const controller = makeController(recovery, mode === 'no hooks' ? { recovery: undefined } : { canSwitch: () => false });
     const execute = vi.fn(async () => transient({ 'retry-after': '60' }));
     expect((await controller.run(request(), primary, execute, 'bounded-cooldown')).status).toBe(503);
-    expect(execute).toHaveBeenCalledTimes(4);
+    expect(execute).toHaveBeenCalledTimes(1);
     expect(recovery.wait).not.toHaveBeenCalled();
   });
 

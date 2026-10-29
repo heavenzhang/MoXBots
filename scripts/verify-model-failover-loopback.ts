@@ -13,8 +13,9 @@ import { ModelFailoverController } from '../src/server/openai-bridge/model-failo
 const chain = process.argv.includes('--chain');
 assert(!chain || process.argv.slice(2).every(flag => flag === '--chain'), '--chain cannot be combined with another mode');
 const terminalTrailer = process.argv.includes('--terminal-trailer');
+const providerCooldown = process.argv.includes('--retry-after');
 const declinedRecovery = process.argv.includes('--declined-recovery');
-const upstreamRejection = declinedRecovery || process.argv.includes('--upstream-rejection');
+const upstreamRejection = providerCooldown || declinedRecovery || process.argv.includes('--upstream-rejection');
 const streamFailure = process.argv.includes('--stream-failure');
 const stopDuringRetry = process.argv.includes('--stop-during-retry');
 let interruptSdk: (() => Promise<unknown>) | undefined;
@@ -98,7 +99,7 @@ const upstream = createServer(async (req, res) => {
           interruptTask = interruptSdk?.().then(() => { interruptCompleted = true; }).catch(error => { interruptFailures.push(String(error)); });
         }, 50);
       }
-      res.writeHead(503, { 'content-type': 'application/json' });
+      res.writeHead(503, { 'content-type': 'application/json', ...(providerCooldown ? { 'retry-after': '60' } : {}) });
       res.end(JSON.stringify({ type: 'error', error: { type: 'overloaded_error', message: 'fixture outage' } }));
     } else message(res, true);
   }
@@ -142,6 +143,9 @@ const gateway = createServer(async (req, res) => {
       // Force one native SDK repeat to exercise both admission guards, as in
       // stream rescue/older transports that do not honor the initial hint.
       if (rejectedResponses === 1) delete headers['x-should-retry'];
+      // This fixture deliberately provokes an SDK repeat without a minute-long wait.
+      // Production preserves Retry-After; the real-HTTP integration asserts that.
+      if (providerCooldown) delete headers['retry-after'];
     }
     res.writeHead(response.status, headers);
     if (response.body) for await (const chunk of response.body) res.write(chunk);
@@ -183,7 +187,7 @@ try {
     }
   } catch (error) { nativeFailed = true; if (!streamFailure && !stopDuringRetry && !upstreamRejection) throw error; } finally { if (stopDuringRetry && interruptTask) await interruptTask; run.close(); }
   assert.equal(counter, 1);
-  assert.equal(primaryCalls, streamFailure || stopDuringRetry ? 2 : 5); // first tool, then initial availability failure plus three retries
+  assert.equal(primaryCalls, providerCooldown || streamFailure || stopDuringRetry ? 2 : 5); // first tool, then initial availability failure plus three retries
   assert.equal(backupCalls, chain ? 5 : streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
   if (chain) assert.deepEqual(candidateCalls, { a: 4, b: 1 });
   assert.equal(switches, chain ? 2 : streamFailure || stopDuringRetry || upstreamRejection ? 0 : 1);
@@ -197,7 +201,7 @@ try {
   }
   else if (streamFailure) assert(nativeFailed || results.some(value => (value as { subtype?: string }).subtype !== 'success'));
   else { assert(restoredResult); assert(results.some(value => (value as { subtype?: string }).subtype === 'success')); }
-  const receipt = { passed: true, chain, candidateCalls, terminalTrailer, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
+  const receipt = { passed: true, providerCooldown, chain, candidateCalls, terminalTrailer, declinedRecovery, rejectedResponses, upstreamRejection, streamFailure, stopDuringRetry, interruptRequested, interruptCompleted, nativeSessionId, counter, primaryCalls, backupCalls, switches,
     restoredResult, realSdk: true, upstream: 'synthetic-loopback-only', paidCalls: 0 };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2));
   console.log(JSON.stringify({ ...receipt, evidence: scratch }));

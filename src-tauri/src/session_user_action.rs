@@ -65,7 +65,12 @@ pub fn stamp_session_request(
     strip_untrusted_headers(headers);
     if !tab_owned
         || !method.eq_ignore_ascii_case("POST")
-        || !matches!(path, "/api/session/task-orchestration/plan" | "/chat/send")
+        || !matches!(
+            path,
+            "/api/session/task-orchestration/plan"
+                | "/chat/send"
+                | "/api/session/recovery/reconcile"
+        )
     {
         return Ok(());
     }
@@ -149,6 +154,30 @@ mod tests {
             )
         );
     }
+    #[test]
+    fn recovery_review_is_bound_to_exact_body_and_tab_owner() {
+        let headers = stamped("/api/session/recovery/reconcile");
+        let bytes = STANDARD.decode(&headers[ENVELOPE_HEADER]).unwrap();
+        let envelope: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(envelope["path"], "/api/session/recovery/reconcile");
+        assert_eq!(envelope["sessionId"], "session-a");
+        let public = STANDARD.decode(public_key_spki_base64()).unwrap();
+        let verifier = VerifyingKey::from_public_key_der(&public).unwrap();
+        let signature =
+            Signature::from_der(&STANDARD.decode(&headers[SIGNATURE_HEADER]).unwrap()).unwrap();
+        assert!(verifier.verify(&bytes, &signature).is_ok());
+        for (path, tab) in [
+            ("/api/session/recovery/reconcile", false),
+            ("/api/session/recovery/reconcile?force=1", true),
+            ("/api/session/recovery/actions", true),
+        ] {
+            let mut unsigned = None;
+            stamp_session_request(&mut unsigned, "POST", path, Some(BODY), "session-a", tab)
+                .unwrap();
+            assert!(unsigned.is_none());
+        }
+    }
+
     #[test]
     fn rejects_body_from_another_session_without_retaining_forged_headers() {
         let mut headers = Some(HashMap::from([

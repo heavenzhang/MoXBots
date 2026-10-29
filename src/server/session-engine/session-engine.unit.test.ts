@@ -113,6 +113,8 @@ const mocks = vi.hoisted(() => {
         : state.builtinTurnIdentity
     )),
     getBuiltinWorkProgressSnapshot: vi.fn(),
+    inspectBuiltinRecoveryActions: vi.fn(),
+    reconcileBuiltinRecoveryAction: vi.fn(),
     getBuiltinBackgroundTaskDetail: vi.fn(async () => ({ success: false as const, errorCode: 'BACKGROUND_TASK_NOT_FOUND' })),
     getBuiltinExecutionStartedAt: vi.fn<() => string | undefined>(() => undefined),
     getAgentState: vi.fn<() => Record<string, unknown>>(() => ({ sessionState: 'idle', agentDir: '/workspace' })),
@@ -384,6 +386,8 @@ vi.mock('../agent-session', async () => ({
   getAgentState: mocks.getAgentState,
   getBuiltinExecutionStartedAt: mocks.getBuiltinExecutionStartedAt,
   getBuiltinWorkProgressSnapshot: mocks.getBuiltinWorkProgressSnapshot,
+  inspectBuiltinRecoveryActions: mocks.inspectBuiltinRecoveryActions,
+  reconcileBuiltinRecoveryAction: mocks.reconcileBuiltinRecoveryAction,
   getBuiltinBackgroundTaskDetail: mocks.getBuiltinBackgroundTaskDetail,
   isBuiltinWaitingForUser: mocks.isBuiltinWaitingForUser,
   getBuiltinLiveSessionSnapshot: mocks.getBuiltinLiveSessionSnapshot,
@@ -630,6 +634,23 @@ describe('session-engine selector and adapters', () => {
 
     await engine.updateAgents(agents, { forceReload: true });
     expect(mocks.forceReloadActiveSession).toHaveBeenCalledExactlyOnceWith('agents');
+  });
+
+  it('routes explicit recovery inspection and review to the builtin owner without starting a turn', async () => {
+    const snapshot = { sessionId: 'builtin-session', sdkSessionId: 'native', epoch: 1,
+      reviewAuthority: 'authority', ledgerDigest: 'digest', actions: [], resolvedCount: 0 };
+    const request = { sessionId: snapshot.sessionId, sdkSessionId: snapshot.sdkSessionId,
+      epoch: snapshot.epoch, reviewAuthority: snapshot.reviewAuthority,
+      ledgerDigest: snapshot.ledgerDigest, actionHash: 'action' };
+    mocks.inspectBuiltinRecoveryActions.mockResolvedValueOnce(snapshot);
+    mocks.reconcileBuiltinRecoveryAction.mockResolvedValueOnce(snapshot);
+    const engine = getSessionEngine();
+    expect(await engine.inspectRecoveryActions!()).toBe(snapshot);
+    expect(await engine.reconcileRecoveryAction!(request)).toBe(snapshot);
+    expect(mocks.inspectBuiltinRecoveryActions).toHaveBeenCalledExactlyOnceWith();
+    expect(mocks.reconcileBuiltinRecoveryAction).toHaveBeenCalledExactlyOnceWith(request);
+    expect(mocks.enqueueUserMessage).not.toHaveBeenCalled();
+    expect(mocks.forceExecuteQueueItem).not.toHaveBeenCalled();
   });
 
   it.each(['builtin', 'codex', 'claude-code', 'dsh'])('passes first-send project context through the real %s adapter', async (runtime) => {
@@ -3460,6 +3481,7 @@ describe('user-confirmed updater admission through the SessionEngine owner', () 
       engine.updateDesktopInteractionScenario({ type: 'desktop' } as never),
       engine.rewindToUserMessage('user'), engine.forkAtAssistantMessage('assistant'),
       engine.stopTurn(), engine.cancelQueuedMessage('queue'),
+      engine.reconcileRecoveryAction!({} as never),
       engine.respondAskUserQuestion('request', null), engine.respondPermission('request', 'allow_once'),
     ]) await expect(request).rejects.toThrow('UPDATE_BUSY');
     expect(mocks.interruptCurrentResponse).not.toHaveBeenCalled();

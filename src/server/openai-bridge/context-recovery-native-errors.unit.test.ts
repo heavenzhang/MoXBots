@@ -7,10 +7,10 @@ const command = { command: 'node check.js' };
 const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 function fixture(initialLedger?: unknown) {
-  const state = { active: true, current: true, scope: 'turn-1', storageFails: false };
+  const state = { active: true, current: true, scope: 'turn-1', storageFails: false, canRecover: true };
   let ledger: { uncertain: string[]; nativeErrors: [string, { sdkSessionId: string }][] };
   const options = {
-    scope: () => state.scope, isActive: () => state.active, protectStreaming: true,
+    scope: () => state.scope, isActive: () => state.active, canRecover: () => state.canRecover, protectStreaming: true,
     recoveryOwner: { sessionId: 'product-1', sdkSessionId: 'native-1' }, initialLedger,
     backup: async () => '/archive/request.json',
     persistLedger: async (value: unknown) => {
@@ -42,6 +42,61 @@ function fixture(initialLedger?: unknown) {
 }
 
 describe('native tool error settlement', () => {
+
+  it('commits an exact native exit while background work prevents inference recovery', async () => {
+    const h = fixture();
+    await h.emit('foreground-shell');
+    await h.controller.authorizeTool('Bash', command, 'foreground-shell');
+    h.state.canRecover = false; // a background run starts before the foreground result
+    await h.controller.commitToolResult('Bash', command, failure, true, 'foreground-shell', { interrupted: false });
+    h.result('foreground-shell');
+    expect(h.ledger().uncertain).toEqual([]);
+    expect(h.ledger().nativeErrors).toHaveLength(1);
+    // Recording an outcome must not grant automatic continuation authority.
+    await expect(h.controller.protectInference(h.body)).rejects.toThrow('exclusive recovery authority');
+    expect(await h.controller.prepareSettledInterruption(() => true)).toBeUndefined();
+    h.state.canRecover = true;
+    const restored = fixture(h.ledger());
+    await restored.controller.protectInference(h.body);
+    expect(restored.controller.beforeTool('Bash', command)).toContain('earlier command exited');
+    expect(restored.controller.beforeTool('Bash', { command: 'node corrected.js' })).toBeUndefined();
+  });
+
+  it('persists a denial with background work without poisoning the old unknown ledger', async () => {
+    const h = fixture();
+    await h.controller.protectInference(h.body);
+    await h.controller.authorizeTool('business_write', { id: 1 });
+    h.controller.endTurn();
+    h.state.scope = 'explicit-followup';
+    await h.emit('denied-with-background');
+    h.state.canRecover = false;
+    const denial = await h.controller.authorizeTool('Bash', command, 'denied-with-background');
+    expect(denial).toContain('read-only reconciliation');
+    await h.controller.commitToolResult('Bash', command, denial, true, 'denied-with-background');
+    h.result('denied-with-background', `PreToolUse:Bash hook error: ${denial}`);
+    expect(h.ledger().uncertain).toHaveLength(1);
+    expect(h.ledger().nativeErrors).toHaveLength(1);
+    h.state.canRecover = true;
+    const restored = fixture(h.ledger());
+    await restored.controller.protectInference(h.body, true);
+    expect(restored.ledger().uncertain).toEqual(h.ledger().uncertain);
+    expect(restored.controller.beforeTool('Write', {})).toContain('read-only');
+  });
+
+  it.each(['owner', 'scope', 'stop', 'missing-id', 'timeout'])('retains uncertain outcomes with background work and %s', async reason => {
+    const h = fixture();
+    await h.emit('unresolved-shell');
+    await h.controller.authorizeTool('Bash', command, 'unresolved-shell');
+    h.state.canRecover = false;
+    if (reason === 'owner') h.state.current = false;
+    if (reason === 'scope') h.state.scope = 'successor';
+    if (reason === 'stop') h.state.active = false;
+    await h.controller.commitToolResult('Bash', command, reason === 'timeout' ? 'Exit code 124' : failure,
+      true, reason === 'missing-id' ? 'foreign-id' : 'unresolved-shell', { interrupted: false });
+    expect(h.ledger().uncertain).toHaveLength(1);
+    expect(h.ledger().nativeErrors).toEqual([]);
+  });
+
   it.each([failure, 'Exit code 1'])('continues correction after a native Bash exit and fences its recovery replay (%s)', async error => {
     const h = fixture();
     await h.emit('failed-shell');
@@ -142,7 +197,7 @@ describe('native tool error settlement', () => {
     await h.controller.authorizeTool('Bash', command, 'shell-b');
     await h.controller.commitToolResult('Bash', command, failure, true, 'shell-a', { interrupted: false });
     expect(h.ledger().uncertain).toHaveLength(1);
-    expect(h.ledger().nativeErrors).toEqual([]);
+    expect(h.ledger().nativeErrors).toHaveLength(1); // exact attempt A is known; B remains pending
   });
 
   it.each(['Stop', 'turn change'])('rejects a late settlement after %s during persistence', async change => {
