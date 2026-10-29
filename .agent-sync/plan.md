@@ -1,3 +1,7 @@
+## MB-RECOVERY-REVIEW-WARM-IDLE-20261029 / 0.5.27
+
+原正式部署请求在0.5.26签名客户端验收发现核对入口误拒绝温会话空闲状态，101仍保留0.5.25。原v0.5.26/tag/包/失败证据不变。本次只修existing Query等待期的processing判断并补真实builtin adapter回归，保留业务忙碌/后台/未知/签名/Store围栏，版本0.5.27/527.1。desktop/macOS-arm64/updater/sharedCI/main继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；不新增部署owner、不跨聊天发信。精确CI/main/新包/安装101与真实新增入口验收分别追踪于任务 `.agent-sync/tasks/codex-recovery-review-idle-20261029.md`。
+
 ## MOXBOTS-499-20261025 — 排队真人输入恢复交接与停止状态
 
 用户明确要求马上修复、打新包并更换本地。任务 `.agent-sync/tasks/codex-request-499-handoff-20261025-d8c1de19.md`；验收 `dev-docs/request-499-handoff/acceptance.md`。沿原generator/SessionStore恢复CAS处理Force后新输入被旧paused拦成499，保留action ledger/Stop fence/预算；历史主计划状态按真实根活动投影，停止显示已中断。263集成、149单元、35DOM及类型/lint/实际组件1280/390页面已通过，独立代码审查无阻断。

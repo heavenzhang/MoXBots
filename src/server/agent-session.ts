@@ -10658,7 +10658,9 @@ function recoveryReviewOwner() {
   if (!sessionId || !metadata || metadata.id !== sessionId || metadata.pendingConversationMutation
     || metadata.runtime && metadata.runtime !== 'builtin' || metadata.sdkResumeSessionAt
     || isSessionBusy() || hasBuiltinBackgroundWork() || getCurrentTurnIdentity()
-    || lifecycleState.processing || lifecycleState.preWarming || getQueryMcpMutation()
+    // The streaming iterator stays processing while its warm Query parks between
+    // turns. Only the spawn gap lacks a Query; actual work is fenced above.
+    || (lifecycleState.processing && !lifecycleState.query) || lifecycleState.preWarming || getQueryMcpMutation()
     || activeSessionModelRecovery?.readState()?.status === 'waiting' || metadata.modelRecovery?.status === 'waiting') {
     throw new Error('recovery_review_busy_or_owner_changed');
   }
