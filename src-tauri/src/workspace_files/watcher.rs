@@ -289,32 +289,25 @@ pub async fn cmd_workspace_watch_stop(
 mod tests {
     use super::*;
 
-    /// Exercise the production debouncer, without a Tauri window or user data.
-    /// NoCache must still deliver nested creates, external renames, atomic
-    /// saves and deletes: DirectoryPanel re-reads authority for all of them.
+    /// Exercise the production coarse invalidation contract with real files.
+    /// OS event kinds differ (NoCache can report a macOS deletion as Modify).
+    /// Each phase owns a fresh watcher/workspace so a previous rename/save batch
+    /// cannot satisfy a later delete. Re-reading the directory is the authority,
+    /// exactly as in DirectoryPanel, rather than inferred OS rename identities.
     #[test]
     fn cacheless_watcher_keeps_nested_external_changes_visible() {
-        use notify_debouncer_full::notify::EventKind;
         use std::path::Path;
         use std::sync::mpsc::{channel, Receiver};
         use std::time::Instant;
 
-        fn expect_change(
-            rx: &Receiver<DebounceEventResult>,
-            path: &Path,
-            phase: &str,
-            require_remove: bool,
-        ) {
+        fn expect_invalidation(rx: &Receiver<DebounceEventResult>, root: &Path, phase: &str) {
             let deadline = Instant::now() + Duration::from_secs(20);
             let mut observed = Vec::new();
             loop {
                 let batch = rx
                     .recv_timeout(deadline.saturating_duration_since(Instant::now()))
                     .unwrap_or_else(|error| {
-                        panic!(
-                            "workspace phase {phase}, expected {path:?}, remove={require_remove}: \
-                             {error}; observed batches: {observed:?}"
-                        )
+                        panic!("workspace phase {phase}: {error}; observed batches: {observed:?}")
                     })
                     .unwrap_or_else(|errors| {
                         panic!("native watcher phase {phase} reported errors: {errors:?}")
@@ -323,61 +316,73 @@ mod tests {
                     if observed.len() < 32 {
                         observed.push(format!("{:?}: {:?}", event.kind, event.paths));
                     }
-                    if (!require_remove || matches!(event.kind, EventKind::Remove(_)))
-                        && event
-                            .paths
-                            .iter()
-                            .any(|event_path| event_path.ends_with(path))
-                    {
+                    if event.paths.iter().any(|path| path.starts_with(root)) {
                         return;
                     }
                 }
             }
         }
 
-        let temp = tempfile::tempdir().unwrap();
-        let root = temp.path().canonicalize().unwrap();
-        let nested = root.join("nested");
-        std::fs::create_dir(&nested).unwrap();
-        // Use an existing, distinct destination for the atomic-save phase.
-        // Reusing renamed.md could consume a late rename event as its save
-        // acknowledgement, then coalesce the unobserved create+delete away.
-        let atomic_target = nested.join("atomic-save.md");
-        std::fs::write(&atomic_target, "before replacement").unwrap();
-        let (tx, rx) = channel();
-        let mut watcher = new_workspace_debouncer(Duration::from_millis(100), tx).unwrap();
-        watcher.watch(&root, RecursiveMode::Recursive).unwrap();
+        for phase in ["nested-create", "external-rename", "atomic-save", "delete"] {
+            let temp = tempfile::tempdir().unwrap();
+            let root = temp.path().canonicalize().unwrap();
+            let nested = root.join("nested");
+            std::fs::create_dir(&nested).unwrap();
+            let original = nested.join("draft.md");
+            let renamed = nested.join("renamed.md");
+            let atomic_target = nested.join("atomic-save.md");
+            let delete_target = nested.join("delete-existing.md");
+            match phase {
+                "external-rename" => std::fs::write(&original, "first").unwrap(),
+                "atomic-save" => std::fs::write(&atomic_target, "before replacement").unwrap(),
+                "delete" => std::fs::write(&delete_target, "existing before watch").unwrap(),
+                _ => {}
+            }
+            let (tx, rx) = channel();
+            let mut watcher = new_workspace_debouncer(Duration::from_millis(100), tx).unwrap();
+            watcher.watch(&root, RecursiveMode::Recursive).unwrap();
 
-        let original = nested.join("draft.md");
-        std::fs::write(&original, "first").unwrap();
-        expect_change(&rx, Path::new("nested/draft.md"), "nested-create", false);
+            match phase {
+                "nested-create" => std::fs::write(&original, "first").unwrap(),
+                "external-rename" => std::fs::rename(&original, &renamed).unwrap(),
+                "atomic-save" => {
+                    let stage = nested.join("atomic.tmp");
+                    std::fs::write(&stage, "replacement").unwrap();
+                    std::fs::rename(&stage, &atomic_target).unwrap();
+                }
+                "delete" => std::fs::remove_file(&delete_target).unwrap(),
+                _ => unreachable!(),
+            }
+            expect_invalidation(&rx, &root, phase);
 
-        let renamed = nested.join("renamed.md");
-        std::fs::rename(&original, &renamed).unwrap();
-        expect_change(
-            &rx,
-            Path::new("nested/renamed.md"),
-            "external-rename",
-            false,
-        );
-
-        let stage = nested.join("atomic.tmp");
-        std::fs::write(&stage, "replacement").unwrap();
-        std::fs::rename(&stage, &atomic_target).unwrap();
-        expect_change(
-            &rx,
-            Path::new("nested/atomic-save.md"),
-            "atomic-save",
-            false,
-        );
-        assert_eq!(
-            std::fs::read_to_string(&atomic_target).unwrap(),
-            "replacement"
-        );
-
-        std::fs::remove_file(&atomic_target).unwrap();
-        expect_change(&rx, Path::new("nested/atomic-save.md"), "delete", true);
-        assert!(!atomic_target.exists());
+            // Every real invalidation must support a fresh, exact tree read.
+            let mut entries: Vec<_> = std::fs::read_dir(&nested)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+                .collect();
+            entries.sort();
+            let expected: &[&str] = match phase {
+                "nested-create" => &["draft.md"],
+                "external-rename" => &["renamed.md"],
+                "atomic-save" => &["atomic-save.md"],
+                "delete" => &[],
+                _ => unreachable!(),
+            };
+            assert_eq!(entries, expected, "workspace phase {phase}");
+            match phase {
+                "nested-create" => assert_eq!(std::fs::read_to_string(&original).unwrap(), "first"),
+                "external-rename" => {
+                    assert!(!original.exists());
+                    assert_eq!(std::fs::read_to_string(&renamed).unwrap(), "first");
+                }
+                "atomic-save" => assert_eq!(
+                    std::fs::read_to_string(&atomic_target).unwrap(),
+                    "replacement"
+                ),
+                "delete" => assert!(!delete_target.exists()),
+                _ => unreachable!(),
+            }
+        }
     }
 
     #[test]

@@ -1,3 +1,7 @@
+## 527.2 R4 native watcher test contract follow-up (2026-10-29)
+
+R3 JS gates passed; Windows real watcher deletion assertion failed. A separate exact-factory Mac experiment also produced Modify rather than Remove for deletion, matching the product's existing coarse invalidation/read-tree contract. R4 isolates all four operation phases into fresh watchers and verifies actual notification plus exact tree/content; cfg(test) only, no platform skip/timeout increase/production change. Mac extracted-factory test/strictclippy/rustfmt pass; Windows/Tauri remain exactCI gates. Root waits original R3 ARM terminal before source push, no cancellation or rerun. See current cold-ready task record.
+
 ## 527.2 R3 CI test settlement follow-up (2026-10-29)
 
 Root sole desktop/sharedCI/main owner retains PR212. Prior exact R2 CI passed actual ARM and 7320unit but one existing DOM test observed dispatch before rejected-admission restoration; all original jobs terminal before next push. R3 changes test sequencing only, preserving original assertions and immediate-clear behavior; 85focusedDOM/type/lint PASS. New exactheadCI/main/native/local101 remain pending; 527.1 cold native hold and stable525 remain. See current cold-ready task record.
