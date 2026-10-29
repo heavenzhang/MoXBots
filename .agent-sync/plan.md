@@ -1056,3 +1056,10 @@ Root01a12bc2已交付mobilePR209 main775da/tree129d，精确CI40727018158九succ
 Root01a12bc2 sharedCI/main intake from exactauthor2eedf410286fe86adefdc5fde4e3bff3a950a548 and frozenmobileproducer1a6593d4dec3e2b5afeffbdc74512230dc1cbd64, basedon currentmain4977779. Only4mobilefiles preserve build6 and101 generated/nativefallbackorigins. Oldorigin credentialscope/identity notrelabeled; nofullcloudbranch intake. Mainclosure does notauthorize a secondmobilebuild/publisher or imply phonebusiness/TestFlightPASS; existingmobileowner01a12b99 retained. Task `.agent-sync/tasks/codex-mobile-build6-main-20261029-87b2048a.md`.
 
 Desktop0.5.27/build527.3 atimmutablemain4977779/tagv0.5.27 is already local+101stable delivered; exactsignedcold/warmreview/realGLMreply/nativeupdater and normalTLS fullarchive/prodsig/atomicexistingstableCAS postchecks PASS. TAR301917219B SHA93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1. Normalmaintenance20Agentflags/118historyIDs474hashespreserved; draftautomaticrestart and fullfaultmatrix/cloudbrowserphone limits retained. Delivery runbook `dev-docs/releases/0.5.27-delivery.md`. This sourceclosure is later than the frozen desktopartifact; it never redefines its source/tag.
+
+
+## MB-REPLAY-RECOVERY-20261030 — 原会话误拦截与恢复闭环
+
+用户要求查清本次拒绝并修复误拦截、恢复入口及错误勾选。开发分支 `codex/replay-recovery-20261030` 基于远端 `f072eff9`，任务 `.agent-sync/tasks/codex-replay-recovery-20261030-a901e1a9.md`，证据 `dev-docs/replay-recovery-20261030/`。范围为原 PreToolUse 拒绝持久化、结构化 native 历史核对、产品错误状态及原会话恢复；不以新会话或手工清账本替代恢复。
+
+唯一 desktop/macOS/updater 与 sharedCI/main owner继续 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，本开发线程只提交精确SHA与验证后交下一未冻结批；不自行触发共享CI、正式构建、版本分配或安装。原数据/历史保全与原会话真实复验独立于模拟测试、源码主干和制品发布跟踪。

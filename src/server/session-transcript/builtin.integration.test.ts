@@ -1609,6 +1609,37 @@ describe('builtin V2 execution independent of product storage', () => {
     ]);
   });
 
+  it.each([null, 'parent'] as const)('retains typed native user tool errors in live and cold product history (parent=%s)', async parent => {
+    const use = { type: 'tool_use', id: 'denied-tool', name: 'Bash', input: { command: 'synthetic' } };
+    state.protocolFrames = [
+      ...(parent ? [{ type: 'assistant', parent_tool_use_id: null, message: { id: 'parent-message', role: 'assistant', model: 'test-model', content: [
+        { type: 'tool_use', id: parent, name: 'Agent', input: { description: 'synthetic child' } },
+      ] } }] : []),
+      { type: 'assistant', parent_tool_use_id: parent, message: { id: 'denied-message', role: 'assistant', model: 'test-model', content: [use] } },
+      { type: 'user', parent_tool_use_id: parent, message: { role: 'user', content: [
+        { type: 'tool_result', tool_use_id: 'denied-tool', is_error: true, content: 'Synthetic hook refusal' },
+      ] } },
+    ];
+    const workspace = join(state.home, 'workspace'); await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let finish!: (outcome: TurnTerminalOutcome) => void;
+    const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+    await agent.enqueueUserMessage('question', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+    await terminal;
+    const event = parent ? 'chat:subagent-tool-result-complete' : 'chat:tool-result-complete';
+    expect(state.events).toContainEqual([event, expect.objectContaining({ toolUseId: 'denied-tool', isError: true })]);
+    const active = store.getActiveSessionTranscript(metadata.id)!;
+    expect(await active.writer.flushForMutation()).toBe(true);
+    const tools = [...active.writer.projection.messages.values()].flatMap(message => Array.isArray(message.content)
+      ? message.content.flatMap(block => block.tool && typeof block.tool === 'object' && !Array.isArray(block.tool)
+        ? [block.tool, ...(Array.isArray(block.tool.subagentCalls) ? block.tool.subagentCalls : [])] : []) : []);
+    expect(tools).toContainEqual(expect.objectContaining({ id: 'denied-tool', isError: true }));
+    const physical = await readFile(join(state.home, '.myagents', 'sessions-v2', `${metadata.id}.jsonl`), 'utf8');
+    expect(physical).toContain('"isError":true');
+  });
+
   it('publishes full-only tools and completes subsequent turns while attachment archiving is hung', async () => {
     state.toolFrames = true;
     state.media.mockImplementation(() => new Promise(resolve => { releaseWrite = () => resolve([]); }));

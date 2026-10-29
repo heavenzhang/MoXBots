@@ -15,6 +15,8 @@ export interface TranscriptToolDisplayEvent {
     inputRef?: unknown;
     finalInput?: boolean;
     isError?: boolean;
+    /** Native SDK wire spelling; normalized only when explicitly boolean. */
+    is_error?: boolean;
     metadata?: ToolResultMeta;
     attachments?: ToolAttachment[];
     pendingId?: string;
@@ -55,9 +57,11 @@ function updateTool<T extends SubagentToolCall>(tool: T, eventName: string, payl
         return { ...tool, result: appendPreview(tool.result, payload.delta ?? '') };
     }
     if (eventName.endsWith('tool-result-start') || eventName.endsWith('tool-result-complete')) {
+        const isError = typeof payload.isError === 'boolean' ? payload.isError
+            : typeof payload.is_error === 'boolean' ? payload.is_error : undefined;
         return {
             ...tool, result: payload.content ?? tool.result,
-            ...(typeof payload.isError === 'boolean' ? { isError: payload.isError } : {}),
+            ...(isError !== undefined ? { isError } : {}),
             resultMeta: payload.metadata ?? tool.resultMeta,
             attachments: mergeToolAttachments(tool.attachments, payload.attachments),
         };

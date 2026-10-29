@@ -43,6 +43,28 @@ function fixture(initialLedger?: unknown) {
 
 describe('native tool error settlement', () => {
 
+  it('durably records the intent hook rejection before recovery admission without poisoning subsequent explicit turns', async () => {
+    const h = fixture(); await h.emit('intent-denied');
+    expect(await h.controller.commitPreToolDenial('Bash', command, 'intent-denied')).toBe(true);
+    h.result('intent-denied', 'Synthetic intent hook denial');
+    expect(h.ledger().uncertain).toEqual([]);
+    expect(h.ledger().nativeErrors).toHaveLength(1);
+    await h.controller.protectInference(h.body, true);
+    expect(h.controller.beforeTool('Write', {})).toBeUndefined();
+    const restored = fixture(h.ledger()); await restored.emit('new-explicit-id');
+    expect(await restored.controller.authorizeTool('Bash', command, 'intent-denied')).toContain('cannot be reused');
+    expect(await restored.controller.authorizeTool('Bash', command, 'new-explicit-id')).toBeUndefined();
+  });
+
+  it.each(['foreign-input', 'missing-emission', 'owner', 'scope', 'stop'])('does not invent native denial evidence with %s', async change => {
+    const h = fixture(); if (change !== 'missing-emission') await h.emit('intent-denied');
+    if (change === 'owner') h.state.current = false;
+    if (change === 'scope') h.state.scope = 'next-turn';
+    if (change === 'stop') h.state.active = false;
+    expect(await h.controller.commitPreToolDenial('Bash', change === 'foreign-input' ? { command: 'different' } : command, 'intent-denied')).toBe(false);
+    expect(h.controller.inspectActionLedger().nativeErrorReceiptCount).toBe(0);
+  });
+
   it('commits an exact native exit while background work prevents inference recovery', async () => {
     const h = fixture();
     await h.emit('foreground-shell');

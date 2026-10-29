@@ -1532,17 +1532,27 @@
     "title": "Operations awaiting review",
     "close": "Collapse",
     "changed": "The session is busy, evidence changed, or this version cannot review it. Refresh when the session is idle.",
-    "boundary": "Only native task queries with matching evidence can be marked as query-only. Other operations remain protected. Review never replays or automatically continues a task.",
+    "boundary": "Only native evidence proving a tool call was denied before execution, or that an operation was a task query, can settle its record. Other operations stay protected. Recovery never replays an old command or automatically continues a task.",
     "empty": "No operations currently await review. This does not mean the business task is complete.",
     "taskQuery": "Task query · {{tool}}",
+    "hookDenied": "Native tool call denied · {{tool}}",
     "unverified": "Outcome unverified",
     "technical": "Show operation fingerprint",
-    "resolve": "Confirm query-only and save",
-    "resolved": "Saved {{count}} query review records.",
+    "recoverSession": "Recover this session",
+    "resolved": "Saved {{count}} review records.",
+    "pendingCount": "{{count}} records need review; unverified operations remain protected.",
+    "sessionReady": "Pending records are resolved. Send a new message to continue in this session; the old command will not be replayed.",
     "reasons": {
       "builtin_task_query": "The native tool and input fingerprint match a task query. This does not prove the query succeeded.",
+      "native_hook_denied": "The native pre-execution hook explicitly denied this call, proving it did not execute. This does not mean the business task completed.",
       "external_receipt_required": "An original execution or business receipt is required. This review cannot settle the operation.",
       "native_evidence_missing": "Insufficient native evidence. Protection remains in place."
+    },
+    "nextSteps": {
+      "builtin_task_query": "Recovery records only the query-only status. It does not repeat the original query or automatically continue the task.",
+      "native_hook_denied": "Recovery records the native denial, then shows when you can continue in this session. It never resends the old command.",
+      "external_receipt_required": "Check the original execution or business receipt, then reconcile manually. Do not submit the original operation again.",
+      "native_evidence_missing": "Keep the protection in place and review again when native evidence is available. Do not start a new session or clear the marker."
     }
   }
 }

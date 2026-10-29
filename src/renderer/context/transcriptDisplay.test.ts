@@ -34,6 +34,22 @@ describe('V2 displayed rows', () => {
         expect(message.content).toMatchObject([{}, { tool: { subagentCalls: [{ result: 'finished' }] } }]);
     });
 
+    it('projects explicit native is_error flags without guessing from result text', () => {
+        let message = applyTranscriptToolDisplayEvent(row(), 'chat:tool-result-complete', {
+            toolUseId: 'tool', content: 'hook rejected', is_error: true,
+        });
+        expect(message.content).toMatchObject([{}, { tool: { isError: true, result: 'hook rejected' } }]);
+        message = applyTranscriptToolDisplayEvent(message, 'chat:subagent-tool-result-complete', {
+            parentToolUseId: 'tool', toolUseId: 'child', content: 'automatic_replay_blocked', isError: false,
+        });
+        expect(message.content).toMatchObject([{}, { tool: { subagentCalls: [{ isError: false }] } }]);
+
+        const textOnly = applyTranscriptToolDisplayEvent(row(), 'chat:tool-result-complete', {
+            toolUseId: 'tool', content: 'PreToolUse:Bash hook error: automatic_replay_blocked',
+        });
+        expect((textOnly.content as Array<{ tool?: { isError?: boolean } }>)[1].tool?.isError).toBeUndefined();
+    });
+
     it('reconciles only post-snapshot events into a late page, including removals and tool payloads', async () => {
         const page = new TranscriptPage('session', 1, 2);
         const observe = (revision: number, eventName: string, data: unknown) => page.observe({ sessionId: 'session', connectionGeneration: 2, liveRevision: revision, eventName, data });

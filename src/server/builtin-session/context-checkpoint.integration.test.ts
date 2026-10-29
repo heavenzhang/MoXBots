@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { ContextRecoveryController, recoveryActionHash } from '../openai-bridge/context-recovery';
+import { ContextRecoveryController, recoveryActionHash, recoveryEvidenceDigest } from '../openai-bridge/context-recovery';
 import { NativeOperationJournal, type NativeOperationJournalData } from '../openai-bridge/native-operation-journal';
 import type { AnthropicRequest } from '../openai-bridge/types/anthropic';
+import { ProductTranscriptContent } from '../session-transcript/content';
+import { repairReviewedToolErrors } from './recovery-tool-errors';
 
 const state = vi.hoisted(() => ({ home: '' }));
 vi.mock('os', async original => ({ ...await original<typeof import('os')>(), homedir: () => state.home }));
@@ -175,6 +177,54 @@ it('persists a query-only review through Store reload, preserves raw unknowns an
   const { readonlyTasks: _audit, operationAttempts: _attempts, ...legacy } = store.loadBuiltinContextLedger(id, id) as Record<string, unknown>;
   const rollback = new ContextRecoveryController({ ...options, initialLedger: legacy });
   expect(rollback.inspectActionLedger().uncertainCount).toBe(2);
+});
+
+it('persists two historical denial reviews and repairs all four typed tool errors through the original Store writer', async () => {
+  const { inspectRecoveryActions, reconcileRecoveryAction, recoveryLedgerDigest } = await import('./recovery-reconciliation');
+  const inputs = [0, 1, 2, 3].map(index => ({ command: `synthetic operation ${index}` }));
+  const hashes = inputs.map(input => recoveryActionHash('Bash', input));
+  const raw = inputs.flatMap((input, index) => [
+    { type: 'assistant', uuid: `use-${index}`, sessionId: id, isSidechain: false,
+      message: { role: 'assistant', content: [{ type: 'tool_use', id: `tool-${index}`, name: 'Bash', input }] } },
+    { type: 'user', uuid: `result-${index}`, sessionId: id, isSidechain: false, parentUuid: `use-${index}`,
+      sourceToolAssistantUUID: `use-${index}`, toolDenialKind: 'permission-rule',
+      permissionDecision: { decision: 'reject', source: 'hook', reasonType: 'hook' },
+      message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: `tool-${index}`, is_error: true, content: 'Synthetic denial' }] } },
+  ]);
+  const selected = raw.map(row => ({ type: row.type, uuid: row.uuid, session_id: id, message: row.message }));
+  const snapshot = await store.loadSessionTranscript(id);
+  expect((await store.appendSessionMessages(id, snapshot.cursor, [{ id: 'original-output', role: 'assistant', timestamp: new Date().toISOString(),
+    content: JSON.stringify(inputs.map((input, index) => ({ id: `block-${index}`, type: 'tool_use', tool: {
+      id: `tool-${index}`, name: 'Bash', input: {}, inputJson: JSON.stringify(input), inputComplete: true, isLoading: false, result: 'Synthetic denial',
+    } }))) }])).ok).toBe(true);
+  const nativeErrors = hashes.slice(2).map((actionHash, offset) => {
+    const toolUseId = `tool-${offset + 2}`;
+    return [recoveryEvidenceDigest({ kind: 'native-error', actionHash, toolUseId }), {
+      sessionId: id, sdkSessionId: id, queryGeneration: 1, scope: 'old-turn', toolUseId, toolName: 'Bash', actionHash, reason: 'pre-tool-denied',
+    }];
+  });
+  await store.saveBuiltinContextLedger(id, id, { version: 1, completed: [], uncertain: hashes.slice(0, 2), denied: [], blocked: false,
+    projectionActive: false, streamArmedOnly: true, nativeErrors, operationAttempts: { version: 1, legacyUncertain: hashes.slice(0, 2), entries: [] } }, () => true);
+  const owner = { sessionId: id, sdkSessionId: id, epoch: 1, reviewAuthority: 'fixture' };
+  const content = new ProductTranscriptContent(store.getActiveSessionTranscript(id)!.writer);
+  const deps = { owner, isCurrent: () => true, load: () => store.loadBuiltinContextLedger(id, id),
+    readNative: async () => selected, readNativeRecords: async () => raw,
+    save: (next: unknown, expected: string) => store.saveBuiltinContextLedger(id, id, next, () => true, () => true, expected),
+    adopt: () => {}, repairToolErrors: (proofs: Parameters<typeof repairReviewedToolErrors>[1]) => repairReviewedToolErrors(content, proofs, () => true) };
+  let review = await inspectRecoveryActions(deps);
+  expect(review.actions.every(action => action.reason === 'native_hook_denied')).toBe(true);
+  for (let count = 0; count < 2; count++) review = await reconcileRecoveryAction({ ...owner, ledgerDigest: review.ledgerDigest, actionHash: review.actions[0]!.actionHash }, deps);
+  expect(review.actions).toEqual([]);
+  await store.getActiveSessionTranscript(id)?.revoke(); vi.resetModules(); store = await import('../SessionStore');
+  const ledger = store.loadBuiltinContextLedger(id, id) as Record<string, unknown>;
+  expect(ledger.uncertain).toEqual(hashes.slice(0, 2)); expect(ledger.preToolDenials).toHaveLength(2);
+  expect(new ContextRecoveryController({ initialLedger: ledger, recoveryOwner: owner, scope: () => 'new-turn', isActive: () => true,
+    backup: async () => '' }).inspectActionLedger().uncertainCount).toBe(0);
+  const restored = await store.loadSessionTranscript(id);
+  const tools = JSON.parse(restored.messages.find(message => message.id === 'original-output')!.content as string).map((block: { tool: unknown }) => block.tool);
+  expect(tools).toHaveLength(4);
+  for (const tool of tools) expect(tool).toMatchObject({ isError: true, isLoading: false, result: 'Synthetic denial' });
+  expect(recoveryLedgerDigest(ledger)).toBe(review.ledgerDigest);
 });
 
 it('persists per-attempt outcomes for identical actions and preserves an unfinished peer across Store restart', async () => {

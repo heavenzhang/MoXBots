@@ -4,9 +4,9 @@ export const RECOVERY_RECONCILE_PATH = '/api/session/recovery/reconcile';
 /** Redacted review only. A review never claims that a business task succeeded. */
 export interface RecoveryReviewAction {
   actionHash: string;
-  tool: 'TaskGet' | 'TaskList' | 'Other';
+  tool: 'TaskGet' | 'TaskList' | 'Bash' | 'Other';
   eligible: boolean;
-  reason: 'builtin_task_query' | 'external_receipt_required' | 'native_evidence_missing';
+  reason: 'builtin_task_query' | 'native_hook_denied' | 'external_receipt_required' | 'native_evidence_missing';
 }
 export interface RecoveryActionSnapshot {
   reviewAuthority: string;
