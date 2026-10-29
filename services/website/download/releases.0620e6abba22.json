@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "channel": "trial",
+  "macArm64": {
+    "status": "ready",
+    "version": "0.5.27",
+    "build": "527.3",
+    "url": "https://101.42.11.29/updates/releases/0.5.27/93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1-MoXBots.app.tar.gz",
+    "bytes": 301917219,
+    "sha256": "93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1",
+    "sourceCommit": "c2473e28acf2c257508dc8ad705731138441c7c2",
+    "signed": true,
+    "notarized": true,
+    "notesUrl": "https://101.42.11.29/moxbots/download/notes/0.5.27.html",
+    "notice": "构建 527.3；TAR.GZ 内含 MoXBots.app，与正式自动更新通道使用同一份已签名制品。"
+  },
+  "windowsX64": {
+    "status": "preparing"
+  }
+}
