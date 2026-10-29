@@ -3,6 +3,7 @@ import { newDesktopSession } from '@/api/sessionHandoverClient';
 import { releaseTabSession } from '@/api/tauriClient';
 import { transitionDesktopSession } from './desktopSessionTransition';
 import { LOG_SESSION_HEADER } from '../../shared/types/log';
+import { continuationForTurn } from '../../shared/sessionContinuation';
 import { messageCompletionParams } from '@/analytics/conversation';
 import { normalizeAskUserQuestionInput, type AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import {
@@ -2581,7 +2582,15 @@ export default function TabProvider({
             )
               setStreamingMessage(null);
             for (const id of removed) seenIdsRef.current.delete(id);
-          } else if (operation.kind !== 'turn-update') {
+          } else if (operation.kind === 'turn-update') {
+            const lastUser = historyMessagesRef.current.findLast(row => row.role === 'user'
+              && !row.id.startsWith('task-notification-'));
+            if (lastUser && lastUser.id === operation.turn.rootUserMessageId) {
+              const continuation = continuationForTurn(operation.turn, lastUser.id);
+              setSessionMeta(current => current?.id === payload.sessionId
+                ? { ...current, continuation } : current);
+            }
+          } else {
             updateDisplayedMessages((message) =>
               applyTranscriptDisplayOperation(message, operation),
             );
@@ -6031,8 +6040,8 @@ export default function TabProvider({
         setPendingDesktopMessages(previous => [...previous, pendingMessage]);
       }
 
-      // Project immediately, but retain the composer until the HTTP admission
-      // receipt. Queue admission still does not prove dispatch or persistence.
+      // Project immediately; the composer has already released its submitted
+      // draft. Queue admission still does not prove dispatch or persistence.
       // Desktop is the ONLY caller that should trigger provider switches per-message.
       // When no providerEnv is given (subscription mode), send 'subscription' explicitly
       // so enqueueUserMessage knows this is an intentional switch, not "I don't know".

@@ -4,10 +4,18 @@ Scope: production macOS arm64 Tauri updater archives only. This tool prepares an
 static publication files. It does not sign, notarize, upload, restart an application, modify
 Nginx or publish stable by default. A prepared artifact is not proof of real update acceptance.
 
-The own endpoint is `https://140.143.183.232/updates/stable/darwin-aarch64.json`.
+The own endpoint is `https://101.42.11.29/updates/stable/darwin-aarch64.json`.
 Artifacts use `/updates/releases/<version>/<sha256>-MoXBots.app.tar.gz`; releases are immutable.
 Only the flat Tauri manifest `{version, notes, pub_date, url, signature}` is returned.
 Other platforms return HTTP 204 until a separately verified formal release exists.
+
+The shared server also hosts another product: MoXBots website and download links use
+`/moxbots/` and `/moxbots/download/`, while updater files retain the reserved `/updates/`
+root. Do not replace the existing `/`, `/admin`, `/download`, `/api/v1` or `/assets` routes.
+The 2026-10-29 cloud migration creates a new test account/identity domain; it does not
+rotate this updater signing key or rebind old credentials. Existing clients still check
+their embedded old endpoint until upgraded through a working compatibility endpoint or
+a new signed installer. Preserve old signed archives, manifests, receipts and tags.
 
 ## Prerequisites
 

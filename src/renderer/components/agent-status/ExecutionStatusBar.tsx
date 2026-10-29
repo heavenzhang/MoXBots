@@ -14,6 +14,7 @@ import {
   PlayIcon,
 } from "@/components/icons";
 import { DropdownMenu } from "@/components/ui/DropdownMenu";
+import { retainFocusOnMouseDown } from "@/utils/focusRetention";
 import {
   getGoalStatusPresentation,
   type GoalRuntimeStatusBarProps,
@@ -22,7 +23,9 @@ import { useSubagentViews } from "./useSubagentViews";
 import { useAgentStatusState } from "./useAgentStatusState";
 import SubagentActivityPanel from "./SubagentActivityPanel";
 import SessionTaskPanel from "./SessionTaskPanel";
-import SessionExecutionStatus from "./SessionExecutionStatus";
+import SessionExecutionDetails, {
+  useSessionExecutionPresentation,
+} from "./SessionExecutionStatus";
 import { useSessionTaskOrchestration } from "./useSessionTaskOrchestration";
 import { OrchestrationPlanCard } from "./OrchestrationPlanCard";
 import type { SessionPlanTarget } from "../../../shared/sessionPlanConfirmation";
@@ -43,7 +46,7 @@ type Props = Omit<GoalRuntimeStatusBarProps, "goal" | "mode"> & {
   goal?: SessionGoal | null;
   activity?: AgentActivityControls;
 };
-type Detail = "goal" | "todos" | "agents";
+type Detail = "execution" | "goal" | "todos" | "agents";
 const EMPTY: Message[] = [];
 const buttonClass =
   "compact-action shrink-0 gap-1 rounded-md px-2 text-xs text-[var(--ink-secondary)] hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]";
@@ -84,6 +87,9 @@ export default memo(function ExecutionStatusBar({
   const triggers = useRef<Partial<Record<Detail, HTMLButtonElement | null>>>(
     {},
   );
+  const lastTrigger = useRef<HTMLButtonElement | null>(null);
+  const detailRegion = useRef<HTMLDivElement | null>(null);
+  const focusHistory = useRef(false);
   const id = useId();
   const background = activity
     ? state.subagents.filter((agent) => {
@@ -94,9 +100,14 @@ export default memo(function ExecutionStatusBar({
       })
     : [];
   const agents = activity ? views : [];
-  const hasExecution = Boolean(
-    orchestration.execution || orchestration.executionAdmission?.error,
-  );
+  const executionProps = {
+    execution: orchestration.execution,
+    recovery: orchestration.executionRecovery,
+    admission: orchestration.executionAdmission,
+    unknown: orchestration.executionUnknown,
+  };
+  const executionPresentation = useSessionExecutionPresentation(executionProps);
+  const hasExecution = Boolean(executionPresentation);
   const hasAgents = Boolean(
     activity && (agents.length || background.length || tab?.hasMoreBefore),
   );
@@ -132,19 +143,32 @@ export default memo(function ExecutionStatusBar({
   const detail = disclosure?.sessionId === sessionId ? disclosure.detail : null;
   // A removed data section must not leave an orphaned disclosure.
   const shown =
-    detail === "goal"
-      ? Boolean(goal)
-      : detail === "todos"
-        ? hasTodos || hasAgents
-        : detail === "agents"
-          ? hasAgents
-          : false;
+    detail === "execution"
+      ? hasExecution
+      : detail === "goal"
+        ? Boolean(goal)
+        : detail === "todos"
+          ? hasTodos || hasAgents
+          : detail === "agents"
+            ? hasAgents
+            : false;
+  useEffect(() => {
+    if (!focusHistory.current) return;
+    focusHistory.current = false;
+    if (shown && detail === "agents") detailRegion.current?.focus();
+  }, [shown, detail]);
   const presentation = goal
     ? getGoalStatusPresentation(goal, isExecuting, executionNumber, taskT)
     : null;
-  const completed = tasks.filter(task => task.phase === "completed").length;
-  const running = tasks.filter(task => task.phase === "running").length;
-  const awaitingReview = tasks.filter(task => task.phase === "awaiting_review").length;
+  const completed = tasks.filter((task) => task.phase === "completed").length;
+  const running = tasks.filter((task) => task.phase === "running").length;
+  const awaitingReview = tasks.filter(
+    (task) => task.phase === "awaiting_review",
+  ).length;
+  const failed = tasks.filter((task) => task.phase === "failed").length;
+  const interrupted = tasks.filter((task) => task.phase === "interrupted").length;
+  const unknown = tasks.filter((task) => task.phase === "unknown").length;
+  const currentAgents = agents.filter((agent) => agent.currentTurn || agent.status === "running");
   const toggle = (next: Detail) =>
     setDisclosure(
       shown && next === detail ? null : { sessionId, detail: next },
@@ -162,7 +186,11 @@ export default memo(function ExecutionStatusBar({
       }}
       aria-expanded={shown && detail === section}
       aria-controls={`${id}-${section}`}
-      onClick={() => toggle(section)}
+      onMouseDown={retainFocusOnMouseDown}
+      onClick={(event) => {
+        lastTrigger.current = event.currentTarget;
+        toggle(section);
+      }}
       className={`${buttonClass} ${shown && detail === section ? "bg-[var(--paper-hover)]" : ""}`}
       style={color ? { color } : undefined}
     >
@@ -174,27 +202,41 @@ export default memo(function ExecutionStatusBar({
     </button>
   );
   if (tab?.isSessionLoading && !goal && !hasExecution) return null;
-  if (!goal && !hasTodos && !hasAgents && !selectedTask && !orchestration.proposal &&
+  if (
+    !goal &&
+    !hasTodos &&
+    !hasAgents &&
+    !selectedTask &&
+    !orchestration.proposal &&
     !hasExecution
-  ) return null;
+  )
+    return null;
   return (
     <>
-      <SessionExecutionStatus
-        execution={orchestration.execution}
-        recovery={orchestration.executionRecovery}
-        admission={orchestration.executionAdmission}
-        unknown={orchestration.executionUnknown}
-      />
-      {orchestration.proposal && <div className="mb-2 min-w-0">
-        <OrchestrationPlanCard proposal={orchestration.proposal}
-          planSupport={orchestration.planSupport}
-          containerRef={activity?.containerRef}
-          startStatus={orchestration.planStart}
-          tasks={orchestration.tasks} stale={orchestration.stale} onRefresh={orchestration.retry}
-          onInspect={activity?.onSelectSubagent}
-          onConfirm={orchestration.confirmPlan} onRequestRevision={orchestration.requestPlanRevision}
-          onDiscuss={target => activity?.onDiscussPlan?.(target, t("orchestrationPlan.discussionDraft", { objective: orchestration.proposal!.content.objective }))} />
-      </div>}
+      {orchestration.proposal && (
+        <div className="mb-2 min-w-0">
+          <OrchestrationPlanCard
+            proposal={orchestration.proposal}
+            planSupport={orchestration.planSupport}
+            containerRef={activity?.containerRef}
+            startStatus={orchestration.planStart}
+            tasks={orchestration.tasks}
+            stale={orchestration.stale}
+            onRefresh={orchestration.retry}
+            onInspect={activity?.onSelectSubagent}
+            onConfirm={orchestration.confirmPlan}
+            onRequestRevision={orchestration.requestPlanRevision}
+            onDiscuss={(target) =>
+              activity?.onDiscussPlan?.(
+                target,
+                t("orchestrationPlan.discussionDraft", {
+                  objective: orchestration.proposal!.content.objective,
+                }),
+              )
+            }
+          />
+        </div>
+      )}
       {selectedTask && activity && (
         <BackgroundTaskDialog
           subagent={
@@ -207,7 +249,7 @@ export default memo(function ExecutionStatusBar({
           onJumpToTool={activity.onJumpToTool}
         />
       )}
-      {(goal || hasTodos || hasAgents) && (
+      {(hasExecution || goal || hasTodos || hasAgents) && (
         <section
           data-execution-status
           onKeyDown={(event) => {
@@ -219,15 +261,33 @@ export default memo(function ExecutionStatusBar({
               return;
             event.stopPropagation();
             setDisclosure(null);
-            if (detail) triggers.current[detail === "agents" ? "todos" : detail]?.focus();
+            if (detail) {
+              const trigger = lastTrigger.current?.isConnected
+                ? lastTrigger.current
+                : triggers.current[detail === "agents" ? "todos" : detail];
+              trigger?.focus();
+            }
           }}
-          className="mb-2 min-w-0 overflow-hidden rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] text-[var(--ink)]"
+          className="mb-1 min-w-0 text-[var(--ink)]"
         >
-          <div className="flex min-h-10 min-w-0 items-center gap-1 px-1.5 py-1">
+          <div data-execution-summary className="flex min-h-8 min-w-0 items-center gap-1">
             <div
               className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain"
               aria-label={t("executionStatus.summary")}
             >
+              {executionPresentation &&
+                summaryButton(
+                  "execution",
+                  <>
+                    <span
+                      aria-hidden
+                      className={`size-1.5 shrink-0 rounded-full ${executionPresentation.attention ? "bg-[var(--warning)]" : "bg-[var(--ink-muted)]"}`}
+                    />
+                    <span className="whitespace-nowrap">
+                      {executionPresentation.primaryStatus}
+                    </span>
+                  </>,
+                )}
               {presentation &&
                 summaryButton(
                   "goal",
@@ -242,17 +302,45 @@ export default memo(function ExecutionStatusBar({
                   </>,
                   presentation.color,
                 )}
-              {(hasTodos || hasAgents) && summaryButton(
-                "todos",
-                <span className="whitespace-nowrap tabular-nums">
-                  {t("orchestration.title")} {completed}/{tasks.length}
-                  {running > 0 && ` · ${t("orchestration.running", { count: running })}`}
-                  {awaitingReview > 0 && ` · ${t("orchestration.awaiting", { count: awaitingReview })}`}
-                  {orchestration.stale && ` · ${t("orchestration.syncPending")}`}
-                </span>,
-              )}
+              {(hasTodos || hasAgents) &&
+                summaryButton(
+                  "todos",
+                  <span className="whitespace-nowrap tabular-nums">
+                    {tasks.length > 0
+                      ? `${t("executionStatus.tasks")} · ${t("orchestration.collaboration.verifiedProgress", { completed, total: tasks.length })}`
+                      : t("executionStatus.collaboration")}
+                    {running > 0 &&
+                      ` · ${t("orchestration.running", { count: running })}`}
+                    {failed > 0 && <span className="text-[var(--error)]"> · {t("orchestration.collaboration.failedCount", { count: failed })}</span>}
+                    {interrupted > 0 && <span className="text-[var(--warning)]"> · {t("orchestration.collaboration.interruptedCount", { count: interrupted })}</span>}
+                    {unknown > 0 && <span className="text-[var(--warning)]"> · {t("orchestration.collaboration.unknownCount", { count: unknown })}</span>}
+                    {!tasks.length && currentAgents.some((agent) => agent.status === "failed") && <span className="text-[var(--error)]"> · {t("orchestration.collaboration.failedCount", { count: currentAgents.filter((agent) => agent.status === "failed").length })}</span>}
+                    {orchestration.stale &&
+                      ` · ${t("orchestration.syncPending")}`}
+                  </span>,
+                )}
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              {awaitingReview > 0 && (
+                <button
+                  type="button"
+                  data-task-review-entry
+                  onMouseDown={retainFocusOnMouseDown}
+                  aria-expanded={shown && detail === "todos"}
+                  aria-controls={`${id}-todos`}
+                  onClick={(event) => {
+                    lastTrigger.current = event.currentTarget;
+                    toggle("todos");
+                  }}
+                  className={`${buttonClass} text-[var(--warning)]`}
+                >
+                  {t("orchestration.awaiting", { count: awaitingReview })}
+                  <ChevronDownIcon
+                    aria-hidden
+                    className={`size-3 ${shown && detail === "todos" ? "rotate-180" : ""}`}
+                  />
+                </button>
+              )}
               {goal?.status === "active" && onPause && (
                 <button type="button" className={buttonClass} onClick={onPause}>
                   <PauseIcon aria-hidden className="size-3.5" />
@@ -312,12 +400,18 @@ export default memo(function ExecutionStatusBar({
           </div>
           {shown && (
             <div
+              ref={detailRegion}
               id={`${id}-${detail}`}
               role="region"
-              aria-label={t(`executionStatus.${detail}`)}
+              aria-label={t(
+                `executionStatus.${detail === "execution" ? "executionDetails" : detail}`,
+              )}
               tabIndex={0}
-              className="max-h-[min(280px,38vh)] overflow-y-auto overscroll-contain border-t border-[var(--line-subtle)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
+              className="mt-1 max-h-[min(280px,38vh)] overflow-y-auto overscroll-contain rounded-lg bg-[var(--paper-elevated)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
             >
+              {detail === "execution" && (
+                <SessionExecutionDetails {...executionProps} />
+              )}
               {detail === "goal" && goal && presentation && (
                 <div className="space-y-2 p-3">
                   <p className="break-words text-sm leading-5 select-text [overflow-wrap:anywhere]">
@@ -329,8 +423,17 @@ export default memo(function ExecutionStatusBar({
                 </div>
               )}
               {detail === "todos" && (
-                <SessionTaskPanel key={sessionId} tasks={tasks} stale={orchestration.stale} onRetry={orchestration.retry}
-                  onSelectAgent={id => activity?.onSelectSubagent(id)} onHistory={() => setDisclosure({ sessionId, detail: "agents" })} />
+                <SessionTaskPanel
+                  key={sessionId}
+                  tasks={tasks}
+                  stale={orchestration.stale}
+                  onRetry={orchestration.retry}
+                  onSelectAgent={(id) => activity?.onSelectSubagent(id)}
+                  onHistory={hasAgents ? () => {
+                    focusHistory.current = true;
+                    setDisclosure({ sessionId, detail: "agents" });
+                  } : undefined}
+                />
               )}
               {detail === "agents" && activity && (
                 <>

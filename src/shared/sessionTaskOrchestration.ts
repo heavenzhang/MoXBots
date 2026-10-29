@@ -2,6 +2,7 @@ import { compareBackgroundTaskRuns } from './backgroundTaskRun';
 import { deriveSessionTodos, type ProgressMessage, type ProgressTodo } from './sessionWorkProgress';
 import { mergeSubagentLifecycleUpdate, type SubagentLifecycle } from './types/subagent-lifecycle';
 import { isSessionPlanConfirmed, type SessionPlanProposal } from './sessionPlanConfirmation';
+import { isSubagentDispatchFailure } from './subagentDispatchFailure';
 
 /** Product owns task association and review; Runtime still owns execution. */
 export type TaskPhase = 'pending' | 'running' | 'awaiting_review' | 'completed' | 'rework' | 'failed' | 'interrupted' | 'blocked' | 'unknown';
@@ -14,6 +15,8 @@ export interface SessionTaskAttempt {
   title: string;
   lifecycle: SubagentLifecycle;
   executionVerified?: boolean;
+  /** Preserve explicit runtime authority when correcting old result inference. */
+  statusSource?: 'native' | 'notification' | 'dispatch_failure';
   runId?: string;
   /** Explicit root launch metadata, never a fuzzy title association. */
   taskIdHint?: string;
@@ -154,14 +157,18 @@ export function collectTaskAttempts(messages: readonly ProgressMessage[], liveMe
       const report = native?.result ?? str(notification?.summary);
       const launch = result?.status === 'async_launched' || result?.status === 'pending' || result?.outputFile || result?.output_file || tool.name === 'CollabAgent';
       const settledResult = !!tool.result && !launch && !tool.isLoading;
-      const verified = (status !== undefined && (status !== 'running' || messageId === liveMessageId)) || !!tool.isError || !!tool.isStopped || settledResult || (messageId === liveMessageId && tool.isLoading === true);
-      const effectiveStatus = status ?? (tool.isError ? 'failed' : tool.isStopped ? 'interrupted' : settledResult ? 'completed' : 'running');
+      const dispatchFailed = isSubagentDispatchFailure(str(tool.result));
+      const verified = (status !== undefined && (status !== 'running' || messageId === liveMessageId)) || !!tool.isError || dispatchFailed || !!tool.isStopped || settledResult || (messageId === liveMessageId && tool.isLoading === true);
+      // Native lifecycle/notifications own execution status. A legacy rejection
+      // without isError is only a fallback, never a successful child report.
+      const effectiveStatus = status ?? (tool.isError || dispatchFailed ? 'failed' : tool.isStopped ? 'interrupted' : settledResult ? 'completed' : 'running');
       const lifecycle: SubagentLifecycle = native ?? { status: effectiveStatus, startedAt: typeof tool.taskStartTime === 'number' ? tool.taskStartTime : 0,
         timingVerified: typeof tool.taskStartTime === 'number', ...(report === undefined ? {} : { result: report }) };
       const marker = root ? (str(input?.description) ?? str(input?.prompt) ?? str(input?.message))?.match(/^\[task:([A-Za-z0-9][A-Za-z0-9_.:-]{0,127})\](?:\s|$)/)?.[1] : undefined;
       attempts.push({ id: `${toolUseId}:${native?.activation?.id ?? runId ?? 'initial'}`, toolUseId,
         ...(marker ? { taskIdHint: marker } : {}),
         executionVerified: verified, runId,
+        statusSource: native ? 'native' : status !== undefined ? 'notification' : dispatchFailed ? 'dispatch_failure' : undefined,
         agentId: native?.agentId ?? str(result?.agentId), nativeTaskId: native?.taskId,
         title: native?.description ?? str(input?.description) ?? str(input?.prompt)?.split('\n')[0].slice(0, 200) ?? toolUseId,
         lifecycle });
@@ -186,7 +193,28 @@ export function mergeTaskObservations(ledger: SessionTaskLedger, attempts: reado
     if (attempt.id.endsWith(':initial') && known && known.id !== attempt.id) continue;
     const index = next.attempts.findIndex(a => a.id === attempt.id);
     if (index < 0) next.attempts.push(structuredClone(attempt));
-    else if (attempt.executionVerified !== false) next.attempts[index] = { ...next.attempts[index], ...attempt, lifecycle: mergeSubagentLifecycleUpdate(next.attempts[index].lifecycle, attempt.lifecycle) };
+    else if (attempt.executionVerified !== false) {
+      const prior = next.attempts[index];
+      // Old collectors interpreted an immutable hook rejection as completed.
+      // Repair only that unversioned inference, never a native terminal fact or
+      // another activation/run. Explicit facts retain their existing merge policy.
+      const correctLegacyDispatch = attempt.statusSource === 'dispatch_failure' && attempt.lifecycle.status === 'failed'
+        && attempt.id.endsWith(':initial') && !attempt.runId && !prior.runId
+        && !attempt.lifecycle.activation && !prior.lifecycle.activation
+        && prior.lifecycle.status === 'completed' && prior.statusSource === undefined;
+      const explicitDispatchReceipt = prior.statusSource === 'dispatch_failure'
+        && (attempt.statusSource === 'native' || attempt.statusSource === 'notification')
+        && !prior.lifecycle.activation && !prior.runId;
+      const lifecycle = correctLegacyDispatch || explicitDispatchReceipt ? attempt.lifecycle : mergeSubagentLifecycleUpdate(prior.lifecycle, attempt.lifecycle);
+      // The lifecycle helper can return a fresh object while retaining a prior
+      // terminal fact. Provenance follows authority, not object identity.
+      const sourceRank = { native: 3, notification: 2, dispatch_failure: 1 };
+      const statusSource = lifecycle.status !== attempt.lifecycle.status
+        || (prior.statusSource ? sourceRank[prior.statusSource] : 0) > (attempt.statusSource ? sourceRank[attempt.statusSource] : 0)
+        ? prior.statusSource : attempt.statusSource;
+      next.attempts[index] = { ...prior, ...attempt, lifecycle,
+        statusSource };
+    }
   }
   // A root's explicit launch marker binds execution immediately. Old history,
   // child-authored markers and parallel reuse cannot steal a current attempt.

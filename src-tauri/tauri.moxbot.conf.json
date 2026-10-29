@@ -92,7 +92,7 @@
     },
     "macOS": {
       "infoPlist": "Info.moxbot.plist",
-      "bundleVersion": "524.1",
+      "bundleVersion": "525.2",
       "signingIdentity": null
     },
     "icon": [
@@ -119,9 +119,9 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4NTVFQ0I0OUY3MTRENjYKUldSbVRYR2Z0T3hWeUtmUHA1aXBNbTRkQXhhOWJ2cnZEY2x6M0k1Q1pqSjBQRGRleHoyWCtVYTIK",
       "endpoints": [
-        "https://140.143.183.232/updates/stable/{{target}}.json"
+        "https://101.42.11.29/updates/stable/{{target}}.json"
       ]
     }
   },
-  "version": "0.5.24"
+  "version": "0.5.25"
 }

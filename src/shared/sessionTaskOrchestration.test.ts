@@ -141,6 +141,128 @@ describe('session task execution and acceptance', () => {
     expect(collectTaskAttempts(messages)[0].executionVerified).toBe(false);
     expect(collectTaskAttempts(messages, 'history')[0].executionVerified).toBe(true);
   });
+  it('projects a legacy Plan hook rejection as failed and refuses acceptance without isError', () => {
+    const messages = [{ id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+      id: 'a', name: 'Agent', parsedInput: { description: 'Repair interface' },
+      result: 'PreToolUse:Agent hook error: 当前处于 Plan（规划）模式，不能启动子 Agent。',
+    } }] }];
+    const found = collectTaskAttempts(messages)[0];
+    expect(found.executionVerified).toBe(true);
+    expect(found.lifecycle.status).toBe('failed');
+    const state = bind(observe(task(), [found]));
+    expect(view(state).phase).toBe('failed');
+    expect(() => review(state, 'accept', found.id)).toThrow('TASK_RESULT_UNAVAILABLE');
+  });
+  it.each([false, true])('repairs a persisted completed inference and preserves review history (accepted: %s)', accepted => {
+    const messages = [{ id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+      id: 'a', name: 'Agent', result: 'PreToolUse:Agent hook error: 当前处于 Plan（规划）模式，不能启动子 Agent。',
+    } }] }];
+    const incoming = collectTaskAttempts(messages)[0];
+    const legacy = { ...incoming, statusSource: undefined, lifecycle: { ...incoming.lifecycle, status: 'completed' as const } };
+    let persisted = bind(observe(task(), [legacy]));
+    if (accepted) persisted = review(persisted, 'accept', incoming.id);
+    persisted = JSON.parse(JSON.stringify(persisted));
+    expect(view(persisted).phase).toBe(accepted ? 'completed' : 'awaiting_review');
+    const corrected = observe(persisted, [incoming]);
+    expect(view(corrected).phase).toBe('failed');
+    expect(corrected.reviews).toEqual(persisted.reviews);
+    expect(() => apply(corrected, { kind: 'review', taskId: 'work', attemptId: incoming.id,
+      decision: 'accept', evidence: 'New review must verify an actual result', expectedRevision: corrected.revision })).toThrow('TASK_RESULT_UNAVAILABLE');
+    expect(observe(corrected, [incoming])).toEqual(corrected);
+    expect(view(observe(corrected, [legacy])).phase).toBe('failed');
+  });
+  it.each(['native', 'notification'] as const)('does not rewrite a completed %s fact from a later raw rejection fallback', source => {
+    const tool = { id: 'a', name: 'Agent', result: 'PreToolUse:Agent hook error: earlier launch was blocked',
+      ...(source === 'native' ? { subagentLifecycle: { status: 'completed', startedAt: 2 } } : {}) };
+    const messages = [
+      { id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool }] },
+      ...(source === 'notification' ? [{ id: 'task-notification-a', role: 'user', content: '<task-notification>{"toolUseId":"a","status":"completed"}</task-notification>' }] : []),
+    ];
+    const authoritative = collectTaskAttempts(messages)[0];
+    expect(authoritative.statusSource).toBe(source);
+    const state = bind(observe(task(), [authoritative]));
+    const fallback = collectTaskAttempts([{ id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+      id: 'a', name: 'Agent', result: tool.result,
+    } }] }])[0];
+    const replayed = observe(state, [fallback]);
+    expect(view(replayed).phase).toBe('awaiting_review');
+    expect(view(replayed).attempts[0].statusSource).toBe(source);
+    // Native authority also wins when the explicit receipt is observed after
+    // the legacy raw-error inference, rather than only before it.
+    const inferred = bind(observe(task(), [fallback]));
+    expect(view(inferred).phase).toBe('failed');
+    expect(view(observe(inferred, [authoritative])).phase).toBe('awaiting_review');
+  });
+  it('does not apply the legacy dispatch correction to a known activation or background run', () => {
+    const messages = [{ id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+      id: 'a', name: 'Agent', result: 'PreToolUse:Agent hook error: earlier launch was blocked',
+    } }] }];
+    const fallback = collectTaskAttempts(messages)[0];
+    for (const current of [attempt('a', 2, 'completed'), { ...fallback, id: 'a:002', runId: '002', statusSource: undefined,
+      lifecycle: { status: 'completed' as const, startedAt: 2 } }]) {
+      const state = bind(observe(task(), [current]));
+      const replayed = observe(state, [fallback]);
+      expect(view(replayed).phase).toBe('awaiting_review');
+      expect(view(replayed).attempts).toHaveLength(1);
+      expect(view(replayed).reviewAttemptId).toBe(current.id);
+    }
+  });
+  it('retains native provenance when terminal activation merging returns a new lifecycle object', () => {
+    const native = { ...attempt('a', 2, 'completed'), statusSource: 'native' as const };
+    const state = bind(observe(task(), [native]));
+    const incoming = { ...native, statusSource: 'dispatch_failure' as const,
+      lifecycle: { ...native.lifecycle, status: 'failed' as const } };
+    const replayed = observe(state, [incoming]);
+    expect(view(replayed).phase).toBe('awaiting_review');
+    expect(view(replayed).attempts[0].statusSource).toBe('native');
+    expect(view(replayed).attempts[0].lifecycle.status).toBe('completed');
+  });
+  it('retains a dispatch-failure source against a later untrusted completed inference', () => {
+    const failed = { ...attempt('a', 1, 'failed'), id: 'a:initial', statusSource: 'dispatch_failure' as const,
+      lifecycle: { status: 'failed' as const, startedAt: 0 } };
+    const state = bind(observe(task(), [failed]));
+    const replayed = observe(state, [{ ...failed, statusSource: undefined,
+      lifecycle: { status: 'completed' as const, startedAt: 0 } }]);
+    expect(view(replayed).phase).toBe('failed');
+    expect(view(replayed).attempts[0].statusSource).toBe('dispatch_failure');
+  });
+  it('keeps an actual returned report awaiting review even when it discusses dispatch errors', () => {
+    const messages = [{ id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+      id: 'a', name: 'Agent', result: 'Verified the fix for PreToolUse:Agent hook error: regression passed.',
+    } }] }];
+    const found = collectTaskAttempts(messages)[0];
+    const state = bind(observe(task(), [found]));
+    expect(view(state).phase).toBe('awaiting_review');
+    expect(view(review(state, 'accept', found.id)).phase).toBe('completed');
+  });
+  it('keeps native activation status authoritative over stale raw dispatch errors and notifications', () => {
+    const messages = [
+      { id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+        id: 'a', name: 'Agent', result: 'PreToolUse:Agent hook error: earlier launch was blocked',
+        subagentLifecycle: { status: 'completed', startedAt: 2, result: 'Native report verified',
+          activation: { id: 'run-2', ordinal: 2, state: 'completed' } },
+      } }] },
+      { id: 'task-notification-old', role: 'user', content: '<task-notification>{"toolUseId":"a","status":"failed","runId":"001"}</task-notification>' },
+    ];
+    const found = collectTaskAttempts(messages)[0];
+    expect(found.id).toBe('a:run-2');
+    expect(found.lifecycle.status).toBe('completed');
+    expect(found.lifecycle.result).toBe('Native report verified');
+    expect(view(bind(observe(task(), [found]))).phase).toBe('awaiting_review');
+  });
+  it('keeps an exact execution notification authoritative over legacy raw dispatch errors', () => {
+    const messages = [
+      { id: 'history', role: 'assistant', content: [{ type: 'tool_use', tool: {
+        id: 'a', name: 'Agent', result: 'PreToolUse:Agent hook error: earlier launch was blocked',
+      } }] },
+      { id: 'task-notification-a', role: 'user', content: '<task-notification>{"toolUseId":"a","status":"completed","runId":"002","summary":"Verified report"}</task-notification>' },
+    ];
+    const found = collectTaskAttempts(messages)[0];
+    expect(found.id).toBe('a:002');
+    expect(found.lifecycle.status).toBe('completed');
+    expect(found.lifecycle.result).toBe('Verified report');
+    expect(view(bind(observe(task(), [found]))).phase).toBe('awaiting_review');
+  });
   it('does not mistake async launch/control receipts for a returned report', () => {
     for (const name of ['Agent', 'CollabAgent']) {
       const messages = [{ id: 'm', role: 'assistant', content: [{ type: 'tool_use', tool: { id: 'child', name, parsedInput: { tool: 'spawnAgent' }, result: JSON.stringify({ status: 'async_launched', agentId: 'worker' }) } }] }];

@@ -1,5 +1,6 @@
 /* Same-origin admin client. Credentials and uncertain mutations live in memory only. */
 const $ = id => document.getElementById(id);
+const adminPagePath = location.pathname === '/moxbots/admin' ? '/moxbots/admin' : '/admin';
 let token = null;
 let data = null;
 let page = 'bots';
@@ -176,7 +177,8 @@ async function login() {
     const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
     const tx = await request('/auth/login/start', 'POST', { deviceId,
-      pkceChallenge: base64url(new Uint8Array(digest)), browserReturn: true }, false);
+      pkceChallenge: base64url(new Uint8Array(digest)), browserReturn: true,
+      ...(adminPagePath === '/moxbots/admin' ? { browserReturnPath: adminPagePath } : {}) }, false);
     context = { tx, deviceId, verifier };
     activeLogin = context;
     const url = new URL(tx.authorizationUrl);
@@ -193,7 +195,7 @@ async function login() {
 async function resumeLogin() {
   const params = new URLSearchParams(location.search);
   const outcome = params.get('login');
-  if (outcome) history.replaceState(null, '', '/admin');
+  if (outcome) history.replaceState(null, '', adminPagePath);
   let context;
   try { context = JSON.parse(sessionStorage.getItem(loginStorageKey) || 'null'); }
   catch { forgetPendingLogin(); }

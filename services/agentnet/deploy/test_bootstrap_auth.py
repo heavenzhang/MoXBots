@@ -17,7 +17,23 @@ class BootstrapTests(unittest.TestCase):
                                  "https://network.example.test/auth/callback", "admin@example.test",
                                  "Administrator", "test-only-long-password",
                                  hasher=lambda _: "$2b$12$" + "a" * 53,
-                                 tls=kwargs.get("tls"))
+                                 tls=kwargs.get("tls"), native_password=kwargs.get("native_password", False))
+
+    def test_native_password_requires_explicit_selection_and_preserves_consent(self):
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root).resolve() / "auth"
+            self.prepare(output, native_password=True)
+            config = json.loads((output / "dex.json").read_text())
+            self.assertEqual(config["oauth2"]["passwordConnector"], "local")
+            self.assertIs(config["oauth2"]["skipApprovalScreen"], False)
+            self.assertEqual(config["oauth2"]["responseTypes"], ["code"])
+            self.assertEqual(len(config["staticClients"]), 1)
+            self.assertGreaterEqual(len(config["staticClients"][0]["secret"]), 43)
+        with tempfile.TemporaryDirectory() as root:
+            output = Path(root).resolve() / "auth"
+            with self.assertRaises(ValueError):
+                self.prepare(output, native_password="yes")
+            self.assertFalse(output.exists())
 
     def test_bundle_is_private_loopback_and_has_no_password_grant(self):
         with tempfile.TemporaryDirectory() as root:

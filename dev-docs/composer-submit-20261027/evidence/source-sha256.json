@@ -1,0 +1,6 @@
+{
+  "src/renderer/components/chat-input/SimpleChatInput.tsx": "477d214b4a299d35dae96fbb24f0d46b4d85d5392f1fcdfb8531e6744297dea0",
+  "src/renderer/components/SimpleChatInput.send.test.tsx": "de0a0b137cc38df2386044408d277e68df99a16cc5d76809e930bf4c8f131268",
+  "src/renderer/context/TabProvider.tsx": "da7e7e166ce7545ac8f40503f3f44f8da60fea5156e6d0e0ebeeba04cea921d7",
+  "src/renderer/pages/Chat.tsx": "f78f4ba60cf5ec61da0c9f520780e20eed77643576bd3ca8ff344a7769c96daf"
+}

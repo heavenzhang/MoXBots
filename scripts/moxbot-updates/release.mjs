@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repository = path.resolve(here, '../..');
-export const origin = 'https://140.143.183.232';
+export const origin = 'https://101.42.11.29';
 export const endpoint = `${origin}/updates/stable/darwin-aarch64.json`;
 const platform = 'darwin-aarch64';
 const readJson = file => JSON.parse(fs.readFileSync(file, 'utf8'));

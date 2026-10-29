@@ -1,0 +1,46 @@
+{
+  "task": "MOXBOTS-MULTIAGENT-UX-20261028",
+  "base": "caab6ab648b434bee17930f90c4df4de87564bba",
+  "branch": "codex/multiagent-ux-20261028",
+  "scope": "local production components and synthetic task data; no paid model/native/production tests",
+  "runtime": "Node v24",
+  "results": {
+    "focusedUnitAndDom": {
+      "passed": 113,
+      "files": 8,
+      "log": "mox-multiagent-final-tests.log"
+    },
+    "serverBoundaryAndDiskIntegration": {
+      "passed": 65,
+      "files": 3,
+      "log": "mox-multiagent-integration.log"
+    },
+    "typecheck": "PASS",
+    "scopedLint": "PASS",
+    "testClassification": "PASS",
+    "dependencyBoundary": "0 errors; 18 existing orphan warnings",
+    "moxbotWebBuild": "PASS; final Vite build after last product change",
+    "licenseContract": "PASS (2 utility tests and contract)",
+    "themeTests": "8 PASS (during full build)"
+  },
+  "browser": {
+    "independentRound1": "PASS; 1440x900,1000x740,390x844; dark/light and zh/en",
+    "finalLabelDelta": "independent source PASS; independent new IAB unavailable; primary retained IAB actual delta PASS",
+    "primaryCriticalPaths": "PASS: failure visible, feedback draft preserved, raw error collapsed, unknown no-result/no-review, mixed1-request remains0accepted",
+    "evidence": "review.md and tool screenshot/AX trace; no local screenshot files fabricated"
+  },
+  "logsLocal": "/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/work/MOXBOTS-MULTIAGENT-UX-20261028/logs",
+  "sourceHashes": "evidence/source-sha256.json",
+  "sharedCI": "pending-existing-owner",
+  "remoteMain": "pending-existing-owner",
+  "formalArtifact": null,
+  "nativeAcceptance": "not tested",
+  "productionAcceptance": "not tested",
+  "modelRequests": {
+    "status_consistency": "gpt-6.1-sol / medium",
+    "ui_review": "gpt-6.1-sol / medium"
+  },
+  "runtimeModelConfirmation": null,
+  "tokens": null,
+  "cost": null
+}

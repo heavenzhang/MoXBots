@@ -2022,14 +2022,19 @@
     "continuationFailed": "未能确认操作结果，请刷新查看当前状态。"
   },
   "executionStatus": {
+    "tasks": "任务",
+    "collaboration": "协作",
+    "executionDetails": "执行详情",
     "summary": "执行状态",
     "goal": "目标详情",
-    "todos": "任务编排详情",
+    "todos": "任务详情",
     "agents": "协作详情",
     "running": "运行中 {{count}}",
     "returned": "已回传 {{count}}",
     "failed": "异常 {{count}}",
     "execution": {
+      "unconfirmedShort": "执行未确认",
+      "unknownShort": "状态待同步",
       "unknown": "执行状态暂不可确认",
       "unconfirmed": "执行意图未确认 · 自动续跑未启用",
       "running": "运行中",
@@ -2165,12 +2170,36 @@
       "failed": "验收请求未提交，请重试。原成果与验收状态保持不变。",
       "requestBoundary": "主 Agent 将对照完成标准核对，验收通过后才标记完成。",
       "reviewPrompt": "请主 Agent 验收以下已回传成果：\n{{entries}}\n仅核对列出的这次尝试，对照完成标准检查实际成果并记录证据；通过后记录验收，发现问题则记录返工原因。不要自动重跑已验收任务，也不要把工具允许当作验收。",
-      "reworkPrompt": "请主 Agent 检查以下成果的返工意见：\n{{entries}}\n返工原因：",
+      "reworkPrompt": "请主 Agent 核对以下任务的执行情况并处理问题：\n{{entries}}\n补充意见：",
       "accepted": "主 Agent 已验收 {{count}} 项成果",
       "retryReview": "重新请求验收",
       "historical": "历史尝试 {{count}}",
       "attemptHistory": "{{count}} 次执行记录",
       "acceptedCount": "已验收 {{count}} 项"
+    },
+    "collaboration": {
+      "title": "子 Agent 协作",
+      "mainTasks": "主 Agent 任务 {{count}} 项",
+      "verifiedProgress": "已验收 {{completed}}/{{total}}",
+      "reviewable": "可验收 {{count}} 项",
+      "failedCount": "失败 {{count}}",
+      "interruptedCount": "已中断 {{count}}",
+      "unknownCount": "待确认 {{count}}",
+      "viewError": "查看原因",
+      "viewProgress": "查看进展",
+      "feedback": "补充处理意见",
+      "planBlocked": "规划模式拦截了本次派发，子 Agent 未开始执行。",
+      "dispatchRejected": "子 Agent 派发被拒绝，本次未成功执行。",
+      "failureNext": "主 Agent 需要先处理失败原因，再继续此任务的执行与验收。",
+      "rawError": "展开原始错误",
+      "hint": {
+        "failed": "本次执行失败，需由主 Agent 核对原因。",
+        "interrupted": "本次执行已中断，需核对已有结果后再继续。",
+        "unknown": "暂时无法确认执行结果，需核对执行记录。",
+        "rework": "主 Agent 核验未通过，需要按意见返工。"
+      },
+      "historicalReview": "历史验收记录（本次执行未完成）",
+      "viewExecution": "查看记录"
     }
   },
   "orchestrationPlan": {

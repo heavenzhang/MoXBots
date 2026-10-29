@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { i18n } from '@/i18n';
 import type { SessionTaskLedger } from '../../../shared/sessionTaskOrchestration';
@@ -12,7 +12,7 @@ const tab = vi.hoisted(() => ({ tabId: 'tab', sessionId: 's1', sessionState: 'ru
 vi.mock('@/context/TabContext', () => ({ useTabStateOptional: () => tab }));
 const actions = { disabled: false, onInspect: vi.fn(), onReview: vi.fn(), onComposeRework: vi.fn() };
 const EMPTY: [] = [];
-function state(revision = 1, tool = 'tool', ordinal = 1, status: 'running' | 'completed' = 'completed'): SessionTaskLedger {
+function state(revision = 1, tool = 'tool', ordinal = 1, status: 'running' | 'completed' | 'failed' = 'completed'): SessionTaskLedger {
   return { revision, tasks: [{ id: 'work', title: '检查原布局', blockedBy: [] }], bindings: { [tool]: 'work' }, currentTools: { work: tool },
     attempts: [{ id: `attempt-${ordinal}`, toolUseId: tool, title: '检查原布局', executionVerified: true,
       lifecycle: { status, startedAt: 1, activation: { id: `activation-${ordinal}`, ordinal, state: status } } }], reviews: [] };
@@ -29,6 +29,50 @@ beforeEach(async () => {
 });
 
 describe('Incremental task actions share the original conversation state', () => {
+  it('shows a failed child and its cause without opening the inspector, with no review action', async () => {
+    const failed = state(1, 'tool', 1, 'failed');
+    failed.attempts[0].lifecycle.result = 'PreToolUse:Agent hook error: 当前处于 Plan（规划）模式，禁止本次派发。';
+    failed.reviews = [{ taskId: 'work', attemptId: 'attempt-1', decision: 'accept', evidence: '旧版本误记为通过' }];
+    tab.apiGet.mockResolvedValue({ success: true, sessionId: 's1', ledger: failed });
+    render(<Host />);
+    const error = await screen.findByText('规划模式拦截了本次派发，子 Agent 未开始执行。');
+    expect(error).toBeVisible();
+    const row = error.closest('li')!;
+    expect(within(row).getByText('执行失败')).toBeVisible();
+    expect(within(row).getByText('历史验收记录（本次执行未完成）')).toBeVisible();
+    expect(screen.queryByRole('button', { name: '让主 Agent 验收' })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: '查看原因' }));
+    expect(actions.onInspect).toHaveBeenCalledWith('tool');
+    fireEvent.click(within(row).getByRole('button', { name: '补充处理意见' }));
+    expect(actions.onComposeRework).toHaveBeenCalledWith([{ sessionId: 's1', taskId: 'work', attemptId: 'attempt-1' }]);
+    expect(actions.onReview).not.toHaveBeenCalled();
+  });
+  it('separates main-agent steps and excludes failed or running children from the review request', async () => {
+    const ledger = state();
+    for (const [id, status] of [['failed', 'failed'], ['running', 'running']] as const) {
+      ledger.tasks.push({ id, title: `${id} child`, blockedBy: [] });
+      ledger.bindings[id] = id;
+      ledger.attempts.push({ id, toolUseId: id, title: `${id} child`, executionVerified: true, lifecycle: { status, startedAt: 1 } });
+    }
+    ledger.plan = [{ key: 'main-step', content: '主 Agent 独立准备环境', activeForm: '准备环境', status: 'pending' }];
+    tab.apiGet.mockResolvedValue({ success: true, sessionId: 's1', ledger });
+    await ready();
+    expect(document.querySelectorAll('[data-task-result]')).toHaveLength(3);
+    expect(document.querySelector('[data-task-result]')).toHaveAttribute('data-task-phase', 'failed');
+    const main = screen.getByText('主 Agent 独立准备环境').closest('details')!;
+    expect(main.open).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: '让主 Agent 验收' }));
+    expect(actions.onReview).toHaveBeenCalledWith([{ sessionId: 's1', taskId: 'work', attemptId: 'attempt-1' }]);
+  });
+  it('does not offer acceptance for an unverified execution', async () => {
+    const ledger = state(); ledger.attempts[0].executionVerified = false;
+    tab.apiGet.mockResolvedValue({ success: true, sessionId: 's1', ledger });
+    render(<Host />);
+    await screen.findByText('暂时无法确认执行结果，需核对执行记录。');
+    expect(screen.queryByRole('button', { name: '让主 Agent 验收' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: '查看记录' })).toHaveLength(2);
+    expect(screen.queryByRole('button', { name: '查看成果' })).toBeNull();
+  });
   it('uses one snapshot observer across rows, results and repeated status consumers', async () => {
     await ready(); expect(tab.apiGet).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getAllByRole('button', { name: '查看成果' })[0]); expect(actions.onInspect).toHaveBeenCalledWith('tool');
