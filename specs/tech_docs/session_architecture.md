@@ -174,6 +174,8 @@ SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动
 
 MCP pre-warm 是 soft readiness observation，不是 AI turn 的 admission authority。未 connected、读取失败或观察超时不能拒绝业务 turn；真正的 MCP surface replacement 则是 Query-generation correctness fence，必须在 turn boundary 串行应用。
 
+原生操作核对不要求先发送第一条真人输入。`preWarming` 会一直保留到首次输入，不代表 SDK 仍未就绪；已有 Query 的控制面就绪、其当前 generation 的 message generator 已停驻、且没有业务/后台/队列/MCP mutation/abort/termination 时，允许只读核对。旧 Query 的 resolver 不能因 replacement 后控制面就绪而被继承；该事实由 lifecycle owner 按 generation 观察，核对不得唤醒 generator、转成 active 或清理原账本。
+
 准入 guard 只拥有新 turn 提交前的校验；同步转交到 active turn 后从 source item 释放。native 零模型轮次拒绝推导的 reload anchor 时，既有恢复路径重新递交同一已接纳输入，不能重新使用针对旧 interrupted turn 的 continuation guard，否则它会将自己的已提交新 root 判为 stale。尚未提交的输入、Stop/cancel、显式 Rewind/Fork 边界仍走原校验。
 
 #### 桌面新对话与 Renderer replacement

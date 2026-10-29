@@ -1,3 +1,7 @@
+## MB-RECOVERY-REVIEW-COLD-READY-20261029 / 0.5.27 build527.2
+
+527.1温会话原生核对通过，但重启后的ready pre-warm只读入口仍被预热标志阻挡，未晋级101。保留原source/包/失败证据，v0.5.27尚未创建。当前仅修SDKcontrol-ready/current-generation parked observation与abort/termination拒绝，使用新不可变527.2；不要求先发业务消息，不转active、不清账本或弱化签名/Store门。部署仍Root `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一协调。任务 `.agent-sync/tasks/codex-recovery-review-cold-ready-20261029-a34e844b.md`；冷恢复与温会话实际入口、本地主干/制品/101分别验收。
+
 ## MB-RECOVERY-REVIEW-WARM-IDLE-20261029 / 0.5.27
 
 原正式部署请求在0.5.26签名客户端验收发现核对入口误拒绝温会话空闲状态，101仍保留0.5.25。原v0.5.26/tag/包/失败证据不变。本次只修existing Query等待期的processing判断并补真实builtin adapter回归，保留业务忙碌/后台/未知/签名/Store围栏，版本0.5.27/527.1。desktop/macOS-arm64/updater/sharedCI/main继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；不新增部署owner、不跨聊天发信。精确CI/main/新包/安装101与真实新增入口验收分别追踪于任务 `.agent-sync/tasks/codex-recovery-review-idle-20261029.md`。
