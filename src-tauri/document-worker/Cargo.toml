@@ -1,6 +1,6 @@
 [package]
 name = "myagents-document-worker"
-version = "0.5.25"
+version = "0.5.26"
 edition = "2024"
 rust-version = "1.92"
 license = "AGPL-3.0-only"
