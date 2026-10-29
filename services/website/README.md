@@ -1,6 +1,6 @@
 # IP website trial download metadata
 
-The public website is https://140.143.183.232/ and its download page is /download/. User explicitly chose the IP origin; neither publishing nor runtime requires the old Sites account. Desktop APP_WEBSITE_URL already uses this IP.
+The current public website is https://101.42.11.29/moxbots/ and its download page is /moxbots/download/. The previous 140 origin and older release sections below are historical. The 101 migration preserves the coexisting AI4S root, admin and download routes; neither publication nor runtime requires the old Sites account.
 
 The home-page release and the download-page overlay have separate owners. The tracked download-page source is `services/website/download/`; before each deployment, reread the live release pointer and download HTML, compare the current assets, and preserve the site's current design. The0.5.4 preflight saw website source9ed08c386184de25b3c03825d09a34f9a92f7dc8. `trial-release.json` is the MoXBots-owned download-channel projection; it records immutable assets and exact size/SHA256, contains no credentials, and does not enable model execution. Preserve old release assets and existing hashed manifests for cached pages/rollback.
 
@@ -33,3 +33,12 @@ The new Mac release note and page notice explicitly say production web-login ret
 ## Cumulative update history
 
 `/download/#release-history` is the public cumulative history link. Keep the marked RELEASE-HISTORY section and its scoped download.<hash>.css current when publishing a channel. The live Nginx allowlist does not serve arbitrary `/download/*.html`; use the existing page and hash anchors. For a history-only deployment, extract just the marked section/CSS from the tracked future index and insert them into fresh live HTML, preserving its current scripts, manifests and installer links. Never deploy candidate Windows/0.5.10 metadata as part of a history change. See `dev-docs/releases/website-release-history.md`.
+
+
+## 0.5.27 / build 527.3 on the 101 website
+
+The current download projection is `download/releases.0620e6abba22.json`, mirrored by `trial-release.json`. macOS Apple Silicon reuses the immutable signed/notarized updater archive at `https://101.42.11.29/updates/releases/0.5.27/93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1-MoXBots.app.tar.gz`: 301917219 bytes, SHA-256 `93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1`, producer `c2473e28acf2c257508dc8ad705731138441c7c2`, immutable tag `v0.5.27` (main `4977779c196ab96e950cc3eb307ae584bef1b72b`). Do not rebuild or rearchive this file, and do not repeat the already accepted complete public GET. Windows remains preparing.
+
+The renderer accepts the exact same-origin `/updates/releases/<version>/<sha256>-MoXBots.app.tar.gz` identity, preserves prior download channels, and fails closed on a mismatched version, hash or unsafe URL. Install instructions describe TAR.GZ. The public notes and history distinguish current 0.5.27 from older packages; backend/browser/mobile acceptance is not implied by this page. Run `node --test services/website/download.test.mjs` for the relevant deterministic checks.
+
+Website owner `01a12b99-7b38-78b1-831f-9c60257d386a` independently publishes this static unit. Desktop/updater/artifact and combined CI/main remain with `01a12bc2-907a-7702-b6dd-788225c5dfe4`; no second PR, shared-CI dispatch, desktop build or updater write is part of this lane. Publish only a new complete immutable static directory containing the fresh live baseline plus the four reviewed download files; preserve every other file and old resource. Use the existing three nonblocking locks, backup/current-pointer ownership checks, atomic symlink CAS and ownership-checked rollback. Do not rerun the obsolete initial website installer, reload Nginx, change TLS or touch cloud/Host/client state. Source/local checks, exact public readback, actual browser review and main integration are separate states in `dev-docs/website-latest-download-20261030.md`.

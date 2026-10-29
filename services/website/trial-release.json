@@ -3,27 +3,18 @@
   "channel": "trial",
   "macArm64": {
     "status": "ready",
-    "version": "0.5.10 · 400b746a",
-    "sourceCommit": "400b746a4841bab8e4b99d8f83479fd54925c205",
-    "bytes": 352465403,
-    "sha256": "48f6a563fc5dd29762c20e1a175bb56096d20e4b800f245a0b4337fc82ba8ced",
+    "version": "0.5.27",
+    "build": "527.3",
+    "url": "https://101.42.11.29/updates/releases/0.5.27/93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1-MoXBots.app.tar.gz",
+    "bytes": 301917219,
+    "sha256": "93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1",
+    "sourceCommit": "c2473e28acf2c257508dc8ad705731138441c7c2",
     "signed": true,
     "notarized": true,
-    "url": "/download/packages/MoxBots-0.5.10-macOS-arm64.zip",
-    "notesUrl": "/download/notes/MoXBots-0.5.10-9d49ff84ecef.txt",
-    "notice": "生产网页登录返回服务协议尚未部署；0.5.10 不包含该服务端协议，不能视为网页登录后桌面无法正常接续问题的修复。"
+    "notesUrl": "https://101.42.11.29/moxbots/download/notes/0.5.27.html",
+    "notice": "构建 527.3；TAR.GZ 内含 MoXBots.app，与正式自动更新通道使用同一份已签名制品。"
   },
   "windowsX64": {
-    "status": "ready",
-    "version": "0.5.10",
-    "sourceCommit": "400b746a4841bab8e4b99d8f83479fd54925c205",
-    "installer": "MoXBots_0.5.10_x64-setup.exe",
-    "bytes": 339637031,
-    "sha256": "d0c9d526b7c1e0c18702d6d224848549c5be61d35e433d7e59f69acb73fdd848",
-    "authenticodeStatus": "NotSigned",
-    "analyticsEnabled": false,
-    "windowsUpdaterSupported": false,
-    "url": "/download/packages/MoXBots_0.5.10_x64-setup.exe",
-    "notice": "本包已通过 Windows 构建机身份与哈希校验；本次尚未进行 Windows 实机安装运行验收。"
+    "status": "preparing"
   }
 }
