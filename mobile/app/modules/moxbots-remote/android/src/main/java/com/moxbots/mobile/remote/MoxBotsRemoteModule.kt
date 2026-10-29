@@ -176,7 +176,7 @@ class MoxBotsRemoteModule : Module() {
     if (connection == null) {
       val context = requireNotNull(appContext.reactContext)
       val info = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-      val origin = info.metaData?.getString("com.moxbots.mobile.SERVICE_ORIGIN") ?: "https://140.143.183.232"
+      val origin = info.metaData?.getString("com.moxbots.mobile.SERVICE_ORIGIN") ?: "https://101.42.11.29"
       connection = NativeConnection(context, origin)
     }
     return requireNotNull(connection)
@@ -189,7 +189,7 @@ class MoxBotsRemoteModule : Module() {
     check(principal.isNotBlank() && principal.length <= 256) { "MOBILE_AUTHORIZATION_REQUIRED" }
     val context = requireNotNull(appContext.reactContext)
     val info = context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-    return (info.metaData?.getString("com.moxbots.mobile.SERVICE_ORIGIN") ?: "https://140.143.183.232") + "\u0000" + principal
+    return (info.metaData?.getString("com.moxbots.mobile.SERVICE_ORIGIN") ?: "https://101.42.11.29") + "\u0000" + principal
   }
   private fun handleAttachmentIntent(intent: JSONObject, promise: Promise) {
     val kind = intent.optString("kind")

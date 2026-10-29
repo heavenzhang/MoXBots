@@ -1049,3 +1049,10 @@ Human explicitly authorizes moving MoXBots cloud/website/update endpoints to101.
 ## MOXBOTS-0525 migration revision —525.2
 
 Root01a12bc2已交付mobilePR209 main775da/tree129d，精确CI40727018158九success一条件skip；phone runtime仍原owner。原desktop45a/525.1因hostedARM容量零step取消4次，旧冻结与结果封存、不盲第5次，未build。最新授权101全新测试云；本branch在currentmain基础融合endpointf142及cloud39ee源码，新build525.2，不改更新公钥/已发布包/tag。云ownedworkflow/deploy仍01a12b99，Root仅sharedCI/main/desktopupdater，不重复ownedCI、不碰101入口/AI4S/原Host/业务。原718源字节保持，新endpoint4+publisher3/type/lint/分类联合检查后等原独审、固定新head一次PR208CI，正常main再build/签名公证和同制品101发布安装。
+
+
+## MB-MOBILE6-MAIN-CLOSURE-20261029 — independent source closure
+
+Root01a12bc2 sharedCI/main intake from exactauthor2eedf410286fe86adefdc5fde4e3bff3a950a548 and frozenmobileproducer1a6593d4dec3e2b5afeffbdc74512230dc1cbd64, basedon currentmain4977779. Only4mobilefiles preserve build6 and101 generated/nativefallbackorigins. Oldorigin credentialscope/identity notrelabeled; nofullcloudbranch intake. Mainclosure does notauthorize a secondmobilebuild/publisher or imply phonebusiness/TestFlightPASS; existingmobileowner01a12b99 retained. Task `.agent-sync/tasks/codex-mobile-build6-main-20261029-87b2048a.md`.
+
+Desktop0.5.27/build527.3 atimmutablemain4977779/tagv0.5.27 is already local+101stable delivered; exactsignedcold/warmreview/realGLMreply/nativeupdater and normalTLS fullarchive/prodsig/atomicexistingstableCAS postchecks PASS. TAR301917219B SHA93f68bc62ee73fe75517f29023281a5037a7b262b51615a4fa20616d42f592c1. Normalmaintenance20Agentflags/118historyIDs474hashespreserved; draftautomaticrestart and fullfaultmatrix/cloudbrowserphone limits retained. Delivery runbook `dev-docs/releases/0.5.27-delivery.md`. This sourceclosure is later than the frozen desktopartifact; it never redefines its source/tag.
