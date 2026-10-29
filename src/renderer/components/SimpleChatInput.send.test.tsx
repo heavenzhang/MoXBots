@@ -286,14 +286,19 @@ describe('SimpleChatInput send paths', () => {
 
   it('restores typed launcher context and retains it on failed admission', async () => {
     const ref = createRef<SimpleChatInputHandle>();
-    const onSend = vi.fn().mockResolvedValue(false);
+    const admission = deferred<boolean>();
+    const onSend = vi.fn(() => admission.promise);
     const primaryContext = { kind: 'task-discussion' as const, input: { candidatesDir: '/data/discussion/candidates', workspaceId: 'ws', workspacePath: '/ws', visibleUserMessage: 'query' } };
     const requiredSystemSkill = TASK_ALIGNMENT_SKILL_REQUIREMENT;
     renderInput({ ref, onSend });
     act(() => ref.current!.setValue('query', { primaryContext, requiredSystemSkill }));
     const input = screen.getByRole('textbox') as HTMLTextAreaElement;
     fireEvent.keyDown(input, { key: 'Enter' });
-    await waitFor(() => expect(onSend).toHaveBeenCalledWith('query', undefined, undefined, { agentMentions: [], primaryContext, requiredSystemSkill }));
+    expect(onSend).toHaveBeenCalledExactlyOnceWith('query', undefined, undefined, { agentMentions: [], primaryContext, requiredSystemSkill });
+    expect(input).toHaveValue('');
+    expect(ref.current!.getQueryContext()).toEqual({ agentMentions: [], primaryContext: undefined, requiredSystemSkill: undefined });
+    // Dispatch is synchronous; rejection and its React restoration commit later.
+    await act(async () => admission.resolve(false));
     expect(input.value).toBe('query');
     expect(ref.current!.getQueryContext()).toEqual({ agentMentions: [], primaryContext, requiredSystemSkill });
   });
@@ -314,7 +319,8 @@ describe('SimpleChatInput send paths', () => {
     await i18n.changeLanguage('zh-CN');
     const agent = { selector: 'local', name: 'Review Agent', isLocal: true, deviceId: null, deviceName: null, platform: null, description: 'Reviewer', source: null };
     workspaceMocks.discovery.mockResolvedValue({ items: [agent], complete: true, networkStatus: 'connecting', authGeneration: 0, principalId: null, networkId: null });
-    const onSend = vi.fn().mockResolvedValue(false);
+    const admission = deferred<boolean>();
+    const onSend = vi.fn(() => admission.promise);
     renderInput({ value: 'before  after', onSend });
     const input = screen.getByRole('textbox') as HTMLTextAreaElement;
     input.focus(); input.setSelectionRange(7, 7);
@@ -325,6 +331,8 @@ describe('SimpleChatInput send paths', () => {
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
     await waitFor(() => expect(onSend).toHaveBeenCalled());
     expect(onSend).toHaveBeenLastCalledWith('before @Agent-id:local  after', undefined, undefined, { agentMentions: [{ agent, authGeneration: 0, principalId: null, networkId: null }] });
+    expect(input).toHaveValue('');
+    await act(async () => admission.resolve(false));
     expect(input.value).toBe('before @Agent-id:local  after');
     fireEvent.change(input, { target: { value: 'no mention' } });
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });

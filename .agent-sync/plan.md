@@ -1,3 +1,7 @@
+## 527.2 R3 CI test settlement follow-up (2026-10-29)
+
+Root sole desktop/sharedCI/main owner retains PR212. Prior exact R2 CI passed actual ARM and 7320unit but one existing DOM test observed dispatch before rejected-admission restoration; all original jobs terminal before next push. R3 changes test sequencing only, preserving original assertions and immediate-clear behavior; 85focusedDOM/type/lint PASS. New exactheadCI/main/native/local101 remain pending; 527.1 cold native hold and stable525 remain. See current cold-ready task record.
+
 ## MB-RECOVERY-REVIEW-COLD-READY-20261029 / 0.5.27 build527.2
 
 527.1温会话原生核对通过，但重启后的ready pre-warm只读入口仍被预热标志阻挡，未晋级101。保留原source/包/失败证据，v0.5.27尚未创建。当前仅修SDKcontrol-ready/current-generation parked observation与abort/termination拒绝，使用新不可变527.2；不要求先发业务消息，不转active、不清账本或弱化签名/Store门。部署仍Root `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一协调。任务 `.agent-sync/tasks/codex-recovery-review-cold-ready-20261029-a34e844b.md`；冷恢复与温会话实际入口、本地主干/制品/101分别验收。

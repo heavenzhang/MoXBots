@@ -32,3 +32,12 @@ first RED 3失败/11通过保留；修复后22integration PASS（14实际adapter
 ## Next step
 
 Root唯一desktop/macOS-arm64/updater/sharedCI/main owner完成相称检查、精确新head一次PR自动CI和正常main。新527.2候选/原AppleID/相同制品安装101，native应先在原冷恢复QA会话不发送输入地核对，再新正常Provider温路径验收。无新Agent、外部模型或跨聊天发信；不重编重签固定Reader、不重建527.1或早先已交付包。
+
+
+## R3 exact CI follow-up — deterministic failed admission settlement
+
+R2 exact e8284573 / Test40830567205 ended with 8success, 1DOMfailure, iOSconditional skip; actual ARM mac123303576112 passed all steps and was never canceled. Unit654files/7320PASS+5skip, DOM324files/2917PASS with one existing test failure. Full original connector log retained with Root receipts; the first direct log GET had a TLS redirect timeout and zero bytes, not a CI/storage failure.
+
+The launcher failed-admission test awaited only the synchronous onSend call, then inspected text before its Promise rejection restoration committed in React. Its file and production composer blobs were unchanged between R1/R2. R3 controls the admission Promise explicitly, verifies immediate clearing of text/context, resolves false inside act, and retains every original text/context assertion. The same adjacent mention test uses the same explicit settlement. No production implementation, timeout, test skip or assertion weakening changes.
+
+Focused DOM85PASS (75send +10checkpoint), typecheck and scoped ESLint PASS. R2 immutable freeze remains preserved; R3 keeps 0.5.27/build527.2 because no R2 formal artifact exists. New head automatic exactCI/main and signed-client cold/warm acceptance remain required. Existing PR212 receives one normal fast-forward push only after all R2 jobs became terminal; no manual rerun/dispatch or second PR.
