@@ -530,14 +530,12 @@ impl SessionRenewalSchedule {
             // must not rotate immediately after becoming visible as Ready.
             // Keep this deadline across reconnects and jitter samples; only a
             // different authoritative expiry arms a new window.
-            let lead = (900 + u64::from(jitter % 61))
-                .min((expires_at.saturating_sub(now) / 2).max(1));
+            let lead =
+                (900 + u64::from(jitter % 61)).min((expires_at.saturating_sub(now) / 2).max(1));
             self.observed_expiry = Some(expires_at);
             self.due_at = expires_at.saturating_sub(lead);
         }
-        now < expires_at
-            && now >= self.next_attempt
-            && now >= self.due_at
+        now < expires_at && now >= self.next_attempt && now >= self.due_at
     }
     fn attempted(&mut self, now: u64, jitter: u16, success: bool, remaining: u64) {
         self.failures = if success {
@@ -644,7 +642,9 @@ async fn connect(
     if let Some(connection) = owned {
         // If a previously armed deadline arrived while disconnected, finish
         // rotation before advertising a new epoch or consuming the join grant.
-        renewal.renew_if_due(connection, &identity, &transport).await?;
+        renewal
+            .renew_if_due(connection, &identity, &transport)
+            .await?;
     }
     if let NetworkAccountSession::Owned(account) = &identity.account {
         // One operator grant belongs to this run, not each reconnect.
@@ -739,146 +739,146 @@ async fn connect(
     let mut last_ping = Instant::now();
     let mut tick = tokio::time::interval(Duration::from_secs(1));
     let connection_loop = async {
-    loop {
-        if let Err(error) = identity.account.ensure_current() {
-            // A lost response may cross the old local deadline. Only a pending
-            // candidate for this exact captured credential may recover via
-            // live server inspection and existing PoP, never a new login.
-            let recovered = match owned {
-                Some(connection)
-                    if ["OWNED_SESSION_INVALID", "ACCOUNT_SESSION_EXPIRED"]
-                        .contains(&error.code.as_str()) =>
-                {
-                    connection
-                        .recover_expired_snapshot(&identity.account)
-                        .await?
+        loop {
+            if let Err(error) = identity.account.ensure_current() {
+                // A lost response may cross the old local deadline. Only a pending
+                // candidate for this exact captured credential may recover via
+                // live server inspection and existing PoP, never a new login.
+                let recovered = match owned {
+                    Some(connection)
+                        if ["OWNED_SESSION_INVALID", "ACCOUNT_SESSION_EXPIRED"]
+                            .contains(&error.code.as_str()) =>
+                    {
+                        connection
+                            .recover_expired_snapshot(&identity.account)
+                            .await?
+                    }
+                    _ => false,
+                };
+                if recovered {
+                    return Err(NetworkError::new("OWNED_SESSION_RENEWED"));
                 }
-                _ => false,
-            };
-            if recovered {
-                return Err(NetworkError::new("OWNED_SESSION_RENEWED"));
+                return Err(error);
             }
-            return Err(error);
+            tokio::select! {
+            incoming=socket.next()=>{
+            last_server=Instant::now();
+            match incoming{
+            Some(Ok(Message::Ping(bytes)))=>socket.send(Message::Pong(bytes)).await.map_err(|_|NetworkError::new("NETWORK_CONNECTION_CLOSED"))?,
+            Some(Ok(Message::Pong(_)))=>{},
+            Some(Ok(Message::Text(text)))=>{
+            if text=="ma-network-pong"{continue;}
+            let envelope=ServerEnvelope::parse(text.as_bytes()).map_err(|_|NetworkError::new("CONTROL_INVALID"))?;
+            if owned.is_some() { crate::agent_network::owned_profile::control(&envelope.message)?; }
+            control_gate(&envelope.message,&scope,true,true)?;
+            match envelope.message{
+            ServerMessage::Ready{catalog_seq:1,..} if !ready=>{ready=true;source_ready.store(true,Ordering::Release);backoff.recovered();publish(owner,path,"ready",Some(&scope.network_id),true,None)?;execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;},
+            ServerMessage::Changed{change:ChangeScope::Settings|ChangeScope::Catalog,..}=>{drop(execution_fence.take());publish(owner,path,"hydrating",Some(&scope.network_id),false,None)?;policy=if owned.is_some(){policy::hydrate_owned(&transport,&identity.token,&local).await?}else{policy::hydrate(&transport,&identity.token,&local).await?};if identity.account.is_management_only()&&!policy.joined{return Err(NetworkError::new("OWNED_MEMBERSHIP_REQUIRED"));}publish(owner,path,if ready{"ready"}else{"hydrating"},Some(&scope.network_id),ready,None)?;if ready{execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;}},
+            ServerMessage::Changed{..} if identity.account.is_management_only()=>{
+                drop(execution_fence.take());
+                policy=policy::hydrate_owned(&transport,&identity.token,&local).await?;
+                if !policy.joined{return Err(NetworkError::new("OWNED_MEMBERSHIP_REQUIRED"));}
+                if ready{execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;}
+            },
+            ServerMessage::Changed{..}|ServerMessage::RouteClosed{..}=>{},
+            ServerMessage::ChannelOffer{channel_id,initiator,responder,initiator_connection_epoch,responder_connection_epoch,initiator_binding,responder_binding,..}=>{
+                if !ready {
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"HOST_NOT_READY".into()}).await?;
+                    continue;
+                }
+                let Some(pairs) = pairs.as_mut() else {
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"TARGET_UNAVAILABLE".into()}).await?;
+                    continue;
+                };
+                let offer=Offer{channel_id:channel_id.clone(),initiator,responder,initiator_epoch:initiator_connection_epoch,responder_epoch:responder_connection_epoch,initiator_binding,responder_binding};
+                if offer.validate_scope(&local,&scope.connection_epoch).is_err() || pending_offers.contains_key(&channel_id) || pairs.has_channel(&channel_id) {
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_SCOPE_MISMATCH".into()}).await?;
+                    continue;
+                }
+                if let Err(error) = pairs.reserve(&channel_id) {
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;
+                    continue;
+                }
+                identity=Arc::new(identity.as_ref().clone().ensure_peer().await?);
+                let binding=identity.peer.as_ref().ok_or_else(||NetworkError::new("NETWORK_CERTIFICATE_INVALID"))?.signed_binding.clone();
+                pending_offers.insert(channel_id.clone(),offer);
+                if let Err(error)=send(&mut socket,ClientMessage::Accept{scope:scope.clone(),channel_id:channel_id.clone(),signed_binding:binding}).await {
+                    pairs.remove(&channel_id); pending_offers.remove(&channel_id); return Err(error);
+                }
+            },
+            ServerMessage::ChannelAccepted{channel_id,initiator_binding,responder_binding,..}=>{
+                let (Some(pairs),Some(mut offer))=(pairs.as_mut(),pending_offers.remove(&channel_id)) else {
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_OFFER_MISSING".into()}).await?;
+                    continue;
+                };
+                let result=async {
+                    pairs.accepted(&channel_id)?;
+                    offer.initiator_binding=Some(initiator_binding); offer.responder_binding=Some(responder_binding);
+                    let verified=offer.verify(&identity,&local,&scope.connection_epoch).await?;
+                    pairs.install(verified,&local,&scope.connection_epoch)?;
+                    Ok::<(),NetworkError>(())
+                }.await;
+                if result.is_err() {
+                    pairs.remove(&channel_id);
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_BINDING_INVALID".into()}).await?;
+                }
+            },
+            ServerMessage::Credit{channel_id,sequence,received_bytes,..}=>{
+                if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.credit(&channel_id,sequence,received_bytes){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} } }
+            },
+            ServerMessage::ChannelReady{channel_id,..}=>{
+                if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.ready(&channel_id){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} else { let (events,allocation)=pairs.feed_management(&channel_id,&[]) ?; handle_management_events(&mut socket,pairs,&channel_id,events,ManagementEventContext { scope: &scope, local: &local, management, identity: &identity }).await?; drop(allocation); } } else { send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_NOT_FOUND".into()}).await?; } }
+            },
+            ServerMessage::ChannelClosed{channel_id,..}=>{if let Some(pairs)=pairs.as_mut(){pairs.remove(&channel_id);} pending_offers.remove(&channel_id);},
+            ServerMessage::Error{code,retryable}=>{let mut e=NetworkError::cloud(&code,400);e.retryable=retryable;return Err(e);},
+            _=>return Err(NetworkError::new("CONTROL_UNEXPECTED")),
+            }
+            },Some(Ok(Message::Binary(bytes)))=>{
+                let (channel_id,payload)=myagents_agent_network_protocol::decode_tls_frame(&bytes).map_err(|_|NetworkError::new("CHANNEL_FRAME_INVALID"))?;
+                let Some(pairs)=pairs.as_mut() else { continue; };
+                if !pairs.has_channel(&channel_id) {
+                    pairs.remove(&channel_id);
+                    pending_offers.remove(&channel_id);
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_NOT_FOUND".into()}).await?;
+                    continue;
+                }
+                identity.account.ensure_current()?;
+                let (events,allocation)=match pairs.feed_management(&channel_id,payload){Ok(value)=>value,Err(error)=>{pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;continue;}};
+                handle_management_events(&mut socket,pairs,&channel_id,events,ManagementEventContext { scope: &scope, local: &local, management, identity: &identity }).await?;
+                if pairs.has_channel(&channel_id) {
+                    let (sequence,received_bytes)=pairs.release_credit(&channel_id,bytes.len())?;
+                    send(&mut socket,ClientMessage::Credit{scope:scope.clone(),channel_id,sequence,received_bytes}).await?;
+                }
+                drop(allocation);
+            },_=>return Err(NetworkError::new("NETWORK_CONNECTION_CLOSED"))}
+            if let Some(pairs)=pairs.as_mut(){ drain_management(&mut socket,pairs,&scope).await?; }
+            },_=tick.tick()=>{
+            let now = jsonwebtoken::get_current_timestamp();
+            if identity.access.exp <= now { return Err(NetworkError::new("NETWORK_TOKEN_EXPIRED")); }
+            if ready {
+                if let Some(connection) = owned {
+                    renewal.renew_if_due(connection, &identity, &transport).await?;
+                }
+            }
+            // Access is a separate short-lived snapshot. Refresh it by a deliberate
+            // reconnect while the account is live, preserving keys and one-shot join.
+            if owned.is_some() && identity.access.exp <= now.saturating_add(identity.access.exp.saturating_sub(identity.access.iat).saturating_div(4).clamp(1, 60)) { return Err(NetworkError::new("NETWORK_ACCESS_RECONNECT")); }
+            if last_server.elapsed()>Duration::from_millis(budget("offlineMs")as u64){return Err(NetworkError::new("NETWORK_CONNECTION_TIMEOUT"));}
+            if last_ping.elapsed()>=Duration::from_millis(budget("pingMs")as u64){socket.send(Message::Text("ma-network-ping".into())).await.map_err(|_|NetworkError::new("NETWORK_CONNECTION_CLOSED"))?;last_ping=Instant::now();}
+            // Reading the real relay policy is a Ready precondition; zero mounts do not
+            // waive hydration or create local invocation authority.
+            if last_status.elapsed()>=Duration::from_secs(10){publish(owner,path,if ready{"ready"}else{"hydrating"},Some(&scope.network_id),ready,None)?;last_status=Instant::now();}
+            let _=(&policy.device_name,policy.joined,policy.membership_revision,policy.mounts.len());
+            if let Some(pairs)=pairs.as_mut(){ drain_management(&mut socket,pairs,&scope).await?; }
+            if let Some(pairs)=pairs.as_mut(){
+                for (channel_id,reason) in pairs.expired(){
+                    pairs.remove(&channel_id);
+                    pending_offers.remove(&channel_id);
+                    send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:reason.into()}).await?;
+                }
+            }
+            }}
         }
-        tokio::select! {
-        incoming=socket.next()=>{
-        last_server=Instant::now();
-        match incoming{
-        Some(Ok(Message::Ping(bytes)))=>socket.send(Message::Pong(bytes)).await.map_err(|_|NetworkError::new("NETWORK_CONNECTION_CLOSED"))?,
-        Some(Ok(Message::Pong(_)))=>{},
-        Some(Ok(Message::Text(text)))=>{
-        if text=="ma-network-pong"{continue;}
-        let envelope=ServerEnvelope::parse(text.as_bytes()).map_err(|_|NetworkError::new("CONTROL_INVALID"))?;
-        if owned.is_some() { crate::agent_network::owned_profile::control(&envelope.message)?; }
-        control_gate(&envelope.message,&scope,true,true)?;
-        match envelope.message{
-        ServerMessage::Ready{catalog_seq:1,..} if !ready=>{ready=true;source_ready.store(true,Ordering::Release);backoff.recovered();publish(owner,path,"ready",Some(&scope.network_id),true,None)?;execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;},
-        ServerMessage::Changed{change:ChangeScope::Settings|ChangeScope::Catalog,..}=>{drop(execution_fence.take());publish(owner,path,"hydrating",Some(&scope.network_id),false,None)?;policy=if owned.is_some(){policy::hydrate_owned(&transport,&identity.token,&local).await?}else{policy::hydrate(&transport,&identity.token,&local).await?};if identity.account.is_management_only()&&!policy.joined{return Err(NetworkError::new("OWNED_MEMBERSHIP_REQUIRED"));}publish(owner,path,if ready{"ready"}else{"hydrating"},Some(&scope.network_id),ready,None)?;if ready{execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;}},
-        ServerMessage::Changed{..} if identity.account.is_management_only()=>{
-            drop(execution_fence.take());
-            policy=policy::hydrate_owned(&transport,&identity.token,&local).await?;
-            if !policy.joined{return Err(NetworkError::new("OWNED_MEMBERSHIP_REQUIRED"));}
-            if ready{execution_fence=start_execution(execution,identity.clone(),transport.clone(),&scope,&local,&policy)?;}
-        },
-        ServerMessage::Changed{..}|ServerMessage::RouteClosed{..}=>{},
-        ServerMessage::ChannelOffer{channel_id,initiator,responder,initiator_connection_epoch,responder_connection_epoch,initiator_binding,responder_binding,..}=>{
-            if !ready {
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"HOST_NOT_READY".into()}).await?;
-                continue;
-            }
-            let Some(pairs) = pairs.as_mut() else {
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"TARGET_UNAVAILABLE".into()}).await?;
-                continue;
-            };
-            let offer=Offer{channel_id:channel_id.clone(),initiator,responder,initiator_epoch:initiator_connection_epoch,responder_epoch:responder_connection_epoch,initiator_binding,responder_binding};
-            if offer.validate_scope(&local,&scope.connection_epoch).is_err() || pending_offers.contains_key(&channel_id) || pairs.has_channel(&channel_id) {
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_SCOPE_MISMATCH".into()}).await?;
-                continue;
-            }
-            if let Err(error) = pairs.reserve(&channel_id) {
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;
-                continue;
-            }
-            identity=Arc::new(identity.as_ref().clone().ensure_peer().await?);
-            let binding=identity.peer.as_ref().ok_or_else(||NetworkError::new("NETWORK_CERTIFICATE_INVALID"))?.signed_binding.clone();
-            pending_offers.insert(channel_id.clone(),offer);
-            if let Err(error)=send(&mut socket,ClientMessage::Accept{scope:scope.clone(),channel_id:channel_id.clone(),signed_binding:binding}).await {
-                pairs.remove(&channel_id); pending_offers.remove(&channel_id); return Err(error);
-            }
-        },
-        ServerMessage::ChannelAccepted{channel_id,initiator_binding,responder_binding,..}=>{
-            let (Some(pairs),Some(mut offer))=(pairs.as_mut(),pending_offers.remove(&channel_id)) else {
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_OFFER_MISSING".into()}).await?;
-                continue;
-            };
-            let result=async {
-                pairs.accepted(&channel_id)?;
-                offer.initiator_binding=Some(initiator_binding); offer.responder_binding=Some(responder_binding);
-                let verified=offer.verify(&identity,&local,&scope.connection_epoch).await?;
-                pairs.install(verified,&local,&scope.connection_epoch)?;
-                Ok::<(),NetworkError>(())
-            }.await;
-            if result.is_err() {
-                pairs.remove(&channel_id);
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_BINDING_INVALID".into()}).await?;
-            }
-        },
-        ServerMessage::Credit{channel_id,sequence,received_bytes,..}=>{
-            if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.credit(&channel_id,sequence,received_bytes){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} } }
-        },
-        ServerMessage::ChannelReady{channel_id,..}=>{
-            if let Some(pairs)=pairs.as_mut(){ if pairs.has_channel(&channel_id){ if let Err(error)=pairs.ready(&channel_id){pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;} else { let (events,allocation)=pairs.feed_management(&channel_id,&[]) ?; handle_management_events(&mut socket,pairs,&scope,&local,&channel_id,events,management,&identity).await?; drop(allocation); } } else { send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_NOT_FOUND".into()}).await?; } }
-        },
-        ServerMessage::ChannelClosed{channel_id,..}=>{if let Some(pairs)=pairs.as_mut(){pairs.remove(&channel_id);} pending_offers.remove(&channel_id);},
-        ServerMessage::Error{code,retryable}=>{let mut e=NetworkError::cloud(&code,400);e.retryable=retryable;return Err(e);},
-        _=>return Err(NetworkError::new("CONTROL_UNEXPECTED")),
-        }
-        },Some(Ok(Message::Binary(bytes)))=>{
-            let (channel_id,payload)=myagents_agent_network_protocol::decode_tls_frame(&bytes).map_err(|_|NetworkError::new("CHANNEL_FRAME_INVALID"))?;
-            let Some(pairs)=pairs.as_mut() else { continue; };
-            if !pairs.has_channel(&channel_id) {
-                pairs.remove(&channel_id);
-                pending_offers.remove(&channel_id);
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:"CHANNEL_NOT_FOUND".into()}).await?;
-                continue;
-            }
-            identity.account.ensure_current()?;
-            let (events,allocation)=match pairs.feed_management(&channel_id,payload){Ok(value)=>value,Err(error)=>{pairs.remove(&channel_id);send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:error.code}).await?;continue;}};
-            handle_management_events(&mut socket,pairs,&scope,&local,&channel_id,events,management,&identity).await?;
-            if pairs.has_channel(&channel_id) {
-                let (sequence,received_bytes)=pairs.release_credit(&channel_id,bytes.len())?;
-                send(&mut socket,ClientMessage::Credit{scope:scope.clone(),channel_id,sequence,received_bytes}).await?;
-            }
-            drop(allocation);
-        },_=>return Err(NetworkError::new("NETWORK_CONNECTION_CLOSED"))}
-        if let Some(pairs)=pairs.as_mut(){ drain_management(&mut socket,pairs,&scope).await?; }
-        },_=tick.tick()=>{
-        let now = jsonwebtoken::get_current_timestamp();
-        if identity.access.exp <= now { return Err(NetworkError::new("NETWORK_TOKEN_EXPIRED")); }
-        if ready {
-            if let Some(connection) = owned {
-                renewal.renew_if_due(connection, &identity, &transport).await?;
-            }
-        }
-        // Access is a separate short-lived snapshot. Refresh it by a deliberate
-        // reconnect while the account is live, preserving keys and one-shot join.
-        if owned.is_some() && identity.access.exp <= now.saturating_add(identity.access.exp.saturating_sub(identity.access.iat).saturating_div(4).clamp(1, 60)) { return Err(NetworkError::new("NETWORK_ACCESS_RECONNECT")); }
-        if last_server.elapsed()>Duration::from_millis(budget("offlineMs")as u64){return Err(NetworkError::new("NETWORK_CONNECTION_TIMEOUT"));}
-        if last_ping.elapsed()>=Duration::from_millis(budget("pingMs")as u64){socket.send(Message::Text("ma-network-ping".into())).await.map_err(|_|NetworkError::new("NETWORK_CONNECTION_CLOSED"))?;last_ping=Instant::now();}
-        // Reading the real relay policy is a Ready precondition; zero mounts do not
-        // waive hydration or create local invocation authority.
-        if last_status.elapsed()>=Duration::from_secs(10){publish(owner,path,if ready{"ready"}else{"hydrating"},Some(&scope.network_id),ready,None)?;last_status=Instant::now();}
-        let _=(&policy.device_name,policy.joined,policy.membership_revision,policy.mounts.len());
-        if let Some(pairs)=pairs.as_mut(){ drain_management(&mut socket,pairs,&scope).await?; }
-        if let Some(pairs)=pairs.as_mut(){
-            for (channel_id,reason) in pairs.expired(){
-                pairs.remove(&channel_id);
-                pending_offers.remove(&channel_id);
-                send(&mut socket,ClientMessage::Close{scope:scope.clone(),channel_id,reason:reason.into()}).await?;
-            }
-        }
-        }}
-    }
     };
     poll_connection_with_source(connection_loop, source_publisher).await
 }
@@ -899,16 +899,27 @@ where
     }
 }
 
+/// Captured connection authority travels together through both management paths.
+struct ManagementEventContext<'a> {
+    scope: &'a myagents_agent_network_protocol::ConnectionScope,
+    local: &'a myagents_agent_network_protocol::DeviceScope,
+    management: Option<ManagementRuntime<'a>>,
+    identity: &'a NetworkIdentity,
+}
+
 async fn handle_management_events(
     socket: &mut crate::agent_network::transport::NetworkSocket,
     pairs: &mut Pairs,
-    scope: &myagents_agent_network_protocol::ConnectionScope,
-    local: &myagents_agent_network_protocol::DeviceScope,
     channel_id: &str,
     events: Vec<ManagementEvent>,
-    management: Option<ManagementRuntime<'_>>,
-    identity: &NetworkIdentity,
+    context: ManagementEventContext<'_>,
 ) -> Result<(), NetworkError> {
+    let ManagementEventContext {
+        scope,
+        local,
+        management,
+        identity,
+    } = context;
     for event in events {
         match event {
             ManagementEvent::Ready => {}
@@ -1507,7 +1518,10 @@ mod tests {
             assert!(lock.try_lock().is_err());
             "closed"
         };
-        assert_eq!(poll_connection_with_source(connection, source).await, "closed");
+        assert_eq!(
+            poll_connection_with_source(connection, source).await,
+            "closed"
+        );
         assert!(lock.try_lock().is_ok());
     }
     use super::*;
