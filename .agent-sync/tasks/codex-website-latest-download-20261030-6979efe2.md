@@ -3,7 +3,7 @@
 <!-- git-project-sync-task:branch=codex/website-latest-download-20261030 -->
 <!-- git-project-sync-task:base=f072eff9a94724fc8802e939e51255dbf625ea3d -->
 <!-- git-project-sync-task:status=in-progress -->
-<!-- git-project-sync-task:source-digest=e27878c8679b73c7dae35e861dd521099c200f852a5ce198f86fde884626df2a -->
+<!-- git-project-sync-task:source-digest=58d119cad3ba2d072ff43fe047dce3af919bd04b26bcf4d057751e1b5ae385a5 -->
 
 # Task: MB-WEBSITE-LATEST-DOWNLOAD-20261030 官方下载复用已验收0.5.27原包
 
@@ -20,9 +20,11 @@ MB-WEBSITE-LATEST-DOWNLOAD-20261030: offer the accepted 0.5.27/527.3 Mac archive
 ## Completed
 
 - Reviewed four-file proposal and corrected obsolete history current-version claims; source projection mirror and 23 relevant checks added.
-- Live 33-file inventory matches saved baseline; no server mutation yet. See dev-docs/website-latest-download-20261030.md.
+- Published the exact four-file overlay under the original three locks to a new immutable36-file site; normalTLS exact readback passed. Old33-file release and validated backup retained. See dev-docs/website-latest-download-20261030.md.
 
 ## Verification
+
+- Source digest: `58d119cad3ba2d072ff43fe047dce3af919bd04b26bcf4d057751e1b5ae385a5`; Published static source21b with exact4file normalTLS readback;21publicchecks,14protection hashes and cloud/Dex/Host PID/start unchanged; archiveHEAD301917219B and no fullGET;6publisher safety checks and33file backup verification passed. Work browser and RootCI/main remain pending.
 
 - Source digest: `e27878c8679b73c7dae35e861dd521099c200f852a5ce198f86fde884626df2a`; node --test services/website/download.test.mjs: 23 passed; git diff --check: passed; fresh read-only live baseline: all33files match. Actual browser blocked by Work setting; static publication/main pending.
 
@@ -40,8 +42,8 @@ MB-WEBSITE-LATEST-DOWNLOAD-20261030: offer the accepted 0.5.27/527.3 Mac archive
 - Required: website static unit at101/moxbots/download, independently owned here (01a12b99-7b38-78b1-831f-9c60257d386a), along original human authorization and latest owner handoff.
 - Shared CI/main/artifact/updater owner:01a12bc2-907a-7702-b6dd-788225c5dfe4. Exact branch/head and result are handed off privately, not a second CI or PR.
 - Cross-unit dependency: reuse the already published0.5.27 immutable artifact; no protocol/config/data migration, no new public port, no other unit release. Keep original pointer for selective rollback.
-- Status: local checks passed; source push, static publication/readback and Root main receipt tracked separately in the acceptance document. Actual visual acceptance blocked by browser setting.
+- Status: source21b pushed/savePASS; static publication,21publicHTTP checks and14protection hashes passed. Root main receipt and actual visual acceptance remain pending. Browser setting blocks screenshots.
 
 ## Next step
 
-- Save reviewed source, then publish the four-file overlay using the original lock/backup/CAS contract; persist exact live and Root main handoff receipts.
+- Root consumes the exact pushed branch and private website-owner-result.json for sharedCI/main. Actual browser review can follow when Work allows it; do not repeat package GET or deploy.
