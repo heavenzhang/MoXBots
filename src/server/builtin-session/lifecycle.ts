@@ -123,6 +123,7 @@ let abortRequested = false;
 let sessionTerminationPromise: Promise<void> | null = null;
 let abortCleanupPromise: Promise<void> | null = null;
 let messageResolver: ((item: MessageQueueItem | null) => void) | null = null;
+let messageResolverGeneration: number | null = null;
 const queryExitWaiters = new Set<{ query: Query; resolve: () => void }>();
 let isPreWarming = false;
 let preWarmTimer: ReturnType<typeof setTimeout> | null = null;
@@ -230,6 +231,7 @@ export const lifecycleState = {
   },
   set messageResolver(resolve: ((item: MessageQueueItem | null) => void) | null) {
     messageResolver = resolve;
+    messageResolverGeneration = resolve ? queryGeneration : null;
   },
 };
 
@@ -878,11 +880,17 @@ export function hasMessageResolver(): boolean {
   return messageResolver !== null;
 }
 
+/** Observation only: a replaced Query cannot inherit its predecessor's waiter. */
+export function hasCurrentQueryMessageResolver(): boolean {
+  return querySession !== null && messageResolver !== null && messageResolverGeneration === queryGeneration;
+}
+
 export function wakeGenerator(item: MessageQueueItem | null): void {
   console.log(`[builtin-input] phase=resolver-wake generation=${queryGeneration} parked=${messageResolver !== null} input=${item !== null}`);
   if (!messageResolver) return;
   const resolve = messageResolver;
   messageResolver = null;
+  messageResolverGeneration = null;
   resolve(item);
 }
 
@@ -898,6 +906,7 @@ export function waitForMessage(dequeue: () => MessageQueueItem | undefined): Pro
   }
   return new Promise(resolve => {
     const resolverGeneration = queryGeneration;
+    messageResolverGeneration = resolverGeneration;
     console.log(`[builtin-input] phase=resolver-parked generation=${resolverGeneration}`);
     messageResolver = item => {
       console.log(`[builtin-input] phase=resolver-received installedGeneration=${resolverGeneration} currentGeneration=${queryGeneration} input=${item !== null}`);
@@ -934,6 +943,7 @@ export function resetPreWarmState(): void {
 export function clearGeneratorResolver(): void {
   console.log(`[builtin-input] phase=resolver-cleared generation=${queryGeneration} parked=${messageResolver !== null}`);
   messageResolver = null;
+  messageResolverGeneration = null;
 }
 
 export function forceWakeGeneratorWithNull(): void {

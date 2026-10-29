@@ -30,10 +30,63 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  lifecycle.wakeGenerator(null);
   lifecycle.resetLifecycleForTest();
   queue.resetQueueForTest();
   await store.getActiveSessionTranscript(id)?.revoke();
   await rm(fixture.home, { recursive: true, force: true });
+});
+
+function parkReadyPrewarm() {
+  lifecycle.lifecycleState.preWarming = true;
+  lifecycle.setSdkControlReady(true);
+  return lifecycle.waitForMessage(() => undefined);
+}
+
+it('reviews a cold restored ready pre-warm without sending the first user turn', async () => {
+  const waiting = parkReadyPrewarm();
+  await expect(agent.inspectBuiltinRecoveryActions()).resolves.toMatchObject({ sessionId: id, actions: [] });
+  expect(lifecycle.hasMessageResolver()).toBe(true);
+  expect(lifecycle.lifecycleState.preWarming).toBe(true);
+  expect(query?.close).not.toHaveBeenCalled();
+  expect(store.loadBuiltinContextLedger(id, id)).toBeUndefined();
+  lifecycle.wakeGenerator(null);
+  await expect(waiting).resolves.toBeNull();
+});
+
+it('refuses a ready pre-warm until its generator is actually parked', async () => {
+  lifecycle.lifecycleState.preWarming = true;
+  lifecycle.setSdkControlReady(true);
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
+it('refuses a parked pre-warm before SDK control readiness', async () => {
+  lifecycle.lifecycleState.preWarming = true;
+  void lifecycle.waitForMessage(() => undefined);
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
+it('does not adopt a previous Query generator as the new ready Query', async () => {
+  void parkReadyPrewarm();
+  lifecycle.setQuerySession({ close: vi.fn() } as never);
+  lifecycle.setSdkControlReady(true);
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
+it('refuses a warm Query after abort has been requested', async () => {
+  lifecycle.requestAbort();
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
+it('refuses a warm Query while its termination promise is still owned', async () => {
+  lifecycle.setSessionTerminationPromise(Promise.resolve());
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
+it('keeps background work protected even on a cold ready parked Query', async () => {
+  void parkReadyPrewarm();
+  lifecycle.replaceQueryBackgroundActivity(query!, [{ task_id: 'fixture-cold-child', task_type: 'local_agent', description: '' }]);
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
 });
 
 it('reviews an idle warm Query through the real builtin adapter without executing or writing', async () => {

@@ -353,6 +353,7 @@ import {
   claimQueryMcpMutation,
   forceWakeGeneratorWithNull,
   getQueryMcpMutation,
+  hasCurrentQueryMessageResolver,
   isUpdateRestartFrozen,
   getQueryGeneration,
   incrementPreWarmFailCount,
@@ -10659,8 +10660,12 @@ function recoveryReviewOwner() {
     || metadata.runtime && metadata.runtime !== 'builtin' || metadata.sdkResumeSessionAt
     || isSessionBusy() || hasBuiltinBackgroundWork() || getCurrentTurnIdentity()
     // The streaming iterator stays processing while its warm Query parks between
-    // turns. Only the spawn gap lacks a Query; actual work is fenced above.
-    || (lifecycleState.processing && !lifecycleState.query) || lifecycleState.preWarming || getQueryMcpMutation()
+    // turns. Cold pre-warm also keeps its flag until the first user input; a
+    // ready, parked current Query can be reviewed without sending that input.
+    || lifecycleState.abortRequested || lifecycleState.termination
+    || (lifecycleState.processing && !lifecycleState.query)
+    || (lifecycleState.preWarming && (!lifecycleState.sdkControlReady || !hasCurrentQueryMessageResolver()))
+    || getQueryMcpMutation()
     || activeSessionModelRecovery?.readState()?.status === 'waiting' || metadata.modelRecovery?.status === 'waiting') {
     throw new Error('recovery_review_busy_or_owner_changed');
   }
