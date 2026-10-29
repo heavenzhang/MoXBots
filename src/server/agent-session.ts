@@ -10662,7 +10662,11 @@ function recoveryReviewOwner() {
     // The streaming iterator stays processing while its warm Query parks between
     // turns. Cold pre-warm also keeps its flag until the first user input; a
     // ready, parked current Query can be reviewed without sending that input.
-    || lifecycleState.abortRequested || lifecycleState.termination
+    || lifecycleState.abortRequested
+    // This promise spans the entire persistent iterator, including parked idle.
+    // Its presence is only unsafe without a waiter owned by the current Query;
+    // actual abort and all turn/owner fences above still refuse the review.
+    || (lifecycleState.termination && !hasCurrentQueryMessageResolver())
     || (lifecycleState.processing && !lifecycleState.query)
     || (lifecycleState.preWarming && (!lifecycleState.sdkControlReady || !hasCurrentQueryMessageResolver()))
     || getQueryMcpMutation()
