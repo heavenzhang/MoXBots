@@ -54,6 +54,44 @@ it('reviews a cold restored ready pre-warm without sending the first user turn',
   await expect(waiting).resolves.toBeNull();
 });
 
+it('reviews a cold ready Query while its real iterator completion fence is pending', async () => {
+  // startStreamingSession allocates this before launching every persistent Query.
+  // It remains pending throughout pre-warm and all ordinary idle/warm turns.
+  let complete!: () => void;
+  lifecycle.setSessionTerminationPromise(new Promise<void>(resolve => { complete = resolve; }));
+  const waiting = parkReadyPrewarm();
+  await expect(agent.inspectBuiltinRecoveryActions()).resolves.toMatchObject({ sessionId: id, actions: [] });
+  expect(lifecycle.hasCurrentQueryMessageResolver()).toBe(true);
+  expect(query?.close).not.toHaveBeenCalled();
+  lifecycle.wakeGenerator(null);
+  await expect(waiting).resolves.toBeNull();
+  complete();
+});
+
+it('reviews a warm parked Query with the same pending iterator completion fence', async () => {
+  lifecycle.setSessionTerminationPromise(new Promise<void>(() => {}));
+  const waiting = lifecycle.waitForMessage(() => undefined);
+  await expect(agent.inspectBuiltinRecoveryActions()).resolves.toMatchObject({ sessionId: id, actions: [] });
+  expect(lifecycle.hasCurrentQueryMessageResolver()).toBe(true);
+  lifecycle.wakeGenerator(null);
+  await expect(waiting).resolves.toBeNull();
+});
+
+it('still refuses actual abort with a parked ready Query and its completion fence', async () => {
+  lifecycle.setSessionTerminationPromise(new Promise<void>(() => {}));
+  void parkReadyPrewarm();
+  lifecycle.requestAbort();
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
+it('still refuses a replaced Query even with a ready parked predecessor and completion fence', async () => {
+  lifecycle.setSessionTerminationPromise(new Promise<void>(() => {}));
+  void parkReadyPrewarm();
+  lifecycle.setQuerySession({ close: vi.fn() } as never);
+  lifecycle.setSdkControlReady(true);
+  await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
+});
+
 it('refuses a ready pre-warm until its generator is actually parked', async () => {
   lifecycle.lifecycleState.preWarming = true;
   lifecycle.setSdkControlReady(true);
@@ -78,7 +116,7 @@ it('refuses a warm Query after abort has been requested', async () => {
   await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
 });
 
-it('refuses a warm Query while its termination promise is still owned', async () => {
+it('refuses a Query completion fence without a current parked waiter', async () => {
   lifecycle.setSessionTerminationPromise(Promise.resolve());
   await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
 });
