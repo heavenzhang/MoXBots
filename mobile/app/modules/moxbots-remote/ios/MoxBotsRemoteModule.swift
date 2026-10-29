@@ -54,7 +54,7 @@ public final class MoxBotsRemoteModule: Module {
       guard let self else { promise.resolve(Self.failure("MOBILE_CONNECTION_UNAVAILABLE")); return }
       DispatchQueue.main.async {
         self.accountLogin.prepare(
-          origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232",
+          origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://101.42.11.29",
           completion: { promise.resolve($0) }
         )
       }
@@ -162,7 +162,7 @@ public final class MoxBotsRemoteModule: Module {
     guard ownerActive else { throw NativeFailure("MOBILE_CONNECTION_UNAVAILABLE") }
     if connection == nil {
       connection = try NativeConnection(
-        origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232",
+        origin: Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://101.42.11.29",
         bundle: Bundle.main.bundleIdentifier ?? "com.moxbots.mobile.internal")
     }
     guard let connection else { throw NativeFailure("MOBILE_CONNECTION_UNAVAILABLE") }
@@ -176,7 +176,7 @@ public final class MoxBotsRemoteModule: Module {
       let principal = account["principalId"] as? String, !principal.isEmpty, principal.utf8.count <= 256 else {
       throw NativeFailure("MOBILE_AUTHORIZATION_REQUIRED")
     }
-    return (Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://140.143.183.232") + "\u{0}" + principal
+    return (Bundle.main.object(forInfoDictionaryKey: "MoxBotsServiceOrigin") as? String ?? "https://101.42.11.29") + "\u{0}" + principal
   }
   private func attachmentOwner(_ scope: String) throws -> NativeAttachments {
     try NativeAttachments(scope: scope, bundle: Bundle.main.bundleIdentifier ?? "com.moxbots.mobile.internal")
