@@ -181,9 +181,107 @@ describe('SimpleChatInput send paths', () => {
     const input = screen.getByRole('textbox') as HTMLTextAreaElement;
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(onSend).toHaveBeenCalledWith('first query', undefined);
+    expect(input.value).toBe('');
     fireEvent.change(input, { target: { value: 'next query' } });
     await act(async () => admission.resolve(true));
     expect(input.value).toBe('next query');
+  });
+
+  it('clears text and attachments before a slow admission and blocks duplicate submission', async () => {
+    const admission = deferred<boolean>();
+    const onSend = vi.fn(() => admission.promise);
+    const ref = createRef<SimpleChatInputHandle>();
+    renderInput({ ref, value: 'submitted query', onSend });
+    const image = { id: 'submitted-image', file: new File(['png'], 'test.png', { type: 'image/png' }), preview: 'data:image/png;base64,cG5n' };
+    act(() => ref.current!.setImages([image]));
+    const input = screen.getByRole('textbox');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input).toHaveValue('');
+    expect(ref.current!.getImages()).toEqual([]);
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'next query' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onSend).toHaveBeenCalledExactlyOnceWith('submitted query', [image]);
+    await act(async () => admission.resolve(true));
+    expect(input).toHaveValue('next query');
+  });
+
+  it('restores an untouched rejected draft with its attachments and query context', async () => {
+    const admission = deferred<boolean>();
+    const ref = createRef<SimpleChatInputHandle>();
+    const context = { requiredSystemSkill: TASK_ALIGNMENT_SKILL_REQUIREMENT };
+    renderInput({ ref, onSend: () => admission.promise });
+    const image = { id: 'failed-image', file: new File(['png'], 'test.png', { type: 'image/png' }), preview: 'data:image/png;base64,cG5n' };
+    act(() => { ref.current!.setValue('  rejected query  ', context); ref.current!.setImages([image]); });
+    const input = screen.getByRole('textbox');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(input).toHaveValue('');
+    expect(ref.current!.getImages()).toEqual([]);
+    await act(async () => admission.resolve(false));
+    expect(input).toHaveValue('  rejected query  ');
+    expect(ref.current!.getImages()).toEqual([image]);
+    expect(ref.current!.getQueryContext()).toMatchObject(context);
+  });
+
+  it.each(['next query', ''])('does not replace a newer draft with a rejected send (%j)', async next => {
+    const admission = deferred<boolean>();
+    renderInput({ value: 'submitted query', onSend: () => admission.promise });
+    const input = screen.getByRole('textbox');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    fireEvent.change(input, { target: { value: 'edited next draft' } });
+    fireEvent.change(input, { target: { value: next } });
+    await act(async () => admission.resolve(false));
+    expect(input).toHaveValue(next);
+  });
+
+  it('keeps a newly attached image when an older send succeeds', async () => {
+    const admission = deferred<boolean>();
+    const ref = createRef<SimpleChatInputHandle>();
+    renderInput({ ref, value: 'submitted query', onSend: () => admission.promise });
+    const image = { id: 'next-image', file: new File(['png'], 'next.png', { type: 'image/png' }), preview: 'data:image/png;base64,cG5n' };
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    act(() => ref.current!.setImages([image]));
+    await act(async () => admission.resolve(true));
+    expect(ref.current!.getImages()).toEqual([image]);
+  });
+
+  it('does not restore an older rejected send over a new attachment-only draft', async () => {
+    const admission = deferred<boolean>();
+    const ref = createRef<SimpleChatInputHandle>();
+    renderInput({ ref, value: 'submitted query', onSend: () => admission.promise });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    const image = { id: 'next-image', file: new File(['png'], 'next.png', { type: 'image/png' }), preview: 'data:image/png;base64,cG5n' };
+    act(() => ref.current!.setImages([image]));
+    await act(async () => admission.resolve(false));
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    expect(ref.current!.getImages()).toEqual([image]);
+  });
+
+  it.each(['throw', 'reject'] as const)('restores an untouched draft when the caller fails (%s)', async kind => {
+    const ref = createRef<SimpleChatInputHandle>();
+    const onSend = vi.fn(() => {
+      if (kind === 'throw') throw new Error('synthetic send failure');
+      return Promise.reject(new Error('synthetic send failure'));
+    });
+    renderInput({ ref, value: 'recoverable query', onSend });
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    await waitFor(() => expect(screen.getByRole('textbox')).toHaveValue('recoverable query'));
+    expect(await screen.findByText('synthetic send failure')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
+  });
+
+  it('ignores a rejected send from the previous conversation scope', async () => {
+    const admission = deferred<boolean>();
+    const onSend = () => admission.promise;
+    const view = (sessionId: string) => <ToastProvider><ImagePreviewProvider>
+      <SimpleChatInput runtime="codex" sessionId={sessionId} isLoading={false} value="submitted query" onSend={onSend} />
+    </ImagePreviewProvider></ToastProvider>;
+    const { rerender } = render(view('first-session'));
+    fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+    rerender(view('second-session'));
+    await act(async () => admission.resolve(false));
+    expect(screen.getByRole('textbox')).toHaveValue('');
   });
 
   it('restores typed launcher context and retains it on failed admission', async () => {

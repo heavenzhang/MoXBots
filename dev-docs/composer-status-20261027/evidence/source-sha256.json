@@ -1,0 +1,7 @@
+{
+  "src/renderer/components/agent-status/ExecutionStatusBar.tsx": "61f3a3125255889dee3cb76a9164e7cd21a33713d0a9f9fcded44a3e0066eace",
+  "src/renderer/components/agent-status/SessionExecutionStatus.tsx": "d2c748ed36806d995eb35145fccbc81eaf9ee305f90e7c4f71b5d95306493c28",
+  "src/renderer/components/agent-status/SessionTaskPanel.tsx": "f58bd174341585ce8b25a8ae068914073d1ba0e6d9d2c886d93142a917b2462b",
+  "src/renderer/i18n/locales/zh-CN/app.json": "5bf4b3756ccead6a517c8a784c66db7407ad8e2343753e1bcc6eed953da39f45",
+  "src/renderer/i18n/locales/en-US/app.json": "c7dc9f5f6dd3bfbafdffa5b6aa803f01b32b1903ae0e3b5a25e7656034b013f0"
+}

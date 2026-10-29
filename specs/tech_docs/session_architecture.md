@@ -208,7 +208,7 @@ Builtin Rewind 以保留前缀末条 native 内容的精确 chain UUID 为边界
 
 新 Fork 统一先实体化 native history，builtin 同时映射 SDK UUID；完整执行配置复用 `snapshotForForkedSession`，不手工挑字段。Fork 不继承 source 的 Agent origin、Goal、置顶或 Tag。旧 lazy fork 通过记录的 binding/source 解析真实 native 来源，允许尚未启动的旧分支继续 fork；新请求不再生成 lazy fork 或通过设置切回旧路径。prepared 发布、附件复制和清理见 [V2 transcript](session_transcript_v2.md#生命周期与显式操作)。
 
-错误横幅的「重新发送」与重新生成回答不同：前者通过既有普通 desktop send/admission 再发送原始可见输入，保留 canonical history、已执行工具和文件，不调用 `/chat/retry`，也不建立新的 `sdkResumeSessionAt`。本地未接纳的失败气泡仍仅替换临时投影；传输不确定时先确认，并在确认后复核原请求是否已经接纳。Goal/Task 的系统包装由当前 preparation 重新生成，不将旧包装作为用户正文重发；纯自动 Goal continuation 不作为用户请求重发。失效 native boundary 仍明确拒绝，不能借重发清空边界、恢复已丢弃的历史。
+错误横幅按接纳事实分流：只有明确未接纳的本地失败才显示「重新发送」，通过既有普通 desktop send/admission 重发可见原文与附件，并只替换临时失败投影。已接纳且最新 canonical turn 为 `error` / `stopped` / `interrupted` 时显示「继续执行」，沿既有 `continueFromTurnId` 准入在原 Session 发送续接指令，保留 native/product history、工具结果、文件与任务清单；由 entry、promotion、同步 commit 重新核对原 turn、generation、运行/后台活动、队列和交互。指令要求先核对进度和结果不明操作，只从未完成处继续，不重放原业务请求，不调用 `/chat/retry` 或建立新的 `sdkResumeSessionAt`。传输结果不明、缺少可靠续接候选或 Runtime 暂不支持精确继续时仅显示「核查状态」，读取原会话记录和队列，不自动重发；普通输入框再次提交相同未确认正文也先核查并保留草稿。Goal paused 继续交原 Goal owner；Goal/Task 的系统包装仍由当前 preparation 生成。失效 native boundary 保持原拒绝和分支恢复入口，不借续接清空边界或恢复已丢弃历史。
 
 Retry 经 `POST /chat/retry` 进入 adapter，`/chat/external-retry` 仅保留同一语义的路由别名。Builtin 使用现有串行 mutation scope：内部重发可以重入，外部接纳等待该 scope 结束。External 的 mutation lease 覆盖重发接纳；期间新入队的消息保留，自身 replay 排到队首后才释放 dispatch。V1 复用既有删除事件、V2 由 writer 发布删除操作，先同步移除旧消息再接收 replay。不支持精确 native history 操作的 Runtime 返回明确能力错误，不以只截断产品记录代替。Codex 的边界选择见 [Runtime 文档](multi_agent_runtime.md#53-codex)。
 
@@ -218,7 +218,7 @@ Retry 的 `model` / `reasoningEffort` 是与普通发送一致的可选发送意
 
 Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代表 turn 已结束；前端等待执行事件，缺失时读取 `/api/session-state`，并丢弃已被更新执行事件、恢复或连接代际取代的读结果。Reset 成功返回前由 adapter 通过既有 publisher 发布新 identity 的 desktop 元数据和当前执行配置快照，并等待 writer 的 `flushForMutation` 确认磁盘可见；保证尚未发送首条消息也能绑定 Task/Goal、重启后仍能恢复模型配置。前端只有在后端确认新 identity 后才采用新空会话；拒绝时保留历史，丢响应时回读真实 binding。App 打开新 Tab 失败须与「可在当前空会话 reset」区分，不能用失败触发破坏性的 fallback。
 
-普通会话的「继续未完成任务」候选由 V2 transcript owner 从最新用户轮次的 `stopped` / `interrupted` terminal 投影。正常 `running`（包括新会话的首轮）只展示现有执行进度，不发布继续候选；冷启动时仍由原 execution owner 将遗留 running 结算为 interrupted，之后才允许投影入口。Renderer 同时拒绝旧版 metadata 的 running 候选，hydration 未就绪、执行或交互/队列阻塞期间不显示横幅；这些展示判断不授予执行权限，原 Session/turn/generation 准入与显式一次性点击继续生效。
+普通会话的「继续未完成任务」候选由 V2 transcript owner 从最新用户轮次的 `stopped` / `interrupted` / `error` terminal 投影。Renderer 可用同一 owner 的 canonical `turn-update` 事件及时刷新该展示投影，必须对应当前最新真实用户输入；完成/运行事件清除旧候选，旧轮次和跨会话事件不能覆盖新候选。正常 `running`（包括新会话的首轮）只展示现有执行进度，不发布继续候选；冷启动时仍由原 execution owner 将遗留 running 结算为 interrupted，之后才允许投影入口。Renderer 同时拒绝旧版 metadata 的 running 候选，hydration 未就绪、执行或交互/队列阻塞期间不显示横幅；有错误时由错误横幅显示单一恢复动作。展示判断不授予执行权限，原 Session/turn/generation 准入与显式一次性点击继续生效。
 
 ## 5. Goal 与跨 Session 协作
 

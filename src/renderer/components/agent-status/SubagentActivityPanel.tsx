@@ -5,17 +5,21 @@ import { useSubagentViews } from './useSubagentViews';
 import type { SubagentView } from './subagentViewModel';
 import { useElapsedSeconds } from './useElapsedSeconds';
 import { SubagentRunningIcon } from './icons';
+import { subagentOutcome } from './subagentOutcome';
 
 export function AgentActivityRow({ agent, onSelect }: { agent: SubagentView; onSelect: (id: string) => void }) {
   const { t } = useTranslation('app');
   const elapsed = useElapsedSeconds(agent.status === 'running' || agent.finishedAt !== undefined ? agent.startedAt ?? null : null, agent.finishedAt);
+  const outcome = subagentOutcome(agent.result);
+  const failed = agent.status === 'failed';
   return <button type="button" onClick={() => onSelect(agent.id)} className="flex min-h-12 w-full items-center gap-3 px-3 py-2 text-left hover:bg-[var(--hover-bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
     {agent.status === 'running' ? <SubagentRunningIcon /> : <span aria-hidden="true" className={`size-2 shrink-0 rounded-full ${agent.status === 'failed' ? 'bg-[var(--error)]' : agent.status === 'completed' ? 'bg-[var(--success)]' : 'bg-[var(--ink-muted)]'}`} />}
     <span className="min-w-0 flex-1">
-      <span className="block truncate text-sm font-medium text-[var(--ink)]">{agent.title}</span>
+      <span className="block break-words text-sm font-medium text-[var(--ink)] [overflow-wrap:anywhere]">{agent.title}</span>
       <span className="block truncate text-xs text-[var(--ink-muted)]">{agent.model || t('subagentView.modelUnknown')}{agent.parentAgentId ? ` · ${t('subagentView.nested')}` : ''}</span>
+      {failed && <span className="mt-1 block line-clamp-2 break-words text-xs leading-5 text-[var(--error)] [overflow-wrap:anywhere]">{outcome.kind !== 'report' ? t(`orchestration.collaboration.${outcome.kind}`) : outcome.text || t('orchestration.collaboration.hint.failed')}</span>}
     </span>
-    <span className="shrink-0 text-right text-xs text-[var(--ink-secondary)]"><span className="block">{t(`subagentView.status.${agent.status}`)}</span>{elapsed && <span className="block text-[var(--ink-muted)]">{elapsed}</span>}</span>
+    <span className={`shrink-0 text-right text-xs ${failed ? 'text-[var(--error)]' : 'text-[var(--ink-secondary)]'}`}><span className="block">{t(`subagentView.status.${agent.status}`)}</span>{elapsed && <span className="block text-[var(--ink-muted)]">{elapsed}</span>}</span>
   </button>;
 }
 

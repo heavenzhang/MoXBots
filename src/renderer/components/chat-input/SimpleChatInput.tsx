@@ -292,11 +292,13 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
   // This prevents MessageList from re-rendering when typing in long conversations
   const [inputValue, setInputValueState] = useState(externalValue ?? '');
   const inputValueRef = useRef(inputValue);
+  const inputRevisionRef = useRef(0);
   const updateLockedRef = useRef(false);
   const updatePriorReadOnlyRef = useRef(false);
   const isDraftLocked = useCallback(() => updateLockedRef.current, []);
   const setInputValue = useCallback<React.Dispatch<React.SetStateAction<string>>>((next) => {
     if (updateLockedRef.current) return;
+    inputRevisionRef.current += 1;
     setInputValueState(previous => {
       const value = typeof next === 'function' ? next(previous) : next;
       inputValueRef.current = value;
@@ -603,6 +605,11 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
 
   // Guard against double-fire of handleSend (e.g. rapid Enter + click)
   const sendingRef = useRef(false);
+  const sendScopeRef = useRef(0);
+  useLayoutEffect(() => {
+    sendScopeRef.current += 1;
+    return () => { sendScopeRef.current += 1; };
+  }, [composerTabId, composerDiscussionId, sessionId, workspacePath, isLauncherMode]);
 
   // Bug #123: track IME composition so the auto-resize effect can skip
   // textarea.style.height writes during composition. Style recalculation
@@ -851,7 +858,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     setImages,
     focus: () => textareaRef.current?.focus(),
     getCurrentValue: () => inputValueRef.current,
-    clearQueryContext: () => { setAgentMentions([]); setPrimaryContext(undefined); setRequiredSystemSkill(undefined); },
+    clearQueryContext: () => { inputRevisionRef.current += 1; setAgentMentions([]); setPrimaryContext(undefined); setRequiredSystemSkill(undefined); },
     getQueryContext: () => ({ agentMentions: activeAgentSnapshots(inputValueRef.current, agentMentions), primaryContext, requiredSystemSkill }),
     getImages: () => [...images],
     openModelMenu: () => { if (!configControlsLocked) setShowModelMenu(true); },
@@ -1096,6 +1103,26 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
 
     sendingRef.current = true;
 
+    // Submission transfers this draft to the send path immediately. Waiting for
+    // HTTP admission here leaves the already-visible message in the composer.
+    // Keep its snapshot only to restore a rejected send into an untouched draft.
+    const sendScope = sendScopeRef.current;
+    setInputValue('');
+    setAgentMentions([]);
+    setPrimaryContext(undefined);
+    setRequiredSystemSkill(undefined);
+    setImages([]);
+    const clearedRevision = inputRevisionRef.current;
+    const restoreSubmittedDraft = () => {
+      if (sendScopeRef.current !== sendScope || updateLockedRef.current
+        || inputRevisionRef.current !== clearedRevision || getImageCount() > 0 || hasPendingAttachments()) return;
+      setInputValue(inputValue);
+      setAgentMentions(agentMentions);
+      setPrimaryContext(primaryContext);
+      setRequiredSystemSkill(requiredSystemSkill);
+      setImages(images);
+    };
+
     // The user may switch to a text-only model after attaching an image.
     // Sidecar owns conversion; this surface only reports when the effective
     // image-understanding fallback is unavailable.
@@ -1108,33 +1135,22 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     }
 
     try {
-      // Delegate thought-mode persistence to the caller (Launcher
-      // BrandSection owns `thoughtCreate` + refresh-key bump). The
-      // boolean-return protocol (`return true` = saved, clear textarea)
-      // lets the parent signal when to reset input state here.
+      // The caller still owns admission/persistence (including Launcher thought
+      // creation). A false result restores this snapshot, never a newer draft.
       const mentions = activeAgentSnapshots(text, agentMentions);
       const result = mentions.length || primaryContext || requiredSystemSkill
         ? onSend(text, images.length > 0 ? images : undefined, undefined, { agentMentions: mentions, primaryContext, requiredSystemSkill })
         : onSend(text, images.length > 0 ? images : undefined);
       // If onSend returns a promise, await it; if sync, use directly
       const accepted = result instanceof Promise ? await result : result;
-      // Only clear input if not explicitly rejected (false)
-      if (accepted !== false) {
-        // Admission may take time. Clear the submitted draft only if the user
-        // has not started the next one while awaiting the response.
-        if (inputValueRef.current === inputValue) {
-          setInputValue('');
-          setAgentMentions([]);
-          setPrimaryContext(undefined);
-          setRequiredSystemSkill(undefined);
-        }
-        const submitted = new Set(images.map(image => image.id));
-        setImages(current => current.filter(image => !submitted.has(image.id)));
-      }
+      if (accepted === false) restoreSubmittedDraft();
+    } catch (error) {
+      restoreSubmittedDraft();
+      toastRef.current.error(error instanceof Error ? error.message : t('tabProvider.sendFailed', { ns: 'app' }));
     } finally {
       sendingRef.current = false;
     }
-  }, [onSend, images, inputValue, agentMentions, primaryContext, requiredSystemSkill, provider, currentModelId, isExternalRuntime, setImages, onSlashAction, enabledClientActionCommands, showConfigLockedReason, notifyUnsupportedImageFallback, setInputValue]);
+  }, [onSend, images, inputValue, agentMentions, primaryContext, requiredSystemSkill, provider, currentModelId, isExternalRuntime, setImages, getImageCount, hasPendingAttachments, onSlashAction, enabledClientActionCommands, showConfigLockedReason, notifyUnsupportedImageFallback, setInputValue, t]);
 
   // Handle keyboard navigation in file search and slash menu
   // Handler for selecting a slash command — shared by the click path
@@ -1486,7 +1502,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
           <div ref={textareaWrapperRef} className="relative px-4 pt-3">
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)]">
             {visibleSuggestion && (
-              <div aria-hidden="true" data-testid="next-prompt-ghost" onMouseDown={event => { event.preventDefault(); textareaRef.current?.focus(); }} className="pointer-events-auto relative z-[1] col-start-1 row-start-1 min-w-0 whitespace-pre-wrap break-words text-base leading-relaxed text-[var(--ink-muted)]" style={{ maxHeight: `${LINE_HEIGHT * MAX_LINES}px`, overflowX: 'hidden', overflowY: 'auto', overscrollBehaviorY: 'contain' }}>
+              <div aria-hidden="true" data-testid="next-prompt-ghost" onMouseDown={event => { event.preventDefault(); textareaRef.current?.focus(); }} className="pointer-events-auto relative z-[1] col-start-1 row-start-1 min-w-0 whitespace-pre-wrap break-words text-sm text-[var(--ink-muted)]" style={{ lineHeight: `${LINE_HEIGHT}px`, maxHeight: `${LINE_HEIGHT * MAX_LINES}px`, overflowX: 'hidden', overflowY: 'auto', overscrollBehaviorY: 'contain' }}>
                 {visibleSuggestion}
               </div>
             )}

@@ -28,11 +28,17 @@ test('release versions and URL constraints reject downgrade aliases and external
   const good = { version: '0.5.3', pub_date: '2026-10-14T00:00:00.000Z', notes: '', signature,
     url: `${origin}/updates/releases/0.5.3/${'a'.repeat(64)}-MoXBots.app.tar.gz` };
   assert.equal(validateManifest(good), good);
-  for (const url of [good.url.replace('https:', 'http:'), good.url.replace('140.143.183.232', 'evil.example'),
+  for (const url of [good.url.replace('https:', 'http:'), good.url.replace(origin, 'https://evil.example'),
+    good.url.replace(origin, 'https://140.143.183.232'),
     good.url + '?token=bad', good.url.replace('/0.5.3/', '/0.5.2/'),
     good.url.replace('/releases/', '/releases/../releases/')]) {
     assert.throws(() => validateManifest({ ...good, url }));
   }
+});
+test('publication and production updater use the same reserved stable route', () => {
+  const profile = JSON.parse(fs.readFileSync(path.join(repo, 'src-tauri/tauri.moxbot.conf.json'), 'utf8'));
+  assert.equal(origin, 'https://101.42.11.29');
+  assert.deepEqual(profile.plugins.updater.endpoints, [`${origin}/updates/stable/{{target}}.json`]);
 });
 test('real CLI minisign verification, immutable preparation, promotion, rollback and hostile archives', () => {
   const base = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'moxbots-release-test-')));

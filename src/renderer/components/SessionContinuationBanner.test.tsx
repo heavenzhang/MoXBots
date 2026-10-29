@@ -70,4 +70,13 @@ describe('explicit continuation', () => {
     rerender(<SessionContinuationBanner {...props} blocked={false} />);
     expect(props.onContinue).not.toHaveBeenCalled(); expect(props.onUnavailable).toHaveBeenCalledOnce();
   });
+  it('hides the duplicate banner during an error while still consuming an explicit sidebar intent', async () => {
+    const props = fixture({ hidden: true });
+    const { rerender } = render(<SessionContinuationBanner {...props} />);
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(props.onContinue).not.toHaveBeenCalled();
+    rerender(<SessionContinuationBanner {...props} request={{ requestId: 'explicit', turnId: 'unfinished-turn' }} />);
+    await waitFor(() => expect(props.onContinue).toHaveBeenCalledExactlyOnceWith('unfinished-turn'));
+    expect(props.onConsumed).toHaveBeenCalledOnce();
+  });
 });

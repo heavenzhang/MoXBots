@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import type { SessionTaskView } from '../../../shared/sessionTaskOrchestration';
 
 export default function SessionTaskPanel({ tasks, stale, onRetry, onSelectAgent, onHistory }: {
-  tasks: readonly SessionTaskView[]; stale: boolean; onRetry: () => void; onSelectAgent: (id: string) => void; onHistory: () => void;
+  tasks: readonly SessionTaskView[]; stale: boolean; onRetry: () => void; onSelectAgent: (id: string) => void; onHistory?: () => void;
 }) {
   const { t } = useTranslation('app');
   const active = tasks.filter(task => task.phase !== 'completed');
@@ -22,7 +22,7 @@ export default function SessionTaskPanel({ tasks, stale, onRetry, onSelectAgent,
         </button>
       </li>)}</ul>
     </details> : <p className="mt-1 text-xs text-[var(--ink-muted)]">{t('orchestration.mainAgent')}</p>}
-    {task.review && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--ink-secondary)] [overflow-wrap:anywhere]">{t('orchestration.reviewEvidence')}: {task.review.evidence}</p>}
+    {task.review && <p className="mt-2 whitespace-pre-wrap break-words text-xs text-[var(--ink-secondary)] [overflow-wrap:anywhere]">{t(task.review.decision === 'accept' && task.phase !== 'completed' ? 'orchestration.collaboration.historicalReview' : 'orchestration.reviewEvidence')}: {task.review.evidence}</p>}
   </li>;
   return <section aria-label={t('orchestration.title')} className="px-3 py-2">
     {stale && <p role="status" className="mb-2 text-xs text-[var(--warning)]">{t('orchestration.stale')} <button type="button" onClick={onRetry} className="underline">{t('orchestration.retry')}</button></p>}
@@ -33,7 +33,7 @@ export default function SessionTaskPanel({ tasks, stale, onRetry, onSelectAgent,
     </details>}
     <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3 text-xs text-[var(--ink-muted)]">
       <span>{t('orchestration.reviewBoundary')}</span>
-      <button type="button" onClick={onHistory} className="min-h-8 shrink-0 text-[var(--accent)]">{t('orchestration.executionHistory')}</button>
+      {onHistory && <button type="button" onClick={onHistory} className="min-h-8 shrink-0 text-[var(--accent)]">{t('orchestration.executionHistory')}</button>}
     </div>
   </section>;
 }

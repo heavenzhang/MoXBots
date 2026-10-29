@@ -1,0 +1,89 @@
+{
+  "environment": "isolated loopback synthetic receipts; actual SimpleChatInput",
+  "results": [
+    {
+      "engine": "chromium",
+      "width": 1440,
+      "clearObservedMs": 14,
+      "delayedReceipt": "unresolved until explicit test acceptance",
+      "immediateClear": true,
+      "duplicateBlocked": true,
+      "nextDraftPreserved": true,
+      "rejectionRestored": true,
+      "imeProtected": true,
+      "intentionalClearPreserved": true,
+      "attachmentRestored": true,
+      "horizontalOverflow": false
+    },
+    {
+      "engine": "chromium",
+      "width": 760,
+      "clearObservedMs": 8,
+      "delayedReceipt": "unresolved until explicit test acceptance",
+      "immediateClear": true,
+      "duplicateBlocked": true,
+      "nextDraftPreserved": true,
+      "rejectionRestored": true,
+      "imeProtected": true,
+      "intentionalClearPreserved": true,
+      "attachmentRestored": true,
+      "horizontalOverflow": false
+    },
+    {
+      "engine": "chromium",
+      "width": 390,
+      "clearObservedMs": 7,
+      "delayedReceipt": "unresolved until explicit test acceptance",
+      "immediateClear": true,
+      "duplicateBlocked": true,
+      "nextDraftPreserved": true,
+      "rejectionRestored": true,
+      "imeProtected": true,
+      "intentionalClearPreserved": true,
+      "attachmentRestored": true,
+      "horizontalOverflow": false
+    },
+    {
+      "engine": "webkit",
+      "width": 1440,
+      "clearObservedMs": 15,
+      "delayedReceipt": "unresolved until explicit test acceptance",
+      "immediateClear": true,
+      "duplicateBlocked": true,
+      "nextDraftPreserved": true,
+      "rejectionRestored": true,
+      "imeProtected": true,
+      "intentionalClearPreserved": true,
+      "attachmentRestored": true,
+      "horizontalOverflow": false
+    },
+    {
+      "engine": "webkit",
+      "width": 760,
+      "clearObservedMs": 13,
+      "delayedReceipt": "unresolved until explicit test acceptance",
+      "immediateClear": true,
+      "duplicateBlocked": true,
+      "nextDraftPreserved": true,
+      "rejectionRestored": true,
+      "imeProtected": true,
+      "intentionalClearPreserved": true,
+      "attachmentRestored": true,
+      "horizontalOverflow": false
+    },
+    {
+      "engine": "webkit",
+      "width": 390,
+      "clearObservedMs": 10,
+      "delayedReceipt": "unresolved until explicit test acceptance",
+      "immediateClear": true,
+      "duplicateBlocked": true,
+      "nextDraftPreserved": true,
+      "rejectionRestored": true,
+      "imeProtected": true,
+      "intentionalClearPreserved": true,
+      "attachmentRestored": true,
+      "horizontalOverflow": false
+    }
+  ]
+}

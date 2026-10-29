@@ -985,6 +985,35 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 
 524最终fixture同步后Root完整integration131文件/1686项通过，32项skip另列，2文件71回归与type/lint通过。修复的是假live-state及过早跳时钟的测试输入，不改production Stop/ledger/期限。下一精确CI仍要求headless renewal原通路通过；无正式构建/native维护。新mobile snapshot source独立下一source/main intake，保持mobile owner与桌面发布边界，不为本紧急包追加手机部署。
 
+
+## MOXBOTS-MULTIAGENT-UX-20261028 — 子 Agent 状态与协作交互
+
+来源会话 `01a182e1-5143-7d32-9f23-f89f636c5e39`，任务 `.agent-sync/tasks/codex-multiagent-ux-20261028-4c7ef004.md`，验收 `dev-docs/multiagent-ux-20261028/acceptance.md`。在原ledger/Runtime上修正raw派发拒绝与旧completed误判，主聊天明确子Agent状态/原因并分离主Agent步骤；反馈和验收目标保持精确session/attempt，未知不重放。113项unit/DOM与65项服务边界/磁盘集成、本地类型/lint/构建通过；非实现者实际UI矩阵及最终源码复核、主负责人最终标签/关键路径复验分开记录。无真实Provider/原生/生产验收声明。
+
+既有 desktop/macOS-arm64/updater 与 combined CI/main 负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 在MOXBOTS-NEXT-RELEASE-20261028跟踪本源码，接收精确远端分支 `codex/multiagent-ux-20261028` 后统一审阅/集成/CI/未冻结批次。开发不新建PR触发共享CI、不分配正式版本或操作日常App。与composer-status580同改状态栏/任务面板/语言文件，整合需保留其新布局与focus及本任务真实状态字段，不互相覆盖。
+
+
+## MB-COMPOSER-TYPE-20261027 — 输入区字号
+
+输入正文、占位符及灰色建议16px降为14px，沿用26px测量行高；工具栏14px和提示12px维持，设计约定同步。84项既有输入/IME/建议/发送回归、全量类型及定向lint通过；实际生产组件Chromium/WebKit宽窄与明暗8组渲染/换行/建议接受取消/发送通过，作者自验。任务`.agent-sync/tasks/codex-composer-type-20261027.md`，证据`dev-docs/composer-type-20261027/acceptance.md`。代码与本地/模拟通过；CI/main、正式版本/制品、安装发布和真实原生路径仍由既有唯一desktop/macOS-arm64/updater及combinedCI/main会话01a12bc2-907a-7702-b6dd-788225c5dfe4选择下一未冻结批次，本聊天不另启共享CI或改日常App。
+
+## MOXBOT-COMPOSER-20261027 — 已发送内容即时退出输入框
+
+SimpleChatInput在提交时同步释放正文/附件/查询上下文，拒绝/异常仅恢复原会话未编辑的草稿；下一稿、主动删空、附件和IME保持，原admission及防重不变。任务`.agent-sync/tasks/codex-composer-submit-delivery-20261027-c24f4826.md`，验收`dev-docs/composer-submit-20261027/acceptance.md`。236项定向DOM/全量tsc/lint/分类、Chromium与WebKit三个宽度共6组实际渲染通过；主Agent自审，独审/共享CI/main/签名客户端/真实Provider分开追踪。desktop/macOS/updater及combinedCI/main仍交唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4下一未冻结批次；不动已发布0.5.24、日常客户端或其他单元。
+
+
+## MB-ERROR-CONTINUE-20261028 — 错误后保留进度继续
+
+用户确认按未接收重发、已执行部分继续、结果不明先核查修改错误横幅。沿原SessionContinuation/SessionEngine精确turn准入增加error terminal候选，保留native/product历史、工具结果及任务清单；明确未接收才可重发原文。任务`.agent-sync/tasks/codex-error-continue-20261028-fe2464aa.md`；验收`dev-docs/error-continue-20261028/acceptance.md`。392项定向单元/DOM/磁盘与SDK合成集成、tsc/lint/分类及Chromium/WebKit四组合实际组件交互通过，独立只读源审无阻断；main、共享CI、签名制品、安装和真实Provider分阶段待证据。desktop/macOS/updater及combinedCI/main继续由唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4组织下一未冻结批次；不动已发布0.5.24、原业务、恢复ledger/Stop/预算或其他部署单元。
+
+## MOXBOTS-NEXT-RELEASE-20261028 — 统一0.5.25候选
+
+主人要求等当前桌面开发会话完成后统一打最新包。Root `01a12bc2-907a-7702-b6dd-788225c5dfe4` 继续是 desktop/macOS-arm64/updater 与 combined CI/main 唯一负责人；未转移其他部署单元。版本规划0.5.25/525.1，已发布0.5.23、0.5.24及tag/归档不覆盖。隔离集成分支 `codex/release-0525-combined-20261028`，基线 main caab6ab6。
+
+收取源：输入提交fdade88b7、紧凑状态580e39360、输入字号71f1f3c7、错误安全续接07fef8d2、多Agent3a62a12d（产品3ef4cf8b）。Root已审源码与作者证据，当前融合32px单disclosure/focus/右侧验收入口和明确已验收/失败/未知语义，非整文件覆盖。任务 `.agent-sync/tasks/codex-release-0525-combined-20261028-d9d90149.md`。组合验证、CI/main、制品、本地和发布分别待回执，不以本地作者模拟证据替代真实验收。
+
+无Host/backend/mobile/Windows/网站部署、未提交routing混入或业务重放。独立模型恢复真实故障矩阵仍按原准入确认，不冒称已通过；本批只做受影响相称回归。原生维护需fresh owner/备份/回滚门，不切MoxBot master、不触发blocked memory100。
+
 ## MB-MOBILE-BUILD5-MAIN-20261029 — 手机build5源码主干交付
 
 人类2026-10-29要求手机到可用版本并安装iPhone，既有mobile owner01a12b99-7b38-78b1-831f-9c60257d386a继续独立手机实际附件/签名/安装/TestFlight；sharedCI/main仍唯一Root01a12bc2-907a-7702-b6dd-788225c5dfe4。Root只交主干源码，不执行手机或日常Mac/101部署。
@@ -992,3 +1021,15 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 固定手机producer40a30926d237ea0eb84261a5f6d6d59ef9097e66（maincaab+同字节原5c3d/d108snapshot修复+0.1.0/build5及记录），一次相称CI/main，不拆build4再build5；原手机制品不覆盖。Root隔离分支codex/mobile-build5-main-20261029，仅补齐任务标准章节和CI/main归属记录，产品/mobile子树与40a完全相同。任务.agent-sync/tasks/codex-mobile-build5-main-20261029-4939c867.md。原84policy/模拟UI不关闭真实iPhone、登录、native附件Read/下载预览或外部TestFlight。
 
 当前独立desktop0.5.25/525.1源码45a9冻结不变，手机来源不加入其制品。两PR共享main变更串行，合并前核最新main及独立目录/接口兼容；若手机先合，不能假称整个main树等于desktop45a9，要精确记录独立mobile delta与component closure，遵守原requiredCI而不绕保护。各单元保持原唯一部署会话与不可变版本/制品映射。
+
+## MOXBOTS-CLOUD-MIGRATION-101-20261029 — desktop/updater source
+
+Human authorizes101 cloud/web/update migration and fresh test data/identity. Root01a12bc2 remains desktop/updater/sharedCI/main owner, cloud/website/mobile01a12b99. Isolated branchcodex/desktop-endpoints101-20261029 fromactualcaab changes APP_WEBSITE_URL to101/moxbots/, updater reserved/updates and owned defaultorigin101; retains updaterkey, oldlocaldeviceidentity/history and alltrustguards. Scope and test evidence dev-docs/cloud-migration-101/desktop-updater.md, taskeaafdd78. Existing5251/source45a frozen untouched; current208/209 CI independent, migration source waits for reviewed combined cloudsource/newcandidateCI. No101server/Nginx/TLS/dailyApp action. Newcloud ordinarylogin/newtrust needed, oldaccounts not automatically migrated.
+
+## MOXBOTS-CLOUD-MIGRATION-101-20261029
+
+Human explicitly authorizes moving MoXBots cloud/website/update endpoints to101.42.11.29 and replacing old test-only cloud databases/signing authority with a fresh instance. Preserve old140 storage, original101 Host local identity/keys/config, all coexisting AI4S routes/data/TLS and daily Mac client. New MoXBots UI uses /moxbots/ and /moxbots/admin with existing API paths and loopback service18081/Dex15556; no new public ports. Cloud/website/mobile owner01a12b99-7b38-78b1-831f-9c60257d386a; existing desktop/updater/combined CI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 retained. Fresh trust requires explicit binding; old installs keep140 until new immutable artifacts. Original updater signing key is separate and preserved. Scope/checklist/evidence: `.agent-sync/tasks/codex-cloud-migration101-20261029-14e11176.md` and `dev-docs/cloud-migration-101-20261029.md`. Local service212/0/8ignored, bootstrap6, strictclippy/fmt/syntax pass; main, Linux artifact, deployment and real acceptance remain open.
+
+## MOXBOTS-0525 migration revision —525.2
+
+Root01a12bc2已交付mobilePR209 main775da/tree129d，精确CI40727018158九success一条件skip；phone runtime仍原owner。原desktop45a/525.1因hostedARM容量零step取消4次，旧冻结与结果封存、不盲第5次，未build。最新授权101全新测试云；本branch在currentmain基础融合endpointf142及cloud39ee源码，新build525.2，不改更新公钥/已发布包/tag。云ownedworkflow/deploy仍01a12b99，Root仅sharedCI/main/desktopupdater，不重复ownedCI、不碰101入口/AI4S/原Host/业务。原718源字节保持，新endpoint4+publisher3/type/lint/分类联合检查后等原独审、固定新head一次PR208CI，正常main再build/签名公证和同制品101发布安装。

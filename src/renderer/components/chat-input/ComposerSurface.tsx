@@ -45,8 +45,9 @@ export const ComposerTextarea = forwardRef<
       ref={ref}
       rows={rows}
       wrap="soft"
-      className={`col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-base leading-relaxed text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] ${className}`}
+      className={`col-start-1 row-start-1 block min-w-0 w-full resize-none bg-transparent text-sm text-[var(--ink)] outline-none placeholder:text-[var(--ink-muted)] ${className}`}
       style={{
+        lineHeight: `${LINE_HEIGHT}px`,
         minHeight: LINE_HEIGHT * rows,
         maxHeight: LINE_HEIGHT * MAX_LINES,
         overflowX: "hidden",

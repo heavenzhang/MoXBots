@@ -1,16 +1,16 @@
 import { SessionTaskOrchestrationProvider, useSessionTaskOrchestrationContext } from '@/components/agent-status/useSessionTaskOrchestration';
-import { SessionTaskActionsContext, type TaskReviewTarget } from '@/components/agent-status/SessionTaskActionsContext';
+import { SessionTaskActionsContext, resolveTaskActionTargets, type TaskReviewTarget } from '@/components/agent-status/SessionTaskActionsContext';
 import SessionTaskResults from '@/components/agent-status/SessionTaskResults';
 import { isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
 import { SessionContinuationBanner, type ContinuationRequest } from '@/components/SessionContinuationBanner';
 import { matchesSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAction';
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
-import { projectErrorMessageResend } from './errorMessageResend';
+import { projectErrorMessageResend, projectErrorRecovery, type ErrorRecovery } from './errorMessageResend';
+import { ErrorRecoveryAction } from '@/components/ErrorRecoveryAction';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
 import type { SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
-import type { Message } from "@/types/chat";
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import {
@@ -33,7 +33,6 @@ import {
   LoaderIcon,
   ComposeIcon,
   PanelRightIcon,
-  UndoIcon,
   TerminalIcon,
   CloseIcon,
 } from '@/components/icons';
@@ -4816,7 +4815,14 @@ function ChatContent({
     ): Promise<boolean | void> => {
       if (!retryFailedMessageId) {
         const uncertain = messagesRef.current.find(message => message.role === 'user' && message.deliveryUnconfirmed && typeof message.content === 'string' && message.content === text.trim());
-        if (uncertain) { setUnconfirmedRetry(uncertain); return false; }
+        if (uncertain) {
+          const sourceSessionId = sessionIdRef.current;
+          const result = await retryCurrentSessionRestore();
+          if (sessionIdRef.current === sourceSessionId) {
+            toastRef.current.warning(t(result.restored ? 'shell.agentError.inspected' : 'shell.continuation.unavailable'));
+          }
+          return false;
+        }
       }
       const draft = explicitReply ? null : questionTargetRef.current;
       const reply = explicitReply ?? draft?.reply;
@@ -4950,7 +4956,8 @@ function ChatContent({
           // and all streaming blocks arrive live.
         }
 
-        // Keep the submitted composer until the HTTP admission receipt.
+        // Return the admission result so the composer can recover a rejected
+        // submission without keeping sent text in the editable next draft.
         // Use effective model/permission (runtime-aware) — not the builtin values
         await ensureChatOwner(sessionId);
         const admitted = await sendMessage(
@@ -5017,6 +5024,7 @@ function ChatContent({
       showSnapshotProviderIncompleteToast,
       t,
       ensureChatOwner,
+      retryCurrentSessionRestore,
     ],
   );
 
@@ -5034,7 +5042,8 @@ function ChatContent({
     || !!activeCurrentSessionCronTask || !!pendingPermission || !!pendingAskUserQuestion
     || !!pendingExitPlanMode || !!pendingEnterPlanMode
     || !!goalDraftConfig || (cronState.isEnabled && !cronState.task)
-    || queuedMessages.length > 0 || !!sessionRestoreError || !!questionTarget;
+    || queuedMessages.length > 0 || !!sessionRestoreError || !!questionTarget
+    || agentError === NATIVE_RESUME_BOUNDARY_MESSAGE;
   const handleContinueUnfinished = useCallback(async (expectedTurnId: string): Promise<boolean> => {
     if (isComposerUpdateCheckpointLocked() || !continuationReady || continuationBlocked || !sessionId
       || sessionIdRef.current !== sessionId
@@ -5800,13 +5809,11 @@ function ChatContent({
   const taskState = useSessionTaskOrchestrationContext();
   const taskStateRef = useRef(taskState);
   taskStateRef.current = taskState;
-  const resolveReviewTargets = useCallback((targets: readonly TaskReviewTarget[]) => {
+  const resolveActionTargets = useCallback((targets: readonly TaskReviewTarget[], purpose: 'review' | 'feedback' = 'review') => {
     const current = taskStateRef.current;
     if (!current || current.stale || !targets.length || sessionIdRef.current !== current.sessionId
       || targets.some(target => target.sessionId !== current.sessionId)) return null;
-    const selected = targets.map(target => current.tasks.find(task => task.id === target.taskId
-      && task.phase === 'awaiting_review' && (task.reviewAttemptId ?? 'main') === target.attemptId));
-    return selected.every(task => !!task) ? selected.filter(task => !!task) : null;
+    return resolveTaskActionTargets(current.tasks, targets, current.sessionId, purpose);
   }, []);
   const taskActions = useMemo(() => ({
     disabled: isSessionLoading || !isConnected || sessionState === 'stopping'
@@ -5815,7 +5822,7 @@ function ChatContent({
     onInspect: openSubagent,
     onReview: async (targets: readonly TaskReviewTarget[]) => {
       if (isComposerUpdateCheckpointLocked()) return false;
-      const selected = resolveReviewTargets(targets);
+      const selected = resolveActionTargets(targets);
       if (!selected) return false;
       const entries = selected.map(task => `- ${task.title} [task:${task.id}] (${task.reviewAttemptId ?? 'main'})`).join('\n');
       // This is a request in the original queue, never a direct review mutation.
@@ -5823,7 +5830,7 @@ function ChatContent({
       return (await handleSendMessageRef.current(t('orchestration.inline.reviewPrompt', { ns: 'app', entries }))) === true;
     },
     onComposeRework: (targets: readonly TaskReviewTarget[]) => {
-      const selected = resolveReviewTargets(targets);
+      const selected = resolveActionTargets(targets, 'feedback');
       if (!selected || !chatInputRef.current || isComposerUpdateCheckpointLocked()) return;
       const entries = selected.map(task => `- ${task.title} [task:${task.id}] (${task.reviewAttemptId ?? 'main'})`).join('\n');
       const existing = chatInputRef.current.getCurrentValue();
@@ -5832,7 +5839,7 @@ function ChatContent({
     },
   }), [isSessionLoading, isConnected, sessionState, pendingPermission, pendingAskUserQuestion,
     pendingExitPlanMode, pendingEnterPlanMode, questionTarget, goalDraftConfig, cronState.isEnabled,
-    cronState.task, openSubagent, resolveReviewTargets, t]);
+    cronState.task, openSubagent, resolveActionTargets, t]);
   const taskResults = useMemo(() => <SessionTaskResults />, []);
   const agentActivity = useMemo(
     () => !supportsAgentStatusPanel ? undefined : ({
@@ -6206,51 +6213,44 @@ function ChatContent({
     [performRetryFromUserMessage],
   );
 
-  // Error-banner resend preserves history and files. Explicit answer regeneration
-  // above still uses the backend's atomic rewind + replay operation.
-  const [unconfirmedRetry, setUnconfirmedRetry] = useState<Message | null>(null);
-  const resendFailedMessage = useCallback(async (userMsg: Message) => {
-    if (conversationOperationPendingRef.current) return;
-    const resend = projectErrorMessageResend(userMsg, messagesRef.current);
-    if (!resend) return;
+  // Admitted failures continue through the existing exact-turn guard. Only
+  // definitively unadmitted local failures may resend the original input.
+  const errorRecovery = agentError === NATIVE_RESUME_BOUNDARY_MESSAGE ? null
+    : projectErrorRecovery(continuationHistory, agentErrorUserMessageId, continuation);
+  const handleErrorRecovery = useCallback(async (intent: ErrorRecovery) => {
+    if (conversationOperationPendingRef.current || isComposerUpdateCheckpointLocked()) return;
+    const current = projectErrorRecovery(continuationHistory, agentErrorUserMessageId, continuation);
+    if (!current || current.kind !== intent.kind
+      || (current.kind === 'continue' && intent.kind === 'continue' && current.turnId !== intent.turnId)
+      || (current.kind === 'resend' && intent.kind === 'resend' && current.message.id !== intent.message.id)) {
+      handleContinuationUnavailable();
+      return;
+    }
     conversationOperationPendingRef.current = true;
-    const resendSessionId = sessionIdRef.current;
+    const recoverySessionId = sessionIdRef.current;
     try {
-      const admitted = await handleSendMessageRef.current(resend.text, resend.images, undefined,
-        resend.context, resend.asyncQuestionReply, resend.retryFailedMessageId);
-      if (sessionIdRef.current !== resendSessionId) return;
-      if (admitted === true && chatInputRef.current?.getCurrentValue().trim() === resend.text) chatInputRef.current.setValue('');
+      if (current.kind === 'continue') {
+        if (!await handleContinueUnfinished(current.turnId)) handleContinuationUnavailable();
+      } else if (current.kind === 'inspect') {
+        // Reading authoritative history/queue is deliberately a separate action;
+        // absence of a receipt does not authorize replaying business operations.
+        const result = await retryCurrentSessionRestore();
+        if (sessionIdRef.current === recoverySessionId) {
+          toastRef.current.warning(t(result.restored ? 'shell.agentError.inspected' : 'shell.continuation.unavailable'));
+        }
+      } else {
+        const resend = projectErrorMessageResend(current.message, continuationHistory);
+        if (!resend) return;
+        const admitted = await handleSendMessageRef.current(resend.text, resend.images, undefined,
+          resend.context, resend.asyncQuestionReply, resend.retryFailedMessageId);
+        if (sessionIdRef.current !== recoverySessionId) return;
+        if (admitted === true && chatInputRef.current?.getCurrentValue().trim() === resend.text) chatInputRef.current.setValue('');
+      }
     } finally {
       conversationOperationPendingRef.current = false;
     }
-  }, []);
-  const handleRetryLastUserMessage = useCallback(() => {
-    const msgs = messagesRef.current;
-    let userMsg: (typeof msgs)[number] | null = agentErrorUserMessageId
-      ? (msgs.find(
-          (message) =>
-            message.id === agentErrorUserMessageId && message.role === 'user',
-        ) ?? null)
-      : null;
-    if (!agentErrorUserMessageId) {
-      for (let i = msgs.length - 1; !userMsg && i >= 0; i--) {
-        if (
-          msgs[i].role === 'user' &&
-          !msgs[i].id.startsWith('task-notification-')
-        ) {
-          userMsg = msgs[i];
-          break;
-        }
-      }
-    }
-    if (!userMsg) return;
-    if (userMsg.deliveryStatus === 'failed') {
-      if (userMsg.deliveryUnconfirmed) setUnconfirmedRetry(userMsg);
-      else resendFailedMessage(userMsg);
-      return;
-    }
-    void resendFailedMessage(userMsg);
-  }, [agentErrorUserMessageId, resendFailedMessage]);
+  }, [continuationHistory, agentErrorUserMessageId, continuation, handleContinueUnfinished,
+    handleContinuationUnavailable, retryCurrentSessionRestore, t]);
 
   // Fork = create a new independent session branch at a specific assistant message
   const handleFork = useCallback((assistantMessageId: string) => {
@@ -6715,6 +6715,7 @@ function ChatContent({
               turnId={continuation?.turnId}
               ready={continuationReady}
               blocked={continuationBlocked}
+              hidden={!!agentError}
               request={pendingContinuation}
               onConsumed={onContinuationConsumed}
               onContinue={handleContinueUnfinished}
@@ -6751,9 +6752,6 @@ function ChatContent({
                     }
                   }
                 }
-                const resumeBoundaryRejected = agentError === NATIVE_RESUME_BOUNDARY_MESSAGE;
-                const canRetry = !!lastUserMsg && !isLoading && !resumeBoundaryRejected
-                  && projectErrorMessageResend(lastUserMsg, msgs) !== null;
                 return (
                   <div className="relative z-10 flex-shrink-0 border-b border-[var(--line)] bg-[var(--paper-inset)] px-4 py-2 text-xs text-[var(--ink)]">
                     <div className="mx-auto flex max-w-3xl items-start gap-2">
@@ -6809,16 +6807,10 @@ function ChatContent({
                           disabled={isLoading || forkPending}
                           onFork={onForkSession ? handleFork : undefined}
                         />
-                        {canRetry && (
-                          <button
-                            type="button"
-                            onClick={handleRetryLastUserMessage}
-                            className="flex items-center gap-1 rounded-md px-2 py-0.5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-warm-subtle)]"
-                          >
-                            <UndoIcon className="h-3 w-3" />
-                            {t('shell.agentError.resend')}
-                          </button>
-                        )}
+                        <ErrorRecoveryAction key={sessionId ?? 'pending'} sessionId={sessionId ?? ''}
+                          recovery={errorRecovery}
+                          disabled={!continuationReady || (errorRecovery?.kind !== 'inspect' && continuationBlocked)}
+                          onRecover={handleErrorRecovery} onUnavailable={handleContinuationUnavailable} />
                         <button
                           type="button"
                           onClick={() => setAgentError(null)}
@@ -7657,7 +7649,6 @@ function ChatContent({
       )}
 
       {/* Provider / Model History-Boundary Confirm Dialog */}
-      {unconfirmedRetry && <ConfirmDialog title={t('discussionRecovery.resend')} message={t('discussionRecovery.resendConfirm')} disableEnterShortcut onCancel={() => setUnconfirmedRetry(null)} onConfirm={() => { const message = unconfirmedRetry; setUnconfirmedRetry(null); resendFailedMessage(message); }} />}
       {pendingProviderSwitch && (
         <ConfirmDialog
           title={
