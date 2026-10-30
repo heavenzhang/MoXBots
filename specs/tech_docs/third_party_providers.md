@@ -228,3 +228,9 @@ Custom Provider 复用相同 route/env/bridge 架构。新增或修改时：
 ## 可选主备模型接管
 
 内置 API Session 的自动切换由原 Query bridge-token 拥有，配置、HTTP恢复/防重放和不支持范围见 [内置 API 模型自动接管](model_failover.md)。临时备用不是用户选定模型，不写回 Session desired config；已交付流中断保留现场并停止。
+
+### Anthropic bridge connection observations
+
+A bridge-generated 502 after `fetch` throws is not an upstream HTTP 502. The Anthropic diagnostic includes per-request creation/header-start/body-sent/response-header observations, elapsed milliseconds, and fresh/reused/unobserved socket state. `transport-observation.ts` uses Undici diagnostic channels with async request scope and weak keys; it never records headers, payloads, addresses or credentials. Header-start is emitted before writing and is not a receipt proving whether the provider accepted a request. These fields are diagnostic only and cannot unlock inference or business replay.
+
+`route=direct` describes the application's dispatcher selection; an OS VPN/TUN can still intercept the connection. Compare fresh and pooled requests plus the explicitly configured provider proxy before blaming connection reuse or the remote service. Prefer credential-free checks first; a models-list response proves connectivity/authentication, not inference or business completion.

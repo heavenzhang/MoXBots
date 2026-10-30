@@ -252,3 +252,17 @@ describe('formatApiErrorDetail — provider error presentation', () => {
     expect(formatApiErrorDetail({ status: NaN, rawMessage: 'boom' })).toBe('boom');
   });
 });
+
+
+describe('upstream connection failure presentation', () => {
+  it('does not blame a provider HTTP gateway for a local transport mapping', () => {
+    const detail = formatApiErrorDetail({ status: 502, rawMessage: 'API Error: 502 Upstream connection error' });
+    expect(detail).toContain('上游连接失败');
+    expect(detail).toContain('该供应商的代理范围');
+    expect(detail).not.toContain('供应商网关错误');
+  });
+  it('keeps an unknown 502 neutral and preserves the original evidence', () => {
+    expect(formatApiErrorDetail({ status: 502, rawMessage: 'Bad gateway' }))
+      .toBe('(502) 上游连接或网关错误 - Bad gateway');
+  });
+});

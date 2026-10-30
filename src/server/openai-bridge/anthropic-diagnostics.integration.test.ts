@@ -30,6 +30,9 @@ describe('Anthropic forwarding diagnostics on actual loopback transport', () => 
     expect(h.logs.join('\n')).toContain('UND_ERR_SOCKET');
     expect(h.logs.join('\n')).toContain('"phase":"response_headers"');
     expect(h.logs.join('\n')).toContain('"mappedStatus":502');
+    expect(h.logs.join('\n')).toContain('"requestHeadersStarted":true');
+    expect(h.logs.join('\n')).toContain('"responseHeadersReceived":false');
+    expect(h.logs.join('\n')).toContain('"connection":"fresh"');
     expect(h.logs.join('\n')).not.toContain(secret);
   });
   it('distinguishes a local header timeout from a connection error', async () => {

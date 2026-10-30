@@ -262,7 +262,7 @@ const HTTP_STATUS_HINT: Record<number, string> = {
   422: '请求内容无效',
   429: '限流 / 额度受限',
   500: '供应商服务器错误',
-  502: '供应商网关错误',
+  502: '上游连接或网关错误',
   503: '供应商服务不可用 / 过载',
   504: '供应商网关超时',
 };
@@ -286,14 +286,16 @@ export function formatApiErrorDetail(opts: {
   const status = typeof opts.status === 'number' && Number.isFinite(opts.status)
     ? opts.status
     : null;
-  const hint = status != null ? HTTP_STATUS_HINT[status] : undefined;
+  const body = typeof opts.rawMessage === 'string' ? opts.rawMessage.trim() : '';
+  const hint = status === 502 && /Upstream connection error/i.test(body)
+    ? '上游连接失败，请检查网络及该供应商的代理范围'
+    : status != null ? HTTP_STATUS_HINT[status] : undefined;
 
   const segments: string[] = [];
   if (status != null) segments.push(`(${status})`);
   if (hint) segments.push(hint);
   const head = segments.join(' ');
 
-  const body = typeof opts.rawMessage === 'string' ? opts.rawMessage.trim() : '';
   const capped = body.length > API_ERROR_RAW_MESSAGE_MAX_LENGTH
     ? `${body.slice(0, API_ERROR_RAW_MESSAGE_MAX_LENGTH)}…`
     : body;

@@ -1065,3 +1065,7 @@ Human explicitly requests the latest package on the existing101 download page an
 Existing101 websitepointer is updated independently using a complete fresh staticbaseline, original three locks, backup/CAS/ownership rollback and normalTLS exactreadback. Main integration/sharedCI is handed off as exactsourceSHA to Root; branchpush does not imply main. Browser currently disabled by Work; deterministic DOM/publicHTTP checks do not imply actual screenshot acceptance. Evidence `dev-docs/website-latest-download-20261030.md`, task `.agent-sync/tasks/codex-website-latest-download-20261030-6979efe2.md`.
 
 Website0527 static publication is now normalTLS-readback accepted: exactsource21b11ecc16f0fa0fa9665fba382ba41a13d1769d, newtree1479be25f4ce, manifest0620e6abba22 and originalthree locks/backup/CAS.21publicchecks/14protectionhashes and unchangedcloud/Dex/Host process proof passed; immutabletag/package preserved. Browser remains disabled, so screenshots pending. SourceRootCI/main handoff is separate; no repeated deployment orfullGET required.
+
+## MB-UPSTREAM-RESET-20261031 — 连接重置与网络路由证据
+
+任务 `.agent-sync/tasks/codex-upstream-reset-20261031-9476bdb8.md`。当前网络错误为本机bridge映射502，历史reset发起方未知；单供应商现有代理范围已通过设置修正并经认证只读API验证。源码补逐请求连接/复用阶段观测与正确提示，不改变动作权限/重试预算。与已有replay-recovery及replay-scope恢复任务联合审查；desktop/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4统一集成发布，原业务未重放。状态及验收见 `dev-docs/upstream-reset-20261031/acceptance.md`。

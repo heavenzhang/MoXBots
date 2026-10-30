@@ -24,6 +24,7 @@ import { ResponsesStreamTranslator } from './translate/stream-responses';
 import { translateError } from './translate/errors';
 import { SSEParser } from './utils/sse-parser';
 import { fetchFailureDiagnostic, transportDiagnostic } from './transport-diagnostics';
+import { createTransportObservation } from './transport-observation';
 import { formatSSE } from './utils/sse-writer';
 import { buildPromptCacheKey, hashForLog, promptCacheTarget } from './prompt-cache';
 import {
@@ -375,6 +376,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
   let bytesDelivered = 0;
   let consumerCancelled = false;
   let route: 'direct' | 'proxy' | 'unresolved' = 'unresolved';
+  const transport = createTransportObservation();
   const abort = () => controller.abort();
   if (request.signal.aborted) abort();
   else request.signal.addEventListener('abort', abort, { once: true });
@@ -392,15 +394,15 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
     }
     const proxy = getProxyForProviderUrl(upstream.providerId, url);
     route = proxy ? 'proxy' : 'direct';
-    const response = await fetch(url, {
+    const response = await transport.run(() => fetch(url, {
       method: 'POST', headers,
       body: JSON.stringify({ ...body, model: upstream.model ?? body.model }),
       signal: controller.signal, redirect: 'error',
       ...(proxy ? { dispatcher: getDispatcherForProxy(proxy) } : {}),
-    });
+    }));
     clearTimeout(timer);
     const diagnostic = (phase: 'response_headers' | 'response_body', error?: unknown) => log(transportDiagnostic(upstream,
-      { phase, route, error, status: response.status, response, cancelled: request.signal.aborted, timedOut, bytesDelivered }));
+      { phase, route, transport: transport.snapshot(), error, status: response.status, response, cancelled: request.signal.aborted, timedOut, bytesDelivered }));
     if (!response.ok) diagnostic('response_headers');
     const reader = response.body?.getReader();
     const stream = reader ? new ReadableStream<Uint8Array>({
@@ -429,7 +431,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       ...(response.headers.has('retry-after') ? { 'retry-after': response.headers.get('retry-after')! } : {}),
     } });
   } catch (error) {
-    log(transportDiagnostic(upstream, { phase: 'response_headers', route, error, cancelled: request.signal.aborted,
+    log(transportDiagnostic(upstream, { phase: 'response_headers', route, transport: transport.snapshot(), error, cancelled: request.signal.aborted,
       timedOut, bytesDelivered, mappedStatus: request.signal.aborted ? 499 : timedOut ? 408 : 502 }));
     cleanup();
     return jsonError(request.signal.aborted ? 499 : timedOut ? 408 : 502,
