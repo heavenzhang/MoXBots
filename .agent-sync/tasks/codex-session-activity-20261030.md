@@ -46,6 +46,18 @@ desktop/macOS-arm64/updater 与 combined CI/main 唯一负责人沿用 01a12bc2-
 - [x] 751 项最终回归、类型/lint、MoXBots源码及组件构建；CUA实际组件1280×720、390px深色容器的原生接续/终态通过。
 - [ ] 原 owner 主干/共享CI/制品/安装和原生真实路径验收，精确新HEAD见外部 release-queue 与 delivery.json。
 
+## 2026-10-31 执行过程恢复补充
+
+本次仍沿用 MB-SESSION-ACTIVITY-20261030，范围为原生接续的会话恢复与子 Agent 详情；不修改原请假业务会话或重放操作。
+
+- [x] 只读确认磁盘 V2 记录仍包含消失的助手过程及子 Agent 工具记录；安装版仍为0.5.27。
+- [x] 在 REST 恢复与 SSE init 两条路径复现：root idle 时将独立 liveStreamingMessage 丢弃，历史又不包含该行。
+- [x] 修复并验证冷恢复、SSE 重连/缺口恢复、子 Agent 详情、后续工具更新和错误终态，保持 root loading 语义。
+- [x] 提交、推送并登记原 owner 发布队列；精确远端HEAD及交接状态以外部 delivery.json 核验。
+- [ ] 原 owner 合入/CI/安装与真实路径验收；原业务任务完成仍需其自身验收。
+
+完成标准：已持久化执行过程不因 root idle 消失；子记录可读；终态只收敛活动而不删除过程；不产生新消息或业务重放。
+
 ## Next step
 
 本地 release-queue 已登记，owner 尚未确认接收。由原 desktop/combined CI/main owner 审阅精确远端分支、选下一未冻结批次，组织主干/CI/制品/安装/真实路径验收；本任务不越权触发。

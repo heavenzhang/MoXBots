@@ -2750,10 +2750,11 @@ export default function TabProvider({
             const liveStreamingMessage = wireAssistantToStreamingMessage(
               initPayload.liveStreamingMessage,
             );
-            const isLiveActive = initPayload.sessionState
-              ? classifySessionActivity(initPayload.sessionState) === 'active'
-              : false;
-            if (liveStreamingMessage && isLiveActive) {
+            // The Runtime owns this mutable row independently of root activity.
+            // Native continuation may still write it after the root became idle;
+            // the snapshot excludes it from history, so dropping it loses the
+            // visible tool trace and its child Agent records on reconnect.
+            if (liveStreamingMessage) {
               isStreamingRef.current = true;
               adoptedStreamRef.current = true;
               streamingMessageRef.current = liveStreamingMessage;
@@ -6561,7 +6562,9 @@ export default function TabProvider({
         const isLiveActive =
           classifySessionActivity(liveSessionState) === 'active';
         isSessionActiveRef.current = isLiveActive;
-        if (liveStreamingMessage && isLiveActive) {
+        // History excludes the Runtime's live row even while the root is idle.
+        // Preserve its content/identity; isLiveActive alone still owns loading.
+        if (liveStreamingMessage) {
           isStreamingRef.current = true;
           adoptedStreamRef.current = true;
           streamingMessageRef.current = liveStreamingMessage;

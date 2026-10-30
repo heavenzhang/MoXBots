@@ -59,3 +59,15 @@ desktop/macOS-arm64/updater 和 combined CI/main 继续由 `01a12bc2-907a-7702-b
 ## 执行记录
 
 单智能体（零子 Agent）：紧密关联的状态与准入修复由 `/root` 负责，主模型精确变体和 effort 未通过任务接口独立暴露，无模型切换。选择依据是避免重复读取同一生命周期；升级原因：无升级；不调用外部原因：明确采用 ai-yaoren-local 纯内置模式。用量、费用和相对节省未测量。复盘：保持 runtime level 和主轮状态分离有效；后续同类 UI 夹具优先静态构建并显式带齐生产布局参数，以减少 Vite 优化器与虚拟列表夹具返工。
+
+## 2026-10-31 第三次反馈：执行过程消失
+
+只读核实安装版仍为0.5.27/527.3，前两次源码修复尚未发布。原会话 V2 文件可由生产 readTranscriptFile 解码，tail=clean；消失的助手行 id=4 含233个内容块、134个主工具调用，Agent容器下159条子调用记录。日志00:46:37显示重连只恢复4条历史行；源码确认 liveStreamingMessage 被排除出历史，而前端又以 root idle 丢弃该行。此为展示恢复缺陷，不能据截图认定磁盘全量丢失。后续只读 live API已能看到行4回到历史。
+
+两个入口（REST恢复、SSE init）统一按 Runtime 返回的 live row 保留内容/身份，不再要求 root active；loading仍只按root状态判定。保留后续增量及正常/错误结束归档；未创建新用户输入、未写原业务会话、未运行恢复或重复业务操作。
+
+新增2个回归用例在修复前均复现：内容为空、子Agent详情为空；修复后验证冷恢复、SSE重连、revision缺口恢复、子调用结果更新及api_error终态归档。初次修复后用例中的子工具事件误用主工具名称，按真实subagent事件协议纠正后通过。完整5文件DOM回归261项通过，TypeScript通过；前两轮279集成+222单元证据沿用，本轮未改后端不重复跑，不将其计作本轮重新执行。
+
+未完成原因独立核查：00:05:38 API502；00:50:41 aborted_streaming；后续多个 Bash/Write 返回 automatic_replay_blocked（前序工具结果不确定，只允许Read/Grep/Glob核查）。这些证据说明业务尚未完成，不能把某个SDK completed、子任务待验收、或UI修复当作整体成功；本次不解除未知结果门禁，不声称修复供应商或完成请假业务。
+
+本轮实际组件UI：CUA内置浏览器、1280×720明亮/深色，主聊天过程与子Agent报告同时可见；工具标签可展开Read输出；关闭详情后过程保留。截图 `evidence/transcript-restored-details-dark.png` 为合成状态、非安装版。预览夹具按生产调用方使用合并后的messages（首次夹具漏传live row已纠正），不修改产品布局迁就夹具。最终静态构建日志 `transcript-restore-ui-build.log`；TypeScript、定向lint和diff检查通过。无正式构建、安装或共享CI。

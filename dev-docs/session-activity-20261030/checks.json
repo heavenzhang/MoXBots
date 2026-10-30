@@ -1,7 +1,7 @@
 {
   "dom": {
-    "passed": 250,
-    "files": 4
+    "passed": 261,
+    "files": 5
   },
   "integration": {
     "passed": 279,
@@ -39,7 +39,7 @@
     "passed": 222,
     "files": 4
   },
-  "totalUniqueTests": 751,
+  "totalUniqueTests": 762,
   "nativeContinuation": {
     "status": "PASS",
     "rootState": "idle",
@@ -51,5 +51,18 @@
     "staleQuery": "rejected",
     "reconnect": "restores native activity",
     "repeatReview": "blocked while active"
+  },
+  "transcriptRestore": {
+    "status": "PASS",
+    "testsExecutedThisFollowup": 261,
+    "unchangedBackendTestsCarriedForward": 501,
+    "regressionBeforeFix": "2 failed: REST + SSE init discarded idle-root live row",
+    "regressionAfterFix": "2 passed; full DOM 261 passed",
+    "typecheck": "PASS",
+    "scopedLint": "PASS",
+    "componentUiBuild": "PASS",
+    "actualComponentUi": "PASS; 1280x720 light/dark; report/tools expand/close; synthetic only",
+    "installedClient": "not updated",
+    "businessTaskCompleted": false
   }
 }

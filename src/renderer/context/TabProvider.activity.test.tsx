@@ -14,6 +14,7 @@ import {
   tryClaimSessionResourceTransition,
 } from '@/utils/sessionDeletionCoordinator';
 import { useTabState } from './TabContext';
+import { useSubagentViews } from '@/components/agent-status/useSubagentViews';
 import { AskUserQuestionPrompt } from '@/components/AskUserQuestionPrompt';
 import type { Message } from '@/types/chat';
 import { ToastProvider } from '@/components/Toast';
@@ -1253,6 +1254,61 @@ describe('TabProvider session activity ownership', () => {
     const rows = JSON.parse(screen.getByTestId('history-content').textContent!);
     expect(rows[1][0].tool).toMatchObject(kind === 'root' ? { input } : { subagentCalls: [{ input }] });
     fetchRef.mockRestore();
+  });
+
+  it.each(['persisted restore', 'SSE init'] as const)('retains the native continuation transcript and child details during idle root %s', async (source) => {
+    const sessionId = source === 'SSE init' ? 'pending-idle-continuation' : 'session-idle-continuation';
+    let tab!: ReturnType<typeof useTabState>;
+    function ContinuationProbe() {
+      const value = useTabState();
+      const { views } = useSubagentViews();
+      useEffect(() => { tab = value; }, [value]);
+      return <><Probe /><output data-testid="child-details">{JSON.stringify(views.map(view => ({ title: view.title, result: view.result, calls: view.tool.subagentCalls })))}</output></>;
+    }
+    const assistant = {
+      id: 'continuation-assistant', role: 'assistant', timestamp: new Date(0).toISOString(),
+      content: [
+        { id: 'text', type: 'text', text: 'Verified work remains visible.' },
+        { id: 'child-block', type: 'tool_use', tool: {
+          id: 'child-tool', name: 'Agent', input: { description: 'Research existing module' },
+          subagentLifecycle: { status: 'completed', startedAt: 1000, finishedAt: 2000, result: 'Research report retained.' },
+          subagentCalls: [{ id: 'child-read', name: 'Read', input: {}, result: 'Existing module inspected.' }],
+        } },
+      ],
+    };
+    let revision = 10;
+    const snapshot = () => ({
+      id: sessionId, sessionId, transcriptFormat: 2, runtime: 'builtin', agentDir: '/tmp/workspace', title: 'Continuation',
+      messages: [{ id: 'u1', role: 'user', content: 'Continue existing task', timestamp: new Date(0).toISOString() }],
+      snapshotRevision: revision, liveRevision: revision, hasMoreBefore: false,
+      liveSessionState: 'idle', sessionState: 'idle', liveStreamingMessage: assistant,
+    });
+    tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({ success: true, session: snapshot() })));
+    render(<TabProvider tabId="idle-continuation" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><ContinuationProbe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.connected).toBe(true));
+    if (source === 'SSE init') emit('chat:init', snapshot(), { sessionId });
+    await waitFor(() => expect(screen.getByTestId('streaming-content')).toHaveTextContent('Verified work remains visible.'));
+    expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle' });
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Research report retained.');
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Existing module inspected.');
+
+    // Reconnect repeats the same owner row; it must neither vanish nor duplicate.
+    if (source === 'SSE init') emit('chat:init', snapshot(), { sessionId });
+    else {
+      revision = 12;
+      emit('chat:status', { sessionState: 'idle' }, { sessionId, liveRevision: revision });
+      await waitFor(() => expect(tauriHarness.proxyFetch.mock.calls.some(([url]) => String(url).includes('&from=u1'))).toBe(true));
+      await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    }
+    expect(tab.messages.filter(message => message.id === assistant.id)).toHaveLength(1);
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Research report retained.');
+    emit('chat:subagent-tool-result-complete', { parentToolUseId: 'child-tool', toolUseId: 'child-read', content: 'Updated inspection result.' }, { sessionId, liveRevision: ++revision });
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Updated inspection result.');
+    emit('chat:message-complete', { assistant_message_id: assistant.id, terminal_reason: 'api_error' }, { sessionId, liveRevision: ++revision });
+    expect(tab.streamingMessage).toBeNull();
+    expect(tab.historyMessages.filter(message => message.id === assistant.id)).toHaveLength(1);
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Research report retained.');
+    expect(readActivity()).toMatchObject({ isLoading: false });
   });
 
   it('updates a page that arrives after an old tool changed and refreshes the retained prefix on a SSE gap', async () => {
