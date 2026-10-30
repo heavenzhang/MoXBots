@@ -1,3 +1,7 @@
+## MB-SIDEBAR-GRIP-20261031 — 去除拖动提示图标
+
+任务记录 `.agent-sync/tasks/codex-sidebar-grip-20261031-168e5a2c.md`。仅删除侧边栏 GripIcon，保留原拖动/键盘入口；83 项 DOM 回归及定向 lint 通过。desktop builtin client 的 CI/main/版本/构建/发布仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 统一负责；开发分支保存后待其纳入下一未冻结批，真实安装版验收未完成，不改变现有发布归属。
+
 ## 527.2 R4 native watcher test contract follow-up (2026-10-29)
 
 R3 JS gates passed; Windows real watcher deletion assertion failed. A separate exact-factory Mac experiment also produced Modify rather than Remove for deletion, matching the product's existing coarse invalidation/read-tree contract. R4 isolates all four operation phases into fresh watchers and verifies actual notification plus exact tree/content; cfg(test) only, no platform skip/timeout increase/production change. Mac extracted-factory test/strictclippy/rustfmt pass; Windows/Tauri remain exactCI gates. Root waits original R3 ARM terminal before source push, no cancellation or rerun. See current cold-ready task record.
