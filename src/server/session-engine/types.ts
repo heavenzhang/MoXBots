@@ -279,6 +279,8 @@ export type SessionEngineLiveState = {
   isBusy: boolean;
   /** Work owned by the current Query that can outlive its root product turn. */
   backgroundWorkActive?: boolean;
+  /** Exact native loop can resume without a new product/desktop root input. */
+  hasNativeWork?: boolean;
   /** Actual root-blocking human interaction, not an async child question. */
   waitingForUser?: boolean;
   /** Start of the current product transcript turn; absent during pre-warm. */

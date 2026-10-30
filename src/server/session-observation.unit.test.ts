@@ -16,6 +16,8 @@ describe('Session observation truth', () => {
     expect(projectSessionActivity({ sessionState: 'running', isBusy: true, waitingForUser: true })).toBe('waiting_user_action');
     expect(projectSessionActivity({ sessionState: 'idle', isBusy: false, waitingForUser: true })).toBe('idle');
     expect(projectSessionActivity({ sessionState: 'idle', isBusy: false, backgroundWorkActive: true })).toBe('running');
+    expect(projectSessionActivity({ sessionState: 'idle', isBusy: false, hasNativeWork: true })).toBe('running');
+    expect(projectSessionActivity({ sessionState: 'idle', isBusy: false, hasNativeWork: true, waitingForUser: true })).toBe('waiting_user_action');
     expect(projectSessionActivity({ sessionState: 'running', isBusy: true, backgroundWorkActive: true, waitingForUser: true })).toBe('waiting_user_action');
   });
   it('uses only the active turn start and includes root waiting wall time', () => {

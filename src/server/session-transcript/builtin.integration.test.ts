@@ -9,7 +9,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk';
 import type { ContextRecoveryController } from '../openai-bridge/context-recovery';
 import type { ModelFailoverController } from '../openai-bridge/model-failover';
 
-const state = vi.hoisted(() => ({ home: '', failProductIo: false, publicationGate: null as Promise<void> | null, publicationBlocked: false, queryExitGate: null as Promise<void> | null, queryInputEnded: 0, backgroundTask: false, backgroundTaskGate: null as Promise<void> | null, independentInputPump: false, sdkInputs: [] as unknown[], resultMode: 'success' as 'success' | 'error', rejectedResumeAt: null as string | null, sdkCumulativeBase: null as { input: number; output: number } | null, compactAtTurn: null as number | null, resetAtTurn: null as number | null, sdkCommands: [] as unknown[], interruptCloses: false, throwAfterInputEnd: false, beforeTurn: vi.fn(), query: vi.fn(), sdkRead: vi.fn(), sdkFork: vi.fn(), sdkDelete: vi.fn(), rewindFiles: vi.fn(), beforeResult: vi.fn(), sdkResultHandled: vi.fn(), events: [] as [string, unknown][], queuedFollowup: false, exitWithoutResult: false, toolFrames: false, childFrames: false, protocolFrames: [] as Record<string, unknown>[], beforeFrame: vi.fn(), media: vi.fn() }));
+const state = vi.hoisted(() => ({ home: '', failProductIo: false, publicationGate: null as Promise<void> | null, publicationBlocked: false, queryExitGate: null as Promise<void> | null, queryInputEnded: 0, backgroundTask: false, nativeFollowupFrames: [] as Record<string, unknown>[], backgroundTaskGate: null as Promise<void> | null, independentInputPump: false, sdkInputs: [] as unknown[], resultMode: 'success' as 'success' | 'error', rejectedResumeAt: null as string | null, sdkCumulativeBase: null as { input: number; output: number } | null, compactAtTurn: null as number | null, resetAtTurn: null as number | null, sdkCommands: [] as unknown[], interruptCloses: false, throwAfterInputEnd: false, beforeTurn: vi.fn(), query: vi.fn(), sdkRead: vi.fn(), sdkFork: vi.fn(), sdkDelete: vi.fn(), rewindFiles: vi.fn(), beforeResult: vi.fn(), sdkResultHandled: vi.fn(), events: [] as [string, unknown][], queuedFollowup: false, exitWithoutResult: false, toolFrames: false, childFrames: false, protocolFrames: [] as Record<string, unknown>[], beforeFrame: vi.fn(), media: vi.fn() }));
 vi.mock('os', async original => ({ ...await original<typeof import('os')>(), homedir: () => state.home }));
 vi.mock('../utils/platform', async original => {
   const actual = await original<typeof import('../utils/platform')>();
@@ -122,6 +122,7 @@ function fakeQuery(args: { prompt: AsyncIterable<unknown>; options: { sessionId?
         backgroundTaskPending = false;
         pending.push({ type: 'system', subtype: 'task_notification', task_id: `background-${turn}`,
           status: 'completed', summary: 'done', output_file: '' });
+        pending.push(...state.nativeFollowupFrames.map(frame => ({ session_id: sessionId, uuid: randomUUID(), ...frame })));
         return { done: false, value: { type: 'system', subtype: 'background_tasks_changed', tasks: [] } };
       }
       if (state.exitWithoutResult && turn > 0) {
@@ -269,6 +270,7 @@ beforeEach(async () => {
   state.queryExitGate = null;
   state.queryInputEnded = 0;
   state.backgroundTask = false;
+  state.nativeFollowupFrames = [];
   state.backgroundTaskGate = null;
   state.independentInputPump = false;
   state.sdkInputs.length = 0;
@@ -1560,6 +1562,47 @@ describe('builtin V2 execution independent of product storage', () => {
     await vi.waitFor(() => expect(agent.getAgentState().hasBackgroundWork).toBe(false));
     expect(state.events.filter(([name]) => name === 'chat:status').at(-1)?.[1])
       .toMatchObject({ sessionId: metadata.id, sessionState: 'idle', hasBackgroundWork: false });
+  });
+
+  it('projects a native parent resumed after background completion without fabricating a new root input', async () => {
+    state.backgroundTask = true;
+    let releaseBackground!: () => void;
+    let releaseIdle!: () => void;
+    let observedRunning!: () => void;
+    state.backgroundTaskGate = new Promise<void>(resolve => { releaseBackground = resolve; });
+    const idleGate = new Promise<void>(resolve => { releaseIdle = resolve; });
+    const running = new Promise<void>(resolve => { observedRunning = resolve; });
+    releaseWrite = () => { releaseBackground(); releaseIdle(); };
+    state.nativeFollowupFrames = [
+      { type: 'system', subtype: 'session_state_changed', state: 'running' },
+      { type: 'system', subtype: 'session_state_changed', state: 'idle', fixtureHoldNativeIdle: true },
+    ];
+    state.beforeFrame.mockImplementation(frame => {
+      if (frame.fixtureHoldNativeIdle) { observedRunning(); return idleGate; }
+    });
+    const workspace = join(state.home, 'workspace-native-parent');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let finish!: (outcome: TurnTerminalOutcome) => void;
+    const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+    await agent.enqueueUserMessage('question', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+    await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+    releaseBackground();
+    await running;
+    const { createBuiltinSessionEngine } = await import('../session-engine/builtin-adapter');
+    const engine = createBuiltinSessionEngine();
+    expect(agent.getAgentState()).toMatchObject({ sessionState: 'idle', hasBackgroundWork: false, hasNativeWork: true });
+    expect(engine.getStreamReplaySnapshot({ includeHistory: false }).initState)
+      .toMatchObject({ sessionState: 'idle', hasNativeWork: true });
+    expect(engine.getLiveSessionState().hasNativeWork).toBe(true);
+    expect(state.events.filter(([name]) => name === 'chat:status').at(-1)?.[1])
+      .toMatchObject({ sessionState: 'idle', hasNativeWork: true });
+    expect(state.sdkInputs).toHaveLength(1);
+    releaseIdle();
+    await vi.waitFor(() => expect(agent.getAgentState().hasNativeWork).toBe(false));
   });
 
   it('projects replace-level background work through the builtin SessionEngine without treating ambient watchers as work', async () => {

@@ -68,6 +68,7 @@ interface MessageListProps {
   streamingMessage: MessageType | null;
   isLoading: boolean;
   hasBackgroundWork?: boolean;
+  hasNativeWork?: boolean;
   getQueryElapsedSeconds?: () => number;
   sessionId?: string | null;
   /**
@@ -494,6 +495,7 @@ const MessageList = memo(function MessageList({
   isStreaming,
   sessionState,
   hasBackgroundWork = false,
+  hasNativeWork = false,
   onRewind,
   onRetry,
   onFork,
@@ -588,7 +590,7 @@ const MessageList = memo(function MessageList({
       pendingAskUserQuestion ||
       (pendingExitPlanMode && pendingExitPlanMode.resolved === undefined),
   );
-  const showStatus = waitingForInteraction || isLoading || hasBackgroundWork || !!systemStatus;
+  const showStatus = waitingForInteraction || isLoading || hasBackgroundWork || hasNativeWork || !!systemStatus;
   // Original interaction/runtime owners have priority over the live-message
   // projection. A completed historical block is never current work evidence.
   const statusMessage = waitingForInteraction
@@ -605,7 +607,9 @@ const MessageList = memo(function MessageList({
           ? t('shell.messageList.activity.stopping')
           : !isLoading && hasBackgroundWork
             ? t('shell.messageList.activity.waitingBackground')
-            : '';
+            : !isLoading && hasNativeWork && !streamingMessage
+              ? t('shell.messageList.activity.nativeRunning')
+              : '';
   const statusMessageForTimer = useMemo(
     () => systemStatus?.startsWith('model_recovery:') || systemStatus === 'model_recovery_paused'
       ? () => resolveSystemStatus(systemStatus, t)

@@ -436,6 +436,7 @@ export async function handleSessionReadRoute(
       // Additive fields for the desktop scheduler's cheap backpressure
       // precheck. The Goal orchestrator remains the admission authority.
       hasBackgroundWork: liveState.hasBackgroundWork === true,
+      ...(liveState.hasNativeWork === undefined ? {} : { hasNativeWork: liveState.hasNativeWork }),
       ...(liveState.backgroundWorkBlocksContinuation === undefined ? {} : {
         backgroundWorkBlocksContinuation: liveState.backgroundWorkBlocksContinuation,
       }),

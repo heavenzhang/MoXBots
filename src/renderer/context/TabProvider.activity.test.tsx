@@ -147,6 +147,7 @@ function Probe() {
     sessionId,
     isLoading,
     hasBackgroundWork,
+    hasNativeWork,
     isSessionLoading,
     hasSessionHistory,
     sessionRestoreError,
@@ -182,6 +183,7 @@ function Probe() {
           sessionId,
           isLoading,
           hasBackgroundWork,
+          hasNativeWork,
           sessionState,
           historyCount: historyMessages.length,
           initModel: systemInitInfo?.model ?? null,
@@ -249,6 +251,7 @@ function readActivity(): {
   sessionId: string | null;
   isLoading: boolean;
   hasBackgroundWork: boolean;
+  hasNativeWork: boolean;
   sessionState: string;
   historyCount: number;
   initModel: string | null;
@@ -257,6 +260,7 @@ function readActivity(): {
     sessionId: string | null;
     isLoading: boolean;
     hasBackgroundWork: boolean;
+    hasNativeWork: boolean;
     sessionState: string;
     historyCount: number;
     initModel: string | null;
@@ -472,6 +476,26 @@ describe('whole-session background activity', () => {
     expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
     emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
     expect(readActivity().hasBackgroundWork).toBe(false);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('keeps main execution visible after native continuation resumes with no new desktop input', async () => {
+    const onGeneratingChange = vi.fn();
+    const sessionId = 'session-native-parent-resume';
+    render(<TabProvider tabId="native-parent-resume" agentDir="/tmp/workspace" sessionId={sessionId}
+      onGeneratingChange={onGeneratingChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    emit('chat:init', { sessionId, sessionState: 'idle', hasBackgroundWork: false, hasNativeWork: true });
+    emit('chat:message-complete', {});
+    expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle', hasBackgroundWork: false, hasNativeWork: true });
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    // An old completion/background level cannot settle native parent execution.
+    emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
+    emit('chat:status', { sessionId: 'old-session', sessionState: 'idle', hasNativeWork: false });
+    expect(readActivity().hasNativeWork).toBe(true);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    emit('chat:status', { sessionId, sessionState: 'idle', hasNativeWork: false });
+    expect(readActivity().hasNativeWork).toBe(false);
     expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
   });
 
@@ -1697,6 +1721,7 @@ describe('TabProvider session activity ownership', () => {
         sessionId: 'pending-activity',
         isLoading: false,
         hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: null,
@@ -1711,6 +1736,7 @@ describe('TabProvider session activity ownership', () => {
         sessionId: 'pending-activity',
         isLoading: false,
         hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: 'model-a',
@@ -1732,6 +1758,7 @@ describe('TabProvider session activity ownership', () => {
         sessionId: 'pending-activity',
         isLoading: true,
         hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'starting',
         historyCount: 0,
         initModel: 'model-b',
@@ -1742,6 +1769,7 @@ describe('TabProvider session activity ownership', () => {
         sessionId: 'pending-activity',
         isLoading: false,
         hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: 'model-b',
@@ -3131,6 +3159,7 @@ describe('TabProvider session activity ownership', () => {
         sessionId: 'session-rest',
         isLoading: true,
         hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'running',
         historyCount: 0,
         initModel: null,

@@ -732,6 +732,7 @@ function ChatContent({
     loadOlderMessages,
     isLoading,
     hasBackgroundWork,
+    hasNativeWork,
     getQueryElapsedSeconds,
     isSessionLoading,
     hasSessionHistory,
@@ -5040,7 +5041,7 @@ function ChatContent({
     ? sessionMeta.continuation : undefined;
   const continuationReady = isConnected && !isSessionLoading
     && sidecarConfigDisposition !== 'pending' && goalRestoreReady;
-  const continuationBlocked = isLoading || sessionState !== 'idle'
+  const continuationBlocked = isLoading || hasBackgroundWork || hasNativeWork || sessionState !== 'idle'
     || sessionGoalState.isExecuting || sessionGoalState.goal?.status === 'active'
     || !!activeCurrentSessionCronTask || !!pendingPermission || !!pendingAskUserQuestion
     || !!pendingExitPlanMode || !!pendingEnterPlanMode
@@ -6865,6 +6866,7 @@ function ChatContent({
                   onLoadOlder={handleLoadOlderMessages}
                   isLoading={isLoading}
                   hasBackgroundWork={hasBackgroundWork}
+                  hasNativeWork={hasNativeWork}
                   getQueryElapsedSeconds={getQueryElapsedSeconds}
                   sessionId={sessionId}
                   isActive={isActive}

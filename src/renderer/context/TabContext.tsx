@@ -87,6 +87,8 @@ export interface TabState {
     isLoading: boolean;
     /** Runtime-owned non-ambient work can outlive the current root turn. */
     hasBackgroundWork: boolean;
+    /** Authoritative native loop activity, independent of root loading. */
+    hasNativeWork: boolean;
     /** Live active-query time, excluding unresolved human interaction waits. */
     getQueryElapsedSeconds: () => number;
     /**
@@ -272,6 +274,7 @@ const defaultContextValue: TabContextValue = {
     sessionRestoreMode: 'initial',
     sessionState: 'idle',
     hasBackgroundWork: false,
+    hasNativeWork: false,
     sessionRuntime: null,
     sessionRuntimeSource: null,
     sessionRuntimeSessionId: null,

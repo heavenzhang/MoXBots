@@ -341,6 +341,8 @@ import {
   readQueryBackgroundTaskDetail,
   recordQueryBackgroundTaskOutput,
   hasQueryBackgroundWork,
+  hasQueryNativeWork,
+  observeQueryNativeWork,
   getQueryBackgroundContinuationSnapshot,
   getQueryExecutionVerificationEpoch,
   acknowledgeQueryBackgroundWork,
@@ -7222,6 +7224,7 @@ function broadcastSessionActivity(): void {
     sessionId,
     sessionState,
     hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
+    hasNativeWork: hasQueryNativeWork(),
   });
 }
 
@@ -8222,8 +8225,9 @@ export function getAgentState(): {
   sessionState: SessionState;
   hasInitialPrompt: boolean;
   hasBackgroundWork: boolean;
+  hasNativeWork: boolean;
 } {
-  return { agentDir, sessionState, hasInitialPrompt, hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork() };
+  return { agentDir, sessionState, hasInitialPrompt, hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(), hasNativeWork: hasQueryNativeWork() };
 }
 
 export async function getBuiltinBackgroundTaskDetail(toolUseId: string) {
@@ -13720,10 +13724,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       }
 
       // SDK 0.2.83+: session_state_changed — authoritative turn boundary signal.
-      // Currently logged for diagnostic comparison with self-built sessionState.
+      // Project native loop activity without creating a product root/queue or
+      // letting native idle settle a product turn before its real result.
       if (sdkMessage.type === 'system' && (sdkMessage as { subtype?: string }).subtype === 'session_state_changed') {
         const state = (sdkMessage as { state?: string }).state;
         console.log(`[agent] SDK session_state_changed: ${state} (our sessionState: ${sessionState})`);
+        if (systemInitReceived && !lifecycleState.preWarming
+          && (state === 'running' || state === 'requires_action' || state === 'idle')
+          && observeQueryNativeWork(activeQuery, state)) broadcastSessionActivity();
 
         // Adaptive startup timeout: extend when subprocess proves alive.
         // SDK emits session_state_changed:running early (before MCP handshake + system_init).

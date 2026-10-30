@@ -172,6 +172,8 @@ SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动
 
 后台执行活跃性由 exact Query 的 SDK `background_tasks_changed.tasks` 整表替换，排除 `ambient`；Query replacement 时清空。它通过 SessionEngine live snapshot 的 `hasBackgroundWork` 提供给调度。不能从任务卡片或 start/terminal edge registry 推断：前台任务也可能发 start，前台转后台未必重发 start，ambient 监听也不应阻塞 Goal。
 
+原生 `session_state_changed` 在初始化完成、非 prewarm 的 exact Query 上另投影 `hasNativeWork`：running/requires_action 保持活跃、idle 结束，replacement/reset 清空并拒绝旧 Query。这个事实允许原生父循环在后台通知后自行接回时仍保留提示；不伪造产品 root/用户输入，不用原生 idle 推断产品成功。
+
 同一后台活跃事实通过 `chat:init` / `chat:status.hasBackgroundWork` 投影给 Renderer，后台整表变化及 Query 退出时刷新，不要求父轮的 `sessionState` 同时变化。父轮 idle、后台活跃时，TabProvider 对 App shell 仍报告进行中，主聊天显示主 Agent 等待后台结果；root `isLoading` 保持原轮次语义，不因此重新打开已完成消息或改变 Stop/continuation 准入。通知边缘、历史卡片和旧会话事件不能清除或伪造此活跃性。
 
 主任务监督继续归原 Session execution ledger：已登记子任务未结算不能完成主任务，原生结算事件唤醒原持久化接续，主 Agent 仍需核验子任务及最终产物。`INTENT_UNCONFIRMED` 不构成 legacy 执行许可：当前输入保持只读，不能写入或启动子 Agent；error recovery 更换 root queue 也不能绕过已知缺失的主任务计划。真正的历史非托管请求及独立 Task/Goal owner 保持原准入。

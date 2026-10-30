@@ -1230,9 +1230,11 @@ export default function TabProvider({
   hasMoreBeforeRef.current = hasMoreBefore;
   const loadingOlderRef = useRef(false);
   const [sessionState, setSessionState] = useState<SessionState>('idle');
-  const [backgroundActivity, setBackgroundActivity] = useState<{ sessionId: string | null; active: boolean } | null>(null);
-  const hasBackgroundWork = backgroundActivity?.sessionId === currentSessionId
-    && backgroundActivity.active;
+  const [runtimeActivity, setRuntimeActivity] = useState<{ sessionId: string | null; active: boolean; nativeActive: boolean } | null>(null);
+  const hasBackgroundWork = runtimeActivity?.sessionId === currentSessionId
+    && runtimeActivity.active;
+  const hasNativeWork = runtimeActivity?.sessionId === currentSessionId
+    && runtimeActivity.nativeActive;
   const [sessionRuntime, setSessionRuntime] = useState<string | null>(null);
   const [sessionRuntimeSource, setSessionRuntimeSource] =
     useState<RuntimeSource | null>(null);
@@ -1347,7 +1349,7 @@ export default function TabProvider({
   const [pendingEnterPlanMode, setPendingEnterPlanMode] =
     useState<EnterPlanModeRequest | null>(null);
   const { getElapsedSeconds: getQueryElapsedSeconds, reset: resetQueryElapsedClock } = useQueryElapsedClock(
-    isLoading || hasBackgroundWork || classifySessionActivity(sessionState) === 'active',
+    isLoading || hasBackgroundWork || hasNativeWork || classifySessionActivity(sessionState) === 'active',
     Boolean(
       pendingPermission ||
         pendingAskUserQuestion ||
@@ -1465,7 +1467,7 @@ export default function TabProvider({
 
   // Shell activity covers the whole Session; root loading still belongs to the
   // original turn owner so background work cannot fabricate a live root turn.
-  const sessionIsRunning = isLoading || hasBackgroundWork
+  const sessionIsRunning = isLoading || hasBackgroundWork || hasNativeWork
     || classifySessionActivity(sessionState) === 'active' || sessionState === 'stopping';
   useEffect(() => {
     onGeneratingChangeRef.current?.(sessionIsRunning);
@@ -2622,6 +2624,7 @@ export default function TabProvider({
             sessionId?: string | null;
             sessionState?: SessionState;
             hasBackgroundWork?: boolean;
+            hasNativeWork?: boolean;
             liveStreamingMessage?: WireSessionMessage | null;
             queuedMessages?: Array<{
               id: string;
@@ -2707,8 +2710,8 @@ export default function TabProvider({
           // When backend reports 'idle', unconditionally reset frontend loading state.
           // This catches: (1) message-complete lost during connection issues,
           // (2) Tab joining a sidecar whose query already finished (no streaming ref set).
-          setBackgroundActivity({ sessionId: payloadSessionId ?? currentSessionIdRef.current,
-            active: initPayload?.hasBackgroundWork === true });
+          setRuntimeActivity({ sessionId: payloadSessionId ?? currentSessionIdRef.current,
+            active: initPayload?.hasBackgroundWork === true, nativeActive: initPayload?.hasNativeWork === true });
           if (initPayload?.sessionState) {
             setSessionState(initPayload.sessionState);
             if (initPayload.sessionState === 'idle') {
@@ -3037,11 +3040,16 @@ export default function TabProvider({
         }
 
         case 'chat:status': {
-          const payload = data as { sessionId?: string; sessionState: SessionState; hasBackgroundWork?: boolean } | null;
+          const payload = data as { sessionId?: string; sessionState: SessionState; hasBackgroundWork?: boolean; hasNativeWork?: boolean } | null;
           if (payload?.sessionId && !shouldAcceptInteractiveEvent(payload.sessionId)) break;
-          if (payload && Object.hasOwn(payload, 'hasBackgroundWork')) {
-            setBackgroundActivity({ sessionId: payload.sessionId ?? currentSessionIdRef.current,
-              active: payload.hasBackgroundWork === true });
+          if (payload && (Object.hasOwn(payload, 'hasBackgroundWork') || Object.hasOwn(payload, 'hasNativeWork'))) {
+            const targetId = payload.sessionId ?? currentSessionIdRef.current;
+            setRuntimeActivity(previous => ({ sessionId: targetId,
+              active: Object.hasOwn(payload, 'hasBackgroundWork') ? payload.hasBackgroundWork === true
+                : previous?.sessionId === targetId && previous.active,
+              nativeActive: Object.hasOwn(payload, 'hasNativeWork') ? payload.hasNativeWork === true
+                : previous?.sessionId === targetId && previous.nativeActive,
+            }));
           }
           if (payload?.sessionState) {
             const nextSessionState = payload.sessionState;
@@ -6268,12 +6276,17 @@ export default function TabProvider({
                 && sseRef.current?.getConnectionGeneration() === connection;
             try {
                 const state = await apiGetJson<{
-                    sessionId?: string; sessionState: SessionState; isBusy: boolean; hasBackgroundWork?: boolean;
+                    sessionId?: string; sessionState: SessionState; isBusy: boolean; hasBackgroundWork?: boolean; hasNativeWork?: boolean;
                     completionTerminal?: { status: 'complete' | 'stopped' | 'error' } | null;
                 }>('/api/session-state');
                 if (!isCurrent() || state.sessionId !== targetId) return;
-                if (Object.hasOwn(state, 'hasBackgroundWork')) {
-                    setBackgroundActivity({ sessionId: targetId, active: state.hasBackgroundWork === true });
+                if (Object.hasOwn(state, 'hasBackgroundWork') || Object.hasOwn(state, 'hasNativeWork')) {
+                    setRuntimeActivity(previous => ({ sessionId: targetId,
+                        active: Object.hasOwn(state, 'hasBackgroundWork') ? state.hasBackgroundWork === true
+                            : previous?.sessionId === targetId && previous.active,
+                        nativeActive: Object.hasOwn(state, 'hasNativeWork') ? state.hasNativeWork === true
+                            : previous?.sessionId === targetId && previous.nativeActive,
+                    }));
                 }
                 setSessionState(state.sessionState);
                 isSessionActiveRef.current = state.isBusy;
@@ -7345,6 +7358,7 @@ export default function TabProvider({
       hasMoreBefore,
       isLoading,
       hasBackgroundWork,
+      hasNativeWork,
       getQueryElapsedSeconds,
       isSessionLoading,
       hasSessionHistory,
@@ -7409,6 +7423,7 @@ export default function TabProvider({
       hasMoreBefore,
       isLoading,
       hasBackgroundWork,
+      hasNativeWork,
       isSessionLoading,
       hasSessionHistory,
       sessionRestoreError,

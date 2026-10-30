@@ -12,7 +12,7 @@ import { useQueryElapsedClock } from '../../src/renderer/hooks/useQueryElapsedCl
 import type { Message } from '../../src/renderer/types/chat';
 import './preview.css';
 
-type Phase = 'background' | 'review' | 'complete';
+type Phase = 'background' | 'review' | 'native' | 'complete';
 const messages: Message[] = [
   { id: 'synthetic-user', role: 'user', content: '请调研实现方案，并完成修改和验证。', timestamp: new Date(0) },
   { id: 'synthetic-assistant', role: 'assistant', content: '已登记子任务及验收要求。调研仍在后台进行，结果返回后继续核验和实施。', timestamp: new Date(0) },
@@ -26,7 +26,8 @@ function Preview() {
   const follow = useRef<boolean | 'force'>(true);
   const isLoading = phase === 'review';
   const hasBackgroundWork = phase === 'background';
-  const sessionIsRunning = isLoading || hasBackgroundWork;
+  const hasNativeWork = phase === 'native';
+  const sessionIsRunning = isLoading || hasBackgroundWork || hasNativeWork;
   const { getElapsedSeconds } = useQueryElapsedClock(sessionIsRunning, false, 'synthetic-session');
   return <ThemeRuntimeProvider selection={{ themeId: 'proof', appearanceMode: dark ? 'dark' : 'light' }} persistBootstrapSnapshot={false}><ImagePreviewProvider>
     <div style={{ width: narrow ? 390 : '100%', maxWidth: '100vw', height: '100vh', margin: 'auto', color: 'var(--ink)', background: 'var(--paper)', display: 'flex', flexDirection: 'column' }}>
@@ -35,6 +36,7 @@ function Preview() {
         <nav aria-label="验收操作" style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 12 }}>
           <button onClick={() => setPhase('background')}>后台执行</button>
           <button onClick={() => setPhase('review')}>子任务返回，主线程核验</button>
+          <button onClick={() => setPhase('native')}>原生接续执行</button>
           <button onClick={() => setPhase('complete')}>完成验收</button>
           <button onClick={() => setDark(value => !value)}>切换明暗</button>
           <button onClick={() => setNarrow(value => !value)}>切换窄窗</button>
@@ -49,12 +51,13 @@ function Preview() {
         </aside>
         <main style={{ flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '14px 20px', fontSize: 13 }}>
-            {phase === 'background' ? '子 Agent：执行中 · 主 Agent：等待结果' : phase === 'review' ? '主 Agent：核验中' : '合成验收状态：已完成'}
+            {phase === 'background' ? '子 Agent：执行中 · 主 Agent：等待结果' : phase === 'review' ? '主 Agent：核验中' : phase === 'native' ? '主 Agent：继续执行' : '合成验收状态：已完成'}
           </div>
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             <MessageList messages={messages} streamingMessage={null} isLoading={isLoading}
               firstItemIndex={1_000_000}
               hasBackgroundWork={hasBackgroundWork} sessionState={isLoading ? 'running' : 'idle'}
+              hasNativeWork={hasNativeWork}
               getQueryElapsedSeconds={getElapsedSeconds} sessionId="synthetic-session"
               virtuosoRef={virtuosoRef} followEnabledRef={follow} scrollToBottom={() => undefined}
               handleAtBottomChange={() => undefined} />
