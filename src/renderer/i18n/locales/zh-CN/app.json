@@ -13,7 +13,7 @@
     "newTab": "新建标签页",
     "closeCurrentPage": "关闭当前页面",
     "closeTab": "关闭标签页",
-    "generating": "AI 正在输出",
+    "generating": "会话进行中",
     "unread": "有未读消息",
     "switchTo": "切换到 {{title}}",
     "agentNetwork": "AgentNet 局域网络"

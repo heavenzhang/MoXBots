@@ -385,6 +385,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         ...(executionStartedAt ? { executionStartedAt } : {}),
         ...(hasBuiltinBackgroundWork() ? { backgroundWorkActive: true } : {}),
         sessionState: getAgentState().sessionState,
+        hasNativeWork: getAgentState().hasNativeWork === true,
         isBusy: isSessionBusy(),
         waitingForUser: isBuiltinWaitingForUser(),
         hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),

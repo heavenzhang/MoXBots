@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyTaskLedger, type SessionTaskLedger } from '../../../shared/sessionTaskOrchestration';
 import type { SessionExecutionRecoveryProjection } from '../../../shared/sessionTaskOrchestration';
 import { useSessionTaskOrchestration } from './useSessionTaskOrchestration';
-const tab = vi.hoisted(() => ({ tabId: 'tab-1', sessionId: 's1', isSessionLoading: false, isLoading: false, sessionState: 'idle', messages: [], streamingMessage: null, sessionRuntime: null as string | null, sessionRuntimeSessionId: 's1', sessionRuntimeSource: null, apiGet: vi.fn(), apiPost: vi.fn() }));
+const tab = vi.hoisted(() => ({ tabId: 'tab-1', sessionId: 's1', isSessionLoading: false, isLoading: false, hasNativeWork: false, hasBackgroundWork: false, sessionState: 'idle', messages: [], streamingMessage: null, sessionRuntime: null as string | null, sessionRuntimeSessionId: 's1', sessionRuntimeSource: null, apiGet: vi.fn(), apiPost: vi.fn() }));
 vi.mock('@/context/TabContext', () => ({ useTabStateOptional: () => tab }));
 const plan: [] = [];
 const supported = { supported: true, runtime: 'builtin' };
@@ -11,7 +11,7 @@ const ledger = (revision: number, accepted = false): SessionTaskLedger => ({ ...
   tasks: [{ id: 'work', title: 'Task from snapshot', blockedBy: [] }],
   reviews: accepted ? [{ taskId: 'work', attemptId: 'main', decision: 'accept', evidence: 'Verified' }] : [] });
 const event = (value: SessionTaskLedger, sessionId = 's1') => window.dispatchEvent(new CustomEvent('session-task-orchestration', { detail: { sessionId, ledger: value } }));
-beforeEach(() => { vi.clearAllMocks(); tab.sessionId = 's1'; tab.sessionRuntime = null; tab.isLoading = false; tab.sessionState = 'idle'; tab.isSessionLoading = false; tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1) }); });
+beforeEach(() => { vi.clearAllMocks(); tab.sessionId = 's1'; tab.sessionRuntime = null; tab.isLoading = false; tab.hasNativeWork = false; tab.hasBackgroundWork = false; tab.sessionState = 'idle'; tab.isSessionLoading = false; tab.apiGet.mockResolvedValue({ success: true, planSupport: supported, sessionId: 's1', ledger: ledger(1) }); });
 afterEach(() => vi.useRealTimers());
 describe('Session task snapshot and event reconciliation', () => {
   it('settles historical main-plan activity on Stop without changing progress or acceptance', async () => {
@@ -55,6 +55,18 @@ describe('Session task snapshot and event reconciliation', () => {
     rerender();
     await waitFor(() => expect(result.current.executionRecovery).toBeUndefined());
     await waitFor(() => expect(result.current.executionUnknown).toBe(true));
+  });
+
+  it('does not offer duplicate root review while native continuation or background work remains active', async () => {
+    const { result, rerender } = renderHook(() => useSessionTaskOrchestration(plan));
+    await waitFor(() => expect(result.current.tasks).toHaveLength(1));
+    expect(result.current.canRetryReview).toBe(true);
+    tab.hasNativeWork = true; rerender();
+    expect(result.current.canRetryReview).toBe(false);
+    tab.hasNativeWork = false; tab.hasBackgroundWork = true; rerender();
+    expect(result.current.canRetryReview).toBe(false);
+    tab.hasBackgroundWork = false; rerender();
+    expect(result.current.canRetryReview).toBe(true);
   });
 
   it('updates acceptance immediately from an event without any message/plan mutation', async () => {

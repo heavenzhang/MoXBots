@@ -93,7 +93,7 @@ export function isUpdateRestartFrozen(): boolean { return updateRestartFrozen; }
 
 /** Read-only activity decision exposed through the public builtin facade. */
 export function hasBuiltinActivityForUpdate(): boolean {
-  return hasQueryBackgroundTasks() || hasQueryBackgroundWork() || Boolean(getQueryMcpMutation())
+  return hasQueryBackgroundTasks() || hasQueryBackgroundWork() || hasQueryNativeWork() || Boolean(getQueryMcpMutation())
     || lifecycleState.preWarming || lifecycleState.preWarmTimer !== null
     || (lifecycleState.processing && !lifecycleState.query);
 }
@@ -117,6 +117,7 @@ function rememberBackgroundRun(query: Query, taskId: string, runId: string | und
 }
 let queryBackgroundRevision = 0;
 let queryBackgroundTasksLevel: BackgroundTaskObservation[] = [];
+let queryNativeWorkActive = false;
 let queryBackgroundAcknowledgements: BackgroundWorkAcknowledgement[] = [];
 let isProcessing = false;
 let abortRequested = false;
@@ -151,6 +152,7 @@ function replaceQuerySession(session: Query | null): void {
   querySession = session;
   queryBackgroundRevision++;
   queryBackgroundTasksLevel = [];
+  queryNativeWorkActive = false;
   queryBackgroundAcknowledgements = [];
   queryGeneration += 1;
   queryInstanceId = session ? randomUUID() : null;
@@ -450,6 +452,20 @@ export function replaceQueryBackgroundActivity(
 export function hasQueryBackgroundWork(query: Query | null = querySession): boolean {
   return query !== null && querySession === query
     && queryBackgroundTasksLevel.some(task => task.ambient !== true);
+}
+
+/** Native loop activity is separate from the product root/queue lifecycle.
+ * The SDK may resume its parent internally after a background notification. */
+export function observeQueryNativeWork(query: Query | null, state: 'idle' | 'running' | 'requires_action'): boolean {
+  if (!query || querySession !== query) return false;
+  const active = state !== 'idle';
+  if (active === queryNativeWorkActive) return false;
+  queryNativeWorkActive = active;
+  return true;
+}
+
+export function hasQueryNativeWork(query: Query | null = querySession): boolean {
+  return query !== null && query === querySession && queryNativeWorkActive;
 }
 
 /**
@@ -1026,6 +1042,7 @@ export function resetLifecycleForTest(): void {
   queryMcpMutationOwner = null;
   queryBackgroundTasks.clear();
   queryBackgroundTasksLevel = [];
+  queryNativeWorkActive = false;
   queryBackgroundAcknowledgements = [];
   isProcessing = false;
   abortRequested = false;

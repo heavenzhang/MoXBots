@@ -343,6 +343,8 @@ import {
   readQueryBackgroundTaskDetail,
   recordQueryBackgroundTaskOutput,
   hasQueryBackgroundWork,
+  hasQueryNativeWork,
+  observeQueryNativeWork,
   getQueryBackgroundContinuationSnapshot,
   getQueryExecutionVerificationEpoch,
   acknowledgeQueryBackgroundWork,
@@ -7219,12 +7221,21 @@ function parseSystemStatus(message: unknown): {
   };
 }
 
+function broadcastSessionActivity(): void {
+  broadcast('chat:status', {
+    sessionId,
+    sessionState,
+    hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
+    hasNativeWork: hasQueryNativeWork(),
+  });
+}
+
 function setSessionState(nextState: SessionState): void {
   if (sessionState === nextState) {
     return;
   }
   sessionState = nextState;
-  broadcast('chat:status', { sessionState });
+  broadcastSessionActivity();
 }
 
 function ensureAssistantMessage(): MessageWire {
@@ -8215,8 +8226,10 @@ export function getAgentState(): {
   agentDir: string;
   sessionState: SessionState;
   hasInitialPrompt: boolean;
+  hasBackgroundWork: boolean;
+  hasNativeWork: boolean;
 } {
-  return { agentDir, sessionState, hasInitialPrompt };
+  return { agentDir, sessionState, hasInitialPrompt, hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(), hasNativeWork: hasQueryNativeWork() };
 }
 
 export async function getBuiltinBackgroundTaskDetail(toolUseId: string) {
@@ -13738,10 +13751,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       }
 
       // SDK 0.2.83+: session_state_changed — authoritative turn boundary signal.
-      // Currently logged for diagnostic comparison with self-built sessionState.
+      // Project native loop activity without creating a product root/queue or
+      // letting native idle settle a product turn before its real result.
       if (sdkMessage.type === 'system' && (sdkMessage as { subtype?: string }).subtype === 'session_state_changed') {
         const state = (sdkMessage as { state?: string }).state;
         console.log(`[agent] SDK session_state_changed: ${state} (our sessionState: ${sessionState})`);
+        if (systemInitReceived && !lifecycleState.preWarming
+          && (state === 'running' || state === 'requires_action' || state === 'idle')
+          && observeQueryNativeWork(activeQuery, state)) broadcastSessionActivity();
 
         // Adaptive startup timeout: extend when subprocess proves alive.
         // SDK emits session_state_changed:running early (before MCP handshake + system_init).
@@ -13780,6 +13797,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         if (sdkMessage.subtype === 'background_tasks_changed') {
           const wasWorking = hasQueryBackgroundWork(activeQuery);
           replaceQueryBackgroundActivity(activeQuery, sdkMessage.tasks);
+          // Root-turn idle is independent of the exact Query's background work.
+          // Publish the authoritative level even when the root state is unchanged.
+          if (wasWorking !== hasQueryBackgroundWork(activeQuery)) broadcastSessionActivity();
           if (wasWorking && !hasQueryBackgroundWork(activeQuery)) {
             if (deferredRewindResult) retireRewoundQueryWhenQuiescent();
             else applyDeferredRestartIfNeeded();
@@ -15133,6 +15153,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         outputFile: '',
       });
     }
+    if (!wasPreWarming) broadcastSessionActivity();
     // sessionRegistered 已在 system_init handler 中设置，无需重复
 
     // Don't broadcast state changes from pre-warm sessions

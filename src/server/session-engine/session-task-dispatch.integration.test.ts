@@ -550,6 +550,24 @@ describe("session task dispatch server boundary", () => {
     ).toBeUndefined();
   });
 
+  it('rejects orphan delegation after failed classification even when error recovery changes the root queue', async () => {
+    await taskOwner.mutateSessionTaskLedger(sessionId, ledger => {
+      ledger.execution = undefined;
+      ledger.executionAdmission = { requestId: 'unclassified', queueId: 'original-failed-queue', error: 'INTENT_UNCONFIRMED' };
+      return ledger;
+    });
+    for (const name of ['Agent', 'Task']) {
+      expect(await tool(name, { run_in_background: true }, { q: 'error-recovery-queue' }))
+        .toContain('SESSION_TASK_EXECUTION_REQUIRED');
+    }
+    expect(await tool('Read', { file_path: 'src/a/file.ts' }, { q: 'error-recovery-queue' })).toBeUndefined();
+    expect(await dispatch.authorizeSessionTaskTool({
+      sessionId, queueId: 'native-task-queue',
+      turnIdentity: { queueId: 'native-task-queue', owner: { kind: 'task', id: 'native-task' } },
+      toolUseId: 'native-owned-launch', name: 'Agent', input: {}, workspacePath: workspace, isCurrent: () => true,
+    })).toBeUndefined();
+  });
+
   it("preserves legacy behavior outside execution-managed turns", async () => {
     await taskOwner.mutateSessionTaskLedger(sessionId, (ledger) => {
       ledger.execution = undefined;

@@ -20,6 +20,8 @@ export type ChatInitPayload = {
   agentDir: string;
   sessionState: SessionState;
   hasInitialPrompt: boolean;
+  hasBackgroundWork?: boolean;
+  hasNativeWork?: boolean;
 };
 
 export type ChatMessageReplayPayload = {
@@ -43,6 +45,9 @@ export type ChatMessageReplayPayload = {
 
 export type ChatStatusPayload = {
   sessionState: SessionState;
+  sessionId?: string;
+  hasBackgroundWork?: boolean;
+  hasNativeWork?: boolean;
 };
 
 export type ChatAgentErrorPayload = {

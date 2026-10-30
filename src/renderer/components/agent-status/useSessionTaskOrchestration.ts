@@ -164,7 +164,8 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     return () => publish(null);
   }, [enabled, tab?.tabId, sessionId, tab?.isSessionLoading, planSupport?.supported, proposal?.id, proposal?.revision, proposal?.state]);
   const planStart = proposal && snapshot?.ledger.planStart?.proposalId === proposal.id && snapshot.ledger.planStart.revision === proposal.revision ? snapshot.ledger.planStart : undefined;
-  const canRetryReview = tab?.sessionState === 'idle' && !tab.isLoading && !tab.queuedMessages?.length;
+  const canRetryReview = tab?.sessionState === 'idle' && !tab.isLoading
+    && !tab.hasBackgroundWork && !tab.hasNativeWork && !tab.queuedMessages?.length;
   return { sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal,
     execution,
     executionAdmission,

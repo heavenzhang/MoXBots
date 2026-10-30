@@ -9,6 +9,8 @@ import {
   hasQueryBackgroundTask,
   hasQueryBackgroundTasks,
   hasQueryBackgroundWork,
+  hasQueryNativeWork,
+  observeQueryNativeWork,
   hasBuiltinActivityForUpdate,
   replaceQueryBackgroundActivity,
   hasMessageResolver,
@@ -44,6 +46,38 @@ import {
   waitForMessage,
   wakeGenerator,
 } from './lifecycle';
+
+describe('native Query activity projection', () => {
+  beforeEach(() => resetLifecycleForTest());
+  it('retains native parent activity separately from product turns until native idle', () => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    expect(hasQueryNativeWork()).toBe(false);
+    expect(observeQueryNativeWork(query, 'running')).toBe(true);
+    expect(hasQueryNativeWork()).toBe(true);
+    expect(hasBuiltinActivityForUpdate()).toBe(true);
+    expect(observeQueryNativeWork(query, 'requires_action')).toBe(false);
+    expect(hasQueryNativeWork()).toBe(true);
+    expect(observeQueryNativeWork(query, 'idle')).toBe(true);
+    expect(hasQueryNativeWork()).toBe(false);
+    expect(hasBuiltinActivityForUpdate()).toBe(false);
+  });
+
+  it('clears activity on replacement and ignores all observations from the previous Query', () => {
+    const oldQuery = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const newQuery = {} as typeof oldQuery;
+    setQuerySessionWithAuthority(oldQuery, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    observeQueryNativeWork(oldQuery, 'running');
+    setQuerySessionWithAuthority(newQuery, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    expect(hasQueryNativeWork()).toBe(false);
+    expect(observeQueryNativeWork(oldQuery, 'running')).toBe(false);
+    observeQueryNativeWork(newQuery, 'running');
+    expect(observeQueryNativeWork(oldQuery, 'idle')).toBe(false);
+    expect(hasQueryNativeWork()).toBe(true);
+    setQuerySession(null);
+    expect(hasQueryNativeWork()).toBe(false);
+  });
+});
 import {
   drainQueuedItems,
   findQueuedItemLocation,

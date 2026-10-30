@@ -427,7 +427,18 @@ export async function authorizeSessionTaskTool(input: {
   const metadata = getSessionMetadata(input.sessionId);
   const ledger = metadata?.taskOrchestration as DispatchLedger | undefined;
   const execution = ledger?.execution;
-  if (!execution) return undefined; // Preserve legacy non-execution runtime behavior.
+  if (!execution) {
+    // Error-recovery turns can have a new queue id without a new classifier
+    // admission. A known failed admission must not become legacy permission to
+    // launch children with no persistent parent execution/review to return to.
+    const independentOwner = input.turnIdentity?.queueId === input.queueId
+      && Boolean(input.turnIdentity?.owner.id);
+    if (rootTools.has(input.name) && !independentOwner
+      && ledger?.executionAdmission?.error === 'INTENT_UNCONFIRMED')
+      return message(SESSION_TASK_DISPATCH_ERRORS.executionRequired,
+        '当前主任务执行计划未建立；恢复或重试不能启动无人监督的子 Agent。');
+    return undefined; // Preserve genuinely legacy and independent native owners.
+  }
   const queueId = input.queueId;
   const independentOwner =
     !!queueId &&

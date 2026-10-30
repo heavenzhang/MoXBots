@@ -1075,3 +1075,12 @@ Website0527 static publication is now normalTLS-readback accepted: exactsource21
 用户要求查清本次拒绝并修复误拦截、恢复入口及错误勾选。开发分支 `codex/replay-recovery-20261030` 基于远端 `f072eff9`，任务 `.agent-sync/tasks/codex-replay-recovery-20261030-a901e1a9.md`，证据 `dev-docs/replay-recovery-20261030/`。范围为原 PreToolUse 拒绝持久化、结构化 native 历史核对、产品错误状态及原会话恢复；不以新会话或手工清账本替代恢复。
 
 唯一 desktop/macOS/updater 与 sharedCI/main owner继续 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，本开发线程只提交精确SHA与验证后交下一未冻结批；不自行触发共享CI、正式构建、版本分配或安装。原数据/历史保全与原会话真实复验独立于模拟测试、源码主干和制品发布跟踪。
+
+
+## MB-SESSION-ACTIVITY-20261030 — 会话后台活跃与主任务监督
+
+来源会话 `01a18d83-14a0-7d11-81e5-32109b8c71b4`，任务 `.agent-sync/tasks/codex-session-activity-20261030.md`，证据 `dev-docs/session-activity-20261030/acceptance.md`。原 Query 非 ambient 后台整表通过既有 SSE/init 投影，父轮 idle 时会话仍进行中、主聊天显示等待结果；保留 root busy/Stop/接续语义。已知 INTENT_UNCONFIRMED 不再允许无主任务记录的派生执行，恢复更换 queue 也不能绕过；监督沿用原 task ledger、原生事件回接与主 Agent 验收，不新建调度器或恢复业务。231 DOM 与278隔离集成、类型/lint/分类及MoXBots前端构建通过；内置浏览器1280×720与390px深色容器的实际组件等待/核验/完成切换通过，原生发布另行验收。
+
+desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。开发分支不启动共享CI、不新建PR、不分配正式版本或改日常App；精确任务分支SHA及release-queue交原owner下一未冻结批次。无cloud/Host/mobile部署或外部接口变化。源码、main/CI、制品和真实验收各自待回执，不以原生SDK后续回合或合成界面代替整体验收。
+
+2026-10-31同任务补充：原生父循环在子任务返回后发running，但产品root缓存仍idle；原代码只记日志导致提示丢失。在既有Query lifecycle owner投影hasNativeWork至SSE/init/live及会话/提示/时钟，replacement和prewarm围栏保留、不伪造新root；重复验收/恢复入口与维护门禁等待真实原生活动。最终279integration、250DOM、222unit、类型/lint及实际组件原生接续/终态、明亮宽屏与390px深色容器通过。覆盖本次新问题的精确远端HEAD更新原release-queue，原owner负责后续共享CI/main及正式安装，先前原生包不变。
