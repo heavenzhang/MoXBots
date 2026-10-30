@@ -282,6 +282,7 @@ function executionReminder(
   if (!execution) return "";
   return `<system-reminder><SESSION_EXECUTION>${continuationText ? `${escapeSystemReminderText(continuationText)}\n` : ""}本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
+启动子 Agent 前，将其范围、依赖与验收要求登记到当前主任务。后台子任务未结算时主任务仍由你负责；可以让出当前模型回合等待原运行时事件，但不能宣布主任务完成。收到结果后核验并继续原清单；失败、结果未知或缺权限必须记录原因，不盲目重派。
 读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
 accept 需要覆盖全部验收条件，并指向本次执行真实且最新的验证结果；Todo完成、分析文本和子Agent自报不算证据。
@@ -711,6 +712,17 @@ export function sessionExecutionToolDenial(
   const planBookkeeping =
     admission?.intent?.kind === "plan" &&
     ["propose", "revise"].includes(String(readCommand?.kind));
+  // A failed classifier used to fall through as a legacy conversation, which
+  // could launch native children without any persistent execution to wake or
+  // review them. Preserve read-only dialogue, never grant untracked execution.
+  if (
+    admission && admission.queueId === queueId &&
+    admission.error === "INTENT_UNCONFIRMED" &&
+    !admission.intent &&
+    !READ_TOOLS.has(name) &&
+    readCommand?.kind !== "list"
+  )
+    return "INTENT_UNCONFIRMED: 当前请求尚未建立主任务执行计划，不能写入或启动子 Agent。请说明执行识别失败；只读核查可以继续，不要创建游离后台任务。";
   if (
     admission &&
     admission.queueId === queueId &&

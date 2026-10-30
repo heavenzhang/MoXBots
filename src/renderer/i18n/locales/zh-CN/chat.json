@@ -1257,6 +1257,7 @@
       "starting": "AI 启动中…（首次启动可能较慢）",
       "activity": {
         "waitingModel": "等待模型响应…",
+        "waitingBackground": "后台任务执行中，主 Agent 等待结果…",
         "answering": "正在生成回复…",
         "reading": "正在读取 {{target}}",
         "updating": "正在更新 {{target}}",

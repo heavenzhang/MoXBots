@@ -1,0 +1,56 @@
+# MB-SESSION-ACTIVITY-20261030
+
+## 范围与结果
+
+主模型回合可以结束计算并等待子任务，但主任务的监督和交付责任不能因此结束。本次修复两个缺口：后台真实活跃未参与会话标识，以及已知执行意图识别失败后仍可启动没有执行账本的子 Agent。
+
+源码基于 `origin/main d18137e87155994c4ade3d1889d04830821a8eda`，分支 `codex/session-activity-20261030`。实际工作区 `/Users/zhangshaohua/Documents/Codex/2026-10-30/moxbots-session-activity`。当前 Agent 直接实现与检查，没有子 Agent、外部模型、业务写入或安装版修改。
+
+## 实现
+
+- 原 Query 的 `background_tasks_changed` 非 ambient 整表仍为活跃权威。`getAgentState`、`chat:init` 和 `chat:status` 投影同一 `hasBackgroundWork`；后台活跃性变化及 Query 退出时刷新。
+- `TabProvider` 汇总 root 活动与上述后台信号，传给既有 App 会话标识；root 的 `sessionState` / `isLoading` 保留原执行语义，不用假运行轮次驱动调度。消息终态或旧通知不能清掉仍在执行的后台工作。Stop 状态复核也使用现有 live API 的后台快照。
+- 主聊天在后台仍执行时持续显示主 Agent 等待结果，沿用原时钟与状态行。会话标识的无障碍文案改为“会话进行中”。
+- `INTENT_UNCONFIRMED` 的当前准入允许只读核查和交互，拒绝未授权的执行/派生任务。错误恢复即使换了 root queue，也不能把已知识别失败当作 legacy 子任务派发许可。真正历史非托管请求、独立 Task/Goal owner 不受此新规则影响。
+- 正常监督沿用原 task package、资源范围、claim、原生终态唤醒和主 Agent 验收，未新增调度器、轮询模型、预算或恢复授权。原生回合完成不等于任务验收完成；后台结果未知不重派。
+
+## 验证
+
+Node v24.20.0；测试只使用隔离 HOME、合成事件和磁盘。
+
+| 检查 | 结果 |
+| --- | --- |
+| DOM：TabProvider.activity、MessageList.footer、GlobalSidebar | 231 项通过 |
+| integration：builtin transcript、session execution、task dispatch、session stability | 278 项通过 |
+| 全量 TypeScript | 通过 |
+| 所有修改的产品/测试 TS(X) 定向 ESLint | 通过；只有既有 Baseline 数据陈旧提示 |
+| 测试池分类 | 通过：469 server tests，133 integration、6 credentialed |
+| 默认 profile renderer 构建 | 通过，44.60 秒 |
+| MoXBots profile renderer 构建 | 通过，43.71 秒；既有 chunk/动态导入提示保留 |
+| 实际产品组件浏览器检查 | 通过：内置浏览器 1280×720、深色 390px 容器；后台等待/主核验/完成状态切换，合成状态，不是安装版验收 |
+
+新增及强化场景：root idle/complete + 后台运行、后台终态边缘与权威整表分离、重连、旧会话事件拒绝、旧 start 卡片不复活会话、Stop live API 复核、后台活动 SSE 与重连 snapshot、识别失败工具准入、错误恢复 queue 变化、独立原生 owner、主任务未验收时不能完成及原生终态回接。既有停止、预算、未知结果和主 Agent 验收回归通过。
+
+初轮 DOM 失败来自新增探针字段未更新旧全等断言、用 pending 会话测试 real-session 隔离；已改为真实 concrete session fixture 并通过。初轮 TypeScript 检出可空 admission 比较，已修正。浏览器夹具先补齐 ImagePreviewProvider 和生产调用方的虚拟列表参数/布局；开发服务器依赖优化失败转为静态构建检查，并显式声明 Tailwind 生产组件 source；未修改产品来迁就夹具。
+
+原会话只读后续证据显示子任务结束后原生运行时确实接回了主轮，后续主轮遇到 502。因此本次不把它描述成“从未回接”，也不声称已修复供应商 502、意图识别供应商失败或替用户完成原业务任务。
+
+## UI 合同与边界
+
+UI owner：当前 `/root`，小范围状态修改由实现者自验，无独立 UI reviewer。基线沿用实际 MessageList 状态行与 TabActivityIndicator；只检查等待/核验/完成切换、明暗和窄窗，不重设计页面。
+
+`preview.html` / `preview.tsx` / `preview.css` 为实际生产组件与合成状态夹具，无 Provider、凭据或业务连接。开发预览使用 Vite 的 `/@fs/<绝对路径>/preview.html`；依赖共享时应为本次进程设置独立 cacheDir。静态复现沿用仓库 Vite 配置、root 指向本目录、入口 preview.html，并在生产 HTML transform 中移除仅开发所需 react-refresh preamble。制品留在 `/tmp/moxbots-session-activity-ui-build`，仅绑定 127.0.0.1 供 CUA 内置浏览器检查。
+
+实际 CUA 内置浏览器验证：后台状态含一个真实 TabActivityIndicator 进行中点及等待行；点击“子任务返回，主线程核验”后继续进行中；点击“完成验收”后活动点和等待行同时消失。1280×720 明亮布局及390px深色容器文字完整、无横向溢出。视觉、上述交互和容器适配通过；未做原生客户端/真实Provider/权限/业务联调，也不宣称完整移动设备验收。截图位于项目外部工作记录 `work/MB-SESSION-ACTIVITY-20261030/evidence/`，包含 background-light.png、main-review.png、accepted.png、background-dark-390.png。静态组件夹具最终构建33.34秒。
+
+源码/本地模拟通过不代表已安装客户端或真实 Provider 验收。现有原生客户端保持 0.5.27/527.3；本任务不分配新版本或重建旧制品。
+
+## 部署交接
+
+desktop/macOS-arm64/updater 和 combined CI/main 继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责。开发仅推送任务分支并登记 release-queue；不创建触发共享 CI 的 PR、不替代其合并/构建/安装/发布。精确 HEAD 在外部交接回执记录，避免文档自引用。
+
+远端主干、共享 CI、签名制品摘要、不可变 tag、安装/生产及真实路径验收均等待原 owner 回执；没有完成这些步骤前不宣告整体发布完成。没有 cloud/Host/mobile 部署请求、协议切换或数据迁移依赖。
+
+## 执行记录
+
+单智能体（零子 Agent）：紧密关联的状态与准入修复由 `/root` 负责，主模型精确变体和 effort 未通过任务接口独立暴露，无模型切换。选择依据是避免重复读取同一生命周期；升级原因：无升级；不调用外部原因：明确采用 ai-yaoren-local 纯内置模式。用量、费用和相对节省未测量。复盘：保持 runtime level 和主轮状态分离有效；后续同类 UI 夹具优先静态构建并显式带齐生产布局参数，以减少 Vite 优化器与虚拟列表夹具返工。

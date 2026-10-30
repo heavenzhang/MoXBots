@@ -13,7 +13,7 @@
     "newTab": "New tab",
     "closeCurrentPage": "Close current page",
     "closeTab": "Close tab",
-    "generating": "AI is responding",
+    "generating": "Session in progress",
     "unread": "Unread messages",
     "switchTo": "Switch to {{title}}",
     "agentNetwork": "AgentNet Local Network"

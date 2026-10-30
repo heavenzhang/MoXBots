@@ -146,6 +146,7 @@ function Probe() {
   const {
     sessionId,
     isLoading,
+    hasBackgroundWork,
     isSessionLoading,
     hasSessionHistory,
     sessionRestoreError,
@@ -180,6 +181,7 @@ function Probe() {
         {JSON.stringify({
           sessionId,
           isLoading,
+          hasBackgroundWork,
           sessionState,
           historyCount: historyMessages.length,
           initModel: systemInitInfo?.model ?? null,
@@ -246,6 +248,7 @@ function Probe() {
 function readActivity(): {
   sessionId: string | null;
   isLoading: boolean;
+  hasBackgroundWork: boolean;
   sessionState: string;
   historyCount: number;
   initModel: string | null;
@@ -253,6 +256,7 @@ function readActivity(): {
   return JSON.parse(screen.getByTestId('activity').textContent ?? '{}') as {
     sessionId: string | null;
     isLoading: boolean;
+    hasBackgroundWork: boolean;
     sessionState: string;
     historyCount: number;
     initModel: string | null;
@@ -434,6 +438,61 @@ describe('Tab-owned query clock integration', () => {
   });
 });
 
+describe('whole-session background activity', () => {
+  beforeEach(() => {
+    sseHarness.state.eventHandler = null;
+    sseHarness.state.statusHandler = null;
+    sseHarness.state.connected = false;
+    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
+      const sessionId = /\/sessions\/([^?]+)/.exec(url)?.[1];
+      return new Response(JSON.stringify({ success: true, session: {
+        id: sessionId, agentDir: '/tmp/workspace', title: 'Synthetic session',
+        createdAt: '', lastActiveAt: '', runtime: 'builtin', messages: [],
+        snapshotRevision: 0, liveSessionState: 'idle', liveStreamingMessage: null,
+      } }));
+    });
+  });
+  it('keeps shell activity through a root terminal and only settles after the native level clears', async () => {
+    const onGeneratingChange = vi.fn();
+    const sessionId = 'session-supervised-background';
+    render(<TabProvider tabId="supervised-background" agentDir="/tmp/workspace" sessionId={sessionId}
+      onGeneratingChange={onGeneratingChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:status', { sessionId, sessionState: 'running', hasBackgroundWork: true });
+    emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: true });
+    emit('chat:message-complete', {});
+    expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle', hasBackgroundWork: true });
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+
+    // A terminal edge is display evidence; the exact Query's level still owns liveness.
+    emit('chat:task-notification', { sessionId, taskId: 'child', runId: 'old-run', status: 'completed' });
+    emit('chat:status', { sessionId: 'another-session', sessionState: 'idle', hasBackgroundWork: false });
+    expect(readActivity().hasBackgroundWork).toBe(true);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
+    expect(readActivity().hasBackgroundWork).toBe(false);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('restores idle-root background activity from init without reviving root loading or trusting old cards', async () => {
+    const onGeneratingChange = vi.fn();
+    const sessionId = 'session-background-reconnect';
+    render(<TabProvider tabId="background-reconnect" agentDir="/tmp/workspace" sessionId={sessionId}
+      onGeneratingChange={onGeneratingChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId, sessionState: 'idle', hasBackgroundWork: true });
+    expect(readActivity()).toMatchObject({ isLoading: false, hasBackgroundWork: true });
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    emit('chat:init', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
+    // An old task-started card alone cannot make the session active.
+    emit('chat:task-started', { sessionId, taskId: 'old-child', toolUseId: 'old-launch' });
+    expect(readActivity().hasBackgroundWork).toBe(false);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
 function collabMessage(status: 'running' | 'completed' = 'running'): Message {
   return {
     id: 'assistant-collab',
@@ -582,14 +641,14 @@ describe('TabProvider session activity ownership', () => {
     const sessionId = 'pending-stop-recovery-activity';
     tauriHarness.proxyFetch.mockImplementation(async (url: string) => new Response(JSON.stringify(
       url.endsWith('/api/session-state')
-        ? { sessionId, sessionState: 'idle', isBusy: false, completionTerminal: { status: 'stopped' } }
+        ? { sessionId, sessionState: 'idle', isBusy: false, hasBackgroundWork: false, completionTerminal: { status: 'stopped' } }
         : { success: true, alreadyStopped: true },
     )));
     render(<TabProvider tabId="stop-recovery-activity" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
     await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
-    emit('chat:status', { sessionState: 'running' });
+    emit('chat:status', { sessionState: 'running', hasBackgroundWork: true });
     fireEvent.click(screen.getByRole('button', { name: 'stop response' }));
-    await waitFor(() => expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle' }));
+    await waitFor(() => expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle', hasBackgroundWork: false }));
     emit('chat:message-stopped', {});
     expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle' });
   });
@@ -1637,6 +1696,7 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: false,
+        hasBackgroundWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: null,
@@ -1650,6 +1710,7 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: false,
+        hasBackgroundWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: 'model-a',
@@ -1670,6 +1731,7 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: true,
+        hasBackgroundWork: false,
         sessionState: 'starting',
         historyCount: 0,
         initModel: 'model-b',
@@ -1679,6 +1741,7 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: false,
+        hasBackgroundWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: 'model-b',
@@ -3067,6 +3130,7 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'session-rest',
         isLoading: true,
+        hasBackgroundWork: false,
         sessionState: 'running',
         historyCount: 0,
         initModel: null,

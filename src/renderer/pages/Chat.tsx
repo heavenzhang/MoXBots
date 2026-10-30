@@ -731,6 +731,7 @@ function ChatContent({
     hasMoreBefore: _hasMoreBefore,
     loadOlderMessages,
     isLoading,
+    hasBackgroundWork,
     getQueryElapsedSeconds,
     isSessionLoading,
     hasSessionHistory,
@@ -6863,6 +6864,7 @@ function ChatContent({
                   layoutByMessageId={chatScrollModel.layoutByMessageId}
                   onLoadOlder={handleLoadOlderMessages}
                   isLoading={isLoading}
+                  hasBackgroundWork={hasBackgroundWork}
                   getQueryElapsedSeconds={getQueryElapsedSeconds}
                   sessionId={sessionId}
                   isActive={isActive}

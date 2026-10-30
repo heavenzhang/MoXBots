@@ -1065,3 +1065,10 @@ Human explicitly requests the latest package on the existing101 download page an
 Existing101 websitepointer is updated independently using a complete fresh staticbaseline, original three locks, backup/CAS/ownership rollback and normalTLS exactreadback. Main integration/sharedCI is handed off as exactsourceSHA to Root; branchpush does not imply main. Browser currently disabled by Work; deterministic DOM/publicHTTP checks do not imply actual screenshot acceptance. Evidence `dev-docs/website-latest-download-20261030.md`, task `.agent-sync/tasks/codex-website-latest-download-20261030-6979efe2.md`.
 
 Website0527 static publication is now normalTLS-readback accepted: exactsource21b11ecc16f0fa0fa9665fba382ba41a13d1769d, newtree1479be25f4ce, manifest0620e6abba22 and originalthree locks/backup/CAS.21publicchecks/14protectionhashes and unchangedcloud/Dex/Host process proof passed; immutabletag/package preserved. Browser remains disabled, so screenshots pending. SourceRootCI/main handoff is separate; no repeated deployment orfullGET required.
+
+
+## MB-SESSION-ACTIVITY-20261030 — 会话后台活跃与主任务监督
+
+来源会话 `01a18d83-14a0-7d11-81e5-32109b8c71b4`，任务 `.agent-sync/tasks/codex-session-activity-20261030.md`，证据 `dev-docs/session-activity-20261030/acceptance.md`。原 Query 非 ambient 后台整表通过既有 SSE/init 投影，父轮 idle 时会话仍进行中、主聊天显示等待结果；保留 root busy/Stop/接续语义。已知 INTENT_UNCONFIRMED 不再允许无主任务记录的派生执行，恢复更换 queue 也不能绕过；监督沿用原 task ledger、原生事件回接与主 Agent 验收，不新建调度器或恢复业务。231 DOM 与278隔离集成、类型/lint/分类及MoXBots前端构建通过；内置浏览器1280×720与390px深色容器的实际组件等待/核验/完成切换通过，原生发布另行验收。
+
+desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。开发分支不启动共享CI、不新建PR、不分配正式版本或改日常App；精确任务分支SHA及release-queue交原owner下一未冻结批次。无cloud/Host/mobile部署或外部接口变化。源码、main/CI、制品和真实验收各自待回执，不以原生SDK后续回合或合成界面代替整体验收。

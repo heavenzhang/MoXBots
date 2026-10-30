@@ -7217,12 +7217,20 @@ function parseSystemStatus(message: unknown): {
   };
 }
 
+function broadcastSessionActivity(): void {
+  broadcast('chat:status', {
+    sessionId,
+    sessionState,
+    hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
+  });
+}
+
 function setSessionState(nextState: SessionState): void {
   if (sessionState === nextState) {
     return;
   }
   sessionState = nextState;
-  broadcast('chat:status', { sessionState });
+  broadcastSessionActivity();
 }
 
 function ensureAssistantMessage(): MessageWire {
@@ -8213,8 +8221,9 @@ export function getAgentState(): {
   agentDir: string;
   sessionState: SessionState;
   hasInitialPrompt: boolean;
+  hasBackgroundWork: boolean;
 } {
-  return { agentDir, sessionState, hasInitialPrompt };
+  return { agentDir, sessionState, hasInitialPrompt, hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork() };
 }
 
 export async function getBuiltinBackgroundTaskDetail(toolUseId: string) {
@@ -13753,6 +13762,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         if (sdkMessage.subtype === 'background_tasks_changed') {
           const wasWorking = hasQueryBackgroundWork(activeQuery);
           replaceQueryBackgroundActivity(activeQuery, sdkMessage.tasks);
+          // Root-turn idle is independent of the exact Query's background work.
+          // Publish the authoritative level even when the root state is unchanged.
+          if (wasWorking !== hasQueryBackgroundWork(activeQuery)) broadcastSessionActivity();
           if (wasWorking && !hasQueryBackgroundWork(activeQuery)) {
             if (deferredRewindResult) retireRewoundQueryWhenQuiescent();
             else applyDeferredRestartIfNeeded();
@@ -15103,6 +15115,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         outputFile: '',
       });
     }
+    if (!wasPreWarming) broadcastSessionActivity();
     // sessionRegistered 已在 system_init handler 中设置，无需重复
 
     // Don't broadcast state changes from pre-warm sessions

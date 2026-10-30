@@ -1230,6 +1230,9 @@ export default function TabProvider({
   hasMoreBeforeRef.current = hasMoreBefore;
   const loadingOlderRef = useRef(false);
   const [sessionState, setSessionState] = useState<SessionState>('idle');
+  const [backgroundActivity, setBackgroundActivity] = useState<{ sessionId: string | null; active: boolean } | null>(null);
+  const hasBackgroundWork = backgroundActivity?.sessionId === currentSessionId
+    && backgroundActivity.active;
   const [sessionRuntime, setSessionRuntime] = useState<string | null>(null);
   const [sessionRuntimeSource, setSessionRuntimeSource] =
     useState<RuntimeSource | null>(null);
@@ -1344,7 +1347,7 @@ export default function TabProvider({
   const [pendingEnterPlanMode, setPendingEnterPlanMode] =
     useState<EnterPlanModeRequest | null>(null);
   const { getElapsedSeconds: getQueryElapsedSeconds, reset: resetQueryElapsedClock } = useQueryElapsedClock(
-    isLoading || classifySessionActivity(sessionState) === 'active',
+    isLoading || hasBackgroundWork || classifySessionActivity(sessionState) === 'active',
     Boolean(
       pendingPermission ||
         pendingAskUserQuestion ||
@@ -1460,10 +1463,13 @@ export default function TabProvider({
   // shared deterministic first-query title at the accepted-user boundary and
   // displays later backend title changes.
 
-  // Notify parent when generating state changes (for close confirmation)
+  // Shell activity covers the whole Session; root loading still belongs to the
+  // original turn owner so background work cannot fabricate a live root turn.
+  const sessionIsRunning = isLoading || hasBackgroundWork
+    || classifySessionActivity(sessionState) === 'active' || sessionState === 'stopping';
   useEffect(() => {
-    onGeneratingChangeRef.current?.(isLoading);
-  }, [isLoading]);
+    onGeneratingChangeRef.current?.(sessionIsRunning);
+  }, [sessionIsRunning]);
 
   // Refs for SSE handling
   const sseRef = useRef<SseConnection | null>(null);
@@ -2615,6 +2621,7 @@ export default function TabProvider({
             transcriptSaveStatus?: TranscriptSaveStatus;
             sessionId?: string | null;
             sessionState?: SessionState;
+            hasBackgroundWork?: boolean;
             liveStreamingMessage?: WireSessionMessage | null;
             queuedMessages?: Array<{
               id: string;
@@ -2700,6 +2707,8 @@ export default function TabProvider({
           // When backend reports 'idle', unconditionally reset frontend loading state.
           // This catches: (1) message-complete lost during connection issues,
           // (2) Tab joining a sidecar whose query already finished (no streaming ref set).
+          setBackgroundActivity({ sessionId: payloadSessionId ?? currentSessionIdRef.current,
+            active: initPayload?.hasBackgroundWork === true });
           if (initPayload?.sessionState) {
             setSessionState(initPayload.sessionState);
             if (initPayload.sessionState === 'idle') {
@@ -3028,7 +3037,12 @@ export default function TabProvider({
         }
 
         case 'chat:status': {
-          const payload = data as { sessionState: SessionState } | null;
+          const payload = data as { sessionId?: string; sessionState: SessionState; hasBackgroundWork?: boolean } | null;
+          if (payload?.sessionId && !shouldAcceptInteractiveEvent(payload.sessionId)) break;
+          if (payload && Object.hasOwn(payload, 'hasBackgroundWork')) {
+            setBackgroundActivity({ sessionId: payload.sessionId ?? currentSessionIdRef.current,
+              active: payload.hasBackgroundWork === true });
+          }
           if (payload?.sessionState) {
             const nextSessionState = payload.sessionState;
             const activity = classifySessionActivity(nextSessionState);
@@ -6254,10 +6268,13 @@ export default function TabProvider({
                 && sseRef.current?.getConnectionGeneration() === connection;
             try {
                 const state = await apiGetJson<{
-                    sessionId?: string; sessionState: SessionState; isBusy: boolean;
+                    sessionId?: string; sessionState: SessionState; isBusy: boolean; hasBackgroundWork?: boolean;
                     completionTerminal?: { status: 'complete' | 'stopped' | 'error' } | null;
                 }>('/api/session-state');
                 if (!isCurrent() || state.sessionId !== targetId) return;
+                if (Object.hasOwn(state, 'hasBackgroundWork')) {
+                    setBackgroundActivity({ sessionId: targetId, active: state.hasBackgroundWork === true });
+                }
                 setSessionState(state.sessionState);
                 isSessionActiveRef.current = state.isBusy;
                 setIsLoading(state.isBusy);
@@ -7327,6 +7344,7 @@ export default function TabProvider({
       firstItemIndex,
       hasMoreBefore,
       isLoading,
+      hasBackgroundWork,
       getQueryElapsedSeconds,
       isSessionLoading,
       hasSessionHistory,
@@ -7390,6 +7408,7 @@ export default function TabProvider({
       firstItemIndex,
       hasMoreBefore,
       isLoading,
+      hasBackgroundWork,
       isSessionLoading,
       hasSessionHistory,
       sessionRestoreError,

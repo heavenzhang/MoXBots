@@ -85,6 +85,8 @@ export interface TabState {
     firstItemIndex: number;        // Absolute index of the first visible chat row in Virtuoso
     hasMoreBefore: boolean;        // True if there are older messages available on disk
     isLoading: boolean;
+    /** Runtime-owned non-ambient work can outlive the current root turn. */
+    hasBackgroundWork: boolean;
     /** Live active-query time, excluding unresolved human interaction waits. */
     getQueryElapsedSeconds: () => number;
     /**
@@ -269,6 +271,7 @@ const defaultContextValue: TabContextValue = {
     sessionRestoreError: null,
     sessionRestoreMode: 'initial',
     sessionState: 'idle',
+    hasBackgroundWork: false,
     sessionRuntime: null,
     sessionRuntimeSource: null,
     sessionRuntimeSessionId: null,

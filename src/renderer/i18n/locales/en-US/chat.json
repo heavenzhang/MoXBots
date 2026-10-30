@@ -1257,6 +1257,7 @@
       "starting": "Starting AI... first launch may take a while.",
       "activity": {
         "waitingModel": "Waiting for the model…",
+        "waitingBackground": "Background work in progress; the main agent is waiting for results…",
         "answering": "Writing the response…",
         "reading": "Reading {{target}}",
         "updating": "Updating {{target}}",

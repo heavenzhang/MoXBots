@@ -1536,6 +1536,32 @@ describe('builtin V2 execution independent of product storage', () => {
     expect(lifecycle.hasQueryBackgroundTasks()).toBe(false);
   });
 
+  it('publishes background activity through idle root settlement, reconnect snapshots and native completion', async () => {
+    state.backgroundTask = true;
+    state.backgroundTaskGate = new Promise<void>(resolve => { releaseWrite = resolve; });
+    const workspace = join(state.home, 'workspace-background-activity');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let finish!: (outcome: TurnTerminalOutcome) => void;
+    const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+    await agent.enqueueUserMessage('question', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+    await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+    const { createBuiltinSessionEngine } = await import('../session-engine/builtin-adapter');
+    const engine = createBuiltinSessionEngine();
+    expect(agent.getAgentState()).toMatchObject({ sessionState: 'idle', hasBackgroundWork: true });
+    expect(engine.getStreamReplaySnapshot({ includeHistory: false }).initState)
+      .toMatchObject({ sessionState: 'idle', hasBackgroundWork: true });
+    expect(state.events.filter(([name]) => name === 'chat:status').at(-1)?.[1])
+      .toMatchObject({ sessionId: metadata.id, sessionState: 'idle', hasBackgroundWork: true });
+    releaseWrite!();
+    await vi.waitFor(() => expect(agent.getAgentState().hasBackgroundWork).toBe(false));
+    expect(state.events.filter(([name]) => name === 'chat:status').at(-1)?.[1])
+      .toMatchObject({ sessionId: metadata.id, sessionState: 'idle', hasBackgroundWork: false });
+  });
+
   it('projects replace-level background work through the builtin SessionEngine without treating ambient watchers as work', async () => {
     const frames = [
       { type: 'system', subtype: 'background_tasks_changed', tasks: [{ task_id: 'agent', task_type: 'local_agent', description: '' }] },

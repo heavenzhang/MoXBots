@@ -1,0 +1,37 @@
+{
+  "dom": {
+    "passed": 231,
+    "files": 3
+  },
+  "integration": {
+    "passed": 278,
+    "files": 4
+  },
+  "typecheck": "PASS",
+  "scopedLint": "PASS",
+  "testClassification": "PASS",
+  "moxbotRendererBuild": "PASS",
+  "isolatedComponentUiBuild": "PASS",
+  "browser": {
+    "driver": "CUA in-app browser",
+    "viewport": "1280x720",
+    "narrowContainerWidth": 390,
+    "appearance": [
+      "light",
+      "dark"
+    ],
+    "flows": [
+      "background-running",
+      "root-review",
+      "accepted-idle"
+    ],
+    "overflow": false,
+    "status": "PASS",
+    "realProvider": false,
+    "installedClient": false
+  },
+  "main": "pending-owner",
+  "sharedCI": "pending-owner",
+  "formalVersion": null,
+  "artifactDigest": null
+}

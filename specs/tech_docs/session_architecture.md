@@ -172,6 +172,10 @@ SDK background Agent/Bash 与父 turn 共用同一个 Query 和 Sidecar。自动
 
 后台执行活跃性由 exact Query 的 SDK `background_tasks_changed.tasks` 整表替换，排除 `ambient`；Query replacement 时清空。它通过 SessionEngine live snapshot 的 `hasBackgroundWork` 提供给调度。不能从任务卡片或 start/terminal edge registry 推断：前台任务也可能发 start，前台转后台未必重发 start，ambient 监听也不应阻塞 Goal。
 
+同一后台活跃事实通过 `chat:init` / `chat:status.hasBackgroundWork` 投影给 Renderer，后台整表变化及 Query 退出时刷新，不要求父轮的 `sessionState` 同时变化。父轮 idle、后台活跃时，TabProvider 对 App shell 仍报告进行中，主聊天显示主 Agent 等待后台结果；root `isLoading` 保持原轮次语义，不因此重新打开已完成消息或改变 Stop/continuation 准入。通知边缘、历史卡片和旧会话事件不能清除或伪造此活跃性。
+
+主任务监督继续归原 Session execution ledger：已登记子任务未结算不能完成主任务，原生结算事件唤醒原持久化接续，主 Agent 仍需核验子任务及最终产物。`INTENT_UNCONFIRMED` 不构成 legacy 执行许可：当前输入保持只读，不能写入或启动子 Agent；error recovery 更换 root queue 也不能绕过已知缺失的主任务计划。真正的历史非托管请求及独立 Task/Goal owner 保持原准入。
+
 后台 task 的稳定 `task_id` 不等于一次执行。SDK `run_id` 在恢复同一 task 时变化，按字符串顺序比较运行先后；缺失值只兼容旧事件，不能覆盖已知新 run。`builtin-session/lifecycle.ts` 在 exact Query 的既有 registry 内同时裁决 start/terminal 的 run、活跃状态与双 terminal channel 的富信息补齐；已完成记录留到 Query finalization，不能让旧 run 的迟到 start/terminal 复活任务、释放新 run 或阻止新 run 完成。Renderer SSE 和通知记录携带可选 `runId`，新 run 重置旧 terminal 投影；历史 hydration 不覆盖已知更晚 run，同一 run 的摘要补齐 upsert 原通知，不同 run 使用不同通知 ID。旧历史缺字段时仍可读取，不改写磁盘历史。
 
 MCP pre-warm 是 soft readiness observation，不是 AI turn 的 admission authority。未 connected、读取失败或观察超时不能拒绝业务 turn；真正的 MCP surface replacement 则是 Query-generation correctness fence，必须在 turn boundary 串行应用。
