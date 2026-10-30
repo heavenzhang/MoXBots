@@ -15,7 +15,7 @@
 - [x] 修复运行时快照、SSE 和会话 UI 活动汇总。
 - [x] 回归主轮结束/后台运行/后台结束、重连、旧会话和 ambient 边界。
 - [x] 类型、定向 lint、真实组件 UI 检查。
-- [ ] 提交并推送精确 SHA，登记原 owner 下一批次。
+- [x] 提交并推送产品提交 cbee2eed9fcc25fb78b24de256ca523bc7f16af9，核对远端并登记原 owner 下一批次；最终记录 HEAD 见外部回执。
 - [ ] 原 owner 协调 shared CI/main、签名制品、安装及真实路径验收。
 
 ## Acceptance criteria
@@ -39,4 +39,4 @@ desktop/macOS-arm64/updater 与 combined CI/main 唯一负责人沿用 01a12bc2-
 
 ## Next step
 
-提交并核验远端任务分支 SHA，登记原 desktop/combined CI/main owner 下一未冻结批次。原 owner 的主干/CI/制品/安装/真实路径回执尚待。
+本地 release-queue 已登记，owner 尚未确认接收。由原 desktop/combined CI/main owner 审阅精确远端分支、选下一未冻结批次，组织主干/CI/制品/安装/真实路径验收；本任务不越权触发。
