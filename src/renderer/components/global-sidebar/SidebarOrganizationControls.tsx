@@ -6,7 +6,6 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   ChevronDownIcon,
   ChevronRightIcon,
-  GripIcon,
   MoreIcon,
   FolderIcon,
   EditIcon,
@@ -74,7 +73,6 @@ export function SortableSidebarRow({
           aria-label={t('globalSidebar.dragItem', { name: label })}
           title={t('globalSidebar.dragHint')}
         >
-          <GripIcon className="h-3 w-3" />
         </button>
       )}
     </div>
@@ -152,7 +150,6 @@ export function SidebarSectionHeader({
         aria-label={t('globalSidebar.dragItem', { name: section.name })}
         className="flex h-8 w-4 shrink-0 cursor-grab touch-none items-center justify-center rounded text-[var(--ink-muted)] opacity-0 focus-visible:opacity-100 group-hover/section:opacity-100"
       >
-        <GripIcon className="h-3 w-3" />
       </button>
       <button
         type="button"
