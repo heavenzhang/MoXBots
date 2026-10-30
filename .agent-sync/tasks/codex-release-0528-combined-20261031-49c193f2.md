@@ -19,7 +19,7 @@ Desktop/macOS-arm64/updater and shared CI/main remain owned by 01a12bc2-907a-770
 
 ## Completed
 
-Root integration worktree initialized from fresh remote main d18137e87155994c4ade3d1889d04830821a8eda with task-init clean PASS. Sidebar original source6e518f1c locally merged; Root83 DOM tests, scoped ESLint and diff check pass. No PR/manualCI/formalbuild/install/publication yet.
+Root integration worktree initialized from fresh remote main d18137e87155994c4ade3d1889d04830821a8eda with task-init clean PASS. Sidebar original source6e518f1c locally merged; Root83 DOM tests, scoped ESLint and diff check pass. Replay-recovery locally integrated after independent source review; Root117focused tests/lint/diff passed after the reproduced cold typed-error alias fix. No PR/manualCI/formalbuild/install/publication yet.
 
 ## Verification
 

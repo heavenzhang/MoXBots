@@ -6830,7 +6830,8 @@ function ChatContent({
               <RecoveryActionReview
                 key={sessionId}
                 sessionId={sessionId}
-                disabled={isLoading || forkPending}
+                disabled={!continuationReady || isLoading || forkPending}
+                inspectRevision={`${messages.length}:${streamingMessage?.id ?? ''}`}
                 inspect={() => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH)}
                 reconcile={request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request)}
               />

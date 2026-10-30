@@ -16,6 +16,28 @@ function tool(id: string, name = 'Read', patch: Record<string, unknown> = {}): C
 const details = () => screen.getByRole('button', { name: /展开结果与时间|收起结果与时间/ });
 
 describe('BlockGroup stage summaries and folding', () => {
+  it('renders folded ProcessRow failure without a CheckIcon and keeps success check-only for success', () => {
+    const failed = tool('hook-denied', 'Bash', {
+      result: 'PreToolUse hook denied', isError: true, isLoading: false,
+      resultMeta: { status: 'failed' },
+    });
+    const succeeded = tool('successful-command', 'Bash', {
+      result: 'ok', isError: false, isLoading: false,
+      resultMeta: { status: 'completed', exitCode: 0 },
+    });
+    const { container } = render(<>
+      <BlockGroup blocks={[failed]} />
+      <BlockGroup blocks={[succeeded]} />
+    </>);
+    const failedRow = container.querySelector('[data-process-row="failed"]');
+    const succeededRow = container.querySelector('[data-process-row="succeeded"]');
+    expect(failedRow).toBeInTheDocument();
+    expect(failedRow?.querySelector('.app-icon-check')).toBeNull();
+    expect(failedRow?.querySelector('.app-icon-x-circle')).toBeInTheDocument();
+    expect(succeededRow).toBeInTheDocument();
+    expect(succeededRow?.querySelector('.app-icon-check')).toBeInTheDocument();
+  });
+
   it('does not reformat unchanged phases when a stream appends a different phase', () => {
     const start = 1_800_000_000_000;
     const blocks = Array.from({ length: 120 }, (_, i): ContentBlock => i % 2

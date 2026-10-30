@@ -1069,3 +1069,9 @@ Human explicitly requests the latest package on the existing101 download page an
 Existing101 websitepointer is updated independently using a complete fresh staticbaseline, original three locks, backup/CAS/ownership rollback and normalTLS exactreadback. Main integration/sharedCI is handed off as exactsourceSHA to Root; branchpush does not imply main. Browser currently disabled by Work; deterministic DOM/publicHTTP checks do not imply actual screenshot acceptance. Evidence `dev-docs/website-latest-download-20261030.md`, task `.agent-sync/tasks/codex-website-latest-download-20261030-6979efe2.md`.
 
 Website0527 static publication is now normalTLS-readback accepted: exactsource21b11ecc16f0fa0fa9665fba382ba41a13d1769d, newtree1479be25f4ce, manifest0620e6abba22 and originalthree locks/backup/CAS.21publicchecks/14protectionhashes and unchangedcloud/Dex/Host process proof passed; immutabletag/package preserved. Browser remains disabled, so screenshots pending. SourceRootCI/main handoff is separate; no repeated deployment orfullGET required.
+
+## MB-REPLAY-RECOVERY-20261030 — 原会话误拦截与恢复闭环
+
+用户要求查清本次拒绝并修复误拦截、恢复入口及错误勾选。开发分支 `codex/replay-recovery-20261030` 基于远端 `f072eff9`，任务 `.agent-sync/tasks/codex-replay-recovery-20261030-a901e1a9.md`，证据 `dev-docs/replay-recovery-20261030/`。范围为原 PreToolUse 拒绝持久化、结构化 native 历史核对、产品错误状态及原会话恢复；不以新会话或手工清账本替代恢复。
+
+唯一 desktop/macOS/updater 与 sharedCI/main owner继续 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，本开发线程只提交精确SHA与验证后交下一未冻结批；不自行触发共享CI、正式构建、版本分配或安装。原数据/历史保全与原会话真实复验独立于模拟测试、源码主干和制品发布跟踪。

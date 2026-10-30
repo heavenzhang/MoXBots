@@ -1532,17 +1532,27 @@
     "title": "待核对操作",
     "close": "收起",
     "changed": "会话正在运行、证据已变化或当前版本不支持核对。请在会话空闲后重新查询。",
-    "boundary": "只有原生记录能证明仅查询任务的操作，才可标记“已确认仅查询”。其余操作继续保留保护；核对不会重新执行或自动继续任务。",
+    "boundary": "只有原生证据能证明工具调用被拒绝且未执行，或操作仅查询任务，才可核销对应记录。其余操作继续保留保护；恢复不会重发旧命令或自动继续任务。",
     "empty": "当前没有待核对操作。这不代表业务任务已完成。",
     "taskQuery": "任务查询 · {{tool}}",
+    "hookDenied": "原生工具已拒绝 · {{tool}}",
     "unverified": "结果仍待确认",
     "technical": "查看操作指纹",
-    "resolve": "确认仅查询并保存",
-    "resolved": "已保存 {{count}} 项查询核对记录。",
+    "recoverSession": "恢复此会话",
+    "resolved": "已保存 {{count}} 条核对记录。",
+    "pendingCount": "{{count}} 项记录待处理；未确认的操作仍受保护。",
+    "sessionReady": "待核对记录已处理；发送下一条消息即可在同一会话继续，旧命令不会重发。",
     "reasons": {
       "builtin_task_query": "原生工具及参数指纹匹配，可确认该操作仅查询任务；不表示查询成功。",
+      "native_hook_denied": "原生执行前 hook 明确拒绝了此调用，可确认该调用未执行；不表示业务任务已完成。",
       "external_receipt_required": "需要原执行或业务回执证明结果，当前入口无法结清。",
       "native_evidence_missing": "未找到足够的原生证据，继续保留保护。"
+    },
+    "nextSteps": {
+      "builtin_task_query": "恢复时只登记查询属性，不会重跑原查询或自动继续任务。",
+      "native_hook_denied": "恢复会话会保存原生拒绝证据，再显示可在同一会话继续；不会重发旧命令。",
+      "external_receipt_required": "查阅原执行端或业务回执后再人工对账；不要重复提交原操作。",
+      "native_evidence_missing": "保持保护，等待原生证据补齐后重新核对；不要新建会话或清除标记。"
     }
   }
 }
