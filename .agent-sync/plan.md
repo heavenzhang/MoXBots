@@ -1065,3 +1065,10 @@ Human explicitly requests the latest package on the existing101 download page an
 Existing101 websitepointer is updated independently using a complete fresh staticbaseline, original three locks, backup/CAS/ownership rollback and normalTLS exactreadback. Main integration/sharedCI is handed off as exactsourceSHA to Root; branchpush does not imply main. Browser currently disabled by Work; deterministic DOM/publicHTTP checks do not imply actual screenshot acceptance. Evidence `dev-docs/website-latest-download-20261030.md`, task `.agent-sync/tasks/codex-website-latest-download-20261030-6979efe2.md`.
 
 Website0527 static publication is now normalTLS-readback accepted: exactsource21b11ecc16f0fa0fa9665fba382ba41a13d1769d, newtree1479be25f4ce, manifest0620e6abba22 and originalthree locks/backup/CAS.21publicchecks/14protectionhashes and unchangedcloud/Dex/Host process proof passed; immutabletag/package preserved. Browser remains disabled, so screenshots pending. SourceRootCI/main handoff is separate; no repeated deployment orfullGET required.
+
+
+## MB-REPLAY-SCOPE-20261031 — 按操作防重放与结果核查
+
+用户要求取消会话级 Bash 一刀切封锁，保留具体操作防重复，测试后交既有桌面发布会话。仅 desktop builtin 恢复路径；desktop/macOS-arm64/updater 及 shared CI/main 仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4`（MoxBots桌面端统一打包负责人）负责。开发分支 `codex/replay-scope-20261031`，基线 `d18137e87155994c4ade3d1889d04830821a8eda`，不新增部署owner、版本、共享CI或安装操作。任务 `.agent-sync/tasks/codex-replay-scope-20261031-21234298.md`，证据 `dev-docs/replay-scope-20261031/acceptance.md`。
+
+未知/已成功操作按完整工具输入防重；新 SSH 日志核查和独立步骤按原权限、落盘和native回执执行。缺失结果可识别到具体调用时允许完整历史的新推理，取消/旧请求/坏账本/无法识别历史/存储失败/自动重试围栏保留。不会核销旧业务未知或把启动器0当成业务成功。与待交 `MB-REPLAY-RECOVERY-20261030` 的 `6cecca460` 同改 context-recovery 的 analyze 参数及 protectInference 区域，owner 合并时须保留其 preToolDenials 参数并把本次 allowUnpaired 放在末尾；禁止整文件覆盖。后续精确候选需组合回归、正常 CI/main、签名包及真实 SSH/原会话路径验收。

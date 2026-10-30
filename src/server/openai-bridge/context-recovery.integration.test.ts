@@ -1,7 +1,7 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createBridgeHandler } from './handler';
-import { ContextRecoveryController } from './context-recovery';
+import { ContextRecoveryController, recoveryActionHash } from './context-recovery';
 import { ModelFailoverController, type BridgeModelFailover } from './model-failover';
 import { SessionModelRecovery } from '../builtin-session/model-recovery';
 import { classifyContextTurnFailure } from '../utils/context-budget';
@@ -89,7 +89,7 @@ describe('context recovery over the existing bridge handler', () => {
     expect(result).toContain('message_stop');
     expect(upstream.requests).toHaveLength(1);
   });
-  it('keeps a restored uncertain Session available for native reads without failover retries or business actions', async () => {
+  it('keeps a restored uncertain Session available for verification and independent actions without failover retries', async () => {
     const upstream = await fixture((_body, res) => {
       if (upstream.requests.length === 3) return json(res, { error: { message: 'fixture unavailable' } }, 503);
       res.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -118,10 +118,10 @@ describe('context recovery over the existing bridge handler', () => {
       { role: 'assistant', content: [{ type: 'tool_use', id: 'read-status', name: 'Read', input: { file_path: '/fixture/result.json' } }] },
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-status', content: 'fixture status evidence' }] });
     expect(await (await handler(request(followup))).text()).toContain('message_stop');
-    for (const [name, input] of [['increment_counter', { delta: 1 }], ['write_record', { id: 'other' }],
-      ['Bash', { command: 'echo fixture' }]] as const) {
-      expect(context.beforeTool(name, input)).toContain('read-only');
-    }
+    expect(context.beforeTool('increment_counter', { delta: 1 })).toContain('already completed');
+    expect(context.beforeTool('write_record', { id: 'uncertain' })).toContain('uncertain outcome');
+    expect(context.beforeTool('write_record', { id: 'other' })).toBeUndefined();
+    expect(context.beforeTool('Bash', { command: "ssh fixture-host 'tail -n 80 /var/log/build.log'" })).toBeUndefined();
     const unavailable = structuredClone(followup);
     unavailable.messages.push({ role: 'user', content: 'Report only the evidence already read.' });
     const failed = await handler(request(unavailable));
@@ -130,7 +130,7 @@ describe('context recovery over the existing bridge handler', () => {
     expect(upstream.requests).toHaveLength(3);
     expect(upstream.requests.slice(0, 2).map(body => body.messages)).toEqual([body.messages, followup.messages]);
     expect(switched).not.toHaveBeenCalled();
-    expect(ledger).toEqual(preserved);
+    expect(ledger).toEqual({ ...preserved as object, denied: [recoveryActionHash('increment_counter', { delta: 1 })] });
   });
 
   it('hands a partial stream to the original owner without reopening either guard or repeating completed actions', async () => {
