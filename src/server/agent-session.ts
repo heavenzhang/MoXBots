@@ -22,6 +22,7 @@ import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session
 import type { RecoveryActionRequest, RecoveryActionSnapshot } from '../shared/recoveryReconciliation';
 import { inspectRecoveryActions, reconcileRecoveryAction, type RecoveryReviewDependencies } from './builtin-session/recovery-reconciliation';
 import { readNativeRecoveryRecords } from './builtin-session/native-denial-review';
+import { reconcileKnownExecutionFailures } from './builtin-session/execution-failure-reconciliation';
 import { repairReviewedToolErrors } from './builtin-session/recovery-tool-errors';
 import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
 import { SessionModelRecovery, settledStreamFailureMessage } from './builtin-session/model-recovery';
@@ -10742,6 +10743,9 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
     },
   };
 }
+export function reconcileBuiltinExecutionEvidence(): Promise<void> {
+  return runSerializedSessionMutation(async () => reconcileKnownExecutionFailures(await recoveryReviewDependencies()));
+}
 export function inspectBuiltinRecoveryActions(): Promise<RecoveryActionSnapshot> {
   return runSerializedSessionMutation(async () => inspectRecoveryActions(await recoveryReviewDependencies()));
 }
@@ -13056,6 +13060,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                       !lifecycleState.abortRequested &&
                       sessionId === queryProductSessionId,
                   });
+                const settlement = await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id,
+                  { interrupted: failed.is_interrupt });
                 await observeSessionExecutionTool(queryProductSessionId, {
                   id: failed.tool_use_id,
                   queueId: getBuiltinCurrentTurnQueueId() ?? undefined,
@@ -13064,10 +13070,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   output: failed.error,
                   root: !failed.agent_id,
                   stage: "failure",
+                  ...(settlement === 'bash-exit' ? { settledFailure: 'native-bash-exit' as const } : {}),
                   isCurrent: () => isCurrentQueryAuthority(activeQueryAuthority) && getQueryGeneration() === inputTrace.generation && !lifecycleState.abortRequested && sessionId === queryProductSessionId,
                 });
-                await queryContextRecovery?.commitToolResult(failed.tool_name, failed.tool_input, failed.error, true, failed.tool_use_id,
-                  { interrupted: failed.is_interrupt });
           return {};
         },
             ],

@@ -466,6 +466,19 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     };
   }
 
+  /** Returned native Bash failures, never permission to replay the command. */
+  inspectSettledBashFailures() {
+    if (this.ledgerBlocked) return [];
+    const attempts = this.operations.serialize().entries;
+    return [...this.nativeErrors.values()].filter(proof => proof.reason === 'bash-exited'
+      && attempts.filter(attempt => attempt.sessionId === proof.sessionId && attempt.sdkSessionId === proof.sdkSessionId
+        && attempt.queryGeneration === proof.queryGeneration && attempt.scope === proof.scope
+        && attempt.toolUseId === proof.toolUseId && attempt.toolName === proof.toolName
+        && attempt.actionHash === proof.actionHash && attempt.status === 'returned'
+        && attempt.outcome === 'bash-exit' && attempt.resultDigest === proof.resultDigest).length === 1)
+      .map(proof => ({ ...proof }));
+  }
+
   /** Diagnostic only: never turns an ordinary error into a recovery candidate. */
   settledInterruptionFailure(): string | undefined {
     const state = this.current();
@@ -940,7 +953,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   async commitToolResult(name: string, input: unknown, result: unknown, failed = false, toolUseId?: string,
-    nativeFailure?: { interrupted: boolean | undefined }): Promise<void> {
+    nativeFailure?: { interrupted: boolean | undefined }): Promise<'bash-exit' | undefined> {
     const key = recoveryActionHash(name, input);
     const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
     const owner = this.nativeEvidenceOwner;
@@ -986,6 +999,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       admission.pending = false;
       this.nativeRevision++;
       this.traceNativeAction('commit_complete', toolUseId, key, failed);
+      return settledExit ? 'bash-exit' : undefined;
     } catch (error) {
       this.traceNativeAction('commit_failed', toolUseId, key, failed);
       throw error;

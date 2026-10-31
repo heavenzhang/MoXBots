@@ -52,6 +52,8 @@ const hash = (value: unknown) =>
   createHash("sha256")
     .update(typeof value === "string" ? value : (JSON.stringify(value) ?? ""))
     .digest("hex");
+export const executionToolObservationDigest = (name: string, input: unknown, output?: unknown) =>
+  hash({ name, input, output });
 const currentLedger = (id: string) => getSessionMetadata(id)?.taskOrchestration;
 const isActive = (phase: string) =>
   !["completed", "incomplete", "paused"].includes(phase);
@@ -329,6 +331,11 @@ export async function prepareSessionExecution(
     (input) => input.requestId === request.clientRequestId,
   );
   if (proof?.bodyDigest !== hash(request.text)) return noChange;
+  // Only native receipt reconciliation may repair known failed execution facts.
+  // Unavailable/currently busy history retains every existing pending fence.
+  if (currentLedger(request.sessionId)?.executionEvidence?.some(fact => fact.pending && fact.name === 'Bash')) {
+    await engine.reconcileExecutionEvidence?.().catch(() => {});
+  }
   const queueId = EXECUTION_QUEUE_PREFIX + randomUUID();
   const controller = new AbortController();
   const admission = { controller, committed: false };
@@ -756,6 +763,7 @@ export async function observeSessionExecutionTool(
     output?: unknown;
     root: boolean;
     stage: "start" | "success" | "failure";
+    settledFailure?: "native-bash-exit";
     verificationEpoch?: string;
     isCurrent: () => boolean;
   },
@@ -817,11 +825,7 @@ export async function observeSessionExecutionTool(
         id: tool.id,
         queueId: tool.queueId!,
         name: tool.name,
-        digest: hash({
-          name: tool.name,
-          input: tool.input,
-          output: tool.output,
-        }),
+        digest: executionToolObservationDigest(tool.name, tool.input, tool.output),
         successful: tool.stage === "success",
         startOrder: old?.startOrder ?? order,
         verificationEpochAtStart,
@@ -833,7 +837,9 @@ export async function observeSessionExecutionTool(
         observationOrder: order,
         mutating,
         pending:
-          tool.stage === "start" || (mutating && tool.stage === "failure"),
+          tool.stage === "start" || (mutating && tool.stage === "failure" && !(tool.name === "Bash" && tool.settledFailure === "native-bash-exit")),
+        ...(tool.stage === "failure" && tool.name === "Bash" && tool.settledFailure === "native-bash-exit"
+          ? { settledFailure: tool.settledFailure } : {}),
       };
       ledger.executionEvidence = [
         ...facts.filter((fact) => fact.id !== tool.id),
