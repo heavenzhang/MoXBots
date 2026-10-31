@@ -243,7 +243,10 @@ function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'm
       ...(persisted?.lastWriteId && persisted.text.trim() === request.text ? { submittedDraft: { revision: persisted.revision, lastWriteId: persisted.lastWriteId } } : {}) });
     if (scenario === 'delayed-disconnect') return new Promise((_, reject) => setTimeout(() => reject(new Error('MOBILE_REMOTE_UNAVAILABLE')), 3500));
     if (scenario === 'disconnect-receipt') throw new Error('MOBILE_REMOTE_UNAVAILABLE');
-    return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId, status: 'processing', code: null };
+    const receipt = { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId, status: 'processing', code: null };
+    // Keep a visible QA window for editing the original draft before a new session materializes.
+    if (scenario === 'processing-receipt') return new Promise((resolve) => setTimeout(() => resolve(receipt), 1800));
+    return receipt;
   }
   if (request.kind === 'mobile.start') sessions = [{ sessionId, title: (request.text || '附件会话').slice(0, 48), updatedAt: now, preview: request.text || '已添加附件', runtime: 'codex' }, ...sessions].slice(0, 30);
   return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId, status: 'accepted', code: null };

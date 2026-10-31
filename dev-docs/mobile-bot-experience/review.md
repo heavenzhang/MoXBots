@@ -105,3 +105,29 @@ No remaining observed defect in these executed fixture journeys. The initially o
 Browser returned to primary: reviewer temporary tab closed, viewport override reset. Reviewer changed only this review file and own screenshot evidence. No product-source edits, CI, Git mutations, release or production activity.
 
 Review execution record: source criteria prepared while implementation ran; meaningful concerns covered late draft receipts, exact Bot New scope, immutable history/TTL/source errors, approval single-flight and new-session rejected draft. Source concerns were reviewed with the owning implementers; one final rendered behavioral finding led to one repair/retest round. Requested `gpt-6.1-sol/high`; actual runtime model/effort, token usage and cost are unknown. No external model or additional reviewer agent was called. For similar work, include a first-message processing→rejected case before the first representative-page freeze to catch draft-owner transitions earlier.
+
+## Persistence follow-up review — copy before source clear
+
+Context: release owner correctly found that commit `eed04a7b0ed912cae473988f95ddb85e7528562f` edited the destination and cleared the original token before destination debounce persistence. Earlier fixture UI PASS did not establish disk durability. This section supersedes any implication that the earlier UI check proved this persistence property.
+
+Independent source review: current working-tree `DraftPersistence.persistTransferredDraft` (`draftPersistence.ts:109-119`) validates distinct keys, same account generation, stable Bot identity/agent, nonempty copied content; it awaits exact destination revision/text persistence before clearing the source token. Existing `clearSubmitted` preserves a later source edit. Both `openStartedSession` and rejected-receipt restoration use this new entry point; failure reports that the original draft has not been cleared. No new source defect found in the reviewed diff.
+
+Reviewed source SHA-256:
+
+- `draftPersistence.ts`: `dc3aaa7c8e38082959689f67facd3af4ff9f4077cc21fe5bd36d4bdbe6316f7a`
+- `app/index.tsx`: `23c6c2e186b53ae2080ff7743dbf77ea658c47c84bb7477582c05dfdfe139546`
+- `tests/draftTransfer.test.ts`: `078dceedfcabebfef514870ae250e30d2f3126e261a2ff79ee4809bd76b7af95`
+
+Independent executed checks:
+
+1. `node --experimental-strip-types --test tests/draftTransfer.test.ts`: **7/7 PASS**, including destination disk/CAS failure, destination edited during save, later source edit/navigation, wrong Bot, missing copied text and stale account. Log: `evidence/review-draft-transfer-tests.txt`.
+2. Added independent `evidence/review-draft-transfer-process.mjs` using the **new API and current index call order**, rather than rerunning the old script's obsolete edit/clear pair. Parent starts a separate child process per interruption point. Child exits at target-write start or source-clear start; parent has never held child memory/timers and restores both locations through a fresh DraftPersistence from JSON files with disk CAS. **3/3 PASS**:
+   - exit41 before destination disk write: original contains full text, destination empty;
+   - exit42 after destination persistence but before source clear: original and destination both contain full text;
+   - normal completion: original empty, destination contains original plus newer destination edit.
+   Log: `evidence/review-draft-transfer-process.txt`. Generated synthetic disk receipts are in the log's review-owned evidence subdirectory. These checks prove process-interruption behavior of the JavaScript owner with the test disk adapter; they do not claim native-device/power-loss acceptance.
+3. `git diff --check`: PASS, read-only validation.
+
+Latest UI retest status: **UNVERIFIED by independent reviewer** in this follow-up. CUA `createBrowserTab('iab', ...)` returned `Browser is not available: iab`; current reviewer browser inventory exposes only real Chrome/Brave and a locked-native-app error. Reviewer did not use those browsers, did not request credentials, and did not touch the parent's tab16. Parent informed to execute rejection restoration/new-edit transfer against restarted service82479, or provide an accessible independent IAB surface. Prior rendered UI checks remain evidence for their recorded older behavior revision only.
+
+Follow-up verdict: **PASS source and independently executed persistence regressions; no remaining observed persistence blocker.** Latest rendered checks remain with primary pending/recorded separately. No product-source edits, Git mutations, CI or release by reviewer.

@@ -105,6 +105,20 @@ export class DraftPersistence {
       && record.editRevision === submitted.editRevision && record.text === submitted.text && !record.dirty && !record.writing;
   }
 
+  /** Copy before clearing: an interrupted/failed destination save must leave the source recoverable. */
+  async persistTransferredDraft(source: SubmittedDraft, destination: SubmittedDraft): Promise<boolean> {
+    const original = this.records.get(source.key);
+    const copied = this.records.get(destination.key);
+    if (!original || !copied || source.key === destination.key
+      || source.accountGeneration !== this.accountGeneration || destination.accountGeneration !== this.accountGeneration
+      || original.scope.identityKey !== copied.scope.identityKey || original.scope.agentId !== copied.scope.agentId
+      || !source.text.trim() || !destination.text.includes(source.text.trim())) return false;
+    if (!await this.persistSubmitted(destination)) return false;
+    // A newer source edit is independent and clearSubmitted deliberately preserves it.
+    this.clearSubmitted(source);
+    return true;
+  }
+
   /** Restore the exact pending edit without taking focus from another conversation. */
   async capturePending(scope: DraftScope, sessionId: string | null, submittedText: string, binding?: { revision: number; lastWriteId: string }): Promise<SubmittedDraft | null> {
     if (!binding) return null; // Legacy journal text cannot prove which edit was submitted.

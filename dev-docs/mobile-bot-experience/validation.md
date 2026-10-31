@@ -15,7 +15,7 @@ The reviewed mobile V8 behavior is implemented in the real Expo58 app. Main PR21
 | Layer | Result | Evidence |
 |---|---|---|
 | Mobile typecheck / Expo lint | PASS, no warnings | npm --prefix mobile/app run typecheck / lint |
-| Mobile policy regression | 109 PASS, 0 fail/skip | npm --prefix mobile/app run test:policy; includes rejection restore scope/append/overflow and navigation-safe approval flight |
+| Mobile policy regression | 116 PASS, 0 fail/skip | npm --prefix mobile/app run test:policy; includes rejection restore scope/append/overflow and navigation-safe approval flight |
 | Root TypeScript / test classification | PASS; 473 classified server tests | node node_modules/typescript/bin/tsc --noEmit; scripts/check-test-classification.mjs |
 | Original artifact source resolver | 13 PASS | vitest --project integration assets.integration.test.ts; deleted source, subsequent files, hidden session, ownership and dangling symlink boundaries |
 | Immutable AssetStore | 14 PASS | cargo test --manifest-path mobile/asset-store/Cargo.toml --locked --lib; real old/new bytes after deletion, seven-day cleanup, quota and cross-scope |
@@ -28,6 +28,12 @@ The reviewed mobile V8 behavior is implemented in the real Expo58 app. Main PR21
 ## Review repair
 
 Independent review identified that first-message processing could materialize a session while a later rejection left the source draft under the null-session key. The definitive rejected receipt now restores text only to its matching original/materialized conversation after draft restoration; preserves a newer edit; refuses overflow; does not copy a processing/unknown message into the editable composer. The reviewer retested original text + later edit, processing→accepted, approval and disconnect recovery.
+
+## Owner review: durable draft transfer
+
+The mobile release owner reproduced a second defect in initial pushed eed04a7b: both new-session carry and definitive-rejection restoration edited the destination in memory, then cleared the original durable draft before the destination debounce completed. A process interruption could leave both stored drafts empty. That commit was held from main. Both call sites now use `persistTransferredDraft`, which confirms the exact destination edit through existing CAS persistence before clearing the exact original ticket. Failed/unknown writes, conflicts, changed destination edits, wrong Bot/account or stale tickets never authorize source deletion; a newer original edit remains independent.
+
+Seven additional disk-backed regression cases cover write ordering and restart, interruption before destination save, disk error, CAS conflict, editing destination during save, navigating back and editing source, and account/Bot fences. All 116 policy tests, mobile typecheck, lint and diff check pass. Independent source review passed, including an independently authored 3/3 child-process exit test using real temporary disk CAS records (before destination write, after destination write/before source clear, normal completion). Primary fixture UI repeated rejection restoration at 390px and processing-to-accepted/new-draft retention at 320px with no console errors; see primary-durable-*.png. Input remains locked while the original submit RPC is in flight, as on main; later edits are possible after session materialization. The QA processing scenario now exposes a 1.8-second submit window to observe that state. Independent UI replay for this correction was unavailable because that worker had no IAB; primary performed the final page checks. No native crash/power-loss or real account/device acceptance is claimed. Release-owner recheck remains required before main intake resumes.
 
 ## Compatibility and release boundary
 

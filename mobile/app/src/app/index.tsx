@@ -910,8 +910,13 @@ function AppBody() {
     await draftReadyRef.current;
     if (!carry || newOwner.sessionId !== row.sessionId || !viewStillOwned(newOwner, ownerRef.current) || targetRef.current?.identityKey !== selected.identityKey) return;
     const next = appendArtifactRevisionDraft(draftTextRef.current, carry.text);
-    if (next !== null) { saveDraft(next); persistence?.clearSubmitted(carry); }
-    else say('发送期间编辑的内容仍保留在此 Bot 的新会话草稿中。', 'error');
+    let copied = false;
+    if (next !== null) {
+      saveDraft(next);
+      const destination = persistence?.capture(newOwner.epoch);
+      copied = !!destination && !!await persistence?.persistTransferredDraft(carry, destination);
+    }
+    if (!copied && viewStillOwned(newOwner, ownerRef.current)) say('发送期间编辑的内容仍保留在此 Bot 的新会话草稿中。', 'error');
   };
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
@@ -1338,17 +1343,23 @@ function AppBody() {
       }
       if (!viewStillOwned(queryOwner, ownerRef.current)) return;
       let rejectedOverflow = false;
+      let rejectedTransferPending = false;
       if (status === 'rejected') {
         await draftReadyRef.current;
         if (!currentAccount() || !viewStillOwned(queryOwner, ownerRef.current)) return;
         const restored = rejectedDraftForOwner(queryOwner,item,sessionId,draftTextRef.current);
         if (restored.kind === 'restore') {
           saveDraft(restored.text);
-          if (rejectedTicket && rejectedTicket.key !== activeDraftKeyRef.current) draftPersistenceRef.current?.clearSubmitted(rejectedTicket);
+          if (rejectedTicket && rejectedTicket.key !== activeDraftKeyRef.current) {
+            const persistence = draftPersistenceRef.current;
+            const destination = persistence?.capture(queryOwner.epoch);
+            rejectedTransferPending = !destination || !await persistence?.persistTransferredDraft(rejectedTicket, destination);
+          }
         }
         rejectedOverflow = restored.kind === 'overflow';
       }
-      if (!quiet || status === 'rejected') say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : status === 'rejected' ? rejectedOverflow ? '消息未被接收。当前草稿已满；原文保留在原 Bot 的草稿中。' : '消息未被接收，原文已保留，可检查后重新发送。' : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' || status === 'rejected' ? 'error' : 'neutral');
+      if (!currentAccount() || !viewStillOwned(queryOwner, ownerRef.current)) return;
+      if (!quiet || status === 'rejected') say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : status === 'rejected' ? rejectedOverflow ? '消息未被接收。当前草稿已满；原文保留在原 Bot 的草稿中。' : rejectedTransferPending ? '消息未被接收。当前草稿尚未确认保存，原草稿未清除。' : '消息未被接收，原文已保留，可检查后重新发送。' : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' || status === 'rejected' ? 'error' : 'neutral');
       else if (status === 'accepted') setNotice(null);
       const selected = targetRef.current;
       if (selected?.online && queryOwner.screen === 'chat' && queryOwner.targetId === item.targetId && queryOwner.agentId === item.agentId
