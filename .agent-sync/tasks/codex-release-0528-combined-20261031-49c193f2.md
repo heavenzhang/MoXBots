@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=553b521976f3034dc3d622e4caaffe201be3576bb9c43d1884261ca1c9e24c4e -->
+<!-- git-project-sync-task:source-digest=5bd008a6fa02b9728502232f74389c087be626ae1ed42831c5e025050b8b13e0 -->
 <!-- git-project-sync-task:id=4e7ba573-c4e2-475f-81a1-6ccbc9bb2e52 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/release-0528-combined-20261031 -->
@@ -24,6 +24,8 @@ Desktop/macOS-arm64/updater and shared CI/main remain owned by 01a12bc2-907a-770
 Root integration worktree initialized from fresh remote main d18137e87155994c4ade3d1889d04830821a8eda with task-init clean PASS. Sidebar original source6e518f1c locally merged; Root83 DOM tests, scoped ESLint and diff check pass. Replay-recovery locally integrated after independent source review; Root117focused tests/lint/diff passed after the reproduced cold typed-error alias fix. Activity locally integrated with340 focused unit/DOM checks after exact Query/native/background/source review and combined review-button guard wiring. Scope607unit/67integration plus joint denial/unknown cold regression PASS. Upstream included after full source/privacy review;412unit/DOM,279firstextension integration+9Store contract checks PASS; actualSDK/nativeBash isolated loopback PASS (unknown launch0/verified package1). Fulltype/scopedlint/classification/diff and versioncontract PASS. Original4 obsolete blanket-contract failures and version-script preparation corrections retained in private controls. No PR/manualCI/formalbuild/install/publication yet.
 
 ## Verification
+
+- Source digest: `5bd008a6fa02b9728502232f74389c087be626ae1ed42831c5e025050b8b13e0`; R2 primary actual loopback RED1fail6pass then12proxy/Anthropic tests PASS; full type/scopedlint/classification/diff PASS. R1 original CI41169672723 all9success+iOSskip terminal including actual ARM before this normalFF update; no cancellation/rerun/manualdispatch. Original recovery/sidebar/activity/SDK proof retained; new exact R2 CI/native/release pending.
 
 - Source digest: `553b521976f3034dc3d622e4caaffe201be3576bb9c43d1884261ca1c9e24c4e`; Root source review five exact ancestors;607unit+67integration+412unitDOM+279integration and9Store contract checks; actual SDK/native local loopback unknown launch0 next1; full type/scopedlint/classification/diff+3version contracts PASS. Original first4 Store contract failures retained and corrected with negative unknown checks. Signed native/production pending.
 
