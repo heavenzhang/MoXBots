@@ -82,9 +82,31 @@ export class ResponsesStreamTranslator {
       case 'response.output_item.done':
         if (event.item.type === 'function_call') this.materializeFunctionCall(event.output_index, event.item, events);
         break;
+      case 'response.reasoning_summary_part.added':
+      case 'response.reasoning_summary_part.done':
+        if (!Number.isSafeInteger(event.output_index) || event.output_index < 0
+          || !Number.isSafeInteger(event.summary_index) || event.summary_index < 0
+          || typeof event.item_id !== 'string' || !event.item_id
+          || event.part?.type !== 'summary_text' || typeof event.part.text !== 'string') {
+          this.finishError('Malformed upstream reasoning summary part', events);
+        }
+        break;
+      case 'response.reasoning_text.delta':
+        if (!Number.isSafeInteger(event.output_index) || event.output_index < 0
+          || !Number.isSafeInteger(event.content_index) || event.content_index < 0 || typeof event.delta !== 'string') {
+          this.finishError('Malformed upstream reasoning text delta', events);
+        } else this.handleReasoningDelta(event.delta, events);
+        break;
       case 'response.reasoning_summary_text.delta':
         this.handleReasoningDelta(event.delta, events);
         break;
+      case 'response.reasoning_text.done':
+        if (!Number.isSafeInteger(event.output_index) || event.output_index < 0
+          || !Number.isSafeInteger(event.content_index) || event.content_index < 0 || typeof event.text !== 'string') {
+          this.finishError('Malformed upstream reasoning text completion', events);
+          break;
+        }
+        // fall through: both protocols close the current reasoning block.
       case 'response.reasoning_summary_text.done':
         if (!this.deferAfterToolCall && this.hasActiveReasoning) {
           this.closeActiveBlock(events);

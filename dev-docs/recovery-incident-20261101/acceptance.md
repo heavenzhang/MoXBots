@@ -2,7 +2,7 @@
 
 ## 当前结论
 
-0.5.28/528.1 的真实会话仍失败，不能以此前 CI、本地 fixture 或安装成功认定稳定性已恢复。本次只交付两项有失败复现的源码修复，原会话恢复、网络和意图识别问题尚未全部解决。
+0.5.28/528.1 的真实会话仍失败，不能以此前 CI、本地 fixture 或安装成功认定稳定性已恢复。第一提交交付两项有失败复现的源码修复；后续增量如下，原会话恢复、网络和意图识别问题尚未全部解决。
 
 基线 main `e11ee39b5629d6e74810b75e2155a45400d45005`；已安装包所对应的 release source `9be7cc78a0ecf336d144ae429d4cb7bb4bebcfff`。源码、当前安装包、公共稳定通道是三个状态。负责人当前确认 0.5.28 晋级暂停，正式通道仍 0.5.27。
 
@@ -42,3 +42,34 @@ INTENT_UNCONFIRMED：当前 classifier 包含 8 秒 utility 时限、JSON/schema
 Desktop/macOS-arm64/updater/sharedCI/main 唯一负责会话 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。本开发分支仅提交推送，交该 owner 独立审阅、正常 CI/main 与下批版本分配。codex 分支推送未匹配共享测试 main/dev 或正式发布触发条件；不创建 PR、不运行共享 CI、不生成正式制品。
 
 下一步：先审阅并集成这两项确定修复；保持 0.5.28 晋级暂停。待允许原生验收时，在原会话切换至少 8 次确认横幅不累积，验证并发辅助调用失败不再封锁独立后续推理，再逐项核查原操作结果。分别验证意图识别、代理连接与 idle/协议错误；四会话真实路径交付前，不将整个稳定性任务标为完成。当前无本任务新版本、制品摘要或发布批次。
+
+
+## 第二批增量：Responses 推理进展与意图失败证据
+
+用户本轮继续要求彻底解决，并明确答复“解除暂停，由原发布负责人安装并验证”。此授权已转交唯一 desktop owner；旧原生暂停不再作为阻断。原结果未知操作仍先核查，不能自动清账本或重复业务。
+
+### 协议缺陷及修复
+
+`KNOWN_RESPONSES_EVENTS` 漏掉官方 `response.reasoning_summary_part.added/done` 和 `response.reasoning_text.delta/done`；合法事件会把 interruption cause 记为 unproven/protocol_validation，盖过后续真正的 socket/idle 原因。translator 也忽略 reasoning_text delta，不能更新 model-progress，可能在持续推理输出时误判 idle。
+
+新增明确事件类型、合法 metadata 校验、reasoning text 到 thinking/progress 的翻译；仅非空、结构有效的 delta 计为模型进展。非法索引、错误 delta/part 类型仍错误终止，空 metadata 不延长停滞期限；未知事件仍保持不可信。没有扩大重试次数、时间、工具许可或改变历史账本。
+
+真实 loopback HTTP 流通过 bridge + ContextRecovery + ModelFailover 的 fixture 在旧代码失败：合法 reasoning 后真实 socket 中断不能生成既有 settled receipt。修后同一 fixture 通过，且 eof/transport 可识别，authentication、ping-only、half-frame 仍不能恢复。原线上失败没有保存原始 frames，本修复不能反向证明行情会话一定走了此分支。
+
+官方核对（2026-11-01）：https://developers.openai.com/api/reference/resources/responses/streaming-events 。本代码仅适配上述事件，没有整体声称支持所有 Responses 工具/事件。
+
+### 意图识别诊断
+
+沿既有 tool-free utility → classifier → executionAdmission → 状态详情的数据流添加固定枚举原因，区分 timeout/cancelled/unavailable/transport/empty_response/invalid_json/invalid_schema/missing_continuation/missing_steps。只保存枚举，不保存 prompt、模型原文、endpoint 或密钥；旧记录仍显示原通用说明。8 秒时限不变，超时后迟到的返回不会成为有效意图。
+
+诊断不作为权限：没有有效 intent 时仍为 INTENT_UNCONFIRMED，写入/派生任务保持拒绝，Read 仍可核查。添加实际 SessionStore 落盘 timeout 原因与写入拒绝的集成测试，以及展开详情显示准确原因的 DOM 测试。这是补足下一次原生失败的证据，不冒充已经修复识别模型的所有失败。
+
+### 当前网络实测
+
+2026-11-01 00:28（Asia/Shanghai），OpenRouter 公共 models API，无凭据/无推理：当前应用配置未显式代理的路径 3/3 HTTP200，既有 HTTP proxy 3/3 HTTP200。约 80–1228ms。结果保存在私有 network-current.json；未改代理配置。只能说明当前连通，不能证明之前 CONNECT_TIMEOUT 已根除，更不能代替推理和业务实测。
+
+### 验证与发布门
+
+本增量：16 Responses 语义单元 + 28 recovery HTTP 集成 + 2 buffered-progress 集成 = 46；66 session-execution 集成；17 状态详情 DOM，共 129 项定向测试。类型、定向 lint、分类和 diff 检查分别留有日志。此前44fd167由原owner独立复核2 DOM/68单元通过，现有联合CI运行中。
+
+交付本增量精确SHA后由原owner重核最终候选，正式晋级仍须原四会话可继续及相关工作交付。无本开发线程新版本号、制品、tag或安装动作。尚不可宣称稳定性全部解决；下一步根据新包原生结果继续修复，而非清除未知证据。

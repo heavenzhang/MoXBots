@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+/** Bounded utility diagnostics only; never execution or continuation authority. */
+export type ExecutionIntentFailure = 'timeout' | 'cancelled' | 'unavailable' | 'transport'
+  | 'empty_response' | 'invalid_json' | 'invalid_schema' | 'missing_continuation' | 'missing_steps';
+
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const idSchema = boundedText(256);
 

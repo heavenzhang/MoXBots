@@ -43,7 +43,9 @@ const KNOWN_RESPONSES_EVENTS = new Set(['response.created', 'response.in_progres
   'response.incomplete', 'error', 'response.output_item.added', 'response.output_item.done',
   'response.content_part.added', 'response.content_part.done', 'response.output_text.delta', 'response.output_text.done',
   'response.function_call_arguments.delta', 'response.function_call_arguments.done',
-  'response.reasoning_summary_text.delta', 'response.reasoning_summary_text.done']);
+  'response.reasoning_summary_text.delta', 'response.reasoning_summary_text.done',
+  'response.reasoning_summary_part.added', 'response.reasoning_summary_part.done',
+  'response.reasoning_text.delta', 'response.reasoning_text.done']);
 
 const DEFAULT_TIMEOUT = 300_000; // 5 minutes
 const THOUGHT_SIG_CACHE_MAX = 500; // Max cached thought_signatures to prevent unbounded growth

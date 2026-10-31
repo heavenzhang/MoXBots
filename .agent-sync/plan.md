@@ -1105,3 +1105,6 @@ Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-
 用户报告重复横幅、409/502及无法恢复。分支 `codex/recovery-incident-20261101` 基于 e11ee39；任务 `.agent-sync/tasks/codex-recovery-incident-20261101-9d059e46.md`，证据 `dev-docs/recovery-incident-20261101/acceptance.md`。两项确定修复：Chat 同层 session key 冲突；并发请求在发送前的恢复拒绝不应封锁整个主 scope。原请求指纹、未知操作、实际流中断及失效 owner 围栏保留。183 项定向测试及类型/lint/分类检查通过；未改变原账本或执行原任务。
 
 desktop/macOS-arm64/updater/sharedCI/main 仍唯一 owner 01a12bc2-907a-7702-b6dd-788225c5dfe4；当前528晋级暂停、正式通道527，原生UI按用户停止指令保持不动。本分支只交精确SHA，由原owner独立审查及下一未冻结批集成；不自行新PR/共享CI/正式版本/安装。意图识别失败、连接超时、idle/首错分类和四原会话验收仍未闭环，不能以这两项修复代替整体恢复完成。
+
+
+MB-RECOVERY-INCIDENT-20261101 第二批：用户明确解除原生暂停并授权原desktop owner安装验证。增量补Responses合法reasoning summary part/text事件及进展，避免误判protocol与idle；意图识别失败沿原账本回传固定原因枚举，不授权工具或改变预算。129项定向测试，真实网络公共GET6/6仅说明当前连通；原owner正在联合CI，收到精确增量后重新固定候选。原四会话完整验收尚未通过，正式晋级继续暂停。

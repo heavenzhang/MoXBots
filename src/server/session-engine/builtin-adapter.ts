@@ -326,7 +326,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
     kind: 'builtin',
 
     async runTextUtility(task) {
-      if (task.signal?.aborted) return null;
+      if (task.signal?.aborted) { task.onFailure?.('cancelled'); return null; }
       const model = getSessionModel(),
         providerId = getSessionProviderId();
       const current = model && providerId ? { providerId, model } : undefined;
@@ -336,22 +336,30 @@ export function createBuiltinSessionEngine(): SessionEngine {
         isAutoRoutingEnabled(catalog.settings)
           ? pickAutoClassifier(catalog.table, catalog.settings, current)
           : current;
-      if (!classifier) return null;
+      if (!classifier) { task.onFailure?.('unavailable'); return null; }
       const transport = await getAutoRouteTransport();
-      if (task.signal?.aborted) return null;
+      if (task.signal?.aborted) { task.onFailure?.('cancelled'); return null; }
       const controller = new AbortController();
       const abort = () => controller.abort();
       task.signal?.addEventListener("abort", abort, { once: true });
-      const timer = setTimeout(abort, Math.min(task.timeoutMs ?? 8000, 8000));
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; abort(); }, Math.min(task.timeoutMs ?? 8000, 8000));
       try {
-        return await transport({
+        const text = await transport({
           classifier,
           system: task.systemPrompt,
           prompt: task.prompt,
           signal: controller.signal,
           maxTokens: 1024,
         });
+        if (controller.signal.aborted) {
+          task.onFailure?.(task.signal?.aborted ? 'cancelled' : 'timeout');
+          return null;
+        }
+        if (!text.trim()) task.onFailure?.('empty_response');
+        return text;
       } catch {
+        task.onFailure?.(task.signal?.aborted ? 'cancelled' : timedOut ? 'timeout' : 'transport');
         return null;
       } finally {
         clearTimeout(timer);
