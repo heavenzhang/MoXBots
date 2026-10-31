@@ -24,6 +24,7 @@ import { appendArtifactRevisionDraft } from '../artifactPresentation';
 import { useBotDirectory } from '../useBotDirectory';
 import { botKey } from '../botDirectory';
 import { BotProfileSheet } from '../BotProfileSheet';
+import { ApprovalFlights, approvalFlightKey } from '../approvalFlight';
 import { BotAvatar } from '../BotAvatar';
 import { SessionHomeScreen } from '../SessionHomeScreen';
 import { MobileSheet } from '../MobileSheet';
@@ -32,7 +33,7 @@ import { conversationStyles } from '../conversationStyles';
 import { ComposerPopover } from '../ComposerPopover';
 import { conversationStatus, type RecentSessionItem } from '../sessionPresentation';
 import { readRecentSessions } from '../recentSessionRead';
-import { receiptCheckDelay, snapshotSessionToRead, submittedDraftHidden } from '../deliveryPolicy';
+import { receiptCheckDelay, snapshotSessionToRead, submittedDraftHidden, rejectedDraftForOwner } from '../deliveryPolicy';
 import { SnapshotReadTracker, snapshotReadStatus } from '../snapshotRead';
 
 const C = { ...mobileTheme, paper: mobileTheme.white, green: mobileTheme.primary, greenWash: mobileTheme.wash, amber: '#8B6A29' };
@@ -138,8 +139,9 @@ function AppBody() {
   const observeBotSnapshot = directory.observe;
   const [focusBot, setFocusBot] = useState<{key:string;serial:number} | null>(null);
   const [botProfileOpen, setBotProfileOpen] = useState(false);
-  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
-  const approvalFlightRef = useRef<symbol | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState<ReadonlySet<string>>(new Set());
+  const approvalFlightRef = useRef(new ApprovalFlights());
+  const approvalSubmitting = !!target && !!snapshot && snapshot.interactions.some(item => approvalBusy.has(approvalFlightKey(target,snapshot,item)));
   const [draft, setDraft] = useState('');
   const [draftUpdate, setDraftUpdate] = useState<DraftUpdate | null>(null);
   const [composerInputHeight, setComposerInputHeight] = useState(40);
@@ -322,7 +324,6 @@ function AppBody() {
     sendingEpochRef.current += 1;
     setLoading(false);
     setSending(false);
-    approvalFlightRef.current = null; setApprovalSubmitting(false);
     setBotProfileOpen(false); draftReadyRef.current = Promise.resolve();
     setTarget(nextTarget);
     setScreen(nextScreen);
@@ -1326,6 +1327,7 @@ function AppBody() {
       }
       if (!currentAccount()) return;
       if (status === 'accepted' && restoredTicket) draftPersistenceRef.current?.clearSubmitted(restoredTicket);
+      const rejectedTicket = status === 'rejected' ? submittedDraftsRef.current.get(item.operationId) ?? restoredTicket : null;
       settleSubmitted(item.operationId, status);
       setReceiptStates((states) => ({ ...states, [item.operationId]: status }));
       if (status === 'accepted' || status === 'rejected') {
@@ -1335,7 +1337,18 @@ function AppBody() {
         setPending((items) => items.map((entry) => entry.operationId === item.operationId ? { ...entry, sessionId } : entry));
       }
       if (!viewStillOwned(queryOwner, ownerRef.current)) return;
-      if (!quiet || status === 'rejected') say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : status === 'rejected' ? '消息未被接收，原文已保留，可检查后重新发送。' : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' || status === 'rejected' ? 'error' : 'neutral');
+      let rejectedOverflow = false;
+      if (status === 'rejected') {
+        await draftReadyRef.current;
+        if (!currentAccount() || !viewStillOwned(queryOwner, ownerRef.current)) return;
+        const restored = rejectedDraftForOwner(queryOwner,item,sessionId,draftTextRef.current);
+        if (restored.kind === 'restore') {
+          saveDraft(restored.text);
+          if (rejectedTicket && rejectedTicket.key !== activeDraftKeyRef.current) draftPersistenceRef.current?.clearSubmitted(rejectedTicket);
+        }
+        rejectedOverflow = restored.kind === 'overflow';
+      }
+      if (!quiet || status === 'rejected') say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : status === 'rejected' ? rejectedOverflow ? '消息未被接收。当前草稿已满；原文保留在原 Bot 的草稿中。' : '消息未被接收，原文已保留，可检查后重新发送。' : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' || status === 'rejected' ? 'error' : 'neutral');
       else if (status === 'accepted') setNotice(null);
       const selected = targetRef.current;
       if (selected?.online && queryOwner.screen === 'chat' && queryOwner.targetId === item.targetId && queryOwner.agentId === item.agentId
@@ -1344,7 +1357,7 @@ function AppBody() {
         if (owner.sessionId === sessionId) await readSnapshot(owner, selected, () => accountIdentityGenerationRef.current === accountGeneration && accountRef.current?.principalId === principalId);
       }
     } finally { receiptFlightsRef.current.delete(item.operationId); }
-  }, [cleanupSentAttachments, moveOwner, readSnapshot, say, settleSubmitted, targets]);
+  }, [cleanupSentAttachments, moveOwner, readSnapshot, say, saveDraft, settleSubmitted, targets]);
 
   useEffect(() => {
     if (!pending.length) return;
@@ -1374,13 +1387,15 @@ function AppBody() {
   }, [ownerEpoch, pending, queryPending, receiptPollGate, targets]);
 
   const respond = (item: Interaction, approved: boolean, answers?: Record<string, string>) => {
-    if (approvalFlightRef.current || sending || blocksMutation || !snapshot || !target || !item.actionable || snapshot.state !== 'waiting_user_action') return;
+    if (sending || blocksMutation || !snapshot || !target || !item.actionable || snapshot.state !== 'waiting_user_action') return;
     const generation = snapshot.generation;
     const turnId = snapshot.turnId;
     const approvalOwner = ownerRef.current;
     const captured = { sessionId: snapshot.sessionId, generation, turnId, requestId: item.requestId };
     if (!generation || !turnId) { say('审批信息已过期，请刷新会话。', 'error'); return; }
-    const flight = Symbol('approval'); approvalFlightRef.current = flight; setApprovalSubmitting(true);
+    const approvalKey=approvalFlightKey(target,snapshot,item);
+    const flight=approvalFlightRef.current.claim(approvalKey); if(!flight)return;
+    setApprovalBusy(prior=>new Set([...prior,approvalKey]));
     void (async () => {
       try {
         if (isFixtureMode) await armQaStaleApproval();
@@ -1391,7 +1406,7 @@ function AppBody() {
         if (!approvalStillCurrent(current, { requestId: captured.requestId, generation, turnId })) { say('审批信息已更新，尚未提交。请检查刷新后的请求。', 'error'); return; }
         await mutation({ kind: 'respond', agentId: current.agentId, sessionId: captured.sessionId, operationId: Crypto.randomUUID(), generation, turnId, requestId: captured.requestId, interaction: item.interaction, approved, ...(answers ? { answers } : {}) });
       } catch (error) { if (viewStillOwned(approvalOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'APPROVAL_REFRESH_FAILED', 'error'); }
-      finally { if (approvalFlightRef.current === flight) {approvalFlightRef.current = null; setApprovalSubmitting(false);} }
+      finally { if (approvalFlightRef.current.release(approvalKey,flight)) setApprovalBusy(prior=>new Set([...prior].filter(key=>key!==approvalKey))); }
     })();
   };
 

@@ -5,19 +5,23 @@ Goal: implement the approved Bot + continuous-conversation mobile experience in 
 Design: WPS MoxBot/output/mobile-grok-concept/v8 plus the 2026-11-01 holistic review. Recent work first, stable Bot attribution, continuous instruction through original send path, action-specific approvals, persistent multiple deliverables/history. No fake model, new execution system, hardcoded production bots or client-side approval success.
 
 - [x] Locate current source, main, active release owners and SDK 58 instructions.
-- [ ] Implement representative recent-work page and inspect actual rendering before extending patterns.
-- [ ] Bind Bot grouping/profile and recent work to real authorized target/session data, preserving exact owner and drafts.
-- [ ] Preserve outcomes across new messages; expose multiple deliverables and genuine immutable versions without fabricating server history.
-- [ ] Keep approval submission, execution and delivered output distinct; continuous messages use original receipt and runtime.
-- [ ] Focused regression, full mobile policy tests, typecheck and lint.
-- [ ] Primary and independent rendered UI review at 390x844 and 320x740; list/Bot/chat/approval/artifact/return/error paths.
+- [x] Implement representative recent-work page and inspect actual rendering before extending patterns.
+- [x] Bind Bot grouping/profile and recent work to real authorized target/session data, preserving exact owner and drafts.
+- [x] Preserve outcomes across new messages; expose multiple deliverables and genuine immutable versions without fabricating server history.
+- [x] Keep approval submission, execution and delivered output distinct; continuous messages use original receipt and runtime.
+- [x] Focused regression, full mobile policy tests, typecheck and lint.
+- [x] Primary and independent rendered UI review at 390x844 and 320x740; list/Bot/chat/approval/artifact/return/error paths.
 - [ ] Commit scoped source, push branch, hand exact SHA to shared CI/main owner; verify actual remote-main containment after merge.
 - [ ] Hand fixed source and evidence to existing mobile owner for next unfrozen candidate; verify release/installation separately, no replacement of current frozen candidate.
 
 Acceptance: existing login/connection/receipt/draft/attachment/notification fences unchanged; no local inference of execution completion; same Bot/session identity on every route; old files don't disappear on a new turn; no fabricated versions; errors retain context and usable next action.
 
-Owners: primary current agent implementation/integration. One bounded independent reviewer to follow. Artifact implementation may be delegated after interface inspection. Native-only ai-yaoren-local; model/usage metadata recorded when exposed. No external models this run.
+Owners: primary current agent implementation/integration. Two bounded workers completed artifact implementation and independent UI review; primary integrated and inspected final rendered pages. Native-only ai-yaoren-local; model/usage metadata recorded when exposed. No external models this run.
 
 Deployment: shared CI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4; mobile iOS/Android build/sign/install owner 01a12b99-7b38-78b1-831f-9c60257d386a. Both are active on earlier mobile batch. This task does not run their shared CI, issue a release number, replace frozen artifacts or write production. User authorized implementation/push; owner handoff follows user AGENTS workflow.
 
-Status layers: source in progress; tests pending; local fixture UI pending; live Host/native integration pending; remote main pending; release/physical phone acceptance pending. Fixtures prove UX behavior only.
+Status layers: source implemented; local tests passed; local fixture UI passed; live Host/native integration pending; remote main pending; release/physical phone acceptance pending. Fixtures prove UX behavior only.
+
+Main updated concurrently: merged PR218 b55634eb through 7bf8f0aca. Retained exact upstream DraftPersistence token/journal and original readRecentSessions polling/cache. This task only projects real snapshot status; no parallel session-list authority. Mobile107/107, tsc/ESLint0warnings, root tsc/classification, source13/13 and store14/14 independently re-run after merge. Desktop cargo check running; final UI independent review running. Native build/version and installed app unchanged.
+
+Final local acceptance: 109 mobile tests, type/lint, root type/classification, source13/store14/Host check PASS; primary390/320 + independent complete fixture journeys PASS after rejection restoration repair. Desktop full local check stops at mandatory missing signed CLIProxy bundle, handed to original shared CI owner with normal resource staging. Source not yet pushed at this record revision; release and real-device acceptance remain separate. See validation.md.

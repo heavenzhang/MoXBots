@@ -24,3 +24,13 @@ export function snapshotSessionToRead(owner: ViewOwner, snapshot: { sessionId: s
   if (snapshot && (snapshot.sessionId !== owner.sessionId || snapshot.agentId !== owner.agentId)) return null;
   return owner.sessionId;
 }
+
+/** A definitive rejection may restore text only into its original/materialized conversation. */
+export function rejectedDraftForOwner(owner: ViewOwner, operation: Pick<PendingOperation,'targetId'|'agentId'|'sessionId'|'submittedText'>,
+  resultSessionId: string | null, existing: string, limit = 16000): { kind: 'skip' | 'overflow' } | { kind: 'restore'; text: string } {
+  if (owner.screen !== 'chat' || owner.targetId !== operation.targetId || owner.agentId !== operation.agentId
+    || owner.sessionId !== (resultSessionId ?? operation.sessionId) || !operation.submittedText) return {kind:'skip'};
+  if (existing.trim() === operation.submittedText.trim()) return {kind:'restore',text:existing};
+  const text = existing ? `${existing}\n\n${operation.submittedText}` : operation.submittedText;
+  return text.length > limit ? {kind:'overflow'} : {kind:'restore',text};
+}
