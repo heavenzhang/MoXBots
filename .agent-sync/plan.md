@@ -1094,3 +1094,7 @@ desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2
 ## MB-UPSTREAM-RESET-20261031 — 连接重置与网络路由证据
 
 任务 `.agent-sync/tasks/codex-upstream-reset-20261031-9476bdb8.md`。当前网络错误为本机bridge映射502，历史reset发起方未知；单供应商现有代理范围已通过设置修正并经认证只读API验证。源码补逐请求连接/复用阶段观测与正确提示，不改变动作权限/重试预算。与已有replay-recovery及replay-scope恢复任务联合审查；desktop/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4统一集成发布，原业务未重放。状态及验收见 `dev-docs/upstream-reset-20261031/acceptance.md`。
+
+## MB-DESKTOP-NEXT-20261031 — Root five-source selection
+
+Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Allocated0.5.28/build528.1 with source/sidebar6e518f1c, recovery6cecca460, activityc7c55c3, scopea4585a8b and upstream093eb934 as original Git ancestors. Independent combined source admission/local checks and actualSDK native local fixture passed; CI/main, immutable formal artifact, safe maintenance, native originalSession recovery and101publication remain separate gates. Primary joint integration preserves typed denial receipts, unknown-action and old-ID fences, native activity ownership, Store CAS and privacy; no fullmodel/Goal matrix, cloud/browser/phone, new Agent or second publisher. Subsequent arrivals after freeze next batch. Evidence/limits: dev-docs/releases/0.5.28-intake-20261031.md; current Root task .agent-sync/tasks/codex-release-0528-combined-20261031-49c193f2.md.
