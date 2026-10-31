@@ -1,8 +1,13 @@
 import { getSessionMetadata } from '../SessionStore';
 import { ContextRecoveryController, recoveryActionHash, recoveryEvidenceDigest } from '../openai-bridge/context-recovery';
-import { executionToolObservationDigest } from '../session-engine/session-execution';
-import { mutateSessionTaskLedger } from '../session-engine/task-orchestration';
+import type { SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
 import { recoveryLedgerDigest, type RecoveryReviewDependencies } from './recovery-reconciliation';
+
+interface ExecutionFailureReviewDependencies extends RecoveryReviewDependencies {
+  observationDigest: (name: string, input: unknown, output?: unknown) => string;
+  mutateLedger: (sessionId: string, mutation: (prior: SessionTaskLedger) => SessionTaskLedger,
+    isCurrent: () => boolean) => Promise<SessionTaskLedger>;
+}
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const resultText = (content: unknown): string | undefined => typeof content === 'string' ? content
@@ -11,7 +16,7 @@ const resultText = (content: unknown): string | undefined => typeof content === 
 
 /** Repair only the execution projection of a durable, known process failure.
  * The action journal and its exact-command replay fence remain unchanged. */
-export async function reconcileKnownExecutionFailures(deps: RecoveryReviewDependencies): Promise<void> {
+export async function reconcileKnownExecutionFailures(deps: ExecutionFailureReviewDependencies): Promise<void> {
   if (!deps.isCurrent()) return;
   const taskLedger = getSessionMetadata(deps.owner.sessionId)?.taskOrchestration;
   const executionId = taskLedger?.execution?.id;
@@ -56,13 +61,13 @@ export async function reconcileKnownExecutionFailures(deps: RecoveryReviewDepend
   const proven = pending.filter(fact => {
     const use = uses.get(fact.id); const result = results.get(fact.id);
     if (use?.length !== 1 || result?.length !== 1 || use[0].name !== 'Bash' || !result[0].failed || !result[0].text) return false;
-    return executionToolObservationDigest(use[0].name, use[0].input, result[0].text) === fact.digest
+    return deps.observationDigest(use[0].name, use[0].input, result[0].text) === fact.digest
       && receipts.filter(receipt => receipt.scope === fact.queueId && receipt.toolUseId === fact.id
         && receipt.actionHash === recoveryActionHash(use[0].name, use[0].input)
         && receipt.resultDigest === recoveryEvidenceDigest(result[0].text)).length === 1;
   });
   if (!proven.length || !current()) return;
-  await mutateSessionTaskLedger(deps.owner.sessionId, next => {
+  await deps.mutateLedger(deps.owner.sessionId, next => {
     if (!current()) return next;
     for (const fact of next.executionEvidence ?? []) {
       if (fact.pending && fact.mutating && !fact.successful && proven.some(proof => proof.id === fact.id

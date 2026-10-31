@@ -1,7 +1,8 @@
 import { projectOrchestrationProgress } from '../shared/sessionTaskOrchestration';
-import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground } from './session-engine/task-orchestration';
+import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground, mutateSessionTaskLedger } from './session-engine/task-orchestration';
 import {
   observeSessionExecutionTool,
+  executionToolObservationDigest,
   sessionExecutionToolDenial,
   sessionExecutionDeadlineAt,
   sessionExecutionInferenceAllowed,
@@ -10744,7 +10745,11 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
   };
 }
 export function reconcileBuiltinExecutionEvidence(): Promise<void> {
-  return runSerializedSessionMutation(async () => reconcileKnownExecutionFailures(await recoveryReviewDependencies()));
+  return runSerializedSessionMutation(async () => reconcileKnownExecutionFailures({
+    ...await recoveryReviewDependencies(),
+    observationDigest: executionToolObservationDigest,
+    mutateLedger: mutateSessionTaskLedger,
+  }));
 }
 export function inspectBuiltinRecoveryActions(): Promise<RecoveryActionSnapshot> {
   return runSerializedSessionMutation(async () => inspectRecoveryActions(await recoveryReviewDependencies()));

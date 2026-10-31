@@ -854,6 +854,8 @@ describe("durable Session execution owner", () => {
       const { reconcileKnownExecutionFailures } = await import('../builtin-session/execution-failure-reconciliation');
       engine.reconcileExecutionEvidence = () => reconcileKnownExecutionFailures({
         owner: { sessionId: id, sdkSessionId: id, epoch: 1, reviewAuthority: 'fixture' },
+        observationDigest: executionOwner.executionToolObservationDigest,
+        mutateLedger: taskOwner.mutateSessionTaskLedger,
         isCurrent: () => ownerCurrent, load: () => ledger, save, adopt,
         readNative: async () => {
           if (variant === 'owner-changed') ownerCurrent = false;
