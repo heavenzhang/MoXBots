@@ -1,5 +1,5 @@
 import { mobileTheme } from './mobileTheme';
-import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -226,12 +226,13 @@ export function StorageScreen() {
 }
 
 export function AboutScreen() {
-  const version = Constants.expoConfig?.version ?? null;
-  const appName = Constants.expoConfig?.name ?? null;
+  const version = Application.nativeApplicationVersion;
+  const build = Application.nativeBuildVersion;
+  const appName = Application.applicationName;
   return <AccountFrame title="关于 MoXBots">
     <View style={styles.aboutMark}><Text style={styles.aboutGlyph}>M</Text><Text style={styles.aboutName}>MoXBots</Text><Text style={styles.aboutCaption}>移动端</Text></View>
-    <View style={styles.card}><KeyValue label="应用版本" value={version ?? '构建信息不可用'}/><KeyValue label="构建标识" value={appName ?? '构建信息不可用'}/></View>
-    <Text style={styles.footnote}>版本与名称读取自当前应用构建配置；若名称包含 Internal，表示内部测试构建。</Text>
+    <View style={styles.card}><KeyValue label="应用版本" value={version ?? '构建信息不可用'}/><KeyValue label="构建号" value={build ?? '构建信息不可用'}/><KeyValue label="应用名称" value={appName ?? '构建信息不可用'}/></View>
+    <Text style={styles.footnote}>版本、构建号与名称读取自当前安装的原生应用；网页预览不提供原生构建信息。若名称包含 Internal，表示内部测试构建。</Text>
   </AccountFrame>;
 }
 
