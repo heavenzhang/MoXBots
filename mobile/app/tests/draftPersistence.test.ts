@@ -228,3 +228,65 @@ test('identity and session keys never collide even when visible names match', ()
   assert.notEqual(keyFor(target, 'session-a'), keyFor(target, 'session-b'));
   assert.equal(keyFor(target, 'session-a'), keyFor(renamedTarget, 'session-a'));
 });
+
+test('accepted receipt clears only the exact submitted edit, preserving later edits and account generations', async () => {
+  const backend = memoryIO(); const updates: DraftUpdate[] = []; const persistence = manager(backend.io, updates);
+  const opened = persistence.activate(target, 'receipt-session', 1); await opened.ready;
+  persistence.edit(opened.key, 1, '发送原文');
+  const submitted = persistence.capture(1)!;
+  assert.equal(await persistence.persistSubmitted(submitted), true);
+  persistence.edit(opened.key, 1, '下一条消息');
+  assert.equal(persistence.clearSubmitted(submitted), false);
+  assert.equal(updates.at(-1)?.text, '下一条消息');
+  const newer = persistence.capture(1)!;
+  persistence.clear();
+  const again = persistence.activate(target, 'receipt-session', 2); await again.ready;
+  assert.equal(persistence.clearSubmitted(newer), false);
+  persistence.clear();
+});
+
+test('after restart a list receipt can clear the original durable draft without activating that session', async () => {
+  const backend = memoryIO(); const first = manager(backend.io, []);
+  const a = first.activate(target, 'sent-session', 1); await a.ready;
+  first.edit(a.key, 1, '  已提交消息\n'); await first.flushOwner(1); first.clear();
+  const updates: DraftUpdate[] = []; const restored = manager(backend.io, updates);
+  const b = restored.activate(otherTarget, 'different-session', 2); await b.ready;
+  restored.edit(b.key, 2, '当前独立草稿');
+  const ticket = await restored.capturePending(target, 'sent-session', '已提交消息');
+  assert.ok(ticket);
+  assert.equal(restored.clearSubmitted(ticket), true);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(backend.values.get(keyFor(target, 'sent-session'))?.text, '');
+  assert.equal(updates.at(-1)?.text, '当前独立草稿');
+  restored.clear();
+});
+
+test('submission waits for an already running draft write before remote mutation can start', async () => {
+  const backend = memoryIO(); let release!: () => void;
+  const wait = new Promise<void>((resolve) => { release = resolve; });
+  const updates: DraftUpdate[] = [];
+  const persistence = manager({ ...backend.io, write: async (...args) => { await wait; return backend.io.write(...args); } }, updates);
+  const opened = persistence.activate(target, 'send-after-write', 1); await opened.ready;
+  persistence.edit(opened.key, 1, '必须先持久保存');
+  const write = persistence.flushOwner(1);
+  let admitted = false;
+  const submit = persistence.persistSubmitted(persistence.capture(1)!).then((ready) => { admitted = ready; });
+  await Promise.resolve(); assert.equal(admitted, false);
+  release(); await write; await submit;
+  assert.equal(admitted, true);
+  persistence.clear();
+});
+
+test('native accepted clear is adopted as saved after CAS conflict without resurrecting original text', async () => {
+  const backend = memoryIO(); const updates: DraftUpdate[] = []; const persistence = manager(backend.io, updates);
+  const opened = persistence.activate(target, 'native-clear', 1); await opened.ready;
+  persistence.edit(opened.key, 1, '已提交'); await persistence.flushOwner(1);
+  const ticket = persistence.capture(1)!;
+  const current = backend.values.get(opened.key)!;
+  await backend.io.write(target.targetId, 'native-clear', current.revision, 'native-accepted-operation', '');
+  persistence.clearSubmitted(ticket);
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(updates.at(-1)?.text, ''); assert.equal(updates.at(-1)?.status, 'saved');
+  assert.equal(backend.values.get(opened.key)?.text, '');
+  persistence.clear();
+});

@@ -1098,3 +1098,8 @@ desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2
 ## MB-DESKTOP-NEXT-20261031 — Root five-source selection
 
 Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Allocated0.5.28/build528.1 with source/sidebar6e518f1c, recovery6cecca460, activityc7c55c3, scopea4585a8b and upstream093eb934 as original Git ancestors. Independent combined source admission/local checks and actualSDK native local fixture passed; CI/main, immutable formal artifact, safe maintenance, native originalSession recovery and101publication remain separate gates. Primary joint integration preserves typed denial receipts, unknown-action and old-ID fences, native activity ownership, Store CAS and privacy; no fullmodel/Goal matrix, cloud/browser/phone, new Agent or second publisher. Subsequent arrivals after freeze next batch. Evidence/limits: dev-docs/releases/0.5.28-intake-20261031.md; current Root task .agent-sync/tasks/codex-release-0528-combined-20261031-49c193f2.md.
+
+
+## MOXBOT-MOBILE-20261101 消息回执、断线恢复与最近会话
+
+用户明确要求修复后由原发布会话统一打包安装真机验收。本开发分支codex/mobile-reliability-20261101基于e11ee39b5，只含mobile/app与mobile/connection原journal/draft投影及结算；无独立执行owner、协议/数据库或desktop/cloud部署变化。原sharedCI/main01a12bc2、mobile CI/build/sign/install/rollback01a12b99归属不变；不另开共享CI/正式包。任务`.agent-sync/tasks/codex-mobile-reliability-20261101-e6137e3f.md`，验收`dev-docs/mobile-reliability-20261101/acceptance.md`。97policy/133native+1既有ignored/type/lint及390/320模拟UI通过，3P1复核关闭；主干/组合候选/newnative+JS制品/手机仍分别待回执。mobile owner预备0.1.0/build7并等待精确本增量；Kevin未连接，原owner会话人类先准备包暂不安装的选择保留，不代选Xu。版本/tag/摘要由原owner分配并保留build6。全库fmt基线identity.rs已有差异单独提醒，不混入本改动。

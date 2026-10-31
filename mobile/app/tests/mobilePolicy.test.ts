@@ -187,3 +187,13 @@ test('pending receipt lookup preserves the operation protocol and never construc
   assert.equal('text' in mobile.request, false);
   assert.equal('operationId' in mobile.request, true);
 });
+
+
+test('refreshing an original start journal retains only its exact validated receipt Session binding', async () => {
+  const { reconcilePendingJournal } = await import('../src/mobilePolicy.ts');
+  const operation = { protocol: 'mobile' as const, targetId: 'target', agentId: 'agent', operationId: 'op', sessionId: null, status: 'unknown' as const };
+  const known = { ...operation, sessionId: 'started-session' };
+  assert.equal(reconcilePendingJournal([known], [operation])[0].sessionId, 'started-session');
+  assert.equal(reconcilePendingJournal([{ ...known, protocol: 'session' }], [operation])[0].sessionId, null);
+  assert.equal(reconcilePendingJournal([{ ...known, targetId: 'other' }], [operation])[0].sessionId, null);
+});

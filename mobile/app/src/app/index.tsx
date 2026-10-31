@@ -7,8 +7,8 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, Check, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, loginWithPassword, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
-import { DraftPersistence, DraftUpdate } from '../draftPersistence';
-import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
+import { DraftPersistence, DraftUpdate, type SubmittedDraft } from '../draftPersistence';
+import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, reconcilePendingJournal, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
 import { SerialUploadQueue, waitForUploadForeground } from '../uploadQueue';
 import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../attachmentUploadTracker';
 import { artifactReturnSnapshotMatches, clearArtifactChatReturn, peekArtifactChatReturn, rememberArtifactChatReturn, resolveArtifactReturnTarget } from '../artifactNavigation';
@@ -25,14 +25,16 @@ import { MobileSheet } from '../MobileSheet';
 import { mobileTheme } from '../mobileTheme';
 import { conversationStyles } from '../conversationStyles';
 import { ComposerPopover } from '../ComposerPopover';
-import { conversationStatus } from '../sessionPresentation';
+import { conversationStatus, type RecentSessionItem } from '../sessionPresentation';
+import { readRecentSessions } from '../recentSessionRead';
+import { receiptCheckDelay, snapshotSessionToRead, submittedDraftHidden } from '../deliveryPolicy';
 import { SnapshotReadTracker, snapshotReadStatus } from '../snapshotRead';
 
 const C = { ...mobileTheme, paper: mobileTheme.white, green: mobileTheme.primary, greenWash: mobileTheme.wash, amber: '#8B6A29' };
 type SessionRow = { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string };
 type ReceiptStatus = 'processing' | 'accepted' | 'rejected' | 'unconfirmed' | 'not-found' | 'unknown';
 const initialViewOwner: ViewOwner = { epoch: 0, screen: 'login', targetId: null, agentId: null, sessionId: null };
-type Notice = { source?: 'snapshot'; tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
+type Notice = { source?: 'snapshot' | 'directory'; tone: 'neutral' | 'error' | 'success'; text: string; code?: string } | null;
 function notificationOpenNotice(code: string): NonNullable<Notice> {
   const registrationRequired = code === 'MOBILE_NOTIFICATIONS_DISABLED' || code === 'MOBILE_NOTIFICATION_REGISTRATION_REQUIRED';
   return { tone: 'error', code, text: registrationRequired ? '会话提醒未启用，请在账号设置中开启。' : '暂时无法打开通知对应的会话。可重试读取，或忽略这条通知。' };
@@ -40,6 +42,7 @@ function notificationOpenNotice(code: string): NonNullable<Notice> {
 type AttachmentItem = { file: NativeAttachment; upload: NativeAttachmentUpload | null; ownerKey: string; errorCode?: string };
 
 const errorMessages: Record<string, string> = {
+  MOBILE_DRAFT_NOT_SAVED: '草稿尚未保存，消息还未发送。请检查本机存储后重试。',
   TARGET_RECEIPT_INVALID: '设备返回的会话数据暂时无法读取。可重试读取；草稿会保留。',
   SESSION_HISTORY_PAGE_INVALID: '更早记录发生变化，请重新打开会话后再试。',
   MOBILE_RECEIPT_REQUIRED: '设备要求先确认操作状态。请查询状态后再继续；不会自动重发。',
@@ -107,6 +110,20 @@ function AppBody() {
   const [unavailableDeviceCount, setUnavailableDeviceCount] = useState(0);
   const [target, setTarget] = useState<Target | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [recentSessions, setRecentSessions] = useState<RecentSessionItem[]>([]);
+  const [recentBusy, setRecentBusy] = useState(false);
+  const [recentErrorCount, setRecentErrorCount] = useState(0);
+  const recentFlightRef = useRef(0);
+  const recentRowsRef = useRef<RecentSessionItem[]>([]);
+  const accountIdentityGenerationRef = useRef(0);
+  const [recentPollGate] = useState(() => createPollFlightGate());
+  const [recentRefresh, setRecentRefresh] = useState(0);
+  const submittedDraftsRef = useRef(new Map<string, SubmittedDraft>());
+  const [submittedEdits, setSubmittedEdits] = useState<{ operationId: string; ticket: SubmittedDraft }[]>([]);
+  const sendFlightRef = useRef(false);
+  const receiptFlightsRef = useRef(new Set<string>());
+  const receiptScheduleRef = useRef(new Map<string, { attempts: number; nextAt: number }>());
+  const [receiptPollGate] = useState(() => createPollFlightGate());
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
@@ -310,6 +327,21 @@ function AppBody() {
     draftPersistenceRef.current?.edit(key, ownerEpoch, value);
   }, []);
   const saveDraft = useCallback((value: string) => saveDraftFor(activeDraftKeyRef.current, ownerRef.current.epoch, value), [saveDraftFor]);
+  const rememberSubmitted = useCallback((operationId: string) => {
+    const ticket = draftPersistenceRef.current?.capture(ownerRef.current.epoch);
+    if (ticket) {
+      submittedDraftsRef.current.set(operationId, ticket);
+      setSubmittedEdits([...submittedDraftsRef.current].map(([operationId, ticket]) => ({ operationId, ticket })));
+    }
+    return ticket;
+  }, []);
+  const settleSubmitted = useCallback((operationId: string, status: ReceiptStatus) => {
+    if (status !== 'accepted' && status !== 'rejected') return;
+    const ticket = submittedDraftsRef.current.get(operationId);
+    if (ticket && status === 'accepted') draftPersistenceRef.current?.clearSubmitted(ticket);
+    submittedDraftsRef.current.delete(operationId);
+    setSubmittedEdits([...submittedDraftsRef.current].map(([operationId, ticket]) => ({ operationId, ticket })));
+  }, []);
   const commitSnapshot = useCallback((value: Snapshot) => {
     if (snapshotRef.current?.revision !== value.revision) setSuggestions([]);
     const previous = transcriptRef.current;
@@ -388,17 +420,18 @@ function AppBody() {
     finally { if (requestId === loadingEpochRef.current) setLoading(false); }
   }, [say]);
 
-  const retainFailedMutationUntilJournalCheck = async (attempt: MutationAttempt, capturedOwner: ViewOwner, principalId: string | null, error: unknown) => {
-    const isCurrentOwner = () => viewStillOwned(capturedOwner, ownerRef.current) && accountRef.current?.principalId === principalId;
-    if (!isCurrentOwner()) return;
-    setPending((items) => isCurrentOwner() ? reconcileFailedMutation(items, attempt, null) : items);
+  const retainFailedMutationUntilJournalCheck = async (attempt: MutationAttempt, capturedOwner: ViewOwner, principalId: string | null, accountGeneration: number, error: unknown) => {
+    const isCurrentAccount = () => accountRef.current?.principalId === principalId && accountIdentityGenerationRef.current === accountGeneration;
+    if (!isCurrentAccount()) return;
+    setPending((items) => isCurrentAccount() ? reconcileFailedMutation(items, attempt, null) : items);
     setReceiptStates((states) => ({ ...states, [attempt.operationId]: 'unknown' }));
     const code = error instanceof Error && /^[A-Z][A-Z0-9_]{2,127}$/.test(error.message) ? error.message : undefined;
-    setNotice({ text: '操作未收到明确回执。已暂时阻止重复发送，正在核对本机操作记录；之后只能查询状态。', tone: 'error', ...(code ? { code } : {}) });
+    if (viewStillOwned(capturedOwner, ownerRef.current)) setNotice({ text: '操作未收到明确回执。已暂时阻止重复发送，正在核对本机操作记录；之后只能查询状态。', tone: 'error', ...(code ? { code } : {}) });
     try {
       const journal = await requestNative({ version: 1, kind: 'operations.pending' });
-      if (!isCurrentOwner() || journal.kind !== 'operations') return;
-      setPending((items) => isCurrentOwner() ? reconcileFailedMutation(items, attempt, journal.items) : items);
+      if (!isCurrentAccount() || journal.kind !== 'operations') return;
+      setPending((items) => isCurrentAccount() ? reconcileFailedMutation(items, attempt, journal.items) : items);
+      if (!journal.items.some((item) => item.operationId === attempt.operationId)) settleSubmitted(attempt.operationId, 'rejected');
     } catch {
       // Keep the provisional query-only entry if the native journal itself is unavailable.
     }
@@ -476,6 +509,9 @@ function AppBody() {
       if (accountIdentityChanged(previousAccount, reply)) setNotice(null);
       clearArtifactChatReturn(artifactReturn);
       draftPersistenceRef.current?.clear();
+      accountIdentityGenerationRef.current += 1;
+      submittedDraftsRef.current.clear(); setSubmittedEdits([]);
+      recentFlightRef.current += 1; setRecentSessions([]); recentRowsRef.current = []; setRecentErrorCount(0);
       moveLoadedOwner('login', null, null);
       setTargets([]);
       setUnavailableDeviceCount(0);
@@ -485,6 +521,9 @@ function AppBody() {
     }
     if (accountIdentityChanged(previousAccount, reply)) {
       draftPersistenceRef.current?.clear();
+      accountIdentityGenerationRef.current += 1;
+      submittedDraftsRef.current.clear(); setSubmittedEdits([]);
+      recentFlightRef.current += 1; setRecentSessions([]); recentRowsRef.current = []; setRecentErrorCount(0);
       setNotice(null);
       setTargets([]);
       setUnavailableDeviceCount(0);
@@ -509,27 +548,28 @@ function AppBody() {
       }
     }
     if (!requestIsCurrent()) return;
-    const invalidateCurrentDirectory = () => {
-      setTargets([]);
-      setUnavailableDeviceCount(0);
-      setSessions([]);
-      const currentOwner = ownerRef.current;
-      if (currentOwner.targetId) moveLoadedOwner(currentOwner.screen, null, null);
+    const invalidateCurrentDirectory = (code: string) => {
+      setTargets((items) => items.map((item) => ({ ...item, online: false })));
+      const current = targetRef.current;
+      if (current) { const offline = { ...current, online: false }; targetRef.current = offline; setTarget(offline); }
+      setUnavailableDeviceCount(1);
+      setNotice({ source: 'directory', tone: 'error', code, text: '连接暂时中断，已有会话和草稿已保留。正在尝试重新连接。' });
     };
     let result: Awaited<ReturnType<typeof requestNative>>;
     try {
       result = await requestNative({ version: 1, kind: 'targets.list' });
     } catch (error) {
       if (!requestIsCurrent()) return;
-      invalidateCurrentDirectory();
-      throw error;
+      invalidateCurrentDirectory(error instanceof Error ? error.message : 'MOBILE_REMOTE_UNAVAILABLE');
+      return;
     }
     if (!requestIsCurrent()) return;
     if (result.kind !== 'targets') {
-      invalidateCurrentDirectory();
-      throw new Error(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
+      invalidateCurrentDirectory(result.kind === 'error' ? result.code : 'TARGETS_REPLY_INVALID');
+      return;
     }
     setTargets(result.items);
+    setNotice((prior) => prior?.source === 'directory' ? null : prior);
     setUnavailableDeviceCount(result.unavailableDeviceCount);
     if (notificationTarget && notificationIntent && notificationOpens.isCurrent(notificationIntent)) {
       const currentTarget = result.items.find((item) => item.identityKey === notificationTarget.identityKey && item.agentId === notificationTarget.agentId && item.online);
@@ -544,7 +584,7 @@ function AppBody() {
           clearArtifactChatReturn(artifactReturn);
           moveLoadedOwner('chat', currentTarget, freshSnapshot.sessionId);
           commitSnapshot(freshSnapshot);
-          setPending(journal.items.filter((item) => item.status !== 'prepared'));
+          setPending((items) => reconcilePendingJournal(items, journal.items));
           setNotice(null);
           notificationOpens.complete(notificationIntent);
           void clearHandledNotification(notificationIntent.eventId);
@@ -571,7 +611,7 @@ function AppBody() {
             setNotice(notificationFailure ? notificationOpenNotice(notificationFailure) : null);
             void loadMobileCatalog(returnTarget);
             const journal = await requestNative({ version: 1, kind: 'operations.pending' });
-            if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+            if (requestIsCurrent() && journal.kind === 'operations') setPending((items) => reconcilePendingJournal(items, journal.items));
             return;
           }
         } catch {
@@ -585,6 +625,7 @@ function AppBody() {
     }
     const previous = targetRef.current;
     const selectedTarget = result.items.find((item) => item.identityKey === previous?.identityKey)
+      ?? (previous && result.unavailableDeviceCount > 0 ? { ...previous, online: false } : null)
       ?? result.items.find((item) => item.online) ?? result.items[0] ?? null;
     const previousOwner = ownerRef.current;
     const sameLogicalTarget = !!previous && !!selectedTarget && previous.identityKey === selectedTarget.identityKey;
@@ -611,7 +652,7 @@ function AppBody() {
     }
     if (!requestIsCurrent()) return;
     const journal = await requestNative({ version: 1, kind: 'operations.pending' });
-    if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
+    if (requestIsCurrent() && journal.kind === 'operations') setPending((items) => reconcilePendingJournal(items, journal.items));
     } catch (error) {
       const currentError = currentAccountLoadError(error, requestIsCurrent);
       if (currentError !== null) throw currentError.error;
@@ -650,7 +691,12 @@ function AppBody() {
           if (reply.kind !== 'account') throw new Error(reply.kind === 'error' ? reply.code : 'ACCOUNT_REPLY_INVALID');
           if (!loginAttemptGate.observe(loginEpoch, reply.state)) return;
           const previousAccount = accountRef.current;
-          if (reply.state !== 'signed-in' || (previousAccount && previousAccount.principalId !== reply.principalId)) draftPersistenceRef.current?.clear();
+          if (reply.state !== 'signed-in' || (previousAccount && previousAccount.principalId !== reply.principalId)) {
+            draftPersistenceRef.current?.clear();
+            accountIdentityGenerationRef.current += 1;
+            submittedDraftsRef.current.clear(); setSubmittedEdits([]);
+            recentFlightRef.current += 1; setRecentSessions([]); recentRowsRef.current = []; setRecentErrorCount(0);
+          }
           accountRef.current = reply;
           setAccount(reply);
           setLoginStarted(loginNeedsPolling(reply.state));
@@ -705,6 +751,43 @@ function AppBody() {
   }, []);
 
   useEffect(() => {
+    if (screen !== 'sessions' || account?.state !== 'signed-in') return;
+    const generation = ++recentFlightRef.current;
+    const accountGeneration = accountIdentityGenerationRef.current;
+    let nextReadAt = 0;
+    const eligible = () => routeActiveRef.current && AppState.currentState === 'active' && ownerRef.current.screen === 'sessions'
+      && recentFlightRef.current === generation && accountIdentityGenerationRef.current === accountGeneration;
+    const poll = createSingleFlightPoll(async (isCurrent) => {
+      if (Date.now() < nextReadAt) return;
+      nextReadAt = Date.now() + 15000;
+      setRecentBusy(true);
+      try {
+        await readRecentSessions(targets, async (selected) => {
+          const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: selected.targetId,
+            request: { kind: 'list', agentId: selected.agentId, limit: 30 } }));
+          if (result.kind !== 'list' || result.agentId !== selected.agentId) throw new Error(result.kind === 'error' ? result.code : 'SESSION_LIST_REPLY_INVALID');
+          return result.items;
+        }, isCurrent, (rows, failed) => {
+          if (isCurrent()) { recentRowsRef.current = rows; setRecentSessions(rows); setRecentErrorCount(failed); }
+        }, recentRowsRef.current);
+      } finally { if (isCurrent()) setRecentBusy(false); }
+    }, eligible, recentPollGate);
+    void poll.tick();
+    const timer = setInterval(() => { void poll.tick(); }, 1500);
+    return () => { clearInterval(timer); poll.stop(); };
+  }, [account?.state, recentPollGate, recentRefresh, screen, targets]);
+
+  // A failed directory read must not remove the original conversation. Reconnect via existing account/target discovery.
+  useEffect(() => {
+    if (screen === 'login' || target?.online === true) return;
+    const timer = setInterval(() => {
+      if (routeActiveRef.current && AppState.currentState === 'active' && accountRefreshInFlightRef.current === null)
+        void loadAccount(ownerRef.current).catch(() => undefined);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [loadAccount, screen, target?.online]);
+
+  useEffect(() => {
     if (screen !== 'chat') return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (composerMenuOpen) { setComposerMenuOpen(false); return true; }
@@ -755,18 +838,19 @@ function AppBody() {
   }, []);
 
   useEffect(() => {
-    if (screen !== 'chat' || !snapshot?.sessionId || !target?.targetId) return;
+    if (screen !== 'chat' || !requestedSessionId || !target?.targetId) return;
     const pollOwner = ownerRef.current;
     let failureShown = false;
     const poll = createSingleFlightPoll(async (isCurrent) => {
       const current = snapshotRef.current;
       const currentTarget = targetRef.current;
-      if (!current || !currentTarget) return;
+      if (!currentTarget) return;
       const owner = pollOwner;
-      if (owner.screen !== 'chat' || owner.targetId !== currentTarget.targetId || owner.agentId !== current.agentId || owner.sessionId !== current.sessionId) return;
+      const sessionId = snapshotSessionToRead(owner, current);
+      if (!sessionId || owner.targetId !== currentTarget.targetId || owner.agentId !== currentTarget.agentId) return;
       try {
         if (!isCurrent()) return;
-        const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: current.agentId, sessionId: current.sessionId, limit: 30 } }));
+        const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: currentTarget.targetId, request: { kind: 'get', agentId: currentTarget.agentId, sessionId, limit: 30 } }));
         if (!isCurrent() || !viewStillOwned(owner, ownerRef.current)) return;
         if (result.kind === 'snapshot' && result.agentId === owner.agentId && result.sessionId === owner.sessionId) {
           failureShown = false;
@@ -782,74 +866,89 @@ function AppBody() {
           showSnapshotFailure(error instanceof Error ? error.message : 'SESSION_SNAPSHOT_FAILED');
         }
       }
-    }, () => routeActiveRef.current && AppState.currentState === 'active' && accountRefreshInFlightRef.current === null && historyFlightRef.current === null && !snapshotReadTracker.pending(pollOwner) && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
+    }, () => routeActiveRef.current && AppState.currentState === 'active' && targetRef.current?.online === true && accountRefreshInFlightRef.current === null && historyFlightRef.current === null && !snapshotReadTracker.pending(pollOwner) && viewStillOwned(pollOwner, ownerRef.current), snapshotPollGate);
     const interval = setInterval(() => {
       void poll.tick();
     }, 1500);
     return () => { clearInterval(interval); poll.stop(); };
-  }, [commitSnapshot, ownerEpoch, showSnapshotFailure, screen, snapshot?.sessionId, snapshotPollGate, snapshotReadTracker, target?.targetId]);
+  }, [commitSnapshot, ownerEpoch, showSnapshotFailure, screen, requestedSessionId, snapshotPollGate, snapshotReadTracker, target?.targetId]);
 
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
+    const isMessage = request.kind === 'start' || request.kind === 'send';
+    if (isMessage && sendFlightRef.current) return;
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
     if (!('operationId' in request)) throw new Error('MUTATION_OPERATION_ID_REQUIRED');
     const mutationOwner = ownerRef.current;
     const principalId = accountRef.current?.principalId ?? null;
-    const attempt: MutationAttempt = { protocol: 'session', targetId, agentId: request.agentId, operationId: request.operationId, sessionId: 'sessionId' in request ? request.sessionId : null };
+    const accountGeneration = accountIdentityGenerationRef.current;
+    const attempt: MutationAttempt = { protocol: 'session', targetId, agentId: request.agentId, operationId: request.operationId, sessionId: 'sessionId' in request ? request.sessionId : null, ...(isMessage ? { submittedText: request.text } : {}) };
     const sendingId = ++sendingEpochRef.current;
+    const submittedDraft = isMessage ? rememberSubmitted(request.operationId) : null;
+    if (isMessage) sendFlightRef.current = true;
     let receiptReceived = false;
     setSending(true);
     setNotice(null);
     try {
+      if (submittedDraft && !await draftPersistenceRef.current?.persistSubmitted(submittedDraft)) throw new Error('MOBILE_DRAFT_NOT_SAVED');
+      if (isMessage && (!viewStillOwned(mutationOwner, ownerRef.current) || (accountRef.current?.principalId !== principalId || accountIdentityGenerationRef.current !== accountGeneration))) return;
       const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId, request }));
       if (result.kind === 'error') throw new Error(result.code);
-      if (result.kind !== 'receipt') throw new Error('MUTATION_RECEIPT_INVALID');
+      if (result.kind !== 'receipt' || result.operationId !== request.operationId || result.agentId !== request.agentId || ('sessionId' in request && result.sessionId !== request.sessionId)) throw new Error('MUTATION_RECEIPT_INVALID');
       receiptReceived = true;
+      if ((accountRef.current?.principalId !== principalId || accountIdentityGenerationRef.current !== accountGeneration)) return;
       const stillOwner = viewStillOwned(mutationOwner, ownerRef.current);
+      settleSubmitted(result.operationId, result.status);
       setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
-      if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'session', targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
+      if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'session', targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown', ...(isMessage ? { submittedText: request.text } : {}) }]);
       else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
       if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
       else if (stillOwner && result.status === 'accepted') say('已接收');
       else if (stillOwner && result.status === 'unconfirmed') say('结果尚未确认。请查询状态后再继续；这条消息不会自动重发。', 'error');
       else if (stillOwner && result.status === 'not-found') say('未找到该操作记录，无法判断是否执行。请勿直接重发。', 'error');
       else if (stillOwner) say(result.code ?? '操作未接收', 'error');
-      if (stillOwner && result.sessionId && request.kind === 'start') {
+      if (stillOwner && result.sessionId && request.kind === 'start' && (result.status === 'accepted' || result.status === 'processing')) {
         const row = { sessionId: result.sessionId, title: request.text.slice(0, 48), updatedAt: new Date().toISOString(), preview: request.text, runtime: target?.runtime ?? '' };
-        saveDraft('');
         await openSnapshot(row);
-      } else if (stillOwner && request.kind === 'send' && result.status === 'accepted') saveDraft('');
+      }
       if (stillOwner && (request.kind === 'respond' || request.kind === 'stop')) {
         const fresh = await requestNative({ version: 1, kind: 'session', targetId, request: { kind: 'get', agentId: request.agentId, sessionId: request.sessionId, limit: 30 } }).then(parseSessionReply);
         if (viewStillOwned(mutationOwner, ownerRef.current) && fresh.kind === 'snapshot' && fresh.agentId === mutationOwner.agentId && fresh.sessionId === mutationOwner.sessionId) commitSnapshot(fresh);
       }
     } catch (error) {
-      if (!receiptReceived) await retainFailedMutationUntilJournalCheck(attempt, mutationOwner, principalId, error);
+      if (!receiptReceived) await retainFailedMutationUntilJournalCheck(attempt, mutationOwner, principalId, accountGeneration, error);
       else if (viewStillOwned(mutationOwner, ownerRef.current) && accountRef.current?.principalId === principalId) say(error instanceof Error ? error.message : 'MUTATION_FAILED', 'error');
     }
-    finally { if (sendingId === sendingEpochRef.current) setSending(false); }
+    finally { if (isMessage) sendFlightRef.current = false; if (sendingId === sendingEpochRef.current) setSending(false); }
   };
 
   const sendMobile = async (request: Extract<RemoteMobileRequest, { kind: 'mobile.start' | 'mobile.send' }>) => {
     const selected = targetRef.current;
-    if (!selected || !selected.online) return;
+    if (!selected || !selected.online || sendFlightRef.current) return;
     const requestOwner = ownerRef.current;
     const principalId = accountRef.current?.principalId ?? null;
-    const attempt: MutationAttempt = { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: request.operationId, sessionId: request.kind === 'mobile.send' ? request.sessionId : null };
+    const accountGeneration = accountIdentityGenerationRef.current;
+    const attempt: MutationAttempt = { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: request.operationId, sessionId: request.kind === 'mobile.send' ? request.sessionId : null, submittedText: request.text };
     const sendingId = ++sendingEpochRef.current;
+    sendFlightRef.current = true;
+    const submittedDraft = rememberSubmitted(request.operationId);
     const sendOwnerKey = attachmentScopeRef.current ?? '';
     const sendPrincipalId = accountRef.current?.principalId ?? null;
     const localIds = attachmentsRef.current.filter((item) => item.ownerKey === sendOwnerKey).map((item) => item.file.localId);
     let receiptReceived = false;
     setSending(true); setNotice(null);
     try {
+      if (submittedDraft && !await draftPersistenceRef.current?.persistSubmitted(submittedDraft)) throw new Error('MOBILE_DRAFT_NOT_SAVED');
+      if (!viewStillOwned(requestOwner, ownerRef.current) || (accountRef.current?.principalId !== principalId || accountIdentityGenerationRef.current !== accountGeneration)) return;
       const result = await requestMobile(selected.targetId, request);
       if (result.kind === 'mobile.error') throw new Error(result.code);
       if (result.kind !== 'mobile.receipt' || result.operationId !== request.operationId) throw new Error('MOBILE_RECEIPT_INVALID');
       receiptReceived = true;
+      if ((accountRef.current?.principalId !== principalId || accountIdentityGenerationRef.current !== accountGeneration)) return;
+      settleSubmitted(result.operationId, result.status);
       const stillOwner = viewStillOwned(requestOwner, ownerRef.current) && targetRef.current?.identityKey === selected.identityKey;
       setReceiptStates((states) => ({ ...states, [result.operationId]: result.status }));
       if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') {
-        setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
+        setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown', submittedText: request.text }]);
         mobileUnknownAttachmentsRef.current.set(result.operationId, { ownerKey: sendOwnerKey, localIds, targetId: selected.targetId, identityKey: selected.identityKey, agentId: selected.agentId, principalId: sendPrincipalId, sessionId: request.kind === 'mobile.send' ? request.sessionId : result.sessionId });
       } else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
       if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
@@ -861,23 +960,23 @@ function AppBody() {
         mobileUnknownAttachmentsRef.current.delete(result.operationId);
         if (request.kind === 'mobile.start') {
           if (!result.sessionId) throw new Error('MOBILE_RECEIPT_SESSION_REQUIRED');
-          saveDraft('');
           await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
           if (!viewStillOwned(requestOwner, ownerRef.current) || targetRef.current?.identityKey !== selected.identityKey) return;
           await openSnapshot({ sessionId: result.sessionId, title: request.text.slice(0, 48) || '新会话', updatedAt: new Date().toISOString(), preview: request.text || '已添加附件', runtime: '' }, selected);
         } else {
-          saveDraft('');
           await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
         }
+      } else if (stillOwner && result.status === 'processing' && result.sessionId && request.kind === 'mobile.start') {
+        await openSnapshot({ sessionId: result.sessionId, title: request.text.slice(0, 48) || '新会话', updatedAt: new Date().toISOString(), preview: request.text || '已添加附件', runtime: '' }, selected);
       }
     } catch (error) {
-      if (!receiptReceived) await retainFailedMutationUntilJournalCheck(attempt, requestOwner, principalId, error);
+      if (!receiptReceived) await retainFailedMutationUntilJournalCheck(attempt, requestOwner, principalId, accountGeneration, error);
       else if (viewStillOwned(requestOwner, ownerRef.current) && accountRef.current?.principalId === principalId) say(error instanceof Error ? error.message : 'MOBILE_SEND_FAILED', 'error');
     }
-    finally { if (sendingId === sendingEpochRef.current) setSending(false); }
+    finally { sendFlightRef.current = false; if (sendingId === sendingEpochRef.current) setSending(false); }
   };
 
-  const cleanupSentAttachments = async (localIds: string[], expectedOwnerKey: string, identityKey: string, principalId: string | null) => {
+  const cleanupSentAttachments = useCallback(async (localIds: string[], expectedOwnerKey: string, identityKey: string, principalId: string | null) => {
     for (const localId of localIds) {
       if (attachmentScopeRef.current !== expectedOwnerKey || targetRef.current?.identityKey !== identityKey || accountRef.current?.principalId !== principalId) return;
       try {
@@ -885,12 +984,12 @@ function AppBody() {
         if (reply.kind === 'attachment-removed' && attachmentScopeRef.current === expectedOwnerKey && targetRef.current?.identityKey === identityKey && accountRef.current?.principalId === principalId) updateAttachments((items) => items.filter((item) => item.file.localId !== localId));
       } catch { /* A submitted asset is already scoped to its operation; native cleanup can be retried later. */ }
     }
-  };
+  }, [updateAttachments]);
 
   const sendDraft = () => {
     const text = draft.trim();
     if (!target || targetRef.current?.identityKey !== target.identityKey || snapshotRef.current !== snapshot
-      || sending || blocksMutation || !sessionSnapshotReady(ownerRef.current, snapshotRef.current)) return;
+      || sending || sendFlightRef.current || blocksMutation || !sessionSnapshotReady(ownerRef.current, snapshotRef.current)) return;
     const plan = sendProtocol(mobileMode, text, selectedModelId, attachments.map((item) => ({ state: item.upload?.state ?? (item.errorCode ? 'error' : 'uploading'), assetId: item.upload?.assetId ?? null })));
     if (plan === 'blocked') {
       if (mobileMode === 'supported' && attachments.some((item) => item.upload?.state !== 'ready' || !item.upload.assetId)) say('请等待所有附件上传完成后再发送。', 'neutral');
@@ -1143,32 +1242,96 @@ function AppBody() {
     finally { if (viewStillOwned(owner, ownerRef.current)) setSuggestionsLoading(false); }
   };
 
-  const queryPending = async (item: PendingOperation) => {
+  const queryPending = useCallback(async (item: PendingOperation, quiet = false, eligible: () => boolean = () => true) => {
+    if (receiptFlightsRef.current.has(item.operationId)) return;
+    receiptFlightsRef.current.add(item.operationId);
     const queryOwner = ownerRef.current;
+    const principalId = accountRef.current?.principalId;
+    const accountGeneration = accountIdentityGenerationRef.current;
+    const currentAccount = () => accountIdentityGenerationRef.current === accountGeneration
+      && accountRef.current?.principalId === principalId;
+    const pendingTarget = targets.find((entry) => entry.targetId === item.targetId && entry.agentId === item.agentId);
+    let restoredTicket: SubmittedDraft | null = null;
     const route = receiptProtocol(item);
     let status: ReceiptStatus;
-    if (route.kind === 'mobile') {
-      const result = await requestMobile(route.targetId, route.request);
-      if (result.kind === 'mobile.error') throw new Error(result.code);
-      if (result.kind !== 'mobile.receipt' || result.operationId !== item.operationId || (item.sessionId !== null && result.sessionId !== item.sessionId)) throw new Error('MOBILE_RECEIPT_REPLY_INVALID');
-      status = result.status;
-      if (status === 'accepted') {
-        const attached = mobileUnknownAttachmentsRef.current.get(item.operationId);
-        const selected = targetRef.current;
-        const safeToCleanup = attached && selected?.targetId === attached.targetId && selected.identityKey === attached.identityKey
-          && selected.agentId === attached.agentId && accountRef.current?.principalId === attached.principalId
-          && item.sessionId === attached.sessionId;
-        if (safeToCleanup && attached.ownerKey === attachmentScopeRef.current) { await cleanupSentAttachments(attached.localIds, attached.ownerKey, attached.identityKey, attached.principalId); mobileUnknownAttachmentsRef.current.delete(item.operationId); }
+    let sessionId: string | null;
+    try {
+      if (!eligible() || !currentAccount()) return;
+      if (pendingTarget && item.submittedText !== undefined) {
+        restoredTicket = await draftPersistenceRef.current?.capturePending(pendingTarget, item.sessionId, item.submittedText) ?? null;
       }
-    } else {
-      const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: route.targetId, request: route.request }));
-      if (result.kind !== 'receipt' || result.operationId !== item.operationId) throw new Error(result.kind === 'error' ? result.code : 'RECEIPT_REPLY_INVALID');
-      status = result.status;
-    }
-    setReceiptStates((states) => ({ ...states, [item.operationId]: status }));
-    if (status === 'accepted' || status === 'rejected') setPending((items) => items.filter((entry) => entry.operationId !== item.operationId));
-    if (viewStillOwned(queryOwner, ownerRef.current)) say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' ? 'error' : 'neutral');
-  };
+      if (!eligible() || !currentAccount()) return;
+      if (route.kind === 'mobile') {
+        const result = await requestMobile(route.targetId, route.request);
+        if (!currentAccount()) return;
+        if (result.kind === 'mobile.error') throw new Error(result.code);
+        if (result.kind !== 'mobile.receipt' || result.operationId !== item.operationId || (item.sessionId !== null && result.sessionId !== item.sessionId)) throw new Error('MOBILE_RECEIPT_REPLY_INVALID');
+        status = result.status; sessionId = result.sessionId;
+        if (status === 'accepted') {
+          const attached = mobileUnknownAttachmentsRef.current.get(item.operationId);
+          const selected = targetRef.current;
+          const safeToCleanup = attached && selected?.targetId === attached.targetId && selected.identityKey === attached.identityKey
+            && selected.agentId === attached.agentId && accountRef.current?.principalId === attached.principalId
+            && (attached.sessionId === null || sessionId === attached.sessionId);
+          if (safeToCleanup && attached.ownerKey === attachmentScopeRef.current) {
+            await cleanupSentAttachments(attached.localIds, attached.ownerKey, attached.identityKey, attached.principalId);
+            mobileUnknownAttachmentsRef.current.delete(item.operationId);
+          }
+        }
+      } else {
+        const result = parseSessionReply(await requestNative({ version: 1, kind: 'session', targetId: route.targetId, request: route.request }));
+        if (!currentAccount()) return;
+        if (result.kind !== 'receipt' || result.agentId !== item.agentId || result.operationId !== item.operationId || (item.sessionId !== null && result.sessionId !== item.sessionId)) throw new Error(result.kind === 'error' ? result.code : 'RECEIPT_REPLY_INVALID');
+        status = result.status; sessionId = result.sessionId;
+      }
+      if (!currentAccount()) return;
+      if (status === 'accepted' && restoredTicket) draftPersistenceRef.current?.clearSubmitted(restoredTicket);
+      settleSubmitted(item.operationId, status);
+      setReceiptStates((states) => ({ ...states, [item.operationId]: status }));
+      if (status === 'accepted' || status === 'rejected') {
+        setPending((items) => items.filter((entry) => entry.operationId !== item.operationId));
+        receiptScheduleRef.current.delete(item.operationId);
+      } else if (sessionId) {
+        setPending((items) => items.map((entry) => entry.operationId === item.operationId ? { ...entry, sessionId } : entry));
+      }
+      if (!viewStillOwned(queryOwner, ownerRef.current)) return;
+      if (!quiet || status === 'rejected') say(status === 'unconfirmed' || status === 'not-found' ? `操作状态：${receiptLabels[status]}，没有重发。` : status === 'rejected' ? '消息未被接收，原文已保留，可检查后重新发送。' : `操作状态：${receiptLabels[status]}`, status === 'unconfirmed' || status === 'not-found' || status === 'rejected' ? 'error' : 'neutral');
+      else if (status === 'accepted') setNotice(null);
+      const selected = targetRef.current;
+      if (selected?.online && queryOwner.screen === 'chat' && queryOwner.targetId === item.targetId && queryOwner.agentId === item.agentId
+        && (status === 'accepted' || status === 'processing') && sessionId) {
+        const owner = queryOwner.sessionId === null ? moveOwner('chat', selected, sessionId) : queryOwner;
+        if (owner.sessionId === sessionId) await readSnapshot(owner, selected, () => accountIdentityGenerationRef.current === accountGeneration && accountRef.current?.principalId === principalId);
+      }
+    } finally { receiptFlightsRef.current.delete(item.operationId); }
+  }, [cleanupSentAttachments, moveOwner, readSnapshot, say, settleSubmitted, targets]);
+
+  useEffect(() => {
+    if (!pending.length) return;
+    const pollOwner = ownerRef.current;
+    const accountGeneration = accountIdentityGenerationRef.current;
+    const eligible = () => routeActiveRef.current && AppState.currentState === 'active' && !sendFlightRef.current
+      && accountRefreshInFlightRef.current === null && viewStillOwned(pollOwner, ownerRef.current)
+      && accountIdentityGenerationRef.current === accountGeneration;
+    const poll = createSingleFlightPoll(async (isCurrent) => {
+      const now = Date.now();
+      const item = pending.find((entry) => entry.status !== 'prepared' && targets.some((target) => target.targetId === entry.targetId && target.agentId === entry.agentId && target.online)
+        && receiptCheckDelay(receiptScheduleRef.current.get(entry.operationId)?.attempts ?? 0) !== null
+        && !receiptFlightsRef.current.has(entry.operationId) && (receiptScheduleRef.current.get(entry.operationId)?.nextAt ?? 0) <= now);
+      if (!item || !isCurrent()) return;
+      const schedule = receiptScheduleRef.current.get(item.operationId) ?? { attempts: 0, nextAt: 0 };
+      const delay = receiptCheckDelay(schedule.attempts);
+      if (delay === null) return;
+      receiptScheduleRef.current.set(item.operationId, { attempts: schedule.attempts + 1, nextAt: now + delay });
+      await queryPending(item, true, isCurrent);
+    }, eligible, receiptPollGate);
+    void poll.tick();
+    const timer = setInterval(() => { void poll.tick(); }, 1500);
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') { receiptScheduleRef.current.clear(); void poll.tick(); }
+    });
+    return () => { clearInterval(timer); listener.remove(); poll.stop(); };
+  }, [ownerEpoch, pending, queryPending, receiptPollGate, targets]);
 
   const respond = (item: Interaction, approved: boolean, answers?: Record<string, string>) => {
     if (!snapshot || !target || !item.actionable || snapshot.state !== 'waiting_user_action') return;
@@ -1337,6 +1500,9 @@ function AppBody() {
     try { await selectQaScenario(scenario); await loadAccount(); }
     catch (error) { say(error instanceof Error ? error.message : 'NATIVE_SCENARIO_FAILED', 'error'); }
   };
+  const hideSubmittedDraft = submittedDraftHidden(draftUpdate ? { key: draftUpdate.key, text: draft, editRevision: draftUpdate.editRevision } : null,
+    submittedEdits.filter((item) => sending || pending.some((entry) => entry.operationId === item.operationId)).map((item) => item.ticket), pending, { epoch: ownerEpoch, screen, targetId: target?.targetId ?? null, agentId: target?.agentId ?? null, sessionId: requestedSessionId });
+  const composerDraft = hideSubmittedDraft ? '' : draft;
   const sendAvailability = sendProtocol(mobileMode, draft.trim(), selectedModelId, attachments.map((item) => ({ state: item.upload?.state ?? (item.errorCode ? 'error' : 'uploading'), assetId: item.upload?.assetId ?? null })));
   const awaitingSnapshot = screen === 'chat' && requestedSessionId !== null && (snapshot?.sessionId !== requestedSessionId || snapshot?.agentId !== target?.agentId);
   const snapshotStatus = snapshotReadStatus(snapshotRead, { epoch: ownerEpoch, screen, targetId: target?.targetId ?? null, agentId: target?.agentId ?? null, sessionId: requestedSessionId });
@@ -1345,7 +1511,7 @@ function AppBody() {
     && item.targetId === target?.targetId && item.agentId === (snapshot?.agentId ?? target?.agentId)
     && item.sessionId === (snapshot?.sessionId ?? null)) : undefined;
   const chatNotice: NonNullable<Notice> | null = chatPendingReceipt
-    ? { ...(notice ?? { tone: 'error' as const }), text: `消息状态待确认 · ${receiptLabels[receiptStates[chatPendingReceipt.operationId] ?? chatPendingReceipt.status]}。不会自动重发。` }
+    ? { ...(notice ?? { tone: 'error' as const }), text: `消息${receiptStates[chatPendingReceipt.operationId] === 'processing' || chatPendingReceipt.status === 'processing' ? '已提交，正在确认接收' : '接收状态待确认'}。可查询这条消息的接收状态。` }
     : notice;
   const canQueryChatReceipt = !!target?.online && !loading && !sending;
   const pendingNotification = notificationOpens.peek();
@@ -1402,7 +1568,15 @@ function AppBody() {
     </View>}
 
     {screen === 'sessions' && <SessionHomeScreen
-      targets={targets} target={target} sessions={sessions} search={sessionSearch} searchOpen={sessionSearchOpen}
+      targets={targets} target={target} sessions={sessions}
+      recentSessions={recentSessions} recentBusy={recentBusy} recentErrorCount={recentErrorCount}
+      onRefreshRecent={() => { setRecentRefresh((value) => value + 1); void loadAccount(ownerRef.current).catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error')); }}
+      onOpenRecent={(item) => {
+        const selected = targets.find((entry) => entry.identityKey === item.target.identityKey && entry.agentId === item.target.agentId);
+        if (!selected?.online) { say('此会话的设备当前离线，请连接后重试。', 'error'); return; }
+        void loadMobileCatalog(selected);
+        void run('snapshot', () => openSnapshot(item, selected));
+      }} search={sessionSearch} searchOpen={sessionSearchOpen}
       onSearch={setSessionSearch} onSearchOpen={setSessionSearchOpen} busy={loading} unavailableDeviceCount={unavailableDeviceCount}
       onAccount={() => router.push('/account')}
       onRefresh={() => void loadAccount(ownerRef.current).catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'))}
@@ -1429,6 +1603,7 @@ function AppBody() {
         <Pressable accessibilityRole="button" accessibilityLabel="在会话信息中查看成果" disabled={!snapshot?.sessionId || awaitingSnapshot} onPress={openArtifacts} style={styles.secondaryButton}><Text style={styles.secondaryText}>查看会话成果</Text></Pressable>
       </MobileSheet>
       {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : retryNotificationAction} onDismiss={chatPendingReceipt ? undefined : dismissNotification}/>}
+      {chatPendingReceipt?.submittedText && !snapshot?.messages.some((message) => message.role === 'user' && message.content === chatPendingReceipt.submittedText) && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认消息 · 原文已保留</Text><Text selectable numberOfLines={4} style={styles.body}>{chatPendingReceipt.submittedText}</Text></View>}
       <ScrollView accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} ref={scrollRef} accessibilityLabel="聊天消息" style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
         onTouchStart={() => { userScrolledTranscriptRef.current = true; }}
         {...(Platform.OS === 'web' ? { onWheel: () => { userScrolledTranscriptRef.current = true; } } : {})}
@@ -1498,9 +1673,9 @@ function AppBody() {
         </ScrollView>}
         <View pointerEvents={composerMenuOpen ? 'none' : 'auto'} accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.composer}>
           <Pressable ref={composerMenuTriggerRef} accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" accessibilityState={{ expanded: composerMenuOpen }} onPress={() => { Keyboard.dismiss(); setComposerMenuOpen((value) => !value); }} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
-          {draft.trim() || attachments.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={awaitingSnapshot ? '请先重试读取已有会话，草稿会保留。' : !target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speechPreparing ? '正在准备语音输入' : speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speechPreparing || speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
-          {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
+          <TextInput accessibilityLabel="消息输入框" value={composerDraft} editable={!sending && !hideSubmittedDraft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
+          {composerDraft.trim() || attachments.length > 0 || sending || hideSubmittedDraft ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={awaitingSnapshot ? '请先重试读取已有会话，草稿会保留。' : !target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speechPreparing ? '正在准备语音输入' : speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speechPreparing || speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
+          {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{composerDraft ? `${composerDraft}\u200B` : '\u200B'}</Text>}
         </View>
         {composerMenuOpen && <Pressable accessibilityRole="button" accessibilityLabel="关闭添加菜单并返回输入栏" onPress={() => setComposerMenuOpen(false)} style={[StyleSheet.absoluteFill, { zIndex: 21 }]}/>}
       </View>

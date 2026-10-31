@@ -87,10 +87,70 @@ fn uuid(s: &str) -> bool {
     uuid::Uuid::parse_str(s).is_ok_and(|id| id.to_string() == s)
 }
 impl MobileConnection {
+    /// Complete the existing draft CAS before an accepted journal is tombstoned.
+    /// The immutable journal supplies the original scope, not the current UI/catalog.
+    pub(super) fn clear_accepted_draft(
+        &self,
+        scope: &str,
+        device: &DeviceScope,
+        request: &JournalRequest,
+    ) -> Result<(), NetworkError> {
+        // Low-level journal fixtures have no signed-in draft authority.
+        let Some(saved) = &self.saved else {
+            return Ok(());
+        };
+        if device.service_id != saved.instance.service_id
+            || device.environment != saved.instance.environment
+            || device.network_id != saved.instance.network_id
+            || device.principal_id != saved.session.principal_id
+            || scope
+                != journal_scope(&crate::KeyScope {
+                    issuer: saved.instance.issuer.clone(),
+                    environment: saved.instance.environment.clone(),
+                    service_id: saved.instance.service_id.clone(),
+                    principal_id: saved.session.principal_id.clone(),
+                    device_id: saved.device_id.clone(),
+                    key_generation: 1,
+                })?
+        {
+            return Err(err("MOBILE_JOURNAL_INVALID"));
+        }
+        let Some(text) = request.submitted_text() else {
+            return Ok(());
+        };
+        let _gate = GATE
+            .lock()
+            .map_err(|_| err("MOBILE_SECURE_STORE_UNAVAILABLE"))?;
+        let target = Target {
+            device: device.device_id.clone(),
+            agent: request.agent_id().into(),
+        };
+        let intent = json!({"sessionId":request.session_id()});
+        let current = self.draft_locked(&intent, false, Some(&target))?;
+        let current_text = current["text"]
+            .as_str()
+            .ok_or_else(|| err("MOBILE_DRAFT_CORRUPT"))?;
+        if current_text.is_empty() || current_text.trim() != text {
+            return Ok(());
+        }
+        let write = json!({"sessionId":request.session_id(),"expectedRevision":current["revision"],"writeId":uuid::Uuid::new_v4().to_string(),"text":""});
+        self.draft_locked(&write, true, Some(&target))?;
+        Ok(())
+    }
+
     pub(super) fn draft(&self, intent: &Value, write: bool) -> Result<Value, NetworkError> {
         let _gate = GATE
             .lock()
             .map_err(|_| err("MOBILE_SECURE_STORE_UNAVAILABLE"))?;
+        self.draft_locked(intent, write, None)
+    }
+
+    fn draft_locked(
+        &self,
+        intent: &Value,
+        write: bool,
+        journal_target: Option<&Target>,
+    ) -> Result<Value, NetworkError> {
         if serde_json::to_vec(intent)
             .map_err(|_| err("MOBILE_DRAFT_INVALID"))?
             .len()
@@ -110,14 +170,17 @@ impl MobileConnection {
         if !uuid(&saved.device_id) {
             return Err(err("OWNED_SESSION_INVALID"));
         }
-        let target = self
-            .targets
-            .get(
-                intent["targetId"]
-                    .as_str()
-                    .ok_or_else(|| err("MOBILE_DRAFT_INVALID"))?,
-            )
-            .ok_or_else(|| err("MOBILE_TARGET_NOT_APPROVED"))?;
+        let target = match journal_target {
+            Some(target) => target,
+            None => self
+                .targets
+                .get(
+                    intent["targetId"]
+                        .as_str()
+                        .ok_or_else(|| err("MOBILE_DRAFT_INVALID"))?,
+                )
+                .ok_or_else(|| err("MOBILE_TARGET_NOT_APPROVED"))?,
+        };
         let session = match intent.get("sessionId") {
             Some(Value::Null) => None,
             Some(Value::String(s)) => Some(s.clone()),
@@ -259,10 +322,13 @@ impl MobileConnection {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::ffi::tests::{callbacks, Memory};
-    fn owner(store: Arc<dyn SecureStore>, saved: Option<SavedAccount>) -> MobileConnection {
+    pub(in crate::runtime) fn owner(
+        store: Arc<dyn SecureStore>,
+        saved: Option<SavedAccount>,
+    ) -> MobileConnection {
         let mut o = MobileConnection::new(
             NativeConfig {
                 issuer: "https://draft.example.test".into(),
