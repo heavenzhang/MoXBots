@@ -1,141 +1,58 @@
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { CircleUserRound, Info, RefreshCw, Search, SquarePen, X } from 'lucide-react-native';
+import { ChevronRight, CircleUserRound, FileText, MessageCircle, RefreshCw, Search, SquarePen, UsersRound, X } from 'lucide-react-native';
 import type { Target } from './native';
 import { MobileSheet } from './MobileSheet';
-import { mobileTheme as color } from './mobileTheme';
-import { filterSessionRows, sessionDateGroup, sessionUpdatedLabel, type SessionListItem } from './sessionPresentation';
+import { BotAvatar } from './BotAvatar';
+import { BotProfileSheet } from './BotProfileSheet';
+import { botKey, botSessionKey, botSessionStatus, type BotDirectoryPage, type BotSession } from './botDirectory';
+import { mobileTheme as c } from './mobileTheme';
+import { sessionUpdatedLabel } from './sessionPresentation';
 
 type Props = {
-  targets: readonly Target[];
-  target: Target | null;
-  sessions: readonly SessionListItem[];
-  search: string;
-  searchOpen: boolean;
-  onSearch: (value: string) => void;
-  onSearchOpen: (value: boolean) => void;
-  busy: boolean;
-  unavailableDeviceCount: number;
-  onAccount: () => void;
-  onRefresh: () => void;
-  onSelectTarget: (target: Target) => void;
-  onNew: () => void;
-  onOpen: (session: SessionListItem) => void;
-  notice?: ReactNode;
-  pending?: ReactNode;
-  empty: ReactNode;
+  targets: readonly Target[]; target: Target | null; rows: readonly BotSession[]; pages: readonly BotDirectoryPage[];
+  search: string; searchOpen: boolean; onSearch: (value: string) => void; onSearchOpen: (value: boolean) => void;
+  busy: boolean; unavailableDeviceCount: number; onAccount: () => void; onRefresh: () => void;
+  onNew: (target: Target) => void; onOpen: (row: BotSession) => void; onArtifacts: (row: BotSession) => void;
+  notice?: ReactNode; pending?: ReactNode; empty: ReactNode;
 };
-
-/** List presentation only: opening, switching Bots and refresh still use the original owner callbacks. */
-export function SessionHomeScreen(props: Props) {
-  const { target, sessions, search, searchOpen, busy } = props;
-  const [info, setInfo] = useState<{ session: SessionListItem; target: Target } | null>(null);
-  const rows = filterSessionRows(sessions, search);
-  const canOpenInfo = !!info && info.target.targetId === target?.targetId
-    && info.target.identityKey === target.identityKey && info.target.agentId === target.agentId;
-  let previousGroup = '';
-  return <View style={styles.page}>
-    <View style={styles.header}>
-      <Pressable accessibilityRole="button" accessibilityLabel="账号与设置" onPress={props.onAccount} style={styles.iconButton}><CircleUserRound size={23} color={color.ink}/></Pressable>
-      <Text accessibilityRole="header" style={styles.heading}>会话</Text>
-      <View style={styles.headerActions}>
-        <Pressable accessibilityRole="button" accessibilityLabel="搜索会话" accessibilityState={{ expanded: searchOpen || !!search }} onPress={() => props.onSearchOpen(!searchOpen)} style={styles.iconButton}><Search size={21} color={color.ink}/></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="新建会话" accessibilityHint={!target ? '请先选择 Bot' : !target.online ? '设备离线，可先保留草稿' : undefined} accessibilityState={{ disabled: !target }} disabled={!target} onPress={props.onNew} style={[styles.iconButton, !target && styles.disabled]}><SquarePen size={22} color={color.ink}/></Pressable>
-      </View>
-    </View>
-    <View style={styles.scope}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scopes}>
-        {props.targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: item.targetId === target?.targetId }} onPress={() => { setInfo(null); props.onSelectTarget(item); }} style={[styles.scopeButton, item.targetId === target?.targetId && styles.scopeSelected]}>
-          <View style={[styles.dot, !item.online && styles.dotOffline]}/><Text numberOfLines={1} style={[styles.scopeLabel, item.targetId === target?.targetId && styles.scopeLabelSelected]}>{item.name}</Text>
-        </Pressable>)}
-        {props.targets.length === 0 && <Text style={styles.scopeEmpty}>尚未发现可用 Bot</Text>}
-      </ScrollView>
-      <Pressable accessibilityRole="button" accessibilityLabel="刷新会话和设备" accessibilityState={{ disabled: busy }} disabled={busy} onPress={props.onRefresh} style={styles.refresh}>{busy ? <ActivityIndicator size="small" color={color.muted}/> : <RefreshCw size={17} color={color.muted}/>}</Pressable>
-    </View>
-    {(searchOpen || !!search) && <View style={styles.searchRow}>
-      <Search size={18} color={color.muted}/><TextInput autoFocus accessibilityLabel="搜索当前 Bot 的会话" placeholder="搜索会话" placeholderTextColor={color.muted} value={search} onChangeText={props.onSearch} returnKeyType="search" style={styles.searchInput}/>
-      <Pressable accessibilityRole="button" accessibilityLabel="清除并关闭搜索" onPress={() => { props.onSearch(''); props.onSearchOpen(false); }} style={styles.searchClear}><X size={17} color={color.muted}/></Pressable>
-    </View>}
-    {props.unavailableDeviceCount > 0 && <Text accessibilityLiveRegion="polite" style={styles.availability}>另有 {props.unavailableDeviceCount} 台设备目录暂不可用</Text>}
-    {props.notice}
-    <ScrollView style={styles.list} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-      {props.pending}
-      {!target || !target.online || sessions.length === 0 ? props.empty : rows.length === 0 ? <View style={styles.empty}>
-        <Search size={25} color={color.muted}/><Text style={styles.emptyTitle}>没有找到相关会话</Text><Text style={styles.emptyDetail}>试试其他关键词，或清除搜索查看全部会话。</Text><Pressable accessibilityRole="button" onPress={() => props.onSearch('')} style={styles.clearSearch}><Text style={styles.link}>清除搜索</Text></Pressable>
-      </View> : rows.map((row) => {
-        const group = sessionDateGroup(row.updatedAt);
-        const showGroup = group !== previousGroup;
-        previousGroup = group;
-        return <View key={row.sessionId}>
-          {showGroup && <Text accessibilityRole="header" style={styles.group}>{group}</Text>}
-          <View style={styles.row}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`打开会话：${row.title || '新会话'}${row.preview ? `，${row.preview}` : ''}`} onPress={() => props.onOpen(row)} style={({ pressed }) => [styles.rowOpen, pressed && styles.rowPressed]}>
-              <View style={styles.rowTitle}><Text numberOfLines={1} style={styles.title}>{row.title || '新会话'}</Text><Text style={styles.time}>{sessionUpdatedLabel(row.updatedAt)}</Text></View>
-              {!!row.preview && <Text numberOfLines={2} style={styles.preview}>{row.preview}</Text>}
-              <Text numberOfLines={1} style={styles.context}>{target.name} · {target.deviceName}</Text>
-            </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`会话信息：${row.title || '新会话'}`} onPress={() => setInfo({ session: row, target })} style={styles.rowMenu}><Info size={17} color={color.muted}/></Pressable>
-          </View>
-        </View>;
-      })}
+type Tab = 'chats' | 'bots' | 'artifacts';
+/** One catalog, three views. Every action carries the original Bot identity and session. */
+export function SessionHomeScreen(p: Props) {
+  const [tab, setTab] = useState<Tab>('chats');
+  const [scope, setScope] = useState<string | null>(null);
+  const [filter, setFilter] = useState<'all' | 'attention' | 'active'>('all');
+  const [choosingBot, setChoosingBot] = useState(false);
+  const [profile, setProfile] = useState<Target | null>(null);
+  const query = p.search.trim().toLocaleLowerCase();
+  const scoped = p.rows.filter(row => (!scope || botKey(row.target) === scope) && (!query || [row.title, row.preview, row.target.name, row.target.deviceName].some(value => value.toLocaleLowerCase().includes(query))));
+  const rows = scoped.filter(row => tab !== 'chats' || filter === 'all' || botSessionStatus(row).tone === filter);
+  const bots = p.targets.filter(target => !query || [target.name, target.deviceName].some(value => value.toLocaleLowerCase().includes(query)));
+  const newWork = () => { const selected = p.targets.find(t => botKey(t) === scope); if (selected) p.onNew(selected); else if (p.targets.length === 1) p.onNew(p.targets[0]); else if (p.targets.length) setChoosingBot(true); else setTab('bots'); };
+  const validProfile = profile && p.targets.find(t => botKey(t) === botKey(profile)) || null;
+  return <View style={s.page}>
+    <View style={s.header}><View style={s.flex}><Text style={s.eyebrow}>MoXBots</Text><Text accessibilityRole="header" style={s.heading}>{tab === 'chats' ? '继续手上的工作' : tab === 'bots' ? '我的 Bots' : '会话成果'}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="账号与设置" onPress={p.onAccount} style={s.icon}><CircleUserRound size={24} color={c.ink}/></Pressable></View>
+    <View style={s.tools}><Pressable accessibilityRole="button" accessibilityLabel="搜索会话和 Bots" onPress={() => p.onSearchOpen(!p.searchOpen)} style={s.searchButton}><Search size={18} color={c.muted}/><Text style={s.small}>搜索会话和 Bots</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="刷新会话和设备" disabled={p.busy} onPress={p.onRefresh} style={s.icon}>{p.busy ? <ActivityIndicator size="small" color={c.primary}/> : <RefreshCw size={18} color={c.primary}/>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel="新建会话" onPress={newWork} style={s.newButton}><SquarePen size={19} color={c.white}/></Pressable></View>
+    {(p.searchOpen || !!p.search) && <View style={s.search}><TextInput autoFocus accessibilityLabel="搜索全部会话和 Bots" value={p.search} onChangeText={p.onSearch} placeholder="任务、内容或 Bot 名称" placeholderTextColor={c.muted} style={s.input}/><Pressable accessibilityRole="button" accessibilityLabel="清除并关闭搜索" onPress={() => {p.onSearch('');p.onSearchOpen(false);}} style={s.icon}><X size={18} color={c.muted}/></Pressable></View>}
+    {tab !== 'bots' && <ScrollView horizontal style={s.scopes} contentContainerStyle={s.chips} showsHorizontalScrollIndicator={false}><Chip label="全部 Bots" selected={!scope} onPress={() => setScope(null)}/>{p.targets.map(t => <Chip key={botKey(t)} label={t.name} selected={scope === botKey(t)} onPress={() => setScope(botKey(t))}/>)}</ScrollView>}
+    {tab === 'chats' && <View style={s.filters}>{([['all','全部'],['attention','需要你'],['active','进行中']] as const).map(([value,label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{selected:filter===value}} onPress={() => setFilter(value)} style={s.filter}><Text style={[s.small,filter===value && s.selectedText]}>{label}{value !== 'all' ? ` ${scoped.filter(r => botSessionStatus(r).tone === value).length}` : ''}</Text></Pressable>)}</View>}
+    {p.notice}
+    <ScrollView style={s.list} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
+      {p.pending}
+      {p.unavailableDeviceCount > 0 && <Text style={s.coverage}>另有 {p.unavailableDeviceCount} 台设备目录暂不可用</Text>}
+      {p.pages.some(page => page.error) && <Text accessibilityRole="alert" style={s.coverage}>部分 Bot 暂未同步，已读取的会话仍保留。可刷新重试。</Text>}
+      {tab === 'bots' ? bots.map(t => <View key={botKey(t)} style={s.botCard}><Pressable accessibilityRole="button" accessibilityLabel={`查看 Bot：${t.name}`} onPress={() => setProfile(t)} style={s.botHead}><BotAvatar target={t} size={46}/><View style={s.flex}><Text style={s.title}>{t.name}</Text><Text style={s.small}>{t.deviceName} · {t.online ? '在线' : '离线'}</Text></View><ChevronRight size={18} color={c.muted}/></Pressable><View style={s.botActions}><Pressable accessibilityRole="button" accessibilityLabel={`继续 ${t.name} 的工作`} onPress={() => {setScope(botKey(t));setFilter('all');setTab('chats');}} style={s.botAction}><Text style={s.action}>查看会话</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`与 ${t.name} 新建会话`} onPress={() => p.onNew(t)} style={s.botAction}><Text style={s.action}>新建会话</Text></Pressable></View></View>) : <>
+        {tab === 'artifacts' && <Text style={s.coverage}>按原会话查看已交付文件，继续修改时会回到对应 Bot 和会话。</Text>}
+        {rows.map(row => {const status=botSessionStatus(row); return <View key={botSessionKey(row)} style={s.card}><View style={s.cardTop}><Pressable accessibilityRole="button" accessibilityLabel={`查看 Bot：${row.target.name}`} onPress={() => setProfile(row.target)} style={s.identity}><BotAvatar target={row.target} size={26}/><Text numberOfLines={1} style={s.botName}>{row.target.name}</Text></Pressable><Text style={s.time}>{sessionUpdatedLabel(row.updatedAt)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`${tab === 'artifacts' ? '查看成果' : '打开会话'}：${row.title || '新会话'}`} onPress={() => tab === 'artifacts' ? p.onArtifacts(row) : p.onOpen(row)} style={s.cardMain}><Text numberOfLines={2} style={s.title}>{row.title || '新会话'}</Text>{!!row.preview && <Text numberOfLines={2} style={s.preview}>{row.preview}</Text>}<View style={s.cardBottom}><Text style={[s.status,status.tone==='attention' && s.attention,status.tone==='error' && s.error]}>{status.label}</Text><Text style={s.action}>{tab === 'artifacts' ? '查看成果' : status.tone==='attention' ? '查看请求' : '继续工作'} →</Text></View></Pressable></View>;})}
+        {rows.length === 0 && (p.busy ? <View style={s.empty}><ActivityIndicator color={c.primary}/><Text style={s.small}>正在同步会话…</Text></View> : query || scope || filter !== 'all' ? <View style={s.empty}><Text style={s.title}>暂无匹配的会话</Text><Text style={s.emptyText}>可清除筛选查看已读取的最近工作。</Text><Pressable accessibilityRole="button" onPress={() => {setScope(null);setFilter('all');p.onSearch('');}} style={s.botAction}><Text style={s.action}>查看全部</Text></Pressable></View> : p.empty)}
+        {rows.length > 0 && <Text style={s.coverage}>最近会话 · 状态为最近读取结果，打开后会再次同步{p.pages.some(page => page.hasMore) ? '。每个 Bot 先显示最近 30 条' : ''}</Text>}
+      </>}
+      {tab === 'bots' && bots.length === 0 && p.empty}
     </ScrollView>
-    <MobileSheet title="会话信息" visible={!!info} onClose={() => setInfo(null)}>
-      <Text style={styles.infoTitle}>{info?.session.title || '新会话'}</Text>
-      <InfoRow label="Bot" value={info?.target.name}/><InfoRow label="执行设备" value={info?.target.deviceName}/><InfoRow label="运行时" value={info?.session.runtime}/>
-      <InfoRow label="会话标识" value={info?.session.sessionId}/>
-      <Text style={styles.infoHint}>此会话始终在原 Bot 和设备上继续。切换列表中的 Bot 不会改变它的执行位置。</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="继续此会话" disabled={!canOpenInfo} onPress={() => { if (info && canOpenInfo) { props.onOpen(info.session); setInfo(null); } }} style={[styles.continueButton, !canOpenInfo && styles.disabled]}><Text style={styles.continueText}>继续此会话</Text></Pressable>
-    </MobileSheet>
+    <View style={s.nav}>{([{id:'chats',label:'会话',Icon:MessageCircle},{id:'bots',label:'Bots',Icon:UsersRound},{id:'artifacts',label:'成果',Icon:FileText}] as const).map(({id,label,Icon}) => <Pressable key={id} accessibilityRole="tab" accessibilityLabel={`${label}导航`} accessibilityState={{selected:tab===id}} onPress={() => setTab(id)} style={s.navItem}><View style={[s.navIcon,tab===id && s.navActive]}><Icon size={21} color={tab===id?c.primary:c.muted}/></View><Text style={[s.navLabel,tab===id && s.selectedText]}>{label}</Text></Pressable>)}</View>
+    <MobileSheet title="选择执行 Bot" visible={choosingBot} onClose={() => setChoosingBot(false)}>{p.targets.map(t => <Pressable key={botKey(t)} accessibilityRole="button" accessibilityLabel={`选择 ${t.name} 新建会话`} onPress={() => {setChoosingBot(false);p.onNew(t);}} style={s.botHead}><BotAvatar target={t}/><View style={s.flex}><Text style={s.title}>{t.name}</Text><Text style={s.small}>{t.deviceName} · {t.online ? '在线' : '离线，可保留草稿'}</Text></View><ChevronRight size={18} color={c.muted}/></Pressable>)}</MobileSheet>
+    <BotProfileSheet target={validProfile} onClose={() => setProfile(null)} onConversations={t => {setScope(botKey(t));setTab('chats');setFilter('all');setProfile(null);}} onNew={t => {setProfile(null);p.onNew(t);}}/>
   </View>;
 }
-
-function InfoRow({ label, value }: { label: string; value?: string }) {
-  return <View style={styles.infoRow}><Text style={styles.infoLabel}>{label}</Text><Text selectable style={styles.infoValue}>{value || '未提供'}</Text></View>;
-}
-
-const styles = StyleSheet.create({
-  page: { flex: 1, minHeight: 0, backgroundColor: color.white },
-  header: { height: 54, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  iconButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  heading: { flex: 1, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, color: color.ink },
-  headerActions: { flexDirection: 'row' },
-  scope: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 7, paddingBottom: 6 },
-  scopes: { gap: 5, alignItems: 'center', paddingRight: 8 },
-  scopeButton: { minHeight: 36, maxWidth: 205, paddingHorizontal: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  scopeSelected: { backgroundColor: color.wash },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: color.online },
-  dotOffline: { backgroundColor: '#B0B0B6' },
-  scopeLabel: { fontSize: 14, color: color.muted, flexShrink: 1 },
-  scopeLabelSelected: { color: color.ink, fontWeight: '600' },
-  scopeEmpty: { paddingVertical: 10, fontSize: 13, color: color.muted },
-  refresh: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
-  searchRow: { minHeight: 42, marginHorizontal: 18, marginBottom: 10, borderRadius: 12, backgroundColor: color.wash, paddingLeft: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  searchInput: { flex: 1, minWidth: 0, fontSize: 15, color: color.ink, paddingVertical: 10 },
-  searchClear: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  availability: { fontSize: 12, lineHeight: 18, color: color.muted, paddingHorizontal: 20, marginBottom: 6 },
-  list: { flex: 1 },
-  listContent: { paddingHorizontal: 20, paddingTop: 5, paddingBottom: 28 },
-  group: { paddingTop: 17, paddingBottom: 8, color: color.muted, fontSize: 12, lineHeight: 18, fontWeight: '500' },
-  row: { position: 'relative', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: color.line },
-  rowOpen: { paddingTop: 13, paddingBottom: 16, minHeight: 80 },
-  rowPressed: { opacity: 0.6 },
-  rowTitle: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { flex: 1, minWidth: 0, color: color.ink, fontSize: 16, lineHeight: 23, fontWeight: '600' },
-  time: { color: color.muted, fontSize: 11, lineHeight: 18 },
-  preview: { color: '#62626A', fontSize: 14, lineHeight: 21, marginTop: 5, paddingRight: 10 },
-  context: { color: color.muted, fontSize: 12, lineHeight: 18, marginTop: 6, paddingRight: 35 },
-  rowMenu: { position: 'absolute', right: -10, bottom: 0, width: 44, height: 40, alignItems: 'center', justifyContent: 'center' },
-  empty: { paddingTop: 70, paddingBottom: 30, alignItems: 'center', gap: 12 },
-  emptyTitle: { color: color.ink, fontSize: 16, fontWeight: '600' },
-  emptyDetail: { color: color.muted, fontSize: 14, lineHeight: 22, textAlign: 'center' },
-  clearSearch: { padding: 12 },
-  link: { fontSize: 14, color: color.accent },
-  infoTitle: { fontSize: 20, lineHeight: 28, fontWeight: '600', color: color.ink, marginBottom: 20 },
-  infoRow: { minHeight: 44, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: color.line, flexDirection: 'row', gap: 14 },
-  infoLabel: { width: 64, color: color.muted, fontSize: 14, lineHeight: 21 },
-  infoValue: { flex: 1, minWidth: 0, color: color.ink, fontSize: 14, lineHeight: 21 },
-  infoHint: { color: color.muted, fontSize: 13, lineHeight: 21, marginTop: 16, marginBottom: 22 },
-  continueButton: { minHeight: 46, borderRadius: 23, backgroundColor: color.primary, alignItems: 'center', justifyContent: 'center' },
-  continueText: { color: color.white, fontSize: 15, fontWeight: '600' },
-  disabled: { opacity: 0.4 },
-});
+function Chip({label,selected,onPress}:{label:string;selected:boolean;onPress:()=>void}) {return <Pressable accessibilityRole="button" accessibilityState={{selected}} onPress={onPress} style={[s.chip,selected&&s.chipActive]}><Text numberOfLines={1} style={[s.small,selected&&s.selectedText]}>{label}</Text></Pressable>;}
+const s=StyleSheet.create({page:{flex:1,minHeight:0,backgroundColor:c.canvas},flex:{flex:1,minWidth:0},header:{flexDirection:'row',alignItems:'center',paddingHorizontal:22,paddingTop:16,paddingBottom:15},eyebrow:{fontSize:11,letterSpacing:1.5,color:c.muted,marginBottom:7},heading:{fontSize:25,lineHeight:34,fontWeight:'600',color:c.ink},icon:{width:44,height:44,alignItems:'center',justifyContent:'center'},tools:{flexDirection:'row',gap:6,alignItems:'center',paddingHorizontal:18,marginBottom:12},searchButton:{flex:1,flexDirection:'row',alignItems:'center',gap:9,minHeight:44,borderRadius:14,backgroundColor:c.white,paddingHorizontal:13},newButton:{width:44,height:44,borderRadius:14,backgroundColor:c.primary,alignItems:'center',justifyContent:'center'},search:{flexDirection:'row',alignItems:'center',marginHorizontal:18,marginBottom:12,borderRadius:14,backgroundColor:c.white,paddingLeft:14},input:{flex:1,minWidth:0,fontSize:15,color:c.ink,minHeight:44},scopes:{flexGrow:0,maxHeight:48},chips:{gap:7,paddingHorizontal:18,paddingBottom:8},chip:{minHeight:36,maxWidth:180,paddingHorizontal:14,alignItems:'center',justifyContent:'center',borderRadius:18,backgroundColor:c.white},chipActive:{backgroundColor:c.wash,borderWidth:1,borderColor:'#C8D8C8'},small:{fontSize:13,lineHeight:20,color:c.muted},selectedText:{color:c.primary,fontWeight:'600'},filters:{flexDirection:'row',paddingHorizontal:16,marginBottom:4,gap:5},filter:{minHeight:40,justifyContent:'center',paddingHorizontal:9},list:{flex:1},content:{paddingHorizontal:18,paddingBottom:20},card:{backgroundColor:c.white,borderRadius:20,marginBottom:12,borderWidth:1,borderColor:c.line},cardTop:{flexDirection:'row',alignItems:'center',paddingLeft:15,paddingRight:17,paddingTop:9},identity:{flex:1,minHeight:40,flexDirection:'row',alignItems:'center',gap:8,paddingRight:10},botName:{fontSize:12,color:c.muted,flexShrink:1},time:{fontSize:11,color:c.muted},cardMain:{paddingHorizontal:17,paddingBottom:15,paddingTop:3},title:{fontSize:16,lineHeight:24,fontWeight:'600',color:c.ink},preview:{fontSize:13,lineHeight:21,color:c.muted,marginTop:6},cardBottom:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',gap:10,marginTop:14},status:{fontSize:11,lineHeight:18,color:c.primary,backgroundColor:c.wash,paddingHorizontal:8,paddingVertical:4,borderRadius:7},attention:{color:'#89631D',backgroundColor:'#FFF4D9'},error:{color:'#A44236',backgroundColor:'#FBEAE5'},action:{fontSize:12,lineHeight:20,fontWeight:'600',color:c.primary},botCard:{backgroundColor:c.white,borderRadius:20,borderWidth:1,borderColor:c.line,marginBottom:12},botHead:{flexDirection:'row',alignItems:'center',gap:12,padding:17},botActions:{flexDirection:'row',borderTopWidth:1,borderColor:c.line,marginHorizontal:17},botAction:{flex:1,minHeight:44,justifyContent:'center',alignItems:'center'},coverage:{fontSize:12,lineHeight:20,color:c.muted,marginVertical:10},empty:{paddingVertical:35,alignItems:'center',gap:12},emptyText:{fontSize:13,lineHeight:22,color:c.muted,textAlign:'center'},nav:{flexDirection:'row',borderTopWidth:1,borderColor:c.line,backgroundColor:c.white,paddingVertical:7},navItem:{flex:1,alignItems:'center',minHeight:52,gap:3},navIcon:{width:56,height:30,borderRadius:15,alignItems:'center',justifyContent:'center'},navActive:{backgroundColor:c.wash},navLabel:{fontSize:11,color:c.muted}});

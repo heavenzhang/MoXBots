@@ -23,6 +23,7 @@ type DraftRecord = {
   pendingAttempt: PendingAttempt | null;
   timer: ReturnType<typeof setTimeout> | null;
 };
+export type DraftSubmission = { key: string; editRevision: number; accountGeneration: number; text: string };
 type DraftOwner = { key: string; epoch: number };
 type PendingAttempt = { writeId: string; text: string; expectedRevision: number; editRevision: number };
 
@@ -76,6 +77,23 @@ export class DraftPersistence {
         void this.flush(record);
       }, this.debounceMs);
     }
+  }
+
+  capture(): DraftSubmission | null {
+    const record = this.owner ? this.records.get(this.owner.key) : undefined;
+    return record ? { key: record.key, editRevision: record.editRevision, accountGeneration: this.accountGeneration, text: record.text } : null;
+  }
+
+  /** A receipt clears only the submitted revision, never later typing or another account. */
+  clearSubmitted(submitted: DraftSubmission | null): boolean {
+    if (!submitted || submitted.accountGeneration !== this.accountGeneration) return false;
+    const record = this.records.get(submitted.key);
+    if (!record || record.editRevision !== submitted.editRevision || record.text !== submitted.text) return false;
+    record.text = ''; record.editRevision += 1; record.dirty = true;
+    if (record.timer) clearTimeout(record.timer);
+    this.emit(record, 'unsaved');
+    record.timer = setTimeout(() => { record.timer = null; void this.flush(record); }, this.debounceMs);
+    return true;
   }
 
   flushOwner(ownerEpoch: number): Promise<void> {

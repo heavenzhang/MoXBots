@@ -10,6 +10,8 @@ const account: Account = { kind: 'account', state: 'signed-in', displayName: '�
 let fixtureAccount: Account = account;
 let notificationsEnabled = false;
 let scenario: QaScenario = 'conversation';
+const snapshots = new Map<string, Snapshot>();
+const snapshotKey = (agent: string, session: string) => JSON.stringify([agent, session]);
 let active: Snapshot | null = null;
 let staleApprovalNextRead = false;
 let readCount = 0;
@@ -18,7 +20,8 @@ let sessions: { sessionId: string; title: string; updatedAt: string; preview: st
 
 export function selectScenario(next: QaScenario): void {
   scenario = next;
-  if (next === 'directory-layout') sessions = directoryLayoutRows();
+  snapshots.clear();
+  sessions = next === 'directory-layout' || next === 'bot-work' ? directoryLayoutRows() : [{ sessionId: 'qa-session-1', title: '产品方案讨论', updatedAt: new Date().toISOString(), preview: '梳理移动端的会话体验', runtime: 'codex' }];
   readCount = 0; historyFailed = false;
   active = null;
   staleApprovalNextRead = false;
@@ -49,19 +52,27 @@ export function fixtureReply(intent: NativeIntent): unknown {
   if (intent.kind === 'targets.list') {
     if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
     if (scenario === 'no-bots') return { kind: 'targets', items: [], hasMore: false, unavailableDeviceCount: 0 };
-    return { kind: 'targets', items: scenario === 'target-error' ? [target, secondTarget] : scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
+    return { kind: 'targets', items: scenario === 'target-error' || scenario === 'bot-work' ? [target, secondTarget] : scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
   }
   if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [
     { protocol: 'session', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' },
     { protocol: 'mobile', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000043', sessionId: null, status: 'unknown' },
   ] : [] as PendingOperation[] };
-  if (intent.kind === 'mobile') return mobileReply(intent.targetId, intent.request);
+  if (intent.kind === 'mobile') {
+    if ('sessionId' in intent.request) active = snapshots.get(snapshotKey(intent.request.agentId, intent.request.sessionId)) ?? null;
+    const reply = mobileReply(intent.targetId, intent.request);
+    if (active) snapshots.set(snapshotKey(active.agentId, active.sessionId), active);
+    return reply;
+  }
   if (intent.kind === 'attachment.pick' || intent.kind === 'attachment.list' || intent.kind === 'attachment.remove' || intent.kind === 'attachment.upload' || intent.kind === 'attachment.upload.status' || intent.kind === 'attachment.upload.pause' || intent.kind === 'attachment.upload.cancel') return attachmentReply(intent);
   if (intent.kind === 'draft.read' || intent.kind === 'draft.write') return fixtureDraftReply(intent);
   if (intent.kind === 'artifact.list' || intent.kind === 'artifact.download' || intent.kind === 'artifact.status' || intent.kind === 'artifact.pause' || intent.kind === 'artifact.remove' || intent.kind === 'artifact.preview' || intent.kind === 'artifact.share') return fixtureArtifactReply(intent);
   if (intent.kind === 'session' && intent.request) {
     if (scenario === 'target-error' && intent.request.agentId === target.agentId && intent.request.kind === 'get') return { kind: 'error', code: 'TARGET_RECEIPT_INVALID' };
-    return sessionReply(intent.request);
+    if ('sessionId' in intent.request) active = snapshots.get(snapshotKey(intent.request.agentId, intent.request.sessionId)) ?? null;
+    const reply = sessionReply(intent.request);
+    if (active) snapshots.set(snapshotKey(active.agentId, active.sessionId), active);
+    return reply;
   }
   return { kind: 'error', code: 'QA_FIXTURE_OPERATION_UNSUPPORTED' };
 }
@@ -89,7 +100,7 @@ function emitArtifactDownload(value: ArtifactDownload): void {
   for (const listener of artifactListeners) listener(value);
 }
 function fixtureArtifactReply(intent: Extract<NativeIntent, { kind: `artifact.${string}` }>): unknown {
-  const approved = [target].find((item) => item.targetId === intent.targetId);
+  const approved = [target, secondTarget].find((item) => item.targetId === intent.targetId);
   if (!approved) return { kind: 'error', code: 'MOBILE_TARGET_INVALID' };
   if (intent.kind === 'artifact.list') {
     const secondPage = intent.before === 'qa-artifact-page-2';
@@ -167,7 +178,7 @@ function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${str
     return { kind: 'attachment-removed', localId: intent.localId };
   }
   const picked = fixtureAttachments.get(intent.localId);
-  const approved = [target].find((entry) => entry.targetId === intent.targetId);
+  const approved = [target, secondTarget].find((entry) => entry.targetId === intent.targetId);
   if (!picked || !approved) return { kind: 'error', code: 'MOBILE_ATTACHMENT_NOT_FOUND' };
   const prior = fixtureUploads.get(intent.localId);
   if (intent.kind === 'attachment.upload.status') return prior ? { kind: 'attachment-upload', localId: intent.localId, ...prior } : { kind: 'error', code: 'MOBILE_UPLOAD_NOT_FOUND' };
@@ -193,7 +204,7 @@ function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${str
 function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'mobile' }>['request']): unknown {
   if (scenario === 'mobile-error') return { version: 1, kind: 'mobile.error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
   if (scenario === 'mobile-unsupported') return { version: 1, kind: 'mobile.error', code: 'MOBILE_PROFILE_MISMATCH' };
-  const approved = [target, ...(scenario === 'target-error' ? [secondTarget] : [])].find((entry) => entry.targetId === targetId);
+  const approved = [target, ...(scenario === 'target-error' || scenario === 'bot-work' ? [secondTarget] : [])].find((entry) => entry.targetId === targetId);
   if (!approved) return { version: 1, kind: 'mobile.error', code: 'TARGET_UNAVAILABLE' };
   if (request.kind === 'mobile.capabilities') return { version: 1, kind: 'mobile.capabilities', agentId: request.agentId, attachments: true, modelSelection: true, nextSuggestions: true, maxAssets: 8 };
   if (request.kind === 'mobile.models') return { version: 1, kind: 'mobile.models', agentId: request.agentId, items: [{ id: 'qa-model-fast', label: '演示模型 · 快速' }, { id: 'qa-model-reasoning', label: '演示模型 · 深度' }] };
@@ -259,8 +270,13 @@ function makeSnapshot(sessionId: string, agentId: string, state: Snapshot['state
 
 function sessionReply(request: SessionRequest): unknown {
   if (request.kind === 'capabilities') return { kind: 'capabilities', version: 1, agentId: request.agentId, runtime: 'codex', maxActiveSessions: 5, liveUpdates: 'snapshot' };
-  if (request.kind === 'list') return { kind: 'list', agentId: request.agentId, items: sessions, hasMore: false, nextBefore: null };
+  if (request.kind === 'list') return { kind: 'list', agentId: request.agentId, items: scenario === 'bot-work' && request.agentId === secondTarget.agentId ? sessions.slice(0,2).map(row => ({...row,title: '研究 · '+row.title})) : sessions, hasMore: false, nextBefore: null };
   if (request.kind === 'get') {
+    if (request.limit === 1) {
+      if (active && active.agentId === request.agentId && active.sessionId === request.sessionId) return active;
+      const needs = scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
+      return makeSnapshot(request.sessionId, request.agentId, needs ? 'waiting_user_action' : scenario === 'bot-work' ? 'running' : 'idle', 'qa-generation-1', needs ? 'qa-turn-1' : null, needs);
+    }
     readCount += 1;
     if (scenario === 'open-retry' && readCount === 1 || scenario === 'poll-recover' && readCount === 2) return { kind: 'error', code: 'TARGET_RECEIPT_INVALID' };
     if (scenario === 'history') {
@@ -279,8 +295,8 @@ function sessionReply(request: SessionRequest): unknown {
       return active;
     }
     if (!active || active.sessionId !== request.sessionId) {
-      const approval = scenario === 'approval' || scenario === 'stale-approval';
-      active = makeSnapshot(request.sessionId, request.agentId, approval ? 'waiting_user_action' : 'idle', 'qa-generation-1', approval ? 'qa-turn-1' : null, approval);
+      const approval = scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
+      active = makeSnapshot(request.sessionId, request.agentId, approval ? 'waiting_user_action' : scenario === 'bot-work' ? 'running' : 'idle', 'qa-generation-1', approval ? 'qa-turn-1' : null, approval);
     }
     return active;
   }

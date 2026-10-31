@@ -228,3 +228,25 @@ test('identity and session keys never collide even when visible names match', ()
   assert.notEqual(keyFor(target, 'session-a'), keyFor(target, 'session-b'));
   assert.equal(keyFor(target, 'session-a'), keyFor(renamedTarget, 'session-a'));
 });
+
+test('accepted send only clears its captured revision, preserving later edits including edit-back', async () => {
+  const backend = memoryIO(), updates: DraftUpdate[] = [];
+  const controller = manager(backend.io, updates);
+  const opened = controller.activate(target, 'session-a', 1); await opened.ready;
+  controller.edit(opened.key, 1, 'submitted'); const submitted = controller.capture();
+  controller.edit(opened.key, 1, 'next instruction');
+  assert.equal(controller.clearSubmitted(submitted), false);
+  assert.equal(controller.capture()?.text, 'next instruction');
+  controller.edit(opened.key, 1, 'submitted');
+  assert.equal(controller.clearSubmitted(submitted), false);
+  const exact = controller.capture(); assert.equal(controller.clearSubmitted(exact), true);
+  await controller.flushOwner(1); assert.equal(controller.capture()?.text, '');
+  controller.clear();
+});
+
+test('captured draft receipt cannot clear a new account record with the same apparent identity', async () => {
+  const backend=memoryIO(), updates:DraftUpdate[]=[]; const controller=manager(backend.io,updates);
+  const first=controller.activate(target,null,1);await first.ready;controller.edit(first.key,1,'first');const old=controller.capture();controller.clear();
+  const second=controller.activate(target,null,2);await second.ready;controller.edit(second.key,2,'first');
+  assert.equal(controller.clearSubmitted(old),false);assert.equal(controller.capture()?.text,'first');controller.clear();
+});

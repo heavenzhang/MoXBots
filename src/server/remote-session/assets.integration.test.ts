@@ -110,3 +110,59 @@ it('rejects arbitrary external paths and wrong workspace ownership', async () =>
   f.metadata.mockReturnValueOnce({ id: sessionId, agentDir: '/other-workspace' });
   expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false, code: 'REMOTE_AGENT_UNAVAILABLE' });
 });
+
+it('an authorized deleted source becomes an empty live page so immutable history can still be listed', async () => {
+  const file = path.join(root, 'attachments', sessionId, 'turn-1', 'out.txt');
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, 'delivered before the source disappeared');
+  f.data.mockResolvedValue({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, file)], transcriptFormat: 1 });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 1 })).toMatchObject({ success: true, data: { items: [{ name: 'out.txt' }] } });
+  await rm(file);
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 1 })).toMatchObject({ success: true, data: { items: [], hasMore: false, nextBefore: null } });
+  f.visible.mockReturnValue(false);
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 1 })).toMatchObject({ success: false, code: 'REMOTE_SESSION_NOT_FOUND' });
+});
+
+it('missing attachments advance the genuine transcript cursor without hiding later valid files', async () => {
+  const turnRoot = path.join(root, 'attachments', sessionId, 'turn-1');
+  await mkdir(turnRoot, { recursive: true });
+  await writeFile(path.join(turnRoot, 'second.txt'), 'second');
+  await writeFile(path.join(turnRoot, 'third.txt'), 'third');
+  f.data.mockResolvedValue({ messages: ['missing.txt', 'second.txt', 'third.txt'].map((name, index) => ({ ...toolMessage(`/api/attachment/tool/${sessionId}/turn-1/${name}`, path.join(turnRoot, name)), id: `message-${index}` })), transcriptFormat: 1 });
+  const firstPage = await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 1 });
+  expect(firstPage).toMatchObject({ success: true, data: { items: [{ name: 'second.txt' }], hasMore: true } });
+  if (!firstPage.success || !firstPage.data.nextBefore) throw new Error('expected actual owner cursor');
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 1, before: firstPage.data.nextBefore })).toMatchObject({ success: true, data: { items: [{ name: 'third.txt' }], hasMore: false, nextBefore: null } });
+});
+
+it('a dangling symlink remains a rejection rather than a missing-source history fallback', async () => {
+  const { symlink } = await import('node:fs/promises');
+  const file = path.join(root, 'attachments', sessionId, 'turn-1', 'out.txt');
+  await mkdir(path.dirname(file), { recursive: true });
+  await symlink(path.join(root, 'missing-outside.txt'), file);
+  f.data.mockResolvedValue({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, file)], transcriptFormat: 1 });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false, code: 'REMOTE_ARTIFACT_UNAVAILABLE' });
+});
+
+it('a dangling parent symlink cannot masquerade as a deleted trusted source', async () => {
+  const { symlink } = await import('node:fs/promises');
+  const sessionRoot = path.join(root, 'attachments', sessionId);
+  await mkdir(sessionRoot, { recursive: true });
+  await symlink(path.join(root, 'missing-foreign-turn'), path.join(sessionRoot, 'turn-1'));
+  const file = path.join(sessionRoot, 'turn-1', 'out.txt');
+  f.data.mockResolvedValue({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, file)], transcriptFormat: 1 });
+  expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false, code: 'REMOTE_ARTIFACT_UNAVAILABLE' });
+});
+
+it.skipIf(process.getuid?.() === 0 || process.platform === 'win32')('source permission failures cannot become a missing-source history fallback', async () => {
+  const { chmod } = await import('node:fs/promises');
+  const turnRoot = path.join(root, 'attachments', sessionId, 'turn-1');
+  const file = path.join(turnRoot, 'out.txt');
+  await mkdir(turnRoot, { recursive: true });
+  await writeFile(file, 'access controlled output');
+  f.data.mockResolvedValue({ messages: [toolMessage(`/api/attachment/tool/${sessionId}/turn-1/out.txt`, file)], transcriptFormat: 1 });
+  await chmod(turnRoot, 0o000);
+  try {
+    expect(await resolveDesktopRemoteArtifacts({ agentId: 'agent', sessionId, limit: 30 })).toMatchObject({ success: false, code: 'REMOTE_ARTIFACT_UNAVAILABLE' });
+  } finally { await chmod(turnRoot, 0o700); }
+});

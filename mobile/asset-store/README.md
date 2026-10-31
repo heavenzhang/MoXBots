@@ -26,8 +26,11 @@ The separate `session.assets.v1` data profile uses at most 24 KiB raw chunks.
   automatically; parent owns that bridge and chooses authorized output roots.
 - `cleanup_expired(scope, native_now_seconds, limit)` is explicit, scoped and capped
   at 32 records per call. Upload TTL is one hour since last acknowledged progress;
-  ready/cancelled/output TTL is 24 hours. Live leases and nonexpired unknown uploads
-  are never evicted to satisfy quotas.
+  unbound ready/cancelled upload TTL is 24 hours. Session-bound ready outputs are
+  durable delivery history and never expire through upload-cache maintenance.
+  Live leases, delivery outputs and nonexpired unknown uploads are never evicted
+  to satisfy quotas. A full quota explicitly rejects a new import; it does not
+  silently delete previously delivered content.
 
 `AssetScope` includes issuer, service/environment/network/principal, controller
 identity+key generation, target device and Agent. Session identity further scopes
@@ -54,7 +57,9 @@ scope, 1 GiB globally, 128 records per scope, 1024 total records, and 256 scopes
 Cancellation leaves a durable tombstone and removes bytes; after an interrupted
 cancel, retained bytes still count against quota until explicit idempotent cancel or
 TTL cleanup removes them. Unknown pending records are not silently evicted. The
-parent should schedule authorized scoped cleanup and expose expiry clearly.
+parent should schedule authorized scoped temporary-upload cleanup and expose
+expiry clearly. Session-bound ready outputs remain until a separately authorized
+output-retention/deletion workflow is implemented; this crate does not add one.
 
 Directory and file synchronization errors are fatal; there is no success downgrade.
 The implemented filesystem API is portable, but this worker has run only macOS

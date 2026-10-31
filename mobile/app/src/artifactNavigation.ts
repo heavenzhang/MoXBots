@@ -1,4 +1,4 @@
-import type { Target } from './native';
+import type { ArtifactDescriptor, Target } from './native';
 
 /** Navigation-only hint kept in memory while the existing chat owner is covered by Artifacts. */
 export type ArtifactChatReturn = {
@@ -6,6 +6,8 @@ export type ArtifactChatReturn = {
   identityKey: string;
   agentId: string;
   sessionId: string;
+  /** Explicit user action; consume only after fresh owner and session validation. Never auto-send. */
+  revisionDraft?: { artifact: ArtifactDescriptor; text: string };
 };
 
 let pendingReturn: ArtifactChatReturn | null = null;

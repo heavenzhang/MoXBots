@@ -332,6 +332,8 @@ async fn owner_list(
     else {
         return Err(NetworkError::new("ASSET_REQUEST_INVALID"));
     };
+    let position = moxbots_asset_store::ArtifactListPosition::parse(before.as_deref())
+        .map_err(|error| NetworkError::new(error.code))?;
     let store = runtime.ipc.asset_store();
     let scope_copy = scope.clone();
     let session_copy = session_id.clone();
@@ -345,7 +347,7 @@ async fn owner_list(
             agent_id: agent_id.clone(),
             session_id: session_id.clone(),
             limit,
-            before,
+            before: position.owner_before(),
         },
     )
     .await?;
@@ -371,6 +373,8 @@ async fn owner_list(
         || page.agent_id != agent_id
         || page.session_id != session_id
         || page.items.len() > limit as usize
+        || page.has_more && page.items.is_empty()
+        || page.has_more && page.next_before == position.owner_before()
         || page.has_more != page.next_before.is_some()
     {
         return Err(NetworkError::new("HOST_MANAGEMENT_RESPONSE_INVALID"));
@@ -493,14 +497,28 @@ async fn owner_list(
         };
         items.push(descriptor);
     }
-    Ok(O::List {
-        version: 1,
-        agent_id,
-        session_id,
-        items,
-        has_more: page.has_more,
-        next_before: page.next_before,
+    verify_mobile_authority(runtime, identity, captured_binding)?;
+    let result = tokio::task::spawn_blocking(move || {
+        store.artifact_delivery_page(
+            &scope,
+            &session_copy,
+            limit,
+            &position,
+            O::List {
+                version: 1,
+                agent_id,
+                session_id,
+                items,
+                has_more: page.has_more,
+                next_before: page.next_before,
+            },
+        )
     })
+    .await
+    .map_err(|_| NetworkError::new("ASSET_STORE_UNAVAILABLE"))?
+    .map_err(|error| NetworkError::new(error.code));
+    verify_mobile_authority(runtime, identity, captured_binding)?;
+    result
 }
 #[derive(Clone, Copy)]
 struct ManagementRuntime<'a> {

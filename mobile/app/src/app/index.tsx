@@ -7,7 +7,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ArrowUp, ArrowUpRight, Check, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, loginWithPassword, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
-import { DraftPersistence, DraftUpdate } from '../draftPersistence';
+import { DraftPersistence, DraftUpdate, type DraftSubmission } from '../draftPersistence';
 import { blocksMutationForScope, permitsLegacyTextFallback, receiptProtocol, reconcileFailedMutation, sendProtocol, type MobileMode, type MutationAttempt } from '../mobilePolicy';
 import { SerialUploadQueue, waitForUploadForeground } from '../uploadQueue';
 import { AttachmentUploadTracker, isConfirmedUploadRecordAbsence } from '../attachmentUploadTracker';
@@ -20,6 +20,10 @@ import { ToolResult } from '../ToolResult';
 import { isTranscriptAtBottom } from '../messagePresentation';
 import { prependTranscript, refreshTranscript, sessionSnapshotReady, type TranscriptHistory } from '../transcriptHistory';
 import moxbotsMark from '../../assets/moxbots-mark.png';
+import { appendArtifactRevisionDraft } from '../artifactPresentation';
+import { useBotDirectory } from '../useBotDirectory';
+import { BotProfileSheet } from '../BotProfileSheet';
+import { BotAvatar } from '../BotAvatar';
 import { SessionHomeScreen } from '../SessionHomeScreen';
 import { MobileSheet } from '../MobileSheet';
 import { mobileTheme } from '../mobileTheme';
@@ -106,12 +110,17 @@ function AppBody() {
   const [targets, setTargets] = useState<Target[]>([]);
   const [unavailableDeviceCount, setUnavailableDeviceCount] = useState(0);
   const [target, setTarget] = useState<Target | null>(null);
-  const [sessions, setSessions] = useState<SessionRow[]>([]);
+  const [, setSessions] = useState<SessionRow[]>([]);
   const [sessionSearch, setSessionSearch] = useState('');
   const [sessionSearchOpen, setSessionSearchOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [pending, setPending] = useState<PendingOperation[]>([]);
   const [screen, setScreen] = useState<'login' | 'sessions' | 'chat'>('login');
+  const directory = useBotDirectory(targets, account?.principalId ?? null, screen === 'sessions');
+  const observeBotSnapshot = directory.observe;
+  const [botProfileOpen, setBotProfileOpen] = useState(false);
+  const [approvalSubmitting, setApprovalSubmitting] = useState(false);
+  const approvalFlightRef = useRef<symbol | null>(null);
   const [draft, setDraft] = useState('');
   const [draftUpdate, setDraftUpdate] = useState<DraftUpdate | null>(null);
   const [composerInputHeight, setComposerInputHeight] = useState(40);
@@ -187,6 +196,8 @@ function AppBody() {
   const speechEpochRef = useRef(0);
   const speechActiveRef = useRef(false);
   const accountRef = useRef<Account | null>(null);
+  const draftTextRef = useRef('');
+  const draftReadyRef = useRef<Promise<void>>(Promise.resolve());
   const draftPersistenceRef = useRef<DraftPersistence | null>(null);
   const mobileCatalogEpochRef = useRef(0);
   const attachmentBatchEpochRef = useRef(0);
@@ -220,6 +231,7 @@ function AppBody() {
       },
     }, (update) => {
       if (activeDraftKeyRef.current !== update.key || ownerRef.current.epoch !== update.ownerEpoch) return;
+      draftTextRef.current = update.text;
       setDraft(update.text);
       setDraftUpdate(update);
     }, () => Crypto.randomUUID());
@@ -291,6 +303,8 @@ function AppBody() {
     sendingEpochRef.current += 1;
     setLoading(false);
     setSending(false);
+    approvalFlightRef.current = null; setApprovalSubmitting(false);
+    setBotProfileOpen(false); draftReadyRef.current = Promise.resolve();
     setTarget(nextTarget);
     setScreen(nextScreen);
     setSnapshot(snapshotRef.current);
@@ -298,10 +312,11 @@ function AppBody() {
     if (nextTarget && key) {
       const activated = persistence?.activate(nextTarget, sessionId, ownerRef.current.epoch);
       if (!activated) { setDraft(''); return ownerRef.current; }
+      draftReadyRef.current = activated.ready; draftTextRef.current = activated.text;
       setDraft(activated.text);
     } else {
       activeDraftKeyRef.current = null;
-      setDraft('');
+      draftTextRef.current = ''; setDraft('');
     }
     return ownerRef.current;
   }, [releaseAttachmentJob, snapshotReadTracker]);
@@ -317,9 +332,10 @@ function AppBody() {
     if (previous?.expanded && !reading.expanded) setHistoryError('会话记录已变化，请重新加载更早记录。');
     transcriptRef.current = reading; setTranscript(reading);
     snapshotRef.current = value; setSnapshot(value);
+    if (targetRef.current) observeBotSnapshot(targetRef.current, value);
     setSnapshotRead(snapshotReadTracker.accept(ownerRef.current));
     setNotice((prior) => prior?.source === 'snapshot' ? null : prior);
-  }, [snapshotReadTracker]);
+  }, [snapshotReadTracker, observeBotSnapshot]);
   const readSnapshot = useCallback(async (owner: ViewOwner, selected: Target, eligible: () => boolean = () => true) => {
     if (!owner.sessionId || !viewStillOwned(owner, ownerRef.current) || !eligible()) return;
     const flight = snapshotReadTracker.begin(owner);
@@ -569,6 +585,13 @@ function AppBody() {
             if (!requestIsCurrent() || !viewStillOwned(restoredOwner, ownerRef.current)) return;
             commitSnapshot(returnedSnapshot);
             setNotice(notificationFailure ? notificationOpenNotice(notificationFailure) : null);
+            if (artifactReturn.revisionDraft) {
+              await draftReadyRef.current;
+              if (!requestIsCurrent() || !viewStillOwned(restoredOwner, ownerRef.current)) return;
+              const next = appendArtifactRevisionDraft(draftTextRef.current, artifactReturn.revisionDraft.text);
+              if (next !== null) { saveDraft(next); say('已带回这份成果的引用，请补充修改要求后发送。'); }
+              else say('草稿已满，原内容已保留。请缩短草稿后从成果页再次点击继续修改。', 'error');
+            }
             void loadMobileCatalog(returnTarget);
             const journal = await requestNative({ version: 1, kind: 'operations.pending' });
             if (requestIsCurrent() && journal.kind === 'operations') setPending(journal.items.filter((item) => item.status !== 'prepared'));
@@ -618,7 +641,7 @@ function AppBody() {
     } finally {
       if (accountRefreshInFlightRef.current === refreshEpoch) accountRefreshInFlightRef.current = null;
     }
-  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, readSnapshot, routeFocusGate]);
+  }, [commitSnapshot, loadMobileCatalog, loginAttemptGate, moveOwner, readSnapshot, routeFocusGate, saveDraft, say]);
 
   useEffect(() => notificationOpens.subscribe(() => {
     if (routeActiveRef.current) void loadAccount().catch((error) => { if (routeActiveRef.current) say(error instanceof Error ? error.message : 'MOBILE_NOTIFICATION_OPEN_UNAVAILABLE', 'error'); });
@@ -720,8 +743,9 @@ function AppBody() {
     if (!selected) return;
     const owner = moveOwner('chat', selected, row.sessionId);
     setNotice(null);
+    void loadMobileCatalog(selected);
     await readSnapshot(owner, selected);
-  }, [moveOwner, readSnapshot, target]);
+  }, [moveOwner, readSnapshot, target, loadMobileCatalog]);
 
   const retrySnapshot = useCallback(async () => {
     const owner = ownerRef.current, selected = targetRef.current;
@@ -789,10 +813,23 @@ function AppBody() {
     return () => { clearInterval(interval); poll.stop(); };
   }, [commitSnapshot, ownerEpoch, showSnapshotFailure, screen, snapshot?.sessionId, snapshotPollGate, snapshotReadTracker, target?.targetId]);
 
+  const openStartedSession = async (row: SessionRow, selected: Target, submitted: DraftSubmission | null) => {
+    const persistence = draftPersistenceRef.current;
+    const remaining = persistence?.clearSubmitted(submitted) ? null : persistence?.capture();
+    await openSnapshot(row, selected);
+    const newOwner = ownerRef.current;
+    await draftReadyRef.current;
+    if (!remaining?.text || newOwner.sessionId !== row.sessionId || !viewStillOwned(newOwner, ownerRef.current) || targetRef.current?.identityKey !== selected.identityKey) return;
+    const next = appendArtifactRevisionDraft(draftTextRef.current, remaining.text);
+    if (next !== null) { saveDraft(next); persistence?.clearSubmitted(remaining); }
+    else say('新会话已创建，发送期间编辑的内容仍保留在此 Bot 的新会话草稿中。', 'error');
+  };
+
   const mutation = async (request: SessionRequest, targetId = target?.targetId) => {
     if (!targetId) throw new Error('TARGET_UNAVAILABLE');
     if (!('operationId' in request)) throw new Error('MUTATION_OPERATION_ID_REQUIRED');
     const mutationOwner = ownerRef.current;
+    const submittedDraft = draftPersistenceRef.current?.capture() ?? null;
     const principalId = accountRef.current?.principalId ?? null;
     const attempt: MutationAttempt = { protocol: 'session', targetId, agentId: request.agentId, operationId: request.operationId, sessionId: 'sessionId' in request ? request.sessionId : null };
     const sendingId = ++sendingEpochRef.current;
@@ -809,15 +846,14 @@ function AppBody() {
       if (result.status === 'processing' || result.status === 'unconfirmed' || result.status === 'not-found') setPending((items) => items.some((item) => item.operationId === result.operationId) ? items : [...items, { protocol: 'session', targetId, agentId: request.agentId, operationId: result.operationId, sessionId: result.sessionId, status: result.status === 'processing' ? 'processing' : 'unknown' }]);
       else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
       if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
-      else if (stillOwner && result.status === 'accepted') say('已接收');
+      else if (stillOwner && result.status === 'accepted') say(request.kind === 'respond' ? '决定已接收，正在同步后续执行状态。' : '消息已接收，后续进展会在此会话中更新。');
       else if (stillOwner && result.status === 'unconfirmed') say('结果尚未确认。请查询状态后再继续；这条消息不会自动重发。', 'error');
       else if (stillOwner && result.status === 'not-found') say('未找到该操作记录，无法判断是否执行。请勿直接重发。', 'error');
       else if (stillOwner) say(result.code ?? '操作未接收', 'error');
-      if (stillOwner && result.sessionId && request.kind === 'start') {
+      if (stillOwner && result.status === 'accepted' && result.sessionId && request.kind === 'start') {
         const row = { sessionId: result.sessionId, title: request.text.slice(0, 48), updatedAt: new Date().toISOString(), preview: request.text, runtime: target?.runtime ?? '' };
-        saveDraft('');
-        await openSnapshot(row);
-      } else if (stillOwner && request.kind === 'send' && result.status === 'accepted') saveDraft('');
+        if (targetRef.current) await openStartedSession(row, targetRef.current, submittedDraft);
+      } else if (stillOwner && request.kind === 'send' && result.status === 'accepted') draftPersistenceRef.current?.clearSubmitted(submittedDraft);
       if (stillOwner && (request.kind === 'respond' || request.kind === 'stop')) {
         const fresh = await requestNative({ version: 1, kind: 'session', targetId, request: { kind: 'get', agentId: request.agentId, sessionId: request.sessionId, limit: 30 } }).then(parseSessionReply);
         if (viewStillOwned(mutationOwner, ownerRef.current) && fresh.kind === 'snapshot' && fresh.agentId === mutationOwner.agentId && fresh.sessionId === mutationOwner.sessionId) commitSnapshot(fresh);
@@ -833,6 +869,7 @@ function AppBody() {
     const selected = targetRef.current;
     if (!selected || !selected.online) return;
     const requestOwner = ownerRef.current;
+    const submittedDraft = draftPersistenceRef.current?.capture() ?? null;
     const principalId = accountRef.current?.principalId ?? null;
     const attempt: MutationAttempt = { protocol: 'mobile', targetId: selected.targetId, agentId: request.agentId, operationId: request.operationId, sessionId: request.kind === 'mobile.send' ? request.sessionId : null };
     const sendingId = ++sendingEpochRef.current;
@@ -853,7 +890,7 @@ function AppBody() {
         mobileUnknownAttachmentsRef.current.set(result.operationId, { ownerKey: sendOwnerKey, localIds, targetId: selected.targetId, identityKey: selected.identityKey, agentId: selected.agentId, principalId: sendPrincipalId, sessionId: request.kind === 'mobile.send' ? request.sessionId : result.sessionId });
       } else setPending((items) => items.filter((item) => item.operationId !== result.operationId));
       if (stillOwner && result.status === 'processing') say('已提交，正在确认接收状态');
-      else if (stillOwner && result.status === 'accepted') say('已接收');
+      else if (stillOwner && result.status === 'accepted') say('消息已接收，后续进展会在此会话中更新。');
       else if (stillOwner && result.status === 'unconfirmed') say('结果尚未确认。请查询状态后再继续；这条消息和附件不会自动重发。', 'error');
       else if (stillOwner && result.status === 'not-found') say('未找到该操作记录，无法判断是否执行。请勿直接重发。', 'error');
       else if (stillOwner) say(result.code ?? '操作未接收', 'error');
@@ -861,12 +898,11 @@ function AppBody() {
         mobileUnknownAttachmentsRef.current.delete(result.operationId);
         if (request.kind === 'mobile.start') {
           if (!result.sessionId) throw new Error('MOBILE_RECEIPT_SESSION_REQUIRED');
-          saveDraft('');
           await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
           if (!viewStillOwned(requestOwner, ownerRef.current) || targetRef.current?.identityKey !== selected.identityKey) return;
-          await openSnapshot({ sessionId: result.sessionId, title: request.text.slice(0, 48) || '新会话', updatedAt: new Date().toISOString(), preview: request.text || '已添加附件', runtime: '' }, selected);
+          await openStartedSession({ sessionId: result.sessionId, title: request.text.slice(0, 48) || '新会话', updatedAt: new Date().toISOString(), preview: request.text || '已添加附件', runtime: '' }, selected, submittedDraft);
         } else {
-          saveDraft('');
+          draftPersistenceRef.current?.clearSubmitted(submittedDraft);
           await cleanupSentAttachments(localIds, sendOwnerKey, selected.identityKey, sendPrincipalId);
         }
       }
@@ -1171,12 +1207,13 @@ function AppBody() {
   };
 
   const respond = (item: Interaction, approved: boolean, answers?: Record<string, string>) => {
-    if (!snapshot || !target || !item.actionable || snapshot.state !== 'waiting_user_action') return;
+    if (approvalFlightRef.current || sending || blocksMutation || !snapshot || !target || !item.actionable || snapshot.state !== 'waiting_user_action') return;
     const generation = snapshot.generation;
     const turnId = snapshot.turnId;
     const approvalOwner = ownerRef.current;
     const captured = { sessionId: snapshot.sessionId, generation, turnId, requestId: item.requestId };
     if (!generation || !turnId) { say('审批信息已过期，请刷新会话。', 'error'); return; }
+    const flight = Symbol('approval'); approvalFlightRef.current = flight; setApprovalSubmitting(true);
     void (async () => {
       try {
         if (isFixtureMode) await armQaStaleApproval();
@@ -1185,8 +1222,9 @@ function AppBody() {
         if (current.kind !== 'snapshot' || current.agentId !== approvalOwner.agentId || current.sessionId !== approvalOwner.sessionId) throw new Error(current.kind === 'error' ? current.code : 'APPROVAL_REFRESH_INVALID');
         commitSnapshot(current);
         if (!approvalStillCurrent(current, { requestId: captured.requestId, generation, turnId })) { say('审批信息已更新，尚未提交。请检查刷新后的请求。', 'error'); return; }
-        void mutation({ kind: 'respond', agentId: current.agentId, sessionId: captured.sessionId, operationId: Crypto.randomUUID(), generation, turnId, requestId: captured.requestId, interaction: item.interaction, approved, ...(answers ? { answers } : {}) });
+        await mutation({ kind: 'respond', agentId: current.agentId, sessionId: captured.sessionId, operationId: Crypto.randomUUID(), generation, turnId, requestId: captured.requestId, interaction: item.interaction, approved, ...(answers ? { answers } : {}) });
       } catch (error) { if (viewStillOwned(approvalOwner, ownerRef.current)) say(error instanceof Error ? error.message : 'APPROVAL_REFRESH_FAILED', 'error'); }
+      finally { if (approvalFlightRef.current === flight) {approvalFlightRef.current = null; setApprovalSubmitting(false);} }
     })();
   };
 
@@ -1401,26 +1439,27 @@ function AppBody() {
       </View></ScrollView>
     </View>}
 
-    {screen === 'sessions' && <SessionHomeScreen
-      targets={targets} target={target} sessions={sessions} search={sessionSearch} searchOpen={sessionSearchOpen}
-      onSearch={setSessionSearch} onSearchOpen={setSessionSearchOpen} busy={loading} unavailableDeviceCount={unavailableDeviceCount}
+    {screen !== 'login' && <View style={{flex:1,display:screen === 'sessions' ? 'flex' : 'none'}}><SessionHomeScreen key={account?.principalId ?? 'signed-out'}
+      targets={targets} target={target} rows={directory.rows} pages={directory.pages} search={sessionSearch} searchOpen={sessionSearchOpen}
+      onSearch={setSessionSearch} onSearchOpen={setSessionSearchOpen} busy={loading || directory.loading} unavailableDeviceCount={unavailableDeviceCount}
       onAccount={() => router.push('/account')}
-      onRefresh={() => void loadAccount(ownerRef.current).catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'))}
-      onSelectTarget={(item) => { if (targetRef.current?.identityKey !== item.identityKey) { moveOwner('sessions', item, null); setNotice(null); setSessions([]); void loadMobileCatalog(item); } void run('sessions', () => loadSessions(item)); }}
-      onNew={() => { moveOwner('chat', targetRef.current, null); setNotice(null); }}
-      onOpen={(item) => void run('snapshot', () => openSnapshot(item))}
+      onRefresh={() => {directory.refresh();void loadAccount(ownerRef.current).catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));}}
+      onNew={(selected) => { moveOwner('chat', selected, null); setNotice(null); void loadMobileCatalog(selected); }}
+      onOpen={(item) => void run('snapshot', () => openSnapshot(item, item.target))}
+      onArtifacts={(item) => { if (!account?.principalId) return; rememberArtifactChatReturn({principalId:account.principalId, identityKey:item.target.identityKey, agentId:item.target.agentId, sessionId:item.sessionId}); router.push({pathname:'/artifacts',params:{targetId:item.target.targetId,sessionId:item.sessionId}}); }}
       notice={notice ? <NoticeView notice={notice} action={retryNotificationAction} onDismiss={dismissNotification}/> : null}
       pending={pending.length > 0 && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认操作</Text><Text style={styles.caption}>状态未知时只查询，不会自动重发。</Text>{pending.map((item) => { const canQuery = !!item.targetId && targets.some((entry) => entry.targetId === item.targetId && entry.online); return <Pressable key={item.operationId} accessibilityRole="button" accessibilityState={{ disabled: !canQuery }} disabled={!canQuery} onPress={() => void run('receipt', () => queryPending(item))} style={[styles.pendingRow, !canQuery && styles.pendingRowDisabled]}><Text style={styles.pendingText}>查询操作 · {receiptLabels[receiptStates[item.operationId] ?? item.status]}</Text><Text style={[styles.pendingLink, !canQuery && styles.pendingLinkDisabled]}>{canQuery ? '查询状态' : '等待设备'}</Text></Pressable>; })}</View>}
       empty={!target ? <EmptyState title={account?.state === 'signed-in' ? '尚未发现可用 Bot' : '没有可用 Bot'} detail={account?.state === 'signed-in' ? '请确认电脑或 Host 已使用同一账号入网，并已启用对应 Bot 的网络访问。' : '登录后会从已授权账号读取可连接设备。'} action={account?.state === 'signed-in' ? '连接帮助' : undefined} onAction={account?.state === 'signed-in' ? () => router.push('/account/help') : undefined}/> : target.online === false ? <EmptyState title="设备当前离线" detail="Bot 设备离线时无法读取会话。"/> : <EmptyState title="暂无会话" detail="创建一个会话，或刷新以重新读取。" action="读取会话" onAction={() => void run('sessions', loadSessions)}/>}
-    />}
+    /></View>}
 
     {screen === 'chat' && <View style={styles.fill}>
       <View accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.chatToolbar}>
         <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { moveOwner('sessions', targetRef.current, null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
-        <View style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'} · {awaitingSnapshot ? (snapshotStatus === 'pending' ? '读取中' : '待读取') : conversationStatus(snapshot?.state, target?.online)}</Text></View>
+        <Pressable accessibilityRole="button" accessibilityLabel="查看当前 Bot 信息" onPress={() => setBotProfileOpen(true)} style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'} · {awaitingSnapshot ? (snapshotStatus === 'pending' ? '读取中' : '待读取') : conversationStatus(snapshot?.state, target?.online)}</Text></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!snapshot?.sessionId || awaitingSnapshot} accessibilityState={{ disabled: !snapshot?.sessionId || awaitingSnapshot }} onPress={openArtifacts} style={[styles.toolbarAction, (!snapshot?.sessionId || awaitingSnapshot) && { opacity: 0.35 }]}><FileText size={20} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
+      <BotProfileSheet target={botProfileOpen ? target : null} onClose={() => setBotProfileOpen(false)} onConversations={(selected) => {moveOwner('sessions',selected,null);}} onNew={(selected) => {moveOwner('chat',selected,null);void loadMobileCatalog(selected);}}/>
       <MobileSheet title="会话信息" visible={menuOpen} onClose={() => setMenuOpen(false)}>
         <Text style={[styles.chatTitle, { marginBottom: 18 }]}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text>
         <Text style={[styles.body, { marginBottom: 10 }]}>Bot：{target?.name ?? '未知'}</Text>
@@ -1453,9 +1492,10 @@ function AppBody() {
         {historyError && <Text accessibilityRole="alert" style={styles.historyError}>{historyError}</Text>}
         {!snapshot && !awaitingSnapshot && <EmptyState title="新建远程会话" detail={target?.online === false ? '设备离线，可先保留草稿，连接后再发送。' : '发送第一条消息后，将为此 Bot 创建新会话。'}/>}
         {snapshot?.state === 'unavailable' && <EmptyState title="会话暂时不可用" detail="请刷新状态或检查设备连接。" action="重新读取" onAction={() => void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }))}/>}
-        {transcript?.messages.map((item) => <View key={item.id} style={[styles.messageRow, item.role === 'user' && styles.userMessageRow]}><View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>{item.role === 'user' ? <Text selectable style={[styles.messageText, styles.userText]}>{item.content}</Text> : <MessageContent content={item.content}/>}{item.truncated && <Text style={styles.messageMeta}>内容已截断</Text>}{item.tools.map((tool) => <ToolResult key={`${item.id}:${tool.id}`} tool={tool}/>)}</View><Text style={styles.messageTimestamp}>{formatMessageTime(item.timestamp)}</Text></View>)}
+        {transcript?.messages.map((item) => <View key={item.id} style={[styles.messageRow, item.role === 'user' && styles.userMessageRow]}><View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>{item.role !== 'user' && target && <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8}}><BotAvatar target={target} size={24}/><Text style={styles.messageMeta}>{target.name}</Text></View>}{item.role === 'user' ? <Text selectable style={[styles.messageText, styles.userText]}>{item.content}</Text> : <MessageContent content={item.content}/>}{item.truncated && <Text style={styles.messageMeta}>内容已截断</Text>}{item.tools.map((tool) => <ToolResult key={`${item.id}:${tool.id}`} tool={tool}/>)}</View><Text style={styles.messageTimestamp}>{formatMessageTime(item.timestamp)}</Text></View>)}
         {snapshot?.state === 'running' && <View style={styles.thinking}><ActivityIndicator color={C.green}/><Text style={styles.caption}>正在处理…</Text></View>}
-        {snapshot?.state === 'waiting_user_action' && snapshot.interactions.map((item) => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={sending || blocksMutation}/>) }
+        {approvalSubmitting && <Text accessibilityLiveRegion="polite" style={styles.caption}>正在核对并提交当前请求…</Text>}
+        {snapshot?.state === 'waiting_user_action' && snapshot.interactions.map((item) => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={sending || approvalSubmitting || blocksMutation}/>) }
       </ScrollView>
       {composerMenuOpen && <Pressable accessibilityRole="button" accessibilityLabel="关闭更多操作" onPress={() => setComposerMenuOpen(false)} style={styles.composerMenuBackdrop}/>}
       <View style={styles.composerArea}>
@@ -1498,7 +1538,7 @@ function AppBody() {
         </ScrollView>}
         <View pointerEvents={composerMenuOpen ? 'none' : 'auto'} accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.composer}>
           <Pressable ref={composerMenuTriggerRef} accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" accessibilityState={{ expanded: composerMenuOpen }} onPress={() => { Keyboard.dismiss(); setComposerMenuOpen((value) => !value); }} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
+          <TextInput accessibilityLabel="消息输入框" editable={!sending || !!snapshot} value={draft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
           {draft.trim() || attachments.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={awaitingSnapshot ? '请先重试读取已有会话，草稿会保留。' : !target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speechPreparing ? '正在准备语音输入' : speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speechPreparing || speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
           {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{draft ? `${draft}\u200B` : '\u200B'}</Text>}
         </View>
