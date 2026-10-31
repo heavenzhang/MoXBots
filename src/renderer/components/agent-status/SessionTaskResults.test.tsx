@@ -5,6 +5,8 @@ import type { SessionTaskLedger } from '../../../shared/sessionTaskOrchestration
 import { SessionTaskOrchestrationProvider, useSessionTaskOrchestration } from './useSessionTaskOrchestration';
 import { SessionTaskActionsContext } from './SessionTaskActionsContext';
 import SessionTaskResults from './SessionTaskResults';
+import ExecutionStatusBar from './ExecutionStatusBar';
+import { emptyTaskLedger, materializeExecutionTodos, mergeTaskObservations } from '../../../shared/sessionTaskOrchestration';
 import SessionTaskAssociation from './SessionTaskAssociation';
 
 const tab = vi.hoisted(() => ({ tabId: 'tab', sessionId: 's1', sessionState: 'running', isLoading: false,
@@ -59,8 +61,7 @@ describe('Incremental task actions share the original conversation state', () =>
     await ready();
     expect(document.querySelectorAll('[data-task-result]')).toHaveLength(3);
     expect(document.querySelector('[data-task-result]')).toHaveAttribute('data-task-phase', 'failed');
-    const main = screen.getByText('主 Agent 独立准备环境').closest('details')!;
-    expect(main.open).toBe(false);
+    expect(screen.queryByText('主 Agent 独立准备环境')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '让主 Agent 验收' }));
     expect(actions.onReview).toHaveBeenCalledWith([{ sessionId: 's1', taskId: 'work', attemptId: 'attempt-1' }]);
   });
@@ -135,5 +136,48 @@ describe('Incremental task actions share the original conversation state', () =>
     fireEvent.click(screen.getByRole('button', { name: '提出返工意见' })); expect(actions.onComposeRework).not.toHaveBeenCalled();
     actions.disabled = false; ui.rerender(<Host />); fireEvent.click(screen.getByRole('button', { name: '提出返工意见' }));
     expect(actions.onComposeRework).toHaveBeenCalledWith([{ sessionId: 's1', taskId: 'work', attemptId: 'attempt-1' }]); expect(actions.onReview).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('one live main-task disclosure', () => {
+  it('shows each live task once in the composer, without repeating its owner', async () => {
+    const ledger = emptyTaskLedger();
+    ledger.executionAdmission = { requestId: 'human', queueId: 'queue', taskPlanId: 'compact' };
+    materializeExecutionTodos(ledger, 'compact', ['定位现有页面', '完成布局调整']);
+    tab.apiGet.mockResolvedValue({ success: true, sessionId: 's1', ledger });
+    render(<SessionTaskOrchestrationProvider><SessionTaskActionsContext.Provider value={actions}>
+      <SessionTaskResults />
+      <ExecutionStatusBar activity={{ containerRef: { current: null }, onJumpToTool: vi.fn(), onSelectSubagent: vi.fn() }} />
+    </SessionTaskActionsContext.Provider></SessionTaskOrchestrationProvider>);
+    const trigger = await screen.findByRole('button', { name: /任务.*已验收 0\/2/ });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('定位现有页面')).toBeNull();
+    expect(screen.queryByText(/主 Agent 任务/)).toBeNull();
+    fireEvent.click(trigger);
+    expect(screen.getAllByText('定位现有页面')).toHaveLength(1);
+    expect(screen.getAllByText('完成布局调整')).toHaveLength(1);
+    expect(screen.queryByText('主 Agent 执行与验收')).toBeNull();
+    fireEvent.keyDown(screen.getByRole('region', { name: '任务详情' }), { key: 'Escape' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+    expect(trigger).toHaveFocus();
+  });
+
+  it('retains completed main tasks as collapsed transcript history', async () => {
+    const initial = emptyTaskLedger();
+    initial.executionAdmission = { requestId: 'human', queueId: 'queue', taskPlanId: 'compact' };
+    materializeExecutionTodos(initial, 'compact', ['定位现有页面', '完成布局调整']);
+    const ledger = mergeTaskObservations(initial, [], initial.plan!.map(todo => ({ ...todo, status: 'completed' })), 'queue');
+    ledger.reviews = ledger.tasks.map(task => ({ taskId: task.id, attemptId: 'main', decision: 'accept', evidence: '已核对页面' }));
+    tab.apiGet.mockResolvedValue({ success: true, sessionId: 's1', ledger });
+    render(<SessionTaskOrchestrationProvider><SessionTaskActionsContext.Provider value={actions}>
+      <SessionTaskResults />
+    </SessionTaskActionsContext.Provider></SessionTaskOrchestrationProvider>);
+    const summary = await screen.findByText(/主 Agent 任务 2 项/);
+    const details = summary.closest('details')!;
+    expect(details.open).toBe(false);
+    expect(screen.getByText('定位现有页面')).not.toBeVisible();
+    // jsdom does not implement native summary toggling; browser QA covers opening.
+    expect(details.textContent).toContain('已验收 2 项');
   });
 });

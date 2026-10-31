@@ -1098,3 +1098,10 @@ desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2
 ## MB-DESKTOP-NEXT-20261031 — Root five-source selection
 
 Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Allocated0.5.28/build528.1 with source/sidebar6e518f1c, recovery6cecca460, activityc7c55c3, scopea4585a8b and upstream093eb934 as original Git ancestors. Independent combined source admission/local checks and actualSDK native local fixture passed; CI/main, immutable formal artifact, safe maintenance, native originalSession recovery and101publication remain separate gates. Primary joint integration preserves typed denial receipts, unknown-action and old-ID fences, native activity ownership, Store CAS and privacy; no fullmodel/Goal matrix, cloud/browser/phone, new Agent or second publisher. Subsequent arrivals after freeze next batch. Evidence/limits: dev-docs/releases/0.5.28-intake-20261031.md; current Root task .agent-sync/tasks/codex-release-0528-combined-20261031-49c193f2.md.
+
+
+## MB-TASK-PANEL-COMPACT-20261031 — 当前任务清单去重与紧凑布局
+
+任务 `.agent-sync/tasks/codex-task-panel-compact-20261031-ce565643.md`；验收 `dev-docs/task-panel-compact-20261031/acceptance.md`。运行中主任务集中到底部默认折叠入口，任务行压缩、会话/Composer分隔、已验收历史默认收起；无后端/数据权限变化。36 DOM、type/lint、内置浏览器真实组件合成状态通过，正式安装/真实会话未验。
+
+desktop/macOS-arm64/updater、shared CI/main继续唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`，依据现有部署归属；本任务基线e11ee39b、分支codex/task-panel-compact-20261031，只交下一未冻结批次，不加入0.5.28/528.1冻结制品。owner统一版本/候选/CI/发布/回滚；main、正式制品与真实路径各自待回执。无跨单元或迁移依赖。

@@ -1366,7 +1366,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
     <>
     <div ref={overlayRootRef} data-chat-input-overlay={!isLauncherMode || undefined} className={isLauncherMode
       ? 'relative flex w-full justify-center'
-      : 'pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center px-4 pb-4'
+      : 'pointer-events-none absolute inset-x-0 bottom-0 z-20 flex flex-col items-center px-4 pb-4 pt-4'
     }>
       {/* Gradient fade overlay (chat mode only) */}
       {!isLauncherMode && (

@@ -268,9 +268,9 @@ export default memo(function ExecutionStatusBar({
               trigger?.focus();
             }
           }}
-          className="mb-1 min-w-0 text-[var(--ink)]"
+          className="mb-2 min-w-0 rounded-lg border border-[var(--line-subtle)] bg-[var(--paper-elevated)] text-[var(--ink)]"
         >
-          <div data-execution-summary className="flex min-h-8 min-w-0 items-center gap-1">
+          <div data-execution-summary className="flex min-h-8 min-w-0 items-center gap-1 px-1">
             <div
               className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain"
               aria-label={t("executionStatus.summary")}
@@ -407,7 +407,7 @@ export default memo(function ExecutionStatusBar({
                 `executionStatus.${detail === "execution" ? "executionDetails" : detail}`,
               )}
               tabIndex={0}
-              className="mt-1 max-h-[min(280px,38vh)] overflow-y-auto overscroll-contain rounded-lg bg-[var(--paper-elevated)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
+              className={`${detail === "todos" ? "max-h-[min(200px,28vh)]" : "max-h-[min(280px,38vh)]"} overflow-y-auto overscroll-contain border-t border-[var(--line-subtle)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]`}
             >
               {detail === "execution" && (
                 <SessionExecutionDetails {...executionProps} />
