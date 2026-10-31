@@ -566,6 +566,7 @@ describe("durable Session execution owner", () => {
       assistantMessagePresent: true,
     });
     expect(currentExecution()?.continuation?.state).toBe("pending");
+    expect(currentExecution()?.phase).not.toBe('completed');
     expect(continuationRequests).toHaveLength(0);
 
     // Native task lifecycle observation wakes execution; no UI projection is read.
@@ -1883,6 +1884,33 @@ describe("durable Session execution owner", () => {
       phase: "completed",
       lastSettledQueueId: completedQueue,
     });
+  });
+});
+
+describe("unconfirmed execution supervision", () => {
+  it('keeps an unclassified request read-only instead of launching children without a parent execution', async () => {
+    await proveHumanInput('unconfirmed-supervision', input);
+    const prepared = await executionOwner.prepareSessionExecution(engine, {
+      text: input, clientRequestId: 'unconfirmed-supervision', sessionId: id,
+      workspacePath: '/synthetic-workspace', scenario: { type: 'desktop', surface: 'chat' },
+    }, async () => undefined);
+    const decision = await prepared.request.beforeDispatch!();
+    expect(decision.accepted).toBe(true);
+    expect(decision.validateAtCommit?.().accepted).toBe(true);
+    const queueId = prepared.request.queueId!;
+    expect(currentExecution()).toBeUndefined();
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission?.error).toBe('INTENT_UNCONFIRMED');
+    for (const name of ['Agent', 'Task', 'Write', 'Edit', 'Bash']) {
+      expect(executionOwner.sessionExecutionToolDenial(id, queueId, name, {})).toContain('INTENT_UNCONFIRMED');
+    }
+    for (const name of ['Read', 'Grep', 'Glob']) {
+      expect(executionOwner.sessionExecutionToolDenial(id, queueId, name, {})).toBeUndefined();
+    }
+    // This gate is scoped to the exact admitted input; legacy/native owners retain their policy.
+    expect(executionOwner.sessionExecutionToolDenial(id, 'different-queue', 'Agent', {})).toBeUndefined();
+    await prepared.request.onTerminal?.({ status: 'complete', text: 'Read-only diagnosis', assistantMessagePresent: true });
+    expect(currentExecution()).toBeUndefined();
+    expect(continuationRequests).toHaveLength(0);
   });
 });
 

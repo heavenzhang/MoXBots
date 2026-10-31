@@ -41,6 +41,38 @@ describe('normalizeSessionMessageContent', () => {
         expect(normalizeSessionMessageContent(JSON.stringify(blocks))).toEqual(blocks);
     });
 
+    it('maps explicit native is_error flags on root and nested tools, never inferring from text', () => {
+        const content = normalizeSessionMessageContent(JSON.stringify([{
+            type: 'tool_use', tool: {
+                id: 'bash-1', name: 'Bash', input: { command: 'false' }, result: 'hook error',
+                is_error: true, subagentCalls: [{ id: 'read-1', name: 'Read', input: {}, is_error: false }],
+            },
+        }])) as Array<{ tool?: { isError?: boolean; is_error?: unknown; subagentCalls?: Array<{ isError?: boolean }> } }>;
+
+        expect(content[0].tool).toMatchObject({ isError: true, subagentCalls: [{ isError: false }] });
+        expect(content[0].tool?.is_error).toBeUndefined();
+        const textOnly = normalizeSessionMessageContent([{ type: 'tool_use', tool: {
+            id: 'bash-2', name: 'Bash', input: {}, result: 'PreToolUse hook error',
+        } }]) as Array<{ tool?: { result?: string; isError?: boolean } }>;
+        expect(textOnly[0].tool?.result).toBe('PreToolUse hook error');
+        expect(textOnly[0].tool?.isError).toBeUndefined();
+    });
+
+    it('retains a known typed error when legacy and product error flags disagree', () => {
+        const restored = normalizeSessionMessageContent(JSON.stringify([{
+            type: 'tool_use', tool: {
+                id: 'root', name: 'Bash', isError: true, is_error: false,
+                subagentCalls: [
+                    { id: 'known-error', name: 'Bash', isError: true, is_error: false },
+                    { id: 'native-error', name: 'Bash', isError: false, is_error: true },
+                    { id: 'success', name: 'Read', isError: false, is_error: false },
+                ],
+            },
+        }])) as Array<{ tool: { isError?: boolean; subagentCalls: Array<{ isError?: boolean }> } }>;
+        expect(restored[0].tool.isError).toBe(true);
+        expect(restored[0].tool.subagentCalls.map(call => call.isError)).toEqual([true, true, false]);
+    });
+
     it('leaves plain and malformed JSON-looking strings as text', () => {
         expect(normalizeSessionMessageContent('**plain markdown**')).toBe('**plain markdown**');
         expect(normalizeSessionMessageContent('[{"type":')).toBe('[{"type":');

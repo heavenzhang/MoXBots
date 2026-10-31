@@ -14,6 +14,7 @@ import {
   tryClaimSessionResourceTransition,
 } from '@/utils/sessionDeletionCoordinator';
 import { useTabState } from './TabContext';
+import { useSubagentViews } from '@/components/agent-status/useSubagentViews';
 import { AskUserQuestionPrompt } from '@/components/AskUserQuestionPrompt';
 import type { Message } from '@/types/chat';
 import { ToastProvider } from '@/components/Toast';
@@ -146,6 +147,8 @@ function Probe() {
   const {
     sessionId,
     isLoading,
+    hasBackgroundWork,
+    hasNativeWork,
     isSessionLoading,
     hasSessionHistory,
     sessionRestoreError,
@@ -180,6 +183,8 @@ function Probe() {
         {JSON.stringify({
           sessionId,
           isLoading,
+          hasBackgroundWork,
+          hasNativeWork,
           sessionState,
           historyCount: historyMessages.length,
           initModel: systemInitInfo?.model ?? null,
@@ -246,6 +251,8 @@ function Probe() {
 function readActivity(): {
   sessionId: string | null;
   isLoading: boolean;
+  hasBackgroundWork: boolean;
+  hasNativeWork: boolean;
   sessionState: string;
   historyCount: number;
   initModel: string | null;
@@ -253,6 +260,8 @@ function readActivity(): {
   return JSON.parse(screen.getByTestId('activity').textContent ?? '{}') as {
     sessionId: string | null;
     isLoading: boolean;
+    hasBackgroundWork: boolean;
+    hasNativeWork: boolean;
     sessionState: string;
     historyCount: number;
     initModel: string | null;
@@ -434,6 +443,81 @@ describe('Tab-owned query clock integration', () => {
   });
 });
 
+describe('whole-session background activity', () => {
+  beforeEach(() => {
+    sseHarness.state.eventHandler = null;
+    sseHarness.state.statusHandler = null;
+    sseHarness.state.connected = false;
+    tauriHarness.proxyFetch.mockImplementation(async (url: string) => {
+      const sessionId = /\/sessions\/([^?]+)/.exec(url)?.[1];
+      return new Response(JSON.stringify({ success: true, session: {
+        id: sessionId, agentDir: '/tmp/workspace', title: 'Synthetic session',
+        createdAt: '', lastActiveAt: '', runtime: 'builtin', messages: [],
+        snapshotRevision: 0, liveSessionState: 'idle', liveStreamingMessage: null,
+      } }));
+    });
+  });
+  it('keeps shell activity through a root terminal and only settles after the native level clears', async () => {
+    const onGeneratingChange = vi.fn();
+    const sessionId = 'session-supervised-background';
+    render(<TabProvider tabId="supervised-background" agentDir="/tmp/workspace" sessionId={sessionId}
+      onGeneratingChange={onGeneratingChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:status', { sessionId, sessionState: 'running', hasBackgroundWork: true });
+    emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: true });
+    emit('chat:message-complete', {});
+    expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle', hasBackgroundWork: true });
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+
+    // A terminal edge is display evidence; the exact Query's level still owns liveness.
+    emit('chat:task-notification', { sessionId, taskId: 'child', runId: 'old-run', status: 'completed' });
+    emit('chat:status', { sessionId: 'another-session', sessionState: 'idle', hasBackgroundWork: false });
+    expect(readActivity().hasBackgroundWork).toBe(true);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
+    expect(readActivity().hasBackgroundWork).toBe(false);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('keeps main execution visible after native continuation resumes with no new desktop input', async () => {
+    const onGeneratingChange = vi.fn();
+    const sessionId = 'session-native-parent-resume';
+    render(<TabProvider tabId="native-parent-resume" agentDir="/tmp/workspace" sessionId={sessionId}
+      onGeneratingChange={onGeneratingChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    emit('chat:init', { sessionId, sessionState: 'idle', hasBackgroundWork: false, hasNativeWork: true });
+    emit('chat:message-complete', {});
+    expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle', hasBackgroundWork: false, hasNativeWork: true });
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    // An old completion/background level cannot settle native parent execution.
+    emit('chat:status', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
+    emit('chat:status', { sessionId: 'old-session', sessionState: 'idle', hasNativeWork: false });
+    expect(readActivity().hasNativeWork).toBe(true);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    emit('chat:status', { sessionId, sessionState: 'idle', hasNativeWork: false });
+    expect(readActivity().hasNativeWork).toBe(false);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('restores idle-root background activity from init without reviving root loading or trusting old cards', async () => {
+    const onGeneratingChange = vi.fn();
+    const sessionId = 'session-background-reconnect';
+    render(<TabProvider tabId="background-reconnect" agentDir="/tmp/workspace" sessionId={sessionId}
+      onGeneratingChange={onGeneratingChange} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId, sessionState: 'idle', hasBackgroundWork: true });
+    expect(readActivity()).toMatchObject({ isLoading: false, hasBackgroundWork: true });
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(true);
+    emit('chat:init', { sessionId, sessionState: 'idle', hasBackgroundWork: false });
+    // An old task-started card alone cannot make the session active.
+    emit('chat:task-started', { sessionId, taskId: 'old-child', toolUseId: 'old-launch' });
+    expect(readActivity().hasBackgroundWork).toBe(false);
+    expect(onGeneratingChange).toHaveBeenLastCalledWith(false);
+  });
+});
+
 function collabMessage(status: 'running' | 'completed' = 'running'): Message {
   return {
     id: 'assistant-collab',
@@ -582,14 +666,14 @@ describe('TabProvider session activity ownership', () => {
     const sessionId = 'pending-stop-recovery-activity';
     tauriHarness.proxyFetch.mockImplementation(async (url: string) => new Response(JSON.stringify(
       url.endsWith('/api/session-state')
-        ? { sessionId, sessionState: 'idle', isBusy: false, completionTerminal: { status: 'stopped' } }
+        ? { sessionId, sessionState: 'idle', isBusy: false, hasBackgroundWork: false, completionTerminal: { status: 'stopped' } }
         : { success: true, alreadyStopped: true },
     )));
     render(<TabProvider tabId="stop-recovery-activity" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
     await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
-    emit('chat:status', { sessionState: 'running' });
+    emit('chat:status', { sessionState: 'running', hasBackgroundWork: true });
     fireEvent.click(screen.getByRole('button', { name: 'stop response' }));
-    await waitFor(() => expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle' }));
+    await waitFor(() => expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle', hasBackgroundWork: false }));
     emit('chat:message-stopped', {});
     expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle' });
   });
@@ -1172,6 +1256,61 @@ describe('TabProvider session activity ownership', () => {
     fetchRef.mockRestore();
   });
 
+  it.each(['persisted restore', 'SSE init'] as const)('retains the native continuation transcript and child details during idle root %s', async (source) => {
+    const sessionId = source === 'SSE init' ? 'pending-idle-continuation' : 'session-idle-continuation';
+    let tab!: ReturnType<typeof useTabState>;
+    function ContinuationProbe() {
+      const value = useTabState();
+      const { views } = useSubagentViews();
+      useEffect(() => { tab = value; }, [value]);
+      return <><Probe /><output data-testid="child-details">{JSON.stringify(views.map(view => ({ title: view.title, result: view.result, calls: view.tool.subagentCalls })))}</output></>;
+    }
+    const assistant = {
+      id: 'continuation-assistant', role: 'assistant', timestamp: new Date(0).toISOString(),
+      content: [
+        { id: 'text', type: 'text', text: 'Verified work remains visible.' },
+        { id: 'child-block', type: 'tool_use', tool: {
+          id: 'child-tool', name: 'Agent', input: { description: 'Research existing module' },
+          subagentLifecycle: { status: 'completed', startedAt: 1000, finishedAt: 2000, result: 'Research report retained.' },
+          subagentCalls: [{ id: 'child-read', name: 'Read', input: {}, result: 'Existing module inspected.' }],
+        } },
+      ],
+    };
+    let revision = 10;
+    const snapshot = () => ({
+      id: sessionId, sessionId, transcriptFormat: 2, runtime: 'builtin', agentDir: '/tmp/workspace', title: 'Continuation',
+      messages: [{ id: 'u1', role: 'user', content: 'Continue existing task', timestamp: new Date(0).toISOString() }],
+      snapshotRevision: revision, liveRevision: revision, hasMoreBefore: false,
+      liveSessionState: 'idle', sessionState: 'idle', liveStreamingMessage: assistant,
+    });
+    tauriHarness.proxyFetch.mockImplementation(async () => new Response(JSON.stringify({ success: true, session: snapshot() })));
+    render(<TabProvider tabId="idle-continuation" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><ContinuationProbe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.connected).toBe(true));
+    if (source === 'SSE init') emit('chat:init', snapshot(), { sessionId });
+    await waitFor(() => expect(screen.getByTestId('streaming-content')).toHaveTextContent('Verified work remains visible.'));
+    expect(readActivity()).toMatchObject({ isLoading: false, sessionState: 'idle' });
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Research report retained.');
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Existing module inspected.');
+
+    // Reconnect repeats the same owner row; it must neither vanish nor duplicate.
+    if (source === 'SSE init') emit('chat:init', snapshot(), { sessionId });
+    else {
+      revision = 12;
+      emit('chat:status', { sessionState: 'idle' }, { sessionId, liveRevision: revision });
+      await waitFor(() => expect(tauriHarness.proxyFetch.mock.calls.some(([url]) => String(url).includes('&from=u1'))).toBe(true));
+      await waitFor(() => expect(screen.getByTestId('session-loading')).toHaveTextContent('false'));
+    }
+    expect(tab.messages.filter(message => message.id === assistant.id)).toHaveLength(1);
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Research report retained.');
+    emit('chat:subagent-tool-result-complete', { parentToolUseId: 'child-tool', toolUseId: 'child-read', content: 'Updated inspection result.' }, { sessionId, liveRevision: ++revision });
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Updated inspection result.');
+    emit('chat:message-complete', { assistant_message_id: assistant.id, terminal_reason: 'api_error' }, { sessionId, liveRevision: ++revision });
+    expect(tab.streamingMessage).toBeNull();
+    expect(tab.historyMessages.filter(message => message.id === assistant.id)).toHaveLength(1);
+    expect(screen.getByTestId('child-details')).toHaveTextContent('Research report retained.');
+    expect(readActivity()).toMatchObject({ isLoading: false });
+  });
+
   it('updates a page that arrives after an old tool changed and refreshes the retained prefix on a SSE gap', async () => {
     const sessionId = 'session-v2-paging';
     let tab!: ReturnType<typeof useTabState>;
@@ -1637,6 +1776,8 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: false,
+        hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: null,
@@ -1650,6 +1791,8 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: false,
+        hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: 'model-a',
@@ -1670,6 +1813,8 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: true,
+        hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'starting',
         historyCount: 0,
         initModel: 'model-b',
@@ -1679,6 +1824,8 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'pending-activity',
         isLoading: false,
+        hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'idle',
         historyCount: 0,
         initModel: 'model-b',
@@ -3067,6 +3214,8 @@ describe('TabProvider session activity ownership', () => {
       expect(readActivity()).toEqual({
         sessionId: 'session-rest',
         isLoading: true,
+        hasBackgroundWork: false,
+        hasNativeWork: false,
         sessionState: 'running',
         historyCount: 0,
         initModel: null,

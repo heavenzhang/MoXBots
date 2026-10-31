@@ -21,6 +21,8 @@ import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
 import type { RecoveryActionRequest, RecoveryActionSnapshot } from '../shared/recoveryReconciliation';
 import { inspectRecoveryActions, reconcileRecoveryAction, type RecoveryReviewDependencies } from './builtin-session/recovery-reconciliation';
+import { readNativeRecoveryRecords } from './builtin-session/native-denial-review';
+import { repairReviewedToolErrors } from './builtin-session/recovery-tool-errors';
 import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
 import { SessionModelRecovery, settledStreamFailureMessage } from './builtin-session/model-recovery';
 import { SameTurnStreamContinuation } from './builtin-session/stream-continuation';
@@ -341,6 +343,8 @@ import {
   readQueryBackgroundTaskDetail,
   recordQueryBackgroundTaskOutput,
   hasQueryBackgroundWork,
+  hasQueryNativeWork,
+  observeQueryNativeWork,
   getQueryBackgroundContinuationSnapshot,
   getQueryExecutionVerificationEpoch,
   acknowledgeQueryBackgroundWork,
@@ -7217,12 +7221,21 @@ function parseSystemStatus(message: unknown): {
   };
 }
 
+function broadcastSessionActivity(): void {
+  broadcast('chat:status', {
+    sessionId,
+    sessionState,
+    hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
+    hasNativeWork: hasQueryNativeWork(),
+  });
+}
+
 function setSessionState(nextState: SessionState): void {
   if (sessionState === nextState) {
     return;
   }
   sessionState = nextState;
-  broadcast('chat:status', { sessionState });
+  broadcastSessionActivity();
 }
 
 function ensureAssistantMessage(): MessageWire {
@@ -8213,8 +8226,10 @@ export function getAgentState(): {
   agentDir: string;
   sessionState: SessionState;
   hasInitialPrompt: boolean;
+  hasBackgroundWork: boolean;
+  hasNativeWork: boolean;
 } {
-  return { agentDir, sessionState, hasInitialPrompt };
+  return { agentDir, sessionState, hasInitialPrompt, hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(), hasNativeWork: hasQueryNativeWork() };
 }
 
 export async function getBuiltinBackgroundTaskDetail(toolUseId: string) {
@@ -10697,12 +10712,34 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
         ]);
       } finally { clearTimeout(timer); }
     },
-    save: (ledger, digest, current) => {
-      const receipt = (ledger as { readonlyTasks: import('./openai-bridge/context-recovery').ReadonlyTaskResolution[] }).readonlyTasks.at(-1)!;
-      return saveBuiltinContextLedger(owner.sessionId, owner.sdkSessionId, ledger, isCurrent,
-        () => current() && (!controller || controller.canAdoptReadonlyTaskResolution(receipt)), digest);
+    readNativeRecords: async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        return await Promise.race([readNativeRecoveryRecords(owner.sdkSessionId, agentDir || undefined),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('recovery_review_native_timeout')), 5000); })]);
+      } finally { clearTimeout(timer); }
     },
-    adopt: receipt => activeSessionContextRecovery?.adoptReadonlyTaskResolution(receipt),
+    save: (ledger, digest, current) => {
+      return saveBuiltinContextLedger(owner.sessionId, owner.sdkSessionId, ledger, isCurrent,
+        () => {
+          if (!current() || !controller) return current();
+          const next = ledger as { readonlyTasks?: import('./openai-bridge/context-recovery').ReadonlyTaskResolution[];
+            preToolDenials?: import('./openai-bridge/context-recovery').PreToolDenialResolution[] };
+          return [...(next.readonlyTasks ?? []), ...(next.preToolDenials ?? [])].some(receipt =>
+            receipt.kind === 'native-pre-tool-denied-reviewed' ? controller.canAdoptPreToolDenialResolution(receipt)
+              : controller.canAdoptReadonlyTaskResolution(receipt));
+        }, digest);
+    },
+    adopt: receipt => receipt.kind === 'native-pre-tool-denied-reviewed'
+      ? activeSessionContextRecovery?.adoptPreToolDenialResolution(receipt)
+      : activeSessionContextRecovery?.adoptReadonlyTaskResolution(receipt),
+    repairToolErrors: async evidence => {
+      if (!isCurrent()) throw new Error('recovery_review_owner_changed');
+      const content = getBuiltinProductContent();
+      if (!content) return;
+      getBuiltinTranscriptPresentation();
+      await repairReviewedToolErrors(content, evidence, isCurrent);
+    },
   };
 }
 export function inspectBuiltinRecoveryActions(): Promise<RecoveryActionSnapshot> {
@@ -12808,7 +12845,8 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   pre.tool_name,
                   pre.tool_input,
                 );
-                if (executionDenial)
+                if (executionDenial) {
+                  await queryContextRecovery?.commitPreToolDenial(pre.tool_name, pre.tool_input, pre.tool_use_id).catch(() => false);
                   return {
                     hookSpecificOutput: {
                       hookEventName: 'PreToolUse' as const,
@@ -12816,12 +12854,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                       permissionDecisionReason: executionDenial,
                     },
                   };
+                }
                 if ((pre.tool_name === 'Agent' || pre.tool_name === 'Task')
                 && (!isCurrentQueryAuthority(activeQueryAuthority)
                   || getQueryGeneration() !== inputTrace.generation
                   || lifecycleState.abortRequested || sessionId !== queryProductSessionId
                   || !canSessionDelegateSubagents(queryProductSessionId, {
                     queueId: getBuiltinCurrentTurnQueueId() ?? undefined, owner: getBuiltinCurrentTurnIdentity()?.owner }))) {
+                await queryContextRecovery?.commitPreToolDenial(pre.tool_name, pre.tool_input, pre.tool_use_id).catch(() => false);
                 return {
                   hookSpecificOutput: { hookEventName: 'PreToolUse' as const,
                     permissionDecision: 'deny' as const,
@@ -13711,10 +13751,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       }
 
       // SDK 0.2.83+: session_state_changed — authoritative turn boundary signal.
-      // Currently logged for diagnostic comparison with self-built sessionState.
+      // Project native loop activity without creating a product root/queue or
+      // letting native idle settle a product turn before its real result.
       if (sdkMessage.type === 'system' && (sdkMessage as { subtype?: string }).subtype === 'session_state_changed') {
         const state = (sdkMessage as { state?: string }).state;
         console.log(`[agent] SDK session_state_changed: ${state} (our sessionState: ${sessionState})`);
+        if (systemInitReceived && !lifecycleState.preWarming
+          && (state === 'running' || state === 'requires_action' || state === 'idle')
+          && observeQueryNativeWork(activeQuery, state)) broadcastSessionActivity();
 
         // Adaptive startup timeout: extend when subprocess proves alive.
         // SDK emits session_state_changed:running early (before MCP handshake + system_init).
@@ -13753,6 +13797,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         if (sdkMessage.subtype === 'background_tasks_changed') {
           const wasWorking = hasQueryBackgroundWork(activeQuery);
           replaceQueryBackgroundActivity(activeQuery, sdkMessage.tasks);
+          // Root-turn idle is independent of the exact Query's background work.
+          // Publish the authoritative level even when the root state is unchanged.
+          if (wasWorking !== hasQueryBackgroundWork(activeQuery)) broadcastSessionActivity();
           if (wasWorking && !hasQueryBackgroundWork(activeQuery)) {
             if (deferredRewindResult) retireRewoundQueryWhenQuiescent();
             else applyDeferredRestartIfNeeded();
@@ -14426,13 +14473,14 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                 if (!childToolToParent.has(toolResultBlock.tool_use_id)) {
                   ensureSubagentToolPlaceholder(parentToolUseId, toolResultBlock.tool_use_id);
                 }
-                handleToolResultComplete(toolResultBlock.tool_use_id, contentStr);
+                handleToolResultComplete(toolResultBlock.tool_use_id, contentStr, toolResultBlock.is_error === true);
                 broadcast('chat:subagent-tool-result-complete', {
                   parentToolUseId,
                   toolUseId: toolResultBlock.tool_use_id,
                   // Subagent media is not yet attached (pipeline doc §10 residual) —
                   // leave an honest text trace instead of silently dropping the image.
-                  content: appendOmittedImageNote(contentStr, renderParts.attachments.length)
+                  content: appendOmittedImageNote(contentStr, renderParts.attachments.length),
+                  isError: toolResultBlock.is_error === true,
                 });
               } else {
                 // Top-level tool result (e.g., WebSearch without parent)
@@ -14441,17 +14489,19 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                 // gemini-image) AND extracted image blocks (Playwright screenshots,
                 // generic MCP ImageContent) → first-class disk-backed attachments.
                 const product = getBuiltinProductContent();
-                const media = attachBuiltinMediaIfAny(toolResultBlock.tool_use_id, contentStr, renderParts.attachments);
+                const media = toolResultBlock.is_error ? Promise.resolve(undefined)
+                  : attachBuiltinMediaIfAny(toolResultBlock.tool_use_id, contentStr, renderParts.attachments);
                 const attachments = product ? undefined : await media;
                 if (product) void media.then(attachments => {
                   if (attachments && getBuiltinProductContent()?.writer === product.writer) publishBuiltinUiEvent('chat:tool-result-complete', { toolUseId: toolResultBlock.tool_use_id, attachments });
                 });
                 if (!isCurrentQueryAuthority(activeQueryAuthority)) continue;
-                handleToolResultComplete(toolResultBlock.tool_use_id, contentStr);
-                observeBuiltinTaskPlanResult(toolResultBlock.tool_use_id);
+                handleToolResultComplete(toolResultBlock.tool_use_id, contentStr, toolResultBlock.is_error === true);
+                if (!toolResultBlock.is_error) observeBuiltinTaskPlanResult(toolResultBlock.tool_use_id);
                 broadcast('chat:tool-result-complete', {
                   toolUseId: toolResultBlock.tool_use_id,
                   content: stripped ? PLAYWRIGHT_RESULT_SENTINEL : contentStr,
+                  isError: toolResultBlock.is_error === true,
                   ...(attachments ? { attachments } : {}),
                 });
                 inFlightToolCount = Math.max(0, inFlightToolCount - 1);
@@ -15103,6 +15153,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
         outputFile: '',
       });
     }
+    if (!wasPreWarming) broadcastSessionActivity();
     // sessionRegistered 已在 system_init handler 中设置，无需重复
 
     // Don't broadcast state changes from pre-warm sessions

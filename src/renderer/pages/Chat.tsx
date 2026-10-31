@@ -731,6 +731,8 @@ function ChatContent({
     hasMoreBefore: _hasMoreBefore,
     loadOlderMessages,
     isLoading,
+    hasBackgroundWork,
+    hasNativeWork,
     getQueryElapsedSeconds,
     isSessionLoading,
     hasSessionHistory,
@@ -5039,7 +5041,7 @@ function ChatContent({
     ? sessionMeta.continuation : undefined;
   const continuationReady = isConnected && !isSessionLoading
     && sidecarConfigDisposition !== 'pending' && goalRestoreReady;
-  const continuationBlocked = isLoading || sessionState !== 'idle'
+  const continuationBlocked = isLoading || hasBackgroundWork || hasNativeWork || sessionState !== 'idle'
     || sessionGoalState.isExecuting || sessionGoalState.goal?.status === 'active'
     || !!activeCurrentSessionCronTask || !!pendingPermission || !!pendingAskUserQuestion
     || !!pendingExitPlanMode || !!pendingEnterPlanMode
@@ -6830,7 +6832,8 @@ function ChatContent({
               <RecoveryActionReview
                 key={sessionId}
                 sessionId={sessionId}
-                disabled={isLoading || forkPending}
+                disabled={!continuationReady || isLoading || hasBackgroundWork || hasNativeWork || forkPending}
+                inspectRevision={`${messages.length}:${streamingMessage?.id ?? ''}`}
                 inspect={() => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH)}
                 reconcile={request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request)}
               />
@@ -6863,6 +6866,8 @@ function ChatContent({
                   layoutByMessageId={chatScrollModel.layoutByMessageId}
                   onLoadOlder={handleLoadOlderMessages}
                   isLoading={isLoading}
+                  hasBackgroundWork={hasBackgroundWork}
+                  hasNativeWork={hasNativeWork}
                   getQueryElapsedSeconds={getQueryElapsedSeconds}
                   sessionId={sessionId}
                   isActive={isActive}

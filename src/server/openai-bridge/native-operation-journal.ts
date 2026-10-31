@@ -96,6 +96,10 @@ export class NativeOperationJournal {
     }
     this.entries = entries; this.legacy = legacy; this.retired = retired; this.retiredOwner = retiredOwner;
   }
+  reviewLegacy(actionHash: string): void {
+    if (this.hasUnresolved(actionHash)) throw new Error('context_recovery_required: Cannot review a pending native attempt');
+    this.legacy.delete(actionHash);
+  }
   markLegacy(actionHash: string): void { this.legacy.add(actionHash); }
   hasUnresolved(actionHash: string): boolean { return [...this.entries.values()].some(a => a.actionHash === actionHash && a.status !== 'returned'); }
   isUncertain(actionHash: string): boolean { return this.legacy.has(actionHash) || this.hasUnresolved(actionHash); }

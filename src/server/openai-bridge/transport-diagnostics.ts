@@ -1,3 +1,4 @@
+import type { TransportObservation } from './transport-observation';
 import type { UpstreamConfig } from './types/bridge';
 
 const SAFE_CODES = new Set(['ECONNRESET', 'ECONNREFUSED', 'ECONNABORTED', 'EPIPE', 'ENOTFOUND', 'EAI_AGAIN',
@@ -32,6 +33,7 @@ export function fetchFailureDiagnostic(error: unknown, local: {
 /** Never serialize Error.message/stack, proxy URLs, bodies, request headers, or credential-bearing URLs. */
 export function transportDiagnostic(upstream: UpstreamConfig, details: {
   phase: 'response_headers' | 'response_body'; route?: 'direct' | 'proxy' | 'unresolved'; error?: unknown; status?: number; mappedStatus?: number;
+  transport?: TransportObservation;
   cancelled: boolean; timedOut: boolean; bytesDelivered: number; response?: { headers: { get(name: string): string | null } };
 }): string {
   let host = 'invalid';
@@ -57,5 +59,6 @@ export function transportDiagnostic(upstream: UpstreamConfig, details: {
   return `[bridge] Anthropic upstream diagnostic ${JSON.stringify({ provider: label(upstream.providerId),
     model: label(upstream.model), protocol: 'anthropic', host, endpoint: '/v1/messages',
     phase: details.phase, route: details.route, status: details.status, mappedStatus: details.mappedStatus, cancelled: details.cancelled, timedOut: details.timedOut,
-    bytesDelivered: details.bytesDelivered, errorName, codes: [...codes], requestIds: ids })}`;
+    bytesDelivered: details.bytesDelivered, errorName, codes: [...codes], requestIds: ids,
+    transport: details.transport })}`;
 }

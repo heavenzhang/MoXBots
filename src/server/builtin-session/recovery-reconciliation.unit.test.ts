@@ -88,7 +88,10 @@ describe('native query outcome review', () => {
     const f = fixture();
     const context = new ContextRecoveryController({ initialLedger: f.deps.load(), recoveryOwner: f.deps.owner,
       scope: () => 'turn', isActive: () => false, backup: async () => '' });
-    f.deps.adopt = receipt => context.adoptReadonlyTaskResolution(receipt);
+    f.deps.adopt = receipt => {
+      if (receipt.kind === 'builtin-task-query-reviewed') context.adoptReadonlyTaskResolution(receipt);
+      else context.adoptPreToolDenialResolution(receipt);
+    };
     await reconcileRecoveryAction(await f.request(), f.deps);
     expect(context.inspectActionLedger().uncertainCount).toBe(1);
     expect(context.beforeTool('Bash', { command: 'something-new' })).toContain('blocked');

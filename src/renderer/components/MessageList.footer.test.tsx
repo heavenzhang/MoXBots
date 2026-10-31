@@ -138,6 +138,22 @@ describe('MessageList footer status positioning', () => {
     expect(row).not.toHaveTextContent('current.ts');
   });
 
+  it('keeps the main waiting status visible after the root completes while native background work continues', () => {
+    const props = createBaseProps({ sessionState: 'idle', hasBackgroundWork: true });
+    const { rerender } = render(<MessageList {...props} />);
+    expect(document.querySelector('[data-chat-status-row]')).toHaveTextContent('后台任务执行中，主 Agent 等待结果');
+    rerender(<MessageList {...props} hasBackgroundWork={false} />);
+    expect(document.querySelector('[data-chat-status-row]')).toBeNull();
+  });
+
+  it('retains execution feedback when native parent resumes with no desktop root loading or background child', () => {
+    const props = createBaseProps({ isLoading: false, sessionState: 'idle', hasNativeWork: true });
+    const { rerender } = render(<MessageList {...props} />);
+    expect(document.querySelector('[data-chat-status-row]')).toHaveTextContent('任务仍在执行');
+    rerender(<MessageList {...props} hasNativeWork={false} />);
+    expect(document.querySelector('[data-chat-status-row]')).toBeNull();
+  });
+
   it('prioritizes permission and runtime recovery over a still-loading tool', () => {
     const props = createBaseProps({ isLoading: true, systemStatus: 'api_retry:2:5',
       pendingPermission: { requestId: 'permission', toolName: 'Bash', input: '{}' }, onPermissionDecision: vi.fn() });

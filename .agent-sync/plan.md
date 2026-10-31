@@ -1,3 +1,7 @@
+## MB-SIDEBAR-GRIP-20261031 — 去除拖动提示图标
+
+任务记录 `.agent-sync/tasks/codex-sidebar-grip-20261031-168e5a2c.md`。仅删除侧边栏 GripIcon，保留原拖动/键盘入口；83 项 DOM 回归及定向 lint 通过。desktop builtin client 的 CI/main/版本/构建/发布仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 统一负责；开发分支保存后待其纳入下一未冻结批，真实安装版验收未完成，不改变现有发布归属。
+
 ## 527.2 R4 native watcher test contract follow-up (2026-10-29)
 
 R3 JS gates passed; Windows real watcher deletion assertion failed. A separate exact-factory Mac experiment also produced Modify rather than Remove for deletion, matching the product's existing coarse invalidation/read-tree contract. R4 isolates all four operation phases into fresh watchers and verifies actual notification plus exact tree/content; cfg(test) only, no platform skip/timeout increase/production change. Mac extracted-factory test/strictclippy/rustfmt pass; Windows/Tauri remain exactCI gates. Root waits original R3 ARM terminal before source push, no cancellation or rerun. See current cold-ready task record.
@@ -1065,3 +1069,32 @@ Human explicitly requests the latest package on the existing101 download page an
 Existing101 websitepointer is updated independently using a complete fresh staticbaseline, original three locks, backup/CAS/ownership rollback and normalTLS exactreadback. Main integration/sharedCI is handed off as exactsourceSHA to Root; branchpush does not imply main. Browser currently disabled by Work; deterministic DOM/publicHTTP checks do not imply actual screenshot acceptance. Evidence `dev-docs/website-latest-download-20261030.md`, task `.agent-sync/tasks/codex-website-latest-download-20261030-6979efe2.md`.
 
 Website0527 static publication is now normalTLS-readback accepted: exactsource21b11ecc16f0fa0fa9665fba382ba41a13d1769d, newtree1479be25f4ce, manifest0620e6abba22 and originalthree locks/backup/CAS.21publicchecks/14protectionhashes and unchangedcloud/Dex/Host process proof passed; immutabletag/package preserved. Browser remains disabled, so screenshots pending. SourceRootCI/main handoff is separate; no repeated deployment orfullGET required.
+
+## MB-REPLAY-RECOVERY-20261030 — 原会话误拦截与恢复闭环
+
+用户要求查清本次拒绝并修复误拦截、恢复入口及错误勾选。开发分支 `codex/replay-recovery-20261030` 基于远端 `f072eff9`，任务 `.agent-sync/tasks/codex-replay-recovery-20261030-a901e1a9.md`，证据 `dev-docs/replay-recovery-20261030/`。范围为原 PreToolUse 拒绝持久化、结构化 native 历史核对、产品错误状态及原会话恢复；不以新会话或手工清账本替代恢复。
+
+唯一 desktop/macOS/updater 与 sharedCI/main owner继续 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，本开发线程只提交精确SHA与验证后交下一未冻结批；不自行触发共享CI、正式构建、版本分配或安装。原数据/历史保全与原会话真实复验独立于模拟测试、源码主干和制品发布跟踪。
+
+
+## MB-SESSION-ACTIVITY-20261030 — 会话后台活跃与主任务监督
+
+来源会话 `01a18d83-14a0-7d11-81e5-32109b8c71b4`，任务 `.agent-sync/tasks/codex-session-activity-20261030.md`，证据 `dev-docs/session-activity-20261030/acceptance.md`。原 Query 非 ambient 后台整表通过既有 SSE/init 投影，父轮 idle 时会话仍进行中、主聊天显示等待结果；保留 root busy/Stop/接续语义。已知 INTENT_UNCONFIRMED 不再允许无主任务记录的派生执行，恢复更换 queue 也不能绕过；监督沿用原 task ledger、原生事件回接与主 Agent 验收，不新建调度器或恢复业务。231 DOM 与278隔离集成、类型/lint/分类及MoXBots前端构建通过；内置浏览器1280×720与390px深色容器的实际组件等待/核验/完成切换通过，原生发布另行验收。
+
+desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。开发分支不启动共享CI、不新建PR、不分配正式版本或改日常App；精确任务分支SHA及release-queue交原owner下一未冻结批次。无cloud/Host/mobile部署或外部接口变化。源码、main/CI、制品和真实验收各自待回执，不以原生SDK后续回合或合成界面代替整体验收。
+
+2026-10-31同任务补充：原生父循环在子任务返回后发running，但产品root缓存仍idle；原代码只记日志导致提示丢失。在既有Query lifecycle owner投影hasNativeWork至SSE/init/live及会话/提示/时钟，replacement和prewarm围栏保留、不伪造新root；重复验收/恢复入口与维护门禁等待真实原生活动。最终279integration、250DOM、222unit、类型/lint及实际组件原生接续/终态、明亮宽屏与390px深色容器通过。覆盖本次新问题的精确远端HEAD更新原release-queue，原owner负责后续共享CI/main及正式安装，先前原生包不变。
+
+
+## MB-REPLAY-SCOPE-20261031 — 按操作防重放与结果核查
+
+用户要求取消会话级 Bash 一刀切封锁，保留具体操作防重复，测试后交既有桌面发布会话。仅 desktop builtin 恢复路径；desktop/macOS-arm64/updater 及 shared CI/main 仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4`（MoxBots桌面端统一打包负责人）负责。开发分支 `codex/replay-scope-20261031`，基线 `d18137e87155994c4ade3d1889d04830821a8eda`，不新增部署owner、版本、共享CI或安装操作。任务 `.agent-sync/tasks/codex-replay-scope-20261031-21234298.md`，证据 `dev-docs/replay-scope-20261031/acceptance.md`。
+
+未知/已成功操作按完整工具输入防重；新 SSH 日志核查和独立步骤按原权限、落盘和native回执执行。缺失结果可识别到具体调用时允许完整历史的新推理，取消/旧请求/坏账本/无法识别历史/存储失败/自动重试围栏保留。不会核销旧业务未知或把启动器0当成业务成功。与待交 `MB-REPLAY-RECOVERY-20261030` 的 `6cecca460` 同改 context-recovery 的 analyze 参数及 protectInference 区域，owner 合并时须保留其 preToolDenials 参数并把本次 allowUnpaired 放在末尾；禁止整文件覆盖。后续精确候选需组合回归、正常 CI/main、签名包及真实 SSH/原会话路径验收。
+## MB-UPSTREAM-RESET-20261031 — 连接重置与网络路由证据
+
+任务 `.agent-sync/tasks/codex-upstream-reset-20261031-9476bdb8.md`。当前网络错误为本机bridge映射502，历史reset发起方未知；单供应商现有代理范围已通过设置修正并经认证只读API验证。源码补逐请求连接/复用阶段观测与正确提示，不改变动作权限/重试预算。与已有replay-recovery及replay-scope恢复任务联合审查；desktop/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4统一集成发布，原业务未重放。状态及验收见 `dev-docs/upstream-reset-20261031/acceptance.md`。
+
+## MB-DESKTOP-NEXT-20261031 — Root five-source selection
+
+Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Allocated0.5.28/build528.1 with source/sidebar6e518f1c, recovery6cecca460, activityc7c55c3, scopea4585a8b and upstream093eb934 as original Git ancestors. Independent combined source admission/local checks and actualSDK native local fixture passed; CI/main, immutable formal artifact, safe maintenance, native originalSession recovery and101publication remain separate gates. Primary joint integration preserves typed denial receipts, unknown-action and old-ID fences, native activity ownership, Store CAS and privacy; no fullmodel/Goal matrix, cloud/browser/phone, new Agent or second publisher. Subsequent arrivals after freeze next batch. Evidence/limits: dev-docs/releases/0.5.28-intake-20261031.md; current Root task .agent-sync/tasks/codex-release-0528-combined-20261031-49c193f2.md.

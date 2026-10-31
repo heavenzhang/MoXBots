@@ -40,7 +40,7 @@ export function normalizeSessionMessageContent(
     content: unknown,
 ): string | ContentBlock[] {
     if (Array.isArray(content)) {
-        return content.every(isContentBlock) ? content : JSON.stringify(content);
+        return content.every(isContentBlock) ? normalizeNativeToolErrorFlags(content) : JSON.stringify(content);
     }
     if (typeof content !== 'string') return '';
     if (!content.startsWith('[') || !content.includes('"type"')) return content;
@@ -51,12 +51,49 @@ export function normalizeSessionMessageContent(
             Array.isArray(parsed)
             && parsed.every(isContentBlock)
         ) {
-            return parsed as ContentBlock[];
+            return normalizeNativeToolErrorFlags(parsed as ContentBlock[]);
         }
     } catch {
         // Persisted plain text is allowed to resemble JSON.
     }
     return content;
+}
+
+/** Project the native SDK's documented snake_case result flag into the
+ * renderer's product shape. This is a structural field mapping; result text
+ * is deliberately never inspected to infer success or failure.
+ */
+function normalizeNativeToolErrorFlags(blocks: ContentBlock[]): ContentBlock[] {
+    let changed = false;
+    const normalized = blocks.map(block => {
+        if (block.type !== 'tool_use' && block.type !== 'server_tool_use') return block;
+        const tool = block.tool as unknown as Record<string, unknown>;
+        // A legacy false wire flag cannot erase an already recorded failure.
+        const nativeError = typeof tool.is_error === 'boolean'
+            ? tool.isError === true || tool.is_error : undefined;
+        const calls = Array.isArray(tool.subagentCalls) ? tool.subagentCalls : undefined;
+        let callsChanged = false;
+        const subagentCalls = calls?.map(call => {
+            if (typeof call !== 'object' || call === null || Array.isArray(call)) return call;
+            const nativeCall = call as unknown as Record<string, unknown>;
+            if (typeof nativeCall.is_error !== 'boolean') return call;
+            callsChanged = true;
+            const { is_error: _nativeError, ...rest } = nativeCall;
+            return { ...rest, isError: nativeCall.isError === true || nativeCall.is_error } as typeof call;
+        });
+        if (nativeError === undefined && !callsChanged) return block;
+        changed = true;
+        const { is_error: _nativeError, ...productTool } = tool;
+        return {
+            ...block,
+            tool: {
+                ...productTool,
+                ...(nativeError !== undefined ? { isError: nativeError } : {}),
+                ...(callsChanged ? { subagentCalls } : {}),
+            },
+        } as ContentBlock;
+    });
+    return changed ? normalized : blocks;
 }
 
 /**
