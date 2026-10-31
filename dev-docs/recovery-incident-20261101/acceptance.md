@@ -108,3 +108,14 @@ Desktop/macOS-arm64/updater/sharedCI/main 唯一负责会话 `01a12bc2-907a-7702
 最终相关验证：195项builtin队列/生命周期集成、66项原生错误/operation journal/作用域单元、76项执行集成、142项adapter/facade单元，共479项通过。一次fixture在prearm阶段检查投影后防重复断言不当，已按原controller既有两阶段合同纠正并重跑整个76项执行文件；产品未为该断言修改保护逻辑。全量tsc、定向lint、依赖检查通过（0 errors，18条既有orphan warnings）；分类与diff单独记录。官方SDK hooks核对：https://code.claude.com/docs/en/agent-sdk/hooks；实际API边界以已安装sdk.d.ts与原controller为准。
 
 这批不修改无进展次数规则；Kevin仍需新包实测与分类/网络原因复核。原会话整体业务验收尚未通过，不声明稳定性已全部解决。
+
+
+## 第六批：自动防空转不再永久拒绝新的人工继续
+
+Kevin 原会话 noProgress=2、reason=no_progress_limit_reached，旧 humanContinuationBlock 在核对其他状态之前直接拒绝所有同任务人工继续。删除任务30分钟总期限并不能解决这个独立阻断。四个隔离测试在修改前全部失败，包含两类封顶后的继续和本轮真实证据验收。
+
+新的可信人工输入仍须原持久化 input proof、准确 continuationOf、上一轮真实终态、原 queue/transcript 同步提交和当前权限/Stop/后台/未知操作检查。仅取消人工准入对自动计数封顶的拒绝，保留原 execution/清单/证据和计数；自动 canContinueSessionExecution 限制完全不变。新的人工回合没有进展则再停止；返工已封顶但未获真实验收也落入 incomplete，不允许自动重试。不能凭模型文字、重复 request ID 或改成新会话获得这一权限。
+
+本轮78项执行集成、163项共享策略/架构边界/facade单元、24项builtin提交边界测试（其余183未运行）共265项通过；全量tsc、定向lint、test classification、diff检查通过。记录见相邻私有 human-continuation-exhaustion-* 日志。已有未知写入/unknown delegation 两个拒绝测试同时设置两类计数封顶，仍然拒绝；Stop、迟到变更、重复请求、双击和 transcript 保护沿既有回归验证。四个旧实现失败正例修复后通过。builtin SDK 隔离队列增加12个封顶情况下的成功/双击/迟到完成场景，保留旧任务身份、步骤与证据。实际Provider及Kevin原会话仍须新包安装复验。
+
+第五批全量 CI 暴露 builtin 模块反向依赖 SessionEngine，原发布负责人以655514deb37b4e0c9e5e2c5bbc5a077318a81fb5修正：依赖由原 facade 注入，原架构边界测试保留；本分支快进采用该已提交联合候选后开发本增量，未自行分配版本或触发共享CI。

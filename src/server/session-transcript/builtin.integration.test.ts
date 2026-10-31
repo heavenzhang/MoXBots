@@ -3216,7 +3216,7 @@ it('rechecks background work after awaited materialization, before SDK yield', a
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
 });
 
-it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].flatMap(mode => [false, true].map(managed => ({ status, mode, managed })))))('checks explicit $status continuation at the actual builtin commit boundary ($mode, managed=$managed)', async ({ status, mode, managed }) => {
+it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].flatMap(mode => ([false, true, 'no-progress', 'rework'] as const).map(managed => ({ status, mode, managed })))))('checks explicit $status continuation at the actual builtin commit boundary ($mode, managed=$managed)', async ({ status, mode, managed }) => {
   const platform = await import('../utils/platform');
   vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
   vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
@@ -3253,7 +3253,9 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
     await taskOwner.mutateSessionTaskLedger(meta.id, ledger => {
       ledger.execution = { ...createSessionExecution({ id: executionId, requestId: 'original-request',
         originalInput: 'Original task', intent, queueId: 'old-queue', now: Date.now() - 86_400_000 }),
-        phase: 'incomplete', reason: 'turn_error', lastSettledQueueId: 'old-queue' };
+        phase: 'incomplete', reason: managed === 'no-progress' ? 'no_progress_limit_reached' : managed === 'rework' ? 'rework_limit_reached' : 'turn_error',
+        ...(managed === 'no-progress' ? { noProgress: 2 } : managed === 'rework' ? { reworks: 3 } : {}),
+        lastSettledQueueId: 'old-queue' };
       ledger.executionAdmission = { requestId: 'original-request', queueId: 'old-queue', intent, taskPlanId: executionId };
       ledger.executionEvidence = [{ id: 'preserved-read', queueId: 'old-queue', name: 'Read',
         successful: true, pending: false, mutating: false, digest: 'original-input', observationOrder: 1 }];
@@ -3293,6 +3295,7 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
       expect(ledger.execution!.currentQueueId).not.toBe('old-queue');
       expect(ledger.executionAdmission).toMatchObject({ taskPlanId: executionId, queueId: ledger.execution!.currentQueueId });
       expect(ledger.executionEvidence?.map(row => row.id)).toContain('preserved-read');
+      if (managed === 'rework') expect(ledger.execution!.reworks).toBe(3);
       expect(JSON.stringify(state.sdkInputs[0])).toContain(`执行 ID: ${executionId}`);
     }
     const repeated = await engine.sendDesktopMessage({ text: 'Explicit continuation',

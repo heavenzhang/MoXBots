@@ -251,6 +251,10 @@ export function settleSessionExecution(
       phase: "incomplete",
       reason: "no_progress_limit_reached",
     };
+  // An explicitly resumed human turn may still complete with verified evidence.
+  // Without acceptance, an exhausted rework budget must not restart an automatic loop.
+  if (state.reworks >= EXECUTION_LIMITS.maxReworks)
+    return { ...next, phase: "incomplete", reason: "rework_limit_reached" };
   if (terminal.assessment?.decision === "rework") {
     const reworks = state.reworks + 1;
     return reworks >= EXECUTION_LIMITS.maxReworks

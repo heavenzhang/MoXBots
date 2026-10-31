@@ -5,7 +5,6 @@ import { escapeSystemReminderText } from "../../shared/systemReminder";
 import {
   createSessionExecution,
   canContinueSessionExecution,
-  EXECUTION_LIMITS,
   executionIntentSchema,
   executionAssessmentSchema,
   settleSessionExecution,
@@ -189,7 +188,7 @@ export async function classifySessionExecutionIntent(
   }
 }
 
-/** A human continuation renews authority for one input, never the task's budget. */
+/** A proven new human input authorizes one turn; automatic retry counters are retained. */
 function humanContinuationBlock(
   ledger: SessionTaskLedger,
   executionId: string,
@@ -198,10 +197,6 @@ function humanContinuationBlock(
   const execution = ledger.execution;
   if (execution?.id !== executionId) return "EXECUTION_CONTINUATION_CHANGED";
   if (execution.phase === "completed") return "EXECUTION_ALREADY_COMPLETED";
-  if (execution.noProgress >= EXECUTION_LIMITS.maxNoProgress)
-    return "no_progress_limit_reached";
-  if (execution.reworks >= EXECUTION_LIMITS.maxReworks)
-    return "rework_limit_reached";
   if (
     ledger.executionEvidence?.some((fact) => fact.pending && fact.mutating) ||
     ledger.delegationClaims?.some(
@@ -223,6 +218,8 @@ function humanContinuationBlock(
       "turn_error",
       "deadline_exceeded", // A legacy task may be resumed by a new trusted human input.
       "turn_limit_reached",
+      "no_progress_limit_reached", // Limits stop automatic loops, not a new human request.
+      "rework_limit_reached",
     ].includes(execution.reason ?? "")
   )
     return execution.reason ?? "EXECUTION_REQUIRES_REVIEW";

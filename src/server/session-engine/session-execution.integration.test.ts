@@ -1701,41 +1701,54 @@ describe("durable Session execution owner", () => {
   it.each([
     ["no progress", "no_progress_limit_reached"],
     ["rework", "rework_limit_reached"],
-  ])(
-    "does not reset an exhausted %s budget on same-task continuation",
-    async (budget, reason) => {
-      const first = await prepare(input, `human-budget-${budget}`);
-      const firstQueue = first.request.queueId!;
-      const execution = currentExecution()!;
-      await executionOwner.pauseSessionExecution(id, "user_stopped");
-      await first.request.onTerminal?.({
-        status: "stopped",
-        text: "Persist the original queue terminal",
-        assistantMessagePresent: true,
-      });
-      await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
-        const current = ledger.execution!;
-        if (budget === "no progress") current.noProgress = 2;
-        if (budget === "rework") current.reworks = 3;
-        return ledger;
-      });
-      const next = await prepareUnpromoted(
-        "Resume the same task without resetting its limits",
-        `human-budget-resume-${budget}`,
-        { ...executeIntent, continuationOf: execution.id },
-      );
-      const rejected = await next.request.beforeDispatch!();
-      expect(rejected).toMatchObject({ accepted: false, error: reason });
-      expect(currentExecution()).toMatchObject({
-        id: execution.id,
-        currentQueueId: firstQueue,
-        turns: 1,
-        phase: "incomplete",
-        reason,
-      });
-      expect(continuationRequests).toHaveLength(0);
-    },
-  );
+  ])("allows one trusted human turn after %s exhaustion without resetting the automatic limits", async (budget, reason) => {
+    const first = await prepare(input, `human-budget-${budget}`);
+    const firstQueue = first.request.queueId!;
+    await first.request.onTerminal?.({ status: "error", text: "Original result preserved", assistantMessagePresent: true });
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.execution = { ...ledger.execution!, phase: "incomplete", reason,
+        ...(budget === "no progress" ? { noProgress: 2 } : { reworks: 3 }) };
+      return ledger;
+    });
+    const original = currentExecution()!;
+    await executionOwner.continueSessionExecution(engine, id);
+    expect(continuationRequests).toHaveLength(0);
+    const next = await prepareUnpromoted("Continue the same task with my new instruction", `human-resume-${budget}`,
+      { ...executeIntent, continuationOf: original.id });
+    const accepted = await next.request.beforeDispatch!();
+    expect(accepted.accepted).toBe(true);
+    expect(accepted.validateAtCommit?.().accepted).toBe(true);
+    const repeated = await next.request.beforeDispatch!();
+    expect(repeated.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput,
+      noProgress: original.noProgress, reworks: original.reworks, phase: "running", turns: 2 });
+    expect(next.request.queueId).not.toBe(firstQueue);
+    expect(executionOwner.sessionExecutionInferenceAllowed(id, next.request.queueId)).toBe(true);
+    await next.request.onTerminal?.({ status: "complete", text: "Still no new evidence", assistantMessagePresent: true });
+    await executionOwner.continueSessionExecution(engine, id);
+    expect(currentExecution()).toMatchObject({ id: original.id, phase: "incomplete", reason });
+    expect(continuationRequests).toHaveLength(0);
+  });
+
+  it.each(["no progress", "rework"])("accepts verified completion in the human turn after %s exhaustion", async budget => {
+    const first = await prepare(input, `human-accept-${budget}`);
+    await first.request.onTerminal?.({ status: "error", text: "Original result preserved", assistantMessagePresent: true });
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.execution = { ...ledger.execution!, phase: "incomplete",
+        reason: budget === "no progress" ? "no_progress_limit_reached" : "rework_limit_reached",
+        ...(budget === "no progress" ? { noProgress: 2 } : { reworks: 3 }) };
+      return ledger;
+    });
+    const original = currentExecution()!;
+    const next = await prepare("Continue and verify the existing artifact", `human-verify-${budget}`,
+      { ...executeIntent, continuationOf: original.id });
+    await tool(next.request.queueId!, { id: "fresh-result", name: "Read", stage: "success", output: "Verified actual artifact" });
+    await submitReview(next.request.queueId!, { decision: "accept", summary: "Verified the existing artifact",
+      checks: [{ criterion: 0, toolUseIds: ["fresh-result"] }, { criterion: 1, toolUseIds: ["fresh-result"] }] });
+    await next.request.onTerminal?.({ status: "complete", text: "Verified completion", assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ id: original.id, phase: "completed", turns: 2, reworks: original.reworks });
+    expect(continuationRequests).toHaveLength(0);
+  });
 
   it.each(["pending-write", "unknown-claim"] as const)(
     "does not resume same-task work with unresolved %s side effects",
@@ -1743,6 +1756,10 @@ describe("durable Session execution owner", () => {
       const first = await prepare(input, `human-unknown-${unknownSource}`);
       const firstQueue = first.request.queueId!;
       const executionId = currentExecution()!.id;
+      await taskOwner.mutateSessionTaskLedger(id, ledger => {
+        ledger.execution = { ...ledger.execution!, noProgress: 2, reworks: 3 };
+        return ledger;
+      });
       if (unknownSource === "pending-write") {
         await tool(firstQueue, {
           id: "continuation-unknown-write",

@@ -24,7 +24,7 @@
 
 `executionAdmission.taskPlanId` 和 `task.workPlanId` 仅标识同一列表，不构成新的执行权限或 scheduler。Server 分配稳定 `[task:work:<planId>:step-N]`，首步随原队列启动进入运行中；模型读取现有清单，用原生 TodoWrite/TaskCreate/update_plan 及同一标记持续同步。TaskCreate 返回的原生 ID 只用于原生 TaskUpdate。明确新增的细分任务先通过原 `ensure` 登记，同步仍保留缺省步骤；不得按标题猜关联。分类为单步的请求仍可沿原生工具建立后来发现的待办。
 
-native producer 以当前原 queue 身份提交更新，先规范化精确 marker 再合并。DSH 原生 task ID 与产品 ID 不同，外置 Claude Code 的成功根 Todo/Task 结果也接入原观察者。未标记、旧 queue、整段历史 GET 和迟到事件不能覆盖当前清单；新目标保留旧记录但隔离展示。同一 builtin execution 的人工/自动接续复用任务身份和进度，不重新确认或重置预算。外部 Runtime 的列表预建及同步不赋予 builtin 的自动续跑能力。
+native producer 以当前原 queue 身份提交更新，先规范化精确 marker 再合并。DSH 原生 task ID 与产品 ID 不同，外置 Claude Code 的成功根 Todo/Task 结果也接入原观察者。未标记、旧 queue、整段历史 GET 和迟到事件不能覆盖当前清单；新目标保留旧记录但隔离展示。同一 builtin execution 的人工/自动接续复用任务身份和进度，不重新确认或重置自动重试计数。外部 Runtime 的列表预建及同步不赋予 builtin 的自动续跑能力。
 
 原生 completed 仍只进入待验收；子 Agent 仍须对应 attempt 的根验收。builtin 的整体验收在成功根证据及真实持久化终态通过后，可以同时结清本次原清单中的主 Agent 步骤；不能通过 Todo 完成、失败/未知工具或未结清的后台任务提前完成。Task 工具仅记进度，不作为业务写入或验证证据。
 
@@ -85,6 +85,6 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 
 可信人工输入仍由原意图分类与 native turn-boundary admission 处理。分类必须明确返回 `continuationOf`：同一未完成任务返回原 execution ID，新目标返回 null。分类缺字段或失败不推测任务关系，不自动获得持续执行能力。分类只暂存，实际派发时在现有 ledger 串行 CAS 再核实原 ID、前轮真实终态与停止/预算/未知写入门禁。
 
-同任务接续更新当前人类 request ID 与 queue，轮数仅累加一次；原 execution ID、原始请求、目标、范围、验收条件、startedAt/deadlineAt、返工/无进展计数、实际工具证据、任务包与 delegation launch 预算全部保留。清除上一轮 continuation、评审提案与 assessment，必须重新提交本轮真实评审。重复 guard 幂等，旧 queue 的终态、取消或负 ACK 不作用于新 queue。若分类时的任务已完成/被新目标替换，拒绝该接续，不能回退为新 execution。普通“继续”可在原身份与真实终态验证后恢复仅因历史deadline_exceeded停止的任务，但不能重开返工/无进展封顶或未知写入结果的任务，也不能推断业务阻断已解除。Stop 后真实终态仅补记结算凭据，不解除暂停；transcript 持久化失败保留未知结果并拒绝自动接续。
+同任务接续更新当前人类 request ID 与 queue，轮数仅累加一次；原 execution ID、原始请求、目标、范围、验收条件、startedAt/deadlineAt、返工/无进展计数、实际工具证据、任务包与 delegation launch 预算全部保留。清除上一轮 continuation、评审提案与 assessment，必须重新提交本轮真实评审。重复 guard 幂等，旧 queue 的终态、取消或负 ACK 不作用于新 queue。若分类时的任务已完成/被新目标替换，拒绝该接续，不能回退为新 execution。普通“继续”可在原身份与真实终态验证后恢复仅因历史deadline_exceeded停止的任务，连续无进展/返工上限只禁止自动空转：新的可信人工输入可沿原 execution 恢复一轮，计数不重置；本轮无新进展则再次停止自动续接，返工已封顶时未获真实验收也停止。仍不得绕过未知写入、未结算前轮、权限/后台等待、Stop、业务阻断或重复输入。Stop 后真实终态仅补记结算凭据，不解除暂停；transcript 持久化失败保留未知结果并拒绝自动接续。
 
 `SessionTaskSnapshot.executionRecovery` 是已有 ModelRecoveryState 的只读投影，只有 builtin 当前 execution queue 匹配才返回 turn/status/attempt/lastStatus/nextRetryAt，不复制 routeIdentity 或 native session 身份，也不写入 ledger 或另建调度器。原有快照读取可在 ledger revision 不变时更新 recovery；ledger SSE 不能捏造/抹除它。界面仅在当前 queue 的 running/rework 上显示模型等待/恢复暂停，执行终态优先。摘要不再显示第 x/8 轮；详细信息中的已执行轮数不表示任务完成率。生产真实路径验收由原部署单元负责人随下一候选批次完成。

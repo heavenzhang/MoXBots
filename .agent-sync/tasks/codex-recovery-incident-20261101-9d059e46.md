@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=31daff27e77d471e8a29ce703590dd9e1f23082964b1690848712369a3142c92 -->
+<!-- git-project-sync-task:source-digest=b0af99666c6b365f8b71d66e9a321dcf012ed4bc440972b48bc88cb40ccad38f -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -19,10 +19,13 @@
 - [x] 第一提交44fd167远端保存且owner定向独审通过。
 - [x] 第三批取消任务总时限d544远端保存且owner已纳入联合候选。
 - [x] 第四批23620fba远端保存，owner已纳入R4候选且精确CI通过。
-- [ ] 第五批原生失败回执/执行事实同步交接、联合CI及主干包含。
+- [x] 第五批35353c88远端保存/owner集成；R5 CI反向依赖失败由owner655514修复，源分支已快进采用。
+- [ ] 第六批人工续接修复交接、最终联合CI及主干包含。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+第六批允许新的可信人工输入恢复计数封顶的原任务一轮，保留计数、未知操作等原保护，自动空转仍停止。4项旧实现失败已复现；真实原会话未运行，待唯一owner新包。
 
 第五批修复ContextRecovery已知Bash退出与execution.pending不一致，加入当前选中native链/完整摘要/原生journal的历史同步；保留失败与旧命令围栏。479相关测试通过，2个旧owner行为正例失败复现，7个不可信证据负例拒绝。当前实际会话数据未改，等待原owner新包安装与业务验收。
 
@@ -33,6 +36,8 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `b0af99666c6b365f8b71d66e9a321dcf012ed4bc440972b48bc88cb40ccad38f`; 78 execution integration + 163 policy/boundary/facade unit + 24 native queue cases = 265 PASS; 4 pre-fix positives reproduced FAIL; full tsc/scoped lint/classification/diff PASS. No original user data or operations replayed; exact candidate CI/install/real acceptance remain with desktop owner.
 
 - Source digest: `31daff27e77d471e8a29ce703590dd9e1f23082964b1690848712369a3142c92`; 479 related unit/native-queue/execution tests PASS across focused runs; 2 old-owner positive regressions FAIL before synchronization; 7 invalid-evidence variants retain pending; tsc/scoped lint/classification/diff PASS; deps 0 errors and 18 pre-existing orphan warnings; SDK-selected actual incident read-only receipt/digest matched, original ledger unchanged; installation acceptance pending.
 
@@ -48,7 +53,7 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-前三批已推送及owner集成；第四批一键继续归属已纳入R4候选且CI通过；第五批状态同步待交接。意图识别失败具体原因、间歇连接超时及原会话业务仍未全部闭环；旧未知结果不可凭截图核销。部署 owner 当前暂停 528 晋级；用户本轮已明确解除原生暂停，授权原owner安装验证。任务总体尚未完成。
+前五批已推送及owner集成；R5 CI发现模块边界违规，owner已提交修复并在本分支采用。第六批人工接续待最终联合CI/主干。意图识别失败具体原因、间歇连接超时及原会话业务仍未全部闭环；旧未知结果不可凭截图核销。部署 owner 当前暂停 528 晋级；用户本轮已明确解除原生暂停，授权原owner安装验证。任务总体尚未完成。
 
 ## Deployment request
 

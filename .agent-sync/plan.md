@@ -1124,3 +1124,7 @@ MB-RECOVERY-INCIDENT-20261101 第三批用户策略：明确取消整个任务�
 ### MB-RECOVERY-INCIDENT-20261101 已知退出回执同步
 
 同一任务第五批：真实行情case的操作owner已持久化正常Bash退出，execution仍pending。复用原Session owner、durable operation receipt和SDK当前选中链，完整工具摘要/身份一致才同步失败事实；不改变操作ledger或允许旧命令重放。新hook先耐久提交操作结果再观察execution。479项相关验证通过，仍由desktop唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 集成/CI/新包安装/原会话验收；未获原业务结果前不宣告完成。
+
+### MB-RECOVERY-INCIDENT-20261101 人工续接与自动防空转分离
+
+第六批：Kevin原任务计数封顶造成永久人工续接拒绝。新的可信人工输入可沿原execution恢复一轮，原计数/清单/证据不重置，仍无进展或返工封顶未验收则停止自动接续；未知操作、Stop、权限、后台、上一轮结算和同步提交门禁保留。采用原desktop owner已提交的655514边界修复，不弱化架构测试。精确增量交01a12bc2-907a-7702-b6dd-788225c5dfe4统一CI/版本/安装及四原会话验收，源码通过不等于稳定性闭环。
