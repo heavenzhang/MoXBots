@@ -46,6 +46,8 @@ Node 冷读先校验原始 batch 字节与操作 schema，再仅在该 batch 的
 
 ## 生命周期与显式操作
 
+普通桌面输入可在主任务准入前先写入 Product root，以保持人类正文先于执行卡片。若最终派发门拒绝且该输入尚未交给 SDK，原 queue 必须在发布拒绝/取消回执前，通过 transcript owner 将它自己仍持有的 running turn 持久化为 stopped。结算回执绑定原 live writer、具体 root 和 live turn；旧轮、后来接管的 root 或替换后的 writer 不被旧 queue 结束。只结算已知未派发的产品状态，不生成模型回复、成功凭证或清除操作保护；此前遗留的历史 running 不由此离线改写。
+
 冷恢复等待同一文件锁下的实际读取结果，不用超时生成空基线。临时 IO 失败保留原错误、释放未完成的 activation，后续沿原入口重新恢复；只有已验证的格式/内容错误才标记 incomplete source。append 重读同样区分 IO 与解码错误，前者复用既有 writer 重试。
 
 显式截断由 writer 在替换 projection 的同一 revision 发布 `messages-remove`，content/presentation 订阅既有操作同步清理被删目标的身份引用；不能从截断后的结果反推删除集合。活跃 cursor 以 instance/liveRevision 判断新鲜度，磁盘 baseline publication 改变 generation 不使未变的 live snapshot 失效；冷 cursor 仍核对 generation/durableRevision。

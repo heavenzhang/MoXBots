@@ -160,6 +160,8 @@ export type MessageQueueItem = {
   beforeDispatch?: DispatchGuard;
   /** Genuine human input is surfaced before its execution/card guard. */
   surfaceUserBeforeDispatch?: boolean;
+  /** Exact Product live-turn receipt; never settles a previous active turn. */
+  settleRejectedUserSurface?: () => Promise<void>;
   channelDelivery: TurnChannelDelivery;
   /** SessionStore work held until the runtime admission commit for guarded turns. */
   deferredSessionMetadata?: {

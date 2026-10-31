@@ -26,6 +26,21 @@ export function getBuiltinProductContent(): ProductTranscriptContent | undefined
   return productContent;
 }
 
+/** Queue rejection may settle only the still-unsent Product root it surfaced. */
+export function captureRejectedUserTurnSettlement(messageId: string): (() => Promise<void>) | undefined {
+  const product = getBuiltinProductContent();
+  const turn = product?.currentTurn;
+  if (!product || turn?.status !== 'running' || turn.rootUserMessageId !== messageId) return undefined;
+  const turnId = turn.id;
+  return async () => {
+    if (getBuiltinProductContent() !== product) return;
+    const current = product.currentTurn;
+    if (current !== turn || current.id !== turnId || current.status !== 'running' || current.rootUserMessageId !== messageId) return;
+    product.finishTurn('stopped');
+    if (!await product.writer.flushForMutation()) throw new Error('Failed to persist rejected user turn');
+  };
+}
+
 export const transcriptState = {
   messages,
   get messageSequence(): number {

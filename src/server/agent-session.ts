@@ -532,6 +532,7 @@ import {
   appendMessage,
   bindSdkUuidToLatestUnboundUserMessage,
   bindSdkUuidToMessage,
+  captureRejectedUserTurnSettlement,
   clearCurrentSessionUuids,
   clearLiveSessionUuids,
   clearMessages,
@@ -10548,9 +10549,11 @@ export async function enqueueUserMessage(
     channelDelivery,
   };
   const surfaceBeforeDispatch = options?.surfaceUserBeforeDispatch && !deferVisibleAdmission;
+  let settleRejectedUserSurface: MessageQueueItem['settleRejectedUserSurface'];
   if (!options?.beforeDispatch || surfaceBeforeDispatch) {
     try {
       await surfaceBuiltinUserMessage(directUserSurface, 'pre-admission');
+      settleRejectedUserSurface = captureRejectedUserTurnSettlement(userMessage.id);
     } catch (error) {
       await rollbackFailedBuiltinUserSurface(userMessage.id);
       reportBuiltinAdmissionPersistenceFailure(queueId, requestId, error);
@@ -10587,6 +10590,7 @@ export async function enqueueUserMessage(
     channelDelivery,
     deferredSessionMetadata,
     deferredUserSurface: options?.beforeDispatch && !surfaceBeforeDispatch ? directUserSurface : undefined,
+    settleRejectedUserSurface,
     deferVisibleAdmission,
     settleDispatchAcceptance: admissionCallbacks.settleDispatchAcceptance,
   };
@@ -15298,6 +15302,8 @@ async function rejectPromotedMessageBeforeDispatch(
   releaseTurnAdmissionTicket(item.id);
   if (getInFlightQueueId() === item.id) clearInFlightSlot();
   clearPromotedItem(item.id);
+  await item.settleRejectedUserSurface?.();
+  item.settleRejectedUserSurface = undefined;
   item.settleDispatchAcceptance?.({ accepted: false, error: result.error });
   await notifyQueuedTurnStopped(item, result.error ?? 'Queue item was rejected before dispatch');
   item.resolve();
@@ -15640,6 +15646,7 @@ async function* messageGenerator(
       const surface = item.deferredUserSurface;
       try {
         await surfaceBuiltinUserMessage(surface, 'pre-admission');
+        item.settleRejectedUserSurface = captureRejectedUserTurnSettlement(surface.message.id);
         item.deferredUserSurface = undefined;
         humanSurfacedBeforeDispatch = true;
       } catch (error) {

@@ -896,6 +896,45 @@ describe('builtin V2 execution independent of product storage', () => {
     expect(state.events).toContainEqual(['chat:agent-error', expect.objectContaining({ message: expect.stringContaining('本次消息未执行') })]);
   });
 
+  it.each(['own', 'previous', 'replaced'] as const)('settles only its visible desktop input rejected before native dispatch (%s)', async mode => {
+    const workspace = join(state.home, 'visible-dispatch-rejection');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    const transcript = store.getActiveSessionTranscript(metadata.id)!;
+    const content = (await import('../builtin-session/transcript')).getBuiltinProductContent()!;
+    if (mode === 'previous') content.admitUser({ id: 'previous-user', role: 'user', content: 'Existing active turn', timestamp: 't' });
+    const terminal = vi.fn();
+    await agent.enqueueUserMessage('Continue the existing task', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, {
+        channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: terminal,
+        fromDesktopChatSend: true, surfaceUserBeforeDispatch: true,
+        beforeDispatch: async () => {
+          if (mode === 'replaced') {
+            content.finishTurn('complete');
+            content.admitUser({ id: 'later-user', role: 'user', content: 'Later owner', timestamp: 't' });
+          }
+          return { accepted: false, error: 'EXECUTION_REQUIRES_REVIEW' };
+        },
+      });
+    await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+    expect(state.sdkInputs).toHaveLength(0);
+    await transcript.writer.flushForMutation();
+    const { readTranscriptFile } = await import('./file');
+    const stored = await readTranscriptFile(join(state.home, '.myagents', 'sessions-v2', `${metadata.id}.jsonl`), metadata.id);
+    const turns = [...stored.projection.turns.values()];
+    if (mode === 'own') {
+      expect(turns).toHaveLength(1);
+      expect(turns[0].status).toBe('stopped');
+    } else if (mode === 'previous') {
+      expect(turns).toHaveLength(1);
+      expect(turns[0]).toMatchObject({ rootUserMessageId: 'previous-user', status: 'running' });
+    } else {
+      expect(turns).toHaveLength(2);
+      expect(turns.at(-1)).toMatchObject({ rootUserMessageId: 'later-user', status: 'running' });
+    }
+  });
+
   it.each([true, false])('owns recovery transport and requires durable update Stop acknowledgement (%s)', async durable => {
     vi.stubEnv('HOME', state.home);
     try {

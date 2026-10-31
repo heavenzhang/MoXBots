@@ -1128,3 +1128,8 @@ MB-RECOVERY-INCIDENT-20261101 第三批用户策略：明确取消整个任务�
 ### MB-RECOVERY-INCIDENT-20261101 人工续接与自动防空转分离
 
 第六批：Kevin原任务计数封顶造成永久人工续接拒绝。新的可信人工输入可沿原execution恢复一轮，原计数/清单/证据不重置，仍无进展或返工封顶未验收则停止自动接续；未知操作、Stop、权限、后台、上一轮结算和同步提交门禁保留。采用原desktop owner已提交的655514边界修复，不弱化架构测试。精确增量交01a12bc2-907a-7702-b6dd-788225c5dfe4统一CI/版本/安装及四原会话验收，源码通过不等于稳定性闭环。
+
+
+### MB-HISTORY-RETEST-20261101-AUDIT visible rejected input settlement
+
+独立复测原案例发现已显示的普通输入在SDK前拒绝后仍持久running；queue经原transcript owner只结算自己仍持有的live root，拒绝回执等待stopped落盘。300项最终执行/native/边界回归及类型/lint/分类通过，原业务0/3仍未交付；记录`.agent-sync/tasks/codex-history-retest-audit-20261101-067b80ab.md`，证据`dev-docs/history-retest-20261101/acceptance.md`。desktop/macOS-arm64/updater及sharedCI/main继续交唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4后续未冻结批次；不改变已冻结8364/0.5.29/529.1，不宣称真实Provider或历史running已自动修复。
