@@ -1098,3 +1098,10 @@ desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2
 ## MB-DESKTOP-NEXT-20261031 — Root five-source selection
 
 Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Allocated0.5.28/build528.1 with source/sidebar6e518f1c, recovery6cecca460, activityc7c55c3, scopea4585a8b and upstream093eb934 as original Git ancestors. Independent combined source admission/local checks and actualSDK native local fixture passed; CI/main, immutable formal artifact, safe maintenance, native originalSession recovery and101publication remain separate gates. Primary joint integration preserves typed denial receipts, unknown-action and old-ID fences, native activity ownership, Store CAS and privacy; no fullmodel/Goal matrix, cloud/browser/phone, new Agent or second publisher. Subsequent arrivals after freeze next batch. Evidence/limits: dev-docs/releases/0.5.28-intake-20261031.md; current Root task .agent-sync/tasks/codex-release-0528-combined-20261031-49c193f2.md.
+
+
+## MB-RECOVERY-INCIDENT-20261101 — 528 原会话回归
+
+用户报告重复横幅、409/502及无法恢复。分支 `codex/recovery-incident-20261101` 基于 e11ee39；任务 `.agent-sync/tasks/codex-recovery-incident-20261101-9d059e46.md`，证据 `dev-docs/recovery-incident-20261101/acceptance.md`。两项确定修复：Chat 同层 session key 冲突；并发请求在发送前的恢复拒绝不应封锁整个主 scope。原请求指纹、未知操作、实际流中断及失效 owner 围栏保留。183 项定向测试及类型/lint/分类检查通过；未改变原账本或执行原任务。
+
+desktop/macOS-arm64/updater/sharedCI/main 仍唯一 owner 01a12bc2-907a-7702-b6dd-788225c5dfe4；当前528晋级暂停、正式通道527，原生UI按用户停止指令保持不动。本分支只交精确SHA，由原owner独立审查及下一未冻结批集成；不自行新PR/共享CI/正式版本/安装。意图识别失败、连接超时、idle/首错分类和四原会话验收仍未闭环，不能以这两项修复代替整体恢复完成。
