@@ -442,6 +442,8 @@ export type ConversationOperationErrorCode =
   | 'restore_failed';
 
 export interface SessionEngine {
+  /** Native receipt synchronization only; never executes or clears operation protection. */
+  reconcileExecutionEvidence?(): Promise<void>;
   inspectRecoveryActions?(): Promise<import('../../shared/recoveryReconciliation').RecoveryActionSnapshot>;
   reconcileRecoveryAction?(request: import('../../shared/recoveryReconciliation').RecoveryActionRequest): Promise<import('../../shared/recoveryReconciliation').RecoveryActionSnapshot>;
   /** Optional runtime-owned, tool-free auxiliary generation; never enqueues a turn. */

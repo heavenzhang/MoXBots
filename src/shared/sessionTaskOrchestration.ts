@@ -54,6 +54,8 @@ export interface SessionTaskLedger {
     observationOrder: number;
     mutating: boolean;
     pending?: boolean;
+    /** A paired native process-exit receipt; failure remains failure and replay stays fenced. */
+    settledFailure?: 'native-bash-exit';
   }[];
   executionReview?: {
     id: string;

@@ -48,6 +48,10 @@ Stop 和新输入同步撤销进程内 capability，再异步记账；所有异�
 
 每个原生根工具调用在原 Pre/PostToolUse hook 中按调用 ID 记录开始、完成、结果摘要和顺序。子 Agent 自报、分析文字、Todo 状态不成为根验收证据。最多保留四百条事实；达到上限明确停止，不淘汰未知动作来腾空间。
 
+失败终态与结果未知分开：Bash 的正常非中断退出由既有 ContextRecovery 原生回执与 operation journal 先耐久结算（`bash-exited` / `returned, bash-exit`），再通知 execution owner，保留 `successful=false`，但不再永久 `pending`。退出码识别沿用原 owner 的严格合同，任意工具错误、超时/信号、中断或缺乏原生 admission 的结果不获得该资格。原命令仍受精确操作防重复保护，不因任务记账更新而重新执行。
+
+历史 pending Bash 只在新的可信人工输入准备阶段通过原 builtin Session mutation owner 核对：已有原生退出回执、对应 operation attempt、SDK 当前选中链中唯一 tool_use/tool_result，以及 execution 原工具名/参数/结果完整摘要必须一致。跨读取与落盘再次校验 Session/Query owner、execution ID、原操作账本摘要；改变或缺证据均保留保护。对账仅更新已证实失败的执行事实与对应暂停原因，不写原 ContextRecovery 操作账本、不改成功状态、不自动发起模型或旧命令。读物理日志、普通错误文本或一个退出码本身均不具备核销资格。
+
 根 Agent 通过原 CLI 查询真实账本，并提交结构化 `execution_review`，包含每条验收条件的 toolUseIds。HTTP 提交仅暂存随机 receipt；必须由当前根队列真实执行的直接 CLI 命令，在 PostToolUse 收到匹配内容与 receipt，才能提交该评审。复制 receipt、子 Agent 命令、旧 queue 和拼接 shell 均无此权力。
 
 accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep、Glob、WebFetch 或 WebSearch。验证必须在所有可能修改完成后才开始。Write/Edit/Bash/MCP 结果本身不证明产物通过验收；运行测试可写报告，然后根 Read 读取并判断。结构化门禁证明证据归属和新鲜度，具体内容是否满足业务条件仍由根 Agent 审查，不能把格式合格当成任意业务的自动真值证明。

@@ -1120,3 +1120,7 @@ MB-RECOVERY-INCIDENT-20261101 第三批用户策略：明确取消整个任务�
 ### MB-RECOVERY-INCIDENT-20261101 一键继续归属补修
 
 同一任务第四批：已复现点击继续后SDK收新输入但execution仍旧queue/轮次。移除可信人工继续的execution跳过，组合原transcript/执行guard并保留同步commit/取消；同ID、原清单及证据由现有执行owner维护。隔离队列回归及保护测试通过后交唯一desktop owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 确定候选，不并行触发共享CI/版本/安装。前三批已进入PR217；源码不等于原会话业务验收。
+
+### MB-RECOVERY-INCIDENT-20261101 已知退出回执同步
+
+同一任务第五批：真实行情case的操作owner已持久化正常Bash退出，execution仍pending。复用原Session owner、durable operation receipt和SDK当前选中链，完整工具摘要/身份一致才同步失败事实；不改变操作ledger或允许旧命令重放。新hook先耐久提交操作结果再观察execution。479项相关验证通过，仍由desktop唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 集成/CI/新包安装/原会话验收；未获原业务结果前不宣告完成。

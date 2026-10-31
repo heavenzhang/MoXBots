@@ -21,6 +21,7 @@ import {
   getBuiltinExecutionVerificationEpoch,
   getBuiltinBackgroundTaskDetail,
   inspectBuiltinRecoveryActions,
+  reconcileBuiltinExecutionEvidence,
   reconcileBuiltinRecoveryAction,
   getBuiltinLiveSessionSnapshot,
   getBuiltinSessionCompletionTerminal,
@@ -381,6 +382,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
 
     publishTranscriptSaveStatus(status) { publishBuiltinTranscriptSaveStatus(status); },
     inspectRecoveryActions: inspectBuiltinRecoveryActions,
+    reconcileExecutionEvidence: reconcileBuiltinExecutionEvidence,
     reconcileRecoveryAction: reconcileBuiltinRecoveryAction,
     getBackgroundTaskDetail(toolUseId) { return getBuiltinBackgroundTaskDetail(toolUseId); },
     acknowledgeBackgroundWork(tasks, allow) { return acknowledgeBuiltinBackgroundWork(tasks, allow); },

@@ -95,3 +95,16 @@ Desktop/macOS-arm64/updater/sharedCI/main 唯一负责会话 `01a12bc2-907a-7702
 移除 continueFromTurnId 对执行准入的跳过；继续复用已有 tool-free 意图判定和可信用户原文，不新增执行权限。continuation guard 捕获原 generation，随后组合新 execution guard/queue，保留两套检查、取消和同步提交边界；不再覆盖执行 guard。继续消息在同步提交后才成为新可见 root，避免自己的新消息反过来让旧 turn 校验失效。准备阶段旧 turn 变化则释放 execution admission。原 execution 的 ID、目标、清单和证据由已有同任务接续逻辑维护；停止、权限、无进展/返工、未知写入仍保留。
 
 新增6个原生队列场景，与已有6项共同验证同ID/新queue、原taskPlanId和证据、双击只有一个SDK输入、迟到完成不进入SDK。原四文件422项回归和全量tsc通过；再补队列占位归属/旧turn变更及执行保护拒绝的2项单元。此为隔离原生队列集成，非真实Provider或原业务通过。意图模型本身仍可能超时/失败，应使用第二批诊断继续复测，不把本增量当作所有调用故障已消除。
+
+
+## 第五批：已知 Bash 失败的两个 owner 状态同步
+
+行情原会话的一条 Bash 仅做本地 JSON 读取和排序，但因 str/None 混排返回原生 exit 1；旧 execution 将所有 Bash failure 当作仍 pending。只读核验进一步确认：ContextRecovery 已有同 session/sdk/queue/toolUseId/actionHash 的 bash-exited 原生回执，operation attempt 为 returned/bash-exit；SDK 当前选中链包含唯一 use/result，完整 name/input/output 摘要与 execution fact 一致。原始数据和未知操作记录未修改，证据保存在私有 market-selected-native-chain.json、market-paired-receipt-check.json。
+
+新失败 hook 先等原操作 owner 耐久提交，再把其严格 bash-exit 结论传给 execution；不根据任意错误文本自行判断。历史修复复用原 Session mutation 锁与 SDK 当前选中链核对，跨 IO/CAS 检查 owner、execution 和账本摘要；仅将匹配的 failed fact.pending 改 false、记录 native-bash-exit，successful 仍 false。若原暂停仅源于这些已结清事实，则保留暂停阶段并更正为 turn_error，交新的可信人工继续准入决定后续；不自动续跑。不改 ContextRecovery 账本，其精确旧命令重放保护保持有效。
+
+2个正例在撤掉执行 owner 的新同步行为后均失败，修后通过；该基线保留新测试/API脚手架，复现的是旧 owner 行为，并非声称完整 checkout 23620fba。7个负例覆盖中断、参数/结果变化、重复结果、foreign history、owner变化、账本变化；都保留 unknown。任意Write/MCP失败不适用进程退出回执。
+
+最终相关验证：195项builtin队列/生命周期集成、66项原生错误/operation journal/作用域单元、76项执行集成、142项adapter/facade单元，共479项通过。一次fixture在prearm阶段检查投影后防重复断言不当，已按原controller既有两阶段合同纠正并重跑整个76项执行文件；产品未为该断言修改保护逻辑。全量tsc、定向lint、依赖检查通过（0 errors，18条既有orphan warnings）；分类与diff单独记录。官方SDK hooks核对：https://code.claude.com/docs/en/agent-sdk/hooks；实际API边界以已安装sdk.d.ts与原controller为准。
+
+这批不修改无进展次数规则；Kevin仍需新包实测与分类/网络原因复核。原会话整体业务验收尚未通过，不声明稳定性已全部解决。

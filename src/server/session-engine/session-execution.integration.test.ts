@@ -166,6 +166,7 @@ async function tool(
     id: string;
     name: string;
     stage: "start" | "success" | "failure";
+    settledFailure?: "native-bash-exit";
     root?: boolean;
     input?: unknown;
     output?: unknown;
@@ -177,6 +178,7 @@ async function tool(
     queueId,
     name: options.name,
     stage: options.stage,
+    settledFailure: options.settledFailure,
     verificationEpoch: engine.getExecutionVerificationEpoch?.(),
     root: options.root ?? true,
     input: options.input ?? { command: `${options.name} ${options.stage}` },
@@ -788,6 +790,102 @@ describe("durable Session execution owner", () => {
       expect(continuationRequests).toHaveLength(0);
     },
   );
+
+  it('records a proven native Bash failure as terminal without treating it as success', async () => {
+    const first = await prepare();
+    const queueId = first.request.queueId!;
+    await tool(queueId, { id: 'exited-command', name: 'Bash', stage: 'start' });
+    await tool(queueId, { id: 'exited-command', name: 'Bash', stage: 'failure',
+      output: 'Exit code 1\nTraceback', settledFailure: 'native-bash-exit' });
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence).toContainEqual(expect.objectContaining({
+      id: 'exited-command', successful: false, pending: false, settledFailure: 'native-bash-exit',
+    }));
+    // The narrow process receipt cannot discharge an arbitrary failed write.
+    await tool(queueId, { id: 'write-error', name: 'Write', stage: 'failure', settledFailure: 'native-bash-exit' });
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence).toContainEqual(expect.objectContaining({
+      id: 'write-error', successful: false, pending: true,
+    }));
+  });
+
+  it.each(['paired', 'interrupted', 'changed-input', 'changed-result', 'duplicate-result', 'foreign-history', 'owner-changed', 'ledger-changed'] as const)(
+    'reconciles legacy pending execution only from paired native process-exit evidence (%s)', async variant => {
+      const first = await prepare(input, 'human-original-failed-shell');
+      const queueId = first.request.queueId!;
+      const originalId = currentExecution()!.id;
+      const toolInput = { command: 'python3 -c "raise TypeError()"' };
+      const output = 'Exit code 1\nTraceback: TypeError';
+      const toolId = 'original-failed-shell';
+      const { ContextRecoveryController } = await import('../openai-bridge/context-recovery');
+      let ledger: unknown;
+      let ownerCurrent = true;
+      const controller = new ContextRecoveryController({ scope: () => queueId, isActive: () => true,
+        recoveryOwner: { sessionId: id, sdkSessionId: id }, protectStreaming: true,
+        backup: async () => 'fixture', persistLedger: async value => { ledger = structuredClone(value); } });
+      controller.bindNoDispatchOwner({ sessionId: id, sdkSessionId: id, queryGeneration: 1, isCurrent: () => true });
+      const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+      const stream = await controller.run(new Request('http://127.0.0.1/fixture'),
+        { model: 'fixture', max_tokens: 64, stream: true, messages: [{ role: 'user', content: 'Verify the artifact' }] },
+        async () => new Response(
+          frame('message_start', { type: 'message_start', message: { id: 'native-message', type: 'message', role: 'assistant', content: [] } })
+          + frame('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: toolId, name: 'Bash', input: {} } })
+          + frame('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolInput) } })
+          + frame('content_block_stop', { type: 'content_block_stop', index: 0 })
+          + frame('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use' } })
+          + frame('message_stop', { type: 'message_stop' }), { headers: { 'content-type': 'text/event-stream' } }));
+      await stream.text();
+      expect(await controller.authorizeTool('Bash', toolInput, toolId)).toBeUndefined();
+      const settled = await controller.commitToolResult('Bash', toolInput, output, true, toolId, { interrupted: variant === 'interrupted' });
+      expect(settled).toBe(variant === 'interrupted' ? undefined : 'bash-exit');
+      await tool(queueId, { id: toolId, name: 'Bash', input: toolInput, stage: 'start' });
+      await tool(queueId, { id: toolId, name: 'Bash', input: toolInput, output, stage: 'failure' });
+      await first.request.onTerminal?.({ status: 'complete', text: 'The command failed', assistantMessagePresent: true });
+      expect(currentExecution()).toMatchObject({ phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN' });
+      const use = { type: 'assistant', uuid: 'native-use', session_id: id,
+        message: { content: [{ type: 'tool_use', id: toolId, name: 'Bash', input: toolInput }] } };
+      const result = { type: 'user', uuid: 'native-result', session_id: id,
+        message: { content: [{ type: 'tool_result', tool_use_id: toolId, is_error: true, content: output }] } };
+      const selected: unknown[] = [use, result];
+      if (variant === 'changed-input') use.message.content[0].input = { command: 'a different command' };
+      if (variant === 'changed-result') result.message.content[0].content = 'Exit code 2\nOther failure';
+      if (variant === 'duplicate-result') selected.push({ ...result, uuid: 'duplicate-native-result' });
+      if (variant === 'foreign-history') result.session_id = 'another-history';
+      const preserved = structuredClone(ledger);
+      const save = vi.fn(); const adopt = vi.fn();
+      const { reconcileKnownExecutionFailures } = await import('../builtin-session/execution-failure-reconciliation');
+      engine.reconcileExecutionEvidence = () => reconcileKnownExecutionFailures({
+        owner: { sessionId: id, sdkSessionId: id, epoch: 1, reviewAuthority: 'fixture' },
+        isCurrent: () => ownerCurrent, load: () => ledger, save, adopt,
+        readNative: async () => {
+          if (variant === 'owner-changed') ownerCurrent = false;
+          if (variant === 'ledger-changed') ledger = { ...(ledger as object), blocked: true };
+          return selected;
+        },
+      });
+      const next = await prepareUnpromoted('Continue from the failed command result', 'human-reconcile-failure',
+        { ...executeIntent, continuationOf: originalId });
+      const guard = await next.request.beforeDispatch!();
+      const fact = store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence!.find(row => row.id === toolId)!;
+      expect(save).not.toHaveBeenCalled(); expect(adopt).not.toHaveBeenCalled();
+      if (variant === 'paired') {
+        expect(fact).toMatchObject({ successful: false, pending: false, settledFailure: 'native-bash-exit' });
+        expect(guard.accepted).toBe(true);
+        expect(guard.validateAtCommit?.().accepted).toBe(true);
+        expect(currentExecution()).toMatchObject({ id: originalId, currentQueueId: next.request.queueId });
+        expect(ledger).toEqual(preserved);
+        await controller.protectInference({ model: 'fixture', max_tokens: 64, stream: true, messages: [
+          { role: 'user', content: 'Verify the artifact' },
+          { role: 'assistant', content: [{ type: 'tool_use', id: toolId, name: 'Bash', input: toolInput }] },
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, is_error: true, content: output }] },
+          { role: 'user', content: 'Continue from the existing result' },
+        ] });
+        expect(controller.beforeTool('Bash', toolInput)).toContain('exited with an error');
+        expect(controller.beforeTool('Bash', { command: 'corrected independent command' })).toBeUndefined();
+      } else {
+        expect(fact).toMatchObject({ successful: false, pending: true });
+        expect(guard).toMatchObject({ accepted: false, error: 'TOOL_OUTCOME_UNKNOWN' });
+        expect(currentExecution()).toMatchObject({ id: originalId, currentQueueId: queueId });
+      }
+    });
 
   it("treats default session task listing as bookkeeping and stores no execution tool evidence", async () => {
     const prepared = await prepare();
