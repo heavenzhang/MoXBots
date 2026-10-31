@@ -48,7 +48,7 @@ export type SessionResult = z.infer<typeof sessionResult>;
 export type SpeechReply = z.infer<typeof speechReply>;
 export type Snapshot = Extract<SessionResult, { kind: 'snapshot' }>;
 export type Interaction = Snapshot['interactions'][number];
-export type PendingOperation = { protocol: 'session' | 'mobile'; targetId: string; agentId: string; operationId: string; sessionId: string | null; status: 'prepared' | 'unknown' | 'processing' };
+export type PendingOperation = { protocol: 'session' | 'mobile'; targetId: string; agentId: string; operationId: string; sessionId: string | null; status: 'prepared' | 'unknown' | 'processing'; submittedText?: string; submittedDraft?: { revision: number; lastWriteId: string } };
 const notificationProvider = z.enum(['fcm', 'apns-sandbox', 'apns-production']);
 const notificationReply = z.object({ kind: z.literal('notification'), state: z.enum(['disabled', 'enabled', 'unconfirmed']), provider: notificationProvider.nullable(), errorCode: z.string().regex(/^[A-Z0-9_]{1,128}$/).nullable() }).strict().refine((value) => value.state !== 'enabled' || value.provider !== null);
 const notificationOpenReply = z.object({ kind: z.literal('notification-open'), targetId: z.string().min(1).max(256), identityKey: z.string().min(1).max(256), agentId: id, sessionId }).strict();
@@ -87,7 +87,7 @@ const artifactIntentSchema = z.discriminatedUnion('kind', [
   z.object({ version: z.literal(1), kind: z.literal('artifact.download'), targetId: z.string().min(1).max(256), sessionId, artifact: artifactDescriptor }).strict(),
   z.object({ version: z.literal(1), kind: z.enum(['artifact.status', 'artifact.pause', 'artifact.remove', 'artifact.preview', 'artifact.share']), targetId: z.string().min(1).max(256), sessionId, artifactId: z.string().uuid() }).strict(),
 ]);
-const pendingSchema = z.object({ kind: z.literal('operations'), items: z.array(z.object({ protocol: z.enum(['session', 'mobile']), targetId: z.string(), agentId: id, operationId: z.string().uuid(), sessionId: sessionId.nullable(), status: z.enum(['prepared', 'unknown', 'processing']) }).strict()) }).strict();
+const pendingSchema = z.object({ kind: z.literal('operations'), items: z.array(z.object({ protocol: z.enum(['session', 'mobile']), targetId: z.string(), agentId: id, operationId: z.string().uuid(), sessionId: sessionId.nullable(), status: z.enum(['prepared', 'unknown', 'processing']), submittedText: z.string().max(16000).optional(), submittedDraft: z.object({ revision: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), lastWriteId: z.string().uuid() }).strict().optional() }).strict()) }).strict();
 const notificationIntentSchema = z.discriminatedUnion('kind', [
   z.object({ version: z.literal(1), kind: z.enum(['notification.status', 'notification.disable']) }).strict(),
   z.object({ version: z.literal(1), kind: z.enum(['notification.register', 'notification.refresh']), provider: notificationProvider, token: z.string().min(1).max(4096) }).strict(),
@@ -160,7 +160,7 @@ export async function requestMobile(targetId: string, request: RemoteMobileReque
   const checkedRequest = remoteMobileRequestSchema.safeParse(request);
   if (!checkedRequest.success) throw new Error('MOBILE_INTENT_INVALID');
   const intent: NativeIntent = { version: 1, kind: 'mobile', targetId, request: checkedRequest.data };
-  const raw = isFixtureMode ? (await import('../qa/fixture')).fixtureReply(intent) : await moduleRequest(intent);
+  const raw = isFixtureMode ? await (await import('../qa/fixture')).fixtureReply(intent) : await moduleRequest(intent);
   const result = parseMobileBridgeResult(raw);
   if (result.kind !== 'mobile.error' && result.agentId !== request.agentId) throw new Error('MOBILE_RESPONSE_SCOPE_MISMATCH');
   if (result.kind === 'mobile.receipt' && request.kind === 'mobile.send' && result.sessionId !== request.sessionId) throw new Error('MOBILE_RECEIPT_SCOPE_MISMATCH');
@@ -171,7 +171,7 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
   if (intent.kind === 'mobile') throw new Error('MOBILE_INTENT_REQUIRES_REQUEST_MOBILE');
   if (isFixtureMode) {
     const { fixtureReply } = await import('../qa/fixture');
-    const parsedFixture = nativeReply.safeParse(fixtureReply(intent));
+    const parsedFixture = nativeReply.safeParse(await fixtureReply(intent));
     if (!parsedFixture.success) throw new Error('QA_FIXTURE_REPLY_INVALID');
     return parsedFixture.data;
   }
@@ -190,9 +190,11 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
 
 export const isFixtureMode = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_MOBILE_QA === '1';
 
-export type QaScenario = 'bot-work' | 'history' | 'open-retry' | 'poll-recover' | 'target-error' | 'rich-text' | 'directory-layout' | 'conversation' | 'multi-bot' | 'no-bots' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
+export type QaScenario = 'bot-work' | 'delayed-disconnect' | 'processing-receipt' | 'rejected-receipt' | 'disconnect-receipt' | 'directory-recover' | 'history' | 'open-retry' | 'poll-recover' | 'target-error' | 'rich-text' | 'directory-layout' | 'conversation' | 'multi-bot' | 'no-bots' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
 export const qaScenarioOptions: readonly { id: QaScenario; label: string }[] = [
   { id: 'bot-work', label: 'Bot 工作连续性' },
+  { id: 'delayed-disconnect', label: '首发超时切换会话' },
+  { id: 'processing-receipt', label: '提交处理中再确认' }, { id: 'rejected-receipt', label: '提交后拒绝' }, { id: 'disconnect-receipt', label: '发送断线后恢复' }, { id: 'directory-recover', label: '目录瞬断恢复' },
   { id: 'history', label: '长会话历史翻页' }, { id: 'open-retry', label: '会话读取失败重试' }, { id: 'poll-recover', label: '历史刷新故障恢复' },
   { id: 'target-error', label: '切换 Bot 错误隔离' }, { id: 'rich-text', label: '富文本与长内容' }, { id: 'conversation', label: '会话' }, { id: 'multi-bot', label: 'Bot + 部分设备不可用' },
   { id: 'directory-layout', label: '会话列表排版' },

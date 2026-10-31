@@ -190,3 +190,14 @@ test('a deferred native poll cannot publish or overlap another poll after explic
   assert.equal(requests, 2);
   nextPoll.stop();
 });
+
+
+test('identity stays identifiable without a profile and never leaks a stale name after logout', async () => {
+  const { accountIdentityLabel } = await import('../src/accountPolicy.ts');
+  const account = { kind: 'account' as const, state: 'signed-in' as const, displayName: null, principalId: 'principal-a' };
+  assert.equal(accountIdentityLabel(account), '账号 principal-a');
+  assert.equal(accountIdentityLabel({ ...account, displayName: ' Kevin ' }), 'Kevin');
+  assert.equal(accountIdentityLabel({ ...account, displayName: ' ', principalId: 'principal-b' }), '账号 principal-b');
+  assert.equal(accountIdentityLabel({ ...account, state: 'signed-out', displayName: 'Old name' }), '未登录');
+  assert.equal(accountIdentityLabel({ ...account, state: 'expired', displayName: 'Old name' }), '登录已过期');
+});

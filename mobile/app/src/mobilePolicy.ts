@@ -2,7 +2,16 @@ import type { PendingOperation } from './native';
 
 export type MobileMode = 'loading' | 'supported' | 'legacy' | 'error' | 'unavailable';
 export type AttachmentReadiness = { state: 'ready' | 'uploading' | 'paused' | 'cancelled' | 'error'; assetId: string | null };
-export type MutationAttempt = Pick<PendingOperation, 'protocol' | 'targetId' | 'agentId' | 'operationId' | 'sessionId'>;
+export type MutationAttempt = Pick<PendingOperation, 'protocol' | 'targetId' | 'agentId' | 'operationId' | 'sessionId' | 'submittedText'>;
+
+/** The original start journal has no Session yet; retain an exact receipt's later binding. */
+export function reconcilePendingJournal(current: readonly PendingOperation[], journal: readonly PendingOperation[]): PendingOperation[] {
+  return journal.filter((item) => item.status !== 'prepared').map((item) => {
+    const prior = current.find((entry) => entry.operationId === item.operationId && entry.protocol === item.protocol
+      && entry.targetId === item.targetId && entry.agentId === item.agentId);
+    return prior && item.sessionId === null && prior.sessionId !== null ? { ...item, sessionId: prior.sessionId } : item;
+  });
+}
 
 export function blocksMutationForScope(pending: readonly PendingOperation[], targetId: string | null, sessionId: string | null): boolean {
   return pending.some((item) => item.targetId === targetId && item.sessionId === sessionId);
