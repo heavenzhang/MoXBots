@@ -91,3 +91,8 @@ Verification results are evidence for deciding the next authorized step, not aut
 The persisted schema is unchanged. Strict protection (`streamArmedOnly=false`) survives a cold Query and preserves original unknown/completed entries. An older binary will conservatively restore its former whole-turn restriction; rollback does not silently replay protected operations. Task-query and proven-no-dispatch reviews retain their own owner/CAS authority. UI has no new switch or blanket-disable option.
 
 Validation includes `context-recovery-scoped.unit.test.ts`, the bridge integration suite and `scripts/verify-operation-scoped-recovery-loopback.ts`. The latter runs real SDK hooks and native Bash against a synthetic local log/model: old unknown launch count 0, package count 1, two duplicate denials and cold ledger restoration. It does not certify a production SSH account, installed signed client or production business completion.
+
+
+### Responses reasoning events (MB-RECOVERY-INCIDENT-20261101)
+
+The bridge recognizes reasoning summary part metadata and reasoning text delta/done events. Valid nonempty reasoning text is model progress through the existing translator callback; empty metadata is not progress. Malformed reasoning event fields still terminate as protocol failure, and unknown event types remain unproven. A supported metadata event must not poison the causal record of a later transport interruption. The real-HTTP recovery fixture covers valid reasoning followed by socket/EOF versus permanent failure, ping-only and incomplete-frame EOF. These are local protocol/recovery checks, not proof of a historical provider frame or native business acceptance.

@@ -352,7 +352,7 @@ it.each(['transport', 'eof', 'half-eof', 'idle', 'authentication', 'billing', 'p
   },
 );
 
-it.each(['chat_completions', 'responses'] as const)('keeps raw %s socket failure distinct from provider/protocol errors through translation', async format => {
+it.each(['chat_completions', 'responses', 'responses-reasoning'] as const)('keeps raw %s socket failure distinct from provider/protocol errors through translation', async format => {
   let background = false; let failure: 'transport' | 'permanent' | 'eof' | 'ping-eof' | 'half-eof' = 'transport';
   const frame = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
   const upstream = await fixture((_body, res) => {
@@ -369,7 +369,12 @@ it.each(['chat_completions', 'responses'] as const)('keeps raw %s socket failure
       else res.end(frame({ error: { type: 'authentication_error', message: 'transport_error claimed by provider' } }));
     } else {
       res.write(frame({ type: 'response.created', response: { id: 'resp', model: 'fixture', status: 'in_progress', output: [] } }));
-      res.write(frame({ type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: 'partial' }));
+      if (format === 'responses-reasoning') {
+        res.write(frame({ type: 'response.reasoning_summary_part.added', output_index: 0, item_id: 'reasoning', summary_index: 0, part: { type: 'summary_text', text: '' } }));
+        res.write(frame({ type: 'response.reasoning_text.delta', output_index: 0, item_id: 'reasoning', content_index: 0, delta: 'partial thought' }));
+        res.write(frame({ type: 'response.reasoning_text.done', output_index: 0, item_id: 'reasoning', content_index: 0, text: 'partial thought' }));
+        res.write(frame({ type: 'response.reasoning_summary_part.done', output_index: 0, item_id: 'reasoning', summary_index: 0, part: { type: 'summary_text', text: '' } }));
+      } else res.write(frame({ type: 'response.output_text.delta', output_index: 0, content_index: 0, delta: 'partial' }));
       if (!background) res.end(frame({ type: 'response.completed', response: { id: 'resp', model: 'fixture', status: 'completed', output: [] } }));
       else if (failure === 'transport') setTimeout(() => res.destroy(), 5);
       else if (failure === 'eof') res.end();
@@ -384,7 +389,7 @@ it.each(['chat_completions', 'responses'] as const)('keeps raw %s socket failure
     context.bindNoDispatchOwner({ sessionId: 'session', sdkSessionId: 'native', queryGeneration: 1, isCurrent: () => true });
     const modelFailover = new ModelFailoverController({ scope: () => 'original-root', isActive: () => true, canRetry: () => context.canRetryInference(),
       canSwitch: () => !background, resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
-    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'openai', upstreamFormat: format,
+    const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture', apiProtocol: 'openai', upstreamFormat: format === 'responses-reasoning' ? 'responses' : format,
       baseUrl: upstream.baseUrl, apiKey: 'fixture', contextRecovery: context, modelFailover }) });
     const body: AnthropicRequest = { model: 'fixture', max_tokens: 16, stream: true, messages: [{ role: 'user', content: 'foreground' }] };
     expect(await (await handler(request(body))).text()).toContain('message_stop');

@@ -1,10 +1,10 @@
-import { RecoveryActionReview } from '../components/RecoveryActionReview';
+import { SessionRecoveryPanels } from '../components/SessionRecoveryPanels';
 import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
 import { SessionTaskOrchestrationProvider, useSessionTaskOrchestrationContext } from '@/components/agent-status/useSessionTaskOrchestration';
 import { SessionTaskActionsContext, resolveTaskActionTargets, type TaskReviewTarget } from '@/components/agent-status/SessionTaskActionsContext';
 import SessionTaskResults from '@/components/agent-status/SessionTaskResults';
 import { isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
-import { SessionContinuationBanner, type ContinuationRequest } from '@/components/SessionContinuationBanner';
+import type { ContinuationRequest } from '@/components/SessionContinuationBanner';
 import { matchesSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { NativeResumeRecoveryAction } from '@/components/NativeResumeRecoveryAction';
 import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundary';
@@ -6713,18 +6713,26 @@ function ChatContent({
               onDiagnose={handleDiagnoseRuntimeDiagnostics}
             />
 
-            <SessionContinuationBanner
-              key={sessionId ?? 'pending'}
-              sessionId={sessionId ?? ''}
-              turnId={continuation?.turnId}
-              ready={continuationReady}
-              blocked={continuationBlocked}
-              hidden={!!agentError}
-              request={pendingContinuation}
-              onConsumed={onContinuationConsumed}
-              onContinue={handleContinueUnfinished}
-              onUnavailable={handleContinuationUnavailable}
-            />
+            <SessionRecoveryPanels
+              continuation={{
+                sessionId: sessionId ?? '',
+                turnId: continuation?.turnId,
+                ready: continuationReady,
+                blocked: continuationBlocked,
+                hidden: !!agentError,
+                request: pendingContinuation,
+                onConsumed: onContinuationConsumed,
+                onContinue: handleContinueUnfinished,
+                onUnavailable: handleContinuationUnavailable,
+              }}
+              review={currentRuntime === 'builtin' && sessionId ? {
+                sessionId,
+                disabled: !continuationReady || isLoading || hasBackgroundWork || hasNativeWork || forkPending,
+                inspectRevision: `${messages.length}:${streamingMessage?.id ?? ''}`,
+                inspect: () => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH),
+                reconcile: request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request),
+              } : undefined}
+            >
 
             {discussionId && <TaskDiscussionRecovery discussionId={discussionId} messages={historyMessages} active={!showStartupOverlay || !!agentError || !!startupError} onRetryStartup={startupError ? onRetryStartup : undefined} onRestore={input => {
               initialMessageConsumedRef.current = true;
@@ -6828,16 +6836,8 @@ function ChatContent({
                   </div>
                 );
               })()}
-            {currentRuntime === 'builtin' && sessionId && (
-              <RecoveryActionReview
-                key={sessionId}
-                sessionId={sessionId}
-                disabled={!continuationReady || isLoading || hasBackgroundWork || hasNativeWork || forkPending}
-                inspectRevision={`${messages.length}:${streamingMessage?.id ?? ''}`}
-                inspect={() => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH)}
-                reconcile={request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request)}
-              />
-            )}
+            </SessionRecoveryPanels>
+
             {/* Unified Logs Panel - fullscreen modal displaying logs */}
             <UnifiedLogsPanel
               tabId={tabId}

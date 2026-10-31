@@ -152,4 +152,7 @@ export type ResponsesStreamEvent =
   | { type: 'response.function_call_arguments.delta'; output_index: number; delta: string }
   | { type: 'response.function_call_arguments.done'; output_index: number; arguments: string }
   | { type: 'response.reasoning_summary_text.delta'; output_index: number; delta: string }
-  | { type: 'response.reasoning_summary_text.done'; output_index: number; text: string };
+  | { type: 'response.reasoning_summary_text.done'; output_index: number; text: string }
+  | { type: 'response.reasoning_summary_part.added' | 'response.reasoning_summary_part.done'; output_index: number; item_id: string; summary_index: number; part: { type: 'summary_text'; text: string } }
+  | { type: 'response.reasoning_text.delta'; output_index: number; content_index: number; delta: string }
+  | { type: 'response.reasoning_text.done'; output_index: number; content_index: number; text: string };

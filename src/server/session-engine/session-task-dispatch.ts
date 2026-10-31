@@ -87,8 +87,7 @@ export async function registerSessionTaskPackage(
   if (
     !execution ||
     execution.id !== input.executionId ||
-    !executionActive(execution.phase) ||
-    execution.deadlineAt < Date.now()
+    !executionActive(execution.phase)
   ) {
     throw new Error(SESSION_TASK_DISPATCH_ERRORS.executionRequired);
   }
@@ -112,8 +111,7 @@ export async function registerSessionTaskPackage(
       runtimeQueueId(engine) === queueId &&
       latestExecution?.id === execution.id &&
       latestExecution.currentQueueId === queueId &&
-      executionActive(latestExecution.phase) &&
-      latestExecution.deadlineAt >= Date.now()
+      executionActive(latestExecution.phase)
     );
   };
   return mutateSessionTaskLedger(
@@ -126,8 +124,7 @@ export async function registerSessionTaskPackage(
         !ledger.execution ||
         ledger.execution.id !== execution.id ||
         ledger.execution.currentQueueId !== queueId ||
-        !executionActive(ledger.execution.phase) ||
-        ledger.execution.deadlineAt < Date.now()
+        !executionActive(ledger.execution.phase)
       )
         throw new Error(SESSION_TASK_DISPATCH_ERRORS.executionRequired);
       const task = ledger.tasks.find(

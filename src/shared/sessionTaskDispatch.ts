@@ -201,7 +201,7 @@ export function admitTaskDispatch(
     return reject(TASK_DISPATCH_ERRORS.executionUnavailable);
   if (execution.phase !== "running" && execution.phase !== "rework")
     return reject(TASK_DISPATCH_ERRORS.executionStopped);
-  if (!Number.isFinite(input.now) || input.now > execution.deadlineAt)
+  if (!Number.isFinite(input.now))
     return reject(TASK_DISPATCH_ERRORS.executionExpired);
 
   const task = ledger.tasks.find(

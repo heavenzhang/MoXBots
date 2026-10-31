@@ -83,14 +83,14 @@ describe("session execution schema and policy", () => {
     ).toBe(false);
   });
 
-  it("creates only execute sessions with bounded deadlines and first turn running", () => {
+  it("creates only execute sessions with compatible records without enforcing a task deadline", () => {
     expect(initial()).toMatchObject({
       phase: "running",
       turns: 1,
       startedAt: 1000,
-      deadlineAt: 1000 + EXECUTION_LIMITS.maxDurationMs,
       currentQueueId: "queue-1",
     });
+    expect(initial().deadlineAt).toBeGreaterThan(initial().startedAt);
     expect(() =>
       createSessionExecution({
         id: "x",
@@ -240,7 +240,7 @@ describe("session execution schema and policy", () => {
     ).toBe("awaiting_review");
   });
 
-  it("pauses on Stop and enforces no-progress, rework, and deadline limits without a turn cap", () => {
+  it("pauses on Stop and enforces no-progress and rework limits without a turn cap", () => {
     const progressing = settleSessionExecution(
       { ...initial(), turns: 24 },
       terminal({ assessment: undefined }),
@@ -282,9 +282,9 @@ describe("session execution schema and policy", () => {
       ).reason,
     ).toBe("no_progress_limit_reached");
     expect(
-      settleSessionExecution(initial(), terminal({ now: initial().deadlineAt }))
-        .reason,
-    ).toBe("deadline_exceeded");
+      settleSessionExecution({ ...initial(), deadlineAt: 2000 }, terminal({ now: 86_400_000 }))
+        .phase,
+    ).toBe("completed");
     const maxed = settleSessionExecution(
       { ...initial(), reworks: EXECUTION_LIMITS.maxReworks - 1 },
       terminal({
@@ -297,7 +297,7 @@ describe("session execution schema and policy", () => {
     });
   });
 
-  it("does not reopen terminal states and gates continuations by phase, deadline, budgets, and lease", () => {
+  it("does not reopen terminal states and gates continuations by phase, progress budgets, and lease", () => {
     const complete = settleSessionExecution(initial(), terminal());
     expect(
       settleSessionExecution(complete, terminal({ progressDigest: "later" })),
@@ -342,8 +342,6 @@ describe("session execution schema and policy", () => {
         1001,
       ),
     ).toBe(false);
-    expect(canContinueSessionExecution(initial(), initial().deadlineAt)).toBe(
-      false,
-    );
+    expect(canContinueSessionExecution({ ...initial(), deadlineAt: 2000, lastSettledQueueId: "queue-1" }, 86_400_000)).toBe(true);
   });
 });

@@ -101,8 +101,12 @@ function queryFacade(engine: SessionEngine): SessionEngine {
           // obsolete click enter the queue while another source starts work.
           if (continuation?.accepted) {
             const rejected = continuation.revalidateEntry();
-            if (rejected) return rejected;
-            prepared.request = { ...prepared.request, beforeDispatch: continuation.guard };
+            if (rejected) {
+              await execution.admitted(rejected);
+              return rejected;
+            }
+            prepared.request = { ...prepared.request, beforeDispatch:
+              continuation.wrapGuard(execution.request.beforeDispatch, execution.request.queueId) };
           }
           const result = await engine.sendDesktopMessage(prepared.request);
           await execution.admitted(result);

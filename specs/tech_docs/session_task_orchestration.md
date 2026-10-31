@@ -53,3 +53,13 @@ Chat 内只有一个任务 snapshot/event 观察者，原工具行、结果节�
 工具关联按 toolUseId + activation 定位当前/历史尝试；历史行仅呈现该次原生事实，不借当前任务的验收状态给旧结果盖章。回传待验收时，在原 MessageList footer 成果节点提供主 Agent 验收与返工入口。验收按钮捕获 Session/任务/attempt，调用前复核仍是当前待验收目标，再通过原会话发送/排队请求；前端没有写入 accept 的入口。聊天 admission 不等于验收，重复点击保持单次提交；原 turn 终止、队列排空而仍待验收时提供显式重新请求。A/B/A、旧请求回执和新 attempt 相互隔离。
 
 返工仅追加意见到既有 Composer 并聚焦，不清原草稿、附件、队列，不直接 reject 或启动重试。原 Permission/AskUser/PlanMode/更新 checkpoint 未处理时不提交任务动作。主 Agent 仍通过原 root tool receipt 记录实际验收和返工证据；结束后成果链接留在消息流。原 ChatScrollController、Virtuoso footer 与输入区高度测量保持所有权。
+
+
+### Intent classification failure evidence (MB-RECOVERY-INCIDENT-20261101)
+
+The existing tool-free utility may report a bounded ExecutionIntentFailure enum; classification adds parsing/schema/continuity/step validation reasons. The original executionAdmission stores failureReason only with INTENT_UNCONFIRMED and projects it to the existing status details. No provider text, credential or prompt is retained in this diagnostic. It does not grant an intent, reset a task budget, change the 8-second utility deadline or weaken tool denial. Legacy admissions without a reason retain the generic explanation.
+
+
+### No fixed task lifetime (2026-11-01 user policy)
+
+The user explicitly removed the 30-minute task-wide limit. SessionExecution continues while its owner and progress conditions remain valid, regardless of elapsed wall-clock time. Legacy deadlineAt stays serialized for older readers but has no admission/tool/delegation/settlement authority in this version. Old deadline_exceeded executions require a new trusted human continuation and retain their original identity/evidence; loading a file never automatically resumes them. Stop, unknown outcomes, no-progress/rework limits and per-request network recovery bounds are unchanged.

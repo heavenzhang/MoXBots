@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ResponsesStreamTranslator } from './stream-responses';
 import { translateResponsesResponse } from './response-responses';
 import { translateRequestToResponses } from './request-responses';
-import type { ResponsesResponse } from '../types/openai-responses';
+import type { ResponsesResponse, ResponsesStreamEvent } from '../types/openai-responses';
 
 const response = (status: ResponsesResponse['status'], reason?: string): ResponsesResponse => ({
   id: 'r', object: 'response', model: 'target', status, output: [],
@@ -67,4 +67,34 @@ describe('Responses request semantics (#654)', () => {
     expect(out.instructions).toBe('instructions');
     expect(out.input).toEqual([]);
   });
+});
+
+
+describe('Responses reasoning progress', () => {
+  it('emits thinking and progress for reasoning text, but not empty text or part metadata', () => {
+    const progress = vi.fn();
+    const t = new ResponsesStreamTranslator('fixture', undefined, progress);
+    t.feed({ type: 'response.reasoning_summary_part.added', output_index: 0, item_id: 'r', summary_index: 0, part: { type: 'summary_text', text: '' } });
+    t.feed({ type: 'response.reasoning_text.delta', output_index: 0, content_index: 0, delta: '' });
+    expect(progress).not.toHaveBeenCalled();
+    const events = t.feed({ type: 'response.reasoning_text.delta', output_index: 0, content_index: 0, delta: 'Thinking' });
+    expect(progress).toHaveBeenCalledOnce();
+    expect(events).toContainEqual(expect.objectContaining({ type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'Thinking' } }));
+    expect(t.feed({ type: 'response.reasoning_text.done', output_index: 0, content_index: 0, text: 'Thinking' }))
+      .toContainEqual(expect.objectContaining({ type: 'content_block_stop' }));
+    expect(progress).toHaveBeenCalledOnce();
+  });
+});
+
+
+it.each([
+  { type: 'response.reasoning_text.delta', output_index: 0, content_index: 0, delta: {} },
+  { type: 'response.reasoning_text.done', output_index: -1, content_index: 0, text: 'invalid' },
+  { type: 'response.reasoning_summary_part.added', output_index: 0, summary_index: 0, item_id: 'r', part: null },
+])('rejects malformed known reasoning events without progress: $type', raw => {
+  const progress = vi.fn();
+  const t = new ResponsesStreamTranslator('fixture', undefined, progress);
+  expect(t.feed(raw as unknown as ResponsesStreamEvent)).toContainEqual(expect.objectContaining({ type: 'error' }));
+  expect(progress).not.toHaveBeenCalled();
+  expect(t.finalize().some(event => event.type === 'message_stop')).toBe(false);
 });

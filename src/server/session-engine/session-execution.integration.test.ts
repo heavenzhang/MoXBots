@@ -166,6 +166,7 @@ async function tool(
     id: string;
     name: string;
     stage: "start" | "success" | "failure";
+    settledFailure?: "native-bash-exit";
     root?: boolean;
     input?: unknown;
     output?: unknown;
@@ -177,6 +178,7 @@ async function tool(
     queueId,
     name: options.name,
     stage: options.stage,
+    settledFailure: options.settledFailure,
     verificationEpoch: engine.getExecutionVerificationEpoch?.(),
     root: options.root ?? true,
     input: options.input ?? { command: `${options.name} ${options.stage}` },
@@ -789,6 +791,104 @@ describe("durable Session execution owner", () => {
     },
   );
 
+  it('records a proven native Bash failure as terminal without treating it as success', async () => {
+    const first = await prepare();
+    const queueId = first.request.queueId!;
+    await tool(queueId, { id: 'exited-command', name: 'Bash', stage: 'start' });
+    await tool(queueId, { id: 'exited-command', name: 'Bash', stage: 'failure',
+      output: 'Exit code 1\nTraceback', settledFailure: 'native-bash-exit' });
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence).toContainEqual(expect.objectContaining({
+      id: 'exited-command', successful: false, pending: false, settledFailure: 'native-bash-exit',
+    }));
+    // The narrow process receipt cannot discharge an arbitrary failed write.
+    await tool(queueId, { id: 'write-error', name: 'Write', stage: 'failure', settledFailure: 'native-bash-exit' });
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence).toContainEqual(expect.objectContaining({
+      id: 'write-error', successful: false, pending: true,
+    }));
+  });
+
+  it.each(['paired', 'interrupted', 'changed-input', 'changed-result', 'duplicate-result', 'foreign-history', 'owner-changed', 'ledger-changed'] as const)(
+    'reconciles legacy pending execution only from paired native process-exit evidence (%s)', async variant => {
+      const first = await prepare(input, 'human-original-failed-shell');
+      const queueId = first.request.queueId!;
+      const originalId = currentExecution()!.id;
+      const toolInput = { command: 'python3 -c "raise TypeError()"' };
+      const output = 'Exit code 1\nTraceback: TypeError';
+      const toolId = 'original-failed-shell';
+      const { ContextRecoveryController } = await import('../openai-bridge/context-recovery');
+      let ledger: unknown;
+      let ownerCurrent = true;
+      const controller = new ContextRecoveryController({ scope: () => queueId, isActive: () => true,
+        recoveryOwner: { sessionId: id, sdkSessionId: id }, protectStreaming: true,
+        backup: async () => 'fixture', persistLedger: async value => { ledger = structuredClone(value); } });
+      controller.bindNoDispatchOwner({ sessionId: id, sdkSessionId: id, queryGeneration: 1, isCurrent: () => true });
+      const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+      const stream = await controller.run(new Request('http://127.0.0.1/fixture'),
+        { model: 'fixture', max_tokens: 64, stream: true, messages: [{ role: 'user', content: 'Verify the artifact' }] },
+        async () => new Response(
+          frame('message_start', { type: 'message_start', message: { id: 'native-message', type: 'message', role: 'assistant', content: [] } })
+          + frame('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: toolId, name: 'Bash', input: {} } })
+          + frame('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(toolInput) } })
+          + frame('content_block_stop', { type: 'content_block_stop', index: 0 })
+          + frame('message_delta', { type: 'message_delta', delta: { stop_reason: 'tool_use' } })
+          + frame('message_stop', { type: 'message_stop' }), { headers: { 'content-type': 'text/event-stream' } }));
+      await stream.text();
+      expect(await controller.authorizeTool('Bash', toolInput, toolId)).toBeUndefined();
+      const settled = await controller.commitToolResult('Bash', toolInput, output, true, toolId, { interrupted: variant === 'interrupted' });
+      expect(settled).toBe(variant === 'interrupted' ? undefined : 'bash-exit');
+      await tool(queueId, { id: toolId, name: 'Bash', input: toolInput, stage: 'start' });
+      await tool(queueId, { id: toolId, name: 'Bash', input: toolInput, output, stage: 'failure' });
+      await first.request.onTerminal?.({ status: 'complete', text: 'The command failed', assistantMessagePresent: true });
+      expect(currentExecution()).toMatchObject({ phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN' });
+      const use = { type: 'assistant', uuid: 'native-use', session_id: id,
+        message: { content: [{ type: 'tool_use', id: toolId, name: 'Bash', input: toolInput }] } };
+      const result = { type: 'user', uuid: 'native-result', session_id: id,
+        message: { content: [{ type: 'tool_result', tool_use_id: toolId, is_error: true, content: output }] } };
+      const selected: unknown[] = [use, result];
+      if (variant === 'changed-input') use.message.content[0].input = { command: 'a different command' };
+      if (variant === 'changed-result') result.message.content[0].content = 'Exit code 2\nOther failure';
+      if (variant === 'duplicate-result') selected.push({ ...result, uuid: 'duplicate-native-result' });
+      if (variant === 'foreign-history') result.session_id = 'another-history';
+      const preserved = structuredClone(ledger);
+      const save = vi.fn(); const adopt = vi.fn();
+      const { reconcileKnownExecutionFailures } = await import('../builtin-session/execution-failure-reconciliation');
+      engine.reconcileExecutionEvidence = () => reconcileKnownExecutionFailures({
+        owner: { sessionId: id, sdkSessionId: id, epoch: 1, reviewAuthority: 'fixture' },
+        observationDigest: executionOwner.executionToolObservationDigest,
+        mutateLedger: taskOwner.mutateSessionTaskLedger,
+        isCurrent: () => ownerCurrent, load: () => ledger, save, adopt,
+        readNative: async () => {
+          if (variant === 'owner-changed') ownerCurrent = false;
+          if (variant === 'ledger-changed') ledger = { ...(ledger as object), blocked: true };
+          return selected;
+        },
+      });
+      const next = await prepareUnpromoted('Continue from the failed command result', 'human-reconcile-failure',
+        { ...executeIntent, continuationOf: originalId });
+      const guard = await next.request.beforeDispatch!();
+      const fact = store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence!.find(row => row.id === toolId)!;
+      expect(save).not.toHaveBeenCalled(); expect(adopt).not.toHaveBeenCalled();
+      if (variant === 'paired') {
+        expect(fact).toMatchObject({ successful: false, pending: false, settledFailure: 'native-bash-exit' });
+        expect(guard.accepted).toBe(true);
+        expect(guard.validateAtCommit?.().accepted).toBe(true);
+        expect(currentExecution()).toMatchObject({ id: originalId, currentQueueId: next.request.queueId });
+        expect(ledger).toEqual(preserved);
+        await controller.protectInference({ model: 'fixture', max_tokens: 64, stream: true, messages: [
+          { role: 'user', content: 'Verify the artifact' },
+          { role: 'assistant', content: [{ type: 'tool_use', id: toolId, name: 'Bash', input: toolInput }] },
+          { role: 'user', content: [{ type: 'tool_result', tool_use_id: toolId, is_error: true, content: output }] },
+          { role: 'user', content: 'Continue from the existing result' },
+        ] });
+        expect(controller.beforeTool('Bash', toolInput)).toContain('exited with an error');
+        expect(controller.beforeTool('Bash', { command: 'corrected independent command' })).toBeUndefined();
+      } else {
+        expect(fact).toMatchObject({ successful: false, pending: true });
+        expect(guard).toMatchObject({ accepted: false, error: 'TOOL_OUTCOME_UNKNOWN' });
+        expect(currentExecution()).toMatchObject({ id: originalId, currentQueueId: queueId });
+      }
+    });
+
   it("treats default session task listing as bookkeeping and stores no execution tool evidence", async () => {
     const prepared = await prepare();
     const queueId = prepared.request.queueId!;
@@ -1381,7 +1481,6 @@ describe("durable Session execution owner", () => {
       intent: original.intent,
       phase: "running",
       startedAt: original.startedAt,
-      deadlineAt: original.deadlineAt,
       turns: 5,
       reworks: 1,
       noProgress: 1,
@@ -1563,49 +1662,93 @@ describe("durable Session execution owner", () => {
     },
   );
 
+  it('continues actual progressing work beyond the old 30 minute boundary', async () => {
+    const first = await prepare(input, 'human-long-running');
+    const original = currentExecution()!;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(original.startedAt + 86_400_000);
+    try {
+      await first.request.onTerminal?.({ status: 'complete', text: 'Need the next verification step', assistantMessagePresent: true });
+      await waitForContinuation();
+      expect(continuationRequests).toHaveLength(1);
+      expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput });
+      expect(currentExecution()?.reason).not.toBe('deadline_exceeded');
+    } finally { clock.mockRestore(); }
+  });
+
+  it('resumes a legacy time-expired task with its original identity, progress and evidence', async () => {
+    const first = await prepare(input, 'human-before-expiry');
+    await executionOwner.pauseSessionExecution(id, 'user_stopped');
+    await first.request.onTerminal?.({ status: 'stopped', text: 'Preserved', assistantMessagePresent: true });
+    const original = currentExecution()!;
+    const legacyDeadline = original.startedAt + 30 * 60_000;
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.execution = { ...ledger.execution!, deadlineAt: legacyDeadline, phase: 'incomplete', reason: 'deadline_exceeded', lastProgressDigest: 'preserved-progress' };
+      return ledger;
+    });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(legacyDeadline + 86_400_000);
+    try {
+      const next = await prepareUnpromoted('Continue the same task', 'human-after-expiry', { ...executeIntent, continuationOf: original.id });
+      const decision = await next.request.beforeDispatch!();
+      expect(decision.accepted).toBe(true);
+      expect(decision.validateAtCommit?.().accepted).toBe(true);
+      expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput,
+        deadlineAt: legacyDeadline, phase: 'running', lastProgressDigest: 'preserved-progress' });
+      expect(executionOwner.sessionExecutionInferenceAllowed(id, next.request.queueId)).toBe(true);
+      expect(executionOwner.sessionExecutionToolDenial(id, next.request.queueId, 'Bash', {})).toBeUndefined();
+    } finally { clock.mockRestore(); }
+  });
+
   it.each([
-    ["deadline", "deadline_exceeded"],
     ["no progress", "no_progress_limit_reached"],
     ["rework", "rework_limit_reached"],
-  ])(
-    "does not reset an exhausted %s budget on same-task continuation",
-    async (budget, reason) => {
-      const first = await prepare(input, `human-budget-${budget}`);
-      const firstQueue = first.request.queueId!;
-      const execution = currentExecution()!;
-      await executionOwner.pauseSessionExecution(id, "user_stopped");
-      await first.request.onTerminal?.({
-        status: "stopped",
-        text: "Persist the original queue terminal",
-        assistantMessagePresent: true,
-      });
-      let guardedDeadline: number;
-      await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
-        const current = ledger.execution!;
-        if (budget === "deadline") current.deadlineAt = Date.now() - 1;
-        if (budget === "no progress") current.noProgress = 2;
-        if (budget === "rework") current.reworks = 3;
-        guardedDeadline = current.deadlineAt;
-        return ledger;
-      });
-      const next = await prepareUnpromoted(
-        "Resume the same task without resetting its limits",
-        `human-budget-resume-${budget}`,
-        { ...executeIntent, continuationOf: execution.id },
-      );
-      const rejected = await next.request.beforeDispatch!();
-      expect(rejected).toMatchObject({ accepted: false, error: reason });
-      expect(currentExecution()).toMatchObject({
-        id: execution.id,
-        currentQueueId: firstQueue,
-        turns: 1,
-        deadlineAt: guardedDeadline!,
-        phase: "incomplete",
-        reason,
-      });
-      expect(continuationRequests).toHaveLength(0);
-    },
-  );
+  ])("allows one trusted human turn after %s exhaustion without resetting the automatic limits", async (budget, reason) => {
+    const first = await prepare(input, `human-budget-${budget}`);
+    const firstQueue = first.request.queueId!;
+    await first.request.onTerminal?.({ status: "error", text: "Original result preserved", assistantMessagePresent: true });
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.execution = { ...ledger.execution!, phase: "incomplete", reason,
+        ...(budget === "no progress" ? { noProgress: 2 } : { reworks: 3 }) };
+      return ledger;
+    });
+    const original = currentExecution()!;
+    await executionOwner.continueSessionExecution(engine, id);
+    expect(continuationRequests).toHaveLength(0);
+    const next = await prepareUnpromoted("Continue the same task with my new instruction", `human-resume-${budget}`,
+      { ...executeIntent, continuationOf: original.id });
+    const accepted = await next.request.beforeDispatch!();
+    expect(accepted.accepted).toBe(true);
+    expect(accepted.validateAtCommit?.().accepted).toBe(true);
+    const repeated = await next.request.beforeDispatch!();
+    expect(repeated.validateAtCommit?.().accepted).toBe(true);
+    expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput,
+      noProgress: original.noProgress, reworks: original.reworks, phase: "running", turns: 2 });
+    expect(next.request.queueId).not.toBe(firstQueue);
+    expect(executionOwner.sessionExecutionInferenceAllowed(id, next.request.queueId)).toBe(true);
+    await next.request.onTerminal?.({ status: "complete", text: "Still no new evidence", assistantMessagePresent: true });
+    await executionOwner.continueSessionExecution(engine, id);
+    expect(currentExecution()).toMatchObject({ id: original.id, phase: "incomplete", reason });
+    expect(continuationRequests).toHaveLength(0);
+  });
+
+  it.each(["no progress", "rework"])("accepts verified completion in the human turn after %s exhaustion", async budget => {
+    const first = await prepare(input, `human-accept-${budget}`);
+    await first.request.onTerminal?.({ status: "error", text: "Original result preserved", assistantMessagePresent: true });
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.execution = { ...ledger.execution!, phase: "incomplete",
+        reason: budget === "no progress" ? "no_progress_limit_reached" : "rework_limit_reached",
+        ...(budget === "no progress" ? { noProgress: 2 } : { reworks: 3 }) };
+      return ledger;
+    });
+    const original = currentExecution()!;
+    const next = await prepare("Continue and verify the existing artifact", `human-verify-${budget}`,
+      { ...executeIntent, continuationOf: original.id });
+    await tool(next.request.queueId!, { id: "fresh-result", name: "Read", stage: "success", output: "Verified actual artifact" });
+    await submitReview(next.request.queueId!, { decision: "accept", summary: "Verified the existing artifact",
+      checks: [{ criterion: 0, toolUseIds: ["fresh-result"] }, { criterion: 1, toolUseIds: ["fresh-result"] }] });
+    await next.request.onTerminal?.({ status: "complete", text: "Verified completion", assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ id: original.id, phase: "completed", turns: 2, reworks: original.reworks });
+    expect(continuationRequests).toHaveLength(0);
+  });
 
   it.each(["pending-write", "unknown-claim"] as const)(
     "does not resume same-task work with unresolved %s side effects",
@@ -1613,6 +1756,10 @@ describe("durable Session execution owner", () => {
       const first = await prepare(input, `human-unknown-${unknownSource}`);
       const firstQueue = first.request.queueId!;
       const executionId = currentExecution()!.id;
+      await taskOwner.mutateSessionTaskLedger(id, ledger => {
+        ledger.execution = { ...ledger.execution!, noProgress: 2, reworks: 3 };
+        return ledger;
+      });
       if (unknownSource === "pending-write") {
         await tool(firstQueue, {
           id: "continuation-unknown-write",
@@ -1732,7 +1879,6 @@ describe("durable Session execution owner", () => {
       originalInput: originalExecution.originalInput,
       intent: originalExecution.intent,
       startedAt: originalExecution.startedAt,
-      deadlineAt: originalExecution.deadlineAt,
       turns: 3,
       reworks: 1,
       noProgress: 1,
@@ -1914,6 +2060,42 @@ describe("unconfirmed execution supervision", () => {
   });
 });
 
+describe('bounded intent failure evidence', () => {
+  it.each([
+    ['empty_response', ''], ['invalid_json', 'not-json'], ['invalid_schema', '{}'],
+    ['missing_continuation', JSON.stringify({ ...executeIntent, steps: ['Inspect'] })],
+    ['missing_steps', JSON.stringify({ ...executeIntent, continuationOf: null })],
+  ])('reports %s without granting execution', async (reason, raw) => {
+    engine.runTextUtility = vi.fn(async () => raw);
+    const failure = vi.fn();
+    const result = await executionOwner.classifySessionExecutionIntent(engine, {
+      sessionId: id, clientRequestId: 'diagnostic', text: input, workspacePath: '/synthetic-workspace',
+      scenario: { type: 'desktop', surface: 'chat' },
+    }, new AbortController().signal, failure);
+    expect(result).toBeUndefined();
+    expect(failure).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(currentExecution()).toBeUndefined();
+  });
+
+  it('persists an exact timeout reason but keeps the unconfirmed write guard', async () => {
+    await proveHumanInput('timeout-diagnostic', input);
+    engine.runTextUtility = vi.fn(async task => { task.onFailure?.('timeout'); return null; });
+    const prepared = await executionOwner.prepareSessionExecution(engine, {
+      sessionId: id, clientRequestId: 'timeout-diagnostic', text: input, workspacePath: '/synthetic-workspace',
+      scenario: { type: 'desktop', surface: 'chat' },
+    });
+    const admission = await prepared.request.beforeDispatch!();
+    expect(admission.accepted).toBe(true);
+    expect(admission.validateAtCommit?.().accepted).toBe(true);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission).toMatchObject({
+      error: 'INTENT_UNCONFIRMED', failureReason: 'timeout', queueId: prepared.request.queueId,
+    });
+    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Bash', {})).toContain('INTENT_UNCONFIRMED');
+    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Read', {})).toBeUndefined();
+    expect(currentExecution()).toBeUndefined();
+  });
+});
+
 describe("intent classifier execution continuity contract", () => {
   it("sends the current execution identity and requires an explicit continuationOf field", async () => {
     const prepared = await prepare(input, "human-classifier-integration");
@@ -2027,7 +2209,7 @@ describe("To Do List before native execution", () => {
     engine.isBusy = () => true;
     await first.request.onTerminal?.({ status: "complete", text: "Need to continue", assistantMessagePresent: true });
     await prepare("Continue this task", "continued-plan", { ...intent, steps: ["Do not replace", "The original steps"], continuationOf: original.id });
-    expect(currentExecution()).toMatchObject({ id: original.id, deadlineAt: original.deadlineAt, startedAt: original.startedAt });
+    expect(currentExecution()).toMatchObject({ id: original.id, startedAt: original.startedAt });
     expect(ledger().plan).toEqual(originalPlan);
     expect(ledger().tasks).toHaveLength(steps.length);
   });
@@ -2130,63 +2312,18 @@ describe("native background inference execution budget", () => {
     return { execution, native, query, rows };
   }
 
-  it("keeps the exact original deadline after the root ends and blocks background retry at expiry", async () => {
+  it('keeps active native work after 30 minutes while Stop still prevents retry', async () => {
     const h = await boundChild();
-    const clock = vi
-      .spyOn(Date, "now")
-      .mockReturnValue(h.execution.deadlineAt - 1);
+    const legacyDeadline = h.execution.startedAt + 30 * 60_000;
+    await taskOwner.mutateSessionTaskLedger(id, ledger => { ledger.execution!.deadlineAt = legacyDeadline; return ledger; });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(legacyDeadline + 86_400_000);
     try {
-      expect(
-        executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
-      ).toBe(h.execution.deadlineAt);
-      expect(
-        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
-      ).toBe(true);
-      const { ModelFailoverController } = await import(
-        "../openai-bridge/model-failover"
-      );
-      const execute = vi.fn(async () => {
-        clock.mockReturnValue(h.execution.deadlineAt);
-        return Response.json(
-          { error: { message: "overloaded" } },
-          { status: 503 },
-        );
-      });
-      const controller = new ModelFailoverController({
-        scope: () => undefined,
-        retryDelaysMs: [0, 0, 0],
-        deadlineAt: () =>
-          executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
-        isActive: () =>
-          executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
-        resolveBackup: () => undefined,
-        onSwitch: vi.fn(),
-      });
-      const request = () => new Request("http://fixture.invalid/messages");
-      expect(
-        (
-          await controller.run(
-            request(),
-            { providerId: "fixture", baseUrl: "http://fixture.invalid" },
-            execute,
-            "child-first",
-          )
-        ).status,
-      ).toBe(499);
-      expect(execute).toHaveBeenCalledTimes(1);
-      expect(
-        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
-      ).toBe(false);
-      await controller.run(
-        request(),
-        { providerId: "fixture", baseUrl: "http://fixture.invalid" },
-        execute,
-        "child-next",
-      );
-      expect(execute).toHaveBeenCalledTimes(1);
+      expect(executionOwner.sessionExecutionDeadlineAt(id, null, h.rows())).toBeUndefined();
+      expect(executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows())).toBe(true);
+      await executionOwner.pauseSessionExecution(id, 'user_stopped');
+      expect(executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows())).toBe(false);
     } finally {
-      h.native.clearQuerySession();
-      clock.mockRestore();
+      h.native.clearQuerySession(); clock.mockRestore();
     }
   });
 
@@ -2196,7 +2333,7 @@ describe("native background inference execution budget", () => {
       await executionOwner.pauseSessionExecution(id, "user_stop");
       expect(
         executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
-      ).toBe(h.execution.deadlineAt);
+      ).toBeUndefined();
       expect(
         executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
       ).toBe(false);
@@ -2268,7 +2405,7 @@ describe("native background inference execution budget", () => {
           currentExecution()!.currentQueueId,
           h.rows(),
         ),
-      ).toBe(h.execution.deadlineAt);
+      ).toBeUndefined();
     } finally {
       h.native.clearQuerySession();
     }

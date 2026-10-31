@@ -5,11 +5,11 @@ import { escapeSystemReminderText } from "../../shared/systemReminder";
 import {
   createSessionExecution,
   canContinueSessionExecution,
-  EXECUTION_LIMITS,
   executionIntentSchema,
   executionAssessmentSchema,
   settleSessionExecution,
   type ExecutionIntent,
+  type ExecutionIntentFailure,
   type ExecutionAssessment,
 } from "../../shared/sessionExecution";
 import { parseSessionTaskCommand } from "../../shared/sessionTaskReviewCommand";
@@ -51,6 +51,8 @@ const hash = (value: unknown) =>
   createHash("sha256")
     .update(typeof value === "string" ? value : (JSON.stringify(value) ?? ""))
     .digest("hex");
+export const executionToolObservationDigest = (name: string, input: unknown, output?: unknown) =>
+  hash({ name, input, output });
 const currentLedger = (id: string) => getSessionMetadata(id)?.taskOrchestration;
 const isActive = (phase: string) =>
   !["completed", "incomplete", "paused"].includes(phase);
@@ -95,17 +97,16 @@ function inferenceBudget(
   }
   if (execution && (execution.currentQueueId === queueId || taskBound)) {
     return {
-      deadlineAt: execution.deadlineAt,
+      deadlineAt: undefined,
       allowed:
         !revoked.has(sessionId) &&
-        isActive(execution.phase) &&
-        Date.now() < execution.deadlineAt,
+        isActive(execution.phase),
     };
   }
   return { deadlineAt: undefined, allowed: true };
 }
 
-/** Root queue or precisely bound native children share the original execution budget. */
+/** No task wall-clock deadline; unproven ownership still supplies a closed gate. */
 export function sessionExecutionDeadlineAt(
   sessionId: string,
   queueId: string | null | undefined,
@@ -137,6 +138,7 @@ export async function classifySessionExecutionIntent(
   engine: SessionEngine,
   request: DesktopMessageRequest,
   signal: AbortSignal,
+  onFailure?: (reason: ExecutionIntentFailure) => void,
 ): Promise<ExecutionIntent | undefined> {
   const data = await getSessionData(request.sessionId);
   const context = (data?.messages ?? []).slice(-4).map((m) => ({
@@ -157,29 +159,36 @@ export async function classifySessionExecutionIntent(
     currentUserRequest: request.text.slice(0, 20000),
   });
   let raw: string | null = null;
+  let utilityFailure: ExecutionIntentFailure | undefined;
   if (engine.runTextUtility)
     raw = await engine.runTextUtility({
       prompt,
       systemPrompt: INTENT_SYSTEM,
       signal,
       timeoutMs: 8000,
+      onFailure: reason => { utilityFailure = reason; },
     });
-  if (!raw || signal.aborted) return undefined;
+  if (!raw?.trim() || signal.aborted) {
+    onFailure?.(signal.aborted ? 'cancelled' : utilityFailure ?? (engine.runTextUtility ? 'empty_response' : 'unavailable'));
+    return undefined;
+  }
   try {
     const parsed = executionIntentSchema.safeParse(
       JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, "")),
     );
     // Legacy persisted intents may omit the relation. A fresh classifier must
     // state it explicitly; an omitted relation must not silently reset a task.
-    return parsed.success && Object.hasOwn(parsed.data, "continuationOf") && (parsed.data.kind !== "execute" || !!parsed.data.steps?.length)
-      ? parsed.data
-      : undefined;
+    if (!parsed.success) { onFailure?.('invalid_schema'); return undefined; }
+    if (!Object.hasOwn(parsed.data, "continuationOf")) { onFailure?.('missing_continuation'); return undefined; }
+    if (parsed.data.kind === "execute" && !parsed.data.steps?.length) { onFailure?.('missing_steps'); return undefined; }
+    return parsed.data;
   } catch {
+    onFailure?.('invalid_json');
     return undefined;
   }
 }
 
-/** A human continuation renews authority for one input, never the task's budget. */
+/** A proven new human input authorizes one turn; automatic retry counters are retained. */
 function humanContinuationBlock(
   ledger: SessionTaskLedger,
   executionId: string,
@@ -188,11 +197,6 @@ function humanContinuationBlock(
   const execution = ledger.execution;
   if (execution?.id !== executionId) return "EXECUTION_CONTINUATION_CHANGED";
   if (execution.phase === "completed") return "EXECUTION_ALREADY_COMPLETED";
-  if (Date.now() >= execution.deadlineAt) return "deadline_exceeded";
-  if (execution.noProgress >= EXECUTION_LIMITS.maxNoProgress)
-    return "no_progress_limit_reached";
-  if (execution.reworks >= EXECUTION_LIMITS.maxReworks)
-    return "rework_limit_reached";
   if (
     ledger.executionEvidence?.some((fact) => fact.pending && fact.mutating) ||
     ledger.delegationClaims?.some(
@@ -212,7 +216,10 @@ function humanContinuationBlock(
       "user_stopped",
       "new_user_input",
       "turn_error",
+      "deadline_exceeded", // A legacy task may be resumed by a new trusted human input.
       "turn_limit_reached",
+      "no_progress_limit_reached", // Limits stop automatic loops, not a new human request.
+      "rework_limit_reached",
     ].includes(execution.reason ?? "")
   )
     return execution.reason ?? "EXECUTION_REQUIRES_REVIEW";
@@ -313,7 +320,6 @@ export async function prepareSessionExecution(
   if (
     request.turnOwner ||
     request.queueId ||
-    request.continueFromTurnId ||
     !request.clientRequestId ||
     !request.text.trim()
   )
@@ -322,6 +328,11 @@ export async function prepareSessionExecution(
     (input) => input.requestId === request.clientRequestId,
   );
   if (proof?.bodyDigest !== hash(request.text)) return noChange;
+  // Only native receipt reconciliation may repair known failed execution facts.
+  // Unavailable/currently busy history retains every existing pending fence.
+  if (currentLedger(request.sessionId)?.executionEvidence?.some(fact => fact.pending && fact.name === 'Bash')) {
+    await engine.reconcileExecutionEvidence?.().catch(() => {});
+  }
   const queueId = EXECUTION_QUEUE_PREFIX + randomUUID();
   const controller = new AbortController();
   const admission = { controller, committed: false };
@@ -377,8 +388,9 @@ export async function prepareSessionExecution(
       },
     };
   }
-  const intent = await classify(engine, request, controller.signal).catch(
-    () => undefined,
+  let intentFailure: ExecutionIntentFailure | undefined;
+  const intent = await classify(engine, request, controller.signal, reason => { intentFailure = reason; }).catch(
+    () => { intentFailure = 'transport'; return undefined; },
   );
   if (!current()) {
     removeAdmission();
@@ -479,7 +491,7 @@ export async function prepareSessionExecution(
           ledger.executionAdmission = {
             requestId: request.clientRequestId!,
             queueId,
-            ...(intent ? { intent } : { error: "INTENT_UNCONFIRMED" }),
+            ...(intent ? { intent } : { error: "INTENT_UNCONFIRMED", failureReason: intentFailure ?? "empty_response" }),
             ...(taskPlanId ? { taskPlanId } : {}),
           };
           if (continues) {
@@ -597,7 +609,9 @@ export async function prepareSessionExecution(
         : "") + (taskPlanId && intent?.kind === "execute"
         ? taskPlanReminder(taskPlanId, stagedExecution?.intent.steps ?? intent.steps ?? [])
         : "")) || undefined,
-      surfaceUserBeforeDispatch: true,
+      // A continuation must retain its original transcript root until the
+      // synchronous continuation commit check has accepted this new input.
+      surfaceUserBeforeDispatch: !request.continueFromTurnId,
       // Keep the original visible user input; product instructions never become human evidence.
       desktopQuery: { ...request.desktopQuery, visibleText: request.text },
       onTerminal: async (outcome) => {
@@ -701,10 +715,9 @@ export function sessionExecutionToolDenial(
     execution.currentQueueId === queueId &&
     (revoked.has(sessionId) ||
       execution.phase === "paused" ||
-      execution.phase === "incomplete" ||
-      Date.now() >= execution.deadlineAt)
+      execution.phase === "incomplete")
   )
-    return "当前行动已停止或预算已到期，请等待用户新的指令。";
+    return "当前行动已停止，请等待用户新的指令。";
   const admission = ledger?.executionAdmission;
   const readCommand = ["Bash", "Shell", "shell", "exec_command"].includes(name)
     ? parseSessionTaskCommand(input)
@@ -747,6 +760,7 @@ export async function observeSessionExecutionTool(
     output?: unknown;
     root: boolean;
     stage: "start" | "success" | "failure";
+    settledFailure?: "native-bash-exit";
     verificationEpoch?: string;
     isCurrent: () => boolean;
   },
@@ -808,11 +822,7 @@ export async function observeSessionExecutionTool(
         id: tool.id,
         queueId: tool.queueId!,
         name: tool.name,
-        digest: hash({
-          name: tool.name,
-          input: tool.input,
-          output: tool.output,
-        }),
+        digest: executionToolObservationDigest(tool.name, tool.input, tool.output),
         successful: tool.stage === "success",
         startOrder: old?.startOrder ?? order,
         verificationEpochAtStart,
@@ -824,7 +834,9 @@ export async function observeSessionExecutionTool(
         observationOrder: order,
         mutating,
         pending:
-          tool.stage === "start" || (mutating && tool.stage === "failure"),
+          tool.stage === "start" || (mutating && tool.stage === "failure" && !(tool.name === "Bash" && tool.settledFailure === "native-bash-exit")),
+        ...(tool.stage === "failure" && tool.name === "Bash" && tool.settledFailure === "native-bash-exit"
+          ? { settledFailure: tool.settledFailure } : {}),
       };
       ledger.executionEvidence = [
         ...facts.filter((fact) => fact.id !== tool.id),
@@ -976,22 +988,6 @@ export async function continueSessionExecution(
 ): Promise<void> {
   if (dispatching.has(sessionId) || engine.kind !== "builtin") return;
   const initial = currentLedger(sessionId)?.execution;
-  if (initial && isActive(initial.phase) && Date.now() >= initial.deadlineAt) {
-    revokeSessionExecutionWake(sessionId);
-    await mutateSessionTaskLedger(sessionId, (ledger) => {
-      if (
-        ledger.execution?.id === initial.id &&
-        isActive(ledger.execution.phase)
-      )
-        ledger.execution = {
-          ...ledger.execution,
-          phase: "incomplete",
-          reason: "deadline_exceeded",
-        };
-      return ledger;
-    });
-    return;
-  }
   if (
     !initial ||
     !canContinueSessionExecution(initial, Date.now()) ||
@@ -1023,7 +1019,6 @@ export async function continueSessionExecution(
       execution?.id === initial.id &&
       isActive(execution.phase) &&
       execution.continuation?.queueId === continuation.queueId &&
-      Date.now() < execution.deadlineAt &&
       (!entry || !engine.isBusy()) &&
       !live.waitingForUser &&
       !(

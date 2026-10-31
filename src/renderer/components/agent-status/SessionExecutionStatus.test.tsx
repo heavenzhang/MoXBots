@@ -85,6 +85,15 @@ describe("SessionExecutionStatus", () => {
     expect(screen.getByText(/不会自动续跑/)).toBeInTheDocument();
   });
 
+  it('shows the bounded timeout reason while keeping execution unconfirmed', () => {
+    render(<SessionExecutionStatus admission={{ requestId: 'r', queueId: 'q',
+      error: 'INTENT_UNCONFIRMED', failureReason: 'timeout' }} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText(/识别请求超时/)).toBeInTheDocument();
+    expect(screen.getByText('执行未确认')).toBeInTheDocument();
+    expect(screen.queryByText('已完成')).not.toBeInTheDocument();
+  });
+
   it("keeps a classification failure visible beside an earlier execution", () => {
     render(
       <SessionExecutionStatus

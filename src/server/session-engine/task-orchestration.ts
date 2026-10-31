@@ -23,7 +23,6 @@ export function canSessionDelegateSubagents(sessionId: string, turn?: SessionPla
   if (
     execution &&
     execution.currentQueueId === turn?.queueId &&
-    execution.deadlineAt > Date.now() &&
     ['running', "rework"].includes(execution.phase) &&
     ledger?.executionAdmission?.requestId === execution.requestId &&
     ledger.executionAdmission.intent?.kind === "execute"

@@ -1098,3 +1098,33 @@ desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2
 ## MB-DESKTOP-NEXT-20261031 — Root five-source selection
 
 Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Allocated0.5.28/build528.1 with source/sidebar6e518f1c, recovery6cecca460, activityc7c55c3, scopea4585a8b and upstream093eb934 as original Git ancestors. Independent combined source admission/local checks and actualSDK native local fixture passed; CI/main, immutable formal artifact, safe maintenance, native originalSession recovery and101publication remain separate gates. Primary joint integration preserves typed denial receipts, unknown-action and old-ID fences, native activity ownership, Store CAS and privacy; no fullmodel/Goal matrix, cloud/browser/phone, new Agent or second publisher. Subsequent arrivals after freeze next batch. Evidence/limits: dev-docs/releases/0.5.28-intake-20261031.md; current Root task .agent-sync/tasks/codex-release-0528-combined-20261031-49c193f2.md.
+
+
+## MB-RECOVERY-INCIDENT-20261101 — 528 原会话回归
+
+用户报告重复横幅、409/502及无法恢复。分支 `codex/recovery-incident-20261101` 基于 e11ee39；任务 `.agent-sync/tasks/codex-recovery-incident-20261101-9d059e46.md`，证据 `dev-docs/recovery-incident-20261101/acceptance.md`。两项确定修复：Chat 同层 session key 冲突；并发请求在发送前的恢复拒绝不应封锁整个主 scope。原请求指纹、未知操作、实际流中断及失效 owner 围栏保留。183 项定向测试及类型/lint/分类检查通过；未改变原账本或执行原任务。
+
+desktop/macOS-arm64/updater/sharedCI/main 仍唯一 owner 01a12bc2-907a-7702-b6dd-788225c5dfe4；当前528晋级暂停、正式通道527，原生UI按用户停止指令保持不动。本分支只交精确SHA，由原owner独立审查及下一未冻结批集成；不自行新PR/共享CI/正式版本/安装。意图识别失败、连接超时、idle/首错分类和四原会话验收仍未闭环，不能以这两项修复代替整体恢复完成。
+
+## MB-TASK-PANEL-COMPACT-20261031 — 当前任务清单去重与紧凑布局
+
+任务 `.agent-sync/tasks/codex-task-panel-compact-20261031-ce565643.md`；验收 `dev-docs/task-panel-compact-20261031/acceptance.md`。运行中主任务集中到底部默认折叠入口，任务行压缩、会话/Composer分隔、已验收历史默认收起；无后端/数据权限变化。36 DOM、type/lint、内置浏览器真实组件合成状态通过，正式安装/真实会话未验。
+
+desktop/macOS-arm64/updater、shared CI/main继续唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`，依据现有部署归属；本任务基线e11ee39b、分支codex/task-panel-compact-20261031，只交下一未冻结批次，不加入0.5.28/528.1冻结制品。owner统一版本/候选/CI/发布/回滚；main、正式制品与真实路径各自待回执。无跨单元或迁移依赖。
+
+MB-RECOVERY-INCIDENT-20261101 第二批：用户明确解除原生暂停并授权原desktop owner安装验证。增量补Responses合法reasoning summary part/text事件及进展，避免误判protocol与idle；意图识别失败沿原账本回传固定原因枚举，不授权工具或改变预算。129项定向测试，真实网络公共GET6/6仅说明当前连通；原owner正在联合CI，收到精确增量后重新固定候选。原四会话完整验收尚未通过，正式晋级继续暂停。
+
+
+MB-RECOVERY-INCIDENT-20261101 第三批用户策略：明确取消整个任务固定30分钟时限，否决人工每次续期方案。现有SessionExecution owner内取消task-wide clock gate，历史deadline只保留兼容字段；旧deadline_exceeded允许可信人工同任务接续，原结果/身份/步骤保留。Stop、权限、未知操作、无进展/返工和网络单请求边界不取消。原desktop owner收到精确增量后纳入最终候选，四原会话验收未通过前不晋级。
+
+### MB-RECOVERY-INCIDENT-20261101 一键继续归属补修
+
+同一任务第四批：已复现点击继续后SDK收新输入但execution仍旧queue/轮次。移除可信人工继续的execution跳过，组合原transcript/执行guard并保留同步commit/取消；同ID、原清单及证据由现有执行owner维护。隔离队列回归及保护测试通过后交唯一desktop owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 确定候选，不并行触发共享CI/版本/安装。前三批已进入PR217；源码不等于原会话业务验收。
+
+### MB-RECOVERY-INCIDENT-20261101 已知退出回执同步
+
+同一任务第五批：真实行情case的操作owner已持久化正常Bash退出，execution仍pending。复用原Session owner、durable operation receipt和SDK当前选中链，完整工具摘要/身份一致才同步失败事实；不改变操作ledger或允许旧命令重放。新hook先耐久提交操作结果再观察execution。479项相关验证通过，仍由desktop唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 集成/CI/新包安装/原会话验收；未获原业务结果前不宣告完成。
+
+### MB-RECOVERY-INCIDENT-20261101 人工续接与自动防空转分离
+
+第六批：Kevin原任务计数封顶造成永久人工续接拒绝。新的可信人工输入可沿原execution恢复一轮，原计数/清单/证据不重置，仍无进展或返工封顶未验收则停止自动接续；未知操作、Stop、权限、后台、上一轮结算和同步提交门禁保留。采用原desktop owner已提交的655514边界修复，不弱化架构测试。精确增量交01a12bc2-907a-7702-b6dd-788225c5dfe4统一CI/版本/安装及四原会话验收，源码通过不等于稳定性闭环。

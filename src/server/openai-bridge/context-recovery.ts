@@ -414,6 +414,9 @@ class RecoveryPreparationError extends Error {
   constructor(readonly reason: string) { super(`context_recovery_required: ${reason}`); }
 }
 
+/** Refused before archival, ledger mutation or upstream dispatch; fence this request only. */
+class ConcurrentRecoveryPreparationError extends RecoveryPreparationError {}
+
 /** Owned by one existing Query. Only retries inference; never executes or re-enqueues a tool. */
 export class ContextRecoveryController implements BridgeContextRecovery {
   private state: State | undefined;
@@ -461,6 +464,19 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         actionId, completedEvidenceAlsoPresent: this.completedLedger.has(actionId),
       })),
     };
+  }
+
+  /** Returned native Bash failures, never permission to replay the command. */
+  inspectSettledBashFailures() {
+    if (this.ledgerBlocked) return [];
+    const attempts = this.operations.serialize().entries;
+    return [...this.nativeErrors.values()].filter(proof => proof.reason === 'bash-exited'
+      && attempts.filter(attempt => attempt.sessionId === proof.sessionId && attempt.sdkSessionId === proof.sdkSessionId
+        && attempt.queryGeneration === proof.queryGeneration && attempt.scope === proof.scope
+        && attempt.toolUseId === proof.toolUseId && attempt.toolName === proof.toolName
+        && attempt.actionHash === proof.actionHash && attempt.status === 'returned'
+        && attempt.outcome === 'bash-exit' && attempt.resultDigest === proof.resultDigest).length === 1)
+      .map(proof => ({ ...proof }));
   }
 
   /** Diagnostic only: never turns an ordinary error into a recovery candidate. */
@@ -596,9 +612,12 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   /** Archive and protect this inference's completed actions without reducing native history. */
   async protectInference(body: AnthropicRequest, prearm = false): Promise<void> {
     const state = this.current();
-    if (!state || this.options.canRecover?.() === false || this.requestGuard.inFlightCount > 1
+    if (!state || this.options.canRecover?.() === false
       || this.ledgerBlocked || state.blocked || this.requestGuard.isBlocked(state.scope)) {
       throw new RecoveryPreparationError('The inference has no exclusive recovery authority.');
+    }
+    if (this.requestGuard.inFlightCount > 1) {
+      throw new ConcurrentRecoveryPreparationError('The inference has no exclusive recovery authority. Another inference is active; existing work was preserved.');
     }
     const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks, this.preToolDenials, prearm);
     const safeHistory = !!analysis && analysis.uncertain.size === 0 && state.uncertain.size === 0;
@@ -934,7 +953,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   }
 
   async commitToolResult(name: string, input: unknown, result: unknown, failed = false, toolUseId?: string,
-    nativeFailure?: { interrupted: boolean | undefined }): Promise<void> {
+    nativeFailure?: { interrupted: boolean | undefined }): Promise<'bash-exit' | undefined> {
     const key = recoveryActionHash(name, input);
     const admission = toolUseId ? this.nativeAdmissions.get(toolUseId) : undefined;
     const owner = this.nativeEvidenceOwner;
@@ -980,6 +999,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       admission.pending = false;
       this.nativeRevision++;
       this.traceNativeAction('commit_complete', toolUseId, key, failed);
+      return settledExit ? 'bash-exit' : undefined;
     } catch (error) {
       this.traceNativeAction('commit_failed', toolUseId, key, failed);
       throw error;
@@ -1383,6 +1403,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return new Response(stream, { status: response.status, headers: response.headers });
     } catch (error) {
       if (!live()) return cancelled();
+      // A concurrent request rejected before protectInference did any work cannot
+      // invalidate an already admitted sibling or block the parent's next inference.
+      // finish() still retains this exact fingerprint, so it cannot be replayed.
+      if (error instanceof ConcurrentRecoveryPreparationError) return required(error.reason);
       if (error instanceof RecoveryPreparationError) return stop(error.reason);
       return stop('The model transport failed. Automatic replay is blocked and progress was preserved.');
     } finally {
