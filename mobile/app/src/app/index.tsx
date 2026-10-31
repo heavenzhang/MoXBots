@@ -1402,6 +1402,7 @@ function AppBody() {
     </View>}
 
     {screen === 'sessions' && <SessionHomeScreen
+      account={account}
       targets={targets} target={target} sessions={sessions} search={sessionSearch} searchOpen={sessionSearchOpen}
       onSearch={setSessionSearch} onSearchOpen={setSessionSearchOpen} busy={loading} unavailableDeviceCount={unavailableDeviceCount}
       onAccount={() => router.push('/account')}
@@ -1411,7 +1412,7 @@ function AppBody() {
       onOpen={(item) => void run('snapshot', () => openSnapshot(item))}
       notice={notice ? <NoticeView notice={notice} action={retryNotificationAction} onDismiss={dismissNotification}/> : null}
       pending={pending.length > 0 && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认操作</Text><Text style={styles.caption}>状态未知时只查询，不会自动重发。</Text>{pending.map((item) => { const canQuery = !!item.targetId && targets.some((entry) => entry.targetId === item.targetId && entry.online); return <Pressable key={item.operationId} accessibilityRole="button" accessibilityState={{ disabled: !canQuery }} disabled={!canQuery} onPress={() => void run('receipt', () => queryPending(item))} style={[styles.pendingRow, !canQuery && styles.pendingRowDisabled]}><Text style={styles.pendingText}>查询操作 · {receiptLabels[receiptStates[item.operationId] ?? item.status]}</Text><Text style={[styles.pendingLink, !canQuery && styles.pendingLinkDisabled]}>{canQuery ? '查询状态' : '等待设备'}</Text></Pressable>; })}</View>}
-      empty={!target ? <EmptyState title={account?.state === 'signed-in' ? '尚未发现可用 Bot' : '没有可用 Bot'} detail={account?.state === 'signed-in' ? '请确认电脑或 Host 已使用同一账号入网，并已启用对应 Bot 的网络访问。' : '登录后会从已授权账号读取可连接设备。'} action={account?.state === 'signed-in' ? '连接帮助' : undefined} onAction={account?.state === 'signed-in' ? () => router.push('/account/help') : undefined}/> : target.online === false ? <EmptyState title="设备当前离线" detail="Bot 设备离线时无法读取会话。"/> : <EmptyState title="暂无会话" detail="创建一个会话，或刷新以重新读取。" action="读取会话" onAction={() => void run('sessions', loadSessions)}/>}
+      empty={!target ? <EmptyState title={account?.state === 'signed-in' ? '尚未发现可用 Bot' : '没有可用 Bot'} detail={account?.state === 'signed-in' ? '在桌面「Bots 网络」打开本机设备详情，为需要的 Bot 开启「在网络中开启」，然后在手机刷新。两端须登录同一账号；仅登录不会自动开放 Bot。' : '登录后会从已授权账号读取可连接设备。'} action={account?.state === 'signed-in' ? '连接帮助' : undefined} onAction={account?.state === 'signed-in' ? () => router.push('/account/help') : undefined}/> : target.online === false ? <EmptyState title="设备当前离线" detail="Bot 设备离线时无法读取会话。"/> : <EmptyState title="暂无会话" detail="创建一个会话，或刷新以重新读取。" action="读取会话" onAction={() => void run('sessions', loadSessions)}/>}
     />}
 
     {screen === 'chat' && <View style={styles.fill}>

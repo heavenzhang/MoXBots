@@ -1,12 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CircleUserRound, Info, RefreshCw, Search, SquarePen, X } from 'lucide-react-native';
-import type { Target } from './native';
+import { accountIdentityLabel } from './accountPolicy';
+import type { Account, Target } from './native';
 import { MobileSheet } from './MobileSheet';
 import { mobileTheme as color } from './mobileTheme';
 import { filterSessionRows, sessionDateGroup, sessionUpdatedLabel, type SessionListItem } from './sessionPresentation';
 
 type Props = {
+  account: Account | null;
   targets: readonly Target[];
   target: Target | null;
   sessions: readonly SessionListItem[];
@@ -43,6 +45,10 @@ export function SessionHomeScreen(props: Props) {
         <Pressable accessibilityRole="button" accessibilityLabel="新建会话" accessibilityHint={!target ? '请先选择 Bot' : !target.online ? '设备离线，可先保留草稿' : undefined} accessibilityState={{ disabled: !target }} disabled={!target} onPress={props.onNew} style={[styles.iconButton, !target && styles.disabled]}><SquarePen size={22} color={color.ink}/></Pressable>
       </View>
     </View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`当前${accountIdentityLabel(props.account)}，账号与设置`} onPress={props.onAccount} style={styles.accountSummary}>
+      <Text style={styles.accountCaption}>当前账号</Text>
+      <Text numberOfLines={2} style={styles.accountIdentity}>{accountIdentityLabel(props.account)}</Text>
+    </Pressable>
     <View style={styles.scope}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scopes}>
         {props.targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: item.targetId === target?.targetId }} onPress={() => { setInfo(null); props.onSelectTarget(item); }} style={[styles.scopeButton, item.targetId === target?.targetId && styles.scopeSelected]}>
@@ -99,6 +105,9 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   heading: { flex: 1, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, color: color.ink },
   headerActions: { flexDirection: 'row' },
+  accountSummary: { marginHorizontal: 20, marginBottom: 8, paddingVertical: 8, minHeight: 44 },
+  accountCaption: { fontSize: 11, color: color.muted },
+  accountIdentity: { fontSize: 13, lineHeight: 18, color: color.ink, marginTop: 3 },
   scope: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 7, paddingBottom: 6 },
   scopes: { gap: 5, alignItems: 'center', paddingRight: 8 },
   scopeButton: { minHeight: 36, maxWidth: 205, paddingHorizontal: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 7 },

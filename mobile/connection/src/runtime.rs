@@ -57,11 +57,19 @@ struct SavedAccount {
     instance: OwnedInstance,
     session: OwnedSession,
 }
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SavedAccountProfile {
+    device_id: String,
+    principal_id: String,
+    display_name: String,
+}
 struct PendingLogin {
     device: String,
     verifier: Zeroizing<String>,
     transaction: String,
     expires: u64,
+    display_name: Option<String>,
 }
 struct Connected {
     identity: NetworkIdentity,
@@ -81,6 +89,7 @@ pub struct MobileConnection {
     client: Option<OwnedClient>,
     instance: Option<OwnedInstance>,
     saved: Option<SavedAccount>,
+    display_name: Option<String>,
     pending: Option<PendingLogin>,
     active: Arc<AtomicBool>,
     connected: Option<Connected>,
@@ -91,6 +100,9 @@ pub struct MobileConnection {
 }
 fn err(code: &'static str) -> NetworkError {
     NetworkError::new(code)
+}
+fn account_profile_record(device_id: &str) -> String {
+    format!("account-profile:{device_id}")
 }
 fn store_error(_: String) -> NetworkError {
     err("MOBILE_SECURE_STORE_UNAVAILABLE")
@@ -108,6 +120,7 @@ impl MobileConnection {
             client: None,
             instance: None,
             saved: None,
+            display_name: None,
             pending: None,
             active: Arc::new(AtomicBool::new(true)),
             connected: None,
@@ -150,7 +163,7 @@ impl MobileConnection {
             .saved
             .as_ref()
             .filter(|s| s.session.expires_at > jsonwebtoken::get_current_timestamp());
-        json!({"kind":"account","state":if self.pending.is_some(){"authenticating"}else if saved.is_some(){"signed-in"}else if self.saved.is_some(){"expired"}else{"signed-out"},"displayName":Value::Null,"principalId":saved.map(|s|s.session.principal_id.as_str())})
+        json!({"kind":"account","state":if self.pending.is_some(){"authenticating"}else if saved.is_some(){"signed-in"}else if self.saved.is_some(){"expired"}else{"signed-out"},"displayName":saved.and(self.display_name.as_deref()),"principalId":saved.map(|s|s.session.principal_id.as_str())})
     }
     async fn restore(&mut self) -> Result<(), NetworkError> {
         if self.saved.is_some() {
@@ -176,6 +189,9 @@ impl MobileConnection {
                 .unwrap()
                 .validate_session(&saved.device_id, &saved.session)
                 .await?;
+            self.display_name = self.load_saved_display_name(&saved);
+        } else {
+            self.display_name = None;
         }
         self.saved = Some(saved);
         Ok(())
@@ -286,6 +302,7 @@ impl MobileConnection {
                     .is_some_and(|s| s.session.expires_at <= jsonwebtoken::get_current_timestamp())
                 {
                     self.saved = None;
+                    self.display_name = None;
                     self.store
                         .remove_record(&self.config.issuer, "account")
                         .map_err(store_error)?;
@@ -304,6 +321,7 @@ impl MobileConnection {
                 );
                 let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
                 let device = uuid::Uuid::new_v4().to_string();
+                let pending_display_name = username.clone();
                 let (transaction, expires, authorization_url) =
                     if let (Some(username), Some(password)) = (username, password) {
                         let start = self
@@ -331,6 +349,7 @@ impl MobileConnection {
                     verifier,
                     transaction,
                     expires,
+                    display_name: pending_display_name,
                 });
                 if let Some(authorization_url) = authorization_url {
                     Ok(
@@ -358,20 +377,11 @@ impl MobileConnection {
                     .poll(&p.device, &p.transaction, &p.verifier)
                     .await?;
                 if let OwnedPoll::Authenticated(session) = result {
-                    let saved = SavedAccount {
-                        device_id: p.device.clone(),
-                        instance: self.instance.as_ref().unwrap().clone(),
+                    self.commit_authenticated_session(
+                        p.device.clone(),
                         session,
-                    };
-                    let bytes = Zeroizing::new(
-                        serde_json::to_vec(&saved).map_err(|_| err("OWNED_SESSION_INVALID"))?,
-                    );
-                    self.store
-                        .write_record(&self.config.issuer, "account", &bytes)
-                        .map_err(store_error)?;
-                    self.saved = Some(saved);
-                    self.pending = None;
-                    self.active = Arc::new(AtomicBool::new(true));
+                        p.display_name.clone(),
+                    )?;
                 }
                 Ok(self.account_view())
             }
@@ -383,11 +393,7 @@ impl MobileConnection {
                 let notification_logout = self
                     .notification_logout(disk.as_ref().map(|b| b.as_slice()))
                     .await;
-                self.active.store(false, Ordering::Release);
-                self.connected = None;
-                self.peer = None;
-                self.clear_targets();
-                let saved = match self.saved.take() {
+                let saved = match self.clear_local_identity() {
                     Some(saved) => Ok(Some(saved)),
                     None => disk
                         .as_ref()
@@ -402,6 +408,12 @@ impl MobileConnection {
                 self.store
                     .remove_record(&self.config.issuer, "account")
                     .map_err(store_error)?;
+                if let Ok(Some(saved)) = &saved {
+                    let _ = self.store.remove_record(
+                        &self.config.issuer,
+                        &account_profile_record(&saved.device_id),
+                    );
+                }
                 let canceled = self.cancel().await;
                 let logout = if let Some(saved) = saved? {
                     saved.instance.validate(&self.config.issuer)?;
@@ -440,6 +452,68 @@ impl MobileConnection {
             _ => Err(err("MOBILE_INTENT_UNSUPPORTED")),
         }
     }
+    fn commit_authenticated_session(
+        &mut self,
+        device_id: String,
+        session: OwnedSession,
+        display_name: Option<String>,
+    ) -> Result<(), NetworkError> {
+        let saved = SavedAccount {
+            device_id,
+            instance: self
+                .instance
+                .as_ref()
+                .ok_or_else(|| err("OWNED_SESSION_INVALID"))?
+                .clone(),
+            session,
+        };
+        let bytes =
+            Zeroizing::new(serde_json::to_vec(&saved).map_err(|_| err("OWNED_SESSION_INVALID"))?);
+        self.store
+            .write_record(&self.config.issuer, "account", &bytes)
+            .map_err(store_error)?;
+        self.display_name = None;
+        if let Some(display_name) = display_name {
+            let profile = SavedAccountProfile {
+                device_id: saved.device_id.clone(),
+                principal_id: saved.session.principal_id.clone(),
+                display_name: display_name.clone(),
+            };
+            if let Ok(profile_bytes) = serde_json::to_vec(&profile) {
+                if self
+                    .store
+                    .write_record(
+                        &self.config.issuer,
+                        &account_profile_record(&saved.device_id),
+                        &profile_bytes,
+                    )
+                    .is_ok()
+                {
+                    self.display_name = Some(display_name);
+                }
+            }
+        }
+        self.saved = Some(saved);
+        self.pending = None;
+        self.active = Arc::new(AtomicBool::new(true));
+        Ok(())
+    }
+    fn load_saved_display_name(&self, saved: &SavedAccount) -> Option<String> {
+        let bytes = self
+            .store
+            .read_record(
+                &self.config.issuer,
+                &account_profile_record(&saved.device_id),
+            )
+            .ok()??;
+        let profile: SavedAccountProfile = serde_json::from_slice(&bytes).ok()?;
+        (profile.device_id == saved.device_id
+            && profile.principal_id == saved.session.principal_id
+            && !profile.display_name.is_empty()
+            && profile.display_name.len() <= 256
+            && !profile.display_name.contains(['\r', '\n', '\0']))
+        .then_some(profile.display_name)
+    }
     async fn refresh_targets(&mut self) -> Result<Value, NetworkError> {
         self.connect().await?;
         let result = self.list_targets().await;
@@ -466,6 +540,14 @@ impl MobileConnection {
         self.targets.clear();
         self.suspended_target_aliases.clear();
         self.target_account = None;
+    }
+    fn clear_local_identity(&mut self) -> Option<SavedAccount> {
+        self.active.store(false, Ordering::Release);
+        self.connected = None;
+        self.peer = None;
+        self.clear_targets();
+        self.display_name = None;
+        self.saved.take()
     }
     /// Current native registry only. Never restore/login/connect/renew here:
     /// local cache status must not perform directory HTTP per displayed item.
@@ -1009,7 +1091,10 @@ mod tests {
     use crate::{CryptoError, DevicePrivateKey, KeyScope};
     use std::sync::Mutex;
     #[derive(Default)]
-    struct Store(Mutex<HashMap<String, Vec<u8>>>);
+    struct Store {
+        records: Mutex<HashMap<String, Vec<u8>>>,
+        fail_profile_writes: AtomicBool,
+    }
     impl IdentityStore for Store {
         fn load(&self, _: &KeyScope) -> Result<DevicePrivateKey, CryptoError> {
             Err(CryptoError::CredentialMissing)
@@ -1024,7 +1109,7 @@ mod tests {
     impl SecureStore for Store {
         fn read_record(&self, s: &str, r: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
             Ok(self
-                .0
+                .records
                 .lock()
                 .unwrap()
                 .get(&format!("{s}/{r}"))
@@ -1032,14 +1117,18 @@ mod tests {
                 .map(Zeroizing::new))
         }
         fn write_record(&self, s: &str, r: &str, v: &[u8]) -> Result<(), String> {
-            self.0
+            if r.starts_with("account-profile:") && self.fail_profile_writes.load(Ordering::Acquire)
+            {
+                return Err("synthetic profile write failure".into());
+            }
+            self.records
                 .lock()
                 .unwrap()
                 .insert(format!("{s}/{r}"), v.to_vec());
             Ok(())
         }
         fn remove_record(&self, s: &str, r: &str) -> Result<(), String> {
-            self.0.lock().unwrap().remove(&format!("{s}/{r}"));
+            self.records.lock().unwrap().remove(&format!("{s}/{r}"));
             Ok(())
         }
     }
@@ -1697,6 +1786,171 @@ mod tests {
             json!({"ok":true,"value":{"kind":"account","state":"signed-out","displayName":null,"principalId":null}})
         );
     }
+    #[test]
+    fn login_name_is_exposed_only_after_authenticated_session_is_persisted() {
+        let mut o = snapshot_owner();
+        let previous = o.saved.take().unwrap();
+        o.instance = Some(previous.instance.clone());
+        o.pending = Some(PendingLogin {
+            device: previous.device_id.clone(),
+            verifier: Zeroizing::new("synthetic-verifier".into()),
+            transaction: uuid::Uuid::new_v4().to_string(),
+            expires: jsonwebtoken::get_current_timestamp() + 60,
+            display_name: Some("person@example.test".into()),
+        });
+
+        let pending = o.account_view();
+        assert_eq!(pending["state"], "authenticating");
+        assert_eq!(pending["displayName"], Value::Null);
+        assert_eq!(pending["principalId"], Value::Null);
+        assert!(o.saved.is_none());
+
+        o.commit_authenticated_session(
+            previous.device_id,
+            previous.session,
+            o.pending.as_ref().unwrap().display_name.clone(),
+        )
+        .unwrap();
+        let authenticated = o.account_view();
+        assert_eq!(authenticated["state"], "signed-in");
+        assert_eq!(authenticated["displayName"], "person@example.test");
+        assert!(o.pending.is_none());
+
+        let stored = o
+            .store
+            .read_record(&o.config.issuer, "account")
+            .unwrap()
+            .unwrap();
+        let persisted: Value = serde_json::from_slice(&stored).unwrap();
+        assert!(persisted.get("displayName").is_none());
+        assert_eq!(
+            persisted
+                .as_object()
+                .unwrap()
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>(),
+            vec!["deviceId", "instance", "session"]
+        );
+        let profile_key = account_profile_record(&o.saved.as_ref().unwrap().device_id);
+        let profile_bytes = o
+            .store
+            .read_record(&o.config.issuer, &profile_key)
+            .unwrap()
+            .unwrap();
+        let profile: Value = serde_json::from_slice(&profile_bytes).unwrap();
+        assert_eq!(profile["displayName"], "person@example.test");
+        assert_eq!(
+            profile["principalId"],
+            o.saved.as_ref().unwrap().session.principal_id
+        );
+        assert!(!persisted.to_string().contains("password"));
+    }
+    #[test]
+    fn saved_account_wire_remains_compatible_and_logout_clears_profile_projection() {
+        let mut o = snapshot_owner();
+        let saved = o.saved.take().unwrap();
+        let original_wire = serde_json::to_vec(&saved).unwrap();
+        let restored: SavedAccount = serde_json::from_slice(&original_wire).unwrap();
+        o.saved = Some(restored);
+        assert_eq!(o.account_view()["displayName"], Value::Null);
+        let name = "person@example.test".to_owned();
+        let saved = o.saved.as_ref().unwrap();
+        let profile = SavedAccountProfile {
+            device_id: saved.device_id.clone(),
+            principal_id: saved.session.principal_id.clone(),
+            display_name: name,
+        };
+        o.store
+            .write_record(
+                &o.config.issuer,
+                &account_profile_record(&saved.device_id),
+                &serde_json::to_vec(&profile).unwrap(),
+            )
+            .unwrap();
+        o.display_name = o.load_saved_display_name(o.saved.as_ref().unwrap());
+        assert_eq!(o.display_name.as_deref(), Some("person@example.test"));
+        let cleared = o.clear_local_identity();
+        assert!(cleared.is_some());
+        assert_eq!(o.account_view()["displayName"], Value::Null);
+        assert_eq!(o.account_view()["state"], "signed-out");
+    }
+    #[test]
+    fn profile_requires_exact_device_and_principal_binding_and_degrades_when_missing_or_invalid() {
+        let o = snapshot_owner();
+        let saved = o.saved.as_ref().unwrap();
+        let profile_key = account_profile_record(&saved.device_id);
+        let bound = SavedAccountProfile {
+            device_id: saved.device_id.clone(),
+            principal_id: saved.session.principal_id.clone(),
+            display_name: "person@example.test".into(),
+        };
+        o.store
+            .write_record(
+                &o.config.issuer,
+                &profile_key,
+                &serde_json::to_vec(&bound).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            o.load_saved_display_name(saved).as_deref(),
+            Some("person@example.test")
+        );
+
+        let foreign_device = SavedAccountProfile {
+            device_id: uuid::Uuid::new_v4().to_string(),
+            ..bound
+        };
+        o.store
+            .write_record(
+                &o.config.issuer,
+                &profile_key,
+                &serde_json::to_vec(&foreign_device).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(o.load_saved_display_name(saved), None);
+
+        let foreign_principal = SavedAccountProfile {
+            device_id: saved.device_id.clone(),
+            principal_id: uuid::Uuid::new_v4().to_string(),
+            display_name: "person@example.test".into(),
+        };
+        o.store
+            .write_record(
+                &o.config.issuer,
+                &profile_key,
+                &serde_json::to_vec(&foreign_principal).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(o.load_saved_display_name(saved), None);
+
+        o.store
+            .write_record(&o.config.issuer, &profile_key, b"corrupt")
+            .unwrap();
+        assert_eq!(o.load_saved_display_name(saved), None);
+        o.store
+            .remove_record(&o.config.issuer, &profile_key)
+            .unwrap();
+        assert_eq!(o.load_saved_display_name(saved), None);
+    }
+    #[test]
+    fn profile_write_failure_does_not_discard_authenticated_account() {
+        let mut o = snapshot_owner();
+        let store = Arc::new(Store::default());
+        store.fail_profile_writes.store(true, Ordering::Release);
+        o.store = store;
+        let previous = o.saved.take().unwrap();
+        o.instance = Some(previous.instance.clone());
+        o.commit_authenticated_session(
+            previous.device_id,
+            previous.session,
+            Some("person@example.test".into()),
+        )
+        .unwrap();
+        assert!(o.saved.is_some());
+        assert_eq!(o.account_view()["state"], "signed-in");
+        assert_eq!(o.account_view()["displayName"], Value::Null);
+    }
     #[tokio::test]
     async fn expired_login_destroys_verifier_and_never_polls() {
         let mut o = owner();
@@ -1705,6 +1959,7 @@ mod tests {
             verifier: Zeroizing::new("secret".into()),
             transaction: uuid::Uuid::new_v4().to_string(),
             expires: 1,
+            display_name: Some("person@example.test".into()),
         });
         let value = o
             .request(json!({"version":1,"kind":"account.login.poll"}))

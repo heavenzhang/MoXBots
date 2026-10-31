@@ -22,7 +22,7 @@ export function selectScenario(next: QaScenario): void {
   readCount = 0; historyFailed = false;
   active = null;
   staleApprovalNextRead = false;
-  fixtureAccount = account;
+  fixtureAccount = next === 'no-bots' ? { ...account, displayName: null, principalId: '11111111-2222-4333-8444-555555555555' } : account;
 }
 
 export function armStaleApproval(): void {
