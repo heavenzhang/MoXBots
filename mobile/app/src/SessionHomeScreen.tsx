@@ -1,15 +1,22 @@
 import { useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { CircleUserRound, Info, RefreshCw, Search, SquarePen, X } from 'lucide-react-native';
-import type { Target } from './native';
+import { accountIdentityLabel } from './accountPolicy';
+import type { Account, Target } from './native';
 import { MobileSheet } from './MobileSheet';
 import { mobileTheme as color } from './mobileTheme';
-import { filterSessionRows, sessionDateGroup, sessionUpdatedLabel, type SessionListItem } from './sessionPresentation';
+import { filterSessionRows, recentSessionRows, sessionDateGroup, sessionUpdatedLabel, type RecentSessionItem, type SessionListItem } from './sessionPresentation';
 
 type Props = {
+  account: Account | null;
   targets: readonly Target[];
   target: Target | null;
   sessions: readonly SessionListItem[];
+  recentSessions?: readonly RecentSessionItem[];
+  recentBusy?: boolean;
+  recentErrorCount?: number;
+  onOpenRecent?: (item: RecentSessionItem) => void;
+  onRefreshRecent?: () => void;
   search: string;
   searchOpen: boolean;
   onSearch: (value: string) => void;
@@ -29,10 +36,20 @@ type Props = {
 /** List presentation only: opening, switching Bots and refresh still use the original owner callbacks. */
 export function SessionHomeScreen(props: Props) {
   const { target, sessions, search, searchOpen, busy } = props;
-  const [info, setInfo] = useState<{ session: SessionListItem; target: Target } | null>(null);
-  const rows = filterSessionRows(sessions, search);
-  const canOpenInfo = !!info && info.target.targetId === target?.targetId
-    && info.target.identityKey === target.identityKey && info.target.agentId === target.agentId;
+  const [scope, setScope] = useState<'recent' | 'bot'>('recent');
+  const [info, setInfo] = useState<{ session: RecentSessionItem; recent: boolean } | null>(null);
+  const isRecent = scope === 'recent';
+  const listBusy = isRecent ? !!props.recentBusy : busy;
+  const rows: RecentSessionItem[] = isRecent
+    ? recentSessionRows(props.recentSessions ?? [], search)
+    : target ? filterSessionRows(sessions, search).map((session) => ({ ...session, target })) : [];
+  const sourceCount = isRecent ? (props.recentSessions?.length ?? 0) : sessions.length;
+  const canOpenInfo = !!info && (info.recent ? !!props.onOpenRecent : info.session.target.targetId === target?.targetId
+    && info.session.target.identityKey === target.identityKey && info.session.target.agentId === target.agentId);
+  const openRow = (row: RecentSessionItem, recent: boolean) => {
+    if (recent) props.onOpenRecent?.(row);
+    else props.onOpen(row);
+  };
   let previousGroup = '';
   return <View style={styles.page}>
     <View style={styles.header}>
@@ -43,48 +60,60 @@ export function SessionHomeScreen(props: Props) {
         <Pressable accessibilityRole="button" accessibilityLabel="新建会话" accessibilityHint={!target ? '请先选择 Bot' : !target.online ? '设备离线，可先保留草稿' : undefined} accessibilityState={{ disabled: !target }} disabled={!target} onPress={props.onNew} style={[styles.iconButton, !target && styles.disabled]}><SquarePen size={22} color={color.ink}/></Pressable>
       </View>
     </View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`当前${accountIdentityLabel(props.account)}，账号与设置`} onPress={props.onAccount} style={styles.accountSummary}>
+      <Text style={styles.accountCaption}>当前账号</Text>
+      <Text numberOfLines={2} style={styles.accountIdentity}>{accountIdentityLabel(props.account)}</Text>
+    </Pressable>
+    <View accessibilityRole="tablist" style={styles.listScopes}>
+      {(['recent', 'bot'] as const).map((value) => <Pressable key={value} accessibilityRole="tab" accessibilityState={{ selected: scope === value }} onPress={() => { setScope(value); setInfo(null); }} style={[styles.listScopeButton, scope === value && styles.scopeSelected]}><Text style={[styles.scopeLabel, scope === value && styles.scopeLabelSelected]}>{value === 'recent' ? '最近会话' : '当前 Bot'}</Text></Pressable>)}
+    </View>
     <View style={styles.scope}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scopes}>
-        {props.targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: item.targetId === target?.targetId }} onPress={() => { setInfo(null); props.onSelectTarget(item); }} style={[styles.scopeButton, item.targetId === target?.targetId && styles.scopeSelected]}>
+        {props.targets.map((item) => <Pressable key={item.targetId} accessibilityRole="button" accessibilityLabel={`${item.name}，${item.online ? '在线' : '离线'}`} accessibilityState={{ selected: item.targetId === target?.targetId }} onPress={() => { setInfo(null); setScope('bot'); props.onSelectTarget(item); }} style={[styles.scopeButton, item.targetId === target?.targetId && styles.scopeSelected]}>
           <View style={[styles.dot, !item.online && styles.dotOffline]}/><Text numberOfLines={1} style={[styles.scopeLabel, item.targetId === target?.targetId && styles.scopeLabelSelected]}>{item.name}</Text>
         </Pressable>)}
         {props.targets.length === 0 && <Text style={styles.scopeEmpty}>尚未发现可用 Bot</Text>}
       </ScrollView>
-      <Pressable accessibilityRole="button" accessibilityLabel="刷新会话和设备" accessibilityState={{ disabled: busy }} disabled={busy} onPress={props.onRefresh} style={styles.refresh}>{busy ? <ActivityIndicator size="small" color={color.muted}/> : <RefreshCw size={17} color={color.muted}/>}</Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="刷新会话和设备" accessibilityState={{ disabled: listBusy }} disabled={listBusy} onPress={isRecent ? (props.onRefreshRecent ?? props.onRefresh) : props.onRefresh} style={styles.refresh}>{listBusy ? <ActivityIndicator size="small" color={color.muted}/> : <RefreshCw size={17} color={color.muted}/>}</Pressable>
     </View>
     {(searchOpen || !!search) && <View style={styles.searchRow}>
-      <Search size={18} color={color.muted}/><TextInput autoFocus accessibilityLabel="搜索当前 Bot 的会话" placeholder="搜索会话" placeholderTextColor={color.muted} value={search} onChangeText={props.onSearch} returnKeyType="search" style={styles.searchInput}/>
+      <Search size={18} color={color.muted}/><TextInput autoFocus accessibilityLabel={isRecent ? "搜索最近会话、Bot 或设备" : "搜索当前 Bot 的会话"} placeholder="搜索会话" placeholderTextColor={color.muted} value={search} onChangeText={props.onSearch} returnKeyType="search" style={styles.searchInput}/>
       <Pressable accessibilityRole="button" accessibilityLabel="清除并关闭搜索" onPress={() => { props.onSearch(''); props.onSearchOpen(false); }} style={styles.searchClear}><X size={17} color={color.muted}/></Pressable>
     </View>}
     {props.unavailableDeviceCount > 0 && <Text accessibilityLiveRegion="polite" style={styles.availability}>另有 {props.unavailableDeviceCount} 台设备目录暂不可用</Text>}
+    {isRecent && !!props.recentErrorCount && <Text accessibilityLiveRegion="polite" style={styles.availability}>{props.recentErrorCount} 个 Bot 的会话暂未加载，已加载的会话仍可查看。</Text>}
     {props.notice}
     <ScrollView style={styles.list} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
       {props.pending}
-      {!target || !target.online || sessions.length === 0 ? props.empty : rows.length === 0 ? <View style={styles.empty}>
+      {isRecent && sourceCount === 0 ? <View style={styles.empty}>
+        {listBusy && <ActivityIndicator size="small" color={color.muted}/>}
+        <Text style={styles.emptyTitle}>{listBusy ? '正在加载最近会话' : '暂无已加载的最近会话'}</Text>
+        <Text style={styles.emptyDetail}>{props.recentErrorCount ? '部分 Bot 暂不可用，请刷新重试。' : '会话加载后会按最近更新时间显示在这里。'}</Text>
+      </View> : !isRecent && (!target || !target.online || sessions.length === 0) ? props.empty : rows.length === 0 ? <View style={styles.empty}>
         <Search size={25} color={color.muted}/><Text style={styles.emptyTitle}>没有找到相关会话</Text><Text style={styles.emptyDetail}>试试其他关键词，或清除搜索查看全部会话。</Text><Pressable accessibilityRole="button" onPress={() => props.onSearch('')} style={styles.clearSearch}><Text style={styles.link}>清除搜索</Text></Pressable>
       </View> : rows.map((row) => {
         const group = sessionDateGroup(row.updatedAt);
         const showGroup = group !== previousGroup;
         previousGroup = group;
-        return <View key={row.sessionId}>
+        return <View key={JSON.stringify([row.target.identityKey, row.target.targetId, row.target.agentId, row.sessionId])}>
           {showGroup && <Text accessibilityRole="header" style={styles.group}>{group}</Text>}
           <View style={styles.row}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`打开会话：${row.title || '新会话'}${row.preview ? `，${row.preview}` : ''}`} onPress={() => props.onOpen(row)} style={({ pressed }) => [styles.rowOpen, pressed && styles.rowPressed]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`打开会话：${row.title || '新会话'}${row.preview ? `，${row.preview}` : ''}`} disabled={isRecent && !props.onOpenRecent} onPress={() => openRow(row, isRecent)} style={({ pressed }) => [styles.rowOpen, pressed && styles.rowPressed]}>
               <View style={styles.rowTitle}><Text numberOfLines={1} style={styles.title}>{row.title || '新会话'}</Text><Text style={styles.time}>{sessionUpdatedLabel(row.updatedAt)}</Text></View>
               {!!row.preview && <Text numberOfLines={2} style={styles.preview}>{row.preview}</Text>}
-              <Text numberOfLines={1} style={styles.context}>{target.name} · {target.deviceName}</Text>
+              <Text numberOfLines={1} style={styles.context}>{row.target.name} · {row.target.deviceName}{!row.target.online ? ' · 暂不可用' : ''}</Text>
             </Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={`会话信息：${row.title || '新会话'}`} onPress={() => setInfo({ session: row, target })} style={styles.rowMenu}><Info size={17} color={color.muted}/></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={`会话信息：${row.title || '新会话'}`} onPress={() => setInfo({ session: row, recent: isRecent })} style={styles.rowMenu}><Info size={17} color={color.muted}/></Pressable>
           </View>
         </View>;
       })}
     </ScrollView>
     <MobileSheet title="会话信息" visible={!!info} onClose={() => setInfo(null)}>
       <Text style={styles.infoTitle}>{info?.session.title || '新会话'}</Text>
-      <InfoRow label="Bot" value={info?.target.name}/><InfoRow label="执行设备" value={info?.target.deviceName}/><InfoRow label="运行时" value={info?.session.runtime}/>
+      <InfoRow label="Bot" value={info?.session.target.name}/><InfoRow label="执行设备" value={info?.session.target.deviceName}/><InfoRow label="运行时" value={info?.session.runtime}/>
       <InfoRow label="会话标识" value={info?.session.sessionId}/>
       <Text style={styles.infoHint}>此会话始终在原 Bot 和设备上继续。切换列表中的 Bot 不会改变它的执行位置。</Text>
-      <Pressable accessibilityRole="button" accessibilityLabel="继续此会话" disabled={!canOpenInfo} onPress={() => { if (info && canOpenInfo) { props.onOpen(info.session); setInfo(null); } }} style={[styles.continueButton, !canOpenInfo && styles.disabled]}><Text style={styles.continueText}>继续此会话</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="继续此会话" disabled={!canOpenInfo} onPress={() => { if (info && canOpenInfo) { openRow(info.session, info.recent); setInfo(null); } }} style={[styles.continueButton, !canOpenInfo && styles.disabled]}><Text style={styles.continueText}>继续此会话</Text></Pressable>
     </MobileSheet>
   </View>;
 }
@@ -99,6 +128,11 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   heading: { flex: 1, fontSize: 20, fontWeight: '600', letterSpacing: -0.4, color: color.ink },
   headerActions: { flexDirection: 'row' },
+  accountSummary: { marginHorizontal: 20, marginBottom: 8, paddingVertical: 8, minHeight: 44 },
+  accountCaption: { fontSize: 11, color: color.muted },
+  accountIdentity: { fontSize: 13, lineHeight: 18, color: color.ink, marginTop: 3 },
+  listScopes: { flexDirection: 'row', gap: 6, marginHorizontal: 16, marginBottom: 6 },
+  listScopeButton: { minHeight: 40, paddingHorizontal: 15, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   scope: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingLeft: 16, paddingRight: 7, paddingBottom: 6 },
   scopes: { gap: 5, alignItems: 'center', paddingRight: 8 },
   scopeButton: { minHeight: 36, maxWidth: 205, paddingHorizontal: 12, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 7 },

@@ -86,11 +86,211 @@ fn persist<T: Serialize>(
 fn uuid(s: &str) -> bool {
     uuid::Uuid::parse_str(s).is_ok_and(|id| id.to_string() == s)
 }
+// A separate record in the existing operation scope preserves the frozen journal
+// wire for rollback. Text equality alone cannot identify an edit after restart.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DraftSubmission {
+    version: u8,
+    operation_id: String,
+    request_digest: String,
+    identity_key: String,
+    revision: u64,
+    write_id: String,
+}
 impl MobileConnection {
+    fn journal_draft_target(
+        &self,
+        scope: &str,
+        device: &DeviceScope,
+        request: &JournalRequest,
+    ) -> Result<Option<Target>, NetworkError> {
+        let Some(saved) = &self.saved else {
+            return Ok(None);
+        };
+        if device.service_id != saved.instance.service_id
+            || device.environment != saved.instance.environment
+            || device.network_id != saved.instance.network_id
+            || device.principal_id != saved.session.principal_id
+            || scope
+                != journal_scope(&crate::KeyScope {
+                    issuer: saved.instance.issuer.clone(),
+                    environment: saved.instance.environment.clone(),
+                    service_id: saved.instance.service_id.clone(),
+                    principal_id: saved.session.principal_id.clone(),
+                    device_id: saved.device_id.clone(),
+                    key_generation: 1,
+                })?
+        {
+            return Err(err("MOBILE_JOURNAL_INVALID"));
+        }
+        if request.submitted_text().is_none() {
+            return Ok(None);
+        }
+        Ok(Some(Target {
+            device: device.device_id.clone(),
+            agent: request.agent_id().into(),
+        }))
+    }
+
+    /// Capture once, before dispatch, while the serialized draft owner is held.
+    pub(super) fn capture_submitted_draft(
+        &self,
+        scope: &str,
+        device: &DeviceScope,
+        request: &JournalRequest,
+    ) -> Result<(), NetworkError> {
+        let Some(target) = self.journal_draft_target(scope, device, request)? else {
+            return Ok(());
+        };
+        let _gate = GATE
+            .lock()
+            .map_err(|_| err("MOBILE_SECURE_STORE_UNAVAILABLE"))?;
+        let op = request
+            .operation_id()
+            .ok_or_else(|| err("MOBILE_JOURNAL_INVALID"))?
+            .as_uuid()
+            .to_string();
+        let key = format!("operation-draft:{op}");
+        if self
+            .store
+            .read_record(scope, &key)
+            .map_err(store_error)?
+            .is_some()
+        {
+            return Err(err("MOBILE_RECEIPT_REQUIRED"));
+        }
+        let current = self.draft_locked(
+            &json!({"sessionId":request.session_id()}),
+            false,
+            Some(&target),
+        )?;
+        let text = current["text"]
+            .as_str()
+            .ok_or_else(|| err("MOBILE_DRAFT_CORRUPT"))?;
+        // An attachment-only or unmatched native caller has no draft to erase.
+        if text.is_empty() || Some(text.trim()) != request.submitted_text() {
+            return Ok(());
+        }
+        let binding = DraftSubmission {
+            version: 1,
+            operation_id: op,
+            request_digest: hash(&(&self.config.issuer, device, request))?,
+            identity_key: current["identityKey"]
+                .as_str()
+                .ok_or_else(|| err("MOBILE_DRAFT_CORRUPT"))?
+                .into(),
+            revision: current["revision"]
+                .as_u64()
+                .filter(|r| *r > 0 && *r <= MAX_REV)
+                .ok_or_else(|| err("MOBILE_DRAFT_CORRUPT"))?,
+            write_id: current["lastWriteId"]
+                .as_str()
+                .filter(|s| uuid(s))
+                .ok_or_else(|| err("MOBILE_DRAFT_CORRUPT"))?
+                .into(),
+        };
+        persist(self.store.as_ref(), scope, &key, &binding)
+    }
+
+    fn submitted_draft_binding(
+        &self,
+        scope: &str,
+        device: &DeviceScope,
+        request: &JournalRequest,
+    ) -> Result<Option<DraftSubmission>, NetworkError> {
+        let Some(target) = self.journal_draft_target(scope, device, request)? else {
+            return Ok(None);
+        };
+        let op = request
+            .operation_id()
+            .ok_or_else(|| err("MOBILE_JOURNAL_INVALID"))?
+            .as_uuid()
+            .to_string();
+        let Some(bytes) = self
+            .store
+            .read_record(scope, &format!("operation-draft:{op}"))
+            .map_err(store_error)?
+        else {
+            // Legacy operations have no proof of the edit they originally sent.
+            return Ok(None);
+        };
+        if bytes.len() > 4096 {
+            return Err(err("MOBILE_JOURNAL_INVALID"));
+        }
+        let binding: DraftSubmission =
+            serde_json::from_slice(&bytes).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?;
+        if binding.version != 1
+            || binding.operation_id != op
+            || binding.request_digest != hash(&(&self.config.issuer, device, request))?
+            || binding.identity_key != identity(self.saved.as_ref().unwrap(), &target)?
+            || binding.revision == 0
+            || binding.revision > MAX_REV
+            || !uuid(&binding.write_id)
+        {
+            return Err(err("MOBILE_JOURNAL_INVALID"));
+        }
+        Ok(Some(binding))
+    }
+
+    pub(super) fn submitted_draft_projection(
+        &self,
+        scope: &str,
+        device: &DeviceScope,
+        request: &JournalRequest,
+    ) -> Result<Option<Value>, NetworkError> {
+        Ok(self
+            .submitted_draft_binding(scope, device, request)?
+            .map(|b| json!({"revision":b.revision,"lastWriteId":b.write_id})))
+    }
+
+    /// Complete the exact captured draft CAS before tombstoning the journal.
+    pub(super) fn clear_accepted_draft(
+        &self,
+        scope: &str,
+        device: &DeviceScope,
+        request: &JournalRequest,
+    ) -> Result<(), NetworkError> {
+        let Some(binding) = self.submitted_draft_binding(scope, device, request)? else {
+            return Ok(());
+        };
+        let _gate = GATE
+            .lock()
+            .map_err(|_| err("MOBILE_SECURE_STORE_UNAVAILABLE"))?;
+        let target = Target {
+            device: device.device_id.clone(),
+            agent: request.agent_id().into(),
+        };
+        let intent = json!({"sessionId":request.session_id()});
+        let current = self.draft_locked(&intent, false, Some(&target))?;
+        let current_text = current["text"]
+            .as_str()
+            .ok_or_else(|| err("MOBILE_DRAFT_CORRUPT"))?;
+        if current_text.is_empty()
+            || Some(current_text.trim()) != request.submitted_text()
+            || current["revision"] != binding.revision
+            || current["lastWriteId"] != binding.write_id
+        {
+            return Ok(());
+        }
+        let write = json!({"sessionId":request.session_id(),"expectedRevision":current["revision"],"writeId":uuid::Uuid::new_v4().to_string(),"text":""});
+        self.draft_locked(&write, true, Some(&target))?;
+        Ok(())
+    }
+
     pub(super) fn draft(&self, intent: &Value, write: bool) -> Result<Value, NetworkError> {
         let _gate = GATE
             .lock()
             .map_err(|_| err("MOBILE_SECURE_STORE_UNAVAILABLE"))?;
+        self.draft_locked(intent, write, None)
+    }
+
+    fn draft_locked(
+        &self,
+        intent: &Value,
+        write: bool,
+        journal_target: Option<&Target>,
+    ) -> Result<Value, NetworkError> {
         if serde_json::to_vec(intent)
             .map_err(|_| err("MOBILE_DRAFT_INVALID"))?
             .len()
@@ -110,14 +310,17 @@ impl MobileConnection {
         if !uuid(&saved.device_id) {
             return Err(err("OWNED_SESSION_INVALID"));
         }
-        let target = self
-            .targets
-            .get(
-                intent["targetId"]
-                    .as_str()
-                    .ok_or_else(|| err("MOBILE_DRAFT_INVALID"))?,
-            )
-            .ok_or_else(|| err("MOBILE_TARGET_NOT_APPROVED"))?;
+        let target = match journal_target {
+            Some(target) => target,
+            None => self
+                .targets
+                .get(
+                    intent["targetId"]
+                        .as_str()
+                        .ok_or_else(|| err("MOBILE_DRAFT_INVALID"))?,
+                )
+                .ok_or_else(|| err("MOBILE_TARGET_NOT_APPROVED"))?,
+        };
         let session = match intent.get("sessionId") {
             Some(Value::Null) => None,
             Some(Value::String(s)) => Some(s.clone()),
@@ -259,10 +462,13 @@ impl MobileConnection {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::ffi::tests::{callbacks, Memory};
-    fn owner(store: Arc<dyn SecureStore>, saved: Option<SavedAccount>) -> MobileConnection {
+    pub(in crate::runtime) fn owner(
+        store: Arc<dyn SecureStore>,
+        saved: Option<SavedAccount>,
+    ) -> MobileConnection {
         let mut o = MobileConnection::new(
             NativeConfig {
                 issuer: "https://draft.example.test".into(),
@@ -319,6 +525,189 @@ mod tests {
     }
     fn write(session: Value, rev: u64, id: &str, text: &str) -> Value {
         json!({"version":1,"kind":"draft.write","targetId":"approved","sessionId":session,"expectedRevision":rev,"writeId":id,"text":text})
+    }
+    fn submission(o: &MobileConnection) -> (String, DeviceScope, JournalRequest) {
+        let s = o.saved.as_ref().unwrap();
+        let target = serde_json::from_value(json!({"serviceId":s.instance.service_id,"environment":s.instance.environment,"networkId":s.instance.network_id,"principalId":s.session.principal_id,"deviceId":o.targets["approved"].device,"keyGeneration":1})).unwrap();
+        let scope = journal_scope(&crate::KeyScope {
+            issuer: s.instance.issuer.clone(),
+            environment: s.instance.environment.clone(),
+            service_id: s.instance.service_id.clone(),
+            principal_id: s.session.principal_id.clone(),
+            device_id: s.device_id.clone(),
+            key_generation: 1,
+        })
+        .unwrap();
+        let request = serde_json::from_value(json!({"kind":"mobile.send","version":1,"agentId":"agent","sessionId":"original","operationId":uuid::Uuid::new_v4().to_string(),"text":"submitted","assetIds":[]})).unwrap();
+        (scope, target, request)
+    }
+    #[test]
+    fn restored_submission_clears_only_the_original_durable_edit() {
+        for edited in [false, true] {
+            let memory = Box::<Memory>::default();
+            let store: Arc<dyn SecureStore> = Arc::new(callbacks(&memory));
+            let mut o = owner(store.clone(), None);
+            let id = uuid::Uuid::new_v4().to_string();
+            o.draft(&write(json!("original"), 0, &id, "submitted"), true)
+                .unwrap();
+            let (scope, target, request) = submission(&o);
+            o.capture_submitted_draft(&scope, &target, &request)
+                .unwrap();
+            if edited {
+                o.draft(
+                    &write(
+                        json!("original"),
+                        1,
+                        &uuid::Uuid::new_v4().to_string(),
+                        "new edit",
+                    ),
+                    true,
+                )
+                .unwrap();
+                o.draft(
+                    &write(
+                        json!("original"),
+                        2,
+                        &uuid::Uuid::new_v4().to_string(),
+                        "submitted",
+                    ),
+                    true,
+                )
+                .unwrap();
+            }
+            let saved = o.saved.take();
+            drop(o);
+            let restored = owner(store, saved);
+            assert_eq!(
+                restored
+                    .submitted_draft_projection(&scope, &target, &request)
+                    .unwrap()
+                    .unwrap(),
+                json!({"revision":1,"lastWriteId":id})
+            );
+            restored
+                .clear_accepted_draft(&scope, &target, &request)
+                .unwrap();
+            let result = restored.draft(&read(json!("original")), false).unwrap();
+            assert_eq!(result["text"], if edited { "submitted" } else { "" });
+            assert_eq!(result["revision"], if edited { 3 } else { 2 });
+            restored
+                .clear_accepted_draft(&scope, &target, &request)
+                .unwrap();
+            assert_eq!(
+                restored.draft(&read(json!("original")), false).unwrap(),
+                result
+            );
+        }
+    }
+    #[test]
+    fn legacy_or_unconfirmed_submission_never_erases_a_draft() {
+        let memory = Box::<Memory>::default();
+        let o = owner(Arc::new(callbacks(&memory)), None);
+        let original = o
+            .draft(
+                &write(
+                    json!("original"),
+                    0,
+                    &uuid::Uuid::new_v4().to_string(),
+                    "submitted",
+                ),
+                true,
+            )
+            .unwrap();
+        let (scope, target, request) = submission(&o);
+        assert!(o
+            .submitted_draft_projection(&scope, &target, &request)
+            .unwrap()
+            .is_none());
+        o.clear_accepted_draft(&scope, &target, &request).unwrap();
+        memory.discard.store(true, Ordering::SeqCst);
+        assert_eq!(
+            o.capture_submitted_draft(&scope, &target, &request)
+                .unwrap_err()
+                .code,
+            "MOBILE_DRAFT_PERSISTENCE_UNCONFIRMED"
+        );
+        memory.discard.store(false, Ordering::SeqCst);
+        assert!(o
+            .submitted_draft_projection(&scope, &target, &request)
+            .unwrap()
+            .is_none());
+        assert_eq!(o.draft(&read(json!("original")), false).unwrap(), original);
+        o.capture_submitted_draft(&scope, &target, &request)
+            .unwrap();
+        assert_eq!(
+            o.capture_submitted_draft(&scope, &target, &request)
+                .unwrap_err()
+                .code,
+            "MOBILE_RECEIPT_REQUIRED"
+        );
+    }
+    #[test]
+    fn corrupt_or_foreign_submission_fails_closed_without_draft_loss() {
+        let memory = Box::<Memory>::default();
+        let o = owner(Arc::new(callbacks(&memory)), None);
+        let original = o
+            .draft(
+                &write(
+                    json!("original"),
+                    0,
+                    &uuid::Uuid::new_v4().to_string(),
+                    "submitted",
+                ),
+                true,
+            )
+            .unwrap();
+        let (scope, target, request) = submission(&o);
+        o.capture_submitted_draft(&scope, &target, &request)
+            .unwrap();
+        let key = format!(
+            "operation-draft:{}",
+            request.operation_id().unwrap().as_uuid()
+        );
+        let bytes = o.store.read_record(&scope, &key).unwrap().unwrap();
+        for (field, value) in [
+            ("version", json!(2)),
+            ("operationId", json!(uuid::Uuid::new_v4().to_string())),
+            ("requestDigest", json!("foreign")),
+            ("identityKey", json!("foreign")),
+            ("revision", json!(0)),
+            ("writeId", json!("invalid")),
+            ("unexpected", json!(true)),
+        ] {
+            let mut corrupt: Value = serde_json::from_slice(&bytes).unwrap();
+            corrupt[field] = value;
+            o.store
+                .write_record(&scope, &key, &serde_json::to_vec(&corrupt).unwrap())
+                .unwrap();
+            assert_eq!(
+                o.clear_accepted_draft(&scope, &target, &request)
+                    .unwrap_err()
+                    .code,
+                "MOBILE_JOURNAL_INVALID",
+                "{field}"
+            );
+            assert_eq!(o.draft(&read(json!("original")), false).unwrap(), original);
+        }
+        o.store.write_record(&scope, &key, &bytes).unwrap();
+        let mut foreign = target.clone();
+        foreign.device_id.push_str("-foreign");
+        assert_eq!(
+            o.clear_accepted_draft(&scope, &foreign, &request)
+                .unwrap_err()
+                .code,
+            "MOBILE_JOURNAL_INVALID"
+        );
+        let mut changed = serde_json::to_value(&request).unwrap();
+        changed["text"] = json!("changed");
+        let changed: JournalRequest = serde_json::from_value(changed).unwrap();
+        assert_eq!(
+            o.clear_accepted_draft(&scope, &target, &changed)
+                .unwrap_err()
+                .code,
+            "MOBILE_JOURNAL_INVALID"
+        );
+        assert_eq!(o.draft(&read(json!("original")), false).unwrap(), original);
     }
     #[test]
     fn stable_identity_binds_full_tuple_and_ignores_names_and_local_device() {

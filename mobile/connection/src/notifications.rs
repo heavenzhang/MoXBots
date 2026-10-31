@@ -1113,6 +1113,7 @@ mod tests {
             transaction: transaction.clone(),
             verifier: Zeroizing::new(verifier.clone()),
             expires: jsonwebtoken::get_current_timestamp() + 300,
+            display_name: None,
         });
         let first = o
             .request(json!({"version":1,"kind":"account.logout"}))

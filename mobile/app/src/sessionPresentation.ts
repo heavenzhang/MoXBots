@@ -1,3 +1,5 @@
+import type { Target } from './native';
+
 export type SessionListItem = {
   sessionId: string;
   title: string;
@@ -5,6 +7,23 @@ export type SessionListItem = {
   updatedAt: string;
   runtime: string;
 };
+
+export type RecentSessionItem = SessionListItem & { target: Target };
+
+/** Preserve origin and stable ties; unknown dates belong after timestamped sessions. */
+export function recentSessionRows(rows: readonly RecentSessionItem[], search: string): RecentSessionItem[] {
+  const query = search.trim().toLocaleLowerCase();
+  const timestamp = (value: string) => {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : Number.NEGATIVE_INFINITY;
+  };
+  return rows.filter((row) => !query || `${row.title}\n${row.preview}\n${row.target.name}\n${row.target.deviceName}`.toLocaleLowerCase().includes(query))
+    .sort((a, b) => {
+      const aTime = timestamp(a.updatedAt);
+      const bTime = timestamp(b.updatedAt);
+      return aTime === bTime ? 0 : aTime > bTime ? -1 : 1;
+    });
+}
 
 export function conversationStatus(state: string | undefined, online: boolean | undefined): string {
   if (online === false) return '离线';
