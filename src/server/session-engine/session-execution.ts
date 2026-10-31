@@ -10,6 +10,7 @@ import {
   executionAssessmentSchema,
   settleSessionExecution,
   type ExecutionIntent,
+  type ExecutionIntentFailure,
   type ExecutionAssessment,
 } from "../../shared/sessionExecution";
 import { parseSessionTaskCommand } from "../../shared/sessionTaskReviewCommand";
@@ -137,6 +138,7 @@ export async function classifySessionExecutionIntent(
   engine: SessionEngine,
   request: DesktopMessageRequest,
   signal: AbortSignal,
+  onFailure?: (reason: ExecutionIntentFailure) => void,
 ): Promise<ExecutionIntent | undefined> {
   const data = await getSessionData(request.sessionId);
   const context = (data?.messages ?? []).slice(-4).map((m) => ({
@@ -157,24 +159,31 @@ export async function classifySessionExecutionIntent(
     currentUserRequest: request.text.slice(0, 20000),
   });
   let raw: string | null = null;
+  let utilityFailure: ExecutionIntentFailure | undefined;
   if (engine.runTextUtility)
     raw = await engine.runTextUtility({
       prompt,
       systemPrompt: INTENT_SYSTEM,
       signal,
       timeoutMs: 8000,
+      onFailure: reason => { utilityFailure = reason; },
     });
-  if (!raw || signal.aborted) return undefined;
+  if (!raw?.trim() || signal.aborted) {
+    onFailure?.(signal.aborted ? 'cancelled' : utilityFailure ?? (engine.runTextUtility ? 'empty_response' : 'unavailable'));
+    return undefined;
+  }
   try {
     const parsed = executionIntentSchema.safeParse(
       JSON.parse(raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, "")),
     );
     // Legacy persisted intents may omit the relation. A fresh classifier must
     // state it explicitly; an omitted relation must not silently reset a task.
-    return parsed.success && Object.hasOwn(parsed.data, "continuationOf") && (parsed.data.kind !== "execute" || !!parsed.data.steps?.length)
-      ? parsed.data
-      : undefined;
+    if (!parsed.success) { onFailure?.('invalid_schema'); return undefined; }
+    if (!Object.hasOwn(parsed.data, "continuationOf")) { onFailure?.('missing_continuation'); return undefined; }
+    if (parsed.data.kind === "execute" && !parsed.data.steps?.length) { onFailure?.('missing_steps'); return undefined; }
+    return parsed.data;
   } catch {
+    onFailure?.('invalid_json');
     return undefined;
   }
 }
@@ -377,8 +386,9 @@ export async function prepareSessionExecution(
       },
     };
   }
-  const intent = await classify(engine, request, controller.signal).catch(
-    () => undefined,
+  let intentFailure: ExecutionIntentFailure | undefined;
+  const intent = await classify(engine, request, controller.signal, reason => { intentFailure = reason; }).catch(
+    () => { intentFailure = 'transport'; return undefined; },
   );
   if (!current()) {
     removeAdmission();
@@ -479,7 +489,7 @@ export async function prepareSessionExecution(
           ledger.executionAdmission = {
             requestId: request.clientRequestId!,
             queueId,
-            ...(intent ? { intent } : { error: "INTENT_UNCONFIRMED" }),
+            ...(intent ? { intent } : { error: "INTENT_UNCONFIRMED", failureReason: intentFailure ?? "empty_response" }),
             ...(taskPlanId ? { taskPlanId } : {}),
           };
           if (continues) {

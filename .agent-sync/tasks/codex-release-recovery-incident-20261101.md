@@ -8,10 +8,12 @@ Desktop/macOS-arm64/updater/shared CI/main owner: 01a12bc2-907a-7702-b6dd-788225
 
 - [x] Preserve both source histories and resolve shared plan conflict retaining both records.
 - [x] Run combined 54 DOM, 68 recovery unit, recovery integration, TypeScript and scoped lint.
-- [ ] Push exact candidate; run automatic CI, then verify fresh main and merge if required checks actually pass.
-- [ ] Review later source for intent, proxy and Responses idle classification; fix or explicitly preserve unresolved cases.
+- [x] Push initial candidate 816676c60062bdf09b29546339a164a6f58d8fb2 as PR 217; automatic CI 41219907813 remains in progress.
+- [x] Integrate source increment 7b7d0db38d3e9fbdc0b22ea845fc9b16c600e7d7; combined focused tests: 16 unit, 94 integration, 17 DOM. Intent failures still block writes and diagnostics do not establish real-session recovery.
+- [ ] After all initial CI jobs terminate, push the updated candidate once and require its own exact-head CI before fresh main and merge.
+- [ ] Investigate remaining intent and proxy failures through actual evidence; preserve unresolved cases.
 - [ ] With user available, verify original sessions and affected native UI, then issue one new immutable version and publish.
 
 ## Boundaries
 
-0.5.28/528.1 installed locally but held from stable channel due actual original-session failures. 0.5.27 remains stable. Never clear uncertain actions or replay business commands. Source owner continues separate diagnostics. No native UI access while user is using the app. Vendored task-init rejected already-integrated clean HEAD as start_head_mismatch; installed adopt refused differing vendored skill. Both original outputs retained in work/release-recovery-incident-20261101/owner; this hand-maintained record does not claim either gate passed.
+0.5.28/528.1 installed locally but held from stable channel due actual original-session failures. 0.5.27 remains stable. Never clear uncertain actions or replay business commands. Source owner continues separate diagnostics. User has authorized the original owner to resume native installation and acceptance; first check fresh activity and protect ongoing work. Vendored task-init rejected already-integrated clean HEAD as start_head_mismatch; installed adopt refused differing vendored skill. Both original outputs retained in work/release-recovery-incident-20261101/owner; this hand-maintained record does not claim either gate passed.

@@ -39,6 +39,7 @@ export interface SessionTaskLedger {
     /** Presentation identity only; never a proposal confirmation or execution grant. */
     taskPlanId?: string;
     error?: string
+    failureReason?: import('./sessionExecution').ExecutionIntentFailure;
   };
   executionEvidence?: {
     id: string;

@@ -1914,6 +1914,42 @@ describe("unconfirmed execution supervision", () => {
   });
 });
 
+describe('bounded intent failure evidence', () => {
+  it.each([
+    ['empty_response', ''], ['invalid_json', 'not-json'], ['invalid_schema', '{}'],
+    ['missing_continuation', JSON.stringify({ ...executeIntent, steps: ['Inspect'] })],
+    ['missing_steps', JSON.stringify({ ...executeIntent, continuationOf: null })],
+  ])('reports %s without granting execution', async (reason, raw) => {
+    engine.runTextUtility = vi.fn(async () => raw);
+    const failure = vi.fn();
+    const result = await executionOwner.classifySessionExecutionIntent(engine, {
+      sessionId: id, clientRequestId: 'diagnostic', text: input, workspacePath: '/synthetic-workspace',
+      scenario: { type: 'desktop', surface: 'chat' },
+    }, new AbortController().signal, failure);
+    expect(result).toBeUndefined();
+    expect(failure).toHaveBeenCalledExactlyOnceWith(reason);
+    expect(currentExecution()).toBeUndefined();
+  });
+
+  it('persists an exact timeout reason but keeps the unconfirmed write guard', async () => {
+    await proveHumanInput('timeout-diagnostic', input);
+    engine.runTextUtility = vi.fn(async task => { task.onFailure?.('timeout'); return null; });
+    const prepared = await executionOwner.prepareSessionExecution(engine, {
+      sessionId: id, clientRequestId: 'timeout-diagnostic', text: input, workspacePath: '/synthetic-workspace',
+      scenario: { type: 'desktop', surface: 'chat' },
+    });
+    const admission = await prepared.request.beforeDispatch!();
+    expect(admission.accepted).toBe(true);
+    expect(admission.validateAtCommit?.().accepted).toBe(true);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission).toMatchObject({
+      error: 'INTENT_UNCONFIRMED', failureReason: 'timeout', queueId: prepared.request.queueId,
+    });
+    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Bash', {})).toContain('INTENT_UNCONFIRMED');
+    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Read', {})).toBeUndefined();
+    expect(currentExecution()).toBeUndefined();
+  });
+});
+
 describe("intent classifier execution continuity contract", () => {
   it("sends the current execution identity and requires an explicit continuationOf field", async () => {
     const prepared = await prepare(input, "human-classifier-integration");

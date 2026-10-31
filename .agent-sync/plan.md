@@ -1111,3 +1111,5 @@ desktop/macOS-arm64/updater/sharedCI/main 仍唯一 owner 01a12bc2-907a-7702-b6d
 任务 `.agent-sync/tasks/codex-task-panel-compact-20261031-ce565643.md`；验收 `dev-docs/task-panel-compact-20261031/acceptance.md`。运行中主任务集中到底部默认折叠入口，任务行压缩、会话/Composer分隔、已验收历史默认收起；无后端/数据权限变化。36 DOM、type/lint、内置浏览器真实组件合成状态通过，正式安装/真实会话未验。
 
 desktop/macOS-arm64/updater、shared CI/main继续唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`，依据现有部署归属；本任务基线e11ee39b、分支codex/task-panel-compact-20261031，只交下一未冻结批次，不加入0.5.28/528.1冻结制品。owner统一版本/候选/CI/发布/回滚；main、正式制品与真实路径各自待回执。无跨单元或迁移依赖。
+
+MB-RECOVERY-INCIDENT-20261101 第二批：用户明确解除原生暂停并授权原desktop owner安装验证。增量补Responses合法reasoning summary part/text事件及进展，避免误判protocol与idle；意图识别失败沿原账本回传固定原因枚举，不授权工具或改变预算。129项定向测试，真实网络公共GET6/6仅说明当前连通；原owner正在联合CI，收到精确增量后重新固定候选。原四会话完整验收尚未通过，正式晋级继续暂停。

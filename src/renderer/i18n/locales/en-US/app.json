@@ -2057,6 +2057,17 @@
       "proven": "Verified",
       "coverage": "Proven coverage: {{covered}}/{{total}}",
       "unknownHint": "Syncing this session's execution snapshot. Acceptance results are hidden for now.",
+      "admissionFailure": {
+        "timeout": "Intent classification timed out; task progress is preserved.",
+        "cancelled": "Intent classification was cancelled.",
+        "unavailable": "No intent classification model is available.",
+        "transport": "The classification service request failed.",
+        "empty_response": "The classifier returned no text.",
+        "invalid_json": "The classifier returned invalid JSON.",
+        "invalid_schema": "The classifier returned an invalid task structure.",
+        "missing_continuation": "The classifier did not specify task continuity.",
+        "missing_steps": "The classifier did not provide execution steps."
+      },
       "admissionHint": "This request has no confirmed execution intent, so it will not continue automatically.",
       "reasons": {
         "stopped": "This execution turn was stopped",

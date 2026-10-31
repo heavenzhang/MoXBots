@@ -508,6 +508,8 @@ export class RuntimeConversationBranchError extends Error {
  */
 /** Tool-free auxiliary text generation; never a Product Session turn. */
 export interface RuntimeTextUtilityTask {
+  /** No raw provider response or prompt; observation cannot authorize execution. */
+  onFailure?: (reason: import('../../shared/sessionExecution').ExecutionIntentFailure) => void;
   prompt: string;
   systemPrompt: string;
   signal?: AbortSignal;

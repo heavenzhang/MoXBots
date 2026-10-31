@@ -189,6 +189,7 @@ export default function SessionExecutionDetails(
       {admission?.error && (
         <p className="text-[var(--ink-secondary)]">
           {t(`${root}.admissionHint`)}
+          {admission.failureReason && ` ${t(`${root}.admissionFailure.${admission.failureReason}`)}`}
         </p>
       )}
     </div>
