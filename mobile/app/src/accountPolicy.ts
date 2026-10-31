@@ -81,3 +81,12 @@ export function returnFromAccountRoute(canGoBack: () => boolean, goBack: () => v
 export function dismissToExistingRoot(dismissToRoot: () => void): void {
   dismissToRoot();
 }
+
+/** A missing profile must never turn a known signed-in identity into an anonymous label. */
+export function accountIdentityLabel(account: Account | null): string {
+  if (!account) return '账号状态读取中';
+  if (account.state === 'signed-out') return '未登录';
+  if (account.state === 'authenticating') return '正在登录';
+  if (account.state === 'expired') return '登录已过期';
+  return account.displayName?.trim() || (account.principalId ? `账号 ${account.principalId}` : '账号信息未提供');
+}

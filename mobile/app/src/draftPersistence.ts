@@ -1,7 +1,8 @@
 import type { DraftReply, Target } from './native';
 
 export type DraftStatus = 'restoring' | 'saving' | 'saved' | 'unsaved' | 'conflict' | 'error';
-export type DraftUpdate = { key: string; ownerEpoch: number; text: string; status: DraftStatus; message?: string; code?: string };
+export type DraftUpdate = { key: string; ownerEpoch: number; text: string; editRevision: number; revision: number; lastWriteId: string | null; status: DraftStatus; message?: string; code?: string };
+export type SubmittedDraft = { key: string; text: string; editRevision: number; accountGeneration: number };
 type DraftScope = Pick<Target, 'targetId' | 'identityKey' | 'agentId'>;
 type DraftIO = {
   read(targetId: string, sessionId: string | null): Promise<DraftReply>;
@@ -13,11 +14,13 @@ type DraftRecord = {
   key: string;
   text: string;
   revision: number;
+  lastWriteId: string | null;
   revisionGeneration: number;
   editRevision: number;
   writeGeneration: number;
   dirty: boolean;
   writing: boolean;
+  flight: Promise<void> | null;
   conflicted: boolean;
   conflictRefreshPending: boolean;
   pendingAttempt: PendingAttempt | null;
@@ -87,6 +90,55 @@ export class DraftPersistence {
     return this.flush(record);
   }
 
+  capture(ownerEpoch: number): SubmittedDraft | null {
+    const owner = this.owner;
+    const record = owner ? this.records.get(owner.key) : undefined;
+    if (!owner || owner.epoch !== ownerEpoch || !record) return null;
+    return { key: record.key, text: record.text, editRevision: record.editRevision, accountGeneration: this.accountGeneration };
+  }
+
+  async persistSubmitted(submitted: SubmittedDraft): Promise<boolean> {
+    const record = this.records.get(submitted.key);
+    if (!record || submitted.accountGeneration !== this.accountGeneration) return false;
+    await this.flush(record);
+    return submitted.accountGeneration === this.accountGeneration && this.records.get(submitted.key) === record
+      && record.editRevision === submitted.editRevision && record.text === submitted.text && !record.dirty && !record.writing;
+  }
+
+  /** Restore the exact pending edit without taking focus from another conversation. */
+  async capturePending(scope: DraftScope, sessionId: string | null, submittedText: string, binding?: { revision: number; lastWriteId: string }): Promise<SubmittedDraft | null> {
+    if (!binding) return null; // Legacy journal text cannot prove which edit was submitted.
+    const key = stableDraftKey(scope.identityKey, sessionId);
+    const accountGeneration = this.accountGeneration;
+    let record = this.records.get(key);
+    if (!record) {
+      const reply = await this.io.read(scope.targetId, sessionId);
+      if (accountGeneration !== this.accountGeneration) return null;
+      record = this.records.get(key);
+      if (!record) {
+        record = this.getOrCreate(scope, sessionId, key);
+        if (!this.matches(record, reply)) { this.records.delete(key); return null; }
+        record.text = reply.text; record.revision = reply.revision; record.lastWriteId = reply.lastWriteId; record.revisionGeneration += 1;
+      }
+    }
+    if (record.dirty || record.writing || record.text.trim() !== submittedText
+      || record.revision !== binding.revision || record.lastWriteId !== binding.lastWriteId) return null;
+    return { key, text: record.text, editRevision: record.editRevision, accountGeneration };
+  }
+
+  /** A late receipt may clear only the exact submitted edit, including after navigation. */
+  clearSubmitted(submitted: SubmittedDraft): boolean {
+    const record = this.records.get(submitted.key);
+    if (!record || submitted.accountGeneration !== this.accountGeneration
+      || record.editRevision !== submitted.editRevision || record.text !== submitted.text) return false;
+    record.text = '';
+    record.editRevision += 1;
+    record.dirty = true;
+    this.emit(record, 'unsaved');
+    void this.flush(record);
+    return true;
+  }
+
   deactivate(ownerEpoch: number): void {
     if (this.owner?.epoch === ownerEpoch) this.owner = null;
   }
@@ -101,7 +153,7 @@ export class DraftPersistence {
   private getOrCreate(scope: DraftScope, sessionId: string | null, key: string): DraftRecord {
     const existing = this.records.get(key);
     if (existing) { existing.scope = scope; return existing; }
-    const created: DraftRecord = { scope, sessionId, key, text: '', revision: 0, revisionGeneration: 0, editRevision: 0, writeGeneration: 0, dirty: false, writing: false, conflicted: false, conflictRefreshPending: false, pendingAttempt: null, timer: null };
+    const created: DraftRecord = { scope, sessionId, key, text: '', revision: 0, lastWriteId: null, revisionGeneration: 0, editRevision: 0, writeGeneration: 0, dirty: false, writing: false, flight: null, conflicted: false, conflictRefreshPending: false, pendingAttempt: null, timer: null };
     this.records.set(key, created);
     return created;
   }
@@ -120,7 +172,7 @@ export class DraftPersistence {
       if (accountGeneration !== this.accountGeneration || !this.owns(record, ownerEpoch) || !this.matches(record, reply)) return;
       const readStillCurrent = record.writeGeneration === writeGeneration && record.revisionGeneration === revisionGeneration;
       if (readStillCurrent) {
-        record.revision = reply.revision;
+        record.revision = reply.revision; record.lastWriteId = reply.lastWriteId;
         record.revisionGeneration += 1;
       }
       if (readStillCurrent && record.editRevision === editRevision && !record.dirty && !record.writing) {
@@ -133,7 +185,14 @@ export class DraftPersistence {
     }
   }
 
-  private async flush(record: DraftRecord): Promise<void> {
+  private flush(record: DraftRecord): Promise<void> {
+    if (record.writing && record.flight) return record.flight;
+    const flight = this.write(record);
+    record.flight = flight;
+    return flight.finally(() => { if (record.flight === flight) record.flight = null; });
+  }
+
+  private async write(record: DraftRecord): Promise<void> {
     if (!record.dirty || record.writing || record.conflicted || this.records.get(record.key) !== record) return;
     if (record.timer) { clearTimeout(record.timer); record.timer = null; }
     record.writing = true;
@@ -148,7 +207,7 @@ export class DraftPersistence {
         if (accountGeneration !== this.accountGeneration || this.records.get(record.key) !== record || writeGeneration !== record.writeGeneration) return;
         if (!this.matches(record, observed)) throw new Error('MOBILE_DRAFT_REPLY_INVALID');
         if (observed.lastWriteId === attempt.writeId && observed.revision > attempt.expectedRevision) {
-          record.revision = observed.revision;
+          record.revision = observed.revision; record.lastWriteId = observed.lastWriteId;
           record.revisionGeneration += 1;
           record.pendingAttempt = null;
           if (record.editRevision === attempt.editRevision && record.text === attempt.text) record.dirty = false;
@@ -159,7 +218,7 @@ export class DraftPersistence {
           }
           attempt = null;
         } else if (observed.revision !== attempt.expectedRevision) {
-          record.revision = observed.revision;
+          record.revision = observed.revision; record.lastWriteId = observed.lastWriteId;
           record.revisionGeneration += 1;
           record.pendingAttempt = null;
           record.writing = false;
@@ -175,7 +234,7 @@ export class DraftPersistence {
       const reply = await this.io.write(record.scope.targetId, record.sessionId, attempt.expectedRevision, attempt.writeId, attempt.text);
       if (accountGeneration !== this.accountGeneration || this.records.get(record.key) !== record || writeGeneration !== record.writeGeneration) return;
       if (!this.matches(record, reply) || reply.lastWriteId !== attempt.writeId) throw new Error('MOBILE_DRAFT_REPLY_INVALID');
-      record.revision = reply.revision;
+      record.revision = reply.revision; record.lastWriteId = reply.lastWriteId;
       record.revisionGeneration += 1;
       record.pendingAttempt = null;
       record.writing = false;
@@ -202,9 +261,14 @@ export class DraftPersistence {
     try {
       const reply = await this.io.read(record.scope.targetId, record.sessionId);
       if (accountGeneration !== this.accountGeneration || this.records.get(record.key) !== record || record.writeGeneration !== writeGeneration || !this.matches(record, reply)) return;
-      record.revision = reply.revision;
+      record.revision = reply.revision; record.lastWriteId = reply.lastWriteId;
       record.revisionGeneration += 1;
       record.conflictRefreshPending = false;
+      if (record.editRevision === conflictEditRevision && record.text === reply.text) {
+        record.dirty = false; record.conflicted = false; record.pendingAttempt = null;
+        if (ownerEpoch !== null && this.owns(record, ownerEpoch)) this.emit(record, 'saved');
+        return;
+      }
       if (record.editRevision !== conflictEditRevision) record.conflicted = false;
       if (ownerEpoch !== null && this.owns(record, ownerEpoch)) this.emit(record, 'conflict', '草稿版本冲突；当前编辑已保留，继续编辑后再保存。', 'MOBILE_DRAFT_CONFLICT');
       if (record.dirty && !record.conflicted) void this.flush(record);
@@ -227,6 +291,6 @@ export class DraftPersistence {
 
   private emit(record: DraftRecord, status: DraftStatus, message?: string, code?: string): void {
     const owner = this.owner;
-    if (owner?.key === record.key && this.records.get(record.key) === record) this.onUpdate({ key: record.key, ownerEpoch: owner.epoch, text: record.text, status, ...(message ? { message } : {}), ...(code ? { code } : {}) });
+    if (owner?.key === record.key && this.records.get(record.key) === record) this.onUpdate({ key: record.key, ownerEpoch: owner.epoch, text: record.text, editRevision: record.editRevision, revision: record.revision, lastWriteId: record.lastWriteId, status, ...(message ? { message } : {}), ...(code ? { code } : {}) });
   }
 }

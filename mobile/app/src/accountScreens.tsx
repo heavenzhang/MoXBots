@@ -1,12 +1,12 @@
 import { mobileTheme } from './mobileTheme';
-import Constants from 'expo-constants';
+import * as Application from 'expo-application';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Bell, ChevronRight, CircleHelp, HardDrive, Info, LockKeyhole, LogOut, RefreshCw, UserRound } from 'lucide-react-native';
 import { Account, NativeAttachment, isFixtureMode, requestNative } from './native';
-import { dismissToExistingRoot, logoutAndConfirm, returnFromAccountRoute } from './accountPolicy';
+import { accountIdentityLabel, dismissToExistingRoot, logoutAndConfirm, returnFromAccountRoute } from './accountPolicy';
 
 const color = { ...mobileTheme, green: mobileTheme.primary };
 const accountStateLabel: Record<Account['state'], string> = { 'signed-in': '已登录', 'signed-out': '未登录', authenticating: '等待浏览器授权', expired: '登录已过期' };
@@ -74,7 +74,7 @@ function AccountInfo({ account, busy, error, onRefresh }: { account: Account | n
     <View style={styles.accountCopy}>
       {busy ? <View style={styles.inline}><ActivityIndicator size="small" color={color.green}/><Text style={styles.muted}>正在读取账号状态…</Text></View>
         : error ? <><Text style={styles.rowTitle}>账号状态暂不可用</Text><Text style={styles.rowDetail}>{error}</Text></>
-          : <><Text style={styles.accountName}>{account?.displayName || (account?.state === 'signed-in' ? '已登录账号' : '未登录')}</Text><Text style={styles.rowDetail}>{account ? accountStateLabel[account.state] : '状态未知'}</Text></>}
+          : <><Text style={styles.accountName}>{accountIdentityLabel(account)}</Text><Text style={styles.rowDetail}>{account ? accountStateLabel[account.state] : '状态未知'}</Text>{account?.state === 'signed-in' && account.displayName && account.principalId && <Text selectable style={styles.rowDetail}>账号标识：{account.principalId}</Text>}</>}
       {onRefresh && <Pressable accessibilityRole="button" accessibilityLabel="刷新账号状态" disabled={busy} onPress={onRefresh} style={styles.refresh}><RefreshCw size={15} color={color.green}/><Text style={styles.refreshText}>刷新状态</Text></Pressable>}
     </View>
   </View>;
@@ -97,7 +97,7 @@ export function AccountHomeScreen() {
       <AccountRow icon={<Info size={19} color={color.green}/>} title="关于 MoXBots" detail="应用版本与内部构建信息" onPress={() => router.push('/account/about')}/>
       <AccountRow icon={<CircleHelp size={19} color={color.green}/>} title="使用帮助" detail="登录、Bot、会话与附件" onPress={() => router.push('/account/help')}/>
     </View>
-    <Text style={styles.footnote}>账号信息由账号服务提供。</Text>
+    <Text style={styles.footnote}>账号标识用于核对两端是否为同一账号；名称为此设备成功登录时使用的账号名。</Text>
   </AccountFrame>;
 }
 
@@ -226,24 +226,25 @@ export function StorageScreen() {
 }
 
 export function AboutScreen() {
-  const version = Constants.expoConfig?.version ?? null;
-  const appName = Constants.expoConfig?.name ?? null;
+  const version = Application.nativeApplicationVersion;
+  const build = Application.nativeBuildVersion;
+  const appName = Application.applicationName;
   return <AccountFrame title="关于 MoXBots">
     <View style={styles.aboutMark}><Text style={styles.aboutGlyph}>M</Text><Text style={styles.aboutName}>MoXBots</Text><Text style={styles.aboutCaption}>移动端</Text></View>
-    <View style={styles.card}><KeyValue label="应用版本" value={version ?? '构建信息不可用'}/><KeyValue label="构建标识" value={appName ?? '构建信息不可用'}/></View>
-    <Text style={styles.footnote}>版本与名称读取自当前应用构建配置；若名称包含 Internal，表示内部测试构建。</Text>
+    <View style={styles.card}><KeyValue label="应用版本" value={version ?? '构建信息不可用'}/><KeyValue label="构建号" value={build ?? '构建信息不可用'}/><KeyValue label="应用名称" value={appName ?? '构建信息不可用'}/></View>
+    <Text style={styles.footnote}>版本、构建号与名称读取自当前安装的原生应用；网页预览不提供原生构建信息。若名称包含 Internal，表示内部测试构建。</Text>
   </AccountFrame>;
 }
 
 export function HelpScreen() {
   return <AccountFrame title="使用帮助">
     <Text style={styles.intro}>MoXBots Mobile 连接已授权的账号与可连接 Bot，并继续使用原有远程会话。</Text>
-    <HelpSection title="登录与连接" body="在会话页使用浏览器登录。完成授权后，页面会读取账号可访问的 Bot。若连接暂不可用，可刷新状态或检查网络。"/>
+    <HelpSection title="登录与连接" body="在会话页使用账号和密码登录。完成授权后，页面会读取账号可访问的 Bot。若连接暂不可用，可刷新状态或检查网络。"/>
     <HelpSection title="找不到 Bot" body="手机与运行 Bot 的电脑或 Host 需使用同一账号。在电脑端的「Bots 网络」打开对应设备详情，启用需要访问的 Bot；新 Bot 默认不会自动开放。完成后返回手机会话列表刷新，并确认设备在线。手机端目前不能修改网络访问开关。"/>
     <HelpSection title="会话与草稿" body="选择 Bot 后可打开已有会话或创建新会话。草稿按账号、Bot 和会话分别保存在本机安全存储中；设备离线时可以继续编辑，重新连接后再发送。"/>
     <HelpSection title="附件与语音" body="从输入区的加号菜单选择文件、图片或语音输入。附件需完成上传才可随消息发送；语音识别结果会先进入可编辑草稿，不会自动发送。"/>
     <HelpSection title="待确认操作" body="如果发送结果未确认，请查询同一操作的回执。应用不会自动重新发送未知结果的消息。"/>
-    <HelpSection title="账号安全" body="账号信息由账号服务提供。退出账号前会二次确认；当前暂不支持修改个人资料。"/>
+    <HelpSection title="账号安全" body="账号标识用于核对两端是否为同一账号；名称为此设备成功登录时使用的账号名。退出账号前会二次确认；当前暂不支持修改个人资料。"/>
   </AccountFrame>;
 }
 

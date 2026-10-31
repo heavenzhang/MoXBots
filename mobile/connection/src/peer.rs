@@ -780,6 +780,7 @@ impl MobileConnection {
         let bytes = Zeroizing::new(
             serde_json::to_vec(&prepared["record"]).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
         );
+        self.capture_submitted_draft(&scope, &peer.address.scope, request)?;
         self.write_journal(&scope, &record, &bytes)?;
         peer.sdk
             .execute(
@@ -856,10 +857,13 @@ impl MobileConnection {
         {
             return Err(err("MOBILE_RESPONSE_SCOPE_MISMATCH"));
         }
-        if let JournalRequest::Mobile(Mobile::Send { session_id, .. }) = &prior {
-            if data["sessionId"] != *session_id {
+        if let Some(session_id) = prior.session_id() {
+            if data["sessionId"] != session_id {
                 return Err(err("MOBILE_RESPONSE_SCOPE_MISMATCH"));
             }
+        }
+        if data["kind"] == receipt && data["status"] == "accepted" {
+            self.clear_accepted_draft(scope, target, &prior)?;
         }
         self.write_journal(scope, &key, b"{\"confirmed\":true}")?;
         let mut pending = self.pending_operations(scope)?;
@@ -868,7 +872,13 @@ impl MobileConnection {
             scope,
             "pending-operations",
             &serde_json::to_vec(&pending).map_err(|_| err("MOBILE_JOURNAL_INVALID"))?,
-        )
+        )?;
+        // The confirmed original operation no longer needs its bounded edit hint.
+        // Cleanup failure must not turn a confirmed receipt back into a mutation.
+        let _ = self
+            .store
+            .remove_record(scope, &format!("operation-draft:{op}"));
+        Ok(())
     }
     pub(super) async fn assets(&mut self, intent: &Value) -> Result<Value, NetworkError> {
         let target = self.approved_target(intent)?;
@@ -1250,6 +1260,194 @@ mod tests {
             legacy_record
         );
     }
+    #[test]
+    fn accepted_journal_clears_only_original_message_draft_before_confirmation() {
+        use crate::ffi::tests::{callbacks, Memory};
+        for kind in ["start", "send", "mobile.start", "mobile.send"] {
+            let memory = Box::<Memory>::default();
+            let o = super::super::drafts::tests::owner(Arc::new(callbacks(&memory)), None);
+            let saved = o.saved.as_ref().unwrap();
+            let target: DeviceScope = serde_json::from_value(json!({"serviceId":saved.instance.service_id,"environment":saved.instance.environment,"networkId":saved.instance.network_id,"principalId":saved.session.principal_id,"deviceId":o.targets["approved"].device,"keyGeneration":1})).unwrap();
+            let scope = journal_scope(&crate::KeyScope {
+                issuer: saved.instance.issuer.clone(),
+                service_id: saved.instance.service_id.clone(),
+                environment: saved.instance.environment.clone(),
+                principal_id: saved.session.principal_id.clone(),
+                device_id: saved.device_id.clone(),
+                key_generation: 1,
+            })
+            .unwrap();
+            let session = if kind.ends_with("send") {
+                json!("original")
+            } else {
+                Value::Null
+            };
+            let draft_read = json!({"targetId":"approved","sessionId":session});
+            let draft_write = json!({"targetId":"approved","sessionId":session,"expectedRevision":0,"writeId":uuid::Uuid::new_v4().to_string(),"text":"  submitted\nmessage  "});
+            o.draft(&draft_write, true).unwrap();
+            // Another session in the same account must survive identical text.
+            o.draft(&json!({"targetId":"approved","sessionId":"other","expectedRevision":0,"writeId":uuid::Uuid::new_v4().to_string(),"text":"submitted\nmessage"}), true).unwrap();
+            let op = uuid::Uuid::new_v4().to_string();
+            let mut request =
+                json!({"kind":kind,"agentId":"agent","operationId":op,"text":"submitted\nmessage"});
+            if session != Value::Null {
+                request["sessionId"] = session.clone();
+            }
+            let mobile = kind.starts_with("mobile.");
+            if mobile {
+                request["version"] = json!(1);
+                request["assetIds"] = json!([]);
+            }
+            let record = journal_record(request, &target, &o.config.issuer);
+            o.capture_submitted_draft(&scope, &target, &journal_request(&record).unwrap())
+                .unwrap();
+            let key = format!("operation:{op}");
+            o.write_journal(&scope, &key, &serde_json::to_vec(&record).unwrap())
+                .unwrap();
+            o.write_journal(
+                &scope,
+                "pending-operations",
+                &serde_json::to_vec(&vec![op.clone()]).unwrap(),
+            )
+            .unwrap();
+            let query: JournalRequest = serde_json::from_value(if mobile {
+                json!({"kind":"mobile.receipt","version":1,"agentId":"agent","operationId":op})
+            } else {
+                json!({"kind":"receipt","agentId":"agent","operationId":op})
+            })
+            .unwrap();
+            let mut receipt = json!({"kind":if mobile {"mobile.receipt"} else {"receipt"},"agentId":"agent","operationId":op,"sessionId":"original","status":"processing"});
+            o.settle_journal(&scope, &target, &query, &receipt).unwrap();
+            assert_eq!(o.draft(&draft_read, false).unwrap()["revision"], 1);
+            receipt["status"] = json!("accepted");
+            memory.discard.store(true, Ordering::SeqCst);
+            assert_eq!(
+                o.settle_journal(&scope, &target, &query, &receipt)
+                    .unwrap_err()
+                    .code,
+                "MOBILE_DRAFT_PERSISTENCE_UNCONFIRMED"
+            );
+            assert_eq!(o.pending_operations(&scope).unwrap(), vec![op.clone()]);
+            assert_eq!(
+                serde_json::from_slice::<Value>(
+                    &o.store.read_record(&scope, &key).unwrap().unwrap()
+                )
+                .unwrap(),
+                record
+            );
+            memory.discard.store(false, Ordering::SeqCst);
+            o.settle_journal(&scope, &target, &query, &receipt).unwrap();
+            let cleared = o.draft(&draft_read, false).unwrap();
+            assert_eq!(cleared["text"], "");
+            assert_eq!(cleared["revision"], 2);
+            assert!(o.pending_operations(&scope).unwrap().is_empty());
+            assert_eq!(
+                o.draft(&json!({"targetId":"approved","sessionId":"other"}), false)
+                    .unwrap()["text"],
+                "submitted\nmessage"
+            );
+            o.settle_journal(&scope, &target, &query, &receipt).unwrap();
+            assert_eq!(
+                o.draft(&draft_read, false).unwrap(),
+                cleared,
+                "duplicate receipt must be idempotent"
+            );
+        }
+    }
+
+    #[test]
+    fn journal_settlement_preserves_rejected_new_text_and_foreign_scope_drafts() {
+        use crate::ffi::tests::{callbacks, Memory};
+        for scenario in [
+            "rejected",
+            "new-text",
+            "same-text-new-revision",
+            "foreign-device",
+            "foreign-account",
+            "stop",
+            "respond",
+        ] {
+            let memory = Box::<Memory>::default();
+            let mut o = super::super::drafts::tests::owner(Arc::new(callbacks(&memory)), None);
+            let saved = o.saved.as_ref().unwrap();
+            let mut target: DeviceScope = serde_json::from_value(json!({"serviceId":saved.instance.service_id,"environment":saved.instance.environment,"networkId":saved.instance.network_id,"principalId":saved.session.principal_id,"deviceId":o.targets["approved"].device,"keyGeneration":1})).unwrap();
+            let scope = journal_scope(&crate::KeyScope {
+                issuer: saved.instance.issuer.clone(),
+                service_id: saved.instance.service_id.clone(),
+                environment: saved.instance.environment.clone(),
+                principal_id: saved.session.principal_id.clone(),
+                device_id: saved.device_id.clone(),
+                key_generation: 1,
+            })
+            .unwrap();
+            let principal = saved.session.principal_id.clone();
+            let text = if scenario == "new-text" {
+                "new edit"
+            } else {
+                "submitted"
+            };
+            o.draft(&json!({"targetId":"approved","sessionId":"original","expectedRevision":0,"writeId":uuid::Uuid::new_v4().to_string(),"text":text}), true).unwrap();
+            if scenario == "foreign-device" {
+                target.device_id.push_str("-other");
+            }
+            let op = uuid::Uuid::new_v4().to_string();
+            let mut request = json!({"kind":"send","agentId":"agent","operationId":op,"sessionId":"original","text":"submitted"});
+            if matches!(scenario, "stop" | "respond") {
+                request = json!({"kind":scenario,"agentId":"agent","operationId":op,"sessionId":"original","generation":"gen","turnId":"turn"});
+                if scenario == "respond" {
+                    request["requestId"] = json!("req");
+                    request["interaction"] = json!("permission");
+                    request["approved"] = json!(false);
+                }
+            }
+            let record = journal_record(request, &target, &o.config.issuer);
+            o.capture_submitted_draft(&scope, &target, &journal_request(&record).unwrap())
+                .unwrap();
+            if scenario == "same-text-new-revision" {
+                o.draft(&json!({"targetId":"approved","sessionId":"original","expectedRevision":1,"writeId":uuid::Uuid::new_v4().to_string(),"text":"changed after submit"}), true).unwrap();
+                o.draft(&json!({"targetId":"approved","sessionId":"original","expectedRevision":2,"writeId":uuid::Uuid::new_v4().to_string(),"text":"submitted"}), true).unwrap();
+            }
+
+            o.write_journal(
+                &scope,
+                &format!("operation:{op}"),
+                &serde_json::to_vec(&record).unwrap(),
+            )
+            .unwrap();
+            o.write_journal(
+                &scope,
+                "pending-operations",
+                &serde_json::to_vec(&vec![op.clone()]).unwrap(),
+            )
+            .unwrap();
+            let query: JournalRequest = serde_json::from_value(
+                json!({"kind":"receipt","agentId":"agent","operationId":op}),
+            )
+            .unwrap();
+            let receipt = json!({"kind":"receipt","agentId":"agent","operationId":op,"sessionId":"original","status":if scenario == "rejected" {"rejected"} else {"accepted"}});
+            if scenario == "foreign-account" {
+                o.saved.as_mut().unwrap().session.principal_id = uuid::Uuid::new_v4().to_string();
+            }
+            let result = o.settle_journal(&scope, &target, &query, &receipt);
+            if scenario == "foreign-account" {
+                assert_eq!(result.unwrap_err().code, "MOBILE_JOURNAL_INVALID");
+                assert_eq!(o.pending_operations(&scope).unwrap(), vec![op]);
+                o.saved.as_mut().unwrap().session.principal_id = principal;
+            } else {
+                result.unwrap();
+            }
+            assert_eq!(
+                o.draft(
+                    &json!({"targetId":"approved","sessionId":"original"}),
+                    false
+                )
+                .unwrap()["text"],
+                text,
+                "{scenario}"
+            );
+        }
+    }
+
     #[test]
     fn native_journal_requires_exact_os_write_confirmation() {
         let memory = Box::<crate::ffi::tests::Memory>::default();
