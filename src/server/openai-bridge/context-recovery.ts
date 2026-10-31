@@ -414,6 +414,9 @@ class RecoveryPreparationError extends Error {
   constructor(readonly reason: string) { super(`context_recovery_required: ${reason}`); }
 }
 
+/** Refused before archival, ledger mutation or upstream dispatch; fence this request only. */
+class ConcurrentRecoveryPreparationError extends RecoveryPreparationError {}
+
 /** Owned by one existing Query. Only retries inference; never executes or re-enqueues a tool. */
 export class ContextRecoveryController implements BridgeContextRecovery {
   private state: State | undefined;
@@ -596,9 +599,12 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   /** Archive and protect this inference's completed actions without reducing native history. */
   async protectInference(body: AnthropicRequest, prearm = false): Promise<void> {
     const state = this.current();
-    if (!state || this.options.canRecover?.() === false || this.requestGuard.inFlightCount > 1
+    if (!state || this.options.canRecover?.() === false
       || this.ledgerBlocked || state.blocked || this.requestGuard.isBlocked(state.scope)) {
       throw new RecoveryPreparationError('The inference has no exclusive recovery authority.');
+    }
+    if (this.requestGuard.inFlightCount > 1) {
+      throw new ConcurrentRecoveryPreparationError('The inference has no exclusive recovery authority. Another inference is active; existing work was preserved.');
     }
     const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks, this.preToolDenials, prearm);
     const safeHistory = !!analysis && analysis.uncertain.size === 0 && state.uncertain.size === 0;
@@ -1383,6 +1389,10 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return new Response(stream, { status: response.status, headers: response.headers });
     } catch (error) {
       if (!live()) return cancelled();
+      // A concurrent request rejected before protectInference did any work cannot
+      // invalidate an already admitted sibling or block the parent's next inference.
+      // finish() still retains this exact fingerprint, so it cannot be replayed.
+      if (error instanceof ConcurrentRecoveryPreparationError) return required(error.reason);
       if (error instanceof RecoveryPreparationError) return stop(error.reason);
       return stop('The model transport failed. Automatic replay is blocked and progress was preserved.');
     } finally {

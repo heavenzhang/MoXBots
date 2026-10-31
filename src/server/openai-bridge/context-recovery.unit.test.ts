@@ -610,6 +610,69 @@ describe('bounded inference context recovery', () => {
     expect(h.controller.beforeTool('increment_counter', { account: 'test', delta: 1 })).toBeUndefined();
   });
 
+  it.each([false, true])('keeps concurrent pre-dispatch refusal local with legacy uncertainty=%s', async legacy => {
+    const controller = new ContextRecoveryController({ scope: () => 'same-root', isActive: () => true,
+      protectStreaming: true, backup: async () => '/archive/concurrent', persistLedger: async () => {},
+      initialLedger: legacy ? { version: 1, completed: [], uncertain: ['a'.repeat(64)], denied: [],
+        blocked: false, projectionActive: false, streamArmedOnly: false } : undefined });
+    const body = { ...history(), stream: true };
+    const entered = deferred<void>();
+    const pending = deferred<void>();
+    const first = controller.run(req(), body, async () => { entered.resolve(); await pending.promise; return ok(); });
+    await entered.promise;
+    const child = { ...body, messages: [{ role: 'user' as const, content: 'Independent auxiliary inference' }] };
+    const childExecute = vi.fn(async () => ok());
+    const refused = await controller.run(req(), child, childExecute);
+    expect(refused.status).toBe(409);
+    expect(await refused.text()).toContain('exclusive recovery authority');
+    expect(childExecute).not.toHaveBeenCalled();
+    pending.resolve();
+    const parent = await first;
+    expect(parent.status).toBe(200); await parent.text();
+    const next = structuredClone(body);
+    next.messages.push({ role: 'assistant', content: 'First result received.' },
+      { role: 'user', content: 'Use the received result and continue.' });
+    const nextExecute = vi.fn(async () => ok());
+    const continued = await controller.run(req(), next, nextExecute);
+    expect(continued.status).toBe(200); await continued.text();
+    expect(nextExecute).toHaveBeenCalledOnce();
+    // No denied request, successful inference, or completed operation is replayed.
+    expect((await controller.run(req(), child, childExecute)).status).toBe(409);
+    expect(childExecute).not.toHaveBeenCalled();
+    expect((await controller.run(req(), body, nextExecute)).status).toBe(409);
+    expect(nextExecute).toHaveBeenCalledOnce();
+    if (legacy) {
+      expect(controller.beforeTool('increment_counter', { delta: 1, account: 'test' })).toContain('already completed');
+      expect(controller.inspectActionLedger().uncertainActions.map(action => action.actionId)).toContain('a'.repeat(64));
+      expect(controller.canRetryInference()).toBe(false);
+    }
+  });
+
+  it('still closes the scope when an admitted stream actually fails after a concurrent refusal', async () => {
+    const controller = new ContextRecoveryController({ scope: () => 'same-root', isActive: () => true,
+      protectStreaming: true, backup: async () => '/archive/concurrent', persistLedger: async () => {} });
+    const body = { ...history(), stream: true };
+    const entered = deferred<void>();
+    const pending = deferred<void>();
+    const first = controller.run(req(), body, async () => {
+      entered.resolve(); await pending.promise;
+      return new Response('event: message_start\ndata: {"type":"message_start","message":{"id":"partial","content":[]}}\n\n',
+        { headers: { 'content-type': 'text/event-stream' } });
+    });
+    await entered.promise;
+    const child = { ...body, messages: [{ role: 'user' as const, content: 'Auxiliary request' }] };
+    const execute = vi.fn(async () => ok());
+    expect((await controller.run(req(), child, execute)).status).toBe(409);
+    pending.resolve();
+    const interrupted = await first;
+    expect(await interrupted.text()).toContain('automatic_replay_blocked');
+    const next = structuredClone(body);
+    next.messages.push({ role: 'user', content: 'Different request after the failed stream' });
+    expect((await controller.run(req(), next, execute)).status).toBe(409);
+    expect(execute).not.toHaveBeenCalled();
+    expect(controller.canRetryInference()).toBe(false);
+  });
+
   it('rejects duplicate and delivered requests while preserving distinct concurrent child inferences', async () => {
     const h = fixture();
     const pending = deferred<void>();
