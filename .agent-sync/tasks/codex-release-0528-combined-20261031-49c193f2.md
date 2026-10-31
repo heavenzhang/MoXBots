@@ -36,3 +36,7 @@ Candidate not frozen. All five source reviews accepted locally: sidebar6e518/rec
 ## Next step
 
 Review final allocated8manifest diff, freeze/push the exact combined candidate once, create one PR and collect actual required source CI before normal main merge; then candidate-specific reviewed release and native/101 gates.
+
+## R2 primary correction before main
+
+R1 source/PR216 exists; main/formal0. Primary additional actual proxy test found nested CONNECT scope attribution. Independent loopback probe and actual Vitest RED retained; no-egress initially rejected the first synthetic hostname fixture before transport, then actual loopback RED established the defect. Fixed by first non-CONNECT request weak binding;12proxy/diagnostic tests pass, type/lint/classification/diff gate follows. Wait originalR1 Test41169672723 all actual jobs terminal before normal samebranch/PR FFpush once; no ARM cancellation/rerun/manualdispatch. Version0.5.28/build528.1 stays allocated because no formalbuild. Sourcecode/recovery guards unchanged outside diagnostics.

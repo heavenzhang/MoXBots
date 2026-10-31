@@ -39,3 +39,9 @@ The affected session had uncertain prior actions, disabling `canRetryInference` 
 
 - Undici diagnostic event semantics: https://undici.nodejs.org/api/DiagnosticsChannel
 - Node HTTP documents stale keep-alive resets as one possible cause, not a diagnosis of this incident: https://nodejs.org/api/http.html
+
+## Root integration correction — proxy CONNECT scope
+
+The primary independently reproduced an attribution defect before any main merge or formal build: ProxyAgent emits nested CONNECT requests inside the same async scope, so tunnel header/body events incorrectly marked the target HTTPS request as sent when TLS reset before the target POST. The first isolated probe reproduced it; the first Vitest fixture was correctly rejected by the no-egress guard, then a loopback-only target reproduced the actual assertion failure. Those originals are retained privately.
+
+The observer now binds the first non-CONNECT application request identity with a weak set. Internal tunnel events cannot update that target observation. No credentials, header/body content, address or replay authority is added. Seven observation tests plus five actual Anthropic diagnostic tests pass, including CONNECT-then-TLS-reset and successful tunnel fresh/reused target connections. The R1 PR/source remains immutable evidence but is withheld from main; wait its original jobs terminal before a normal FF update of the same PR and new exact-head CI. Build528.1 has never been formally built.

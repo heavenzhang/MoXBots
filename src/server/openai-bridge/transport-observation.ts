@@ -13,6 +13,7 @@ export interface TransportObservation {
 type State = Omit<TransportObservation, 'elapsedMs'>;
 const scope = new AsyncLocalStorage<State>();
 const requests = new WeakMap<object, State>();
+const bound = new WeakSet<State>();
 const sockets = new WeakMap<object, number>();
 const object = (value: unknown): value is object => value !== null && typeof value === 'object';
 
@@ -26,7 +27,11 @@ function subscribe(name: string, listener: (event: Record<string, unknown>) => v
 }
 subscribe('undici:request:create', event => {
   const state = scope.getStore();
-  if (state && object(event.request)) {
+  // ProxyAgent publishes nested CONNECT requests in the same async scope.
+  // Fetch cannot target CONNECT: bind only its first application request, so
+  // tunnel headers/body never claim that the target request was sent.
+  if (state && object(event.request) && (event.request as { method?: unknown }).method !== 'CONNECT' && !bound.has(state)) {
+    bound.add(state);
     state.requestCreated = true;
     requests.set(event.request, state);
   }
