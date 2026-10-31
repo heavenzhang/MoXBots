@@ -86,3 +86,12 @@ Desktop/macOS-arm64/updater/sharedCI/main 唯一负责会话 `01a12bc2-907a-7702
 验证包括旧期限过去一天后真实owner自动派发下一步、旧超时任务同ID人工继续、active native child跨期限继续且Stop仍撤销；另有原资源/依赖/未知写入回归。网络单请求超时和模型重试仍独立覆盖。构建版本、安装和四会话业务验收由原desktop owner统一执行。
 
 第三批最终验证：202项通过（任务策略/派发单元、Session执行/派发/编排集成、模型failover单元、真实HTTP请求超时集成），全量类型、定向lint、测试分类、diff检查通过。3个时间边界行为测试在7b7d0db原实现均失败，修后均通过，保留no-deadline-baseline.log。取消的是运行策略；兼容序列化字段仍存在，回滚到旧二进制会恢复旧版本的时间规则，不能当作当前规则继续验收。
+
+
+## 第四批：一键继续接回原执行账本
+
+真实 builtin 队列 fixture 加入已有 execution、taskPlanId、成功证据与可信人工输入后，d544 旧实现四项失败（interrupted/error × 单击/双击）：新输入已经进入 SDK，原 execution 仍停留旧 queue、turns=1。此前无执行账本的 transcript 测试未覆盖这一缺陷。证据为私有 continuation-owner-baseline.log，迟到完成两项仍正确拒绝。
+
+移除 continueFromTurnId 对执行准入的跳过；继续复用已有 tool-free 意图判定和可信用户原文，不新增执行权限。continuation guard 捕获原 generation，随后组合新 execution guard/queue，保留两套检查、取消和同步提交边界；不再覆盖执行 guard。继续消息在同步提交后才成为新可见 root，避免自己的新消息反过来让旧 turn 校验失效。准备阶段旧 turn 变化则释放 execution admission。原 execution 的 ID、目标、清单和证据由已有同任务接续逻辑维护；停止、权限、无进展/返工、未知写入仍保留。
+
+新增6个原生队列场景，与已有6项共同验证同ID/新queue、原taskPlanId和证据、双击只有一个SDK输入、迟到完成不进入SDK。原四文件422项回归和全量tsc通过；再补队列占位归属/旧turn变更及执行保护拒绝的2项单元。此为隔离原生队列集成，非真实Provider或原业务通过。意图模型本身仍可能超时/失败，应使用第二批诊断继续复测，不把本增量当作所有调用故障已消除。

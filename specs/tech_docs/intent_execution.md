@@ -8,6 +8,8 @@
 
 普通桌面输入只有在 `clientRequestId` 与可信原文摘要匹配时进入意图准入。原账本在分类前原子保留 accepted queue；同一个请求的并发重复、跨其他输入后的重试均返回原 queue 的重复准入错误。助手文字、附件、工具输出和内部续跑不能成为新的人类授权。
 
+一键继续携带 `continueFromTurnId` 时也进入同一可信输入准入，分类确认的 `continuationOf` 由既有执行 owner 绑定原执行、清单及证据；不能只恢复 transcript 而跳过执行账本。facade 在异步分类前捕获原 transcript 代次与 turn，在提交时组合原 continuation guard 与新 execution guard，并使用新 queue 身份排除自己的队列占位。继续输入的可见 root 在同步 commit 接纳后才创建，否则会让自己的新消息提前使原 turn 校验失效。旧 turn 改变、重复点击、Stop 或执行保护拒绝仍不得进入 SDK；准备阶段被拒绝时释放原执行准入。
+
 分类使用当前运行时的 tool-free utility，最多八秒，输出受 schema 约束的 `answer/plan/execute/control`、目标、范围和验收条件。用户明确要求行动时采用 execute；只讨论、先给方案、不开发仍采用 plan。原始用户文本单独保留为 visibleText，执行提醒不伪装成人类输入。分类失败记录 `INTENT_UNCONFIRMED`，不获得自动续跑资格。此版本普通行动闭环仅接入 builtin；外部 CLI 与 DSH 不因分类结果获得这套自动续跑能力。
 
 真人原话与执行上下文分开：facade 不向 `text` 追加执行提醒，builtin adapter 通过仅运行时的 `runtimeReminder` 将产品指令作为独立文本块送入 SDK。原 transcript、用户回声与队列预览保留用户正文。经原文摘要验证的输入允许在执行 guard 前先由原 user surface 持久化并推送，再由原 guard 创建/接续账本卡片；排队输入在晋级时遵守同一顺序。该标记不向 Goal/基础设施隐形准入开放，也不绕过 Stop、取消或最终 dispatch commit。准入被拒绝或停止时保留真实用户发言，但不会送入 SDK。自动接续使用纯隐藏 `SESSION_EXECUTION` 系统提醒，不生成新的可见人类发言。
@@ -34,7 +36,7 @@ native producer 以当前原 queue 身份提交更新，先规范化精确 marke
 
 普通 execute 不以固定总轮数或固定任务总时长作为完成进度和停止条件；轮数仅用于诊断。用户于2026-11-01明确要求取消30分钟总时限，父任务、子任务、原生推理、工具、接续及验收都不再读取历史deadline作为执行门。历史deadline字段及其旧写入格式只为数据/回滚兼容保留；新旧任务在当前版本都不因这个时间戳过期。仍保留返工评审计数上限三次、连续两次无进展、Stop、权限、未知操作和资源归属保护；单次网络请求/模型故障恢复的有界等待和重试不属于任务总时限。
 
-没有真实验收时，终态创建一条 pending continuation，经原队列完成 pending → claimed → dispatched。续跑仍是原 desktop owner，不冒充定时 Task。进入队列和最终 commit 均复核执行 ID、当前 queue、Stop、新用户输入、权限等待、其他队列、后台任务和时间预算。
+没有真实验收时，终态创建一条 pending continuation，经原队列完成 pending → claimed → dispatched。续跑仍是原 desktop owner，不冒充定时 Task。进入队列和最终 commit 均复核执行 ID、当前 queue、Stop、新用户输入、权限等待、其他队列、后台任务及原操作保护。
 
 原 SDK 后台完成/静默事件唤醒同一 owner，无需 UI 轮询。正在运行的后台工作保留 pending；unknown 则暂停。进程恢复时只有已证明尚未派发的 pending 能继续。claimed/dispatched 或原轮结果无法确认时显示明确未知原因，不能重新发送任务。
 

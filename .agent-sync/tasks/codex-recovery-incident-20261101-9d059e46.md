@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=4add3b8b8ee684a0e73cfaadf1a5e1070741f14fd73c9025d8c675fdf34db66a -->
+<!-- git-project-sync-task:source-digest=f29b2cff4431b1d05c7bfb98997343d2bc377e4657b7e1085272591016586759 -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -17,16 +17,21 @@
 - [x] 重复横幅和并发拒绝分别失败复现、修复、回归；未知操作与真实流中断围栏保留。
 - [x] 134 单元、27 隔离集成、22 DOM、TypeScript、ESLint、分类与差异检查。
 - [x] 第一提交44fd167远端保存且owner定向独审通过。
-- [ ] 第三批取消任务总时限增量远端保存、owner联合审查及主干包含核验。
+- [x] 第三批取消任务总时限d544远端保存且owner已纳入联合候选。
+- [ ] 第四批一键继续执行归属修复远端保存、owner审查及主干包含核验。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+第四批修复一键继续跳过execution及覆盖guard的归属缺陷，旧实现4项失败已复现；原四文件422项回归及tsc通过，新增2项guard组合单元。真实原会话仍待owner新包复验。
 
 第三批按用户要求去掉整个任务30分钟执行门，保留旧字段兼容且不写运行账本；202项测试、类型/lint/分类通过，3项时间边界旧实现失败/新实现通过。
 
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `f29b2cff4431b1d05c7bfb98997343d2bc377e4657b7e1085272591016586759`; old implementation fails 4 original-execution continuation cases; fixed 422 full unit/integration regression tests and 2 added guard cases pass (20 final guard tests); full tsc, scoped lint, classification, diff checks PASS; native original-session acceptance pending. Commit uses native Git with body because installed save helper only accepts a single-line message.
 
 - Source digest: `4add3b8b8ee684a0e73cfaadf1a5e1070741f14fd73c9025d8c675fdf34db66a`; 202 focused unit/integration tests PASS; 3 old time-boundary regressions fail before fix and pass after; full tsc/scoped lint/classification/diff PASS; legacy serialized shape retained; native installation/acceptance with sole desktop owner pending
 
@@ -38,7 +43,7 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-第二批7b7d0db已推送及owner集成。第三批用户要求取消30分钟总时限；意图识别失败具体原因、间歇连接超时及原会话业务仍未全部闭环；旧未知结果不可凭截图核销。部署 owner 当前暂停 528 晋级；用户本轮已明确解除原生暂停，授权原owner安装验证。任务总体尚未完成。
+前三批已推送及owner集成；第四批一键继续归属增量待交接。意图识别失败具体原因、间歇连接超时及原会话业务仍未全部闭环；旧未知结果不可凭截图核销。部署 owner 当前暂停 528 晋级；用户本轮已明确解除原生暂停，授权原owner安装验证。任务总体尚未完成。
 
 ## Deployment request
 

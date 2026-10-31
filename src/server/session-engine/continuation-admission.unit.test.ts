@@ -163,6 +163,40 @@ describe('canonical continuation admission', () => {
     expect(cancel).toHaveBeenCalledOnce();
   });
 
+  it('composes the allocated execution queue after capturing the original transcript', async () => {
+    const { engine, request, live } = fixture();
+    const decision = admitted(engine, request);
+    const commit = vi.fn(() => ({ accepted: true }));
+    const executionGuard = vi.fn(async () => ({ accepted: true, validateAtCommit: commit }));
+    const combined = decision.wrapGuard(executionGuard, 'execution-queue');
+    live.isBusy = true; live.sessionState = 'running';
+    vi.mocked(engine.getQueueStatus).mockReturnValue([{ id: 'execution-queue', messagePreview: 'own input' }]);
+    const promotion = await combined();
+    expect(promotion.validateAtCommit?.().accepted).toBe(true);
+    expect(executionGuard).toHaveBeenCalledOnce();
+    expect(commit).toHaveBeenCalledOnce();
+    vi.mocked(engine.getQueueStatus).mockReturnValue([{ id: 'other-queue', messagePreview: 'unrelated input' }]);
+    expect(await combined()).toMatchObject({ accepted: false, code: 'SESSION_CONTINUATION_BUSY' });
+    expect(executionGuard).toHaveBeenCalledOnce();
+  });
+
+  it('keeps execution rejection and revokes its prepared claim when the captured turn changes', async () => {
+    const { engine, request, projection } = fixture();
+    const decision = admitted(engine, request);
+    const denied = decision.wrapGuard(async () => ({ accepted: false, error: 'TOOL_OUTCOME_UNKNOWN' }), 'execution-queue');
+    expect(await denied()).toEqual({ accepted: false, error: 'TOOL_OUTCOME_UNKNOWN' });
+    const commit = vi.fn(() => ({ accepted: true }));
+    const cancel = vi.fn(async () => {});
+    const combined = decision.wrapGuard(Object.assign(async () => ({ accepted: true, validateAtCommit: commit }), { cancel }), 'execution-queue');
+    const promotion = await combined();
+    projection.turns.get('turn1')!.status = 'complete';
+    const rejected = promotion.validateAtCommit?.();
+    expect(rejected).toMatchObject({ accepted: false, code: 'SESSION_CONTINUATION_STALE' });
+    await rejected?.rollbackBeforeReject;
+    expect(commit).not.toHaveBeenCalled();
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it.each(['external', 'integrated'] as const)('fails closed for %s without changing ordinary sends', kind => {
     const { engine, request } = fixture(); engine.kind = kind;
     const result = prepareContinuationAdmission(engine, request);

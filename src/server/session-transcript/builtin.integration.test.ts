@@ -3216,7 +3216,7 @@ it('rechecks background work after awaited materialization, before SDK yield', a
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
 });
 
-it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].map(mode => ({ status, mode }))))('checks explicit $status continuation at the actual builtin commit boundary ($mode)', async ({ status, mode }) => {
+it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].flatMap(mode => [false, true].map(managed => ({ status, mode, managed })))))('checks explicit $status continuation at the actual builtin commit boundary ($mode, managed=$managed)', async ({ status, mode, managed }) => {
   const platform = await import('../utils/platform');
   vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
   vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
@@ -3241,9 +3241,39 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
   }
   const engine = (await import('../session-engine/selector')).getSessionEngine();
   const { SESSION_CONTINUATION_PROMPT } = await import('../../shared/sessionContinuation');
-  const send = () => engine.sendDesktopMessage({ text: SESSION_CONTINUATION_PROMPT,
-    continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
-    scenario: { type: 'desktop' } });
+  const taskOwner = await import('../session-engine/task-orchestration');
+  const executionId = 'original-execution';
+  if (managed) {
+    // End the synthetic resumed turn with an error so automatic next turns do
+    // not race the admission assertions; its real terminal must settle the task.
+    state.resultMode = 'error';
+    const { createSessionExecution } = await import('../../shared/sessionExecution');
+    const intent = { kind: 'execute' as const, objective: 'Original task', scope: 'This workspace',
+      acceptanceCriteria: ['Verified artifact'], steps: ['Create artifact', 'Verify artifact'], continuationOf: null };
+    await taskOwner.mutateSessionTaskLedger(meta.id, ledger => {
+      ledger.execution = { ...createSessionExecution({ id: executionId, requestId: 'original-request',
+        originalInput: 'Original task', intent, queueId: 'old-queue', now: Date.now() - 86_400_000 }),
+        phase: 'incomplete', reason: 'turn_error', lastSettledQueueId: 'old-queue' };
+      ledger.executionAdmission = { requestId: 'original-request', queueId: 'old-queue', intent, taskPlanId: executionId };
+      ledger.executionEvidence = [{ id: 'preserved-read', queueId: 'old-queue', name: 'Read',
+        successful: true, pending: false, mutating: false, digest: 'original-input', observationOrder: 1 }];
+      return ledger;
+    });
+    const config = await import('../builtin-session/config');
+    config.setModel(undefined); config.setProviderEnv(undefined);
+    const router = await import('../auto-route/router');
+    const catalog = router.buildAutoRouteCatalog();
+    vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
+      settings: { classifier: { providerId: 'synthetic-provider', model: 'synthetic-classifier' } } });
+    vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(async () => JSON.stringify({ ...intent, continuationOf: executionId }));
+  }
+  const send = async () => {
+    const clientRequestId = managed ? randomUUID() : undefined;
+    if (clientRequestId) await taskOwner.recordSessionPlanHumanInput(meta.id, clientRequestId, SESSION_CONTINUATION_PROMPT);
+    return engine.sendDesktopMessage({ text: SESSION_CONTINUATION_PROMPT, clientRequestId,
+      continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
+      scenario: { type: 'desktop' } });
+  };
   const results = await Promise.all(mode === 'double-click' ? [send(), send()] : [send()]);
   const result = results.find(receipt => receipt.success) ?? results[0];
   if (mode === 'late-completion') {
@@ -3257,6 +3287,14 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
     expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task', SESSION_CONTINUATION_PROMPT]);
     expect(active.writer.projection.messages.get('partial-result')).toMatchObject({ content: 'Saved tool result', sdkUuid: 'native-partial' });
     expect(JSON.stringify(state.sdkInputs[0])).toContain(SESSION_CONTINUATION_PROMPT);
+    if (managed) {
+      const ledger = store.getSessionMetadata(meta.id)!.taskOrchestration!;
+      expect(ledger.execution).toMatchObject({ id: executionId, turns: 2, originalInput: 'Original task' });
+      expect(ledger.execution!.currentQueueId).not.toBe('old-queue');
+      expect(ledger.executionAdmission).toMatchObject({ taskPlanId: executionId, queueId: ledger.execution!.currentQueueId });
+      expect(ledger.executionEvidence?.map(row => row.id)).toContain('preserved-read');
+      expect(JSON.stringify(state.sdkInputs[0])).toContain(`执行 ID: ${executionId}`);
+    }
     const repeated = await engine.sendDesktopMessage({ text: 'Explicit continuation',
       continueFromTurnId: 'old-turn', sessionId: meta.id, workspacePath: workspace,
       scenario: { type: 'desktop' } });
