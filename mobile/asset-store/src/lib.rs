@@ -25,6 +25,31 @@ pub struct OwnerSourceMetadata<'a> {
     pub size_bytes: u64,
     pub sha256: &'a str,
 }
+/// Separate owner-transcript cursors from immutable delivery history. This is a
+/// navigation hint only; adapters must revalidate the owner before every page.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactListPosition {
+    Owner(Option<String>),
+    History(Option<String>),
+}
+impl ArtifactListPosition {
+    pub fn parse(value: Option<&str>) -> Result<Self, StoreError> {
+        match value {
+            Some(value) if value.starts_with("history.v1.") => {
+                let id = &value["history.v1.".len()..];
+                CanonicalUuid::parse(id).map_err(|_| err("ASSET_CURSOR_INVALID"))?;
+                Ok(Self::History(Some(id.to_owned())))
+            }
+            value => Ok(Self::Owner(value.map(str::to_owned))),
+        }
+    }
+    pub fn owner_before(&self) -> Option<String> {
+        match self {
+            Self::Owner(value) => value.clone(),
+            Self::History(_) => None,
+        }
+    }
+}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AssetScope {
@@ -679,6 +704,91 @@ impl AssetStore {
             }
         }
     }
+    /// Called only after the original owner authorization/list succeeded.
+    /// Current transcript pages retain their original cursor; once exhausted,
+    /// the immutable store supplies genuine earlier deliveries in the same scope.
+    pub fn artifact_delivery_page(
+        &self,
+        scope: &AssetScope,
+        session_id: &str,
+        limit: u8,
+        position: &ArtifactListPosition,
+        owner_page: RemoteAssetResult,
+    ) -> Result<RemoteAssetResult, StoreError> {
+        scope.validate()?;
+        RemoteAssetRequest::List {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: session_id.into(),
+            limit,
+            before: None,
+        }
+        .validate()
+        .map_err(|_| err("ASSET_REQUEST_INVALID"))?;
+        owner_page
+            .validate()
+            .map_err(|_| err("ASSET_REQUEST_INVALID"))?;
+        let RemoteAssetResult::List {
+            agent_id,
+            session_id: owner_session,
+            items,
+            has_more,
+            next_before,
+            ..
+        } = owner_page
+        else {
+            return Err(err("ASSET_REQUEST_INVALID"));
+        };
+        if items.len() > limit as usize || has_more && items.is_empty() {
+            return Err(err("ASSET_REQUEST_INVALID"));
+        }
+        if agent_id != scope.agent_id || owner_session != session_id {
+            return Err(err("ASSET_SCOPE_MISMATCH"));
+        }
+        let history_before = match position {
+            ArtifactListPosition::History(value) => value.clone(),
+            ArtifactListPosition::Owner(_) if has_more => {
+                return Ok(RemoteAssetResult::List {
+                    version: 1,
+                    agent_id,
+                    session_id: owner_session,
+                    items,
+                    has_more,
+                    next_before,
+                });
+            }
+            ArtifactListPosition::Owner(_) => None,
+        };
+        let result = self.execute(
+            scope,
+            &RemoteAssetRequest::List {
+                version: 1,
+                agent_id,
+                session_id: session_id.into(),
+                limit,
+                before: history_before,
+            },
+        )?;
+        let RemoteAssetResult::List {
+            version,
+            agent_id,
+            session_id,
+            items,
+            has_more,
+            next_before,
+        } = result
+        else {
+            return Err(err("ASSET_REQUEST_INVALID"));
+        };
+        Ok(RemoteAssetResult::List {
+            version,
+            agent_id,
+            session_id,
+            items,
+            has_more,
+            next_before: next_before.map(|value| format!("history.v1.{value}")),
+        })
+    }
     pub fn ready_asset_lease(
         &self,
         scope: &AssetScope,
@@ -939,6 +1049,11 @@ impl AssetStore {
         for (id, r) in Self::records(&dir)? {
             if removed >= limit.min(32) {
                 break;
+            }
+            // Session-bound ready outputs are durable delivery history, not
+            // temporary upload cache. Quota remains explicit and never evicts them.
+            if r.session.is_some() && r.state == UploadState::Ready {
+                continue;
             }
             let ttl = if r.state == UploadState::Uploading {
                 3600
@@ -1540,5 +1655,186 @@ mod tests {
                 &begin(&other, CanonicalUuid::new(uuid::Uuid::new_v4()), b"x")
             )
             .is_err());
+    }
+    #[test]
+    fn delivery_history_survives_later_empty_transcript_and_source_changes() {
+        let (_root, store, scope) = setup();
+        let owner = tempfile::tempdir().unwrap();
+        let path = owner.path().join("output.txt");
+        std::fs::write(&path, b"first bytes").unwrap();
+        let source =
+            TrustedArtifactSource::from_owner(owner.path(), Path::new("output.txt")).unwrap();
+        let first = store
+            .register_artifact(&scope, "session", &source, "output.txt", "text/plain")
+            .unwrap();
+        std::fs::write(&path, b"changed bytes").unwrap();
+        let second = store
+            .register_artifact(&scope, "session", &source, "output.txt", "text/plain")
+            .unwrap();
+        std::fs::remove_file(&path).unwrap();
+        // Explicit cache maintenance well beyond the former 24h TTL must keep outputs.
+        assert_eq!(
+            store
+                .cleanup_expired(&scope, now() + 7 * 86400, 32)
+                .unwrap(),
+            0
+        );
+        let empty = || RemoteAssetResult::List {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: "session".into(),
+            items: vec![],
+            has_more: false,
+            next_before: None,
+        };
+        let mut before = None;
+        let mut found = Vec::new();
+        loop {
+            let position = ArtifactListPosition::parse(before.as_deref()).unwrap();
+            let page = store
+                .artifact_delivery_page(&scope, "session", 1, &position, empty())
+                .unwrap();
+            let RemoteAssetResult::List {
+                items,
+                has_more,
+                next_before,
+                ..
+            } = page
+            else {
+                panic!()
+            };
+            assert_eq!(items.len(), 1);
+            found.extend(items);
+            if !has_more {
+                assert!(next_before.is_none());
+                break;
+            }
+            assert_ne!(before, next_before);
+            before = next_before;
+        }
+        assert_eq!(found.len(), 2);
+        assert!(found.contains(&first) && found.contains(&second));
+        let read = RemoteAssetRequest::Read {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: "session".into(),
+            artifact_id: first.artifact_id,
+            offset: 0,
+            max_bytes: 24,
+        };
+        assert!(
+            matches!(store.execute(&scope, &read).unwrap(), RemoteAssetResult::Chunk { data_base64, eof: true, .. } if STANDARD.decode(&data_base64).unwrap() == b"first bytes")
+        );
+        let mut foreign = scope.clone();
+        foreign.controller_key_generation += 1;
+        let foreign_empty = RemoteAssetResult::List {
+            version: 1,
+            agent_id: foreign.agent_id.clone(),
+            session_id: "session".into(),
+            items: vec![],
+            has_more: false,
+            next_before: None,
+        };
+        assert!(
+            matches!(store.artifact_delivery_page(&foreign, "session", 1, &ArtifactListPosition::History(None), foreign_empty).unwrap(), RemoteAssetResult::List { items, .. } if items.is_empty())
+        );
+        assert!(store.execute(&foreign, &read).is_err());
+        let other_empty = RemoteAssetResult::List {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: "other".into(),
+            items: vec![],
+            has_more: false,
+            next_before: None,
+        };
+        assert!(
+            matches!(store.artifact_delivery_page(&scope, "other", 1, &ArtifactListPosition::History(None), other_empty).unwrap(), RemoteAssetResult::List { items, .. } if items.is_empty())
+        );
+    }
+
+    #[test]
+    fn delivery_history_does_not_replace_owner_pagination_or_accept_malformed_cursors() {
+        let (_root, store, scope) = setup();
+        let owner = tempfile::tempdir().unwrap();
+        std::fs::write(owner.path().join("output.txt"), b"bytes").unwrap();
+        let source =
+            TrustedArtifactSource::from_owner(owner.path(), Path::new("output.txt")).unwrap();
+        let item = store
+            .register_artifact(&scope, "session", &source, "output.txt", "text/plain")
+            .unwrap();
+        let page = |has_more, next_before| RemoteAssetResult::List {
+            version: 1,
+            agent_id: scope.agent_id.clone(),
+            session_id: "session".into(),
+            items: vec![item.clone()],
+            has_more,
+            next_before,
+        };
+        let position = ArtifactListPosition::parse(None).unwrap();
+        assert_eq!(position.owner_before(), None);
+        assert!(
+            matches!(store.artifact_delivery_page(&scope, "session", 1, &position, page(true, Some("v1.owner-next".into()))).unwrap(), RemoteAssetResult::List { next_before: Some(next), .. } if next == "v1.owner-next")
+        );
+        assert!(
+            matches!(store.artifact_delivery_page(&scope, "session", 1, &position, page(false, None)).unwrap(), RemoteAssetResult::List { has_more: false, next_before: None, items, .. } if items == vec![item.clone()])
+        );
+        assert!(ArtifactListPosition::parse(Some("history.v1.invalid")).is_err());
+        let history_cursor = format!("history.v1.{}", item.artifact_id.as_uuid());
+        assert_eq!(
+            ArtifactListPosition::parse(Some(&history_cursor))
+                .unwrap()
+                .owner_before(),
+            None
+        );
+        assert!(store
+            .artifact_delivery_page(&scope, "session", 0, &position, page(false, None))
+            .is_err());
+        assert!(store
+            .artifact_delivery_page(&scope, "different", 1, &position, page(false, None))
+            .is_err());
+    }
+    #[test]
+    fn temporary_ready_upload_expires_but_bound_output_does_not() {
+        let (_root, store, scope) = setup();
+        let temp = CanonicalUuid::new(uuid::Uuid::new_v4());
+        store
+            .execute(&scope, &begin(&scope, temp, b"temporary"))
+            .unwrap();
+        store
+            .execute(&scope, &chunk(&scope, temp, 0, b"temporary"))
+            .unwrap();
+        store.execute(&scope, &finish(&scope, temp)).unwrap();
+        let output = CanonicalUuid::new(uuid::Uuid::new_v4());
+        store
+            .execute(&scope, &begin(&scope, output, b"delivery"))
+            .unwrap();
+        store
+            .execute(&scope, &chunk(&scope, output, 0, b"delivery"))
+            .unwrap();
+        store.execute(&scope, &finish(&scope, output)).unwrap();
+        let source = uuid::Uuid::new_v4().to_string();
+        let descriptor = store
+            .bind_ready_upload(&scope, "session", output, &source)
+            .unwrap();
+        assert_eq!(
+            store
+                .cleanup_expired(&scope, now() + 7 * 86400, 32)
+                .unwrap(),
+            1
+        );
+        assert!(store
+            .execute(
+                &scope,
+                &RemoteAssetRequest::Read {
+                    version: 1,
+                    agent_id: scope.agent_id.clone(),
+                    session_id: "session".into(),
+                    artifact_id: descriptor.artifact_id,
+                    offset: 0,
+                    max_bytes: 24
+                }
+            )
+            .is_ok());
+        assert!(store.execute(&scope, &finish(&scope, temp)).is_err());
     }
 }

@@ -138,6 +138,38 @@ function collectAttachments(messages: ReadonlyArray<SessionMessage>, sessionId: 
   return output;
 }
 
+// Raised only for a positively identified missing source after owner/path checks.
+// It cannot be used for permission, scope, traversal or generic I/O failures.
+class ArtifactSourceMissing extends Error {}
+
+async function requireSourceStat(absolute: string) {
+  try { return await lstat(absolute); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ArtifactSourceMissing();
+    throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
+  }
+}
+
+async function requireTrustedSourceComponents(root: string, relative: string): Promise<void> {
+  let current = root;
+  const components = ['', ...relative.split(path.sep)];
+  for (const [index, component] of components.entries()) {
+    if (component) current = path.join(current, component);
+    const stat = await requireSourceStat(current);
+    if (stat.isSymbolicLink() || (index < components.length - 1 && !stat.isDirectory())) {
+      throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
+    }
+  }
+}
+
+async function requireSourceRealpath(absolute: string): Promise<string> {
+  try { return await realpath(absolute); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new ArtifactSourceMissing();
+    throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
+  }
+}
+
 async function resolveSource(sessionId: string, attachment: ToolAttachment): Promise<OwnerResolvedArtifact> {
   const parsed = parseToolAttachmentRef(attachment.refPath, sessionId);
   if (!parsed) throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
@@ -164,9 +196,14 @@ async function resolveSource(sessionId: string, attachment: ToolAttachment): Pro
         !validateTrustedAttachmentRoot(expectedTrustedPath, { canonicalizeSymlinks: true }).ok) {
       throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
     }
+    // Check parents before treating ENOENT as a benign deleted output; a
+    // dangling parent symlink must not be misclassified as missing history.
+    await requireTrustedSourceComponents(trustedRoot, path.relative(trustedRoot, expectedTrustedPath));
+    const sourceStat = await requireSourceStat(expectedTrustedPath);
+    if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
     const [canonicalRoot, canonicalFile] = await Promise.all([
       realpath(trustedRoot).catch(() => null),
-      realpath(expectedTrustedPath).catch(() => null),
+      requireSourceRealpath(expectedTrustedPath),
     ]);
     if (!canonicalRoot || !canonicalFile) throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
     const checkedRelative = path.relative(canonicalRoot, canonicalFile);
@@ -183,9 +220,9 @@ async function resolveSource(sessionId: string, attachment: ToolAttachment): Pro
     }
     const checked = validateExternalReadPathNode(registered, { canonicalizeSymlinks: true });
     if (!checked.ok) throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
-    absolute = await realpath(checked.canonical).catch(() => {
-      throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
-    });
+    const sourceStat = await requireSourceStat(checked.canonical);
+    if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
+    absolute = await requireSourceRealpath(checked.canonical);
     root = path.dirname(absolute);
     relative = path.basename(absolute);
   }
@@ -194,7 +231,7 @@ async function resolveSource(sessionId: string, attachment: ToolAttachment): Pro
   if (path.isAbsolute(relative) || parts.some((part) => !part || part === '.' || part === '..')) {
     throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
   }
-  const stat = await lstat(absolute).catch(() => null);
+  const stat = await requireSourceStat(absolute);
   if (!stat?.isFile() || stat.isSymbolicLink() || stat.size < 1 || stat.size > MAX_ASSET_BYTES) {
     throw new RemoteSessionError('REMOTE_ARTIFACT_UNAVAILABLE');
   }
@@ -241,10 +278,17 @@ async function resolveDesktopRemoteArtifactsOwned(value: unknown) {
     if (index < 0) throw new RemoteSessionError('REMOTE_ASSET_CURSOR_INVALID');
     start = index + 1;
   }
-  const page = candidates.slice(start, start + input.limit);
-  const items = await Promise.all(page.map(({ attachment }) => resolveSource(input.sessionId, attachment)));
-  const hasMore = start + page.length < candidates.length;
-  const last = page.at(-1);
+  const items: OwnerResolvedArtifact[] = [];
+  let scanned = start;
+  // Missing old source bytes cannot invalidate already captured immutable output.
+  // Advance the original attachment cursor across those gaps without inventing files.
+  while (scanned < candidates.length && items.length < input.limit) {
+    const candidate = candidates[scanned++];
+    try { items.push(await resolveSource(input.sessionId, candidate.attachment)); }
+    catch (error) { if (!(error instanceof ArtifactSourceMissing)) throw error; }
+  }
+  const hasMore = scanned < candidates.length;
+  const last = candidates[scanned - 1];
   const nextBefore = hasMore && last
     ? encodeCursor({ messageId: last.messageId, attachmentIndex: last.attachmentIndex })
     : null;

@@ -1,0 +1,27 @@
+{
+  "api": "persistTransferredDraft",
+  "output": "/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-mobile-bot-experience/dev-docs/mobile-bot-experience/evidence/review-draft-transfer-disks-1793476952828",
+  "outcomes": [
+    {
+      "phase": "before-destination",
+      "exitCode": 41,
+      "sourceText": "review: original instruction must remain durable",
+      "destinationText": "",
+      "passed": true
+    },
+    {
+      "phase": "before-source-clear",
+      "exitCode": 42,
+      "sourceText": "review: original instruction must remain durable",
+      "destinationText": "review: later destination edit\n\nreview: original instruction must remain durable",
+      "passed": true
+    },
+    {
+      "phase": "normal",
+      "exitCode": 0,
+      "sourceText": "",
+      "destinationText": "review: later destination edit\n\nreview: original instruction must remain durable",
+      "passed": true
+    }
+  ]
+}

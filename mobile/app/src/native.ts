@@ -190,8 +190,9 @@ export async function requestNative(intent: NativeIntent): Promise<z.infer<typeo
 
 export const isFixtureMode = __DEV__ && Platform.OS === 'web' && process.env.EXPO_PUBLIC_MOBILE_QA === '1';
 
-export type QaScenario = 'delayed-disconnect' | 'processing-receipt' | 'rejected-receipt' | 'disconnect-receipt' | 'directory-recover' | 'history' | 'open-retry' | 'poll-recover' | 'target-error' | 'rich-text' | 'directory-layout' | 'conversation' | 'multi-bot' | 'no-bots' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
+export type QaScenario = 'bot-work' | 'delayed-disconnect' | 'processing-receipt' | 'rejected-receipt' | 'disconnect-receipt' | 'directory-recover' | 'history' | 'open-retry' | 'poll-recover' | 'target-error' | 'rich-text' | 'directory-layout' | 'conversation' | 'multi-bot' | 'no-bots' | 'offline' | 'approval' | 'stale-approval' | 'unknown-receipt' | 'reset-unknown' | 'network-error' | 'draft-error' | 'mobile-unsupported' | 'mobile-error';
 export const qaScenarioOptions: readonly { id: QaScenario; label: string }[] = [
+  { id: 'bot-work', label: 'Bot 工作连续性' },
   { id: 'delayed-disconnect', label: '首发超时切换会话' },
   { id: 'processing-receipt', label: '提交处理中再确认' }, { id: 'rejected-receipt', label: '提交后拒绝' }, { id: 'disconnect-receipt', label: '发送断线后恢复' }, { id: 'directory-recover', label: '目录瞬断恢复' },
   { id: 'history', label: '长会话历史翻页' }, { id: 'open-retry', label: '会话读取失败重试' }, { id: 'poll-recover', label: '历史刷新故障恢复' },

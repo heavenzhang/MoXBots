@@ -6,7 +6,7 @@ use super::{
     NetworkError,
 };
 use crate::sidecar::ManagedSidecarManager;
-use moxbots_asset_store::{AssetScope, AssetStore, TrustedArtifactSource};
+use moxbots_asset_store::{ArtifactListPosition, AssetScope, AssetStore, TrustedArtifactSource};
 use myagents_agent_network_protocol::DeviceScope;
 use myagents_host_management_protocol::{
     CanonicalUuid, RemoteArtifactDescriptor, RemoteAssetRequest, RemoteAssetResult, ResponseResult,
@@ -172,10 +172,12 @@ async fn list_from_owner(
     else {
         unreachable!()
     };
+    let position = ArtifactListPosition::parse(before.as_deref())
+        .map_err(|error| NetworkError::new(error.code))?;
     let dispatch = session(manager, session_id)?
         .ok_or_else(|| NetworkError::new("TARGET_OWNER_UNAVAILABLE"))?;
     let mut body = json!({"agentId":agent_id,"sessionId":session_id,"limit":limit});
-    if let Some(before) = before {
+    if let Some(before) = position.owner_before() {
         body["before"] = json!(before);
     }
     let (value, allocation) = post(&dispatch, "/api/remote-assets/resolve", body, memory).await?;
@@ -190,12 +192,13 @@ async fn list_from_owner(
             .next_before
             .as_ref()
             .is_some_and(|s| s.is_empty() || s.len() > 256)
-        || page.has_more && page.next_before.as_ref() == before.as_ref()
+        || page.has_more && page.next_before.as_ref() == position.owner_before().as_ref()
     {
         return Err(NetworkError::new("TARGET_OWNER_SCOPE_MISMATCH"));
     }
-    let result_session_id = session_id.clone();
-    let worker_session_id = result_session_id.clone();
+    let worker_session_id = session_id.clone();
+    let result_agent_id = agent_id.clone();
+    let request_limit = *limit;
     let descriptors = tauri::async_runtime::spawn_blocking(move || {
         let mut result: Vec<RemoteArtifactDescriptor> = Vec::with_capacity(page.items.len());
         for item in page.items {
@@ -218,7 +221,22 @@ async fn list_from_owner(
                 .map_err(|e| StoreFailure::Store(e.code))?;
             result.push(descriptor);
         }
-        Ok::<_, StoreFailure>((result, page.has_more, page.next_before))
+        store
+            .artifact_delivery_page(
+                &scope,
+                &worker_session_id,
+                request_limit,
+                &position,
+                RemoteAssetResult::List {
+                    version: 1,
+                    agent_id: result_agent_id,
+                    session_id: worker_session_id.clone(),
+                    items: result,
+                    has_more: page.has_more,
+                    next_before: page.next_before,
+                },
+            )
+            .map_err(|error| StoreFailure::Store(error.code))
     })
     .await
     .map_err(|_| NetworkError::new("ASSET_IO_FAILED"))?;
@@ -231,18 +249,7 @@ async fn list_from_owner(
                 .ok_or_else(|| NetworkError::new(code));
         }
     };
-    let (items, has_more, next_before) = descriptors;
-    Ok((
-        RemoteAssetResult::List {
-            version: 1,
-            agent_id: agent_id.clone(),
-            session_id: result_session_id,
-            items,
-            has_more,
-            next_before,
-        },
-        allocation,
-    ))
+    Ok((descriptors, allocation))
 }
 
 pub(crate) async fn execute(

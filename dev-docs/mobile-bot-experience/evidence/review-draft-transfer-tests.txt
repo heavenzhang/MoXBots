@@ -1,0 +1,52 @@
+TAP version 13
+# Subtest: transferred draft is written to disk before source deletion, and restarts with destination edits intact
+ok 1 - transferred draft is written to disk before source deletion, and restarts with destination edits intact
+  ---
+  duration_ms: 4.972958
+  type: 'test'
+  ...
+# Subtest: process loss during an unconfirmed destination write preserves durable source bytes
+ok 2 - process loss during an unconfirmed destination write preserves durable source bytes
+  ---
+  duration_ms: 1.484292
+  type: 'test'
+  ...
+# Subtest: destination DISK_FULL never clears source or claims a persisted transfer
+ok 3 - destination DISK_FULL never clears source or claims a persisted transfer
+  ---
+  duration_ms: 1.346625
+  type: 'test'
+  ...
+# Subtest: destination MOBILE_DRAFT_CONFLICT never clears source or claims a persisted transfer
+ok 4 - destination MOBILE_DRAFT_CONFLICT never clears source or claims a persisted transfer
+  ---
+  duration_ms: 0.817625
+  type: 'test'
+  ...
+# Subtest: a destination edited while saving cannot clear the original transfer source
+ok 5 - a destination edited while saving cannot clear the original transfer source
+  ---
+  duration_ms: 1.559583
+  type: 'test'
+  ...
+# Subtest: navigation and a newer source edit are preserved while the copied destination becomes durable
+ok 6 - navigation and a newer source edit are preserved while the copied destination becomes durable
+  ---
+  duration_ms: 0.948958
+  type: 'test'
+  ...
+# Subtest: wrong Bot, missing copied text and stale account tickets cannot clear a source draft
+ok 7 - wrong Bot, missing copied text and stale account tickets cannot clear a source draft
+  ---
+  duration_ms: 0.87775
+  type: 'test'
+  ...
+1..7
+# tests 7
+# suites 0
+# pass 7
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 81.574958

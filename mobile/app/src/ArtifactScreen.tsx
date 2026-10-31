@@ -3,13 +3,17 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ChevronDown, Download, Eye, FileText, Image as ImageIcon, Pause, Play, RefreshCw, Share2, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, Download, Eye, FileText, Image as ImageIcon, Pause, Play, RefreshCw, Share2, Trash2, PencilLine, ChevronRight } from 'lucide-react-native';
 import { artifactEventMatchesDescriptor, artifactListBelongsToOwner, ArtifactDownloadTracker, ArtifactRowBusyTracker, restoreArtifactStatuses, type ArtifactOwner } from './artifactPolicy';
 import { ArtifactActionReply, ArtifactDescriptor, ArtifactDownload, isFixtureMode, QaArtifactScenario, qaArtifactScenarioOptions, requestNative, selectQaArtifactScenario, subscribeArtifactDownloadChanges, Target } from './native';
+
+import { rememberArtifactChatReturn } from './artifactNavigation';
+import { artifactContentLabel, artifactRevisionDraft, mergeArtifactPage } from './artifactPresentation';
 
 const color = { ...mobileTheme, green: mobileTheme.primary };
 const pageLimit = 20;
 const errorCopy: Record<string, string> = {
+  MOBILE_ARTIFACT_DESCRIPTOR_CHANGED: '成果标识与内容不一致，请返回会话后重新打开。',
   MOBILE_REMOTE_UNAVAILABLE: '暂时无法连接成果服务，请检查网络后刷新。',
   MOBILE_ARTIFACT_NOT_FOUND: '本机没有这项成果的下载记录。',
   MOBILE_ARTIFACT_NOT_READY: '文件尚未下载完成，请完成下载后再打开或分享。',
@@ -27,16 +31,14 @@ function asParam(value: string | string[] | undefined): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-function scopeMatchesDownload(value: ArtifactDownload, owner: ArtifactOwner): boolean {
-  return artifactListBelongsToOwner(value, owner);
-}
-
 export default function ArtifactScreen() {
   const params = useLocalSearchParams<{ targetId?: string | string[]; sessionId?: string | string[] }>();
   const routeTargetId = asParam(params.targetId);
   const routeSessionId = asParam(params.sessionId);
   const router = useRouter();
   const [target, setTarget] = useState<Target | null>(null);
+  const principalIdRef = useRef<string | null>(null);
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const ownerRef = useRef<ArtifactOwner | null>(null);
   const trackerRef = useRef(new ArtifactDownloadTracker());
   const trackerEpochRef = useRef(0);
@@ -99,8 +101,9 @@ export default function ArtifactScreen() {
       if (!routeIsCurrent(epoch) || ownerRef.current === null || !artifactListBelongsToOwner(ownerRef.current, currentOwner)) return;
       if (response.kind === 'error') throw new Error(response.code);
       if (response.kind !== 'artifact-list' || !artifactListBelongsToOwner(response, currentOwner)) throw new Error('MOBILE_ARTIFACT_RESPONSE_INVALID');
-      const combined = reset ? response.items : [...itemsRef.current, ...response.items];
-      const unique = [...new Map(combined.map((item) => [item.artifactId, item])).values()];
+      const unique = mergeArtifactPage(reset ? [] : itemsRef.current, response.items);
+      // Even a refresh cannot silently rewrite an already observed immutable ID.
+      mergeArtifactPage(itemsRef.current, response.items);
       itemsRef.current = unique;
       setItems(unique);
       statusRestoreQueueRef.current.push(...response.items.slice(0, pageLimit));
@@ -123,7 +126,8 @@ export default function ArtifactScreen() {
   const loadContext = useCallback(async (epoch: number) => {
     if (!routeIsCurrent(epoch)) return;
     listFlightRef.current = null;
-    setLoading(true); setLoadingMore(false); setNotice(null); setTarget(null); setNoSession(false);
+    setLoading(true); setLoadingMore(false); setNotice(null); setTarget(null); setNoSession(false); setSelectedArtifactId(null);
+    principalIdRef.current = null;
     statusRestoreQueueRef.current = []; statusRestoreAttemptsRef.current.clear();
     ownerRef.current = null; itemsRef.current = []; setItems([]); setDownloads({}); setUnknown({}); setStatusNeedsCheck({});
     if (!routeTargetId) { setNotice({ text: '没有指定会话成果。请从会话页的成果入口打开。' }); setLoading(false); return; }
@@ -131,6 +135,7 @@ export default function ArtifactScreen() {
       const accountReply = await requestNative({ version: 1, kind: 'account.status' });
       if (!routeIsCurrent(epoch)) return;
       if (accountReply.kind !== 'account' || accountReply.state !== 'signed-in') throw new Error(accountReply.kind === 'error' ? accountReply.code : 'MOBILE_AUTHORIZATION_REQUIRED');
+      principalIdRef.current = accountReply.principalId;
       const targetsReply = await requestNative({ version: 1, kind: 'targets.list' });
       if (!routeIsCurrent(epoch)) return;
       if (targetsReply.kind !== 'targets') throw new Error(targetsReply.kind === 'error' ? targetsReply.code : 'MOBILE_TARGETS_REPLY_INVALID');
@@ -206,8 +211,7 @@ export default function ArtifactScreen() {
       }
       throw new Error(response.code);
     }
-    if (response.kind !== 'artifact-download' || !scopeMatchesDownload(response, currentOwner)
-      || response.artifactId !== descriptor.artifactId || response.name !== descriptor.name || response.mimeType !== descriptor.mimeType || response.sha256 !== descriptor.sha256) {
+    if (response.kind !== 'artifact-download' || !artifactEventMatchesDescriptor(response, descriptor, currentOwner)) {
       throw new Error('MOBILE_ARTIFACT_RESPONSE_INVALID');
     }
     if (trackerRef.current.acceptReply(response, flight)) {
@@ -262,8 +266,7 @@ export default function ArtifactScreen() {
       const response = await requestNative({ version: 1, kind: 'artifact.download', targetId: currentOwner.targetId, sessionId: currentOwner.sessionId, artifact: descriptor });
       if (!routeIsCurrent(epoch) || !ownerRef.current || !artifactListBelongsToOwner(ownerRef.current, currentOwner)) return;
       if (response.kind === 'error') throw new Error(response.code);
-      if (response.kind !== 'artifact-download' || !scopeMatchesDownload(response, currentOwner)
-        || response.artifactId !== descriptor.artifactId || response.name !== descriptor.name || response.mimeType !== descriptor.mimeType || response.sha256 !== descriptor.sha256) {
+      if (response.kind !== 'artifact-download' || !artifactEventMatchesDescriptor(response, descriptor, currentOwner)) {
         throw new Error('MOBILE_ARTIFACT_RESPONSE_INVALID');
       }
       if (trackerRef.current.acceptReply(response, flight)) setDownloads((prior) => ({ ...prior, [descriptor.artifactId]: response }));
@@ -296,7 +299,7 @@ export default function ArtifactScreen() {
       if (!routeIsCurrent(epoch) || !ownerRef.current || !artifactListBelongsToOwner(ownerRef.current, currentOwner)) return;
       if (response.kind === 'error') { nativeRejected = true; throw new Error(response.code); }
       if (kind === 'pause') {
-        if (response.kind !== 'artifact-download' || !scopeMatchesDownload(response, currentOwner) || response.artifactId !== descriptor.artifactId) throw new Error('MOBILE_ARTIFACT_RESPONSE_INVALID');
+        if (response.kind !== 'artifact-download' || !artifactEventMatchesDescriptor(response, descriptor, currentOwner)) throw new Error('MOBILE_ARTIFACT_RESPONSE_INVALID');
         if (pauseFlight && trackerRef.current.acceptReply(response, pauseFlight)) setDownloads((prior) => ({ ...prior, [descriptor.artifactId]: response }));
         setUnknown((prior) => ({ ...prior, [descriptor.artifactId]: false }));
       } else {
@@ -362,20 +365,31 @@ export default function ArtifactScreen() {
     refreshList();
   }, [refreshList]);
 
+  const continueRevising = useCallback((descriptor: ArtifactDescriptor) => {
+    const currentOwner = ownerRef.current;
+    const principalId = principalIdRef.current;
+    if (!currentOwner || !principalId || !routeIsCurrent(routeEpochRef.current)
+      || !itemsRef.current.some((item) => item.artifactId === descriptor.artifactId && item.sha256 === descriptor.sha256)) return;
+    rememberArtifactChatReturn({ principalId, identityKey: currentOwner.identityKey, agentId: currentOwner.agentId, sessionId: currentOwner.sessionId,
+      revisionDraft: { artifact: { ...descriptor }, text: artifactRevisionDraft(descriptor, currentOwner) } });
+    if (router.canGoBack()) router.back(); else router.replace('/');
+  }, [routeIsCurrent, router]);
+
   return <SafeAreaView edges={['top', 'bottom']} style={styles.safe}>
     {isFixtureMode && <View style={styles.qaBanner}><Text style={styles.qaBannerText}>演示夹具 · 以下成果及操作均为合成数据</Text><Pressable accessibilityRole="button" accessibilityLabel="切换成果演示场景" accessibilityState={{ expanded: qaMenuOpen }} onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaToggle}><Text style={styles.qaToggleText}>{qaArtifactScenarioOptions.find((item) => item.id === qaScenario)?.label ?? '演示场景'} <ChevronDown size={12} color="#fff"/></Text></Pressable>{qaMenuOpen && <View style={styles.qaChoices}>{qaArtifactScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" accessibilityState={{ selected: qaScenario === item.id }} onPress={() => void chooseQa(item.id)} style={styles.qaChoice}><Text style={styles.qaChoiceText}>{item.label}</Text></Pressable>)}</View>}</View>}
     <View style={styles.header}>
       <Pressable accessibilityRole="button" accessibilityLabel="返回会话" onPress={() => router.canGoBack() ? router.back() : router.replace('/')} style={styles.headerButton}><ArrowLeft size={21} color={color.ink}/></Pressable>
-      <View style={styles.headerCopy}><Text accessibilityRole="header" style={styles.headerTitle}>会话成果</Text><Text numberOfLines={1} style={styles.headerSubtitle}>{target?.name ?? '正在读取 Bot'}</Text></View>
+      <View style={styles.headerCopy}><Text accessibilityRole="header" style={styles.headerTitle}>成果与交付</Text><Text numberOfLines={1} style={styles.headerSubtitle}>{target?.name ?? '正在读取 Bot'}</Text></View>
       <Pressable accessibilityRole="button" accessibilityLabel="刷新成果列表" accessibilityState={{ disabled: loading }} disabled={loading} onPress={refreshList} style={styles.headerButton}><RefreshCw size={18} color={loading ? color.muted : color.green}/></Pressable>
     </View>
     <View style={styles.summary}><FileText size={18} color={color.green}/><Text style={styles.summaryText}>{routeSessionId ? `${items.length}${hasMore ? '+' : ''} 项成果` : '当前会话尚未创建'}</Text><Text style={styles.summaryHint}>{target?.deviceName ?? ''}</Text></View>
+    <View style={styles.continuityNote}><Text style={styles.continuityTitle}>已交付文件独立于聊天消息</Text><Text style={styles.continuityDetail}>按内容标识保留文件；下列记录来自当前会话，不推测版本先后。</Text></View>
     {notice && <InlineNotice notice={notice}/>}
     {noSession ? <View style={styles.stateCard}><Text style={styles.stateTitle}>先打开已有会话</Text><Text style={styles.stateDetail}>新会话创建后，才能读取该会话的成果。</Text></View>
       : loading && items.length === 0 ? <View style={styles.loading}><ActivityIndicator color={color.green}/><Text style={styles.stateDetail}>正在读取会话成果…</Text></View>
         : items.length === 0 ? <View style={styles.stateCard}><FileText size={25} color={color.muted}/><Text style={styles.stateTitle}>{target?.online ? '暂无成果' : 'Bot 当前离线'}</Text><Text style={styles.stateDetail}>{target?.online ? '此会话还没有可下载的文件。' : '连接后可重新读取会话成果。'}</Text></View>
           : <ScrollView contentContainerStyle={styles.list}>
-            {items.map((descriptor) => <ArtifactRow key={descriptor.artifactId} descriptor={descriptor} download={downloads[descriptor.artifactId] ?? null} busy={!!busyIds[descriptor.artifactId]} unknown={!!unknown[descriptor.artifactId]} needsStatusCheck={!!statusNeedsCheck[descriptor.artifactId]} removeConfirm={removeConfirmId === descriptor.artifactId} onDownload={() => void beginDownload(descriptor, routeEpochRef.current)} onStatus={() => void refreshStatus(descriptor)} onPause={() => void runRowAction(descriptor, 'pause')} onPreview={() => void runRowAction(descriptor, 'preview')} onShare={() => void runRowAction(descriptor, 'share')} onRemove={() => setRemoveConfirmId(descriptor.artifactId)} onRemoveCancel={() => setRemoveConfirmId(null)} onRemoveConfirm={() => void runRowAction(descriptor, 'remove')}/>) }
+            {items.map((descriptor) => <ArtifactRow key={descriptor.artifactId} descriptor={descriptor} sourceName={target?.name ?? 'Bot'} sourceSession={routeSessionId ?? ''} selected={selectedArtifactId === descriptor.artifactId} onSelect={() => setSelectedArtifactId((prior) => prior === descriptor.artifactId ? null : descriptor.artifactId)} onRevise={() => continueRevising(descriptor)} download={downloads[descriptor.artifactId] ?? null} busy={!!busyIds[descriptor.artifactId]} unknown={!!unknown[descriptor.artifactId]} needsStatusCheck={!!statusNeedsCheck[descriptor.artifactId]} removeConfirm={removeConfirmId === descriptor.artifactId} onDownload={() => void beginDownload(descriptor, routeEpochRef.current)} onStatus={() => void refreshStatus(descriptor)} onPause={() => void runRowAction(descriptor, 'pause')} onPreview={() => void runRowAction(descriptor, 'preview')} onShare={() => void runRowAction(descriptor, 'share')} onRemove={() => setRemoveConfirmId(descriptor.artifactId)} onRemoveCancel={() => setRemoveConfirmId(null)} onRemoveConfirm={() => void runRowAction(descriptor, 'remove')}/>) }
             {hasMore && <Pressable accessibilityRole="button" accessibilityLabel="加载更多成果" disabled={loadingMore} onPress={loadMore} style={styles.moreButton}>{loadingMore ? <ActivityIndicator size="small" color={color.green}/> : <Text style={styles.moreText}>加载更多</Text>}</Pressable>}
           </ScrollView>}
     <Text style={styles.footer}>下载文件只保存在本机；移除本机副本不会删除远端成果。</Text>
@@ -401,15 +415,17 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ArtifactRow({ descriptor, download, busy, unknown, needsStatusCheck, removeConfirm, onDownload, onStatus, onPause, onPreview, onShare, onRemove, onRemoveCancel, onRemoveConfirm }: {
-  descriptor: ArtifactDescriptor; download: ArtifactDownload | null; busy: boolean; unknown: boolean; needsStatusCheck: boolean; removeConfirm: boolean;
+function ArtifactRow({ descriptor, sourceName, sourceSession, selected, onSelect, onRevise, download, busy, unknown, needsStatusCheck, removeConfirm, onDownload, onStatus, onPause, onPreview, onShare, onRemove, onRemoveCancel, onRemoveConfirm }: {
+  descriptor: ArtifactDescriptor; sourceName: string; sourceSession: string; selected: boolean; onSelect: () => void; onRevise: () => void; download: ArtifactDownload | null; busy: boolean; unknown: boolean; needsStatusCheck: boolean; removeConfirm: boolean;
   onDownload: () => void; onStatus: () => void; onPause: () => void; onPreview: () => void; onShare: () => void;
   onRemove: () => void; onRemoveCancel: () => void; onRemoveConfirm: () => void;
 }) {
   const state = unknown ? '状态待确认' : download ? downloadStateLabel[download.state] : needsStatusCheck ? '待检查本机状态' : '尚未下载';
   const progress = download ? Math.min(100, Math.round(download.receivedBytes / Math.max(1, download.totalBytes) * 100)) : 0;
-  return <View style={styles.artifactCard}>
+  return <View style={[styles.artifactCard, selected && styles.artifactCardSelected]}>
     <View style={styles.artifactMain}><View style={styles.fileIcon}>{descriptor.mimeType.startsWith('image/') ? <ImageIcon size={18} color={color.green}/> : <FileText size={18} color={color.green}/>}</View><View style={styles.artifactCopy}><Text numberOfLines={2} style={styles.fileName}>{descriptor.name}</Text><Text numberOfLines={1} style={styles.fileMeta}>{descriptor.mimeType} · {formatBytes(descriptor.sizeBytes)}</Text></View></View>
+    <Pressable accessibilityRole="button" accessibilityLabel={`查看 ${descriptor.name} 的来源与内容标识`} accessibilityState={{ expanded: selected }} onPress={onSelect} style={styles.sourceButton}><Text style={styles.contentLabel}>{artifactContentLabel(descriptor)}</Text><ChevronRight size={15} color={color.muted} style={selected ? { transform: [{ rotate: '90deg' }] } : undefined}/></Pressable>
+    {selected && <View style={styles.sourceDetails}><Text style={styles.sourceTitle}>来源与内容</Text><Text style={styles.sourceText}>{sourceName} · 会话 {sourceSession}</Text><Text selectable style={styles.sourceText}>成果 ID：{descriptor.artifactId}</Text><Text selectable style={styles.sourceHash}>SHA-256：{descriptor.sha256}</Text><Text style={styles.sourceText}>此内容标识只对应这份文件，不代表版本顺序。</Text></View>}
     <View style={styles.progressRow}><Text style={[styles.statusText, unknown && styles.errorText]}>{state}</Text>{download?.state === 'downloading' && <Text style={styles.statusText}>{progress}% · {formatBytes(download.receivedBytes)} / {formatBytes(download.totalBytes)}</Text>}</View>
     {download?.state === 'downloading' && <View accessibilityRole="progressbar" accessibilityLabel={`${descriptor.name} 下载进度 ${progress}%`} accessibilityValue={{ min: 0, max: 100, now: progress }} style={styles.progressTrack}><View style={[styles.progressFill, { width: `${progress}%` }]}/></View>}
     <View style={styles.actions}>
@@ -418,6 +434,7 @@ function ArtifactRow({ descriptor, download, busy, unknown, needsStatusCheck, re
           : download?.state === 'paused' ? <ActionButton label="继续" icon={<Play size={15} color={color.green}/>} disabled={busy} onPress={onDownload}/>
             : download?.state === 'ready' ? <><ActionButton label="预览" icon={<Eye size={15} color={color.green}/>} disabled={busy} onPress={onPreview}/><ActionButton label="分享" icon={<Share2 size={15} color={color.green}/>} disabled={busy} onPress={onShare}/></>
               : <ActionButton label="下载" icon={<Download size={15} color={color.green}/>} disabled={busy} onPress={onDownload}/>}
+      <ActionButton label="继续修改" icon={<PencilLine size={15} color={color.green}/>} disabled={busy} onPress={onRevise}/>
       {busy && <ActivityIndicator size="small" color={color.green}/>}
       {(download?.state === 'ready' || download?.state === 'paused') && !unknown && !removeConfirm && <ActionButton label="移除本机副本" icon={<Trash2 size={15} color={color.muted}/>} disabled={busy} onPress={onRemove}/>}
       {removeConfirm && <View style={styles.removeConfirm}><Text style={styles.removeConfirmText}>只移除此设备上的下载文件？</Text><Pressable accessibilityRole="button" accessibilityLabel="确认移除本机副本" disabled={busy} onPress={onRemoveConfirm} style={styles.removeConfirmButton}><Text style={styles.removeConfirmAction}>确认</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="取消移除" onPress={onRemoveCancel} style={styles.removeConfirmButton}><Text style={styles.removeCancel}>取消</Text></Pressable></View>}
@@ -436,6 +453,7 @@ function InlineNotice({ notice }: { notice: { text: string; code?: string } }) {
 }
 
 const styles = StyleSheet.create({
+  continuityNote: { marginHorizontal: 16, marginTop: 14, marginBottom: 2, padding: 13, borderRadius: 12, backgroundColor: color.wash }, continuityTitle: { color: color.ink, fontSize: 13, lineHeight: 19, fontWeight: '600' }, continuityDetail: { color: color.muted, fontSize: 11, lineHeight: 17, marginTop: 3 }, artifactCardSelected: { borderColor: color.green }, sourceButton: { minHeight: 44, marginTop: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, contentLabel: { color: color.green, fontSize: 11, fontWeight: '600' }, sourceDetails: { backgroundColor: color.canvas, padding: 12, gap: 6, borderRadius: 9 }, sourceTitle: { fontSize: 12, fontWeight: '600', color: color.ink }, sourceText: { fontSize: 11, lineHeight: 17, color: color.muted }, sourceHash: { fontSize: 10, lineHeight: 16, color: color.muted },
   safe: { flex: 1, backgroundColor: '#FFFFFF' }, qaBanner: { minHeight: 30, backgroundColor: '#9A541C', paddingHorizontal: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10, flexWrap: 'wrap' }, qaBannerText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' }, qaToggle: { minHeight: 26, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 7, backgroundColor: '#7D4115' }, qaToggleText: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', flexDirection: 'row' }, qaChoices: { flexBasis: '100%', flexDirection: 'row', justifyContent: 'center', gap: 6, paddingBottom: 7 }, qaChoice: { minHeight: 30, paddingHorizontal: 10, justifyContent: 'center', borderRadius: 8, backgroundColor: '#7D4115' }, qaChoiceText: { color: '#FFFFFF', fontSize: 10, fontWeight: '600' },
   header: { minHeight: 56, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: color.line, gap: 8 }, headerButton: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' }, headerCopy: { flex: 1 }, headerTitle: { color: color.ink, fontSize: 15, fontWeight: '700' }, headerSubtitle: { marginTop: 2, color: color.muted, fontSize: 11 }, summary: { minHeight: 44, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: color.line }, summaryText: { color: color.ink, fontSize: 12, fontWeight: '600' }, summaryHint: { marginLeft: 'auto', color: color.muted, fontSize: 11 },
   list: { paddingHorizontal: 14, paddingTop: 10, paddingBottom: 12, gap: 9 }, artifactCard: { borderWidth: 1, borderColor: color.line, borderRadius: 13, padding: 12, backgroundColor: '#FFFFFF' }, artifactMain: { flexDirection: 'row', alignItems: 'center', gap: 10 }, fileIcon: { width: 38, height: 38, borderRadius: 11, backgroundColor: color.wash, justifyContent: 'center', alignItems: 'center' }, artifactCopy: { flex: 1 }, fileName: { color: color.ink, fontSize: 13, fontWeight: '600', lineHeight: 18 }, fileMeta: { marginTop: 3, color: color.muted, fontSize: 10 }, progressRow: { marginTop: 9, flexDirection: 'row', justifyContent: 'space-between', gap: 10 }, statusText: { color: color.muted, fontSize: 11 }, errorText: { color: color.red }, progressTrack: { height: 4, overflow: 'hidden', marginTop: 6, borderRadius: 2, backgroundColor: color.line }, progressFill: { height: 4, backgroundColor: color.green }, actions: { minHeight: 44, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 7, marginTop: 8 }, actionButton: { minHeight: 44, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderRadius: 9, backgroundColor: color.canvas }, actionText: { color: color.ink, fontSize: 11, fontWeight: '600' }, disabled: { opacity: 0.55 }, removeConfirm: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10 }, removeConfirmButton: { minHeight: 44, minWidth: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 5 }, removeConfirmText: { color: color.muted, fontSize: 10 }, removeConfirmAction: { color: color.red, fontWeight: '700', fontSize: 11 }, removeCancel: { color: color.ink, fontSize: 11 },

@@ -50,3 +50,15 @@ test('old account recent responses cannot commit or launch more reads after inva
   current = false; release(); await reading;
   assert.equal(calls, 2); assert.equal(published.length, 1); assert.deepEqual(published[0], []);
 });
+
+test('materialized first-message rejection restores original text without replacing newer editing', async () => {
+  const {rejectedDraftForOwner}=await import('../src/deliveryPolicy.ts');
+  const owner={epoch:2,screen:'chat' as const,targetId:'t',agentId:'a',sessionId:'created-session'};
+  const item={targetId:'t',agentId:'a',sessionId:null,submittedText:'first message'};
+  assert.deepEqual(rejectedDraftForOwner(owner,item,'created-session',''),{kind:'restore',text:'first message'});
+  assert.deepEqual(rejectedDraftForOwner(owner,item,'created-session','new edit'),{kind:'restore',text:'new edit\n\nfirst message'});
+  assert.deepEqual(rejectedDraftForOwner(owner,item,'created-session','first message'),{kind:'restore',text:'first message'});
+  assert.deepEqual(rejectedDraftForOwner({...owner,agentId:'other'},item,'created-session',''),{kind:'skip'});
+  assert.deepEqual(rejectedDraftForOwner({...owner,sessionId:'other'},item,'created-session',''),{kind:'skip'});
+  assert.deepEqual(rejectedDraftForOwner(owner,item,'created-session','full',5),{kind:'overflow'});
+});
