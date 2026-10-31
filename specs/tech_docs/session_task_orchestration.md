@@ -58,3 +58,8 @@ Chat 内只有一个任务 snapshot/event 观察者，原工具行、结果节�
 ### Intent classification failure evidence (MB-RECOVERY-INCIDENT-20261101)
 
 The existing tool-free utility may report a bounded ExecutionIntentFailure enum; classification adds parsing/schema/continuity/step validation reasons. The original executionAdmission stores failureReason only with INTENT_UNCONFIRMED and projects it to the existing status details. No provider text, credential or prompt is retained in this diagnostic. It does not grant an intent, reset a task budget, change the 8-second utility deadline or weaken tool denial. Legacy admissions without a reason retain the generic explanation.
+
+
+### No fixed task lifetime (2026-11-01 user policy)
+
+The user explicitly removed the 30-minute task-wide limit. SessionExecution continues while its owner and progress conditions remain valid, regardless of elapsed wall-clock time. Legacy deadlineAt stays serialized for older readers but has no admission/tool/delegation/settlement authority in this version. Old deadline_exceeded executions require a new trusted human continuation and retain their original identity/evidence; loading a file never automatically resumes them. Stop, unknown outcomes, no-progress/rework limits and per-request network recovery bounds are unchanged.

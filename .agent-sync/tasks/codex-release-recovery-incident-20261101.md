@@ -10,6 +10,7 @@ Desktop/macOS-arm64/updater/shared CI/main owner: 01a12bc2-907a-7702-b6dd-788225
 - [x] Run combined 54 DOM, 68 recovery unit, recovery integration, TypeScript and scoped lint.
 - [x] Push initial candidate 816676c60062bdf09b29546339a164a6f58d8fb2 as PR 217; automatic CI 41219907813 remains in progress.
 - [x] Integrate source increment 7b7d0db38d3e9fbdc0b22ea845fc9b16c600e7d7; combined focused tests: 16 unit, 94 integration, 17 DOM. Intent failures still block writes and diagnostics do not establish real-session recovery.
+- [x] Integrate d544baacc5e9ce13acad4f0f558eca95bcbc1851 to remove the fixed task-wide 30-minute deadline as the user requested, retaining stop, ownership, unknown side-effect, no-progress, rework and per-request network protections. The old deadline field remains for rollback compatibility; an older binary will enforce its old policy.
 - [ ] After all initial CI jobs terminate, push the updated candidate once and require its own exact-head CI before fresh main and merge.
 - [ ] Investigate remaining intent and proxy failures through actual evidence; preserve unresolved cases.
 - [ ] With user available, verify original sessions and affected native UI, then issue one new immutable version and publish.

@@ -28,13 +28,13 @@ native producer 以当前原 queue 身份提交更新，先规范化精确 marke
 
 ## 持久状态与续跑
 
-`execution` 位于现有 task ledger，包含原请求、意图、阶段、绝对 deadline、轮数、返工数、无进展数、当前 queue 和唯一 continuation。状态为 running、awaiting_review、rework、paused、incomplete、completed。
+`execution` 位于现有 task ledger，包含原请求、意图、阶段、兼容旧版本的历史 deadline 字段、轮数、返工数、无进展数、当前 queue 和唯一 continuation。状态为 running、awaiting_review、rework、paused、incomplete、completed。
 
 原 turn terminal 先保存 transcript，再通知执行 owner。无法确认保存成功时按 `TRANSCRIPT_PERSISTENCE_FAILED` 终止，不能根据模型的完成文本继续。重复或旧 queue 的 terminal 不重复派发。
 
-普通 execute 不以固定总轮数作为完成进度或停止条件；轮数仅用于诊断。保留返工评审计数上限三次（第三次失败转为未完成）、连续两次无进展、三十分钟绝对时间预算。后续原生轮次、模型故障恢复和任务包使用父执行的同一个绝对 deadline，不因换模型或新 queue 重开时间。验收可在已准入的最后一轮完成；预算只阻止启动更多轮次。
+普通 execute 不以固定总轮数或固定任务总时长作为完成进度和停止条件；轮数仅用于诊断。用户于2026-11-01明确要求取消30分钟总时限，父任务、子任务、原生推理、工具、接续及验收都不再读取历史deadline作为执行门。历史deadline字段及其旧写入格式只为数据/回滚兼容保留；新旧任务在当前版本都不因这个时间戳过期。仍保留返工评审计数上限三次、连续两次无进展、Stop、权限、未知操作和资源归属保护；单次网络请求/模型故障恢复的有界等待和重试不属于任务总时限。
 
-没有真实验收时，终态创建一条 pending continuation，经原队列完成 pending → claimed → dispatched。续跑仍是原 desktop owner，不冒充定时 Task。进入队列和最终 commit 均复核执行 ID、当前 queue、Stop、新用户输入、权限等待、其他队列、后台任务和时间预算。
+没有真实验收时，终态创建一条 pending continuation，经原队列完成 pending → claimed → dispatched。续跑仍是原 desktop owner，不冒充定时 Task。进入队列和最终 commit 均复核执行 ID、当前 queue、Stop、新用户输入、权限等待、其他队列、后台任务及无进展和返工限制。
 
 原 SDK 后台完成/静默事件唤醒同一 owner，无需 UI 轮询。正在运行的后台工作保留 pending；unknown 则暂停。进程恢复时只有已证明尚未派发的 pending 能继续。claimed/dispatched 或原轮结果无法确认时显示明确未知原因，不能重新发送任务。
 
@@ -62,7 +62,7 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 
 子工具身份来自原 Query 的 native background registry 与 launch toolUseId；有身份的子 Agent 才能写 package 声明路径。缺身份仅可在无冲突范围只读。子任务不执行不透明 Bash/MCP、嵌套派发或生产动作，根 Agent 负责这些步骤。
 
-后台推理没有逐请求 agent_id，因此同 Query 有 managed 活动 claim 时，所有 active native rows 都须精确归属当前 execution 且仍 reserved/running，才能共用父 deadline。缺 launch ID、混杂旧 execution、unknown/已结束身份都拒绝，不能因当前另有精确新 root 而升级旧子任务权限。完全没有 managed 活动 claim 的 legacy 后台沿旧策略；背景清空后历史 unknown 仍保留资源锁，但不会阻断新 root 的无关推理。
+后台推理没有逐请求 agent_id，因此同 Query 有 managed 活动 claim 时，所有 active native rows 都须精确归属当前 execution 且仍 reserved/running，才能沿用父任务的活动权限。缺 launch ID、混杂旧 execution、unknown/已结束身份都拒绝，不能因当前另有精确新 root 而升级旧子任务权限。完全没有 managed 活动 claim 的 legacy 后台沿旧策略；背景清空后历史 unknown 仍保留资源锁，但不会阻断新 root 的无关推理。
 
 启动成功 ACK 只表示 running，不能释放资源。只有带 nativeLifecycle 的真实匹配 attempt completed 才能 settled；转录推断、UI 读账本、自然语言完成均不能释放。failed/interrupted 或不确定写入成为 unknown，迟到成功 ACK/完成事件不能自动解除。根 Agent 可只读核查未知范围，但仍不能写入冲突路径。最终还须根 Agent 对 task 及整个交付验收。
 
@@ -79,6 +79,6 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 
 可信人工输入仍由原意图分类与 native turn-boundary admission 处理。分类必须明确返回 `continuationOf`：同一未完成任务返回原 execution ID，新目标返回 null。分类缺字段或失败不推测任务关系，不自动获得持续执行能力。分类只暂存，实际派发时在现有 ledger 串行 CAS 再核实原 ID、前轮真实终态与停止/预算/未知写入门禁。
 
-同任务接续更新当前人类 request ID 与 queue，轮数仅累加一次；原 execution ID、原始请求、目标、范围、验收条件、startedAt/deadlineAt、返工/无进展计数、实际工具证据、任务包与 delegation launch 预算全部保留。清除上一轮 continuation、评审提案与 assessment，必须重新提交本轮真实评审。重复 guard 幂等，旧 queue 的终态、取消或负 ACK 不作用于新 queue。若分类时的任务已完成/被新目标替换，拒绝该接续，不能回退为新 execution。普通“继续”不能重开已超时/封顶或未知写入结果的任务，也不能推断业务阻断已解除。Stop 后真实终态仅补记结算凭据，不解除暂停；transcript 持久化失败保留未知结果并拒绝自动接续。
+同任务接续更新当前人类 request ID 与 queue，轮数仅累加一次；原 execution ID、原始请求、目标、范围、验收条件、startedAt/deadlineAt、返工/无进展计数、实际工具证据、任务包与 delegation launch 预算全部保留。清除上一轮 continuation、评审提案与 assessment，必须重新提交本轮真实评审。重复 guard 幂等，旧 queue 的终态、取消或负 ACK 不作用于新 queue。若分类时的任务已完成/被新目标替换，拒绝该接续，不能回退为新 execution。普通“继续”可在原身份与真实终态验证后恢复仅因历史deadline_exceeded停止的任务，但不能重开返工/无进展封顶或未知写入结果的任务，也不能推断业务阻断已解除。Stop 后真实终态仅补记结算凭据，不解除暂停；transcript 持久化失败保留未知结果并拒绝自动接续。
 
 `SessionTaskSnapshot.executionRecovery` 是已有 ModelRecoveryState 的只读投影，只有 builtin 当前 execution queue 匹配才返回 turn/status/attempt/lastStatus/nextRetryAt，不复制 routeIdentity 或 native session 身份，也不写入 ledger 或另建调度器。原有快照读取可在 ledger revision 不变时更新 recovery；ledger SSE 不能捏造/抹除它。界面仅在当前 queue 的 running/rework 上显示模型等待/恢复暂停，执行终态优先。摘要不再显示第 x/8 轮；详细信息中的已执行轮数不表示任务完成率。生产真实路径验收由原部署单元负责人随下一候选批次完成。

@@ -77,6 +77,7 @@ export const sessionExecutionSchema = z
       "completed",
     ]),
     startedAt: z.number().finite().nonnegative(),
+    /** Legacy audit field; task lifetime is no longer limited by wall-clock time. */
     deadlineAt: z.number().finite().nonnegative(),
     turns: z.number().int().nonnegative(),
     reworks: z.number().int().nonnegative(),
@@ -105,7 +106,6 @@ export type SessionExecution = z.infer<typeof sessionExecutionSchema>;
 export const EXECUTION_LIMITS = {
   maxReworks: 3,
   maxNoProgress: 2,
-  maxDurationMs: 30 * 60_000,
 } as const;
 
 export function createSessionExecution(input: {
@@ -125,7 +125,9 @@ export function createSessionExecution(input: {
     intent: input.intent,
     phase: "running",
     startedAt: input.now,
-    deadlineAt: input.now + EXECUTION_LIMITS.maxDurationMs,
+    // Retain the old serialized shape for rollback readers. Current admission,
+    // tools, delegation and settlement never use this historical timestamp.
+    deadlineAt: input.now + 30 * 60_000,
     turns: 1,
     reworks: 0,
     noProgress: 0,
@@ -234,7 +236,6 @@ export function settleSessionExecution(
   // A verified acceptance from the already-admitted final turn settles the
   // objective; rework limits only prevent starting another turn.
   if (
-    terminal.now < state.deadlineAt &&
     acceptedAssessmentIsProven(state, terminal)
   ) {
     return {
@@ -244,8 +245,6 @@ export function settleSessionExecution(
       assessment: terminal.assessment,
     };
   }
-  if (terminal.now >= state.deadlineAt)
-    return { ...next, phase: "incomplete", reason: "deadline_exceeded" };
   if (next.noProgress >= EXECUTION_LIMITS.maxNoProgress)
     return {
       ...next,
@@ -276,12 +275,11 @@ export function settleSessionExecution(
 
 export function canContinueSessionExecution(
   state: SessionExecution,
-  now: number,
+  _now: number,
 ): boolean {
   return (
     state.intent.kind === "execute" &&
     ["awaiting_review", "rework", "running"].includes(state.phase) &&
-    now < state.deadlineAt &&
     state.reworks < EXECUTION_LIMITS.maxReworks &&
     state.noProgress < EXECUTION_LIMITS.maxNoProgress &&
     state.lastSettledQueueId === state.currentQueueId &&

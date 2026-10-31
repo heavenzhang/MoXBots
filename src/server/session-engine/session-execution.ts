@@ -96,17 +96,16 @@ function inferenceBudget(
   }
   if (execution && (execution.currentQueueId === queueId || taskBound)) {
     return {
-      deadlineAt: execution.deadlineAt,
+      deadlineAt: undefined,
       allowed:
         !revoked.has(sessionId) &&
-        isActive(execution.phase) &&
-        Date.now() < execution.deadlineAt,
+        isActive(execution.phase),
     };
   }
   return { deadlineAt: undefined, allowed: true };
 }
 
-/** Root queue or precisely bound native children share the original execution budget. */
+/** No task wall-clock deadline; unproven ownership still supplies a closed gate. */
 export function sessionExecutionDeadlineAt(
   sessionId: string,
   queueId: string | null | undefined,
@@ -197,7 +196,6 @@ function humanContinuationBlock(
   const execution = ledger.execution;
   if (execution?.id !== executionId) return "EXECUTION_CONTINUATION_CHANGED";
   if (execution.phase === "completed") return "EXECUTION_ALREADY_COMPLETED";
-  if (Date.now() >= execution.deadlineAt) return "deadline_exceeded";
   if (execution.noProgress >= EXECUTION_LIMITS.maxNoProgress)
     return "no_progress_limit_reached";
   if (execution.reworks >= EXECUTION_LIMITS.maxReworks)
@@ -221,6 +219,7 @@ function humanContinuationBlock(
       "user_stopped",
       "new_user_input",
       "turn_error",
+      "deadline_exceeded", // A legacy task may be resumed by a new trusted human input.
       "turn_limit_reached",
     ].includes(execution.reason ?? "")
   )
@@ -711,10 +710,9 @@ export function sessionExecutionToolDenial(
     execution.currentQueueId === queueId &&
     (revoked.has(sessionId) ||
       execution.phase === "paused" ||
-      execution.phase === "incomplete" ||
-      Date.now() >= execution.deadlineAt)
+      execution.phase === "incomplete")
   )
-    return "当前行动已停止或预算已到期，请等待用户新的指令。";
+    return "当前行动已停止，请等待用户新的指令。";
   const admission = ledger?.executionAdmission;
   const readCommand = ["Bash", "Shell", "shell", "exec_command"].includes(name)
     ? parseSessionTaskCommand(input)
@@ -986,22 +984,6 @@ export async function continueSessionExecution(
 ): Promise<void> {
   if (dispatching.has(sessionId) || engine.kind !== "builtin") return;
   const initial = currentLedger(sessionId)?.execution;
-  if (initial && isActive(initial.phase) && Date.now() >= initial.deadlineAt) {
-    revokeSessionExecutionWake(sessionId);
-    await mutateSessionTaskLedger(sessionId, (ledger) => {
-      if (
-        ledger.execution?.id === initial.id &&
-        isActive(ledger.execution.phase)
-      )
-        ledger.execution = {
-          ...ledger.execution,
-          phase: "incomplete",
-          reason: "deadline_exceeded",
-        };
-      return ledger;
-    });
-    return;
-  }
   if (
     !initial ||
     !canContinueSessionExecution(initial, Date.now()) ||
@@ -1033,7 +1015,6 @@ export async function continueSessionExecution(
       execution?.id === initial.id &&
       isActive(execution.phase) &&
       execution.continuation?.queueId === continuation.queueId &&
-      Date.now() < execution.deadlineAt &&
       (!entry || !engine.isBusy()) &&
       !live.waitingForUser &&
       !(
