@@ -1084,3 +1084,10 @@ Website0527 static publication is now normalTLS-readback accepted: exactsource21
 desktop/macOS-arm64/updater 与 combined CI/main 继续唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`。开发分支不启动共享CI、不新建PR、不分配正式版本或改日常App；精确任务分支SHA及release-queue交原owner下一未冻结批次。无cloud/Host/mobile部署或外部接口变化。源码、main/CI、制品和真实验收各自待回执，不以原生SDK后续回合或合成界面代替整体验收。
 
 2026-10-31同任务补充：原生父循环在子任务返回后发running，但产品root缓存仍idle；原代码只记日志导致提示丢失。在既有Query lifecycle owner投影hasNativeWork至SSE/init/live及会话/提示/时钟，replacement和prewarm围栏保留、不伪造新root；重复验收/恢复入口与维护门禁等待真实原生活动。最终279integration、250DOM、222unit、类型/lint及实际组件原生接续/终态、明亮宽屏与390px深色容器通过。覆盖本次新问题的精确远端HEAD更新原release-queue，原owner负责后续共享CI/main及正式安装，先前原生包不变。
+
+
+## MB-REPLAY-SCOPE-20261031 — 按操作防重放与结果核查
+
+用户要求取消会话级 Bash 一刀切封锁，保留具体操作防重复，测试后交既有桌面发布会话。仅 desktop builtin 恢复路径；desktop/macOS-arm64/updater 及 shared CI/main 仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4`（MoxBots桌面端统一打包负责人）负责。开发分支 `codex/replay-scope-20261031`，基线 `d18137e87155994c4ade3d1889d04830821a8eda`，不新增部署owner、版本、共享CI或安装操作。任务 `.agent-sync/tasks/codex-replay-scope-20261031-21234298.md`，证据 `dev-docs/replay-scope-20261031/acceptance.md`。
+
+未知/已成功操作按完整工具输入防重；新 SSH 日志核查和独立步骤按原权限、落盘和native回执执行。缺失结果可识别到具体调用时允许完整历史的新推理，取消/旧请求/坏账本/无法识别历史/存储失败/自动重试围栏保留。不会核销旧业务未知或把启动器0当成业务成功。与待交 `MB-REPLAY-RECOVERY-20261030` 的 `6cecca460` 同改 context-recovery 的 analyze 参数及 protectInference 区域，owner 合并时须保留其 preToolDenials 参数并把本次 allowUnpaired 放在末尾；禁止整文件覆盖。后续精确候选需组合回归、正常 CI/main、签名包及真实 SSH/原会话路径验收。

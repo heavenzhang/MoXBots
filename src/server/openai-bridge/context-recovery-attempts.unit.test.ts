@@ -98,7 +98,7 @@ it('admits a cold new Query after settled history fills without allowing retired
   expect(disk.uncertain).toEqual([recoveryActionHash('Bash', input)]);
   const cold = fixture(disk);
   await cold.emit(['settled-0']);
-  expect(await cold.controller.authorizeTool('Bash', input, 'settled-0')).toContain('read-only reconciliation');
+  expect(await cold.controller.authorizeTool('Bash', input, 'settled-0')).toContain('uncertain outcome');
   await cold.controller.commitToolResult('Bash', input, 'late retired receipt', false, 'settled-0');
   expect(cold.controller.inspectActionLedger().uncertainCount).toBe(1);
   await h.controller.commitToolResult('Bash', input, 'exact new receipt', false, 'new-work');

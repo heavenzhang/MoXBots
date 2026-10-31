@@ -87,13 +87,13 @@ describe('native tool error settlement', () => {
   it('persists a denial with background work without poisoning the old unknown ledger', async () => {
     const h = fixture();
     await h.controller.protectInference(h.body);
-    await h.controller.authorizeTool('business_write', { id: 1 });
+    await h.controller.authorizeTool('Bash', command);
     h.controller.endTurn();
     h.state.scope = 'explicit-followup';
     await h.emit('denied-with-background');
     h.state.canRecover = false;
     const denial = await h.controller.authorizeTool('Bash', command, 'denied-with-background');
-    expect(denial).toContain('read-only reconciliation');
+    expect(denial).toContain('uncertain outcome');
     await h.controller.commitToolResult('Bash', command, denial, true, 'denied-with-background');
     h.result('denied-with-background', `PreToolUse:Bash hook error: ${denial}`);
     expect(h.ledger().uncertain).toHaveLength(1);
@@ -102,7 +102,8 @@ describe('native tool error settlement', () => {
     const restored = fixture(h.ledger());
     await restored.controller.protectInference(h.body, true);
     expect(restored.ledger().uncertain).toEqual(h.ledger().uncertain);
-    expect(restored.controller.beforeTool('Write', {})).toContain('read-only');
+    expect(restored.controller.beforeTool('Write', {})).toBeUndefined();
+    expect(restored.controller.beforeTool('Bash', command)).toContain('uncertain outcome');
   });
 
   it.each(['owner', 'scope', 'stop', 'missing-id', 'timeout'])('retains uncertain outcomes with background work and %s', async reason => {
@@ -166,19 +167,20 @@ describe('native tool error settlement', () => {
   it('does not turn a controller-authored denial into another uncertain action', async () => {
     const h = fixture();
     await h.controller.protectInference(h.body);
-    await h.controller.authorizeTool('business_write', { id: 1 });
+    await h.controller.authorizeTool('Bash', command);
     h.controller.endTurn();
     h.state.scope = 'explicit-followup';
     await h.emit('denied-shell');
     const denial = await h.controller.authorizeTool('Bash', command, 'denied-shell');
-    expect(denial).toContain('read-only reconciliation');
+    expect(denial).toContain('uncertain outcome');
     h.result('denied-shell', `PreToolUse:Bash hook error: ${denial}`);
     const preserved = h.ledger().uncertain;
     await h.controller.protectInference(h.body, true);
     expect(h.ledger().uncertain).toEqual(preserved);
     expect(h.ledger().uncertain).toHaveLength(1);
     expect(h.ledger().nativeErrors).toHaveLength(1);
-    expect(h.controller.beforeTool('Write', {})).toContain('read-only');
+    expect(h.controller.beforeTool('Write', {})).toBeUndefined();
+    expect(h.controller.beforeTool('Bash', command)).toContain('uncertain outcome');
   });
 
   it('restores settled failure proof for the exact native history and rejects altered or foreign proof', async () => {
@@ -198,7 +200,8 @@ describe('native tool error settlement', () => {
     if (Array.isArray(last.content)) last.content[0] = { type: 'tool_result', tool_use_id: 'failed-shell', is_error: true, content: 'different unknown error' };
     const untrusted = fixture(h.ledger());
     await untrusted.controller.protectInference(altered, true);
-    expect(untrusted.controller.beforeTool('Write', {})).toContain('read-only');
+    expect(untrusted.controller.beforeTool('Write', {})).toBeUndefined();
+    expect(untrusted.controller.beforeTool('Bash', command)).toContain('uncertain outcome');
   });
 
   it.each(['owner', 'storage'])('fails closed when %s changes before failure commit', async change => {

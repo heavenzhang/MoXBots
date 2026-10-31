@@ -101,3 +101,44 @@ it('uses exact old tool-result evidence during context analysis, preserving new 
   (alteredResult.messages[1]!.content as { content: string }[])[0]!.content = 'Different evidence';
   await expect(make().protectInference(alteredResult)).rejects.toThrow('read-only reconciliation');
 });
+
+
+it('keeps an unrelated unknown protected while reviewed denials and new verification coexist across cold restore', async () => {
+  const f = fixture();
+  const unknownInput = { command: 'synthetic prior uncertain launch' };
+  const unknownHash = recoveryActionHash('Bash', unknownInput);
+  (f.ledger().uncertain as string[]).push(unknownHash);
+  (f.ledger().operationAttempts as { legacyUncertain: string[] }).legacyUncertain.push(unknownHash);
+  const first = await inspectRecoveryActions(f.deps);
+  expect(first.actions.find(action => action.actionHash === hash)?.eligible).toBe(true);
+  expect(first.actions.find(action => action.actionHash === unknownHash)?.eligible).toBe(false);
+  await reconcileRecoveryAction({ ...owner, ledgerDigest: first.ledgerDigest, actionHash: hash }, f.deps);
+  let saved = f.ledger();
+  const make = () => {
+    const context = new ContextRecoveryController({ initialLedger: saved, recoveryOwner: owner,
+      scope: () => 'explicit-verification', isActive: () => true, protectStreaming: true,
+      backup: async () => '/fixture/archive', persistLedger: async value => { saved = structuredClone(value) as typeof saved; } });
+    context.bindNoDispatchOwner({ ...owner, queryGeneration: 4, isCurrent: () => true });
+    return context;
+  };
+  const body: AnthropicRequest = { model: 'fixture', max_tokens: 64, messages: [
+    ...f.records.map(row => row.message),
+    { role: 'user', content: 'Verify the existing operation without launching it again.' },
+  ] } as AnthropicRequest;
+  const context = make();
+  await context.protectInference(body, true);
+  expect(await context.authorizeTool('Bash', input, 'old-tool')).toContain('cannot be reused');
+  expect(await context.authorizeTool('Bash', unknownInput, 'repeat-unknown')).toContain('uncertain outcome');
+  const verification = { command: 'synthetic independent log inspection' };
+  expect(await context.authorizeTool('Bash', verification, 'verification')).toBeUndefined();
+  await context.commitToolResult('Bash', verification, 'verified current log', false, 'verification');
+  expect(context.inspectActionLedger().uncertainActions.map(action => action.actionId)).toEqual([unknownHash]);
+  const cold = make();
+  await cold.protectInference(body, true);
+  expect(await cold.authorizeTool('Bash', input, 'old-tool')).toContain('cannot be reused');
+  expect(cold.beforeTool('Bash', unknownInput)).toContain('uncertain outcome');
+  expect(cold.beforeTool('Bash', verification)).toContain('already completed');
+  expect(cold.beforeTool('Bash', { command: 'different authorized work' })).toBeUndefined();
+  expect(cold.canRetryInference()).toBe(false);
+  expect(cold.inspectActionLedger().uncertainActions.map(action => action.actionId)).toEqual([unknownHash]);
+});

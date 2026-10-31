@@ -353,7 +353,7 @@ describe('bounded inference context recovery', () => {
     expect(h.backup).not.toHaveBeenCalled();
   });
 
-  it.each(['next turn', 'restored Query'])('permits read-only reconciliation after a stopped reserved action in a %s', async mode => {
+  it.each(['next turn', 'restored Query'])('permits operation-scoped verification after a stopped reserved action in a %s', async mode => {
     let scope = 'original-turn';
     let ledger: unknown;
     const options = { scope: () => scope, isActive: () => true, protectStreaming: true,
@@ -376,8 +376,9 @@ describe('bounded inference context recovery', () => {
       expect(controller.canRetryInference()).toBe(false);
       expect(controller.beforeTool('Read', { file_path: '/fixture/status.json' })).toBeUndefined();
       expect(controller.beforeTool('write_record', { id: 'uncertain' })).toContain('read-only');
-      expect(controller.beforeTool('write_record', { id: 'different' })).toContain('read-only');
-      expect(controller.beforeTool('Bash', { command: 'echo fixture' })).toContain('read-only');
+      expect(controller.beforeTool('write_record', { id: 'different' })).toBeUndefined();
+      expect(controller.beforeTool('Bash', { command: "ssh fixture-host 'tail -n 80 /var/log/build.log'" })).toBeUndefined();
+      expect(controller.beforeTool('increment_counter', { delta: 1, account: 'test' })).toContain('already completed');
       return ok();
     });
     const response = await controller.run(req(), body, execute);
@@ -427,16 +428,19 @@ describe('bounded inference context recovery', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it('does not turn a restored projected recovery into read-only prearm authority', async () => {
+  it('allows new verification with the full history after projected recovery, without retry authority', async () => {
     const controller = new ContextRecoveryController({ scope: () => 'explicit-turn', isActive: () => true,
       protectStreaming: true, backup: async () => '/archive/original.json', persistLedger: async () => {},
       initialLedger: { version: 1, completed: [], uncertain: ['a'.repeat(64)], denied: [], blocked: false,
         projectionActive: true, streamArmedOnly: false } });
     const execute = vi.fn(async () => ok());
     const response = await controller.run(req(), { ...history(), stream: true }, execute);
-    expect(response.status).toBe(409);
-    expect(await response.text()).toContain('read-only reconciliation');
-    expect(execute).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    await response.text();
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith({ ...history(), stream: true }, expect.any(Function));
+    expect(controller.canRetryInference()).toBe(false);
+    expect(controller.beforeTool('Bash', { command: "ssh fixture-host 'cat /var/log/build.log'" })).toBeUndefined();
   });
 
   it('stops availability recovery if its durable action ledger cannot be committed', async () => {
