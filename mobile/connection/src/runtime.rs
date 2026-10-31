@@ -951,7 +951,7 @@ fn journal_scope(scope: &crate::KeyScope) -> Result<String, NetworkError> {
     ))
     .map_err(|_| err("IDENTITY_SCOPE_MISMATCH"))
 }
-// Metadata only; the SDK remains the digest/crypto/recovery authority. The
+// Read-only recovery projection; the SDK remains the digest/crypto/recovery authority. The
 // untagged SDK union preserves legacy record JSON exactly.
 trait JournalMetadata {
     fn agent_id(&self) -> &str;
@@ -959,6 +959,7 @@ trait JournalMetadata {
     fn operation_id(&self) -> Option<CanonicalUuid>;
     fn mutation(&self) -> bool;
     fn protocol(&self) -> &'static str;
+    fn submitted_text(&self) -> Option<&str>;
     fn validate(&self) -> Result<(), myagents_host_management_protocol::CodecError>;
 }
 impl JournalMetadata for JournalRequest {
@@ -990,6 +991,18 @@ impl JournalMetadata for JournalRequest {
         match self {
             Self::Legacy(_) => "session",
             Self::Mobile(_) => "mobile",
+        }
+    }
+    fn submitted_text(&self) -> Option<&str> {
+        use myagents_host_management_protocol::{RemoteMobileRequest, RemoteSessionRequest};
+        match self {
+            Self::Legacy(
+                RemoteSessionRequest::Start { text, .. } | RemoteSessionRequest::Send { text, .. },
+            )
+            | Self::Mobile(
+                RemoteMobileRequest::Start { text, .. } | RemoteMobileRequest::Send { text, .. },
+            ) => Some(text),
+            _ => None,
         }
     }
     fn validate(&self) -> Result<(), myagents_host_management_protocol::CodecError> {
@@ -1079,7 +1092,14 @@ impl MobileConnection {
                 .find(|(_, t)| t.device == target.device_id && t.agent == request.agent_id())
                 .map(|(id, _)| id.as_str())
                 .unwrap_or("");
-            items.push(json!({"protocol":request.protocol(),"targetId":id,"agentId":request.agent_id(),"operationId":op,"sessionId":request.session_id(),"status":"unknown"}));
+            let mut item = json!({"protocol":request.protocol(),"targetId":id,"agentId":request.agent_id(),"operationId":op,"sessionId":request.session_id(),"status":"unknown"});
+            if let Some(text) = request.submitted_text() {
+                item["submittedText"] = json!(text);
+                if let Some(binding) = self.submitted_draft_projection(&scope, &target, &request)? {
+                    item["submittedDraft"] = binding;
+                }
+            }
+            items.push(item);
         }
         Ok(json!({"kind":"operations","items":items}))
     }
@@ -1616,7 +1636,7 @@ mod tests {
         assert!(!has_more);
     }
     #[test]
-    fn pending_projection_exposes_only_scoped_receipt_identifiers() {
+    fn pending_projection_exposes_scoped_identifiers_and_submitted_message_text_read_only() {
         let mut o = owner();
         let service = uuid::Uuid::new_v4().to_string();
         let principal = uuid::Uuid::new_v4().to_string();
@@ -1704,7 +1724,113 @@ mod tests {
         assert_eq!(reply["items"][1]["protocol"], "mobile");
         assert_eq!(reply["items"][1]["operationId"], mobile_op);
         assert_eq!(reply["items"][1]["sessionId"], "original-session");
-        assert!(!reply.to_string().contains("private"));
+        assert_eq!(reply["items"][0]["submittedText"], "private-business-text");
+        assert_eq!(reply["items"][1]["submittedText"], "private-mobile-text");
+        assert!(!reply.to_string().contains("private-digest"));
+        assert_eq!(
+            o.store
+                .read_record(&scope, &format!("operation:{op}"))
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            serde_json::to_vec(&record).unwrap()
+        );
+        assert_eq!(
+            o.store
+                .read_record(&scope, &format!("operation:{mobile_op}"))
+                .unwrap()
+                .unwrap()
+                .as_slice(),
+            serde_json::to_vec(&mobile_record).unwrap()
+        );
+
+        for (kind, expected_text) in [
+            ("start", Some("  原文\n保留空格  ")),
+            ("send", Some("  原文\n保留空格  ")),
+            ("mobile.start", Some("  原文\n保留空格  ")),
+            ("mobile.send", Some("  原文\n保留空格  ")),
+            ("stop", None),
+            ("respond", None),
+        ] {
+            let mut variant = record.clone();
+            let mut request = json!({"kind":kind,"agentId":"agent","operationId":op});
+            if let Some(text) = expected_text {
+                request["text"] = json!(text);
+            }
+            if matches!(kind, "send" | "mobile.send" | "stop" | "respond") {
+                request["sessionId"] = json!("original-session");
+            }
+            if kind.starts_with("mobile.") {
+                request["version"] = json!(1);
+                request["assetIds"] = json!([]);
+            }
+            if matches!(kind, "stop" | "respond") {
+                request["generation"] = json!("gen");
+                request["turnId"] = json!("turn");
+            }
+            if kind == "respond" {
+                request["requestId"] = json!("req");
+                request["interaction"] = json!("permission");
+                request["approved"] = json!(false);
+            }
+            variant["request"] = request;
+            let bytes = serde_json::to_vec(&variant).unwrap();
+            o.store
+                .write_record(&scope, &format!("operation:{op}"), &bytes)
+                .unwrap();
+            let projected = o.operations_pending().unwrap();
+            assert_eq!(
+                projected["items"][0]
+                    .get("submittedText")
+                    .and_then(Value::as_str),
+                expected_text,
+                "{kind}"
+            );
+            assert_eq!(
+                o.store
+                    .read_record(&scope, &format!("operation:{op}"))
+                    .unwrap()
+                    .unwrap()
+                    .as_slice(),
+                bytes
+            );
+        }
+        // Scope and malformed records still fail closed before any text is projected.
+        for field in ["principalId", "networkId", "serviceId", "environment"] {
+            let mut isolated = record.clone();
+            isolated["target"][field] = json!("another-scope");
+            o.store
+                .write_record(
+                    &scope,
+                    &format!("operation:{op}"),
+                    &serde_json::to_vec(&isolated).unwrap(),
+                )
+                .unwrap();
+            assert_eq!(
+                o.operations_pending().unwrap_err().code,
+                "MOBILE_JOURNAL_INVALID"
+            );
+        }
+        let mut invalid = record.clone();
+        invalid["request"]["text"] = json!(7);
+        o.store
+            .write_record(
+                &scope,
+                &format!("operation:{op}"),
+                &serde_json::to_vec(&invalid).unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            o.operations_pending().unwrap_err().code,
+            "MOBILE_JOURNAL_INVALID"
+        );
+        o.store
+            .write_record(
+                &scope,
+                &format!("operation:{op}"),
+                &serde_json::to_vec(&record).unwrap(),
+            )
+            .unwrap();
         o.targets.clear();
         assert_eq!(o.operations_pending().unwrap()["items"][0]["targetId"], "");
     }

@@ -14,13 +14,17 @@ let active: Snapshot | null = null;
 let staleApprovalNextRead = false;
 let readCount = 0;
 let historyFailed = false;
+const deliveryOperations = new Map<string, PendingOperation>();
+const deliveryResultSessions = new Map<string, string>();
+let deliveryQueries = 0;
+let directoryQueries = 0;
 let sessions: { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string }[] = [{ sessionId: 'qa-session-1', title: '产品方案讨论', updatedAt: new Date().toISOString(), preview: '梳理移动端的会话体验', runtime: 'codex' }];
 
 export function selectScenario(next: QaScenario): void {
   scenario = next;
   if (next === 'directory-layout') sessions = directoryLayoutRows();
   readCount = 0; historyFailed = false;
-  active = null;
+  active = null; deliveryOperations.clear(); deliveryResultSessions.clear(); deliveryQueries = 0; directoryQueries = 0;
   staleApprovalNextRead = false;
   fixtureAccount = next === 'no-bots' ? { ...account, displayName: null, principalId: '11111111-2222-4333-8444-555555555555' } : account;
 }
@@ -47,10 +51,11 @@ export function fixtureReply(intent: NativeIntent): unknown {
     return { kind: 'notification', state: notificationsEnabled ? 'enabled' : 'disabled', provider: notificationsEnabled ? 'fcm' : null, errorCode: null };
   }
   if (intent.kind === 'targets.list') {
-    if (scenario === 'network-error') return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
+    if (scenario === 'network-error' || scenario === 'directory-recover' && ++directoryQueries === 2) return { kind: 'error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
     if (scenario === 'no-bots') return { kind: 'targets', items: [], hasMore: false, unavailableDeviceCount: 0 };
-    return { kind: 'targets', items: scenario === 'target-error' ? [target, secondTarget] : scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
+    return { kind: 'targets', items: scenario === 'target-error' || scenario === 'directory-layout' ? [target, secondTarget] : scenario === 'multi-bot' ? [target] : scenario === 'offline' ? [] : [target], hasMore: false, unavailableDeviceCount: scenario === 'multi-bot' || scenario === 'offline' ? 1 : 0 };
   }
+  if (intent.kind === 'operations.pending' && deliveryOperations.size) return { kind: 'operations', items: [...deliveryOperations.values()] };
   if (intent.kind === 'operations.pending') return { kind: 'operations', items: scenario === 'reset-unknown' ? [
     { protocol: 'session', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000042', sessionId: 'qa-session-1', status: 'unknown' },
     { protocol: 'mobile', targetId: target.targetId, agentId: target.agentId, operationId: '00000000-0000-4000-8000-000000000043', sessionId: null, status: 'unknown' },
@@ -193,12 +198,23 @@ function attachmentReply(intent: Extract<NativeIntent, { kind: `attachment.${str
 function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'mobile' }>['request']): unknown {
   if (scenario === 'mobile-error') return { version: 1, kind: 'mobile.error', code: 'MOBILE_REMOTE_UNAVAILABLE' };
   if (scenario === 'mobile-unsupported') return { version: 1, kind: 'mobile.error', code: 'MOBILE_PROFILE_MISMATCH' };
-  const approved = [target, ...(scenario === 'target-error' ? [secondTarget] : [])].find((entry) => entry.targetId === targetId);
+  const approved = [target, ...(scenario === 'target-error' || scenario === 'directory-layout' ? [secondTarget] : [])].find((entry) => entry.targetId === targetId);
   if (!approved) return { version: 1, kind: 'mobile.error', code: 'TARGET_UNAVAILABLE' };
   if (request.kind === 'mobile.capabilities') return { version: 1, kind: 'mobile.capabilities', agentId: request.agentId, attachments: true, modelSelection: true, nextSuggestions: true, maxAssets: 8 };
   if (request.kind === 'mobile.models') return { version: 1, kind: 'mobile.models', agentId: request.agentId, items: [{ id: 'qa-model-fast', label: '演示模型 · 快速' }, { id: 'qa-model-reasoning', label: '演示模型 · 深度' }] };
   if (request.kind === 'mobile.suggestions') return { version: 1, kind: 'mobile.suggestions', agentId: request.agentId, sessionId: request.sessionId, revision: request.revision, suggestions: ['列出当前方案中的关键假设', '按优先级整理下一步', '补充一段简短摘要'] };
-  if (request.kind === 'mobile.receipt') return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId: active?.sessionId ?? null, status: 'not-found', code: null };
+  if (request.kind === 'mobile.receipt') {
+    const operation = deliveryOperations.get(request.operationId);
+    if (operation) {
+      deliveryQueries += 1;
+      if ((scenario === 'disconnect-receipt' || scenario === 'delayed-disconnect') && deliveryQueries <= 2) throw new Error('MOBILE_REMOTE_UNAVAILABLE');
+      const status = deliveryQueries <= 1 ? 'processing' : scenario === 'rejected-receipt' ? 'rejected' : 'accepted';
+      const resultSession = deliveryResultSessions.get(request.operationId) ?? operation.sessionId;
+      if (status !== 'processing') { deliveryOperations.delete(request.operationId); deliveryResultSessions.delete(request.operationId); }
+      return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId: resultSession, status, code: null };
+    }
+    return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId: active?.sessionId ?? null, status: 'not-found', code: null };
+  }
   if (scenario === 'unknown-receipt') return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId: request.kind === 'mobile.send' ? request.sessionId : null, status: 'unconfirmed', code: 'MOBILE_RECEIPT_REQUIRED' };
   const sessionId = request.kind === 'mobile.start' ? `qa-mobile-session-${sessions.length + 1}` : request.sessionId;
   const now = new Date().toISOString();
@@ -206,7 +222,19 @@ function mobileReply(targetId: string, request: Extract<NativeIntent, { kind: 'm
     { id: `qa-mobile-user-${Date.now()}`, role: 'user' as const, timestamp: now, content: request.text || '已添加附件', truncated: false, tools: [] },
     { id: `qa-mobile-reply-${Date.now()}`, role: 'assistant' as const, timestamp: now, content: '已收到演示内容。此反馈仅用于浏览器 QA，不代表设备端实际执行。', truncated: false, tools: [] },
   ];
-  active = { ...makeSnapshot(sessionId, request.agentId), revision: String(Date.now()), terminal: 'complete', messages: [...(request.kind === 'mobile.send' ? active?.messages ?? [] : []), ...added].slice(-30) };
+  if (scenario !== 'rejected-receipt') active = { ...makeSnapshot(sessionId, request.agentId), revision: String(Date.now()), terminal: 'complete', messages: [...(request.kind === 'mobile.send' ? active?.messages ?? [] : []), ...added].slice(-30) };
+  if (scenario === 'processing-receipt' || scenario === 'rejected-receipt' || scenario === 'disconnect-receipt' || scenario === 'delayed-disconnect') {
+    deliveryQueries = 0;
+    const approved = [target, secondTarget].find((entry) => entry.targetId === targetId);
+    const originalSession = request.kind === 'mobile.start' ? null : request.sessionId;
+    const persisted = approved ? getFixtureDrafts().get(JSON.stringify([approved.identityKey, originalSession])) : undefined;
+    deliveryResultSessions.set(request.operationId, sessionId);
+    deliveryOperations.set(request.operationId, { protocol: 'mobile', targetId, agentId: request.agentId, operationId: request.operationId, sessionId: originalSession, status: 'processing', submittedText: request.text,
+      ...(persisted?.lastWriteId && persisted.text.trim() === request.text ? { submittedDraft: { revision: persisted.revision, lastWriteId: persisted.lastWriteId } } : {}) });
+    if (scenario === 'delayed-disconnect') return new Promise((_, reject) => setTimeout(() => reject(new Error('MOBILE_REMOTE_UNAVAILABLE')), 3500));
+    if (scenario === 'disconnect-receipt') throw new Error('MOBILE_REMOTE_UNAVAILABLE');
+    return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId, status: 'processing', code: null };
+  }
   if (request.kind === 'mobile.start') sessions = [{ sessionId, title: (request.text || '附件会话').slice(0, 48), updatedAt: now, preview: request.text || '已添加附件', runtime: 'codex' }, ...sessions].slice(0, 30);
   return { version: 1, kind: 'mobile.receipt', agentId: request.agentId, operationId: request.operationId, sessionId, status: 'accepted', code: null };
 }
@@ -225,7 +253,7 @@ function getFixtureDrafts(): Map<string, FixtureDraft> {
   return fixtureDrafts;
 }
 function fixtureDraftReply(intent: Extract<NativeIntent, { kind: 'draft.read' | 'draft.write' }>): unknown {
-  const approvedTarget = [target].find((entry) => entry.targetId === intent.targetId);
+  const approvedTarget = [target, secondTarget].find((entry) => entry.targetId === intent.targetId);
   if (!approvedTarget) return { kind: 'error', code: 'TARGET_UNAVAILABLE' };
   if (scenario === 'draft-error') return { kind: 'error', code: 'MOBILE_DRAFT_STORE_UNAVAILABLE' };
   const key = JSON.stringify([approvedTarget.identityKey, intent.sessionId]);
@@ -259,7 +287,7 @@ function makeSnapshot(sessionId: string, agentId: string, state: Snapshot['state
 
 function sessionReply(request: SessionRequest): unknown {
   if (request.kind === 'capabilities') return { kind: 'capabilities', version: 1, agentId: request.agentId, runtime: 'codex', maxActiveSessions: 5, liveUpdates: 'snapshot' };
-  if (request.kind === 'list') return { kind: 'list', agentId: request.agentId, items: sessions, hasMore: false, nextBefore: null };
+  if (request.kind === 'list') return { kind: 'list', agentId: request.agentId, items: request.agentId === secondTarget.agentId ? [{ sessionId: 'qa-second-session', title: '第二个 Bot 的最近会话', updatedAt: '2026-11-01T00:00:00Z', preview: '跨 Bot 保持原会话归属', runtime: 'codex' }] : sessions, hasMore: false, nextBefore: null };
   if (request.kind === 'get') {
     readCount += 1;
     if (scenario === 'open-retry' && readCount === 1 || scenario === 'poll-recover' && readCount === 2) return { kind: 'error', code: 'TARGET_RECEIPT_INVALID' };
