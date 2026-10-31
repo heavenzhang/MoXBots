@@ -1381,7 +1381,6 @@ describe("durable Session execution owner", () => {
       intent: original.intent,
       phase: "running",
       startedAt: original.startedAt,
-      deadlineAt: original.deadlineAt,
       turns: 5,
       reworks: 1,
       noProgress: 1,
@@ -1563,8 +1562,43 @@ describe("durable Session execution owner", () => {
     },
   );
 
+  it('continues actual progressing work beyond the old 30 minute boundary', async () => {
+    const first = await prepare(input, 'human-long-running');
+    const original = currentExecution()!;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(original.startedAt + 86_400_000);
+    try {
+      await first.request.onTerminal?.({ status: 'complete', text: 'Need the next verification step', assistantMessagePresent: true });
+      await waitForContinuation();
+      expect(continuationRequests).toHaveLength(1);
+      expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput });
+      expect(currentExecution()?.reason).not.toBe('deadline_exceeded');
+    } finally { clock.mockRestore(); }
+  });
+
+  it('resumes a legacy time-expired task with its original identity, progress and evidence', async () => {
+    const first = await prepare(input, 'human-before-expiry');
+    await executionOwner.pauseSessionExecution(id, 'user_stopped');
+    await first.request.onTerminal?.({ status: 'stopped', text: 'Preserved', assistantMessagePresent: true });
+    const original = currentExecution()!;
+    const legacyDeadline = original.startedAt + 30 * 60_000;
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.execution = { ...ledger.execution!, deadlineAt: legacyDeadline, phase: 'incomplete', reason: 'deadline_exceeded', lastProgressDigest: 'preserved-progress' };
+      return ledger;
+    });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(legacyDeadline + 86_400_000);
+    try {
+      const next = await prepareUnpromoted('Continue the same task', 'human-after-expiry', { ...executeIntent, continuationOf: original.id });
+      const decision = await next.request.beforeDispatch!();
+      expect(decision.accepted).toBe(true);
+      expect(decision.validateAtCommit?.().accepted).toBe(true);
+      expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput,
+        deadlineAt: legacyDeadline, phase: 'running', lastProgressDigest: 'preserved-progress' });
+      expect(executionOwner.sessionExecutionInferenceAllowed(id, next.request.queueId)).toBe(true);
+      expect(executionOwner.sessionExecutionToolDenial(id, next.request.queueId, 'Bash', {})).toBeUndefined();
+    } finally { clock.mockRestore(); }
+  });
+
   it.each([
-    ["deadline", "deadline_exceeded"],
     ["no progress", "no_progress_limit_reached"],
     ["rework", "rework_limit_reached"],
   ])(
@@ -1579,13 +1613,10 @@ describe("durable Session execution owner", () => {
         text: "Persist the original queue terminal",
         assistantMessagePresent: true,
       });
-      let guardedDeadline: number;
       await taskOwner.mutateSessionTaskLedger(id, (ledger) => {
         const current = ledger.execution!;
-        if (budget === "deadline") current.deadlineAt = Date.now() - 1;
         if (budget === "no progress") current.noProgress = 2;
         if (budget === "rework") current.reworks = 3;
-        guardedDeadline = current.deadlineAt;
         return ledger;
       });
       const next = await prepareUnpromoted(
@@ -1599,7 +1630,6 @@ describe("durable Session execution owner", () => {
         id: execution.id,
         currentQueueId: firstQueue,
         turns: 1,
-        deadlineAt: guardedDeadline!,
         phase: "incomplete",
         reason,
       });
@@ -1732,7 +1762,6 @@ describe("durable Session execution owner", () => {
       originalInput: originalExecution.originalInput,
       intent: originalExecution.intent,
       startedAt: originalExecution.startedAt,
-      deadlineAt: originalExecution.deadlineAt,
       turns: 3,
       reworks: 1,
       noProgress: 1,
@@ -2063,7 +2092,7 @@ describe("To Do List before native execution", () => {
     engine.isBusy = () => true;
     await first.request.onTerminal?.({ status: "complete", text: "Need to continue", assistantMessagePresent: true });
     await prepare("Continue this task", "continued-plan", { ...intent, steps: ["Do not replace", "The original steps"], continuationOf: original.id });
-    expect(currentExecution()).toMatchObject({ id: original.id, deadlineAt: original.deadlineAt, startedAt: original.startedAt });
+    expect(currentExecution()).toMatchObject({ id: original.id, startedAt: original.startedAt });
     expect(ledger().plan).toEqual(originalPlan);
     expect(ledger().tasks).toHaveLength(steps.length);
   });
@@ -2166,63 +2195,18 @@ describe("native background inference execution budget", () => {
     return { execution, native, query, rows };
   }
 
-  it("keeps the exact original deadline after the root ends and blocks background retry at expiry", async () => {
+  it('keeps active native work after 30 minutes while Stop still prevents retry', async () => {
     const h = await boundChild();
-    const clock = vi
-      .spyOn(Date, "now")
-      .mockReturnValue(h.execution.deadlineAt - 1);
+    const legacyDeadline = h.execution.startedAt + 30 * 60_000;
+    await taskOwner.mutateSessionTaskLedger(id, ledger => { ledger.execution!.deadlineAt = legacyDeadline; return ledger; });
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(legacyDeadline + 86_400_000);
     try {
-      expect(
-        executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
-      ).toBe(h.execution.deadlineAt);
-      expect(
-        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
-      ).toBe(true);
-      const { ModelFailoverController } = await import(
-        "../openai-bridge/model-failover"
-      );
-      const execute = vi.fn(async () => {
-        clock.mockReturnValue(h.execution.deadlineAt);
-        return Response.json(
-          { error: { message: "overloaded" } },
-          { status: 503 },
-        );
-      });
-      const controller = new ModelFailoverController({
-        scope: () => undefined,
-        retryDelaysMs: [0, 0, 0],
-        deadlineAt: () =>
-          executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
-        isActive: () =>
-          executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
-        resolveBackup: () => undefined,
-        onSwitch: vi.fn(),
-      });
-      const request = () => new Request("http://fixture.invalid/messages");
-      expect(
-        (
-          await controller.run(
-            request(),
-            { providerId: "fixture", baseUrl: "http://fixture.invalid" },
-            execute,
-            "child-first",
-          )
-        ).status,
-      ).toBe(499);
-      expect(execute).toHaveBeenCalledTimes(1);
-      expect(
-        executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
-      ).toBe(false);
-      await controller.run(
-        request(),
-        { providerId: "fixture", baseUrl: "http://fixture.invalid" },
-        execute,
-        "child-next",
-      );
-      expect(execute).toHaveBeenCalledTimes(1);
+      expect(executionOwner.sessionExecutionDeadlineAt(id, null, h.rows())).toBeUndefined();
+      expect(executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows())).toBe(true);
+      await executionOwner.pauseSessionExecution(id, 'user_stopped');
+      expect(executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows())).toBe(false);
     } finally {
-      h.native.clearQuerySession();
-      clock.mockRestore();
+      h.native.clearQuerySession(); clock.mockRestore();
     }
   });
 
@@ -2232,7 +2216,7 @@ describe("native background inference execution budget", () => {
       await executionOwner.pauseSessionExecution(id, "user_stop");
       expect(
         executionOwner.sessionExecutionDeadlineAt(id, null, h.rows()),
-      ).toBe(h.execution.deadlineAt);
+      ).toBeUndefined();
       expect(
         executionOwner.sessionExecutionInferenceAllowed(id, null, h.rows()),
       ).toBe(false);
@@ -2304,7 +2288,7 @@ describe("native background inference execution budget", () => {
           currentExecution()!.currentQueueId,
           h.rows(),
         ),
-      ).toBe(h.execution.deadlineAt);
+      ).toBeUndefined();
     } finally {
       h.native.clearQuerySession();
     }

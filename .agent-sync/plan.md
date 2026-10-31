@@ -1108,3 +1108,6 @@ desktop/macOS-arm64/updater/sharedCI/main 仍唯一 owner 01a12bc2-907a-7702-b6d
 
 
 MB-RECOVERY-INCIDENT-20261101 第二批：用户明确解除原生暂停并授权原desktop owner安装验证。增量补Responses合法reasoning summary part/text事件及进展，避免误判protocol与idle；意图识别失败沿原账本回传固定原因枚举，不授权工具或改变预算。129项定向测试，真实网络公共GET6/6仅说明当前连通；原owner正在联合CI，收到精确增量后重新固定候选。原四会话完整验收尚未通过，正式晋级继续暂停。
+
+
+MB-RECOVERY-INCIDENT-20261101 第三批用户策略：明确取消整个任务固定30分钟时限，否决人工每次续期方案。现有SessionExecution owner内取消task-wide clock gate，历史deadline只保留兼容字段；旧deadline_exceeded允许可信人工同任务接续，原结果/身份/步骤保留。Stop、权限、未知操作、无进展/返工和网络单请求边界不取消。原desktop owner收到精确增量后纳入最终候选，四原会话验收未通过前不晋级。

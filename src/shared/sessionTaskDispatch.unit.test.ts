@@ -257,7 +257,7 @@ describe("session task dispatch policy", () => {
     );
   });
 
-  it("enforces execution state, deadline, launch and attempt limits without a root turn cap", () => {
+  it("enforces execution state, launch and attempt limits without a root turn cap", () => {
     const stopped = makeLedger() as SessionTaskLedger & {
       execution: NonNullable<SessionTaskLedger["execution"]>;
     };
@@ -276,9 +276,7 @@ describe("session task dispatch policy", () => {
       ...expired.execution,
       deadlineAt: now,
     } as NonNullable<SessionTaskLedger["execution"]>;
-    expect(() => admit(expired, "a", "expired")).toThrow(
-      TASK_DISPATCH_ERRORS.executionExpired,
-    );
+    expect(() => admit(expired, "a", "legacy-deadline", 'agent-a', now + 86_400_000)).not.toThrow();
 
     const turns = makeLedger() as SessionTaskLedger & {
       execution: NonNullable<SessionTaskLedger["execution"]>;
