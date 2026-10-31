@@ -23,7 +23,7 @@ export function prepareContinuationAdmission(engine: SessionEngine, request: Des
   const sourceGeneration = source?.writer.status.generation;
   let canceled = false;
   let failure: Rejection | undefined;
-  const check = (entry: boolean): Rejection | undefined => {
+  const check = (entry: boolean, queueId = request.queueId): Rejection | undefined => {
     const current = getActiveSessionTranscript(request.sessionId);
     const continuation = current && deriveSessionContinuation(current.writer.projection);
     const identity = engine.getRuntimeIdentity();
@@ -46,7 +46,7 @@ export function prepareContinuationAdmission(engine: SessionEngine, request: Des
     if ((entry && (engine.isBusy() || live.sessionState !== 'idle'))
       || (!entry && !['idle', 'starting', 'running'].includes(live.sessionState))
       || live.waitingForUser || backgroundBlocksContinuation
-      || engine.getQueueStatus().some(item => item.id !== request.queueId)
+      || engine.getQueueStatus().some(item => item.id !== queueId)
       || engine.getStreamReplaySnapshot().pendingInteractiveRequests.length > 0) {
       return reject('SESSION_CONTINUATION_BUSY');
     }
@@ -54,33 +54,41 @@ export function prepareContinuationAdmission(engine: SessionEngine, request: Des
   };
   const initial = check(true);
   if (initial) return { accepted: false as const, result: initial };
-  const prior = request.beforeDispatch;
-  const remember = (result: Rejection): DispatchGuardResult => {
-    failure = result;
-    return { accepted: false, code: result.code, error: result.error };
-  };
-  const rollback = (): Promise<void> => Promise.resolve(prior?.cancel?.());
-  const guard: DispatchGuard = async () => {
-    const stale = check(false);
-    if (stale) return { ...remember(stale), rollbackBeforeReject: rollback() };
-    const preceding = await prior?.() ?? { accepted: true };
-    if (!preceding.accepted) return preceding;
-    const after = check(false);
-    if (after) return { ...remember(after), rollbackBeforeReject: rollback() };
-    return {
-      ...preceding,
-      validateAtCommit: () => {
-        const result = preceding.validateAtCommit?.() ?? { accepted: true };
-        if (!result.accepted) return result;
-        const changed = check(false);
-        return changed ? { ...remember(changed), rollbackBeforeReject: rollback() } : result;
-      },
+  // Preserve the captured transcript generation across async classification,
+  // while composing the execution owner's newly allocated queue and guard.
+  const wrapGuard = (prior: DispatchGuard | undefined, queueId = request.queueId): DispatchGuard => {
+    const remember = (result: Rejection): DispatchGuardResult => {
+      failure = result;
+      return { accepted: false, code: result.code, error: result.error };
     };
+    const rollback = (): Promise<void> => Promise.resolve(prior?.cancel?.());
+    const guard: DispatchGuard = async () => {
+      const stale = check(false, queueId);
+      if (stale) return { ...remember(stale), rollbackBeforeReject: rollback() };
+      const preceding = await prior?.() ?? { accepted: true };
+      if (!preceding.accepted) return preceding;
+      const after = check(false, queueId);
+      if (after) return { ...remember(after), rollbackBeforeReject: rollback() };
+      return {
+        ...preceding,
+        validateAtCommit: () => {
+          // Reject a changed transcript before committing execution authority.
+          const changed = check(false, queueId);
+          if (changed) return { ...remember(changed), rollbackBeforeReject: rollback() };
+          const result = preceding.validateAtCommit?.() ?? { accepted: true };
+          if (!result.accepted) return result;
+          const after = check(false, queueId);
+          return after ? { ...remember(after), rollbackBeforeReject: rollback() } : result;
+        },
+      };
+    };
+    guard.cancel = () => { canceled = true; return prior?.cancel?.(); };
+    return guard;
   };
-  guard.cancel = () => { canceled = true; return prior?.cancel?.(); };
   return {
     accepted: true as const,
-    guard,
+    guard: wrapGuard(request.beforeDispatch),
+    wrapGuard,
     revalidateEntry: () => check(true),
     rejection: (error?: string): DesktopAdmissionResult => failure ?? reject('SESSION_CONTINUATION_STALE', error ?? STALE),
   };

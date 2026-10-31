@@ -321,7 +321,6 @@ export async function prepareSessionExecution(
   if (
     request.turnOwner ||
     request.queueId ||
-    request.continueFromTurnId ||
     !request.clientRequestId ||
     !request.text.trim()
   )
@@ -606,7 +605,9 @@ export async function prepareSessionExecution(
         : "") + (taskPlanId && intent?.kind === "execute"
         ? taskPlanReminder(taskPlanId, stagedExecution?.intent.steps ?? intent.steps ?? [])
         : "")) || undefined,
-      surfaceUserBeforeDispatch: true,
+      // A continuation must retain its original transcript root until the
+      // synchronous continuation commit check has accepted this new input.
+      surfaceUserBeforeDispatch: !request.continueFromTurnId,
       // Keep the original visible user input; product instructions never become human evidence.
       desktopQuery: { ...request.desktopQuery, visibleText: request.text },
       onTerminal: async (outcome) => {

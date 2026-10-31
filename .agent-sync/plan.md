@@ -1116,3 +1116,7 @@ MB-RECOVERY-INCIDENT-20261101 第二批：用户明确解除原生暂停并授�
 
 
 MB-RECOVERY-INCIDENT-20261101 第三批用户策略：明确取消整个任务固定30分钟时限，否决人工每次续期方案。现有SessionExecution owner内取消task-wide clock gate，历史deadline只保留兼容字段；旧deadline_exceeded允许可信人工同任务接续，原结果/身份/步骤保留。Stop、权限、未知操作、无进展/返工和网络单请求边界不取消。原desktop owner收到精确增量后纳入最终候选，四原会话验收未通过前不晋级。
+
+### MB-RECOVERY-INCIDENT-20261101 一键继续归属补修
+
+同一任务第四批：已复现点击继续后SDK收新输入但execution仍旧queue/轮次。移除可信人工继续的execution跳过，组合原transcript/执行guard并保留同步commit/取消；同ID、原清单及证据由现有执行owner维护。隔离队列回归及保护测试通过后交唯一desktop owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 确定候选，不并行触发共享CI/版本/安装。前三批已进入PR217；源码不等于原会话业务验收。
