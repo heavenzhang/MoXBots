@@ -1105,3 +1105,9 @@ Desktop/macOS-arm64/updater/sharedCI/main remains solely01a12bc2-907a-7702-b6dd-
 用户报告重复横幅、409/502及无法恢复。分支 `codex/recovery-incident-20261101` 基于 e11ee39；任务 `.agent-sync/tasks/codex-recovery-incident-20261101-9d059e46.md`，证据 `dev-docs/recovery-incident-20261101/acceptance.md`。两项确定修复：Chat 同层 session key 冲突；并发请求在发送前的恢复拒绝不应封锁整个主 scope。原请求指纹、未知操作、实际流中断及失效 owner 围栏保留。183 项定向测试及类型/lint/分类检查通过；未改变原账本或执行原任务。
 
 desktop/macOS-arm64/updater/sharedCI/main 仍唯一 owner 01a12bc2-907a-7702-b6dd-788225c5dfe4；当前528晋级暂停、正式通道527，原生UI按用户停止指令保持不动。本分支只交精确SHA，由原owner独立审查及下一未冻结批集成；不自行新PR/共享CI/正式版本/安装。意图识别失败、连接超时、idle/首错分类和四原会话验收仍未闭环，不能以这两项修复代替整体恢复完成。
+
+## MB-TASK-PANEL-COMPACT-20261031 — 当前任务清单去重与紧凑布局
+
+任务 `.agent-sync/tasks/codex-task-panel-compact-20261031-ce565643.md`；验收 `dev-docs/task-panel-compact-20261031/acceptance.md`。运行中主任务集中到底部默认折叠入口，任务行压缩、会话/Composer分隔、已验收历史默认收起；无后端/数据权限变化。36 DOM、type/lint、内置浏览器真实组件合成状态通过，正式安装/真实会话未验。
+
+desktop/macOS-arm64/updater、shared CI/main继续唯一owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`，依据现有部署归属；本任务基线e11ee39b、分支codex/task-panel-compact-20261031，只交下一未冻结批次，不加入0.5.28/528.1冻结制品。owner统一版本/候选/CI/发布/回滚；main、正式制品与真实路径各自待回执。无跨单元或迁移依赖。
