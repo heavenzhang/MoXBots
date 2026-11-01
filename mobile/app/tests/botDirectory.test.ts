@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyBotSnapshot, botKey, botSessionKey, botSessionStatus, readBotDirectory, recentBotSessions } from '../src/botDirectory.ts';
+import { applyBotSnapshot, botKey, botSessionKey, botSessionStatus, botSessionAction, readBotDirectory, recentBotSessions } from '../src/botDirectory.ts';
 import type { BotSession } from '../src/botDirectory.ts';
 import type { Snapshot, Target } from '../src/native.ts';
 const a: Target = { targetId:'a', identityKey:'identity-a',agentId:'agent-a',name:'同名 Bot',deviceName:'电脑',online:true,runtime:null };
@@ -22,4 +22,14 @@ test('directory concurrency is bounded and obsolete work stops scheduling reads'
  let current=true,active=0,peak=0,read=0;let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
  const task=readBotDirectory([1,2,3,4,5,6],async()=>{read++;active++;peak=Math.max(peak,active);await gate;active--;},()=>current,2);
  assert.equal(read,2);current=false;release();await task;assert.equal(read,2);assert.equal(peak,2);
+});
+
+test('directory actions only open the original context and a turn result never claims task acceptance',()=>{
+ const base=row(a,'');
+ assert.equal(botSessionAction({...base,state:'running'}),'查看进展');
+ assert.equal(botSessionAction({...base,state:'waiting_user_action'}),'查看请求');
+ assert.equal(botSessionAction({...base,terminal:'error'}),'核对状态');
+ assert.equal(botSessionAction({...base,terminal:'complete'}),'打开原会话');
+ assert.match(botSessionStatus({...base,terminal:'complete'}).detail,/不代表任务已验收/);
+ assert.equal(botSessionAction({...base,target:{...a,online:false}}),'查看已有记录');
 });

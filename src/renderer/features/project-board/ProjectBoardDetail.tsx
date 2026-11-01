@@ -3,6 +3,7 @@ import SessionExecutionTime from './SessionExecutionTime';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { taskGet, taskRun, taskRerun } from '@/api/taskCenter';
+import { CUSTOM_EVENTS } from '@/../shared/constants';
 import { TaskDocBlock } from '@/components/task-center/TaskDocBlock';
 import { CloseIcon } from '@/components/icons';
 import PanelResizeHandle, { usePanelWidth, type PanelWidthConfig } from '@/components/PanelResizeHandle';
@@ -16,14 +17,13 @@ import { boardRowStateKey, type BoardRow } from './projection';
 
 interface Props {
   row: BoardRow; workspacePath: string; isActive: boolean; now: number;
-  draft: string; onDraftChange: (value: string) => void;
   onClose: () => void; onOpenSession: (id: string) => void; onChanged: () => void;
   onOrganize?: () => void; onConvert?: () => void; organizing?: boolean;
 }
 
 const DETAIL_WIDTH: PanelWidthConfig = { storageKey: 'myagents.projectBoard.detailWidth.v1', defaultWidth: 400, minWidth: 320, maxWidth: 720 };
 
-export default function ProjectBoardDetail({ row, workspacePath, isActive, now, draft, onDraftChange, onClose, onOpenSession, onChanged, onOrganize, onConvert, organizing = false }: Props) {
+export default function ProjectBoardDetail({ row, workspacePath, isActive, now, onClose, onOpenSession, onChanged, onOrganize, onConvert, organizing = false }: Props) {
   const overlay = useBoardOverlay();
   const panel = useRef<HTMLElement>(null);
   const { t } = useTranslation('task');
@@ -112,7 +112,7 @@ export default function ProjectBoardDetail({ row, workspacePath, isActive, now, 
         {task && loaded ? <section className="pb-detail-section"><h3>{t('projectBoard.taskDocument')}</h3><TaskDocBlock task={task} doc="task" emptyHint={t('projectBoard.noDocument')} reloadKey={task.updatedAt} onError={onDocError} />
           {task.docs?.verifyMd && <TaskDocBlock task={task} doc="verify" emptyHint={t('projectBoard.noDocument')} onError={onDocError} />}
           {task.docs?.progressMd && <TaskDocBlock task={task} doc="progress" emptyHint={t('projectBoard.noDocument')} onError={onDocError} />}</section> : !task && <p className="pb-meta">{t('projectBoard.sessionArtifactsHint')}</p>}
-        {row.reviewReady && task && <label className="pb-detail-section"><span className="pb-meta">{t('projectBoard.acceptanceNote')}</span><textarea aria-label={t('projectBoard.acceptanceNote')} value={draft} onChange={e => onDraftChange(e.target.value)} disabled={busy} /></label>}
+        {row.reviewReady && <><p className="pb-detail-note">{t('projectBoard.reviewHint')}</p>{task?.status === 'verifying' && <button type="button" className="pb-button" onClick={() => window.dispatchEvent(new CustomEvent(CUSTOM_EVENTS.OPEN_TASK_CENTER))}>{t('projectBoard.openTaskCenter')}</button>}</>}
       </>}
       <section className="pb-detail-section"><h3>{t('projectBoard.originalSession')}</h3>{sessionIds.length ? sessionIds.map(id => <button type="button" className="pb-session-link" key={id} onClick={() => onOpenSession(id)}>{row.sessions.find(s => s.id === id)?.title || t('projectBoard.originalSession')}<small>{t('projectBoard.openSession')}</small></button>) : <p className="pb-detail-note">{t('projectBoard.noSession')}</p>}</section>
     </div>

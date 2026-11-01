@@ -37,7 +37,6 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<BoardGroup>>(() => new Set(['todo', 'running', 'needs', 'done', 'archived']));
-  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [otherOpen, setOtherOpen] = useState<ReadonlySet<BoardGroup>>(() => new Set(['idle']));
   const contentRef = useRef<HTMLDivElement>(null);
   const [compact, setCompact] = useState(false);
@@ -74,7 +73,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
 
   function rowState(row: BoardRow): string { return t(boardRowStateKey(row, data.now)); }
   function canOrganize(row: BoardRow): boolean {
-    return row.group === 'archived' || row.group === 'done' || !row.task && (row.group === 'idle' || row.group === 'inactive');
+    return row.group === 'archived' || row.task?.status === 'done' && row.group === 'done' || !row.task && ['done', 'idle', 'inactive'].includes(row.group);
   }
   /** Recheck the actual owner before a user-requested archive or conversion. This read
    * neither starts nor stops an execution; concurrent activity stays visible. */
@@ -117,8 +116,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
       if (row.task) {
         if (restore) await taskUpdateStatus({ id: row.task.id, status: 'done' });
         else {
-          // Only a Done Task can be archived; archiving a finished-run row is the acceptance, so settle it first.
-          if (row.task.status === 'verifying' || row.task.status === 'running') await taskUpdateStatus({ id: row.task.id, status: 'done', message: drafts[row.id]?.trim() || undefined });
+          // Archive only a Task already completed by its owner. Never settle review here.
           await taskArchive(row.task.id);
         }
       } else {
@@ -201,7 +199,6 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
         <span>{data.unobservedCount ? t('projectBoard.boundedSnapshot', { count: data.unobservedCount }) : t('projectBoard.snapshotHint')}</span></footer>
     </div>
       {selected && <ProjectBoardDetail key={selected.id} row={selected} workspacePath={workspacePath} isActive={isActive} now={data.now}
-        draft={drafts[selected.id] ?? ''} onDraftChange={value => setDrafts(current => ({ ...current, [selected.id]: value }))}
         onOrganize={canOrganize(selected) ? () => { void organize(selected); } : undefined} onConvert={canConvert(selected) ? () => { void convertToTask(selected); } : undefined} organizing={!!organizingId}
         onClose={closeDetail} onOpenSession={openSession} onChanged={data.refresh} />}
     </div>

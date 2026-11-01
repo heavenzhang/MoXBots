@@ -21,7 +21,7 @@ export function botSessionStatus(row: BotSession): { label: string; tone: 'neutr
   if (row.state === 'running') return { label: '进行中', tone: 'active', detail: '可以继续补充要求' };
   if (row.terminal === 'error' || row.terminal === 'interrupted') return { label: '执行中断', tone: 'error', detail: '查看已完成部分和当前状态' };
   if (row.terminal === 'stopped') return { label: '已停止', tone: 'neutral', detail: '打开原会话继续沟通' };
-  if (row.terminal === 'complete') return { label: '本轮已结束', tone: 'neutral', detail: '查看结果或继续修改' };
+  if (row.terminal === 'complete') return { label: '本轮已结束', tone: 'neutral', detail: '本轮结束不代表任务已验收；可查看成果或继续修改' };
   return { label: '继续会话', tone: 'neutral', detail: '打开后同步最新进展' };
 }
 
@@ -30,4 +30,13 @@ export async function readBotDirectory<T>(targets: readonly T[], read: (target: 
   let cursor = 0;
   const worker = async () => { while (isCurrent()) { const index = cursor++; if (index >= targets.length) return; await read(targets[index]); } };
   await Promise.all(Array.from({ length: Math.min(concurrency, targets.length) }, worker));
+}
+
+/** A directory card opens the original Session; it never resumes or retries a mutation. */
+export function botSessionAction(row: BotSession): string {
+  if (!row.target.online) return '查看已有记录';
+  if (row.state === 'waiting_user_action') return '查看请求';
+  if (row.state === 'running') return '查看进展';
+  if (row.terminal === 'error' || row.terminal === 'interrupted') return '核对状态';
+  return '打开原会话';
 }

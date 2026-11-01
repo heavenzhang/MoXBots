@@ -1,0 +1,25 @@
+{
+  "task": "MB-CROSS-END-WORKFLOW-01",
+  "base": "630ae62ed60c8bf8adf828dcc84cc69b5184e7f4",
+  "desktopTests": 44,
+  "mobileTests": 117,
+  "desktopTypecheck": "pass",
+  "mobileTypecheck": "pass",
+  "desktopLint": "pass",
+  "mobileLint": "pass",
+  "classification": "pass",
+  "redRegression": "recent idle conversation was incorrectly grouped done",
+  "browser": "actual React / synthetic transport at 1440x900 and 390x844",
+  "archiveRestoreWrites": [
+    {
+      "action": "archive",
+      "id": "task-done"
+    },
+    {
+      "action": "restore status done",
+      "id": "task-done"
+    }
+  ],
+  "runOrRerunCount": 0,
+  "nativeAcceptance": "pending original owners"
+}

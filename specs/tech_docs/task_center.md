@@ -53,6 +53,8 @@ any allowed state -> Deleted (product-level irreversible tombstone)
 
 `Archived` 是长期可恢复状态；项目看板恢复使用仅用户可调用的 `Archived -> Done`，保留 execution_count/last_executed_at，不启动 Task 或 scheduler。原 `Archived -> Todo` 的重新执行准备路径保持独立。`Deleted` 会从普通产品 surface 中不可恢复地移除 Task，并立即解除 scheduler、pending activation 与 Trigger state。TaskStore 保留行级 tombstone/statusHistory 是为了审计和阻止旧 Cron 重迁移，不代表存在 30 天恢复或 undelete 契约；TaskStore 也不拥有、不会删除工作区 Detector 脚本及其自持状态。
 
+项目看板只把 TaskStore 的显式 `Done` 或 Goal owner 的明确 `complete` 终态放入已完成列。`Verifying`、以及单次 Agent Task 运行后观察到 Session idle 的记录进入“需要我/待验收”；空闲会话进入待继续，不按近期时间或 TODO 完成数推断验收。归档不写入 `Done`，只对已完成 Task 调用既有 archive；待验收工作需回原会话核对成果与证据。Session 本轮结束、TaskCenter Task 完成、Session 子任务账本验收是不同事实，不能互相替代。
+
 对时间型 Task，`Running` 表示 scheduler enabled，不表示某个 AI Turn 正在执行。具体 Turn 的 `checking | running | stopping | stop_failed` 只存在于 `TaskSchedulerController.executions`，Task list/get 在 wire projection 上附加 `executionState/executionError`，不写入 `tasks.jsonl`。列表只投影 Task 行与该瞬时执行态；完整 checkpoint/health/pending/error 仅由按 id 的 get 读取，因此一个损坏或较大的 `trigger-state.json` 不会击穿整个 Task 列表。
 
 `TaskSchedulerController` 只拥有可重建的内存资源：

@@ -28,14 +28,12 @@ export interface BoardRow {
   activity?: ActivitySnapshot;
   activitySessionId?: string;
   confirmationReason?: ConfirmationReason;
-  /** The agent finished its run and the owner has not accepted it yet; shown in the done group. */
+  /** The run has returned, but no completion has been committed; shown in needs. */
   reviewReady?: boolean;
   archived: boolean;
 }
 
 export const ACTIVITY_FRESHNESS_MS = 60_000;
-/** A conversation that went idle within this window counts as just finished: it waits in the done group for the owner to accept (archive) or continue it. */
-export const RECENT_FINISH_MS = 24 * 60 * 60 * 1000;
 /** Idle conversations older than this leave the continue pool: convert them to a Task or archive them. */
 export const INACTIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -128,7 +126,7 @@ export function projectBoardRows(
       || !confirmationReason && !task.executionState && finishedIdle && task.executor === 'agent' && task.status === 'running' && task.executionMode === 'once';
     // A detector check is a cheap trigger probe, not work; it stays with the waiting automation.
     const checkingOnly = task.executionState === 'checking' && task.executionMode !== 'once';
-    const group: BoardGroup = reviewReady ? 'done' : confirmationReason ? 'needs'
+    const group: BoardGroup = reviewReady || confirmationReason ? 'needs'
       : runningSessionId || goalRunning || task.executionState && !checkingOnly || task.executor === 'user' && task.status === 'running' ? 'running'
       : task.status === 'archived' ? 'archived' : task.status === 'done' ? 'done'
       : task.status === 'todo' ? 'todo' : 'scheduled';
@@ -151,7 +149,7 @@ export function projectBoardRows(
     const inactive = now - updatedAt > INACTIVE_AFTER_MS;
     const group: BoardGroup = state === 'waiting_user_action' ? 'needs' : state === 'running' || goal === 'running' ? 'running'
       : goal && goal !== 'complete' || lastKnownActive || executionFailed ? 'needs'
-      : session.archived ? 'archived' : !state ? (snapshot || !inactive ? 'needs' : 'inactive') : goal === 'complete' || now - updatedAt <= RECENT_FINISH_MS ? 'done' : inactive ? 'inactive' : 'idle';
+      : session.archived ? 'archived' : !state ? (snapshot || !inactive ? 'needs' : 'inactive') : goal === 'complete' ? 'done' : inactive ? 'inactive' : 'idle';
     rows.push({ id: `session:${session.id}`, title: session.title, sessions: [session], group,
       confirmationReason: group === 'needs' ? executionFailed || goal === 'blocked' ? 'blocked' : state === 'waiting_user_action' ? 'waiting' : goal === 'paused' ? 'paused' : goal === 'stopped' ? 'stopped' : 'unknown' : undefined,
       reviewReady: group === 'done' || undefined, archived: Boolean(session.archived),
@@ -168,9 +166,10 @@ export function filterBoardRows(rows: readonly BoardRow[], filter: 'all' | 'need
 }
 
 export function boardRowStateKey(row: BoardRow, now: number): string {
+  if (row.reviewReady && row.task && !row.confirmationReason) return 'projectBoard.reasons.verification';
   if (row.confirmationReason) return `projectBoard.reasons.${row.confirmationReason}`;
   if (row.group === 'running') return 'projectBoard.running';
-  if (row.group === 'done') return 'badges.status.done';
+  if (row.group === 'done') return row.task ? 'badges.status.done' : 'projectBoard.goalComplete';
   if (row.group === 'idle') return 'projectBoard.readyToContinue';
   if (row.group === 'inactive') return 'projectBoard.inactive';
   if (row.group === 'scheduled') return row.task?.executionState === 'checking' ? 'projectBoard.checkingTrigger' : 'projectBoard.awaitingTrigger';
