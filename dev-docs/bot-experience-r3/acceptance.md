@@ -35,3 +35,6 @@ MoXBots build profile启用对话/项目互斥导航，使用TaskCenter原Sessio
 确定未开始才允许原意图重试；未知结果保留当前原文/Bot/项目/原Tab导航并禁止重发。表单隐藏不丢receipt。独立复审发现未知保护会锁住全局新建的P2，已补“保留记录并返回新建”：旧记录独立保留，只给新表单空白输入，允许新Bot或另一明确意图；不复制旧原文。待确认记录只是当前Renderer内存中的UI回执，关闭App不保证保留，不充当持久账本或已发送证明。
 
 210项/6文件相关测试通过，包括实际App→新表单回调链的pending与prepared启动失败、createSession可能已提交但回执丢失、确定未开始的capacity拒绝、旧bool失败传播、未知后新独立意图和旧原文留存。真实Chat发送网络与原生持久化并未在本地DOM中执行；断言的是App消息交接及不再次创建/重发，不能称模型业务验收。tsc、scoped ESLint、classification、本地moxbot renderer build通过。依赖检查0error，18既有warning加1个新type-only receipt契约的no-orphans warning。最终证据verification/launch-receipt-*；独立审阅见independent-review.md。修正后当前工具无IAB，未补新的原生UI交互；此前导航/布局证据仅对应原M1状态。
+
+
+首轮PR225 CI 41324772227 在完整unit发现themeArchitecture structural surface guard失败，因本地fixture误用global-sidebar-bg形成第四个消费方。预览页改用通用paper-elevated，不放宽guard、不改正式产品样式。改后本地完整unit659文件/7453pass/5skip通过。首轮Rust/clippy、Windows、Linux和headless/mobile检查通过；最终修正SHA的CI仍须原owner协调，不把旧SHA检查当作新候选通过。

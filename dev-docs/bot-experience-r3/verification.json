@@ -38,5 +38,17 @@
     "independentSourceReview": "pass after P2 repair",
     "persistence": "Renderer memory only, not restart durable",
     "nativeAcceptance": "not-run"
+  },
+  "fullUnit": {
+    "files": 659,
+    "passed": 7453,
+    "skipped": 5,
+    "result": "pass after fixture structural token repair"
+  },
+  "ci": {
+    "firstRun": "41324772227",
+    "firstCandidate": "9b75e9024d3334b95080b3cb280f4af95e61db24",
+    "frontend": "unit failed only themeArchitecture fixture consumer guard; fixed without relaxing guard; rerun pending",
+    "otherChecks": "Rust/clippy, Windows, Linux, mobile policy and headless checks passed on first candidate; do not transfer as final candidate CI"
   }
 }

@@ -125,7 +125,7 @@ function Fixture() {
           </label>
         </div>
         <div className="flex min-h-0 flex-1">
-          <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--line-subtle)] bg-[var(--global-sidebar-bg)] max-sm:w-44">
+          <aside className="flex w-64 shrink-0 flex-col border-r border-[var(--line-subtle)] bg-[var(--paper-elevated)] max-sm:w-44">
             <div className="flex items-center px-4 py-5">
               <strong>MoXBots</strong>
               <span className="flex-1" />

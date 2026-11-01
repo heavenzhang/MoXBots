@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=12cce066c7ba244d4782d5fcbf076c1732bf63bcd876159bad04d66a63f73e18 -->
+<!-- git-project-sync-task:source-digest=de70890acdab2007856a72da875cafe92f12bb3e755917dfedb2593ee5931441 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=0d495c8b-a8ee-439b-993d-bd32d37deaba -->
 <!-- git-project-sync-task:branch=codex/bot-experience-r3-20261101 -->
@@ -32,7 +32,7 @@
 
 ## Verification
 
-- Source digest: `12cce066c7ba244d4782d5fcbf076c1732bf63bcd876159bad04d66a63f73e18`; 210 targeted tests across 6 files passed; real App-to-dialog launch receipts and independent intent tested; tsc and scoped ESLint pass; classification pass; dependencies 0 errors, 18 existing plus 1 type-only warning; moxbot renderer build pass; independent source rereview pass; native/production not run.
+- Source digest: `de70890acdab2007856a72da875cafe92f12bb3e755917dfedb2593ee5931441`; 210 targeted tests across 6 files and full unit 659 files/7453 passed/5 skipped; tsc/scoped ESLint/classification/moxbot renderer build passed before fixture-only token correction; theme architecture guard repaired without relaxing policy; independent source rereview pass; final candidate CI and native/production not run.
 
 git-project-sync start PASS（main ad68c28d）；task-init遇代理TLS间歇故障，R1合并后HEAD已前进，显式建立任务记录；通过单命令Git代理空覆盖恢复observe PASS，不修改全局代理、不降低TLS。正式save生成源码摘要。107相关测试、tsc、lint、分类、本地Vite构建、主题CSS通过；deps0error/18既有warning。证据dev-docs/bot-experience-r3/acceptance.md与verification/。
 
@@ -42,7 +42,8 @@ git-project-sync start PASS（main ad68c28d）；task-init遇代理TLS间歇故�
 - [x] 原owner P1启动false误报及重复意图保护已修，真实App调用链测试覆盖。
 - [x] 独立P2全局新建锁定已修；未知receipt保留而独立空白意图可继续。
 - [x] 210相关测试、tsc/scoped lint/classification/本地moxbot build；deps 0error/18既有+1 type-only warning。
-- [ ] 原owner依赖PR221 updater_download墙钟断言失败归因/必要修复、M1 PR/共享CI/main合入与独立远端核验。
+- [x] PR225首轮Rust/clippy等通过；前端unit唯一fixture主题guard失败已修，不放宽guard。本地完整unit659文件/7453pass/5skip。
+- [ ] 原owner协调新精确修正SHA的PR225共享CI/main及独立远端核验；首轮失败不作为通过。
 
 ## Blockers and unknowns
 
