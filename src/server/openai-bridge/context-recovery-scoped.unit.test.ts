@@ -1,7 +1,9 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { ContextRecoveryController, recoveryActionHash } from './context-recovery';
 import type { AnthropicRequest } from './types/anthropic';
 import { APP_CLI_NAME } from '../../shared/appProfile';
+import type { NativeOperationJournalData } from './native-operation-journal';
 
 const owner = { sessionId: 'product', sdkSessionId: 'native' };
 const launch = { command: "ssh fixture-host 'start-build'", run_in_background: true };
@@ -212,6 +214,76 @@ describe('operation-scoped recovery admission', () => {
     expect(h.controller.inspectActionLedger().uncertainActions.map(a => a.actionId)).toEqual([hash]);
     expect(h.controller.beforeTool('Bash', inspect)).toContain('already completed');
   });
+
+  it.each([false, true])('keeps a native returned action settled across a temporary history gap (cold=%s)', async cold => {
+    const h = fixture(); await h.emit('inspect-log', inspect);
+    await h.controller.authorizeTool('Bash', inspect, 'inspect-log');
+    await h.controller.commitToolResult('Bash', inspect, 'BUILD SUCCESS', false, 'inspect-log');
+    const before = structuredClone(h.ledger());
+    h.body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'inspect-log', name: 'Bash', input: inspect }] });
+    const controller = cold ? new ContextRecoveryController({ ...h.options, initialLedger: before }) : h.controller;
+    if (cold) controller.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => true });
+    const response = await controller.run(request(), h.body, async actual => {
+      expect(actual).toEqual(h.body); return result('independent', next);
+    });
+    expect(response.status).toBe(200); await response.text();
+    expect(controller.inspectActionLedger().uncertainActions.map(a => a.actionId)).toEqual([hash]);
+    expect(controller.beforeTool('Bash', inspect)).toContain('already completed');
+    expect(controller.beforeTool('Bash', launch)).toContain('uncertain outcome');
+    expect(controller.canRetryInference()).toBe(false);
+    expect(h.ledger()).toEqual(before);
+  });
+
+  it.each([false, true])('preserves a returned failed Bash fence through an unpaired history gap (cold=%s)', async cold => {
+    const h = fixture(); await h.emit('failed-check', inspect);
+    await h.controller.authorizeTool('Bash', inspect, 'failed-check');
+    expect(await h.controller.commitToolResult('Bash', inspect, 'Exit code 1', true, 'failed-check', { interrupted: false })).toBe('bash-exit');
+    const before = structuredClone(h.ledger());
+    h.body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'failed-check', name: 'Bash', input: inspect }] });
+    const controller = cold ? new ContextRecoveryController({ ...h.options, initialLedger: before }) : h.controller;
+    if (cold) controller.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => true });
+    const response = await controller.run(request(), h.body, async () => result('independent', next));
+    expect(response.status).toBe(200); await response.text();
+    expect(controller.beforeTool('Bash', inspect)).toContain('exited with an error');
+    expect(controller.beforeTool('Bash', launch)).toContain('uncertain outcome');
+    expect(controller.canRetryInference()).toBe(false);
+    expect(h.ledger()).toEqual(before);
+  });
+
+  it.each(['different-id', 'changed-input', 'contradictory-result', 'existing-legacy', 'unresolved-peer', 'retired-identity'] as const)(
+    'does not use a returned receipt to erase %s uncertainty', async mode => {
+      const h = fixture(); await h.emit('inspect-log', inspect);
+      await h.controller.authorizeTool('Bash', inspect, 'inspect-log');
+      await h.controller.commitToolResult('Bash', inspect, 'BUILD SUCCESS', false, 'inspect-log');
+      const input = mode === 'changed-input' ? { command: 'different operation' } : inspect;
+      const toolId = mode === 'different-id' ? 'unknown-other-attempt' : 'inspect-log';
+      h.body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: toolId, name: 'Bash', input }] });
+      if (mode === 'contradictory-result') h.body.messages.push({ role: 'user', content: [
+        { type: 'tool_result', tool_use_id: toolId, is_error: true, content: 'unproven failure' },
+      ] });
+      const saved = structuredClone(h.ledger()) as { uncertain: string[]; operationAttempts: NativeOperationJournalData };
+      if (mode === 'existing-legacy') {
+        saved.uncertain.push(recoveryActionHash('Bash', inspect));
+        saved.operationAttempts.legacyUncertain.push(recoveryActionHash('Bash', inspect));
+      }
+      if (mode === 'unresolved-peer') {
+        const peer = { ...saved.operationAttempts.entries[0]!, id: randomUUID(), toolUseId: 'unresolved-peer', status: 'reserved' as const };
+        delete peer.outcome; delete peer.returnedAt; delete peer.resultDigest;
+        saved.operationAttempts.entries.push(peer);
+        saved.uncertain.push(recoveryActionHash('Bash', inspect));
+      }
+      if (mode === 'retired-identity') saved.operationAttempts = {
+        version: 2, legacyUncertain: saved.operationAttempts.legacyUncertain, entries: [],
+        retired: { ...owner, hashes: [createHash('sha256').update('inspect-log').digest('hex')] },
+      };
+      const controller = new ContextRecoveryController({ ...h.options, initialLedger: saved });
+      controller.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => true });
+      const response = await controller.run(request(), h.body, async () => result('independent', next));
+      expect(response.status).toBe(200); await response.text();
+      expect(controller.inspectActionLedger().uncertainActions.map(a => a.actionId)).toEqual([hash, recoveryActionHash('Bash', input)]);
+      expect(controller.beforeTool('Bash', input)).toContain('uncertain outcome');
+      expect(controller.canRetryInference()).toBe(false);
+    });
 
   it('never lets a pending new check settle an older unknown with the same input', async () => {
     const h = fixture(); await h.emit('inspect-log', inspect);

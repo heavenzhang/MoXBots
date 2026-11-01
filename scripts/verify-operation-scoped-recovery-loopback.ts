@@ -16,6 +16,8 @@ const timer = setTimeout(() => abort.abort(), 60_000);
 let context: ContextRecoveryController;
 let ledger: { uncertain: string[]; nativeErrors: unknown[]; operationAttempts: NativeOperationJournalData } | undefined;
 let calls = 0;
+const injectReturnedHistoryGap = process.argv.includes('--returned-history-gap');
+let injectedHistoryGap = false;
 let denied = 0;
 let terminal = false;
 const nativeFailures: unknown[] = [];
@@ -34,7 +36,10 @@ const upstream = createServer((req, res) => {
     const step = calls++;
     assert(step < 5, 'Unexpected inference replay');
     if (step > 0) assert.deepEqual(ledger?.uncertain, [oldHash], 'verification must preserve the original unknown');
-    if (step === 2) assert(JSON.stringify(body.messages).includes('BUILD SUCCESS'), 'native log output must reach the next inference');
+    if (step === 2) {
+      if (injectReturnedHistoryGap) assert(injectedHistoryGap, 'one proven result projection gap was injected');
+      else assert(JSON.stringify(body.messages).includes('BUILD SUCCESS'), 'native log output must reach the next inference');
+    }
     const tool = step === 0 ? { id: 'old-new-id', name: 'Bash', input: oldInput }
       : step === 1 ? { id: 'inspect-log', name: 'Bash', input: inspectInput }
         : step < 4 ? { id: `package-${step}`, name: 'Bash', input: nextInput } : undefined;
@@ -55,13 +60,29 @@ const address = upstream.address();
 assert(address && typeof address !== 'string');
 const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture',
   apiProtocol: 'anthropic', baseUrl: `http://127.0.0.1:${address.port}`, model: 'fixture-model', apiKey: 'fixture', contextRecovery: context }) });
+function injectGap(body: AnthropicRequest): AnthropicRequest {
+  if (!injectReturnedHistoryGap || calls !== 2 || injectedHistoryGap) return body;
+  let removed = 0;
+  for (const message of body.messages) if (Array.isArray(message.content)) {
+    message.content = message.content.filter(block => {
+      if (block.type !== 'tool_result' || block.tool_use_id !== 'inspect-log') return true;
+      assert(JSON.stringify(block.content).includes('BUILD SUCCESS'), 'actual native Bash result must exist before injection');
+      removed++; return false;
+    });
+  }
+  assert.equal(removed, 1);
+  body.messages = body.messages.filter(message => !Array.isArray(message.content) || message.content.length > 0);
+  assert.equal(ledger?.operationAttempts.entries.find(item => item.toolUseId === 'inspect-log')?.status, 'returned');
+  injectedHistoryGap = true;
+  return body;
+}
 const gateway = createServer((req, res) => {
   void (async () => {
     if (req.url?.endsWith('/count_tokens')) { res.writeHead(200, { 'content-type': 'application/json' }); res.end('{"input_tokens":100}'); return; }
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const response = await handler(new Request(`http://127.0.0.1${req.url}`, { method: 'POST',
-      headers: { 'content-type': 'application/json' }, body: Buffer.concat(chunks), signal: abort.signal }));
+      headers: { 'content-type': 'application/json' }, body: JSON.stringify(injectGap(JSON.parse(Buffer.concat(chunks).toString()))), signal: abort.signal }));
     res.writeHead(response.status, Object.fromEntries(response.headers));
     if (response.body) for await (const chunk of response.body) res.write(chunk);
     res.end();
@@ -94,7 +115,7 @@ const native = query({ prompt: 'Verify the existing build log, then package exac
       return {};
     }] }],
   },
-  env: { PATH: process.env.PATH, HOME: scratch, USERPROFILE: scratch,
+  env: { PATH: process.env.PATH, CLAUDE_CONFIG_DIR: join(scratch, '.claude'),
     ANTHROPIC_BASE_URL: `http://127.0.0.1:${gatewayAddress.port}/bridge/fixture`, ANTHROPIC_API_KEY: 'fixture',
     ANTHROPIC_AUTH_TOKEN: '', CLAUDE_CODE_OAUTH_TOKEN: '', CLAUDE_CODE_MAX_RETRIES: '0',
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST: '1', ENABLE_CLAUDEAI_MCP_SERVERS: 'false',
@@ -136,7 +157,7 @@ try {
   assert.match(restored.beforeTool('Bash', oldInput) ?? '', /uncertain outcome/);
   assert.match(restored.beforeTool('Bash', nextInput) ?? '', /already completed/);
   assert.equal(restored.beforeTool('Bash', { command: "ssh fixture-host 'tail -n 80 /var/log/build.log'" }), undefined);
-  const receipt = { status: 'PASS', scratch, calls, denied, packageCount: 1, originalLaunchCount: 0,
+  const receipt = { status: 'PASS', scratch, injectedHistoryGap, calls, denied, packageCount: 1, originalLaunchCount: 0,
     unknown: ledger?.uncertain.length, actualSdkNativeAndShell: true, journalReload: true,
     syntheticModel: true, actualRemoteSsh: false, productionStore: false, installedClient: false };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2), { mode: 0o600 });
