@@ -1,7 +1,7 @@
 import { createServer, type Server, type ServerResponse } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createBridgeHandler } from './handler';
-import { ContextRecoveryController } from './context-recovery';
+import { ContextRecoveryController, recoveryActionHash } from './context-recovery';
 import { ModelFailoverController } from './model-failover';
 import { hasBridge, lookupBridge, registerBridge, unregisterBridge } from './bridge-registry';
 import type { AnthropicRequest } from './types/anthropic';
@@ -79,7 +79,9 @@ function request(text: string, options: { stream?: boolean; signal?: AbortSignal
 }
 
 /** Real handler nests context recovery outside model failover, as production does. */
-function harness(primary: Fixture, backup: Fixture) {
+function harness(primary: Fixture, backup: Fixture, options: {
+  rejectedResponseRecovery?: boolean; primaryRoute?: Partial<UpstreamConfig>; initialLedger?: unknown;
+} = {}) {
   const owner = { scope: 'foreground-1' as string | undefined, queryActive: true, recoveryAllowed: true,
     route: 'primary-route-generation-1' };
   const isActive = () => owner.queryActive && hasBridge(queryToken);
@@ -90,15 +92,18 @@ function harness(primary: Fixture, backup: Fixture) {
     requestIdentity: () => owner.route,
     canSwitch: () => owner.recoveryAllowed, resolveBackup: () => upstream(backup, 'backup'),
     canRetry: () => context.canRetryInference(),
+    canRetryRejectedResponse: options.rejectedResponseRecovery ? () => context.canRetryRejectedInference() : undefined,
+    canUsePinnedRoute: options.rejectedResponseRecovery ? () => owner.recoveryAllowed : undefined,
     onSwitch: target => { switches.push(target.providerId); }, retryDelaysMs: [0, 0, 0] });
   const nativeOwner = { sessionId: 'fixture-product', sdkSessionId: 'fixture-native' };
   const context = new ContextRecoveryController({ scope: () => owner.scope, isActive, recoveryOwner: nativeOwner,
+    initialLedger: options.initialLedger,
     requestIdentity: () => owner.route,
     persistLedger: async ledger => { ledgers.push(structuredClone(ledger) as typeof ledgers[number]); },
     canRecover: () => owner.recoveryAllowed, backup: async (_body, info) => {
       archives.push(info.scope); return 'loopback-history-archive';
     } });
-  registerBridge(queryToken, () => ({ ...upstream(primary), apiKey: 'loopback-fixture-key', model: owner.route, modelAliases: undefined,
+  registerBridge(queryToken, () => ({ ...upstream(primary), ...options.primaryRoute, apiKey: 'loopback-fixture-key', model: owner.route, modelAliases: undefined,
     contextRecovery: context, modelFailover: failover }), 'isolated background lifecycle fixture');
   context.bindNoDispatchOwner({ ...nativeOwner, queryGeneration: 1, isCurrent: isActive });
   const handler = createBridgeHandler({ getUpstreamConfig: async req => {
@@ -131,7 +136,98 @@ afterEach(async () => {
   expect(fixtureErrors.splice(0)).toEqual([]);
 });
 
+const unknownLedger = () => ({ version: 1, completed: [],
+  uncertain: [recoveryActionHash('increment_counter', { id: 'old' })], denied: [], blocked: false,
+  projectionActive: true, streamArmedOnly: false });
+
 describe('Query-owned background inference through both recovery controllers', () => {
+  it.each([
+    { apiProtocol: 'anthropic' as const, path: '/v1/messages' },
+    { apiProtocol: 'openai' as const, upstreamFormat: 'chat_completions' as const, path: '/chat/completions' },
+    { apiProtocol: 'openai' as const, upstreamFormat: 'responses' as const, path: '/responses' },
+  ])('retries a complete $apiProtocol $path HTTP rejection with cold unknown actions still fenced', async route => {
+    const primary = await fixture((_request, response) => json(response, { error: { message: 'upstream bad gateway' } }, 502));
+    const backup = await fixture((_request, response) => json(response, message('continued from current context')));
+    const h = harness(primary, backup, { rejectedResponseRecovery: true, primaryRoute: route, initialLedger: unknownLedger() });
+    expect(h.context.canRetryInference()).toBe(false);
+    expect(h.context.canRetryRejectedInference()).toBe(true);
+    const response = await h.handler(request('Continue independent authorized work'));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('continued from current context');
+    expect(primary.requests).toHaveLength(4);
+    expect(primary.requests.every(row => row.path.endsWith(route.path))).toBe(true);
+    expect(backup.requests).toHaveLength(1);
+    expect(h.context.inspectActionLedger().uncertainCount).toBe(1);
+    expect(h.context.beforeTool('increment_counter', { id: 'old' })).toContain('uncertain outcome');
+    expect(h.context.beforeTool('Write', { file_path: '/fixture/new.txt', content: 'authorized follow-up' })).toBeUndefined();
+    expect(h.context.canRetryInference()).toBe(false);
+    // Exact SDK replay must not acquire another HTTP retry budget.
+    expect((await h.handler(request('Continue independent authorized work'))).status).toBe(409);
+    expect(primary.requests).toHaveLength(4);
+    expect(backup.requests).toHaveLength(1);
+    const next = await h.handler(request('Next inference after verified tool progress'));
+    expect(next.status).toBe(200);
+    await next.text();
+    expect(primary.requests).toHaveLength(4);
+    expect(backup.requests).toHaveLength(2);
+    expect(h.context.beforeTool('increment_counter', { id: 'old' })).toContain('uncertain outcome');
+  });
+
+  it.each(['unsafe history', 'transport reset', 'incomplete rejection', 'partial model stream', 'stopped ledger'] as const)(
+    'does not use HTTP rejection recovery for %s', async cause => {
+      const primary = await fixture((_request, response) => {
+        if (cause === 'transport reset') { response.destroy(); return; }
+        if (cause === 'incomplete rejection') {
+          response.writeHead(502, { 'content-type': 'application/json', 'content-length': '10000' });
+          response.write('{"error":'); response.flushHeaders();
+          setTimeout(() => response.destroy(), 5); return;
+        }
+        if (cause === 'partial model stream') {
+          response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(delta('partial')); return;
+        }
+        json(response, { error: { message: 'upstream bad gateway' } }, 502);
+      });
+      const backup = await fixture((_request, response) => json(response, message('must not run')));
+      const h = harness(primary, backup, { rejectedResponseRecovery: true,
+        initialLedger: { ...unknownLedger(), blocked: cause === 'stopped ledger' } });
+      const messages: AnthropicRequest['messages'] | undefined = cause === 'unsafe history' ? [
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'unpaired', name: 'increment_counter', input: {} }] },
+        { role: 'user', content: 'continue' },
+      ] : undefined;
+      const response = await h.handler(request('fresh', { messages, stream: cause === 'partial model stream' }));
+      await response.text().catch(() => undefined);
+      expect(primary.requests.length).toBeLessThanOrEqual(1);
+      expect(backup.requests).toHaveLength(0);
+      expect(h.context.inspectActionLedger().uncertainCount).toBeGreaterThanOrEqual(1);
+    });
+
+  it('retries a transient rejection on the same model without needing a backup', async () => {
+    let calls = 0;
+    const primary = await fixture((_request, response) => ++calls === 1
+      ? json(response, { error: { message: 'temporary upstream 502' } }, 502)
+      : json(response, message('primary recovered')));
+    const backup = await fixture((_request, response) => json(response, message('must not run')));
+    const h = harness(primary, backup, { rejectedResponseRecovery: true, initialLedger: unknownLedger() });
+    expect(await (await h.handler(request('fresh primary inference'))).text()).toContain('primary recovered');
+    expect(primary.requests).toHaveLength(2);
+    expect(backup.requests).toHaveLength(0);
+    expect(h.context.beforeTool('increment_counter', { id: 'old' })).toContain('uncertain outcome');
+  });
+
+  it('bounds a hanging OpenAI rejection body when strict recovery disables the short headers timeout', async () => {
+    const primary = await fixture((_request, response) => {
+      response.writeHead(502, { 'content-type': 'application/json' });
+      response.write('{"error":'); response.flushHeaders();
+    });
+    const backup = await fixture((_request, response) => json(response, message('must not run')));
+    const h = harness(primary, backup, { rejectedResponseRecovery: true, initialLedger: unknownLedger(),
+      primaryRoute: { apiProtocol: 'openai', upstreamFormat: 'responses', headersTimeoutMs: () => undefined } });
+    const response = await bounded(h.handler(request('fresh incomplete error')));
+    expect(response.status).toBe(502);
+    expect(await response.text()).toContain('incomplete');
+    expect(primary.requests).toHaveLength(1);
+    expect(backup.requests).toHaveLength(0);
+  });
   it('accepts new background JSON and SSE requests after the parent finishes, without replaying delivered requests', async () => {
     const primary = await fixture((req, res) => {
       if (req.body.stream) {

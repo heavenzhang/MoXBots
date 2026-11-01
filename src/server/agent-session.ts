@@ -2140,8 +2140,11 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             readQueryBackgroundTasks(lifecycleState.query),
           ),
         canRetryConnection: inferenceOwnerAllowsRetry,
+        canUsePinnedRoute: inferenceOwnerAllowsRetry,
         canRetry: () => inferenceOwnerAllowsRetry()
           && activeSessionContextRecovery?.canRetryInference() !== false,
+        canRetryRejectedResponse: () => inferenceOwnerAllowsRetry()
+          && activeSessionContextRecovery?.canRetryRejectedInference() === true,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => {
           const usage = getSessionMetadata(productSessionId)?.lastContextUsage;

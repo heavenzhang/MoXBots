@@ -426,7 +426,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private readonly requestGuard = new QueryRequestGuard(reason => observeRecoveryDiagnostic(
     { event: 'inference_admission_rejected', owner: 'context', reason }, this.options.onDiagnostic));
   private retiredScope: string | undefined;
-  private readonly requestRetryFences = new Set<object>();
+  private readonly requestRetryFences = new Map<object, 'known-uncertain-actions' | 'unsafe-history'>();
   private completedLedger = new Map<string, Evidence>();
   private noDispatchLedger = new Map<string, NoDispatchEvidence>();
   private nativeErrors = new Map<string, NativeErrorEvidence>();
@@ -586,10 +586,18 @@ export class ContextRecoveryController implements BridgeContextRecovery {
 
   /** Used only for pre-delivery inference retries, never tool execution. */
   canRetryInference(): boolean {
+    return this.canRetryRejectedInference() && this.requestRetryFences.size === 0
+      && this.uncertainLedger.size === 0 && !this.state?.uncertain.size;
+  }
+
+  /** A fully read upstream HTTP rejection delivered no model/tool content.
+   * An unrelated unknown operation stays fenced but need not disable that
+   * request's bounded retry. Never use this for streams, compaction or tools.
+   */
+  canRetryRejectedInference(): boolean {
     const state = this.current();
     return !this.requestGuard.isBlocked(state?.scope, !state || this.options.canRecover?.() === false)
-      && this.requestRetryFences.size === 0 && !this.ledgerBlocked && !this.state?.blocked && this.uncertainLedger.size === 0
-      && !this.state?.uncertain.size;
+      && ![...this.requestRetryFences.values()].includes('unsafe-history') && !this.ledgerBlocked && !this.state?.blocked;
   }
 
   /** Rehydrate one or more archived sources without reading files or becoming a storage owner. */
@@ -1182,7 +1190,13 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     state.inFlight.add(fingerprint);
     const retryAnalysis = analyze(body, state.denied, state.completed, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks, this.preToolDenials);
     const retryFence = {};
-    if (!retryAnalysis || retryAnalysis.uncertain.size || state.uncertain.size) this.requestRetryFences.add(retryFence);
+    if (!retryAnalysis || [...retryAnalysis.uncertain].some(key => !state.uncertain.has(key) && !this.uncertainLedger.has(key))) {
+      this.requestRetryFences.set(retryFence, 'unsafe-history');
+    } else if (retryAnalysis.uncertain.size || state.uncertain.size) {
+      // These exact operations are already protected by the native action ledger.
+      // They still prohibit stream replay, but not a fresh, fully rejected HTTP inference.
+      this.requestRetryFences.set(retryFence, 'known-uncertain-actions');
+    }
     let deliveryFinished = false;
     let interruptionCause: StreamInterruptionCause | undefined;
     let interruptionObservedAt: number | undefined;

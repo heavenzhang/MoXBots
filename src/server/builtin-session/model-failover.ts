@@ -29,6 +29,8 @@ export function createSessionModelFailover(options: {
   onSwitch: (target: UpstreamConfig, status: number) => void;
   onUnavailable?: (reason: string) => void;
   canRetry?: () => boolean;
+  canRetryRejectedResponse?: () => boolean;
+  canUsePinnedRoute?: () => boolean;
   canRetryConnection?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
   recovery?: InferenceRecoveryHooks;
@@ -98,7 +100,7 @@ export function createSessionModelFailover(options: {
       apiProtocol: backup.apiProtocol ?? 'anthropic', authType: backup.authType,
       upstreamFormat: backup.upstreamFormat, maxOutputTokens: backup.maxOutputTokens,
       maxOutputTokensParamName: backup.maxOutputTokensParamName, headersTimeoutMs: 30_000,
-      continuationInstruction: 'Continue the existing task using the conversation and completed tool results. Do not restart the user task or repeat confirmed successful writes, sends, submissions or deployments. If an earlier action has an uncertain outcome, verify it with a read-only check first; if verification is unavailable, stop and explain instead of repeating it.',
+      continuationInstruction: 'Continue the existing task using the conversation and completed tool results. Do not restart the user task or repeat confirmed successful writes, sends, submissions or deployments. If an earlier action has an uncertain outcome, verify that specific action with a read-only check before depending on or repeating it. If verification is unavailable, pause that action and its dependent steps; continue independent steps within the original user authorization, including authorized edits.',
       responseModel: ref.modelId,
     };
   };
@@ -220,6 +222,8 @@ export function createSessionModelFailover(options: {
     },
     canSwitch: options.canSwitch,
     canRetry: options.canRetry,
+    canRetryRejectedResponse: options.canRetryRejectedResponse,
+    canUsePinnedRoute: options.canUsePinnedRoute,
     retryDelaysMs: options.retryDelaysMs,
     recovery: options.recovery,
     deadlineAt: options.deadlineAt,
