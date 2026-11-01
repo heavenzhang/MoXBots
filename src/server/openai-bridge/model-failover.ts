@@ -30,7 +30,7 @@ export interface InferenceRecoveryHooks {
 
 type Root = { scope: string; backup?: boolean; retired?: boolean
   electedIdentity?: string;
-  deadline: number;
+  parentDeadline: number;
 };
 
 /** Query-token owned; never re-enqueues input or invokes tools. */
@@ -107,16 +107,21 @@ export class ModelFailoverController implements BridgeModelFailover {
     if (!queryLive()) return cancelled();
     const candidateScope = this.options.scope();
     const scope = candidateScope && candidateScope !== this.retiredScope ? candidateScope : undefined;
-    if (scope && scope !== this.state?.scope) this.state = { scope, deadline: Date.now() + 30 * 60_000 };
+    if (scope && scope !== this.state?.scope) this.state = { scope, parentDeadline: Infinity };
     const state = scope ? this.state : undefined;
-    let requestDeadline = state?.deadline ?? Infinity;
+    // Bound one inference's retry/failover chain, not the entire progressing
+    // task. A later distinct request (including after native compaction) gets
+    // its own window; the Query guard still rejects every old fingerprint.
+    let requestDeadline = state ? Date.now() + 30 * 60_000 : Infinity;
     const withinDeadline = () => {
       const parent = this.options.deadlineAt?.();
-      if (typeof parent === "number" && Number.isFinite(parent))
+      if (typeof parent === "number" && Number.isFinite(parent)) {
         requestDeadline = Math.min(requestDeadline, parent);
+        if (state) state.parentDeadline = Math.min(state.parentDeadline, parent);
+      }
       if (state) {
-        state.deadline = Math.min(state.deadline, requestDeadline);
-        requestDeadline = state.deadline;
+        // Explicit parent deadlines remain monotonic across successful calls.
+        requestDeadline = Math.min(requestDeadline, state.parentDeadline);
       }
       return Date.now() < requestDeadline;
     };

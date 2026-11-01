@@ -529,6 +529,23 @@ it("caps a long owner wait to the original absolute deadline and never calls ano
 });
 
 describe("parent execution recovery budget", () => {
+  it('admits new inference after more than 30 minutes of successful same-root work without reopening old requests', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const execute = vi.fn(async () => Response.json({ ok: true }));
+    const controller = new ModelFailoverController({ scope: () => 'long-running-task',
+      resolveBackup: () => undefined, onSwitch: vi.fn() });
+    for (const [minutes, fingerprint] of [[0, 'first'], [20, 'after-tools'], [33, 'after-compaction'], [91, 'next-step']] as const) {
+      vi.setSystemTime(minutes * 60_000);
+      const response = await controller.run(request(), primary, execute, fingerprint);
+      expect(response.status).toBe(200);
+      await response.text();
+    }
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect((await controller.run(request(), primary, execute, 'first')).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(4);
+  });
+
   it("gives a later logical root only the four minutes left by its parent", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);

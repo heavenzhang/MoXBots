@@ -284,6 +284,8 @@ export async function pauseSessionExecution(
   });
 }
 
+const recoveryGuidance = '历史错误只代表当时的调用结果，不能据此断言当前整段会话仍被封锁。先实际执行独立只读核对，以本轮具体工具返回判断当前阻断；结果未知的原操作仍不得重放，也不得修改参数规避保护。旧账本的 deadlineAt 仅为兼容字段，不是任务总时限，不能据此停止或重建任务。';
+
 function executionReminder(
   sessionId: string,
   execution = currentLedger(sessionId)?.execution,
@@ -292,7 +294,7 @@ function executionReminder(
   if (!execution) return "";
   return `<system-reminder><SESSION_EXECUTION>${continuationText ? `${escapeSystemReminderText(continuationText)}\n` : ""}本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
-历史错误只代表当时的调用结果，不能据此断言当前整段会话仍被封锁。先实际执行独立只读核对，以本轮具体工具返回判断当前阻断；结果未知的原操作仍不得重放，也不得修改参数规避保护。旧账本的 deadlineAt 仅为兼容字段，不是任务总时限，不能据此停止或重建任务。
+${recoveryGuidance}
 启动子 Agent 前，将其范围、依赖与验收要求登记到当前主任务。后台子任务未结算时主任务仍由你负责；可以让出当前模型回合等待原运行时事件，但不能宣布主任务完成。收到结果后核验并继续原清单；失败、结果未知或缺权限必须记录原因，不盲目重派。
 读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
@@ -613,7 +615,9 @@ export async function prepareSessionExecution(
       // its input-before-card surface stay immutable across both features.
       runtimeReminder: ((executionId
         ? executionReminder(request.sessionId, stagedExecution)
-        : "") + (taskPlanId && intent?.kind === "execute"
+        : previous && engine.kind === 'builtin'
+          ? `<system-reminder><SESSION_EXECUTION>本轮只读核对不恢复原任务写入权限，也不创建替代执行。只读入口包括 Read、Grep、Glob、TaskList、TaskGet 和直接 ${APP_CLI_NAME} session tasks --json；实际工具权限与具体操作防重放保护仍由运行时裁决。${recoveryGuidance}不要仅凭历史报错要求新建会话；区分本轮实际成功的核对、旧错误与仍未知的原操作。</SESSION_EXECUTION></system-reminder>`
+          : "") + (taskPlanId && intent?.kind === "execute"
         ? taskPlanReminder(taskPlanId, stagedExecution?.intent.steps ?? intent.steps ?? [])
         : "")) || undefined,
       // A continuation must retain its original transcript root until the

@@ -51,6 +51,29 @@ function rootTool(receipt: string, root = true) {
   return { id: 'root-review-tool', name: 'Bash', root, input: { command: `myagents session tasks --json --data '${JSON.stringify(intent?.action)}'` }, output: JSON.stringify({ success: true, taskReviewReceipt: receipt }) };
 }
 describe('durable Session task owner', () => {
+  it('confirms a large-ledger review from the bounded route receipt rather than a later file read', async () => {
+    await returned();
+    await owner.mutateSessionTaskLedger(id, ledger => ({ ...ledger, tasks: [...ledger.tasks,
+      ...Array.from({ length: 70 }, (_, index) => ({ id: `historical-${index}`, title: 'Historical task '.repeat(100), blockedBy: [] })),
+    ] }));
+    const action = { kind: 'review' as const, taskId: 'work', attemptId: 'launch:activation-1', decision: 'accept' as const,
+      evidence: 'Independent behavior verified', expectedRevision: store.getSessionMetadata(id)!.taskOrchestration!.revision };
+    vi.doMock('../session-engine', () => ({ getSessionEngine: () => engine }));
+    try {
+      const { handleSessionTaskCommand } = await import('../routes/session-task-orchestration');
+      const result = await handleSessionTaskCommand({ ...action, sessionId: id });
+      const stdout = Buffer.from(JSON.stringify(result, null, 2)).subarray(0, 32768).toString();
+      expect(result.success).toBe(true);
+      expect((await owner.readSessionTasks(engine)).ledger.reviews).toHaveLength(0);
+      await owner.confirmSessionTaskReviewFromRootTool(id, { id: 'bounded-review', name: 'Bash', root: true,
+        input: { command: `myagents session tasks --json --data '${JSON.stringify(action)}'` }, output: { stdout } });
+      expect((await owner.readSessionTasks(engine)).ledger.reviews).toMatchObject([{ rootToolUseId: 'bounded-review' }]);
+      expect((await owner.readSessionTasks(engine)).tasks.find(task => task.id === 'work')?.phase).toBe('completed');
+    } finally {
+      vi.doUnmock('../session-engine');
+    }
+  });
+
   it('does not publish historical root plan progress as live execution after Stop', async () => {
     const current = store.getSessionMetadata(id)!.taskOrchestration!;
     await store.updateSessionMetadata(id, { taskOrchestration: { ...current,
