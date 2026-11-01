@@ -52,6 +52,34 @@ const terminal = (
 });
 
 describe("session execution schema and policy", () => {
+  it('bounds unproven accept reviews even when each turn has new real progress', () => {
+    let state = initial();
+    for (let attempt = 1; attempt <= EXECUTION_LIMITS.maxReworks; attempt += 1) {
+      state = { ...state, currentQueueId: `queue-${attempt}`, phase: 'running' };
+      const result = terminal({ queueId: state.currentQueueId, progressDigest: `real-progress-${attempt}`,
+        assessment: { ...accepted, checks: [accepted.checks[0]!] } });
+      state = settleSessionExecution(state, result);
+      expect(state).toMatchObject({ reworks: attempt, noProgress: 0, reviewReceiptFailures: 0 });
+      expect(settleSessionExecution(state, result)).toBe(state);
+      state = sessionExecutionSchema.parse(JSON.parse(JSON.stringify(state)));
+      expect(canContinueSessionExecution(state, 2001)).toBe(attempt < EXECUTION_LIMITS.maxReworks);
+    }
+    expect(state).toMatchObject({ phase: 'incomplete', reason: 'rework_limit_reached' });
+    // A newly authorized human turn may still finish with actual proof, without resetting budgets.
+    expect(settleSessionExecution({ ...state, phase: 'running', currentQueueId: 'human-resume' },
+      terminal({ queueId: 'human-resume', progressDigest: 'verified' })))
+      .toMatchObject({ id: 'exec-1', phase: 'completed', reworks: EXECUTION_LIMITS.maxReworks });
+  });
+
+  it('does not count invalid accept as rework before a successful unblocked terminal', () => {
+    const assessment = { ...accepted, checks: [] };
+    for (const patch of [
+      { status: 'stopped' as const }, { status: 'error' as const },
+      { blocked: 'TOOL_OUTCOME_UNKNOWN' }, { queueId: 'stale' },
+    ]) expect(settleSessionExecution(initial(), terminal({ assessment, ...patch })).reworks).toBe(0);
+    expect(settleSessionExecution(initial(), terminal({ assessment: undefined })).reworks).toBe(0);
+  });
+
   it('persists review failure streaks without reusing the business progress counter', () => {
     const legacy = initial();
     expect(legacy.reviewReceiptFailures).toBeUndefined();

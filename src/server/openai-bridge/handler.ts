@@ -38,6 +38,7 @@ import { resolveBridgeModel } from './translate/model';
 import { opencodeGoHeaders } from '../opencode-go-request';
 import { readBoundedErrorBody } from './read-error-body';
 import { composeAcceptedAttemptModelProgress } from './model-progress';
+import { withConnectionRetries } from './connection-retry';
 
 const KNOWN_RESPONSES_EVENTS = new Set(['response.created', 'response.in_progress', 'response.completed', 'response.failed',
   'response.incomplete', 'error', 'response.output_item.added', 'response.output_item.done',
@@ -123,13 +124,13 @@ export function getProxyForUrl(url: string): string | undefined {
  */
 const proxyDispatchers = new Map<string, Dispatcher>();
 
-function getDispatcherForProxy(proxyUrl: string): Dispatcher {
+function getDispatcherForProxy(proxyUrl: string, signal: AbortSignal, canRetryConnection?: () => boolean): Dispatcher {
   let agent = proxyDispatchers.get(proxyUrl);
   if (!agent) {
     agent = new ProxyAgent(proxyUrl);
     proxyDispatchers.set(proxyUrl, agent);
   }
-  return agent;
+  return canRetryConnection ? withConnectionRetries(agent, signal, canRetryConnection) : agent;
 }
 
 function isUnsupportedPromptCacheKeyError(status: number, body: string): boolean {
@@ -400,7 +401,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       method: 'POST', headers,
       body: JSON.stringify({ ...body, model: upstream.model ?? body.model }),
       signal: controller.signal, redirect: 'error',
-      ...(proxy ? { dispatcher: getDispatcherForProxy(proxy) } : {}),
+      ...(proxy ? { dispatcher: getDispatcherForProxy(proxy, controller.signal, upstream.canRetryConnection) } : {}),
     }));
     clearTimeout(timer);
     const diagnostic = (phase: 'response_headers' | 'response_body', error?: unknown) => log(transportDiagnostic(upstream,
@@ -738,7 +739,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
           signal: controller.signal,
         };
         if (proxyUrl) {
-          fetchInit.dispatcher = getDispatcherForProxy(proxyUrl);
+          fetchInit.dispatcher = getDispatcherForProxy(proxyUrl, controller.signal, upstream.canRetryConnection);
         }
         // Cast to global Response — undici.Response is structurally identical at
         // runtime; the type drift is only in @types/node vs undici/types Headers

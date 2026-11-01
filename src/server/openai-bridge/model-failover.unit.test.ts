@@ -11,6 +11,41 @@ const retryDelaysMs = [0, 0, 0] as const;
 
 afterEach(() => vi.useRealTimers());
 
+describe('native connection retry ownership', () => {
+  it.each(['abort', 'owner', 'route', 'background', 'deadline', 'end-turn', 'policy'] as const)(
+    'revokes the exact pre-connect attempt on %s without granting inference replay', async change => {
+      let active = true, switchable = true, permitted = true, identity = 'original';
+      let deadline = Infinity;
+      const abort = new AbortController();
+      let release!: () => void, entered!: () => void;
+      const pending = new Promise<void>(resolve => { release = resolve; });
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      let mayConnect!: () => boolean;
+      const controller = new ModelFailoverController({ scope: () => 'root', isActive: () => active,
+        requestIdentity: () => identity, canSwitch: () => switchable, canRetry: () => false,
+        canRetryConnection: () => permitted, deadlineAt: () => deadline,
+        resolveBackup: () => undefined, onSwitch: () => { throw new Error('unexpected switch'); } });
+      const run = controller.run(request(abort.signal), primary, async target => {
+        mayConnect = target.canRetryConnection!; entered(); await pending; return Response.json({ ok: true });
+      }, 'exact-request');
+      await started;
+      expect(mayConnect()).toBe(true);
+      if (change === 'abort') abort.abort();
+      if (change === 'owner') active = false;
+      if (change === 'route') identity = 'replacement';
+      if (change === 'background') switchable = false;
+      if (change === 'deadline') deadline = Date.now() - 1;
+      if (change === 'end-turn') controller.endTurn();
+      if (change === 'policy') permitted = false;
+      expect(mayConnect()).toBe(false);
+      release();
+      const response = await run;
+      await response.text();
+      active = true; switchable = true; permitted = true; identity = 'original'; deadline = Infinity;
+      expect(mayConnect()).toBe(false);
+    });
+});
+
 describe('asynchronous backup admission', () => {
   it.each(['Stop', 'end-turn', 'policy-revoked', 'retry-revoked'])('revalidates %s after request validation without a late switch', async (reason) => {
     let release!: () => void;

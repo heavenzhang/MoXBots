@@ -1170,4 +1170,6 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 
 第十项最终采用独立连续评审失败计数，3次未committed提案后停止自动续接；业务进展/证据完全保持，不推断工具归属。a8a整轮摘要与0a31单pending关联均被独审在打包前拦下并纠正；最终原因为兼容的turn_error+持久化可选计数，新UI明确评审故障。原owner已一次原生Stop暂停28轮薪资空转，原execution/证据保留。下一候选须包含最终修正，继续唯一owner协调和原会话验证。
 
-第十一项：531.1/main0d0ad99f已安装，但真实验收发现大账本吞掉32KiB之后的评审回执，以及model-failover隐式root30分钟到期导致长任务409。既有review命令改小型回执，完整快照仍list；隐式预算只约束同一推理的恢复链，持续推进的新推理不受总时限，显式父deadline/原指纹防重放保留。已有执行的只读跟进获得当前恢复边界说明，不授予写权限。235项相关回归、tsc/lint/分类通过，待原owner01a12bc2-907a-7702-b6dd-788225c5dfe4独审/下一包与四原会话复验；531.1不晋级正式stable，不自行打包或另开部署流程。
+第十一项：531.1/main0d0ad99f已安装，但真实验收发现大账本吞掉32KiB之后的评审回执，以及model-failover隐式root30分钟到期导致长任务409。既有review命令改小型回执，完整快照仍list；隐式预算只约束同一推理的恢复链，持续推进的新推理不受总时限，显式父deadline/原指纹防重放保留。已有执行的只读跟进获得当前恢复边界说明，不授予写权限。235项相关回归、tsc/lint/分类通过，已由原owner经PR224/mainad68c28d及532.1安装；三会话真实receipt提交成立，四会话整体验收仍未通过，stable HOLD。
+
+第十二项（MB-RECOVERY-INCIDENT-20261101）：532.1无效accept证据纠错19轮但reworks=0，修正为沿既有返工计数和同一证明规则有界纠错，给出具体criterion/失效证据反馈，保留真实进度、原ID及人工补证。代理ConnectTimeoutError只在精确当前attempt/原生连接建立前、同fetch取消与预算内最多2次重连；HTTP429/5xx、已发送/部分流和旧unknown不获重放权。冷恢复和原生loopback回归后由同owner独审、集成、分配新不可变包、安装并复验四原会话；不增加部署负责人，不独立触发共享CI，不宣称限流或旧业务验收已闭合。证据见 recovery-incident-20261101/acceptance.md 最新章节。

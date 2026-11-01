@@ -42,6 +42,10 @@
 
 ## 重复执行与不确定性
 
+代理连接建立采用与推理重试分离的窄边界：仅交互 Session 的当前 ModelFailover attempt 可提供 `canRetryConnection`，每次等待后复核原 Query、route、attempt、前台归属、后台状态、Stop、paused 与本次推理 deadline。原 Undici connector 在返回可写 HTTP socket 前产生的 `ConnectTimeoutError`，允许同一代理池内最多两次连接重试（250/750ms）；每个 fetch 的重试计时器绑定自己的 AbortSignal，不缓存带旧请求权限的 RetryAgent。工具账本、推理重试、上下文压缩和流中断权限均不改变，历史未知操作仍受精确保护。
+
+此边界只作用于代理路径的 POST 连接建立，不处理已收到的 HTTP 429/5xx、证书失败、socket reset 或部分流，也不从错误正文、日志或 bytes=0 推断未发送。原 HTTP 错误分类、Retry-After、候选切换及持久等待继续由已有 owner 决定；未获 Session connection capability 的 utility/probe 不获得重试。原 fetch 重定向规则不变，但每个 fetch 只有首次 HTTP dispatch 可恢复连接；307等响应后的第二跳直接用原池，不重新获取连接重试权。原生请求体一旦被消费，Undici 不允许本层重复；连接尝试不重建任务，不重放旧请求或工具。测试必须包括实际 ProxyAgent CONNECT/TLS、仅一次 HTTP POST、取消后不再连接、代次/预算撤销、响应/断流负例及旧未知账本和 SDK 重复请求保护。
+
 每个 logical root 对 model/system/messages/tools 的指纹只允许一条在途/已交付请求；cache_control 不参与指纹。已退休 root 的请求证据保留至 Query 释放；无法证明 root 的后台请求也必须通过同一守卫，不能因为 scope 消失而裸转发。明确的新前台 root 与旧后台请求隔离，不继承其恢复预算或诊断归属。每个控制器最多保留 4096 条请求指纹，达到上限明确停止接纳，不能静默淘汰安全证据以重新开放重放。桥接内部有限重试属于同一请求，SDK 之后自动再次发送相同请求会收到 409，避免依赖 SDK 自己的重试配置实现安全边界。
 
 SSE 已向 Runtime 交付后如断流、error event 或 EOF 缺 message_stop，旧 HTTP 请求和指纹仍永久封闭，包括修改历史后的隐式续发。原 SameTurnStreamContinuation 可以在精确 native marker 下开启原 root 的新 inference namespace，而非重放旧请求；恢复链沿原 id 和绝对 deadline，不增加备用权限或预算。原 native result 到达时已全部结清的后台零工具断流，另须满足 [严格 settled 证明合同](context_recovery.md#settled-background-stream-continuation)；不满足时原会话明确显示暂停原因，保留所有旧 fence、工具结果和 Goal 进度。普通显式新输入仍走原 admission。取消、Query/token/turn/config 变化在每个异步决策后重新检查；旧 Query 的迟到 result 不操作新 owner。

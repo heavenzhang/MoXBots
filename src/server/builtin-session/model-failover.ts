@@ -29,6 +29,7 @@ export function createSessionModelFailover(options: {
   onSwitch: (target: UpstreamConfig, status: number) => void;
   onUnavailable?: (reason: string) => void;
   canRetry?: () => boolean;
+  canRetryConnection?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
   recovery?: InferenceRecoveryHooks;
   deadlineAt?: () => number | undefined;
@@ -127,6 +128,7 @@ export function createSessionModelFailover(options: {
     return pending;
   };
   return new ModelFailoverController({
+    canRetryConnection: options.canRetryConnection,
     scope: () => {
       if (!options.isLive()) return undefined;
       // Recovery eligibility can disappear; an established root's replay guard
