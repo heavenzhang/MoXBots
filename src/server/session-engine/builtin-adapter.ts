@@ -1,4 +1,5 @@
 import { broadcast } from "../sse";
+import { ClassifierTransportError } from '../auto-route/classifier';
 import { applySessionModelSelection } from '../agent-session';
 import { questionAnswersAsText } from '../../shared/types/askUserQuestion';
 import { retryDesktopRequest } from './retry';
@@ -360,13 +361,15 @@ export function createBuiltinSessionEngine(): SessionEngine {
           prompt: task.prompt,
           signal: controller.signal,
           timeoutMs,
-          maxTokens: 1024,
+          maxTokens: task.maxTokens ?? 1024,
         }), aborted]);
         if (controller.signal.aborted) { failed(); return null; }
         if (!text?.trim()) task.onFailure?.('empty_response');
         return text;
-      } catch {
-        failed();
+      } catch (error) {
+        if (!controller.signal.aborted && error instanceof ClassifierTransportError && error.reason === 'output_limit') {
+          task.onFailure?.('output_limit');
+        } else failed();
         return null;
       } finally {
         clearTimeout(timer);

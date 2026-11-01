@@ -133,3 +133,39 @@ Kevin 原会话 noProgress=2、reason=no_progress_limit_reached，旧 humanConti
 代码/隔离回归完成后由唯一 desktop owner 统一独审、主干、CI、分配新的不可变候选、安装与四原会话复验。本增量不能覆盖或复用 529.1 已冻结制品。系统真实稳定性与旧业务产物结果分别记录；最终实测尚未通过。
 
 最终定向验证：294 个执行/分类/utility/准入测试及 31 个 builtin 真实队列/计时器用例，共 325 个不重复 case 通过；此前完整 builtin 文件211项通过后，仅针对审查新增的3项及受影响准入/计时器路径重跑31项。全量 TypeScript、定向 ESLint、test classification、git diff --check 通过。原数据未写，真实 Provider 原会话验收待下一候选。
+
+## 第八项：实装后的任务查询重复误拦截
+
+530.1 经 PR222/main2ff069ae、两轮全通过CI、签名公证及原owner备份安装，实际程序摘要与冻结18cbda52候选一致；三个心跳运行态恢复。原薪资和行情会话均沿用原execution成功准入并获得真实工具结果。行情新一轮的直接产品CLI `session tasks --json` 却因同actionHash历史成功被永久拒绝；后续Read旧回执不构成查询刷新成功，正式通道保持HOLD。
+
+复现用合成native流/原journal先成功查询revision1，再请求相同参数的全新toolUseId，旧实现返回automatic_replay_blocked。修复仅对严格直接产品CLI list查询解除“已有成功”拦截；不加入广义只读白名单，live/blocked/unknown/native-error仍优先，每轮仍durable reserve/commit。写入数据、任意同名路径、Shell组合/重定向、后台运行和未知options均不适用；旧toolUseId仍禁止重复。旧unknown账本和历史成功证据不清除。
+
+213相关单元与隔离集成通过，含冷恢复、未知查询、Stop、存储失败、写命令与伪装路径反例；全量tsc、定向lint、classification、diff通过。需要原desktop owner独审、合入和下一不可变包真实复验，不能宣称已安装530.1包含第八项。本线程未发送原业务命令或修改原数据。
+
+
+## 第九项：530.1 四原会话实测后的补修
+
+四例真实尝试未全部通过，不能晋级公开稳定版。双滚动条原生 TaskList 仍被已成功hash误拦截，故将第八项严格刷新例外扩展至既有原生 TaskList/TaskGet 查询形状；namespaced MCP、额外参数、写入、未知结果、旧tool ID均不豁免。两项真实形态冷恢复回归旧实现FAIL，新实现通过。
+
+薪资主Agent把评审CLI包在Python或管道中，只读success后将pending提案当完成；严格原生回执未确认，系统反复给泛化的未完成提醒。保持回执提交规则，新增直接CLI/完整JSON指引，并从原ledger识别上轮未确认提案，在下轮明确提示重新提交当前queue评审而不重做业务。三项包装/管道/缺回执测试旧实现FAIL；正确重提交后可按原needs_user终态停止。Kevin出现根据历史整段封锁文字自行停工，未出现新的工具拒绝；新增实际独立只读核查指引，仍不允许改参数重放未知操作。指引效果仍须新包真实验证。
+
+双滚动条12:56原调用记录empty_response但未记录usage，不能倒推其精确响应。隔离工具外探针使用同原4条上下文、原execution与同已配置分类模型，复现HTTP200/stop_reason=max_tokens，1024输出token全部为thinking，无text。相同上下文4096预算对照HTTP200/end_turn，1136输出token含862thinking，最终506字符有效JSON；不写原会话、不执行工具、不修改Provider设置。公开源码只保留摘要，真实上下文不入Git。官方语义参考：https://openrouter.ai/docs/guides/best-practices/reasoning-tokens （推理计入输出预算）。
+
+required intent经RuntimeTextUtilityTask向builtin传4096输出预算，transport不再把显式预算钳至1536；默认建议1024、tier分类2048保留，上限4096且请求60秒/取消不变。max_tokens终态返回有界output_limit诊断，不泄露原始响应、不自动retry、不接受截断JSON。所有未知操作保护和执行schema/continuation身份核对保留。仅增加预算不能保证供应商永不失败；必须验证实际恢复与准确失败表现。
+
+联合验证和非实现者审查完成后交原desktop owner选择下一不可变候选；530.1不含第八/九项，原四会话系统验收仍未通过。旧业务发布和对外消息不是本轮探针范围。
+
+第九项最终联合回归：9个文件446项通过（原生队列/执行/作用域/传输/系统指引）；全量tsc、定向lint、分类与diff通过。新增transport测试首次有mock构造问题，修正fixture后纳入完整回归，不将该错误计为产品旧行为失败。第九项已有原生查询2项与评审回执3项旧实现失败证据，空响应依据上述真实Provider对照。订阅/托管SDK不受此次直接transport输出预算修复覆盖，其既有预算路径未作新的生产声明。
+
+
+## 第十项：评审包装不能伪造自动续接进展
+
+530.1薪资原会话在未确认评审回执时已自动续接28轮；原owner通过一次有效原生Stop将同execution暂停，保留任务/证据/未知保护。第九项虽修指引，仍不足以在模型不遵循时阻止空转：包装后的Bash成功事实随queue/提案ID变化，被原progressDigest视为新进展。
+
+最终采用独立的连续评审回执失败计数reviewReceiptFailures，仅依据原ledger当前queue的真实提案是否已committed。连续3个完成轮次仍未确认时停止自动续接，保留所有真实业务facts和原noProgress；不是任务总时限或“业务没有进展”。正确回执或后续无失败提案轮次清连续计数，重复/迟到terminal不重复计数。Stop和未知操作保护优先。人工继续仍沿原execution，计数保留到实际正常提交。
+
+终态使用旧包已支持的incomplete/turn_error，新增可选计数独立持久化；新UI明确显示“评审结果连续未确认，已停止自动续接；任务进度已保留”。旧reader继续读写原账本与已支持的人工恢复原因，不需要清数据。单测覆盖旧无字段记录、JSON恢复、重复terminal和成功/无失败提案后的清零，集成读取原SessionStore持久化索引。
+
+原owner先发现a8a整轮稳定digest误伤真实Write，再指出0a31凭唯一pending Shell无法证明提案来源；两版均在打包前拦下，最终移除工具归因及改写业务进展规则。最终验证覆盖纯包装循环、真实Write进展保留且停于明确的评审故障、人工同任务恢复并提交有效回执、并发/非Shell/未返回工具仍未知保护、UI精确原因。此前第九项1757d67的446项联合回归及owner118项独立验证仍有效；最终增量交同一owner独审/新包/原会话验收。
+
+最终增量本地验证：87执行集成+11共享策略+18 DOM共116项通过，全量tsc、定向lint、diff通过；测试日志review-receipt-budget-final2.log及配套类型/lint日志保存在私有evidence。最终源码还需原owner精确独审/候选CI/安装/原会话验收。

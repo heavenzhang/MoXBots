@@ -514,6 +514,8 @@ export interface RuntimeTextUtilityTask {
   systemPrompt: string;
   signal?: AbortSignal;
   timeoutMs?: number;
+  /** Requested output budget for direct builtin utility transports, including reasoning. */
+  maxTokens?: number;
 }
 
 export interface AgentRuntime {

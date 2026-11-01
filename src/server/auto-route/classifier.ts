@@ -24,7 +24,7 @@ const CACHE_PRUNE_AT = 4096;
 
 /** Thrown by a transport when the link failed (network, timeout, 5xx, auth). */
 export class ClassifierTransportError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly reason?: 'output_limit') {
     super(message);
     this.name = 'ClassifierTransportError';
   }

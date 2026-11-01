@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** Bounded utility diagnostics only; never execution or continuation authority. */
 export type ExecutionIntentFailure = 'timeout' | 'cancelled' | 'unavailable' | 'transport'
-  | 'empty_response' | 'invalid_json' | 'invalid_schema' | 'missing_continuation' | 'missing_steps';
+  | 'empty_response' | 'output_limit' | 'invalid_json' | 'invalid_schema' | 'missing_continuation' | 'missing_steps';
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const idSchema = boundedText(256);
@@ -82,6 +82,8 @@ export const sessionExecutionSchema = z
     turns: z.number().int().nonnegative(),
     reworks: z.number().int().nonnegative(),
     noProgress: z.number().int().nonnegative(),
+    /** Consecutive completed turns with a proposed review but no native receipt. */
+    reviewReceiptFailures: z.number().int().nonnegative().optional(),
     lastProgressDigest: z.string().max(256).optional(),
     currentQueueId: idSchema,
     lastSettledQueueId: idSchema.optional(),
@@ -106,6 +108,7 @@ export type SessionExecution = z.infer<typeof sessionExecutionSchema>;
 export const EXECUTION_LIMITS = {
   maxReworks: 3,
   maxNoProgress: 2,
+  maxReviewReceiptFailures: 3,
 } as const;
 
 export function createSessionExecution(input: {
@@ -149,6 +152,7 @@ export type ExecutionTerminal = {
   lastMutationOrder?: number;
   progressDigest: string;
   blocked?: string;
+  reviewReceiptUnconfirmed?: boolean;
 };
 
 function acceptedAssessmentIsProven(
@@ -212,6 +216,8 @@ export function settleSessionExecution(
   next.noProgress =
     digest && digest === state.lastProgressDigest ? state.noProgress + 1 : 0;
   if (digest) next.lastProgressDigest = digest;
+  next.reviewReceiptFailures = terminal.reviewReceiptUnconfirmed
+    ? (state.reviewReceiptFailures ?? 0) + 1 : 0;
 
   if (terminal.status === "stopped")
     return { ...next, phase: "paused", reason: "stopped" };
@@ -245,6 +251,12 @@ export function settleSessionExecution(
       assessment: terminal.assessment,
     };
   }
+  // Review delivery failure is distinct from business progress. Keep all real
+  // progress/evidence and stop only the repeatedly failing automatic handoff.
+  if (next.reviewReceiptFailures >= EXECUTION_LIMITS.maxReviewReceiptFailures)
+    // Keep the established resumable terminal reason for rollback readers.
+    // The durable dedicated counter carries the precise failure to the UI.
+    return { ...next, phase: 'incomplete', reason: 'turn_error' };
   if (next.noProgress >= EXECUTION_LIMITS.maxNoProgress)
     return {
       ...next,

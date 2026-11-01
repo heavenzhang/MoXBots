@@ -11,6 +11,7 @@ import { QueryRequestGuard } from './request-lifetime';
 import type { StreamInterruptionCause, StreamInterruptionObserver } from './types/bridge';
 import { StreamDeliveryWitness } from './stream-delivery-witness';
 import { nativeActionDiagnostic, observeRecoveryDiagnostic, type NativeActionPhase, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
+import { isDirectSessionTaskListCommand } from '../../shared/sessionTaskReviewCommand';
 
 /** Internal, Query-local evidence capability. Never accepted from HTTP/model metadata. */
 export interface SettledInterruptionReceipt {
@@ -1098,6 +1099,11 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       return 'automatic_replay_blocked: The earlier command exited with an error. Preserve its output and use a corrected command; automatic repetition is blocked.';
     }
     const evidence = state.completed.get(key);
+    // Product-owned task queries must observe the current ledger after progress.
+    // Keep all live/unknown/error gates above, and still reserve each fresh native
+    // invocation in authorizeTool; this never erases its historical receipt.
+    if (evidence && (isBuiltinTaskQuery(name, input)
+      || name === 'Bash' && isDirectSessionTaskListCommand(input))) return undefined;
     if (!evidence) return this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES
       ? 'automatic_replay_blocked: Recovery ledger capacity is exhausted; another business action cannot be safely recorded.' : undefined;
     state.denied.add(key);

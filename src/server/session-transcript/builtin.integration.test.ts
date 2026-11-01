@@ -322,7 +322,7 @@ afterEach(async () => {
 });
 
 describe('first desktop execution intent utility', () => {
-  it.each(['slow-response', 'deadline', 'cancelled', 'default-budget', 'init-timeout', 'init-cancelled'] as const)('keeps utility admission bounded without the suggestion timeout cap (%s)', async mode => {
+  it.each(['slow-response', 'deadline', 'cancelled', 'default-budget', 'init-timeout', 'init-cancelled', 'output-limit'] as const)('keeps utility admission bounded without the suggestion timeout cap (%s)', async mode => {
     const workspace = join(state.home, 'intent-budget');
     await mkdir(workspace);
     const meta = await store.createSession(workspace, { runtime: 'builtin' });
@@ -340,6 +340,10 @@ describe('first desktop execution intent utility', () => {
       signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')); }, { once: true });
     }));
     const initializing = vi.spyOn(router, 'getAutoRouteTransport');
+    if (mode === 'output-limit') {
+      const { ClassifierTransportError } = await import('../auto-route/classifier');
+      transport.mockRejectedValue(new ClassifierTransportError('exhausted', 'output_limit'));
+    }
     if (mode.startsWith('init-')) initializing.mockReturnValue(new Promise(() => {}));
     else initializing.mockResolvedValue(transport);
     const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
@@ -354,13 +358,13 @@ describe('first desktop execution intent utility', () => {
           scenario: { type: 'desktop' }, text: 'Create and verify artifact.' }, controller.signal, failure);
       await vi.waitFor(() => expect(mode.startsWith('init-') ? initializing : transport).toHaveBeenCalledOnce());
       if (mode.endsWith('cancelled')) controller.abort();
-      else await vi.advanceTimersByTimeAsync(mode === 'slow-response' ? 12_000 : mode === 'default-budget' ? 8000 : 60_000);
+      else if (mode !== 'output-limit') await vi.advanceTimersByTimeAsync(mode === 'slow-response' ? 12_000 : mode === 'default-budget' ? 8000 : 60_000);
       if (mode === 'slow-response') {
         expect(await pending).toMatchObject({ kind: 'execute', steps: ['Create artifact', 'Verify artifact'] });
         expect(failure).not.toHaveBeenCalled();
       } else {
         expect(await pending).toBeFalsy();
-        expect(failure).toHaveBeenCalledExactlyOnceWith(mode.endsWith('cancelled') ? 'cancelled' : 'timeout');
+        expect(failure).toHaveBeenCalledExactlyOnceWith(mode.endsWith('cancelled') ? 'cancelled' : mode === 'output-limit' ? 'output_limit' : 'timeout');
       }
       expect(state.sdkInputs).toHaveLength(0);
     } finally { vi.useRealTimers(); }
@@ -398,7 +402,7 @@ describe('first desktop execution intent utility', () => {
       expect(result?.kind).toBe('execute');
       expect(result?.continuationOf).toBeNull();
       expect(result?.steps).toEqual(['Create the page', 'Verify the page']);
-      expect(transport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ classifier }));
+      expect(transport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ classifier, maxTokens: 4096 }));
     }
     expect(state.query).not.toHaveBeenCalled();
     expect(agent.getMessages()).toHaveLength(0);

@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=4bff8597717af3f57676e9b7f5ab79bfd750f877fbf030cfbffb3e7eca3490ad -->
+<!-- git-project-sync-task:source-digest=c659c9d63a92ad4252d15276f744a47031fc528b7bb860ad2cb8403b67b13e7e -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -9,7 +9,7 @@
 
 ## Objective
 
-修复 528.1 四会话反馈中的重复恢复横幅与并发拒绝扩大问题，保全原会话与账本；以原业务完成为最终稳定性标准。证据：`dev-docs/recovery-incident-20261101/acceptance.md`。
+修复 528.1 四会话反馈中的重复恢复横幅与并发拒绝扩大问题，保全原会话与账本；按最新授权以系统恢复与稳定性实测为优先，原业务结果单独核验。证据：`dev-docs/recovery-incident-20261101/acceptance.md`。
 
 ## Acceptance criteria
 
@@ -21,10 +21,18 @@
 - [x] 第四批23620fba远端保存，owner已纳入R4候选且精确CI通过。
 - [x] 第五批35353c88远端保存/owner集成；R5 CI反向依赖失败由owner655514修复，源分支已快进采用。
 - [x] 前六批经 PR217/主干3b62a664及联合CI交付；0.5.29/529.1 已安装核验。
-- [ ] 第七批明确续接与意图超时修复，经独审后交原owner下一不可变候选。
+- [x] 第七批明确续接/意图超时修复经PR222、main2ff069ae、CI及0.5.30/530.1安装核实。
+- [x] 第八批任务查询重复误拦截隔离复现、修复及213相关回归通过。
+- [ ] 第八批经原owner独审、集成与下一不可变候选，真实刷新验收待完成。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+第十项最终为连续评审回执失败独立计数，3次后停止自动续接；实际业务progress/noProgress/证据不改，不推断Shell归属，旧包可恢复的turn_error保持。a8a/0a31两版由独审在打包前发现问题，均已修正；原生原会话验收仍待新包。
+
+第九项：原生TaskList/Get刷新、未确认评审回执接续指引、历史错误误读指引已实现；真实工具外分类复现1024输出全部thinking/无text，4096对照有效JSON，源码补预算传递及output_limit严格失败诊断。530.1不含本批，原四例尚未全部通过；独审/交接/主干/下一包/实际复验待完成。
+
+530.1 已安装，签名/公证/实际二进制与候选18cbda52一致，三个心跳运行态恢复；薪资和行情原会话均沿原execution真实准入并执行工具。行情任务清单查询又出现历史成功被永久拦截，正式通道仍HOLD。第八批只允许受限直接产品CLI list刷新已成功查询，所有live/unknown/error/旧身份/持久化保护保留，每次仍入原native journal；普通Bash不豁免。已快进到实际main2ff069ae，无版本分配或原运行数据写入。
 
 529.1 首次原会话继续实测仍 INTENT_UNCONFIRMED/timeout，系统验收失败。第七批修复明确续接依赖网络分类与8秒误截断，补 exact root human request→execution 关联、初始化取消及SDK预算传递。已从最新主干58941e30无冲突快进，改动仅此任务，原会话未由本线程改写。
 
@@ -39,6 +47,22 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `c659c9d63a92ad4252d15276f744a47031fc528b7bb860ad2cb8403b67b13e7e`; final review-receipt budget: 116 execution/policy/DOM cases PASS; full tsc/scoped lint/diff PASS. No inferred tool attribution or changes to real-work progress; installed acceptance pending original owner.
+
+第十项最终计数版：87执行+11策略+18 DOM=116PASS，tsc/lint/diff PASS。纯包装回执空转、真实Write进展保留、同执行人工恢复、成功清零、持久化索引/JSON恢复、重复终态、Stop/unknown及UI原因均覆盖。移除两版未发布的工具归因/业务进展改写；等待原owner精确独审。
+
+- Source digest: `f4f737e641d3486915210e0dd520a52ba7db8e3a09435dc1984ecb46c03c62bc`; corrected Phase10: 96 cases PASS; independent real-work counterexample preserved and fixed; full tsc/scoped lint/diff PASS. Original native acceptance pending unique desktop owner.
+
+- Source digest: `55fe4a9d4e1c96fb15f0828508f3055cd03ba23387f631500a94f90c479f0248`; Phase10: 92 execution/policy cases PASS; baseline repeated-receipt loop FAIL reproduced; full tsc/scoped lint/diff PASS. Phase9 independently reviewed at exact1757d67; installed-client final acceptance remains pending.
+
+- Source digest: `43c4593ab8f85a5066cdf256c541e41a94208ccec433d6e9672ac7d9a018869b`; Phase9: 446 related cases across 9 files PASS; tsc/lint/classification/diff PASS. Real Provider output-budget reproduction and controlled comparison recorded privately; installed530.1 still fails final acceptance.
+
+第九项：9文件446项联合回归、全量tsc、定向lint、classification、diff通过。直接Provider同上下文1024预算耗尽/4096完整JSON对照保存于相邻私有evidence；订阅SDK无新真实验收结论。源码交原owner非实现者审查和下一不可变候选，正式稳定通道HOLD。
+
+- Source digest: `f8bf4df5c831594283ce7f37d409b267a5a876856bf39f1dc3356bc4e5b4a5d6`; Phase8: 213 related unit/integration PASS, final 55 targeted PASS with full cold native admission; baseline FAIL reproduced; full tsc/scoped lint/classification/diff PASS. Installed530.1 still requires the next immutable candidate for this correction.
+
+第八批：旧实现真实形态回归先FAIL；213个上下文恢复/任务命令/冷恢复相关单元与隔离集成通过，全量tsc、定向lint、分类、diff通过。新测试覆盖已成功查询刷新、同tool ID拒绝、冷恢复、unknown/Stop/持久化失败、路径/组合/重定向/写入参数反例。原owner独审及新包实际刷新尚未完成。
 
 - Source digest: `4bff8597717af3f57676e9b7f5ab79bfd750f877fbf030cfbffb3e7eca3490ad`; 325 distinct related cases PASS; 13 baseline failures reproduced; tsc/lint/classification/diff PASS. Real-session acceptance remains failed on installed529.1, pending owner integration and next immutable candidate.
 
@@ -60,11 +84,11 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-前六批已主干/CI/529.1安装；当前原生首次续接失败证据已保留。第七批本地修复与隔离验证不等于真实恢复；需原owner独审集成新包后再验证四个原会话。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖与系统恢复验收分别列示。用户持续授权更新和原生验证，并要求保留旧开发进程，系统稳定优先。
+前七批已主干/CI/530.1安装；两个原会话已真实续接，另两个及终态仍待原owner验收。任务查询重复误拦截仍在已安装530.1，不能将本地第八批当作实装修复；正式通道暂不晋级。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖与系统恢复验收分别列示。用户持续授权更新和原生验证，并要求保留旧开发进程，系统稳定优先。
 
 ## Deployment request
 
-desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。不新增部署 owner，不触发共享 CI/PR/正式构建或安装。第七批不自行分配版本或重建旧529.1；新的源码交付与候选安装/真实验收分开。
+desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。不新增部署 owner，不触发共享 CI/PR/正式构建或安装。第八批不自行分配版本或重建旧530.1；新的源码交付与候选安装/真实验收分开。
 
 ## Next step
 

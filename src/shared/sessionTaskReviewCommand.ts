@@ -36,6 +36,25 @@ export function parseSessionTaskCommand(input: unknown,
   return data as Record<string, unknown>;
 }
 
+/** Only the product CLI's foreground list operation may refresh a completed read.
+ * This is not a general shell safety classifier or historical settlement proof.
+ */
+export function isDirectSessionTaskListCommand(input: unknown): boolean {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+  const value = input as Record<string, unknown>;
+  if (Object.keys(value).some(key => !['command', 'description', 'timeout', 'run_in_background'].includes(key))
+    || typeof value.command !== 'string'
+    || (value.description !== undefined && typeof value.description !== 'string')
+    || (value.timeout !== undefined && (typeof value.timeout !== 'number' || !Number.isFinite(value.timeout) || value.timeout <= 0))
+    || (value.run_in_background !== undefined && value.run_in_background !== false)) return false;
+  // Bare product CLI only: the broader bookkeeping parser also accepts paths,
+  // but an arbitrary same-basename executable cannot grant replay admission.
+  const executable = value.command.trim().split(/\s/, 1)[0];
+  if (executable !== APP_CLI_NAME && executable !== `${APP_CLI_NAME}.cmd`) return false;
+  const action = parseSessionTaskCommand(value);
+  return action?.kind === 'list' && Object.keys(action).length === 1;
+}
+
 export function parseTaskReviewCommand(
   input: unknown,
 ): Extract<SessionTaskAction, { kind: 'review' }> | undefined {

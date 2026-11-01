@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ContextRecoveryController, recoveryActionHash } from './context-recovery';
 import type { AnthropicRequest } from './types/anthropic';
+import { APP_CLI_NAME } from '../../shared/appProfile';
 
 const owner = { sessionId: 'product', sdkSessionId: 'native' };
 const launch = { command: "ssh fixture-host 'start-build'", run_in_background: true };
@@ -9,9 +10,9 @@ const next = { command: "ssh fixture-host 'package-verified-build'" };
 const hash = recoveryActionHash('Bash', launch);
 const frame = (type: string, extra: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
 const request = () => new Request('http://localhost/fixture');
-function result(id: string, input: object) {
+function result(id: string, input: object, name = 'Bash') {
   return new Response(frame('message_start', { message: { id: `msg-${id}`, content: [] } })
-    + frame('content_block_start', { index: 0, content_block: { type: 'tool_use', id, name: 'Bash', input: {} } })
+    + frame('content_block_start', { index: 0, content_block: { type: 'tool_use', id, name, input: {} } })
     + frame('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } })
     + frame('content_block_stop', { index: 0 })
     + frame('message_delta', { delta: { stop_reason: 'tool_use' } }) + frame('message_stop', {}),
@@ -33,20 +34,119 @@ function fixture(projectionActive = false, includeOldResult = true) {
     ...(includeOldResult ? [{ role: 'user' as const, content: [{ type: 'tool_result' as const, tool_use_id: 'old-launch', is_error: true, content: 'connection lost' }] }] : []),
     { role: 'user', content: 'Verify the existing build without launching it again.' },
   ] };
-  async function emit(id: string, input: object) {
-    const execute = vi.fn(async (actual: AnthropicRequest) => { expect(actual).toEqual(body); return result(id, input); });
+  async function emit(id: string, input: object, name = 'Bash') {
+    const execute = vi.fn(async (actual: AnthropicRequest) => { expect(actual).toEqual(body); return result(id, input, name); });
     const response = await controller.run(request(), body, execute);
     expect(response.status).toBe(200); await response.text();
     expect(execute).toHaveBeenCalledOnce();
   }
-  function append(id: string, input: Record<string, unknown>, content: string) {
-    body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id, name: 'Bash', input }] },
+  function append(id: string, input: Record<string, unknown>, content: string, name = 'Bash') {
+    body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id, name, input }] },
       { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content }] });
   }
   return { controller, state, body, options, emit, append, ledger: () => ledger };
 }
 
 describe('operation-scoped recovery admission', () => {
+  it.each([
+    { name: 'TaskList', input: {} },
+    { name: 'TaskGet', input: { taskId: '1' } },
+  ])('refreshes a successful native $name query without discharging unknown actions', async ({ name, input }) => {
+    const h = fixture();
+    await h.emit('first-query', input, name);
+    expect(await h.controller.authorizeTool(name, input, 'first-query')).toBeUndefined();
+    await h.controller.commitToolResult(name, input, 'old state', false, 'first-query');
+    h.append('first-query', input, 'old state', name);
+    const cold = new ContextRecoveryController({ ...h.options, initialLedger: h.ledger() });
+    cold.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => h.state.current });
+    const response = await cold.run(request(), h.body, async () => result('fresh-query', input, name));
+    expect(response.status).toBe(200); await response.text();
+    expect(await cold.authorizeTool(name, input, 'fresh-query')).toBeUndefined();
+    await cold.commitToolResult(name, input, 'current state', false, 'fresh-query');
+    expect(await cold.authorizeTool(name, input, 'fresh-query')).toContain('already reserved');
+    expect(cold.inspectActionLedger().uncertainActions.map(a => a.actionId)).toEqual([hash]);
+    expect(cold.inspectActionLedger().operationAttempts.filter(a => a.actionId === recoveryActionHash(name, input))).toHaveLength(2);
+  });
+
+  it.each([
+    { name: 'TaskList', input: { extra: 'unproven' } },
+    { name: 'TaskGet', input: { taskId: '1', status: 'completed' } },
+    { name: 'mcp__custom__TaskList', input: {} },
+    { name: 'TaskUpdate', input: { taskId: '1', status: 'completed' } },
+  ])('does not grant native query semantics to $name with extra input or a different owner', async ({ name, input }) => {
+    const h = fixture(); await h.emit('original', input, name);
+    await h.controller.authorizeTool(name, input, 'original');
+    await h.controller.commitToolResult(name, input, 'success', false, 'original');
+    expect(h.controller.beforeTool(name, input)).toContain('already completed');
+  });
+
+  it('keeps a failed native task query protected instead of treating it as a successful refresh', async () => {
+    const h = fixture(); await h.emit('unknown-query', {}, 'TaskList');
+    await h.controller.authorizeTool('TaskList', {}, 'unknown-query');
+    await h.controller.commitToolResult('TaskList', {}, 'outcome unavailable', true, 'unknown-query');
+    expect(h.controller.beforeTool('TaskList', {})).toContain('uncertain outcome');
+    expect(h.controller.inspectActionLedger().uncertainCount).toBe(2);
+  });
+
+  it('refreshes a completed product task-list query with a new native identity, including after cold restoration', async () => {
+    const h = fixture();
+    const query = { command: `${APP_CLI_NAME} session tasks --json`, description: 'Read session task ledger' };
+    await h.emit('tasks-first', query);
+    expect(await h.controller.authorizeTool('Bash', query, 'tasks-first')).toBeUndefined();
+    await h.controller.commitToolResult('Bash', query, '{"revision":1}', false, 'tasks-first');
+    h.append('tasks-first', query, '{"revision":1}');
+    await h.emit('tasks-refresh', query);
+    expect(await h.controller.authorizeTool('Bash', query, 'tasks-refresh')).toBeUndefined();
+    await h.controller.commitToolResult('Bash', query, '{"revision":2}', false, 'tasks-refresh');
+    h.append('tasks-refresh', query, '{"revision":2}');
+    expect(await h.controller.authorizeTool('Bash', query, 'tasks-refresh')).toContain('already reserved');
+    expect(h.controller.inspectActionLedger().uncertainActions.map(a => a.actionId)).toEqual([hash]);
+    expect(h.controller.beforeTool('Bash', launch)).toContain('uncertain outcome');
+    const cold = new ContextRecoveryController({ ...h.options, initialLedger: h.ledger() });
+    expect(cold.beforeTool('Bash', query)).toBeUndefined();
+    expect(cold.beforeTool('Bash', launch)).toContain('uncertain outcome');
+    cold.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => h.state.current });
+    const response = await cold.run(request(), h.body, async () => result('tasks-cold', query));
+    expect(response.status).toBe(200); await response.text();
+    expect(await cold.authorizeTool('Bash', query, 'tasks-cold')).toBeUndefined();
+    await cold.commitToolResult('Bash', query, '{"revision":3}', false, 'tasks-cold');
+    expect(cold.inspectActionLedger().uncertainActions.map(a => a.actionId)).toEqual([hash]);
+    expect(cold.inspectActionLedger().operationAttempts.filter(a => a.actionId === recoveryActionHash('Bash', query)))
+      .toHaveLength(3);
+  });
+
+  it.each(['unknown', 'stopped', 'storage-failure'] as const)('retains %s protection for a repeated task-list query', async condition => {
+    const h = fixture();
+    const query = { command: `${APP_CLI_NAME} session tasks --json` };
+    await h.emit('tasks-first', query);
+    await h.controller.authorizeTool('Bash', query, 'tasks-first');
+    if (condition === 'unknown') {
+      await h.controller.commitToolResult('Bash', query, 'connection interrupted', true, 'tasks-first', { interrupted: true });
+      expect(h.controller.beforeTool('Bash', query)).toContain('uncertain outcome');
+    } else {
+      await h.controller.commitToolResult('Bash', query, '{"revision":1}', false, 'tasks-first');
+      h.append('tasks-first', query, '{"revision":1}');
+      await h.emit('tasks-refresh', query);
+      if (condition === 'stopped') h.state.active = false;
+      else h.state.failStorage = true;
+      expect(await h.controller.authorizeTool('Bash', query, 'tasks-refresh')).toContain(
+        condition === 'stopped' ? 'retired or unbound' : 'Could not durably reserve');
+    }
+    expect(h.controller.inspectActionLedger().uncertainActions.map(a => a.actionId)).toContain(hash);
+  });
+
+  it.each([
+    `${APP_CLI_NAME} session tasks --json --data '{"kind":"review"}'`,
+    `${APP_CLI_NAME} session tasks --json; echo changed`,
+    `/tmp/${APP_CLI_NAME} session tasks --json`,
+  ])('still denies replay of a completed non-query command: %s', async command => {
+    const h = fixture(); const input = { command };
+    await h.emit('original', input);
+    await h.controller.authorizeTool('Bash', input, 'original');
+    await h.controller.commitToolResult('Bash', input, 'success', false, 'original');
+    expect(h.controller.beforeTool('Bash', input)).toContain('already completed');
+  });
+
   it.each([false, true])('allows SSH log verification and a verified next action with projection=%s; never settles or repeats the unknown launch', async projection => {
     const h = fixture(projection);
     await h.emit('inspect-log', inspect);
