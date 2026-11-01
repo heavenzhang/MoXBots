@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
+import { createSessionExecution } from '../../shared/sessionExecution';
 import { createTranscriptProjection } from '../../shared/sessionTranscript';
 import type { DispatchGuard } from '../session-core/turn-queue';
 import type { DesktopMessageRequest, SessionEngine } from './types';
 
-const state = vi.hoisted(() => ({ active: undefined as unknown }));
-vi.mock('../SessionStore', () => ({ getActiveSessionTranscript: () => state.active }));
+const state = vi.hoisted(() => ({ active: undefined as unknown, metadata: undefined as unknown }));
+vi.mock('../SessionStore', () => ({ getActiveSessionTranscript: () => state.active, getSessionMetadata: () => state.metadata }));
 import { prepareContinuationAdmission } from './continuation-admission';
 
 function fixture() {
@@ -30,7 +32,30 @@ function admitted(engine: SessionEngine, request: DesktopMessageRequest) {
   return decision;
 }
 describe('canonical continuation admission', () => {
-  beforeEach(() => { state.active = undefined; });
+  beforeEach(() => { state.active = undefined; state.metadata = undefined; });
+
+  it.each(['canonical', 'changed-text', 'image', 'mentions', 'context', 'query-context', 'no-execution', 'different-task', 'legacy-root'] as const)('only captures the original definition for an exact product continuation (%s)', mode => {
+    const { engine, request, projection } = fixture();
+    request.text = mode === 'changed-text' ? 'Publish a different project' : SESSION_CONTINUATION_PROMPT;
+    const intent = { kind: 'execute' as const, objective: 'Original local artifact', scope: 'No external publishing',
+      acceptanceCriteria: ['Artifact verified'], steps: ['Write', 'Verify'] };
+    const execution = createSessionExecution({ id: 'execution1', requestId: 'request1', originalInput: 'Original task',
+      intent, queueId: 'queue1', now: 1 });
+    state.metadata = { taskOrchestration: { execution } };
+    if (mode !== 'legacy-root') projection.messages.get('u1')!.metadata = { source: 'desktop',
+      clientRequestId: mode === 'different-task' ? 'other-task-request' : 'request1' };
+    if (mode === 'image') request.images = [{}] as NonNullable<DesktopMessageRequest['images']>;
+    if (mode === 'mentions') request.agentMentions = [{}] as NonNullable<DesktopMessageRequest['agentMentions']>;
+    if (mode === 'context') request.primaryContext = {} as NonNullable<DesktopMessageRequest['primaryContext']>;
+    if (mode === 'query-context') request.queryPrimaryContext = {} as NonNullable<DesktopMessageRequest['queryPrimaryContext']>;
+    if (mode === 'no-execution') state.metadata = undefined;
+    const result = admitted(engine, request);
+    if (mode === 'canonical') expect(result.executionIntent).toEqual({ ...intent, continuationOf: 'execution1' });
+    else expect(result.executionIntent).toBeUndefined();
+    // Having a task never overrides the canonical stopped-turn ownership check.
+    projection.turns.get('turn1')!.status = 'complete';
+    expect(prepareContinuationAdmission(engine, request)).toMatchObject({ accepted: false });
+  });
 
   it.each(['busy', 'queue', 'approval', 'running'] as const)('rejects %s before preparation or enqueue', reason => {
     const { engine, request, live } = fixture();

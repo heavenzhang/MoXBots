@@ -119,3 +119,17 @@ Kevin 原会话 noProgress=2、reason=no_progress_limit_reached，旧 humanConti
 本轮78项执行集成、163项共享策略/架构边界/facade单元、24项builtin提交边界测试（其余183未运行）共265项通过；全量tsc、定向lint、test classification、diff检查通过。记录见相邻私有 human-continuation-exhaustion-* 日志。已有未知写入/unknown delegation 两个拒绝测试同时设置两类计数封顶，仍然拒绝；Stop、迟到变更、重复请求、双击和 transcript 保护沿既有回归验证。四个旧实现失败正例修复后通过。builtin SDK 隔离队列增加12个封顶情况下的成功/双击/迟到完成场景，保留旧任务身份、步骤与证据。实际Provider及Kevin原会话仍须新包安装复验。
 
 第五批全量 CI 暴露 builtin 模块反向依赖 SessionEngine，原发布负责人以655514deb37b4e0c9e5e2c5bbc5a077318a81fb5修正：依赖由原 facade 注入，原架构边界测试保留；本分支快进采用该已提交联合候选后开发本增量，未自行分配版本或触发共享CI。
+
+## 第七批：安装后意图识别超时与明确续接
+
+0.5.29/529.1 已由唯一 desktop owner 安装，二进制与已签名公证候选匹配。双滚动条原会话在安装后的首次正常继续中仍出现 `INTENT_UNCONFIRMED / timeout`；同一新 queue 的 SDK 只读核查结束，写入未获准，原 execution 未续接。其余三个样本因用户正在切换原生界面尚未尝试。此结果为真实验收失败，不能被此前 CI 或 SDK success 替代。
+
+根因之一是明确的产品续接也要重新调用模型分类，且 required intent JSON 被 optional suggestion 的 8 秒上限截断。修复分两部分：
+- 只有固定一键续接、有效停止轮次、根消息真人请求 ID 与原 execution 请求 ID 精确匹配、无新增图片/mentions/上下文时，由 continuation owner 捕获原意图，交同一执行 owner 继续。缺证/不同任务/变更正文继续分类；原任务、步骤、证据、计数和权限不重置。
+- 普通意图识别单次预算 60 秒，默认可选建议仍 8 秒；预算包含 transport 初始化，取消可中止初始化等待和网络等待。订阅/托管 SDK 的内层计时器得到相同预算，不被旧 30 秒默认值截断。
+
+非实现者（原 desktop owner）审阅指出旧执行关联、SDK 内层预算及初始化取消三项，已补反例与修复。旧实现 12 个真实 builtin commit 边界用例在分类器不可用时失败，另一个 12 秒才返回的意图响应也失败。新回归包含不同任务根消息、legacy root、queryPrimaryContext、双击、迟到完成、无进展/返工封顶、初始化超时/取消、SDK 35 秒响应及默认短预算；全部为合成数据，不写原会话。
+
+代码/隔离回归完成后由唯一 desktop owner 统一独审、主干、CI、分配新的不可变候选、安装与四原会话复验。本增量不能覆盖或复用 529.1 已冻结制品。系统真实稳定性与旧业务产物结果分别记录；最终实测尚未通过。
+
+最终定向验证：294 个执行/分类/utility/准入测试及 31 个 builtin 真实队列/计时器用例，共 325 个不重复 case 通过；此前完整 builtin 文件211项通过后，仅针对审查新增的3项及受影响准入/计时器路径重跑31项。全量 TypeScript、定向 ESLint、test classification、git diff --check 通过。原数据未写，真实 Provider 原会话验收待下一候选。

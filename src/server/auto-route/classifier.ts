@@ -37,6 +37,8 @@ export interface ClassifierTransportRequest {
   signal: AbortSignal;
   /** Optional bounded structured utility output; tier classifier keeps its tiny default. */
   maxTokens?: number;
+  /** Caller-owned utility deadline; forwarding must not silently shorten it. */
+  timeoutMs?: number;
 }
 
 /** Returns the model's raw answer text, or throws ClassifierTransportError. */

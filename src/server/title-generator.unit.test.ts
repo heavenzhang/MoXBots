@@ -1,3 +1,4 @@
+import { createClassifierTransport } from './auto-route/transport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 const utilityMocks = vi.hoisted(() => ({ query: vi.fn(), close: vi.fn(), release: vi.fn(async () => {}), terminal: vi.fn(async () => {}), start: vi.fn(), stop: vi.fn(async () => {}) }));
 vi.mock('./runtimes/codex', () => ({ CodexRuntime: class { startSession = utilityMocks.start; stopSession = utilityMocks.stop; } }));
@@ -246,5 +247,35 @@ describe('external title utility cleanup and permission failure', () => {
     expect(await generateTitleExternal([{ user: 'Analyze code', assistant: 'Analyzed' }], 'codex', 'model', '/workspace', 'managed-provider')).toBe('MyAgents title test');
     expect(utilityMocks.stop).toHaveBeenCalledWith(handle);
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+
+describe('semantic intent budget through the managed SDK transport', () => {
+  afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+
+  it.each(['bounded-intent', 'default-title', 'cancelled'] as const)('uses the caller budget and cancellation across both SDK timers (%s)', async mode => {
+    vi.useFakeTimers();
+    utilityMocks.query.mockReturnValue(Object.assign((async function* () {
+      await new Promise(resolve => setTimeout(resolve, 35_000));
+      yield { type: 'result', subtype: 'success', result: 'synthetic semantic JSON' };
+    })(), { close: utilityMocks.close }));
+    const transport = createClassifierTransport({
+      resolveEnv: () => 'subscription', getProxyForProviderUrl: () => undefined, getSidecarPort: () => 0,
+      startOneShotBridge: () => { throw new Error('Subscription must use its SDK identity'); },
+      generateUtilityText,
+    });
+    const controller = new AbortController();
+    const pending = transport({ classifier: { providerId: 'subscription', model: 'fixture' },
+      prompt: 'Synthetic intent', system: 'Only classify', signal: controller.signal,
+      ...(mode === 'default-title' ? {} : { timeoutMs: 60_000 }),
+    }).then(text => ({ text }), error => ({ error: String(error) }));
+    await vi.waitFor(() => expect(utilityMocks.query).toHaveBeenCalledOnce());
+    if (mode === 'cancelled') controller.abort();
+    else await vi.advanceTimersByTimeAsync(35_000);
+    if (mode === 'bounded-intent') expect(await pending).toEqual({ text: 'synthetic semantic JSON' });
+    else expect(await pending).toHaveProperty('error');
+    expect(utilityMocks.release).toHaveBeenCalledOnce();
+    expect(utilityMocks.close).toHaveBeenCalledOnce();
   });
 });

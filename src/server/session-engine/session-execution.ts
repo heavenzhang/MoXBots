@@ -165,7 +165,8 @@ export async function classifySessionExecutionIntent(
       prompt,
       systemPrompt: INTENT_SYSTEM,
       signal,
-      timeoutMs: 8000,
+      // This is required admission JSON, not an optional next-input suggestion.
+      timeoutMs: 60_000,
       onFailure: reason => { utilityFailure = reason; },
     });
   if (!raw?.trim() || signal.aborted) {
@@ -308,6 +309,8 @@ export async function prepareSessionExecution(
   engine: SessionEngine,
   request: DesktopMessageRequest,
   classify = classifySessionExecutionIntent,
+  /** Captured only by the verified product continuation owner, never request JSON. */
+  continuationIntent?: ExecutionIntent,
 ): Promise<{
   request: DesktopMessageRequest;
   duplicate?: DesktopAdmissionResult;
@@ -389,7 +392,7 @@ export async function prepareSessionExecution(
     };
   }
   let intentFailure: ExecutionIntentFailure | undefined;
-  const intent = await classify(engine, request, controller.signal, reason => { intentFailure = reason; }).catch(
+  const intent = continuationIntent ?? await classify(engine, request, controller.signal, reason => { intentFailure = reason; }).catch(
     () => { intentFailure = 'transport'; return undefined; },
   );
   if (!current()) {

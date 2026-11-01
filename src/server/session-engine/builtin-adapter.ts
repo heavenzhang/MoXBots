@@ -338,29 +338,35 @@ export function createBuiltinSessionEngine(): SessionEngine {
           ? pickAutoClassifier(catalog.table, catalog.settings, current)
           : current;
       if (!classifier) { task.onFailure?.('unavailable'); return null; }
-      const transport = await getAutoRouteTransport();
-      if (task.signal?.aborted) { task.onFailure?.('cancelled'); return null; }
       const controller = new AbortController();
-      const abort = () => controller.abort();
+      let resolveAbort!: (value: null) => void;
+      const aborted = new Promise<null>(resolve => { resolveAbort = resolve; });
+      const abort = () => { controller.abort(); resolveAbort(null); };
       task.signal?.addEventListener("abort", abort, { once: true });
       let timedOut = false;
-      const timer = setTimeout(() => { timedOut = true; abort(); }, Math.min(task.timeoutMs ?? 8000, 8000));
+      // Optional suggestions retain their short default. Required intent JSON
+      // gets the caller's bounded budget, including transport initialization.
+      const timeoutMs = Number.isFinite(task.timeoutMs)
+        ? Math.max(1, Math.min(task.timeoutMs!, 60_000)) : 8000;
+      const timer = setTimeout(() => { timedOut = true; abort(); }, timeoutMs);
+      const failed = () => task.onFailure?.(task.signal?.aborted ? 'cancelled' : timedOut ? 'timeout' : 'transport');
       try {
-        const text = await transport({
+        if (task.signal?.aborted) abort();
+        const transport = await Promise.race([getAutoRouteTransport(), aborted]);
+        if (!transport || controller.signal.aborted) { failed(); return null; }
+        const text = await Promise.race([transport({
           classifier,
           system: task.systemPrompt,
           prompt: task.prompt,
           signal: controller.signal,
+          timeoutMs,
           maxTokens: 1024,
-        });
-        if (controller.signal.aborted) {
-          task.onFailure?.(task.signal?.aborted ? 'cancelled' : 'timeout');
-          return null;
-        }
-        if (!text.trim()) task.onFailure?.('empty_response');
+        }), aborted]);
+        if (controller.signal.aborted) { failed(); return null; }
+        if (!text?.trim()) task.onFailure?.('empty_response');
         return text;
       } catch {
-        task.onFailure?.(task.signal?.aborted ? 'cancelled' : timedOut ? 'timeout' : 'transport');
+        failed();
         return null;
       } finally {
         clearTimeout(timer);

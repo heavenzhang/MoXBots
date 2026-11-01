@@ -322,6 +322,50 @@ afterEach(async () => {
 });
 
 describe('first desktop execution intent utility', () => {
+  it.each(['slow-response', 'deadline', 'cancelled', 'default-budget', 'init-timeout', 'init-cancelled'] as const)('keeps utility admission bounded without the suggestion timeout cap (%s)', async mode => {
+    const workspace = join(state.home, 'intent-budget');
+    await mkdir(workspace);
+    const meta = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+    const config = await import('../builtin-session/config');
+    config.setModel(undefined); config.setProviderEnv(undefined);
+    const router = await import('../auto-route/router');
+    const catalog = router.buildAutoRouteCatalog();
+    vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
+      settings: { classifier: { providerId: 'synthetic-provider', model: 'synthetic-classifier' } } });
+    const response = JSON.stringify({ kind: 'execute', objective: 'Create artifact', scope: 'Local only',
+      acceptanceCriteria: ['Verified artifact'], steps: ['Create artifact', 'Verify artifact'], continuationOf: null });
+    const transport = vi.fn(({ signal }: { signal: AbortSignal }) => new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(response), mode === 'slow-response' ? 12_000 : 70_000);
+      signal.addEventListener('abort', () => { clearTimeout(timer); reject(new Error('aborted')); }, { once: true });
+    }));
+    const initializing = vi.spyOn(router, 'getAutoRouteTransport');
+    if (mode.startsWith('init-')) initializing.mockReturnValue(new Promise(() => {}));
+    else initializing.mockResolvedValue(transport);
+    const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+    const { classifySessionExecutionIntent } = await import('../session-engine/session-execution');
+    const controller = new AbortController();
+    const failure = vi.fn();
+    vi.useFakeTimers();
+    try {
+      const pending = mode === 'default-budget'
+        ? engine.runTextUtility!({ prompt: 'suggest next input', systemPrompt: 'suggest', onFailure: failure })
+        : classifySessionExecutionIntent(engine, { sessionId: meta.id, workspacePath: workspace,
+          scenario: { type: 'desktop' }, text: 'Create and verify artifact.' }, controller.signal, failure);
+      await vi.waitFor(() => expect(mode.startsWith('init-') ? initializing : transport).toHaveBeenCalledOnce());
+      if (mode.endsWith('cancelled')) controller.abort();
+      else await vi.advanceTimersByTimeAsync(mode === 'slow-response' ? 12_000 : mode === 'default-budget' ? 8000 : 60_000);
+      if (mode === 'slow-response') {
+        expect(await pending).toMatchObject({ kind: 'execute', steps: ['Create artifact', 'Verify artifact'] });
+        expect(failure).not.toHaveBeenCalled();
+      } else {
+        expect(await pending).toBeFalsy();
+        expect(failure).toHaveBeenCalledExactlyOnceWith(mode.endsWith('cancelled') ? 'cancelled' : 'timeout');
+      }
+      expect(state.sdkInputs).toHaveLength(0);
+    } finally { vi.useRealTimers(); }
+  });
+
   it.each([undefined, 'auto', 'manual'] as const)('honors the product default for modelMode=%s before the first turn', async modelMode => {
     const workspace = join(state.home, 'first-intent');
     await mkdir(workspace);
@@ -3216,7 +3260,7 @@ it('rechecks background work after awaited materialization, before SDK yield', a
   expect(terminal).toHaveBeenCalledWith(expect.objectContaining({ status: 'stopped' }));
 });
 
-it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].flatMap(mode => ([false, true, 'no-progress', 'rework'] as const).map(managed => ({ status, mode, managed })))))('checks explicit $status continuation at the actual builtin commit boundary ($mode, managed=$managed)', async ({ status, mode, managed }) => {
+it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-completion', 'double-click'].flatMap(mode => ([false, true, 'no-progress', 'rework'] as const).map(managed => ({ status, mode, managed })))).concat([{ status: 'interrupted', mode: 'unrelated-root', managed: true }]))('checks explicit $status continuation at the actual builtin commit boundary ($mode, managed=$managed)', async ({ status, mode, managed }) => {
   const platform = await import('../utils/platform');
   vi.spyOn(platform, 'getCrossPlatformEnv').mockReturnValue({ home: state.home, user: 'synthetic', temp: tmpdir() });
   vi.spyOn(platform, 'getHomeDir').mockReturnValue(state.home);
@@ -3227,7 +3271,7 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
   state.independentInputPump = true;
   await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: false });
   const active = store.getActiveSessionTranscript(meta.id)!;
-  active.writer.observe({ kind: 'message-create', message: { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't' } });
+  active.writer.observe({ kind: 'message-create', message: { id: 'original-user', role: 'user', content: 'Original task', timestamp: 't', metadata: { source: 'desktop', clientRequestId: mode === 'unrelated-root' ? 'different-task-request' : 'original-request' } } });
   active.writer.observe({ kind: 'message-create', message: { id: 'partial-result', role: 'assistant', content: 'Saved tool result', timestamp: 't', turnId: 'old-turn', transcriptState: 'interrupted', sdkUuid: 'native-partial' } });
   active.writer.observe({ kind: 'turn-update', turn: { id: 'old-turn', rootUserMessageId: 'original-user', startedAt: 't', status } });
   await active.writer.flush();
@@ -3267,7 +3311,10 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
     const catalog = router.buildAutoRouteCatalog();
     vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
       settings: { classifier: { providerId: 'synthetic-provider', model: 'synthetic-classifier' } } });
-    vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(async () => JSON.stringify({ ...intent, continuationOf: executionId }));
+    const classifier = vi.spyOn(router, 'getAutoRouteTransport');
+    if (mode === 'unrelated-root') classifier.mockResolvedValue(async () => JSON.stringify({ ...intent,
+      objective: 'Different task selected by semantic classification', continuationOf: null }));
+    else classifier.mockRejectedValue(new Error('Classifier unavailable during explicit continuation'));
   }
   const send = async () => {
     const clientRequestId = managed ? randomUUID() : undefined;
@@ -3289,7 +3336,13 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
     expect([...active.writer.projection.messages.values()].filter(message => message.role === 'user').map(message => message.content)).toEqual(['Original task', SESSION_CONTINUATION_PROMPT]);
     expect(active.writer.projection.messages.get('partial-result')).toMatchObject({ content: 'Saved tool result', sdkUuid: 'native-partial' });
     expect(JSON.stringify(state.sdkInputs[0])).toContain(SESSION_CONTINUATION_PROMPT);
-    if (managed) {
+    if (mode === 'unrelated-root') {
+      expect((await import('../auto-route/router')).getAutoRouteTransport).toHaveBeenCalledOnce();
+      const execution = store.getSessionMetadata(meta.id)!.taskOrchestration!.execution!;
+      expect(execution.id).not.toBe(executionId);
+      expect(execution.intent.objective).toBe('Different task selected by semantic classification');
+    } else if (managed) {
+      expect((await import('../auto-route/router')).getAutoRouteTransport).not.toHaveBeenCalled();
       const ledger = store.getSessionMetadata(meta.id)!.taskOrchestration!;
       expect(ledger.execution).toMatchObject({ id: executionId, turns: 2, originalInput: 'Original task' });
       expect(ledger.execution!.currentQueueId).not.toBe('old-queue');
