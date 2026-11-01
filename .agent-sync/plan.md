@@ -1158,3 +1158,7 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 ### MB-RECOVERY-INCIDENT-20261101 安装后准入超时
 
 529.1 已安装但原会话首次真实续接仍意图识别超时，验收FAIL。第七批用精确 stopped-root human receipt 关联原execution，仅固定继续动作复用原定义；普通分类单请求60秒并覆盖初始化/托管SDK、保留取消与所有原生执行保护。代码/模拟与真实验收分开；desktop owner仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，沿下一未冻结批，不覆盖529.1，不启动第二发布流程。
+
+### MB-RECOVERY-INCIDENT-20261101 实装任务查询刷新
+
+530.1 已经main2ff069ae/CI/签名公证/本机安装，真实恢复薪资与行情时发现产品task list查询被历史成功防重复规则误拦截；正式stable保持HOLD。第八批仅允许严格直接产品CLI list刷新已成功查询，仍沿原native journal逐次记账并保持unknown/Stop/错误/旧身份/写入保护。213相关回归与tsc/lint/分类通过，原owner01a12bc2-907a-7702-b6dd-788225c5dfe4独审/集成/分配下一不可变包及四原路径验收待完成；不复用530.1，不触发第二发布流程。

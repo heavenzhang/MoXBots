@@ -133,3 +133,11 @@ Kevin 原会话 noProgress=2、reason=no_progress_limit_reached，旧 humanConti
 代码/隔离回归完成后由唯一 desktop owner 统一独审、主干、CI、分配新的不可变候选、安装与四原会话复验。本增量不能覆盖或复用 529.1 已冻结制品。系统真实稳定性与旧业务产物结果分别记录；最终实测尚未通过。
 
 最终定向验证：294 个执行/分类/utility/准入测试及 31 个 builtin 真实队列/计时器用例，共 325 个不重复 case 通过；此前完整 builtin 文件211项通过后，仅针对审查新增的3项及受影响准入/计时器路径重跑31项。全量 TypeScript、定向 ESLint、test classification、git diff --check 通过。原数据未写，真实 Provider 原会话验收待下一候选。
+
+## 第八项：实装后的任务查询重复误拦截
+
+530.1 经 PR222/main2ff069ae、两轮全通过CI、签名公证及原owner备份安装，实际程序摘要与冻结18cbda52候选一致；三个心跳运行态恢复。原薪资和行情会话均沿用原execution成功准入并获得真实工具结果。行情新一轮的直接产品CLI `session tasks --json` 却因同actionHash历史成功被永久拒绝；后续Read旧回执不构成查询刷新成功，正式通道保持HOLD。
+
+复现用合成native流/原journal先成功查询revision1，再请求相同参数的全新toolUseId，旧实现返回automatic_replay_blocked。修复仅对严格直接产品CLI list查询解除“已有成功”拦截；不加入广义只读白名单，live/blocked/unknown/native-error仍优先，每轮仍durable reserve/commit。写入数据、任意同名路径、Shell组合/重定向、后台运行和未知options均不适用；旧toolUseId仍禁止重复。旧unknown账本和历史成功证据不清除。
+
+213相关单元与隔离集成通过，含冷恢复、未知查询、Stop、存储失败、写命令与伪装路径反例；全量tsc、定向lint、classification、diff通过。需要原desktop owner独审、合入和下一不可变包真实复验，不能宣称已安装530.1包含第八项。本线程未发送原业务命令或修改原数据。
