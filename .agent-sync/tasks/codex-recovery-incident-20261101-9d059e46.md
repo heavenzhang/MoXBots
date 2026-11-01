@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=d4f641ea1fe79f489b9b927a3c10a19b1c3ba8157bffd0b4c84e3a6ba6cc3f65 -->
+<!-- git-project-sync-task:source-digest=f434edff364e6dbe968c942708645d37874345ca78063e742a8cdbc0cd1351cf -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -25,10 +25,14 @@
 - [x] 第八批任务查询重复误拦截隔离复现、修复及213相关回归通过。
 - [x] 第八至十批经原owner独审、PR223/main0d0ad99f与531.1安装；真实查询刷新已成功，整体验收仍失败。
 - [x] 第十一批大账本评审截断、model-failover隐式root时限及只读跟进提示修复；235回归/tsc/lint/分类通过。
-- [ ] 第十一批原owner独审、主干集成/下一不可变包/四原会话真实复验。
+- [x] 第十一批原owner独审、PR224/mainad68、532.1签名公证/备份安装；原生回执实际成立，整体验收仍失败。
+- [x] 第十二批无效accept返工计数、原生反馈和逐请求连接建立恢复实现及隔离验证。
+- [ ] 第十二批精确独审、主干/新包/安装与四原会话复验。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+第十二项以实装532.1为依据：有效回执但证据不合格的accept仍自动空转，现沿既有reworks计数并复用同一证明规则反馈缺失criterion/失效工具；原任务/进展与人工补证保留。代理连接建立只对当前原生ConnectTimeoutError/首个HTTP dispatch作两次有界连接重试，逐fetch绑定取消与owner/代次/预算，不开放HTTP错误或断流重放。独审发现默认follow的307第二跳会重新获取连接重试权，已加首dispatch限制和真实默认follow反例；缓存RetryAgent取消后仍连接的原型未进入产品。429规则未放宽，未知操作未清除。
 
 最新531.1实装验收未通过：评审命令返回完整ledger使尾部receipt遭32KiB截断；model-failover仍有整个root30分钟隐式门，长任务压缩后的正常调用409。第十一批分别修响应边界与单次推理恢复预算，并为已有执行的只读跟进补实际权限/历史错误纠正指引。源分支已快进main0d0ad99f，只改本任务；不清原账本，不手动恢复execution ID，不绕过原生回执。完整范围和验收边界见acceptance.md最新章节。
 
@@ -51,6 +55,8 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `f434edff364e6dbe968c942708645d37874345ca78063e742a8cdbc0cd1351cf`; Phase12: 8-file combined regression 289 PASS, plus two added native connection/redirect regressions (291 distinct cases in total); full TypeScript, scoped ESLint, classification and diff checks. Initial four invalid-accept failures reproduced against old source. Cold restore/current epoch, native receipt commitment, shared-pool cancellation isolation, 307 default-follow boundary, actual ProxyAgent TLS timeouts, pre-dispatch single POST, sent/reset/partial-stream/HTTP status negatives, original unknown ledger and SDK replay fences covered. Exact final source review and installed acceptance remain pending original desktop owner. Tests are isolated and do not mutate real sessions.
 
 - Source digest: `d4f641ea1fe79f489b9b927a3c10a19b1c3ba8157bffd0b4c84e3a6ba6cc3f65`; Phase11: 235 cases across route, execution, task orchestration and model-failover unit/integration suites PASS; full tsc, scoped ESLint, classification and diff checks PASS. Large-ledger review output is below 2 KiB and survives native 32 KiB truncation with the original root receipt committing; distinct inference requests after 33/91 minutes succeed, old fingerprints and explicit parent deadlines remain enforced. Existing readonly follow-up preserves the original execution and write gate. Baseline failures reproduced before each correction. Installed 531.1 acceptance failed; next immutable candidate and native retest pending original owner.
 
@@ -90,11 +96,11 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-前十批已主干/CI/531.1安装，四原会话实测未全部通过；第十一批源码与本地验证完成，尚待精确提交独审、主干和下一包原生复验。薪资531.1核对被分类为新执行，不能据此宣称原execution已恢复，也不手动改回ID；Kevin只读工具成功但回答误引旧封锁，新增提示的真实效果仍待验证。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖与系统恢复验收分别列示。用户持续授权更新和原生验证，并要求保留旧开发进程，系统稳定优先。公开stable保持0.5.27 HOLD。
+第十一批已主干/CI/532.1安装，四原会话实测未全部通过；第十二批待精确独审、主干和下一包原生复验。薪资此前核对被分类为新执行，不能据此宣称更早的execution已恢复，也不手动改回ID；Kevin本轮为control核查，未证明原execution恢复。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖、上游429与系统恢复验收分别列示。用户持续授权更新和原生验证，并明确允许替代系统控制工具完成安装验证，系统稳定优先。公开stable保持0.5.27 HOLD。
 
 ## Deployment request
 
-desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结531.1。新的源码交付与候选安装/真实验收分开。
+desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结532.1。新的源码交付与候选安装/真实验收分开。
 
 ## Next step
 
