@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=f4f737e641d3486915210e0dd520a52ba7db8e3a09435dc1984ecb46c03c62bc -->
+<!-- git-project-sync-task:source-digest=c659c9d63a92ad4252d15276f744a47031fc528b7bb860ad2cb8403b67b13e7e -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -28,7 +28,7 @@
 
 ## Completed
 
-第十项防空转最终版：API提案只关联当前queue唯一pending根Shell，其回执波动不计进展，独立真实业务facts仍计进展，所有证据/unknown保护保留。首版a8a被独审发现真实Write误伤，打包前纠正；最终87执行+9策略=96项通过，tsc/lint/diff通过。待原owner独审及新包真实验证。
+第十项最终为连续评审回执失败独立计数，3次后停止自动续接；实际业务progress/noProgress/证据不改，不推断Shell归属，旧包可恢复的turn_error保持。a8a/0a31两版由独审在打包前发现问题，均已修正；原生原会话验收仍待新包。
 
 第九项：原生TaskList/Get刷新、未确认评审回执接续指引、历史错误误读指引已实现；真实工具外分类复现1024输出全部thinking/无text，4096对照有效JSON，源码补预算传递及output_limit严格失败诊断。530.1不含本批，原四例尚未全部通过；独审/交接/主干/下一包/实际复验待完成。
 
@@ -47,6 +47,10 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `c659c9d63a92ad4252d15276f744a47031fc528b7bb860ad2cb8403b67b13e7e`; final review-receipt budget: 116 execution/policy/DOM cases PASS; full tsc/scoped lint/diff PASS. No inferred tool attribution or changes to real-work progress; installed acceptance pending original owner.
+
+第十项最终计数版：87执行+11策略+18 DOM=116PASS，tsc/lint/diff PASS。纯包装回执空转、真实Write进展保留、同执行人工恢复、成功清零、持久化索引/JSON恢复、重复终态、Stop/unknown及UI原因均覆盖。移除两版未发布的工具归因/业务进展改写；等待原owner精确独审。
 
 - Source digest: `f4f737e641d3486915210e0dd520a52ba7db8e3a09435dc1984ecb46c03c62bc`; corrected Phase10: 96 cases PASS; independent real-work counterexample preserved and fixed; full tsc/scoped lint/diff PASS. Original native acceptance pending unique desktop owner.
 

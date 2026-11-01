@@ -5,6 +5,7 @@ import {
   createSessionExecution,
   executionAssessmentSchema,
   executionIntentSchema,
+  sessionExecutionSchema,
   settleSessionExecution,
   type ExecutionAssessment,
   type ExecutionTerminal,
@@ -51,6 +52,27 @@ const terminal = (
 });
 
 describe("session execution schema and policy", () => {
+  it('persists review failure streaks without reusing the business progress counter', () => {
+    const legacy = initial();
+    expect(legacy.reviewReceiptFailures).toBeUndefined();
+    const firstTerminal = terminal({ assessment: undefined, reviewReceiptUnconfirmed: true });
+    const first = settleSessionExecution(legacy, firstTerminal);
+    expect(settleSessionExecution(first, firstTerminal)).toBe(first);
+    const restored = sessionExecutionSchema.parse(JSON.parse(JSON.stringify(first)));
+    expect(restored).toMatchObject({ reviewReceiptFailures: 1, noProgress: 0 });
+    const fresh = { ...restored, currentQueueId: 'queue-2', phase: 'running' as const };
+    const second = settleSessionExecution(fresh, terminal({ queueId: 'queue-2', assessment: undefined,
+      reviewReceiptUnconfirmed: true, progressDigest: 'new independent work' }));
+    expect(second).toMatchObject({ reviewReceiptFailures: 2, noProgress: 0 });
+    const recovered = settleSessionExecution({ ...second, currentQueueId: 'queue-3', phase: 'running' },
+      terminal({ queueId: 'queue-3', progressDigest: 'verified work' }));
+    expect(recovered).toMatchObject({ phase: 'completed', reviewReceiptFailures: 0 });
+  });
+
+  it('breaks the review-failure streak when a later turn has no unconfirmed proposal', () => {
+    expect(settleSessionExecution({ ...initial(), reviewReceiptFailures: 2 }, terminal({ assessment: undefined })))
+      .toMatchObject({ phase: 'awaiting_review', reviewReceiptFailures: 0 });
+  });
   it("requires criteria only for execute and bounds strings and arrays", () => {
     expect(
       executionIntentSchema.safeParse({

@@ -2075,6 +2075,7 @@
         "deadlineExceeded": "执行时限已到，尚未完成验收",
         "turnLimitReached": "已达到执行轮数上限",
         "noProgressLimitReached": "连续几轮没有确认到进展",
+        "reviewReceiptUnconfirmed": "评审结果连续未确认，已停止自动续接；任务进度已保留",
         "reworkLimitReached": "已达到返工次数上限",
         "turnError": "执行过程中遇到问题",
         "userStopped": "用户停止了执行",

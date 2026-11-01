@@ -2077,6 +2077,7 @@
         "deadlineExceeded": "The execution time limit was reached before acceptance",
         "turnLimitReached": "The execution turn limit was reached",
         "noProgressLimitReached": "Progress could not be confirmed for several turns",
+        "reviewReceiptUnconfirmed": "Review receipts remained unconfirmed. Automatic continuation stopped; task progress is preserved.",
         "reworkLimitReached": "The rework limit was reached",
         "turnError": "An issue occurred during execution",
         "userStopped": "The user stopped execution",

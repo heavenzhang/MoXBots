@@ -56,9 +56,6 @@ export interface SessionTaskLedger {
     pending?: boolean;
     /** A paired native process-exit receipt; failure remains failure and replay stays fenced. */
     settledFailure?: 'native-bash-exit';
-    /** Sole pending root shell when the review was proposed; progress accounting only,
-     * never a receipt, verification proof or an exemption from unknown-result protection. */
-    reviewProposalCarrier?: boolean;
   }[];
   executionReview?: {
     id: string;

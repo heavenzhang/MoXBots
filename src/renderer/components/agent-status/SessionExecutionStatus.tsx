@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { SessionExecution } from "../../../shared/sessionExecution";
+import { EXECUTION_LIMITS, type SessionExecution } from "../../../shared/sessionExecution";
 import type {
   SessionExecutionRecoveryProjection,
   SessionTaskLedger,
@@ -96,7 +96,10 @@ export function useSessionExecutionPresentation({
       : 0;
   const summary = currentExecution?.intent.objective ?? t(`${root}.request`);
   const reasonText =
-    currentExecution?.assessment?.summary ??
+    currentExecution?.phase === 'incomplete' && currentExecution.reason === 'turn_error'
+      && (currentExecution.reviewReceiptFailures ?? 0) >= EXECUTION_LIMITS.maxReviewReceiptFailures
+      ? t(`${root}.reasons.reviewReceiptUnconfirmed`)
+      : currentExecution?.assessment?.summary ??
     (currentExecution?.reason
       ? t(
           `${root}.reasons.${reasonKeys[currentExecution.reason] ?? "unconfirmed"}`,

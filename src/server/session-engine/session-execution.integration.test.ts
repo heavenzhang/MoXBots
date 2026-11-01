@@ -1014,7 +1014,7 @@ describe("durable Session execution owner", () => {
     expect(continuationRequests).toHaveLength(1);
   });
 
-  it.each([false, true])('counts only real progress while wrapped review receipts change (business progress=%s)', async businessProgress => {
+  it.each([false, true])('bounds failed review delivery without relabeling business progress (%s)', async businessProgress => {
     const prepared = await prepare();
     const executionId = currentExecution()!.id;
     let request = prepared.request;
@@ -1035,10 +1035,17 @@ describe("durable Session execution owner", () => {
         expect(request.text).toContain('原生工具回执未确认');
       }
     }
-    expect(currentExecution()).toMatchObject(businessProgress
-      ? { id: executionId, phase: 'running', reason: 'assessment_required', noProgress: 0 }
-      : { id: executionId, phase: 'incomplete', reason: 'no_progress_limit_reached', noProgress: 2 });
-    expect(continuationRequests).toHaveLength(businessProgress ? 3 : 2);
+    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'incomplete', reason: 'turn_error', noProgress: 0, reviewReceiptFailures: 3 });
+    expect(continuationRequests).toHaveLength(2);
+    expect(store.getAllSessionMetadata().find(session => session.id === id)?.taskOrchestration?.execution)
+      .toMatchObject({ id: executionId, phase: 'incomplete', reason: 'turn_error', reviewReceiptFailures: 3 });
+    if (businessProgress) expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence?.filter(fact => fact.name === 'Write' && fact.successful)).toHaveLength(3);
+    const resumed = await prepare('Continue the same task and confirm the review', 'human-review-recovery', { ...executeIntent, continuationOf: executionId });
+    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'running', reviewReceiptFailures: 3 });
+    await submitReview(resumed.request.queueId!, { decision: 'needs_user', summary: 'External dependency confirmed', checks: [] });
+    await resumed.request.onTerminal?.({ status: 'complete', text: 'Confirmed review', assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'paused', reason: 'External dependency confirmed', reviewReceiptFailures: 0 });
+    expect(continuationRequests).toHaveLength(2);
   });
 
   it.each(['sole-shell', 'concurrent', 'non-shell'] as const)('never turns proposal attribution into execution proof (%s)', async mode => {
@@ -1046,11 +1053,11 @@ describe("durable Session execution owner", () => {
     const queueId = prepared.request.queueId!;
     await tool(queueId, { id: 'pending-original', name: mode === 'non-shell' ? 'Write' : 'Bash', stage: 'start' });
     if (mode === 'concurrent') await tool(queueId, { id: 'pending-other', name: 'Bash', stage: 'start' });
+    const originalFacts = structuredClone(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence);
     await executionOwner.requestSessionExecutionReview(engine, { executionId: currentExecution()!.id, queueId,
       assessment: { decision: 'needs_user', summary: 'Pending review', checks: [] } });
     const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
-    expect(ledger.executionEvidence?.filter(fact => fact.reviewProposalCarrier).map(fact => fact.id))
-      .toEqual(mode === 'sole-shell' ? ['pending-original'] : []);
+    expect(ledger.executionEvidence).toEqual(originalFacts);
     expect(ledger.executionReview?.committedBy).toBeUndefined();
     await prepared.request.onTerminal?.({ status: 'complete', text: 'Unconfirmed proposal', assistantMessagePresent: true });
     expect(currentExecution()).toMatchObject({ phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN' });

@@ -49,6 +49,12 @@ beforeEach(async () => {
 });
 
 describe("SessionExecutionStatus", () => {
+  it('distinguishes a failed review handoff from missing business progress', () => {
+    render(<SessionExecutionStatus execution={{ ...base, phase: 'incomplete', reason: 'turn_error', reviewReceiptFailures: 3, noProgress: 0 }} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText('评审结果连续未确认，已停止自动续接；任务进度已保留')).toBeInTheDocument();
+    expect(screen.queryByText('连续几轮没有确认到进展')).not.toBeInTheDocument();
+  });
   it("shows current execution without implying a fixed turn limit", () => {
     render(<SessionExecutionStatus execution={base} />);
     expect(screen.getByText("运行中")).toBeInTheDocument();
