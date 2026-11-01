@@ -94,4 +94,8 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 
 任务 review 与 execution_review 的 success/pendingMainAgentReview 仅代表提案；原根工具完整回执才可提交验收。系统指引要求单独直接CLI命令及完整JSON，禁止Python/子进程包装、Shell组合和截取success后声称验收。上一queue有未确认提案时，自动接续明确要求仅重新提交本轮评审并结束回复，不重做已有业务步骤、不沿用旧回执，所有真实证据检查保持。历史错误文本和旧deadlineAt不构成当前整段会话封锁依据，独立只读核对仍须实际尝试，未知原操作不可重放。
 
+review 命令响应只携带有界回执、Session 身份、pending 标记和 ledgerRevision；execution_review 另保留 settlement/nextAction。完整账本和任务投影由原 list 查询提供，不随评审响应重复返回。否则增长的账本可耗尽原生 Shell 输出上限，丢失尾部回执；后来读取工具结果文件不具有原调用的提交权限。响应缩小不改变提案持久化、原生根工具身份校验或终态验收条件。
+
+原执行存在时，后续只读/控制请求也接收当前核对边界提示，不再只向 execute 提供历史错误纠正。该提示不恢复写权限、不新建或替换原执行；实际准入和工具返回仍是判断依据，不能把查询成功解释为原任务已恢复执行或已经验收。
+
 每个完成轮次，原ledger当前queue存在未committed的executionReview时，累计独立reviewReceiptFailures；连续3次失败停止自动续接。真实业务progressDigest/noProgress和完整证据不受影响，不推断工具归属。正确回执或无失败提案轮次清连续计数；重复终态不重复计数，Stop/unknown优先，人工继续保持原execution。为回滚兼容沿用incomplete/turn_error，UI依据可选计数显示明确评审故障，不恢复任务总时限。

@@ -260,6 +260,55 @@ async function waitForContinuation(
 }
 
 describe("durable Session execution owner", () => {
+  it('gives a readonly follow-up current recovery guidance without restarting or replacing the original execution', async () => {
+    const original = await prepare();
+    await original.request.onTerminal?.({ status: 'error', text: 'Historical request failed', assistantMessagePresent: true });
+    const execution = structuredClone(currentExecution());
+    const check = await prepare('Only inspect the original result; do not write', 'readonly-followup', {
+      kind: 'control', objective: 'Inspect current result', scope: 'Read only', acceptanceCriteria: [], continuationOf: null,
+    });
+    expect(check.request.runtimeReminder).toContain('历史错误只代表当时的调用结果');
+    expect(check.request.runtimeReminder).toContain('TaskList');
+    expect(check.request.runtimeReminder).toContain('不恢复原任务写入权限');
+    expect(currentExecution()).toEqual(execution);
+    expect(executionOwner.sessionExecutionToolDenial(id, check.request.queueId, 'TaskList', {})).toBeUndefined();
+    expect(executionOwner.sessionExecutionToolDenial(id, check.request.queueId, 'Write', { file_path: '/new' })).toBeTruthy();
+    await check.request.onTerminal?.({ status: 'complete', text: 'Read-only result', assistantMessagePresent: true });
+    expect(currentExecution()).toEqual(execution);
+    expect(continuationRequests).toHaveLength(0);
+  });
+
+  it('commits the actual review route response with a large ledger and a native output cap', async () => {
+    const prepared = await prepare();
+    const queueId = prepared.request.queueId!;
+    const executionId = currentExecution()!.id;
+    await taskOwner.mutateSessionTaskLedger(id, ledger => ({ ...ledger,
+      tasks: Array.from({ length: 70 }, (_, index) => ({ id: `old-${index}`, title: 'Historical task '.repeat(100), blockedBy: [] })),
+    }));
+    await tool(queueId, { id: 'verified-artifact', name: 'Read', stage: 'success', output: 'Final artifact verified' });
+    const action = { kind: 'execution_review', sessionId: id, executionId, queueId,
+      assessment: { decision: 'accept', summary: 'Actual artifact verified', checks: [
+        { criterion: 0, toolUseIds: ['verified-artifact'] }, { criterion: 1, toolUseIds: ['verified-artifact'] },
+      ] } };
+    vi.doMock('../session-engine', () => ({ getSessionEngine: () => engine }));
+    try {
+      const { handleSessionTaskCommand } = await import('../routes/session-task-orchestration');
+      const result = await handleSessionTaskCommand(action);
+      expect(result.success).toBe(true);
+      expect(store.getSessionMetadata(id)!.taskOrchestration!.executionReview?.committedBy).toBeUndefined();
+      const wire = JSON.stringify(result, null, 2);
+      const command = `myagents session tasks --json --data '${JSON.stringify(action)}'`;
+      await tool(queueId, { id: 'direct-review', name: 'Bash', stage: 'success', input: { command },
+        output: { stdout: Buffer.from(wire).subarray(0, 32768).toString(), stderr: '', interrupted: false } });
+      expect(store.getSessionMetadata(id)!.taskOrchestration!.executionReview?.committedBy).toBe('direct-review');
+      await prepared.request.onTerminal?.({ status: 'complete', text: 'Verified', assistantMessagePresent: true });
+      expect(currentExecution()).toMatchObject({ id: executionId, phase: 'completed', reviewReceiptFailures: 0 });
+      expect(continuationRequests).toHaveLength(0);
+    } finally {
+      vi.doUnmock('../session-engine');
+    }
+  });
+
   it("keeps the exact human input separate from runtime context and defers the card until dispatch", async () => {
     const original = "继续执行";
     const prepared = await prepareUnpromoted(original);

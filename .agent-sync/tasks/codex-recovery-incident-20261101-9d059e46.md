@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=c659c9d63a92ad4252d15276f744a47031fc528b7bb860ad2cb8403b67b13e7e -->
+<!-- git-project-sync-task:source-digest=d4f641ea1fe79f489b9b927a3c10a19b1c3ba8157bffd0b4c84e3a6ba6cc3f65 -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -23,10 +23,14 @@
 - [x] 前六批经 PR217/主干3b62a664及联合CI交付；0.5.29/529.1 已安装核验。
 - [x] 第七批明确续接/意图超时修复经PR222、main2ff069ae、CI及0.5.30/530.1安装核实。
 - [x] 第八批任务查询重复误拦截隔离复现、修复及213相关回归通过。
-- [ ] 第八批经原owner独审、集成与下一不可变候选，真实刷新验收待完成。
+- [x] 第八至十批经原owner独审、PR223/main0d0ad99f与531.1安装；真实查询刷新已成功，整体验收仍失败。
+- [x] 第十一批大账本评审截断、model-failover隐式root时限及只读跟进提示修复；235回归/tsc/lint/分类通过。
+- [ ] 第十一批原owner独审、主干集成/下一不可变包/四原会话真实复验。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+最新531.1实装验收未通过：评审命令返回完整ledger使尾部receipt遭32KiB截断；model-failover仍有整个root30分钟隐式门，长任务压缩后的正常调用409。第十一批分别修响应边界与单次推理恢复预算，并为已有执行的只读跟进补实际权限/历史错误纠正指引。源分支已快进main0d0ad99f，只改本任务；不清原账本，不手动恢复execution ID，不绕过原生回执。完整范围和验收边界见acceptance.md最新章节。
 
 第十项最终为连续评审回执失败独立计数，3次后停止自动续接；实际业务progress/noProgress/证据不改，不推断Shell归属，旧包可恢复的turn_error保持。a8a/0a31两版由独审在打包前发现问题，均已修正；原生原会话验收仍待新包。
 
@@ -47,6 +51,8 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `d4f641ea1fe79f489b9b927a3c10a19b1c3ba8157bffd0b4c84e3a6ba6cc3f65`; Phase11: 235 cases across route, execution, task orchestration and model-failover unit/integration suites PASS; full tsc, scoped ESLint, classification and diff checks PASS. Large-ledger review output is below 2 KiB and survives native 32 KiB truncation with the original root receipt committing; distinct inference requests after 33/91 minutes succeed, old fingerprints and explicit parent deadlines remain enforced. Existing readonly follow-up preserves the original execution and write gate. Baseline failures reproduced before each correction. Installed 531.1 acceptance failed; next immutable candidate and native retest pending original owner.
 
 - Source digest: `c659c9d63a92ad4252d15276f744a47031fc528b7bb860ad2cb8403b67b13e7e`; final review-receipt budget: 116 execution/policy/DOM cases PASS; full tsc/scoped lint/diff PASS. No inferred tool attribution or changes to real-work progress; installed acceptance pending original owner.
 
@@ -84,11 +90,11 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-前七批已主干/CI/530.1安装；两个原会话已真实续接，另两个及终态仍待原owner验收。任务查询重复误拦截仍在已安装530.1，不能将本地第八批当作实装修复；正式通道暂不晋级。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖与系统恢复验收分别列示。用户持续授权更新和原生验证，并要求保留旧开发进程，系统稳定优先。
+前十批已主干/CI/531.1安装，四原会话实测未全部通过；第十一批源码与本地验证完成，尚待精确提交独审、主干和下一包原生复验。薪资531.1核对被分类为新执行，不能据此宣称原execution已恢复，也不手动改回ID；Kevin只读工具成功但回答误引旧封锁，新增提示的真实效果仍待验证。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖与系统恢复验收分别列示。用户持续授权更新和原生验证，并要求保留旧开发进程，系统稳定优先。公开stable保持0.5.27 HOLD。
 
 ## Deployment request
 
-desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。不新增部署 owner，不触发共享 CI/PR/正式构建或安装。第八批不自行分配版本或重建旧530.1；新的源码交付与候选安装/真实验收分开。
+desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结531.1。新的源码交付与候选安装/真实验收分开。
 
 ## Next step
 

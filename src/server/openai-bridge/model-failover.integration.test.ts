@@ -102,6 +102,26 @@ afterEach(async () => {
 });
 
 describe('model failover over real loopback HTTP', () => {
+  it('continues distinct same-root HTTP inference after long work and compaction without replaying delivered history', async () => {
+    const provider = await fixture((_req, res) => json(res, anthropicText('Verified current step')));
+    const config = target(provider, 'anthropic');
+    const { context, failover } = sessionRecoveryPair(undefined);
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, contextRecovery: context, modelFailover: failover }), logger: null });
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const first = await handler(request());
+      expect(first.status).toBe(200); await first.text();
+      now += 33 * 60_000;
+      const compacted = await handler(request([{ role: 'user', content: 'Native summary: step one verified. Continue the unfinished step.' }]));
+      expect(compacted.status).toBe(200); await compacted.text();
+      expect(provider.requests).toHaveLength(2);
+      const duplicate = await handler(request());
+      expect(duplicate.status).toBe(409); await duplicate.text();
+      expect(provider.requests).toHaveLength(2);
+    } finally { clock.mockRestore(); }
+  });
+
   it.each(['foreground-without-wait', 'background'])('preserves a real 429 cooldown and prevents SDK amplification (%s)', async mode => {
     const provider = await fixture((_req, res) => {
       res.writeHead(429, { 'content-type': 'application/json', 'retry-after': '60' });

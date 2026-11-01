@@ -54,9 +54,18 @@ export async function handleSessionTaskCommand(payload: unknown,
           assessment: executionAssessmentSchema,
         })
         .parse(input);
+      const proposed = await requestSessionExecutionReview(engine, review);
+      // A growing ledger can exceed the native shell output limit before the
+      // receipt is emitted. Return a bounded acknowledgment; the existing list
+      // command owns snapshots. Only the original root tool commits this ID.
       return {
         success: true,
-        ...(await requestSessionExecutionReview(engine, review)),
+        sessionId: proposed.sessionId,
+        executionReviewReceipt: proposed.executionReviewReceipt,
+        pendingMainAgentReview: proposed.pendingMainAgentReview,
+        settlement: proposed.settlement,
+        nextAction: proposed.nextAction,
+        ledgerRevision: proposed.ledger.revision,
       };
     }
     if (input.kind === "package") {
@@ -79,7 +88,15 @@ export async function handleSessionTaskCommand(payload: unknown,
     if (planning.success) return { success: true, ...await mutateSessionPlan(engine, sessionId as string, planning.data) };
     const parsed = actionSchema.safeParse(input);
     if (!parsed.success) throw new Error('TASK_INVALID_ACTION');
-    return { success: true, ...await mutateSessionTasks(engine, sessionId as string, parsed.data) };
+    const result = await mutateSessionTasks(engine, sessionId as string, parsed.data);
+    if (parsed.data.kind === 'review') return {
+      success: true,
+      sessionId: result.sessionId,
+      taskReviewReceipt: result.taskReviewReceipt,
+      pendingMainAgentReview: result.pendingMainAgentReview,
+      ledgerRevision: result.ledger.revision,
+    };
+    return { success: true, ...result };
   } catch (error) { return { success: false, error: error instanceof Error ? error.message : 'TASK_UNAVAILABLE', planSupport: readSessionPlanSupport(engine) }; }
 }
 

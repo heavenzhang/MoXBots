@@ -136,6 +136,8 @@ CLI 统一向 loopback `/api/admin/<canonical-route>` 发送 JSON POST；route �
 
 CLI 的外层等待预算必须覆盖命令 owner 的完整顺序执行链；Provider verification 包括 OpenAI 前置探针、SDK 校验和结果持久化。请求超时返回 `MYAGENTS_REQUEST_TIMEOUT`，已连接但未取得可读响应返回 `MYAGENTS_REQUEST_FAILED`；只有连接被拒绝才提示 `MYAGENTS_UNAVAILABLE`。超时不证明业务未执行，CLI 不自动重发；Session admission 仍使用原有 `admission_unconfirmed` 协议。
 
+`session tasks --data` 的 review/execution_review 成功响应为小型原生确认回执，不携带增长的 ledger/tasks。保留 `taskReviewReceipt` 或 `executionReviewReceipt`、`pendingMainAgentReview` 和 `ledgerRevision`，完整快照用 `session tasks --json` 查询。pending 仍不等于已验收；必须由同一主 Agent 的原生工具完成事件确认。这样不会因 Shell 输出截断丢失回执，也不需要从临时结果文件另建确认通道。
+
 Admin API 的响应格式统一：
 ```jsonc
 // 成功
