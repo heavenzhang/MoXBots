@@ -6,7 +6,9 @@ import { executionAssessmentSchema } from "../../shared/sessionExecution";
 import {
   requestSessionExecutionReview,
   reconcileSessionExecution,
+  projectSessionExecutionEvidence,
 } from "../session-engine/session-execution";
+import { isSessionTaskListAction } from '../../shared/sessionTaskReviewCommand';
 import { registerSessionTaskPackage } from "../session-engine/session-task-dispatch";
 import { taskPackageSchema } from "../../shared/sessionTaskDispatch";
 
@@ -41,9 +43,13 @@ export async function handleSessionTaskCommand(payload: unknown,
     if (!value || value.sessionId !== engine.getRuntimeIdentity().sessionId) throw new Error('TASK_SESSION_CHANGED');
     const { sessionId, ...input } = value;
     if (input.kind === 'list') {
-      if (Object.keys(input).some(k => k !== 'kind')) throw new Error('TASK_INVALID_ACTION');
+      if (!isSessionTaskListAction(input)) throw new Error('TASK_INVALID_ACTION');
       await reconcileSessionExecution(engine, sessionId as string);
       const { messages: _messages, ...snapshot } = await readSessionTasks(engine);
+      if (input.view === 'execution') return {
+        success: true, sessionId, view: 'execution',
+        ...projectSessionExecutionEvidence(snapshot.ledger, engine.getExecutionVerificationEpoch?.(), input.beforeOrder),
+      };
       return { success: true, ...snapshot };
     }
     if (input.kind === "execution_review") {

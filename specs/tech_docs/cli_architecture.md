@@ -138,6 +138,8 @@ CLI 的外层等待预算必须覆盖命令 owner 的完整顺序执行链；Pro
 
 `session tasks --data` 的 review/execution_review 成功响应为小型原生确认回执，不携带增长的 ledger/tasks。保留 `taskReviewReceipt` 或 `executionReviewReceipt`、`pendingMainAgentReview` 和 `ledgerRevision`，完整快照用 `session tasks --json` 查询。pending 仍不等于已验收；必须由同一主 Agent 的原生工具完成事件确认。这样不会因 Shell 输出截断丢失回执，也不需要从临时结果文件另建确认通道。
 
+执行验收查询使用 `session tasks --json --data '{"kind":"list","view":"execution"}'`，每页最多 20 条且投影小于 24 KiB；`beforeOrder` 取上页 `nextBeforeOrder` 获取更早记录。它沿用原 list 路由及 Session 身份，输出执行 ID、queue、账本版本、最后可能修改操作和真实工具 ID/资格，不返回完整历史、评审正文或工具内容。资格复用结算时的原生代次及修改顺序判断，每次查询重新计算，不能当作后续验收或重放许可。默认 list 的全量快照保持兼容。原生只读刷新识别与路由共用参数校验；脚本包装、重定向、管道仍属于普通 Shell，不能获得只读豁免。
+
 Admin API 的响应格式统一：
 ```jsonc
 // 成功

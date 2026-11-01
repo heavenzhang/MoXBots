@@ -285,7 +285,7 @@ export async function pauseSessionExecution(
   });
 }
 
-const recoveryGuidance = '历史错误只代表当时的调用结果，不能据此断言当前整段会话仍被封锁。先实际执行独立只读核对，以本轮具体工具返回判断当前阻断；结果未知的原操作仍不得重放，也不得修改参数规避保护。旧账本的 deadlineAt 仅为兼容字段，不是任务总时限，不能据此停止或重建任务。';
+const recoveryGuidance = '历史错误只代表当时的调用结果，不能据此断言当前整段会话仍被封锁。只对具体结果未知的原操作先做独立核对，不得重放该操作或修改参数规避保护。核对阶段不把会话永久改为只读；本轮是否执行修改以当前用户请求和原任务授权范围为准。旧账本的 deadlineAt 仅为兼容字段，不是任务总时限，不能据此停止或重建任务。';
 
 function executionReminder(
   sessionId: string,
@@ -295,9 +295,10 @@ function executionReminder(
   if (!execution) return "";
   return `<system-reminder><SESSION_EXECUTION>${continuationText ? `${escapeSystemReminderText(continuationText)}\n` : ""}本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
+原任务已授权的必要文件或数据修改可以继续。历史复测中的“本轮只读”只约束那次核对，不得扩展为本次执行的永久禁写；具体未知操作仍须按其防重复保护处理。
 ${recoveryGuidance}
 启动子 Agent 前，将其范围、依赖与验收要求登记到当前主任务。后台子任务未结算时主任务仍由你负责；可以让出当前模型回合等待原运行时事件，但不能宣布主任务完成。收到结果后核验并继续原清单；失败、结果未知或缺权限必须记录原因，不盲目重派。
-读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
+查询验收工具 ID 时，直接执行 ${APP_CLI_NAME} session tasks --json --data '{"kind":"list","view":"execution"}'。它返回当前执行与有界证据页，eligible=true 才表示当前具备验证资格；需要更早记录时在同一 data 中加入 beforeOrder，值取返回的 nextBeforeOrder。不要为过滤大账本而使用临时文件、Python、管道或重定向；这会被当作可能修改操作，使先前验证失效。完整任务清单仍可用 ${APP_CLI_NAME} session tasks --json 查看。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
 accept 需要逐项覆盖以下全部验收条件（criterion 从 0 开始），不能用本轮只读核查代替原任务的完整交付：
 ${execution.intent.acceptanceCriteria.map((criterion, index) => `criterion ${index}: ${escapeSystemReminderText(criterion)}`).join('\n')}
@@ -729,6 +730,52 @@ function executionVerificationEvidence(ledger: SessionTaskLedger, verificationEp
         (fact.startOrder ?? fact.observationOrder) > lastMutationOrder,
     })),
   };
+}
+
+/** A bounded read projection of the same native facts used at settlement.
+ * Full task snapshots remain available. This view carries no transcript, tool
+ * input/output, review authority or replay grant, and never changes the ledger.
+ */
+export function projectSessionExecutionEvidence(
+  ledger: SessionTaskLedger, verificationEpoch: string | undefined, beforeOrder?: number,
+) {
+  const execution = ledger.execution;
+  const verified = executionVerificationEvidence(ledger, verificationEpoch);
+  const facts = ledger.executionEvidence ?? [];
+  const lastMutation = facts.filter(fact => fact.mutating).at(-1);
+  const available = verified.evidence.filter(fact => beforeOrder === undefined || fact.observationOrder < beforeOrder).reverse();
+  const rows = available.map(fact => ({
+    id: fact.id, name: fact.name, startOrder: fact.startOrder ?? fact.observationOrder,
+    observationOrder: fact.observationOrder, eligible: fact.successful,
+    reason: fact.successful ? 'eligible'
+      : fact.pending ? 'pending'
+      : !VERIFICATION_TOOLS.has(fact.name) ? 'not_verification_tool'
+      : !verificationEpoch || fact.verificationEpoch !== verificationEpoch ? 'not_current_native_generation'
+      : (fact.startOrder ?? fact.observationOrder) <= verified.lastMutationOrder ? 'before_last_possible_mutation'
+      : 'not_successful',
+  }));
+  const result = {
+    ledgerRevision: ledger.revision,
+    execution: execution ? {
+      id: execution.id, queueId: execution.currentQueueId, phase: execution.phase,
+      reason: execution.reason, criterionCount: execution.intent.acceptanceCriteria.length,
+    } : null,
+    lastPossibleMutation: lastMutation ? { id: lastMutation.id, name: lastMutation.name, observationOrder: lastMutation.observationOrder } : null,
+    totalEvidence: facts.length,
+    evidence: [] as typeof rows,
+    nextBeforeOrder: null as number | null,
+  };
+  // Leave space for the CLI envelope within the native 32 KiB output limit.
+  for (const row of rows.slice(0, 20)) {
+    result.evidence.push(row);
+    if (Buffer.byteLength(JSON.stringify(result, null, 2)) > 24_000) {
+      result.evidence.pop();
+      if (!result.evidence.length) throw new Error('EXECUTION_EVIDENCE_ENTRY_TOO_LARGE');
+      break;
+    }
+  }
+  if (result.evidence.length < rows.length) result.nextBeforeOrder = result.evidence.at(-1)!.observationOrder;
+  return result;
 }
 
 function acceptanceCorrectionGuidance(ledger: SessionTaskLedger, verificationEpoch: string | undefined): string {
