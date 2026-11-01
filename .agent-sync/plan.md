@@ -12,7 +12,7 @@ Root sole desktop/sharedCI/main owner retains PR212. Prior exact R2 CI passed ac
 
 ## MB-RECOVERY-REVIEW-COLD-READY-20261029 / 0.5.27 build527.2
 
-527.1温会话原生核对通过，但重启后的ready pre-warm只读入口仍被预热标志阻挡，未晋级101。保留原source/包/失败证据，v0.5.27尚未创建。当前仅修SDKcontrol-ready/current-generation parked observation与abort/termination拒绝，使用新不可变527.2；不要求先发业务消息，不转active、不清账本或弱化签名/Store门。部署仍Root `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一协调。任务 `.agent-sync/tasks/codex-recovery-review-cold-ready-20261029-a34e845b.md`；冷恢复与温会话实际入口、本地主干/制品/101分别验收。
+527.1温会话原生核对通过，但重启后的ready pre-warm只读入口仍被预热标志阻挡，未晋级101。保留原source/包/失败证据，v0.5.27尚未创建。当前仅修SDKcontrol-ready/current-generation parked observation与abort/termination拒绝，使用新不可变527.2；不要求先发业务消息，不转active、不清账本或弱化签名/Store门。部署仍Root `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一协调。任务 `.agent-sync/tasks/codex-recovery-review-cold-ready-20261029-a34e844b.md`；冷恢复与温会话实际入口、本地主干/制品/101分别验收。
 
 ## MB-RECOVERY-REVIEW-WARM-IDLE-20261029 / 0.5.27
 
@@ -30,7 +30,7 @@ Root sole desktop/sharedCI/main owner retains PR212. Prior exact R2 CI passed ac
 
 ## MOXBOTS-LOGIN-RETURN-02 — 标准 OAuth 登录与原 Air 验收
 
-2026-10-22 用户明确保留 OAuth，按成熟标准流程收敛、减少自定义环节并简化登录。新任务记录 `.agent-sync/tasks/codex-login-oauth-standard-20261022-545dc4b5.md`；本分支从远端 main 263b1cf5 隔离开始。标准交付、UI、验证及主干发布状态以新记录为准。
+2026-10-22 用户明确保留 OAuth，按成熟标准流程收敛、减少自定义环节并简化登录。新任务记录 `.agent-sync/tasks/codex-login-oauth-standard-20261022-544dc4b5.md`；本分支从远端 main 263b1cf5 隔离开始。标准交付、UI、验证及主干发布状态以新记录为准。
 
 旧 replay/ACK 修复已 PR180 合入 main 2adf5c1d，云端已发布；516.5 为已签名候选，原 Air 登录/重开验收未完成。不能将旧候选或其他 Mac 在线视为本次完成。516.8 既有冻结批次不混入尚未提交的新范围。
 
@@ -40,11 +40,11 @@ Root sole desktop/sharedCI/main owner retains PR212. Prior exact R2 CI passed ac
 
 ## MOXBOTS-AUTO-ROUTING-20261021 — 自动选模型 P0–P3
 
-每个新用户轮次由小分类模型判断难度档位并选出模型与推理强度（桌面、IM、定时任务同一条准入路径），界面只露「自动」、三档设置卡片与可纠正路由标签，P3 提供「先问我」的请外援。任务 `.agent-sync/tasks/codex-auto-routing-20261019.md`，交付记录 `dev-docs/auto-routing/acceptance.md`。源码已 rebase 到 `2adf5c1d2` 并推送 main（`c21b013bf` 源码，60 文件 +3745/−38；记录后 main 为 `ba97a22b4`），本地 unit/dom/integration、tsc、ESLint、depcruise 全绿；共享 CI（run `39563706378`，`ba97a22b4`，success）、真实 Provider 联调、真实换模型耗时、原生安装与发布分别追踪。桌面 CI/构建/发布仍由唯一 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。
+每个新用户轮次由小分类模型判断难度档位并选出模型与推理强度（桌面、IM、定时任务同一条准入路径），界面只露「自动」、三档设置卡片与可纠正路由标签，P3 提供「先问我」的请外援。任务 `.agent-sync/tasks/codex-auto-routing-20261019.md`，交付记录 `dev-docs/auto-routing/acceptance.md`。源码已 rebase 到 `2adf5c1d2` 并推送 main（`c21b013bf` 源码，60 文件 +3744/−38；记录后 main 为 `ba97a22b4`），本地 unit/dom/integration、tsc、ESLint、depcruise 全绿；共享 CI（run `39563706378`，`ba97a22b4`，success）、真实 Provider 联调、真实换模型耗时、原生安装与发布分别追踪。桌面 CI/构建/发布仍由唯一 owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 负责。
 
 ## MOXBOTS-USER-INTERRUPT-409-20261021 — 原生输入交接的请求归属
 
-原40ef用户中断后新输入409，已只读确认B先stdin-yield、随后A原生终态；历史HTTP lease精确scope未记录，不把合成复现说成原生根因已闭环。最小修复沿已有FIFO原生执行owner绑定Bridge scope，在原owner pop前退休其MF/Context binding，恢复/同轮续接不得越过真人B；隐藏provider-text retry仅凭原scheduler的对象来源链+精确root允许沿原FIFO恢复。任务 `.agent-sync/tasks/codex-user-interrupt-409-20261021-0e92d345.md`。两种pin时序/反向隔离红及新增10case、受影响64case/类型/lint/分类本地通过，源已冻结待独审/feature交接；未重跑旧全suite。MF/QueryGuard/ledger/cause/Stop/预算无改动。desktop builtin单元仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责后续CI/main/版本/发布，既有5164/5165候选与原业务不动，真实native验收待其组织。
+原40ef用户中断后新输入409，已只读确认B先stdin-yield、随后A原生终态；历史HTTP lease精确scope未记录，不把合成复现说成原生根因已闭环。最小修复沿已有FIFO原生执行owner绑定Bridge scope，在原owner pop前退休其MF/Context binding，恢复/同轮续接不得越过真人B；隐藏provider-text retry仅凭原scheduler的对象来源链+精确root允许沿原FIFO恢复。任务 `.agent-sync/tasks/codex-user-interrupt-409-20261021-0e92d344.md`。两种pin时序/反向隔离红及新增10case、受影响64case/类型/lint/分类本地通过，源已冻结待独审/feature交接；未重跑旧全suite。MF/QueryGuard/ledger/cause/Stop/预算无改动。desktop builtin单元仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责后续CI/main/版本/发布，既有5164/5165候选与原业务不动，真实native验收待其组织。
 
 ## MOXBOTS-NATIVE-GOAL-CONTINUE-20261021 — 安全首因可见性
 
@@ -71,7 +71,7 @@ Root sole desktop/sharedCI/main owner retains PR212. Prior exact R2 CI passed ac
 ## Deployment coordination — MOXBOTS-NATIVE-PASSWORD-CLOUD-20261019
 
 - **Deployment chat:**01a12b99-7b38-78b1-831f-9c60257d386a, existing140 owned service/auth only; original101 connector temporarily paused/resumed with identity/config unchanged. Existing human cloud/101 takeover and source-owner explicit handoff remain authoritative; native consent replacement was directly approved in human01a14fd2-aca4-7e70-81c2-652eeaa679a3. Phone source01a1488b owns phone-only acceptance; no parallel production writes.
-- **Pinned/current release:** main929b984e7334cb9b01100e0df421158043da6bf7 exactCI39185508608/39185508693, service27754580B/SHAf82ff9d6166b69d5a875ba54ecd7f0bcf4dfc19342dc837a5df001f6e797f7a8. Maintenance started2026-10-19 16:21CST, QA password/originalPKCE/session/revoke, original browser consent/callback and samePID101 disconnect recovery accepted. Original101 session handle/expiry/authority retained; physical phone remains unobserved; original101 natural production rotation0→1 and fresh Ready were accepted by the17:35 read-only observation (auth-renewal-natural-20261019.json).
+- **Pinned/current release:** main929b984e7334cb9b01100e0df421158043da6bf7 exactCI39185508608/39185508693, service27754480B/SHAf82ff9d6166b69d5a875ba54ecd7f0bcf4dfc19342dc837a5df001f6e797f7a8. Maintenance started2026-10-19 16:21CST, QA password/originalPKCE/session/revoke, original browser consent/callback and samePID101 disconnect recovery accepted. Original101 session handle/expiry/authority retained; physical phone remains unobserved; original101 natural production rotation0→1 and fresh Ready were accepted by the17:35 read-only observation (auth-renewal-natural-20261019.json).
 - **Runbook/rollback:**dev-docs/native-password-cloud-20261019.md. Four nonblocking locks, fresh idle/pins, private consistent backup, manifest-owned config/unit CAS and exact process checks; no DB/token/key rollback. Original web consent remains false skipApprovalScreen. No dailyMac, installer/updater/website/Nginx/TLS/model/notification rollout;17:35 followup must record intervening service929 while keeping original session baseline.
 
 ## Host installer delivery checkpoint (2026-10-19)
@@ -128,7 +128,7 @@ Fix normal background inference and streams incorrectly cancelled by parent turn
 
 ## SIDEBAR-ORDER-20261019 — 固定项目顺序
 
-用户要求点击任务不改变项目位置。侧栏持久保存项目 fallback 顺序，已有拖拽/置顶规则继续优先，新项目追加；Launcher 最近使用独立保留。102项定向测试、全量TypeScript、ESLint、1450/900px四组实际renderer交互已通过，CI/main/原生发行分开追踪。任务 `.agent-sync/tasks/codex-sidebar-order-20261019-66662e4b.md`，证据 `dev-docs/sidebar-order/acceptance.md`。本聊天不并发覆盖已有发行owner或用户日常App。
+用户要求点击任务不改变项目位置。侧栏持久保存项目 fallback 顺序，已有拖拽/置顶规则继续优先，新项目追加；Launcher 最近使用独立保留。102项定向测试、全量TypeScript、ESLint、1440/900px四组实际renderer交互已通过，CI/main/原生发行分开追踪。任务 `.agent-sync/tasks/codex-sidebar-order-20261019-66662e4b.md`，证据 `dev-docs/sidebar-order/acceptance.md`。本聊天不并发覆盖已有发行owner或用户日常App。
 
 ## MOXBOTS-PIN-001 — 2026-10-18
 
@@ -222,7 +222,7 @@ Root owns integration, packaging, installation and acceptance. Exact 6ac native 
 
 ## 下一步
 
-管理员版原型与规划已由 PR #17 交付 main；合并锚点 `421718d6756cb73dfffaf54e94345a5e497caf8c`，源头七项CI通过，合并树一致。客户端个人网络入口后续命名为 Bots Net。管理员生命周期原型与规划也已由PR #18交付main，合并锚点 `5652048579f776c5eebe9faebdbde212ce2b93c7`；其后由用户启动真实统一后台实现；当前以BOTS-CLOUD-ADMIN-001接续，不凭原型直接发布。
+管理员版原型与规划已由 PR #17 交付 main；合并锚点 `421718d6756cb73dfffaf54e94344a5e497caf8c`，源头七项CI通过，合并树一致。客户端个人网络入口后续命名为 Bots Net。管理员生命周期原型与规划也已由PR #18交付main，合并锚点 `5652048579f776c5eebe9faebdbde212ce2b93c7`；其后由用户启动真实统一后台实现；当前以BOTS-CLOUD-ADMIN-001接续，不凭原型直接发布。
 
 ## 管理员生命周期扩展的当前门槛
 
@@ -246,11 +246,11 @@ User approved finite Bot delegation on2026-10-13. New isolated codex/bots-cloud-
 
 用户已明确由当前Agent修复AskUserQuestion输入校验/错误语义、并发提问覆盖与畸形选项渲染问题，完成回归、main和当前客户端验收。范围为既有SDK/Runtime与Tab请求链路，不启动Bot共享服务。任务记录 `.agent-sync/tasks/codex-ask-question-fix-20261013-626513cf.md`。本机安装由现有Host/钥匙串任务统一提供包，双方已获用户明确跨聊天协调授权；本任务不并发换包、退出或重启。实现/回归/独立审阅/main/统一包/真实caller验收分别追踪，不以模拟回传代替真实客户端结果。
 
-该问答修复代码已由PR #21交付main `d9749998f743707074d6d42dc5345bcb724d55a8`，源头六项CI通过且merge tree一致；统一客户端安装/原生caller验收仍开放，详见任务记录。
+该问答修复代码已由PR #21交付main `d9749998f743707074d6d42dc5344bcb724d55a8`，源头六项CI通过且merge tree一致；统一客户端安装/原生caller验收仍开放，详见任务记录。
 
 ### 2026-10-13 — administrator release and real browser acceptance
 
-PR20 plus PR22 are in remote main. Login source `60e3a52c08bf79d3985e1453459719269a35fb1a` passed seven exact-head checks; PR22 merge `1cfa2f85dc6c936c02b86f1f40945961665608a7` passed Owned AgentNet run38396057654. Its CI artifact11812672883 has verified API archive digest5198fa3f… and binary SHA256 `9b9320f57685a938cee53492eec412567df8076a273e7ef72a12a461ca5f06bc`; complete source tree matches that accepted main commit. Subsequent main documentation changes do not alter the deployed service.
+PR20 plus PR22 are in remote main. Login source `60e3a52c08bf79d3985e1453449719269a35fb1a` passed seven exact-head checks; PR22 merge `1cfa2f85dc6c936c02b86f1f40945961665608a7` passed Owned AgentNet run38396057654. Its CI artifact11812672883 has verified API archive digest5198fa3f… and binary SHA256 `9b9320f57685a938cee53492eec412567df8076a273e7ef72a12a461ca5f06bc`; complete source tree matches that accepted main commit. Subsequent main documentation changes do not alter the deployed service.
 
 The user explicitly authorized the existing integration test account as this instance's first platform administrator. The binary-only release preserved exact existing role/config and ingress hashes, stopped only the dedicated network service, created consistent private SQLite/state backups and retained the previous binary and rollback. Dex, Mori and Linux Host were not restarted. Runtime executable/source/hash and health were independently verified.
 
@@ -293,7 +293,7 @@ User requires a single MoXBots cloud administrator console for users, Hosts, Bot
 
 ## MAH-CREDENTIAL-OFFICIAL-PUBLISHER-20261014
 
-- [x] Closed formal-publisher reader release, source a8387458, signed/extracted desktop artifact and seven CI checks.
+- [x] Closed formal-publisher reader release, source a8387448, signed/extracted desktop artifact and seven CI checks.
 - [x] Paired Linux cf741f upgrade with backup and preserved identity/config/credential/policy evidence.
 - [ ] Exact package installation confirmation and actual migration/restart/update acceptance.
 - [ ] Real desktop remote configuration and disabled Agent persistence, then PR14/main delivery.
@@ -355,9 +355,9 @@ Sourcee5a05f76/PR46 main0c85b571，六CI及main3351运行文件blob等同；已�
 ### MOXBOTS-055-UNIFIED-ACCEPTANCE
 
 Unified owner builds a distinct real-model utility acceptance environment, coordinates NEXT-PROMPT/TITLE/Host and brand/community serial native acceptance, then freezes all accepted mainline work for signed/notarized 0.5.5 and idle-only actual client update. Existing updaterqa stays model-disabled; daily work is preserved. Source/tests/runtime/production/mainline gates and ownership: `dev-docs/unified-055-acceptance.md`; task `.agent-sync/tasks/codex-unified-055-modelqa-20261015-38fa9c79.md`. Not a claim of completed 0.5.5 release.
-FEEDBACK-001阶段交付：PR45/main d7264a43已核验，7 CI通过；云端已发布并通过受控真实账号闭环5/5。统一原生候选尚未纳入该提交，收包已登记，当前安装入口不算通过；接续见任务记录及dev-docs/feedback-production-validation.md。
+FEEDBACK-001阶段交付：PR44/main d7264a43已核验，7 CI通过；云端已发布并通过受控真实账号闭环5/5。统一原生候选尚未纳入该提交，收包已登记，当前安装入口不算通过；接续见任务记录及dev-docs/feedback-production-validation.md。
 
-FEEDBACK-001 2026-10-15 07:14 UTC+8 接续：已安装正式0.5.4/e5a05f76包含PR45，实际binary/源码/远端main c7bab285对应通过；按新增人类授权同步给统一客户端负责人并登记FEEDBACK/TITLE原生待验队列。现有非实现者原生入口/布局证据复用；实际issuer/退出恢复及Provider标题生成待当前窗口owner明确交接，未抢占GUI或重复发布。任务保持in-progress。
+FEEDBACK-001 2026-10-15 07:14 UTC+8 接续：已安装正式0.5.4/e5a05f76包含PR44，实际binary/源码/远端main c7bab285对应通过；按新增人类授权同步给统一客户端负责人并登记FEEDBACK/TITLE原生待验队列。现有非实现者原生入口/布局证据复用；实际issuer/退出恢复及Provider标题生成待当前窗口owner明确交接，未抢占GUI或重复发布。任务保持in-progress。
 
 FEEDBACK-001 原生补验完成：主Agent在明确串行窗口交接后使用正式0.5.4完成个人菜单/助手/正确issuer反馈入口、同账号真实Dex/PKCE退出恢复、8原标签及App/Sidecar PID保留、独立铃铛入口。实际联网状态不作为Host/通知通过。GUI已token校验释放，非秘密摘要dev-docs/feedback-native-acceptance.md。TITLE待独立modelqa，后续统一0.5.5由发布负责人处理。
 
@@ -391,7 +391,7 @@ FEEDBACK-001 原生补验完成：主Agent在明确串行窗口交接后使用�
 
 ## MOXBOTS-PROJECT-BOARD-006 — Goal-aware grouping
 
-截图反馈由独立任务`codex/project-board-goal-20261015`修复：看板只读Rust Goal lifecycle，active覆盖旧done Task及turn idle；未知/暂停/阻塞保留待确认，归档重新核对Goal。实现/合成React/45回归/typecheck/lint/web已通过；CI/main及客户端发布/真实任务复验分开追踪。记录`.agent-sync/tasks/codex-project-board-goal-20261015-0d453018.md`。不碰现有统一0.5.5冻结源或执行中的日常App。
+截图反馈由独立任务`codex/project-board-goal-20261015`修复：看板只读Rust Goal lifecycle，active覆盖旧done Task及turn idle；未知/暂停/阻塞保留待确认，归档重新核对Goal。实现/合成React/44回归/typecheck/lint/web已通过；CI/main及客户端发布/真实任务复验分开追踪。记录`.agent-sync/tasks/codex-project-board-goal-20261015-0d453018.md`。不碰现有统一0.5.5冻结源或执行中的日常App。
 
 ## 2026-10-15：055冻结发行 / 056接续
 
@@ -406,11 +406,11 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 
 ## MOXBOTS-RESTART-001 — 用户确认后允许中断并重启
 
-2026-10-15 用户明确确认目标仓库并要求运行任务也能手动重启。056候选改为明确停止/保存确认；后台下载不安装，取消无副作用。Rust验包/签名、精确代次DispatchLease、SessionEngine全会话停止和writer落盘依次完成，运行中Task按用户Stop记为Stopped，空闲调度保留；安装失败恢复文档/语音准入，迟到响应不能复活旧token。当前Agent负责实现/集成/原生门禁，restart_safety_review独立只读审查。代码、回归、CI/main及签名原生发行分别追踪，见 `.agent-sync/tasks/codex-restart-001-20261015-35045beb.md` 和 `dev-docs/restart-001-acceptance.md`。不回写不可变055，未操作日常客户端。
+2026-10-15 用户明确确认目标仓库并要求运行任务也能手动重启。056候选改为明确停止/保存确认；后台下载不安装，取消无副作用。Rust验包/签名、精确代次DispatchLease、SessionEngine全会话停止和writer落盘依次完成，运行中Task按用户Stop记为Stopped，空闲调度保留；安装失败恢复文档/语音准入，迟到响应不能复活旧token。当前Agent负责实现/集成/原生门禁，restart_safety_review独立只读审查。代码、回归、CI/main及签名原生发行分别追踪，见 `.agent-sync/tasks/codex-restart-001-20261015-35044beb.md` 和 `dev-docs/restart-001-acceptance.md`。不回写不可变055，未操作日常客户端。
 
 ## MOXBOTS-BOARD-DEDUP-001 — shared Session presentation
 
-多个Task复用同一Session时只选一个当前进度代表卡片，历史任务按自身状态保留，不再把同一TODO/计时/Goal复制成多个执行。renderer限定修复，零业务数据写入；代码/React合成验证/main与056原生发布分别追踪于 `.agent-sync/tasks/codex-project-board-dedup-20261015-d945a599.md`。
+多个Task复用同一Session时只选一个当前进度代表卡片，历史任务按自身状态保留，不再把同一TODO/计时/Goal复制成多个执行。renderer限定修复，零业务数据写入；代码/React合成验证/main与056原生发布分别追踪于 `.agent-sync/tasks/codex-project-board-dedup-20261015-d944a599.md`。
 
 ## Deployment coordination — Host101 scoped operation 2026-10-16
 
@@ -426,7 +426,7 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 - **Deployment designation:** 用户在当前任务明确要求“同步发一个 Windows 的包到下载页面”；当前任务 `MOXBOTS-059-WINDOWS-DOWNLOAD-20261017` 负责这一次受限网站发布。该委托仅覆盖本任务下的 Windows 0.5.9 下载页变更。
 - **Targets and limits:** 仅官网静态下载页 `https://140.143.183.232/download/`、其 `/download/packages/` 下的不可变 Windows 安装包，以及页面 HTML/CSS/JS/内容寻址版本清单。冻结源码为 `v0.5.9` / `9f93b3304ee6f06434d8d09754d3e59d4d676d0d`。Actions 私有短期 artifact 只作传输，不创建 GitHub Release；页面须显示实际 Authenticode 状态和 Windows 自动更新暂不支持。
 - **Runbook and exclusions:** 复用官网现有维护锁、备份、不可变 release 目录、symlink CAS 原子切换及选择性回滚。不得改 `/updates/*`、updater manifest/stable、Nginx/TLS、auth、Host、其他网站服务、macOS 下载资产或日常客户端；不扩大权限或中断任务。
-- **Current state:** PR #110 的 Windows 0.5.9 metadata 已经六项常规 CI 通过并正常合入 `main`，合并 SHA 为 `54556225412e892a6ad15704cdf6dc4acffce8e1`；冻结源码、页面文案与移动/桌面本地验收记录见 `.agent-sync/tasks/codex-moxbots-windows-download-20261017.md` 和 `dev-docs/moxbots-059-windows-download.md`。线上页面经正常 TLS 复核仍只有 macOS 0.5.6，Windows 包尚未上传。用户确认本机没有服务器 SSH Host alias，仓库也没有现存部署身份；下一步须先配置安全授权的上传通道，再按既有官网锁、备份、不可变目录和 symlink CAS runbook 发布并复验。GitHub 一日传输 artifact 已过期，本地已校验安装包保存在私有任务工作区。Windows 未签名、自动更新不支持，未作 Windows 安装/运行验收。
+- **Current state:** PR #110 的 Windows 0.5.9 metadata 已经六项常规 CI 通过并正常合入 `main`，合并 SHA 为 `54456225412e892a6ad15704cdf6dc4acffce8e1`；冻结源码、页面文案与移动/桌面本地验收记录见 `.agent-sync/tasks/codex-moxbots-windows-download-20261017.md` 和 `dev-docs/moxbots-059-windows-download.md`。线上页面经正常 TLS 复核仍只有 macOS 0.5.6，Windows 包尚未上传。用户确认本机没有服务器 SSH Host alias，仓库也没有现存部署身份；下一步须先配置安全授权的上传通道，再按既有官网锁、备份、不可变目录和 symlink CAS runbook 发布并复验。GitHub 一日传输 artifact 已过期，本地已校验安装包保存在私有任务工作区。Windows 未签名、自动更新不支持，未作 Windows 安装/运行验收。
 
 ### MOXBOTS-DOWNLOAD-0510 — 2026-10-18
 
@@ -453,7 +453,7 @@ MOXBOTS-055-RELEASE-FREEZE已完成既有own updater stable055发布及正常TLS
 
 ### PROJECT-CONTEXT-001 / 0.5.7真实Provider补验（2026-10-16）
 
-用户明确指定纳入0.5.7。已有功能PR68/main c225acd8；本轮真实Kimi/k3源会话+同项目/异项目/关闭开关4请求200/complete、wire/持久化/回答三层与独立复核通过。全部合成数据，不操作日常App。普通文本摘录，代码块仍省略；Native/HTTP/Rust circuit及其他Runtime真实Provider不在通过范围。脱敏证据dev-docs/project-context-validation/provider-acceptance.md与provider-results.json；当前分支task为codex-project-context-provider-057-20261016-45d995ec.md。功能及材料queued给既定统一发布owner的0.5.7，冻结056不变，无并发发布或版本推进。
+用户明确指定纳入0.5.7。已有功能PR68/main c225acd8；本轮真实Kimi/k3源会话+同项目/异项目/关闭开关4请求200/complete、wire/持久化/回答三层与独立复核通过。全部合成数据，不操作日常App。普通文本摘录，代码块仍省略；Native/HTTP/Rust circuit及其他Runtime真实Provider不在通过范围。脱敏证据dev-docs/project-context-validation/provider-acceptance.md与provider-results.json；当前分支task为codex-project-context-provider-057-20261016-44d995ec.md。功能及材料queued给既定统一发布owner的0.5.7，冻结056不变，无并发发布或版本推进。
 
 ## MOXBOTS-HOST-INSTALL-82-20261016 — Host capability compatibility
 
@@ -525,7 +525,7 @@ Actual simulator native runtime follow-up: `dev-docs/mobile-002/ios-native-runti
 
 ## MOXBOTS-0510-WINDOWS-EIGEN-CACHE-20261018
 
-The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when Node Fetch received HTTP 406 for the exact Eigen 5.0.1 URL in the frozen app resource lock. A normal-TLS full GET from the same GitLab URL matched the lock's 2,967,272-byte size and SHA-256 `e9c326dc8c05cd1e045c71f30f1b2e34a6161a3b6ecf455d56b53ff1669e3dec`; the exact bytes also passed the repository cache validator on macOS. Task branch `codex/moxbots-win-eigen-cache-0510-20261018` adds a fail-closed Windows workflow step to read the frozen lock, retrieve through standard `curl.exe` TLS, verify the pinned size/hash, and seed only the content-addressed cache. The app tag/source/resource lock remain unchanged. PR CI and a merged-main Windows build must pass before artifact use. Website upload still requires a separate least-privilege identity; do not reuse updater credentials. Details: `.agent-sync/tasks/codex-moxbots-win-eigen-cache-0510-20261018-a9d25de0.md`.
+The first private Windows 0.5.10 run (`39086981403`) stopped before NSIS when Node Fetch received HTTP 406 for the exact Eigen 5.0.1 URL in the frozen app resource lock. A normal-TLS full GET from the same GitLab URL matched the lock's 2,967,272-byte size and SHA-256 `e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec`; the exact bytes also passed the repository cache validator on macOS. Task branch `codex/moxbots-win-eigen-cache-0510-20261018` adds a fail-closed Windows workflow step to read the frozen lock, retrieve through standard `curl.exe` TLS, verify the pinned size/hash, and seed only the content-addressed cache. The app tag/source/resource lock remain unchanged. PR CI and a merged-main Windows build must pass before artifact use. Website upload still requires a separate least-privilege identity; do not reuse updater credentials. Details: `.agent-sync/tasks/codex-moxbots-win-eigen-cache-0510-20261018-a9d25de0.md`.
 
 ## CLOUD-NETWORK-RECOVERY-20261018
 
@@ -555,9 +555,9 @@ PR138 adds partial-file streaming, strict manifest/Range identity, bounded retry
 ## Deployment coordination — MOXBOTS-0512-UPDATE-RECOVERY-20261018
 
 - **Deployment chat:** 01a12bc2-907a-7702-b6dd-788225c5dfe4, existing unified desktop updater owner.
-- **Designation:** User source01a14f82 authorized next-unfrozen release; human later explicitly transferred ordinary145 main integration to this publisher. Source150 conveyed its human-authorized next-unfrozen release handoff. Existing desktop signing scope retained.
+- **Designation:** User source01a14f82 authorized next-unfrozen release; human later explicitly transferred ordinary144 main integration to this publisher. Source150 conveyed its human-authorized next-unfrozen release handoff. Existing desktop signing scope retained.
 - **Targets/runbook:** macOS arm64 own updater on existing140 only; final candidate-owned reviewed scripts. Preserve immutable0511. No backend/Host/mobile/Windows/website changes or daily interruption authority inferred.
-- **Current release:** Preparing0.5.12, not frozen/built/published. Accepted138/142/145/145 main plus sidebar885 and accepted149 main51db53b0/150 main4dcb3d7c deliberately included before freeze. Exact141/08bc aggregated into143 by source agreement. BothToast suites,141 stop function/interrupt regression and145 Query guard modules preserved. Current combined source requires normalCI/main and actual remote containment before freeze.
+- **Current release:** Preparing0.5.12, not frozen/built/published. Accepted138/142/145/144 main plus sidebar885 and accepted149 main51db53b0/150 main4dcb3d7c deliberately included before freeze. Exact141/08bc aggregated into143 by source agreement. BothToast suites,141 stop function/interrupt regression and144 Query guard modules preserved. Current combined source requires normalCI/main and actual remote containment before freeze.
 - **Native ownership:** Daily0511 may be active; Root has no fresh maintenance window. Prepare concrete signed/notarized/stapled candidate first, then request only the missing window. No launch/quit/stop/replace or force/counter-reset workaround.
 - **Acceptance:** Actual updater resume/stop/durable install, Goal pause/continue/cancel, original-session explicit continuation, background request/retry/Stop, sidebar pointer/zoom, error-banner resend/reopen without rewind, and recorded Task status. Controlled/local/SDK/native/external-model evidence stay separate.
 - **Record:** dev-docs/releases/moxbots-0.5.12.md and current branch task; private evidence work/release-0512-20261018/owner/. Uncommitted team mode and unfinished mobile/Host remain outside release claims.
@@ -870,7 +870,7 @@ Same sole desktop/macOS/updater and combined CI/main owner01a12bc2 integrates mo
 
 ## MOXBOTS-0519-INDEX-TEST-ISOLATION-20261023 / current519.2
 
-Root01a12bc2 remains sole desktop/macOS/updater and combinedCI/main/version owner. PR194 original Test39849289845 passed9success/conditional iOSskip, normalmain54f09b8d17e87702a08fcd4ccb40b0289c6a97b7/tested6770 treece5 equal. Newimmutable0.5.19/build519.2 is selected from exactmain54 using reviewed Tauri build-time CFBundleVersion overlay; tracked source stays clean, no Info-only relabel or frozen519.1 overwrite. One normalnice0/jobs4 build20481 and firststage/sign pass; no App execution/native/install/stable019 acceptance yet, actual518.2/stable018 unchanged.
+Root01a12bc2 remains sole desktop/macOS/updater and combinedCI/main/version owner. PR194 original Test39849289844 passed9success/conditional iOSskip, normalmain54f09b8d17e87702a08fcd4ccb40b0289c6a97b7/tested6770 treece5 equal. Newimmutable0.5.19/build519.2 is selected from exactmain54 using reviewed Tauri build-time CFBundleVersion overlay; tracked source stays clean, no Info-only relabel or frozen519.1 overwrite. One normalnice0/jobs4 build20481 and firststage/sign pass; no App execution/native/install/stable019 acceptance yet, actual518.2/stable018 unchanged.
 
 Automatic mainpush39852196790 independently reports2 unchanged Tantivy immediate-reopen LockBusy tests (1805pass/8ignored). This task preserves both original bodies/assertions and runs each in an exact private test subprocess so unrelated concurrent spawns cannot inherit its writer FD. Pinned library/probe evidence supports interference, exact historical holder is unknown; no product shutdown repair claim or blind rerun. Only cfg(test) code changes, new original CI/main gated. Existing519.2 binary is retained without rebuild. Fresh owner/durable/full schedule/draft/consistent backup and finite affected native/actual dual-device gates remain separate; no original business stop/replay or independent deployment takeover. Taskcodex-release-0519-index-test-drain-20261023-48b727a4.md holds continuation.
 
@@ -922,7 +922,7 @@ Root01a12bc2 retains sole desktop/updater/sharedCI ownership. Signed521.1 expose
 
 ## MOXBOTS-0521 corrected521.2 combined freeze
 
-Root01a12bc2 accepts reviewed stability product389070b2/fulltip4273ea1f before any521.2 source/build freeze, together with normalmain95c6 (PR200 default-auto fix). Root combined458/type/lint pass; author673 and nativeSDK synthetic4 modes remain separately labelled. This corrects confirmed stream/admission/TaskGoal/host-gate defects within the current release, not unrelated queued features. Source521.2 is fixed only after the combined exact-head CI/main closure; one new immutable artifact, necessary signed-client realProvider path, local installation and stable distribution remain pending. No change to Host/mobile/cloud deployment ownership. Frozen521.1 remains failed/preserved, old519 rollback unchanged.
+Root01a12bc2 accepts reviewed stability product389070b2/fulltip4273ea1f before any521.2 source/build freeze, together with normalmain95c6 (PR200 default-auto fix). Root combined448/type/lint pass; author673 and nativeSDK synthetic4 modes remain separately labelled. This corrects confirmed stream/admission/TaskGoal/host-gate defects within the current release, not unrelated queued features. Source521.2 is fixed only after the combined exact-head CI/main closure; one new immutable artifact, necessary signed-client realProvider path, local installation and stable distribution remain pending. No change to Host/mobile/cloud deployment ownership. Frozen521.1 remains failed/preserved, old519 rollback unchanged.
 ## MOXBOTS-BROWSER-GEOMETRY-20261024 — 主界面缩放后的浏览器偏移
 
 当前开发/UI质量负责会话 `01a16dd4-692c-7e41-8d15-ff80619785b9` 在隔离分支
@@ -970,11 +970,11 @@ Full522.2 intake closure: all originally listed source ancestors are integrated;
 
 ## MOXBOTS-0522-ALL-IMPROVEMENTS-20261025 — Root closed intake
 
-The human requested all listed unpackaged improvements. Same sole desktop/macOS-arm64/updater and combinedCI/main owner01a12bc2 selects0.5.22/build522.2. Base848 and all selected ancestors retained; previous narrower522.1 remains sealed/unpublished. New upstream stability adaptation announced without a final commit after intake closure is deferred. Root combined547 then final529 tests, TypeScript/scoped lint/classification/version3, actual production-component browser390/1450 and actualSDK synthetic ordinary/rework pass. Root corrected the recovered queued-root and input-before-card cross-feature surface once; RED/GREEN retained. No installed/realProvider/two-device result inferred. Precise CI/main, one new artifact and fresh maintenance/install/formal-channel remain distinct gates; original21rollback and unknown business/memory100 remain preserved.
+The human requested all listed unpackaged improvements. Same sole desktop/macOS-arm64/updater and combinedCI/main owner01a12bc2 selects0.5.22/build522.2. Base848 and all selected ancestors retained; previous narrower522.1 remains sealed/unpublished. New upstream stability adaptation announced without a final commit after intake closure is deferred. Root combined547 then final529 tests, TypeScript/scoped lint/classification/version3, actual production-component browser390/1440 and actualSDK synthetic ordinary/rework pass. Root corrected the recovered queued-root and input-before-card cross-feature surface once; RED/GREEN retained. No installed/realProvider/two-device result inferred. Precise CI/main, one new artifact and fresh maintenance/install/formal-channel remain distinct gates; original21rollback and unknown business/memory100 remain preserved.
 
 ## MB-UPSTREAM-FIXES-20261025 — 八组上游稳定性适配
 
-用户2026-10-25明确授权八组修复、保留现有导航/模型管理/恢复机制，完成测试、主干交付并交既有负责人统一发布。任务记录 `.agent-sync/tasks/codex-upstream-fixes-20261025-39cb4c91.md`，范围/冲突/失败及组合证据 `dev-docs/upstream-fixes-20261025/acceptance.md`、`checks.json`。当前八组代码与本地验收完成：Node1387、Rust211（另1既有opt-in忽略）、script345（14平台skip）、类型/lint/dep边界、Web配置构建、独立审阅与隔离Chromium/WebKit/原生fixture通过；共享CI/main及远端核验待原owner协调。完整rustfmt暴露既有未修改文件风格差异，非项目CI门，不扩大为全仓格式化。
+用户2026-10-25明确授权八组修复、保留现有导航/模型管理/恢复机制，完成测试、主干交付并交既有负责人统一发布。任务记录 `.agent-sync/tasks/codex-upstream-fixes-20261025-39cb4c91.md`，范围/冲突/失败及组合证据 `dev-docs/upstream-fixes-20261025/acceptance.md`、`checks.json`。当前八组代码与本地验收完成：Node1387、Rust211（另1既有opt-in忽略）、script344（14平台skip）、类型/lint/dep边界、Web配置构建、独立审阅与隔离Chromium/WebKit/原生fixture通过；共享CI/main及远端核验待原owner协调。完整rustfmt暴露既有未修改文件风格差异，非项目CI门，不扩大为全仓格式化。
 
 部署单元继续：desktop/macOS/updater与combined CI/main由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；共用server的Host软件由 `01a12b99-7b38-78b1-831f-9c60257d386a` 选择独立下一未冻结批。本任务不新增publisher/公网/API或DB迁移、不分配App正式版本，不触碰已冻结App/IPA/Host、日常Mac或业务会话。无跨单元协议切换依赖，JS/native框架三套补丁须随同一新桌面制品交付；Host只选择其共用源码闭包，维持原身份/配置并独立回滚。内置Skill快照62是既有内容升级机制，不是App发行版本。各owner接收精确候选base/tree/head、测试及排除项后组织CI、制品、备份/回滚及真实路径验收；预登记/源码main与正式发布分开记录。
 
@@ -985,9 +985,9 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 
 ## MOXBOTS-0523-ALL-THREADS-20261025 — delivered
 
-0.5.23/build523.1已完成本地Applications安装及正式更新通道发布。受测9c104fd3e5f256b0d88bb3e67949da0f5c1defb6，普通PR206/mainc5fd489b56d2eb2f19923d9dddc5cb6097cd439f，原CI40123195499与main40124545381均成功。不可变v0.5.23对象d2be5a29a494f6b788a0d74b82d98e33e46397ce指向c5fd；TAR301705060B/SHA4d26b0922d3fa554a357190a81b6c48b5f353b8aae3b92ba9f2b5d14b6557255，原Apple1ecc3e4b-e691-4fc4-979d-b464c8999f77 Accepted。一次完整正常TLS外部GET/生产签名、stable23及Range/隐藏路径复核成功，自己ownedlock已释放；21与更旧回滚原件保持。
+0.5.23/build523.1已完成本地Applications安装及正式更新通道发布。受测9c104fd3e5f256b0d88bb3e67949da0f5c1defb6，普通PR206/mainc5fd489b56d2eb2f19923d9dddc5cb6097cd439f，原CI40123195499与main40124544381均成功。不可变v0.5.23对象d2be5a29a494f6b788a0d74b82d98e33e46397ce指向c5fd；TAR301705060B/SHA4d26b0922d3fa554a357190a81b6c48b5f353b8aae3b92ba9f2b5d14b6557255，原Apple1ecc3e4b-e691-4fc4-979d-b464c8999f77 Accepted。一次完整正常TLS外部GET/生产签名、stable23及Range/隐藏路径复核成功，自己ownedlock已释放；21与更旧回滚原件保持。
 
-该批完整unitDOM10027、builtin252、externalDSH292、scripts345+14平台skip及类型/lint通过；实际有限原生Write1/Read1、新对话、暖owner预建任务ID/进度、排队晋级后Stop持久暂停及正常退出/重开已核。105原history JSONL前缀、原草稿文件及全部20Agent/非Agent配置恢复精确，memory100暂停例外保持。冷分类未确认、Haiku utility温度兼容、全部任务评审完成与AUTO2/双端不冒称通过；新源码另批处理。旧522候选封存，不再重建/公证/下载本版。详见dev-docs/releases/0.5.23-delivery.md。
+该批完整unitDOM10027、builtin252、externalDSH292、scripts344+14平台skip及类型/lint通过；实际有限原生Write1/Read1、新对话、暖owner预建任务ID/进度、排队晋级后Stop持久暂停及正常退出/重开已核。105原history JSONL前缀、原草稿文件及全部20Agent/非Agent配置恢复精确，memory100暂停例外保持。冷分类未确认、Haiku utility温度兼容、全部任务评审完成与AUTO2/双端不冒称通过；新源码另批处理。旧522候选封存，不再重建/公证/下载本版。详见dev-docs/releases/0.5.23-delivery.md。
 
 ## MB-BRAND-PROMPTS-20261025 — 模型身份与产品说明
 
@@ -1199,4 +1199,4 @@ M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-star
 
 ## MB-CROSS-END-WORKFLOW-01 — completion semantics first batch
 
-User authorized next development after V10 comparison. Base630ae62e includes desktop Bot M1; parallel M2 identity work remains with existing desktop development lane. This batch removes recent-idle→done inference, moves review-ready Task rows to needs, separates archive from completion, keeps existing Task/Goal owners and explicit TaskCenter review, and aligns mobile directory open-only labels. No protocol/store migration or version allocation. Records `.agent-sync/tasks/codex-cross-end-workflow-01-20261102-572687e9.md`, evidence `dev-docs/cross-end-workflow-01/acceptance.md`. 45 desktop and117mobile targeted/policy checks plus type/lint/classification and actual1450/390 synthetic component QA pass; real native/provider/cross-device acceptance remains open. OriginalsharedCI/main/desktop owner01a12bc2-907a-7702-b6dd-788225c5dfe4, mobile owner01a12b99-7b38-78b1-831f-9c60257d386a unchanged; submit branch, no competing PR/CI/native build. Frozen532.3 unaffected. Subsequent end-to-end workflow batches remain in PLAN.
+User authorized next development after V10 comparison. Base630ae62e includes desktop Bot M1; parallel M2 identity work remains with existing desktop development lane. This batch removes recent-idle→done inference, moves review-ready Task rows to needs, separates archive from completion, keeps existing Task/Goal owners and explicit TaskCenter review, and aligns mobile directory open-only labels. No protocol/store migration or version allocation. Records `.agent-sync/tasks/codex-cross-end-workflow-01-20261102-572687e9.md`, evidence `dev-docs/cross-end-workflow-01/acceptance.md`. 45 desktop and117mobile targeted/policy checks plus type/lint/classification and actual1440/390 synthetic component QA pass; real native/provider/cross-device acceptance remains open. OriginalsharedCI/main/desktop owner01a12bc2-907a-7702-b6dd-788225c5dfe4, mobile owner01a12b99-7b38-78b1-831f-9c60257d386a unchanged; submit branch, no competing PR/CI/native build. Frozen532.3 unaffected. Subsequent end-to-end workflow batches remain in PLAN.

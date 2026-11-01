@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=eda56cf217499d992e2fd7c58fd2d534503a5006763398076bdbea81e1ccb8bf -->
+<!-- git-project-sync-task:source-digest=d160fe502a0a9b9ed0ef2a2709ac029b4fc56044ccf39dacd970ef73c9f410ea -->
 <!-- git-project-sync-task:id=1ed37374-daed-4120-a074-21c67507e607 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/cross-end-workflow-01-20261102 -->
@@ -21,6 +21,8 @@
 - 完成状态/归档与手机入口改造，规则与验收见dev-docs/cross-end-workflow-01/；主干/安装分别待owner。
 
 ## Verification
+
+- Source digest: `d160fe502a0a9b9ed0ef2a2709ac029b4fc56044ccf39dacd970ef73c9f410ea`; Verified entire pre-existing shared plan prefix byte-for-byte against630ae62e; only new task section appended. Source unchanged since45desktop/117mobile pass.
 
 - Source digest: `eda56cf217499d992e2fd7c58fd2d534503a5006763398076bdbea81e1ccb8bf`; 45 desktop unit/DOM pass, scoped lint pass; previous117mobile and both type/lint pass; no transport or schema changes.
 
