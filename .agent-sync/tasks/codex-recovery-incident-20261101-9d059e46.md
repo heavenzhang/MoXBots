@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=145429280466a4f6ed4c7889eeb314e98d112d5609386c4b05f82826d5be4991 -->
+<!-- git-project-sync-task:source-digest=0bf65fc033640aed6b8adc0f795f417a0a0a0972114979a674c00bc175dab011 -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -61,6 +61,8 @@
 
 ## Verification
 
+- Source digest: `0bf65fc033640aed6b8adc0f795f417a0a0a0972114979a674c00bc175dab011`; Phase13 independent-review follow-up: adopted the release owner's live/cold failed-Bash tests and added unresolved-peer/retired-identity counterexamples. Final scoped/attempt/journal run: 74 PASS; full tsc, scoped lint and diff checks PASS. Product logic remains identical to reviewed 7c3fe1f09. Real installed original-session acceptance remains pending.
+
 - Source digest: `145429280466a4f6ed4c7889eeb314e98d112d5609386c4b05f82826d5be4991`; Phase13: 141 related cases in four files PASS; two pre-fix live/cold failures reproduced, four distinct negative shapes remain uncertain. Full tsc, scoped ESLint, classification and diff checks PASS. Synthetic native return/history-gap probe executes zero commands and makes zero network calls. Real original ledger unchanged; production trigger and original-session recovery remain unproven.
 
 - Source digest: `f434edff364e6dbe968c942708645d37874345ca78063e742a8cdbc0cd1351cf`; Phase12: 8-file combined regression 289 PASS, plus two added native connection/redirect regressions (291 distinct cases in total); full TypeScript, scoped ESLint, classification and diff checks. Initial four invalid-accept failures reproduced against old source. Cold restore/current epoch, native receipt commitment, shared-pool cancellation isolation, 307 default-follow boundary, actual ProxyAgent TLS timeouts, pre-dispatch single POST, sent/reset/partial-stream/HTTP status negatives, original unknown ledger and SDK replay fences covered. Exact final source review and installed acceptance remain pending original desktop owner. Tests are isolated and do not mutate real sessions.
@@ -103,7 +105,7 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-第十一批已主干/CI/532.1安装，四原会话实测未全部通过；第十二批待精确独审、主干和下一包原生复验。薪资此前核对被分类为新执行，不能据此宣称更早的execution已恢复，也不手动改回ID；Kevin本轮为control核查，未证明原execution恢复。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖、上游429与系统恢复验收分别列示。用户持续授权更新和原生验证，并明确允许替代系统控制工具完成安装验证，系统稳定优先。公开stable保持0.5.27 HOLD。
+第十一批已主干/CI/532.1安装，四原会话实测未全部通过；第十二批独审已通过、532.2/PR226待CI和后续安装复验；第十三批精确7c3fe1f09独审及失败Bash补证已通过，补充反例交付后进入下一未冻结批。薪资此前核对被分类为新执行，不能据此宣称更早的execution已恢复，也不手动改回ID；Kevin本轮为control核查，未证明原execution恢复。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖、上游429与系统恢复验收分别列示。用户持续授权更新和原生验证，并明确允许替代系统控制工具完成安装验证，系统稳定优先。公开stable保持0.5.27 HOLD。
 
 ## Deployment request
 

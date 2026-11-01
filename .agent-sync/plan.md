@@ -1175,3 +1175,5 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 第十二项（MB-RECOVERY-INCIDENT-20261101）：532.1无效accept证据纠错19轮但reworks=0，修正为沿既有返工计数和同一证明规则有界纠错，给出具体criterion/失效证据反馈，保留真实进度、原ID及人工补证。代理ConnectTimeoutError只在精确当前attempt/原生连接建立前、同fetch取消与预算内最多2次重连；HTTP429/5xx、已发送/部分流和旧unknown不获重放权。冷恢复和原生loopback回归后由同owner独审、集成、分配新不可变包、安装并复验四原会话；不增加部署负责人，不独立触发共享CI，不宣称限流或旧业务验收已闭合。证据见 recovery-incident-20261101/acceptance.md 最新章节。
 
 第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876238，不能覆盖或复用其制品与检查。
+
+第十三项审查补证：原owner精确7c3fe1f09静态/58项定向通过并独立补失败Bash live/cold围栏验证；源分支吸收该测试与未完成peer/退休身份反例，最终74项及tsc/lint/diff通过。产品逻辑不变，保持既有unknown，不覆盖532.2冻结批；真实原生验收仍待下一批安装。
