@@ -1154,3 +1154,7 @@ Existing deployment owners unchanged: combined CI/main and desktop/macOS/updater
 ## MOBILE-BOT-IMPLEMENT-20261101 — next mobile/QAHost candidate after PR219
 
 Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source into nextunfrozen candidate mobile0.2.0-rc.1/platformbuild8. Compatiblefeatures advance mobileMINOR; iOSnumericversion0.2.0/build8 andAndroidversionCode8, resolveddependencies/desktopversionunchanged. OriginalsharedCI/main/desktopowner01a12bc2 handles this metadata/source lane once; developer/mobileowner doesnot triggerduplicateCI orPR. Frozenbuild7/desktop529.1 stayunchanged. Matching Hostconnector+AssetStore+sharedJS bytes must be accepted together before historyclaim; existingisolatedQAHost/controller inventory/backup/lease/realendpointacceptance first, nooriginal101identity/config/dailyMac/newpublicport/modeltraffic. Currenthumanonlypreparephonepackage, noKevinconnection/install. Source/CI/artifact/Host/physical/TestFlight boundaries recorded in dev-docs/mobile-bot-experience/release8.md and currenttaskrecord.
+
+### MB-RECOVERY-INCIDENT-20261101 安装后准入超时
+
+529.1 已安装但原会话首次真实续接仍意图识别超时，验收FAIL。第七批用精确 stopped-root human receipt 关联原execution，仅固定继续动作复用原定义；普通分类单请求60秒并覆盖初始化/托管SDK、保留取消与所有原生执行保护。代码/模拟与真实验收分开；desktop owner仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，沿下一未冻结批，不覆盖529.1，不启动第二发布流程。

@@ -1,5 +1,5 @@
-import { getActiveSessionTranscript } from '../SessionStore';
-import { deriveSessionContinuation } from '../../shared/sessionContinuation';
+import { getActiveSessionTranscript, getSessionMetadata } from '../SessionStore';
+import { deriveSessionContinuation, SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import type { DispatchGuard, DispatchGuardResult } from '../session-core/turn-queue';
 import type { DesktopAdmissionResult, DesktopMessageRequest, SessionEngine } from './types';
 
@@ -54,6 +54,22 @@ export function prepareContinuationAdmission(engine: SessionEngine, request: Des
   };
   const initial = check(true);
   if (initial) return { accepted: false as const, result: initial };
+  // The fixed product action already means "continue this unfinished task".
+  // Capture its original definition here, after the transcript owner check;
+  // a raw request flag or model text is never a substitute for this proof.
+  // The latest interrupted turn may belong to a different unclassified task;
+  // only its exact human receipt can bind it to this execution. Legacy or
+  // unmatched roots retain semantic classification, never inherit an old task.
+  const execution = getSessionMetadata(request.sessionId)?.taskOrchestration?.execution;
+  const stopped = source && deriveSessionContinuation(source.writer.projection);
+  const root = stopped && source?.writer.projection.messages.get(stopped.rootUserMessageId);
+  const executionIntent = root?.metadata?.clientRequestId === execution?.requestId
+    && request.text === SESSION_CONTINUATION_PROMPT
+    && !request.images?.length && !request.agentMentions?.length
+    && !request.primaryContext && !request.queryPrimaryContext
+    && execution?.intent.kind === 'execute'
+    ? { ...execution.intent, continuationOf: execution.id }
+    : undefined;
   // Preserve the captured transcript generation across async classification,
   // while composing the execution owner's newly allocated queue and guard.
   const wrapGuard = (prior: DispatchGuard | undefined, queueId = request.queueId): DispatchGuard => {
@@ -87,6 +103,7 @@ export function prepareContinuationAdmission(engine: SessionEngine, request: Des
   };
   return {
     accepted: true as const,
+    executionIntent,
     guard: wrapGuard(request.beforeDispatch),
     wrapGuard,
     revalidateEntry: () => check(true),

@@ -29,7 +29,7 @@ export interface ClassifierTransportDeps {
   getSidecarPort: () => number;
   startOneShotBridge: (providerEnv: ProviderEnv, model: string, description: string) => { token: string; release: () => void };
   generateUtilityText: (
-    task: { prompt: string; systemPrompt: string; clean: (text: string) => string | null; signal?: AbortSignal },
+    task: { prompt: string; systemPrompt: string; clean: (text: string) => string | null; signal?: AbortSignal; timeoutMs?: number },
     model: string,
     providerEnv?: ProviderEnv,
   ) => Promise<string | null>;
@@ -95,7 +95,8 @@ export function createClassifierTransport(deps: ClassifierTransportDeps): Classi
     // Managed bearers and the SDK-native subscription only resolve inside an SDK turn.
     if (env === 'subscription' || env.credentialSource || env.endpointSource || !env.apiKey) {
       const text = await deps.generateUtilityText(
-        { prompt: request.prompt, systemPrompt: request.system, clean: value => value.trim() || null, signal: request.signal },
+        { prompt: request.prompt, systemPrompt: request.system, clean: value => value.trim() || null, signal: request.signal,
+          ...(request.timeoutMs !== undefined ? { timeoutMs: request.timeoutMs } : {}) },
         model,
         env === 'subscription' ? undefined : env,
       );

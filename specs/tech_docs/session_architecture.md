@@ -230,6 +230,11 @@ Stop/Reset 的结果也由 SessionEngine 决定。Stop 的回执或超时不代�
 
 普通会话的「继续未完成任务」候选由 V2 transcript owner 从最新用户轮次的 `stopped` / `interrupted` / `error` terminal 投影。Renderer 可用同一 owner 的 canonical `turn-update` 事件及时刷新该展示投影，必须对应当前最新真实用户输入；完成/运行事件清除旧候选，旧轮次和跨会话事件不能覆盖新候选。正常 `running`（包括新会话的首轮）只展示现有执行进度，不发布继续候选；冷启动时仍由原 execution owner 将遗留 running 结算为 interrupted，之后才允许投影入口。Renderer 同时拒绝旧版 metadata 的 running 候选，hydration 未就绪、执行或交互/队列阻塞期间不显示横幅；有错误时由错误横幅显示单一恢复动作。展示判断不授予执行权限，原 Session/turn/generation 准入与显式一次性点击继续生效。
 
+已由原生 continuation owner 核验的一键动作，在固定续接正文、无新增附件/Agent/primary context，且停止轮次根消息的 `metadata.clientRequestId` 与当前 execution 的 `requestId` 精确一致时，直接复用该 execution 的目标、范围、标准和步骤。该意图只作为 facade 内部参数传递，不能由请求 JSON 或模型文字提供；真人签名回执、原 execution/CAS、上一轮结算、未知操作、后台任务、Stop 与同步 commit 检查继续执行。旧记录缺少关联证明、当前轮次属于另一任务或用户修改正文时，仍走语义识别，不能继承碰巧留在账本中的旧任务。
+
+语义识别是执行前必要的结构化响应，其单次调用预算为 60 秒；默认下一步建议仍为 8 秒。预算包含 transport 初始化，取消立即返回并传到底层；订阅/托管凭据经 isolated SDK 的两层计时器也接收相同预算。分类失败仍只允许原有只读核查，不自动重放、清账本或创建新执行。该网络调用期限与已移除的整任务 30 分钟期限无关。
+
+
 ## 5. Goal 与跨 Session 协作
 
 Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 lease 与 SessionStore 持久 intent，暂停/停止沿原控制 owner，详见 [模型持久恢复](model_recovery.md)。它不会重放原任务或建立第二套 Goal 调度。

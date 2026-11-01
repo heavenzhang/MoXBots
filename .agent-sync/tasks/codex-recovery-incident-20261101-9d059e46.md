@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=b0af99666c6b365f8b71d66e9a321dcf012ed4bc440972b48bc88cb40ccad38f -->
+<!-- git-project-sync-task:source-digest=4bff8597717af3f57676e9b7f5ab79bfd750f877fbf030cfbffb3e7eca3490ad -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -20,10 +20,13 @@
 - [x] 第三批取消任务总时限d544远端保存且owner已纳入联合候选。
 - [x] 第四批23620fba远端保存，owner已纳入R4候选且精确CI通过。
 - [x] 第五批35353c88远端保存/owner集成；R5 CI反向依赖失败由owner655514修复，源分支已快进采用。
-- [ ] 第六批人工续接修复交接、最终联合CI及主干包含。
+- [x] 前六批经 PR217/主干3b62a664及联合CI交付；0.5.29/529.1 已安装核验。
+- [ ] 第七批明确续接与意图超时修复，经独审后交原owner下一不可变候选。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+529.1 首次原会话继续实测仍 INTENT_UNCONFIRMED/timeout，系统验收失败。第七批修复明确续接依赖网络分类与8秒误截断，补 exact root human request→execution 关联、初始化取消及SDK预算传递。已从最新主干58941e30无冲突快进，改动仅此任务，原会话未由本线程改写。
 
 第六批允许新的可信人工输入恢复计数封顶的原任务一轮，保留计数、未知操作等原保护，自动空转仍停止。4项旧实现失败已复现；真实原会话未运行，待唯一owner新包。
 
@@ -36,6 +39,10 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `4bff8597717af3f57676e9b7f5ab79bfd750f877fbf030cfbffb3e7eca3490ad`; 325 distinct related cases PASS; 13 baseline failures reproduced; tsc/lint/classification/diff PASS. Real-session acceptance remains failed on installed529.1, pending owner integration and next immutable candidate.
+
+第七批：294相关套件+31 builtin队列/预算用例（325不重复case）通过；13旧失败复现；全量tsc、定向lint、分类、diff检查通过。原数据未写，尚待原owner新候选CI/安装/真实复测。
 
 - Source digest: `b0af99666c6b365f8b71d66e9a321dcf012ed4bc440972b48bc88cb40ccad38f`; 78 execution integration + 163 policy/boundary/facade unit + 24 native queue cases = 265 PASS; 4 pre-fix positives reproduced FAIL; full tsc/scoped lint/classification/diff PASS. No original user data or operations replayed; exact candidate CI/install/real acceptance remain with desktop owner.
 
@@ -53,11 +60,11 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-前五批已推送及owner集成；R5 CI发现模块边界违规，owner已提交修复并在本分支采用。第六批人工接续待最终联合CI/主干。意图识别失败具体原因、间歇连接超时及原会话业务仍未全部闭环；旧未知结果不可凭截图核销。部署 owner 当前暂停 528 晋级；用户本轮已明确解除原生暂停，授权原owner安装验证。任务总体尚未完成。
+前六批已主干/CI/529.1安装；当前原生首次续接失败证据已保留。第七批本地修复与隔离验证不等于真实恢复；需原owner独审集成新包后再验证四个原会话。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖与系统恢复验收分别列示。用户持续授权更新和原生验证，并要求保留旧开发进程，系统稳定优先。
 
 ## Deployment request
 
-desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。不新增部署 owner，不触发共享 CI/PR/正式构建或安装。本次没有版本分配、制品摘要、发布 tag；源码推送不是生产交付。
+desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。不新增部署 owner，不触发共享 CI/PR/正式构建或安装。第七批不自行分配版本或重建旧529.1；新的源码交付与候选安装/真实验收分开。
 
 ## Next step
 
