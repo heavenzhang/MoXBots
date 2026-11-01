@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=9fb66f54937a619001da4dbfdeeea9db48ddd9010c9b3788a31665f058fa1a4f -->
+<!-- git-project-sync-task:source-digest=eda56cf217499d992e2fd7c58fd2d534503a5006763398076bdbea81e1ccb8bf -->
 <!-- git-project-sync-task:id=1ed37374-daed-4120-a074-21c67507e607 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/cross-end-workflow-01-20261102 -->
@@ -22,9 +22,11 @@
 
 ## Verification
 
-- Source digest: `9fb66f54937a619001da4dbfdeeea9db48ddd9010c9b3788a31665f058fa1a4f`; 44 desktop unit/DOM and117 mobile policy passed; desktop/mobile tsc/lint and classification passed; actual React synthetic browser1440/390 passed. Native integration pending original release owners.
+- Source digest: `eda56cf217499d992e2fd7c58fd2d534503a5006763398076bdbea81e1ccb8bf`; 45 desktop unit/DOM pass, scoped lint pass; previous117mobile and both type/lint pass; no transport or schema changes.
 
-- 44 desktop unit/DOM + 117 mobile policy通过；双端type/lint、classification、diff通过；1440/390实际组件合成走查通过。
+- Source digest: `9fb66f54937a619001da4dbfdeeea9db48ddd9010c9b3788a31665f058fa1a4f`; 45 desktop unit/DOM and117 mobile policy passed; desktop/mobile tsc/lint and classification passed; actual React synthetic browser1450/390 passed. Native integration pending original release owners.
+
+- 45 desktop unit/DOM + 117 mobile policy通过；双端type/lint、classification、diff通过；1450/390实际组件合成走查通过。
 
 ## Blockers and unknowns
 

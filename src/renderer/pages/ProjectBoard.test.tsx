@@ -38,6 +38,15 @@ describe('project board stages and archive history',()=>{
   rerender(<ProjectBoard workspacePath='/work'/>);
   expect(container.querySelector('[data-group="done"] [data-board-row="task:goal-task"]')).toBeTruthy();
  });
+ it('does not describe an explicitly complete Goal-only conversation as a pending Task review',async()=>{
+  mocks.data.tasks=[];mocks.data.sessions=[session('goal')];
+  mocks.data.activity=new Map([['goal',{state:'idle',checkedAt:100000,goal:{checkedAt:100000,value:{status:'complete',isExecuting:false}}}]]);
+  const {container}=render(<ProjectBoard workspacePath='/work'/>);
+  fireEvent.click(container.querySelector('[data-board-row="session:goal"]')!);await act(async()=>{});
+  fireEvent.click(screen.getByRole('button',{name:'projectBoard.detailTabs.artifacts'}));
+  expect(screen.queryByText('projectBoard.reviewHint')).toBeNull();
+  expect(screen.getByText('projectBoard.sessionArtifactsHint')).toBeTruthy();
+ });
  it('rejects archive when an idle Session has an active Goal',async()=>{
   mocks.data.tasks=[{...task('done','done'),sessionIds:['s']}];
   mocks.observe.mockResolvedValue({state:'idle',checkedAt:Date.now(),goal:{checkedAt:Date.now(),value:{status:'active',isExecuting:false}}});

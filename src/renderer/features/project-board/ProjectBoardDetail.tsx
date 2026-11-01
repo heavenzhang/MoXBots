@@ -112,7 +112,7 @@ export default function ProjectBoardDetail({ row, workspacePath, isActive, now, 
         {task && loaded ? <section className="pb-detail-section"><h3>{t('projectBoard.taskDocument')}</h3><TaskDocBlock task={task} doc="task" emptyHint={t('projectBoard.noDocument')} reloadKey={task.updatedAt} onError={onDocError} />
           {task.docs?.verifyMd && <TaskDocBlock task={task} doc="verify" emptyHint={t('projectBoard.noDocument')} onError={onDocError} />}
           {task.docs?.progressMd && <TaskDocBlock task={task} doc="progress" emptyHint={t('projectBoard.noDocument')} onError={onDocError} />}</section> : !task && <p className="pb-meta">{t('projectBoard.sessionArtifactsHint')}</p>}
-        {row.reviewReady && <><p className="pb-detail-note">{t('projectBoard.reviewHint')}</p>{task?.status === 'verifying' && <button type="button" className="pb-button" onClick={() => window.dispatchEvent(new CustomEvent(CUSTOM_EVENTS.OPEN_TASK_CENTER))}>{t('projectBoard.openTaskCenter')}</button>}</>}
+        {row.reviewReady && task && <><p className="pb-detail-note">{t('projectBoard.reviewHint')}</p>{task?.status === 'verifying' && <button type="button" className="pb-button" onClick={() => window.dispatchEvent(new CustomEvent(CUSTOM_EVENTS.OPEN_TASK_CENTER))}>{t('projectBoard.openTaskCenter')}</button>}</>}
       </>}
       <section className="pb-detail-section"><h3>{t('projectBoard.originalSession')}</h3>{sessionIds.length ? sessionIds.map(id => <button type="button" className="pb-session-link" key={id} onClick={() => onOpenSession(id)}>{row.sessions.find(s => s.id === id)?.title || t('projectBoard.originalSession')}<small>{t('projectBoard.openSession')}</small></button>) : <p className="pb-detail-note">{t('projectBoard.noSession')}</p>}</section>
     </div>
