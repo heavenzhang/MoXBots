@@ -621,6 +621,14 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       throw new ConcurrentRecoveryPreparationError('The inference has no exclusive recovery authority. Another inference is active; existing work was preserved.');
     }
     const analysis = analyze(body, this.deniedLedger, this.completedLedger, this.noDispatchLedger, this.nativeErrors, this.readonlyTasks, this.preToolDenials, prearm);
+    // Native result persistence can precede its projection into SDK history.
+    // A temporarily unpaired exact returned tool must not create a new legacy
+    // unknown. This removes only a new analysis candidate, never a durable fence,
+    // and cannot prove another attempt, a retired identity, or business acceptance.
+    if (prearm && analysis) for (const [key, ids] of analysis.unpairedOnly) {
+      if (!this.uncertainLedger.has(key) && !state.uncertain.has(key) && !this.operations.isUncertain(key)
+        && ids.every(id => this.operations.hasReturnedAction(id, key))) analysis.uncertain.delete(key);
+    }
     const safeHistory = !!analysis && analysis.uncertain.size === 0 && state.uncertain.size === 0;
     if (prearm && analysis && (!safeHistory || !this.canRetryInference() || state.scopedActions)) {
       // A new, explicitly admitted inference may inspect an unknown operation and
