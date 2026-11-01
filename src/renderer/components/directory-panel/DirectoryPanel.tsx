@@ -95,6 +95,7 @@ import {
 import { useDirectorySearch } from './hooks/useDirectorySearch';
 import AgentCapabilitiesPanel from "../AgentCapabilitiesPanel";
 import WorkspaceIcon from "../launcher/WorkspaceIcon";
+import { resolveBotAvatar } from "@/assets/bot-avatars";
 import { useWorkspaceTreeModel } from "../workspace-tree/useWorkspaceTreeModel";
 import {
   WorkspaceTreeViewport,
@@ -3207,13 +3208,13 @@ const DirectoryPanel = memo(
             ) : (
               <div className="flex items-center gap-3 px-4 pb-2 pt-3">
                 <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center">
-                  <WorkspaceIcon icon={projectIcon} size={28} />
+                  <WorkspaceIcon icon={resolveBotAvatar(projectIcon) ? undefined : projectIcon} size={28} />
                 </span>
                 <div className="min-w-0 flex-1">
                   {/* First row: name and git branch */}
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="min-w-0 flex-1 truncate text-sm font-medium text-[var(--ink)]">
-                      {projectDisplayName || folderName}
+                      {t("workspaceFiles.directory.title")} · {projectDisplayName || folderName}
                     </span>
                     {gitBranch && (
                       <span className="flex max-w-[45%] shrink-0 items-center gap-0.5 overflow-hidden whitespace-nowrap rounded-md bg-[var(--accent-warm-subtle)] px-1.5 py-0.5 text-xs font-medium text-[var(--ink-muted)]">

@@ -1,0 +1,15 @@
+Node 24.20.0; vitest six affected files, unit + dom. Exit 0.
+ ✓ |unit| src/renderer/utils/globalSidebarPreference.test.ts (10 tests) 12ms
+ ✓ |unit| src/renderer/components/global-sidebar/botConversationProjection.test.ts (6 tests) 14ms
+ ✓ |dom| src/renderer/components/launcher/BotIdentity.test.tsx (2 tests) 253ms
+ ✓ |dom| src/renderer/components/global-sidebar/NewBotConversationDialog.test.tsx (5 tests) 346ms
+ ✓ |dom| src/renderer/App.helperLaunch.test.tsx (102 tests) 5747ms
+   ✓ App helper launch > creates a distinct conversation while a pending source continues in the background  331ms
+   ✓ App helper launch > retains a real App birth failure, fencing resend and reusing its original tab (prepared: false)  326ms
+   ✓ App helper launch > opens the official tool market from Capabilities and reuses its Space tab with a fresh intent  692ms
+ ✓ |dom| src/renderer/components/global-sidebar/GlobalSidebar.test.tsx (85 tests) 6329ms
+   ✓ GlobalSidebar rail flyout > creates, renames and deletes sections while retaining the original workspace and Session  502ms
+ Test Files  6 passed (6)
+      Tests  210 passed (210)
+   Start at  00:02:59
+   Duration  9.46s (transform 2.45s, setup 1.05s, collect 4.23s, tests 12.70s, environment 2.04s, prepare 589ms)

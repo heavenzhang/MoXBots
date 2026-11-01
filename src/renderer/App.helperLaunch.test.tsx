@@ -159,6 +159,7 @@ const mocks = vi.hoisted(() => {
       >;
       activeTabId: string | null;
     },
+    showBotConversationDialog: false,
     buildProfile: 'myagents' as 'myagents' | 'moxbot',
     resolveUpdateHandoff: null as null | (() => void),
     updateHandoffAbsent: false,
@@ -345,8 +346,17 @@ vi.mock('@/components/global-sidebar/GlobalSidebar', () => ({
   default: function MockGlobalSidebar(props: Record<string, unknown>) {
     mocks.sidebarProps.push(props);
     const deleteSession = useContext(SessionDeletionContext);
+    const [dialogOpen, setDialogOpen] = useState(true);
     return (
       <aside data-testid="global-sidebar">
+        {mocks.showBotConversationDialog && <>
+          <button onClick={() => setDialogOpen(true)}>reopen birth form</button>
+          <NewBotConversationDialog open={dialogOpen}
+            projects={[mocks.project as Project]} agents={[{ id: mocks.agent.id, name: mocks.agent.name, enabled: true, channels: [], permissionMode: 'plan' }]}
+            onOpen={props.onStartBotConversation as (p: Project, m?: InitialMessage) => Promise<SidebarConversationLaunchResult>}
+            onViewAttempt={props.onViewBotConversationAttempt as (id: string) => void}
+            onClose={() => setDialogOpen(false)} onCreateBot={() => {}} />
+        </>}
         <button
           data-testid="app-delete-session"
           onClick={() => {
@@ -572,6 +582,10 @@ vi.mock('@/config/services/agentConfigService', () => ({
 }));
 
 import App from './App';
+import NewBotConversationDialog from '@/components/global-sidebar/NewBotConversationDialog';
+import type { SidebarConversationLaunchResult } from '@/utils/sidebarConversationLaunch';
+import type { Project } from '@/config/types';
+import type { InitialMessage } from '@/types/tab';
 
 async function releaseUpdateHandoff() {
   await waitFor(() => expect(mocks.resolveUpdateHandoff).not.toBeNull());
@@ -599,6 +613,7 @@ describe('App helper launch', () => {
     mocks.deleteTargetSessionId = null;
     mocks.deleteResults.length = 0;
     mocks.buildProfile = 'myagents';
+    mocks.showBotConversationDialog = false;
     mocks.durableTabs = null;
     mocks.resolveUpdateHandoff = null;
     mocks.updateHandoffAbsent = false;
@@ -723,6 +738,7 @@ describe('App helper launch', () => {
         initialMessage?: unknown,
         entryIntent?: 'open_workspace' | 'workspace_init',
       ) => Promise<boolean>;
+      onStartBotConversation: (project: typeof mocks.project, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
       onOpenSession: (session: { id: string; agentDir: string; title: string }, project: typeof mocks.project) => Promise<boolean>;
       onContinueSession: (session: SessionMetadata, project: typeof mocks.project) => Promise<boolean>;
       onRenameSession: (sessionId: string, newTitle: string) => Promise<SessionMetadata | null>;
@@ -2486,6 +2502,101 @@ describe('App helper launch', () => {
     expect(mocks.ensureSessionSidecar).toHaveBeenLastCalledWith(session.id, mocks.project.path, 'tab', failedTab.id);
     expect(mocks.chatProps.at(-1)?.startupError).toBeNull();
     errorSpy.mockRestore();
+  });
+
+  async function submitBotBirth(text = 'one original intent') {
+    fireEvent.click(screen.getByRole('button', { name: '新对话' }));
+    fireEvent.click(screen.getByRole('button', { name: '合作 Bot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'MA Helper' }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: text } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送并开始' })); });
+  }
+
+  it.each([false, true])('retains a real App birth failure, fencing resend and reusing its original tab (prepared: %s)', async (prepared) => {
+    mocks.showBotConversationDialog = true;
+    if (prepared) {
+      mocks.agent.providerId = CODEX_SUBSCRIPTION_PROVIDER_ID;
+      mocks.agent.model = 'gpt-5.5';
+    }
+    mocks.ensureSessionSidecar.mockRejectedValueOnce(new Error('sidecar launch failed'));
+    render(<App />);
+    await submitBotBirth();
+    expect(screen.getByRole('alert')).toHaveTextContent('启动结果暂未确认');
+    expect(screen.getByRole('textbox')).toHaveValue('one original intent');
+    expect(screen.getByRole('button', { name: '发送并开始' })).toBeDisabled();
+    const chat = latestTabWorkspace().tabs.find(tab => tab.view === 'chat')!;
+    expect(chat).toHaveProperty('initialMessage', { text: 'one original intent' });
+    expect(chat.sessionId).toBe(prepared ? 'prepared-managed-session' : `pending-${chat.id}`);
+    expect(mocks.ensureSessionSidecar).toHaveBeenCalledOnce();
+    if (prepared) expect(mocks.createSession).toHaveBeenCalledOnce();
+    fireEvent.submit(screen.getByRole('textbox').closest('form')!);
+    expect(mocks.ensureSessionSidecar).toHaveBeenCalledOnce();
+    // Viewing the same attempt is navigation, not another launch or send.
+    fireEvent.click(screen.getByRole('button', { name: '查看本次对话' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(latestTabWorkspace().activeTabId).toBe(chat.id);
+    fireEvent.click(screen.getByRole('button', { name: 'reopen birth form' }));
+    expect(screen.getByRole('textbox')).toHaveValue('one original intent');
+    fireEvent.submit(screen.getByRole('textbox').closest('form')!);
+    expect(mocks.ensureSessionSidecar).toHaveBeenCalledOnce();
+    expect(latestTabWorkspace().tabs.filter(tab => tab.view === 'chat')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: '保留记录并返回新建' }));
+    expect(screen.getByRole('region', { name: '待确认的对话' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新 Bot' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '新对话' }));
+    expect(screen.getByRole('textbox')).toHaveValue('');
+    fireEvent.click(screen.getByRole('button', { name: '合作 Bot' }));
+    fireEvent.click(screen.getByRole('button', { name: 'MA Helper' }));
+    if (prepared) mocks.createSession.mockResolvedValueOnce({
+      id: 'separate-prepared-session', agentDir: mocks.project.path, title: 'Separate',
+      createdAt: '2026-11-02T00:00:00.000Z', lastActiveAt: '2026-11-02T00:00:00.000Z',
+    });
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'a separate intent' } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '发送并开始' })); });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.ensureSessionSidecar).toHaveBeenCalledTimes(2);
+    const chats = latestTabWorkspace().tabs.filter(tab => tab.view === 'chat');
+    expect(chats).toHaveLength(2);
+    expect(chats.find(tab => tab.id === chat.id)).toHaveProperty('initialMessage', { text: 'one original intent' });
+    expect(chats.find(tab => tab.id !== chat.id)).toHaveProperty('initialMessage', { text: 'a separate intent' });
+    fireEvent.click(screen.getByRole('button', { name: 'reopen birth form' }));
+    expect(screen.getByRole('region', { name: '待确认的对话' })).toBeInTheDocument();
+    expect(screen.getByLabelText('本次保留的输入')).toHaveValue('one original intent');
+  });
+
+  it('does not retry a runtime-backed creation whose metadata commit has no receipt', async () => {
+    mocks.showBotConversationDialog = true;
+    mocks.agent.providerId = CODEX_SUBSCRIPTION_PROVIDER_ID;
+    mocks.agent.model = 'gpt-5.5';
+    mocks.createSession.mockRejectedValueOnce(new Error('invoke response lost after possible commit'));
+    render(<App />);
+    await submitBotBirth('retain uncertain metadata birth');
+    expect(screen.getByRole('alert')).toHaveTextContent('启动结果暂未确认');
+    expect(screen.getByRole('textbox')).toHaveValue('retain uncertain metadata birth');
+    fireEvent.submit(screen.getByRole('textbox').closest('form')!);
+    expect(mocks.createSession).toHaveBeenCalledOnce();
+    expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
+  });
+
+  it('returns not-started when capacity rejects admission without launching', async () => {
+    protectAutomaticPageEviction();
+    render(<App />);
+    for (let index = 1; index < 13; index += 1) act(() => openPageByShortcut());
+    const before = latestTabWorkspace();
+    await act(async () => {
+      expect(await latestSidebarProps().onStartBotConversation(mocks.project, { text: 'retained intent' }))
+        .toEqual({ status: 'not-started' });
+    });
+    expect(latestTabWorkspace().tabs).toEqual(before.tabs);
+    expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+  });
+
+  it('returns false for a failed legacy sidebar launch even when its Chat tab remains', async () => {
+    mocks.ensureSessionSidecar.mockRejectedValueOnce(new Error('startup failed'));
+    render(<App />);
+    await act(async () => { expect(await latestSidebarProps().onOpenWorkspace(mocks.project)).toBe(false); });
+    expect(latestTabWorkspace().tabs.some(tab => tab.view === 'chat')).toBe(true);
   });
 
   it('opens a sidebar workspace as a fresh Chat tab without replacing the functional tab', async () => {

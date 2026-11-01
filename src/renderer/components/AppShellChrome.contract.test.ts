@@ -214,9 +214,15 @@ describe('App Shell chrome contract', () => {
       'src/renderer/components/directory-panel/DirectoryPanel.tsx',
     );
 
-    expect(directory).not.toContain('workspaceFiles.directory.title');
-    expect(directory).toContain('workspaceFiles.directory.fileSearch');
-    expect(directory).toContain('workspaceFiles.directory.openAgentSettings');
+    const start = directory.indexOf('{/* Title bar - aligned with left panel header */}');
+    const end = directory.indexOf('{/* Collapsible content - hidden in narrow mode when collapsed */}');
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const toolbar = directory.slice(start, end);
+    expect(toolbar).not.toContain('workspaceFiles.directory.title');
+    expect(toolbar).toContain('workspaceFiles.directory.fileSearch');
+    expect(toolbar).toContain('workspaceFiles.directory.openAgentSettings');
+    expect(directory.slice(end)).toContain('{t("workspaceFiles.directory.title")} · {projectDisplayName || folderName}');
   });
 
   it('wires layout-aware pointer leave handling to the forced-rail workspace flyout', () => {

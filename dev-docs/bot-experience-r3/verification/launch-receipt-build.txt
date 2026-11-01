@@ -1,0 +1,470 @@
+Exit 0.
+vite v7.2.4 building client environment for production...
+transforming...
+✓ 7351 modules transformed.
+rendering chunks...
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/core.js is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/App.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/cronTaskClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionGoalClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionHandoverClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/spaceCloud.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/taskCenter.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelPlatformSelect.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelPlatformSelect.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelPlatformSelect.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelPlatformSelect.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryEvolutionSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryEvolutionSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryUpdateSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryUpdateSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryUpdateSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/GlobalPluginsPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/BotPlatformRegistry.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/BotPlatformRegistry.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/BotPlatformRegistry.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/BotPlatformRegistry.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/BotPlatformRegistry.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/components/HeartbeatConfigCard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/components/HeartbeatConfigCard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SessionHistoryDropdown.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SessionHistoryDropdown.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SkillsCommandsList.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/TaskListPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tools/ToolImageAttachment.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tools/ToolImageAttachment.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/taskCenterStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useWorkspaceFileService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/FloatingI18nBootstrap.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/I18nLanguageSync.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Chat.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Chat.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Chat.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Launcher.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/audioPlayer.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/openExternal.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/App.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/SseConnection.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/agentNetwork.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/ownedHostManagement.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/recording.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/remoteSession.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/searchClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/tauriClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/WorkspaceBasicsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/BrowserPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/FloatingBallPetSettings.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/IntroductionPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/TaskDiscussionRecovery.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/TemplateApplyDialog.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/TerminalPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/chat-input/hooks/useMentionPicker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/launcher/NewAgentPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/RecordingSourceDialog.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tokendance/TokenDancePayment.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tokendance/TokenDanceProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tokendance/useTokenDanceBalance.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/cliproxyService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/configStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/grokSubscriptionService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/modelDiscoveryService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/community/api.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/feedback/api.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/BallWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/CompanionWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/ShieldWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/nativeFloatingBall.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/petPackLibrary.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/sessionBinding.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/useFloatingSession.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useBrowserResourceReady.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useUpdater.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/identity/deviceIdentity.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/notifications/notificationCenter.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/SettingsPage.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/sections/AgentFunctionSettings.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/sections/ExternalCliSettingsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/services/notificationService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/appZoom.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/mainRenderer.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/app.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/dpi.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/event.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/image.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/path.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/webview.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/webviewWindow.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/window.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-autostart/dist-js/index.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-dialog/dist-js/index.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-fs/dist-js/index.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-process/dist-js/index.js, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-shell/dist-js/index.js, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/browserMock.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/App.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/analytics/queue.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/analytics/tracker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/SseConnection.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/apiFetch.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/cronTaskClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/recording.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionGoalClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionHandoverClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/tauriClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelPlatformSelect.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryEvolutionSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/FeedbackPopover.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/FloatingBallPetSettings.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ImSettings/BotPlatformRegistry.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SessionHistoryDropdown.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SkillDialogs.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/chat-input/hooks/useAttachmentHandling.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/launcher/NewAgentPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tools/ToolImageAttachment.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/configEvents.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/configStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/account/useMyAgentsAccount.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/agent-network/useOwnedLoginFlow.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/project-board/activity.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/nativeFloatingBall.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/petPackLibrary.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/sessionBinding.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/taskCenterStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useAutostart.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useBrowserResourceReady.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useCronTask.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useSessionCronRestore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useSessionGoal.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useSpaceBuildCapability.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useTauriFileDrop.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useTrayEvents.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useUpdater.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useWorkspaceFileService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/FloatingI18nBootstrap.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/I18nLanguageSync.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/identity/deviceIdentity.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/notifications/useNotificationCenter.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Chat.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/RecordDetail.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/SettingsPage.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/services/notificationService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/theme/ThemeRuntime.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/audioPlayer.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/composerUpdateCheckpoint.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/frontendLogger.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/lastExitMarker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/openExternal.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/tabPersistenceDurable.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/toolAttachment.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/tauriClient.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/context/TabProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/main.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/main.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/frontendLogger.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/App.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/analytics/queue.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/SseConnection.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/apiFetch.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionClient.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/api/sessionMaterialize.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/CustomTitleBar.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/PermissionPrompt.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/context/TabProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/useFloatingSession.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/taskCenterStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Chat.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/attachmentUrl.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/api/path.js is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/analytics/tracker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/markdownExport.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/launcher/NewAgentPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/configStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectSettingsService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/providerService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/templateService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/SettingsPage.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/composerUpdateCheckpoint.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/lastExitMarker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/tabPersistenceDurable.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-fs/dist-js/index.js, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@tauri-apps/plugin-fs/dist-js/index.js is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/launcher/NewAgentPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/configStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectSettingsService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/providerService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/composerUpdateCheckpoint.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/lastExitMarker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/tabPersistenceDurable.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/configStore.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/analytics/tracker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/configService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/mcpService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectSettingsService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/providerService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/templateService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/composerUpdateCheckpoint.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/lastExitMarker.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/tabPersistenceDurable.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/theme/ThemeRuntime.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/theme/ThemeRuntime.tsx but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/configService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/mcpService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/providerService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/context/TabProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/BallWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/CompanionWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/sessionBinding.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/useFloatingSession.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/FloatingI18nBootstrap.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/space/tools/ToolsWorkspace.tsx, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/providerService.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/WorkspaceBasicsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentBasicsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/UsageStatsPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/chat-input/SimpleChatInput.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/chat-input/hooks/useAttachmentHandling.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/editors/TaskAdvancedConfigEditor.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/configService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/CompanionWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useAvailableProviders.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/projectService.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/appConfigService.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/launcher/NewAgentPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/launcher/newAgentPanelModel.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/configService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/mcpService.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/agent-network/desktopHostConfigSource.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/useFloatingSession.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/shared/types/agent.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/tauriListen.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/main.tsx but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/App.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelDetailView.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/channels/ChannelWizard.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentMemoryEvolutionSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/BrowserPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SessionHistoryDropdown.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/TaskCommentTimeline.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/TaskDetailOverlay.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/TaskListPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/task-center/ThoughtPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/tokendance/TokenDanceProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/ConfigProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/context/TabProvider.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/account/accountStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/agent-network/store.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/agent-network/useOwnedLoginFlow.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/project-board/useProjectBoardData.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/BallWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/CompanionWindow.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/floating-ball/useFloatingSession.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/taskCenterStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useBrowserResourceReady.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useCliProxyStatus.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useCronTask.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useSessionGoal.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useTauriFileDrop.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useTrayEvents.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useUpdater.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/useWorkspaceChangeSignal.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/FloatingI18nBootstrap.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/i18n/I18nLanguageSync.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/main.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/notifications/useNotificationCenter.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/RecordDetail.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/SettingsPage.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/sections/ExternalCliSettingsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/theme/ThemeRuntime.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/frontendLogger.ts, dynamic import will not move module into another chunk.
+
+[plugin vite:reporter]
+(!) /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/configService.ts is dynamically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/config/services/agentConfigService.ts but also statically imported by /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/App.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/WorkspaceBasicsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/AgentSettings/sections/AgentToolsSection.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/HelperModelPicker.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/ModelManagementPanel.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SessionHistoryDropdown.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/SettingsHelperInbox.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/chat-input/SimpleChatInput.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/features/agent-network/desktopHostConfigSource.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/hooks/taskCenterStore.ts, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Chat.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/Launcher.tsx, /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/pages/settings/SettingsPage.tsx, dynamic import will not move module into another chunk.
+
+computing gzip size...
+../../dist/index.html                                           2.66 kB │ gzip:   1.03 kB
+../../dist/assets/KaTeX_Size3-Regular-CTq5MqoE.woff             4.42 kB
+../../dist/assets/feishu-CoXdJunq.jpeg                          4.76 kB
+../../dist/assets/KaTeX_Size4-Regular-Dl5lxZxV.woff2            4.93 kB
+../../dist/assets/KaTeX_Size2-Regular-Dy4dx90m.woff2            5.21 kB
+../../dist/assets/KaTeX_Size1-Regular-mCD8mA8B.woff2            5.47 kB
+../../dist/assets/codex-BzrDL4md.png                            5.83 kB
+../../dist/assets/KaTeX_Size4-Regular-BF-4gkZK.woff             5.98 kB
+../../dist/assets/KaTeX_Size2-Regular-oD1tc_U0.woff             6.19 kB
+../../dist/assets/KaTeX_Size1-Regular-C195tn64.woff             6.50 kB
+../../dist/assets/KaTeX_Caligraphic-Regular-Di6jR-x-.woff2      6.91 kB
+../../dist/assets/KaTeX_Caligraphic-Bold-Dq_IR9rO.woff2         6.91 kB
+../../dist/assets/KaTeX_Size3-Regular-DgpXs0kz.ttf              7.59 kB
+../../dist/assets/KaTeX_Caligraphic-Regular-CTRA-rTL.woff       7.66 kB
+../../dist/assets/KaTeX_Caligraphic-Bold-BEiXGLvX.woff          7.72 kB
+../../dist/assets/KaTeX_Script-Regular-D3wIWfF6.woff2           9.64 kB
+../../dist/assets/KaTeX_SansSerif-Regular-DDBCnlJ7.woff2       10.34 kB
+../../dist/assets/KaTeX_Size4-Regular-DWFBv043.ttf             10.36 kB
+../../dist/assets/KaTeX_Script-Regular-D5yQViql.woff           10.59 kB
+../../dist/assets/KaTeX_Fraktur-Regular-CTYiF6lA.woff2         11.32 kB
+../../dist/assets/KaTeX_Fraktur-Bold-CL6g_b3V.woff2            11.35 kB
+../../dist/assets/KaTeX_Size2-Regular-B7gKUWhC.ttf             11.51 kB
+../../dist/assets/wecom-BqEqjUJl.jpeg                          11.92 kB
+../../dist/assets/KaTeX_SansSerif-Italic-C3H0VqGB.woff2        12.03 kB
+../../dist/assets/KaTeX_SansSerif-Bold-D1sUS0GD.woff2          12.22 kB
+../../dist/assets/KaTeX_Size1-Regular-Dbsnue_I.ttf             12.23 kB
+../../dist/assets/KaTeX_SansSerif-Regular-CS6fqUqJ.woff        12.32 kB
+../../dist/assets/KaTeX_Caligraphic-Regular-wX97UBjC.ttf       12.34 kB
+../../dist/assets/KaTeX_Caligraphic-Bold-ATXxdsX0.ttf          12.37 kB
+../../dist/assets/KaTeX_Fraktur-Regular-Dxdc4cR9.woff          13.21 kB
+../../dist/assets/KaTeX_Fraktur-Bold-BsDP51OF.woff             13.30 kB
+../../dist/assets/KaTeX_Typewriter-Regular-CO6r4hn1.woff2      13.57 kB
+../../dist/assets/KaTeX_SansSerif-Italic-DN2j7dab.woff         14.11 kB
+../../dist/assets/KaTeX_SansSerif-Bold-DbIhKOiC.woff           14.41 kB
+../../dist/assets/KaTeX_Typewriter-Regular-C0xS9mPB.woff       16.03 kB
+../../dist/assets/KaTeX_Math-BoldItalic-CZnvNsCZ.woff2         16.40 kB
+../../dist/assets/KaTeX_Math-Italic-t53AETM-.woff2             16.44 kB
+../../dist/assets/KaTeX_Script-Regular-C5JkGWo-.ttf            16.65 kB
+../../dist/assets/KaTeX_Main-BoldItalic-DxDJ3AOS.woff2         16.78 kB
+../../dist/assets/KaTeX_Main-Italic-NWA7e6Wa.woff2             16.99 kB
+../../dist/assets/KaTeX_Math-BoldItalic-iY-2wyZ7.woff          18.67 kB
+../../dist/assets/KaTeX_Math-Italic-DA0__PXp.woff              18.75 kB
+../../dist/assets/KaTeX_Main-BoldItalic-SpSLRI95.woff          19.41 kB
+../../dist/assets/KaTeX_SansSerif-Regular-BNo7hRIc.ttf         19.44 kB
+../../dist/assets/KaTeX_Fraktur-Regular-CB_wures.ttf           19.57 kB
+../../dist/assets/KaTeX_Fraktur-Bold-BdnERNNW.ttf              19.58 kB
+../../dist/assets/KaTeX_Main-Italic-BMLOBm91.woff              19.68 kB
+../../dist/assets/myagents-DwMZe9gO.png                        20.67 kB
+../../dist/assets/telegram-D9BADUpE.png                        21.34 kB
+../../dist/assets/KaTeX_SansSerif-Italic-YYjJ1zSn.ttf          22.36 kB
+../../dist/assets/claude-code-BS3itpuP.png                     22.47 kB
+../../dist/assets/KaTeX_SansSerif-Bold-CFMepnvq.ttf            24.50 kB
+../../dist/assets/KaTeX_Main-Bold-Cx986IdX.woff2               25.32 kB
+../../dist/assets/KaTeX_Main-Regular-B22Nviop.woff2            26.27 kB
+../../dist/assets/KaTeX_Typewriter-Regular-D3Ib7_Hf.ttf        27.56 kB
+../../dist/assets/KaTeX_AMS-Regular-BQhdFMY1.woff2             28.08 kB
+../../dist/assets/KaTeX_Main-Bold-Jm3AIy58.woff                29.91 kB
+../../dist/assets/KaTeX_Main-Regular-Dr94JaBh.woff             30.77 kB
+../../dist/assets/KaTeX_Math-BoldItalic-B3XSjfu4.ttf           31.20 kB
+../../dist/assets/KaTeX_Math-Italic-flOr_0UB.ttf               31.31 kB
+../../dist/assets/KaTeX_Main-BoldItalic-DzxPMmG6.ttf           32.97 kB
+../../dist/assets/KaTeX_AMS-Regular-DMm9YOAa.woff              33.52 kB
+../../dist/assets/KaTeX_Main-Italic-3WenGoN9.ttf               33.58 kB
+../../dist/assets/spark-DodknYDQ.png                           51.30 kB
+../../dist/assets/KaTeX_Main-Bold-waoOVXN0.ttf                 51.34 kB
+../../dist/assets/KaTeX_Main-Regular-ypZvNtVU.ttf              53.58 kB
+../../dist/assets/mox-DOt-DMS4.png                             53.73 kB
+../../dist/assets/moss-DjV7_IPn.png                            54.63 kB
+../../dist/assets/KaTeX_AMS-Regular-DRggAlZN.ttf               63.63 kB
+../../dist/assets/qqbot-DHZl7wz2.png                           96.42 kB
+../../dist/assets/codicon-ngg6Pgfi.ttf                        121.97 kB
+../../dist/assets/codex-model-selector-DNbd4U9K.png           133.11 kB
+../../dist/assets/feishu_step2_events-KvDUOmCr.png            191.58 kB
+../../dist/assets/feishu_step2_permissions-CJaKsI-5.png       200.08 kB
+../../dist/assets/feishu_step1-DVzNIWZL.png                   202.06 kB
+../../dist/assets/editor.worker-CdQrwHl8.js                   251.81 kB
+../../dist/assets/agent-network-banner-BLAP83cL.jpg           282.55 kB
+../../dist/assets/deepseek-harness-BgmCxATI.png               362.77 kB
+../../dist/assets/json.worker-BoL8UZqY.js                     383.07 kB
+../../dist/assets/qqbot_step2_credentials-B5O8ZY3j.png        431.56 kB
+../../dist/assets/moxbots-icon-CFgysiQl.png                   470.37 kB
+../../dist/assets/telegram_bot_add-DbWbKP-d.png               529.48 kB
+../../dist/assets/html.worker-CwpTb9lJ.js                     693.16 kB
+../../dist/assets/dingtalk_step1_create_app-CvETlbEG.png      940.61 kB
+../../dist/assets/feishu_step2_5_add_bot-S1zshD7z.png       1,009.03 kB
+../../dist/assets/css.worker-DBVD8oXr.js                    1,030.36 kB
+../../dist/assets/dingtalk_step2_publish-DwT8PF2v.png       1,039.18 kB
+../../dist/assets/dingtalk_step2_stream_mode-DSQit-78.png   1,117.47 kB
+../../dist/assets/dingtalk_step1_credentials-Cphb7mPv.png   1,170.82 kB
+../../dist/assets/dingtalk_step2_add_robot-BUJ3WYsY.png     1,242.86 kB
+../../dist/assets/pdf.worker.min-Dr1KORA9.mjs               1,286.28 kB
+../../dist/assets/feishu_setp2_6_publish-CB_o5eFR.png       1,515.60 kB
+../../dist/assets/tool-market-en-US-BER28LVv.png            1,535.19 kB
+../../dist/assets/spritesheet-qBvsFtIw.webp                 1,552.56 kB
+../../dist/assets/spritesheet-CzgcTvuC.webp                 1,667.92 kB
+../../dist/assets/tool-market-zh-CN-Cq5UG_kv.png            1,668.21 kB
+../../dist/assets/qqbot_step1_index-CxMwRTWa.png            1,912.37 kB
+../../dist/assets/spritesheet-GOv6o5qW.webp                 1,965.54 kB
+../../dist/assets/ts.worker-IG6bqgZr.js                     7,010.69 kB
+../../dist/assets/PdfViewer-BPGu9K_T.css                        1.30 kB │ gzip:   0.54 kB
+../../dist/assets/TerminalPanel-DDGTF8rc.css                    3.62 kB │ gzip:   0.99 kB
+../../dist/assets/ProjectBoard-0A9PtMfr.css                    11.38 kB │ gzip:   2.55 kB
+../../dist/assets/MarkdownEditor-MU97P4EL.css                  16.09 kB │ gzip:   3.61 kB
+../../dist/assets/fb-DphmIhJY.css                              17.57 kB │ gzip:   4.01 kB
+../../dist/assets/Markdown-DEdaShjf.css                        42.99 kB │ gzip:  10.47 kB
+../../dist/assets/index-Cr_SnMDu.css                          221.86 kB │ gzip:  33.46 kB
+../../dist/assets/MonacoEditor-CLSU4sha.css                   313.97 kB │ gzip: 103.06 kB
+../../dist/assets/clone-D7XITIqI.js                             0.09 kB │ gzip:   0.11 kB
+../../dist/assets/channel-Cejm9ODd.js                           0.12 kB │ gzip:   0.13 kB
+../../dist/assets/init-Gi6I4Gst.js                              0.15 kB │ gzip:   0.13 kB
+../../dist/assets/index-CKx3qiOJ.js                             0.16 kB │ gzip:   0.16 kB
+../../dist/assets/chunk-QZHKN3VN-DLT6PiR9.js                    0.20 kB │ gzip:   0.16 kB
+../../dist/assets/chunk-4BX2VUAB-DvN88dpQ.js                    0.23 kB │ gzip:   0.17 kB
+../../dist/assets/chunk-55IACEB6-Bb66Ylby.js                    0.24 kB │ gzip:   0.21 kB
+../../dist/assets/index-CAstUszo.js                             0.30 kB │ gzip:   0.19 kB
+../../dist/assets/diff-DbItnlRl.js                              0.31 kB │ gzip:   0.24 kB
+../../dist/assets/chunk-FMBD7UC4-6zeR3S2Q.js                    0.37 kB │ gzip:   0.27 kB
+../../dist/assets/ExternalLink-BKwhPPQ5.js                      0.41 kB │ gzip:   0.31 kB
+../../dist/assets/stateDiagram-v2-4FDKWEC3-BDxfJn1o.js          0.49 kB │ gzip:   0.33 kB
+../../dist/assets/chunk-QN33PNHL-B4d0Y4KF.js                    0.51 kB │ gzip:   0.36 kB
+../../dist/assets/ShieldWindow-DFou6AZK.js                      0.51 kB │ gzip:   0.38 kB
+../../dist/assets/classDiagram-2ON5EDUG-BnvgMeL3.js             0.53 kB │ gzip:   0.35 kB
+../../dist/assets/classDiagram-v2-WZHVMYZB-BnvgMeL3.js          0.53 kB │ gzip:   0.35 kB
+../../dist/assets/min-DFLHDoIx.js                               0.60 kB │ gzip:   0.37 kB
+../../dist/assets/brainfuck-C4LP7Hcl.js                         0.61 kB │ gzip:   0.33 kB
+../../dist/assets/properties-C78fOPTZ.js                        0.67 kB │ gzip:   0.35 kB
+../../dist/assets/searchClient-DFhbNmi7.js                      0.68 kB │ gzip:   0.34 kB
+../../dist/assets/azcli-Y6nb8tq_.js                             0.71 kB │ gzip:   0.28 kB
+../../dist/assets/nativeFloatingBall-CGAuChO7.js                0.75 kB │ gzip:   0.42 kB
+../../dist/assets/infoDiagram-WHAUD3N6-w7waUAKi.js              0.76 kB │ gzip:   0.49 kB
+../../dist/assets/cmake-BQqOBYOt.js                             0.78 kB │ gzip:   0.46 kB
+../../dist/assets/asciiarmor-Df11BRmG.js                        0.79 kB │ gzip:   0.41 kB
+../../dist/assets/useWorkspaceChangeSignal-Ivzq5eoV.js          0.79 kB │ gzip:   0.50 kB
+../../dist/assets/IntroductionOverlay-CFuH0ZgS.js               0.83 kB │ gzip:   0.49 kB
+../../dist/assets/sessionGoalClient-OTsL83ht.js                 0.84 kB │ gzip:   0.48 kB
+../../dist/assets/http-DBlCnlav.js                              0.85 kB │ gzip:   0.41 kB
+../../dist/assets/protobuf-ChK-085T.js                          0.86 kB │ gzip:   0.52 kB
+../../dist/assets/solr-DehyRSwq.js                              0.87 kB │ gzip:   0.46 kB
+../../dist/assets/MenuItem-ZOw_nIbF.js                          0.87 kB │ gzip:   0.50 kB
+../../dist/assets/javascript-B92T4m59.js                        0.94 kB │ gzip:   0.52 kB
+../../dist/assets/troff-wAsdV37c.js                             0.96 kB │ gzip:   0.44 kB
+../../dist/assets/ini-Kd9XrMLS.js                               0.96 kB │ gzip:   0.50 kB
+../../dist/assets/spreadsheet-BCZA_wO0.js                       1.14 kB │ gzip:   0.54 kB
+../../dist/assets/toml-Bm5Em-hy.js                              1.14 kB │ gzip:   0.54 kB
+../../dist/assets/ordinal-BENe2yWM.js                           1.19 kB │ gzip:   0.57 kB
+../../dist/assets/csp-D-4FJmMZ.js                               1.28 kB │ gzip:   0.49 kB
+../../dist/assets/mbox-CNhZ1qSd.js                              1.40 kB │ gzip:   0.66 kB
+../../dist/assets/chunk-TZMSLE5B-Cj-ZTS6t.js                    1.44 kB │ gzip:   0.64 kB
+../../dist/assets/pla-DSh2-awV.js                               1.55 kB │ gzip:   0.61 kB
+../../dist/assets/RecordWorkspacePicker-D8SUqGsj.js             1.59 kB │ gzip:   0.82 kB
+../../dist/assets/sieve-C3Gn_uJK.js                             1.62 kB │ gzip:   0.77 kB
+../../dist/assets/rpm-CTu-6PCP.js                               1.62 kB │ gzip:   0.83 kB
+../../dist/assets/scheme-BPhDTwHR.js                            1.63 kB │ gzip:   0.78 kB
+../../dist/assets/zoom-BaGyKgdI.js                              1.63 kB │ gzip:   0.80 kB
+../../dist/assets/flow9-BeJ5waoc.js                             1.67 kB │ gzip:   0.81 kB
+../../dist/assets/factor-kuTfRLto.js                            1.67 kB │ gzip:   0.61 kB
+../../dist/assets/provider-model-routing-pvppZ9ge.js            1.68 kB │ gzip:   0.85 kB
+../../dist/assets/sb-BBc9UKZt.js                                1.69 kB │ gzip:   0.79 kB
+../../dist/assets/bat-BwHxbl9M.js                               1.71 kB │ gzip:   0.83 kB
+../../dist/assets/dockerfile-BG73LgW2.js                        1.73 kB │ gzip:   0.63 kB
+../../dist/assets/z80-Hz9HOZM7.js                               1.75 kB │ gzip:   0.81 kB
+../../dist/assets/eiffel-CnydiIhH.js                            1.81 kB │ gzip:   0.92 kB
+../../dist/assets/pascaligo-DtZ0uQbO.js                         1.86 kB │ gzip:   0.87 kB
+../../dist/assets/elm-vLlmbW-K.js                               1.89 kB │ gzip:   0.82 kB
+../../dist/assets/mathematica-DTrFuWx2.js                       1.92 kB │ gzip:   0.82 kB
+../../dist/assets/dockerfile-BKs6k2Af.js                        1.95 kB │ gzip:   0.67 kB
+../../dist/assets/turtle-B1tBg_DP.js                            1.98 kB │ gzip:   0.90 kB
+../../dist/assets/lua-Cyyb5UIc.js                               1.99 kB │ gzip:   0.89 kB
+../../dist/assets/ebnf-CDyGwa7X.js                              1.99 kB │ gzip:   0.81 kB
+../../dist/assets/smalltalk-CnHTOXQT.js                         2.01 kB │ gzip:   0.85 kB
+../../dist/assets/cameligo-Bf6VGUru.js                          2.05 kB │ gzip:   0.92 kB
+../../dist/assets/dtd-DF_7sFjM.js                               2.06 kB │ gzip:   0.87 kB
+../../dist/assets/xml-C2z6hqAm.js                               2.07 kB │ gzip:   0.82 kB
+../../dist/assets/mumps-BT43cFF4.js                             2.07 kB │ gzip:   0.98 kB
+../../dist/assets/fcl-Kvtd6kyn.js                               2.08 kB │ gzip:   0.95 kB
+../../dist/assets/ntriples-BfvgReVJ.js                          2.10 kB │ gzip:   0.75 kB
+../../dist/assets/graphql-BxJiqAUM.js                           2.12 kB │ gzip:   0.99 kB
+../../dist/assets/yacas-BJ4BC0dw.js                             2.15 kB │ gzip:   1.09 kB
+../../dist/assets/PanelResizeHandle-DweIt-uk.js                 2.20 kB │ gzip:   1.11 kB
+../../dist/assets/objective-c-BDtDVThU.js                       2.26 kB │ gzip:   1.02 kB
+../../dist/assets/simple-mode-GW_nhZxv.js                       2.28 kB │ gzip:   1.09 kB
+../../dist/assets/lexon-OrD6JF1K.js                             2.30 kB │ gzip:   0.89 kB
+../../dist/assets/apl-B4CMkyY2.js                               2.30 kB │ gzip:   1.23 kB
+../../dist/assets/pascal--L3eBynH.js                            2.30 kB │ gzip:   1.19 kB
+../../dist/assets/octave-Ck1zUtKM.js                            2.31 kB │ gzip:   1.09 kB
+../../dist/assets/SheetViewer-B2V7mEEw.js                       2.31 kB │ gzip:   1.11 kB
+../../dist/assets/commonlisp-DBKNyK5s.js                        2.32 kB │ gzip:   1.10 kB
+../../dist/assets/tcl-DVfN8rqt.js                               2.36 kB │ gzip:   1.23 kB
+../../dist/assets/bicep-CFznDFnq.js                             2.40 kB │ gzip:   0.93 kB
+../../dist/assets/sparql-CJmd_6j2.js                            2.41 kB │ gzip:   1.12 kB
+../../dist/assets/mips-CiqrrVzr.js                              2.44 kB │ gzip:   1.03 kB
+../../dist/assets/webidl-ZXfAyPTL.js                            2.52 kB │ gzip:   1.26 kB
+../../dist/assets/go-acbASCJo.js                                2.52 kB │ gzip:   1.11 kB
+../../dist/assets/index-C0IX25RW.js                             2.53 kB │ gzip:   1.56 kB
+../../dist/assets/pig-CevX1Tat.js                               2.53 kB │ gzip:   1.38 kB
+../../dist/assets/puppet-DMA9R1ak.js                            2.54 kB │ gzip:   1.20 kB
+../../dist/assets/forth-Ffai-XNe.js                             2.54 kB │ gzip:   1.33 kB
+../../dist/assets/shell-CjFT_Tl9.js                             2.57 kB │ gzip:   1.21 kB
+../../dist/assets/sophia-CnS9iZB_.js                            2.63 kB │ gzip:   1.17 kB
+../../dist/assets/typespec-Btyra-wh.js                          2.66 kB │ gzip:   1.05 kB
+../../dist/assets/velocity-D8B20fx6.js                          2.67 kB │ gzip:   1.11 kB
+../../dist/assets/m3-B8OfTtLu.js                                2.68 kB │ gzip:   1.28 kB
+../../dist/assets/index-D5kRM1dc.js                             2.74 kB │ gzip:   1.57 kB
+../../dist/assets/tiddlywiki-DO-Gjzrf.js                        2.78 kB │ gzip:   1.07 kB
+../../dist/assets/modelica-Dc1JOy9r.js                          2.79 kB │ gzip:   1.29 kB
+../../dist/assets/UserTagPills-C5OZ4Tcl.js                      2.79 kB │ gzip:   1.22 kB
+../../dist/assets/fsharp-PahG7c26.js                            2.85 kB │ gzip:   1.28 kB
+../../dist/assets/pascal-vHIfCaH5.js                            2.86 kB │ gzip:   1.36 kB
+../../dist/assets/oz-BzwKVEFT.js                                2.90 kB │ gzip:   1.28 kB
+../../dist/assets/shell-DiJ1NA_G.js                             2.94 kB │ gzip:   1.16 kB
+../../dist/assets/r-B6wPVr8A.js                                 2.94 kB │ gzip:   1.36 kB
+../../dist/assets/r-j7ic8hl3.js                                 2.99 kB │ gzip:   1.24 kB
+../../dist/assets/qsharp-Bw9ernYp.js                            3.05 kB │ gzip:   1.37 kB
+../../dist/assets/java-CXBNlu9o.js                              3.08 kB │ gzip:   1.36 kB
+../../dist/assets/stex-C3f8Ysf7.js                              3.12 kB │ gzip:   1.20 kB
+../../dist/assets/powershell-COWaemsV.js                        3.13 kB │ gzip:   1.34 kB
+../../dist/assets/cssMode-DKSHDGin.js                           3.14 kB │ gzip:   1.21 kB
+../../dist/assets/cypher-cTPe9QuQ.js                            3.25 kB │ gzip:   1.40 kB
+../../dist/assets/tiki-DGYXhP31.js                              3.25 kB │ gzip:   1.26 kB
+../../dist/assets/kotlin-s7OhZKlX.js                            3.26 kB │ gzip:   1.43 kB
+../../dist/assets/vhdl-lSbBsy5d.js                              3.35 kB │ gzip:   1.51 kB
+../../dist/assets/index-BvkVG6L9.js                             3.39 kB │ gzip:   1.74 kB
+../../dist/assets/lua-VAEuO923.js                               3.41 kB │ gzip:   1.43 kB
+../../dist/assets/redis-Bu5POkcn.js                             3.42 kB │ gzip:   1.44 kB
+../../dist/assets/arc-DfN6PAgb.js                               3.42 kB │ gzip:   1.47 kB
+../../dist/assets/tcl-Dm6ycUr_.js                               3.43 kB │ gzip:   1.33 kB
+../../dist/assets/coffee-Bd8akH9Z.js                            3.45 kB │ gzip:   1.26 kB
+../../dist/assets/hcl-DtV1sZF8.js                               3.45 kB │ gzip:   1.45 kB
+../../dist/assets/mscgen-BA5vi2Kp.js                            3.51 kB │ gzip:   0.98 kB
+../../dist/assets/sparql-DkYu6x3z.js                            3.55 kB │ gzip:   1.63 kB
+../../dist/assets/TaskDocBlock-CgoNmygT.js                      3.55 kB │ gzip:   1.53 kB
+../../dist/assets/cypher-C_CwsFkJ.js                            3.56 kB │ gzip:   1.52 kB
+../../dist/assets/htmlMode-PytVTi3_.js                          3.61 kB │ gzip:   1.33 kB
+../../dist/assets/liquid-CaMGZdA6.js                            3.62 kB │ gzip:   1.51 kB
+../../dist/assets/markdown-BFxVWTOG.js                          3.65 kB │ gzip:   1.35 kB
+../../dist/assets/yaml-DiAMoMI_.js                              3.68 kB │ gzip:   1.37 kB
+../../dist/assets/d-pRatUO7H.js                                 3.72 kB │ gzip:   1.68 kB
+../../dist/assets/restructuredtext-CqXO7rUv.js                  3.76 kB │ gzip:   1.33 kB
+../../dist/assets/less-9HpZscsL.js                              3.76 kB │ gzip:   1.38 kB
+../../dist/assets/apex-DNDY2TF8.js                              3.82 kB │ gzip:   1.73 kB
+../../dist/assets/python-DmP4FXBK.js                            3.86 kB │ gzip:   1.53 kB
+../../dist/assets/coffeescript-S37ZYGWr.js                      3.87 kB │ gzip:   1.69 kB
+../../dist/assets/languageUtils-CMQc3RkW.js                     3.88 kB │ gzip:   0.91 kB
+../../dist/assets/PdfViewer-BuCnE4tk.js                         3.88 kB │ gzip:   1.85 kB
+../../dist/assets/vb-CmGdzxic.js                                3.90 kB │ gzip:   1.79 kB
+../../dist/assets/swift-BzpIVaGY.js                             3.96 kB │ gzip:   1.79 kB
+../../dist/assets/spaceHelpers-CBduJVAM.js                      3.98 kB │ gzip:   1.98 kB
+../../dist/assets/asn1-EdZsLKOL.js                              3.98 kB │ gzip:   1.96 kB
+../../dist/assets/rust-BzKRNQWT.js                              4.02 kB │ gzip:   1.79 kB
+../../dist/assets/q-pXgVlZs6.js                                 4.03 kB │ gzip:   1.67 kB
+../../dist/assets/ttcn-cfg-B9xdYoR4.js                          4.05 kB │ gzip:   1.71 kB
+../../dist/assets/dylan-DwRh75JA.js                             4.05 kB │ gzip:   1.65 kB
+../../dist/assets/livescript-BwQOo05w.js                        4.09 kB │ gzip:   1.64 kB
+../../dist/assets/dart-BOtBlQCF.js                              4.11 kB │ gzip:   1.61 kB
+../../dist/assets/groovy-D9Dt4D0W.js                            4.14 kB │ gzip:   1.77 kB
+../../dist/assets/haskell-Cw1EW3IL.js                           4.17 kB │ gzip:   1.89 kB
+../../dist/assets/css-DdJfP1eB.js                               4.37 kB │ gzip:   1.34 kB
+../../dist/assets/diagram-S2PKOQOG-CSmTe2lN.js                  4.37 kB │ gzip:   1.92 kB
+../../dist/assets/csharp-Co3qMtFm.js                            4.39 kB │ gzip:   1.69 kB
+../../dist/assets/mdx-kgoiK5nd.js                               4.46 kB │ gzip:   1.30 kB
+../../dist/assets/CustomSelect-BxbAlbE1.js                      4.48 kB │ gzip:   1.80 kB
+../../dist/assets/asterisk-B-8jnY81.js                          4.48 kB │ gzip:   1.78 kB
+../../dist/assets/gas-Bneqetm1.js                               4.57 kB │ gzip:   1.28 kB
+../../dist/assets/RichDocViewer-DKv_O83w.js                     4.57 kB │ gzip:   2.08 kB
+../../dist/assets/fortran-DYz_wnZ1.js                           4.65 kB │ gzip:   2.01 kB
+../../dist/assets/html-DEaumqor.js                              4.67 kB │ gzip:   1.25 kB
+../../dist/assets/defaultLocale-DX6XiGOO.js                     4.69 kB │ gzip:   2.18 kB
+../../dist/assets/pug-8SOpv6rk.js                               4.69 kB │ gzip:   1.61 kB
+../../dist/assets/msdax-DmeGPVcC.js                             4.77 kB │ gzip:   1.91 kB
+../../dist/assets/swift-CnmFD0ga.js                             4.77 kB │ gzip:   2.00 kB
+../../dist/assets/mllike-CXdrOF99.js                            4.79 kB │ gzip:   1.53 kB
+../../dist/assets/ttcn-CfJYG6tj.js                              4.80 kB │ gzip:   2.13 kB
+../../dist/assets/typescript-C9aGjLcF.js                        5.04 kB │ gzip:   2.03 kB
+../../dist/assets/index-A_1g4uaV.js                             5.06 kB │ gzip:   2.43 kB
+../../dist/assets/ecl-Cabwm37j.js                               5.13 kB │ gzip:   2.31 kB
+../../dist/assets/crystal-SjHAIU92.js                           5.13 kB │ gzip:   2.07 kB
+../../dist/assets/cpp-BbWJElDN.js                               5.16 kB │ gzip:   2.06 kB
+../../dist/assets/ecl-BEgZUVRK.js                               5.20 kB │ gzip:   2.19 kB
+../../dist/assets/ruby-BK5aLJev.js                              5.21 kB │ gzip:   2.16 kB
+../../dist/assets/pieDiagram-ADFJNKIX-CUGaFPnO.js               5.31 kB │ gzip:   2.36 kB
+../../dist/assets/julia-DuME0IfC.js                             5.39 kB │ gzip:   2.14 kB
+../../dist/assets/vb-Db0cS2oM.js                                5.65 kB │ gzip:   2.02 kB
+../../dist/assets/linear-CmyhORMI.js                            5.66 kB │ gzip:   2.31 kB
+../../dist/assets/vbscript-BuJXcnF6.js                          5.82 kB │ gzip:   2.57 kB
+../../dist/assets/twig-Csy3S7wG.js                              5.84 kB │ gzip:   1.49 kB
+../../dist/assets/RecordingSourceDialog-B9_usO50.js             5.85 kB │ gzip:   2.11 kB
+../../dist/assets/mirc-CjQqDB4T.js                              5.92 kB │ gzip:   2.68 kB
+../../dist/assets/diagram-QEK2KX5R-CNi2nnRT.js                  5.98 kB │ gzip:   2.54 kB
+../../dist/assets/cobol-CWcv1MsR.js                             6.20 kB │ gzip:   2.96 kB
+../../dist/assets/scss-CBJaRo0y.js                              6.27 kB │ gzip:   1.71 kB
+../../dist/assets/scheme-C41bIUwD.js                            6.37 kB │ gzip:   2.39 kB
+../../dist/assets/handlebars-C08G327A.js                        6.43 kB │ gzip:   1.46 kB
+../../dist/assets/python-BuPzkPfP.js                            6.48 kB │ gzip:   2.73 kB
+../../dist/assets/xquery-DzFWVndE.js                            6.62 kB │ gzip:   2.56 kB
+../../dist/assets/pug-DeIclll2.js                               6.67 kB │ gzip:   1.94 kB
+../../dist/assets/textile-CnDTJFAw.js                           6.80 kB │ gzip:   2.44 kB
+../../dist/assets/persistInputOption-CsSwkCob.js                6.83 kB │ gzip:   1.43 kB
+../../dist/assets/julia-cl7-CwDS.js                             7.01 kB │ gzip:   2.62 kB
+../../dist/assets/nsis-LY0VT_u5.js                              7.06 kB │ gzip:   3.08 kB
+../../dist/assets/scala-D9hQfWCl.js                             7.18 kB │ gzip:   2.06 kB
+../../dist/assets/wgsl-BTesnYfV.js                              7.21 kB │ gzip:   2.72 kB
+../../dist/assets/st-CHwy0fLd.js                                7.26 kB │ gzip:   2.21 kB
+../../dist/assets/BallWindow-DJNFNms2.js                        7.31 kB │ gzip:   2.52 kB
+../../dist/assets/nginx-DdIZxoE0.js                             7.34 kB │ gzip:   2.72 kB
+../../dist/assets/PetSprite-DQSTOPT4.js                         7.34 kB │ gzip:   3.04 kB
+../../dist/assets/systemverilog-Bs9z6M-B.js                     7.47 kB │ gzip:   2.72 kB
+../../dist/assets/postiats-CocnycG-.js                          7.72 kB │ gzip:   2.40 kB
+../../dist/assets/powershell-CFHJl5sT.js                        7.77 kB │ gzip:   3.33 kB
+../../dist/assets/php-BBUBE1dy.js                               7.89 kB │ gzip:   2.04 kB
+../../dist/assets/haxe-H-WmDvRZ.js                              7.89 kB │ gzip:   2.95 kB
+../../dist/assets/erlang-BNw1qcRV.js                            8.10 kB │ gzip:   2.89 kB
+../../dist/assets/perl-Ub6l9XKa.js                              8.12 kB │ gzip:   3.10 kB
+../../dist/assets/verilog-C6RDOZhf.js                           8.24 kB │ gzip:   3.52 kB
+../../dist/assets/ruby-zBfavPgS.js                              8.37 kB │ gzip:   2.54 kB
+../../dist/assets/razor-CFT4pi5w.js                             8.43 kB │ gzip:   2.15 kB
+../../dist/assets/_baseUniq-OJiFT0XB.js                         8.49 kB │ gzip:   3.54 kB
+../../dist/assets/protobuf-Brw8urJB.js                          8.91 kB │ gzip:   2.04 kB
+../../dist/assets/TableProjection-D8O2BE54.js                   9.19 kB │ gzip:   3.80 kB
+../../dist/assets/sas-B4kiWyti.js                               9.33 kB │ gzip:   4.11 kB
+../../dist/assets/graph-DCNsJi-n.js                             9.37 kB │ gzip:   3.21 kB
+../../dist/assets/clojure-Dnu-v4kV.js                           9.51 kB │ gzip:   3.57 kB
+../../dist/assets/perl-CdXCOZ3F.js                              9.75 kB │ gzip:   3.46 kB
+../../dist/assets/elixir-BkW5O-1t.js                           10.12 kB │ gzip:   2.50 kB
+../../dist/assets/sql-ClhHkBeG.js                              10.16 kB │ gzip:   3.79 kB
+../../dist/assets/gherkin-heZmZLOM.js                          10.16 kB │ gzip:   5.09 kB
+../../dist/assets/BrowserPanel-CSY-Sd7c.js                     10.23 kB │ gzip:   3.74 kB
+../../dist/assets/stateDiagram-FKZM4ZOC-C4nPbS6v.js            10.48 kB │ gzip:   3.69 kB
+../../dist/assets/clojure-BMjYHr_A.js                          10.82 kB │ gzip:   3.99 kB
+../../dist/assets/CommunityContainer-CcDiyhYC.js               11.08 kB │ gzip:   3.50 kB
+../../dist/assets/dagre-6UL2VRFP-Du6ZU3op.js                   11.09 kB │ gzip:   4.16 kB
+../../dist/assets/mysql-C_tMU-Nz.js                            11.14 kB │ gzip:   4.01 kB
+../../dist/assets/ConflictComparison-BCBscvJm.js               11.59 kB │ gzip:   4.67 kB
+../../dist/assets/idl-BEugSyMb.js                              11.63 kB │ gzip:   4.52 kB
+../../dist/assets/redshift-Bs9aos_-.js                         11.66 kB │ gzip:   4.30 kB
+../../dist/assets/jsonMode-CKn_PbPH.js                         12.53 kB │ gzip:   4.63 kB
+../../dist/assets/index-BC58-vhU.js                            12.81 kB │ gzip:   5.66 kB
+../../dist/assets/SpaceChrome-WnSB9G2d.js                      13.29 kB │ gzip:   4.60 kB
+../../dist/assets/pgsql-BlNEE0v7.js                            13.33 kB │ gzip:   4.46 kB
+../../dist/assets/abap-DLDM7-KI.js                             14.03 kB │ gzip:   5.27 kB
+../../dist/assets/index-dxE166Zy.js                            14.77 kB │ gzip:   6.01 kB
+../../dist/assets/Launcher-BT8Ljlsy.js                         15.03 kB │ gzip:   5.08 kB
+../../dist/assets/freemarker2-BxTO8Uxg.js                      15.73 kB │ gzip:   4.00 kB
+../../dist/assets/diagram-PSM6KHXK-3IrilRbh.js                 15.94 kB │ gzip:   5.72 kB
+../../dist/assets/index-BnpQFXvy.js                            16.36 kB │ gzip:   7.49 kB
+../../dist/assets/powerquery-tScXyioY.js                       16.80 kB │ gzip:   4.81 kB
+../../dist/assets/javascript-iXu5QeM3.js                       17.08 kB │ gzip:   5.75 kB
+../../dist/assets/solidity-Db0IVjzk.js                         18.46 kB │ gzip:   4.41 kB
+../../dist/assets/kanban-definition-3W4ZIXB7-BlvkZr-1.js       20.30 kB │ gzip:   7.23 kB
+../../dist/assets/index-CKh-lBJ-.js                            20.94 kB │ gzip:   9.38 kB
+../../dist/assets/mindmap-definition-VGOIOE7T-C7MudLh7.js      21.02 kB │ gzip:   7.35 kB
+../../dist/assets/index-CMvBsfCt.js                            21.20 kB │ gzip:   9.76 kB
+../../dist/assets/RemoteSession-B2pFZgzG.js                    21.59 kB │ gzip:   7.79 kB
+../../dist/assets/tsMode-DrHfCd-d.js                           22.10 kB │ gzip:   6.30 kB
+../../dist/assets/sankeyDiagram-TZEHDZUN-nStZYRrG.js           22.21 kB │ gzip:   8.19 kB
+../../dist/assets/clike-B9uivgTg.js                            22.30 kB │ gzip:   7.86 kB
+../../dist/assets/index-BgI8Vc6W.js                            23.10 kB │ gzip:  10.42 kB
+../../dist/assets/journeyDiagram-XKPGCS4Q-DUy-1rUd.js          23.64 kB │ gzip:   8.38 kB
+../../dist/assets/timeline-definition-IT6M3QCI-CvATgDBm.js     23.69 kB │ gzip:   8.29 kB
+../../dist/assets/gitGraphDiagram-NY62KEGX-UT7bDFNn.js         24.20 kB │ gzip:   7.48 kB
+../../dist/assets/erDiagram-Q2GNP2WA-D1T1ADqR.js               25.34 kB │ gzip:   8.89 kB
+../../dist/assets/stylus-B533Al4x.js                           25.80 kB │ gzip:   8.60 kB
+../../dist/assets/css-BnMrqG3P.js                              27.13 kB │ gzip:   8.47 kB
+../../dist/assets/HistorySearchOverlayContent-JmRwNkzI.js      28.31 kB │ gzip:   7.94 kB
+../../dist/assets/lspLanguageFeatures-CQgGmJsY.js              28.69 kB │ gzip:   7.74 kB
+../../dist/assets/ModelManagementPanel-D5VOtgKV.js             28.89 kB │ gzip:   8.01 kB
+../../dist/assets/layout-Cc2VCMc4.js                           29.29 kB │ gzip:  10.52 kB
+../../dist/assets/requirementDiagram-UZGBJVZJ-CX6ZvSIB.js      30.19 kB │ gzip:   9.48 kB
+../../dist/assets/index-B6HrdPB1.js                            30.90 kB │ gzip:  12.71 kB
+../../dist/assets/UnifiedLogsPanel-CELAz8oS.js                 31.83 kB │ gzip:  11.08 kB
+../../dist/assets/index-Dq2Zpq5R.js                            32.40 kB │ gzip:  13.12 kB
+../../dist/assets/FilePreviewModal-sSenhCh3.js                 32.75 kB │ gzip:   9.94 kB
+../../dist/assets/quadrantDiagram-AYHSOK5B-B46oDPDN.js         33.94 kB │ gzip:  10.01 kB
+../../dist/assets/spaceStore-BuciQhYy.js                       34.04 kB │ gzip:   8.86 kB
+../../dist/assets/ProjectBoard-BPtpDDIx.js                     34.25 kB │ gzip:  10.20 kB
+../../dist/assets/chunk-DI55MBZ5-BlkiobP0.js                   36.34 kB │ gzip:  11.85 kB
+../../dist/assets/sql-D0XecflT.js                              37.05 kB │ gzip:  10.94 kB
+../../dist/assets/xychartDiagram-PRI3JC2R-3wiyg1ju.js          40.31 kB │ gzip:  11.50 kB
+../../dist/assets/index-Ckgg5BP_.js                            40.84 kB │ gzip:  16.81 kB
+../../dist/assets/index-CsBYtfxe.js                            45.21 kB │ gzip:  19.21 kB
+../../dist/assets/chunk-B4BG7PRW-CEDKUcVB.js                   45.32 kB │ gzip:  14.70 kB
+../../dist/assets/index-B1OVpx9Q.js                            55.07 kB │ gzip:  19.08 kB
+../../dist/assets/RecordDetail-7r1Vi4jw.js                     55.50 kB │ gzip:  15.41 kB
+../../dist/assets/CompanionWindow-vpAD93C3.js                  58.43 kB │ gzip:  18.33 kB
+../../dist/assets/flowDiagram-NV44I4VS-6bevqDA1.js             60.55 kB │ gzip:  19.50 kB
+../../dist/assets/ganttDiagram-JELNMOA3-enNbP6s4.js            68.41 kB │ gzip:  23.20 kB
+../../dist/assets/c4Diagram-YG6GDRKO-CrcJ5O9e.js               70.24 kB │ gzip:  19.74 kB
+../../dist/assets/index-CsoL1sRf.js                            70.91 kB │ gzip:  25.91 kB
+../../dist/assets/blockDiagram-VD42YOAC-CejtWBjG.js            71.91 kB │ gzip:  20.55 kB
+../../dist/assets/DocxViewer-DPLe6NsC.js                       76.73 kB │ gzip:  20.90 kB
+../../dist/assets/cose-bilkent-S5V4N54A-BVDpG6nd.js            81.80 kB │ gzip:  22.54 kB
+../../dist/assets/contentBlockDisplay-DIJfidcE.js              87.22 kB │ gzip:  24.03 kB
+../../dist/assets/jszip.min-DMG8Xk4N.js                        96.77 kB │ gzip:  29.90 kB
+../../dist/assets/sequenceDiagram-WL72ISMW-okZDC0ep.js         97.91 kB │ gzip:  26.91 kB
+../../dist/assets/index-DVe2duKe.js                            98.27 kB │ gzip:  28.59 kB
+../../dist/assets/index-CNs2_3zQ.js                           100.45 kB │ gzip:  31.28 kB
+../../dist/assets/index-D4SuSwtn.js                           104.02 kB │ gzip:  34.45 kB
+../../dist/assets/TaskCenter-Dx3xPP-w.js                      117.83 kB │ gzip:  32.32 kB
+../../dist/assets/AgentNetwork-D_sLo523.js                    137.43 kB │ gzip:  33.50 kB
+../../dist/assets/architectureDiagram-VXUJARFQ-CQVlzecM.js    148.70 kB │ gzip:  42.11 kB
+../../dist/assets/chatSendKey-DERlY9Rs.js                     152.33 kB │ gzip:  49.22 kB
+../../dist/assets/i18n-57ezbCiQ.js                            182.61 kB │ gzip:  31.32 kB
+../../dist/assets/useChatScrollController-BIzUOp5U.js         186.48 kB │ gzip:  53.10 kB
+../../dist/assets/chart.umd-CN8QlKgq.js                       205.73 kB │ gzip:  69.84 kB
+../../dist/assets/Chat-CtKlGcoJ.js                            274.05 kB │ gzip:  82.04 kB
+../../dist/assets/d3.min-DJQSwJuk.js                          279.85 kB │ gzip:  93.58 kB
+../../dist/assets/TerminalPanel-BN84XvBH.js                   336.55 kB │ gzip:  85.67 kB
+../../dist/assets/treemap-KMMF4GRG-BWzeBo7y.js                374.61 kB │ gzip:  92.70 kB
+../../dist/assets/lucide.min-BpieqhkH.js                      381.42 kB │ gzip:  90.39 kB
+../../dist/assets/vendor-react-B8M31rR9.js                    384.28 kB │ gzip: 119.00 kB
+../../dist/assets/WorkspaceConfigPanel-BZlczdYp.js            388.26 kB │ gzip:  88.81 kB
+../../dist/assets/Settings-s394_3NC.js                        422.41 kB │ gzip:  87.05 kB
+../../dist/assets/cytoscape.esm-BnkdMOzK.js                   441.74 kB │ gzip: 141.49 kB
+../../dist/assets/pdfWorker-DAZH5Ts2.js                       474.08 kB │ gzip: 144.01 kB
+../../dist/assets/MermaidDiagram-S8-cSyjF.js                  496.86 kB │ gzip: 139.81 kB
+../../dist/assets/xlsx-kWF--8k_.js                            499.74 kB │ gzip: 163.01 kB
+../../dist/assets/Space-5cOOTzFF.js                           557.24 kB │ gzip: 198.79 kB
+../../dist/assets/MarkdownEditor-B74FAQ1k.js                  629.44 kB │ gzip: 215.11 kB
+../../dist/assets/App-CZHLq--T.js                             931.55 kB │ gzip: 269.43 kB
+../../dist/assets/index-BG5ZxCkR.js                         1,086.35 kB │ gzip: 325.28 kB
+../../dist/assets/Markdown-DbxWV0n2.js                      1,262.95 kB │ gzip: 416.76 kB
+../../dist/assets/PptxViewer-N5Y9DGh4.js                    1,953.19 kB │ gzip: 636.67 kB
+../../dist/assets/MonacoEditor-BHeTKDz9.js                  3,799.29 kB │ gzip: 982.88 kB
+
+(!) Some chunks are larger than 2500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 42.84s

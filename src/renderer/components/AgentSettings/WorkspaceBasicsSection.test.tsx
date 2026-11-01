@@ -7,6 +7,7 @@ import type { AgentConfig } from '@/../shared/types/agent';
 import WorkspaceBasicsSection from './WorkspaceBasicsSection';
 
 const mocks = vi.hoisted(() => ({
+  error: vi.fn(),
   patch: vi.fn(),
   refresh: vi.fn(),
   providers: [{
@@ -33,7 +34,7 @@ vi.mock('@/config/services/agentConfigService', () => ({
 }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: async () => ({ builtin: { installed: true } }) }));
 vi.mock('@/hooks/useBrowserResourceReady', () => ({ useBrowserResourceReady: () => true }));
-vi.mock('@/components/Toast', () => ({ useToast: () => ({ success: vi.fn(), info: vi.fn(), warning: vi.fn() }) }));
+vi.mock('@/components/Toast', () => ({ useToast: () => ({ error: mocks.error, success: vi.fn(), info: vi.fn(), warning: vi.fn() }) }));
 
 const project: Project = {
   id: 'test-project', name: 'Test Workspace', path: '/test-workspace',
@@ -46,6 +47,29 @@ const agent: AgentConfig = {
 };
 
 describe('Workspace basics menus', () => {
+  it.each([['青芽', 'bot:moss'], ['默认', '']])('saves %s to both identities without changing workspace or execution configuration', async (label, icon) => {
+    const user = userEvent.setup();
+    const { rerender } = render(<WorkspaceBasicsSection project={{ ...project, icon: 'bot:mox' }} agent={agent} agentDir={project.path} />);
+    await user.click(screen.getByRole('button', { name: '选择 Bot 形象' }));
+    await user.click(label === '默认' ? screen.getByTitle('默认') : screen.getByRole('button', { name: label }));
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith('test-agent', { icon }, 'test-project', { icon }));
+    expect(mocks.refresh).toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '选择 Bot 形象' })).toHaveAttribute('aria-expanded', 'false');
+    rerender(<WorkspaceBasicsSection project={{ ...project, icon }} agent={{ ...agent, icon }} agentDir={project.path} />);
+    expect(screen.getByRole('textbox', { name: 'Bot 名称' })).toHaveValue(project.name);
+    expect(screen.getByTitle(project.path)).toHaveTextContent(project.path);
+  });
+
+  it('retains the picker and reports an avatar save failure', async () => {
+    mocks.patch.mockRejectedValueOnce(new Error('disk full'));
+    const user = userEvent.setup();
+    render(<WorkspaceBasicsSection project={project} agent={agent} agentDir={project.path} />);
+    await user.click(screen.getByRole('button', { name: '选择 Bot 形象' }));
+    await user.click(screen.getByRole('button', { name: '小墨' }));
+    await waitFor(() => expect(mocks.error).toHaveBeenCalledWith('形象保存失败，请重试'));
+    expect(screen.getByRole('button', { name: '选择 Bot 形象' })).toHaveAttribute('aria-expanded', 'true');
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     // jsdom has no layout. Supply a viewport and distinct row positions while

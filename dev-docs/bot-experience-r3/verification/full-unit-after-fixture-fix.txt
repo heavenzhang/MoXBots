@@ -1,0 +1,5 @@
+Node24.20.0 vitest run --project unit; exit 0.
+ Test Files  659 passed (659)
+      Tests  7453 passed | 5 skipped (7458)
+   Start at  00:21:09
+   Duration  44.38s (transform 19.47s, setup 53.32s, collect 99.46s, tests 110.37s, environment 76ms, prepare 42.31s)

@@ -50,7 +50,7 @@
     "uploadFile": "Upload file",
     "permissionModeTitle": "Switch execution mode",
     "permissionModeHeader": "Session mode",
-    "agentSettings": "Agent settings",
+    "agentSettings": "Bot settings",
     "autonomyWarning": "Autonomous mode is enabled. The Agent may perform irreversible actions.",
     "dshAutonomyWarning": "Full autonomy skips tool approvals and can use the computer and internet within your user account's permissions.",
     "toolsTitle": "Use tools",
@@ -393,8 +393,8 @@
       "showTerminal": "Show terminal",
       "openTerminal": "Open terminal",
       "browser": "Browser",
-      "openAgentSettings": "Open Agent settings",
-      "agentSettings": "Agent settings",
+      "openAgentSettings": "Open Bot settings",
+      "agentSettings": "Bot settings",
       "searchPlaceholder": "Search files and contents...",
       "exitSearch": "Exit search",
       "loading": "Loading...",
@@ -1305,7 +1305,8 @@
       "continue": "Continue unfinished task",
       "pending": "Continuing…",
       "unavailable": "This task has changed. Check the conversation before continuing."
-    }
+    },
+    "openBotIdentity": "Open Bot settings for {{name}}"
   },
   "agentTree": {
     "personalTasks": "Personal tasks",

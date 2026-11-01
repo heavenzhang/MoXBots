@@ -1179,3 +1179,19 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 第十三项审查补证：原owner精确7c3fe1f09静态/58项定向通过并独立补失败Bash live/cold围栏验证；源分支吸收该测试与未完成peer/退休身份反例，最终74项及tsc/lint/diff通过。产品逻辑不变，保持既有unknown，不覆盖532.2冻结批；真实原生验收仍待下一批安装。
 
 第十三项进一步补证：真实SessionStore全文件11项冷恢复及实际SDK/原生Bash本地模型缺口注入、默认模式均通过；首条用户消息使fixture V2 birth正式持久化，初始owner丢失为fixture问题，未改产品逻辑。可复现命令已写acceptance.md；源码测试不等同四原会话实装验收，仍由原owner统一后续批次。
+
+## MB-BOT-R1-20261101 — Bot 身份与头像 / 第二轮协作原型
+
+用户已确认第一轮代码范围：Bot 身份命名、内置头像选择及入口一致展示；群组/任务关系仅原型。独立任务分支 codex/bot-identity-r1-20261101，基于 main58941e30；任务 .agent-sync/tasks/codex-bot-identity-r1-20261101-7a0fa807.md，证据 dev-docs/bot-identity-r1/acceptance.md，原型 dev-docs/prototypes/bot-collaboration-r2/。复用原 icon 字段、Agent/Project 配置事务，保留用户原图标，未修改 group-phase1 共享工作树、执行账本或 Runtime。164 定向用例、tsc/lint/本地 renderer build 通过；原生/生产验收另追踪。
+
+仅涉及 desktop builtin client，唯一 desktop/macOS-arm64/updater/shared CI/main owner 继续是 01a12bc2-907a-7702-b6dd-788225c5dfe4。开发分支推送不自动触发共享 CI；请求下一未冻结批。当前 0.5.29/529.1 冻结候选不纳入本任务，不自行分配版本或操作日常 App。无 cloud/Host/mobile/website 发布。
+
+用户同轮明确保留项目：R2 增加项目独立入口、项目内 Bots/会话/群组/任务/目录；R1 不拆现有 Project/Agent 配对。目标关系和竞品证据见 dev-docs/bot-identity-r1/project-relationship.md，后续实施先定义显式项目上下文，不把 UI 原型当作跨项目执行。
+
+## MB-BOT-R3-DEV-20261101 — R3 approved Bot-centered experience
+
+User approved R3 prototype for development. Isolated codex/bot-experience-r3-20261101 starts from actual main ad68c28d and preserves reviewed R1 dependency874acaad by ancestry (integration2616e107); no mutation of dirty group-phase1. M1 implements actual conversation/project sidebar projections, unified explicit Bot/current-valid-project birth, original history/tool entrances and pending/failure preservation. M2 multi-project Bot/context and M3 stable Bot groups/real task handoff remain unimplemented, not implied by the UI. CurrentProject/workspace-Agent pairing retained; task .agent-sync/tasks/codex-bot-experience-r3-20261101-42812926.md and dev-docs/bot-experience-r3/PLAN.md track all phases.
+
+Sole desktop/macOS/updater/shared CI/main owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; development submits exact source/evidence to next unfrozen feature intake, does not interrupt recovery/replace daily App or allocate version. 107 targeted tests/local tsc/lint/Vite build pass; one independently found rail P2 fixed and regressed. Independent source/static-visual review passed; independent IAB interaction unavailable, native/persistence/production gates remain open. Local browser fixture is synthetic, not runtime acceptance.
+
+M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-started/uncertain与首消息交接边界已修；未知只保护原操作，保留记录后可发独立空白意图。210相关测试/tsc/lint/classification/本地renderer build通过，独立P2复审通过。用户明确要求本批合入main，不安装/不改变冻结532.1；原desktop共享CI/main owner继续推进依赖PR221与M1。详情acceptance.md。

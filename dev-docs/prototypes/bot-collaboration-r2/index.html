@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MoXBots · 第二轮协作原型</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<div class="review"><strong>MoXBots · 第二轮原型</strong><span>本地模拟 · 不执行真实任务</span><div class="grow"></div><button id="theme">切换浅色</button><button id="reset">重置演示</button></div>
+<div class="window"><button id="navToggle" aria-label="展开 Bot 列表">☰</button><span>Bot 团队协作</span><div class="grow"></div><button id="inspectToggle">任务与工作区</button></div>
+<div class="layout">
+<aside class="sidebar" id="sidebar"><div class="brand"><img src="assets/logo.png" alt="MoXBots">MoXBots</div><button class="nav" id="newChat">＋ 新对话</button><button class="nav" id="projectNav">▣ 项目</button><div id="projects"></div><button class="nav" id="allTasks">☑ 群组任务</button><div class="section">我的 BOTS <small>同一身份，多个会话</small></div><div id="bots"></div><div class="section">群组 <button id="newGroup" aria-label="新建群组">＋</button></div><div id="groups"></div><div class="grow"></div><p class="sidebarFoot">MoXBots · 演示账号</p></aside>
+<main><header id="chatHeader"></header><div id="conversation" class="conversation"></div><form id="composer"><div class="composeTarget" id="targetRow"></div><textarea id="message" aria-label="输入消息" placeholder="输入消息…" rows="2"></textarea><footer><span id="composeHint"></span><button type="submit" class="primary">发送 ↑</button></footer></form></main>
+<aside class="inspector" id="inspector"><div class="tabs"><button id="taskTab" class="active">任务</button><button id="workspaceTab">工作区</button><button class="closeInspector" aria-label="收起详情">×</button></div><div id="details"></div></aside>
+</div>
+<dialog id="modal"><div id="modalBody"></div><button id="closeModal" class="modalClose" aria-label="关闭弹窗">×</button></dialog><div id="toast" role="status"></div><script src="app.js"></script></body></html>

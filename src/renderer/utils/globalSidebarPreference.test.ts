@@ -167,3 +167,14 @@ describe('fixed sidebar project order', () => {
     expect(first.projectOrder).toEqual(['b', 'a']);
   });
 });
+
+
+describe('Bot resource navigation compatibility', () => {
+  it('defaults legacy preferences to conversations and keeps explicit project/history choices', () => {
+    const legacy = { ...DEFAULT_GLOBAL_SIDEBAR_PREFERENCE, resourceView: undefined };
+    expect(parseGlobalSidebarPreference(legacy)?.resourceView).toBe('conversations');
+    expect(parseGlobalSidebarPreference({ ...legacy, resourceView: 'projects' })?.resourceView).toBe('projects');
+    expect(parseGlobalSidebarPreference({ ...legacy, resourceView: 'history' })?.resourceView).toBe('history');
+    expect(parseGlobalSidebarPreference({ ...legacy, resourceView: 'invalid' })?.resourceView).toBe('conversations');
+  });
+});

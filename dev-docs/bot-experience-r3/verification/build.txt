@@ -1,0 +1,30 @@
+../../dist/assets/architectureDiagram-VXUJARFQ-Cvc8Zagc.js    148.70 kB │ gzip:  42.11 kB
+../../dist/assets/chatSendKey-BDgJOAe-.js                     152.33 kB │ gzip:  49.22 kB
+../../dist/assets/i18n-57ezbCiQ.js                            182.61 kB │ gzip:  31.32 kB
+../../dist/assets/useChatScrollController-DFbCfRzt.js         186.48 kB │ gzip:  53.10 kB
+../../dist/assets/chart.umd-CN8QlKgq.js                       205.73 kB │ gzip:  69.84 kB
+../../dist/assets/Chat-D-yPrhU3.js                            274.05 kB │ gzip:  82.04 kB
+../../dist/assets/d3.min-DJQSwJuk.js                          279.85 kB │ gzip:  93.58 kB
+../../dist/assets/TerminalPanel-CWXKs9OZ.js                   336.55 kB │ gzip:  85.67 kB
+../../dist/assets/treemap-KMMF4GRG-BVoQDgUd.js                374.61 kB │ gzip:  92.70 kB
+../../dist/assets/lucide.min-BpieqhkH.js                      381.42 kB │ gzip:  90.39 kB
+../../dist/assets/vendor-react-B8M31rR9.js                    384.28 kB │ gzip: 119.00 kB
+../../dist/assets/WorkspaceConfigPanel-BEmCQUc5.js            388.26 kB │ gzip:  88.81 kB
+../../dist/assets/Settings-D-ksbwSq.js                        422.41 kB │ gzip:  87.04 kB
+../../dist/assets/cytoscape.esm-BnkdMOzK.js                   441.74 kB │ gzip: 141.49 kB
+../../dist/assets/pdfWorker-DAZH5Ts2.js                       474.08 kB │ gzip: 144.01 kB
+../../dist/assets/MermaidDiagram-FvBT4GA4.js                  496.86 kB │ gzip: 139.81 kB
+../../dist/assets/xlsx-kWF--8k_.js                            499.74 kB │ gzip: 163.01 kB
+../../dist/assets/Space-CmlEx2Pk.js                           557.24 kB │ gzip: 198.78 kB
+../../dist/assets/MarkdownEditor-BGa_x296.js                  629.44 kB │ gzip: 215.12 kB
+../../dist/assets/App-PCx10FSi.js                             929.09 kB │ gzip: 268.67 kB
+../../dist/assets/index-9qdVI0VA.js                         1,085.67 kB │ gzip: 325.02 kB
+../../dist/assets/Markdown-DNogaePo.js                      1,262.95 kB │ gzip: 416.76 kB
+../../dist/assets/PptxViewer-wE3mNqwU.js                    1,953.19 kB │ gzip: 636.66 kB
+../../dist/assets/MonacoEditor-DyFIlUho.js                  3,799.29 kB │ gzip: 982.89 kB
+
+(!) Some chunks are larger than 2500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 34.40s
