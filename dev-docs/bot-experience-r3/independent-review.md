@@ -105,3 +105,16 @@
 主Agent报告完整App390×844的“我的Bots→项目→对话”点击与无横溢、fixture打开失败后重试/读取失败后重试/筛选/空态已完成；相关事实属于主Agent交互证据，我未重复执行。主Agent另报告107项相关测试通过，曾删除TestingLibrary不支持的exact属性后重跑tsc；本审阅只确认测试内容与修复方向，不冒称独立运行全部测试或最终tsc状态。
 
 当前复审结论：在本次所读M1导航、新会话及共享tree修复范围内，未发现残留P1/P2；原rail P2源码修复成立。独立实际交互仍因无IAB blocked，CustomSelect键盘焦点及长内容适配仍需具备IAB能力的主Agent保留实际证据。M2/M3、真实后端/原生/Provider与生产验收均未纳入本次通过范围。
+
+
+## Launch receipt repair rereview 2026-11-02
+
+## P2 修复再次复审
+
+当前修复以独立`UncertainBirthReceipt[]`保留未知记录中的原Bot名、项目名、原文与tabId。未知表单内仍阻止原submit；“保留记录并返回新建”清空当前Bot/项目/文本/error/uncertain并返回菜单，旧receipt保留在待确认section/details的只读文本框，无重发按钮。由新菜单创建新Bot或另开空白对话，不把旧原文带入新请求。关闭/查看原tab不会丢失原记录；成功的新意图也不清除旧receipt。
+
+扩展App调用链测试分别覆盖普通pending与prepared Session：未知后重开仍禁止重发→保留记录回菜单→新Bot入口enabled→新对话文本为空→发送不同intent→保留两条不同Chat及各自initialMessage→重开仍可读取旧原文。prepared第二次调用使用独立prepared id，不把同一mock id假装两个Session。测试仍是App/Dialog+mock native，不升级为原生送达证明。
+
+独立`git diff --check`通过。复审文件SHA256：App `f5657cd9869828a210ed6d90fd6cb20bdabe33c201ad8970953c66b1926e9894`；Dialog `d8eabfa96e9aa08cb0c5762d0191b0cb71392bde36a6ea55f02c06dea96edf2c`；App helper测试 `2a28d570ee98f50925d4b42579bacafde7a0a56b5adcc68e1e979a21410978a8`。
+
+复审建议：上述新增P2在当前源码层关闭；所读启动回执修复范围未发现其他P1/P2，可以在主Agent最终相关测试、tsc/lint和主干合并门禁通过后提交集成。此建议不冒称最终检查已通过或主干已交付；独立真实UI仍无IAB，M2/M3/原生/Provider/生产边界不变。未知记录仅保存在当前Renderer生命周期内，不宣称重启后持久化或已自动完成原生对账。

@@ -1,3 +1,4 @@
+import type { SidebarConversationLaunchResult } from '@/utils/sidebarConversationLaunch';
 import BotConversationNavigation from './BotConversationNavigation';
 import NewBotConversationDialog from './NewBotConversationDialog';
 import {
@@ -239,6 +240,8 @@ interface GlobalSidebarProps {
     initialMessage?: InitialMessage,
     entryIntent?: 'open_workspace' | 'workspace_init',
   ) => Promise<boolean>;
+  onStartBotConversation?: (project: Project, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
+  onViewBotConversationAttempt?: (tabId: string) => void;
   onOpenProjectBoard?: (project: Project) => void;
   onOpenSession: (session: SessionMetadata, project: Project) => Promise<boolean>;
   onContinueSession?: (session: SessionMetadata, project: Project) => Promise<boolean>;
@@ -524,6 +527,8 @@ export default memo(function GlobalSidebar({
   onOpenSettings,
   onOpenBugReport,
   onOpenWorkspace,
+  onStartBotConversation,
+  onViewBotConversationAttempt,
   onOpenProjectBoard,
   onOpenSession,
   onContinueSession,
@@ -1320,7 +1325,15 @@ export default memo(function GlobalSidebar({
 
   return (
     <>
-      {newConversationOpen && <NewBotConversationDialog projects={activeProjects} agents={config.agents ?? []} onOpen={onOpenWorkspace} onClose={() => setNewConversationOpen(false)} onCreateBot={() => { setNewConversationOpen(false); handleOpenNewAgentPanel(); }} />}
+      {APP_BUILD_PROFILE === 'moxbot' && <NewBotConversationDialog
+        open={newConversationOpen}
+        projects={activeProjects}
+        agents={config.agents ?? []}
+        onOpen={onStartBotConversation ?? (async () => ({ status: 'not-started' as const }))}
+        onViewAttempt={onViewBotConversationAttempt}
+        onClose={() => setNewConversationOpen(false)}
+        onCreateBot={() => { setNewConversationOpen(false); handleOpenNewAgentPanel(); }}
+      />}
       <aside
         aria-label={t('globalSidebar.navigation')}
         data-global-sidebar-mode={effectiveMode}

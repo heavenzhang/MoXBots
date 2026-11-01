@@ -192,12 +192,12 @@ function Fixture() {
               setCalls((v) => v + 1);
               if (failure) {
                 setFailure(false);
-                return false;
+                return { status: 'not-started' };
               }
               setSelection(
                 `已接收新对话请求：${p.name} · ${message?.text || "空白会话"}`,
               );
-              return true;
+              return { status: 'opened' };
             }}
             onClose={() => setOpen(false)}
             onCreateBot={() => {

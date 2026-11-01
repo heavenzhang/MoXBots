@@ -1,3 +1,4 @@
+import type { SidebarConversationLaunchResult } from '@/utils/sidebarConversationLaunch';
 import CustomSelect from "@/components/CustomSelect";
 import OverlayBackdrop from "@/components/OverlayBackdrop";
 import { isImeComposingEvent } from "@/utils/imeKeyboard";
@@ -12,17 +13,28 @@ import WorkspaceIcon from "@/components/launcher/WorkspaceIcon";
 import { useCloseLayer } from "@/hooks/useCloseLayer";
 import { botConversationProjects } from "./botConversationProjection";
 
+interface UncertainBirthReceipt {
+  tabId?: string;
+  text: string;
+  botName: string;
+  projectName: string;
+}
+
 /** Explicit birth intent. It never changes the identity of an existing Session. */
 export default function NewBotConversationDialog({
+  open = true,
   projects,
   agents,
   onOpen,
+  onViewAttempt,
   onClose,
   onCreateBot,
 }: {
+  open?: boolean;
   projects: readonly Project[];
   agents: readonly AgentConfig[];
-  onOpen: (project: Project, message?: InitialMessage) => Promise<boolean>;
+  onOpen: (project: Project, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
+  onViewAttempt?: (tabId: string) => void;
   onClose: () => void;
   onCreateBot: () => void;
 }) {
@@ -35,6 +47,8 @@ export default function NewBotConversationDialog({
   const [text, setText] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [uncertain, setUncertain] = useState<UncertainBirthReceipt | null>(null);
+  const [receipts, setReceipts] = useState<UncertainBirthReceipt[]>([]);
   const available = useMemo(
     () => botConversationProjects(projects, botId),
     [projects, botId],
@@ -44,26 +58,34 @@ export default function NewBotConversationDialog({
   );
   const selected = agents.find((agent) => agent.id === botId);
   useEffect(() => {
+    if (!open) return;
     const origin = document.activeElement;
     dialog.current?.querySelector<HTMLElement>("button")?.focus();
     return () => {
       if (origin instanceof HTMLElement && origin.isConnected) origin.focus();
     };
-  }, []);
+  }, [open]);
   useCloseLayer(() => {
+    if (!open) return false;
     if (pending.current) return true;
     onClose();
     return true;
   }, 250);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (pending.current) return;
+    if (pending.current || uncertain) return;
     const project = available.find((project) => project.id === projectId);
     // Revalidate against the current config after edits/removals in another surface.
     if (!project || !selected) {
       setError(t("botExperience.selectBoth"));
       return;
     }
+    const retainUncertain = (tabId?: string) => {
+      const receipt = { tabId, text, botName: selected.name, projectName: project.displayName || project.name };
+      setUncertain(receipt);
+      setReceipts((previous) => [...previous, receipt]);
+      setError(t("botExperience.openUncertain"));
+    };
     pending.current = true;
     setBusy(true);
     setError("");
@@ -72,15 +94,28 @@ export default function NewBotConversationDialog({
         project,
         text.trim() ? { text: text.trim() } : undefined,
       );
-      if (opened) onClose();
-      else setError(t("botExperience.openFailed"));
+      if (opened.status === 'opened') {
+        setScreen('menu');
+        setBotId('');
+        setProjectId('');
+        setText('');
+        onClose();
+      } else if (opened.status === 'not-started') {
+        setError(t("botExperience.openFailed"));
+      } else {
+        retainUncertain(opened.tabId);
+      }
     } catch {
-      setError(t("botExperience.openFailed"));
+      // An unclassified rejection is not proof of non-acceptance.
+      retainUncertain();
     } finally {
       pending.current = false;
       setBusy(false);
     }
   };
+  // Keep the draft/receipt mounted when dismissed. Reopening must not turn an
+  // uncertain operation into a fresh send. No localStorage holds message text.
+  if (!open) return null;
   return (
     <OverlayBackdrop
       portal
@@ -137,6 +172,15 @@ export default function NewBotConversationDialog({
         </h2>
         {screen === "menu" ? (
           <div className="mt-5 space-y-2">
+            {receipts.length > 0 && <section aria-label={t('botExperience.pendingBirths')} className="space-y-2 rounded-lg border border-[var(--line-subtle)] p-3">
+              <p className="text-xs text-[var(--ink-muted)]">{t('botExperience.pendingBirths')}</p>
+              {receipts.map((receipt, index) => <details key={index} className="text-xs">
+                <summary className="cursor-pointer break-words">{receipt.botName} · {receipt.projectName}</summary>
+                <p className="my-2 text-[var(--warning)]">{t('botExperience.openUncertain')}</p>
+                <textarea aria-label={t('botExperience.retainedMessage')} readOnly value={receipt.text} rows={3} className="w-full rounded-lg border border-[var(--line-subtle)] bg-[var(--paper-inset)] p-2 text-sm" />
+                {receipt.tabId && onViewAttempt && <button type="button" className="compact-action mt-2 text-xs" onClick={() => { onViewAttempt(receipt.tabId!); onClose(); }}>{t('botExperience.viewAttempt')}</button>}
+              </details>)}
+            </section>}
             <button
               type="button"
               aria-label={t("botExperience.newConversation")}
@@ -183,7 +227,7 @@ export default function NewBotConversationDialog({
               <CustomSelect
                 ariaLabel={t("botExperience.botLabel")}
                 value={botId}
-                disabled={busy}
+                disabled={busy || !!uncertain}
                 placeholder={t("botExperience.chooseBot")}
                 size="md"
                 className="mt-1.5 w-full"
@@ -206,7 +250,7 @@ export default function NewBotConversationDialog({
               <CustomSelect
                 ariaLabel={t("botExperience.projectLabel")}
                 value={projectId}
-                disabled={busy || !botId}
+                disabled={busy || !!uncertain || !botId}
                 placeholder={t("botExperience.chooseProject")}
                 size="md"
                 className="mt-1.5 w-full"
@@ -231,6 +275,7 @@ export default function NewBotConversationDialog({
               {t("botExperience.firstMessage")}
               <textarea
                 value={text}
+                readOnly={!!uncertain}
                 disabled={busy}
                 onChange={(event) => setText(event.target.value)}
                 rows={3}
@@ -243,7 +288,24 @@ export default function NewBotConversationDialog({
                 {error}
               </p>
             )}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                className="compact-action text-sm"
+                onClick={() => {
+                  if (uncertain) {
+                    // Start a separate empty intent; retain the original receipt
+                    // and never copy its text into another launch.
+                    setUncertain(null);
+                    setBotId('');
+                    setProjectId('');
+                    setText('');
+                    setError('');
+                  }
+                  setScreen('menu');
+                }}
+              >{t(uncertain ? 'botExperience.keepAndBack' : 'botExperience.backToNew')}</button>
               <button
                 type="button"
                 disabled={busy}
@@ -252,9 +314,14 @@ export default function NewBotConversationDialog({
               >
                 {t("botExperience.cancel")}
               </button>
+              {uncertain?.tabId && onViewAttempt && <button
+                type="button"
+                className="compact-action text-sm"
+                onClick={() => { onViewAttempt(uncertain.tabId!); onClose(); }}
+              >{t('botExperience.viewAttempt')}</button>}
               <button
                 type="submit"
-                disabled={busy || !botId || !projectId}
+                disabled={busy || !!uncertain || !botId || !projectId}
                 className="min-h-9 rounded-lg bg-[var(--button-primary-bg)] px-4 text-sm text-[var(--button-primary-text)] disabled:opacity-40"
               >
                 {t(

@@ -3,15 +3,16 @@
   "milestone": "M1",
   "sourceState": "implemented-locally",
   "tests": {
-    "files": 5,
-    "passed": 107,
+    "files": 6,
+    "passed": 210,
     "typescript": "pass",
     "scopedESLint": "pass",
     "classification": "pass",
     "dependencyErrors": 0,
     "existingDependencyWarnings": 18,
     "rendererBuild": "moxbot Vite pass",
-    "themeCssMappings": 31
+    "themeCssMappings": 31,
+    "newTypeOnlyDependencyWarnings": 1
   },
   "ui": {
     "primary": "component fixture interactions and full App narrow navigation executed",
@@ -30,5 +31,12 @@
   ],
   "deploymentUnit": "desktop/macOS/updater",
   "ownerThread": "01a12bc2-907a-7702-b6dd-788225c5dfe4",
-  "externalModels": false
+  "externalModels": false,
+  "launchReceipt": {
+    "actualAppCallChain": "pass; pending/prepared startup failure, uncertain createSession receipt, capacity rejection, legacy false propagation",
+    "scope": "unknown fences exact intent; independent blank birth allowed; old input and receipt remain",
+    "independentSourceReview": "pass after P2 repair",
+    "persistence": "Renderer memory only, not restart durable",
+    "nativeAcceptance": "not-run"
+  }
 }

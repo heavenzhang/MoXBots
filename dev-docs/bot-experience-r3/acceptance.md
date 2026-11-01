@@ -26,3 +26,12 @@ MoXBots build profile启用对话/项目互斥导航，使用TaskCenter原Sessio
 本批测试输出含原GlobalSidebar分区回归的React state updater测试警告；无失败，不把测试warning隐去。Vite既有大chunk与Baseline数据提示未在本任务更新依赖处理。
 
 源分支、远端main、共享CI、正式制品、安装客户端、实际Provider及生产验收分别追踪。仅desktop/macOS/updater单元，原owner01a12bc2-907a-7702-b6dd-788225c5dfe4不变；不触发共享CI、不另分配版本、不操作其恢复批次或日常App。
+
+
+## 2026-11-02 合并前启动回执修正
+
+原owner发现P1：旧sidebar wrapper忽略handleLaunchProject false，仅用预建Tab是否存在决定成功；新表单因此可能关闭丢输入且重复重试。现有handleLaunchProject布尔调用保持兼容，wrapper采用真实布尔。新Bot入口以App产出的结构化receipt判定 opened/not-started/uncertain，在调用createSession前及Chat接管initialMessage前由原App路径标记可能副作用；不改变SessionStore、Runtime、初始消息消费或恢复账本。
+
+确定未开始才允许原意图重试；未知结果保留当前原文/Bot/项目/原Tab导航并禁止重发。表单隐藏不丢receipt。独立复审发现未知保护会锁住全局新建的P2，已补“保留记录并返回新建”：旧记录独立保留，只给新表单空白输入，允许新Bot或另一明确意图；不复制旧原文。待确认记录只是当前Renderer内存中的UI回执，关闭App不保证保留，不充当持久账本或已发送证明。
+
+210项/6文件相关测试通过，包括实际App→新表单回调链的pending与prepared启动失败、createSession可能已提交但回执丢失、确定未开始的capacity拒绝、旧bool失败传播、未知后新独立意图和旧原文留存。真实Chat发送网络与原生持久化并未在本地DOM中执行；断言的是App消息交接及不再次创建/重发，不能称模型业务验收。tsc、scoped ESLint、classification、本地moxbot renderer build通过。依赖检查0error，18既有warning加1个新type-only receipt契约的no-orphans warning。最终证据verification/launch-receipt-*；独立审阅见independent-review.md。修正后当前工具无IAB，未补新的原生UI交互；此前导航/布局证据仅对应原M1状态。

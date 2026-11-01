@@ -1,3 +1,4 @@
+import type { SidebarConversationLaunchAttempt, SidebarConversationLaunchResult } from '@/utils/sidebarConversationLaunch';
 import UpdateRestartConfirmation from '@/components/UpdateRestartConfirmation';
 import { restoreRemoteTabForAccount } from '@/features/remote-session/accountFence';
 import { applyRemoteObservation } from '@/features/remote-session/observation';
@@ -1861,6 +1862,7 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       initialMessage?: InitialMessage,
       analyticsContext?: LaunchProjectAnalyticsContext,
       sessionBirthHint?: LaunchSessionBirthHint,
+      sidebarAttempt?: SidebarConversationLaunchAttempt,
     ) => {
       const activeTabId = tabWorkspaceController.getSnapshot().activeTabId;
       if (!activeTabId) return false;
@@ -2106,6 +2108,11 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
             console.log(
               `[App] Runtime-backed provider launch birth: provider=${identity.providerId} runtime=${birth.runtime} source=${birth.opts.runtimeSource ?? 'none'} model=${identity.model}`,
             );
+            // A rejected invoke cannot prove that metadata was never committed.
+            if (sidebarAttempt) {
+              sidebarAttempt.sideEffectsStarted = true;
+              sidebarAttempt.tabId = targetTabId;
+            }
             const prepared = await createSession(project.path, birth.runtime, {
               ...birth.opts,
               origin:
@@ -2161,6 +2168,12 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
         );
         // flushSync is load-bearing: without it React can coalesce this update with
         // the post-ensure updates, delaying the chat shell until after the cold boot.
+        // Chat may consume initialMessage as soon as this shell mounts, before
+        // ensureSessionSidecar resolves. A later failure is not safe to resend.
+        if (sidebarAttempt) {
+          sidebarAttempt.sideEffectsStarted = true;
+          sidebarAttempt.tabId = targetTabId;
+        }
         flushSync(() => {
           const captured = tabWorkspaceController.capture(targetTabId);
           const target = tabWorkspaceController
@@ -3247,10 +3260,11 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       const launchTab = createNewTab();
       if (!openLaunchTabNow(launchTab)) return false;
       try {
-        await handleLaunchProject(project, initialMessage, {
+        const launched = await handleLaunchProject(project, initialMessage, {
           surface: 'global_sidebar',
           entryIntent,
         });
+        if (!launched) return false;
         return tabWorkspaceController
           .getSnapshot()
           .tabs.some((tab) => tab.id === launchTab.id);
@@ -3271,6 +3285,41 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       tabWorkspaceController,
     ],
   );
+
+  // Bot creation needs a receipt with ownership, rather than the legacy boolean
+  // used by workspace navigation. Never infer delivery from tab existence.
+  const handleStartBotConversation = useCallback(
+    async (project: Project, initialMessage?: InitialMessage): Promise<SidebarConversationLaunchResult> => {
+      if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
+        toastRef.current.info(t('appChrome.maxTabsReached'));
+        return { status: 'not-started' };
+      }
+      const launchTab = createNewTab();
+      if (!openLaunchTabNow(launchTab)) return { status: 'not-started' };
+      const attempt: SidebarConversationLaunchAttempt = { sideEffectsStarted: false, tabId: launchTab.id };
+      try {
+        const launched = await handleLaunchProject(project, initialMessage, {
+          surface: 'global_sidebar',
+          entryIntent: initialMessage ? 'send_message' : 'open_workspace',
+        }, undefined, attempt);
+        if (launched) return { status: 'opened' };
+      } catch (error) {
+        console.error('[App] Bot conversation launch failed:', error);
+      }
+      if (attempt.sideEffectsStarted) {
+        return { status: 'uncertain', tabId: attempt.tabId };
+      }
+      removeUnusedPrecreatedLaunchTab(launchTab.id);
+      return { status: 'not-started' };
+    },
+    [handleLaunchProject, openLaunchTabNow, removeUnusedPrecreatedLaunchTab, t, tabWorkspaceController],
+  );
+
+  const handleViewBotConversationAttempt = useCallback((tabId: string) => {
+    if (tabWorkspaceController.getSnapshot().tabs.some(tab => tab.id === tabId)) {
+      setActiveTabId(tabId);
+    }
+  }, [setActiveTabId, tabWorkspaceController]);
 
   // Open Settings as a new tab (or switch to existing one)
   // Optional initialSection parameter to open a specific section (e.g., 'providers')
@@ -5115,6 +5164,8 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
             onOpenBugReport={handleOpenBugReport}
             onOpenProjectBoard={handleOpenProjectBoard}
             onOpenWorkspace={handleOpenWorkspaceFromSidebar}
+            onStartBotConversation={handleStartBotConversation}
+            onViewBotConversationAttempt={handleViewBotConversationAttempt}
             onOpenSession={handleOpenSidebarSession}
             onContinueSession={handleContinueSidebarSession}
             onRenameSession={renamePersistedSession}

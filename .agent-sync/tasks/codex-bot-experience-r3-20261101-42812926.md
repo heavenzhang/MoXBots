@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=6fb688d46846a9294adf6bf23814d5e6165750cd772724ee61c2298df7030b8d -->
+<!-- git-project-sync-task:source-digest=12cce066c7ba244d4782d5fcbf076c1732bf63bcd876159bad04d66a63f73e18 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=0d495c8b-a8ee-439b-993d-bd32d37deaba -->
 <!-- git-project-sync-task:branch=codex/bot-experience-r3-20261101 -->
@@ -32,9 +32,17 @@
 
 ## Verification
 
-- Source digest: `6fb688d46846a9294adf6bf23814d5e6165750cd772724ee61c2298df7030b8d`; 107 targeted tests passed; tsc and scoped ESLint passed; test classification passed; dependency-cruiser 0 errors/18 existing warnings; moxbot Vite build passed; theme CSS 31 mappings passed; primary synthetic UI and narrow App navigation checked; independent source/static visual review passed; independent interaction/native/production not run.
+- Source digest: `12cce066c7ba244d4782d5fcbf076c1732bf63bcd876159bad04d66a63f73e18`; 210 targeted tests across 6 files passed; real App-to-dialog launch receipts and independent intent tested; tsc and scoped ESLint pass; classification pass; dependencies 0 errors, 18 existing plus 1 type-only warning; moxbot renderer build pass; independent source rereview pass; native/production not run.
 
 git-project-sync start PASS（main ad68c28d）；task-init遇代理TLS间歇故障，R1合并后HEAD已前进，显式建立任务记录；通过单命令Git代理空覆盖恢复observe PASS，不修改全局代理、不降低TLS。正式save生成源码摘要。107相关测试、tsc、lint、分类、本地Vite构建、主题CSS通过；deps0error/18既有warning。证据dev-docs/bot-experience-r3/acceptance.md与verification/。
+
+## Merge repair 2026-11-02
+
+- [x] 用户明确授权本批合main；不延后到下一功能版本。
+- [x] 原owner P1启动false误报及重复意图保护已修，真实App调用链测试覆盖。
+- [x] 独立P2全局新建锁定已修；未知receipt保留而独立空白意图可继续。
+- [x] 210相关测试、tsc/scoped lint/classification/本地moxbot build；deps 0error/18既有+1 type-only warning。
+- [ ] 原owner依赖PR221 updater_download墙钟断言失败归因/必要修复、M1 PR/共享CI/main合入与独立远端核验。
 
 ## Blockers and unknowns
 
@@ -42,7 +50,7 @@ M2/M3为后续实质开发，非已完成能力。独立IAB交互验收不可用
 
 ## Next step
 
-保存并核验M1远端源码，提交原owner下一未冻结批审阅/共享CI/main请求，继续M2/M3合同与真实接线；独立原生/生产门槛不混同。
+提交并推送启动回执修正SHA给原owner，推进当前R1+M1 PR/共享CI/main；远端主干包含独立核验后再进入下一步M2/M3。当前未安装/未发布。
 
 ## Deployment request
 
