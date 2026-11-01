@@ -1174,6 +1174,12 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 
 第十二项（MB-RECOVERY-INCIDENT-20261101）：532.1无效accept证据纠错19轮但reworks=0，修正为沿既有返工计数和同一证明规则有界纠错，给出具体criterion/失效证据反馈，保留真实进度、原ID及人工补证。代理ConnectTimeoutError只在精确当前attempt/原生连接建立前、同fetch取消与预算内最多2次重连；HTTP429/5xx、已发送/部分流和旧unknown不获重放权。冷恢复和原生loopback回归后由同owner独审、集成、分配新不可变包、安装并复验四原会话；不增加部署负责人，不独立触发共享CI，不宣称限流或旧业务验收已闭合。证据见 recovery-incident-20261101/acceptance.md 最新章节。
 
+第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876238，不能覆盖或复用其制品与检查。
+
+第十三项审查补证：原owner精确7c3fe1f09静态/58项定向通过并独立补失败Bash live/cold围栏验证；源分支吸收该测试与未完成peer/退休身份反例，最终74项及tsc/lint/diff通过。产品逻辑不变，保持既有unknown，不覆盖532.2冻结批；真实原生验收仍待下一批安装。
+
+第十三项进一步补证：真实SessionStore全文件11项冷恢复及实际SDK/原生Bash本地模型缺口注入、默认模式均通过；首条用户消息使fixture V2 birth正式持久化，初始owner丢失为fixture问题，未改产品逻辑。可复现命令已写acceptance.md；源码测试不等同四原会话实装验收，仍由原owner统一后续批次。
+
 ## MB-BOT-R1-20261101 — Bot 身份与头像 / 第二轮协作原型
 
 用户已确认第一轮代码范围：Bot 身份命名、内置头像选择及入口一致展示；群组/任务关系仅原型。独立任务分支 codex/bot-identity-r1-20261101，基于 main58941e30；任务 .agent-sync/tasks/codex-bot-identity-r1-20261101-7a0fa807.md，证据 dev-docs/bot-identity-r1/acceptance.md，原型 dev-docs/prototypes/bot-collaboration-r2/。复用原 icon 字段、Agent/Project 配置事务，保留用户原图标，未修改 group-phase1 共享工作树、执行账本或 Runtime。164 定向用例、tsc/lint/本地 renderer build 通过；原生/生产验收另追踪。

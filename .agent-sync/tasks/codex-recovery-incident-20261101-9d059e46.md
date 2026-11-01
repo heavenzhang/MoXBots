@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=f434edff364e6dbe968c942708645d37874345ca78063e742a8cdbc0cd1351cf -->
+<!-- git-project-sync-task:source-digest=d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -28,9 +28,15 @@
 - [x] 第十一批原owner独审、PR224/mainad68、532.1签名公证/备份安装；原生回执实际成立，整体验收仍失败。
 - [x] 第十二批无效accept返工计数、原生反馈和逐请求连接建立恢复实现及隔离验证。
 - [ ] 第十二批精确独审、主干/新包/安装与四原会话复验。
+- [x] 第十二批e9f60a独审181项通过，532.2候选fcd96/PR226已启动精确CI；未安装验收。
+- [x] 第十三批原生returned历史缺口降级两项复现、保留旧保护修复及141项回归。
+- [x] 第十三批真实SessionStore冷恢复11项、实际SDK/本地模型缺口注入与默认模式通过。
+- [ ] 第十三批独审与下一未冻结候选交付、真实验收。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+第十三项：prearm分析暂缺tool_result时不再把已有精确原生returned工具新升级为legacy unknown；只删本次候选，不修改任何持久unknown/legacy/成功防重放。不同ID/输入、错误矛盾及已有legacy保持；生产5b原新增unknown的具体时序尚未证明，不能自动核销。两项live/cold旧失败复现，141回归/tsc/lint通过，下一批独审/安装验收待完成；532.2已冻结不覆盖。
 
 第十二项以实装532.1为依据：有效回执但证据不合格的accept仍自动空转，现沿既有reworks计数并复用同一证明规则反馈缺失criterion/失效工具；原任务/进展与人工补证保留。代理连接建立只对当前原生ConnectTimeoutError/首个HTTP dispatch作两次有界连接重试，逐fetch绑定取消与owner/代次/预算，不开放HTTP错误或断流重放。独审发现默认follow的307第二跳会重新获取连接重试权，已加首dispatch限制和真实默认follow反例；缓存RetryAgent取消后仍连接的原型未进入产品。429规则未放宽，未知操作未清除。
 
@@ -55,6 +61,12 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa`; Phase13 Store/native supplement: full real-SessionStore checkpoint suite 11 PASS, including success and known Bash-exit gap cases after complete module reload. Actual SDK/native-Bash loopback with and without --returned-history-gap: both PASS, five calls, two expected denials, package count 1, original unknown launch count 0, unknown count 1. Full tsc, scoped ESLint, diff PASS. First Store fixture lacked published V2 birth and correctly failed; it was corrected with a durable first user message and explicit reloaded-owner assertion. No product logic change, real user session mutation, paid inference or installed-client acceptance claimed.
+
+- Source digest: `0bf65fc033640aed6b8adc0f795f417a0a0a0972114979a674c00bc175dab011`; Phase13 independent-review follow-up: adopted the release owner's live/cold failed-Bash tests and added unresolved-peer/retired-identity counterexamples. Final scoped/attempt/journal run: 74 PASS; full tsc, scoped lint and diff checks PASS. Product logic remains identical to reviewed 7c3fe1f09. Real installed original-session acceptance remains pending.
+
+- Source digest: `145429280466a4f6ed4c7889eeb314e98d112d5609386c4b05f82826d5be4991`; Phase13: 141 related cases in four files PASS; two pre-fix live/cold failures reproduced, four distinct negative shapes remain uncertain. Full tsc, scoped ESLint, classification and diff checks PASS. Synthetic native return/history-gap probe executes zero commands and makes zero network calls. Real original ledger unchanged; production trigger and original-session recovery remain unproven.
 
 - Source digest: `f434edff364e6dbe968c942708645d37874345ca78063e742a8cdbc0cd1351cf`; Phase12: 8-file combined regression 289 PASS, plus two added native connection/redirect regressions (291 distinct cases in total); full TypeScript, scoped ESLint, classification and diff checks. Initial four invalid-accept failures reproduced against old source. Cold restore/current epoch, native receipt commitment, shared-pool cancellation isolation, 307 default-follow boundary, actual ProxyAgent TLS timeouts, pre-dispatch single POST, sent/reset/partial-stream/HTTP status negatives, original unknown ledger and SDK replay fences covered. Exact final source review and installed acceptance remain pending original desktop owner. Tests are isolated and do not mutate real sessions.
 
@@ -96,7 +108,7 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-第十一批已主干/CI/532.1安装，四原会话实测未全部通过；第十二批待精确独审、主干和下一包原生复验。薪资此前核对被分类为新执行，不能据此宣称更早的execution已恢复，也不手动改回ID；Kevin本轮为control核查，未证明原execution恢复。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖、上游429与系统恢复验收分别列示。用户持续授权更新和原生验证，并明确允许替代系统控制工具完成安装验证，系统稳定优先。公开stable保持0.5.27 HOLD。
+第十一批已主干/CI/532.1安装，四原会话实测未全部通过；第十二批独审已通过、532.2/PR226待CI和后续安装复验；第十三批精确7c3fe1f09独审及失败Bash补证已通过，补充反例交付后进入下一未冻结批。薪资此前核对被分类为新执行，不能据此宣称更早的execution已恢复，也不手动改回ID；Kevin本轮为control核查，未证明原execution恢复。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖、上游429与系统恢复验收分别列示。用户持续授权更新和原生验证，并明确允许替代系统控制工具完成安装验证，系统稳定优先。公开stable保持0.5.27 HOLD。
 
 ## Deployment request
 

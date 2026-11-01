@@ -102,6 +102,9 @@ export class NativeOperationJournal {
   }
   markLegacy(actionHash: string): void { this.legacy.add(actionHash); }
   hasUnresolved(actionHash: string): boolean { return [...this.entries.values()].some(a => a.actionHash === actionHash && a.status !== 'returned'); }
+  hasReturnedAction(toolUseId: string, actionHash: string): boolean {
+    return [...this.entries.values()].some(a => a.toolUseId === toolUseId && a.actionHash === actionHash && a.status === 'returned');
+  }
   isUncertain(actionHash: string): boolean { return this.legacy.has(actionHash) || this.hasUnresolved(actionHash); }
   hasToolId(toolUseId: string): boolean {
     return this.retired.has(identityHash(toolUseId)) || [...this.entries.values()].some(a => a.toolUseId === toolUseId);

@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=de70890acdab2007856a72da875cafe92f12bb3e755917dfedb2593ee5931441 -->
+<!-- git-project-sync-task:source-digest=c93437ada68fb92f83047e2260f3f974c414ee08b4a96a3035e38358b83ea38e -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=0d495c8b-a8ee-439b-993d-bd32d37deaba -->
 <!-- git-project-sync-task:branch=codex/bot-experience-r3-20261101 -->
@@ -32,7 +32,7 @@
 
 ## Verification
 
-- Source digest: `de70890acdab2007856a72da875cafe92f12bb3e755917dfedb2593ee5931441`; 210 targeted tests across 6 files and full unit 659 files/7453 passed/5 skipped; tsc/scoped ESLint/classification/moxbot renderer build passed before fixture-only token correction; theme architecture guard repaired without relaxing policy; independent source rereview pass; final candidate CI and native/production not run.
+- Source digest: `c93437ada68fb92f83047e2260f3f974c414ee08b4a96a3035e38358b83ea38e`; integrated exact current main, final-source CI pending; native and production not run. Producer852 historical evidence: 210 targeted tests across 6 files and full unit 659 files/7453 passed/5 skipped; tsc/scoped ESLint/classification/moxbot renderer build passed before fixture-only token correction; theme architecture guard repaired without relaxing policy; independent source rereview pass; final candidate CI and native/production not run.
 
 git-project-sync start PASS（main ad68c28d）；task-init遇代理TLS间歇故障，R1合并后HEAD已前进，显式建立任务记录；通过单命令Git代理空覆盖恢复observe PASS，不修改全局代理、不降低TLS。正式save生成源码摘要。107相关测试、tsc、lint、分类、本地Vite构建、主题CSS通过；deps0error/18既有warning。证据dev-docs/bot-experience-r3/acceptance.md与verification/。
 
