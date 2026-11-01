@@ -171,6 +171,21 @@ describe('auto routing candidate pool settings', () => {
     expect(within(screen.getByRole('list')).getAllByText('First priority')).toHaveLength(3);
   });
 
+  it('keeps candidate and directory lists in the settings page scroll flow', async () => {
+    renderCard();
+    const candidates = await screen.findByRole('list');
+    expect(candidates).not.toHaveClass('overflow-y-auto');
+    expect(candidates.className).not.toMatch(/max-h-/);
+    expect(within(candidates).getAllByRole('listitem')).toHaveLength(4);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add models' }));
+    const directoryRow = await screen.findByRole('checkbox', { name: /New Chat.*new-chat/ });
+    const directory = directoryRow.closest('label')?.parentElement;
+    expect(directory).not.toBeNull();
+    expect(directory).not.toHaveClass('overflow-y-auto');
+    expect(directory?.className).not.toMatch(/max-h-/);
+  });
+
   it('clears the old batch selection when search changes the visible list', async () => {
     renderCard();
     fireEvent.click(await screen.findByRole('checkbox', { name: 'Select visible (4)' }));

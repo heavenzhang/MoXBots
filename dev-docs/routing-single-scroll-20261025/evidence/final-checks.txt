@@ -1,0 +1,17 @@
+MOXBOTS-ROUTING-SINGLE-SCROLL-20261025 final local checks
+Date: 2026-11-01
+Runtime: /opt/homebrew/Cellar/node@24/24.21.0/bin/node
+Version: v24.21.0
+NODE_OPTIONS: explicitly unset
+
+COMMAND: ./node_modules/.bin/vitest run --project dom src/renderer/pages/settings/AutoRoutingSettings.test.tsx
+RESULT: exit 0; 1 test file passed; 14/14 tests passed.
+
+COMMAND: ./node_modules/.bin/tsc --noEmit
+RESULT: exit 0.
+BOUNDARY: direct tsc only; the full npm run typecheck precheck previously failed because the shared dependency chat-scroll repair patch was missing.
+
+COMMAND: ./node_modules/.bin/eslint src/renderer/pages/settings/AutoRoutingSettings.tsx src/renderer/pages/settings/AutoRoutingSettings.test.tsx --max-warnings=0
+RESULT: exit 0; existing baseline-browser-mapping stale-data notice only.
+
+Browser evidence was not regenerated in this final pass to avoid overwriting the existing snapshots. See browser-result.json and adjacent PNG files for the earlier passing real-component/synthetic-data Chromium run.

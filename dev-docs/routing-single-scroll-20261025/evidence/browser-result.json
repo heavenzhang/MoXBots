@@ -1,0 +1,59 @@
+{
+  "passed": true,
+  "environment": "Real AutoRoutingSettings in Chromium with synthetic models and in-memory saves; not native or production acceptance",
+  "checks": [
+    "17 candidates have natural list height and only the outer settings container scrolls",
+    "search still filters and restores all candidates",
+    "last row remains reachable; tier menu, pause/cancel and remove/confirm controls work",
+    "add-model directory also uses the outer scroll flow without clipping",
+    "390px layout keeps all rows reachable without horizontal or nested scrolling"
+  ],
+  "measurements": {
+    "desktop": {
+      "viewport": [
+        1000,
+        760
+      ],
+      "outerClientHeight": 760,
+      "outerScrollHeight": 1954,
+      "listClientHeight": 1339,
+      "listScrollHeight": 1339,
+      "listOverflowY": "visible",
+      "listMaxHeight": "none",
+      "rows": 17,
+      "nestedScrollers": [],
+      "horizontalOverflow": false
+    },
+    "add-panel": {
+      "viewport": [
+        1000,
+        760
+      ],
+      "outerClientHeight": 760,
+      "outerScrollHeight": 2451,
+      "listClientHeight": 1339,
+      "listScrollHeight": 1339,
+      "listOverflowY": "visible",
+      "listMaxHeight": "none",
+      "rows": 17,
+      "nestedScrollers": [],
+      "horizontalOverflow": false
+    },
+    "mobile": {
+      "viewport": [
+        390,
+        760
+      ],
+      "outerClientHeight": 760,
+      "outerScrollHeight": 2823,
+      "listClientHeight": 2077,
+      "listScrollHeight": 2077,
+      "listOverflowY": "visible",
+      "listMaxHeight": "none",
+      "rows": 17,
+      "nestedScrollers": [],
+      "horizontalOverflow": false
+    }
+  },
+  "errors": []
+}
