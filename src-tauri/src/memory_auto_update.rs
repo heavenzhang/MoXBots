@@ -180,6 +180,7 @@ struct SessionCandidate {
 #[derive(Debug)]
 enum SessionUpdateOutcome {
     Updated,
+    Ineligible,
     Busy,
     Canceled,
     TerminationUnconfirmed(String),
@@ -774,7 +775,10 @@ pub async fn run_batch<R: Runtime>(
         // either wins first (and this stale candidate is skipped) or observes
         // the live batch and cannot remove the Session mid-update.
         let session_lifecycle = crate::sidecar::acquire_session_lifecycle(&[&candidate.id]).await;
-        if crate::sidecar::runtime_identity::resolve_session_runtime_identity_full(&candidate.id)
+        if !session_allows_shared_memory_update(&candidate.id, workspace_path)
+            || crate::sidecar::runtime_identity::resolve_session_runtime_identity_full(
+                &candidate.id,
+            )
             .is_none()
         {
             drop(session_lifecycle);
@@ -813,6 +817,7 @@ pub async fn run_batch<R: Runtime>(
                     candidate.id
                 );
             }
+            SessionUpdateOutcome::Ineligible => continue,
             SessionUpdateOutcome::Canceled => break,
             SessionUpdateOutcome::TerminationUnconfirmed(error) => {
                 summary.failed += 1;
@@ -960,6 +965,52 @@ fn collect_candidates(
     let Some(myagents_dir) = crate::app_dirs::myagents_data_dir() else {
         return vec![];
     };
+    collect_candidates_in(&myagents_dir, workspace_path, config, summary)
+}
+
+// A Bot cwd is shared across its ProjectSpaces. Only legacy, unscoped
+// Sessions may feed that Bot's shared memory; field presence is authoritative,
+// including null, malformed snapshots and versions this reader cannot decode.
+fn allows_shared_memory_update(session: &SessionMeta, workspace_path: &str) -> bool {
+    !session.other.contains_key("projectSpace")
+        && session
+            .agent_dir
+            .as_deref()
+            .is_some_and(|dir| normalize_path(dir) == normalize_path(workspace_path))
+}
+
+fn session_allows_shared_memory_update(session_id: &str, workspace_path: &str) -> bool {
+    crate::app_dirs::myagents_data_dir()
+        .is_some_and(|dir| session_allows_shared_memory_update_in(&dir, session_id, workspace_path))
+}
+
+fn session_allows_shared_memory_update_in(
+    myagents_dir: &Path,
+    session_id: &str,
+    workspace_path: &str,
+) -> bool {
+    // Reread the persisted birth snapshot under the existing Session lifecycle
+    // fence before binding. Never trust a candidate/list projection that could
+    // predate scope metadata. Missing, corrupt or ambiguous identity fails closed.
+    let Ok(content) = std::fs::read_to_string(myagents_dir.join("sessions.json")) else {
+        return false;
+    };
+    let Ok(sessions) = serde_json::from_str::<Vec<SessionMeta>>(strip_bom(&content)) else {
+        return false;
+    };
+    let mut matches = sessions.iter().filter(|session| session.id == session_id);
+    let Some(session) = matches.next() else {
+        return false;
+    };
+    matches.next().is_none() && allows_shared_memory_update(session, workspace_path)
+}
+
+fn collect_candidates_in(
+    myagents_dir: &Path,
+    workspace_path: &str,
+    config: &MemoryAutoUpdateConfig,
+    summary: &mut MemoryAutoUpdateBatchSummary,
+) -> Vec<SessionCandidate> {
     let sessions_path = myagents_dir.join("sessions.json");
     let sessions_content = match std::fs::read_to_string(&sessions_path) {
         Ok(content) => content,
@@ -977,7 +1028,6 @@ fn collect_candidates(
         }
     };
 
-    let normalized_workspace = normalize_path(workspace_path);
     let now = Utc::now();
     let active_session_cutoff = now - chrono::Duration::days(ACTIVE_SESSION_LOOKBACK_DAYS);
     let idle_cutoff = now - chrono::Duration::minutes(IDLE_COOLDOWN_MINUTES);
@@ -985,10 +1035,7 @@ fn collect_candidates(
     let mut candidates = Vec::new();
 
     for session in sessions {
-        let Some(agent_dir) = session.agent_dir.as_ref() else {
-            continue;
-        };
-        if normalize_path(agent_dir) != normalized_workspace {
+        if !allows_shared_memory_update(&session, workspace_path) {
             continue;
         }
         summary.checked_sessions += 1;
@@ -996,11 +1043,12 @@ fn collect_candidates(
         // sessions.json is only a coarse I/O prefilter. A recent value cannot
         // make a session eligible because automatic turns may have polluted
         // it; eligibility is always decided from the last human JSONL row.
-        // Missing/malformed metadata fails open. A recent JSONL mtime also
-        // fails open, covering a durable append whose metadata write failed.
+        // Missing/malformed activity timestamps fail open. A recent JSONL
+        // mtime also fails open, covering a durable append whose metadata
+        // write failed. Scope metadata is checked separately and fails closed.
         let metadata = Value::Object(session.other.clone());
         let format = match crate::session_transcript::session_format(
-            &myagents_dir,
+            myagents_dir,
             &session.id,
             Some(&metadata),
         ) {
@@ -1232,6 +1280,13 @@ async fn update_single_session<R: Runtime>(
         .await
     {
         return SessionUpdateOutcome::Canceled;
+    }
+
+    // Sidecar startup may have yielded since the lifecycle/binding check.
+    // Recheck scope at the actual send boundary before retaining the owner:
+    // a rejected source never sends a turn and releases only this Task owner.
+    if !session_allows_shared_memory_update(session_id, workspace_path) {
+        return SessionUpdateOutcome::Ineligible;
     }
 
     // From this point the HTTP request may reach the runtime even if this
@@ -1495,6 +1550,128 @@ fn is_human_user_message(message: &MessageLine, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_memory_candidates_exclude_all_project_scopes_at_same_bot_cwd() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = "/synthetic/shared-bot";
+        let timestamp = (Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+        let scopes = [
+            serde_json::json!({"version": 1, "projectId": "A"}),
+            serde_json::json!({"version": 1, "projectId": "B"}),
+            Value::Null,
+            serde_json::json!("malformed"),
+            serde_json::json!({"version": 999, "projectId": "future"}),
+        ];
+        let mut sessions = vec![serde_json::json!({
+            "id": "legacy", "agentDir": workspace, "lastActiveAt": timestamp
+        })];
+        for (index, scope) in scopes.iter().enumerate() {
+            sessions.push(serde_json::json!({
+                "id": format!("scoped-{index}"), "agentDir": workspace,
+                "lastActiveAt": timestamp, "projectSpace": scope
+            }));
+        }
+        std::fs::create_dir(dir.path().join("sessions")).unwrap();
+        for session in &sessions {
+            let row = serde_json::json!({
+                "role": "user", "content": "synthetic human input", "timestamp": timestamp
+            });
+            std::fs::write(
+                dir.path()
+                    .join("sessions")
+                    .join(format!("{}.jsonl", session["id"].as_str().unwrap())),
+                format!("{row}\n{row}\n"),
+            )
+            .unwrap();
+        }
+        std::fs::write(
+            dir.path().join("sessions.json"),
+            serde_json::to_vec(&sessions).unwrap(),
+        )
+        .unwrap();
+        let mut summary = MemoryAutoUpdateBatchSummary::default();
+        let candidates = collect_candidates_in(dir.path(), workspace, &base_config(), &mut summary);
+        assert_eq!(
+            candidates.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            vec!["legacy"]
+        );
+        assert!(session_allows_shared_memory_update_in(
+            dir.path(),
+            "legacy",
+            workspace
+        ));
+        for index in 0..scopes.len() {
+            assert!(!session_allows_shared_memory_update_in(
+                dir.path(),
+                &format!("scoped-{index}"),
+                workspace
+            ));
+        }
+    }
+
+    #[test]
+    fn shared_memory_dispatch_rereads_scope_and_fails_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = "/synthetic/shared-bot";
+        let path = dir.path().join("sessions.json");
+        let timestamp = (Utc::now() - chrono::Duration::hours(2)).to_rfc3339();
+        let legacy = serde_json::json!({"id": "candidate", "agentDir": workspace});
+        std::fs::write(&path, serde_json::json!([legacy]).to_string()).unwrap();
+        std::fs::create_dir(dir.path().join("sessions")).unwrap();
+        let row =
+            serde_json::json!({"role": "user", "content": "synthetic", "timestamp": timestamp});
+        std::fs::write(
+            dir.path().join("sessions/candidate.jsonl"),
+            format!("{row}\n{row}\n"),
+        )
+        .unwrap();
+        let candidates = collect_candidates_in(
+            dir.path(),
+            workspace,
+            &base_config(),
+            &mut MemoryAutoUpdateBatchSummary::default(),
+        );
+        assert_eq!(candidates.len(), 1);
+        assert!(session_allows_shared_memory_update_in(
+            dir.path(),
+            &candidates[0].id,
+            workspace
+        ));
+        for scope in [
+            Value::Null,
+            serde_json::json!({"version": 999}),
+            serde_json::json!(false),
+        ] {
+            let mut scoped = legacy.clone();
+            scoped["projectSpace"] = scope;
+            std::fs::write(&path, serde_json::json!([scoped]).to_string()).unwrap();
+            assert!(!session_allows_shared_memory_update_in(
+                dir.path(),
+                &candidates[0].id,
+                workspace
+            ));
+        }
+        for invalid in [
+            "broken JSON".to_string(),
+            "[]".to_string(),
+            serde_json::json!([legacy, legacy]).to_string(),
+            serde_json::json!([{"id": "candidate", "agentDir": "/other-bot"}]).to_string(),
+        ] {
+            std::fs::write(&path, invalid).unwrap();
+            assert!(!session_allows_shared_memory_update_in(
+                dir.path(),
+                "candidate",
+                workspace
+            ));
+        }
+        std::fs::remove_file(&path).unwrap();
+        assert!(!session_allows_shared_memory_update_in(
+            dir.path(),
+            "candidate",
+            workspace
+        ));
+    }
 
     type TestScan = Box<
         dyn FnOnce(

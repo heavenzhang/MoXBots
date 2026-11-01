@@ -1,3 +1,5 @@
+import { ProjectSpaceError } from '../shared/projectSpaces';
+import { compileProjectSpaceBirth } from './session-engine/project-space-birth';
 import { modelQaRequest } from './modelqa/routes';
 import { APP_DATA_DIR_NAME } from '../shared/appProfile';
 import type { AskUserQuestionAnswers } from '../shared/types/askUserQuestion';
@@ -4005,6 +4007,9 @@ async function main() {
       if ((pathname === '/sessions' || pathname === '/api/session/birth') && request.method === 'POST') {
         type CreateSessionPayload = {
           agentDir: string;
+          projectSpaceSelection?: unknown;
+          projectSpace?: unknown;
+          birthSnapshot?: unknown;
           runtime?: string;
           runtimeSource?: RuntimeSource;
           seedMaxPermission?: boolean;
@@ -4101,6 +4106,13 @@ async function main() {
             400,
           );
         }
+        let projectSpace: SessionMetadata['projectSpace'];
+        try {
+          projectSpace = compileProjectSpaceBirth({ pathname, payload, workspacePath: agentDirValue, origin: payloadOrigin });
+        } catch (error) {
+          return jsonResponse({ success: false, error: error instanceof Error ? error.message : 'Invalid project selection',
+            ...(error instanceof ProjectSpaceError ? { code: error.code } : {}) }, error instanceof ProjectSpaceError && error.code === 'revision-conflict' ? 409 : 400);
+        }
         const birthConfig = loadConfig();
         const managedCodexReady = isManagedCodexProviderReady(birthConfig);
         if (
@@ -4139,6 +4151,7 @@ async function main() {
         const agent = findProjectAgentByWorkspacePath(agentDirValue) as
           | AgentConfig
           | undefined;
+        if (projectSpace && (!agent || agent.id !== projectSpace.botId)) return jsonResponse({ success: false, error: 'Selected Bot workspace changed before project birth' }, 409);
         const baseSnapshot: Partial<SessionMetadata> = agent
           ? (payloadOrigin?.kind === 'agent-channel' ? snapshotForImSession : snapshotForOwnedSession)(agent, {
               runtimeOverride: runtimeValue,
@@ -4149,6 +4162,7 @@ async function main() {
           : runtimeValue
             ? { runtime: runtimeValue }
             : {};
+        if (projectSpace) baseSnapshot.projectSpace = projectSpace;
         baseSnapshot.origin = payloadOrigin ?? {
           kind: 'desktop',
           surface: 'unknown',

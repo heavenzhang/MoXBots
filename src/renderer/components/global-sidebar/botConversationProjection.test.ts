@@ -3,6 +3,7 @@ import type { Project } from "@/config/types";
 import type { AgentConfig } from "../../../shared/types/agent";
 import type { SessionMetadata } from "@/api/sessionClient";
 import type { Tab } from "@/types/tab";
+import type { ProjectSpaceSessionSnapshot } from '../../../shared/projectSpaces';
 import {
   botConversationProjects,
   projectBotConversations,
@@ -59,6 +60,42 @@ const project = (
 ) =>
   projectBotConversations({ projects, agents, sessions, tabs: [], ...extra });
 describe("Bot conversation projection", () => {
+  function frozen(projectId: string, patch: Partial<ProjectSpaceSessionSnapshot> = {}): ProjectSpaceSessionSnapshot {
+    return { schemaVersion: 1, projectId, projectName: `Frozen ${projectId}`, projectRevision: 1, botId: 'b1', botName: 'Original Bot', botIcon: 'bot:spark', workspacePath: '/work/product', capturedAt: '2026-11-02T00:00:00Z', description: '', instructions: '', materials: [], resources: [], ...patch };
+  }
+
+  it('filters logical projects sharing the same Bot and cwd without admitting legacy history', () => {
+    const sessions = [session('a', undefined, { projectSpace: frozen('space-a') }), session('b', undefined, { projectSpace: frozen('space-b') }), session('legacy')];
+    expect(project(sessions, { projectSpaceId: 'space-a' }).map(item => item.session.id)).toEqual(['a']);
+    expect(project(sessions, { projectSpaceId: 'space-b' }).map(item => item.session.id)).toEqual(['b']);
+    expect(project(sessions, { projectSpaceId: 'missing-space' })).toEqual([]);
+    expect(project(sessions).map(item => item.session.id)).toEqual(['a', 'b', 'legacy']);
+    expect(sessions[2].projectSpace).toBeUndefined();
+  });
+
+  it('displays the full frozen Bot and project identity after current config changes or member removal', () => {
+    const original = session('a', undefined, { projectSpace: frozen('space-a') });
+    const changedAgents = [{ ...agents[0], name: 'Renamed Bot', icon: 'bot:moss' }];
+    const [row] = project([original], { agents: changedAgents });
+    expect(row.bot).toEqual({ id: 'b1', name: 'Original Bot', icon: 'bot:spark' });
+    expect(row.projectLabel).toBe('Frozen space-a');
+    expect(row.projectSpaceId).toBe('space-a');
+    expect(project([original], { agents: [] })[0].bot).toEqual(row.bot);
+    expect(original.projectSpace?.botName).toBe('Original Bot');
+  });
+
+  it('keeps legacy rows on the existing workspace binding with no inferred logical project', () => {
+    const [legacy] = project([session('legacy')], { agents: [{ ...agents[0], name: 'Current Bot', icon: 'bot:moss' }] });
+    expect(legacy.bot).toMatchObject({ id: 'b1', name: 'Current Bot', icon: 'bot:moss' });
+    expect(legacy.projectLabel).toBe('Product');
+    expect(legacy.projectSpaceId).toBeUndefined();
+  });
+
+  it('falls back to the current icon only when the frozen snapshot has no icon', () => {
+    const noIcon = session('no-icon', undefined, { projectSpace: frozen('space-a', { botIcon: undefined }) });
+    const [row] = project([noIcon], { agents: [{ ...agents[0], icon: 'bot:moss' }] });
+    expect(row.bot).toEqual({ id: 'b1', name: 'Original Bot', icon: 'bot:moss' });
+  });
   it("joins exact workspace identity to a stable Bot and limits the project filter", () => {
     expect(
       project([session("product"), session("sales", "/work/sales")], {

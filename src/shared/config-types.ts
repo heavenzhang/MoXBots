@@ -933,6 +933,8 @@ export interface DshCollaborationSettings {
 }
 
 export interface AppConfig {
+  /** User-organized projects. Legacy Project remains a Bot workspace. */
+  projectSpaces?: import('./projectSpaces').ProjectSpace[];
   /** Auto model routing. Absent = on with inferred tiers. */
   autoRouting?: import('./autoRoute').AutoRoutingSettings;
   // Default settings for new projects

@@ -1195,3 +1195,8 @@ User approved R3 prototype for development. Isolated codex/bot-experience-r3-202
 Sole desktop/macOS/updater/shared CI/main owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; development submits exact source/evidence to next unfrozen feature intake, does not interrupt recovery/replace daily App or allocate version. 107 targeted tests/local tsc/lint/Vite build pass; one independently found rail P2 fixed and regressed. Independent source/static-visual review passed; independent IAB interaction unavailable, native/persistence/production gates remain open. Local browser fixture is synthetic, not runtime acceptance.
 
 M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-started/uncertain与首消息交接边界已修；未知只保护原操作，保留记录后可发独立空白意图。210相关测试/tsc/lint/classification/本地renderer build通过，独立P2复审通过。用户明确要求本批合入main，不安装/不改变冻结532.1；原desktop共享CI/main owner继续推进依赖PR221与M1。详情acceptance.md。
+
+
+## MB-BOT-R3-DEV-20261101 / M2 — 项目工作台与会话上下文
+
+用户授权继续M2；M1已在main630ae62。隔离分支codex/bot-project-context-m2-20261102，新任务记录.agent-sync/tasks/codex-bot-project-context-m2-20261102-b8fe4d4b.md。Bot原workspace唯一身份规则保留；config.json的projectSpaces组织目标/成员/资料引用；SessionStore原出生事务冻结项目与Bot快照，防止自动背景A/B/legacy混用。不新增writer或执行owner，不宣称文件沙盒；不改cross-end-workflow正在调整的旧ProjectBoard与Task归档语义，不复制group-phase1 dirty代码。契约/待办dev-docs/bot-project-context-m2/{CONTRACT,PLAN}.md。desktop/macOS/updater/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责；代码、模拟、原生、发行分别记录，CI最终候选冻结后避免反复移动主干。

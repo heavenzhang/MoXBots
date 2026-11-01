@@ -1,3 +1,4 @@
+import { normalizeProjectSpaceSessionSnapshot, preserveProjectSpaceSessionSnapshot } from '../shared/projectSpaces';
 import { APP_DATA_DIR_NAME } from '../shared/appProfile';
 import { normalizeMcpSelection, normalizeMcpSelectionField } from '../shared/mcpSelection';
 /**
@@ -395,7 +396,7 @@ async function publishV2Metadata(
             } : safePatch;
         }
         // V2 never writes a cached full row over another owner's unrelated fields.
-        const updated = existing ? { ...existing, ...patch } : metadata;
+        const updated = existing ? { ...existing, ...patch, projectSpace: preserveProjectSpaceSessionSnapshot(existing.projectSpace, patch.projectSpace) } : metadata;
         if (index < 0) all.push(updated); else all[index] = updated;
         await asyncFs.mkdir(MYAGENTS_DIR, { recursive: true });
         const file = await asyncFs.open(SESSIONS_TMP_FILE, 'w');
@@ -1529,6 +1530,7 @@ export async function ensureRegisteredAgentSessionOrigin(
  */
 export async function saveSessionMetadata(session: SessionMetadata): Promise<void> {
     normalizeMcpSelectionField(session);
+    if (session.projectSpace !== undefined) session.projectSpace = normalizeProjectSpaceSessionSnapshot(session.projectSpace);
     if (session.transcriptFormat === 2) {
         let active = activeTranscripts.get(session.id);
         if (!active) {
@@ -1549,6 +1551,7 @@ export async function saveSessionMetadata(session: SessionMetadata): Promise<voi
         // Creation identity and prepared admission belong to their explicit CAS
         // entrypoints, never to a subsequent snapshot save.
         const current = active.metadata;
+        session = { ...session, projectSpace: preserveProjectSpaceSessionSnapshot(current.projectSpace, session.projectSpace) };
         if (changesPendingDshAuthority(current, session)) {
             throw new Error('Pending DSH execution prevents changing Runtime Session authority');
         }
@@ -1581,7 +1584,7 @@ export async function saveSessionMetadata(session: SessionMetadata): Promise<voi
             }
             // Full metadata callers do not own input settlement. A stale
             // snapshot must neither erase a pending intent nor resurrect one.
-            all[index] = { ...session, pendingDshInputs: current.pendingDshInputs };
+            all[index] = { ...session, projectSpace: preserveProjectSpaceSessionSnapshot(current.projectSpace, session.projectSpace), pendingDshInputs: current.pendingDshInputs };
         } else {
             all.push(session);
         }
@@ -4577,6 +4580,11 @@ export async function updateSessionMetadata(
      */
     precondition?: (current: SessionMetadata) => boolean,
 ): Promise<SessionMetadata | null> {
+    const projectUpdate = updates as Partial<SessionMetadata>;
+    if ('projectSpace' in projectUpdate) {
+        const current = getSessionMetadata(sessionId);
+        if (current) preserveProjectSpaceSessionSnapshot(current.projectSpace, projectUpdate.projectSpace);
+    }
     if ('mcpEnabledServers' in updates) {
         updates = { ...updates, mcpEnabledServers: normalizeMcpSelection(updates.mcpEnabledServers) };
     }
@@ -4585,7 +4593,8 @@ export async function updateSessionMetadata(
         if (active.isRevoked) return null;
         const current = active.metadata;
         if (changesPendingDshAuthority(current, updates)) return null;
-        const { pinned: _pinned, ...patch } = updates;
+        const { pinned: _pinned, ...patch } = updates as typeof updates & Partial<SessionMetadata>;
+        if ('projectSpace' in patch) patch.projectSpace = preserveProjectSpaceSessionSnapshot(current.projectSpace, patch.projectSpace);
         if (patch.archived !== undefined) patch.archived = patch.archived === true ? true : undefined;
         if (patch.lastActiveAt !== undefined) patch.lastActiveAt = monotonicLastActiveAt(current.lastActiveAt, patch.lastActiveAt);
         return active.patchMetadata(patch);
@@ -4620,6 +4629,7 @@ export async function updateSessionMetadata(
         const current = all[idx];
         const { pinned, ...updatesWithoutPinIntent } = updates;
         const patch: Partial<SessionMetadata> = { ...updatesWithoutPinIntent };
+        if ('projectSpace' in patch) patch.projectSpace = preserveProjectSpaceSessionSnapshot(current.projectSpace, patch.projectSpace);
         if (patch.archived !== undefined) patch.archived = patch.archived === true ? true : undefined;
         if (pinned !== undefined) {
             if (!pinned) {
@@ -4661,8 +4671,10 @@ export async function updateSessionMetadataForBinding(
 ): Promise<SessionMetadata | null> {
     const active = getActiveSessionTranscript(sessionId);
     if (!active) return updateSessionMetadata(sessionId, updates, precondition);
+    if ('projectSpace' in updates) preserveProjectSpaceSessionSnapshot(active.metadata.projectSpace, (updates as Partial<SessionMetadata>).projectSpace);
     if (!precondition(active.metadata) || changesPendingDshAuthority(active.metadata, updates)) return null;
-    const { pinned: _pinned, ...patch } = updates;
+    const { pinned: _pinned, ...patch } = updates as typeof updates & Partial<SessionMetadata>;
+    if ('projectSpace' in patch) patch.projectSpace = preserveProjectSpaceSessionSnapshot(active.metadata.projectSpace, patch.projectSpace);
     if (patch.archived !== undefined) patch.archived = patch.archived === true ? true : undefined;
     return active.patchMetadata(patch);
 }

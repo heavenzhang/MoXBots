@@ -6214,6 +6214,7 @@ export async function materializePendingDesktopSession(
       {
         snapshotPatch: request.snapshotPatch,
         origin: request.origin,
+        birthSnapshot: request.birthSnapshot,
       },
       {
         hasActiveWork: getMessageCount() > 0 || queueHasQueuedOrInFlightWork(),
@@ -8545,6 +8546,7 @@ function pushInboxAbortReplyForQueuedItem(
  */
 export async function resetSession(options?: { sessionId?: string }): Promise<void> {
   return runSerializedSessionMutation(async () => {
+  if (getCurrentProductSessionMetadata()?.projectSpace !== undefined) throw new Error('Project conversations require a new project birth; the original conversation is unchanged');
   console.log('[agent] resetSession: starting new conversation');
   // 1. Properly terminate the SDK session (same pattern as switchToSession)
   // Must abort persistent session so the generator exits and subprocess terminates

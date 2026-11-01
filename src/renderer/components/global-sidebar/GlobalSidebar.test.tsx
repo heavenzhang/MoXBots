@@ -1,9 +1,12 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
+import type { ProjectSpace } from '../../../shared/projectSpaces';
+import type { AgentConfig } from '../../../shared/types/agent';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  config: { defaultWorkspacePath: null as string | null, agents: [] },
+  config: { defaultWorkspacePath: null as string | null, agents: [] as AgentConfig[], projectSpaces: [] as ProjectSpace[] },
+  mutateProjectSpace: vi.fn(),
   projects: [] as Array<Record<string, unknown>>,
   taskData: {
     sessions: [] as Array<Record<string, unknown>>,
@@ -68,6 +71,8 @@ vi.mock('@/features/account/useMyAgentsAccount', () => ({
     avatarPresets: { people: [], agents: [], lastFetchedAt: 0, isLoading: false, error: null },
   }),
 }));
+
+vi.mock('@/config/services/projectSpaceService', () => ({ mutateProjectSpace: mocks.mutateProjectSpace }));
 
 vi.mock('@/hooks/useConfig', () => ({
   useConfig: () => ({
@@ -2229,6 +2234,86 @@ describe('Agent network and Space navigation', () => {
 });
 
 describe('MoXBots navigation', () => {
+  beforeEach(async () => {
+    vi.useRealTimers(); vi.clearAllMocks();
+    mocks.projects = []; mocks.config.projectSpaces = []; mocks.config.agents = [];
+    mocks.configError = null; mocks.forcedRail = true;
+    mocks.refreshConfig.mockReset().mockResolvedValue(undefined);
+    mocks.mutateProjectSpace.mockReset();
+    window.localStorage.clear();
+    await i18n.changeLanguage('zh-CN');
+  });
+
+  it('separates logical projects from original Bot work directories and opens their own destinations', () => {
+    mocks.buildProfile = 'moxbot';
+    const space: ProjectSpace = { id: 'logical-a', name: 'Logical A', description: 'A project goal', instructions: '', memberBotIds: ['bot'], materials: [], resources: [], revision: 1, createdAt: '2026-11-02T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' };
+    const workspace = { id: 'workspace', name: 'Original directory', path: '/synthetic/bot', agentId: 'bot' };
+    mocks.config.projectSpaces = [space];
+    mocks.config.agents = [{ id: 'bot', name: 'Shared Bot', enabled: true, permissionMode: 'plan', channels: [] }];
+    mocks.projects = [workspace];
+    const onOpenProjectSpace = vi.fn(), onOpenProjectBoard = vi.fn(), onOpenWorkspace = vi.fn(async () => true);
+    renderSidebar({ onOpenProjectSpace, onOpenProjectBoard, onOpenWorkspace });
+    fireEvent.click(screen.getByRole('button', { name: '我的 Bots' }));
+    fireEvent.click(screen.getByRole('tab', { name: '项目' }));
+    expect(screen.getByText(String(i18n.t('app:projectSpaces.legacyWorkspaces')))).toBeInTheDocument();
+    expect(screen.getByText('/synthetic/bot')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Logical A/ }));
+    expect(onOpenProjectSpace).toHaveBeenCalledExactlyOnceWith(space);
+    expect(onOpenProjectBoard).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '我的 Bots' }));
+    fireEvent.click(screen.getByRole('button', { name: /Original directory/ }));
+    expect(onOpenProjectBoard).toHaveBeenCalledExactlyOnceWith(workspace);
+    expect(onOpenWorkspace).not.toHaveBeenCalled();
+  });
+
+  it('closes a committed project create even when refresh fails and never invites a duplicate save', async () => {
+    mocks.buildProfile = 'moxbot';
+    mocks.refreshConfig.mockRejectedValueOnce(new Error('projection unavailable'));
+    const saved: ProjectSpace = { id: 'saved-project', name: 'Persisted project', description: '', instructions: '', memberBotIds: [], materials: [], resources: [], revision: 1, createdAt: '2026-11-02T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' };
+    mocks.mutateProjectSpace.mockResolvedValue(saved);
+    const onOpenProjectSpace = vi.fn();
+    renderSidebar({ onOpenProjectSpace });
+    fireEvent.click(screen.getByRole('button', { name: '新建' }));
+    fireEvent.click(screen.getByRole('button', { name: /新建项目/ }));
+    fireEvent.change(screen.getByLabelText('项目名称'), { target: { value: saved.name } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '创建项目' })); });
+    expect(mocks.mutateProjectSpace).toHaveBeenCalledOnce();
+    expect(mocks.mutateProjectSpace).toHaveBeenCalledWith(expect.objectContaining({ kind: 'create', draft: expect.objectContaining({ name: saved.name }) }));
+    expect(mocks.refreshConfig).toHaveBeenCalledOnce();
+    expect(mocks.toast.warning).toHaveBeenCalledWith(String(i18n.t('app:projectSpaces.refreshAfterSaveFailed')));
+    expect(onOpenProjectSpace).toHaveBeenCalledExactlyOnceWith(saved);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '创建项目' })).not.toBeInTheDocument();
+    expect(screen.queryByText(String(i18n.t('app:projectSpaces.saveFailed')))).not.toBeInTheDocument();
+  });
+
+  it('reuses the same project create identity after an uncertain save failure', async () => {
+    mocks.buildProfile = 'moxbot';
+    const saved: ProjectSpace = { id: 'ack-project', name: 'Retry retained intent', description: '', instructions: '', memberBotIds: [], materials: [], resources: [], revision: 1, createdAt: '2026-11-02T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' };
+    mocks.mutateProjectSpace.mockRejectedValueOnce(new Error('unknown acknowledgement')).mockResolvedValueOnce(saved);
+    renderSidebar();
+    fireEvent.click(screen.getByRole('button', { name: '新建' }));
+    fireEvent.click(screen.getByRole('button', { name: /新建项目/ }));
+    fireEvent.change(screen.getByLabelText('项目名称'), { target: { value: saved.name } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '创建项目' })); });
+    expect(screen.getByLabelText('项目名称')).toHaveValue(saved.name);
+    const firstCommand = mocks.mutateProjectSpace.mock.calls[0][0];
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: '创建项目' })); });
+    expect(mocks.mutateProjectSpace).toHaveBeenCalledTimes(2);
+    expect(mocks.mutateProjectSpace.mock.calls[1][0]).toMatchObject({ kind: 'create', id: firstCommand.id, draft: firstCommand.draft });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('keeps the new Bot menu wired to the original New Agent panel', () => {
+    mocks.buildProfile = 'moxbot';
+    const onNewAgentPanelOpenChange = vi.fn();
+    renderSidebar({ onNewAgentPanelOpenChange });
+    fireEvent.click(screen.getByRole('button', { name: '新建' }));
+    fireEvent.click(screen.getByRole('button', { name: /新 Bot/ }));
+    expect(onNewAgentPanelOpenChange).toHaveBeenCalledExactlyOnceWith(true);
+    expect(mocks.mutateProjectSpace).not.toHaveBeenCalled();
+  });
+
   it('keeps conversation/project switching reachable in the rail flyout', async () => {
     mocks.buildProfile = 'moxbot';
     mocks.forcedRail = true;

@@ -8,7 +8,9 @@ import { isSystemMaintenanceSession } from "../../../shared/managedScheduledJob"
 export interface BotConversation {
   session: SessionMetadata;
   project: Project;
-  bot: AgentConfig;
+  bot: Pick<AgentConfig, 'id' | 'name' | 'icon'>;
+  projectLabel: string;
+  projectSpaceId?: string;
   working: boolean;
   unread: number;
 }
@@ -20,6 +22,7 @@ export function projectBotConversations(input: {
   tabs: readonly Tab[];
   badges?: ReadonlyMap<string, number>;
   projectId?: string;
+  projectSpaceId?: string;
 }): BotConversation[] {
   const agents = new Map(input.agents.map((agent) => [agent.id, agent]));
   return input.sessions
@@ -34,10 +37,11 @@ export function projectBotConversations(input: {
         workspacePathsEqual(project.path, session.agentDir),
       );
       if (matches.length !== 1) return [];
-      const project = matches[0],
-        bot = project.agentId ? agents.get(project.agentId) : undefined;
-      if (!bot || (input.projectId && input.projectId !== project.id))
-        return [];
+      const project = matches[0];
+      const fixed = session.projectSpace;
+      const configuredBot = agents.get(fixed?.botId ?? project.agentId ?? '');
+      const bot = fixed ? { id: fixed.botId, name: fixed.botName, icon: fixed.botIcon ?? configuredBot?.icon } : configuredBot;
+      if (!bot || (input.projectId && input.projectId !== project.id) || (input.projectSpaceId && input.projectSpaceId !== fixed?.projectId)) return [];
       const tabs = input.tabs.filter(
         (tab) => tab.view === "chat" && tab.sessionId === session.id,
       );
@@ -46,6 +50,8 @@ export function projectBotConversations(input: {
           session,
           project,
           bot,
+          projectLabel: fixed?.projectName ?? project.displayName ?? project.name,
+          projectSpaceId: fixed?.projectId,
           working: tabs.some((tab) => tab.view === "chat" && tab.isGenerating),
           unread: Math.max(
             input.badges?.get(session.id) ?? 0,
