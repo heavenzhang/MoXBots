@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa -->
+<!-- git-project-sync-task:source-digest=05d181b34fe9ce917b62c9fbef44812856ce1f58f129d69e42e1453cbe0f8b39 -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -12,6 +12,9 @@
 修复 528.1 四会话反馈中的重复恢复横幅与并发拒绝扩大问题，保全原会话与账本；按最新授权以系统恢复与稳定性实测为优先，原业务结果单独核验。证据：`dev-docs/recovery-incident-20261101/acceptance.md`。
 
 ## Acceptance criteria
+
+- [x] 第十五项真实 HTTP502 与旧未知动作耦合、已选备用下一轮409均复现并修复；294相关用例及实际SDK工具链通过。
+- [ ] 第十四/十五项原owner统一独审、主干交付、下一签名包安装及原会话实际恢复。
 
 - [x] 当前安装、main、部署 owner 和四会话只读证据核实。
 - [x] 重复横幅和并发拒绝分别失败复现、修复、回归；未知操作与真实流中断围栏保留。
@@ -61,6 +64,12 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `05d181b34fe9ce917b62c9fbef44812856ce1f58f129d69e42e1453cbe0f8b39`; Phase15: 294 distinct unit/integration cases PASS; actual SDK/native Bash with complete HTTP502 and returned-history gap PASS (4 rejections, 1 switch, 5 model calls, test write 1, old unknown execution 0, unknown count 1). Full tsc, scoped ESLint, classification and diff checks PASS. Both old HTTP retry failure and next pinned-request 409 reproduced before correction. Installed532.3 still fails overall acceptance; owner review/main/candidate/native checks pending.
+
+- Source digest: `31d7e0126d537f792f630af3e7d8941fe1f82daf6e0799414d3563d119fd6c78`; Phase14: pre-fix query tests reproduce 3 FAIL; final 236 related route/parser/native admission/execution tests PASS. Full TypeScript, scoped ESLint, classification and diff checks PASS. Direct compact queries preserve post-write verification, repeated cold queries preserve unknown operations, and explicit continuation after readonly control permits authorized Write/Bash on the original execution. Installed 532.3 still fails overall native acceptance; independent review and next owner release pending.
+
+Phase14：532.3真实原会话验收发现大账本查询包装导致验收失效，新增原list可选有界execution证据视图，直接刷新仍按原生精确identity记录；说明历史只读复测仅约束当轮，不永久撤销原任务修改授权。基于实际main630ae62快进，无原运行数据修改。旧3项失败复现，6文件236项相关回归PASS；全量tsc、定向ESLint、分类和diff检查PASS，真实新包验收待原owner。新增Max上游502与行情旧评审误标尚未闭环。
 
 - Source digest: `d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa`; Phase13 Store/native supplement: full real-SessionStore checkpoint suite 11 PASS, including success and known Bash-exit gap cases after complete module reload. Actual SDK/native-Bash loopback with and without --returned-history-gap: both PASS, five calls, two expected denials, package count 1, original unknown launch count 0, unknown count 1. Full tsc, scoped ESLint, diff PASS. First Store fixture lacked published V2 birth and correctly failed; it was corrected with a durable first user message and explicit reloaded-owner assertion. No product logic change, real user session mutation, paid inference or installed-client acceptance claimed.
 
@@ -116,4 +125,4 @@ desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c
 
 ## Next step
 
-将精确分支 SHA 交原 owner 独立审查并正常集成 main；按最新授权由原owner安装候选并验证四原会话，失败继续定位，真实会话验收单列。
+原 desktop owner 独审第十五项精确 SHA，将第十四项有界验收查询/授权澄清和本项 502 恢复统一纳入下一未冻结候选；核验原会话实际同档候选资格，不将旧 legacy 备用配置当作有效路由。由该唯一 owner 完成 CI、版本分配、签名公证、备份安装和原会话接续，不重复发送正在运行的 Kevin/Max。原未知动作仍保留；d29 历史评审 b1d 误标首因尚未证明，不清账本。当前实装 532.3、公开 stable HOLD，最终验收未完成。

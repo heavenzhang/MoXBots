@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import { ContextRecoveryController, recoveryActionHash } from '../src/server/openai-bridge/context-recovery';
 import { createBridgeHandler } from '../src/server/openai-bridge/handler';
+import { ModelFailoverController } from '../src/server/openai-bridge/model-failover';
 import type { NativeOperationJournalData } from '../src/server/openai-bridge/native-operation-journal';
 import type { AnthropicRequest } from '../src/server/openai-bridge/types/anthropic';
 
@@ -17,6 +18,9 @@ let context: ContextRecoveryController;
 let ledger: { uncertain: string[]; nativeErrors: unknown[]; operationAttempts: NativeOperationJournalData } | undefined;
 let calls = 0;
 const injectReturnedHistoryGap = process.argv.includes('--returned-history-gap');
+const injectHttpRejection = process.argv.includes('--http-rejection');
+let rejectedHttpCalls = 0;
+let backupSwitches = 0;
 let injectedHistoryGap = false;
 let denied = 0;
 let terminal = false;
@@ -58,8 +62,26 @@ const upstream = createServer((req, res) => {
 await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
 const address = upstream.address();
 assert(address && typeof address !== 'string');
+const rejectingUpstream = injectHttpRejection ? createServer((req, res) => {
+  req.resume();
+  req.on('end', () => {
+    rejectedHttpCalls++;
+    res.writeHead(502, { 'content-type': 'application/json' });
+    res.end('{"error":{"message":"Synthetic complete upstream HTTP rejection"}}');
+  });
+}) : undefined;
+if (rejectingUpstream) await new Promise<void>(resolve => rejectingUpstream.listen(0, '127.0.0.1', resolve));
+const rejectionAddress = rejectingUpstream?.address();
+const failover = injectHttpRejection ? new ModelFailoverController({ scope: () => 'fixture-turn',
+  isActive: () => !abort.signal.aborted, canSwitch: () => true, canUsePinnedRoute: () => !abort.signal.aborted,
+  canRetry: () => context.canRetryInference(), canRetryRejectedResponse: () => context.canRetryRejectedInference(),
+  retryDelaysMs: [0, 0, 0], onSwitch: () => { backupSwitches++; },
+  resolveBackup: () => ({ providerId: 'fixture-backup', apiProtocol: 'anthropic',
+    baseUrl: `http://127.0.0.1:${address.port}`, model: 'fixture-model', apiKey: 'fixture' }),
+}) : undefined;
 const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture',
-  apiProtocol: 'anthropic', baseUrl: `http://127.0.0.1:${address.port}`, model: 'fixture-model', apiKey: 'fixture', contextRecovery: context }) });
+  apiProtocol: 'anthropic', baseUrl: `http://127.0.0.1:${rejectionAddress && typeof rejectionAddress !== 'string' ? rejectionAddress.port : address.port}`,
+  model: 'fixture-model', apiKey: 'fixture', contextRecovery: context, modelFailover: failover }) });
 function injectGap(body: AnthropicRequest): AnthropicRequest {
   if (!injectReturnedHistoryGap || calls !== 2 || injectedHistoryGap) return body;
   let removed = 0;
@@ -146,6 +168,8 @@ try {
   }
   assert(terminal);
   assert.equal(calls, 5);
+  assert.equal(rejectedHttpCalls, injectHttpRejection ? 4 : 0);
+  assert.equal(backupSwitches, injectHttpRejection ? 1 : 0);
   assert.equal(denied, 2);
   await assert.rejects(readFile(join(scratch, 'original-launch.txt')), { code: 'ENOENT' });
   assert.equal(await readFile(join(scratch, 'package-count.txt'), 'utf8'), 'once\n');
@@ -157,7 +181,7 @@ try {
   assert.match(restored.beforeTool('Bash', oldInput) ?? '', /uncertain outcome/);
   assert.match(restored.beforeTool('Bash', nextInput) ?? '', /already completed/);
   assert.equal(restored.beforeTool('Bash', { command: "ssh fixture-host 'tail -n 80 /var/log/build.log'" }), undefined);
-  const receipt = { status: 'PASS', scratch, injectedHistoryGap, calls, denied, packageCount: 1, originalLaunchCount: 0,
+  const receipt = { status: 'PASS', scratch, injectedHistoryGap, rejectedHttpCalls, backupSwitches, calls, denied, packageCount: 1, originalLaunchCount: 0,
     unknown: ledger?.uncertain.length, actualSdkNativeAndShell: true, journalReload: true,
     syntheticModel: true, actualRemoteSsh: false, productionStore: false, installedClient: false };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2), { mode: 0o600 });
@@ -167,4 +191,5 @@ try {
   native.close();
   gateway.closeAllConnections(); gateway.close();
   upstream.closeAllConnections(); upstream.close();
+  rejectingUpstream?.closeAllConnections(); rejectingUpstream?.close();
 }

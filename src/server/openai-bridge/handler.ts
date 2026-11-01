@@ -404,6 +404,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       ...(proxy ? { dispatcher: getDispatcherForProxy(proxy, controller.signal, upstream.canRetryConnection) } : {}),
     }));
     clearTimeout(timer);
+    if (!response.ok) upstream.onRejectedResponse?.(response.status);
     const diagnostic = (phase: 'response_headers' | 'response_body', error?: unknown) => log(transportDiagnostic(upstream,
       { phase, route, transport: transport.snapshot(), error, status: response.status, response, cancelled: request.signal.aborted, timedOut, bytesDelivered }));
     if (!response.ok) diagnostic('response_headers');
@@ -802,7 +803,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         const status = attempt.upstreamResp.status;
         let errBody: string;
         try {
-          const bounded = routeTimeout.explicit
+          const bounded = routeTimeout.explicit || upstream.onRejectedResponse
             ? await readBoundedErrorBody(attempt.upstreamResp.body)
             : await attempt.upstreamResp.text();
           if (bounded === undefined) {
@@ -909,6 +910,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         if (translated.status !== status) {
           log(`[bridge] Remapped ${status} → ${translated.status} (${translated.body.error.type})`);
         }
+        upstream.onRejectedResponse?.(translated.status);
         return {
           ok: false,
           response: new Response(JSON.stringify(translated.body), {

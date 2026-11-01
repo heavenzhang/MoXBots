@@ -11,6 +11,94 @@ const retryDelaysMs = [0, 0, 0] as const;
 
 afterEach(() => vi.useRealTimers());
 
+describe('bounded explicit HTTP rejection recovery', () => {
+  it('cannot reuse a previous rejection proof for a later transport failure or durable wait', async () => {
+    let calls = 0;
+    const wait = vi.fn(async () => 0);
+    const switched = vi.fn();
+    const execute = vi.fn(async (target: UpstreamConfig) => {
+      if (++calls === 1) target.onRejectedResponse?.(502);
+      return Response.json({ error: { message: 'bad gateway' } }, { status: 502 });
+    });
+    const controller = new ModelFailoverController({ scope: () => 'root',
+      canRetry: () => false, canRetryRejectedResponse: () => true,
+      resolveBackup: () => backup, onSwitch: switched, retryDelaysMs,
+      recovery: { wait, complete: vi.fn(async () => {}) } });
+    expect((await controller.run(request(), primary, execute, 'exact')).status).toBe(502);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(switched).not.toHaveBeenCalled(); expect(wait).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the operation-scoped owner after asynchronous validation of a fresh pinned request', async () => {
+    let permitted = true, block = false;
+    let entered!: () => void, release!: () => void;
+    const started = new Promise<void>(r => { entered = r; });
+    const pending = new Promise<void>(r => { release = r; });
+    const execute = vi.fn(async (target: UpstreamConfig) => {
+      if (target.providerId === 'backup') return Response.json({ ok: true });
+      target.onRejectedResponse?.(502);
+      return Response.json({ error: { message: 'bad gateway' } }, { status: 502 });
+    });
+    const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+      canRetryRejectedResponse: () => permitted, canUsePinnedRoute: () => permitted,
+      resolveBackup: () => backup, onSwitch: vi.fn(), retryDelaysMs,
+      validateBackup: async () => { if (block) { entered(); await pending; } return true; } });
+    await (await controller.run(request(), primary, execute, 'first')).text();
+    block = true;
+    const run = controller.run(request(), primary, execute, 'next');
+    await started; permitted = false; release();
+    expect((await run).status).toBe(409);
+    expect(execute).toHaveBeenCalledTimes(5);
+  });
+
+  it.each(['synthetic', 'different-status', 'incomplete-body', 'successful-stream'] as const)(
+    'does not turn %s into proof of a rejected inference', async kind => {
+      const execute = vi.fn(async (target: UpstreamConfig) => {
+        if (kind !== 'synthetic') target.onRejectedResponse?.(502);
+        if (kind === 'incomplete-body') return new Response(new ReadableStream({ start(c) { c.error(new Error('lost error body')); } }), { status: 502 });
+        if (kind === 'successful-stream') return new Response('data: {"type":"message_start","message":{"id":"partial"}}\n\n', { headers: { 'content-type': 'text/event-stream' } });
+        return Response.json({ error: { message: 'bad gateway' } }, { status: kind === 'different-status' ? 503 : 502 });
+      });
+      const switched = vi.fn();
+      const controller = new ModelFailoverController({ scope: () => 'root', isActive: () => true,
+        canRetry: () => false, canRetryRejectedResponse: () => true, resolveBackup: () => backup,
+        onSwitch: switched, retryDelaysMs });
+      await (await controller.run(request(), primary, execute, 'exact')).text();
+      expect(execute).toHaveBeenCalledOnce(); expect(switched).not.toHaveBeenCalled();
+    });
+
+  it.each(['abort', 'owner', 'route', 'background', 'policy', 'end-turn', 'deadline'] as const)(
+    'revokes rejected-response fallback after asynchronous validation on %s', async change => {
+      let active = true, permitted = true, foreground = true, route = 'original', deadline = Infinity;
+      let entered!: () => void, release!: () => void;
+      const started = new Promise<void>(r => { entered = r; });
+      const pending = new Promise<void>(r => { release = r; });
+      const abort = new AbortController(); const switched = vi.fn();
+      const controller = new ModelFailoverController({ scope: () => 'root', isActive: () => active,
+        requestIdentity: () => route, deadlineAt: () => deadline, canSwitch: () => foreground,
+        canRetry: () => false, canRetryRejectedResponse: () => permitted,
+        resolveBackup: () => backup, validateBackup: async () => { entered(); await pending; return true; },
+        onSwitch: switched, retryDelaysMs });
+      const execute = vi.fn(async (target: UpstreamConfig) => {
+        expect(target.providerId).toBe('primary');
+        target.onRejectedResponse?.(502);
+        return Response.json({ error: { message: 'bad gateway' } }, { status: 502 });
+      });
+      const run = controller.run(request(abort.signal), primary, execute, 'exact');
+      await started;
+      expect(execute).toHaveBeenCalledTimes(4);
+      if (change === 'abort') abort.abort();
+      if (change === 'owner') active = false;
+      if (change === 'route') route = 'replacement';
+      if (change === 'background') foreground = false;
+      if (change === 'policy') permitted = false;
+      if (change === 'end-turn') controller.endTurn();
+      if (change === 'deadline') deadline = Date.now() - 1;
+      release(); await (await run).text();
+      expect(execute).toHaveBeenCalledTimes(4); expect(switched).not.toHaveBeenCalled();
+    });
+});
+
 describe('native connection retry ownership', () => {
   it.each(['abort', 'owner', 'route', 'background', 'deadline', 'end-turn', 'policy'] as const)(
     'revokes the exact pre-connect attempt on %s without granting inference replay', async change => {

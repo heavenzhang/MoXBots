@@ -28,6 +28,32 @@ describe('Session API failover authority', () => {
     fixture.envs = { backup: { providerId: 'backup', baseUrl: 'http://backup.test', apiKey: 'fixture-backup' } };
   });
   const request = () => new Request('http://127.0.0.1/bridge/test/v1/messages', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'synthetic text' }], max_tokens: 10 }) });
+  it.each([true, false])('recovers complete HTTP rejections with unknown actions while preserving actual candidate eligibility=%s', async hasCandidate => {
+    if (!hasCandidate) candidate = undefined;
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0],
+      current: () => ({ env: primary, model: 'a', turnId: 'root' }), isLive: () => true,
+      canRetry: () => false, canRetryRejectedResponse: () => true, canUsePinnedRoute: () => true,
+      onSwitch: switched });
+    const execute = vi.fn(async target => {
+      if (target.providerId === 'primary') {
+        target.onRejectedResponse?.(502);
+        return new Response('{}', { status: 502 });
+      }
+      return new Response('{"ok":true}');
+    });
+    const route = { providerId: 'primary', model: 'a', baseUrl: primary.baseUrl! };
+    const first = await controller.run(request(), route, execute, 'first');
+    expect(first.status).toBe(hasCandidate ? 200 : 502);
+    await first.text();
+    expect(execute).toHaveBeenCalledTimes(hasCandidate ? 5 : 4);
+    if (hasCandidate) {
+      await (await controller.run(request(), route, execute, 'next')).text();
+      expect(execute).toHaveBeenCalledTimes(6);
+      expect(execute.mock.calls.at(-1)?.[0].providerId).toBe('backup');
+      expect(switched).toHaveBeenCalledOnce();
+    } else expect(switched).not.toHaveBeenCalled();
+  });
   it.each(['no-candidate', 'auto-disabled', 'cross-tier', 'image', 'context', 'tool-protocol'])('refuses a backup with a visible reason for %s while preserving primary retries', async reason => {
     if (reason === 'no-candidate') candidate = undefined;
     if (reason === 'auto-disabled') fixture.config.autoRouting = { enabled: false };
