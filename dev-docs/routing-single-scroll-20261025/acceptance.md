@@ -80,7 +80,9 @@
 
 主 Agent 沿用原会话、原 execution 和原任务清单，未派发子 Agent，未改变模型或权限设置。旧 `routing-scroll-fix` 验收意图未结算时未盲目重放；本轮重新取得实际代码、远端和测试证据后再进行主 Agent 评审。
 
-补任务记录时 `project-sync task-init` 返回 `BLOCKED`，实际原因为 `canonical_remote_unverified` 和 `worktree_dirty`；没有清理或重置原修改。随后按协议相同 branch/base 元数据手工补齐缺失记录，最终由 handoff 门禁检查提交后的记录与远端身份。
+补任务记录时 `project-sync task-init` 返回 `BLOCKED`，实际原因为 `canonical_remote_unverified` 和 `worktree_dirty`；没有清理或重置原修改。随后按协议相同 branch/base 元数据手工补齐缺失记录。
+
+首次 handoff 已确认远端任务 HEAD 与本地一致，但返回 `task_state_missing`，要求记录路径为 `.agent-sync/tasks/codex-routing-single-scroll-20261025-d9eee7db.md`。随后仅改名到门禁要求路径并追加提交，不改写已推送历史；最终状态以再次执行的门禁输出为准。
 
 本轮未发送外部消息，未触发共享 CI、PR/main 集成、正式构建、安装或发布。
 
