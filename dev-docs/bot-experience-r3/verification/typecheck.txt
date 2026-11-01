@@ -1,0 +1,1 @@
+PASS: Node 24.20.0 / typescript tsc --noEmit exited 0 after removing unsupported Testing Library role options.

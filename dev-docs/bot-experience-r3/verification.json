@@ -1,0 +1,34 @@
+{
+  "task": "MB-BOT-R3-DEV-20261101",
+  "milestone": "M1",
+  "sourceState": "implemented-locally",
+  "tests": {
+    "files": 5,
+    "passed": 107,
+    "typescript": "pass",
+    "scopedESLint": "pass",
+    "classification": "pass",
+    "dependencyErrors": 0,
+    "existingDependencyWarnings": 18,
+    "rendererBuild": "moxbot Vite pass",
+    "themeCssMappings": 31
+  },
+  "ui": {
+    "primary": "component fixture interactions and full App narrow navigation executed",
+    "independentSource": "pass after rail P2 repair",
+    "independentStaticVisual": "pass for two screenshots",
+    "independentInteraction": "unavailable: worker lacks IAB",
+    "nativePersistence": "not-run",
+    "production": "not-run",
+    "fullApp390Visual": "unverified: screenshot metric/pixel mismatch"
+  },
+  "scopeRemaining": [
+    "M2 multi-project Bot/project context",
+    "M3 stable Bot groups and real task handoff",
+    "shared CI/main integration",
+    "unique-owner candidate/native/production acceptance"
+  ],
+  "deploymentUnit": "desktop/macOS/updater",
+  "ownerThread": "01a12bc2-907a-7702-b6dd-788225c5dfe4",
+  "externalModels": false
+}

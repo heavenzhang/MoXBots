@@ -30,6 +30,7 @@ export interface GlobalSidebarPreferenceV1 {
   hasSeededDefaultExpansion: boolean;
   showAutomationSessions: boolean;
   sessionView: 'all' | 'favorites' | 'archived';
+  resourceView: 'conversations' | 'projects' | 'history';
   organization: SidebarOrganization;
 }
 
@@ -42,6 +43,7 @@ export const DEFAULT_GLOBAL_SIDEBAR_PREFERENCE: GlobalSidebarPreferenceV1 = {
   hasSeededDefaultExpansion: false,
   showAutomationSessions: false,
   sessionView: 'all',
+  resourceView: 'conversations',
   organization: DEFAULT_SIDEBAR_ORGANIZATION,
 };
 
@@ -84,6 +86,7 @@ export function parseGlobalSidebarPreference(
       value.sessionView === 'favorites' || value.sessionView === 'archived'
         ? value.sessionView
         : 'all',
+    resourceView: value.resourceView === 'projects' || value.resourceView === 'history' ? value.resourceView : 'conversations',
     organization: parseSidebarOrganization(value.organization),
   };
 }

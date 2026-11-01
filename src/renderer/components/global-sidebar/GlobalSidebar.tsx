@@ -1,3 +1,5 @@
+import BotConversationNavigation from './BotConversationNavigation';
+import NewBotConversationDialog from './NewBotConversationDialog';
 import {
   DndContext,
   DragOverlay,
@@ -555,6 +557,8 @@ export default memo(function GlobalSidebar({
     if (typeof window === 'undefined') return DEFAULT_GLOBAL_SIDEBAR_PREFERENCE;
     return loadGlobalSidebarPreference(window.localStorage);
   });
+  const [newConversationOpen, setNewConversationOpen] = useState(false);
+  const botExperience = APP_BUILD_PROFILE === 'moxbot';
   const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({});
   const [archivedExpanded, setArchivedExpanded] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -586,7 +590,7 @@ export default memo(function GlobalSidebar({
   const [statsSession, setStatsSession] = useState<SessionMetadata | null>(null);
   const pinInFlightRef = useRef(new Set<string>());
   const archiveInFlightRef = useRef(new Set<string>());
-  const childLayerOpen = newAgentPanelOpen
+  const childLayerOpen = newConversationOpen || newAgentPanelOpen
     || projectToRemove !== null
     || agentWorkspacePath !== null
     || pendingDeleteSession !== null
@@ -629,13 +633,14 @@ export default memo(function GlobalSidebar({
     [sortedProjects],
   );
   const expandedWorkspacePaths = useMemo(() => {
+    if (botExperience && preference.resourceView !== 'history') return preference.resourceView === 'conversations' ? activeProjects.map(project => project.path) : [];
     const expandedKeys = new Set(preference.expandedWorkspaceKeys);
     // Section Sessions remain discoverable even when their original Agent is collapsed.
     const hasSectionSessions = Object.keys(preference.organization.placements).some((id) => id.startsWith('session:'));
     return (preference.sessionView === 'archived' ? sortedProjects : activeProjects)
       .filter((project) => hasSectionSessions || expandedKeys.has(normalizeWorkspacePathIdentity(project.path)))
       .map((project) => project.path);
-  }, [activeProjects, sortedProjects, preference.expandedWorkspaceKeys, preference.sessionView, preference.organization]);
+  }, [botExperience, activeProjects, sortedProjects, preference.expandedWorkspaceKeys, preference.sessionView, preference.organization, preference.resourceView]);
   const taskCenterData = useGlobalSidebarTaskCenterData(expandedWorkspacePaths, searchOpen);
 
   useEffect(() => {
@@ -1191,6 +1196,7 @@ export default memo(function GlobalSidebar({
     && navigator.platform.toLowerCase().includes('win');
   const tree = (
     <div className="flex h-full min-h-0 flex-col">
+        {botExperience && <div role="tablist" aria-label={t('botExperience.navigation')} className="mx-3 my-3 flex shrink-0 gap-1 rounded-lg border border-[var(--line-subtle)] bg-[var(--paper-inset)] p-1">{(['conversations','projects'] as const).map(view => <button key={view} type="button" role="tab" aria-selected={preference.resourceView === view} onClick={() => updatePreference(current => ({ ...current, resourceView: view }))} className={`min-h-8 min-w-0 flex-1 rounded-md px-2 text-xs ${preference.resourceView === view ? 'bg-[var(--paper-elevated)] text-[var(--ink)]' : 'text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}>{t(`botExperience.${view}`)}</button>)}</div>}
       <div className="max-h-[50%] shrink-0 overflow-y-auto overscroll-contain">
         <RemoteSessionSidebar
           tabs={tabs.filter(tab => tab.view === 'remote-session')}
@@ -1201,7 +1207,7 @@ export default memo(function GlobalSidebar({
         />
       </div>
       <div className="min-h-0 flex-1">
-    <WorkspaceTree
+    {botExperience && preference.resourceView !== 'history' ? <BotConversationNavigation view={preference.resourceView} projects={activeProjects} agents={config.agents ?? []} data={taskCenterData} tabs={tabs} activeTab={activeTab} badges={sessionNotificationBadgeCounts} onOpenSession={(session, project) => { void handleOpenSession(session, project); }} onOpenProject={project => { onOpenProjectBoard?.(project); closeFlyout(); }} onNewConversation={() => setNewConversationOpen(true)} onCreateBot={() => handleOpenNewAgentPanel()} onManageHistory={() => updatePreference(current => ({ ...current, resourceView: 'history' }))} /> : <WorkspaceTree
       organization={preference.organization}
       onUpdateOrganization={(update) => new Promise<boolean>((resolve) => updatePreference((current) => ({ ...current, organization: update(current.organization) }), resolve))}
       fadeBottom={expanded}
@@ -1259,13 +1265,62 @@ export default memo(function GlobalSidebar({
         setPendingDeleteSession(session);
       }}
       onNestedInteractionChange={handleNestedInteractionChange}
-    />
+    />}
       </div>
     </div>
   );
 
+  const secondaryNavigation = <>
+          <div className="group/task-create relative">
+            <SidebarNavButton
+              expanded={expanded}
+              active={activeView === 'taskcenter'}
+              icon={<TasksIcon className="h-4 w-4" />}
+              label={t('globalSidebar.tasks')}
+              onClick={handleOpenTaskCenter}
+            />
+            {expanded && (
+              <span className="absolute right-1 top-1">
+                <Tip
+                  label={t('globalSidebar.createTask')}
+                  position="right"
+                >
+                  <button
+                    type="button"
+                    onClick={event => {
+                      event.stopPropagation();
+                      onCreateTask();
+                    }}
+                    aria-label={t('globalSidebar.createTask')}
+                    className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--ink-muted)] opacity-0 transition-[opacity,color,background-color] hover:bg-[var(--paper-inset)] hover:text-[var(--ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] group-hover/task-create:opacity-100 group-focus-within/task-create:opacity-100"
+                  >
+                    <PlusIcon className="h-3.5 w-3.5" />
+                  </button>
+                </Tip>
+              </span>
+            )}
+          </div>
+
+          <SidebarNavButton
+            expanded={expanded}
+            active={activeView === 'capabilities'}
+            icon={<CapabilitiesIcon className="h-4 w-4" />}
+            label={t('globalSidebar.capabilities')}
+            onClick={() => onOpenCapabilities()}
+          />
+          <SidebarNavButton
+            expanded={expanded}
+            active={activeView === 'agentnetwork'}
+            disabled={!onOpenAgentNetwork}
+            icon={<RadioIcon className="h-4 w-4" />}
+            label={t('globalSidebar.agentNetwork')}
+            onClick={() => onOpenAgentNetwork?.()}
+          />
+  </>;
+
   return (
     <>
+      {newConversationOpen && <NewBotConversationDialog projects={activeProjects} agents={config.agents ?? []} onOpen={onOpenWorkspace} onClose={() => setNewConversationOpen(false)} onCreateBot={() => { setNewConversationOpen(false); handleOpenNewAgentPanel(); }} />}
       <aside
         aria-label={t('globalSidebar.navigation')}
         data-global-sidebar-mode={effectiveMode}
@@ -1360,58 +1415,15 @@ export default memo(function GlobalSidebar({
           <SidebarNavButton
             expanded={expanded}
             icon={<ComposeIcon className="h-4 w-4" />}
-            label={t('globalSidebar.newChat')}
-            onClick={onNewTab}
+            label={t(botExperience ? 'botExperience.new' : 'globalSidebar.newChat')}
+            onClick={botExperience ? () => setNewConversationOpen(true) : onNewTab}
           />
-          <div className="group/task-create relative">
-            <SidebarNavButton
-              expanded={expanded}
-              active={activeView === 'taskcenter'}
-              icon={<TasksIcon className="h-4 w-4" />}
-              label={t('globalSidebar.tasks')}
-              onClick={handleOpenTaskCenter}
-            />
-            {expanded && (
-              <span className="absolute right-1 top-1">
-                <Tip
-                  label={t('globalSidebar.createTask')}
-                  position="right"
-                >
-                  <button
-                    type="button"
-                    onClick={event => {
-                      event.stopPropagation();
-                      onCreateTask();
-                    }}
-                    aria-label={t('globalSidebar.createTask')}
-                    className="flex h-6 w-6 items-center justify-center rounded-md text-[var(--ink-muted)] opacity-0 transition-[opacity,color,background-color] hover:bg-[var(--paper-inset)] hover:text-[var(--ink)] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] group-hover/task-create:opacity-100 group-focus-within/task-create:opacity-100"
-                  >
-                    <PlusIcon className="h-3.5 w-3.5" />
-                  </button>
-                </Tip>
-              </span>
-            )}
-          </div>
-
-          <SidebarNavButton
-            expanded={expanded}
-            active={activeView === 'capabilities'}
-            icon={<CapabilitiesIcon className="h-4 w-4" />}
-            label={t('globalSidebar.capabilities')}
-            onClick={() => onOpenCapabilities()}
-          />
-          <SidebarNavButton
-            expanded={expanded}
-            active={activeView === 'agentnetwork'}
-            disabled={!onOpenAgentNetwork}
-            icon={<RadioIcon className="h-4 w-4" />}
-            label={t('globalSidebar.agentNetwork')}
-            onClick={() => onOpenAgentNetwork?.()}
-          />
+          {!botExperience && secondaryNavigation}
           {APP_BUILD_PROFILE !== 'moxbot' && teamSpaceAvailable && (
             <SidebarMore key={activeView ?? 'launcher'} expanded={expanded} activeView={activeView} onTeam={onOpenSpace} />
           )}
         </nav>
+
 
         <div className="relative min-h-0 flex-1" data-global-sidebar-workspace-shell>
           {expandedWorkspaceMounted && (
@@ -1483,6 +1495,7 @@ export default memo(function GlobalSidebar({
           className={`shrink-0 pb-2 ${expanded ? 'pl-3 pr-[var(--global-sidebar-action-inset)] pt-0' : 'global-sidebar-rail-stack pt-3'}`}
           data-global-sidebar-footer-actions
         >
+          {botExperience && secondaryNavigation}
           {APP_BUILD_PROFILE !== 'moxbot' && <div
             ref={feedbackTriggerRef}
             className={`-mr-3 pr-3 ${expanded ? '' : 'flex justify-center'}`}

@@ -1,0 +1,29 @@
+    at Proxy.setItem (file:///Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/tinyspy/dist/index.js:47:80)
+    at saveGlobalSidebarPreference (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/globalSidebarPreference.ts:134:13)
+    at /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx:606:45
+    at basicStateReducer (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/react-dom/cjs/react-dom-client.development.js:7935:45)
+    at dispatchSetStateInternal (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/react-dom/cjs/react-dom-client.development.js:9152:28)
+    at dispatchSetState (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/react-dom/cjs/react-dom-client.development.js:9127:7)
+    at /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx:603:5
+    at /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx:1212:75
+
+stderr | src/renderer/components/global-sidebar/GlobalSidebar.test.tsx > GlobalSidebar rail flyout > keeps visible organization unchanged and reports storage failure
+[GlobalSidebar] Failed to persist sidebar preference: Error: disk quota
+    at Proxy.<anonymous> (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.test.tsx:2163:93)
+    at Proxy.mockCall (file:///Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/@vitest/spy/dist/index.js:96:15)
+    at Proxy.setItem (file:///Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/tinyspy/dist/index.js:47:80)
+    at saveGlobalSidebarPreference (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/utils/globalSidebarPreference.ts:134:13)
+    at /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx:606:45
+    at basicStateReducer (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/react-dom/cjs/react-dom-client.development.js:7935:45)
+    at dispatchSetStateInternal (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/react-dom/cjs/react-dom-client.development.js:9152:28)
+    at dispatchSetState (/Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-identity-r1/node_modules/react-dom/cjs/react-dom-client.development.js:9127:7)
+    at /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx:603:5
+    at /Users/zhangshaohua/Documents/Codex/2026-11-01/moxbots-bot-experience-r3/src/renderer/components/global-sidebar/GlobalSidebar.tsx:1212:75
+
+ ✓ |dom| src/renderer/components/global-sidebar/GlobalSidebar.test.tsx (85 tests) 5480ms
+   ✓ GlobalSidebar rail flyout > creates, renames and deletes sections while retaining the original workspace and Session  342ms
+
+ Test Files  5 passed (5)
+      Tests  107 passed (107)
+   Start at  22:27:25
+   Duration  9.08s (transform 1.42s, setup 931ms, collect 2.54s, tests 6.31s, environment 2.42s, prepare 512ms)

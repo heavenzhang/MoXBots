@@ -1179,3 +1179,9 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 仅涉及 desktop builtin client，唯一 desktop/macOS-arm64/updater/shared CI/main owner 继续是 01a12bc2-907a-7702-b6dd-788225c5dfe4。开发分支推送不自动触发共享 CI；请求下一未冻结批。当前 0.5.29/529.1 冻结候选不纳入本任务，不自行分配版本或操作日常 App。无 cloud/Host/mobile/website 发布。
 
 用户同轮明确保留项目：R2 增加项目独立入口、项目内 Bots/会话/群组/任务/目录；R1 不拆现有 Project/Agent 配对。目标关系和竞品证据见 dev-docs/bot-identity-r1/project-relationship.md，后续实施先定义显式项目上下文，不把 UI 原型当作跨项目执行。
+
+## MB-BOT-R3-DEV-20261101 — R3 approved Bot-centered experience
+
+User approved R3 prototype for development. Isolated codex/bot-experience-r3-20261101 starts from actual main ad68c28d and preserves reviewed R1 dependency874acaad by ancestry (integration2616e107); no mutation of dirty group-phase1. M1 implements actual conversation/project sidebar projections, unified explicit Bot/current-valid-project birth, original history/tool entrances and pending/failure preservation. M2 multi-project Bot/context and M3 stable Bot groups/real task handoff remain unimplemented, not implied by the UI. CurrentProject/workspace-Agent pairing retained; task .agent-sync/tasks/codex-bot-experience-r3-20261101-42812926.md and dev-docs/bot-experience-r3/PLAN.md track all phases.
+
+Sole desktop/macOS/updater/shared CI/main owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; development submits exact source/evidence to next unfrozen feature intake, does not interrupt recovery/replace daily App or allocate version. 107 targeted tests/local tsc/lint/Vite build pass; one independently found rail P2 fixed and regressed. Independent source/static-visual review passed; independent IAB interaction unavailable, native/persistence/production gates remain open. Local browser fixture is synthetic, not runtime acceptance.

@@ -2229,6 +2229,33 @@ describe('Agent network and Space navigation', () => {
 });
 
 describe('MoXBots navigation', () => {
+  it('keeps conversation/project switching reachable in the rail flyout', async () => {
+    mocks.buildProfile = 'moxbot';
+    mocks.forcedRail = true;
+    window.localStorage.clear();
+    renderSidebar();
+    fireEvent.click(screen.getByRole('button', { name: '我的 Bots' }));
+    const region = document.querySelector<HTMLElement>('[data-global-sidebar-flyout]')!;
+    expect(region).not.toBeNull();
+    fireEvent.click(within(region).getByRole('tab', { name: '项目' }));
+    expect(within(region).getByRole('tab', { name: '项目' })).toHaveAttribute('aria-selected', 'true');
+    expect(JSON.parse(window.localStorage.getItem(GLOBAL_SIDEBAR_PREFERENCE_KEY)!).resourceView).toBe('projects');
+    fireEvent.click(within(region).getByRole('tab', { name: '对话' }));
+    expect(within(region).getByRole('tab', { name: '对话' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('opens the explicit new-conversation flow instead of launching a default workspace', () => {
+    mocks.buildProfile = 'moxbot';
+    const onNewTab = vi.fn(), onOpenWorkspace = vi.fn(async () => true);
+    renderSidebar({ onNewTab, onOpenWorkspace });
+    fireEvent.click(screen.getByRole('button', { name: '新建' }));
+    fireEvent.click(screen.getByRole('button', { name: '新对话' }));
+    expect(screen.getByRole('dialog', { name: '新对话' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '打开对话' })).toBeDisabled();
+    expect(onNewTab).not.toHaveBeenCalled();
+    expect(onOpenWorkspace).not.toHaveBeenCalled();
+  });
+
   afterEach(() => { mocks.buildProfile = 'myagents'; });
   it('leaves Community to the personal menu instead of the top-left more menu', () => {
     mocks.buildProfile = 'moxbot';
