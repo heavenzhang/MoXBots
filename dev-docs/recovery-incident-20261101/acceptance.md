@@ -1,5 +1,13 @@
 # MB-RECOVERY-INCIDENT-20261101
 
+## 第十三项：原生成功回执不被短暂历史缺口降级（2026-11-02）
+
+只读观察发现原双滚动条会话新增unknown的同一动作仍有原生returned/success和已归档completed记录；当前SDK选中链也有唯一成功use/result配对。现有证据不足以断言其当时具体触发路径，不能据此清除历史unknown。
+
+合成复现确认一条缺陷路径：原生工具成功已持久化，但下一推理暂时只含同tool_use、尚未投影tool_result时，prearm将它再次标记legacy unknown。live及cold两项在旧实现失败，且不执行真实命令或访问网络。修复仅从本次分析候选移除精确toolUseId/actionHash都已有原生returned、且任何既有不确定集合均无该key的项目；原始请求、成功记录、防重放和旧unknown完全保留。不同ID、变更参数、矛盾错误结果及已有legacy四反例仍受保护。四文件141项相关策略/原生journal/HTTP回归通过，全量tsc和定向lint通过。
+
+第十二项e9f60a已交原owner、独审181项通过，并冻结独立532.2候选fcd96c5c/PR226/CI41325876238；此新增项不改写冻结制品或把其CI算作本项通过。待精确提交独审后由同owner安排下一未冻结批。现用532.1仍未通过四原会话最终验收，本项也不宣称恢复已有4条unknown或解决供应商429。
+
 ## 最新状态：第十二项（2026-11-02）
 
 第十一项 ca7ac7e 已由原 desktop owner 经 PR224 集成到 main `ad68c28d3408b9e21705837c08acd8af383de75a`，0.5.32/532.1 经 CI、签名、公证及备份安装。原生评审回执在三条原会话确实 committed，说明大账本截断修复已到运行版本；但四会话整体仍未通过。安装制品 SHA-256 为 `bfd9d45223301063fab3dd6c7d5093a194955e70a0ec3e7fa65a19bb2ef0dcc9`，正式 stable 通道保持 HOLD。
