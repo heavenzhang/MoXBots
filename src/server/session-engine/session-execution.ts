@@ -676,6 +676,14 @@ export async function requestSessionExecutionReview(
         engine.getCurrentTurnIdentity()?.queueId) !== input.queueId
     )
       throw new Error("EXECUTION_REVIEW_STALE");
+    // A wrapped CLI review is still a mutating native tool with normal evidence
+    // and unknown-result protection. Its changing receipt is administrative,
+    // though, and must not fabricate progress. Only associate an unambiguous
+    // currently pending root shell; concurrent/unowned tools get no attribution.
+    const pending = (ledger.executionEvidence ?? []).filter(fact => fact.queueId === input.queueId && fact.pending);
+    if (pending.length === 1 && ['Bash', 'Shell', 'shell', 'exec_command'].includes(pending[0].name)) {
+      pending[0].reviewProposalCarrier = true;
+    }
     ledger.executionReview = {
       id: receipt,
       queueId: input.queueId,
@@ -840,6 +848,7 @@ export async function observeSessionExecutionTool(
             : undefined,
         observationOrder: order,
         mutating,
+        ...(old?.reviewProposalCarrier ? { reviewProposalCarrier: true } : {}),
         pending:
           tool.stage === "start" || (mutating && tool.stage === "failure" && !(tool.name === "Bash" && tool.settledFailure === "native-bash-exit")),
         ...(tool.stage === "failure" && tool.name === "Bash" && tool.settledFailure === "native-bash-exit"
@@ -948,14 +957,13 @@ export async function settleSessionExecutionTurn(
             (mutations.at(-1)?.observationOrder ?? 0),
       })),
       lastMutationOrder: mutations.at(-1)?.observationOrder ?? 0,
-      // A changing wrapper/receipt/queue is not progress while the root keeps
-      // proposing a review without confirming its native receipt. Apply the
-      // existing no-progress limit to this handoff, without a task time limit.
-      progressDigest: ledger.executionReview?.queueId === queueId && !review
-        ? hash(['unconfirmed-execution-review', execution.id]) : hash(
+      // Exclude only the proposal carrier's volatile receipt from progress.
+      // Independent successful work still counts, and every fact remains in
+      // the verification/mutation/unknown checks above.
+      progressDigest: hash(
         [
           ...new Set(
-            facts.filter((fact) => fact.successful).map((fact) => fact.digest),
+            facts.filter((fact) => fact.successful && !fact.reviewProposalCarrier).map((fact) => fact.digest),
           ),
         ].sort(),
       ),

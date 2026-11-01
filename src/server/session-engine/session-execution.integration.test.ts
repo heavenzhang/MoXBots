@@ -1,5 +1,6 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
+import { randomUUID } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseLeadingSystemReminder } from "../../shared/systemReminder";
 import { isHumanUserMessage } from "../utils/session-message-preview";
@@ -212,11 +213,6 @@ async function submitReview(
   } = {},
 ) {
   const execution = currentExecution()!;
-  const proposed = await executionOwner.requestSessionExecutionReview(engine, {
-    executionId: execution.id,
-    queueId,
-    assessment,
-  });
   const body = {
     kind: "execution_review",
     executionId: execution.id,
@@ -225,16 +221,22 @@ async function submitReview(
   };
   const directCommand = `myagents session tasks --json --data '${JSON.stringify(body)}'`;
   const command = options.commandTransform?.(directCommand) ?? directCommand;
-  const receipt = options.receiptOverride ?? proposed.executionReviewReceipt;
+  const toolUseId = `review-${randomUUID()}`;
   await tool(queueId, {
-    id: `review-${receipt}`,
+    id: toolUseId,
     name: "Bash",
     stage: "start",
     root: options.root,
     input: { command },
   });
+  const proposed = await executionOwner.requestSessionExecutionReview(engine, {
+    executionId: execution.id,
+    queueId,
+    assessment,
+  });
+  const receipt = options.receiptOverride ?? proposed.executionReviewReceipt;
   await tool(queueId, {
-    id: `review-${receipt}`,
+    id: toolUseId,
     name: "Bash",
     stage: options.success === false ? "failure" : "success",
     root: options.root,
@@ -1012,11 +1014,15 @@ describe("durable Session execution owner", () => {
     expect(continuationRequests).toHaveLength(1);
   });
 
-  it('bounds repeated unconfirmed reviews even when wrapped tool receipts keep changing', async () => {
+  it.each([false, true])('counts only real progress while wrapped review receipts change (business progress=%s)', async businessProgress => {
     const prepared = await prepare();
     const executionId = currentExecution()!.id;
     let request = prepared.request;
     for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (businessProgress) await tool(request.queueId!, {
+        id: `real-write-${attempt}`, name: 'Write', stage: 'success',
+        input: { file_path: `/artifact-${attempt}`, content: `new work ${attempt}` }, output: 'written',
+      });
       await submitReview(request.queueId!, { decision: 'needs_user', summary: `External dependency ${attempt}`, checks: [] }, {
         commandTransform: command => `${command} | head -1`,
       });
@@ -1029,8 +1035,28 @@ describe("durable Session execution owner", () => {
         expect(request.text).toContain('原生工具回执未确认');
       }
     }
-    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'incomplete', reason: 'no_progress_limit_reached', noProgress: 2 });
-    expect(continuationRequests).toHaveLength(2);
+    expect(currentExecution()).toMatchObject(businessProgress
+      ? { id: executionId, phase: 'running', reason: 'assessment_required', noProgress: 0 }
+      : { id: executionId, phase: 'incomplete', reason: 'no_progress_limit_reached', noProgress: 2 });
+    expect(continuationRequests).toHaveLength(businessProgress ? 3 : 2);
+  });
+
+  it.each(['sole-shell', 'concurrent', 'non-shell'] as const)('never turns proposal attribution into execution proof (%s)', async mode => {
+    const prepared = await prepare();
+    const queueId = prepared.request.queueId!;
+    await tool(queueId, { id: 'pending-original', name: mode === 'non-shell' ? 'Write' : 'Bash', stage: 'start' });
+    if (mode === 'concurrent') await tool(queueId, { id: 'pending-other', name: 'Bash', stage: 'start' });
+    await executionOwner.requestSessionExecutionReview(engine, { executionId: currentExecution()!.id, queueId,
+      assessment: { decision: 'needs_user', summary: 'Pending review', checks: [] } });
+    const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
+    expect(ledger.executionEvidence?.filter(fact => fact.reviewProposalCarrier).map(fact => fact.id))
+      .toEqual(mode === 'sole-shell' ? ['pending-original'] : []);
+    expect(ledger.executionReview?.committedBy).toBeUndefined();
+    await prepared.request.onTerminal?.({ status: 'complete', text: 'Unconfirmed proposal', assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN' });
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence?.find(fact => fact.id === 'pending-original'))
+      .toMatchObject({ pending: true, mutating: true, successful: false });
+    expect(continuationRequests).toHaveLength(0);
   });
 
   it("sends a failed validation to rework and accepts after fresh verification on the new queue", async () => {
