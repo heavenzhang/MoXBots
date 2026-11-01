@@ -1102,7 +1102,8 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     // Product-owned task queries must observe the current ledger after progress.
     // Keep all live/unknown/error gates above, and still reserve each fresh native
     // invocation in authorizeTool; this never erases its historical receipt.
-    if (evidence && name === 'Bash' && isDirectSessionTaskListCommand(input)) return undefined;
+    if (evidence && (isBuiltinTaskQuery(name, input)
+      || name === 'Bash' && isDirectSessionTaskListCommand(input))) return undefined;
     if (!evidence) return this.ledgerEntryCount() >= MAX_LEDGER_ENTRIES
       ? 'automatic_replay_blocked: Recovery ledger capacity is exhausted; another business action cannot be safely recorded.' : undefined;
     state.denied.add(key);

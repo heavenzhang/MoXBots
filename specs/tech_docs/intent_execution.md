@@ -10,7 +10,7 @@
 
 一键继续携带 `continueFromTurnId` 时也进入同一可信输入准入，分类确认的 `continuationOf` 由既有执行 owner 绑定原执行、清单及证据；不能只恢复 transcript 而跳过执行账本。facade 在异步分类前捕获原 transcript 代次与 turn，在提交时组合原 continuation guard 与新 execution guard，并使用新 queue 身份排除自己的队列占位。继续输入的可见 root 在同步 commit 接纳后才创建，否则会让自己的新消息提前使原 turn 校验失效。旧 turn 改变、重复点击、Stop 或执行保护拒绝仍不得进入 SDK；准备阶段被拒绝时释放原执行准入。
 
-分类使用当前运行时的 tool-free utility，最多八秒，输出受 schema 约束的 `answer/plan/execute/control`、目标、范围和验收条件。用户明确要求行动时采用 execute；只讨论、先给方案、不开发仍采用 plan。原始用户文本单独保留为 visibleText，执行提醒不伪装成人类输入。分类失败记录 `INTENT_UNCONFIRMED`，不获得自动续跑资格。此版本普通行动闭环仅接入 builtin；外部 CLI 与 DSH 不因分类结果获得这套自动续跑能力。
+分类使用当前运行时的 tool-free utility，单请求最多60秒（包括初始化），直接 builtin transport 提供4096输出token供推理与完整JSON共用；可选建议仍保持8秒/1024输出token。供应商 stop_reason=max_tokens 被记录为 output_limit，即使截断文本看似JSON也不授权、不自动重试。输出受 schema 约束的 `answer/plan/execute/control`、目标、范围和验收条件。用户明确要求行动时采用 execute；只讨论、先给方案、不开发仍采用 plan。原始用户文本单独保留为 visibleText，执行提醒不伪装成人类输入。分类失败记录 `INTENT_UNCONFIRMED`，不获得自动续跑资格。此版本普通行动闭环仅接入 builtin；外部 CLI 与 DSH 不因分类结果获得这套自动续跑能力。
 
 真人原话与执行上下文分开：facade 不向 `text` 追加执行提醒，builtin adapter 通过仅运行时的 `runtimeReminder` 将产品指令作为独立文本块送入 SDK。原 transcript、用户回声与队列预览保留用户正文。经原文摘要验证的输入允许在执行 guard 前先由原 user surface 持久化并推送，再由原 guard 创建/接续账本卡片；排队输入在晋级时遵守同一顺序。该标记不向 Goal/基础设施隐形准入开放，也不绕过 Stop、取消或最终 dispatch commit。准入被拒绝或停止时保留真实用户发言，但不会送入 SDK。自动接续使用纯隐藏 `SESSION_EXECUTION` 系统提醒，不生成新的可见人类发言。
 
@@ -88,3 +88,8 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 同任务接续更新当前人类 request ID 与 queue，轮数仅累加一次；原 execution ID、原始请求、目标、范围、验收条件、startedAt/deadlineAt、返工/无进展计数、实际工具证据、任务包与 delegation launch 预算全部保留。清除上一轮 continuation、评审提案与 assessment，必须重新提交本轮真实评审。重复 guard 幂等，旧 queue 的终态、取消或负 ACK 不作用于新 queue。若分类时的任务已完成/被新目标替换，拒绝该接续，不能回退为新 execution。普通“继续”可在原身份与真实终态验证后恢复仅因历史deadline_exceeded停止的任务，连续无进展/返工上限只禁止自动空转：新的可信人工输入可沿原 execution 恢复一轮，计数不重置；本轮无新进展则再次停止自动续接，返工已封顶时未获真实验收也停止。仍不得绕过未知写入、未结算前轮、权限/后台等待、Stop、业务阻断或重复输入。Stop 后真实终态仅补记结算凭据，不解除暂停；transcript 持久化失败保留未知结果并拒绝自动接续。
 
 `SessionTaskSnapshot.executionRecovery` 是已有 ModelRecoveryState 的只读投影，只有 builtin 当前 execution queue 匹配才返回 turn/status/attempt/lastStatus/nextRetryAt，不复制 routeIdentity 或 native session 身份，也不写入 ledger 或另建调度器。原有快照读取可在 ledger revision 不变时更新 recovery；ledger SSE 不能捏造/抹除它。界面仅在当前 queue 的 running/rework 上显示模型等待/恢复暂停，执行终态优先。摘要不再显示第 x/8 轮；详细信息中的已执行轮数不表示任务完成率。生产真实路径验收由原部署单元负责人随下一候选批次完成。
+
+
+## 原生评审回执未确认的接续
+
+任务 review 与 execution_review 的 success/pendingMainAgentReview 仅代表提案；原根工具完整回执才可提交验收。系统指引要求单独直接CLI命令及完整JSON，禁止Python/子进程包装、Shell组合和截取success后声称验收。上一queue有未确认提案时，自动接续明确要求仅重新提交本轮评审并结束回复，不重做已有业务步骤、不沿用旧回执，所有真实证据检查保持。历史错误文本和旧deadlineAt不构成当前整段会话封锁依据，独立只读核对仍须实际尝试，未知原操作不可重放。

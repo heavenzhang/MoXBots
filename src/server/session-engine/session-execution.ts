@@ -167,6 +167,8 @@ export async function classifySessionExecutionIntent(
       signal,
       // This is required admission JSON, not an optional next-input suggestion.
       timeoutMs: 60_000,
+      // Structured intent includes task steps and needs room after reasoning.
+      maxTokens: 4096,
       onFailure: reason => { utilityFailure = reason; },
     });
   if (!raw?.trim() || signal.aborted) {
@@ -290,10 +292,12 @@ function executionReminder(
   if (!execution) return "";
   return `<system-reminder><SESSION_EXECUTION>${continuationText ? `${escapeSystemReminderText(continuationText)}\n` : ""}本次已授权行动由原会话任务账本持续跟进。执行 ID: ${execution.id}。
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
+历史错误只代表当时的调用结果，不能据此断言当前整段会话仍被封锁。先实际执行独立只读核对，以本轮具体工具返回判断当前阻断；结果未知的原操作仍不得重放，也不得修改参数规避保护。旧账本的 deadlineAt 仅为兼容字段，不是任务总时限，不能据此停止或重建任务。
 启动子 Agent 前，将其范围、依赖与验收要求登记到当前主任务。后台子任务未结算时主任务仍由你负责；可以让出当前模型回合等待原运行时事件，但不能宣布主任务完成。收到结果后核验并继续原清单；失败、结果未知或缺权限必须记录原因，不盲目重派。
 读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
 accept 需要覆盖全部验收条件，并指向本次执行真实且最新的验证结果；Todo完成、分析文本和子Agent自报不算证据。
+任务 review 和 execution_review 必须由主 Agent 用单独的直接 CLI 命令提交并保留完整 JSON 输出；不套 Python/子进程、cd/echo、管道、重定向，也不只提取 success。success 且 pendingMainAgentReview=true 只表示收到提案，须由匹配的主 Agent 原生工具回执确认，不能当作验收已生效。
 评审提交成功后，给出简明交付说明（实际产物位置、检查结果或具体阻断）并结束当前回复。accept/rework 都由本轮持久化终态结算；不要在同一轮等待完成状态或反复提交相同评审。rework 的修复由下一轮自动接续。
 需要业务判断或缺权限则 needs_user/blocked。不得扩大原始授权、重复未知写入或自动创建 Goal。遇到停止立即停下。</SESSION_EXECUTION></system-reminder>`;
 }
@@ -1085,7 +1089,12 @@ export async function continueSessionExecution(
     // its native completion observation wakes this same admission, without polling.
     if (!liveCheck(true)) return;
     // Reminder must describe the target queue before it is claimed.
-    const text = `继续原行动 ${initial.id}：上轮${initial.phase === "rework" ? "验收未通过，请修复后重验" : "尚未提供完整可验证交付，请完成执行和检查"}。保持原范围及授权。\n原请求：${initial.originalInput}`;
+    const priorReview = currentLedger(sessionId)?.executionReview;
+    const unconfirmedReview = priorReview?.queueId === initial.currentQueueId && !priorReview.committedBy;
+    const reviewGuidance = unconfirmedReview
+      ? "\n上轮评审的原生工具回执未确认，提案尚未生效。不要重做已经完成的业务操作；请针对本轮 queueId，用单独的直接 CLI 命令重新提交评审并保留完整 JSON 输出，再结束本轮回复。不得沿用旧回执或把提案当作验收完成。"
+      : "";
+    const text = `继续原行动 ${initial.id}：上轮${initial.phase === "rework" ? "验收未通过，请修复后重验" : "尚未提供完整可验证交付，请完成执行和检查"}。保持原范围及授权。${reviewGuidance}\n原请求：${initial.originalInput}`;
     const result = await engine.sendDesktopMessage({
       sessionId,
       workspacePath: engine.getCurrentSessionContext().workspacePath!,

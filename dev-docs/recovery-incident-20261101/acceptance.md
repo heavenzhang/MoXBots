@@ -141,3 +141,18 @@ Kevin 原会话 noProgress=2、reason=no_progress_limit_reached，旧 humanConti
 复现用合成native流/原journal先成功查询revision1，再请求相同参数的全新toolUseId，旧实现返回automatic_replay_blocked。修复仅对严格直接产品CLI list查询解除“已有成功”拦截；不加入广义只读白名单，live/blocked/unknown/native-error仍优先，每轮仍durable reserve/commit。写入数据、任意同名路径、Shell组合/重定向、后台运行和未知options均不适用；旧toolUseId仍禁止重复。旧unknown账本和历史成功证据不清除。
 
 213相关单元与隔离集成通过，含冷恢复、未知查询、Stop、存储失败、写命令与伪装路径反例；全量tsc、定向lint、classification、diff通过。需要原desktop owner独审、合入和下一不可变包真实复验，不能宣称已安装530.1包含第八项。本线程未发送原业务命令或修改原数据。
+
+
+## 第九项：530.1 四原会话实测后的补修
+
+四例真实尝试未全部通过，不能晋级公开稳定版。双滚动条原生 TaskList 仍被已成功hash误拦截，故将第八项严格刷新例外扩展至既有原生 TaskList/TaskGet 查询形状；namespaced MCP、额外参数、写入、未知结果、旧tool ID均不豁免。两项真实形态冷恢复回归旧实现FAIL，新实现通过。
+
+薪资主Agent把评审CLI包在Python或管道中，只读success后将pending提案当完成；严格原生回执未确认，系统反复给泛化的未完成提醒。保持回执提交规则，新增直接CLI/完整JSON指引，并从原ledger识别上轮未确认提案，在下轮明确提示重新提交当前queue评审而不重做业务。三项包装/管道/缺回执测试旧实现FAIL；正确重提交后可按原needs_user终态停止。Kevin出现根据历史整段封锁文字自行停工，未出现新的工具拒绝；新增实际独立只读核查指引，仍不允许改参数重放未知操作。指引效果仍须新包真实验证。
+
+双滚动条12:56原调用记录empty_response但未记录usage，不能倒推其精确响应。隔离工具外探针使用同原4条上下文、原execution与同已配置分类模型，复现HTTP200/stop_reason=max_tokens，1024输出token全部为thinking，无text。相同上下文4096预算对照HTTP200/end_turn，1136输出token含862thinking，最终506字符有效JSON；不写原会话、不执行工具、不修改Provider设置。公开源码只保留摘要，真实上下文不入Git。官方语义参考：https://openrouter.ai/docs/guides/best-practices/reasoning-tokens （推理计入输出预算）。
+
+required intent经RuntimeTextUtilityTask向builtin传4096输出预算，transport不再把显式预算钳至1536；默认建议1024、tier分类2048保留，上限4096且请求60秒/取消不变。max_tokens终态返回有界output_limit诊断，不泄露原始响应、不自动retry、不接受截断JSON。所有未知操作保护和执行schema/continuation身份核对保留。仅增加预算不能保证供应商永不失败；必须验证实际恢复与准确失败表现。
+
+联合验证和非实现者审查完成后交原desktop owner选择下一不可变候选；530.1不含第八/九项，原四会话系统验收仍未通过。旧业务发布和对外消息不是本轮探针范围。
+
+第九项最终联合回归：9个文件446项通过（原生队列/执行/作用域/传输/系统指引）；全量tsc、定向lint、分类与diff通过。新增transport测试首次有mock构造问题，修正fixture后纳入完整回归，不将该错误计为产品旧行为失败。第九项已有原生查询2项与评审回执3项旧实现失败证据，空响应依据上述真实Provider对照。订阅/托管SDK不受此次直接transport输出预算修复覆盖，其既有预算路径未作新的生产声明。

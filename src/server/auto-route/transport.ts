@@ -39,12 +39,12 @@ function messagesBody(request: ClassifierTransportRequest): string {
   return JSON.stringify({
     model: request.classifier.model,
     max_tokens:
-      request.maxTokens === undefined
+      request.maxTokens === undefined || !Number.isFinite(request.maxTokens)
         ? CLASSIFIER_MAX_TOKENS
         : Math.max(
             16,
             Math.min(
-              1536,
+              4096,
               Math.trunc(request.maxTokens) || CLASSIFIER_MAX_TOKENS,
             ),
           ),
@@ -71,11 +71,18 @@ async function readResponse(resp: { ok: boolean; status: number; text: () => Pro
   if (!resp.ok) {
     throw new ClassifierTransportError(`classifier HTTP ${resp.status}: ${body.slice(0, ERROR_BODY_MAX)}`);
   }
+  let payload: unknown;
   try {
-    return readMessagesText(JSON.parse(body));
+    payload = JSON.parse(body);
   } catch {
     throw new ClassifierTransportError('classifier returned a body that is not JSON');
   }
+  // Reasoning counts against the output budget. An HTTP 200 with only thinking
+  // is not a valid intent; never accept even a JSON-looking truncated prefix.
+  if ((payload as { stop_reason?: unknown } | null)?.stop_reason === 'max_tokens') {
+    throw new ClassifierTransportError('classifier exhausted its output token budget', 'output_limit');
+  }
+  return readMessagesText(payload);
 }
 
 function asTransportError(error: unknown): ClassifierTransportError {

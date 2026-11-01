@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=f8bf4df5c831594283ce7f37d409b267a5a876856bf39f1dc3356bc4e5b4a5d6 -->
+<!-- git-project-sync-task:source-digest=43c4593ab8f85a5066cdf256c541e41a94208ccec433d6e9672ac7d9a018869b -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -9,7 +9,7 @@
 
 ## Objective
 
-修复 528.1 四会话反馈中的重复恢复横幅与并发拒绝扩大问题，保全原会话与账本；以原业务完成为最终稳定性标准。证据：`dev-docs/recovery-incident-20261101/acceptance.md`。
+修复 528.1 四会话反馈中的重复恢复横幅与并发拒绝扩大问题，保全原会话与账本；按最新授权以系统恢复与稳定性实测为优先，原业务结果单独核验。证据：`dev-docs/recovery-incident-20261101/acceptance.md`。
 
 ## Acceptance criteria
 
@@ -28,6 +28,8 @@
 
 ## Completed
 
+第九项：原生TaskList/Get刷新、未确认评审回执接续指引、历史错误误读指引已实现；真实工具外分类复现1024输出全部thinking/无text，4096对照有效JSON，源码补预算传递及output_limit严格失败诊断。530.1不含本批，原四例尚未全部通过；独审/交接/主干/下一包/实际复验待完成。
+
 530.1 已安装，签名/公证/实际二进制与候选18cbda52一致，三个心跳运行态恢复；薪资和行情原会话均沿原execution真实准入并执行工具。行情任务清单查询又出现历史成功被永久拦截，正式通道仍HOLD。第八批只允许受限直接产品CLI list刷新已成功查询，所有live/unknown/error/旧身份/持久化保护保留，每次仍入原native journal；普通Bash不豁免。已快进到实际main2ff069ae，无版本分配或原运行数据写入。
 
 529.1 首次原会话继续实测仍 INTENT_UNCONFIRMED/timeout，系统验收失败。第七批修复明确续接依赖网络分类与8秒误截断，补 exact root human request→execution 关联、初始化取消及SDK预算传递。已从最新主干58941e30无冲突快进，改动仅此任务，原会话未由本线程改写。
@@ -43,6 +45,10 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `43c4593ab8f85a5066cdf256c541e41a94208ccec433d6e9672ac7d9a018869b`; Phase9: 446 related cases across 9 files PASS; tsc/lint/classification/diff PASS. Real Provider output-budget reproduction and controlled comparison recorded privately; installed530.1 still fails final acceptance.
+
+第九项：9文件446项联合回归、全量tsc、定向lint、classification、diff通过。直接Provider同上下文1024预算耗尽/4096完整JSON对照保存于相邻私有evidence；订阅SDK无新真实验收结论。源码交原owner非实现者审查和下一不可变候选，正式稳定通道HOLD。
 
 - Source digest: `f8bf4df5c831594283ce7f37d409b267a5a876856bf39f1dc3356bc4e5b4a5d6`; Phase8: 213 related unit/integration PASS, final 55 targeted PASS with full cold native admission; baseline FAIL reproduced; full tsc/scoped lint/classification/diff PASS. Installed530.1 still requires the next immutable candidate for this correction.
 

@@ -207,6 +207,8 @@ async function submitReview(
     receiptOverride?: string;
     isCurrent?: boolean;
     success?: boolean;
+    commandTransform?: (command: string) => string;
+    omitReceipt?: boolean;
   } = {},
 ) {
   const execution = currentExecution()!;
@@ -221,7 +223,8 @@ async function submitReview(
     queueId,
     assessment,
   };
-  const command = `myagents session tasks --json --data '${JSON.stringify(body)}'`;
+  const directCommand = `myagents session tasks --json --data '${JSON.stringify(body)}'`;
+  const command = options.commandTransform?.(directCommand) ?? directCommand;
   const receipt = options.receiptOverride ?? proposed.executionReviewReceipt;
   await tool(queueId, {
     id: `review-${receipt}`,
@@ -236,7 +239,7 @@ async function submitReview(
     stage: options.success === false ? "failure" : "success",
     root: options.root,
     input: { command },
-    output: JSON.stringify({ success: true, executionReviewReceipt: receipt }),
+    output: JSON.stringify({ success: true, ...(options.omitReceipt ? {} : { executionReviewReceipt: receipt }) }),
     isCurrent: options.isCurrent,
   });
   return proposed.executionReviewReceipt;
@@ -471,6 +474,7 @@ describe("durable Session execution owner", () => {
       assistantMessagePresent: true,
     });
     const next = await waitForContinuation();
+    expect(next.text).not.toContain('上轮评审的原生工具回执未确认');
     expect(currentExecution()).toMatchObject({
       phase: "running",
       continuation: { state: "dispatched" },
@@ -983,6 +987,28 @@ describe("durable Session execution owner", () => {
       phase: "running",
       reason: "assessment_required",
     });
+    expect(continuationRequests).toHaveLength(1);
+  });
+
+  it.each(['wrapper', 'pipeline', 'missing-receipt'] as const)("explains unconfirmed %s review and settles only a fresh direct root receipt", async kind => {
+    const prepared = await prepare();
+    const executionId = currentExecution()!.id;
+    const assessment: ExecutionAssessment = { decision: 'needs_user', summary: 'An external account is unavailable', checks: [] };
+    await submitReview(prepared.request.queueId!, assessment, {
+      ...(kind === 'wrapper' ? { commandTransform: () => 'python3 -c "invoke_product_cli()"' } : {}),
+      ...(kind === 'pipeline' ? { commandTransform: command => `${command} | head -1` } : {}),
+      omitReceipt: kind === 'missing-receipt',
+    });
+    await prepared.request.onTerminal?.({ status: 'complete', text: 'Review submitted', assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'running', reason: 'assessment_required' });
+    expect(continuationRequests).toHaveLength(1);
+    const next = continuationRequests[0];
+    expect(next.text).toContain('原生工具回执未确认');
+    expect(next.text).toContain('不要重做已经完成的业务操作');
+    expect(next.text).toContain('完整 JSON');
+    await submitReview(next.queueId!, assessment);
+    await next.onTerminal?.({ status: 'complete', text: 'External condition recorded', assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'paused', reason: assessment.summary });
     expect(continuationRequests).toHaveLength(1);
   });
 
@@ -2077,9 +2103,9 @@ describe('bounded intent failure evidence', () => {
     expect(currentExecution()).toBeUndefined();
   });
 
-  it('persists an exact timeout reason but keeps the unconfirmed write guard', async () => {
+  it.each(['timeout', 'output_limit'] as const)('persists exact %s but keeps the unconfirmed write guard', async reason => {
     await proveHumanInput('timeout-diagnostic', input);
-    engine.runTextUtility = vi.fn(async task => { task.onFailure?.('timeout'); return null; });
+    engine.runTextUtility = vi.fn(async task => { task.onFailure?.(reason); return null; });
     const prepared = await executionOwner.prepareSessionExecution(engine, {
       sessionId: id, clientRequestId: 'timeout-diagnostic', text: input, workspacePath: '/synthetic-workspace',
       scenario: { type: 'desktop', surface: 'chat' },
@@ -2088,7 +2114,7 @@ describe('bounded intent failure evidence', () => {
     expect(admission.accepted).toBe(true);
     expect(admission.validateAtCommit?.().accepted).toBe(true);
     expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission).toMatchObject({
-      error: 'INTENT_UNCONFIRMED', failureReason: 'timeout', queueId: prepared.request.queueId,
+      error: 'INTENT_UNCONFIRMED', failureReason: reason, queueId: prepared.request.queueId,
     });
     expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Bash', {})).toContain('INTENT_UNCONFIRMED');
     expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Read', {})).toBeUndefined();

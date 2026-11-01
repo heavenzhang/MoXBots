@@ -2063,6 +2063,7 @@
         "unavailable": "No intent classification model is available.",
         "transport": "The classification service request failed.",
         "empty_response": "The classifier returned no text.",
+        "output_limit": "The classifier exhausted its output budget without a complete result. Task progress is preserved.",
         "invalid_json": "The classifier returned invalid JSON.",
         "invalid_schema": "The classifier returned an invalid task structure.",
         "missing_continuation": "The classifier did not specify task continuity.",

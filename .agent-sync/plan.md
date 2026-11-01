@@ -1162,3 +1162,8 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 ### MB-RECOVERY-INCIDENT-20261101 实装任务查询刷新
 
 530.1 已经main2ff069ae/CI/签名公证/本机安装，真实恢复薪资与行情时发现产品task list查询被历史成功防重复规则误拦截；正式stable保持HOLD。第八批仅允许严格直接产品CLI list刷新已成功查询，仍沿原native journal逐次记账并保持unknown/Stop/错误/旧身份/写入保护。213相关回归与tsc/lint/分类通过，原owner01a12bc2-907a-7702-b6dd-788225c5dfe4独审/集成/分配下一不可变包及四原路径验收待完成；不复用530.1，不触发第二发布流程。
+
+
+### MB-RECOVERY-INCIDENT-20261101 原生查询、评审回执与输出预算
+
+530.1四例实测尚未通过。第九项修原生TaskList/Get成功查询刷新、未确认评审回执的精确接续指引及历史封锁文本误判；真实工具外分类复现1024输出全部为thinking，4096对照返回完整JSON，补output_limit诊断且不自动重试。部署仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责，源分支codex/recovery-incident-20261101交独审/CI/下一不可变包，正式stable继续HOLD。系统恢复验证优先，原业务未知操作保护保留，不以业务外部依赖阻挡系统验收。

@@ -2061,6 +2061,7 @@
         "unavailable": "没有可用的意图识别模型。",
         "transport": "识别服务连接或请求失败。",
         "empty_response": "识别模型没有返回有效文本。",
+        "output_limit": "识别模型耗尽输出预算，未取得完整结果；原任务进度已保留。",
         "invalid_json": "识别模型返回的格式无法解析。",
         "invalid_schema": "识别结果不符合任务结构要求。",
         "missing_continuation": "识别结果没有说明是否接续原任务。",
