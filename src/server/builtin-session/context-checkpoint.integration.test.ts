@@ -87,6 +87,62 @@ it('retains the real SessionStore ledger when a restored Session verifies indepe
   expect(restored.canRetryInference()).toBe(false);
 });
 
+it.each(['success', 'bash-exit'] as const)('keeps a returned %s receipt settled through real Store reload and an unpaired history projection', async outcome => {
+  const transcript = await store.loadSessionTranscript(id);
+  expect((await store.appendSessionMessages(id, transcript.cursor, [{ id: 'fixture-user', role: 'user',
+    content: 'Inspect the isolated fixture.', timestamp: new Date().toISOString() }])).ok).toBe(true);
+  const owner = { sessionId: id, sdkSessionId: id };
+  const unknownInput = { command: 'unknown-fixture-operation' };
+  const unknownHash = recoveryActionHash('Bash', unknownInput);
+  await store.saveBuiltinContextLedger(id, id, { version: 1, completed: [], uncertain: [unknownHash], denied: [], blocked: false,
+    projectionActive: true, streamArmedOnly: false }, () => true);
+  const options = { recoveryOwner: owner, scope: () => 'fixture-turn', isActive: () => true, protectStreaming: true,
+    backup: (request: AnthropicRequest, metadata: { digest: string; scope: string }) =>
+      store.archiveBuiltinContextRequest(id, request, metadata, () => true),
+    persistLedger: (ledger: unknown, guard?: () => boolean) => store.saveBuiltinContextLedger(id, id, ledger, () => true, guard) };
+  const context = new ContextRecoveryController({ ...options, initialLedger: store.loadBuiltinContextLedger(id, id) });
+  let nativeCurrent = true;
+  context.bindNoDispatchOwner({ ...owner, queryGeneration: 1, isCurrent: () => nativeCurrent });
+  const body: AnthropicRequest = { model: 'fixture', max_tokens: 64, stream: true,
+    messages: [{ role: 'user', content: 'Inspect the isolated fixture.' }] };
+  const input = { command: 'inspect-fixture' };
+  const frame = (type: string, extra: object) => `event: ${type}\ndata: ${JSON.stringify({ type, ...extra })}\n\n`;
+  const response = await context.run(new Request('http://127.0.0.1/fixture'), body, async () => new Response(
+    frame('message_start', { message: { id: 'fixture', type: 'message', role: 'assistant', content: [] } })
+    + frame('content_block_start', { index: 0, content_block: { type: 'tool_use', id: 'returned-tool', name: 'Bash', input: {} } })
+    + frame('content_block_delta', { index: 0, delta: { type: 'input_json_delta', partial_json: JSON.stringify(input) } })
+    + frame('content_block_stop', { index: 0 }) + frame('message_delta', { delta: { stop_reason: 'tool_use' } })
+    + frame('message_stop', {}), { headers: { 'content-type': 'text/event-stream' } }));
+  expect(response.status).toBe(200); await response.text();
+  expect(await context.authorizeTool('Bash', input, 'returned-tool')).toBeUndefined();
+  await context.commitToolResult('Bash', input, outcome === 'success' ? 'fixture observed' : 'Exit code 1',
+    outcome === 'bash-exit', 'returned-tool', { interrupted: false });
+  const ledger = store.loadBuiltinContextLedger(id, id) as { uncertain: string[]; operationAttempts: NativeOperationJournalData };
+  expect(ledger.uncertain).toEqual([unknownHash]);
+  expect(ledger.operationAttempts.entries[0]).toMatchObject({ toolUseId: 'returned-tool', status: 'returned', outcome });
+  // This is a projection-gap injection after real durable writes, not a claim
+  // that the SDK necessarily omits this result in a production incident.
+  body.messages.push({ role: 'assistant', content: [{ type: 'tool_use', id: 'returned-tool', name: 'Bash', input }] });
+  nativeCurrent = false;
+  await store.getActiveSessionTranscript(id)?.revoke();
+  vi.resetModules(); store = await import('../SessionStore');
+  expect(store.getSessionMetadata(id)?.id).toBe(id);
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(ledger);
+  const cold = new ContextRecoveryController({ ...options, initialLedger: store.loadBuiltinContextLedger(id, id) });
+  cold.bindNoDispatchOwner({ ...owner, queryGeneration: 2, isCurrent: () => true });
+  const execute = vi.fn(async (actual: AnthropicRequest) => {
+    expect(actual).toEqual(body);
+    return new Response(frame('message_stop', {}), { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const continued = await cold.run(new Request('http://127.0.0.1/fixture'), body, execute);
+  expect(continued.status, await continued.clone().text()).toBe(200); await continued.text();
+  expect(execute).toHaveBeenCalledOnce();
+  expect(store.loadBuiltinContextLedger(id, id)).toEqual(ledger);
+  expect(cold.beforeTool('Bash', input)).toContain(outcome === 'success' ? 'already completed' : 'exited with an error');
+  expect(cold.beforeTool('Bash', unknownInput)).toContain('uncertain outcome');
+  expect(cold.canRetryInference()).toBe(false);
+});
+
 it.each([true, false])('persists native error proofs without clearing existing unknowns when recovery allowed=%s', async recoveryAllowed => {
   const snapshot = await store.loadSessionTranscript(id);
   await store.appendSessionMessages(id, snapshot.cursor, [{ id: 'fixture-user', role: 'user',

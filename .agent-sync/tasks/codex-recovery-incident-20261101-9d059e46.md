@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=0bf65fc033640aed6b8adc0f795f417a0a0a0972114979a674c00bc175dab011 -->
+<!-- git-project-sync-task:source-digest=d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -30,6 +30,7 @@
 - [ ] 第十二批精确独审、主干/新包/安装与四原会话复验。
 - [x] 第十二批e9f60a独审181项通过，532.2候选fcd96/PR226已启动精确CI；未安装验收。
 - [x] 第十三批原生returned历史缺口降级两项复现、保留旧保护修复及141项回归。
+- [x] 第十三批真实SessionStore冷恢复11项、实际SDK/本地模型缺口注入与默认模式通过。
 - [ ] 第十三批独审与下一未冻结候选交付、真实验收。
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
@@ -60,6 +61,8 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa`; Phase13 Store/native supplement: full real-SessionStore checkpoint suite 11 PASS, including success and known Bash-exit gap cases after complete module reload. Actual SDK/native-Bash loopback with and without --returned-history-gap: both PASS, five calls, two expected denials, package count 1, original unknown launch count 0, unknown count 1. Full tsc, scoped ESLint, diff PASS. First Store fixture lacked published V2 birth and correctly failed; it was corrected with a durable first user message and explicit reloaded-owner assertion. No product logic change, real user session mutation, paid inference or installed-client acceptance claimed.
 
 - Source digest: `0bf65fc033640aed6b8adc0f795f417a0a0a0972114979a674c00bc175dab011`; Phase13 independent-review follow-up: adopted the release owner's live/cold failed-Bash tests and added unresolved-peer/retired-identity counterexamples. Final scoped/attempt/journal run: 74 PASS; full tsc, scoped lint and diff checks PASS. Product logic remains identical to reviewed 7c3fe1f09. Real installed original-session acceptance remains pending.
 

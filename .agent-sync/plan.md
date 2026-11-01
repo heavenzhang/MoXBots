@@ -1177,3 +1177,5 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876238，不能覆盖或复用其制品与检查。
 
 第十三项审查补证：原owner精确7c3fe1f09静态/58项定向通过并独立补失败Bash live/cold围栏验证；源分支吸收该测试与未完成peer/退休身份反例，最终74项及tsc/lint/diff通过。产品逻辑不变，保持既有unknown，不覆盖532.2冻结批；真实原生验收仍待下一批安装。
+
+第十三项进一步补证：真实SessionStore全文件11项冷恢复及实际SDK/原生Bash本地模型缺口注入、默认模式均通过；首条用户消息使fixture V2 birth正式持久化，初始owner丢失为fixture问题，未改产品逻辑。可复现命令已写acceptance.md；源码测试不等同四原会话实装验收，仍由原owner统一后续批次。
